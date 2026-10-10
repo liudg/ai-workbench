@@ -3,7 +3,6 @@ import { useEffect } from "react";
 import { ChatView } from "@/components/ChatView";
 import { NoProjectSelected, NoSession } from "@/components/EmptyState";
 import { NewProjectDialog } from "@/components/NewProjectDialog";
-import { SessionTabs } from "@/components/SessionTabs";
 import { Sidebar } from "@/components/Sidebar";
 import { UpdateDialog } from "@/components/UpdateDialog";
 import { useWorkbench } from "@/store";
@@ -32,7 +31,6 @@ function Workspace() {
 
   return (
     <div className="relative flex h-full min-w-0 flex-1 flex-col">
-      <SessionTabs project={project} />
       {session ? (
         <ChatView session={session} events={events} />
       ) : sessions && sessions.length > 0 ? (

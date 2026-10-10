@@ -554,7 +554,7 @@ export function EventItem({
       return null; // 已在 PromptCard 的「已回答」状态体现
 
     case "status-changed":
-      return null; // 状态只在会话标签上呈现
+      return null; // 状态变化不进时间线
 
     case "system":
       return (

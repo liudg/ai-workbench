@@ -156,7 +156,7 @@ export function ChatView({
       </div>
       <Composer key={session.id} session={session} events={events} />
       {pendingId && session.status === "needs-input" && (
-        <div className="pointer-events-none absolute inset-x-0 top-12 h-0.5 bg-gradient-to-r from-transparent via-amber-400/60 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-transparent via-amber-400/60 to-transparent" />
       )}
     </>
   );

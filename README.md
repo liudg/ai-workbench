@@ -60,8 +60,7 @@ pnpm dev            # 打开 http://localhost:4573
 ```
 ┌──────────────────────────── 前端（src/）────────────────────────────┐
 │ App.tsx              左右布局 + 工作区路由                            │
-│ components/Sidebar   项目列表（聚合状态点、活跃数、新建/导入/移除）     │
-│ components/SessionTabs  会话标签页（状态点、Agent 徽章、停止）         │
+│ components/Sidebar   项目与会话列表（选会话只在侧栏）                  │
 │ components/ChatView  会话时间线（自动吸底滚动、运行中指示）            │
 │ components/EventItem 事件渲染：用户气泡/Agent消息/工具卡/内联审批卡    │
 │ components/Composer  输入框（有待答提问时自动转为「回答」通道）        │

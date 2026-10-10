@@ -39,8 +39,6 @@ interface WorkbenchState {
   events: Record<string, SessionEvent[]>;
   selectedProjectId: string | null;
   activeSessionId: Record<string, string>;
-  /** 顶部标签只放打开过的会话，侧边栏才是完整 resume 列表。 */
-  openedSessionIds: Record<string, string[]>;
   dialog: DialogMode | null;
   /** 最近一次操作错误（对话框 / 状态栏展示） */
   lastError: string | null;
@@ -129,7 +127,6 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   events: {},
   selectedProjectId: null,
   activeSessionId: {},
-  openedSessionIds: {},
   dialog: null,
   lastError: null,
   update: { kind: "idle" },
@@ -321,12 +318,6 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
         preferredAgent: agent,
         sessions: { ...s.sessions, [projectId]: list },
         activeSessionId: { ...s.activeSessionId, [projectId]: session.id },
-        openedSessionIds: {
-          ...s.openedSessionIds,
-          [projectId]: s.openedSessionIds[projectId]?.includes(session.id)
-            ? s.openedSessionIds[projectId]
-            : [...(s.openedSessionIds[projectId] ?? []), session.id],
-        },
         events: { ...s.events, [session.id]: s.events[session.id] ?? [] },
         accessMode: {
           ...s.accessMode,
@@ -433,12 +424,6 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     set((s) => ({
       selectedProjectId: projectId,
       activeSessionId: { ...s.activeSessionId, [projectId]: sessionId },
-      openedSessionIds: {
-        ...s.openedSessionIds,
-        [projectId]: s.openedSessionIds[projectId]?.includes(sessionId)
-          ? s.openedSessionIds[projectId]
-          : [...(s.openedSessionIds[projectId] ?? []), sessionId],
-      },
     }));
     if (!get().sessions[projectId]) {
       const [pid, list] = await loadSessions(projectId);
