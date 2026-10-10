@@ -7,11 +7,12 @@ use std::time::Instant;
 
 use serde_json::{json, Value};
 use tokio::process::Child;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, Mutex as AsyncMutex};
 
 use crate::features::agents::EventSink;
 use crate::models::{
-    MessagePhase, PromptQuestion, SessionEventBody, SessionStatus, OCCUPIED_SESSION_NOTICE,
+    MessagePhase, PromptQuestion, QueuedTurn, SessionEventBody, SessionStatus,
+    OCCUPIED_SESSION_NOTICE,
 };
 
 use super::process::is_thread_writer_conflict;
@@ -115,6 +116,11 @@ pub(super) struct Shared {
     pub(super) question_items: Mutex<HashSet<String>>,
     /// 另一个进程持有线程写锁时，这次打开只读。
     pub(super) occupancy: Mutex<Occupancy>,
+    pub(super) queue_notify: mpsc::UnboundedSender<()>,
+    pub(super) queue_refresh: AsyncMutex<()>,
+    pub(super) queued: Mutex<Vec<QueuedTurn>>,
+    pub(super) queue_removed: Mutex<HashSet<String>>,
+    pub(super) shown_users: Mutex<HashSet<String>>,
 }
 
 /// `thread/resume` 撞上 active writer 之后的打开状态。

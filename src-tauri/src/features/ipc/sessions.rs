@@ -11,8 +11,51 @@ pub async fn list_sessions(
     store: State<'_, ProjectStore>,
     manager: State<'_, SessionManager>,
     project_id: String,
+    archived: Option<bool>,
 ) -> Result<Vec<Session>, String> {
-    Ok(manager.sessions_for_sidebar(&store, &project_id).await)
+    Ok(manager
+        .sessions_for_sidebar(&store, &project_id, archived.unwrap_or(false))
+        .await)
+}
+
+#[tauri::command]
+pub async fn fork_session(
+    store: State<'_, ProjectStore>,
+    manager: State<'_, SessionManager>,
+    session_id: String,
+) -> Result<Session, String> {
+    manager.fork_session(&store, &session_id).await
+}
+
+#[tauri::command]
+pub async fn rename_session(
+    store: State<'_, ProjectStore>,
+    manager: State<'_, SessionManager>,
+    session_id: String,
+    name: String,
+) -> Result<(), String> {
+    manager.rename_session(&store, &session_id, &name).await
+}
+
+#[tauri::command]
+pub async fn set_session_archived(
+    store: State<'_, ProjectStore>,
+    manager: State<'_, SessionManager>,
+    session_id: String,
+    archived: bool,
+) -> Result<(), String> {
+    manager
+        .set_session_archived(&store, &session_id, archived)
+        .await
+}
+
+#[tauri::command]
+pub async fn delete_session(
+    store: State<'_, ProjectStore>,
+    manager: State<'_, SessionManager>,
+    session_id: String,
+) -> Result<(), String> {
+    manager.delete_session(&store, &session_id).await
 }
 
 /// 创建会话；agent 缺省时用项目默认 Agent。
@@ -81,12 +124,57 @@ pub async fn send_message(
     manager: State<'_, SessionManager>,
     session_id: String,
     text: String,
+    images: Option<Vec<String>>,
 ) -> Result<(), String> {
     let text = text.trim().to_string();
-    if text.is_empty() {
+    let images = images.unwrap_or_default();
+    if text.is_empty() && images.is_empty() {
         return Err("消息不能为空".into());
     }
-    manager.send_message(&session_id, text).await
+    manager.send_message(&session_id, text, images).await
+}
+
+#[tauri::command]
+pub async fn update_queued_turn(
+    manager: State<'_, SessionManager>,
+    session_id: String,
+    queued_id: String,
+    text: String,
+    images: Option<Vec<String>>,
+) -> Result<(), String> {
+    manager
+        .update_queued_turn(
+            &session_id,
+            &queued_id,
+            text.trim().to_string(),
+            images.unwrap_or_default(),
+        )
+        .await
+}
+
+#[tauri::command]
+pub async fn remove_queued_turn(
+    manager: State<'_, SessionManager>,
+    session_id: String,
+    queued_id: String,
+) -> Result<(), String> {
+    manager.remove_queued_turn(&session_id, &queued_id).await
+}
+
+#[tauri::command]
+pub fn session_queue(
+    manager: State<'_, SessionManager>,
+    session_id: String,
+) -> Result<Vec<QueuedTurn>, String> {
+    Ok(manager.session_queue(&session_id))
+}
+
+#[tauri::command]
+pub async fn interrupt_turn(
+    manager: State<'_, SessionManager>,
+    session_id: String,
+) -> Result<(), String> {
+    manager.interrupt_turn(&session_id).await
 }
 
 #[tauri::command]

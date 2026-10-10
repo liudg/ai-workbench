@@ -11,6 +11,10 @@ import { StatusDot } from "./StatusDot";
 
 export function ProjectItem({ project }: { project: Project }) {
   const sessions = useWorkbench((s) => s.sessions[project.id]);
+  const archivedSessions = useWorkbench((s) => s.archivedSessions[project.id]);
+  const showArchived = useWorkbench((s) => Boolean(s.showArchived[project.id]));
+  const profiles = useWorkbench((s) => s.profiles);
+  const toggleArchived = useWorkbench((s) => s.toggleArchived);
   const selected = useWorkbench((s) => s.selectedProjectId === project.id);
   const activeSessionId = useWorkbench((s) => s.activeSessionId[project.id]);
   const selectProject = useWorkbench((s) => s.selectProject);
@@ -31,6 +35,10 @@ export function ProjectItem({ project }: { project: Project }) {
     (s) => s.status === "running" || s.status === "needs-input",
   ).length;
   const items = sessions ?? [];
+  const canArchive =
+    Boolean(profiles[project.default_agent]?.capabilities.supports_archive) ||
+    items.some((session) => profiles[session.agent]?.capabilities.supports_archive) ||
+    (archivedSessions?.length ?? 0) > 0;
 
   const onHeaderClick = () => {
     if (selected) {
@@ -132,6 +140,31 @@ export function ProjectItem({ project }: { project: Project }) {
           showAll={showAll}
           onToggleShowAll={() => setShowAll((value) => !value)}
         />
+      )}
+      {!collapsed && canArchive && (
+        <div className="mt-0.5">
+          <button
+            type="button"
+            className="w-full rounded-md py-1 pl-7 pr-2 text-left text-[13px] text-zinc-500 hover:bg-zinc-800/40 hover:text-zinc-200"
+            aria-expanded={showArchived}
+            onClick={() => void toggleArchived(project.id)}
+          >
+            已归档的聊天
+          </button>
+          {showArchived &&
+            (archivedSessions && archivedSessions.length > 0 ? (
+              <SessionList
+                projectId={project.id}
+                sessions={archivedSessions}
+                selected={selected}
+                activeSessionId={activeSessionId}
+                showAll
+                onToggleShowAll={() => undefined}
+              />
+            ) : (
+              <div className="py-1 pl-7 pr-2 text-[13px] text-zinc-500">暂无已归档的聊天</div>
+            ))}
+        </div>
       )}
     </div>
   );

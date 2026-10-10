@@ -18,6 +18,7 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
     lastAccessMode: "full",
     accessMode: {},
     attachments: {},
+    queues: {},
     catalogs: {},
     catalogCache: {},
     catalogNotice: null,
@@ -112,13 +113,26 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
       }));
     },
 
-    seedComposer(sessionId, text) {
-      set({ composerSeed: { sessionId, text, token: Date.now() } });
+    replaceAttachments(sessionId, files) {
+      set((s) => ({
+        attachments: { ...s.attachments, [sessionId]: files },
+      }));
     },
 
-    async sendMessage(sessionId, text) {
+    seedComposer(sessionId, text, images) {
+      set({
+        composerSeed: {
+          sessionId,
+          text,
+          images: images ?? [],
+          token: Date.now(),
+        },
+      });
+    },
+
+    async sendMessage(sessionId, text, images) {
       try {
-        await backend.sendMessage(sessionId, text);
+        await backend.sendMessage(sessionId, text, images);
       } catch (e) {
         set({ lastError: String(e) });
       }

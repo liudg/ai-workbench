@@ -12,12 +12,16 @@
 //! `resume_native_id` 走 `thread/resume`。
 
 mod catalog;
+mod host;
+mod queue;
 mod process;
 mod prompts;
 mod resume;
 mod rpc;
+mod rpc_client;
 mod state;
 mod turn;
+mod worktree;
 
 pub use resume::CodexDirectory;
 
@@ -34,7 +38,10 @@ use tokio::process::Command;
 use tokio::sync::mpsc;
 
 use crate::features::agents::install::CliRelease;
-use crate::features::agents::{AgentAdapter, AgentError, AgentSession, EventSink, SessionContext};
+use crate::features::agents::{
+    AgentAdapter, AgentError, AgentSession, DirectoryEntry, EventSink, SessionContext, TurnDelivery,
+    UserTurn,
+};
 use crate::encoding::{apply_utf8_env, decode_child_bytes};
 use crate::models::{
     strip_verbatim_prefix, AgentCapabilities, AgentCatalog, AgentKind, AgentProfile, PromptAnswer,
@@ -100,6 +107,149 @@ impl AgentAdapter for CodexCliAdapter {
         resolve_codex_bin().map(|_| ())
     }
 
+    async fn list_mcp_servers(&self) -> Result<Vec<crate::models::McpServerRecord>, AgentError> {
+        host::list_mcp_servers().await
+    }
+
+    async fn add_mcp_server(
+        &self,
+        name: &str,
+        transport: crate::models::McpTransport,
+        command_line: &str,
+        url: &str,
+    ) -> Result<(), AgentError> {
+        host::add_mcp_server(name, transport, command_line, url).await
+    }
+
+    async fn set_mcp_server_enabled(&self, name: &str, enabled: bool) -> Result<(), AgentError> {
+        host::set_mcp_server_enabled(name, enabled).await
+    }
+
+    async fn remove_mcp_server(&self, name: &str) -> Result<(), AgentError> {
+        host::remove_mcp_server(name).await
+    }
+
+    async fn login_mcp_server(&self, name: &str) -> Result<crate::models::McpLogin, AgentError> {
+        host::login_mcp_server(name).await
+    }
+
+    async fn reload_mcp_config(&self) -> Result<(), AgentError> {
+        host::reload_mcp_config().await
+    }
+
+    async fn list_plugins(
+        &self,
+        cwd: Option<&str>,
+    ) -> Result<crate::models::PluginCatalog, AgentError> {
+        host::list_plugins(cwd).await
+    }
+
+    async fn install_plugin(
+        &self,
+        plugin_name: &str,
+        marketplace_path: &str,
+        marketplace_name: &str,
+    ) -> Result<(), AgentError> {
+        host::install_plugin(plugin_name, marketplace_path, marketplace_name).await
+    }
+
+    async fn uninstall_plugin(&self, plugin_id: &str) -> Result<(), AgentError> {
+        host::uninstall_plugin(plugin_id).await
+    }
+
+    async fn add_marketplace(&self, source: &str, ref_name: &str) -> Result<(), AgentError> {
+        host::add_marketplace(source, ref_name).await
+    }
+
+    async fn remove_marketplace(&self, name: &str) -> Result<(), AgentError> {
+        host::remove_marketplace(name).await
+    }
+
+    async fn upgrade_marketplace(&self, name: &str) -> Result<(), AgentError> {
+        host::upgrade_marketplace(name).await
+    }
+
+    async fn list_hooks(
+        &self,
+        cwd: Option<&str>,
+    ) -> Result<Vec<crate::models::HookRecord>, AgentError> {
+        host::list_hooks(cwd).await
+    }
+
+    async fn worktree_settings(
+        &self,
+        project_path: Option<&str>,
+    ) -> Result<crate::models::WorktreeSettings, AgentError> {
+        worktree::settings_for(project_path).await
+    }
+
+    async fn save_worktree_settings(
+        &self,
+        root: &str,
+        keep: u32,
+        auto_prune: bool,
+    ) -> Result<crate::models::WorktreeSettings, AgentError> {
+        worktree::save_settings(root, keep, auto_prune)
+    }
+
+    async fn create_worktree(
+        &self,
+        project_path: &str,
+    ) -> Result<crate::models::WorktreeInfo, AgentError> {
+        worktree::create_worktree(project_path).await
+    }
+
+    async fn recycle_worktree(&self, project_path: &str, worktree_path: &str) -> Result<(), AgentError> {
+        worktree::recycle_worktree(project_path, worktree_path).await
+    }
+
+    async fn add_environment(
+        &self,
+        environment_id: &str,
+        exec_server_url: &str,
+        auth_bearer_token: &str,
+    ) -> Result<crate::models::EnvironmentRecord, AgentError> {
+        host::add_environment(environment_id, exec_server_url, auth_bearer_token).await
+    }
+
+    async fn list_environments(
+        &self,
+    ) -> Result<Vec<crate::models::EnvironmentRecord>, AgentError> {
+        host::list_environments().await
+    }
+
+    async fn fork_thread(&self, native_id: &str) -> Result<DirectoryEntry, AgentError> {
+        CodexDirectory::shared()
+            .fork_thread(native_id)
+            .await
+            .map_err(AgentError::Runtime)
+    }
+
+    async fn rename_thread(&self, native_id: &str, name: &str) -> Result<(), AgentError> {
+        CodexDirectory::shared()
+            .rename_thread(native_id, name)
+            .await
+            .map_err(AgentError::Runtime)
+    }
+
+    async fn set_thread_archived(
+        &self,
+        native_id: &str,
+        archived: bool,
+    ) -> Result<(), AgentError> {
+        CodexDirectory::shared()
+            .set_archived(native_id, archived)
+            .await
+            .map_err(AgentError::Runtime)
+    }
+
+    async fn delete_thread(&self, native_id: &str) -> Result<(), AgentError> {
+        CodexDirectory::shared()
+            .delete_thread(native_id)
+            .await
+            .map_err(AgentError::Runtime)
+    }
+
     async fn start_session(
         &self,
         ctx: SessionContext,
@@ -141,6 +291,7 @@ impl AgentAdapter for CodexCliAdapter {
             .as_deref()
             .and_then(Access::parse)
             .unwrap_or(Access::Full);
+        let (queue_tx, mut queue_rx) = mpsc::unbounded_channel::<()>();
         let (out_tx, mut out_rx) = mpsc::unbounded_channel::<String>();
         tokio::spawn(async move {
             let mut stdin = stdin;
@@ -183,7 +334,21 @@ impl AgentAdapter for CodexCliAdapter {
             titled: AtomicBool::new(false),
             question_items: Mutex::new(HashSet::new()),
             occupancy: Mutex::new(state::Occupancy::default()),
+            queue_notify: queue_tx,
+            queue_refresh: tokio::sync::Mutex::new(()),
+            queued: Mutex::new(Vec::new()),
+            queue_removed: Mutex::new(HashSet::new()),
+            shown_users: Mutex::new(HashSet::new()),
         });
+        {
+            let refresher = Arc::clone(&shared);
+            tokio::spawn(async move {
+                while queue_rx.recv().await.is_some() {
+                    while queue_rx.try_recv().is_ok() {}
+                    refresher.refresh_queue().await;
+                }
+            });
+        }
 
         let reader = Arc::clone(&shared);
         tokio::spawn(async move {
@@ -292,6 +457,13 @@ struct CodexCliSession {
 
 #[async_trait]
 impl AgentSession for CodexCliSession {
+    async fn reload_mcp(&self) -> Result<(), AgentError> {
+        self.shared
+            .request("config/mcpServer/reload", serde_json::Value::Null)
+            .await
+            .map(|_| ())
+    }
+
     async fn send_message(&self, text: String) -> Result<(), AgentError> {
         self.shared.ensure_open()?;
         if self.shared.read_only() {
@@ -301,6 +473,74 @@ impl AgentSession for CodexCliSession {
             return self.shared.handle_slash(text.trim()).await;
         }
         self.shared.begin_turn(text).await
+    }
+
+    async fn deliver(&self, turn: UserTurn) -> Result<TurnDelivery, AgentError> {
+        self.shared.ensure_open()?;
+        if self.shared.read_only() {
+            return Err(AgentError::Runtime(OCCUPIED_SESSION_NOTICE.into()));
+        }
+        if turn.text.trim_start().starts_with('/') && turn.images.is_empty() {
+            self.shared.handle_slash(turn.text.trim()).await?;
+            return Ok(TurnDelivery::Started);
+        }
+        if self.shared.turn_open.load(Ordering::SeqCst) {
+            self.shared
+                .enqueue(turn.text, turn.images, turn.client_id)
+                .await?;
+            return Ok(TurnDelivery::Queued);
+        }
+        if !turn.client_id.is_empty() {
+            self.shared
+                .shown_users
+                .lock()
+                .unwrap()
+                .insert(turn.client_id.clone());
+        }
+        self.shared
+            .begin_user_turn(turn.text, turn.images, turn.client_id)
+            .await?;
+        Ok(TurnDelivery::Started)
+    }
+
+    async fn update_queued(&self, id: &str, turn: UserTurn) -> Result<(), AgentError> {
+        self.shared.ensure_open()?;
+        self.shared.update_queued(id, turn.text, turn.images).await
+    }
+
+    async fn remove_queued(&self, id: &str) -> Result<(), AgentError> {
+        self.shared.ensure_open()?;
+        self.shared.remove_queued(id).await
+    }
+
+    async fn interrupt(&self) -> Result<(), AgentError> {
+        self.shared.ensure_open()?;
+        let thread_id = self
+            .shared
+            .thread_id
+            .lock()
+            .unwrap()
+            .clone()
+            .ok_or_else(|| AgentError::Runtime("Codex 线程未建立".into()))?;
+        if !self
+            .shared
+            .write_method("turn/interrupt", json!({ "threadId": thread_id }))
+        {
+            return Err(AgentError::Runtime("无法向 Codex CLI 写入消息".into()));
+        }
+        Ok(())
+    }
+
+    #[cfg(test)]
+    async fn discard_thread(&self) -> Result<(), AgentError> {
+        let Some(thread_id) = self.shared.thread_id.lock().unwrap().clone() else {
+            return Ok(());
+        };
+        let _ = self
+            .shared
+            .request("thread/delete", json!({ "threadId": thread_id }))
+            .await;
+        Ok(())
     }
 
     async fn answer_prompt(&self, prompt_id: &str, answer: PromptAnswer) -> Result<(), AgentError> {
@@ -657,5 +897,125 @@ mod tests {
         }
         let _ = session.stop().await;
         panic!("timed out waiting for pong, last message: {saw}");
+    }
+
+    /// Live check in `_gap-img-queue`: localImage input, then a queued follow-up.
+    #[tokio::test]
+    #[ignore = "calls the local Codex CLI in _gap-img-queue"]
+    async fn gap_image_turn_and_queue() {
+        let cwd = r"C:\Users\admin\Desktop\temp\ai-workbench-project\_gap-img-queue";
+        let image = format!(r"{cwd}\probe.png");
+        assert!(
+            std::path::Path::new(&image).is_file(),
+            "missing {image}"
+        );
+        let adapter = CodexCliAdapter::new();
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let session = adapter
+            .start_session(
+                SessionContext {
+                    project_path: cwd.into(),
+                    access_mode: Some("read-only".into()),
+                    resume_native_id: None,
+                    options: serde_json::json!({ "persist": true }),
+                },
+                tx,
+            )
+            .await
+            .expect("start");
+        let started = session
+            .deliver(UserTurn {
+                text: "Reply with exactly pong. Do not use tools.".into(),
+                images: vec![image.clone()],
+                client_id: "direct-1".into(),
+            })
+            .await
+            .expect("image turn");
+        assert_eq!(started, TurnDelivery::Started);
+        tokio::time::sleep(Duration::from_millis(800)).await;
+        let queued = session
+            .deliver(UserTurn {
+                text: "?????".into(),
+                images: vec![image],
+                client_id: "queued-1".into(),
+            })
+            .await
+            .expect("queue");
+        assert_eq!(queued, TurnDelivery::Queued);
+
+        let queued_id = wait_queue(&mut rx, |items| {
+            items
+                .iter()
+                .find(|item| item.text == "?????")
+                .map(|item| item.id.clone())
+        })
+        .await
+        .expect("queued follow-up");
+        session
+            .update_queued(
+                &queued_id,
+                UserTurn {
+                    text: "?????".into(),
+                    images: Vec::new(),
+                    client_id: String::new(),
+                },
+            )
+            .await
+            .expect("update");
+        wait_queue(&mut rx, |items| {
+            items
+                .iter()
+                .any(|item| item.id == queued_id && item.text == "?????")
+                .then_some(())
+        })
+        .await
+        .expect("updated in place");
+        session.interrupt().await.expect("interrupt");
+        let dispatched = wait_user(&mut rx, "?????").await;
+        assert!(!dispatched, "interrupt must leave the queued follow-up");
+        session.remove_queued(&queued_id).await.expect("delete");
+        wait_queue(&mut rx, |items| {
+            (!items.iter().any(|item| item.id == queued_id)).then_some(())
+        })
+        .await
+        .expect("deleted");
+        let _ = session.discard_thread().await;
+        let _ = session.stop().await;
+    }
+
+    async fn wait_queue<T>(
+        rx: &mut mpsc::UnboundedReceiver<SessionEventBody>,
+        mut found: impl FnMut(&[crate::models::QueuedTurn]) -> Option<T>,
+    ) -> Option<T> {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
+        while tokio::time::Instant::now() < deadline {
+            match timeout(Duration::from_secs(2), rx.recv()).await {
+                Ok(Some(SessionEventBody::QueueChanged { items })) => {
+                    if let Some(value) = found(&items) {
+                        return Some(value);
+                    }
+                }
+                Ok(Some(_)) => {}
+                _ => {}
+            }
+        }
+        None
+    }
+
+    async fn wait_user(rx: &mut mpsc::UnboundedReceiver<SessionEventBody>, text: &str) -> bool {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(8);
+        while tokio::time::Instant::now() < deadline {
+            match timeout(Duration::from_secs(2), rx.recv()).await {
+                Ok(Some(SessionEventBody::UserMessage { text: body, .. })) if body == text => {
+                    return true;
+                }
+                Ok(Some(SessionEventBody::StatusChanged {
+                    status: SessionStatus::Completed,
+                })) => return false,
+                Ok(Some(_)) => {}
+                _ => {}
+            }
+        }
+        false
     }
 }

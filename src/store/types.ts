@@ -9,6 +9,7 @@ import type {
   Attachment,
   Project,
   PromptAnswer,
+  QueuedTurn,
   Session,
   SessionEvent,
 } from "@/types";
@@ -29,9 +30,17 @@ export interface ShellSlice {
   closeSettings(): void;
 }
 
+export type SidebarNotice =
+  | { kind: "archived"; projectId: string; sessionId: string }
+  | { kind: "info"; text: string; token: number };
+
 export interface SidebarSlice {
   projects: Project[];
   sessions: Record<string, Session[]>;
+  archivedSessions: Record<string, Session[]>;
+  showArchived: Record<string, boolean>;
+  sidebarNotice: SidebarNotice | null;
+  lifecycleBusy: string | null;
   selectedProjectId: string | null;
   activeSessionId: Record<string, string>;
   dialog: DialogMode | null;
@@ -46,6 +55,14 @@ export interface SidebarSlice {
   createSession(projectId: string, agent: AgentKind): Promise<void>;
   setSessionAgent(sessionId: string, agent: AgentKind): void;
   selectSession(projectId: string, sessionId: string): Promise<void>;
+  toggleArchived(projectId: string): Promise<void>;
+  viewArchived(projectId: string): Promise<void>;
+  renameSession(sessionId: string, name: string): Promise<boolean>;
+  forkSession(projectId: string, sessionId: string): Promise<void>;
+  archiveSession(projectId: string, sessionId: string): Promise<void>;
+  unarchiveSession(projectId: string, sessionId: string): Promise<void>;
+  undoArchive(): Promise<void>;
+  deleteSession(projectId: string, sessionId: string, archived: boolean): Promise<boolean>;
 }
 
 export interface WorkspaceSlice {
@@ -53,21 +70,23 @@ export interface WorkspaceSlice {
   lastAccessMode: AccessMode;
   accessMode: Record<string, AccessMode>;
   attachments: Record<string, Attachment[]>;
+  queues: Record<string, QueuedTurn[]>;
   catalogs: Record<string, AgentCatalog>;
   /** 按 Agent 记住的上次成功目录。作曲栏先显示它，再后台刷新。 */
   catalogCache: Partial<Record<AgentKind, AgentCatalog>>;
   /** 目录刷新失败时的一条弱提示。不占用全局红色错误条。 */
   catalogNotice: string | null;
   tuning: Record<string, { model: string; effort: string }>;
-  composerSeed: { sessionId: string; text: string; token: number } | null;
+  composerSeed: { sessionId: string; text: string; images: string[]; token: number } | null;
   setAccessMode(sessionId: string, mode: AccessMode): void;
   loadCatalog(sessionId: string): Promise<void>;
   setTuning(sessionId: string, model: string, effort: string): void;
   addAttachments(sessionId: string, files: Attachment[]): void;
   removeAttachment(sessionId: string, path: string): void;
   clearAttachments(sessionId: string): void;
-  seedComposer(sessionId: string, text: string): void;
-  sendMessage(sessionId: string, text: string): Promise<void>;
+  replaceAttachments(sessionId: string, files: Attachment[]): void;
+  seedComposer(sessionId: string, text: string, images?: string[]): void;
+  sendMessage(sessionId: string, text: string, images?: string[]): Promise<void>;
   answerPrompt(sessionId: string, promptId: string, answer: PromptAnswer): Promise<void>;
   stopSession(sessionId: string): Promise<void>;
 }

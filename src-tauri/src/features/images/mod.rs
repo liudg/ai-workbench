@@ -21,6 +21,141 @@ pub fn prepare_chat_image(app: AppHandle, path: String) -> Result<String, String
     Ok(display_path(&canonical))
 }
 
+/// 粘贴或拖入的图片先落到应用目录，避免剪贴板临时路径失效。
+#[tauri::command]
+pub fn stage_chat_image(
+    app: AppHandle,
+    data_base64: String,
+    name: String,
+) -> Result<StagedImage, String> {
+    let bytes = decode_base64(&data_base64)?;
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|err| format!("无法取得应用目录: {err}"))?
+        .join("staged-images");
+    std::fs::create_dir_all(&dir).map_err(|err| format!("无法创建图片缓存: {err}"))?;
+    let (file_name, path) = stage_image_bytes(&dir, &name, &bytes)?;
+    app.asset_protocol_scope()
+        .allow_file(&path)
+        .map_err(|err| format!("无法授权读取图片: {err}"))?;
+    Ok(StagedImage {
+        name: file_name,
+        path: display_path(&path),
+    })
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct StagedImage {
+    pub name: String,
+    pub path: String,
+}
+
+pub fn stage_image_bytes(dir: &Path, name: &str, bytes: &[u8]) -> Result<(String, PathBuf), String> {
+    if bytes.is_empty() {
+        return Err("只能附加图片".into());
+    }
+    if bytes.len() as u64 > MAX_IMAGE_BYTES {
+        return Err("图片超过 20MB".into());
+    }
+    let ext = sniff_kind(bytes).ok_or_else(|| "只能附加图片".to_string())?;
+    let stem = safe_stem(name);
+    let file_name = format!(
+        "{}-{stem}.{ext}",
+        uuid::Uuid::new_v4().simple()
+    );
+    let path = dir.join(&file_name);
+    std::fs::write(&path, bytes).map_err(|err| format!("无法保存图片: {err}"))?;
+    Ok((file_name, path))
+}
+
+fn sniff_kind(header: &[u8]) -> Option<&'static str> {
+    if sniff_image("png", header) {
+        Some("png")
+    } else if sniff_image("jpg", header) {
+        Some("jpg")
+    } else if sniff_image("gif", header) {
+        Some("gif")
+    } else if sniff_image("webp", header) {
+        Some("webp")
+    } else if sniff_image("bmp", header) {
+        Some("bmp")
+    } else if sniff_image("ico", header) {
+        Some("ico")
+    } else if sniff_image("avif", header) {
+        Some("avif")
+    } else {
+        None
+    }
+}
+
+fn safe_stem(name: &str) -> String {
+    let base = Path::new(name)
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or("image");
+    let cleaned: String = base
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric() || *ch == '-' || *ch == '_')
+        .take(40)
+        .collect();
+    if cleaned.is_empty() {
+        "image".into()
+    } else {
+        cleaned
+    }
+}
+
+fn decode_base64(input: &str) -> Result<Vec<u8>, String> {
+    let trimmed = input.trim();
+    let payload = trimmed
+        .split_once(',')
+        .map(|(_, rest)| rest)
+        .unwrap_or(trimmed);
+    let mut filtered = Vec::with_capacity(payload.len());
+    for byte in payload.bytes() {
+        if !byte.is_ascii_whitespace() {
+            filtered.push(byte);
+        }
+    }
+    let mut padded = filtered;
+    while padded.len() % 4 != 0 {
+        padded.push(b'=');
+    }
+    let mut out = Vec::with_capacity(padded.len() / 4 * 3);
+    let mut index = 0;
+    while index < padded.len() {
+        let chunk = &padded[index..index + 4];
+        let values = [
+            b64_value(chunk[0])?,
+            b64_value(chunk[1])?,
+            b64_value(chunk[2])?,
+            b64_value(chunk[3])?,
+        ];
+        out.push((values[0] << 2) | (values[1] >> 4));
+        if chunk[2] != b'=' {
+            out.push((values[1] << 4) | (values[2] >> 2));
+        }
+        if chunk[3] != b'=' {
+            out.push((values[2] << 6) | values[3]);
+        }
+        index += 4;
+    }
+    Ok(out)
+}
+
+fn b64_value(byte: u8) -> Result<u8, String> {
+    match byte {
+        b'A'..=b'Z' => Ok(byte - b'A'),
+        b'a'..=b'z' => Ok(byte - b'a' + 26),
+        b'0'..=b'9' => Ok(byte - b'0' + 52),
+        b'+' => Ok(62),
+        b'/' => Ok(63),
+        b'=' => Ok(0),
+        _ => Err("只能附加图片".into()),
+    }
+}
+
 pub fn validate_chat_image(raw: &str) -> Result<PathBuf, String> {
     let path = local_path_from_input(raw)?;
     let ext = image_extension(&path).ok_or("只接受 png、jpg、gif、webp、bmp、ico、avif 图片")?;
@@ -232,5 +367,49 @@ mod tests {
         assert!(validate_chat_image(r"relative\shot.png").is_err());
         assert!(validate_chat_image("https://cdn.example.com/a.png").is_err());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn stages_pasted_png_bytes() {
+        let dir = temp_dir("stage");
+        let encoded = encode_base64(MINI_PNG);
+        let bytes = decode_base64(&format!("data:image/png;base64,{encoded}")).unwrap();
+        let (name, path) = stage_image_bytes(&dir, "clip board.png", &bytes).unwrap();
+        assert!(name.ends_with(".png"));
+        assert_eq!(std::fs::read(path).unwrap(), MINI_PNG);
+        assert!(stage_image_bytes(&dir, "note.txt", b"hello").is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn encode_base64(bytes: &[u8]) -> String {
+        const TABLE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        let mut out = String::new();
+        let mut index = 0;
+        while index + 3 <= bytes.len() {
+            let n = ((bytes[index] as u32) << 16)
+                | ((bytes[index + 1] as u32) << 8)
+                | bytes[index + 2] as u32;
+            out.push(TABLE[((n >> 18) & 63) as usize] as char);
+            out.push(TABLE[((n >> 12) & 63) as usize] as char);
+            out.push(TABLE[((n >> 6) & 63) as usize] as char);
+            out.push(TABLE[(n & 63) as usize] as char);
+            index += 3;
+        }
+        if index < bytes.len() {
+            let remain = bytes.len() - index;
+            let b0 = bytes[index] as u32;
+            let b1 = if remain > 1 { bytes[index + 1] as u32 } else { 0 };
+            let n = (b0 << 16) | (b1 << 8);
+            out.push(TABLE[((n >> 18) & 63) as usize] as char);
+            out.push(TABLE[((n >> 12) & 63) as usize] as char);
+            if remain > 1 {
+                out.push(TABLE[((n >> 6) & 63) as usize] as char);
+                out.push('=');
+            } else {
+                out.push('=');
+                out.push('=');
+            }
+        }
+        out
     }
 }

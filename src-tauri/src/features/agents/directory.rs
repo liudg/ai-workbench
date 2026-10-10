@@ -21,6 +21,8 @@ pub struct DirectoryEntry {
     pub updated_at: i64,
     pub status: SessionStatus,
     pub ephemeral: bool,
+    /// `thread/list` 的 `archived`。默认侧边栏只收未归档。
+    pub archived: bool,
 }
 
 /// 列出 / 失效一个 Agent 的原生会话。实现可以是空列表（Claude 桩）。
@@ -29,6 +31,11 @@ pub trait SessionDirectory: Send + Sync {
     fn kind(&self) -> AgentKind;
 
     async fn list(&self) -> Result<Vec<DirectoryEntry>, String>;
+
+    /// 已归档的聊天。没有归档能力的目录返回空列表。
+    async fn list_archived(&self) -> Result<Vec<DirectoryEntry>, String> {
+        Ok(Vec::new())
+    }
 
     async fn invalidate(&self);
 }
@@ -70,6 +77,7 @@ pub fn sessions_for_project(project: &Project, listed: &[SourcedEntry]) -> Vec<S
             status: item.entry.status,
             created_at: item.entry.created_at,
             updated_at: item.entry.updated_at,
+            archived: item.entry.archived,
         })
         .collect();
     sessions.sort_by_key(|session| std::cmp::Reverse(session.updated_at));
@@ -117,6 +125,7 @@ mod tests {
                 updated_at: updated,
                 status: SessionStatus::Completed,
                 ephemeral: false,
+                archived: false,
             },
         }
     }
@@ -185,5 +194,15 @@ mod tests {
         assert_eq!(sessions[0].id, "claude-code:same");
         assert_eq!(sessions[1].id, "codex-cli:same");
         assert_eq!(sessions[0].native_id, sessions[1].native_id);
+    }
+
+    #[test]
+    fn archived_flag_is_copied_onto_the_session() {
+        let stored = project("saved", r"F:\app");
+        let mut row = sourced(AgentKind::CodexCli, "old", r"F:\app", 10);
+        row.entry.archived = true;
+        let sessions = sessions_for_project(&stored, &[row]);
+        assert_eq!(sessions.len(), 1);
+        assert!(sessions[0].archived);
     }
 }

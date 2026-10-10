@@ -16,7 +16,7 @@
 use std::collections::HashMap;
 use std::process::Stdio;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
@@ -45,7 +45,9 @@ pub struct CodexDirectory {
 
 struct DirectoryState {
     client: Option<RpcClient>,
-    cache: Option<Cache>,
+    active: Option<Cache>,
+    archived: Option<Cache>,
+    generation: u64,
 }
 
 struct Cache {
@@ -58,29 +60,120 @@ impl CodexDirectory {
         Self {
             inner: tokio::sync::Mutex::new(DirectoryState {
                 client: None,
-                cache: None,
+                active: None,
+                archived: None,
+                generation: 0,
             }),
         }
     }
 
+    /// 侧边栏列表和生命周期 RPC 共用一个 app-server。
+    pub fn shared() -> Arc<Self> {
+        static DIR: OnceLock<Arc<CodexDirectory>> = OnceLock::new();
+        DIR.get_or_init(|| Arc::new(CodexDirectory::new())).clone()
+    }
+
     pub async fn invalidate(&self) {
-        self.inner.lock().await.cache = None;
+        let mut state = self.inner.lock().await;
+        state.active = None;
+        state.archived = None;
+        state.generation = state.generation.wrapping_add(1);
     }
 
     /// 交互、未归档的全部线程。短时间内复用上一次结果，避免每个项目都拉起进程。
     pub async fn list_threads(&self) -> Result<Vec<DirectoryEntry>, String> {
+        self.list_cached(false).await
+    }
+
+    pub async fn list_archived_threads(&self) -> Result<Vec<DirectoryEntry>, String> {
+        self.list_cached(true).await
+    }
+
+    async fn list_cached(&self, archived: bool) -> Result<Vec<DirectoryEntry>, String> {
         let mut state = self.inner.lock().await;
-        if let Some(cache) = &state.cache {
+        let cache = if archived { &state.archived } else { &state.active };
+        if let Some(cache) = cache {
             if cache.at.elapsed() < CACHE_TTL {
                 return cache.result.clone();
             }
         }
-        let result = fetch_threads(&mut state.client).await;
-        state.cache = Some(Cache {
-            at: Instant::now(),
-            result: result.clone(),
-        });
+        let generation = state.generation;
+        let result = fetch_threads(&mut state.client, archived).await;
+        if state.generation == generation {
+            let slot = if archived {
+                &mut state.archived
+            } else {
+                &mut state.active
+            };
+            *slot = Some(Cache {
+                at: Instant::now(),
+                result: result.clone(),
+            });
+        }
         result
+    }
+
+    pub async fn rename_thread(&self, native_id: &str, name: &str) -> Result<(), String> {
+        self.rpc(
+            "thread/name/set",
+            json!({ "threadId": native_id, "name": name }),
+        )
+        .await?;
+        self.invalidate().await;
+        Ok(())
+    }
+
+    pub async fn set_archived(&self, native_id: &str, archived: bool) -> Result<(), String> {
+        let method = if archived {
+            "thread/archive"
+        } else {
+            "thread/unarchive"
+        };
+        self.rpc(method, json!({ "threadId": native_id })).await?;
+        self.invalidate().await;
+        Ok(())
+    }
+
+    pub async fn delete_thread(&self, native_id: &str) -> Result<(), String> {
+        self.rpc("thread/delete", json!({ "threadId": native_id }))
+            .await?;
+        self.invalidate().await;
+        Ok(())
+    }
+
+    /// 桌面端参数：`excludeTurns: true` 只缩小回包，历史仍会复制。
+    pub async fn fork_thread(&self, native_id: &str) -> Result<DirectoryEntry, String> {
+        let result = self
+            .rpc(
+                "thread/fork",
+                json!({
+                    "threadId": native_id,
+                    "excludeTurns": true,
+                    "threadSource": "user",
+                }),
+            )
+            .await?;
+        let thread = result.get("thread").cloned().unwrap_or(result);
+        let entry = parse_thread(&thread).ok_or_else(|| "创建聊天分支失败".to_string())?;
+        self.invalidate().await;
+        Ok(entry)
+    }
+
+    #[allow(dead_code)]
+    #[cfg(test)]
+    pub async fn read_cwd(&self, native_id: &str) -> Result<String, String> {
+        let result = self
+            .rpc(
+                "thread/read",
+                json!({ "threadId": native_id, "includeTurns": false }),
+            )
+            .await?;
+        cwd_from_thread_payload(&result).ok_or_else(|| "无法读取聊天目录".to_string())
+    }
+
+    async fn rpc(&self, method: &str, params: Value) -> Result<Value, String> {
+        let mut state = self.inner.lock().await;
+        rpc_retry(&mut state.client, method, params).await
     }
 }
 
@@ -100,18 +193,25 @@ impl SessionDirectory for CodexDirectory {
         self.list_threads().await
     }
 
+    async fn list_archived(&self) -> Result<Vec<DirectoryEntry>, String> {
+        self.list_archived_threads().await
+    }
+
     async fn invalidate(&self) {
         CodexDirectory::invalidate(self).await
     }
 }
 
-async fn fetch_threads(client: &mut Option<RpcClient>) -> Result<Vec<DirectoryEntry>, String> {
+async fn fetch_threads(
+    client: &mut Option<RpcClient>,
+    archived: bool,
+) -> Result<Vec<DirectoryEntry>, String> {
     let mut last_err = String::from("无法读取 Codex 会话");
     for attempt in 0..2 {
         if client.is_none() {
             *client = Some(RpcClient::spawn().await?);
         }
-        match client.as_ref().unwrap().list_pages().await {
+        match client.as_ref().unwrap().list_pages(archived).await {
             Ok(threads) => return Ok(threads),
             Err(err) => {
                 *client = None;
@@ -123,6 +223,43 @@ async fn fetch_threads(client: &mut Option<RpcClient>) -> Result<Vec<DirectoryEn
         }
     }
     Err(last_err)
+}
+
+async fn rpc_retry(
+    client: &mut Option<RpcClient>,
+    method: &str,
+    params: Value,
+) -> Result<Value, String> {
+    let mut last_err = format!("无法调用 Codex {method}");
+    for attempt in 0..2 {
+        if client.is_none() {
+            *client = Some(RpcClient::spawn().await?);
+        }
+        match client
+            .as_ref()
+            .unwrap()
+            .request(method, params.clone(), Duration::from_secs(60))
+            .await
+        {
+            Ok(value) => return Ok(value),
+            Err(err) => {
+                *client = None;
+                last_err = err;
+                if attempt == 1 {
+                    break;
+                }
+            }
+        }
+    }
+    Err(last_err)
+}
+
+#[allow(dead_code)]
+#[cfg(test)]
+fn cwd_from_thread_payload(value: &Value) -> Option<String> {
+    let thread = value.get("thread").unwrap_or(value);
+    let cwd = strip_verbatim_prefix(thread.get("cwd").and_then(Value::as_str).unwrap_or(""));
+    if cwd.is_empty() { None } else { Some(cwd) }
 }
 
 
@@ -177,6 +314,10 @@ pub fn parse_thread(value: &Value) -> Option<DirectoryEntry> {
         .get("ephemeral")
         .and_then(Value::as_bool)
         .unwrap_or(false);
+    let archived = value
+        .get("archived")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
     Some(DirectoryEntry {
         native_id: id,
         cwd_key: cwd_key(&cwd),
@@ -189,6 +330,7 @@ pub fn parse_thread(value: &Value) -> Option<DirectoryEntry> {
         updated_at: unix_millis(value.get("updatedAt")),
         status: status_from_thread(value.get("status").unwrap_or(&Value::Null)),
         ephemeral,
+        archived,
     })
 }
 
@@ -221,9 +363,14 @@ fn push_history_item(bodies: &mut Vec<SessionEventBody>, item: &Value) {
     match item.get("type").and_then(Value::as_str).unwrap_or("") {
         "userMessage" => {
             let text = user_item_text(item);
-            if !text.is_empty() {
+            let images = user_item_images(item)
+                .into_iter()
+                .map(|image| take_chars(&image, 20_000))
+                .collect::<Vec<_>>();
+            if !text.is_empty() || !images.is_empty() {
                 bodies.push(SessionEventBody::UserMessage {
                     text: take_chars(&text, 20_000),
+                    images,
                 });
             }
         }
@@ -301,7 +448,7 @@ fn part_text(part: &Value) -> Option<String> {
     }
 }
 
-fn user_item_text(item: &Value) -> String {
+pub(super) fn user_item_text(item: &Value) -> String {
     match item.get("content") {
         Some(Value::String(text)) => text.clone(),
         Some(Value::Array(parts)) => parts
@@ -320,6 +467,35 @@ fn user_item_text(item: &Value) -> String {
     }
 }
 
+pub(super) fn user_item_images(item: &Value) -> Vec<String> {
+    let parts = item
+        .get("content")
+        .or_else(|| item.get("input"))
+        .and_then(Value::as_array);
+    let Some(parts) = parts else {
+        return Vec::new();
+    };
+    parts.iter().filter_map(image_from_part).collect()
+}
+
+pub(super) fn image_from_part(part: &Value) -> Option<String> {
+    let kind = part
+        .get("type")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .replace('_', "")
+        .to_ascii_lowercase();
+    if !matches!(kind.as_str(), "localimage" | "image" | "inputimage") {
+        return None;
+    }
+    part.get("path")
+        .and_then(Value::as_str)
+        .or_else(|| part.get("url").and_then(Value::as_str))
+        .or_else(|| part.get("image_url").and_then(Value::as_str))
+        .or_else(|| part.pointer("/image_url/url").and_then(Value::as_str))
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
 
 fn unix_millis(value: Option<&Value>) -> i64 {
     let Some(value) = value else {
@@ -447,12 +623,12 @@ impl RpcClient {
         Ok(client)
     }
 
-    async fn list_pages(&self) -> Result<Vec<DirectoryEntry>, String> {
+    async fn list_pages(&self, archived: bool) -> Result<Vec<DirectoryEntry>, String> {
         let mut cursor: Option<String> = None;
         let mut threads = Vec::new();
         for _ in 0..MAX_PAGES {
             let mut params = json!({
-                "archived": false,
+                "archived": archived,
                 "limit": PAGE_LIMIT,
                 "sortKey": "updated_at",
                 "sortDirection": "desc",
@@ -599,6 +775,21 @@ mod tests {
     }
 
     #[test]
+    fn parse_thread_reads_archived() {
+        let thread = parse_thread(&json!({
+            "id": "abc",
+            "cwd": r"F:\app",
+            "archived": true,
+            "name": "已归档",
+        }))
+        .expect("thread");
+        assert!(thread.archived);
+        assert_eq!(thread.title, "已归档");
+        let plain = parse_thread(&json!({"id": "def", "cwd": r"F:\app"})).expect("plain");
+        assert!(!plain.archived);
+    }
+
+    #[test]
     fn parses_thread_list_item_without_using_a_local_id() {
         let parsed = parse_thread(&json!({
             "id": "01a12492-d8e5-7e40-b438-95315ee95f7c",
@@ -624,8 +815,30 @@ mod tests {
         let newer = vec![json!({"id": "t2", "items": [{"type": "agentMessage", "text": "完成"}]})];
         let turns = chronological_turns(&[newer, older]);
         let bodies = bodies_from_turns(&turns);
-        assert!(matches!(bodies[0], SessionEventBody::UserMessage { ref text } if text == "你好"));
+        assert!(matches!(bodies[0], SessionEventBody::UserMessage { ref text, .. } if text == "你好"));
         assert!(matches!(bodies[1], SessionEventBody::AgentMessage { ref text, phase: None, .. } if text == "完成"));
+    }
+
+    #[test]
+    fn history_keeps_image_parts_on_the_user_message() {
+        let turns = vec![json!({
+            "items": [{
+                "type": "userMessage",
+                "content": [
+                    { "type": "text", "text": "看这张" },
+                    { "type": "localImage", "path": "C:/shot.png" },
+                    { "type": "image", "url": "https://example.com/a.png" }
+                ]
+            }]
+        })];
+        let bodies = bodies_from_turns(&turns);
+        match &bodies[0] {
+            SessionEventBody::UserMessage { text, images } => {
+                assert_eq!(text, "看这张");
+                assert_eq!(images, &vec!["C:/shot.png".to_string(), "https://example.com/a.png".to_string()]);
+            }
+            _ => panic!("expected user message"),
+        }
     }
 
     #[test]
@@ -795,5 +1008,146 @@ mod tests {
         assert!(listed.is_ok(), "thread/list failed: {listed:?}");
         assert!(found, "new thread {id} is missing from codex resume list");
         deleted.expect("thread/delete");
+    }
+
+    const GAP_LIFECYCLE: &str = r"C:\Users\admin\Desktop\temp\ai-workbench-project\_gap-lifecycle";
+
+    struct GapCleanup {
+        ids: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl Drop for GapCleanup {
+        fn drop(&mut self) {
+            let ids = self.ids.lock().unwrap().clone();
+            let handle = std::thread::spawn(move || {
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .expect("cleanup runtime");
+                runtime.block_on(cleanup_gap_threads(ids));
+            });
+            let _ = handle.join();
+        }
+    }
+
+    fn gap_key() -> String {
+        cwd_key(GAP_LIFECYCLE)
+    }
+
+    async fn cleanup_gap_threads(mut ids: Vec<String>) {
+        let directory = CodexDirectory::new();
+        if let Ok(active) = directory.list_threads().await {
+            push_gap_prefixed(&mut ids, &active);
+        }
+        if let Ok(archived) = directory.list_archived_threads().await {
+            push_gap_prefixed(&mut ids, &archived);
+        }
+        ids.sort();
+        ids.dedup();
+        for id in ids {
+            let Ok(cwd) = directory.read_cwd(&id).await else {
+                continue;
+            };
+            if cwd_key(&cwd) != gap_key() {
+                continue;
+            }
+            let _ = directory.delete_thread(&id).await;
+        }
+    }
+
+    fn push_gap_prefixed(ids: &mut Vec<String>, threads: &[DirectoryEntry]) {
+        for thread in threads {
+            if thread.cwd_key == gap_key() && thread.title.starts_with("gap-lifecycle-") {
+                ids.push(thread.native_id.clone());
+            }
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "calls the local Codex CLI against _gap-lifecycle only"]
+    async fn gap_lifecycle_rename_fork_archive_delete() {
+        use crate::features::agents::codex::CodexCliAdapter;
+        use crate::features::agents::{AgentAdapter, SessionContext};
+        use tokio::sync::mpsc;
+
+        std::fs::create_dir_all(GAP_LIFECYCLE).expect("gap dir");
+        let ids = Arc::new(Mutex::new(Vec::new()));
+        let _cleanup = GapCleanup { ids: Arc::clone(&ids) };
+        let name = format!(
+            "gap-lifecycle-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis())
+                .unwrap_or(0)
+        );
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let session = CodexCliAdapter::new()
+            .start_session(
+                SessionContext {
+                    project_path: GAP_LIFECYCLE.into(),
+                    access_mode: Some("full".into()),
+                    resume_native_id: None,
+                    options: json!({ "persist": true }),
+                },
+                tx,
+            )
+            .await
+            .expect("thread/start");
+        let id = session.native_id().expect("native thread id");
+        ids.lock().unwrap().push(id.clone());
+        let _ = session.stop().await;
+
+        let adapter = CodexCliAdapter::new();
+        adapter
+            .rename_thread(&id, &name)
+            .await
+            .expect("thread/name/set");
+        let forked = adapter.fork_thread(&id).await.expect("thread/fork");
+        ids.lock().unwrap().push(forked.native_id.clone());
+
+        let directory = CodexDirectory::new();
+        let fork_cwd = if forked.cwd_key == gap_key() && !forked.cwd.is_empty() {
+            forked.cwd.clone()
+        } else {
+            directory
+                .read_cwd(&forked.native_id)
+                .await
+                .expect("fork cwd")
+        };
+        assert_eq!(cwd_key(&fork_cwd), gap_key(), "fork left the gap project: {fork_cwd}");
+
+        adapter
+            .set_thread_archived(&id, true)
+            .await
+            .expect("thread/archive");
+        directory.invalidate().await;
+        let active = directory.list_threads().await.expect("active list");
+        assert!(
+            active.iter().all(|thread| thread.native_id != id),
+            "archived thread still in the active list"
+        );
+        let archived = directory
+            .list_archived_threads()
+            .await
+            .expect("archived list");
+        let row = archived
+            .iter()
+            .find(|thread| thread.native_id == id)
+            .expect("archived thread missing");
+        assert_eq!(row.cwd_key, gap_key());
+        assert_eq!(row.title, name);
+
+        adapter
+            .set_thread_archived(&id, false)
+            .await
+            .expect("thread/unarchive");
+
+        for native in [id, forked.native_id] {
+            let cwd = directory.read_cwd(&native).await.expect("cwd before delete");
+            assert_eq!(cwd_key(&cwd), gap_key(), "refusing to delete {native} at {cwd}");
+            adapter.delete_thread(&native).await.expect("thread/delete");
+        }
+        ids.lock().unwrap().clear();
     }
 }

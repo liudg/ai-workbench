@@ -81,6 +81,17 @@ impl AgentAdapter for ClaudeCodeAdapter {
             supports_questions: true,
             supports_tuning: false,
             supports_skills: false,
+            supports_mcp: false,
+            supports_plugins: false,
+            supports_hooks: false,
+            supports_goals: false,
+            supports_worktrees: false,
+            supports_images: false,
+            supports_queue: false,
+            supports_fork: false,
+            supports_archive: false,
+            supports_delete: false,
+            supports_rename: false,
         }
     }
 

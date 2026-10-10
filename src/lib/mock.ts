@@ -13,9 +13,11 @@ import {
   type CachedAgentCatalog,
   type AgentKind,
   type AgentProfile,
+  type McpServerRecord,
   type Project,
   type PromptAnswer,
   type PromptOption,
+  type QueuedTurn,
   type Session,
   type SessionEvent,
   type SessionEventBody,
@@ -47,6 +49,10 @@ const CODEX_COMMANDS: SlashCommand[] = [
   { name: "/new", hint: "下一条消息开启新线程" },
   { name: "/clear", hint: "放下当前线程，同 /new" },
   { name: "/stop", hint: "停止当前会话" },
+  { name: "/mcp", hint: "查看已连接的 MCP 服务器和工具", takes_args: true },
+  { name: "/goal", hint: "设置、查看、暂停或清除任务目标", takes_args: true },
+  { name: "/hooks", hint: "列出当前目录发现的钩子" },
+  { name: "/worktree", hint: "查看或新建一个独立 Git 工作树", takes_args: true },
   { name: "/help", hint: "列出工作台能执行的斜杠命令" },
 ];
 
@@ -56,6 +62,17 @@ const CODEX_CAPABILITIES: AgentCapabilities = {
   supports_questions: true,
   supports_tuning: true,
   supports_skills: true,
+  supports_mcp: true,
+  supports_plugins: true,
+  supports_hooks: true,
+  supports_goals: true,
+  supports_worktrees: true,
+  supports_fork: true,
+  supports_archive: true,
+  supports_delete: true,
+  supports_rename: true,
+  supports_images: true,
+  supports_queue: true,
 };
 
 const CLAUDE_CAPABILITIES: AgentCapabilities = {
@@ -64,6 +81,12 @@ const CLAUDE_CAPABILITIES: AgentCapabilities = {
   supports_questions: true,
   supports_tuning: false,
   supports_skills: false,
+  supports_fork: false,
+  supports_archive: false,
+  supports_delete: false,
+  supports_rename: false,
+  supports_images: false,
+  supports_queue: false,
 };
 
 const STUB_CAPABILITIES: AgentCapabilities = CLAUDE_CAPABILITIES;
@@ -168,6 +191,35 @@ function previewInstallations(mode: PreviewAgents): AgentInstallation[] {
 
 let mockInstallations = previewInstallations(previewAgents());
 
+let mockMcp: McpServerRecord[] = [
+  {
+    name: "context7",
+    transport: "stdio",
+    command: "npx",
+    args: ["-y", "@upstash/context7-mcp"],
+    url: "",
+    enabled: true,
+    auth_status: "unsupported",
+    runtime_status: "connected",
+    tool_names: ["resolve-library-id", "query-docs"],
+    tools_error: "",
+    plugin_id: "",
+  },
+  {
+    name: "figma",
+    transport: "http",
+    command: "",
+    args: [],
+    url: "https://mcp.figma.com/mcp",
+    enabled: true,
+    auth_status: "notLoggedIn",
+    runtime_status: "authenticationRequired",
+    tool_names: [],
+    tools_error: "",
+    plugin_id: "",
+  },
+];
+
 /** 浏览器预览镜像后端 `agent_profiles`：按 Agent 给能力，而不是全局斜杠表。 */
 const MOCK_PROFILES: Record<AgentKind, AgentProfile> = {
   "codex-cli": {
@@ -260,6 +312,9 @@ const sessions = new Map<string, MockSessionState>();
 
 type Listener<T> = (payload: T) => void;
 const eventListeners = new Set<Listener<SessionEvent>>();
+const queueListeners = new Set<Listener<{ session_id: string; items: QueuedTurn[] }>>();
+const queuedTurns = new Map<string, QueuedTurn[]>();
+const holdQueue = new Set<string>();
 const sessionsChangedListeners = new Set<Listener<string>>();
 const projectsChangedListeners = new Set<Listener<void>>();
 
@@ -290,8 +345,23 @@ function noteActivity(sessionId: string) {
   sessionsChangedListeners.forEach((cb) => cb(s.meta.project_id));
 }
 
+function publishQueue(sessionId: string) {
+  const items = (queuedTurns.get(sessionId) ?? []).map((item) => ({
+    ...item,
+    images: [...(item.images ?? [])],
+  }));
+  queueListeners.forEach((cb) => cb({ session_id: sessionId, items }));
+}
+
 function setStatus(sessionId: string, status: SessionStatus) {
+  const prev = sessions.get(sessionId)?.meta.status;
   pushEvent(sessionId, { kind: "status-changed", status });
+  if (status !== "completed" || prev !== "running" || holdQueue.has(sessionId)) return;
+  const list = queuedTurns.get(sessionId) ?? [];
+  const next = list.shift();
+  queuedTurns.set(sessionId, list);
+  publishQueue(sessionId);
+  if (next) void mockBackend.sendMessage(sessionId, next.text, next.images ?? []);
 }
 
 /** 同一条事件反复推送，模拟 stream_id 覆盖（事件条数不变，正文变长）。 */
@@ -334,6 +404,7 @@ function putSession(cwd: string, projectId: string, nativeId: string, title: str
       status: "completed",
       created_at: updated - 3_600_000,
       updated_at: updated,
+      archived: false,
     },
     cwd,
     events: [],
@@ -513,14 +584,77 @@ export const mockBackend: Backend = {
     projectsChangedListeners.forEach((cb) => cb());
   },
 
-  async listSessions(projectId) {
+  async listSessions(projectId, archived = false) {
     const project = projects.find((p) => p.id === projectId);
     if (!project) return [];
     const key = cwdKey(project.path);
     return [...sessions.values()]
-      .filter((s) => cwdKey(s.cwd) === key)
+      .filter((s) => cwdKey(s.cwd) === key && Boolean(s.meta.archived) === archived)
       .map((s) => ({ ...s.meta, project_id: project.id }))
       .sort((a, b) => b.updated_at - a.updated_at);
+  },
+
+  async forkSession(sessionId) {
+    const source = sessions.get(sessionId);
+    if (!source) throw new Error("会话不存在");
+    if (!MOCK_PROFILES[source.meta.agent].capabilities.supports_fork) {
+      throw new Error("不支持分叉聊天");
+    }
+    const nativeId = id();
+    const createdId = `${source.meta.agent}:${nativeId}`;
+    const meta: Session = {
+      ...source.meta,
+      id: createdId,
+      native_id: nativeId,
+      archived: false,
+      status: "completed",
+      created_at: now(),
+      updated_at: now(),
+    };
+    sessions.set(createdId, {
+      meta,
+      cwd: source.cwd,
+      events: source.events.map((event) => ({ ...event, id: id(), session_id: createdId })),
+      turns: source.turns,
+      pendingPrompt: null,
+      access: source.access,
+      timers: [],
+    });
+    sessionsChangedListeners.forEach((cb) => cb(source.meta.project_id));
+    return { ...meta };
+  },
+
+  async renameSession(sessionId, name) {
+    const s = sessions.get(sessionId);
+    if (!s) throw new Error("会话不存在");
+    const title = name.trim();
+    if (!title) throw new Error("无法保存更改。请重试");
+    if (!MOCK_PROFILES[s.meta.agent].capabilities.supports_rename) {
+      throw new Error("不支持重命名聊天");
+    }
+    s.meta.title = title;
+    sessionsChangedListeners.forEach((cb) => cb(s.meta.project_id));
+  },
+
+  async setSessionArchived(sessionId, archived) {
+    const s = sessions.get(sessionId);
+    if (!s) throw new Error("会话不存在");
+    if (!MOCK_PROFILES[s.meta.agent].capabilities.supports_archive) {
+      throw new Error("不支持归档聊天");
+    }
+    s.meta.archived = archived;
+    sessionsChangedListeners.forEach((cb) => cb(s.meta.project_id));
+  },
+
+  async deleteSession(sessionId) {
+    const s = sessions.get(sessionId);
+    if (!s) throw new Error("会话不存在");
+    if (!MOCK_PROFILES[s.meta.agent].capabilities.supports_delete) {
+      throw new Error("不支持永久删除");
+    }
+    s.timers.forEach(clearTimeout);
+    sessions.delete(sessionId);
+    sessionsChangedListeners.forEach((cb) => cb(s.meta.project_id));
   },
 
   async createSession(projectId, agent, accessMode) {
@@ -542,6 +676,7 @@ export const mockBackend: Backend = {
       status: "running",
       created_at: now(),
       updated_at: now(),
+      archived: false,
     };
     const state: MockSessionState = {
       meta,
@@ -609,21 +744,33 @@ export const mockBackend: Backend = {
     s.access = mode;
   },
 
-  async sendMessage(sessionId, text) {
+  async sendMessage(sessionId, text, images = []) {
     const s = sessions.get(sessionId);
     if (!s) throw new Error("会话不存在");
     if (isReadOnlyOpen(s.events)) throw new Error(OCCUPIED_NOTICE);
     if (s.pendingPrompt) throw new Error("存在待回答的提问，请先处理");
+    const profile = MOCK_PROFILES[s.meta.agent];
+    const slash = text.trimStart().startsWith("/") && images.length === 0;
+    if (profile.capabilities.supports_queue && s.meta.status === "running" && !slash) {
+      const list = queuedTurns.get(sessionId) ?? [];
+      list.push({ id: id(), text, images, client_id: id() });
+      queuedTurns.set(sessionId, list);
+      publishQueue(sessionId);
+      return;
+    }
     pushEvent(sessionId, {
       kind: "user-message",
       text,
+      images,
     });
     noteActivity(sessionId);
     if (s.meta.title.startsWith("会话 ") || s.meta.title === "未命名会话") {
-      s.meta.title = text.split("\n")[0].slice(0, 24);
-      sessionsChangedListeners.forEach((cb) => cb(s.meta.project_id));
+      const source = text.trim() || (images.length ? "图片" : "");
+      if (source) {
+        s.meta.title = source.split("\n")[0].slice(0, 24);
+        sessionsChangedListeners.forEach((cb) => cb(s.meta.project_id));
+      }
     }
-    const profile = MOCK_PROFILES[s.meta.agent];
     if (profile.capabilities.supports_slash && text.trimStart().startsWith("/")) {
       if (text.trimStart().startsWith("/permissions")) {
         const arg = text.trim().split(/\s+/).slice(1).join(" ");
@@ -852,6 +999,144 @@ export const mockBackend: Backend = {
     return [...(sessions.get(sessionId)?.events ?? [])];
   },
 
+  async listMcpServers() {
+    return mockMcp.map((item) => ({ ...item, args: [...item.args], tool_names: [...item.tool_names] }));
+  },
+  async addMcpServer(input) {
+    mockMcp = mockMcp.filter((item) => item.name !== input.name);
+    mockMcp.push({
+      name: input.name,
+      transport: input.transport,
+      command: input.transport === "stdio" ? input.commandLine : "",
+      args: [],
+      url: input.transport === "http" ? input.url : "",
+      enabled: true,
+      auth_status: input.transport === "http" ? "notLoggedIn" : "unsupported",
+      runtime_status: "notStarted",
+      tool_names: [],
+      tools_error: "",
+      plugin_id: "",
+    });
+  },
+  async setMcpServerEnabled(name, enabled) {
+    mockMcp = mockMcp.map((item) =>
+      item.name === name
+        ? { ...item, enabled, runtime_status: enabled ? item.runtime_status : "disabled" }
+        : item,
+    );
+  },
+  async removeMcpServer(name) {
+    mockMcp = mockMcp.filter((item) => item.name !== name);
+  },
+  async loginMcpServer(name) {
+    const server = mockMcp.find((item) => item.name === name);
+    if (!server) throw new Error("找不到 MCP 服务器");
+    server.auth_status = "oAuth";
+    server.runtime_status = "connected";
+    return { authorization_url: "https://example.com/oauth/mock" };
+  },
+  async reloadMcpServers() {
+    return { warnings: [] };
+  },
+  async listPlugins() {
+    return {
+      marketplaces: [
+        {
+          name: "openai-bundled",
+          display_name: "OpenAI",
+          path: "",
+          plugins: [
+            {
+              id: "browser@openai-bundled",
+              name: "browser",
+              display_name: "Browser",
+              description: "Browse the web from Codex",
+              developer: "OpenAI",
+              marketplace_name: "openai-bundled",
+              marketplace_path: "",
+              installed: true,
+              enabled: true,
+              availability: "AVAILABLE",
+              install_policy: "INSTALLED_BY_DEFAULT",
+              source: "local",
+              needs_install_confirm: false,
+            },
+            {
+              id: "documents@openai",
+              name: "documents",
+              display_name: "Documents",
+              description: "Create and edit documents",
+              developer: "OpenAI",
+              marketplace_name: "openai-bundled",
+              marketplace_path: "",
+              installed: false,
+              enabled: false,
+              availability: "AVAILABLE",
+              install_policy: "AVAILABLE",
+              source: "remote",
+              needs_install_confirm: true,
+            },
+          ],
+        },
+      ],
+      errors: [],
+    };
+  },
+  async installPlugin(input) {
+    void input;
+  },
+  async uninstallPlugin() {},
+  async addMarketplace() {},
+  async removeMarketplace() {},
+  async upgradeMarketplace() {},
+  async listHooks() {
+    return [
+      {
+        cwd: "C:/repo",
+        event_name: "preToolUse",
+        handler: "echo review",
+        source: "project",
+        trust_status: "untrusted",
+        enabled: true,
+        status_message: "",
+      },
+    ];
+  },
+  async worktreeSettings() {
+    return {
+      root: "C:/Users/you/.codex/worktrees",
+      keep: 15,
+      auto_prune: true,
+      worktrees: [
+        {
+          path: "C:/Users/you/.codex/worktrees/demo/1",
+          head: "abc",
+          branch: "",
+          detached: true,
+        },
+      ],
+    };
+  },
+  async saveWorktreeSettings(root, keep, autoPrune) {
+    return { root, keep, auto_prune: autoPrune, worktrees: [] };
+  },
+  async createWorktree(projectPath) {
+    return { path: `${projectPath}-worktree`, head: "", branch: "", detached: true };
+  },
+  async recycleWorktree() {},
+  async addEnvironment(input) {
+    return {
+      id: input.environmentId,
+      status: "pending",
+      error: "",
+      cwd: "",
+      shell: "",
+    };
+  },
+  async listEnvironments() {
+    return [];
+  },
+
   async pickDirectory(title) {
     const input = window.prompt(
       `${title}（浏览器预览模式，手动输入路径）`,
@@ -859,6 +1144,49 @@ export const mockBackend: Backend = {
     );
     return input?.trim() || null;
   },
+  async updateQueuedTurn(sessionId, queuedId, text, images = []) {
+    const list = queuedTurns.get(sessionId) ?? [];
+    const item = list.find((row) => row.id === queuedId);
+    if (!item) throw new Error("这条排队消息已经不在队列里");
+    item.text = text;
+    item.images = images;
+    publishQueue(sessionId);
+  },
+
+  async removeQueuedTurn(sessionId, queuedId) {
+    const list = queuedTurns.get(sessionId) ?? [];
+    const next = list.filter((row) => row.id !== queuedId);
+    if (next.length === list.length) throw new Error("这条排队消息已经不在队列里");
+    queuedTurns.set(sessionId, next);
+    publishQueue(sessionId);
+  },
+
+  async sessionQueue(sessionId) {
+    return (queuedTurns.get(sessionId) ?? []).map((item) => ({
+      ...item,
+      images: [...(item.images ?? [])],
+    }));
+  },
+
+  async interruptTurn(sessionId) {
+    if (!sessions.has(sessionId)) throw new Error("会话不存在");
+    holdQueue.add(sessionId);
+    setStatus(sessionId, "completed");
+    holdQueue.delete(sessionId);
+  },
+
+  async stageChatImage(dataBase64, name) {
+    const src = dataBase64.startsWith("data:")
+      ? dataBase64
+      : `data:image/png;base64,${dataBase64}`;
+    if (!/^data:image\//i.test(src)) throw new Error("只能附加图片");
+    return { name: name || "image.png", path: src };
+  },
+
+  async pickImageFiles() {
+    return this.pickFiles();
+  },
+
   async pickFiles() {
     const input = window.prompt(
       "添加附件（浏览器预览，多个路径用逗号分隔）",
@@ -878,6 +1206,10 @@ export const mockBackend: Backend = {
   onSessionEvent(cb) {
     eventListeners.add(cb);
     return () => eventListeners.delete(cb);
+  },
+  onSessionQueue(cb) {
+    queueListeners.add(cb);
+    return () => queueListeners.delete(cb);
   },
   onSessionsChanged(cb) {
     sessionsChangedListeners.add(cb);

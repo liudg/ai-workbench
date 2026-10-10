@@ -13,7 +13,8 @@ use tokio::sync::mpsc;
 
 use crate::features::agents::{
     adapter_for, cwd_key, session_directories, session_key, sessions_for_project, AgentSession,
-    DirectoryEntry, EventSink, SessionContext, SessionDirectory, SourcedEntry,
+    DirectoryEntry, EventSink, SessionContext, SessionDirectory, SourcedEntry, TurnDelivery,
+    UserTurn,
 };
 use crate::features::projects::ProjectStore;
 use crate::models::*;
@@ -30,11 +31,14 @@ struct SessionEntry {
     agent: Option<Arc<dyn AgentSession>>,
     /// 这次连接之后真正发生过对话才有值。打开、附着、状态变化不算。
     activity_at: Option<i64>,
+    /// 作曲栏排队。不进时间线。
+    queue: Vec<QueuedTurn>,
 }
 
 /// 前端事件名约定
 pub const EVT_SESSION_EVENT: &str = "session-event";
 pub const EVT_SESSIONS_CHANGED: &str = "sessions-changed";
+pub const EVT_SESSION_QUEUE: &str = "session-queue";
 
 pub struct SessionManager {
     entries: Arc<Mutex<HashMap<SessionId, SessionEntry>>>,
@@ -83,17 +87,23 @@ impl SessionManager {
         &self,
         store: &ProjectStore,
         project_id: &str,
+        archived: bool,
     ) -> Vec<Session> {
         let project = match self.resolve_project(store, project_id) {
             Ok(project) => project,
             Err(_) => return Vec::new(),
         };
-        let (listed, _) = self.listed().await;
+        let (listed, _) = if archived {
+            self.listed_archived().await
+        } else {
+            self.listed().await
+        };
         let mut sessions = sessions_for_project(&project, &listed);
         let live = self.entries.lock().unwrap();
         for session in &mut sessions {
             if let Some(entry) = live.get(&session.id) {
                 session.status = entry.meta.status;
+                session.archived = entry.meta.archived;
                 if session.title == "未命名会话" && !entry.meta.title.is_empty() {
                     session.title = entry.meta.title.clone();
                 }
@@ -101,10 +111,12 @@ impl SessionManager {
                 session.updated_at = sidebar_updated_at(session.updated_at, entry.activity_at);
             }
         }
+        sessions.retain(|session| session.archived == archived);
         let mut extras: Vec<Session> = live
             .values()
             .filter(|entry| {
                 entry.meta.project_id == project.id
+                    && entry.meta.archived == archived
                     && !sessions.iter().any(|session| {
                         session.agent == entry.meta.agent
                             && session.native_id == entry.meta.native_id
@@ -144,8 +156,10 @@ impl SessionManager {
             return self.get_events(session_id);
         }
         let (listed, errors) = self.listed().await;
+        let (archived, _) = self.listed_archived().await;
         let found = listed
             .iter()
+            .chain(archived.iter())
             .find(|item| session_key(item.agent, &item.entry.native_id) == session_id)
             .cloned();
         let Some(found) = found else {
@@ -190,6 +204,7 @@ impl SessionManager {
             status: entry.status,
             created_at: entry.created_at,
             updated_at: entry.updated_at,
+            archived: entry.archived,
         };
         self.install(meta, Some(handle), rx);
         Ok(())
@@ -246,6 +261,7 @@ impl SessionManager {
             status: SessionStatus::Running,
             created_at: now,
             updated_at: now,
+            archived: false,
         };
         self.install(meta, Some(handle), rx);
         for directory in &self.directories {
@@ -285,6 +301,7 @@ impl SessionManager {
                 next_seq: 1,
                 agent: handle,
                 activity_at: None,
+                queue: Vec::new(),
             },
         );
         // start_session 返回前已经把历史、连接说明和状态放进通道。
@@ -334,13 +351,88 @@ impl SessionManager {
         self.agent_handle(session_id)
     }
 
-    pub async fn send_message(&self, session_id: &str, text: String) -> Result<(), String> {
+    pub async fn send_message(
+        &self,
+        session_id: &str,
+        text: String,
+        images: Vec<String>,
+    ) -> Result<(), String> {
         let handle = self.agent_handle_ready(session_id).await?;
         if handle.read_only() {
             return Err(OCCUPIED_SESSION_NOTICE.to_string());
         }
-        self.record_local(session_id, SessionEventBody::UserMessage { text: text.clone() })?;
-        handle.send_message(text).await.map_err(|err| err.to_string())
+        if text.is_empty() && images.is_empty() {
+            return Err("消息不能为空".into());
+        }
+        if text.starts_with('/') && images.is_empty() {
+            self.record_local(
+                session_id,
+                SessionEventBody::UserMessage {
+                    text: text.clone(),
+                    images: Vec::new(),
+                },
+            )?;
+            return handle.send_message(text).await.map_err(|err| err.to_string());
+        }
+        let client_id = new_id();
+        let delivery = handle
+            .deliver(UserTurn {
+                text: text.clone(),
+                images: images.clone(),
+                client_id,
+            })
+            .await
+            .map_err(|err| err.to_string())?;
+        if delivery == TurnDelivery::Started {
+            self.record_local(
+                session_id,
+                SessionEventBody::UserMessage { text, images },
+            )?;
+        }
+        Ok(())
+    }
+
+    pub async fn update_queued_turn(
+        &self,
+        session_id: &str,
+        queued_id: &str,
+        text: String,
+        images: Vec<String>,
+    ) -> Result<(), String> {
+        let handle = self.agent_handle_ready(session_id).await?;
+        handle
+            .update_queued(
+                queued_id,
+                UserTurn {
+                    text,
+                    images,
+                    client_id: String::new(),
+                },
+            )
+            .await
+            .map_err(|err| err.to_string())
+    }
+
+    pub async fn remove_queued_turn(&self, session_id: &str, queued_id: &str) -> Result<(), String> {
+        let handle = self.agent_handle_ready(session_id).await?;
+        handle
+            .remove_queued(queued_id)
+            .await
+            .map_err(|err| err.to_string())
+    }
+
+    pub fn session_queue(&self, session_id: &str) -> Vec<QueuedTurn> {
+        self.entries
+            .lock()
+            .unwrap()
+            .get(session_id)
+            .map(|entry| entry.queue.clone())
+            .unwrap_or_default()
+    }
+
+    pub async fn interrupt_turn(&self, session_id: &str) -> Result<(), String> {
+        let handle = self.agent_handle_ready(session_id).await?;
+        handle.interrupt().await.map_err(|err| err.to_string())
     }
 
     pub async fn answer_prompt(
@@ -432,6 +524,23 @@ impl SessionManager {
         Ok(())
     }
 
+    pub async fn reload_live_mcp(&self) -> Vec<String> {
+        let handles: Vec<_> = self
+            .entries
+            .lock()
+            .unwrap()
+            .values()
+            .filter_map(|entry| entry.agent.clone())
+            .collect();
+        let mut warnings = Vec::new();
+        for handle in handles {
+            if let Err(err) = handle.reload_mcp().await {
+                warnings.push(err.to_string());
+            }
+        }
+        warnings
+    }
+
     pub async fn stop_session(&self, session_id: &str) -> Result<(), String> {
         let handle = self.agent_handle_ready(session_id).await?;
         handle.stop().await.map_err(|err| err.to_string())
@@ -459,6 +568,194 @@ impl SessionManager {
             serde_json::json!({ "project_id": project_id }),
         );
     }
+
+    async fn listed_archived(&self) -> (Vec<SourcedEntry>, Vec<String>) {
+        let mut listed = Vec::new();
+        let mut errors = Vec::new();
+        for directory in &self.directories {
+            let agent = directory.kind();
+            match directory.list_archived().await {
+                Ok(entries) => {
+                    for entry in entries {
+                        listed.push(SourcedEntry { agent, entry });
+                    }
+                }
+                Err(err) => errors.push(err),
+            }
+        }
+        (listed, errors)
+    }
+
+    async fn invalidate_kind(&self, agent: AgentKind) {
+        for directory in &self.directories {
+            if directory.kind() == agent {
+                directory.invalidate().await;
+            }
+        }
+    }
+
+    fn emit_changed(&self, project_id: &str) {
+        let _ = self.app.emit(
+            EVT_SESSIONS_CHANGED,
+            serde_json::json!({ "project_id": project_id }),
+        );
+    }
+
+    /// 会话必须属于已注册项目：内存里打开的，或目录 cwd 对得上的。
+    async fn locate_session(
+        &self,
+        store: &ProjectStore,
+        session_id: &str,
+    ) -> Result<(AgentKind, String, Project), String> {
+        if let Some(entry) = self.entries.lock().unwrap().get(session_id) {
+            let project = self.resolve_project(store, &entry.meta.project_id)?;
+            return Ok((
+                entry.meta.agent,
+                entry.meta.native_id.clone(),
+                project,
+            ));
+        }
+        let (agent, native) =
+            parse_session_key(session_id).ok_or_else(|| "会话不存在".to_string())?;
+        let (active, _) = self.listed().await;
+        let (archived, _) = self.listed_archived().await;
+        let found = active.iter().chain(archived.iter()).find(|item| {
+            item.agent == agent && item.entry.native_id == native
+        });
+        let Some(found) = found else {
+            return Err("会话不存在".into());
+        };
+        let project = store
+            .list()
+            .into_iter()
+            .find(|project| cwd_key(&project.path) == found.entry.cwd_key)
+            .ok_or_else(|| "找不到会话所在目录".to_string())?;
+        Ok((agent, native, project))
+    }
+
+    pub async fn rename_session(
+        &self,
+        store: &ProjectStore,
+        session_id: &str,
+        name: &str,
+    ) -> Result<(), String> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err("无法保存更改。请重试".into());
+        }
+        let (agent, native, project) = self.locate_session(store, session_id).await?;
+        let adapter = adapter_for(agent);
+        if !adapter.capabilities().supports_rename {
+            return Err(format!("{} 不支持重命名聊天", adapter.display_name()));
+        }
+        adapter
+            .rename_thread(&native, name)
+            .await
+            .map_err(|err| err.to_string())?;
+        if let Some(entry) = self.entries.lock().unwrap().get_mut(session_id) {
+            entry.meta.title = name.to_string();
+        }
+        self.invalidate_kind(agent).await;
+        self.emit_changed(&project.id);
+        Ok(())
+    }
+
+    pub async fn set_session_archived(
+        &self,
+        store: &ProjectStore,
+        session_id: &str,
+        archived: bool,
+    ) -> Result<(), String> {
+        let (agent, native, project) = self.locate_session(store, session_id).await?;
+        let adapter = adapter_for(agent);
+        if !adapter.capabilities().supports_archive {
+            return Err(format!("{} 不支持归档聊天", adapter.display_name()));
+        }
+        adapter
+            .set_thread_archived(&native, archived)
+            .await
+            .map_err(|err| err.to_string())?;
+        if let Some(entry) = self.entries.lock().unwrap().get_mut(session_id) {
+            entry.meta.archived = archived;
+        }
+        self.invalidate_kind(agent).await;
+        self.emit_changed(&project.id);
+        Ok(())
+    }
+
+    pub async fn delete_session(
+        &self,
+        store: &ProjectStore,
+        session_id: &str,
+    ) -> Result<(), String> {
+        let (agent, native, project) = self.locate_session(store, session_id).await?;
+        let adapter = adapter_for(agent);
+        if !adapter.capabilities().supports_delete {
+            return Err(format!("{} 不支持永久删除", adapter.display_name()));
+        }
+        if let Err(first) = adapter.delete_thread(&native).await {
+            let handle = self
+                .entries
+                .lock()
+                .unwrap()
+                .get(session_id)
+                .and_then(|entry| entry.agent.clone());
+            if let Some(handle) = handle {
+                let _ = handle.stop().await;
+            }
+            adapter
+                .delete_thread(&native)
+                .await
+                .map_err(|_| first.to_string())?;
+        }
+        self.entries.lock().unwrap().remove(session_id);
+        self.invalidate_kind(agent).await;
+        self.emit_changed(&project.id);
+        Ok(())
+    }
+
+    pub async fn fork_session(
+        &self,
+        store: &ProjectStore,
+        session_id: &str,
+    ) -> Result<Session, String> {
+        let (agent, native, project) = self.locate_session(store, session_id).await?;
+        let adapter = adapter_for(agent);
+        if !adapter.capabilities().supports_fork {
+            return Err(format!("{} 不支持分叉聊天", adapter.display_name()));
+        }
+        let forked = adapter
+            .fork_thread(&native)
+            .await
+            .map_err(|err| err.to_string())?;
+        let session = Session {
+            id: session_key(agent, &forked.native_id),
+            project_id: project.id.clone(),
+            agent,
+            native_id: forked.native_id.clone(),
+            title: forked.title.clone(),
+            status: forked.status,
+            created_at: forked.created_at,
+            updated_at: forked.updated_at,
+            archived: false,
+        };
+        // 父会话的 updated_at / activity_at 不动。打开分支走既有 resume。
+        let _ = self.attach(&project, agent, &forked).await;
+        self.invalidate_kind(agent).await;
+        self.emit_changed(&project.id);
+        Ok(session)
+    }
+}
+
+fn parse_session_key(session_id: &str) -> Option<(AgentKind, String)> {
+    let (kind, native) = session_id.split_once(':')?;
+    if native.is_empty() {
+        return None;
+    }
+    let agent = AgentKind::all()
+        .into_iter()
+        .find(|agent| agent.as_str() == kind)?;
+    Some((agent, native.to_string()))
 }
 
 fn apply_body(
@@ -468,6 +765,19 @@ fn apply_body(
     body: SessionEventBody,
     record_activity: bool,
 ) {
+    if let SessionEventBody::QueueChanged { items } = body {
+        {
+            let mut entries = entries.lock().unwrap();
+            if let Some(entry) = entries.get_mut(session_id) {
+                entry.queue = items.clone();
+            }
+        }
+        let _ = app.emit(
+            EVT_SESSION_QUEUE,
+            serde_json::json!({ "session_id": session_id, "items": items }),
+        );
+        return;
+    }
     let replaced = {
         let mut entries = entries.lock().unwrap();
         let Some(entry) = entries.get_mut(session_id) else {
@@ -514,9 +824,14 @@ fn mutate_entry(
         entry.meta.status = *status;
     }
     let mut title_changed = false;
-    if let SessionEventBody::UserMessage { text } = &body {
+    if let SessionEventBody::UserMessage { text, images } = &body {
         if entry.meta.title.starts_with("会话 ") || entry.meta.title == "未命名会话" {
-            let first_line = text.lines().next().unwrap_or("");
+            let source = if text.trim().is_empty() && !images.is_empty() {
+                "图片"
+            } else {
+                text.as_str()
+            };
+            let first_line = source.lines().next().unwrap_or("");
             let title: String = first_line.chars().take(24).collect();
             if !title.is_empty() {
                 entry.meta.title = title;
@@ -637,11 +952,13 @@ mod tests {
                 status: SessionStatus::Completed,
                 created_at: updated_at - 1_000,
                 updated_at,
+                archived: false,
             },
             events: Vec::new(),
             next_seq: 1,
             agent: None,
             activity_at: None,
+            queue: Vec::new(),
         }
     }
 
@@ -661,6 +978,7 @@ mod tests {
             "codex-cli:thread",
             SessionEventBody::UserMessage {
                 text: "历史里的问题".into(),
+                images: Vec::new(),
             },
             false,
         );
@@ -707,6 +1025,7 @@ mod tests {
             "codex-cli:thread",
             SessionEventBody::UserMessage {
                 text: "概括当前项目\n第二行".into(),
+                images: Vec::new(),
             },
             true,
         );
@@ -727,12 +1046,29 @@ mod tests {
             "codex-cli:thread",
             SessionEventBody::UserMessage {
                 text: "概括当前项目".into(),
+                images: Vec::new(),
             },
             false,
         );
         assert_eq!(session.meta.title, "概括当前项目");
         assert_eq!(session.activity_at, None);
         assert_eq!(session.meta.updated_at, 1_000);
+    }
+
+    #[test]
+    fn image_only_message_uses_a_picture_title() {
+        let mut session = entry(1_000);
+        session.meta.title = "未命名会话".into();
+        mutate_entry(
+            &mut session,
+            "codex-cli:thread",
+            SessionEventBody::UserMessage {
+                text: String::new(),
+                images: vec!["C:/shot.png".into()],
+            },
+            true,
+        );
+        assert_eq!(session.meta.title, "图片");
     }
 
     #[test]

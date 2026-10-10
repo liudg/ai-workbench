@@ -67,6 +67,8 @@ export interface Session {
   status: SessionStatus;
   created_at: number;
   updated_at: number;
+  /** 已归档的聊天不进默认侧边栏。 */
+  archived?: boolean;
 }
 
 export interface PromptOption {
@@ -78,7 +80,7 @@ export interface PromptOption {
 
 /** 事件体（对应 Rust 的 SessionEventBody；适配器只产生这一层） */
 export type SessionEventBody =
-  | { kind: "user-message"; text: string }
+  | { kind: "user-message"; text: string; images?: string[] }
   | {
       kind: "agent-message";
       text: string;
@@ -185,6 +187,110 @@ export interface AgentCapabilities {
   supports_questions: boolean;
   supports_tuning: boolean;
   supports_skills: boolean;
+  supports_mcp?: boolean;
+  supports_plugins?: boolean;
+  supports_hooks?: boolean;
+  supports_goals?: boolean;
+  supports_worktrees?: boolean;
+  /** 图片作为回合输入，作曲栏和气泡显示缩略图。 */
+  supports_images?: boolean;
+  /** 回合进行中仍可发送，消息进入排队。 */
+  supports_queue?: boolean;
+  supports_fork?: boolean;
+  supports_archive?: boolean;
+  supports_delete?: boolean;
+  supports_rename?: boolean;
+}
+
+export interface QueuedTurn {
+  id: string;
+  text: string;
+  images?: string[];
+  client_id?: string;
+}
+
+export type McpTransport = "stdio" | "http";
+
+export interface McpServerRecord {
+  name: string;
+  transport: McpTransport;
+  command: string;
+  args: string[];
+  url: string;
+  enabled: boolean;
+  auth_status: string;
+  runtime_status: string;
+  tool_names: string[];
+  tools_error: string;
+  plugin_id: string;
+}
+
+export interface McpLogin {
+  authorization_url: string;
+}
+
+export interface ReloadReport {
+  warnings: string[];
+}
+
+export interface PluginRecord {
+  id: string;
+  name: string;
+  display_name: string;
+  description: string;
+  developer: string;
+  marketplace_name: string;
+  marketplace_path: string;
+  installed: boolean;
+  enabled: boolean;
+  availability: string;
+  install_policy: string;
+  source: string;
+  needs_install_confirm: boolean;
+}
+
+export interface MarketplaceRecord {
+  name: string;
+  display_name: string;
+  path: string;
+  plugins: PluginRecord[];
+}
+
+export interface PluginCatalog {
+  marketplaces: MarketplaceRecord[];
+  errors: string[];
+}
+
+export interface HookRecord {
+  cwd: string;
+  event_name: string;
+  handler: string;
+  source: string;
+  trust_status: string;
+  enabled: boolean;
+  status_message: string;
+}
+
+export interface WorktreeInfo {
+  path: string;
+  head: string;
+  branch: string;
+  detached: boolean;
+}
+
+export interface WorktreeSettings {
+  root: string;
+  keep: number;
+  auto_prune: boolean;
+  worktrees: WorktreeInfo[];
+}
+
+export interface EnvironmentRecord {
+  id: string;
+  status: string;
+  error: string;
+  cwd: string;
+  shell: string;
 }
 
 export interface SlashCommand {
@@ -225,6 +331,17 @@ export const EMPTY_CAPABILITIES: AgentCapabilities = {
   supports_questions: false,
   supports_tuning: false,
   supports_skills: false,
+  supports_mcp: false,
+  supports_plugins: false,
+  supports_hooks: false,
+  supports_goals: false,
+  supports_worktrees: false,
+  supports_images: false,
+  supports_queue: false,
+  supports_fork: false,
+  supports_archive: false,
+  supports_delete: false,
+  supports_rename: false,
 };
 
 export function emptyCatalog(): AgentCatalog {

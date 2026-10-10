@@ -116,6 +116,9 @@ pub struct Session {
     pub status: SessionStatus,
     pub created_at: i64,
     pub updated_at: i64,
+    /// 已归档的聊天不进默认侧边栏。
+    #[serde(default)]
+    pub archived: bool,
 }
 
 /// 需要用户输入的提问类型。
@@ -204,6 +207,9 @@ impl MessagePhase {
 pub enum SessionEventBody {
     UserMessage {
         text: String,
+        /// 本机路径或 `data:` / `https:` 图片。气泡用缩略图，不把文件名拼进文本。
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        images: Vec<String>,
     },
     AgentMessage {
         text: String,
@@ -250,6 +256,10 @@ pub enum SessionEventBody {
     },
     Error {
         message: String,
+    },
+    /// 作曲栏排队列表。会话层拦截，不写入时间线。
+    QueueChanged {
+        items: Vec<QueuedTurn>,
     },
 }
 
@@ -312,6 +322,39 @@ pub struct AgentCapabilities {
     pub supports_questions: bool,
     pub supports_tuning: bool,
     pub supports_skills: bool,
+    /// 设置页 MCP 服务器：列表、增删、登录、重启。
+    #[serde(default)]
+    pub supports_mcp: bool,
+    /// 插件目录和 marketplace。
+    #[serde(default)]
+    pub supports_plugins: bool,
+    /// `hooks/list`。
+    #[serde(default)]
+    pub supports_hooks: bool,
+    /// 斜杠 `/goal`。
+    #[serde(default)]
+    pub supports_goals: bool,
+    /// 工作树和 `environment/*`。
+    #[serde(default)]
+    pub supports_worktrees: bool,
+    /// 图片附件作为回合输入项发送，作曲栏显示缩略图。
+    #[serde(default)]
+    pub supports_images: bool,
+    /// 回合进行中仍可发送，消息进入适配器的排队接口。
+    #[serde(default)]
+    pub supports_queue: bool,
+    /// 侧边栏 `thread/fork`。
+    #[serde(default)]
+    pub supports_fork: bool,
+    /// 侧边栏归档和取消归档。
+    #[serde(default)]
+    pub supports_archive: bool,
+    /// 侧边栏 `thread/delete`。
+    #[serde(default)]
+    pub supports_delete: bool,
+    /// 侧边栏 `thread/name/set`。
+    #[serde(default)]
+    pub supports_rename: bool,
 }
 
 impl AgentCapabilities {
@@ -322,6 +365,17 @@ impl AgentCapabilities {
             supports_questions: false,
             supports_tuning: false,
             supports_skills: false,
+            supports_mcp: false,
+            supports_plugins: false,
+            supports_hooks: false,
+            supports_goals: false,
+            supports_worktrees: false,
+            supports_images: false,
+            supports_queue: false,
+            supports_fork: false,
+            supports_archive: false,
+            supports_delete: false,
+            supports_rename: false,
         }
     }
 
@@ -332,8 +386,30 @@ impl AgentCapabilities {
             supports_questions: true,
             supports_tuning: true,
             supports_skills: true,
+            supports_mcp: true,
+            supports_plugins: true,
+            supports_hooks: true,
+            supports_goals: true,
+            supports_worktrees: true,
+            supports_images: true,
+            supports_queue: true,
+            supports_fork: true,
+            supports_archive: true,
+            supports_delete: true,
+            supports_rename: true,
         }
     }
+}
+
+/// 一条排在当前回合后面的用户消息。作曲栏展示它，不进时间线。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct QueuedTurn {
+    pub id: String,
+    pub text: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub images: Vec<String>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub client_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -409,6 +485,112 @@ impl AgentInstallation {
     }
 }
 
+/// MCP 传输。桌面端添加服务器时二选一：STDIO 或 Streamable HTTP。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum McpTransport {
+    Stdio,
+    Http,
+}
+
+/// 一条 MCP 服务器。配置来自 `config/read`，运行状态来自 `mcpServerStatus/list`。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct McpServerRecord {
+    pub name: String,
+    pub transport: McpTransport,
+    pub command: String,
+    pub args: Vec<String>,
+    pub url: String,
+    pub enabled: bool,
+    /// 协议原值：unknown / unsupported / notLoggedIn / bearerToken / oAuth。空表示没有状态。
+    pub auth_status: String,
+    /// 协议原值：notStarted / starting / connected / authenticationRequired / failed / cancelled / disabled。
+    pub runtime_status: String,
+    pub tool_names: Vec<String>,
+    pub tools_error: String,
+    /// 非空表示服务器由插件提供，不能在 MCP 列表里直接删除。
+    pub plugin_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct McpLogin {
+    pub authorization_url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ReloadReport {
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PluginRecord {
+    pub id: String,
+    pub name: String,
+    pub display_name: String,
+    pub description: String,
+    pub developer: String,
+    pub marketplace_name: String,
+    pub marketplace_path: String,
+    pub installed: bool,
+    pub enabled: bool,
+    pub availability: String,
+    pub install_policy: String,
+    pub source: String,
+    pub needs_install_confirm: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MarketplaceRecord {
+    pub name: String,
+    pub display_name: String,
+    pub path: String,
+    pub plugins: Vec<PluginRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PluginCatalog {
+    pub marketplaces: Vec<MarketplaceRecord>,
+    pub errors: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct HookRecord {
+    pub cwd: String,
+    pub event_name: String,
+    pub handler: String,
+    pub source: String,
+    pub trust_status: String,
+    pub enabled: bool,
+    pub status_message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorktreeInfo {
+    pub path: String,
+    pub head: String,
+    pub branch: String,
+    pub detached: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorktreeSettings {
+    pub root: String,
+    /// 官方默认保留最近 15 个 Codex 管理的工作树。
+    pub keep: u32,
+    pub auto_prune: bool,
+    pub worktrees: Vec<WorktreeInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EnvironmentRecord {
+    pub id: String,
+    /// ready / pending / disconnected / unknown
+    pub status: String,
+    pub error: String,
+    pub cwd: String,
+    pub shell: String,
+}
+
 pub fn now_millis() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -418,4 +600,27 @@ pub fn now_millis() -> i64 {
 
 pub fn new_id() -> String {
     uuid::Uuid::new_v4().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cached_catalog_without_image_flags_stays_off() {
+        let parsed: AgentCapabilities = serde_json::from_str(
+            r#"{
+                "supports_slash": true,
+                "supports_resume": true,
+                "supports_questions": true,
+                "supports_tuning": true,
+                "supports_skills": true
+            }"#,
+        )
+        .unwrap();
+        assert!(parsed.supports_slash);
+        assert!(!parsed.supports_images);
+        assert!(!parsed.supports_queue);
+        assert!(!parsed.supports_mcp);
+    }
 }

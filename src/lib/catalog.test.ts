@@ -35,6 +35,17 @@ function catalog(id: string, skills: string[] = []): AgentCatalog {
       supports_questions: true,
       supports_tuning: true,
       supports_skills: true,
+      supports_mcp: true,
+      supports_plugins: true,
+      supports_hooks: true,
+      supports_goals: true,
+      supports_worktrees: true,
+      supports_fork: true,
+      supports_archive: true,
+      supports_delete: true,
+      supports_rename: true,
+      supports_images: true,
+      supports_queue: true,
     },
   };
 }

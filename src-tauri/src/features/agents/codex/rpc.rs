@@ -278,6 +278,7 @@ impl Shared {
                 } else if self.pending.lock().unwrap().is_empty() {
                     emit_status(&self.events, SessionStatus::Completed);
                 }
+                self.poke_queue();
             }
             "item/reasoning/summaryTextDelta" | "item/reasoning/textDelta" => {
                 let Some(item_id) = params.get("itemId").and_then(Value::as_str) else {
@@ -316,6 +317,7 @@ impl Shared {
                     }
                 }
             }
+            "thread/queue/changed" => self.poke_queue(),
             "thread/compacted" => {
                 emit(
                     &self.events,
@@ -462,6 +464,7 @@ impl Shared {
                     },
                 );
             }
+            "userMessage" if completed => self.note_user_item(item),
             "webSearch" if !completed => {
                 let query = item.get("query").and_then(Value::as_str).unwrap_or("");
                 emit(

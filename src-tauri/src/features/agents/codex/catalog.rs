@@ -101,6 +101,10 @@ pub(super) fn slash_help() -> String {
      /init  生成 AGENTS.md\n\
      /new  下一条消息开新线程\n\
      /stop  停止会话\n\
+     /mcp [verbose]  查看 MCP 服务器和工具\n\
+     /goal [目标|edit|pause|resume|clear]  设置或查看任务目标\n\
+     /hooks  列出当前目录的钩子\n\
+     /worktree [new]  查看或新建 Git 工作树\n\
      其余 /vim、/theme 等终端命令不会发给模型。"
         .into()
 }
@@ -244,7 +248,7 @@ pub(super) fn is_skill_token(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'.' | b':' | b'-')
 }
 
-pub(super) fn build_turn_input(text: &str, skills: &[KnownSkill]) -> Value {
+pub(super) fn build_turn_input(text: &str, skills: &[KnownSkill], images: &[String]) -> Value {
     let bytes = text.as_bytes();
     let mut elements = Vec::new();
     let mut attached: Vec<&KnownSkill> = Vec::new();
@@ -275,11 +279,14 @@ pub(super) fn build_turn_input(text: &str, skills: &[KnownSkill]) -> Value {
         }
         index += 1;
     }
-    let mut text_item = json!({ "type": "text", "text": text });
-    if !elements.is_empty() {
-        text_item["text_elements"] = Value::Array(elements);
+    let mut input = Vec::new();
+    if !text.is_empty() || images.is_empty() {
+        let mut text_item = json!({ "type": "text", "text": text });
+        if !elements.is_empty() {
+            text_item["text_elements"] = Value::Array(elements);
+        }
+        input.push(text_item);
     }
-    let mut input = vec![text_item];
     for skill in attached {
         input.push(json!({
             "type": "skill",
@@ -287,7 +294,20 @@ pub(super) fn build_turn_input(text: &str, skills: &[KnownSkill]) -> Value {
             "path": skill.path,
         }));
     }
+    for image in images {
+        input.push(image_input_item(image));
+    }
     Value::Array(input)
+}
+
+fn image_input_item(raw: &str) -> Value {
+    let trimmed = raw.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.starts_with("data:") || lower.starts_with("https://") || lower.starts_with("http://") {
+        json!({ "type": "image", "url": trimmed })
+    } else {
+        json!({ "type": "localImage", "path": trimmed })
+    }
 }
 
 pub(super) fn split_command(text: &str) -> (String, String) {
@@ -312,6 +332,10 @@ pub(super) fn slash_commands() -> Vec<SlashCommand> {
         SlashCommand { name: "/new".into(), hint: "下一条消息开启新线程".into(), takes_args: false },
         SlashCommand { name: "/clear".into(), hint: "放下当前线程，同 /new".into(), takes_args: false },
         SlashCommand { name: "/stop".into(), hint: "停止当前会话".into(), takes_args: false },
+        SlashCommand { name: "/mcp".into(), hint: "查看已连接的 MCP 服务器和工具".into(), takes_args: true },
+        SlashCommand { name: "/goal".into(), hint: "设置、查看、暂停或清除任务目标".into(), takes_args: true },
+        SlashCommand { name: "/hooks".into(), hint: "列出当前目录发现的钩子".into(), takes_args: false },
+        SlashCommand { name: "/worktree".into(), hint: "查看或新建一个独立 Git 工作树".into(), takes_args: true },
         SlashCommand { name: "/help".into(), hint: "列出工作台能执行的斜杠命令".into(), takes_args: false },
     ]
 }
@@ -329,10 +353,30 @@ mod tests {
             description: String::new(),
             path: "C:/skills/documents/SKILL.md".into(),
         }];
-        let input = build_turn_input("请用 $documents 改合同", &skills);
+        let input = build_turn_input("请用 $documents 改合同", &skills, &[]);
         assert_eq!(input[1]["type"], json!("skill"));
         assert_eq!(input[1]["name"], json!("documents:documents"));
         assert_eq!(input[0]["text_elements"][0]["placeholder"], json!("Documents"));
+    }
+
+    #[test]
+    fn images_are_input_items_not_filenames() {
+        let input = build_turn_input(
+            "",
+            &[],
+            &[
+                "C:/shot.png".into(),
+                "data:image/png;base64,aaaa".into(),
+                "https://example.com/a.png".into(),
+            ],
+        );
+        let items = input.as_array().unwrap();
+        assert_eq!(items.len(), 3);
+        assert_eq!(items[0]["type"], json!("localImage"));
+        assert_eq!(items[0]["path"], json!("C:/shot.png"));
+        assert_eq!(items[1]["type"], json!("image"));
+        assert_eq!(items[1]["url"], json!("data:image/png;base64,aaaa"));
+        assert_eq!(items[2]["url"], json!("https://example.com/a.png"));
     }
 
     #[test]

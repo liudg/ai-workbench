@@ -17,8 +17,9 @@ use async_trait::async_trait;
 use tokio::sync::mpsc;
 
 use crate::models::{
-    AgentCapabilities, AgentCatalog, AgentInstallation, AgentKind, AgentProfile, PromptAnswer,
-    SessionEventBody,
+    AgentCapabilities, AgentCatalog, AgentInstallation, AgentKind, AgentProfile, EnvironmentRecord,
+    HookRecord, McpLogin, McpServerRecord, McpTransport, PluginCatalog, PromptAnswer,
+    SessionEventBody, WorktreeInfo, WorktreeSettings,
 };
 
 pub use directory::{
@@ -70,12 +71,77 @@ impl SessionContext {
     }
 }
 
+/// 用户要发出的一轮。图片是本机路径或 `data:` / `https:` 地址。
+#[derive(Debug, Clone)]
+pub struct UserTurn {
+    pub text: String,
+    pub images: Vec<String>,
+    pub client_id: String,
+}
+
+/// `deliver` 的结果。排队时调用方不要再写用户气泡。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TurnDelivery {
+    Started,
+    Queued,
+}
+
+fn fold_images_into_text(text: &str, images: &[String]) -> String {
+    if images.is_empty() {
+        return text.to_string();
+    }
+    let names = images
+        .iter()
+        .map(|path| {
+            std::path::Path::new(path)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or(path.as_str())
+        })
+        .collect::<Vec<_>>()
+        .join("、");
+    let line = format!("附件：{names}");
+    if text.trim().is_empty() {
+        line
+    } else {
+        format!("{text}\n\n{line}")
+    }
+}
+
 /// 一个正在运行的 Agent 会话的句柄（由适配器返回）。
 /// 所有方法都是非阻塞的：把输入写入 CLI 后立即返回，输出经 `EventSink` 异步推送。
 #[async_trait]
 pub trait AgentSession: Send + Sync {
     /// 发送一条用户消息（一轮新任务）。
     async fn send_message(&self, text: String) -> Result<(), AgentError>;
+
+    /// 带图片的发送。默认把文件名拼进文本，再走 `send_message`。
+    async fn deliver(&self, turn: UserTurn) -> Result<TurnDelivery, AgentError> {
+        let text = fold_images_into_text(&turn.text, &turn.images);
+        self.send_message(text).await?;
+        Ok(TurnDelivery::Started)
+    }
+
+    /// 改一条尚未发出的排队消息，保持原来的 id 和位置。
+    async fn update_queued(&self, _id: &str, _turn: UserTurn) -> Result<(), AgentError> {
+        Err(AgentError::Runtime("这个 Agent 不支持修改排队消息".into()))
+    }
+
+    /// 从队列里去掉一条消息。没有确认框。
+    async fn remove_queued(&self, _id: &str) -> Result<(), AgentError> {
+        Err(AgentError::Runtime("这个 Agent 不支持删除排队消息".into()))
+    }
+
+    /// 停下当前回合，不结束会话，也不清空队列。
+    async fn interrupt(&self) -> Result<(), AgentError> {
+        Err(AgentError::Runtime("这个 Agent 不能停止当前回合".into()))
+    }
+
+    /// 测试收尾：删掉这次打开的原生线程。正式界面不调用。
+    #[cfg(test)]
+    async fn discard_thread(&self) -> Result<(), AgentError> {
+        Ok(())
+    }
 
     /// 回答 Agent 发起的提问（审批 / 选择 / 自由文本 / 问题卡片）。
     async fn answer_prompt(&self, prompt_id: &str, answer: PromptAnswer) -> Result<(), AgentError>;
@@ -113,6 +179,11 @@ pub trait AgentSession: Send + Sync {
     /// 线程写锁在别的进程里。可以看历史，不能发送。
     fn read_only(&self) -> bool {
         false
+    }
+
+    /// 让已经打开的会话重新读取 MCP 配置。桌面端的 Restart。
+    async fn reload_mcp(&self) -> Result<(), AgentError> {
+        Ok(())
     }
 }
 
@@ -179,6 +250,142 @@ pub trait AgentAdapter: Send + Sync {
         ctx: SessionContext,
         events: EventSink,
     ) -> Result<Arc<dyn AgentSession>, AgentError>;
+
+    async fn list_mcp_servers(&self) -> Result<Vec<McpServerRecord>, AgentError> {
+        Err(self.unsupported("MCP 服务器"))
+    }
+
+    async fn add_mcp_server(
+        &self,
+        _name: &str,
+        _transport: McpTransport,
+        _command_line: &str,
+        _url: &str,
+    ) -> Result<(), AgentError> {
+        Err(self.unsupported("MCP 服务器"))
+    }
+
+    async fn set_mcp_server_enabled(&self, _name: &str, _enabled: bool) -> Result<(), AgentError> {
+        Err(self.unsupported("MCP 服务器"))
+    }
+
+    async fn remove_mcp_server(&self, _name: &str) -> Result<(), AgentError> {
+        Err(self.unsupported("MCP 服务器"))
+    }
+
+    async fn login_mcp_server(&self, _name: &str) -> Result<McpLogin, AgentError> {
+        Err(self.unsupported("MCP 登录"))
+    }
+
+    async fn reload_mcp_config(&self) -> Result<(), AgentError> {
+        Err(self.unsupported("MCP 重启"))
+    }
+
+    async fn list_plugins(&self, _cwd: Option<&str>) -> Result<PluginCatalog, AgentError> {
+        Err(self.unsupported("插件"))
+    }
+
+    async fn install_plugin(
+        &self,
+        _plugin_name: &str,
+        _marketplace_path: &str,
+        _marketplace_name: &str,
+    ) -> Result<(), AgentError> {
+        Err(self.unsupported("插件"))
+    }
+
+    async fn uninstall_plugin(&self, _plugin_id: &str) -> Result<(), AgentError> {
+        Err(self.unsupported("插件"))
+    }
+
+    async fn add_marketplace(&self, _source: &str, _ref_name: &str) -> Result<(), AgentError> {
+        Err(self.unsupported("marketplace"))
+    }
+
+    async fn remove_marketplace(&self, _name: &str) -> Result<(), AgentError> {
+        Err(self.unsupported("marketplace"))
+    }
+
+    async fn upgrade_marketplace(&self, _name: &str) -> Result<(), AgentError> {
+        Err(self.unsupported("marketplace"))
+    }
+
+    async fn list_hooks(&self, _cwd: Option<&str>) -> Result<Vec<HookRecord>, AgentError> {
+        Err(self.unsupported("钩子"))
+    }
+
+    async fn worktree_settings(
+        &self,
+        _project_path: Option<&str>,
+    ) -> Result<WorktreeSettings, AgentError> {
+        Err(self.unsupported("工作树"))
+    }
+
+    async fn save_worktree_settings(
+        &self,
+        _root: &str,
+        _keep: u32,
+        _auto_prune: bool,
+    ) -> Result<WorktreeSettings, AgentError> {
+        Err(self.unsupported("工作树"))
+    }
+
+    async fn create_worktree(&self, _project_path: &str) -> Result<WorktreeInfo, AgentError> {
+        Err(self.unsupported("工作树"))
+    }
+
+    async fn recycle_worktree(&self, _project_path: &str, _worktree_path: &str) -> Result<(), AgentError> {
+        Err(self.unsupported("工作树"))
+    }
+
+    async fn add_environment(
+        &self,
+        _environment_id: &str,
+        _exec_server_url: &str,
+        _auth_bearer_token: &str,
+    ) -> Result<EnvironmentRecord, AgentError> {
+        Err(self.unsupported("环境"))
+    }
+
+    async fn list_environments(&self) -> Result<Vec<EnvironmentRecord>, AgentError> {
+        Err(self.unsupported("环境"))
+    }
+
+    /// `thread/fork`。历史由 Codex 复制；`excludeTurns` 只影响回包体积。
+    async fn fork_thread(&self, _native_id: &str) -> Result<DirectoryEntry, AgentError> {
+        Err(AgentError::Runtime(format!(
+            "{} 不支持分叉聊天",
+            self.display_name()
+        )))
+    }
+
+    /// `thread/name/set`。
+    async fn rename_thread(&self, _native_id: &str, _name: &str) -> Result<(), AgentError> {
+        Err(AgentError::Runtime(format!(
+            "{} 不支持重命名聊天",
+            self.display_name()
+        )))
+    }
+
+    /// `thread/archive` 或 `thread/unarchive`。
+    async fn set_thread_archived(&self, _native_id: &str, _archived: bool) -> Result<(), AgentError> {
+        Err(AgentError::Runtime(format!(
+            "{} 不支持归档聊天",
+            self.display_name()
+        )))
+    }
+
+    /// `thread/delete`。这是 Codex 的会话删除，不是删除工作区文件。
+    async fn delete_thread(&self, _native_id: &str) -> Result<(), AgentError> {
+        Err(AgentError::Runtime(format!(
+            "{} 不支持永久删除",
+            self.display_name()
+        )))
+    }
+
+    fn unsupported(&self, feature: &str) -> AgentError {
+        AgentError::Runtime(format!("{} 没有{feature}", self.display_name()))
+    }
 }
 
 /// 按类型取得适配器实例。
@@ -221,7 +428,7 @@ pub async fn upgrade(kind: AgentKind) -> Result<AgentInstallation, AgentError> {
 /// 已注册的会话目录。SessionManager 只保存 trait 对象。
 pub fn session_directories() -> Vec<Arc<dyn SessionDirectory>> {
     let mut dirs: Vec<Arc<dyn SessionDirectory>> = vec![
-        Arc::new(codex::CodexDirectory::new()),
+        codex::CodexDirectory::shared(),
         Arc::new(claude_code::ClaudeDirectory::new()),
     ];
     for kind in AgentKind::all() {
@@ -231,4 +438,23 @@ pub fn session_directories() -> Vec<Arc<dyn SessionDirectory>> {
         dirs.push(Arc::new(external::EmptyDirectory::new(kind)));
     }
     dirs
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn claude_rename_is_unsupported_without_spawning() {
+        let adapter = adapter_for(AgentKind::ClaudeCode);
+        assert!(!adapter.capabilities().supports_rename);
+        let err = adapter
+            .rename_thread("thread", "标题")
+            .await
+            .expect_err("claude has no rename");
+        assert!(
+            err.to_string().contains("不支持重命名聊天"),
+            "{err}"
+        );
+    }
 }

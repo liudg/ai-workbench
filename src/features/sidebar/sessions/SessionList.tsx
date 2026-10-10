@@ -1,6 +1,9 @@
-import { cn, isReadOnlyOpen } from "@/lib/utils";
+import { useEffect, useState } from "react";
+
+import { isReadOnlyOpen } from "@/lib/utils";
 import { useWorkbench } from "@/store";
 import type { Session } from "@/types";
+import { SessionRow } from "./SessionRow";
 
 const SESSION_PREVIEW_LIMIT = 8;
 
@@ -19,7 +22,6 @@ export function SessionList({
   showAll: boolean;
   onToggleShowAll: () => void;
 }) {
-  const selectSession = useWorkbench((s) => s.selectSession);
   const readOnlyKey = useWorkbench((s) => {
     let key = "";
     for (const session of sessions) {
@@ -27,36 +29,27 @@ export function SessionList({
     }
     return key;
   });
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const visible = showAll ? sessions : sessions.slice(0, SESSION_PREVIEW_LIMIT);
   const overflow = sessions.length > SESSION_PREVIEW_LIMIT;
   const readOnlyIds = new Set(readOnlyKey ? readOnlyKey.slice(0, -1).split("\n") : []);
 
   return (
     <div className="mt-0.5 space-y-0.5">
-      {visible.map((session) => {
-        const active = selected && session.id === activeSessionId;
-        const readOnly = readOnlyIds.has(session.id);
-        return (
-          <button
-            key={session.id}
-            type="button"
-            className={cn(
-              "flex w-full items-center rounded-md py-1 pl-7 pr-2 text-left text-[13px] leading-5",
-              active
-                ? "text-zinc-100"
-                : "text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-200",
-            )}
-            onClick={() => selectSession(projectId, session.id)}
-          >
-            <span className="min-w-0 flex-1 truncate">{session.title}</span>
-            {readOnly && (
-              <span className="ml-1 shrink-0 rounded bg-amber-400/15 px-1.5 py-0.5 text-[10px] leading-4 text-amber-200">
-                只读
-              </span>
-            )}
-          </button>
-        );
-      })}
+      {visible.map((session) => (
+        <SessionRow
+          key={session.id}
+          projectId={projectId}
+          session={session}
+          active={selected && session.id === activeSessionId}
+          readOnly={readOnlyIds.has(session.id)}
+          now={now}
+        />
+      ))}
       {overflow && (
         <button
           type="button"

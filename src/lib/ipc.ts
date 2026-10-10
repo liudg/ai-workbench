@@ -12,9 +12,19 @@ import type {
   AgentCatalogRefresh,
   AgentProfile,
   CachedAgentCatalog,
+  EnvironmentRecord,
+  HookRecord,
+  McpLogin,
+  McpServerRecord,
+  McpTransport,
+  PluginCatalog,
+  ReloadReport,
+  WorktreeInfo,
+  WorktreeSettings,
   Attachment,
   Project,
   PromptAnswer,
+  QueuedTurn,
   Session,
   SessionEvent,
 } from "@/types";
@@ -44,7 +54,11 @@ export interface Backend {
   importProject(input: ImportProjectInput): Promise<Project>;
   removeProject(id: string): Promise<void>;
 
-  listSessions(projectId: string): Promise<Session[]>;
+  listSessions(projectId: string, archived?: boolean): Promise<Session[]>;
+  forkSession(sessionId: string): Promise<Session>;
+  renameSession(sessionId: string, name: string): Promise<void>;
+  setSessionArchived(sessionId: string, archived: boolean): Promise<void>;
+  deleteSession(sessionId: string): Promise<void>;
   createSession(
     projectId: string,
     agent?: AgentKind,
@@ -69,7 +83,17 @@ export interface Backend {
     model: string,
     effort: string,
   ): Promise<void>;
-  sendMessage(sessionId: string, text: string): Promise<void>;
+  sendMessage(sessionId: string, text: string, images?: string[]): Promise<void>;
+  updateQueuedTurn(
+    sessionId: string,
+    queuedId: string,
+    text: string,
+    images?: string[],
+  ): Promise<void>;
+  removeQueuedTurn(sessionId: string, queuedId: string): Promise<void>;
+  sessionQueue(sessionId: string): Promise<QueuedTurn[]>;
+  interruptTurn(sessionId: string): Promise<void>;
+  stageChatImage(dataBase64: string, name: string): Promise<Attachment>;
   answerPrompt(
     sessionId: string,
     promptId: string,
@@ -78,12 +102,57 @@ export interface Backend {
   stopSession(sessionId: string): Promise<void>;
   getSessionEvents(sessionId: string): Promise<SessionEvent[]>;
 
+  listMcpServers(): Promise<McpServerRecord[]>;
+  addMcpServer(input: {
+    name: string;
+    transport: McpTransport;
+    commandLine: string;
+    url: string;
+  }): Promise<void>;
+  setMcpServerEnabled(name: string, enabled: boolean): Promise<void>;
+  removeMcpServer(name: string): Promise<void>;
+  loginMcpServer(name: string): Promise<McpLogin>;
+  reloadMcpServers(): Promise<ReloadReport>;
+
+  listPlugins(cwd: string | null): Promise<PluginCatalog>;
+  installPlugin(input: {
+    pluginName: string;
+    marketplacePath: string;
+    marketplaceName: string;
+  }): Promise<void>;
+  uninstallPlugin(pluginId: string): Promise<void>;
+  addMarketplace(source: string, refName: string): Promise<void>;
+  removeMarketplace(name: string): Promise<void>;
+  upgradeMarketplace(name: string): Promise<void>;
+
+  listHooks(cwd: string | null): Promise<HookRecord[]>;
+
+  worktreeSettings(projectPath: string | null): Promise<WorktreeSettings>;
+  saveWorktreeSettings(
+    root: string,
+    keep: number,
+    autoPrune: boolean,
+  ): Promise<WorktreeSettings>;
+  createWorktree(projectPath: string): Promise<WorktreeInfo>;
+  recycleWorktree(projectPath: string, worktreePath: string): Promise<void>;
+
+  addEnvironment(input: {
+    environmentId: string;
+    execServerUrl: string;
+    authBearerToken: string;
+  }): Promise<EnvironmentRecord>;
+  listEnvironments(): Promise<EnvironmentRecord[]>;
+
   /** 打开系统目录选择器；返回 null 表示取消 */
   pickDirectory(title: string): Promise<string | null>;
   /** 选择要附加的文件；取消时返回空数组 */
   pickFiles(): Promise<Attachment[]>;
+  pickImageFiles(): Promise<Attachment[]>;
 
   onSessionEvent(cb: (event: SessionEvent) => void): () => void;
+  onSessionQueue(
+    cb: (payload: { session_id: string; items: QueuedTurn[] }) => void,
+  ): () => void;
   onSessionsChanged(cb: (projectId: string) => void): () => void;
   onProjectsChanged(cb: () => void): () => void;
 }
@@ -119,8 +188,14 @@ const tauriBackend: Backend = {
     }),
   removeProject: (id) => invoke("remove_project", { id }),
 
-  listSessions: (projectId) =>
-    invoke<Session[]>("list_sessions", { projectId }),
+  listSessions: (projectId, archived) =>
+    invoke<Session[]>("list_sessions", { projectId, archived: archived ?? false }),
+  forkSession: (sessionId) => invoke<Session>("fork_session", { sessionId }),
+  renameSession: (sessionId, name) =>
+    invoke("rename_session", { sessionId, name }),
+  setSessionArchived: (sessionId, archived) =>
+    invoke("set_session_archived", { sessionId, archived }),
+  deleteSession: (sessionId) => invoke("delete_session", { sessionId }),
   createSession: (projectId, agent, accessMode) =>
     invoke<Session>("create_session", {
       projectId,
@@ -141,17 +216,92 @@ const tauriBackend: Backend = {
     invoke<AgentCatalogRefresh>("agent_catalog", { sessionId }),
   setSessionTuning: (sessionId, model, effort) =>
     invoke("set_session_tuning", { sessionId, model, effort }),
-  sendMessage: (sessionId, text) =>
-    invoke("send_message", { sessionId, text }),
+  sendMessage: (sessionId, text, images) =>
+    invoke("send_message", { sessionId, text, images: images ?? [] }),
+  updateQueuedTurn: (sessionId, queuedId, text, images) =>
+    invoke("update_queued_turn", {
+      sessionId,
+      queuedId,
+      text,
+      images: images ?? [],
+    }),
+  removeQueuedTurn: (sessionId, queuedId) =>
+    invoke("remove_queued_turn", { sessionId, queuedId }),
+  sessionQueue: (sessionId) =>
+    invoke("session_queue", { sessionId }),
+  interruptTurn: (sessionId) => invoke("interrupt_turn", { sessionId }),
+  stageChatImage: (dataBase64, name) =>
+    invoke("stage_chat_image", { dataBase64, name }),
   answerPrompt: (sessionId, promptId, answer) =>
     invoke("answer_prompt", { sessionId, promptId, answer }),
   stopSession: (sessionId) => invoke("stop_session", { sessionId }),
   getSessionEvents: (sessionId) =>
     invoke<SessionEvent[]>("get_session_events", { sessionId }),
 
+  listMcpServers: () => invoke<McpServerRecord[]>("list_mcp_servers"),
+  addMcpServer: (input) =>
+    invoke("add_mcp_server", {
+      name: input.name,
+      transport: input.transport,
+      commandLine: input.commandLine,
+      url: input.url,
+    }),
+  setMcpServerEnabled: (name, enabled) =>
+    invoke("set_mcp_server_enabled", { name, enabled }),
+  removeMcpServer: (name) => invoke("remove_mcp_server", { name }),
+  loginMcpServer: (name) => invoke<McpLogin>("login_mcp_server", { name }),
+  reloadMcpServers: () => invoke<ReloadReport>("reload_mcp_servers"),
+  listPlugins: (cwd) => invoke<PluginCatalog>("list_plugins", { cwd }),
+  installPlugin: (input) =>
+    invoke("install_plugin", {
+      pluginName: input.pluginName,
+      marketplacePath: input.marketplacePath,
+      marketplaceName: input.marketplaceName,
+    }),
+  uninstallPlugin: (pluginId) => invoke("uninstall_plugin", { pluginId }),
+  addMarketplace: (source, refName) =>
+    invoke("add_marketplace", { source, refName }),
+  removeMarketplace: (name) => invoke("remove_marketplace", { name }),
+  upgradeMarketplace: (name) => invoke("upgrade_marketplace", { name }),
+  listHooks: (cwd) => invoke<HookRecord[]>("list_hooks", { cwd }),
+  worktreeSettings: (projectPath) =>
+    invoke<WorktreeSettings>("worktree_settings", { projectPath }),
+  saveWorktreeSettings: (root, keep, autoPrune) =>
+    invoke<WorktreeSettings>("save_worktree_settings", { root, keep, autoPrune }),
+  createWorktree: (projectPath) =>
+    invoke<WorktreeInfo>("create_worktree", { projectPath }),
+  recycleWorktree: (projectPath, worktreePath) =>
+    invoke("recycle_worktree", { projectPath, worktreePath }),
+  addEnvironment: (input) =>
+    invoke<EnvironmentRecord>("add_environment", {
+      environmentId: input.environmentId,
+      execServerUrl: input.execServerUrl,
+      authBearerToken: input.authBearerToken,
+    }),
+  listEnvironments: () => invoke<EnvironmentRecord[]>("list_environments"),
+
   pickDirectory: async (title) => {
     const selected = await open({ directory: true, multiple: false, title });
     return typeof selected === "string" ? selected : null;
+  },
+  pickImageFiles: async () => {
+    const selected = await open({
+      directory: false,
+      multiple: true,
+      title: "添加照片和文件",
+      filters: [
+        {
+          name: "图片",
+          extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "avif"],
+        },
+      ],
+    });
+    if (!selected) return [];
+    const paths = Array.isArray(selected) ? selected : [selected];
+    return paths.map((path) => ({
+      name: path.split(/[\\/]/).filter(Boolean).pop() ?? path,
+      path,
+    }));
   },
   pickFiles: async () => {
     const selected = await open({
@@ -168,6 +318,11 @@ const tauriBackend: Backend = {
   },
 
   onSessionEvent: (cb) => subscribe<SessionEvent>("session-event", cb),
+  onSessionQueue: (cb) =>
+    subscribe<{ session_id: string; items: QueuedTurn[] }>(
+      "session-queue",
+      cb,
+    ),
   onSessionsChanged: (cb) =>
     subscribe<{ project_id: string }>("sessions-changed", (p) =>
       cb(p.project_id),

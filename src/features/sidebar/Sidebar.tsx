@@ -7,6 +7,9 @@ import { ProjectItem } from "./projects/ProjectItem";
 
 export function Sidebar() {
   const projects = useWorkbench((s) => s.projects);
+  const notice = useWorkbench((s) => s.sidebarNotice);
+  const undoArchive = useWorkbench((s) => s.undoArchive);
+  const viewArchived = useWorkbench((s) => s.viewArchived);
 
   return (
     <aside className="flex w-72 shrink-0 flex-col border-r border-zinc-800/80 bg-zinc-900/30">
@@ -37,6 +40,26 @@ export function Sidebar() {
           projects.map((p) => <ProjectItem key={p.id} project={p} />)
         )}
       </div>
+
+      {notice && (
+        <div className="mx-3 mb-2 flex items-center justify-between gap-2 rounded-lg border border-zinc-700/80 bg-zinc-900 px-3 py-2 text-xs text-zinc-200">
+          <span>{notice.kind === "archived" ? "已归档的聊天" : notice.text}</span>
+          {notice.kind === "archived" && (
+            <span className="flex shrink-0 items-center gap-2">
+              <button type="button" className="text-zinc-100 hover:text-white" onClick={() => void undoArchive()}>
+                撤销
+              </button>
+              <button
+                type="button"
+                className="text-zinc-100 hover:text-white"
+                onClick={() => void viewArchived(notice.projectId)}
+              >
+                查看
+              </button>
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="relative z-10 border-t border-zinc-800/80 px-3 py-3">
         <AccountMenu />
