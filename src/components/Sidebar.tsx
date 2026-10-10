@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { Ellipsis, Plus, RefreshCw, TerminalSquare, Trash2 } from "lucide-react";
+import { Ellipsis, Plus, RefreshCw, SquarePen, TerminalSquare } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { APP_VERSION } from "@/lib/version";
@@ -32,9 +32,19 @@ function useDismiss(
 function ProjectItem({ project }: { project: Project }) {
   const sessions = useWorkbench((s) => s.sessions[project.id]);
   const selected = useWorkbench((s) => s.selectedProjectId === project.id);
+  const activeSessionId = useWorkbench((s) => s.activeSessionId[project.id]);
   const selectProject = useWorkbench((s) => s.selectProject);
+  const selectSession = useWorkbench((s) => s.selectSession);
+  const createSession = useWorkbench((s) => s.createSession);
   const removeProject = useWorkbench((s) => s.removeProject);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const closeMenu = () => {
+    setMenuOpen(false);
+    setConfirming(false);
+  };
+  useDismiss(menuOpen, menuRef, closeMenu);
 
   const status = sessions ? aggregateStatus(sessions) : null;
   const runningCount = sessions?.filter(
@@ -42,46 +52,107 @@ function ProjectItem({ project }: { project: Project }) {
   ).length;
 
   return (
-    <div
-      className={cn(
-        "group relative flex w-full cursor-pointer flex-col gap-0.5 rounded-lg px-3 py-2.5 text-left transition-colors",
-        selected ? "bg-zinc-800/80" : "hover:bg-zinc-800/40",
-      )}
-      onClick={() => selectProject(project.id)}
-    >
-      <div className="flex items-center gap-2">
+    <div className="py-0.5">
+      <div
+        className={cn(
+          "group flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors",
+          selected ? "bg-zinc-800/80" : "hover:bg-zinc-800/40",
+        )}
+        title={project.path}
+        onClick={() => selectProject(project.id)}
+      >
         <StatusDot status={status} />
         <span className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-200">
           {project.name}
         </span>
         {runningCount ? (
-          <span className="rounded-full bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-medium text-sky-400">
+          <span
+            className={cn(
+              "rounded-full bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-medium text-sky-400",
+              selected ? "hidden" : "group-hover:hidden",
+            )}
+          >
             {runningCount} 活跃
           </span>
         ) : null}
-        <button
-          className="hidden rounded p-1 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-300 group-hover:block"
-          title="从列表移除（不删除磁盘文件）"
-          onClick={(e) => {
-            e.stopPropagation();
-            if (confirming) {
-              removeProject(project.id);
-            } else {
-              setConfirming(true);
-              setTimeout(() => setConfirming(false), 2500);
-            }
-          }}
-        >
-          {confirming ? (
-            <span className="px-0.5 text-[10px] text-red-400">确认?</span>
-          ) : (
-            <Trash2 className="h-3.5 w-3.5" />
+        <div
+          className={cn(
+            "items-center",
+            selected ? "flex" : "hidden group-hover:flex",
           )}
-        </button>
+        >
+          <div ref={menuRef} className="relative">
+            <button
+              type="button"
+              className="flex h-6 w-6 items-center justify-center rounded text-zinc-300 hover:bg-zinc-700/80 hover:text-zinc-50"
+              aria-label={`${project.name} 更多`}
+              aria-expanded={menuOpen}
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenuOpen((open) => !open);
+              }}
+            >
+              <Ellipsis className="h-4 w-4" />
+            </button>
+            {menuOpen && (
+              <div className="absolute right-0 top-full z-30 mt-1 w-44 overflow-hidden rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/40">
+                <button
+                  type="button"
+                  className={cn(
+                    "block w-full px-3 py-2 text-left text-sm hover:bg-zinc-800",
+                    confirming ? "text-red-300" : "text-zinc-200",
+                  )}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (confirming) {
+                      removeProject(project.id);
+                      closeMenu();
+                    } else {
+                      setConfirming(true);
+                    }
+                  }}
+                >
+                  {confirming ? "确认移除？" : "从列表移除"}
+                </button>
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            className="flex h-6 w-6 items-center justify-center rounded text-zinc-200 hover:bg-zinc-700/80 hover:text-white"
+            aria-label={`在 ${project.name} 中新建会话`}
+            title="新建会话"
+            onClick={(e) => {
+              e.stopPropagation();
+              void createSession(project.id);
+            }}
+          >
+            <SquarePen className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
-      <div className="truncate pl-4 text-xs text-zinc-500" title={project.path}>
-        {project.path}
-      </div>
+      {sessions && sessions.length > 0 && (
+        <div className="mt-0.5 space-y-0.5">
+          {sessions.map((session) => {
+            const active = selected && session.id === activeSessionId;
+            return (
+              <button
+                key={session.id}
+                type="button"
+                className={cn(
+                  "flex w-full items-center rounded-md py-1 pl-7 pr-2 text-left text-[13px] leading-5",
+                  active
+                    ? "text-zinc-100"
+                    : "text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-200",
+                )}
+                onClick={() => selectSession(project.id, session.id)}
+              >
+                <span className="min-w-0 flex-1 truncate">{session.title}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

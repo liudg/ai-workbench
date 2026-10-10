@@ -100,11 +100,21 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       );
     });
     backend.onProjectsChanged(() => {
-      backend.listProjects().then((projects) => set({ projects }));
+      backend.listProjects().then(async (projects) => {
+        const pairs = await Promise.all(projects.map((p) => loadSessions(p.id)));
+        set((s) => {
+          const sessions = { ...s.sessions };
+          for (const [pid, list] of pairs) sessions[pid] = list;
+          return { projects, sessions };
+        });
+      });
     });
 
     const projects = await backend.listProjects();
-    set({ projects, ready: true });
+    const pairs = await Promise.all(projects.map((p) => loadSessions(p.id)));
+    const sessions: Record<string, Session[]> = {};
+    for (const [pid, list] of pairs) sessions[pid] = list;
+    set({ projects, sessions, ready: true });
     if (projects.length > 0) {
       await get().selectProject(projects[0].id);
     }
@@ -209,6 +219,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       const session = await backend.createSession(projectId);
       const [, list] = await loadSessions(projectId);
       set((s) => ({
+        selectedProjectId: projectId,
         sessions: { ...s.sessions, [projectId]: list },
         activeSessionId: { ...s.activeSessionId, [projectId]: session.id },
         events: { ...s.events, [session.id]: s.events[session.id] ?? [] },
@@ -220,8 +231,13 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
 
   async selectSession(projectId, sessionId) {
     set((s) => ({
+      selectedProjectId: projectId,
       activeSessionId: { ...s.activeSessionId, [projectId]: sessionId },
     }));
+    if (!get().sessions[projectId]) {
+      const [pid, list] = await loadSessions(projectId);
+      set((s) => ({ sessions: { ...s.sessions, [pid]: list } }));
+    }
     if (!get().events[sessionId]) {
       const events = await backend.getSessionEvents(sessionId);
       set((s) => ({ events: { ...s.events, [sessionId]: events } }));
