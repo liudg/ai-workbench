@@ -6,6 +6,7 @@ import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 
 import type {
+  AgentInstallation,
   AgentKind,
   AccessMode,
   AgentCatalog,
@@ -54,6 +55,10 @@ export interface Backend {
   setAccessMode(sessionId: string, mode: AccessMode): Promise<void>;
   /** 各 Agent 的能力与斜杠命令。不需要已打开的会话。 */
   agentProfiles(): Promise<AgentProfile[]>;
+  /** 本机 CLI 安装与官方更新状态。 */
+  listAgentInstallations(): Promise<AgentInstallation[]>;
+  /** 按该 Agent 的官方渠道升级，并返回刷新后的状态。 */
+  updateAgent(kind: AgentKind): Promise<AgentInstallation>;
   /** 当前会话 Agent 报告的模型、推理强度和技能。 */
   agentCatalog(sessionId: string): Promise<AgentCatalog>;
   setSessionTuning(
@@ -124,6 +129,9 @@ const tauriBackend: Backend = {
   setAccessMode: (sessionId, mode) =>
     invoke("set_session_access", { sessionId, mode }),
   agentProfiles: () => invoke<AgentProfile[]>("agent_profiles"),
+  listAgentInstallations: () =>
+    invoke<AgentInstallation[]>("list_agent_installations"),
+  updateAgent: (kind) => invoke<AgentInstallation>("update_agent", { kind }),
   agentCatalog: (sessionId) =>
     invoke<AgentCatalog>("agent_catalog", { sessionId }),
   setSessionTuning: (sessionId, model, effort) =>

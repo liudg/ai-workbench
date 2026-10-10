@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { ChevronRight, Ellipsis, Plus, RefreshCw, TerminalSquare } from "lucide-react";
+import { ChevronRight, Ellipsis, Plus, RefreshCw, Settings, TerminalSquare } from "lucide-react";
 
 import { cn, displayPath, isReadOnlyOpen } from "@/lib/utils";
 import { APP_VERSION } from "@/lib/version";
@@ -234,6 +234,7 @@ function ProjectHeader() {
 
 function AccountMenu() {
   const checkUpdates = useWorkbench((s) => s.checkUpdates);
+  const openSettings = useWorkbench((s) => s.openSettings);
   const checking = useWorkbench((s) => s.update.kind === "checking");
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -244,6 +245,18 @@ function AccountMenu() {
     <div ref={rootRef} className="relative">
       {open && (
         <div className="absolute bottom-full left-0 z-30 mb-2 w-56 overflow-hidden rounded-2xl border border-zinc-700/80 bg-zinc-900 py-1.5 shadow-2xl shadow-black/50">
+          <button
+            type="button"
+            className="flex w-full items-center gap-3 px-3.5 py-2.5 text-left text-sm text-zinc-100 transition-colors hover:bg-zinc-800/90"
+            onClick={() => {
+              setOpen(false);
+              openSettings();
+            }}
+          >
+            <Settings className="h-4 w-4 shrink-0 text-zinc-400" />
+            <span>设置</span>
+          </button>
+          <div className="mx-2 border-t border-zinc-800" />
           <button
             type="button"
             className="flex w-full items-center gap-3 px-3.5 py-2.5 text-left text-sm text-zinc-100 transition-colors hover:bg-zinc-800/90"

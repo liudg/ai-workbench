@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { ChatView } from "@/components/ChatView";
 import { NoProjectSelected, NoSession } from "@/components/EmptyState";
 import { NewProjectDialog } from "@/components/NewProjectDialog";
+import { SettingsView } from "@/components/SettingsView";
 import { Sidebar } from "@/components/Sidebar";
 import { UpdateDialog } from "@/components/UpdateDialog";
 import { useWorkbench } from "@/store";
@@ -53,6 +54,7 @@ export default function App() {
   const init = useWorkbench((s) => s.init);
   const lastError = useWorkbench((s) => s.lastError);
   const dialogOpen = useWorkbench((s) => s.dialog !== null);
+  const screen = useWorkbench((s) => s.screen);
   const clearError = useWorkbench((s) => s.clearError);
 
   useEffect(() => {
@@ -83,7 +85,7 @@ export default function App() {
             </button>
           </div>
         )}
-        <Workspace />
+        {screen === "settings" ? <SettingsView /> : <Workspace />}
       </main>
       <NewProjectDialog />
       <UpdateDialog />

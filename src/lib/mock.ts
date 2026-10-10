@@ -7,6 +7,7 @@ import {
   type AccessMode,
   type AgentCapabilities,
   type AgentCatalog,
+  type AgentInstallation,
   type AgentKind,
   type AgentProfile,
   type Project,
@@ -61,6 +62,47 @@ const CLAUDE_CAPABILITIES: AgentCapabilities = {
   supports_tuning: false,
   supports_skills: false,
 };
+
+type PreviewAgents = "one" | "none" | "many" | "current";
+
+/** 浏览器预览没有本机 PATH。`?agents=` 切换探测结果，方便看设置页和空选择器。 */
+function previewAgents(): PreviewAgents {
+  const value = new URLSearchParams(window.location.search).get("agents");
+  if (value === "none" || value === "many" || value === "current" || value === "one") {
+    return value;
+  }
+  return "one";
+}
+
+function previewInstallations(mode: PreviewAgents): AgentInstallation[] {
+  const codexInstalled = mode !== "none";
+  const codexUpdate = mode === "one";
+  const claudeInstalled = mode === "many";
+  return [
+    {
+      kind: "codex-cli",
+      display_name: "Codex CLI",
+      installed: codexInstalled,
+      version: !codexInstalled ? null : codexUpdate ? "0.160.0" : "0.162.0",
+      latest_version: codexInstalled ? "0.162.0" : null,
+      update_available: codexUpdate,
+      update_via: codexInstalled ? "npm" : null,
+      detail: null,
+    },
+    {
+      kind: "claude-code",
+      display_name: "Claude Code",
+      installed: claudeInstalled,
+      version: claudeInstalled ? "2.1.200" : null,
+      latest_version: claudeInstalled ? "2.1.292" : null,
+      update_available: claudeInstalled,
+      update_via: claudeInstalled ? "cli" : null,
+      detail: null,
+    },
+  ];
+}
+
+let mockInstallations = previewInstallations(previewAgents());
 
 /** 浏览器预览镜像后端 `agent_profiles`：按 Agent 给能力，而不是全局斜杠表。 */
 const MOCK_PROFILES: Record<AgentKind, AgentProfile> = {
@@ -337,6 +379,22 @@ export const mockBackend: Backend = {
 
   async agentProfiles() {
     return Object.values(MOCK_PROFILES);
+  },
+
+  async listAgentInstallations() {
+    return mockInstallations.map((item) => ({ ...item }));
+  },
+
+  async updateAgent(kind) {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const item = mockInstallations.find((row) => row.kind === kind);
+    if (!item?.installed || !item.update_available || !item.latest_version) {
+      throw new Error("没有可安装的更新");
+    }
+    item.version = item.latest_version;
+    item.update_available = false;
+    item.detail = null;
+    return { ...item };
   },
 
   async agentCatalog(sessionId): Promise<AgentCatalog> {

@@ -22,6 +22,7 @@ mod turn;
 pub use resume::CodexDirectory;
 
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -34,6 +35,7 @@ use tokio::process::Command;
 use tokio::sync::mpsc;
 use tokio::time::timeout;
 
+use crate::agents::install::CliRelease;
 use crate::agents::{AgentAdapter, AgentError, AgentSession, EventSink, SessionContext};
 use crate::encoding::{apply_utf8_env, decode_child_bytes};
 use crate::models::{
@@ -62,6 +64,10 @@ impl CodexCliAdapter {
     }
 }
 
+pub(crate) fn locate_codex_bin() -> Option<PathBuf> {
+    process::resolve_codex_bin().ok()
+}
+
 #[async_trait]
 impl AgentAdapter for CodexCliAdapter {
     fn kind(&self) -> AgentKind {
@@ -70,6 +76,15 @@ impl AgentAdapter for CodexCliAdapter {
 
     fn capabilities(&self) -> AgentCapabilities {
         AgentCapabilities::codex()
+    }
+
+    fn cli_release(&self) -> Option<CliRelease> {
+        Some(CliRelease {
+            bins: &["codex"],
+            npm_package: "@openai/codex",
+            self_update: &["update"],
+            locate: Some(locate_codex_bin),
+        })
     }
 
     fn profile(&self) -> AgentProfile {

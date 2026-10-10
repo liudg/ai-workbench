@@ -6,6 +6,7 @@
 pub mod claude_code;
 pub mod codex;
 pub mod directory;
+pub mod install;
 mod stub;
 
 use std::sync::Arc;
@@ -14,7 +15,8 @@ use async_trait::async_trait;
 use tokio::sync::mpsc;
 
 use crate::models::{
-    AgentCapabilities, AgentCatalog, AgentKind, AgentProfile, PromptAnswer, SessionEventBody,
+    AgentCapabilities, AgentCatalog, AgentInstallation, AgentKind, AgentProfile, PromptAnswer,
+    SessionEventBody,
 };
 
 use directory::SessionDirectory;
@@ -131,10 +133,38 @@ pub trait AgentAdapter: Send + Sync {
         }
     }
 
-    /// 检测本机环境是否可用（CLI 是否安装、版本是否满足）。
-    /// v1 桩实现恒为可用；真实实现应执行 `which` / `--version` 探测。
+    /// 本机 CLI 的发布信息。没有的适配器不出现在设置页和新建会话里。
+    fn cli_release(&self) -> Option<install::CliRelease> {
+        None
+    }
+
+    /// 检测本机环境是否可用（CLI 是否安装）。
+    /// 没有声明 `cli_release` 的适配器保持可用，避免挡住仍是桩的会话。
     async fn detect(&self) -> Result<(), AgentError> {
         Ok(())
+    }
+
+    /// 探测安装版本，并对照官方来源看有没有更新。
+    async fn installation(&self) -> AgentInstallation {
+        match self.cli_release() {
+            Some(release) => {
+                install::inspect_release(self.kind(), self.display_name(), &release).await
+            }
+            None => AgentInstallation::absent(self.kind(), self.display_name()),
+        }
+    }
+
+    /// 按适配器声明的官方渠道升级，然后重新探测。
+    async fn upgrade(&self) -> Result<AgentInstallation, AgentError> {
+        let Some(release) = self.cli_release() else {
+            return Err(AgentError::Runtime(format!(
+                "{} 没有官方更新入口",
+                self.display_name()
+            )));
+        };
+        install::upgrade_release(self.kind(), self.display_name(), &release)
+            .await
+            .map_err(AgentError::Runtime)
     }
 
     /// 在指定项目目录中启动一个新会话。
@@ -151,6 +181,31 @@ pub fn adapter_for(kind: AgentKind) -> Arc<dyn AgentAdapter> {
         AgentKind::CodexCli => Arc::new(codex::CodexCliAdapter::new()),
         AgentKind::ClaudeCode => Arc::new(claude_code::ClaudeCodeAdapter::new()),
     }
+}
+
+/// 已声明本地 CLI 的适配器。顺序跟着 `AgentKind::all`，前端不再写死名单。
+pub async fn list_installations() -> Vec<AgentInstallation> {
+    let mut handles = Vec::new();
+    for kind in AgentKind::all() {
+        handles.push(tokio::spawn(async move {
+            let adapter = adapter_for(kind);
+            if adapter.cli_release().is_none() {
+                return None;
+            }
+            Some(adapter.installation().await)
+        }));
+    }
+    let mut listed = Vec::new();
+    for handle in handles {
+        if let Ok(Some(item)) = handle.await {
+            listed.push(item);
+        }
+    }
+    listed
+}
+
+pub async fn upgrade(kind: AgentKind) -> Result<AgentInstallation, AgentError> {
+    adapter_for(kind).upgrade().await
 }
 
 /// 已注册的会话目录。SessionManager 只保存 trait 对象。
