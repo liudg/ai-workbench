@@ -2,6 +2,7 @@ import { useState } from "react";
 import {
   AlertCircle,
   Bot,
+  ChevronRight,
   HelpCircle,
   Info,
   Wrench,
@@ -42,6 +43,55 @@ function Row({
           <span className="text-[11px] text-zinc-600">{time}</span>
         </div>
         <div className="pl-6">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+/** 工具调用默认折叠成一行（Codex 风格），点开看完整输入输出。 */
+function ToolCallItem({
+  event,
+  time,
+}: {
+  event: Extract<SessionEvent, { kind: "tool-call" }>;
+  time: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const firstLine = event.summary.split("\n", 1)[0] ?? "";
+
+  return (
+    <div className="event-in px-6 py-1">
+      <div className="mx-auto max-w-3xl">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            aria-expanded={expanded}
+            onClick={() => setExpanded((v) => !v)}
+            className="group flex min-w-0 flex-1 items-center gap-2 rounded py-0.5 text-left"
+          >
+            <ChevronRight
+              className={cn(
+                "h-3.5 w-3.5 shrink-0 text-zinc-600 transition-transform duration-150",
+                expanded && "rotate-90",
+              )}
+            />
+            <Wrench className="h-3.5 w-3.5 shrink-0 text-zinc-600" />
+            <span className="shrink-0 font-mono text-xs text-cyan-400/90">
+              {event.name}
+            </span>
+            {firstLine ? (
+              <span className="min-w-0 flex-1 truncate text-xs text-zinc-500 group-hover:text-zinc-400">
+                {firstLine}
+              </span>
+            ) : null}
+          </button>
+          <span className="shrink-0 text-[11px] text-zinc-600">{time}</span>
+        </div>
+        {expanded && event.summary ? (
+          <div className="ml-6 mt-1 rounded-md border border-zinc-800 bg-zinc-900/80 px-2.5 py-1.5 font-mono text-xs leading-5 text-zinc-400">
+            <p className="whitespace-pre-wrap break-all">{event.summary}</p>
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -156,19 +206,7 @@ export function EventItem({
       );
 
     case "tool-call":
-      return (
-        <Row
-          icon={<Wrench className="h-3.5 w-3.5" />}
-          title="工具调用"
-          time={time}
-          tone="muted"
-        >
-          <div className="inline-flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-900/80 px-2.5 py-1.5 font-mono text-xs text-zinc-400">
-            <span className="text-cyan-400">{event.name}</span>
-            <span className="text-zinc-500">{event.summary}</span>
-          </div>
-        </Row>
-      );
+      return <ToolCallItem event={event} time={time} />;
 
     case "prompt":
       return (

@@ -1,10 +1,36 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { MessageSquareDashed } from "lucide-react";
 
 import { pendingPrompt } from "@/lib/utils";
 import type { Session, SessionEvent } from "@/types";
 import { Composer } from "./Composer";
 import { EventItem } from "./EventItem";
+import { WorkDetailsGroup } from "./WorkDetailsGroup";
+
+type TimelineBlock =
+  | { type: "event"; event: SessionEvent }
+  | { type: "work"; id: string; events: SessionEvent[] };
+
+/** 连续的工具调用并成一个折叠组；status-changed / prompt-resolved 不渲染。 */
+function buildBlocks(events: SessionEvent[]): TimelineBlock[] {
+  const blocks: TimelineBlock[] = [];
+  for (const event of events) {
+    if (event.kind === "status-changed" || event.kind === "prompt-resolved") {
+      continue;
+    }
+    if (event.kind === "tool-call") {
+      const last = blocks[blocks.length - 1];
+      if (last && last.type === "work") {
+        last.events.push(event);
+      } else {
+        blocks.push({ type: "work", id: event.id, events: [event] });
+      }
+    } else {
+      blocks.push({ type: "event", event });
+    }
+  }
+  return blocks;
+}
 
 export function ChatView({
   session,
@@ -24,6 +50,13 @@ export function ChatView({
     }
     return map;
   }, [events]);
+
+  const blocks = useMemo(() => buildBlocks(events), [events]);
+  // 用户手动展开 / 折叠的组优先于默认行为（运行中展开、结束后折叠）
+  const [workOverrides, setWorkOverrides] = useState<
+    ReadonlyMap<string, boolean>
+  >(new Map());
+  useEffect(() => setWorkOverrides(new Map()), [session.id]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -49,18 +82,40 @@ export function ChatView({
             <p className="text-sm">发送第一条消息，开始这轮会话</p>
           </div>
         ) : (
-          events.map((event) => (
-            <EventItem
-              key={event.id}
-              event={event}
-              session={session}
-              resolvedAnswer={
-                event.kind === "prompt"
-                  ? (resolvedAnswers.get(event.prompt_id) ?? null)
-                  : null
-              }
-            />
-          ))
+          blocks.map((block, index) => {
+            if (block.type === "work") {
+              const live =
+                index === blocks.length - 1 && session.status === "running";
+              const expanded = workOverrides.get(block.id) ?? live;
+              return (
+                <WorkDetailsGroup
+                  key={block.id}
+                  events={block.events}
+                  session={session}
+                  live={live}
+                  expanded={expanded}
+                  onToggle={() =>
+                    setWorkOverrides((prev) =>
+                      new Map(prev).set(block.id, !expanded),
+                    )
+                  }
+                />
+              );
+            }
+            const event = block.event;
+            return (
+              <EventItem
+                key={event.id}
+                event={event}
+                session={session}
+                resolvedAnswer={
+                  event.kind === "prompt"
+                    ? (resolvedAnswers.get(event.prompt_id) ?? null)
+                    : null
+                }
+              />
+            );
+          })
         )}
         {session.status === "running" && (
           <div className="px-6 py-2">
