@@ -183,6 +183,7 @@ impl AgentAdapter for CodexCliAdapter {
         apply_loopback_no_proxy(&mut command);
         apply_utf8_env(&mut command);
         hide_console(&mut command);
+        apply_utf8_env(&mut command);
         let mut child = command.spawn().map_err(|e| {
             AgentError::Runtime(format!("无法启动 Codex CLI（{}）：{e}", bin.display()))
         })?;
@@ -248,6 +249,7 @@ impl AgentAdapter for CodexCliAdapter {
 
         let reader = Arc::clone(&shared);
         tokio::spawn(async move {
+            // 按字节读行再解码：单条 GBK（代码页 936）消息不会再中断 JSON-RPC 循环。
             let mut lines = BufReader::new(stdout);
             let mut raw = Vec::new();
             loop {
@@ -278,6 +280,7 @@ impl AgentAdapter for CodexCliAdapter {
 
         let err_events = events.clone();
         tokio::spawn(async move {
+            // 与 stdout 相同：按字节读行，GBK 日志行解码后继续，而不是静默结束读取。
             let mut lines = BufReader::new(stderr);
             let mut raw = Vec::new();
             let mut seen_mcp = HashSet::new();
@@ -876,11 +879,15 @@ impl Shared {
             .arg("core.quotepath=false")
             .arg("-C")
             .arg(&self.cwd)
+            // 中文文件名按 UTF-8 原样输出，而不是八进制转义。
+            .arg("-c")
+            .arg("core.quotepath=false")
             .arg("diff")
             .arg("--stat")
             .arg("HEAD");
         apply_utf8_env(&mut git);
         hide_console(&mut git);
+        apply_utf8_env(&mut git);
         let output = git.output().await;
         let text = match output {
             Ok(output) if output.status.success() => {
@@ -2001,6 +2008,7 @@ async fn codex_version(bin: &Path) -> String {
     command.arg("--version");
     apply_utf8_env(&mut command);
     hide_console(&mut command);
+    apply_utf8_env(&mut command);
     let Ok(output) = command.output().await else {
         return "未知版本".into();
     };

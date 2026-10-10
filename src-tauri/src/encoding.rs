@@ -42,6 +42,8 @@ pub fn decode_child_bytes(bytes: &[u8]) -> Cow<'_, str> {
     match std::str::from_utf8(bytes) {
         Ok(text) if !looks_like_gbk_misread(text) => Cow::Borrowed(text),
         Ok(text) => {
+            // 字节是合法 UTF-8，但形如 GBK 双字节被误读（无 CJK、全是生僻区间）。
+            // 权衡：同一行里真正的 GBK 内容远比希腊/西里尔小语种文本常见。
             let (gbk, _, errors) = encoding_rs::GBK.decode(bytes);
             if !errors && gbk.chars().any(is_cjk) {
                 gbk
@@ -54,6 +56,7 @@ pub fn decode_child_bytes(bytes: &[u8]) -> Cow<'_, str> {
             if !gbk_errors {
                 return gbk;
             }
+            // 两种解码都有损失：选置换字符更少的。
             let utf8 = String::from_utf8_lossy(bytes);
             let fffd = |s: &str| s.matches('\u{FFFD}').count();
             if fffd(&gbk) <= fffd(&utf8) {
@@ -103,18 +106,22 @@ mod tests {
 
     #[test]
     fn decodes_gbk_bytes_invalid_as_utf8() {
+        // "中文测试" GBK：B2 E2 不是合法 UTF-8 序列，整体非法
         let gbk = [0xD6, 0xD0, 0xCE, 0xC4, 0xB2, 0xE2, 0xCA, 0xD4];
         assert_eq!(decode_child_bytes(&gbk), "中文测试");
     }
 
     #[test]
     fn repairs_gbk_misread_as_valid_utf8() {
+        // "中文" GBK = D6 D0 CE C4：整体恰好是合法 UTF-8（U+0590 U+0384），
+        // 严格 UTF-8 会静默产出乱码，应按特征回退 GBK
         let gbk = [0xD6, 0xD0, 0xCE, 0xC4];
         assert_eq!(decode_child_bytes(&gbk), "中文");
     }
 
     #[test]
     fn decodes_gbk_json_line() {
+        // 按代码页整行写出的 JSON：结构字符是纯 ASCII，GBK 解码后仍是合法 JSON
         let mut line = b"{\"text\":\"".to_vec();
         line.extend_from_slice(&[0xD6, 0xD0, 0xCE, 0xC4]);
         line.extend_from_slice(b"\"}");
