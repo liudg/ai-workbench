@@ -2,12 +2,15 @@ import { useState } from "react";
 import {
   AlertCircle,
   Bot,
+  Check,
+  Copy,
   HelpCircle,
   Info,
+  Pencil,
   Wrench,
 } from "lucide-react";
 
-import { cn, formatTime } from "@/lib/utils";
+import { cn, formatMessageTime } from "@/lib/utils";
 import { useWorkbench } from "@/store";
 import { AGENT_LABELS, type Session, type SessionEvent } from "@/types";
 import { Button } from "./ui/button";
@@ -27,7 +30,7 @@ function Row({
   tone?: "default" | "muted";
 }) {
   return (
-    <div className="event-in px-6 py-2">
+    <div className="event-in group px-6 py-2">
       <div className="mx-auto max-w-3xl">
         <div className="mb-1 flex items-center gap-2">
           <span className="text-zinc-500">{icon}</span>
@@ -39,9 +42,75 @@ function Row({
           >
             {title}
           </span>
-          <span className="text-[11px] text-zinc-600">{time}</span>
+          <span className="text-[11px] text-zinc-600 opacity-0 transition-opacity group-hover:opacity-100">
+            {time}
+          </span>
         </div>
         <div className="pl-6">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function UserMessage({
+  sessionId,
+  text,
+  time,
+}: {
+  sessionId: string;
+  text: string;
+  time: string;
+}) {
+  const seedComposer = useWorkbench((s) => s.seedComposer);
+  const [copied, setCopied] = useState(false);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "fixed";
+      area.style.left = "-9999px";
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand("copy");
+      area.remove();
+    }
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1200);
+  };
+
+  return (
+    <div className="event-in group px-6 py-2">
+      <div className="mx-auto flex max-w-3xl justify-end">
+        <div className="flex max-w-[85%] flex-col items-end">
+          <div className="rounded-2xl rounded-br-sm bg-indigo-600/90 px-4 py-2.5 text-sm leading-6 text-white">
+            <p className="whitespace-pre-wrap">{text}</p>
+          </div>
+          <div className="flex max-h-0 items-center gap-1 overflow-hidden opacity-0 group-hover:mt-1 group-hover:max-h-6 group-hover:overflow-visible group-hover:opacity-100 group-focus-within:mt-1 group-focus-within:max-h-6 group-focus-within:overflow-visible group-focus-within:opacity-100">
+            <span className="px-0.5 text-[11px] tabular-nums text-zinc-500">{time}</span>
+            <button
+              type="button"
+              title={copied ? "已复制" : "复制"}
+              aria-label={copied ? "已复制" : "复制"}
+              className="rounded p-0.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
+              onClick={() => void copy()}
+            >
+              {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+            </button>
+            <button
+              type="button"
+              title="编辑"
+              aria-label="编辑"
+              className="rounded p-0.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
+              onClick={() => seedComposer(sessionId, text)}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -127,22 +196,11 @@ export function EventItem({
   session: Session;
   resolvedAnswer: string | null;
 }) {
-  const time = formatTime(event.ts);
+  const time = formatMessageTime(event.ts);
 
   switch (event.kind) {
     case "user-message":
-      return (
-        <div className="event-in px-6 py-2">
-          <div className="mx-auto flex max-w-3xl justify-end">
-            <div className="max-w-[85%] rounded-2xl rounded-br-sm bg-indigo-600/90 px-4 py-2.5 text-sm leading-6 text-white">
-              <p className="whitespace-pre-wrap">{event.text}</p>
-              <p className="mt-1 text-right text-[10px] text-indigo-200/70">
-                {time}
-              </p>
-            </div>
-          </div>
-        </div>
-      );
+      return <UserMessage sessionId={session.id} text={event.text} time={time} />;
 
     case "agent-message":
       return (
@@ -191,7 +249,7 @@ export function EventItem({
       return null; // 已在 PromptCard 的「已回答」状态体现
 
     case "status-changed":
-      return null; // 状态由标签页 / 顶栏呈现，时间线不冗余展示
+      return null; // 状态只在会话标签上呈现
 
     case "system":
       return (

@@ -11,11 +11,14 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatTime(ts: number): string {
+const WEEKDAYS = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
+
+/** 悬停时显示在消息下方，例如「星期五 18:32」。 */
+export function formatMessageTime(ts: number): string {
   const d = new Date(ts);
   const hh = String(d.getHours()).padStart(2, "0");
   const mm = String(d.getMinutes()).padStart(2, "0");
-  return `${hh}:${mm}`;
+  return `${WEEKDAYS[d.getDay()]} ${hh}:${mm}`;
 }
 
 /** 从事件日志推导当前待回答的提问（最后一个未被 resolved 覆盖的 prompt） */

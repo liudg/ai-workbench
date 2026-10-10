@@ -91,6 +91,7 @@ export function Composer({
   const clearAttachments = useWorkbench((s) => s.clearAttachments);
   const mode = useWorkbench((s) => s.accessMode[session.id] ?? "full");
   const files = useWorkbench((s) => s.attachments[session.id] ?? EMPTY_FILES);
+  const composerSeed = useWorkbench((s) => s.composerSeed);
   const [text, setText] = useState("");
   const [caret, setCaret] = useState(0);
   const [menu, setMenu] = useState<null | "access" | "model">(null);
@@ -109,6 +110,18 @@ export function Composer({
   useEffect(() => {
     void loadCatalog(session.id);
   }, [loadCatalog, session.id]);
+
+  useEffect(() => {
+    if (!composerSeed || composerSeed.sessionId !== session.id) return;
+    setText(composerSeed.text);
+    setCaret(composerSeed.text.length);
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(composerSeed.text.length, composerSeed.text.length);
+    });
+  }, [composerSeed, session.id]);
 
   const pendingId = pendingPrompt(events);
   const busy = session.status === "running";

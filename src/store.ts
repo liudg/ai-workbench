@@ -54,6 +54,8 @@ interface WorkbenchState {
   attachments: Record<string, Attachment[]>;
   catalogs: Record<string, AgentCatalog>;
   tuning: Record<string, { model: string; effort: string }>;
+  /** 点消息上的编辑后，把原文填回输入框 */
+  composerSeed: { sessionId: string; text: string; token: number } | null;
 
   init(): Promise<void>;
   openDialog(mode: DialogMode): void;
@@ -80,6 +82,7 @@ interface WorkbenchState {
   clearAttachments(sessionId: string): void;
   selectSession(projectId: string, sessionId: string): Promise<void>;
   sendMessage(sessionId: string, text: string): Promise<void>;
+  seedComposer(sessionId: string, text: string): void;
   answerPrompt(sessionId: string, promptId: string, answer: string): Promise<void>;
   stopSession(sessionId: string): Promise<void>;
 }
@@ -120,6 +123,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   attachments: {},
   catalogs: {},
   tuning: {},
+  composerSeed: null,
 
   async init() {
     if (initStarted) return;
@@ -388,6 +392,10 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       const events = await backend.getSessionEvents(sessionId);
       set((s) => ({ events: { ...s.events, [sessionId]: events } }));
     }
+  },
+
+  seedComposer(sessionId, text) {
+    set({ composerSeed: { sessionId, text, token: Date.now() } });
   },
 
   async sendMessage(sessionId, text) {
