@@ -64,6 +64,22 @@ function CopyButton({ text, className }: { text: string; className?: string }) {
   );
 }
 
+/** 时间与操作始终占位，悬停只改透明度，避免把后面的消息顶下去。 */
+function HoverActions({
+  time,
+  children,
+}: {
+  time: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="mt-1 flex min-h-5 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+      <span className="px-0.5 text-[11px] tabular-nums text-zinc-500">{time}</span>
+      {children}
+    </div>
+  );
+}
+
 function Row({
   icon,
   title,
@@ -71,6 +87,7 @@ function Row({
   children,
   tone = "default",
   copyText,
+  actionsBelow = false,
 }: {
   icon: React.ReactNode;
   title: string;
@@ -78,6 +95,7 @@ function Row({
   children: React.ReactNode;
   tone?: "default" | "muted";
   copyText?: string;
+  actionsBelow?: boolean;
 }) {
   return (
     <div className="event-in group px-6 py-2">
@@ -92,17 +110,28 @@ function Row({
           >
             {title}
           </span>
-          <span className="text-[11px] text-zinc-600 opacity-0 transition-opacity group-hover:opacity-100">
-            {time}
-          </span>
-          {copyText ? (
-            <CopyButton
-              text={copyText}
-              className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
-            />
+          {actionsBelow ? null : (
+            <>
+              <span className="text-[11px] text-zinc-600 opacity-0 transition-opacity group-hover:opacity-100">
+                {time}
+              </span>
+              {copyText ? (
+                <CopyButton
+                  text={copyText}
+                  className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+                />
+              ) : null}
+            </>
+          )}
+        </div>
+        <div className="cursor-text pl-6">
+          {children}
+          {actionsBelow ? (
+            <HoverActions time={time}>
+              {copyText ? <CopyButton text={copyText} /> : null}
+            </HoverActions>
           ) : null}
         </div>
-        <div className="cursor-text pl-6">{children}</div>
       </div>
     </div>
   );
@@ -126,8 +155,7 @@ function UserMessage({
           <div className="cursor-text rounded-2xl rounded-br-sm bg-indigo-600/90 px-4 py-2.5 text-sm leading-6 text-white">
             <p className="whitespace-pre-wrap">{text}</p>
           </div>
-          <div className="flex max-h-0 items-center gap-1 overflow-hidden opacity-0 group-hover:mt-1 group-hover:max-h-6 group-hover:overflow-visible group-hover:opacity-100 group-focus-within:mt-1 group-focus-within:max-h-6 group-focus-within:overflow-visible group-focus-within:opacity-100">
-            <span className="px-0.5 text-[11px] tabular-nums text-zinc-500">{time}</span>
+          <HoverActions time={time}>
             <CopyButton text={text} />
             <button
               type="button"
@@ -138,7 +166,7 @@ function UserMessage({
             >
               <Pencil className="h-3.5 w-3.5" />
             </button>
-          </div>
+          </HoverActions>
         </div>
       </div>
     </div>
@@ -518,6 +546,7 @@ export function EventItem({
           title={AGENT_LABELS[session.agent]}
           time={time}
           copyText={event.text}
+          actionsBelow
         >
           <p className="whitespace-pre-wrap text-sm leading-6 text-zinc-300">
             {event.text}
