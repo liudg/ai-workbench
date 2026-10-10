@@ -17,7 +17,8 @@ use tokio::task::JoinHandle;
 use tokio::time::{sleep, Duration};
 
 use crate::models::{
-    AgentKind, PromptAnswer, PromptKind, PromptOption, SessionEventBody, SessionStatus,
+    AgentCapabilities, AgentCatalog, AgentKind, PromptAnswer, PromptKind, PromptOption,
+    SessionEventBody, SessionStatus,
 };
 
 use super::{AgentError, AgentSession, EventSink};
@@ -43,15 +44,17 @@ pub struct StubAgentSession {
     events: EventSink,
     closed: Arc<AtomicBool>,
     state: Arc<Mutex<StubState>>,
+    capabilities: AgentCapabilities,
 }
 
 impl StubAgentSession {
-    pub fn new(persona: StubPersona, events: EventSink) -> Self {
+    pub fn new(persona: StubPersona, events: EventSink, capabilities: AgentCapabilities) -> Self {
         Self {
             persona: Arc::new(Mutex::new(persona)),
             events,
             closed: Arc::new(AtomicBool::new(false)),
             state: Arc::new(Mutex::new(StubState::default())),
+            capabilities,
         }
     }
 
@@ -276,6 +279,15 @@ impl AgentSession for StubAgentSession {
             },
         );
         Ok(())
+    }
+
+    async fn catalog(&self) -> Result<AgentCatalog, AgentError> {
+        Ok(AgentCatalog {
+            models: Vec::new(),
+            skills: Vec::new(),
+            commands: Vec::new(),
+            capabilities: self.capabilities.clone(),
+        })
     }
 
     fn retarget(&self, kind: AgentKind) {

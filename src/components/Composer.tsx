@@ -3,7 +3,7 @@ import { ArrowUp, ChevronDown, Plus, Shield, X } from "lucide-react";
 
 import { backend } from "@/lib/ipc";
 import { filterSkills, insertSkill, skillToken } from "@/lib/skills";
-import { filterSlash, slashToken, type SlashCommand } from "@/lib/slash";
+import { filterSlash, slashToken } from "@/lib/slash";
 import { cn, pendingPrompt } from "@/lib/utils";
 import { useWorkbench } from "@/store";
 import {
@@ -16,6 +16,7 @@ import {
   type Attachment,
   type Session,
   type SessionEvent,
+  type SlashCommand,
 } from "@/types";
 
 const EMPTY_FILES: Attachment[] = [];
@@ -85,6 +86,7 @@ export function Composer({
   const loadCatalog = useWorkbench((s) => s.loadCatalog);
   const setTuning = useWorkbench((s) => s.setTuning);
   const catalog = useWorkbench((s) => s.catalogs[session.id]);
+  const profile = useWorkbench((s) => s.profiles[session.agent]);
   const tuning = useWorkbench((s) => s.tuning[session.id]);
   const addAttachments = useWorkbench((s) => s.addAttachments);
   const removeAttachment = useWorkbench((s) => s.removeAttachment);
@@ -127,13 +129,15 @@ export function Composer({
   const busy = session.status === "running";
   const dead = session.status === "stopped" || session.status === "failed";
   const locked = busy || dead;
+  const caps = profile?.capabilities ?? catalog?.capabilities;
+  const commands = profile?.commands ?? catalog?.commands ?? [];
   const token =
-    session.agent === "codex-cli" && !pendingId && !locked ? slashToken(text) : null;
-  const slashMatches = token ? filterSlash(token) : [];
+    caps?.supports_slash && !pendingId && !locked ? slashToken(text) : null;
+  const slashMatches = token ? filterSlash(commands, token) : [];
   const slashOpen = token !== null && (slashMatches.length > 0 || token.length > 1);
   const activeSlash = slashMatches[Math.min(slashIndex, slashMatches.length - 1)];
   const skillQuery =
-    session.agent === "codex-cli" && !pendingId && !locked && !slashOpen
+    caps?.supports_skills && !pendingId && !locked && !slashOpen
       ? skillToken(text, caret)
       : null;
   const skillMatches = skillQuery !== null ? filterSkills(catalog?.skills ?? [], skillQuery) : [];
@@ -165,7 +169,7 @@ export function Composer({
   const placeholder = dead ? "会话已停止，请新建会话" : "随心输入";
 
   const applySlash = (cmd: SlashCommand) => {
-    setText(cmd.takesArgs ? `${cmd.name} ` : cmd.name);
+    setText(cmd.takes_args ? `${cmd.name} ` : cmd.name);
     textareaRef.current?.focus();
   };
 
@@ -430,6 +434,7 @@ export function Composer({
             </button>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
+            {caps?.supports_tuning && (
             <button
               ref={modelRef}
               type="button"
@@ -446,6 +451,7 @@ export function Composer({
               <span className="truncate">{modelButton}</span>
               <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />
             </button>
+            )}
             <button
               type="button"
               onClick={(event) => {
@@ -473,7 +479,7 @@ export function Composer({
           }}
         />
       )}
-      {menu === "model" && (
+      {menu === "model" && caps?.supports_tuning && (
         <ModelMenu
           menuRef={modelMenuRef}
           models={catalog?.models ?? []}

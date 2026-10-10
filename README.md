@@ -1,15 +1,13 @@
 # AI 工作台（AI Workbench）
 
-一个**本地多项目 AI 编程工作台**的桌面应用骨架：在左侧管理多个本地项目，每个项目可并行开启多个 Agent 会话（第一波支持 Codex CLI 与 Claude Code），右侧以 Codex Desktop 风格实时查看会话输出、处理 Agent 发起的审批/提问。关闭窗口不会中断任何会话——应用驻留系统托盘，后台继续运行。
-
-> 当前为 **v1 架构骨架**：项目/会话/事件/托盘全链路均已打通，Agent 适配器为**桩实现**（模拟流式输出与审批提问）。接入真实 CLI 只需替换适配器实现，上层无需改动。详见下文「v1 桩实现 vs 下一步」。
+一个**本地多项目 AI 编程工作台**：左侧管理多个本地项目，每个项目可并行开启多个 Agent 会话。Codex CLI 走本机 `codex app-server`；Claude Code 仍是桩，但和 Codex 一样挂在同一套适配器与会话目录接口上。右侧以时间线查看输出，并用同一套提问卡片处理审批、选择和问题。关闭窗口不会中断任何会话——应用驻留系统托盘，后台继续运行。
 
 ## 技术栈
 
 | 层 | 技术 |
 | --- | --- |
 | 桌面壳 | Tauri 2（系统托盘、关窗驻留、原生文件对话框、自动更新 updater） |
-| 后端 | Rust：`project_store`（JSON 持久化）+ `session_manager`（会话/事件总线）+ `agents`（适配器层） |
+| 后端 | Rust：`project_store` + `session_manager`（会话/事件总线）+ `agents`（适配器、能力、会话目录） |
 | 前端 | React 18 + TypeScript + Vite + Tailwind CSS 4 + Radix/shadcn 风格组件 + zustand |
 | IPC | Tauri commands（invoke）+ 事件广播（`session-event` / `sessions-changed` / `projects-changed`） |
 
@@ -39,7 +37,7 @@ pnpm tauri:build    # 产出 NSIS 安装包 / 绿色 exe（src-tauri/target/rele
 
 ### 免 Rust 的浏览器预览
 
-没有 Rust 环境也可以预览完整 UI（内置 mock 后端，行为与 Rust 桩一致）：
+没有 Rust 环境也可以预览 UI（浏览器 mock 按 Agent 能力表模拟斜杠、技能和提问卡）：
 
 ```powershell
 pnpm dev            # 打开 http://localhost:4573
@@ -78,11 +76,13 @@ pnpm dev            # 打开 http://localhost:4573
 │ models.rs          Project / Session / SessionEventBody（IPC 协议）  │
 │ project_store.rs   项目列表持久化 projects.json（app_data_dir）；     │
 │                    建目录 + git init + 导入校验                      │
-│ session_manager.rs 会话注册表；事件编号/落日志/广播；状态机推进        │
-│ agents/mod.rs      AgentAdapter + AgentSession trait + EventSink    │
-│ agents/codex_cli.rs    Codex CLI 适配器（桩）                        │
-│ agents/claude_code.rs  Claude Code 适配器（桩）                      │
-│ agents/stub.rs     桩会话：模拟流式输出 + 首轮审批提问                 │
+│ session_manager.rs 会话注册表。侧边栏 = 各 SessionDirectory 与已打开会话的并集 │
+│ agents/mod.rs      AgentAdapter / AgentSession / SessionContext      │
+│ agents/directory.rs  SessionDirectory：按 agent + native id 聚合      │
+│ agents/codex/      Codex 适配器（编排）+ rpc / prompts / catalog /    │
+│                    process / resume。resume 实现 thread/list          │
+│ agents/claude_code.rs  Claude Code 桩适配器 + 空会话目录              │
+│ agents/stub.rs     Claude 桩会话：模拟流式输出与审批提问              │
 │ tray.rs            托盘菜单（显示主窗口/退出）+ 单击唤起              │
 │ lib.rs             组装；on_window_event 拦截关闭 → 隐藏到托盘        │
 └────────────────────────────────────────────────────────────────────┘
@@ -110,23 +110,22 @@ pnpm dev            # 打开 http://localhost:4573
 | --- | --- |
 | `list_projects` / `create_project` / `import_project` / `remove_project` | 项目管理；create 支持选父目录建文件夹 + git init |
 | `list_sessions` / `create_session` / `stop_session` | 会话生命周期（create 缺省用项目默认 Agent） |
-| `send_message` / `answer_prompt` | 发消息 / 回答提问（审批、选择、自由文本） |
-| `get_session_events` | 拉取会话完整事件日志（切换会话时恢复时间线） |
+| `send_message` / `answer_prompt` | 发消息 / 回答提问（审批、选择、自由文本、问题卡片） |
+| `get_session_events` | 打开会话：已连接则返回日志，否则按目录里的 native id resume |
+| `agent_profiles` / `agent_catalog` | 能力与斜杠命令（profile）；模型、推理强度和技能（catalog） |
+| `set_session_access` / `set_session_tuning` | 权限档位；模型与推理强度 |
 
-## v1 桩实现 vs 下一步
+## 多 Agent 边界
 
-**v1 已是真实模块**：适配器 trait、事件通道、会话管理、状态机、托盘驻留均为生产结构；`CodexCliAdapter` / `ClaudeCodeAdapter` 内部使用共享的 `StubAgentSession` 模拟「流式回复 → 工具调用 → 审批提问 → 等待回答 → 完成」全交互，便于先行打磨 UI 与状态流。
+会话管理器不持有 `CodexDirectory`。每种 Agent 注册一个 `SessionDirectory`：Codex 用 `thread/list`（与 `codex resume --all` 同一份交互、未归档列表），Claude 桩返回空列表。侧边栏是这些目录和内存里已打开会话的并集，键是 `{agent}:{native_id}`。
 
-**接入真实 CLI 的位置**（每个适配器文件头注释也有说明）：
+`SessionContext` 只保留通用字段：工作目录、权限档位、要恢复的 native id，以及 `options`。Codex 从 `options.persist` 决定新线程是否写入官方 resume 列表；行协议留在 `agents/codex/`。
 
-1. 为 `AgentKind` 新增或替换 `agents/` 下的适配器，实现 `AgentAdapter`：
-   - `detect()`：执行 `<cli> --version` 探测安装与版本；
-   - `start_session()`：在 `ctx.project_path` 启动真实进程。
-2. 进程方案二选一：
-   - **结构化输出**（首选）：如 `codex exec --json` / `claude -p --output-format stream-json`，用 `tokio::process::Command` 管道逐行读 JSONL，映射为 `SessionEventBody` 推入 `EventSink`；
-   - **伪终端**：交互式 TUI 用 `portable-pty`，解析终端输出识别提问/审批界面。
-3. 审批/提问经 `answer_prompt` 回写 CLI stdin（或对应协议），**不要在代码里写死任何密钥**——认证交给 CLI 自身（环境变量或其登录态）。
-4. 可选增强：会话事件持久化（当前重启清空）、`failed` 错误路径展示、输出增量（delta）事件类型。
+适配器声明能力：`supports_slash`、`supports_resume`、`supports_questions`、`supports_tuning`、`supports_skills`。前端作曲栏和斜杠菜单读 `agent_profiles`，不比较 `agent === "codex-cli"`。提问卡片仍由 `SessionEventBody::Prompt` 驱动，任何发出 Questions / Approval / Choice / FreeText 的 Agent 都走同一套 UI。斜杠命令表在 Codex 的 profile 里，不在前端放一张全局表。
+
+Codex 实现拆在 `agents/codex/`：`mod.rs` 只编排，`rpc` / `prompts` / `catalog` / `process` / `resume` 各管一块。
+
+**Claude Code 仍是桩**（`stub.rs`）。接入真实 CLI 时实现 `AgentAdapter` + `SessionDirectory`，`detect()` 跑 `claude --version`，`start_session()` 在 `ctx.project_path` 启动进程。认证交给 CLI 自身，应用不保存密钥。
 
 ## 常用命令
 

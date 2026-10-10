@@ -18,10 +18,33 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use crate::models::AgentKind;
+use crate::agents::directory::{DirectoryEntry, SessionDirectory};
+use crate::models::{AgentCapabilities, AgentKind};
 
 use super::stub::{StubAgentSession, StubPersona};
-use super::{AgentAdapter, AgentSession, AgentError, EventSink, SessionContext};
+use super::{AgentAdapter, AgentError, AgentSession, EventSink, SessionContext};
+
+/// Claude 还没有官方会话目录。桩实现返回空列表，侧边栏并集里不会出现假线程。
+pub struct ClaudeDirectory;
+
+impl ClaudeDirectory {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+#[async_trait]
+impl SessionDirectory for ClaudeDirectory {
+    fn kind(&self) -> AgentKind {
+        AgentKind::ClaudeCode
+    }
+
+    async fn list(&self) -> Result<Vec<DirectoryEntry>, String> {
+        Ok(Vec::new())
+    }
+
+    async fn invalidate(&self) {}
+}
 
 pub struct ClaudeCodeAdapter {
     persona: StubPersona,
@@ -50,6 +73,16 @@ impl AgentAdapter for ClaudeCodeAdapter {
         AgentKind::ClaudeCode
     }
 
+    fn capabilities(&self) -> AgentCapabilities {
+        AgentCapabilities {
+            supports_slash: false,
+            supports_resume: false,
+            supports_questions: true,
+            supports_tuning: false,
+            supports_skills: false,
+        }
+    }
+
     async fn start_session(
         &self,
         ctx: SessionContext,
@@ -57,7 +90,7 @@ impl AgentAdapter for ClaudeCodeAdapter {
     ) -> Result<Arc<dyn AgentSession>, AgentError> {
         // TODO(real): 替换为 `claude -p --output-format stream-json` 或 portable-pty，
         // 工作目录 = ctx.project_path，输出事件映射为 SessionEventBody 推入 events。
-        let session = StubAgentSession::new(self.persona, events.clone());
+        let session = StubAgentSession::new(self.persona, events.clone(), self.capabilities());
         let _ = events.send(crate::models::SessionEventBody::System {
             text: format!(
                 "Claude Code 会话已就绪（桩模式 · 目录 {}）",

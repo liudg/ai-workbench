@@ -37,7 +37,7 @@ export interface Project {
   default_agent: AgentKind;
   created_at: number;
   updated_at: number;
-  /** 由 Codex resume 挂上的目录，不在本地项目列表里。 */
+  /** 由某个 Agent 的会话目录挂上，不在本地项目列表里。 */
   external?: boolean;
 }
 
@@ -45,6 +45,8 @@ export interface Session {
   id: string;
   project_id: string;
   agent: AgentKind;
+  /** Agent 自己的会话 id。`id` 是 `{agent}:{native_id}`。 */
+  native_id: string;
   title: string;
   status: SessionStatus;
   created_at: number;
@@ -132,9 +134,50 @@ export interface AgentSkillOption {
   path: string;
 }
 
+/** 适配器能力。作曲栏和斜杠菜单看这些开关，不比较 agent 字符串。 */
+export interface AgentCapabilities {
+  supports_slash: boolean;
+  supports_resume: boolean;
+  supports_questions: boolean;
+  supports_tuning: boolean;
+  supports_skills: boolean;
+}
+
+export interface SlashCommand {
+  name: string;
+  hint: string;
+  takes_args?: boolean;
+}
+
+/** 不打开会话也能拿到的能力说明和斜杠命令。 */
+export interface AgentProfile {
+  kind: AgentKind;
+  capabilities: AgentCapabilities;
+  commands: SlashCommand[];
+}
+
 export interface AgentCatalog {
   models: AgentModelOption[];
   skills: AgentSkillOption[];
+  commands: SlashCommand[];
+  capabilities: AgentCapabilities;
+}
+
+export const EMPTY_CAPABILITIES: AgentCapabilities = {
+  supports_slash: false,
+  supports_resume: false,
+  supports_questions: false,
+  supports_tuning: false,
+  supports_skills: false,
+};
+
+export function emptyCatalog(): AgentCatalog {
+  return {
+    models: [],
+    skills: [],
+    commands: [],
+    capabilities: { ...EMPTY_CAPABILITIES },
+  };
 }
 
 export const EFFORT_LABELS: Record<string, string> = {
