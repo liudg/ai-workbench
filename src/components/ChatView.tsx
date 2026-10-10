@@ -41,7 +41,7 @@ export function ChatView({
           stickToBottom.current =
             el.scrollHeight - el.scrollTop - el.clientHeight < 80;
         }}
-        className="min-h-0 flex-1 overflow-y-auto py-4"
+        className="chat-log min-h-0 flex-1 overflow-y-auto py-4"
       >
         {events.filter((e) => e.kind !== "status-changed").length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-zinc-600">

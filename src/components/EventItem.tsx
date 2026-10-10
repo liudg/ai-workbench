@@ -2,6 +2,8 @@ import { useState } from "react";
 import {
   AlertCircle,
   Bot,
+  Check,
+  Copy,
   HelpCircle,
   Info,
   Wrench,
@@ -13,21 +15,59 @@ import { AGENT_LABELS, type Session, type SessionEvent } from "@/types";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 
+async function writeClipboard(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.left = "-9999px";
+    document.body.appendChild(area);
+    area.select();
+    document.execCommand("copy");
+    area.remove();
+  }
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      title={copied ? "已复制" : "复制"}
+      aria-label={copied ? "已复制" : "复制"}
+      className="rounded p-0.5 text-zinc-500 opacity-0 hover:bg-zinc-800 hover:text-zinc-200 group-hover:opacity-100 group-focus-within:opacity-100"
+      onClick={() => {
+        void writeClipboard(text).then(() => {
+          setCopied(true);
+          window.setTimeout(() => setCopied(false), 1200);
+        });
+      }}
+    >
+      {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+    </button>
+  );
+}
+
 function Row({
   icon,
   title,
   time,
+  copyText,
   children,
   tone = "default",
 }: {
   icon: React.ReactNode;
   title: string;
   time: string;
+  copyText?: string;
   children: React.ReactNode;
   tone?: "default" | "muted";
 }) {
   return (
-    <div className="event-in px-6 py-2">
+    <div className="event-in group px-6 py-2">
       <div className="mx-auto max-w-3xl">
         <div className="mb-1 flex items-center gap-2">
           <span className="text-zinc-500">{icon}</span>
@@ -40,8 +80,9 @@ function Row({
             {title}
           </span>
           <span className="text-[11px] text-zinc-600">{time}</span>
+          {copyText ? <CopyButton text={copyText} /> : null}
         </div>
-        <div className="pl-6">{children}</div>
+        <div className="cursor-text pl-6">{children}</div>
       </div>
     </div>
   );
@@ -134,7 +175,7 @@ export function EventItem({
       return (
         <div className="event-in px-6 py-2">
           <div className="mx-auto flex max-w-3xl justify-end">
-            <div className="max-w-[85%] rounded-2xl rounded-br-sm bg-indigo-600/90 px-4 py-2.5 text-sm leading-6 text-white">
+            <div className="max-w-[85%] cursor-text rounded-2xl rounded-br-sm bg-indigo-600/90 px-4 py-2.5 text-sm leading-6 text-white">
               <p className="whitespace-pre-wrap">{event.text}</p>
               <p className="mt-1 text-right text-[10px] text-indigo-200/70">
                 {time}
@@ -150,6 +191,7 @@ export function EventItem({
           icon={<Bot className="h-3.5 w-3.5" />}
           title={AGENT_LABELS[session.agent]}
           time={time}
+          copyText={event.text}
         >
           <p className="whitespace-pre-wrap text-sm leading-6 text-zinc-300">
             {event.text}
@@ -164,6 +206,7 @@ export function EventItem({
           title="工具调用"
           time={time}
           tone="muted"
+          copyText={`${event.name}\n${event.summary}`}
         >
           <div className="rounded-md border border-zinc-800 bg-zinc-900/80 px-2.5 py-1.5 font-mono text-xs text-zinc-400">
             <span className="text-cyan-400">{event.name}</span>

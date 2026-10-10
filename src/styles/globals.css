@@ -17,6 +17,26 @@ body {
   overflow: hidden;
 }
 
+/* 侧栏和标签保持不可选。时间线正文要能拖选、复制。
+   user-select 会继承，body 的 none 必须在这里显式打开。 */
+.chat-log {
+  -webkit-user-select: text;
+  user-select: text;
+}
+.chat-log button,
+.chat-log svg {
+  -webkit-user-select: none;
+  user-select: none;
+}
+.chat-log input,
+.chat-log textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
+.chat-log ::selection {
+  background: rgb(99 102 241 / 0.45);
+}
+
 /* 细滚动条 */
 *::-webkit-scrollbar {
   width: 8px;
