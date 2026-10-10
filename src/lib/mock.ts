@@ -121,6 +121,22 @@ function seedNativeResume() {
       timers: [],
     });
     pushEvent(sample.id, { kind: "user-message", text: sample.user });
+    if (sample.id.endsWith("f7c")) {
+      pushEvent(sample.id, {
+        kind: "thinking",
+        text: "先看目录结构和最近改动，再写概括。",
+      });
+      pushEvent(sample.id, {
+        kind: "tool-call",
+        name: "command",
+        summary: "rg --files\n已列出源码",
+      });
+      pushEvent(sample.id, {
+        kind: "tool-call",
+        name: "command",
+        summary: "git status",
+      });
+    }
     pushEvent(sample.id, { kind: "agent-message", text: sample.agent });
   }
 }
@@ -321,11 +337,8 @@ export const mockBackend: Backend = {
       s,
       () =>
         pushEvent(sessionId, {
-          kind: "agent-message",
-          text: `已收到任务（${agentLabel(s.meta.agent)} 桩模式）：「${text.slice(
-            0,
-            48,
-          )}」。\n\n正在分析项目上下文并规划步骤…`,
+          kind: "thinking",
+          text: `先看「${text.slice(0, 48)}」涉及的入口和依赖，再决定要改哪些文件。`,
         }),
       350,
     );

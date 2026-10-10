@@ -1,10 +1,36 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { MessageSquareDashed } from "lucide-react";
 
 import { pendingPrompt } from "@/lib/utils";
 import type { Session, SessionEvent } from "@/types";
 import { Composer } from "./Composer";
 import { EventItem } from "./EventItem";
+import { WorkDetailsGroup } from "./WorkDetailsGroup";
+
+type TimelineBlock =
+  | { type: "event"; event: SessionEvent }
+  | { type: "work"; id: string; events: SessionEvent[] };
+
+/** 连续的工具调用并成一个折叠组；status-changed / prompt-resolved 不渲染。 */
+function buildBlocks(events: SessionEvent[]): TimelineBlock[] {
+  const blocks: TimelineBlock[] = [];
+  for (const event of events) {
+    if (event.kind === "status-changed" || event.kind === "prompt-resolved") {
+      continue;
+    }
+    if (event.kind === "tool-call") {
+      const last = blocks[blocks.length - 1];
+      if (last && last.type === "work") {
+        last.events.push(event);
+      } else {
+        blocks.push({ type: "work", id: event.id, events: [event] });
+      }
+    } else {
+      blocks.push({ type: "event", event });
+    }
+  }
+  return blocks;
+}
 
 export function ChatView({
   session,
@@ -25,12 +51,32 @@ export function ChatView({
     return map;
   }, [events]);
 
+  const blocks = useMemo(() => buildBlocks(events), [events]);
+  const [workOverrides, setWorkOverrides] = useState<ReadonlyMap<string, boolean>>(
+    new Map(),
+  );
+  const [thinkingOverrides, setThinkingOverrides] = useState<
+    ReadonlyMap<string, boolean>
+  >(new Map());
+  useEffect(() => {
+    setWorkOverrides(new Map());
+    setThinkingOverrides(new Map());
+  }, [session.id]);
+
   useEffect(() => {
     const el = scrollRef.current;
     if (el && stickToBottom.current) {
       el.scrollTop = el.scrollHeight;
     }
   }, [events.length, session.id]);
+
+  const thinkingDefaultOpen = (eventId: string) => {
+    const index = events.findIndex((event) => event.id === eventId);
+    const laterAnswer = events
+      .slice(index + 1)
+      .some((event) => event.kind === "agent-message");
+    return !laterAnswer && session.status === "running";
+  };
 
   return (
     <>
@@ -41,7 +87,7 @@ export function ChatView({
           stickToBottom.current =
             el.scrollHeight - el.scrollTop - el.clientHeight < 80;
         }}
-        className="min-h-0 flex-1 overflow-y-auto py-4"
+        className="chat-log min-h-0 flex-1 overflow-y-auto py-4"
       >
         {events.filter((e) => e.kind !== "status-changed").length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-zinc-600">
@@ -49,18 +95,51 @@ export function ChatView({
             <p className="text-sm">发送第一条消息，开始这轮会话</p>
           </div>
         ) : (
-          events.map((event) => (
-            <EventItem
-              key={event.id}
-              event={event}
-              session={session}
-              resolvedAnswer={
-                event.kind === "prompt"
-                  ? (resolvedAnswers.get(event.prompt_id) ?? null)
-                  : null
-              }
-            />
-          ))
+          blocks.map((block, index) => {
+            if (block.type === "work") {
+              const live =
+                index === blocks.length - 1 && session.status === "running";
+              const expanded = workOverrides.get(block.id) ?? live;
+              return (
+                <WorkDetailsGroup
+                  key={block.id}
+                  events={block.events}
+                  session={session}
+                  live={live}
+                  expanded={expanded}
+                  onToggle={() =>
+                    setWorkOverrides((prev) => new Map(prev).set(block.id, !expanded))
+                  }
+                />
+              );
+            }
+            const event = block.event;
+            const thinkingOpen =
+              event.kind === "thinking"
+                ? (thinkingOverrides.get(event.id) ?? thinkingDefaultOpen(event.id))
+                : undefined;
+            return (
+              <EventItem
+                key={event.id}
+                event={event}
+                session={session}
+                resolvedAnswer={
+                  event.kind === "prompt"
+                    ? (resolvedAnswers.get(event.prompt_id) ?? null)
+                    : null
+                }
+                thinkingOpen={thinkingOpen}
+                onToggleThinking={
+                  event.kind === "thinking"
+                    ? () =>
+                        setThinkingOverrides((prev) =>
+                          new Map(prev).set(event.id, !thinkingOpen),
+                        )
+                    : undefined
+                }
+              />
+            );
+          })
         )}
         {session.status === "running" && (
           <div className="px-6 py-2">

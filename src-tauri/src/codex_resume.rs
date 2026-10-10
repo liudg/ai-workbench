@@ -22,6 +22,7 @@ use tokio::process::{Child, Command};
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::timeout;
 
+use crate::encoding::{apply_utf8_env, decode_child_bytes};
 use crate::models::{
     strip_verbatim_prefix, AgentKind, Project, Session, SessionEventBody, SessionStatus,
 };
@@ -313,6 +314,15 @@ fn push_history_item(bodies: &mut Vec<SessionEventBody>, item: &Value) {
                 });
             }
         }
+        "reasoning" => {
+            let text = reasoning_text(item);
+            if !text.trim().is_empty() {
+                bodies.push(SessionEventBody::Thinking {
+                    text: take_chars(&text, 20_000),
+                    stream_id: None,
+                });
+            }
+        }
         "commandExecution" => {
             let command = item.get("command").and_then(Value::as_str).unwrap_or("");
             let status = item.get("status").and_then(Value::as_str).unwrap_or("");
@@ -336,6 +346,35 @@ fn push_history_item(bodies: &mut Vec<SessionEventBody>, item: &Value) {
             }
         }
         _ => {}
+    }
+}
+
+pub fn reasoning_text(item: &Value) -> String {
+    let summary = joined_parts(item.get("summary"));
+    if !summary.trim().is_empty() {
+        return summary;
+    }
+    joined_parts(item.get("content"))
+}
+
+fn joined_parts(value: Option<&Value>) -> String {
+    match value {
+        Some(Value::String(text)) => text.clone(),
+        Some(Value::Array(parts)) => parts
+            .iter()
+            .filter_map(part_text)
+            .filter(|text| !text.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n"),
+        _ => String::new(),
+    }
+}
+
+fn part_text(part: &Value) -> Option<String> {
+    match part {
+        Value::String(text) => Some(text.clone()),
+        Value::Object(_) => part.get("text").and_then(Value::as_str).map(str::to_string),
+        _ => None,
     }
 }
 
@@ -413,6 +452,7 @@ impl RpcClient {
             .stderr(Stdio::null())
             .kill_on_drop(true);
         apply_loopback_no_proxy(&mut command);
+        apply_utf8_env(&mut command);
         hide_console(&mut command);
         let mut child = command
             .spawn()
@@ -442,8 +482,23 @@ impl RpcClient {
         let reader_waiters = Arc::clone(&waiters);
         let reply = out_tx.clone();
         tokio::spawn(async move {
-            let mut lines = BufReader::new(stdout).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
+            let mut lines = BufReader::new(stdout);
+            let mut raw = Vec::new();
+            loop {
+                raw.clear();
+                let Ok(n) = lines.read_until(b'\n', &mut raw).await else {
+                    break;
+                };
+                if n == 0 {
+                    break;
+                }
+                if raw.last() == Some(&b'\n') {
+                    raw.pop();
+                }
+                if raw.last() == Some(&b'\r') {
+                    raw.pop();
+                }
+                let line = decode_child_bytes(&raw);
                 let Ok(message) = serde_json::from_str::<Value>(&line) else {
                     continue;
                 };
@@ -799,6 +854,23 @@ mod tests {
         assert!(matches!(bodies[1], SessionEventBody::AgentMessage { ref text, .. } if text == "完成"));
     }
 
+    #[test]
+    fn history_prefers_reasoning_summary_over_content() {
+        let turns = vec![json!({
+            "items": [{
+                "type": "reasoning",
+                "id": "r1",
+                "summary": [{ "type": "summary_text", "text": "先看入口" }],
+                "content": ["更长的原文"]
+            }]
+        })];
+        let bodies = bodies_from_turns(&turns);
+        assert!(matches!(
+            bodies[0],
+            SessionEventBody::Thinking { ref text, stream_id: None } if text == "先看入口"
+        ));
+    }
+
     #[tokio::test]
     #[ignore = "calls the local Codex CLI"]
     async fn lists_interactive_resume_threads() {
@@ -852,5 +924,80 @@ mod tests {
         }
         let _ = session.stop().await;
         assert!(saw_history, "resumed thread did not load any messages");
+    }
+
+    #[tokio::test]
+    #[ignore = "calls the local Codex CLI"]
+    async fn persistent_start_shows_up_in_resume_list_then_is_deleted() {
+        use crate::agents::codex_cli::CodexCliAdapter;
+        use crate::agents::{AgentAdapter, SessionContext};
+        use tokio::sync::mpsc;
+
+        let dir = std::env::temp_dir().join(format!(
+            "ai-workbench-resume-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("temp cwd");
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let session = CodexCliAdapter::new()
+            .start_session(
+                SessionContext {
+                    session_id: String::new(),
+                    project_path: dir.display().to_string(),
+                    access_mode: Some("full".into()),
+                    resume_thread_id: None,
+                    persist_thread: true,
+                },
+                tx,
+            )
+            .await
+            .expect("thread/start");
+        let id = session.native_thread_id().expect("native thread id");
+        assert!(!id.is_empty());
+        let send = session
+            .send_message("Reply with the single word ok. Do not use tools.".into())
+            .await;
+        let mut saw_reply = false;
+        if send.is_ok() {
+            let deadline = std::time::Instant::now() + Duration::from_secs(90);
+            while std::time::Instant::now() < deadline {
+                match timeout(Duration::from_millis(500), rx.recv()).await {
+                    Ok(Some(SessionEventBody::AgentMessage { text, .. })) if !text.trim().is_empty() => {
+                        saw_reply = true;
+                        break;
+                    }
+                    Ok(Some(SessionEventBody::Error { message })) => {
+                        panic!("codex turn failed: {message}");
+                    }
+                    Ok(None) => break,
+                    _ => {}
+                }
+            }
+        }
+
+        let directory = CodexDirectory::new();
+        let listed = directory.list_threads().await;
+        let found = listed
+            .as_ref()
+            .map(|threads| threads.iter().any(|thread| thread.id == id))
+            .unwrap_or(false);
+        let _ = session.stop().await;
+
+        let client = RpcClient::spawn().await.expect("delete client");
+        let deleted = client
+            .request(
+                "thread/delete",
+                json!({ "threadId": id }),
+                Duration::from_secs(30),
+            )
+            .await;
+        drop(client);
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert!(send.is_ok(), "send failed: {send:?}");
+        assert!(saw_reply, "Codex did not answer");
+        assert!(listed.is_ok(), "thread/list failed: {listed:?}");
+        assert!(found, "new thread {id} is missing from codex resume list");
+        deleted.expect("thread/delete");
     }
 }

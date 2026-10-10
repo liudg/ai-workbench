@@ -1,5 +1,9 @@
 //! Claude Code 适配器（v1 桩实现）。
 //!
+//! 壳层约定与 Codex 相同：接入后会话 id 必须来自 Claude CLI 自己的会话存储
+//! （`claude` 能 resume 的那份列表），工作台不再另造一套 id。当前桩没有官方
+//! 会话，临时 id 只活在这次进程里。
+//!
 //! 真实集成方案（下一步）：
 //! - Claude Code 是交互式 TUI：用 `portable-pty` 挂伪终端运行 `claude`，
 //!   解析终端输出识别提问 / 审批界面；

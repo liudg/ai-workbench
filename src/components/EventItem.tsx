@@ -2,7 +2,9 @@ import { useState } from "react";
 import {
   AlertCircle,
   Bot,
+  Brain,
   Check,
+  ChevronRight,
   Copy,
   HelpCircle,
   Info,
@@ -16,18 +18,59 @@ import { AGENT_LABELS, type Session, type SessionEvent } from "@/types";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 
+async function writeClipboard(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.left = "-9999px";
+    document.body.appendChild(area);
+    area.select();
+    document.execCommand("copy");
+    area.remove();
+  }
+}
+
+function CopyButton({ text, className }: { text: string; className?: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      title={copied ? "已复制" : "复制"}
+      aria-label={copied ? "已复制" : "复制"}
+      className={cn(
+        "rounded p-0.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200",
+        className,
+      )}
+      onClick={() => {
+        void writeClipboard(text).then(() => {
+          setCopied(true);
+          window.setTimeout(() => setCopied(false), 1200);
+        });
+      }}
+    >
+      {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+    </button>
+  );
+}
+
 function Row({
   icon,
   title,
   time,
   children,
   tone = "default",
+  copyText,
 }: {
   icon: React.ReactNode;
   title: string;
   time: string;
   children: React.ReactNode;
   tone?: "default" | "muted";
+  copyText?: string;
 }) {
   return (
     <div className="event-in group px-6 py-2">
@@ -45,6 +88,12 @@ function Row({
           <span className="text-[11px] text-zinc-600 opacity-0 transition-opacity group-hover:opacity-100">
             {time}
           </span>
+          {copyText ? (
+            <CopyButton
+              text={copyText}
+              className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+            />
+          ) : null}
         </div>
         <div className="pl-6">{children}</div>
       </div>
@@ -62,25 +111,6 @@ function UserMessage({
   time: string;
 }) {
   const seedComposer = useWorkbench((s) => s.seedComposer);
-  const [copied, setCopied] = useState(false);
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      const area = document.createElement("textarea");
-      area.value = text;
-      area.setAttribute("readonly", "");
-      area.style.position = "fixed";
-      area.style.left = "-9999px";
-      document.body.appendChild(area);
-      area.select();
-      document.execCommand("copy");
-      area.remove();
-    }
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1200);
-  };
 
   return (
     <div className="event-in group px-6 py-2">
@@ -91,15 +121,7 @@ function UserMessage({
           </div>
           <div className="flex max-h-0 items-center gap-1 overflow-hidden opacity-0 group-hover:mt-1 group-hover:max-h-6 group-hover:overflow-visible group-hover:opacity-100 group-focus-within:mt-1 group-focus-within:max-h-6 group-focus-within:overflow-visible group-focus-within:opacity-100">
             <span className="px-0.5 text-[11px] tabular-nums text-zinc-500">{time}</span>
-            <button
-              type="button"
-              title={copied ? "已复制" : "复制"}
-              aria-label={copied ? "已复制" : "复制"}
-              className="rounded p-0.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
-              onClick={() => void copy()}
-            >
-              {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-            </button>
+            <CopyButton text={text} />
             <button
               type="button"
               title="编辑"
@@ -187,14 +209,107 @@ function PromptCard({
   );
 }
 
+function ToolCallItem({
+  name,
+  summary,
+  time,
+}: {
+  name: string;
+  summary: string;
+  time: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const first = summary.split("\n")[0] ?? summary;
+  return (
+    <Row
+      icon={<Wrench className="h-3.5 w-3.5" />}
+      title="工具调用"
+      time={time}
+      tone="muted"
+      copyText={summary ? `${name}\n${summary}` : name}
+    >
+      <div className="rounded-md border border-zinc-800 bg-zinc-900/80 px-2.5 py-1.5 font-mono text-xs text-zinc-400">
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen((value) => !value)}
+          className="flex w-full items-start gap-1 text-left"
+        >
+          <ChevronRight
+            className={cn(
+              "mt-0.5 h-3 w-3 shrink-0 text-zinc-600 transition-transform",
+              open && "rotate-90",
+            )}
+          />
+          <span className="text-cyan-400">{name}</span>
+        </button>
+        <p className="mt-1 whitespace-pre-wrap break-all pl-4 text-zinc-500">
+          {open ? summary : first}
+        </p>
+      </div>
+    </Row>
+  );
+}
+
+function ThinkingBlock({
+  text,
+  time,
+  expanded,
+  onToggle,
+}: {
+  text: string;
+  time: string;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const first = text.split("\n")[0] ?? text;
+  return (
+    <div className="event-in group px-6 py-2">
+      <div className="mx-auto max-w-3xl">
+        <div className="mb-1 flex items-center gap-2">
+          <button
+            type="button"
+            aria-expanded={expanded}
+            onClick={onToggle}
+            className="flex items-center gap-2 text-left"
+          >
+            <ChevronRight
+              className={cn(
+                "h-3.5 w-3.5 shrink-0 text-zinc-600 transition-transform",
+                expanded && "rotate-90",
+              )}
+            />
+            <Brain className="h-3.5 w-3.5 text-zinc-500" />
+            <span className="text-xs font-medium text-zinc-500">思考</span>
+          </button>
+          <span className="text-[11px] text-zinc-600 opacity-0 transition-opacity group-hover:opacity-100">
+            {time}
+          </span>
+          <CopyButton
+            text={text}
+            className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+          />
+        </div>
+        <p className="whitespace-pre-wrap pl-6 text-sm leading-6 text-zinc-400">
+          {expanded ? text : first}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export function EventItem({
   event,
   session,
   resolvedAnswer,
+  thinkingOpen = false,
+  onToggleThinking,
 }: {
   event: SessionEvent;
   session: Session;
   resolvedAnswer: string | null;
+  thinkingOpen?: boolean;
+  onToggleThinking?: () => void;
 }) {
   const time = formatMessageTime(event.ts);
 
@@ -208,6 +323,7 @@ export function EventItem({
           icon={<Bot className="h-3.5 w-3.5" />}
           title={AGENT_LABELS[session.agent]}
           time={time}
+          copyText={event.text}
         >
           <p className="whitespace-pre-wrap text-sm leading-6 text-zinc-300">
             {event.text}
@@ -215,22 +331,18 @@ export function EventItem({
         </Row>
       );
 
-    case "tool-call":
+    case "thinking":
       return (
-        <Row
-          icon={<Wrench className="h-3.5 w-3.5" />}
-          title="工具调用"
+        <ThinkingBlock
+          text={event.text}
           time={time}
-          tone="muted"
-        >
-          <div className="rounded-md border border-zinc-800 bg-zinc-900/80 px-2.5 py-1.5 font-mono text-xs text-zinc-400">
-            <span className="text-cyan-400">{event.name}</span>
-            <p className="mt-1 whitespace-pre-wrap break-all text-zinc-500">
-              {event.summary}
-            </p>
-          </div>
-        </Row>
+          expanded={thinkingOpen}
+          onToggle={onToggleThinking ?? (() => undefined)}
+        />
       );
+
+    case "tool-call":
+      return <ToolCallItem name={event.name} summary={event.summary} time={time} />;
 
     case "prompt":
       return (

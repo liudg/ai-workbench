@@ -98,6 +98,12 @@ pub enum SessionEventBody {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         stream_id: Option<String>,
     },
+    /// 模型思考。有 `stream_id` 时覆盖同一条，而不是追加。
+    Thinking {
+        text: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        stream_id: Option<String>,
+    },
     ToolCall {
         name: String,
         summary: String,

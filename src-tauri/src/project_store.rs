@@ -109,11 +109,12 @@ pub fn create_project_dir(
             use std::os::windows::process::CommandExt;
             git.creation_flags(0x08000000);
         }
+        crate::encoding::apply_utf8_env_std(&mut git);
         match git.output() {
             Ok(out) if out.status.success() => None,
             Ok(out) => Some(format!(
                 "git init 失败: {}",
-                String::from_utf8_lossy(&out.stderr).trim()
+                crate::encoding::decode_child_bytes(&out.stderr).trim()
             )),
             Err(e) => Some(format!("未找到 git，已跳过初始化（{e}）")),
         }

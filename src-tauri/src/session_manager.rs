@@ -182,10 +182,14 @@ impl SessionManager {
             .start_session(ctx, sink)
             .await
             .map_err(|err| err.to_string())?;
-        let session_id = handle
-            .native_thread_id()
-            .filter(|id| !id.is_empty())
-            .unwrap_or_else(new_id);
+        let session_id = match handle.native_thread_id().filter(|id| !id.is_empty()) {
+            Some(id) => id,
+            None if agent == AgentKind::CodexCli => {
+                let _ = handle.stop().await;
+                return Err("Codex 没有返回可 resume 的 thread id，会话没有建立。".into());
+            }
+            None => new_id(),
+        };
         let now = now_millis();
         let title = if agent == AgentKind::CodexCli {
             "未命名会话".to_string()
@@ -420,26 +424,34 @@ fn apply_body(
     }
 }
 
-/// 同一 `stream_id` 的助手消息覆盖上一条，并沿用原来的事件 id。
+/// 同一 `stream_id` 的助手消息或思考覆盖上一条，并沿用原来的事件 id。
 fn replace_stream(entry: &mut SessionEntry, body: &SessionEventBody) -> Option<SessionEvent> {
-    let SessionEventBody::AgentMessage {
-        text,
-        stream_id: Some(stream_id),
-    } = body
-    else {
-        return None;
+    let (text, stream_id, thinking) = match body {
+        SessionEventBody::AgentMessage {
+            text,
+            stream_id: Some(stream_id),
+        } => (text, stream_id, false),
+        SessionEventBody::Thinking {
+            text,
+            stream_id: Some(stream_id),
+        } => (text, stream_id, true),
+        _ => return None,
     };
-    let existing = entry.events.iter_mut().rev().find(|event| {
-        matches!(
-            &event.body,
-            SessionEventBody::AgentMessage {
-                stream_id: Some(id),
-                ..
-            } if id == stream_id
-        )
+    let existing = entry.events.iter_mut().rev().find(|event| match &event.body {
+        SessionEventBody::AgentMessage {
+            stream_id: Some(id),
+            ..
+        } if !thinking => id == stream_id,
+        SessionEventBody::Thinking {
+            stream_id: Some(id),
+            ..
+        } if thinking => id == stream_id,
+        _ => false,
     })?;
-    if let SessionEventBody::AgentMessage { text: slot, .. } = &mut existing.body {
-        *slot = text.clone();
+    match &mut existing.body {
+        SessionEventBody::AgentMessage { text: slot, .. }
+        | SessionEventBody::Thinking { text: slot, .. } => *slot = text.clone(),
+        _ => return None,
     }
     existing.ts = now_millis();
     entry.meta.updated_at = existing.ts;

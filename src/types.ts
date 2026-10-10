@@ -42,6 +42,7 @@ export interface PromptOption {
 export type SessionEventBody =
   | { kind: "user-message"; text: string }
   | { kind: "agent-message"; text: string; stream_id?: string }
+  | { kind: "thinking"; text: string; stream_id?: string }
   | { kind: "tool-call"; name: string; summary: string }
   | {
       kind: "prompt";

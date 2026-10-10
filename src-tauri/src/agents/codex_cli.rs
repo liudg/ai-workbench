@@ -24,8 +24,9 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::time::timeout;
 
 use crate::codex_resume::{
-    bodies_from_turns, chronological_turns, HISTORY_PAGE_CAP, HISTORY_TURN_LIMIT,
+    bodies_from_turns, chronological_turns, reasoning_text, HISTORY_PAGE_CAP, HISTORY_TURN_LIMIT,
 };
+use crate::encoding::{apply_utf8_env, decode_child_bytes};
 use crate::models::{
     strip_verbatim_prefix, AgentCatalog, AgentKind, AgentModelOption, AgentSkillOption, PromptKind,
     PromptOption, ReasoningEffortOption, SessionEventBody, SessionStatus,
@@ -121,6 +122,8 @@ struct Shared {
     /// 不等待结果的 JSON-RPC id → method，用来区分 turn/start 失败和其它命令失败。
     rpc_methods: Mutex<HashMap<u64, String>>,
     streams: Mutex<HashMap<String, StreamBuf>>,
+    /// 第一条用户消息会把 Codex 线程名写成标题。在此之前用「未命名会话」落盘。
+    titled: AtomicBool,
 }
 
 pub struct CodexCliAdapter;
@@ -164,6 +167,7 @@ impl AgentAdapter for CodexCliAdapter {
         // 系统代理（如 Clash）会把 127.0.0.1 的本地 MCP 回成空 HTTP 502。
         // 只把回环地址加进 NO_PROXY，远程 MCP 仍走用户代理。
         apply_loopback_no_proxy(&mut command);
+        apply_utf8_env(&mut command);
         hide_console(&mut command);
         let mut child = command.spawn().map_err(|e| {
             AgentError::Runtime(format!("无法启动 Codex CLI（{}）：{e}", bin.display()))
@@ -223,17 +227,24 @@ impl AgentAdapter for CodexCliAdapter {
             waiters: Mutex::new(HashMap::new()),
             rpc_methods: Mutex::new(HashMap::new()),
             streams: Mutex::new(HashMap::new()),
+            titled: AtomicBool::new(false),
         });
 
         let reader = Arc::clone(&shared);
         tokio::spawn(async move {
-            let mut lines = BufReader::new(stdout).lines();
+            let mut lines = BufReader::new(stdout);
+            let mut raw = Vec::new();
             loop {
-                match lines.next_line().await {
-                    Ok(Some(line)) => reader.handle_line(&line),
-                    Ok(None) => {
+                raw.clear();
+                match lines.read_until(b'\n', &mut raw).await {
+                    Ok(0) => {
                         reader.on_exit();
                         break;
+                    }
+                    Ok(_) => {
+                        trim_newline(&mut raw);
+                        let line = decode_child_bytes(&raw);
+                        reader.handle_line(&line);
                     }
                     Err(err) => {
                         emit(
@@ -251,9 +262,19 @@ impl AgentAdapter for CodexCliAdapter {
 
         let err_events = events.clone();
         tokio::spawn(async move {
-            let mut lines = BufReader::new(stderr).lines();
+            let mut lines = BufReader::new(stderr);
+            let mut raw = Vec::new();
             let mut seen_mcp = HashSet::new();
-            while let Ok(Some(line)) = lines.next_line().await {
+            loop {
+                raw.clear();
+                let Ok(n) = lines.read_until(b'\n', &mut raw).await else {
+                    break;
+                };
+                if n == 0 {
+                    break;
+                }
+                trim_newline(&mut raw);
+                let line = decode_child_bytes(&raw);
                 match classify_codex_stderr(&line) {
                     StderrClass::Ignore => {}
                     StderrClass::Error(message) => {
@@ -474,6 +495,17 @@ impl Shared {
             let skills = self.skills.lock().unwrap();
             build_turn_input(&text, &skills)
         };
+        if !self.titled.swap(true, Ordering::SeqCst) {
+            let name = truncate(text.lines().next().unwrap_or("").trim(), 48);
+            if !name.is_empty() {
+                let _ = self
+                    .request(
+                        "thread/name/set",
+                        json!({ "threadId": thread_id.clone(), "name": name }),
+                    )
+                    .await;
+            }
+        }
         if !skill_labels.is_empty() {
             emit(
                 &self.events,
@@ -614,7 +646,25 @@ impl Shared {
         {
             *self.model.lock().unwrap() = model.to_string();
         }
-        *self.thread_id.lock().unwrap() = Some(thread_id);
+        *self.thread_id.lock().unwrap() = Some(thread_id.clone());
+        // `thread/start` 只在内存里建线程。Codex 要等线程名写入后才把 rollout
+        // 落到 `~/.codex/sessions`，`codex resume <id>` 才能找到它。
+        // 还没有任何回合时，`thread/list`（即 `codex resume` 选择器）不会列出它；
+        // 第一条消息完成后再出现。
+        if let Err(err) = self
+            .request(
+                "thread/name/set",
+                json!({ "threadId": thread_id, "name": "未命名会话" }),
+            )
+            .await
+        {
+            emit(
+                &self.events,
+                SessionEventBody::System {
+                    text: format!("Codex 线程已创建，但写入 resume 记录失败：{err}"),
+                },
+            );
+        }
         Ok(())
     }
 
@@ -775,16 +825,19 @@ impl Shared {
 
     async fn emit_diff(&self) {
         let mut git = Command::new("git");
-        git.arg("-C")
+        git.arg("-c")
+            .arg("core.quotepath=false")
+            .arg("-C")
             .arg(&self.cwd)
             .arg("diff")
             .arg("--stat")
             .arg("HEAD");
+        apply_utf8_env(&mut git);
         hide_console(&mut git);
         let output = git.output().await;
         let text = match output {
             Ok(output) if output.status.success() => {
-                let mut body = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                let mut body = decode_child_bytes(&output.stdout).trim().to_string();
                 if body.is_empty() {
                     body = "工作区相对 HEAD 没有差异。".into();
                 }
@@ -795,7 +848,7 @@ impl Shared {
                 body
             }
             Ok(output) => {
-                let err = String::from_utf8_lossy(&output.stderr);
+                let err = decode_child_bytes(&output.stderr);
                 format!("无法读取 git diff：{}", err.trim())
             }
             Err(err) => format!("无法运行 git：{err}"),
@@ -1051,6 +1104,15 @@ impl Shared {
                     emit_status(&self.events, SessionStatus::Completed);
                 }
             }
+            "item/reasoning/summaryTextDelta" | "item/reasoning/textDelta" => {
+                let Some(item_id) = params.get("itemId").and_then(Value::as_str) else {
+                    return;
+                };
+                let delta = params.get("delta").and_then(Value::as_str).unwrap_or("");
+                if !delta.is_empty() {
+                    self.push_thinking(item_id, delta, false);
+                }
+            }
             "item/agentMessage/delta" => {
                 let Some(item_id) = params.get("itemId").and_then(Value::as_str) else {
                     return;
@@ -1090,6 +1152,34 @@ impl Shared {
         let kind = item.get("type").and_then(Value::as_str).unwrap_or("");
         let id = item.get("id").and_then(Value::as_str).unwrap_or("");
         match kind {
+            "reasoning" => {
+                let text = reasoning_text(item);
+                if id.is_empty() {
+                    let shown = if text.trim().is_empty() {
+                        if completed {
+                            return;
+                        }
+                        "思考中…".to_string()
+                    } else {
+                        text
+                    };
+                    emit(
+                        &self.events,
+                        SessionEventBody::Thinking {
+                            text: shown,
+                            stream_id: None,
+                        },
+                    );
+                    return;
+                }
+                if text.trim().is_empty() {
+                    if !completed {
+                        self.push_thinking(id, "思考中…", true);
+                    }
+                    return;
+                }
+                self.push_thinking(id, &text, true);
+            }
             "agentMessage" => {
                 if let Some(text) = item.get("text").and_then(Value::as_str) {
                     if !id.is_empty() {
@@ -1216,6 +1306,42 @@ impl Shared {
         emit(
             &self.events,
             SessionEventBody::AgentMessage {
+                text,
+                stream_id: Some(item_id.to_string()),
+            },
+        );
+    }
+
+    fn push_thinking(&self, item_id: &str, piece: &str, replace: bool) {
+        let key = format!("think:{item_id}");
+        let mut streams = self.streams.lock().unwrap();
+        if replace && piece == "思考中…" {
+            if let Some(buf) = streams.get(&key) {
+                if !buf.text.is_empty() && buf.text != "思考中…" {
+                    return;
+                }
+            }
+        }
+        let existed = streams.contains_key(&key);
+        let buf = streams.entry(key).or_insert_with(|| StreamBuf {
+            text: String::new(),
+            last_emit: Instant::now() - Duration::from_secs(1),
+        });
+        if replace || buf.text.is_empty() || buf.text == "思考中…" {
+            buf.text = piece.to_string();
+        } else {
+            buf.text.push_str(piece);
+        }
+        let due = replace || !existed || buf.last_emit.elapsed() >= Duration::from_millis(80);
+        if !due || buf.text.is_empty() {
+            return;
+        }
+        buf.last_emit = Instant::now();
+        let text = buf.text.clone();
+        drop(streams);
+        emit(
+            &self.events,
+            SessionEventBody::Thinking {
                 text,
                 stream_id: Some(item_id.to_string()),
             },
@@ -1523,6 +1649,15 @@ fn mcp_failure_target(line: &str) -> Option<String> {
     }
 }
 
+fn trim_newline(raw: &mut Vec<u8>) {
+    if raw.last() == Some(&b'\n') {
+        raw.pop();
+    }
+    if raw.last() == Some(&b'\r') {
+        raw.pop();
+    }
+}
+
 fn truncate(text: &str, max: usize) -> String {
     let count = text.chars().count();
     if count <= max {
@@ -1597,11 +1732,12 @@ fn hide_console(command: &mut Command) {
 async fn codex_version(bin: &Path) -> String {
     let mut command = Command::new(bin);
     command.arg("--version");
+    apply_utf8_env(&mut command);
     hide_console(&mut command);
     let Ok(output) = command.output().await else {
         return "未知版本".into();
     };
-    let text = String::from_utf8_lossy(&output.stdout);
+    let text = decode_child_bytes(&output.stdout);
     text.lines()
         .next()
         .unwrap_or("codex")

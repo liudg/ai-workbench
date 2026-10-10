@@ -49,3 +49,25 @@ body {
 .event-in {
   animation: event-in 160ms ease-out;
 }
+
+.chat-log {
+  -webkit-user-select: text;
+  user-select: text;
+  cursor: text;
+}
+.chat-log button,
+.chat-log svg {
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
+}
+.chat-log input,
+.chat-log textarea,
+input,
+textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
+.chat-log ::selection {
+  background: rgb(99 102 241 / 0.45);
+}

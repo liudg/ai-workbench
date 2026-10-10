@@ -11,6 +11,7 @@
 mod agents;
 mod codex_resume;
 mod commands;
+mod encoding;
 mod models;
 mod project_store;
 mod session_manager;
