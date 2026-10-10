@@ -37,14 +37,14 @@ export function WorkDetailsGroup({
     : `${count} 次工具调用${duration ? ` · 用时 ${duration}` : ""}`;
 
   return (
-    <div className="event-in">
-      <div className="px-6 py-1">
-        <div className="mx-auto max-w-3xl">
+    <div className="event-in min-w-0">
+      <div className="min-w-0 px-6 py-1">
+        <div className="mx-auto min-w-0 max-w-3xl">
           <button
             type="button"
             aria-expanded={expanded}
             onClick={onToggle}
-            className="group flex w-full items-center gap-2 rounded py-0.5 text-left"
+            className="group flex w-full min-w-0 items-center gap-2 rounded py-0.5 text-left"
           >
             <ChevronRight
               className={cn(
@@ -58,7 +58,7 @@ export function WorkDetailsGroup({
                 live ? "animate-pulse text-zinc-500" : "text-zinc-600",
               )}
             />
-            <span className="text-xs text-zinc-500 group-hover:text-zinc-400">
+            <span className="min-w-0 break-words text-xs text-zinc-500 group-hover:text-zinc-400">
               {label}
             </span>
           </button>

@@ -52,10 +52,17 @@ body {
 
 /* 侧栏和标签保持不可选。时间线正文要能拖选、复制。
    user-select 会继承，body 的 none 必须在这里显式打开。 */
+.chat-log,
+.composer-root {
+  min-width: 0;
+  /* 长 token（路径、日志、错误行）参与 min-content，避免把横向滚动条撑出来。 */
+  overflow-wrap: anywhere;
+}
 .chat-log {
   -webkit-user-select: text;
   user-select: text;
   cursor: text;
+  overflow-x: hidden;
 }
 .chat-log button,
 .chat-log svg {

@@ -219,18 +219,18 @@ export function Composer({
   };
 
   return (
-    <div className="shrink-0 px-4 pb-4 pt-1">
+    <div className="composer-root min-w-0 shrink-0 px-4 pb-4 pt-1">
       {occupied && (
-        <p className="mx-auto mb-2 flex max-w-3xl items-center justify-center gap-1.5 text-center text-xs leading-5 text-amber-200/90">
+        <p className="mx-auto mb-2 max-w-3xl break-words px-2 text-center text-xs leading-5 text-amber-200/90">
           此会话正被其他进程占用，当前只读，不能发送。
         </p>
       )}
-      <div className="relative mx-auto max-w-3xl">
+      <div className="relative mx-auto min-w-0 max-w-3xl">
       {skillOpen && (
         <div
           role="listbox"
           aria-label="技能"
-          className="absolute bottom-full left-0 right-0 z-20 mb-2 max-h-64 overflow-y-auto rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
+          className="absolute bottom-full left-0 right-0 z-20 mb-2 max-h-64 min-w-0 overflow-x-hidden overflow-y-auto rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
         >
           {skillMatches.length === 0 ? (
             <p className="px-3 py-2 text-xs text-zinc-500">
@@ -244,7 +244,7 @@ export function Composer({
                 role="option"
                 aria-selected={skill === activeSkill}
                 className={cn(
-                  "flex w-full items-baseline gap-3 px-3 py-2 text-left hover:bg-zinc-800",
+                  "flex w-full min-w-0 items-baseline gap-3 px-3 py-2 text-left hover:bg-zinc-800",
                   skill === activeSkill && "bg-zinc-800",
                 )}
                 onMouseDown={(event) => {
@@ -253,8 +253,8 @@ export function Composer({
                   applySkill(skill);
                 }}
               >
-                <span className="font-mono text-sm text-zinc-100">{`$${skill.mention}`}</span>
-                <span className="truncate text-xs text-zinc-500">
+                <span className="min-w-0 shrink break-all font-mono text-sm text-zinc-100">{`$${skill.mention}`}</span>
+                <span className="min-w-0 truncate text-xs text-zinc-500">
                   {skill.label}
                   {skill.description ? ` · ${skill.description}` : ""}
                 </span>
@@ -281,7 +281,7 @@ export function Composer({
               role="option"
               aria-selected={index === Math.min(slashIndex, slashMatches.length - 1)}
               className={cn(
-                "flex w-full items-baseline gap-3 px-3 py-2 text-left hover:bg-zinc-800",
+                "flex w-full min-w-0 items-baseline gap-3 px-3 py-2 text-left hover:bg-zinc-800",
                 index === Math.min(slashIndex, slashMatches.length - 1) && "bg-zinc-800",
               )}
               onMouseDown={(event) => {
@@ -290,8 +290,8 @@ export function Composer({
                 applySlash(cmd);
               }}
             >
-              <span className="font-mono text-sm text-zinc-100">{cmd.name}</span>
-              <span className="truncate text-xs text-zinc-500">{cmd.hint}</span>
+              <span className="shrink-0 font-mono text-sm text-zinc-100">{cmd.name}</span>
+              <span className="min-w-0 truncate text-xs text-zinc-500">{cmd.hint}</span>
             </button>
           ))}
           {token === "/" && (
@@ -302,7 +302,7 @@ export function Composer({
         </div>
       )}
       <div
-        className="rounded-[28px] border border-zinc-700/90 bg-zinc-900 px-3 pb-2.5 pt-3 shadow-lg shadow-black/20 transition-colors focus-within:border-zinc-500"
+        className="min-w-0 overflow-hidden rounded-[28px] border border-zinc-700/90 bg-zinc-900 px-3 pb-2.5 pt-3 shadow-lg shadow-black/20 transition-colors focus-within:border-zinc-500"
         onClick={() => textareaRef.current?.focus()}
       >
         {files.length > 0 && (
@@ -311,9 +311,9 @@ export function Composer({
               <span
                 key={file.path}
                 title={file.path}
-                className="inline-flex max-w-full items-center gap-1 rounded-full bg-zinc-800 px-2.5 py-1 text-xs text-zinc-200"
+                className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-full bg-zinc-800 px-2.5 py-1 text-xs text-zinc-200"
               >
-                <span className="truncate">{file.name}</span>
+                <span className="min-w-0 truncate">{file.name}</span>
                 <button
                   type="button"
                   className="rounded-full text-zinc-400 hover:text-zinc-100"
@@ -405,9 +405,9 @@ export function Composer({
           placeholder={placeholder}
           disabled={locked}
           rows={Math.min(6, Math.max(2, text.split("\n").length))}
-          className="max-h-40 w-full resize-none bg-transparent px-2 text-sm leading-6 text-zinc-100 placeholder:text-zinc-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+          className="max-h-40 w-full min-w-0 max-w-full resize-none overflow-x-hidden bg-transparent px-2 text-sm leading-6 text-zinc-100 placeholder:text-zinc-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
         />
-        <div className="mt-1 flex items-center justify-between gap-2">
+        <div className="mt-1 flex min-w-0 items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-1">
             <button
               type="button"
@@ -426,7 +426,7 @@ export function Composer({
               ref={accessRef}
               type="button"
               className={cn(
-                "inline-flex h-8 max-w-full items-center gap-1 rounded-full px-2 text-sm hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40",
+                "inline-flex h-8 min-w-0 max-w-full items-center gap-1 rounded-full px-2 text-sm hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40",
                 mode === "full" ? "text-orange-400" : "text-zinc-300",
               )}
               aria-label="权限"
@@ -439,16 +439,16 @@ export function Composer({
               }}
             >
               <Shield className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">{ACCESS_LABELS[mode]}</span>
+              <span className="min-w-0 truncate">{ACCESS_LABELS[mode]}</span>
               <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />
             </button>
           </div>
-          <div className="flex shrink-0 items-center gap-1.5">
+          <div className="flex min-w-0 items-center gap-1.5">
             {caps?.supports_tuning && (
             <button
               ref={modelRef}
               type="button"
-              className="inline-flex h-8 max-w-52 items-center gap-1 rounded-full px-2 text-sm text-zinc-200 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex h-8 min-w-0 max-w-52 items-center gap-1 rounded-full px-2 text-sm text-zinc-200 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
               aria-label="模型"
               aria-haspopup="menu"
               aria-expanded={menu === "model"}
@@ -458,7 +458,7 @@ export function Composer({
                 setMenu((current) => (current === "model" ? null : "model"));
               }}
             >
-              <span className="truncate">{modelButton}</span>
+              <span className="min-w-0 truncate">{modelButton}</span>
               <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />
             </button>
             )}
@@ -469,7 +469,7 @@ export function Composer({
                 submit();
               }}
               disabled={!text.trim() || locked}
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100 text-zinc-950 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-950 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
               title="发送"
               aria-label="发送"
             >
@@ -572,7 +572,7 @@ function ModelMenu({
       ref={menuRef}
       role="menu"
       aria-label="模型"
-      className="fixed z-50 max-h-80 w-72 overflow-y-auto rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
+      className="fixed z-50 max-h-80 w-72 overflow-x-hidden overflow-y-auto rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
       style={{ top: -9999, left: 8 }}
     >
       <p className="px-3 pb-1 pt-2 text-[11px] text-zinc-500">模型</p>
@@ -592,7 +592,7 @@ function ModelMenu({
             )}
             onClick={() => onModel(model)}
           >
-            <span className="block text-sm text-zinc-100">{model.label}</span>
+            <span className="block break-words text-sm text-zinc-100">{model.label}</span>
             {model.description && (
               <span className="block truncate text-[11px] text-zinc-500">
                 {model.description}
