@@ -598,12 +598,13 @@ export const mockBackend: Backend = {
       );
     } else {
       const answerId = id();
+      const label = text.slice(0, 24);
       schedule(
         s,
         () =>
           pushEvent(sessionId, {
             kind: "thinking",
-            text: "先对一下入口，再决定结论怎么写。",
+            text: `先对一下「${label}」的入口。`,
           }),
         250,
       );
@@ -622,15 +623,15 @@ export const mockBackend: Backend = {
         () =>
           pushEvent(sessionId, {
             kind: "thinking",
-            text: "工具已经返回，结论还在写，这组调用先保持展开。",
+            text: `「${label}」的工具已经返回，结论还在写，这组调用先保持展开。`,
           }),
         900,
       );
       const parts = [
-        "本轮任务已完成（桩模式）。",
-        "本轮任务已完成（桩模式）。\n\n接入真实 CLI 后，这里将是真实的执行结果。",
-        "本轮任务已完成（桩模式）。\n\n接入真实 CLI 后，这里将是真实的执行结果。\n\n这一段在流式变长。用户没有自己往上翻时，时间线应继续贴着底部。",
-        "本轮任务已完成（桩模式）。\n\n接入真实 CLI 后，这里将是真实的执行结果。\n\n这一段在流式变长。用户没有自己往上翻时，时间线应继续贴着底部。\n\n再补一行，确认同一条消息变高时仍会跟随。",
+        `${label} 结论开头。`,
+        `${label} 结论开头。\n\n第二段正在变长。`,
+        `${label} 结论开头。\n\n第二段正在变长。\n\n第三段继续追加。`,
+        `${label} 结论开头。\n\n第二段正在变长。\n\n第三段继续追加。\n\n第四段收尾。`,
       ];
       parts.forEach((text, index) => {
         schedule(

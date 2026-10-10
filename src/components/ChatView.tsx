@@ -157,7 +157,18 @@ export function ChatView({
   };
 
   const onTimelineWheel = (event: WheelEvent<HTMLDivElement>) => {
-    if (event.deltaY < 0) followRef.current = false;
+    if (event.deltaY >= 0) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    const pixels =
+      event.deltaMode === 1
+        ? event.deltaY * 16
+        : event.deltaMode === 2
+          ? event.deltaY * el.clientHeight
+          : event.deltaY;
+    const nextTop = Math.max(0, el.scrollTop + pixels);
+    const nextDistance = el.scrollHeight - nextTop - el.clientHeight;
+    if (nextDistance >= NEAR_BOTTOM_PX) followRef.current = false;
   };
 
   const onPointerDown = () => {
