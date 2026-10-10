@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { Ellipsis, Plus, RefreshCw, SquarePen, TerminalSquare } from "lucide-react";
+import { Ellipsis, Plus, RefreshCw, TerminalSquare } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { APP_VERSION } from "@/lib/version";
 import { useWorkbench } from "@/store";
 import { aggregateStatus, type Project } from "@/types";
+import { NewSessionButton } from "./NewSessionButton";
 import { StatusDot } from "./StatusDot";
 
 function useDismiss(
@@ -35,7 +36,6 @@ function ProjectItem({ project }: { project: Project }) {
   const activeSessionId = useWorkbench((s) => s.activeSessionId[project.id]);
   const selectProject = useWorkbench((s) => s.selectProject);
   const selectSession = useWorkbench((s) => s.selectSession);
-  const createSession = useWorkbench((s) => s.createSession);
   const removeProject = useWorkbench((s) => s.removeProject);
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -117,18 +117,11 @@ function ProjectItem({ project }: { project: Project }) {
               </div>
             )}
           </div>
-          <button
-            type="button"
+          <NewSessionButton
+            projectId={project.id}
             className="flex h-6 w-6 items-center justify-center rounded text-zinc-200 hover:bg-zinc-700/80 hover:text-white"
-            aria-label={`在 ${project.name} 中新建会话`}
-            title="新建会话"
-            onClick={(e) => {
-              e.stopPropagation();
-              void createSession(project.id);
-            }}
-          >
-            <SquarePen className="h-3.5 w-3.5" />
-          </button>
+            title={`在 ${project.name} 中新建会话`}
+          />
         </div>
       </div>
       {sessions && sessions.length > 0 && (

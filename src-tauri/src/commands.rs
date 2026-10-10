@@ -129,6 +129,15 @@ pub async fn create_session(
 }
 
 #[tauri::command]
+pub fn set_session_agent(
+    manager: State<'_, SessionManager>,
+    session_id: String,
+    agent: AgentKind,
+) -> Result<(), String> {
+    manager.set_session_agent(&session_id, agent)
+}
+
+#[tauri::command]
 pub async fn send_message(
     manager: State<'_, SessionManager>,
     session_id: String,

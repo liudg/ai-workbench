@@ -1,6 +1,7 @@
-import { FolderOpen, MessagesSquare, Plus } from "lucide-react";
+import { FolderOpen, MessagesSquare } from "lucide-react";
 
 import { useWorkbench } from "@/store";
+import { NewSessionButton } from "./NewSessionButton";
 import { Button } from "./ui/button";
 
 export function NoProjectSelected() {
@@ -26,7 +27,7 @@ export function NoProjectSelected() {
   );
 }
 
-export function NoSession({ onCreate }: { onCreate: () => void }) {
+export function NoSession({ projectId }: { projectId: string }) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
       <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-zinc-800/80">
@@ -38,9 +39,7 @@ export function NoSession({ onCreate }: { onCreate: () => void }) {
           会话是 Agent 的一次工作上下文。同一项目可开多个会话并行处理不同任务。
         </p>
       </div>
-      <Button onClick={onCreate}>
-        <Plus /> 新建会话
-      </Button>
+      <NewSessionButton projectId={projectId} appearance="primary" title="新建会话" />
     </div>
   );
 }

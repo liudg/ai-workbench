@@ -5,7 +5,13 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 
-import type { AgentKind, Project, Session, SessionEvent } from "@/types";
+import type {
+  AgentKind,
+  Attachment,
+  Project,
+  Session,
+  SessionEvent,
+} from "@/types";
 import { mockBackend } from "./mock";
 
 export interface CreateProjectInput {
@@ -34,6 +40,8 @@ export interface Backend {
 
   listSessions(projectId: string): Promise<Session[]>;
   createSession(projectId: string, agent?: AgentKind): Promise<Session>;
+  /** 切换会话后续使用的 Agent。权限与附件仍只存在前端。 */
+  setSessionAgent(sessionId: string, agent: AgentKind): Promise<void>;
   sendMessage(sessionId: string, text: string): Promise<void>;
   answerPrompt(
     sessionId: string,
@@ -45,6 +53,8 @@ export interface Backend {
 
   /** 打开系统目录选择器；返回 null 表示取消 */
   pickDirectory(title: string): Promise<string | null>;
+  /** 选择要附加的文件；取消时返回空数组 */
+  pickFiles(): Promise<Attachment[]>;
 
   onSessionEvent(cb: (event: SessionEvent) => void): () => void;
   onSessionsChanged(cb: (projectId: string) => void): () => void;
@@ -86,6 +96,8 @@ const tauriBackend: Backend = {
     invoke<Session[]>("list_sessions", { projectId }),
   createSession: (projectId, agent) =>
     invoke<Session>("create_session", { projectId, agent: agent ?? null }),
+  setSessionAgent: (sessionId, agent) =>
+    invoke("set_session_agent", { sessionId, agent }),
   sendMessage: (sessionId, text) =>
     invoke("send_message", { sessionId, text }),
   answerPrompt: (sessionId, promptId, answer) =>
@@ -97,6 +109,19 @@ const tauriBackend: Backend = {
   pickDirectory: async (title) => {
     const selected = await open({ directory: true, multiple: false, title });
     return typeof selected === "string" ? selected : null;
+  },
+  pickFiles: async () => {
+    const selected = await open({
+      directory: false,
+      multiple: true,
+      title: "添加附件",
+    });
+    if (!selected) return [];
+    const paths = Array.isArray(selected) ? selected : [selected];
+    return paths.map((path) => ({
+      name: path.split(/[\\/]/).filter(Boolean).pop() ?? path,
+      path,
+    }));
   },
 
   onSessionEvent: (cb) => subscribe<SessionEvent>("session-event", cb),

@@ -53,6 +53,7 @@ pub fn run() {
             commands::remove_project,
             commands::list_sessions,
             commands::create_session,
+            commands::set_session_agent,
             commands::send_message,
             commands::answer_prompt,
             commands::stop_session,

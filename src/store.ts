@@ -7,7 +7,14 @@
 
 import { create } from "zustand";
 
-import type { Project, Session, SessionEvent } from "@/types";
+import type {
+  AccessMode,
+  AgentKind,
+  Attachment,
+  Project,
+  Session,
+  SessionEvent,
+} from "@/types";
 import {
   backend,
   type CreateProjectInput,
@@ -36,6 +43,15 @@ interface WorkbenchState {
   update: UpdatePhase;
   updateDialogOpen: boolean;
 
+  /** 下次新建会话默认选中的 Agent */
+  preferredAgent: AgentKind;
+  /** 前端覆盖的会话 Agent（桩：不回写后端） */
+  agentOverride: Record<string, AgentKind>;
+  /** 每个会话的权限档位，新建会话继承上一档 */
+  lastAccessMode: AccessMode;
+  accessMode: Record<string, AccessMode>;
+  attachments: Record<string, Attachment[]>;
+
   init(): Promise<void>;
   openDialog(mode: DialogMode): void;
   closeDialog(): void;
@@ -51,17 +67,31 @@ interface WorkbenchState {
   importProject(input: ImportProjectInput): Promise<void>;
   removeProject(id: string): Promise<void>;
 
-  createSession(projectId: string): Promise<void>;
+  createSession(projectId: string, agent: AgentKind): Promise<void>;
+  setSessionAgent(sessionId: string, agent: AgentKind): void;
+  setAccessMode(sessionId: string, mode: AccessMode): void;
+  addAttachments(sessionId: string, files: Attachment[]): void;
+  removeAttachment(sessionId: string, path: string): void;
+  clearAttachments(sessionId: string): void;
   selectSession(projectId: string, sessionId: string): Promise<void>;
   sendMessage(sessionId: string, text: string): Promise<void>;
   answerPrompt(sessionId: string, promptId: string, answer: string): Promise<void>;
   stopSession(sessionId: string): Promise<void>;
 }
 
+function stampAgents(list: Session[]): Session[] {
+  const overrides = useWorkbench.getState().agentOverride;
+  return list.map((session) =>
+    overrides[session.id]
+      ? { ...session, agent: overrides[session.id] }
+      : session,
+  );
+}
+
 async function loadSessions(
   projectId: string,
 ): Promise<[string, Session[]]> {
-  return [projectId, await backend.listSessions(projectId)];
+  return [projectId, stampAgents(await backend.listSessions(projectId))];
 }
 
 // React StrictMode 下 effect 会执行两次，事件订阅只需一次
@@ -78,6 +108,11 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   lastError: null,
   update: { kind: "idle" },
   updateDialogOpen: false,
+  preferredAgent: "codex-cli",
+  agentOverride: {},
+  lastAccessMode: "full",
+  accessMode: {},
+  attachments: {},
 
   async init() {
     if (initStarted) return;
@@ -214,19 +249,80 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     if (next) await get().selectProject(next);
   },
 
-  async createSession(projectId) {
+  async createSession(projectId, agent) {
     try {
-      const session = await backend.createSession(projectId);
+      const session = await backend.createSession(projectId, agent);
       const [, list] = await loadSessions(projectId);
       set((s) => ({
         selectedProjectId: projectId,
+        preferredAgent: agent,
         sessions: { ...s.sessions, [projectId]: list },
         activeSessionId: { ...s.activeSessionId, [projectId]: session.id },
         events: { ...s.events, [session.id]: s.events[session.id] ?? [] },
+        accessMode: {
+          ...s.accessMode,
+          [session.id]: s.lastAccessMode,
+        },
       }));
     } catch (e) {
       set({ lastError: String(e) });
     }
+  },
+
+  setSessionAgent(sessionId, agent) {
+    set((s) => {
+      const sessions: Record<string, Session[]> = {};
+      for (const [projectId, list] of Object.entries(s.sessions)) {
+        sessions[projectId] = list.map((session) =>
+          session.id === sessionId ? { ...session, agent } : session,
+        );
+      }
+      return {
+        preferredAgent: agent,
+        agentOverride: { ...s.agentOverride, [sessionId]: agent },
+        sessions,
+      };
+    });
+    void backend.setSessionAgent(sessionId, agent);
+  },
+
+  setAccessMode(sessionId, mode) {
+    set((s) => ({
+      lastAccessMode: mode,
+      accessMode: { ...s.accessMode, [sessionId]: mode },
+    }));
+  },
+
+  addAttachments(sessionId, files) {
+    set((s) => {
+      const current = s.attachments[sessionId] ?? [];
+      const seen = new Set(current.map((file) => file.path));
+      const next = [...current];
+      for (const file of files) {
+        if (!seen.has(file.path)) {
+          seen.add(file.path);
+          next.push(file);
+        }
+      }
+      return { attachments: { ...s.attachments, [sessionId]: next } };
+    });
+  },
+
+  removeAttachment(sessionId, path) {
+    set((s) => ({
+      attachments: {
+        ...s.attachments,
+        [sessionId]: (s.attachments[sessionId] ?? []).filter(
+          (file) => file.path !== path,
+        ),
+      },
+    }));
+  },
+
+  clearAttachments(sessionId) {
+    set((s) => ({
+      attachments: { ...s.attachments, [sessionId]: [] },
+    }));
   },
 
   async selectSession(projectId, sessionId) {

@@ -1,9 +1,74 @@
-import { useRef, useState } from "react";
-import { ArrowUp } from "lucide-react";
+import { useEffect, useRef, useState, type RefObject } from "react";
+import { ArrowUp, ChevronDown, Plus, Shield, X } from "lucide-react";
 
-import { pendingPrompt } from "@/lib/utils";
+import { backend } from "@/lib/ipc";
+import { cn, pendingPrompt } from "@/lib/utils";
 import { useWorkbench } from "@/store";
-import type { Session, SessionEvent } from "@/types";
+import {
+  ACCESS_LABELS,
+  ACCESS_OPTIONS,
+  AGENT_LABELS,
+  AGENT_OPTIONS,
+  type AccessMode,
+  type AgentKind,
+  type Attachment,
+  type Session,
+  type SessionEvent,
+} from "@/types";
+
+const EMPTY_FILES: Attachment[] = [];
+
+function placeMenu(anchor: HTMLElement, menu: HTMLElement) {
+  const rect = anchor.getBoundingClientRect();
+  const width = menu.offsetWidth;
+  const height = menu.offsetHeight;
+  let left = rect.left;
+  if (left + width > window.innerWidth - 8) {
+    left = window.innerWidth - width - 8;
+  }
+  left = Math.max(8, left);
+  let top = rect.top - height - 8;
+  if (top < 8) top = rect.bottom + 8;
+  menu.style.top = `${top}px`;
+  menu.style.left = `${left}px`;
+}
+
+function useComposerMenu(
+  open: boolean,
+  anchorRef: RefObject<HTMLElement | null>,
+  menuRef: RefObject<HTMLElement | null>,
+  onClose: () => void,
+) {
+  useEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const anchor = anchorRef.current;
+      const menu = menuRef.current;
+      if (anchor && menu) placeMenu(anchor, menu);
+    };
+    place();
+    const frame = requestAnimationFrame(place);
+    const onPointer = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (anchorRef.current?.contains(target) || menuRef.current?.contains(target)) {
+        return;
+      }
+      onClose();
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", place);
+    return () => {
+      cancelAnimationFrame(frame);
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", place);
+    };
+  }, [open, anchorRef, menuRef, onClose]);
+}
 
 export function Composer({
   session,
@@ -14,69 +79,266 @@ export function Composer({
 }) {
   const sendMessage = useWorkbench((s) => s.sendMessage);
   const answerPrompt = useWorkbench((s) => s.answerPrompt);
+  const setSessionAgent = useWorkbench((s) => s.setSessionAgent);
+  const setAccessMode = useWorkbench((s) => s.setAccessMode);
+  const addAttachments = useWorkbench((s) => s.addAttachments);
+  const removeAttachment = useWorkbench((s) => s.removeAttachment);
+  const clearAttachments = useWorkbench((s) => s.clearAttachments);
+  const mode = useWorkbench((s) => s.accessMode[session.id] ?? "full");
+  const files = useWorkbench((s) => s.attachments[session.id] ?? EMPTY_FILES);
   const [text, setText] = useState("");
+  const [menu, setMenu] = useState<null | "access" | "agent">(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const accessRef = useRef<HTMLButtonElement>(null);
+  const agentRef = useRef<HTMLButtonElement>(null);
+  const accessMenuRef = useRef<HTMLDivElement>(null);
+  const agentMenuRef = useRef<HTMLDivElement>(null);
+
+  const closeMenu = () => setMenu(null);
+  useComposerMenu(menu === "access", accessRef, accessMenuRef, closeMenu);
+  useComposerMenu(menu === "agent", agentRef, agentMenuRef, closeMenu);
 
   const pendingId = pendingPrompt(events);
   const busy = session.status === "running";
   const dead = session.status === "stopped" || session.status === "failed";
+  const locked = busy || dead;
 
-  const placeholder = dead
-    ? "会话已停止，请新建会话"
-    : busy
-      ? "Agent 运行中…"
-      : pendingId
-        ? "输入回答，或点击上方选项…"
-        : "描述你的任务，Enter 发送…";
+  const placeholder = dead ? "会话已停止，请新建会话" : "随心输入";
 
   const submit = () => {
     const value = text.trim();
-    if (!value || busy || dead) return;
+    if (!value || locked) return;
+    const attached = useWorkbench.getState().attachments[session.id] ?? [];
     setText("");
     if (pendingId) {
-      // 有待回答提问时，输入框内容作为自由文本回答
       answerPrompt(session.id, pendingId, value);
     } else {
-      sendMessage(session.id, value);
+      const body =
+        attached.length > 0
+          ? `${value}\n\n附件：${attached.map((file) => file.name).join("、")}`
+          : value;
+      sendMessage(session.id, body);
+      clearAttachments(session.id);
     }
     textareaRef.current?.focus();
   };
 
+  const pickFiles = async () => {
+    if (locked) return;
+    const picked = await backend.pickFiles();
+    if (picked.length) addAttachments(session.id, picked);
+  };
+
   return (
-    <div className="shrink-0 border-t border-zinc-800/80 bg-zinc-900/30 px-6 py-4">
-      <div className="mx-auto max-w-3xl">
-        <div
-          className="flex items-end gap-2 rounded-xl border border-zinc-700/80 bg-zinc-900 px-3 py-2 transition-colors focus-within:border-indigo-500/60"
-          onClick={() => textareaRef.current?.focus()}
-        >
-          <textarea
-            ref={textareaRef}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-                e.preventDefault();
+    <div className="shrink-0 px-4 pb-4 pt-1">
+      <div
+        className="mx-auto max-w-3xl rounded-[28px] border border-zinc-700/90 bg-zinc-900 px-3 pb-2.5 pt-3 shadow-lg shadow-black/20 transition-colors focus-within:border-zinc-500"
+        onClick={() => textareaRef.current?.focus()}
+      >
+        {files.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1.5 px-1">
+            {files.map((file) => (
+              <span
+                key={file.path}
+                title={file.path}
+                className="inline-flex max-w-full items-center gap-1 rounded-full bg-zinc-800 px-2.5 py-1 text-xs text-zinc-200"
+              >
+                <span className="truncate">{file.name}</span>
+                <button
+                  type="button"
+                  className="rounded-full text-zinc-400 hover:text-zinc-100"
+                  aria-label={`移除 ${file.name}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    removeAttachment(session.id, file.path);
+                  }}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+        <textarea
+          ref={textareaRef}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              submit();
+            }
+          }}
+          placeholder={placeholder}
+          disabled={locked}
+          rows={Math.min(6, Math.max(2, text.split("\n").length))}
+          className="max-h-40 w-full resize-none bg-transparent px-2 text-sm leading-6 text-zinc-100 placeholder:text-zinc-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+        />
+        <div className="mt-1 flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-1">
+            <button
+              type="button"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-zinc-300 hover:bg-zinc-800 hover:text-zinc-50 disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="添加附件"
+              title="添加附件"
+              disabled={locked}
+              onClick={(event) => {
+                event.stopPropagation();
+                void pickFiles();
+              }}
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+            <button
+              ref={accessRef}
+              type="button"
+              className={cn(
+                "inline-flex h-8 max-w-full items-center gap-1 rounded-full px-2 text-sm hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40",
+                mode === "full" ? "text-orange-400" : "text-zinc-300",
+              )}
+              aria-label="权限"
+              aria-haspopup="menu"
+              aria-expanded={menu === "access"}
+              disabled={locked}
+              onClick={(event) => {
+                event.stopPropagation();
+                setMenu((current) => (current === "access" ? null : "access"));
+              }}
+            >
+              <Shield className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{ACCESS_LABELS[mode]}</span>
+              <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />
+            </button>
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <button
+              ref={agentRef}
+              type="button"
+              className="inline-flex h-8 items-center gap-1 rounded-full px-2 text-sm text-zinc-200 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="模型"
+              aria-haspopup="menu"
+              aria-expanded={menu === "agent"}
+              disabled={locked}
+              onClick={(event) => {
+                event.stopPropagation();
+                setMenu((current) => (current === "agent" ? null : "agent"));
+              }}
+            >
+              <span>{AGENT_LABELS[session.agent]}</span>
+              <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+            </button>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
                 submit();
-              }
-            }}
-            placeholder={placeholder}
-            disabled={busy || dead}
-            rows={Math.min(6, Math.max(1, text.split("\n").length))}
-            className="max-h-40 flex-1 resize-none bg-transparent py-1.5 text-sm leading-6 text-zinc-200 placeholder:text-zinc-600 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-          />
-          <button
-            onClick={submit}
-            disabled={!text.trim() || busy || dead}
-            className="mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-600 text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-500"
-            title="发送 (Enter)"
-          >
-            <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
-          </button>
+              }}
+              disabled={!text.trim() || locked}
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100 text-zinc-950 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
+              title="发送"
+              aria-label="发送"
+            >
+              <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
+            </button>
+          </div>
         </div>
-        <p className="mt-1.5 text-center text-[11px] text-zinc-600">
-          Enter 发送 · Shift+Enter 换行 · 关闭窗口不会中断会话（驻留系统托盘）
-        </p>
       </div>
+      {menu === "access" && (
+        <AccessMenu
+          menuRef={accessMenuRef}
+          mode={mode}
+          onPick={(next) => {
+            setAccessMode(session.id, next);
+            setMenu(null);
+          }}
+        />
+      )}
+      {menu === "agent" && (
+        <AgentMenu
+          menuRef={agentMenuRef}
+          agent={session.agent}
+          onPick={(next) => {
+            setSessionAgent(session.id, next);
+            setMenu(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function AccessMenu({
+  menuRef,
+  mode,
+  onPick,
+}: {
+  menuRef: RefObject<HTMLDivElement>;
+  mode: AccessMode;
+  onPick: (mode: AccessMode) => void;
+}) {
+  return (
+    <div
+      ref={menuRef}
+      role="menu"
+      aria-label="权限"
+      className="fixed z-50 w-44 overflow-hidden rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
+      style={{ top: -9999, left: 8 }}
+    >
+      {ACCESS_OPTIONS.map((option) => (
+        <button
+          key={option}
+          type="button"
+          role="menuitemradio"
+          aria-checked={mode === option}
+          className={cn(
+            "flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-zinc-800",
+            option === "full" ? "text-orange-400" : "text-zinc-200",
+            mode === option && "bg-zinc-800/70",
+          )}
+          onClick={() => onPick(option)}
+        >
+          <Shield className="h-3.5 w-3.5" />
+          {ACCESS_LABELS[option]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function AgentMenu({
+  menuRef,
+  agent,
+  onPick,
+}: {
+  menuRef: RefObject<HTMLDivElement>;
+  agent: AgentKind;
+  onPick: (agent: AgentKind) => void;
+}) {
+  return (
+    <div
+      ref={menuRef}
+      role="menu"
+      aria-label="模型"
+      className="fixed z-50 w-52 overflow-hidden rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
+      style={{ top: -9999, left: 8 }}
+    >
+      {AGENT_OPTIONS.map((option) => (
+        <button
+          key={option}
+          type="button"
+          role="menuitemradio"
+          aria-checked={agent === option}
+          className={cn(
+            "block w-full px-3 py-2 text-left text-sm text-zinc-100 hover:bg-zinc-800",
+            agent === option && "bg-zinc-800/70",
+          )}
+          onClick={() => onPick(option)}
+        >
+          {AGENT_LABELS[option]}
+        </button>
+      ))}
+      <div className="mx-2 my-1 border-t border-zinc-800" />
+      <div className="px-3 py-2 text-xs text-zinc-600">更多模型即将支持</div>
     </div>
   );
 }

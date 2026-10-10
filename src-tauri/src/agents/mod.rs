@@ -63,6 +63,9 @@ pub trait AgentSession: Send + Sync {
 
     /// 终止会话（杀掉进程 / 关闭 PTY）。调用后本句柄不可再使用。
     async fn stop(&self) -> Result<(), AgentError>;
+
+    /// 切换本会话后续输出使用的 Agent。桩实现只改文案；真实 CLI 接入后在此重绑进程。
+    fn retarget(&self, _kind: AgentKind) {}
 }
 
 /// Agent 适配器：一种 Agent CLI 对应一个实现。

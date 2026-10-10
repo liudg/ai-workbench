@@ -156,7 +156,8 @@ impl SessionManager {
             // 首条用户消息用作会话标题
             if let SessionEventBody::UserMessage { text } = &body {
                 if entry.meta.title.starts_with("会话 ") {
-                    let title: String = text.chars().take(24).collect();
+                    let first_line = text.lines().next().unwrap_or("");
+                    let title: String = first_line.chars().take(24).collect();
                     if !title.is_empty() {
                         entry.meta.title = title;
                     }
@@ -214,6 +215,27 @@ impl SessionManager {
             .answer_prompt(prompt_id, answer)
             .await
             .map_err(|e| e.to_string())
+    }
+
+    /// 更新会话当前 Agent。桩会话只影响后续文案；不重写已有时间线。
+    pub fn set_session_agent(&self, session_id: &str, agent: AgentKind) -> Result<(), String> {
+        let (handle, project_id) = {
+            let mut entries = self.entries.lock().unwrap();
+            let entry = entries
+                .get_mut(session_id)
+                .ok_or_else(|| "会话不存在".to_string())?;
+            entry.meta.agent = agent;
+            entry.meta.updated_at = now_millis();
+            (entry.agent.clone(), entry.meta.project_id.clone())
+        };
+        if let Some(handle) = handle {
+            handle.retarget(agent);
+        }
+        let _ = self.app.emit(
+            EVT_SESSIONS_CHANGED,
+            serde_json::json!({ "project_id": project_id }),
+        );
+        Ok(())
     }
 
     pub async fn stop_session(&self, session_id: &str) -> Result<(), String> {

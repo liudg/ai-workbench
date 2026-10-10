@@ -30,7 +30,6 @@ function Workspace() {
   const events =
     useWorkbench((s) => (session ? s.events[session.id] : undefined)) ??
     EMPTY_EVENTS;
-  const createSession = useWorkbench((s) => s.createSession);
   const stopSession = useWorkbench((s) => s.stopSession);
 
   if (!project) return <NoProjectSelected />;
@@ -69,7 +68,7 @@ function Workspace() {
           <ChatView session={session} events={events} />
         </>
       ) : sessions ? (
-        <NoSession onCreate={() => createSession(project.id)} />
+        <NoSession projectId={project.id} />
       ) : (
         <div className="flex h-full items-center justify-center text-sm text-zinc-600">
           加载中…

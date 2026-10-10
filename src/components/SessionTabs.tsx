@@ -1,8 +1,9 @@
-import { Plus, Square } from "lucide-react";
+import { Square } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useWorkbench } from "@/store";
 import { AGENT_LABELS, type Project, type Session } from "@/types";
+import { NewSessionButton } from "./NewSessionButton";
 import { StatusDot } from "./StatusDot";
 
 function SessionTab({
@@ -53,7 +54,6 @@ export function SessionTabs({ project }: { project: Project }) {
   const sessions = useWorkbench((s) => s.sessions[project.id]);
   const activeId = useWorkbench((s) => s.activeSessionId[project.id]);
   const selectSession = useWorkbench((s) => s.selectSession);
-  const createSession = useWorkbench((s) => s.createSession);
 
   return (
     <div className="flex h-12 shrink-0 items-end gap-1 overflow-x-auto border-b border-zinc-800/80 bg-zinc-900/20 px-3 pt-3">
@@ -65,13 +65,12 @@ export function SessionTabs({ project }: { project: Project }) {
           onSelect={() => selectSession(project.id, session.id)}
         />
       ))}
-      <button
-        onClick={() => createSession(project.id)}
+      <NewSessionButton
+        projectId={project.id}
+        appearance="plus"
         className="mb-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
         title="新建会话"
-      >
-        <Plus className="h-4 w-4" />
-      </button>
+      />
     </div>
   );
 }

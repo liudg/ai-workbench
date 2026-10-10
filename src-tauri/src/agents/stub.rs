@@ -16,7 +16,7 @@ use async_trait::async_trait;
 use tokio::task::JoinHandle;
 use tokio::time::{sleep, Duration};
 
-use crate::models::{PromptKind, PromptOption, SessionEventBody, SessionStatus};
+use crate::models::{AgentKind, PromptKind, PromptOption, SessionEventBody, SessionStatus};
 
 use super::{AgentError, AgentSession, EventSink};
 
@@ -37,7 +37,7 @@ struct StubState {
 }
 
 pub struct StubAgentSession {
-    persona: StubPersona,
+    persona: Arc<Mutex<StubPersona>>,
     events: EventSink,
     closed: Arc<AtomicBool>,
     state: Arc<Mutex<StubState>>,
@@ -46,7 +46,7 @@ pub struct StubAgentSession {
 impl StubAgentSession {
     pub fn new(persona: StubPersona, events: EventSink) -> Self {
         Self {
-            persona,
+            persona: Arc::new(Mutex::new(persona)),
             events,
             closed: Arc::new(AtomicBool::new(false)),
             state: Arc::new(Mutex::new(StubState::default())),
@@ -85,7 +85,7 @@ impl AgentSession for StubAgentSession {
             st.turns
         };
 
-        let persona = self.persona;
+        let persona = *self.persona.lock().unwrap();
         let events = self.events.clone();
         let state = Arc::clone(&self.state);
 
@@ -214,7 +214,7 @@ impl AgentSession for StubAgentSession {
             },
         );
 
-        let persona = self.persona;
+        let persona = *self.persona.lock().unwrap();
         let events = self.events.clone();
         let state = Arc::clone(&self.state);
         let task = tokio::spawn(async move {
@@ -255,5 +255,12 @@ impl AgentSession for StubAgentSession {
             },
         );
         Ok(())
+    }
+
+    fn retarget(&self, kind: AgentKind) {
+        self.persona.lock().unwrap().cli_label = match kind {
+            AgentKind::CodexCli => "Codex CLI",
+            AgentKind::ClaudeCode => "Claude Code",
+        };
     }
 }

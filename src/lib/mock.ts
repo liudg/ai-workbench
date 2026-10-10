@@ -165,6 +165,14 @@ export const mockBackend: Backend = {
     return { ...meta, status: "completed" };
   },
 
+  async setSessionAgent(sessionId, agent) {
+    const s = sessions.get(sessionId);
+    if (!s || !agent) return;
+    s.meta.agent = agent;
+    s.meta.updated_at = now();
+    sessionsChangedListeners.forEach((cb) => cb(s.meta.project_id));
+  },
+
   async sendMessage(sessionId, text) {
     const s = sessions.get(sessionId);
     if (!s) throw new Error("会话不存在");
@@ -174,7 +182,7 @@ export const mockBackend: Backend = {
       text,
     });
     if (s.meta.title.startsWith("会话 ")) {
-      s.meta.title = text.slice(0, 24);
+      s.meta.title = text.split("\n")[0].slice(0, 24);
       sessionsChangedListeners.forEach((cb) => cb(s.meta.project_id));
     }
     s.turns += 1;
@@ -291,6 +299,21 @@ export const mockBackend: Backend = {
       "/home/you/projects",
     );
     return input?.trim() || null;
+  },
+  async pickFiles() {
+    const input = window.prompt(
+      "添加附件（浏览器预览，多个路径用逗号分隔）",
+      "",
+    );
+    if (!input?.trim()) return [];
+    return input
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((path) => ({
+        name: path.split(/[\\/]/).filter(Boolean).pop() ?? path,
+        path,
+      }));
   },
 
   onSessionEvent(cb) {

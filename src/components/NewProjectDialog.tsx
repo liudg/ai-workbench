@@ -4,7 +4,6 @@ import { ChevronDown, Folder, FolderPlus } from "lucide-react";
 import { backend } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
 import { useWorkbench } from "@/store";
-import { AGENT_LABELS, type AgentKind } from "@/types";
 import { Button } from "./ui/button";
 import {
   Dialog,
@@ -14,37 +13,8 @@ import {
   DialogTitle,
 } from "./ui/dialog";
 
-const AGENTS: AgentKind[] = ["codex-cli", "claude-code"];
-
 function basename(path: string) {
   return path.split(/[\\/]/).filter(Boolean).pop() ?? "";
-}
-
-function AgentSelect({
-  value,
-  onChange,
-}: {
-  value: AgentKind;
-  onChange: (v: AgentKind) => void;
-}) {
-  return (
-    <div className="grid grid-cols-2 gap-2">
-      {AGENTS.map((agent) => (
-        <button
-          key={agent}
-          type="button"
-          onClick={() => onChange(agent)}
-          className={
-            value === agent
-              ? "rounded-lg border border-indigo-500/60 bg-indigo-500/10 px-3 py-2 text-sm text-indigo-300"
-              : "rounded-lg border border-zinc-700 bg-zinc-950/40 px-3 py-2 text-sm text-zinc-400 hover:border-zinc-600 hover:text-zinc-300"
-          }
-        >
-          {AGENT_LABELS[agent]}
-        </button>
-      ))}
-    </div>
-  );
 }
 
 export function NewProjectDialog() {
@@ -59,7 +29,6 @@ export function NewProjectDialog() {
   const [dir, setDir] = useState("");
   const [source, setSource] = useState<"create" | "import">("create");
   const [sourceMenu, setSourceMenu] = useState(false);
-  const [agent, setAgent] = useState<AgentKind>("codex-cli");
   const [initGit, setInitGit] = useState(true);
   const [busy, setBusy] = useState(false);
   const sourceRef = useRef<HTMLDivElement>(null);
@@ -70,7 +39,6 @@ export function NewProjectDialog() {
       setDir("");
       setSource(dialog);
       setSourceMenu(false);
-      setAgent("codex-cli");
       setInitGit(true);
       setBusy(false);
       clearError();
@@ -111,7 +79,7 @@ export function NewProjectDialog() {
       const warning = await createProject({
         name,
         parentDir: dir,
-        defaultAgent: agent,
+        defaultAgent: "codex-cli",
         initGit,
       });
       if (warning) useWorkbench.setState({ lastError: warning });
@@ -119,7 +87,7 @@ export function NewProjectDialog() {
       await importProject({
         path: dir,
         name: name.trim() || undefined,
-        defaultAgent: agent,
+        defaultAgent: "codex-cli",
       });
     }
     setBusy(false);
@@ -227,11 +195,6 @@ export function NewProjectDialog() {
                 将创建：{dir.replace(/[\\/]+$/, "")}/{name.trim()}
               </p>
             ) : null}
-          </div>
-
-          <div>
-            <div className="mb-1.5 text-xs font-medium text-zinc-500">默认 Agent</div>
-            <AgentSelect value={agent} onChange={setAgent} />
           </div>
 
           {source === "create" && (
