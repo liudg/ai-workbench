@@ -1,12 +1,33 @@
-import { useState } from "react";
-import { FolderPlus, Import, RefreshCw, TerminalSquare, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState, type RefObject } from "react";
+import { MoreHorizontal, Plus, RefreshCw, TerminalSquare, Trash2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { APP_VERSION } from "@/lib/version";
 import { useWorkbench } from "@/store";
 import { aggregateStatus, type Project } from "@/types";
-import { Button } from "./ui/button";
 import { StatusDot } from "./StatusDot";
+
+function useDismiss(
+  open: boolean,
+  ref: RefObject<HTMLElement | null>,
+  onClose: () => void,
+) {
+  useEffect(() => {
+    if (!open) return;
+    const onPointer = (event: MouseEvent) => {
+      if (!ref.current?.contains(event.target as Node)) onClose();
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open, ref, onClose]);
+}
 
 function ProjectItem({ project }: { project: Project }) {
   const sessions = useWorkbench((s) => s.sessions[project.id]);
@@ -65,28 +86,104 @@ function ProjectItem({ project }: { project: Project }) {
   );
 }
 
-function UpdateButton() {
-  const checkUpdates = useWorkbench((s) => s.checkUpdates);
-  const checking = useWorkbench((s) => s.update.kind === "checking");
+function ProjectHeader() {
+  const openDialog = useWorkbench((s) => s.openDialog);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const closeMenu = () => setMenuOpen(false);
+  useDismiss(menuOpen, menuRef, closeMenu);
 
   return (
-    <button
-      onClick={() => checkUpdates(true)}
-      className="flex w-full items-center justify-between rounded-md px-3 py-1.5 text-[11px] text-zinc-600 transition-colors hover:bg-zinc-800/50 hover:text-zinc-400"
-      title="检查应用更新"
-    >
-      <span className="flex items-center gap-1.5">
-        <RefreshCw className={cn("h-3 w-3", checking && "animate-spin")} />
-        检查更新
-      </span>
-      <span>v{APP_VERSION}</span>
-    </button>
+    <div className="flex items-center justify-between px-3 pb-1 pt-2">
+      <span className="px-1 text-[13px] font-medium text-zinc-400">项目</span>
+      <div ref={menuRef} className="relative flex items-center">
+        <button
+          type="button"
+          className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
+          aria-label="项目更多操作"
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen((open) => !open)}
+        >
+          <MoreHorizontal className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-50"
+          aria-label="创建项目"
+          title="创建项目"
+          onClick={() => openDialog("create")}
+        >
+          <Plus className="h-4 w-4" strokeWidth={2.25} />
+        </button>
+        {menuOpen && (
+          <div className="absolute right-0 top-full z-30 mt-1 w-40 overflow-hidden rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/40">
+            <button
+              type="button"
+              className="flex w-full items-center px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800"
+              onClick={() => {
+                setMenuOpen(false);
+                openDialog("import");
+              }}
+            >
+              导入文件夹
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AccountMenu() {
+  const checkUpdates = useWorkbench((s) => s.checkUpdates);
+  const checking = useWorkbench((s) => s.update.kind === "checking");
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const close = () => setOpen(false);
+  useDismiss(open, rootRef, close);
+
+  return (
+    <div ref={rootRef} className="relative">
+      {open && (
+        <div className="absolute bottom-full left-0 z-30 mb-2 w-56 overflow-hidden rounded-2xl border border-zinc-700/80 bg-zinc-900 py-1.5 shadow-2xl shadow-black/50">
+          <button
+            type="button"
+            className="flex w-full items-center gap-3 px-3.5 py-2.5 text-left text-sm text-zinc-100 transition-colors hover:bg-zinc-800/90"
+            onClick={() => {
+              setOpen(false);
+              checkUpdates(true);
+            }}
+          >
+            <RefreshCw
+              className={cn(
+                "h-4 w-4 shrink-0 text-zinc-400",
+                checking && "animate-spin",
+              )}
+            />
+            <span className="min-w-0 flex-1">检查更新</span>
+            <span className="text-xs text-zinc-500">v{APP_VERSION}</span>
+          </button>
+        </div>
+      )}
+      <button
+        type="button"
+        className={cn(
+          "flex h-8 w-8 items-center justify-center rounded-full border bg-zinc-800 text-xs font-semibold text-zinc-100 transition-colors hover:bg-zinc-700",
+          open ? "border-zinc-500" : "border-zinc-600",
+        )}
+        aria-label="打开菜单"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        onClick={() => setOpen((value) => !value)}
+      >
+        A
+      </button>
+    </div>
   );
 }
 
 export function Sidebar() {
   const projects = useWorkbench((s) => s.projects);
-  const openDialog = useWorkbench((s) => s.openDialog);
 
   return (
     <aside className="flex w-72 shrink-0 flex-col border-r border-zinc-800/80 bg-zinc-900/30">
@@ -102,12 +199,7 @@ export function Sidebar() {
         </div>
       </div>
 
-      <div className="flex items-center justify-between px-4 pb-1 pt-2">
-        <span className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
-          项目
-        </span>
-        <span className="text-[11px] text-zinc-600">{projects.length}</span>
-      </div>
+      <ProjectHeader />
 
       <div className="flex-1 space-y-0.5 overflow-y-auto px-2 pb-2">
         {projects.length === 0 ? (
@@ -115,7 +207,7 @@ export function Sidebar() {
             <p className="text-xs leading-5 text-zinc-500">
               还没有项目。
               <br />
-              新建一个，或导入现有文件夹。
+              点击上方 + 创建。
             </p>
           </div>
         ) : (
@@ -123,22 +215,8 @@ export function Sidebar() {
         )}
       </div>
 
-      <div className="space-y-1.5 border-t border-zinc-800/80 p-3">
-        <Button
-          variant="secondary"
-          className="w-full justify-start"
-          onClick={() => openDialog("create")}
-        >
-          <FolderPlus /> 新建项目
-        </Button>
-        <Button
-          variant="ghost"
-          className="w-full justify-start"
-          onClick={() => openDialog("import")}
-        >
-          <Import /> 导入文件夹
-        </Button>
-        <UpdateButton />
+      <div className="relative z-10 border-t border-zinc-800/80 px-3 py-3">
+        <AccountMenu />
       </div>
     </aside>
   );

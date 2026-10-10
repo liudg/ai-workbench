@@ -17,7 +17,7 @@ export function NoProjectSelected() {
         </p>
       </div>
       <div className="flex gap-2">
-        <Button onClick={() => openDialog("create")}>新建项目</Button>
+        <Button onClick={() => openDialog("create")}>创建项目</Button>
         <Button variant="outline" onClick={() => openDialog("import")}>
           导入文件夹
         </Button>
