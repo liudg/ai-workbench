@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist-ssr/
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Tauri updater 签名私钥（绝不入库；公钥内嵌于 tauri.conf.json）
+*.key
+!*.key.pub
+
+# TypeScript build info
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts

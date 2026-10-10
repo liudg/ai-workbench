@@ -1,0 +1,11 @@
+{
+  "version": "0.1.1",
+  "notes": "示例：更新说明会显示在应用的更新对话框中",
+  "pub_date": "2026-10-10T00:00:00Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "示例：粘贴 .sig 文件的全部内容（由 TAURI_SIGNING_PRIVATE_KEY 在构建时生成）",
+      "url": "https://github.com/OWNER/REPO/releases/download/v0.1.1/AI-Workbench_0.1.1_x64-setup.nsis.zip"
+    }
+  }
+}
