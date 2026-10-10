@@ -70,7 +70,7 @@ export function NewSessionButton({
   title = "新建会话",
 }: {
   projectId: string;
-  appearance?: "pencil" | "plus" | "primary";
+  appearance?: "pencil" | "primary";
   className?: string;
   title?: string;
 }) {
@@ -108,8 +108,6 @@ export function NewSessionButton({
           <>
             <Plus /> 新建会话
           </>
-        ) : appearance === "plus" ? (
-          <Plus className="h-4 w-4" />
         ) : (
           <SquarePen className="h-3.5 w-3.5" />
         )}
