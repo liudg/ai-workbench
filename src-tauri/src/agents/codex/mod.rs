@@ -42,7 +42,7 @@ use crate::models::{
 };
 
 use process::{
-    apply_loopback_no_proxy, classify_codex_stderr, codex_version, hide_console, resolve_codex_bin,
+    apply_codex_network_env, classify_codex_stderr, codex_version, hide_console, resolve_codex_bin,
     trim_newline, StderrClass,
 };
 use prompts::{async_answer_text, blocking_answer_payload, is_accept, questions_summary};
@@ -98,9 +98,9 @@ impl AgentAdapter for CodexCliAdapter {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
-        // 系统代理（如 Clash）会把 127.0.0.1 的本地 MCP 回成空 HTTP 502。
-        // 只把回环地址加进 NO_PROXY，远程 MCP 仍走用户代理。
-        apply_loopback_no_proxy(&mut command);
+        // 模型目录请求有 5 秒上限。直连 chatgpt.com 会超时；把系统代理写进
+        // HTTP(S)_PROXY。回环地址仍进 NO_PROXY，避免 Clash 把本地 MCP 回成空 502。
+        apply_codex_network_env(&mut command);
         apply_utf8_env(&mut command);
         hide_console(&mut command);
         apply_utf8_env(&mut command);
@@ -205,6 +205,7 @@ impl AgentAdapter for CodexCliAdapter {
             let mut lines = BufReader::new(stderr);
             let mut raw = Vec::new();
             let mut seen_mcp = HashSet::new();
+            let mut seen_notice = HashSet::new();
             loop {
                 raw.clear();
                 let Ok(n) = lines.read_until(b'\n', &mut raw).await else {
@@ -219,6 +220,11 @@ impl AgentAdapter for CodexCliAdapter {
                     StderrClass::Ignore => {}
                     StderrClass::Error(message) => {
                         emit(&err_events, SessionEventBody::Error { message });
+                    }
+                    StderrClass::Notice(text) => {
+                        if seen_notice.insert(text.clone()) {
+                            emit(&err_events, SessionEventBody::System { text });
+                        }
                     }
                     StderrClass::McpUnavailable { key, text } => {
                         if seen_mcp.insert(key) {
