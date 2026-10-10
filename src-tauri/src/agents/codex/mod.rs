@@ -38,7 +38,7 @@ use crate::agents::{AgentAdapter, AgentError, AgentSession, EventSink, SessionCo
 use crate::encoding::{apply_utf8_env, decode_child_bytes};
 use crate::models::{
     strip_verbatim_prefix, AgentCapabilities, AgentCatalog, AgentKind, AgentProfile, PromptAnswer,
-    PromptKind, PromptQuestion, SessionEventBody, SessionStatus,
+    PromptKind, PromptQuestion, SessionEventBody, SessionStatus, OCCUPIED_SESSION_NOTICE,
 };
 
 use process::{
@@ -165,6 +165,7 @@ impl AgentAdapter for CodexCliAdapter {
             streams: Mutex::new(HashMap::new()),
             titled: AtomicBool::new(false),
             question_items: Mutex::new(HashSet::new()),
+            occupancy: Mutex::new(state::Occupancy::default()),
         });
 
         let reader = Arc::clone(&shared);
@@ -256,18 +257,26 @@ impl AgentAdapter for CodexCliAdapter {
             }
         }
 
+        let connected = if shared.read_only() {
+            format!(
+                "Codex CLI {version} 已连接（目录 {}）。此会话只读，不能发送。",
+                ctx.project_path
+            )
+        } else {
+            format!(
+                "Codex CLI {version} 已连接（目录 {}）。权限：{}（sandbox {} / approval {}）。斜杠命令输入 / 查看，例如 /permissions、/status、/diff。",
+                ctx.project_path,
+                initial_access.label(),
+                initial_access.sandbox_mode(),
+                initial_access.approval_policy(),
+            )
+        };
         emit(
             &events,
-            SessionEventBody::System {
-                text: format!(
-                    "Codex CLI {version} 已连接（目录 {}）。权限：{}（sandbox {} / approval {}）。斜杠命令输入 / 查看，例如 /permissions、/status、/diff。",
-                    ctx.project_path,
-                    initial_access.label(),
-                    initial_access.sandbox_mode(),
-                    initial_access.approval_policy(),
-                ),
-            },
+            SessionEventBody::System { text: connected },
         );
+        // 写锁冲突的只读通知放在连接说明之后，打开本身仍然成功。
+        shared.finish_open();
         emit(
             &events,
             SessionEventBody::StatusChanged {
@@ -286,6 +295,9 @@ struct CodexCliSession {
 impl AgentSession for CodexCliSession {
     async fn send_message(&self, text: String) -> Result<(), AgentError> {
         self.shared.ensure_open()?;
+        if self.shared.read_only() {
+            return Err(AgentError::Runtime(OCCUPIED_SESSION_NOTICE.into()));
+        }
         if text.starts_with('/') {
             return self.shared.handle_slash(text.trim()).await;
         }
@@ -396,6 +408,10 @@ impl AgentSession for CodexCliSession {
 
     fn native_id(&self) -> Option<String> {
         self.shared.thread_id.lock().unwrap().clone()
+    }
+
+    fn read_only(&self) -> bool {
+        self.shared.read_only()
     }
 
     fn retarget(&self, kind: AgentKind) {

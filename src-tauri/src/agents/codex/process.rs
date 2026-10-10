@@ -64,10 +64,20 @@ pub(super) fn strip_ansi(text: &str) -> String {
     out
 }
 
+/// 另一个 Codex / 工作台已经拿着这条线程的写锁。`thread/resume` 会失败，但历史仍可读。
+pub(super) fn is_thread_writer_conflict(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    lower.contains("active writer") || lower.contains("thread-store conflict")
+}
+
 pub(super) fn classify_codex_stderr(raw: &str) -> StderrClass {
     let cleaned = strip_ansi(raw);
     let trimmed = cleaned.trim();
     if trimmed.is_empty() || trimmed.contains("unrecognized configuration") {
+        return StderrClass::Ignore;
+    }
+    // 占用冲突由 thread/resume 的结果转成只读通知，不要再当成会话失败打到时间线。
+    if is_thread_writer_conflict(trimmed) {
         return StderrClass::Ignore;
     }
     if let Some(note) = mcp_transport_notice(trimmed) {
@@ -252,6 +262,18 @@ mod tests {
             }
             other => panic!("expected url notice, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn hides_thread_store_writer_conflict() {
+        let persistence = "2026-10-10T09:25:25.276357Z ERROR codex_core::session::session failed to initialize thread persistence: thread-store conflict: thread 01a124c7-226b-7bb0-a774-c5fccdab7471 already has an active writer";
+        let create = "2026-10-10T09:25:25.278837Z ERROR codex_core::session Failed to create session: thread-store conflict: thread 01a124c7-226b-7bb0-a774-c5fccdab7471 already has an active writer";
+        assert_eq!(classify_codex_stderr(persistence), StderrClass::Ignore);
+        assert_eq!(classify_codex_stderr(create), StderrClass::Ignore);
+        assert!(is_thread_writer_conflict(
+            "thread abc already has an active writer"
+        ));
+        assert!(!is_thread_writer_conflict("authentication failed"));
     }
 
     #[test]

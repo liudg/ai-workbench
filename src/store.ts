@@ -29,6 +29,17 @@ import {
   installUpdate,
   type UpdatePhase,
 } from "@/lib/updater";
+import { isReadOnlyOpen } from "@/lib/utils";
+
+const MISSING_SESSION = "会话不存在或已结束";
+
+function clearMissingSessionBanner(
+  lastError: string | null,
+  events: { kind: string }[],
+): string | null {
+  if (lastError === MISSING_SESSION && isReadOnlyOpen(events)) return null;
+  return lastError;
+}
 
 export type DialogMode = "create" | "import";
 
@@ -160,6 +171,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
             ...s.events,
             [event.session_id]: next,
           },
+          lastError: clearMissingSessionBanner(s.lastError, next),
         };
       });
     });
@@ -378,12 +390,17 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
         get().setTuning(sessionId, model.id, effort);
       }
     } catch (e) {
+      const message = String(e);
+      // 打开还没装上句柄时，catalog 会先撞上这句。只读打开成功后不该留成顶部失败。
+      if (message === MISSING_SESSION) return;
       set((s) => ({
-        lastError: String(e),
-        catalogs: {
-          ...s.catalogs,
-          [sessionId]: emptyCatalog(),
-        },
+        lastError: isReadOnlyOpen(s.events[sessionId]) ? s.lastError : message,
+        catalogs: isReadOnlyOpen(s.events[sessionId])
+          ? s.catalogs
+          : {
+              ...s.catalogs,
+              [sessionId]: emptyCatalog(),
+            },
       }));
     }
   },
@@ -446,12 +463,16 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     }
     try {
       const remote = await backend.getSessionEvents(sessionId);
-      set((s) => ({
-        events: {
-          ...s.events,
-          [sessionId]: mergeEvents(s.events[sessionId], remote),
-        },
-      }));
+      set((s) => {
+        const merged = mergeEvents(s.events[sessionId], remote);
+        return {
+          events: {
+            ...s.events,
+            [sessionId]: merged,
+          },
+          lastError: clearMissingSessionBanner(s.lastError, merged),
+        };
+      });
     } catch (e) {
       set({ lastError: String(e) });
     }

@@ -7,7 +7,9 @@ use tokio::process::Command;
 
 use crate::agents::AgentError;
 use crate::encoding::{apply_utf8_env, decode_child_bytes};
-use crate::models::{PromptKind, PromptOption, SessionEventBody, SessionStatus};
+use crate::models::{
+    PromptKind, PromptOption, SessionEventBody, SessionStatus, OCCUPIED_SESSION_NOTICE,
+};
 
 use super::catalog::{build_turn_input, slash_help, split_command};
 use super::process::{hide_console, truncate};
@@ -39,6 +41,9 @@ impl Shared {
     }
 
     pub(super) async fn begin_turn(&self, text: String) -> Result<(), AgentError> {
+        if self.read_only() {
+            return Err(AgentError::Runtime(OCCUPIED_SESSION_NOTICE.into()));
+        }
         if !self.pending.lock().unwrap().is_empty() {
             return Err(AgentError::PendingPrompt);
         }
@@ -127,12 +132,15 @@ impl Shared {
             }
             Err(err) => {
                 let raw = err.to_string();
-                let text = if raw.contains("active writer") {
-                    "这个 Codex 会话正在被另一个进程使用。历史已载入，直接发送可能会失败。".to_string()
-                } else {
-                    format!("恢复 Codex 会话失败：{raw}")
-                };
-                emit(&self.events, SessionEventBody::System { text });
+                // 写锁被占用时历史已经在上面载入。不要把这次打开记成失败。
+                if !self.reject_writer_conflict(&raw) {
+                    emit(
+                        &self.events,
+                        SessionEventBody::System {
+                            text: format!("恢复 Codex 会话失败：{raw}"),
+                        },
+                    );
+                }
             }
         }
     }

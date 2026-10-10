@@ -25,6 +25,10 @@ import type {
   ImportProjectInput,
 } from "./ipc";
 import { slashPreview } from "./slash";
+import { isReadOnlyOpen } from "./utils";
+
+const OCCUPIED_NOTICE =
+  "这个 Codex 会话正在被另一个进程占用，已只读打开。可以查看历史，不能在这里发送。";
 
 const CODEX_COMMANDS: SlashCommand[] = [
   { name: "/permissions", hint: "切换完全访问、询问批准或只读", takes_args: true },
@@ -191,6 +195,9 @@ function seedNativeResume() {
       });
     }
     pushEvent(sessionId, { kind: "agent-message", text: sample.agent });
+    if (sample.id.endsWith("f7d")) {
+      pushEvent(sessionId, { kind: "read-only", text: OCCUPIED_NOTICE });
+    }
   }
 }
 
@@ -373,6 +380,7 @@ export const mockBackend: Backend = {
   async sendMessage(sessionId, text) {
     const s = sessions.get(sessionId);
     if (!s) throw new Error("会话不存在");
+    if (isReadOnlyOpen(s.events)) throw new Error(OCCUPIED_NOTICE);
     if (s.pendingPrompt) throw new Error("存在待回答的提问，请先处理");
     pushEvent(sessionId, {
       kind: "user-message",

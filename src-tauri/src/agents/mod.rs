@@ -101,6 +101,11 @@ pub trait AgentSession: Send + Sync {
     fn native_id(&self) -> Option<String> {
         None
     }
+
+    /// 线程写锁在别的进程里。可以看历史，不能发送。
+    fn read_only(&self) -> bool {
+        false
+    }
 }
 
 /// Agent 适配器：一种 Agent CLI 对应一个实现。

@@ -38,6 +38,10 @@ impl Shared {
             return;
         }
         self.turn_open.store(false, Ordering::SeqCst);
+        // 只读打开的进程如果随后退出，历史还在。不要改写成「会话失败」。
+        if self.read_only() {
+            return;
+        }
         emit(
             &self.events,
             SessionEventBody::Error {
@@ -127,7 +131,11 @@ impl Shared {
                 let method = self.rpc_methods.lock().unwrap().remove(&id);
                 if let Some(err) = message.get("error") {
                     let text = rpc_error_text(err);
-                    if method.as_deref() == Some("turn/start") {
+                    if self.reject_writer_conflict(&text) {
+                        if method.as_deref() == Some("turn/start") {
+                            self.turn_open.store(false, Ordering::SeqCst);
+                        }
+                    } else if method.as_deref() == Some("turn/start") {
                         self.turn_open.store(false, Ordering::SeqCst);
                         emit(
                             &self.events,
@@ -263,8 +271,10 @@ impl Shared {
                 self.turn_open.store(false, Ordering::SeqCst);
                 *self.turn_id.lock().unwrap() = None;
                 if let Some(message) = params.pointer("/turn/error").and_then(error_text) {
-                    emit(&self.events, SessionEventBody::Error { message });
-                    emit_status(&self.events, SessionStatus::Failed);
+                    if !self.reject_writer_conflict(&message) {
+                        emit(&self.events, SessionEventBody::Error { message });
+                        emit_status(&self.events, SessionStatus::Failed);
+                    }
                 } else if self.pending.lock().unwrap().is_empty() {
                     emit_status(&self.events, SessionStatus::Completed);
                 }
@@ -295,13 +305,15 @@ impl Shared {
             "error" => {
                 if let Some(message) = params.get("message").and_then(Value::as_str) {
                     self.turn_open.store(false, Ordering::SeqCst);
-                    emit(
-                        &self.events,
-                        SessionEventBody::Error {
-                            message: message.to_string(),
-                        },
-                    );
-                    emit_status(&self.events, SessionStatus::Failed);
+                    if !self.reject_writer_conflict(message) {
+                        emit(
+                            &self.events,
+                            SessionEventBody::Error {
+                                message: message.to_string(),
+                            },
+                        );
+                        emit_status(&self.events, SessionStatus::Failed);
+                    }
                 }
             }
             "thread/compacted" => {

@@ -21,6 +21,11 @@ export function formatMessageTime(ts: number): string {
   return `${WEEKDAYS[d.getDay()]} ${hh}:${mm}`;
 }
 
+/** 这次打开只读：另一个进程占着 Codex 线程写锁。 */
+export function isReadOnlyOpen(events: { kind: string }[] | undefined): boolean {
+  return events?.some((event) => event.kind === "read-only") ?? false;
+}
+
 /** 从事件日志推导当前待回答的提问（最后一个未被 resolved 覆盖的 prompt） */
 export function pendingPrompt(
   events: { kind: string; prompt_id?: string }[],

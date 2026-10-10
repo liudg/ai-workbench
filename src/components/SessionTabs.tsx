@@ -1,6 +1,6 @@
 import { Square } from "lucide-react";
 
-import { cn } from "@/lib/utils";
+import { cn, isReadOnlyOpen } from "@/lib/utils";
 import { useWorkbench } from "@/store";
 import { type Project, type Session } from "@/types";
 import { NewSessionButton } from "./NewSessionButton";
@@ -16,6 +16,7 @@ function SessionTab({
   onSelect: () => void;
 }) {
   const stopSession = useWorkbench((s) => s.stopSession);
+  const readOnly = useWorkbench((s) => isReadOnlyOpen(s.events[session.id]));
   const stoppable =
     session.status === "running" || session.status === "needs-input";
 
@@ -31,6 +32,11 @@ function SessionTab({
     >
       <StatusDot status={session.status} />
       <span className="max-w-40 truncate">{session.title}</span>
+      {readOnly && (
+        <span className="shrink-0 rounded bg-amber-400/15 px-1.5 py-0.5 text-[10px] leading-4 text-amber-200">
+          只读
+        </span>
+      )}
       {stoppable && (
         <button
           title="停止会话"
