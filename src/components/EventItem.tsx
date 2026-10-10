@@ -529,12 +529,15 @@ export function EventItem({
   resolvedAnswer,
   thinkingOpen = false,
   onToggleThinking,
+  showAgentLabel = true,
 }: {
   event: SessionEvent;
   session: Session;
   resolvedAnswer: string | null;
   thinkingOpen?: boolean;
   onToggleThinking?: () => void;
+  /** 一轮只在最终答复上标一次 Agent，旁白不再重复。 */
+  showAgentLabel?: boolean;
 }) {
   const time = formatMessageTime(event.ts);
 
@@ -543,6 +546,15 @@ export function EventItem({
       return <UserMessage sessionId={session.id} text={event.text} time={time} />;
 
     case "agent-message":
+      if (!showAgentLabel) {
+        return (
+          <div className="event-in min-w-0 px-6 py-1">
+            <div className="mx-auto min-w-0 max-w-3xl pl-6">
+              <AssistantAnswer text={event.text} />
+            </div>
+          </div>
+        );
+      }
       return (
         <Row
           icon={<Bot className="h-3.5 w-3.5" />}

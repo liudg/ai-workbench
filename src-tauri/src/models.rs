@@ -171,6 +171,33 @@ pub enum PromptAnswer {
     },
 }
 
+/// 助手文本在一轮里的位置。适配器写入，时间线只读这个字段，不比较 AgentKind。
+///
+/// 缺省表示协议没给阶段：时间线把该轮最后一条未标注消息当作答复。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum MessagePhase {
+    /// 过程中的旁白，例如「我会查看…」。后面还可能有工具或正式答复。
+    Commentary,
+    /// 已经成形、但后面还可能继续的回答。
+    PartialAnswer,
+    /// 这一轮声明的最终答复。
+    FinalAnswer,
+}
+
+impl MessagePhase {
+    /// 协议里的 phase 字符串。未知值保持缺省，交给时间线的兼容逻辑。
+    pub fn parse(value: Option<&str>) -> Option<Self> {
+        let normalized = value.map(|raw| raw.trim().to_ascii_lowercase());
+        match normalized.as_deref() {
+            Some("commentary") => Some(Self::Commentary),
+            Some("partial_answer") | Some("partial-answer") => Some(Self::PartialAnswer),
+            Some("final_answer") | Some("final-answer") => Some(Self::FinalAnswer),
+            _ => None,
+        }
+    }
+}
+
 /// 会话事件体（时间线中的一条）。`kind` 字段作为判别标签。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
@@ -183,6 +210,9 @@ pub enum SessionEventBody {
         /// 同一条流式回复复用这个 id，会话层会覆盖已有事件而不是追加。
         #[serde(default, skip_serializing_if = "Option::is_none")]
         stream_id: Option<String>,
+        /// 适配器标出的阶段。缺省不是「最终答复」，只是阶段未知。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        phase: Option<MessagePhase>,
     },
     /// 模型思考。有 `stream_id` 时覆盖同一条，而不是追加。
     Thinking {

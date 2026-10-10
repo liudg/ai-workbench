@@ -327,6 +327,11 @@ function seedRegisteredProject() {
     pushEvent(sessionId, { kind: "user-message", text: title });
     if (index === 2) {
       pushEvent(sessionId, {
+        kind: "agent-message",
+        text: "我会查看目录结构和最近改动。",
+        phase: "commentary",
+      });
+      pushEvent(sessionId, {
         kind: "thinking",
         text: "先看目录结构和最近改动，再写概括。",
       });
@@ -339,6 +344,7 @@ function seedRegisteredProject() {
     pushEvent(sessionId, {
       kind: "agent-message",
       text: index === 0 ? PREVIEW_ANSWER : "这是工作台已注册项目下的预览会话。",
+      phase: "final-answer",
     });
     if (index === 1) {
       pushEvent(sessionId, { kind: "read-only", text: OCCUPIED_NOTICE });
@@ -711,6 +717,16 @@ export const mockBackend: Backend = {
         s,
         () =>
           pushEvent(sessionId, {
+            kind: "agent-message",
+            text: "我会查看相关入口。",
+            phase: "commentary",
+          }),
+        200,
+      );
+      schedule(
+        s,
+        () =>
+          pushEvent(sessionId, {
             kind: "thinking",
             text: `先对一下「${label}」的入口。`,
           }),
@@ -749,6 +765,7 @@ export const mockBackend: Backend = {
               kind: "agent-message",
               text,
               stream_id: "mock-answer",
+              phase: "final-answer",
             }),
           1200 + index * 350,
         );
@@ -799,6 +816,7 @@ export const mockBackend: Backend = {
         pushEvent(sessionId, {
           kind: "agent-message",
           text: `${verdict}\n\n${agentLabel(s.meta.agent)} 桩会话本轮结束。`,
+          phase: "final-answer",
         });
         setStatus(sessionId, "completed");
       },

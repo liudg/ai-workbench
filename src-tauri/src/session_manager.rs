@@ -542,15 +542,16 @@ fn replace_stream(
     body: &SessionEventBody,
     record_activity: bool,
 ) -> Option<SessionEvent> {
-    let (text, stream_id, thinking) = match body {
+    let (text, stream_id, thinking, phase) = match body {
         SessionEventBody::AgentMessage {
             text,
             stream_id: Some(stream_id),
-        } => (text, stream_id, false),
+            phase,
+        } => (text, stream_id, false, phase.clone()),
         SessionEventBody::Thinking {
             text,
             stream_id: Some(stream_id),
-        } => (text, stream_id, true),
+        } => (text, stream_id, true, None),
         _ => return None,
     };
     let existing = entry.events.iter_mut().rev().find(|event| match &event.body {
@@ -565,8 +566,17 @@ fn replace_stream(
         _ => false,
     })?;
     match &mut existing.body {
-        SessionEventBody::AgentMessage { text: slot, .. }
-        | SessionEventBody::Thinking { text: slot, .. } => *slot = text.clone(),
+        SessionEventBody::AgentMessage {
+            text: slot,
+            phase: slot_phase,
+            ..
+        } if !thinking => {
+            *slot = text.clone();
+            if let Some(phase) = phase {
+                *slot_phase = Some(phase);
+            }
+        }
+        SessionEventBody::Thinking { text: slot, .. } if thinking => *slot = text.clone(),
         _ => return None,
     }
     let at = now_millis();
@@ -626,6 +636,7 @@ mod tests {
             SessionEventBody::AgentMessage {
                 text: "历史回答".into(),
                 stream_id: None,
+                phase: None,
             },
             false,
         );
@@ -699,6 +710,7 @@ mod tests {
             SessionEventBody::AgentMessage {
                 text: "先".into(),
                 stream_id: Some("s1".into()),
+                phase: None,
             },
             false,
         );
@@ -707,6 +719,7 @@ mod tests {
             &SessionEventBody::AgentMessage {
                 text: "先看目录".into(),
                 stream_id: Some("s1".into()),
+                phase: None,
             },
             false,
         )
@@ -719,11 +732,19 @@ mod tests {
             &SessionEventBody::AgentMessage {
                 text: "先看目录结构".into(),
                 stream_id: Some("s1".into()),
+                phase: Some(crate::models::MessagePhase::Commentary),
             },
             true,
         )
         .is_some());
         assert_eq!(session.activity_at, Some(session.meta.updated_at));
         assert!(session.meta.updated_at >= 1_000);
+        match &session.events[0].body {
+            SessionEventBody::AgentMessage { text, phase, .. } => {
+                assert_eq!(text, "先看目录结构");
+                assert_eq!(phase, &Some(crate::models::MessagePhase::Commentary));
+            }
+            other => panic!("expected streamed agent message, got {other:?}"),
+        }
     }
 }

@@ -1,39 +1,15 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type WheelEvent } from "react";
 import { MessageSquareDashed } from "lucide-react";
 
-import { timelineStatus, turnDetailsOpen } from "@/lib/timeline";
+import { buildTimeline, timelineStatus, turnDetailsOpen } from "@/lib/timeline";
 import { pendingPrompt } from "@/lib/utils";
 import type { Session, SessionEvent } from "@/types";
 import { Composer } from "./Composer";
 import { EventItem } from "./EventItem";
+import { TurnProcess } from "./TurnProcess";
 import { WorkDetailsGroup } from "./WorkDetailsGroup";
 
-type TimelineBlock =
-  | { type: "event"; event: SessionEvent }
-  | { type: "work"; id: string; events: SessionEvent[] };
-
 const NEAR_BOTTOM_PX = 80;
-
-/** 连续的工具调用并成一个折叠组；status-changed / prompt-resolved 不渲染。 */
-function buildBlocks(events: SessionEvent[]): TimelineBlock[] {
-  const blocks: TimelineBlock[] = [];
-  for (const event of events) {
-    if (event.kind === "status-changed" || event.kind === "prompt-resolved") {
-      continue;
-    }
-    if (event.kind === "tool-call") {
-      const last = blocks[blocks.length - 1];
-      if (last && last.type === "work") {
-        last.events.push(event);
-      } else {
-        blocks.push({ type: "work", id: event.id, events: [event] });
-      }
-    } else {
-      blocks.push({ type: "event", event });
-    }
-  }
-  return blocks;
-}
 
 function contentChars(events: SessionEvent[]): number {
   let chars = 0;
@@ -91,7 +67,7 @@ export function ChatView({
     () => timelineStatus(events, session.status),
     [events, session.status],
   );
-  const blocks = useMemo(() => buildBlocks(events), [events]);
+  const blocks = useMemo(() => buildTimeline(events, status), [events, status]);
   const indexById = useMemo(() => {
     const map = new Map<string, number>();
     events.forEach((event, index) => map.set(event.id, index));
@@ -102,11 +78,15 @@ export function ChatView({
   const [workOverrides, setWorkOverrides] = useState<ReadonlyMap<string, boolean>>(
     new Map(),
   );
+  const [foldOverrides, setFoldOverrides] = useState<ReadonlyMap<string, boolean>>(
+    new Map(),
+  );
   const [thinkingOverrides, setThinkingOverrides] = useState<
     ReadonlyMap<string, boolean>
   >(new Map());
   useEffect(() => {
     setWorkOverrides(new Map());
+    setFoldOverrides(new Map());
     setThinkingOverrides(new Map());
   }, [session.id]);
 
@@ -211,6 +191,24 @@ export function ChatView({
             </div>
           ) : (
             blocks.map((block, index) => {
+              if (block.type === "turn") {
+                const expanded = foldOverrides.get(block.id) ?? false;
+                return (
+                  <TurnProcess
+                    key={block.id}
+                    events={block.events}
+                    answerId={block.answerId}
+                    durationMs={block.durationMs}
+                    session={session}
+                    resolvedAnswers={resolvedAnswers}
+                    expanded={expanded}
+                    onToggle={() => {
+                      pausePinForToggle();
+                      setFoldOverrides((prev) => new Map(prev).set(block.id, !expanded));
+                    }}
+                  />
+                );
+              }
               if (block.type === "work") {
                 const eventIndex = indexById.get(block.events[0].id) ?? -1;
                 const live = index === blocks.length - 1 && status === "running";
@@ -247,6 +245,7 @@ export function ChatView({
                       ? (resolvedAnswers.get(event.prompt_id) ?? null)
                       : null
                   }
+                  showAgentLabel={block.showAgentLabel}
                   thinkingOpen={thinkingOpen}
                   onToggleThinking={
                     event.kind === "thinking"

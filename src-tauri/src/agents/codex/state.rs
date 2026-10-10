@@ -11,7 +11,7 @@ use tokio::sync::{mpsc, oneshot};
 
 use crate::agents::EventSink;
 use crate::models::{
-    PromptQuestion, SessionEventBody, SessionStatus, OCCUPIED_SESSION_NOTICE,
+    MessagePhase, PromptQuestion, SessionEventBody, SessionStatus, OCCUPIED_SESSION_NOTICE,
 };
 
 use super::process::is_thread_writer_conflict;
@@ -107,6 +107,8 @@ pub(super) struct Shared {
     /// 不等待结果的 JSON-RPC id → method，用来区分 turn/start 失败和其它命令失败。
     pub(super) rpc_methods: Mutex<HashMap<u64, String>>,
     pub(super) streams: Mutex<HashMap<String, StreamBuf>>,
+    /// 助手消息 item id → 协议阶段。delta 通知本身不带 phase，完成时再补上。
+    pub(super) message_phases: Mutex<HashMap<String, MessagePhase>>,
     /// 第一条用户消息会把 Codex 线程名写成标题。在此之前用「未命名会话」落盘。
     pub(super) titled: AtomicBool,
     /// 已渲染成问题卡片的 agentMessage item id：抑制后续的 delta / 重复文本

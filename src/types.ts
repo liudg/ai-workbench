@@ -22,6 +22,12 @@ export type SessionStatus =
 
 export type PromptKind = "approval" | "choice" | "free-text" | "questions";
 
+/**
+ * 适配器标出的助手文本阶段。时间线只看这个字段，不比较 agent 种类。
+ * 缺省表示协议没给阶段。
+ */
+export type MessagePhase = "commentary" | "partial-answer" | "final-answer";
+
 /** 问题卡片中的一道题（Codex 原生提问；一轮可有多题） */
 export interface PromptQuestion {
   /** 阻塞式提问用 Codex 的 question id；async 提问按序合成 q1/q2… */
@@ -73,7 +79,13 @@ export interface PromptOption {
 /** 事件体（对应 Rust 的 SessionEventBody；适配器只产生这一层） */
 export type SessionEventBody =
   | { kind: "user-message"; text: string }
-  | { kind: "agent-message"; text: string; stream_id?: string }
+  | {
+      kind: "agent-message";
+      text: string;
+      stream_id?: string;
+      /** 过程旁白 / 部分答复 / 最终答复。缺省表示阶段未知。 */
+      phase?: MessagePhase;
+    }
   | { kind: "thinking"; text: string; stream_id?: string }
   | { kind: "tool-call"; name: string; summary: string }
   | {

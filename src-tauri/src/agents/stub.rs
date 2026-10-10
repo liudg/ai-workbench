@@ -17,8 +17,8 @@ use tokio::task::JoinHandle;
 use tokio::time::{sleep, Duration};
 
 use crate::models::{
-    AgentCapabilities, AgentCatalog, AgentKind, PromptAnswer, PromptKind, PromptOption,
-    SessionEventBody, SessionStatus,
+    AgentCapabilities, AgentCatalog, AgentKind, MessagePhase, PromptAnswer, PromptKind,
+    PromptOption, SessionEventBody, SessionStatus,
 };
 
 use super::{AgentError, AgentSession, EventSink};
@@ -112,6 +112,7 @@ impl AgentSession for StubAgentSession {
                         text.chars().take(48).collect::<String>(),
                     ),
                     stream_id: None,
+                    phase: Some(MessagePhase::Commentary),
                 },
             );
 
@@ -178,6 +179,7 @@ impl AgentSession for StubAgentSession {
                         text: "本轮任务已完成（桩模式）。接入真实 CLI 后，这里将是真实的执行结果。"
                             .into(),
                         stream_id: None,
+                        phase: Some(MessagePhase::FinalAnswer),
                     },
                 );
                 state.lock().unwrap().busy = false;
@@ -252,6 +254,7 @@ impl AgentSession for StubAgentSession {
                 SessionEventBody::AgentMessage {
                     text: format!("{verdict}\n\n{} 桩会话本轮结束。", persona.cli_label),
                     stream_id: None,
+                    phase: Some(MessagePhase::FinalAnswer),
                 },
             );
             state.lock().unwrap().busy = false;

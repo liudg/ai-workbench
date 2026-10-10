@@ -181,6 +181,7 @@ impl AgentAdapter for CodexCliAdapter {
             waiters: Mutex::new(HashMap::new()),
             rpc_methods: Mutex::new(HashMap::new()),
             streams: Mutex::new(HashMap::new()),
+            message_phases: Mutex::new(HashMap::new()),
             titled: AtomicBool::new(false),
             question_items: Mutex::new(HashSet::new()),
             occupancy: Mutex::new(state::Occupancy::default()),

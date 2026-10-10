@@ -8,7 +8,7 @@ use tokio::sync::oneshot;
 use tokio::time::timeout;
 
 use crate::agents::AgentError;
-use crate::models::{PromptKind, PromptOption, SessionEventBody, SessionStatus};
+use crate::models::{MessagePhase, PromptKind, PromptOption, SessionEventBody, SessionStatus};
 
 const RPC_TIMEOUT: Duration = Duration::from_secs(45);
 
@@ -364,6 +364,15 @@ impl Shared {
                 if self.maybe_emit_async_questions(id, item) {
                     return;
                 }
+                let phase = MessagePhase::parse(item.get("phase").and_then(Value::as_str));
+                if !id.is_empty() {
+                    if let Some(phase) = phase {
+                        self.message_phases
+                            .lock()
+                            .unwrap()
+                            .insert(id.to_string(), phase);
+                    }
+                }
                 if let Some(text) = item.get("text").and_then(Value::as_str) {
                     if !id.is_empty() {
                         self.streams.lock().unwrap().insert(
@@ -380,6 +389,7 @@ impl Shared {
                             SessionEventBody::AgentMessage {
                                 text: text.to_string(),
                                 stream_id: None,
+                                phase,
                             },
                         );
                     }
@@ -486,11 +496,13 @@ impl Shared {
         buf.last_emit = Instant::now();
         let text = buf.text.clone();
         drop(streams);
+        let phase = self.message_phases.lock().unwrap().get(item_id).copied();
         emit(
             &self.events,
             SessionEventBody::AgentMessage {
                 text,
                 stream_id: Some(item_id.to_string()),
+                phase,
             },
         );
     }

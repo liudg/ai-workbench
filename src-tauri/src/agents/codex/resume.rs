@@ -29,7 +29,7 @@ use async_trait::async_trait;
 
 use crate::agents::directory::{cwd_key, DirectoryEntry, SessionDirectory};
 use crate::encoding::{apply_utf8_env, decode_child_bytes};
-use crate::models::{strip_verbatim_prefix, SessionEventBody, SessionStatus};
+use crate::models::{strip_verbatim_prefix, MessagePhase, SessionEventBody, SessionStatus};
 
 use super::process::{apply_codex_network_env, hide_console, resolve_codex_bin};
 
@@ -233,6 +233,7 @@ fn push_history_item(bodies: &mut Vec<SessionEventBody>, item: &Value) {
                 bodies.push(SessionEventBody::AgentMessage {
                     text: take_chars(text, 20_000),
                     stream_id: None,
+                    phase: MessagePhase::parse(item.get("phase").and_then(Value::as_str)),
                 });
             }
         }
@@ -624,7 +625,31 @@ mod tests {
         let turns = chronological_turns(&[newer, older]);
         let bodies = bodies_from_turns(&turns);
         assert!(matches!(bodies[0], SessionEventBody::UserMessage { ref text } if text == "你好"));
-        assert!(matches!(bodies[1], SessionEventBody::AgentMessage { ref text, .. } if text == "完成"));
+        assert!(matches!(bodies[1], SessionEventBody::AgentMessage { ref text, phase: None, .. } if text == "完成"));
+    }
+
+    #[test]
+    fn history_maps_message_phase_for_every_adapter_consumer() {
+        let turns = vec![json!({
+            "items": [
+                {"type": "userMessage", "content": [{"type": "text", "text": "看一下"}]},
+                {"type": "agentMessage", "text": "我会查看目录。", "phase": "commentary"},
+                {"type": "agentMessage", "text": "目录里有 src。", "phase": "final_answer"}
+            ]
+        })];
+        let bodies = bodies_from_turns(&turns);
+        assert!(matches!(
+            &bodies[1],
+            SessionEventBody::AgentMessage { text, phase, .. }
+                if text == "我会查看目录。" && *phase == Some(MessagePhase::Commentary)
+        ));
+        assert!(matches!(
+            &bodies[2],
+            SessionEventBody::AgentMessage { text, phase, .. }
+                if text == "目录里有 src。" && *phase == Some(MessagePhase::FinalAnswer)
+        ));
+        assert_eq!(MessagePhase::parse(Some("partial_answer")), Some(MessagePhase::PartialAnswer));
+        assert_eq!(MessagePhase::parse(Some("unknown")), None);
     }
 
     #[test]
