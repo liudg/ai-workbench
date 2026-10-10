@@ -63,6 +63,8 @@ body {
   user-select: text;
   cursor: text;
   overflow-x: hidden;
+  /* 高度变化时由组件决定是否贴底，避免浏览器自己锚住旧位置。 */
+  overflow-anchor: none;
 }
 .chat-log button,
 .chat-log svg {

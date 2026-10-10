@@ -15,7 +15,8 @@ function formatDuration(ms: number): string {
 
 /**
  * 一段连续的工具调用折叠成一行摘要。
- * 会话运行中且位于时间线末尾时展开；最终答复到达后默认折叠。
+ * 本轮仍在回答时保持展开，整轮结束后默认折叠。
+ * 「正在工作」只标在时间线末尾、会话仍在跑的那一组。
  */
 export function WorkDetailsGroup({
   events,
