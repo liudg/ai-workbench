@@ -3,7 +3,7 @@
 use tauri::State;
 
 use crate::features::projects::ProjectStore;
-use crate::features::sessions::SessionManager;
+use crate::features::sessions::{AgentCatalogRefresh, CachedAgentCatalog, SessionManager};
 use crate::models::*;
 
 #[tauri::command]
@@ -35,11 +35,17 @@ pub async fn create_session(
 }
 
 #[tauri::command]
+pub fn cached_agent_catalogs(manager: State<'_, SessionManager>) -> Vec<CachedAgentCatalog> {
+    manager.cached_catalogs()
+}
+
+#[tauri::command]
 pub async fn agent_catalog(
+    store: State<'_, ProjectStore>,
     manager: State<'_, SessionManager>,
     session_id: String,
-) -> Result<AgentCatalog, String> {
-    manager.agent_catalog(&session_id).await
+) -> Result<AgentCatalogRefresh, String> {
+    manager.agent_catalog_when_ready(&store, &session_id).await
 }
 
 #[tauri::command]

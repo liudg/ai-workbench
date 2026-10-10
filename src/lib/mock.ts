@@ -8,7 +8,9 @@ import {
   type AccessMode,
   type AgentCapabilities,
   type AgentCatalog,
+  type AgentCatalogRefresh,
   type AgentInstallation,
+  type CachedAgentCatalog,
   type AgentKind,
   type AgentProfile,
   type Project,
@@ -183,6 +185,56 @@ const MOCK_PROFILES: Record<AgentKind, AgentProfile> = {
   antigravity: stubProfile("antigravity"),
   "kiro-cli": stubProfile("kiro-cli"),
 };
+
+function previewCatalog(agent: AgentKind): AgentCatalog {
+  const profile = MOCK_PROFILES[agent];
+  if (!profile.capabilities.supports_tuning && !profile.capabilities.supports_skills) {
+    return {
+      models: [],
+      skills: [],
+      commands: profile.commands,
+      capabilities: profile.capabilities,
+    };
+  }
+  return {
+    models: [
+      {
+        id: "gpt-6.1-sol",
+        label: "GPT-6.1-Sol",
+        description: "浏览器预览中的示例模型",
+        is_default: true,
+        default_effort: "medium",
+        efforts: [
+          { id: "low", description: "更快，推理更浅" },
+          { id: "medium", description: "速度和深度均衡" },
+          { id: "high", description: "更深的推理" },
+        ],
+      },
+      {
+        id: "gpt-6-astra",
+        label: "GPT-6-Astra",
+        description: "浏览器预览中的示例模型",
+        is_default: false,
+        default_effort: "high",
+        efforts: [
+          { id: "medium", description: "速度和深度均衡" },
+          { id: "high", description: "更深的推理" },
+        ],
+      },
+    ],
+    skills: [
+      {
+        name: "documents:documents",
+        mention: "documents",
+        label: "Documents",
+        description: "创建和编辑 Word 文档",
+        path: "C:/skills/documents/SKILL.md",
+      },
+    ],
+    commands: profile.commands,
+    capabilities: profile.capabilities,
+  };
+}
 
 let seq = 0;
 const id = () => `mock-${Date.now().toString(36)}-${(seq++).toString(36)}`;
@@ -534,56 +586,19 @@ export const mockBackend: Backend = {
     return { ...item };
   },
 
-  async agentCatalog(sessionId): Promise<AgentCatalog> {
+  async cachedAgentCatalogs(): Promise<CachedAgentCatalog[]> {
+    return [{ kind: "codex-cli", catalog: previewCatalog("codex-cli") }];
+  },
+
+  async agentCatalog(sessionId): Promise<AgentCatalogRefresh> {
     const s = sessions.get(sessionId);
     if (!s) throw new Error("会话不存在");
-    const profile = MOCK_PROFILES[s.meta.agent];
-    if (!profile.capabilities.supports_tuning && !profile.capabilities.supports_skills) {
-      return {
-        models: [],
-        skills: [],
-        commands: profile.commands,
-        capabilities: profile.capabilities,
-      };
+    const catalog = previewCatalog(s.meta.agent);
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("catalog") === "fail") {
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      throw new Error("等待 Codex model/list 超时");
     }
-    return {
-      models: [
-        {
-          id: "gpt-6.1-sol",
-          label: "GPT-6.1-Sol",
-          description: "浏览器预览中的示例模型",
-          is_default: true,
-          default_effort: "medium",
-          efforts: [
-            { id: "low", description: "更快，推理更浅" },
-            { id: "medium", description: "速度和深度均衡" },
-            { id: "high", description: "更深的推理" },
-          ],
-        },
-        {
-          id: "gpt-6-astra",
-          label: "GPT-6-Astra",
-          description: "浏览器预览中的示例模型",
-          is_default: false,
-          default_effort: "high",
-          efforts: [
-            { id: "medium", description: "速度和深度均衡" },
-            { id: "high", description: "更深的推理" },
-          ],
-        },
-      ],
-      skills: [
-        {
-          name: "documents:documents",
-          mention: "documents",
-          label: "Documents",
-          description: "创建和编辑 Word 文档",
-          path: "C:/skills/documents/SKILL.md",
-        },
-      ],
-      commands: profile.commands,
-      capabilities: profile.capabilities,
-    };
+    return { catalog, notice: null };
   },
 
   async setSessionTuning() {},

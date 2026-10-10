@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { ArrowUp, ChevronDown, Plus, Shield, X } from "lucide-react";
 
+import { modelButtonLabel, preferCatalog } from "@/lib/catalog";
 import { backend } from "@/lib/ipc";
 import { filterSkills, insertSkill, skillToken } from "./skills";
 import { filterSlash, slashToken } from "@/lib/slash";
@@ -91,7 +92,10 @@ export function Composer({
   const setAccessMode = useWorkbench((s) => s.setAccessMode);
   const loadCatalog = useWorkbench((s) => s.loadCatalog);
   const setTuning = useWorkbench((s) => s.setTuning);
-  const catalog = useWorkbench((s) => s.catalogs[session.id]);
+  const liveCatalog = useWorkbench((s) => s.catalogs[session.id]);
+  const cachedCatalog = useWorkbench((s) => s.catalogCache[session.agent]);
+  const catalogNotice = useWorkbench((s) => s.catalogNotice);
+  const catalog = preferCatalog(liveCatalog, cachedCatalog);
   const profile = useWorkbench((s) => s.profiles[session.agent]);
   const tuning = useWorkbench((s) => s.tuning[session.id]);
   const addAttachments = useWorkbench((s) => s.addAttachments);
@@ -159,11 +163,11 @@ export function Composer({
     selectedModel?.efforts.some((item) => item.id === tuning.effort)
       ? tuning.effort
       : selectedModel?.default_effort;
-  const modelButton = selectedModel
-    ? `${selectedModel.label} · ${effortLabel(selectedEffort)}`
-    : catalog
-      ? "暂无模型"
-      : "读取模型…";
+  const modelButton = modelButtonLabel(
+    selectedModel ? `${selectedModel.label} · ${effortLabel(selectedEffort)}` : undefined,
+    catalog,
+    catalogNotice,
+  );
 
   useEffect(() => {
     setSlashIndex(0);
@@ -229,6 +233,14 @@ export function Composer({
       {occupied && (
         <p className="mx-auto mb-2 max-w-3xl break-words px-2 text-center text-xs leading-5 text-amber-200/90">
           此会话正被其他进程占用，当前只读，不能发送。
+        </p>
+      )}
+      {catalogNotice && (
+        <p
+          role="status"
+          className="mx-auto mb-2 max-w-3xl break-words px-2 text-center text-xs leading-5 text-zinc-500"
+        >
+          {catalogNotice}
         </p>
       )}
       <div className="relative mx-auto min-w-0 max-w-3xl">

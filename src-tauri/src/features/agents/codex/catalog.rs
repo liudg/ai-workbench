@@ -10,6 +10,38 @@ use crate::models::{
 
 use super::state::{KnownSkill, Shared};
 
+fn skill_options(skills: &[KnownSkill]) -> Vec<AgentSkillOption> {
+    skills
+        .iter()
+        .map(|skill| AgentSkillOption {
+            name: skill.name.clone(),
+            mention: skill.mention.clone(),
+            label: skill.label.clone(),
+            description: skill.description.clone(),
+            path: skill.path.clone(),
+        })
+        .collect()
+}
+
+/// 技能请求失败时保留已有技能，但只要模型列表非空就仍然返回模型。
+pub(super) fn assemble_catalog(
+    models: Vec<AgentModelOption>,
+    skills: Result<Vec<AgentSkillOption>, ()>,
+    previous_skills: Vec<AgentSkillOption>,
+) -> Result<AgentCatalog, ()> {
+    let skills = match skills {
+        Ok(skills) => skills,
+        Err(()) if !models.is_empty() => previous_skills,
+        Err(()) => return Err(()),
+    };
+    Ok(AgentCatalog {
+        models,
+        skills,
+        commands: slash_commands(),
+        capabilities: AgentCapabilities::codex(),
+    })
+}
+
 impl Shared {
     pub(super) fn set_tuning(&self, model: Option<String>, effort: Option<String>) {
         if let Some(model) = model {
@@ -31,29 +63,20 @@ impl Shared {
     }
 
     pub(super) async fn catalog(&self) -> Result<AgentCatalog, AgentError> {
-        let models = self
+        let models = match self
             .request("model/list", json!({ "includeHidden": true }))
-            .await?;
-        self.refresh_skills().await?;
-        let skills = self
-            .skills
-            .lock()
-            .unwrap()
-            .iter()
-            .map(|skill| AgentSkillOption {
-                name: skill.name.clone(),
-                mention: skill.mention.clone(),
-                label: skill.label.clone(),
-                description: skill.description.clone(),
-                path: skill.path.clone(),
-            })
-            .collect();
-        Ok(AgentCatalog {
-            models: parse_models(&models),
-            skills,
-            commands: slash_commands(),
-            capabilities: AgentCapabilities::codex(),
-        })
+            .await
+        {
+            Ok(value) => parse_models(&value),
+            Err(err) => return Err(err),
+        };
+        let previous_skills = skill_options(&self.skills.lock().unwrap());
+        let skills = match self.refresh_skills().await {
+            Ok(()) => Ok(skill_options(&self.skills.lock().unwrap())),
+            Err(_) => Err(()),
+        };
+        assemble_catalog(models, skills, previous_skills)
+            .map_err(|()| AgentError::Runtime("读取技能失败，且没有可用模型".into()))
     }
 
     pub(super) async fn refresh_skills(&self) -> Result<(), AgentError> {
@@ -275,7 +298,6 @@ pub(super) fn split_command(text: &str) -> (String, String) {
     (name, rest)
 }
 
-
 pub(super) fn slash_commands() -> Vec<SlashCommand> {
     vec![
         SlashCommand { name: "/permissions".into(), hint: "切换完全访问、询问批准或只读".into(), takes_args: true },
@@ -311,6 +333,33 @@ mod tests {
         assert_eq!(input[1]["type"], json!("skill"));
         assert_eq!(input[1]["name"], json!("documents:documents"));
         assert_eq!(input[0]["text_elements"][0]["placeholder"], json!("Documents"));
+    }
+
+    #[test]
+    fn skills_failure_keeps_models_and_previous_skills() {
+        let models = vec![AgentModelOption {
+            id: "gpt-cached".into(),
+            label: "GPT Cached".into(),
+            description: String::new(),
+            is_default: true,
+            default_effort: "medium".into(),
+            efforts: Vec::new(),
+        }];
+        let previous = vec![AgentSkillOption {
+            name: "documents:documents".into(),
+            mention: "documents".into(),
+            label: "Documents".into(),
+            description: String::new(),
+            path: "C:/skills/documents/SKILL.md".into(),
+        }];
+        let catalog = assemble_catalog(models, Err(()), previous).expect("models stay");
+        assert_eq!(catalog.models[0].id, "gpt-cached");
+        assert_eq!(catalog.skills[0].mention, "documents");
+    }
+
+    #[test]
+    fn skills_failure_without_models_is_an_error() {
+        assert!(assemble_catalog(Vec::new(), Err(()), Vec::new()).is_err());
     }
 
     #[test]

@@ -18,6 +18,10 @@ use crate::features::agents::{
 use crate::features::projects::ProjectStore;
 use crate::models::*;
 
+use super::catalog::{
+    catalog_with_ready_retry, soften_catalog, AgentCatalogRefresh, CachedAgentCatalog, CatalogCache,
+};
+
 struct SessionEntry {
     meta: Session,
     /// 完整事件日志（切换会话时通过 `get_session_events` 全量拉取）
@@ -37,15 +41,17 @@ pub struct SessionManager {
     app: AppHandle,
     directories: Vec<Arc<dyn SessionDirectory>>,
     opening: tokio::sync::Mutex<()>,
+    catalog_cache: CatalogCache,
 }
 
 impl SessionManager {
-    pub fn new(app: AppHandle) -> Self {
+    pub fn new(app: AppHandle, data_dir: &std::path::Path) -> Self {
         Self {
             entries: Arc::new(Mutex::new(HashMap::new())),
             app,
             directories: session_directories(),
             opening: tokio::sync::Mutex::new(()),
+            catalog_cache: CatalogCache::load(data_dir),
         }
     }
 
@@ -353,9 +359,40 @@ impl SessionManager {
             .map_err(|err| err.to_string())
     }
 
-    pub async fn agent_catalog(&self, session_id: &str) -> Result<AgentCatalog, String> {
+    pub fn cached_catalogs(&self) -> Vec<CachedAgentCatalog> {
+        self.catalog_cache.list()
+    }
+
+    /// 向当前会话的适配器要目录。失败或空模型时保留该 Agent 上一次成功的结果。
+    pub async fn agent_catalog(&self, session_id: &str) -> Result<AgentCatalogRefresh, String> {
         let handle = self.agent_handle_ready(session_id).await?;
-        handle.catalog().await.map_err(|err| err.to_string())
+        let kind = self
+            .entries
+            .lock()
+            .unwrap()
+            .get(session_id)
+            .map(|entry| entry.meta.agent)
+            .ok_or_else(|| "会话不存在或已结束".to_string())?;
+        let previous = self.catalog_cache.get(kind);
+        let incoming = handle.catalog().await.map_err(|err| err.to_string());
+        let refresh = soften_catalog(previous.as_ref(), incoming)?;
+        if refresh.notice.is_none() && !refresh.catalog.models.is_empty() {
+            self.catalog_cache.remember(kind, &refresh.catalog);
+        }
+        Ok(refresh)
+    }
+
+    /// 侧边栏选中会话和目录请求会抢跑。句柄还没有时，等这次打开完成后再试一次。
+    pub async fn agent_catalog_when_ready(
+        &self,
+        store: &ProjectStore,
+        session_id: &str,
+    ) -> Result<AgentCatalogRefresh, String> {
+        catalog_with_ready_retry(
+            || self.agent_catalog(session_id),
+            || async { self.ensure_events(store, session_id).await.map(|_| ()) },
+        )
+        .await
     }
 
     pub fn set_session_tuning(

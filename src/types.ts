@@ -207,6 +207,18 @@ export interface AgentCatalog {
   capabilities: AgentCapabilities;
 }
 
+/** `agent_catalog` 的返回。notice 有值时 catalog 仍是上次成功的目录。 */
+export interface AgentCatalogRefresh {
+  catalog: AgentCatalog;
+  notice?: string | null;
+}
+
+/** 按 Agent 持久化的上次成功目录，启动时一次取回。 */
+export interface CachedAgentCatalog {
+  kind: AgentKind;
+  catalog: AgentCatalog;
+}
+
 export const EMPTY_CAPABILITIES: AgentCapabilities = {
   supports_slash: false,
   supports_resume: false,

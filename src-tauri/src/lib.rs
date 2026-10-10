@@ -33,7 +33,7 @@ pub fn run() {
             let store = ProjectStore::load(&data_dir)
                 .map_err(|e| format!("加载项目列表失败: {e}"))?;
             app.manage(store);
-            app.manage(SessionManager::new(app.handle().clone()));
+            app.manage(SessionManager::new(app.handle().clone(), &data_dir));
             tray::setup(app.handle())?;
             Ok(())
         })
@@ -57,6 +57,7 @@ pub fn run() {
             features::ipc::agents::list_agent_installations,
             features::ipc::agents::update_agent,
             features::ipc::agents::agent_profiles,
+            features::ipc::sessions::cached_agent_catalogs,
             features::ipc::sessions::agent_catalog,
             features::ipc::sessions::set_session_tuning,
             features::ipc::sessions::send_message,

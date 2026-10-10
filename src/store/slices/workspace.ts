@@ -1,8 +1,16 @@
+import { agentForSession, reduceCatalogResult, type CatalogOutcome } from "@/lib/catalog";
 import { backend } from "@/lib/ipc";
-import { isReadOnlyOpen } from "@/lib/utils";
-import { emptyCatalog } from "@/types";
-import { MISSING_SESSION } from "../sync";
+import type { AgentCatalog } from "@/types";
 import type { WorkspaceSlice, WorkbenchGet, WorkbenchSet } from "../types";
+
+const catalogEpoch = new Map<string, number>();
+
+function applyDefaultTuning(get: WorkbenchGet, sessionId: string, catalog: AgentCatalog) {
+  if (get().tuning[sessionId] || catalog.models.length === 0) return;
+  const model = catalog.models.find((item) => item.is_default) ?? catalog.models[0];
+  const effort = model.default_effort || model.efforts[0]?.id || "";
+  get().setTuning(sessionId, model.id, effort);
+}
 
 export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): WorkspaceSlice {
   return {
@@ -11,6 +19,8 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
     accessMode: {},
     attachments: {},
     catalogs: {},
+    catalogCache: {},
+    catalogNotice: null,
     tuning: {},
     composerSeed: null,
 
@@ -25,28 +35,40 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
     },
 
     async loadCatalog(sessionId) {
-      if (get().catalogs[sessionId]) return;
+      const epoch = (catalogEpoch.get(sessionId) ?? 0) + 1;
+      catalogEpoch.set(sessionId, epoch);
+      const current = () => catalogEpoch.get(sessionId) === epoch;
+      const agent = agentForSession(get().sessions, sessionId);
+
+      let outcome: CatalogOutcome;
       try {
-        const catalog = await backend.agentCatalog(sessionId);
-        set((s) => ({ catalogs: { ...s.catalogs, [sessionId]: catalog } }));
-        if (!get().tuning[sessionId] && catalog.models.length > 0) {
-          const model =
-            catalog.models.find((item) => item.is_default) ?? catalog.models[0];
-          const effort =
-            model.default_effort || model.efforts[0]?.id || "";
-          get().setTuning(sessionId, model.id, effort);
-        }
-      } catch (e) {
-        const message = String(e);
-        if (message === MISSING_SESSION) return;
-        set((s) => {
-          if (isReadOnlyOpen(s.events[sessionId])) return s;
-          return {
-            lastError: message,
-            catalogs: { ...s.catalogs, [sessionId]: emptyCatalog() },
-          };
-        });
+        const refresh = await backend.agentCatalog(sessionId);
+        outcome = { ok: true as const, catalog: refresh.catalog, notice: refresh.notice };
+      } catch (error) {
+        outcome = { ok: false as const, message: String(error) };
       }
+      if (!current()) return;
+
+      const kind = agentForSession(get().sessions, sessionId) ?? agent;
+      const reduced = reduceCatalogResult(
+        {
+          live: get().catalogs[sessionId],
+          cached: kind ? get().catalogCache[kind] : undefined,
+          notice: get().catalogNotice,
+        },
+        outcome,
+      );
+      set((s) => ({
+        catalogs: reduced.live
+          ? { ...s.catalogs, [sessionId]: reduced.live }
+          : s.catalogs,
+        catalogCache:
+          kind && reduced.cached
+            ? { ...s.catalogCache, [kind]: reduced.cached }
+            : s.catalogCache,
+        catalogNotice: reduced.notice,
+      }));
+      if (outcome.ok && reduced.live) applyDefaultTuning(get, sessionId, reduced.live);
     },
 
     setTuning(sessionId, model, effort) {
