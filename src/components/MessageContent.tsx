@@ -25,7 +25,7 @@ export function MessageContent({
         part.type === "text" ? (
           <span key={index}>{part.text}</span>
         ) : (
-          <ChatImage
+          <MessageImage
             key={`${index}:${part.source.type}:${part.source.type === "https" ? part.source.url : part.source.path}`}
             alt={part.alt}
             source={part.source}
@@ -42,7 +42,7 @@ function reasonText(error: unknown): string {
   return "无法加载本地图片";
 }
 
-function ChatImage({ alt, source }: { alt: string; source: ImageSource }) {
+export function MessageImage({ alt, source }: { alt: string; source: ImageSource }) {
   const remote = source.type === "https";
   const [src, setSrc] = useState<string | null>(remote ? source.url : null);
   const [failed, setFailed] = useState(source.type === "local" && !isTauri);
