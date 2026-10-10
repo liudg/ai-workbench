@@ -146,17 +146,24 @@ impl CodexDirectory {
     }
 
     /// 桌面端参数：`excludeTurns: true` 只缩小回包，历史仍会复制。
+    ///
+    /// 不用常驻目录进程：它调用 `thread/fork` 后会成为新线程的 active writer，
+    /// 随后会话里的 `thread/resume` 只能只读打开。
     pub async fn fork_thread(&self, native_id: &str) -> Result<DirectoryEntry, String> {
-        let result = self
-            .rpc(
+        let client = RpcClient::spawn().await?;
+        let result = client
+            .request(
                 "thread/fork",
                 json!({
                     "threadId": native_id,
                     "excludeTurns": true,
                     "threadSource": "user",
                 }),
+                Duration::from_secs(60),
             )
-            .await?;
+            .await;
+        client.shutdown().await;
+        let result = result?;
         let thread = result.get("thread").cloned().unwrap_or(result);
         let entry = parse_thread(&thread).ok_or_else(|| "创建聊天分支失败".to_string())?;
         self.invalidate().await;
@@ -1010,6 +1017,21 @@ impl RpcClient {
                 self.waiters.lock().unwrap().remove(&id);
                 Err(format!("等待 Codex {method} 超时"))
             }
+        }
+    }
+}
+
+impl RpcClient {
+    /// 关掉标准输入并等进程退出，释放线程写锁。超时再强制结束。
+    async fn shutdown(self) {
+        let RpcClient { out, child, .. } = self;
+        drop(out);
+        let Some(mut child) = child.lock().unwrap().take() else {
+            return;
+        };
+        if timeout(Duration::from_secs(2), child.wait()).await.is_err() {
+            let _ = child.start_kill();
+            let _ = child.wait().await;
         }
     }
 }
