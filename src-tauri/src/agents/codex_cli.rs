@@ -9,7 +9,7 @@
 //! - 询问批准 → sandbox `workspace-write`，approval `on-request`
 //! - 只读     → sandbox `read-only`，approval `on-request`（越界仍会询问）
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -156,6 +156,9 @@ impl AgentAdapter for CodexCliAdapter {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
+        // 系统代理（如 Clash）会把 127.0.0.1 的本地 MCP 回成空 HTTP 502。
+        // 只把回环地址加进 NO_PROXY，远程 MCP 仍走用户代理。
+        apply_loopback_no_proxy(&mut command);
         hide_console(&mut command);
         let mut child = command.spawn().map_err(|e| {
             AgentError::Runtime(format!("无法启动 Codex CLI（{}）：{e}", bin.display()))
@@ -243,21 +246,18 @@ impl AgentAdapter for CodexCliAdapter {
         let err_events = events.clone();
         tokio::spawn(async move {
             let mut lines = BufReader::new(stderr).lines();
+            let mut seen_mcp = HashSet::new();
             while let Ok(Some(line)) = lines.next_line().await {
-                let trimmed = line.trim();
-                if trimmed.is_empty() || trimmed.contains("unrecognized configuration") {
-                    continue;
-                }
-                if trimmed.contains("ERROR") {
-                    let message = truncate(trimmed, 300);
-                    let body = if trimmed.contains("rmcp::") || trimmed.contains("mcp") {
-                        SessionEventBody::System {
-                            text: format!("MCP 连接提示：{message}"),
+                match classify_codex_stderr(&line) {
+                    StderrClass::Ignore => {}
+                    StderrClass::Error(message) => {
+                        emit(&err_events, SessionEventBody::Error { message });
+                    }
+                    StderrClass::McpUnavailable { key, text } => {
+                        if seen_mcp.insert(key) {
+                            emit(&err_events, SessionEventBody::System { text });
                         }
-                    } else {
-                        SessionEventBody::Error { message }
-                    };
-                    emit(&err_events, body);
+                    }
                 }
             }
         });
@@ -1294,6 +1294,137 @@ fn slash_help() -> String {
         .into()
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum StderrClass {
+    Ignore,
+    Error(String),
+    McpUnavailable { key: String, text: String },
+}
+
+const LOOPBACK_NO_PROXY: &[&str] = &["localhost", "127.0.0.1", "::1"];
+
+fn merge_no_proxy(current: &str) -> String {
+    let mut parts = Vec::new();
+    for item in current.split(',') {
+        let item = item.trim();
+        if item.is_empty()
+            || parts
+                .iter()
+                .any(|existing: &String| existing.eq_ignore_ascii_case(item))
+        {
+            continue;
+        }
+        parts.push(item.to_string());
+    }
+    for host in LOOPBACK_NO_PROXY {
+        if !parts.iter().any(|existing| existing.eq_ignore_ascii_case(host)) {
+            parts.push((*host).to_string());
+        }
+    }
+    parts.join(",")
+}
+
+fn apply_loopback_no_proxy(command: &mut Command) {
+    let current = std::env::var("NO_PROXY")
+        .or_else(|_| std::env::var("no_proxy"))
+        .unwrap_or_default();
+    let value = merge_no_proxy(&current);
+    command.env("NO_PROXY", &value);
+    command.env("no_proxy", &value);
+}
+
+fn strip_ansi(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '\u{1b}' && chars.peek() == Some(&'[') {
+            chars.next();
+            for next in chars.by_ref() {
+                if next.is_ascii_alphabetic() {
+                    break;
+                }
+            }
+            continue;
+        }
+        out.push(ch);
+    }
+    out
+}
+
+fn classify_codex_stderr(raw: &str) -> StderrClass {
+    let cleaned = strip_ansi(raw);
+    let trimmed = cleaned.trim();
+    if trimmed.is_empty() || trimmed.contains("unrecognized configuration") {
+        return StderrClass::Ignore;
+    }
+    if let Some(note) = mcp_transport_notice(trimmed) {
+        return note;
+    }
+    if trimmed.contains("ERROR") {
+        return StderrClass::Error(truncate(trimmed, 300));
+    }
+    StderrClass::Ignore
+}
+
+/// Codex 的可选 MCP 握手失败会以 `rmcp::transport::worker` ERROR 重试打到 stderr。
+/// 核心对话走 app-server 的 stdio，不依赖这些服务。
+fn mcp_transport_notice(line: &str) -> Option<StderrClass> {
+    let lower = line.to_ascii_lowercase();
+    let mentions_mcp = lower.contains("rmcp::") || lower.contains("mcp");
+    let transport_failure = lower.contains("transport channel closed")
+        || lower.contains("unexpectedserverresponse")
+        || lower.contains("unexpected server response")
+        || lower.contains("error sending request")
+        || lower.contains("connection refused")
+        || lower.contains("os error 10061")
+        || lower.contains("http 502")
+        || lower.contains("http 503")
+        || lower.contains("http 504");
+    if !mentions_mcp
+        || !transport_failure
+        || !(lower.contains("error") || lower.contains("fatal"))
+    {
+        return None;
+    }
+    let target = mcp_failure_target(line);
+    let text = match &target {
+        Some(url) => format!("可选 MCP 未连接（{url}），已忽略，不影响对话。"),
+        None if lower.contains("502") => "可选 MCP 连接失败（HTTP 502），已忽略，不影响对话。".into(),
+        None if lower.contains("503") => "可选 MCP 连接失败（HTTP 503），已忽略，不影响对话。".into(),
+        None if lower.contains("504") => "可选 MCP 连接失败（HTTP 504），已忽略，不影响对话。".into(),
+        None => "可选 MCP 连接失败，已忽略，不影响对话。".into(),
+    };
+    let key = target.unwrap_or_else(|| {
+        if lower.contains("502") {
+            "http-502".into()
+        } else if lower.contains("503") {
+            "http-503".into()
+        } else if lower.contains("504") {
+            "http-504".into()
+        } else {
+            "mcp-transport".into()
+        }
+    });
+    Some(StderrClass::McpUnavailable { key, text })
+}
+
+fn mcp_failure_target(line: &str) -> Option<String> {
+    let lower = line.to_ascii_lowercase();
+    let start = lower.find("https://").or_else(|| lower.find("http://"))?;
+    let rest = &line[start..];
+    let end = rest
+        .find(|ch: char| ch.is_whitespace() || matches!(ch, ')' | '"' | '\''))
+        .unwrap_or(rest.len());
+    let url = rest[..end]
+        .trim_end_matches(|ch: char| matches!(ch, '.' | ',' | ';' | ')' | ']' | '}' | '"'))
+        .to_string();
+    if url.len() < 8 {
+        None
+    } else {
+        Some(url)
+    }
+}
+
 fn truncate(text: &str, max: usize) -> String {
     let count = text.chars().count();
     if count <= max {
@@ -1637,6 +1768,55 @@ mod tests {
         assert_eq!(models[0].id, "gpt-test");
         assert_eq!(models[0].efforts.len(), 2);
         assert_eq!(models[0].default_effort, "medium");
+    }
+
+    #[test]
+    fn collapses_optional_mcp_transport_noise() {
+        let ansi = "\u{1b}[2m2026-10-10T06:37:02.131976Z\u{1b}[0m \u{1b}[31mERROR\u{1b}[0m \u{1b}[2mrmcp::transport::worker\u{1b}[0m\u{1b}[2m:\u{1b}[0m worker quit with fatal: Transport channel closed, when UnexpectedServerResponse(\"HTTP 502: \")";
+        match classify_codex_stderr(ansi) {
+            StderrClass::McpUnavailable { key, text } => {
+                assert_eq!(key, "http-502");
+                assert_eq!(text, "可选 MCP 连接失败（HTTP 502），已忽略，不影响对话。");
+                assert!(!text.contains('\u{1b}'));
+            }
+            other => panic!("expected mcp notice, got {other:?}"),
+        }
+
+        let direct = "2026-10-10T06:45:44.207643Z ERROR rmcp::transport::worker: worker quit with fatal: Transport channel closed, when Client(HttpRequest(HttpRequest(\"http/request failed: error sending request for url (http://127.0.0.1:8080/mcp)\")))";
+        match classify_codex_stderr(direct) {
+            StderrClass::McpUnavailable { key, text } => {
+                assert_eq!(key, "http://127.0.0.1:8080/mcp");
+                assert!(text.contains("http://127.0.0.1:8080/mcp"));
+                assert!(text.contains("不影响对话"));
+            }
+            other => panic!("expected url notice, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn keeps_real_codex_stderr_errors() {
+        let line = "\u{1b}[31m2026-10-10T06:45:41Z ERROR codex_core: authentication failed\u{1b}[0m";
+        match classify_codex_stderr(line) {
+            StderrClass::Error(message) => {
+                assert!(message.contains("authentication failed"));
+                assert!(!message.contains('\u{1b}'));
+            }
+            other => panic!("expected error, got {other:?}"),
+        }
+        let config = "ERROR codex_app_server: Codex is ignoring 1 unrecognized configuration setting.";
+        assert_eq!(classify_codex_stderr(config), StderrClass::Ignore);
+    }
+
+    #[test]
+    fn no_proxy_includes_loopback() {
+        assert_eq!(
+            merge_no_proxy(""),
+            "localhost,127.0.0.1,::1"
+        );
+        assert_eq!(
+            merge_no_proxy("example.com, localhost"),
+            "example.com,localhost,127.0.0.1,::1"
+        );
     }
 
     #[test]
