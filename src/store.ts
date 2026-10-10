@@ -7,10 +7,12 @@
 
 import { create } from "zustand";
 
+import { keepPreferredAgent } from "@/lib/agents";
 import {
   emptyCatalog,
   type AccessMode,
   type AgentCatalog,
+  type AgentInstallation,
   type AgentKind,
   type AgentProfile,
   type Attachment,
@@ -42,6 +44,7 @@ function clearMissingSessionBanner(
 }
 
 export type DialogMode = "create" | "import";
+export type AppScreen = "workspace" | "settings";
 
 interface WorkbenchState {
   ready: boolean;
@@ -58,8 +61,15 @@ interface WorkbenchState {
   update: UpdatePhase;
   updateDialogOpen: boolean;
 
-  /** 下次新建会话默认选中的 Agent */
-  preferredAgent: AgentKind;
+  /** 工作区或设置页 */
+  screen: AppScreen;
+  /** 本机 CLI 探测。null 表示还没返回。 */
+  installations: AgentInstallation[] | null;
+  installationsLoading: boolean;
+  installationError: string | null;
+  updatingKind: AgentKind | null;
+  /** 下次新建会话优先使用的已安装 Agent。没有探测结果时为空。 */
+  preferredAgent: AgentKind | null;
   /** 前端覆盖的会话 Agent，并回写后端 */
   agentOverride: Record<string, AgentKind>;
   /** 每个会话的权限档位，新建会话继承上一档 */
@@ -77,6 +87,10 @@ interface WorkbenchState {
   openDialog(mode: DialogMode): void;
   closeDialog(): void;
   clearError(): void;
+  openSettings(): void;
+  closeSettings(): void;
+  refreshInstallations(): Promise<void>;
+  updateInstallation(kind: AgentKind): Promise<void>;
 
   /** 检查更新；manual=true 时无论结果都弹出对话框，自动检查仅在有更新时弹出 */
   checkUpdates(manual: boolean): Promise<void>;
@@ -142,7 +156,12 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   lastError: null,
   update: { kind: "idle" },
   updateDialogOpen: false,
-  preferredAgent: "codex-cli",
+  screen: "workspace",
+  installations: null,
+  installationsLoading: false,
+  installationError: null,
+  updatingKind: null,
+  preferredAgent: null,
   agentOverride: {},
   lastAccessMode: "full",
   accessMode: {},
@@ -196,6 +215,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     } catch (e) {
       set({ lastError: String(e) });
     }
+    void get().refreshInstallations();
     await get().refreshAll();
     const first = get().projects[0]?.id;
     if (first) await get().selectProject(first);
@@ -262,6 +282,52 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   openDialog: (mode) => set({ dialog: mode, lastError: null }),
   closeDialog: () => set({ dialog: null, lastError: null }),
   clearError: () => set({ lastError: null }),
+  openSettings: () => set({ screen: "settings" }),
+  closeSettings: () => set({ screen: "workspace" }),
+
+  async refreshInstallations() {
+    set({ installationsLoading: true });
+    try {
+      const installations = await backend.listAgentInstallations();
+      set((s) => ({
+        installations,
+        installationsLoading: false,
+        installationError: null,
+        preferredAgent: keepPreferredAgent(s.preferredAgent, installations),
+      }));
+    } catch (e) {
+      set({
+        installationsLoading: false,
+        installationError: String(e),
+        installations: get().installations ?? [],
+      });
+    }
+  },
+
+  async updateInstallation(kind) {
+    set({ updatingKind: kind });
+    try {
+      const next = await backend.updateAgent(kind);
+      set((s) => {
+        const installations = (s.installations ?? []).map((item) =>
+          item.kind === kind ? next : item,
+        );
+        return {
+          updatingKind: null,
+          installations,
+          preferredAgent: keepPreferredAgent(s.preferredAgent, installations),
+        };
+      });
+    } catch (e) {
+      const message = String(e);
+      set((s) => ({
+        updatingKind: null,
+        installations: (s.installations ?? []).map((item) =>
+          item.kind === kind ? { ...item, detail: message } : item,
+        ),
+      }));
+    }
+  },
 
   async selectProject(id) {
     set({ selectedProjectId: id });

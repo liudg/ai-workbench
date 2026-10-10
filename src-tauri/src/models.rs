@@ -303,6 +303,44 @@ impl AgentCatalog {
     }
 }
 
+/// 官方升级走哪条已声明的渠道。前端只展示，不拼命令。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum UpdateVia {
+    /// `npm install -g <package>@latest`
+    Npm,
+    /// 适配器声明的 CLI 自更新，例如 `claude update`。
+    Cli,
+}
+
+/// 本机一次探测的结果。设置页列出全部已注册 CLI；新建会话只取 `installed`。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AgentInstallation {
+    pub kind: AgentKind,
+    pub display_name: String,
+    pub installed: bool,
+    pub version: Option<String>,
+    pub latest_version: Option<String>,
+    pub update_available: bool,
+    pub update_via: Option<UpdateVia>,
+    pub detail: Option<String>,
+}
+
+impl AgentInstallation {
+    pub fn absent(kind: AgentKind, display_name: &str) -> Self {
+        Self {
+            kind,
+            display_name: display_name.to_string(),
+            installed: false,
+            version: None,
+            latest_version: None,
+            update_available: false,
+            update_via: None,
+            detail: None,
+        }
+    }
+}
+
 pub fn now_millis() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

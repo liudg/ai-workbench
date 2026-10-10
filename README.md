@@ -112,6 +112,7 @@ pnpm dev            # 打开 http://localhost:4573
 | `send_message` / `answer_prompt` | 发消息 / 回答提问（审批、选择、自由文本、问题卡片） |
 | `get_session_events` | 打开会话：已连接则返回日志，否则按目录里的 native id resume |
 | `agent_profiles` / `agent_catalog` | 能力与斜杠命令（profile）；模型、推理强度和技能（catalog） |
+| `list_agent_installations` / `update_agent` | 本机 CLI 探测与官方升级。适配器声明 npm 包或 CLI 自更新；设置页只渲染探测结果 |
 | `set_session_access` / `set_session_tuning` | 权限档位；模型与推理强度 |
 
 ## 多 Agent 边界
@@ -124,7 +125,9 @@ pnpm dev            # 打开 http://localhost:4573
 
 Codex 实现拆在 `agents/codex/`：`mod.rs` 只编排，`rpc` / `prompts` / `catalog` / `process` / `resume` 各管一块。
 
-**Claude Code 仍是桩**（`stub.rs`）。接入真实 CLI 时实现 `AgentAdapter` + `SessionDirectory`，`detect()` 跑 `claude --version`，`start_session()` 在 `ctx.project_path` 启动进程。认证交给 CLI 自身，应用不保存密钥。
+设置页从侧栏左下角头像菜单进入。每个声明了 `cli_release` 的适配器都会被探测：有没有装、当前版本、官方源上有没有更新。Codex 的官方包是 npm 全局 `@openai/codex`；Claude Code 若是 npm 全局安装则升级 `@anthropic-ai/claude-code`，否则执行 `claude update`。新建会话只列出 `installed == true` 的 Agent。只装了一个就直接用它开会话；一个都没有时选择器是空状态。
+
+**Claude Code 的会话仍是桩**（`stub.rs`）。安装探测和升级已经走真实 CLI；`start_session()` 还没有挂上真实进程。接入时实现 `AgentAdapter` + `SessionDirectory`，工作目录用 `ctx.project_path`。认证交给 CLI 自身，应用不保存密钥。
 
 ## 常用命令
 

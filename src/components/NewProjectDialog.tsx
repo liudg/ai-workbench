@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, Folder, FolderPlus } from "lucide-react";
 
+import { persistedAgentKind } from "@/lib/agents";
 import { backend } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
 import { useWorkbench } from "@/store";
@@ -24,6 +25,8 @@ export function NewProjectDialog() {
   const importProject = useWorkbench((s) => s.importProject);
   const lastError = useWorkbench((s) => s.lastError);
   const clearError = useWorkbench((s) => s.clearError);
+  const installations = useWorkbench((s) => s.installations);
+  const preferredAgent = useWorkbench((s) => s.preferredAgent);
 
   const [name, setName] = useState("");
   const [dir, setDir] = useState("");
@@ -74,12 +77,17 @@ export function NewProjectDialog() {
 
   const submit = async () => {
     if (!valid || busy) return;
+    const defaultAgent = persistedAgentKind(installations, preferredAgent);
+    if (!defaultAgent) {
+      useWorkbench.setState({ lastError: "正在检测本地 Agent，请稍后再创建项目。" });
+      return;
+    }
     setBusy(true);
     if (source === "create") {
       const warning = await createProject({
         name,
         parentDir: dir,
-        defaultAgent: "codex-cli",
+        defaultAgent,
         initGit,
       });
       if (warning) useWorkbench.setState({ lastError: warning });
@@ -87,7 +95,7 @@ export function NewProjectDialog() {
       await importProject({
         path: dir,
         name: name.trim() || undefined,
-        defaultAgent: "codex-cli",
+        defaultAgent,
       });
     }
     setBusy(false);

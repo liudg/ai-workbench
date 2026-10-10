@@ -141,6 +141,20 @@ pub async fn create_session(
         .await
 }
 
+/// 本机已注册 CLI 的安装与更新状态。未安装的也会返回，供设置页展示。
+#[tauri::command]
+pub async fn list_agent_installations() -> Vec<AgentInstallation> {
+    crate::agents::list_installations().await
+}
+
+/// 按该 Agent 声明的官方渠道升级，并返回刷新后的安装状态。
+#[tauri::command]
+pub async fn update_agent(kind: AgentKind) -> Result<AgentInstallation, String> {
+    crate::agents::upgrade(kind)
+        .await
+        .map_err(|err| err.to_string())
+}
+
 #[tauri::command]
 pub fn agent_profiles() -> Vec<AgentProfile> {
     AgentKind::all()

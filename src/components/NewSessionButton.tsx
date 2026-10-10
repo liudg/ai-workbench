@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type RefObject } from "react";
 import { Plus, SquarePen } from "lucide-react";
 
+import { installedAgents } from "@/lib/agents";
 import { cn } from "@/lib/utils";
 import { useWorkbench } from "@/store";
-import { AGENT_LABELS, AGENT_OPTIONS, type AgentKind } from "@/types";
+import type { AgentKind } from "@/types";
 import { buttonVariants } from "./ui/button";
 
 function placeFixedMenu(
@@ -75,6 +76,9 @@ export function NewSessionButton({
   title?: string;
 }) {
   const createSession = useWorkbench((s) => s.createSession);
+  const openSettings = useWorkbench((s) => s.openSettings);
+  const installations = useWorkbench((s) => s.installations);
+  const installed = installedAgents(installations);
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -84,6 +88,15 @@ export function NewSessionButton({
   const choose = (agent: AgentKind) => {
     setOpen(false);
     void createSession(projectId, agent);
+  };
+
+  const onPress = (event: ReactMouseEvent) => {
+    event.stopPropagation();
+    if (installed.length === 1) {
+      choose(installed[0].kind);
+      return;
+    }
+    setOpen((value) => !value);
   };
 
   return (
@@ -99,10 +112,7 @@ export function NewSessionButton({
         aria-haspopup="menu"
         aria-expanded={open}
         title={title}
-        onClick={(event) => {
-          event.stopPropagation();
-          setOpen((value) => !value);
-        }}
+        onClick={onPress}
       >
         {appearance === "primary" ? (
           <>
@@ -120,25 +130,42 @@ export function NewSessionButton({
           className="fixed z-50 w-52 overflow-hidden rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
           style={{ top: -9999, left: 8 }}
         >
-          <div className="px-3 pb-1 pt-1.5 text-[11px] text-zinc-500">
-            选择 Agent
-          </div>
-          {AGENT_OPTIONS.map((agent) => (
-            <button
-              key={agent}
-              type="button"
-              role="menuitem"
-              className="block w-full px-3 py-2 text-left text-sm text-zinc-100 hover:bg-zinc-800"
-              onClick={(event) => {
-                event.stopPropagation();
-                choose(agent);
-              }}
-            >
-              {AGENT_LABELS[agent]}
-            </button>
-          ))}
-          <div className="mx-2 my-1 border-t border-zinc-800" />
-          <div className="px-3 py-2 text-xs text-zinc-600">更多模型即将支持</div>
+          {installations === null ? (
+            <div className="px-3 py-3 text-sm text-zinc-500">正在检测本地 Agent…</div>
+          ) : installed.length === 0 ? (
+            <div className="px-3 py-3">
+              <p className="text-sm leading-5 text-zinc-300">未检测到已安装的 Agent CLI。</p>
+              <button
+                type="button"
+                className="mt-2 text-sm text-indigo-300 hover:text-indigo-200"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  close();
+                  openSettings();
+                }}
+              >
+                打开设置
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="px-3 pb-1 pt-1.5 text-[11px] text-zinc-500">选择 Agent</div>
+              {installed.map((agent) => (
+                <button
+                  key={agent.kind}
+                  type="button"
+                  role="menuitem"
+                  className="block w-full px-3 py-2 text-left text-sm text-zinc-100 hover:bg-zinc-800"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    choose(agent.kind);
+                  }}
+                >
+                  {agent.display_name}
+                </button>
+              ))}
+            </>
+          )}
         </div>
       )}
     </>

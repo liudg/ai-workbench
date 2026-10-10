@@ -10,7 +10,8 @@
 //! - 或使用其 SDK / `--print` + stream-json 模式（`claude -p --output-format stream-json`），
 //!   与 codex 类似地消费 JSONL 事件流，权限模式用 `--permission-prompt-tool`
 //!   或 MCP 权限回调承接本应用的 needs-input 流程；
-//! - `detect()` 执行 `claude --version` 探测安装与版本；
+//! - `cli_release()` 用 `claude --version` 探测安装，npm 全局包装走
+//!   `npm install -g @anthropic-ai/claude-code@latest`，否则走 `claude update`；
 //! - 工作目录设为 `ctx.project_path`；认证交给 CLI 自身（ANTHROPIC_API_KEY
 //!   或已登录的 claude.ai 会话），应用不存储任何密钥。
 
@@ -21,6 +22,7 @@ use async_trait::async_trait;
 use crate::agents::directory::{DirectoryEntry, SessionDirectory};
 use crate::models::{AgentCapabilities, AgentKind};
 
+use super::install::CliRelease;
 use super::stub::{StubAgentSession, StubPersona};
 use super::{AgentAdapter, AgentError, AgentSession, EventSink, SessionContext};
 
@@ -80,6 +82,26 @@ impl AgentAdapter for ClaudeCodeAdapter {
             supports_questions: true,
             supports_tuning: false,
             supports_skills: false,
+        }
+    }
+
+    fn cli_release(&self) -> Option<CliRelease> {
+        Some(CliRelease {
+            bins: &["claude"],
+            npm_package: "@anthropic-ai/claude-code",
+            self_update: &["update"],
+            locate: None,
+        })
+    }
+
+    async fn detect(&self) -> Result<(), AgentError> {
+        let release = self.cli_release().expect("claude cli release");
+        if super::install::locate_release(&release).is_some() {
+            Ok(())
+        } else {
+            Err(AgentError::Runtime(
+                "未找到 Claude Code。请先安装并确保 `claude` 在 PATH 中。".into(),
+            ))
         }
     }
 

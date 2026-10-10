@@ -95,8 +95,20 @@ export const AGENT_LABELS: Record<AgentKind, string> = {
   "claude-code": "Claude Code",
 };
 
-/** 新建会话时可选的 Agent。后续模型接在这个列表上。 */
-export const AGENT_OPTIONS: AgentKind[] = ["codex-cli", "claude-code"];
+/** 官方升级渠道。前端只展示，真正的命令留在适配器里。 */
+export type UpdateVia = "npm" | "cli";
+
+/** 本机一次探测。设置页用完整列表；新建会话只取 installed。 */
+export interface AgentInstallation {
+  kind: AgentKind;
+  display_name: string;
+  installed: boolean;
+  version: string | null;
+  latest_version: string | null;
+  update_available: boolean;
+  update_via: UpdateVia | null;
+  detail: string | null;
+}
 
 /** 作曲栏权限档位。Codex 会话会映射到 sandbox / approval。 */
 export type AccessMode = "full" | "ask" | "read-only";
