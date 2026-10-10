@@ -1,17 +1,13 @@
 import { useEffect } from "react";
-import { Square } from "lucide-react";
 
 import { ChatView } from "@/components/ChatView";
 import { NoProjectSelected, NoSession } from "@/components/EmptyState";
 import { NewProjectDialog } from "@/components/NewProjectDialog";
 import { SessionTabs } from "@/components/SessionTabs";
 import { Sidebar } from "@/components/Sidebar";
-import { StatusDot } from "@/components/StatusDot";
 import { UpdateDialog } from "@/components/UpdateDialog";
-import { Button } from "@/components/ui/button";
-import { displayPath } from "@/lib/utils";
 import { useWorkbench } from "@/store";
-import { STATUS_LABELS, type SessionEvent } from "@/types";
+import { type SessionEvent } from "@/types";
 
 // 稳定空引用：selector 必须返回缓存值，否则 useSyncExternalStore 会无限重渲染
 const EMPTY_EVENTS: SessionEvent[] = [];
@@ -31,7 +27,6 @@ function Workspace() {
   const events =
     useWorkbench((s) => (session ? s.events[session.id] : undefined)) ??
     EMPTY_EVENTS;
-  const stopSession = useWorkbench((s) => s.stopSession);
 
   if (!project) return <NoProjectSelected />;
 
@@ -39,32 +34,7 @@ function Workspace() {
     <div className="relative flex h-full min-w-0 flex-1 flex-col">
       <SessionTabs project={project} />
       {session ? (
-        <>
-          <div className="flex shrink-0 items-center gap-3 border-b border-zinc-800/60 bg-zinc-900/10 px-6 py-2">
-            <StatusDot status={session.status} />
-            <span className="text-xs text-zinc-400">
-              {STATUS_LABELS[session.status]}
-            </span>
-            <span
-              className="min-w-0 flex-1 truncate font-mono text-[11px] text-zinc-600"
-              title={displayPath(project.path)}
-            >
-              {displayPath(project.path)}
-            </span>
-            {(session.status === "running" ||
-              session.status === "needs-input") && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-red-400 hover:text-red-300"
-                onClick={() => stopSession(session.id)}
-              >
-                <Square className="h-3 w-3" fill="currentColor" /> 停止会话
-              </Button>
-            )}
-          </div>
-          <ChatView session={session} events={events} />
-        </>
+        <ChatView session={session} events={events} />
       ) : sessions ? (
         <NoSession projectId={project.id} />
       ) : (
