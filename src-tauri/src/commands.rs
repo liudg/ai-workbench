@@ -196,7 +196,7 @@ pub async fn answer_prompt(
     manager: State<'_, SessionManager>,
     session_id: String,
     prompt_id: String,
-    answer: String,
+    answer: PromptAnswer,
 ) -> Result<(), String> {
     manager.answer_prompt(&session_id, &prompt_id, answer).await
 }

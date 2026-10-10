@@ -7,6 +7,7 @@ import type {
   AgentCatalog,
   AgentKind,
   Project,
+  PromptAnswer,
   PromptOption,
   Session,
   SessionEvent,
@@ -377,10 +378,47 @@ export const mockBackend: Backend = {
               s.meta.agent,
             )} 计划修改 3 个文件。是否允许执行？（真实 CLI 接入后，这里对应真实的工具审批）`,
             options: APPROVAL_OPTIONS,
+            questions: [],
           });
           setStatus(sessionId, "needs-input");
         },
         1950,
+      );
+    } else if (turn === 2) {
+      // 第二轮：演示 Codex 原生问题卡片（一轮多题 + 编号选项 + 自由文本 + 跳过）
+      schedule(
+        s,
+        () => {
+          const promptId = id();
+          s.pendingPrompt = promptId;
+          pushEvent(sessionId, {
+            kind: "prompt",
+            prompt_id: promptId,
+            prompt_kind: "questions",
+            question: "想用哪个框架搭建新项目？",
+            options: [],
+            questions: [
+              {
+                id: "q1",
+                question: "想用哪个框架搭建新项目？",
+                is_secret: false,
+                options: [
+                  { id: "Vite", label: "Vite", description: "快速开发服务器，按需构建" },
+                  { id: "Next.js", label: "Next.js", description: "React 全栈框架" },
+                  { id: "Astro", label: "Astro", description: "内容驱动的静态站点" },
+                ],
+              },
+              {
+                id: "q2",
+                question: "还有其他约束吗？",
+                is_secret: false,
+                options: [],
+              },
+            ],
+          });
+          setStatus(sessionId, "needs-input");
+        },
+        950,
       );
     } else {
       schedule(
@@ -397,20 +435,44 @@ export const mockBackend: Backend = {
     }
   },
 
-  async answerPrompt(sessionId, promptId, answer) {
+  async answerPrompt(sessionId, promptId, answer: PromptAnswer) {
     const s = sessions.get(sessionId);
     if (!s) throw new Error("会话不存在");
     if (s.pendingPrompt !== promptId) throw new Error("提问不存在或已被回答");
     s.pendingPrompt = null;
-    pushEvent(sessionId, { kind: "prompt-resolved", prompt_id: promptId, answer });
+    const promptEvent = s.events.find(
+      (e): e is Extract<SessionEvent, { kind: "prompt" }> =>
+        e.kind === "prompt" && e.prompt_id === promptId,
+    );
+    let summary: string;
+    let approved = false;
+    if (answer.type === "single") {
+      summary = answer.value;
+      approved = answer.value === "approve" || answer.value === "允许";
+    } else if (answer.skipped) {
+      summary = "已跳过";
+    } else {
+      const lines = (promptEvent?.questions ?? [])
+        .map((q, i) => {
+          const text = answer.answers[q.id]?.trim();
+          return text ? `${i + 1}. ${text}` : null;
+        })
+        .filter((line): line is string => line !== null);
+      summary = lines.length > 0 ? lines.join("\n") : "已跳过";
+      approved = lines.length > 0;
+    }
+    pushEvent(sessionId, {
+      kind: "prompt-resolved",
+      prompt_id: promptId,
+      answer: summary,
+    });
     setStatus(sessionId, "running");
     schedule(
       s,
       () => {
-        const verdict =
-          answer === "approve" || answer === "允许"
-            ? "已按你的选择继续执行（模拟）。"
-            : "已取消该操作（模拟）。";
+        const verdict = approved
+          ? "已按你的选择继续执行（模拟）。"
+          : "已取消该操作（模拟）。";
         pushEvent(sessionId, {
           kind: "agent-message",
           text: `${verdict}\n\n${agentLabel(s.meta.agent)} 桩会话本轮结束。`,

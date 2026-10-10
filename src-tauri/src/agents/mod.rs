@@ -12,7 +12,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tokio::sync::mpsc;
 
-use crate::models::{AgentCatalog, AgentKind, SessionEventBody};
+use crate::models::{AgentCatalog, AgentKind, PromptAnswer, SessionEventBody};
 
 /// 适配器运行时错误。
 #[derive(Debug, thiserror::Error)]
@@ -58,8 +58,8 @@ pub trait AgentSession: Send + Sync {
     /// 发送一条用户消息（一轮新任务）。
     async fn send_message(&self, text: String) -> Result<(), AgentError>;
 
-    /// 回答 Agent 发起的提问（审批 / 选择 / 自由文本）。
-    async fn answer_prompt(&self, prompt_id: &str, answer: String) -> Result<(), AgentError>;
+    /// 回答 Agent 发起的提问（审批 / 选择 / 自由文本 / 问题卡片）。
+    async fn answer_prompt(&self, prompt_id: &str, answer: PromptAnswer) -> Result<(), AgentError>;
 
     /// 终止会话（杀掉进程 / 关闭 PTY）。调用后本句柄不可再使用。
     async fn stop(&self) -> Result<(), AgentError>;

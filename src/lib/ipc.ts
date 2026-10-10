@@ -11,6 +11,7 @@ import type {
   AgentCatalog,
   Attachment,
   Project,
+  PromptAnswer,
   Session,
   SessionEvent,
 } from "@/types";
@@ -61,7 +62,7 @@ export interface Backend {
   answerPrompt(
     sessionId: string,
     promptId: string,
-    answer: string,
+    answer: PromptAnswer,
   ): Promise<void>;
   stopSession(sessionId: string): Promise<void>;
   getSessionEvents(sessionId: string): Promise<SessionEvent[]>;

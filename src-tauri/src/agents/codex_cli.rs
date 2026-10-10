@@ -8,6 +8,12 @@
 //! - 完全访问 → sandbox `danger-full-access`，approval `never`
 //! - 询问批准 → sandbox `workspace-write`，approval `on-request`
 //! - 只读     → sandbox `read-only`，approval `on-request`（越界仍会询问）
+//!
+//! Codex 原生提问有两条通路，都映射成问题卡片（PromptKind::Questions）：
+//! - async 提问：agentMessage 带 `delivery: "async"` + `questions`，回合睡眠等待。
+//!   回答经 `turn/steer` 写回（回合已结束则退化为新回合）；跳过 = 明示「按你的判断继续」。
+//! - 阻塞式 `item/tool/requestUserInput`：按题回复 JSON-RPC `{answers:{id:{answers:[..]}}}`；
+//!   跳过 = 空 answers。交互对齐 Codex TUI：数字键/点击只填入选项文本，确认后一次提交整卡。
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -28,8 +34,9 @@ use crate::codex_resume::{
 };
 use crate::encoding::{apply_utf8_env, decode_child_bytes};
 use crate::models::{
-    strip_verbatim_prefix, AgentCatalog, AgentKind, AgentModelOption, AgentSkillOption, PromptKind,
-    PromptOption, ReasoningEffortOption, SessionEventBody, SessionStatus,
+    strip_verbatim_prefix, AgentCatalog, AgentKind, AgentModelOption, AgentSkillOption,
+    PromptAnswer, PromptKind, PromptOption, PromptQuestion, ReasoningEffortOption,
+    SessionEventBody, SessionStatus,
 };
 
 use super::{AgentAdapter, AgentError, AgentSession, EventSink, SessionContext};
@@ -90,7 +97,10 @@ impl Access {
 #[derive(Clone)]
 enum Pending {
     Approval { rpc_id: u64 },
-    UserInput { rpc_id: u64, question_ids: Vec<String> },
+    /// 阻塞式 requestUserInput：答案写回 JSON-RPC 响应
+    UserInput { rpc_id: u64, questions: Vec<PromptQuestion> },
+    /// async 提问（agentMessage delivery=async）：答案经 turn/steer 写回
+    AsyncQuestions { questions: Vec<PromptQuestion> },
     Access,
 }
 
@@ -114,6 +124,8 @@ struct Shared {
     thread_id: Mutex<Option<String>>,
     /// 新线程写入 Codex resume 列表，而不是 ephemeral。
     persist: bool,
+    /// 当前回合 id（turn/started 时记录）；async 提问的回答经 turn/steer 时需要它
+    turn_id: Mutex<Option<String>>,
     model: Mutex<String>,
     version: Mutex<String>,
     cwd: String,
@@ -124,6 +136,8 @@ struct Shared {
     streams: Mutex<HashMap<String, StreamBuf>>,
     /// 第一条用户消息会把 Codex 线程名写成标题。在此之前用「未命名会话」落盘。
     titled: AtomicBool,
+    /// 已渲染成问题卡片的 agentMessage item id：抑制后续的 delta / 重复文本
+    question_items: Mutex<HashSet<String>>,
 }
 
 pub struct CodexCliAdapter;
@@ -220,6 +234,7 @@ impl AgentAdapter for CodexCliAdapter {
             skills: Mutex::new(Vec::new()),
             thread_id: Mutex::new(None),
             persist: ctx.persist_thread,
+            turn_id: Mutex::new(None),
             model: Mutex::new(String::new()),
             version: Mutex::new(version.clone()),
             cwd: strip_verbatim_prefix(&ctx.project_path),
@@ -228,6 +243,7 @@ impl AgentAdapter for CodexCliAdapter {
             rpc_methods: Mutex::new(HashMap::new()),
             streams: Mutex::new(HashMap::new()),
             titled: AtomicBool::new(false),
+            question_items: Mutex::new(HashSet::new()),
         });
 
         let reader = Arc::clone(&shared);
@@ -353,7 +369,7 @@ impl AgentSession for CodexCliSession {
         self.shared.begin_turn(text).await
     }
 
-    async fn answer_prompt(&self, prompt_id: &str, answer: String) -> Result<(), AgentError> {
+    async fn answer_prompt(&self, prompt_id: &str, answer: PromptAnswer) -> Result<(), AgentError> {
         self.shared.ensure_open()?;
         let pending = self
             .shared
@@ -364,33 +380,63 @@ impl AgentSession for CodexCliSession {
             .ok_or_else(|| AgentError::UnknownPrompt(prompt_id.to_string()))?;
         match pending {
             Pending::Access => {
-                let Some(access) = Access::parse(&answer) else {
+                let PromptAnswer::Single { value } = &answer else {
+                    return Err(AgentError::Runtime(
+                        "请选择完全访问、询问批准或只读".into(),
+                    ));
+                };
+                let Some(access) = Access::parse(value) else {
                     return Err(AgentError::Runtime(
                         "请选择完全访问、询问批准或只读".into(),
                     ));
                 };
                 *self.shared.access.lock().unwrap() = access;
                 self.shared.note_access();
+                self.shared.resolve_prompt(prompt_id, value.clone());
+                if self.shared.turn_open.load(Ordering::SeqCst) {
+                    emit_status(&self.shared.events, SessionStatus::Running);
+                } else {
+                    emit_status(&self.shared.events, SessionStatus::Completed);
+                }
             }
             Pending::Approval { rpc_id } => {
-                let decision = if is_accept(&answer) { "accept" } else { "decline" };
+                let PromptAnswer::Single { value } = &answer else {
+                    return Err(AgentError::Runtime("审批只接受允许或拒绝".into()));
+                };
+                let decision = if is_accept(value) { "accept" } else { "decline" };
                 self.shared.respond(rpc_id, json!({ "decision": decision }));
+                self.shared.resolve_prompt(prompt_id, value.clone());
                 if self.shared.turn_open.load(Ordering::SeqCst) {
                     emit_status(&self.shared.events, SessionStatus::Running);
                 }
             }
-            Pending::UserInput {
-                rpc_id,
-                question_ids,
-            } => {
-                let mut answers = serde_json::Map::new();
-                for id in question_ids {
-                    answers.insert(id, json!({ "answers": [answer.clone()] }));
-                }
+            Pending::UserInput { rpc_id, questions } => {
+                let payload = blocking_answer_payload(&questions, &answer);
+                self.shared.respond(rpc_id, payload);
                 self.shared
-                    .respond(rpc_id, json!({ "answers": answers }));
+                    .resolve_prompt(prompt_id, questions_summary(&questions, &answer));
                 if self.shared.turn_open.load(Ordering::SeqCst) {
                     emit_status(&self.shared.events, SessionStatus::Running);
+                }
+            }
+            Pending::AsyncQuestions { questions } => {
+                let text = async_answer_text(&questions, &answer);
+                let summary = questions_summary(&questions, &answer);
+                if self.shared.turn_open.load(Ordering::SeqCst) {
+                    if let Err(err) = self.shared.steer_turn(&text).await {
+                        // 写回失败：恢复待答状态，卡片仍可操作
+                        self.shared.pending.lock().unwrap().insert(
+                            prompt_id.to_string(),
+                            Pending::AsyncQuestions { questions },
+                        );
+                        return Err(err);
+                    }
+                    self.shared.resolve_prompt(prompt_id, summary);
+                    emit_status(&self.shared.events, SessionStatus::Running);
+                } else {
+                    // 回合已结束（被打断或超时）：答案作为新回合发出去
+                    self.shared.begin_turn(text).await?;
+                    self.shared.resolve_prompt(prompt_id, summary);
                 }
             }
         }
@@ -789,10 +835,11 @@ impl Shared {
                 prompt_kind: PromptKind::Choice,
                 question: "选择 Codex 权限。完全访问对应 danger-full-access；询问批准对应 workspace-write + on-request；只读对应 read-only。".into(),
                 options: vec![
-                    PromptOption { id: "full".into(), label: "完全访问".into() },
-                    PromptOption { id: "ask".into(), label: "询问批准".into() },
-                    PromptOption { id: "read-only".into(), label: "只读".into() },
+                    PromptOption { id: "full".into(), label: "完全访问".into(), description: String::new() },
+                    PromptOption { id: "ask".into(), label: "询问批准".into(), description: String::new() },
+                    PromptOption { id: "read-only".into(), label: "只读".into(), description: String::new() },
                 ],
+                questions: Vec::new(),
             },
         );
         emit_status(&self.events, SessionStatus::NeedsInput);
@@ -1041,38 +1088,37 @@ impl Shared {
                         prompt_kind: PromptKind::Approval,
                         question,
                         options: vec![
-                            PromptOption { id: "approve".into(), label: "允许".into() },
-                            PromptOption { id: "reject".into(), label: "拒绝".into() },
+                            PromptOption { id: "approve".into(), label: "允许".into(), description: String::new() },
+                            PromptOption { id: "reject".into(), label: "拒绝".into(), description: String::new() },
                         ],
+                        questions: Vec::new(),
                     },
                 );
                 emit_status(&self.events, SessionStatus::NeedsInput);
             }
             "item/tool/requestUserInput" => {
-                let questions = params
-                    .get("questions")
-                    .and_then(Value::as_array)
-                    .cloned()
-                    .unwrap_or_default();
-                let question_ids: Vec<String> = questions
-                    .iter()
-                    .filter_map(|q| q.get("id").and_then(Value::as_str).map(str::to_string))
-                    .collect();
-                let (prompt_kind, question, options) = user_input_prompt(&questions);
+                let questions = parse_tool_questions(&params);
+                if questions.is_empty() {
+                    // 没有题目：按跳过回复，让工具立即返回
+                    self.respond(id, json!({ "answers": {} }));
+                    return;
+                }
+                let first = questions[0].question.clone();
                 self.pending.lock().unwrap().insert(
                     prompt_id.clone(),
                     Pending::UserInput {
                         rpc_id: id,
-                        question_ids,
+                        questions: questions.clone(),
                     },
                 );
                 emit(
                     &self.events,
                     SessionEventBody::Prompt {
                         prompt_id,
-                        prompt_kind,
-                        question,
-                        options,
+                        prompt_kind: PromptKind::Questions,
+                        question: first,
+                        options: Vec::new(),
+                        questions,
                     },
                 );
                 emit_status(&self.events, SessionStatus::NeedsInput);
@@ -1093,10 +1139,14 @@ impl Shared {
         match method {
             "turn/started" => {
                 self.turn_open.store(true, Ordering::SeqCst);
+                if let Some(id) = params.pointer("/turn/id").and_then(Value::as_str) {
+                    *self.turn_id.lock().unwrap() = Some(id.to_string());
+                }
                 emit_status(&self.events, SessionStatus::Running);
             }
             "turn/completed" => {
                 self.turn_open.store(false, Ordering::SeqCst);
+                *self.turn_id.lock().unwrap() = None;
                 if let Some(message) = params.pointer("/turn/error").and_then(error_text) {
                     emit(&self.events, SessionEventBody::Error { message });
                     emit_status(&self.events, SessionStatus::Failed);
@@ -1117,6 +1167,9 @@ impl Shared {
                 let Some(item_id) = params.get("itemId").and_then(Value::as_str) else {
                     return;
                 };
+                if self.question_items.lock().unwrap().contains(item_id) {
+                    return;
+                }
                 let delta = params.get("delta").and_then(Value::as_str).unwrap_or("");
                 self.push_stream(item_id, delta, false);
             }
@@ -1181,6 +1234,9 @@ impl Shared {
                 self.push_thinking(id, &text, true);
             }
             "agentMessage" => {
+                if self.maybe_emit_async_questions(id, item) {
+                    return;
+                }
                 if let Some(text) = item.get("text").and_then(Value::as_str) {
                     if !id.is_empty() {
                         self.streams.lock().unwrap().insert(
@@ -1348,6 +1404,84 @@ impl Shared {
         );
     }
 
+    /// agentMessage 带 questions（Codex async 提问）时渲染成问题卡片而不是普通消息。
+    /// 返回 true 表示该 item 已被卡片接管（后续 delta / completed 文本都吞掉）。
+    fn maybe_emit_async_questions(&self, id: &str, item: &Value) -> bool {
+        if id.is_empty() {
+            return false;
+        }
+        {
+            let handled = self.question_items.lock().unwrap();
+            if handled.contains(id) {
+                return true;
+            }
+        }
+        let questions = parse_async_questions(item);
+        if questions.is_empty() {
+            return false;
+        }
+        self.question_items
+            .lock()
+            .unwrap()
+            .insert(id.to_string());
+        let prompt_id = format!("async-{id}");
+        self.pending.lock().unwrap().insert(
+            prompt_id.clone(),
+            Pending::AsyncQuestions {
+                questions: questions.clone(),
+            },
+        );
+        let first = questions[0].question.clone();
+        emit(
+            &self.events,
+            SessionEventBody::Prompt {
+                prompt_id,
+                prompt_kind: PromptKind::Questions,
+                question: first,
+                options: Vec::new(),
+                questions,
+            },
+        );
+        emit_status(&self.events, SessionStatus::NeedsInput);
+        true
+    }
+
+    /// 把回答写回正在睡眠等待的回合。对齐终端里「在提问后直接输入回答」。
+    async fn steer_turn(&self, text: &str) -> Result<(), AgentError> {
+        let thread_id = self
+            .thread_id
+            .lock()
+            .unwrap()
+            .clone()
+            .ok_or_else(|| AgentError::Runtime("Codex 线程未建立".into()))?;
+        let turn_id = self
+            .turn_id
+            .lock()
+            .unwrap()
+            .clone()
+            .ok_or_else(|| AgentError::Runtime("Codex 回合已结束".into()))?;
+        self.request(
+            "turn/steer",
+            json!({
+                "threadId": thread_id,
+                "expectedTurnId": turn_id,
+                "input": [{ "type": "text", "text": text }],
+            }),
+        )
+        .await?;
+        Ok(())
+    }
+
+    fn resolve_prompt(&self, prompt_id: &str, answer: String) {
+        emit(
+            &self.events,
+            SessionEventBody::PromptResolved {
+                prompt_id: prompt_id.to_string(),
+                answer,
+            },
+        );
+    }
+
     fn set_tuning(&self, model: Option<String>, effort: Option<String>) {
         if let Some(model) = model {
             let trimmed = model.trim();
@@ -1439,37 +1573,170 @@ fn approval_question(method: &str, params: &Value) -> String {
     text
 }
 
-fn user_input_prompt(questions: &[Value]) -> (PromptKind, String, Vec<PromptOption>) {
-    let first = questions.first();
-    let question = questions
-        .iter()
-        .filter_map(|q| q.get("question").and_then(Value::as_str))
-        .collect::<Vec<_>>()
-        .join("\n");
-    let options = first
-        .and_then(|q| q.get("options").and_then(Value::as_array))
+/// 阻塞式 `item/tool/requestUserInput` 的题目：
+/// `{ id, header, question, isOther, isSecret, options: [{ label, description }] | null }`
+fn parse_tool_questions(params: &Value) -> Vec<PromptQuestion> {
+    params
+        .get("questions")
+        .and_then(Value::as_array)
         .map(|list| {
             list.iter()
-                .filter_map(|opt| {
-                    let label = opt.get("label").and_then(Value::as_str)?;
-                    let id = opt
-                        .get("id")
-                        .and_then(Value::as_str)
-                        .unwrap_or(label)
-                        .to_string();
-                    Some(PromptOption {
+                .filter_map(|q| {
+                    let id = q.get("id").and_then(Value::as_str)?.to_string();
+                    let question = q.get("question").and_then(Value::as_str)?.to_string();
+                    let options = q
+                        .get("options")
+                        .and_then(Value::as_array)
+                        .map(|opts| {
+                            opts.iter()
+                                .filter_map(|opt| {
+                                    let label = opt.get("label").and_then(Value::as_str)?;
+                                    Some(PromptOption {
+                                        id: label.to_string(),
+                                        label: label.to_string(),
+                                        description: opt
+                                            .get("description")
+                                            .and_then(Value::as_str)
+                                            .unwrap_or("")
+                                            .to_string(),
+                                    })
+                                })
+                                .collect::<Vec<_>>()
+                        })
+                        .unwrap_or_default();
+                    Some(PromptQuestion {
                         id,
-                        label: label.to_string(),
+                        header: q
+                            .get("header")
+                            .and_then(Value::as_str)
+                            .unwrap_or("")
+                            .to_string(),
+                        question,
+                        is_secret: q.get("isSecret").and_then(Value::as_bool).unwrap_or(false),
+                        options,
                     })
                 })
-                .collect::<Vec<_>>()
+                .collect()
         })
-        .unwrap_or_default();
-    if questions.len() == 1 && !options.is_empty() {
-        (PromptKind::Choice, question, options)
-    } else {
-        (PromptKind::FreeText, question, Vec::new())
+        .unwrap_or_default()
+}
+
+/// async 提问消息（agentMessage `questions` 字段）：
+/// `[{ title, options: string[] | null }]`；协议没有题目 id，按序合成 q1/q2…
+fn parse_async_questions(item: &Value) -> Vec<PromptQuestion> {
+    item.get("questions")
+        .and_then(Value::as_array)
+        .map(|list| {
+            list.iter()
+                .enumerate()
+                .filter_map(|(index, q)| {
+                    let title = q.get("title").and_then(Value::as_str)?.trim().to_string();
+                    if title.is_empty() {
+                        return None;
+                    }
+                    let options = q
+                        .get("options")
+                        .and_then(Value::as_array)
+                        .map(|opts| {
+                            opts.iter()
+                                .filter_map(Value::as_str)
+                                .map(|label| PromptOption {
+                                    id: label.to_string(),
+                                    label: label.to_string(),
+                                    description: String::new(),
+                                })
+                                .collect::<Vec<_>>()
+                        })
+                        .unwrap_or_default();
+                    Some(PromptQuestion {
+                        id: format!("q{}", index + 1),
+                        header: String::new(),
+                        question: title,
+                        is_secret: false,
+                        options,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// 阻塞式提问的 JSON-RPC 响应：跳过的题不出现在 answers 里（Codex 视为未答）。
+fn blocking_answer_payload(questions: &[PromptQuestion], answer: &PromptAnswer) -> Value {
+    let mut map = serde_json::Map::new();
+    match answer {
+        PromptAnswer::Questions { answers, skipped } => {
+            if !skipped {
+                for q in questions {
+                    if let Some(text) = answers.get(&q.id).map(|t| t.trim()).filter(|t| !t.is_empty())
+                    {
+                        map.insert(q.id.clone(), json!({ "answers": [text] }));
+                    }
+                }
+            }
+        }
+        PromptAnswer::Single { value } => {
+            for q in questions {
+                map.insert(q.id.clone(), json!({ "answers": [value] }));
+            }
+        }
     }
+    json!({ "answers": map })
+}
+
+/// async 提问没有结构化回答通道：答案编成编号文本 steer 回回合（与终端输入一致）。
+fn async_answer_text(questions: &[PromptQuestion], answer: &PromptAnswer) -> String {
+    match answer {
+        PromptAnswer::Single { value } => value.clone(),
+        PromptAnswer::Questions { answers, skipped } => {
+            let lines = numbered_answer_lines(questions, answers, *skipped);
+            if lines.is_empty() {
+                skip_text()
+            } else {
+                lines.join("\n")
+            }
+        }
+    }
+}
+
+/// 卡片上的「已回答」摘要。
+fn questions_summary(questions: &[PromptQuestion], answer: &PromptAnswer) -> String {
+    match answer {
+        PromptAnswer::Single { value } => value.clone(),
+        PromptAnswer::Questions { answers, skipped } => {
+            let lines = numbered_answer_lines(questions, answers, *skipped);
+            if lines.is_empty() {
+                "已跳过".into()
+            } else {
+                lines.join("\n")
+            }
+        }
+    }
+}
+
+fn numbered_answer_lines(
+    questions: &[PromptQuestion],
+    answers: &std::collections::HashMap<String, String>,
+    skipped: bool,
+) -> Vec<String> {
+    if skipped {
+        return Vec::new();
+    }
+    questions
+        .iter()
+        .enumerate()
+        .filter_map(|(index, q)| {
+            answers
+                .get(&q.id)
+                .map(|text| text.trim())
+                .filter(|text| !text.is_empty())
+                .map(|text| format!("{}. {}", index + 1, text))
+        })
+        .collect()
+}
+
+fn skip_text() -> String {
+    "（用户跳过了这些问题，请按你的判断继续）".into()
 }
 
 fn error_text(value: &Value) -> Option<String> {
@@ -2061,6 +2328,137 @@ mod tests {
         );
     }
 
+    fn question_fixture() -> Value {
+        json!({
+            "questions": [
+                {
+                    "id": "framework",
+                    "header": "技术选型",
+                    "question": "用哪个框架？",
+                    "isOther": true,
+                    "isSecret": false,
+                    "options": [
+                        { "label": "Vite", "description": "快速开发服务器" },
+                        { "label": "Next.js", "description": "React 全栈" }
+                    ]
+                },
+                {
+                    "id": "constraints",
+                    "header": "",
+                    "question": "还有约束吗？",
+                    "isOther": true,
+                    "isSecret": true,
+                    "options": null
+                }
+            ]
+        })
+    }
+
+    #[test]
+    fn parses_tool_questions() {
+        let questions = parse_tool_questions(&question_fixture());
+        assert_eq!(questions.len(), 2);
+        assert_eq!(questions[0].id, "framework");
+        assert_eq!(questions[0].header, "技术选型");
+        assert_eq!(questions[0].options.len(), 2);
+        assert_eq!(questions[0].options[0].id, "Vite");
+        assert_eq!(questions[0].options[0].description, "快速开发服务器");
+        assert!(questions[1].options.is_empty());
+        assert!(questions[1].is_secret);
+    }
+
+    #[test]
+    fn parses_async_questions_with_synthesized_ids() {
+        let item = json!({
+            "type": "agentMessage",
+            "id": "msg_1",
+            "delivery": "async",
+            "questions": [
+                { "title": "用哪个框架？", "options": ["Vite", "Next.js", "Astro"] },
+                { "title": "还有约束吗？", "options": null }
+            ]
+        });
+        let questions = parse_async_questions(&item);
+        assert_eq!(questions.len(), 2);
+        assert_eq!(questions[0].id, "q1");
+        assert_eq!(questions[0].options.len(), 3);
+        assert_eq!(questions[1].id, "q2");
+        assert!(questions[1].options.is_empty());
+        // 普通消息没有 questions 字段
+        assert!(parse_async_questions(&json!({ "type": "agentMessage", "id": "m", "text": "hi" })).is_empty());
+    }
+
+    #[test]
+    fn blocking_payload_skips_unanswered() {
+        let questions = parse_tool_questions(&question_fixture());
+        let mut answers = std::collections::HashMap::new();
+        answers.insert("framework".to_string(), " Vite ".to_string());
+        answers.insert("constraints".to_string(), "   ".to_string());
+        let payload = blocking_answer_payload(
+            &questions,
+            &PromptAnswer::Questions { answers, skipped: false },
+        );
+        assert_eq!(payload["answers"]["framework"]["answers"][0], json!("Vite"));
+        assert!(payload["answers"].get("constraints").is_none());
+
+        let skipped = blocking_answer_payload(
+            &questions,
+            &PromptAnswer::Questions {
+                answers: std::collections::HashMap::new(),
+                skipped: true,
+            },
+        );
+        assert_eq!(skipped, json!({ "answers": {} }));
+    }
+
+    #[test]
+    fn async_answer_numbers_lines_and_skips() {
+        let questions = parse_tool_questions(&question_fixture());
+        let mut answers = std::collections::HashMap::new();
+        answers.insert("framework".to_string(), "Vite".to_string());
+        let text = async_answer_text(
+            &questions,
+            &PromptAnswer::Questions { answers, skipped: false },
+        );
+        assert_eq!(text, "1. Vite");
+
+        let skipped = async_answer_text(
+            &questions,
+            &PromptAnswer::Questions {
+                answers: std::collections::HashMap::new(),
+                skipped: true,
+            },
+        );
+        assert!(skipped.contains("跳过"));
+
+        let raw = async_answer_text(
+            &questions,
+            &PromptAnswer::Single { value: "随便".into() },
+        );
+        assert_eq!(raw, "随便");
+    }
+
+    #[test]
+    fn summary_marks_skip() {
+        let questions = parse_tool_questions(&question_fixture());
+        let skipped = questions_summary(
+            &questions,
+            &PromptAnswer::Questions {
+                answers: std::collections::HashMap::new(),
+                skipped: true,
+            },
+        );
+        assert_eq!(skipped, "已跳过");
+        let mut answers = std::collections::HashMap::new();
+        answers.insert("framework".to_string(), "Vite".to_string());
+        answers.insert("constraints".to_string(), "无".to_string());
+        let summary = questions_summary(
+            &questions,
+            &PromptAnswer::Questions { answers, skipped: false },
+        );
+        assert_eq!(summary, "1. Vite\n2. 无");
+    }
+
     #[tokio::test]
     #[ignore = "calls the local Codex CLI"]
     async fn catalog_lists_live_models() {
@@ -2086,6 +2484,170 @@ mod tests {
             "codex returned no reasoning efforts"
         );
         let _ = session.stop().await;
+    }
+
+    /// 真实链路：Codex async 提问 → 问题卡片 → 回答 steer 回回合 → 模型确认。
+    #[tokio::test]
+    #[ignore = "calls the local Codex CLI"]
+    async fn async_questions_roundtrip() {
+        let adapter = CodexCliAdapter::new();
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let cwd = std::env::temp_dir();
+        let session = adapter
+            .start_session(
+                SessionContext {
+                    session_id: "questions".into(),
+                    project_path: cwd.to_string_lossy().to_string(),
+                    access_mode: Some("read-only".into()),
+                },
+                tx,
+            )
+            .await
+            .expect("start");
+        session
+            .send_message(
+                "Ask me TWO questions using the async questions mechanism: \
+                 (1) 'Which framework should I use?' with options Vite, Next.js, Astro. \
+                 (2) 'Any extra constraints?' with no options. \
+                 Wait for my reply, then confirm my choices in one short sentence."
+                    .into(),
+            )
+            .await
+            .expect("send");
+
+        let mut prompt: Option<(String, Vec<PromptQuestion>)> = None;
+        let mut resolved: Option<String> = None;
+        let mut final_text = String::new();
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(240);
+        while tokio::time::Instant::now() < deadline {
+            match timeout(Duration::from_secs(10), rx.recv()).await {
+                Ok(Some(SessionEventBody::Prompt {
+                    prompt_id,
+                    prompt_kind: PromptKind::Questions,
+                    questions,
+                    ..
+                })) => {
+                    assert_eq!(questions.len(), 2, "expected two questions");
+                    assert_eq!(questions[0].options.len(), 3, "expected three options");
+                    assert!(questions[1].options.is_empty());
+                    let mut answers = std::collections::HashMap::new();
+                    answers.insert(questions[0].id.clone(), "Vite".to_string());
+                    answers.insert(questions[1].id.clone(), "no extra constraints".to_string());
+                    session
+                        .answer_prompt(
+                            &prompt_id,
+                            PromptAnswer::Questions {
+                                answers,
+                                skipped: false,
+                            },
+                        )
+                        .await
+                        .expect("answer");
+                    prompt = Some((prompt_id, questions));
+                }
+                Ok(Some(SessionEventBody::PromptResolved { answer, .. })) => {
+                    resolved = Some(answer);
+                }
+                Ok(Some(SessionEventBody::AgentMessage { text, .. })) => {
+                    final_text = text;
+                }
+                Ok(Some(SessionEventBody::StatusChanged {
+                    status: SessionStatus::Completed,
+                })) if prompt.is_some() => break,
+                Ok(Some(SessionEventBody::StatusChanged {
+                    status: SessionStatus::Failed,
+                })) => panic!("turn failed, last message: {final_text}"),
+                Ok(Some(SessionEventBody::Error { message })) => {
+                    panic!("codex error: {message}")
+                }
+                Ok(Some(_)) => {}
+                Ok(None) => break,
+                Err(_) => {}
+            }
+        }
+        let _ = session.stop().await;
+        assert!(prompt.is_some(), "never received a question card");
+        assert_eq!(
+            resolved.as_deref(),
+            Some("1. Vite\n2. no extra constraints"),
+            "resolved summary"
+        );
+        assert!(
+            final_text.to_ascii_lowercase().contains("vite"),
+            "model did not acknowledge the answer, last message: {final_text}"
+        );
+    }
+
+    /// 跳过一个 async 提问：回合应继续并完成，摘要为「已跳过」。
+    #[tokio::test]
+    #[ignore = "calls the local Codex CLI"]
+    async fn async_questions_skip() {
+        let adapter = CodexCliAdapter::new();
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let cwd = std::env::temp_dir();
+        let session = adapter
+            .start_session(
+                SessionContext {
+                    session_id: "questions-skip".into(),
+                    project_path: cwd.to_string_lossy().to_string(),
+                    access_mode: Some("read-only".into()),
+                },
+                tx,
+            )
+            .await
+            .expect("start");
+        session
+            .send_message(
+                "Ask me ONE question using the async questions mechanism: \
+                 'Which color should the button be?' with options Red, Blue. \
+                 If I decline to answer, just pick one yourself and confirm in one short sentence."
+                    .into(),
+            )
+            .await
+            .expect("send");
+
+        let mut answered = false;
+        let mut resolved: Option<String> = None;
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(240);
+        while tokio::time::Instant::now() < deadline {
+            match timeout(Duration::from_secs(10), rx.recv()).await {
+                Ok(Some(SessionEventBody::Prompt {
+                    prompt_id,
+                    prompt_kind: PromptKind::Questions,
+                    ..
+                })) => {
+                    session
+                        .answer_prompt(
+                            &prompt_id,
+                            PromptAnswer::Questions {
+                                answers: std::collections::HashMap::new(),
+                                skipped: true,
+                            },
+                        )
+                        .await
+                        .expect("skip");
+                    answered = true;
+                }
+                Ok(Some(SessionEventBody::PromptResolved { answer, .. })) => {
+                    resolved = Some(answer);
+                }
+                Ok(Some(SessionEventBody::StatusChanged {
+                    status: SessionStatus::Completed,
+                })) if answered => break,
+                Ok(Some(SessionEventBody::StatusChanged {
+                    status: SessionStatus::Failed,
+                })) => panic!("turn failed"),
+                Ok(Some(SessionEventBody::Error { message })) => {
+                    panic!("codex error: {message}")
+                }
+                Ok(Some(_)) => {}
+                Ok(None) => break,
+                Err(_) => {}
+            }
+        }
+        let _ = session.stop().await;
+        assert!(answered, "never received a question card");
+        assert_eq!(resolved.as_deref(), Some("已跳过"), "skip summary");
     }
 
     #[tokio::test]
