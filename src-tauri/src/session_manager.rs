@@ -1,7 +1,9 @@
 //! 会话管理器：负责会话生命周期、事件日志、状态机与前端推送。
 //!
-//! 侧边栏是已注册 `SessionDirectory` 与内存中已打开会话的并集，按
-//! agent kind + native id 去重。管理器不依赖某一种 CLI 的目录类型。
+//! 项目列表只含工作台已注册的项目。某个项目下的会话，是各
+//! `SessionDirectory` 里 cwd 匹配该项目的条目，再并上内存中已打开、
+//! 尚未出现在目录里的会话。键是 agent kind + native id。管理器不依赖
+//! 某一种 CLI 的目录类型。
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
@@ -10,7 +12,7 @@ use tauri::{AppHandle, Emitter};
 use tokio::sync::mpsc;
 
 use crate::agents::directory::{
-    cwd_key, group_projects, session_key, sessions_for_project, SessionDirectory, SourcedEntry,
+    cwd_key, session_key, sessions_for_project, SessionDirectory, SourcedEntry,
 };
 use crate::agents::{adapter_for, session_directories, AgentSession, EventSink, SessionContext};
 use crate::models::*;
@@ -62,25 +64,11 @@ impl SessionManager {
         (listed, errors)
     }
 
-    pub async fn projects_for_sidebar(&self, store: &ProjectStore) -> Vec<Project> {
-        let (listed, _) = self.listed().await;
-        group_projects(&store.list(), &listed)
-    }
-
-    pub async fn resolve_project(
-        &self,
-        store: &ProjectStore,
-        id: &str,
-    ) -> Result<Project, String> {
-        if let Some(mut project) = store.get(id) {
-            project.external = false;
-            return Ok(project);
-        }
-        let (listed, _) = self.listed().await;
-        group_projects(&store.list(), &listed)
-            .into_iter()
-            .find(|project| project.id == id)
-            .ok_or_else(|| "项目不存在".to_string())
+    /// 只解析工作台已保存的项目。Agent 目录里的其它 cwd 不能当成项目打开。
+    pub fn resolve_project(&self, store: &ProjectStore, id: &str) -> Result<Project, String> {
+        let mut project = store.get(id).ok_or_else(|| "项目不存在".to_string())?;
+        project.external = false;
+        Ok(project)
     }
 
     pub async fn sessions_for_sidebar(
@@ -88,7 +76,7 @@ impl SessionManager {
         store: &ProjectStore,
         project_id: &str,
     ) -> Vec<Session> {
-        let project = match self.resolve_project(store, project_id).await {
+        let project = match self.resolve_project(store, project_id) {
             Ok(project) => project,
             Err(_) => return Vec::new(),
         };
@@ -158,7 +146,8 @@ impl SessionManager {
                 .next()
                 .unwrap_or_else(|| "会话不存在".to_string()));
         };
-        let project = group_projects(&store.list(), &listed)
+        let project = store
+            .list()
             .into_iter()
             .find(|project| cwd_key(&project.path) == found.entry.cwd_key)
             .ok_or_else(|| "找不到会话所在目录".to_string())?;
@@ -388,7 +377,8 @@ impl SessionManager {
         handle.stop().await.map_err(|err| err.to_string())
     }
 
-    /// 移除项目时停止其全部已打开的会话（不删除 Codex 线程）。
+    /// 移除项目时停掉本进程里已打开的会话。
+    /// 只结束进程内连接，不删除 Agent 的 rollout，也不改写 Agent 自己的项目列表。
     pub async fn stop_sessions_of_project(&self, project_id: &str) {
         let ids: Vec<String> = {
             let entries = self.entries.lock().unwrap();

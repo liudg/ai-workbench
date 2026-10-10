@@ -61,7 +61,7 @@ pub struct Project {
     pub default_agent: AgentKind,
     pub created_at: i64,
     pub updated_at: i64,
-    /// 来自某个 Agent 的会话目录，不写入 projects.json。
+    /// 保留字段。侧边栏不再把 Agent 目录合成外部项目；已保存项目始终为 false。
     #[serde(default)]
     pub external: bool,
 }
