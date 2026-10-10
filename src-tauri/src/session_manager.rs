@@ -24,6 +24,8 @@ struct SessionEntry {
     events: Vec<SessionEvent>,
     next_seq: u64,
     agent: Option<Arc<dyn AgentSession>>,
+    /// 这次连接之后真正发生过对话才有值。打开、附着、状态变化不算。
+    activity_at: Option<i64>,
 }
 
 /// 前端事件名约定
@@ -89,7 +91,8 @@ impl SessionManager {
                 if session.title == "未命名会话" && !entry.meta.title.is_empty() {
                     session.title = entry.meta.title.clone();
                 }
-                session.updated_at = session.updated_at.max(entry.meta.updated_at);
+                // 目录 updatedAt 决定顺序。只有真实对话才并入本进程的活动时间。
+                session.updated_at = sidebar_updated_at(session.updated_at, entry.activity_at);
             }
         }
         let known: HashSet<(AgentKind, String)> = sessions
@@ -278,17 +281,20 @@ impl SessionManager {
                 events: Vec::new(),
                 next_seq: 1,
                 agent: handle,
+                activity_at: None,
             },
         );
+        // start_session 返回前已经把历史、连接说明和状态放进通道。
+        // 这些是打开/附着，不能改侧边栏排序时间。
         while let Ok(body) = rx.try_recv() {
-            apply_body(&self.entries, &self.app, &session_id, body);
+            apply_body(&self.entries, &self.app, &session_id, body, false);
         }
         let entries = Arc::clone(&self.entries);
         let app = self.app.clone();
         let sid = session_id;
         tauri::async_runtime::spawn(async move {
             while let Some(body) = rx.recv().await {
-                apply_body(&entries, &app, &sid, body);
+                apply_body(&entries, &app, &sid, body, true);
             }
         });
     }
@@ -298,7 +304,7 @@ impl SessionManager {
         if !self.entries.lock().unwrap().contains_key(session_id) {
             return Err("会话不存在".to_string());
         }
-        apply_body(&self.entries, &self.app, session_id, body);
+        apply_body(&self.entries, &self.app, session_id, body, true);
         Ok(())
     }
 
@@ -426,13 +432,14 @@ fn apply_body(
     app: &AppHandle,
     session_id: &str,
     body: SessionEventBody,
+    record_activity: bool,
 ) {
     let replaced = {
         let mut entries = entries.lock().unwrap();
         let Some(entry) = entries.get_mut(session_id) else {
             return;
         };
-        replace_stream(entry, &body)
+        replace_stream(entry, &body, record_activity)
     };
     if let Some(event) = replaced {
         let _ = app.emit(EVT_SESSION_EVENT, &event);
@@ -444,37 +451,8 @@ fn apply_body(
         let Some(entry) = entries.get_mut(session_id) else {
             return;
         };
-        let status_changed = matches!(body, SessionEventBody::StatusChanged { .. });
-        if let SessionEventBody::StatusChanged { status } = &body {
-            entry.meta.status = *status;
-            entry.meta.updated_at = now_millis();
-        }
-        let mut title_changed = false;
-        if let SessionEventBody::UserMessage { text } = &body {
-            if entry.meta.title.starts_with("会话 ") || entry.meta.title == "未命名会话" {
-                let first_line = text.lines().next().unwrap_or("");
-                let title: String = first_line.chars().take(24).collect();
-                if !title.is_empty() {
-                    entry.meta.title = title;
-                    entry.meta.updated_at = now_millis();
-                    title_changed = true;
-                }
-            }
-        }
-        let event = SessionEvent {
-            id: new_id(),
-            session_id: session_id.to_string(),
-            seq: entry.next_seq,
-            ts: now_millis(),
-            body,
-        };
-        entry.next_seq += 1;
-        entry.events.push(event.clone());
-        (
-            event,
-            entry.meta.project_id.clone(),
-            status_changed || title_changed,
-        )
+        let outcome = mutate_entry(entry, session_id, body, record_activity);
+        (outcome.event, outcome.project_id, outcome.notify)
     };
     let _ = app.emit(EVT_SESSION_EVENT, &event);
     if notify {
@@ -485,8 +463,85 @@ fn apply_body(
     }
 }
 
+struct EntryMutation {
+    event: SessionEvent,
+    project_id: String,
+    notify: bool,
+}
+
+fn mutate_entry(
+    entry: &mut SessionEntry,
+    session_id: &str,
+    body: SessionEventBody,
+    record_activity: bool,
+) -> EntryMutation {
+    let status_changed = matches!(body, SessionEventBody::StatusChanged { .. });
+    if let SessionEventBody::StatusChanged { status } = &body {
+        entry.meta.status = *status;
+    }
+    let mut title_changed = false;
+    if let SessionEventBody::UserMessage { text } = &body {
+        if entry.meta.title.starts_with("会话 ") || entry.meta.title == "未命名会话" {
+            let first_line = text.lines().next().unwrap_or("");
+            let title: String = first_line.chars().take(24).collect();
+            if !title.is_empty() {
+                entry.meta.title = title;
+                title_changed = true;
+            }
+        }
+    }
+    let now = now_millis();
+    if record_activity && is_conversation_activity(&body) {
+        note_activity(entry, now);
+    }
+    let event = SessionEvent {
+        id: new_id(),
+        session_id: session_id.to_string(),
+        seq: entry.next_seq,
+        ts: now,
+        body,
+    };
+    entry.next_seq += 1;
+    entry.events.push(event.clone());
+    EntryMutation {
+        event,
+        project_id: entry.meta.project_id.clone(),
+        notify: status_changed || title_changed,
+    }
+}
+
+/// 用户或模型的一轮内容。状态、系统说明、只读通知和错误都不改排序时间。
+fn is_conversation_activity(body: &SessionEventBody) -> bool {
+    matches!(
+        body,
+        SessionEventBody::UserMessage { .. }
+            | SessionEventBody::AgentMessage { .. }
+            | SessionEventBody::Thinking { .. }
+            | SessionEventBody::ToolCall { .. }
+            | SessionEventBody::Prompt { .. }
+            | SessionEventBody::PromptResolved { .. }
+    )
+}
+
+fn note_activity(entry: &mut SessionEntry, at: i64) {
+    entry.activity_at = Some(at);
+    entry.meta.updated_at = at;
+}
+
+/// 没有真实对话时沿用目录 updatedAt，即使内存里的时间被打开流程碰过。
+fn sidebar_updated_at(directory_updated_at: i64, activity_at: Option<i64>) -> i64 {
+    match activity_at {
+        Some(activity) => directory_updated_at.max(activity),
+        None => directory_updated_at,
+    }
+}
+
 /// 同一 `stream_id` 的助手消息或思考覆盖上一条，并沿用原来的事件 id。
-fn replace_stream(entry: &mut SessionEntry, body: &SessionEventBody) -> Option<SessionEvent> {
+fn replace_stream(
+    entry: &mut SessionEntry,
+    body: &SessionEventBody,
+    record_activity: bool,
+) -> Option<SessionEvent> {
     let (text, stream_id, thinking) = match body {
         SessionEventBody::AgentMessage {
             text,
@@ -514,7 +569,161 @@ fn replace_stream(entry: &mut SessionEntry, body: &SessionEventBody) -> Option<S
         | SessionEventBody::Thinking { text: slot, .. } => *slot = text.clone(),
         _ => return None,
     }
-    existing.ts = now_millis();
-    entry.meta.updated_at = existing.ts;
-    Some(existing.clone())
+    let at = now_millis();
+    existing.ts = at;
+    let event = existing.clone();
+    if record_activity {
+        note_activity(entry, at);
+    }
+    Some(event)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn entry(updated_at: i64) -> SessionEntry {
+        SessionEntry {
+            meta: Session {
+                id: "codex-cli:thread".into(),
+                project_id: "p".into(),
+                agent: AgentKind::CodexCli,
+                native_id: "thread".into(),
+                title: "概括当前项目".into(),
+                status: SessionStatus::Completed,
+                created_at: updated_at - 1_000,
+                updated_at,
+            },
+            events: Vec::new(),
+            next_seq: 1,
+            agent: None,
+            activity_at: None,
+        }
+    }
+
+    #[test]
+    fn open_and_status_keep_the_directory_sort_time() {
+        let mut session = entry(1_000);
+        mutate_entry(
+            &mut session,
+            "codex-cli:thread",
+            SessionEventBody::System {
+                text: "Codex CLI 已连接".into(),
+            },
+            false,
+        );
+        mutate_entry(
+            &mut session,
+            "codex-cli:thread",
+            SessionEventBody::UserMessage {
+                text: "历史里的问题".into(),
+            },
+            false,
+        );
+        mutate_entry(
+            &mut session,
+            "codex-cli:thread",
+            SessionEventBody::AgentMessage {
+                text: "历史回答".into(),
+                stream_id: None,
+            },
+            false,
+        );
+        mutate_entry(
+            &mut session,
+            "codex-cli:thread",
+            SessionEventBody::StatusChanged {
+                status: SessionStatus::Completed,
+            },
+            false,
+        );
+        mutate_entry(
+            &mut session,
+            "codex-cli:thread",
+            SessionEventBody::StatusChanged {
+                status: SessionStatus::Running,
+            },
+            true,
+        );
+        assert_eq!(session.activity_at, None);
+        assert_eq!(session.meta.updated_at, 1_000);
+        assert_eq!(session.meta.status, SessionStatus::Running);
+        assert_eq!(sidebar_updated_at(1_000, session.activity_at), 1_000);
+        session.meta.updated_at = 9_999_999;
+        assert_eq!(sidebar_updated_at(1_000, session.activity_at), 1_000);
+    }
+
+    #[test]
+    fn a_live_turn_sorts_by_the_newer_activity_time() {
+        let mut session = entry(1_000);
+        session.meta.title = "未命名会话".into();
+        mutate_entry(
+            &mut session,
+            "codex-cli:thread",
+            SessionEventBody::UserMessage {
+                text: "概括当前项目\n第二行".into(),
+            },
+            true,
+        );
+        let activity = session.activity_at.expect("live turn");
+        assert!(activity >= 1_000);
+        assert_eq!(session.meta.updated_at, activity);
+        assert_eq!(session.meta.title, "概括当前项目");
+        assert_eq!(sidebar_updated_at(1_000, session.activity_at), activity);
+        assert_eq!(sidebar_updated_at(activity + 50, session.activity_at), activity + 50);
+    }
+
+    #[test]
+    fn replay_can_rename_without_bumping() {
+        let mut session = entry(1_000);
+        session.meta.title = "未命名会话".into();
+        mutate_entry(
+            &mut session,
+            "codex-cli:thread",
+            SessionEventBody::UserMessage {
+                text: "概括当前项目".into(),
+            },
+            false,
+        );
+        assert_eq!(session.meta.title, "概括当前项目");
+        assert_eq!(session.activity_at, None);
+        assert_eq!(session.meta.updated_at, 1_000);
+    }
+
+    #[test]
+    fn streamed_replies_count_only_after_open() {
+        let mut session = entry(1_000);
+        mutate_entry(
+            &mut session,
+            "codex-cli:thread",
+            SessionEventBody::AgentMessage {
+                text: "先".into(),
+                stream_id: Some("s1".into()),
+            },
+            false,
+        );
+        assert!(replace_stream(
+            &mut session,
+            &SessionEventBody::AgentMessage {
+                text: "先看目录".into(),
+                stream_id: Some("s1".into()),
+            },
+            false,
+        )
+        .is_some());
+        assert_eq!(session.activity_at, None);
+        assert_eq!(session.meta.updated_at, 1_000);
+
+        assert!(replace_stream(
+            &mut session,
+            &SessionEventBody::AgentMessage {
+                text: "先看目录结构".into(),
+                stream_id: Some("s1".into()),
+            },
+            true,
+        )
+        .is_some());
+        assert_eq!(session.activity_at, Some(session.meta.updated_at));
+        assert!(session.meta.updated_at >= 1_000);
+    }
 }
