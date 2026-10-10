@@ -158,12 +158,18 @@ function pushEvent(sessionId: string, body: SessionEventBody) {
   s.events.push(event);
   if (body.kind === "status-changed") {
     s.meta.status = body.status;
-    s.meta.updated_at = now();
   }
   eventListeners.forEach((cb) => cb(event));
   if (body.kind === "status-changed") {
     sessionsChangedListeners.forEach((cb) => cb(s.meta.project_id));
   }
+}
+
+function noteActivity(sessionId: string) {
+  const s = sessions.get(sessionId);
+  if (!s) return;
+  s.meta.updated_at = now();
+  sessionsChangedListeners.forEach((cb) => cb(s.meta.project_id));
 }
 
 function setStatus(sessionId: string, status: SessionStatus) {
@@ -462,6 +468,7 @@ export const mockBackend: Backend = {
       kind: "user-message",
       text,
     });
+    noteActivity(sessionId);
     if (s.meta.title.startsWith("会话 ") || s.meta.title === "未命名会话") {
       s.meta.title = text.split("\n")[0].slice(0, 24);
       sessionsChangedListeners.forEach((cb) => cb(s.meta.project_id));
@@ -614,6 +621,7 @@ export const mockBackend: Backend = {
       prompt_id: promptId,
       answer: summary,
     });
+    noteActivity(sessionId);
     setStatus(sessionId, "running");
     schedule(
       s,
