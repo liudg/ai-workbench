@@ -49,6 +49,14 @@ export function formatElapsed(ms: number): string {
   return parts.join(" ");
 }
 
+/**
+ * 折叠后的一行：`Codex CLI · 用时 3s`。
+ * 名称由调用方按会话 Agent 传入，这里不区分种类。
+ */
+export function collapsedTurnSummary(agentLabel: string, durationMs: number): string {
+  return `${agentLabel} · 用时 ${formatElapsed(durationMs)}`;
+}
+
 export type TimelineNode =
   | { type: "event"; event: SessionEvent; showAgentLabel: boolean }
   | { type: "work"; id: string; events: SessionEvent[] }

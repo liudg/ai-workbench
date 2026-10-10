@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { buildTimeline, formatElapsed, type TimelineNode } from "./timeline.ts";
+import {
+  buildTimeline,
+  collapsedTurnSummary,
+  formatElapsed,
+  type TimelineNode,
+} from "./timeline.ts";
 import type { SessionEvent, SessionEventBody } from "../../../types.ts";
 
 function event(id: string, ts: number, body: SessionEventBody): SessionEvent {
@@ -20,6 +25,15 @@ test("formats elapsed time like Codex", () => {
   assert.equal(formatElapsed(88_000), "1m 28s");
   assert.equal(formatElapsed(120_000), "2m");
   assert.equal(formatElapsed(3_723_000), "1h 2m 3s");
+});
+
+test("collapsed turn summary is the agent label, a middot, then elapsed time", () => {
+  assert.equal(collapsedTurnSummary("Codex CLI", 3_000), "Codex CLI · 用时 3s");
+  assert.equal(collapsedTurnSummary("Claude Code", 88_000), "Claude Code · 用时 1m 28s");
+  assert.equal(
+    collapsedTurnSummary("GitHub Copilot CLI", 0),
+    "GitHub Copilot CLI · 用时 0s",
+  );
 });
 
 test("folds commentary, thinking, and tools into one settled turn", () => {

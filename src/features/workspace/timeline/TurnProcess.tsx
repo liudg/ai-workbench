@@ -1,13 +1,13 @@
 import { useState } from "react";
-import { ChevronRight } from "lucide-react";
+import { Bot, ChevronRight } from "lucide-react";
 
-import { formatElapsed, isProcess } from "./timeline";
+import { collapsedTurnSummary, formatElapsed, isProcess } from "./timeline";
 import { cn } from "@/lib/utils";
-import type { Session, SessionEvent } from "@/types";
+import { AGENT_LABELS, type Session, type SessionEvent } from "@/types";
 import { EventItem } from "./EventItem";
 
 /**
- * 一轮结束后的过程条：只显示用时和右侧箭头。
+ * 一轮结束后的过程条。折叠时名称和用时在同一行，右侧是箭头。
  * 展开后是旁白、思考和工具调用；最终答复留在下面，并只标一次 Agent。
  */
 export function TurnProcess({
@@ -64,37 +64,49 @@ export function TurnProcess({
   return (
     <div className="min-w-0">
       {chromeBefore.map((event) => renderEvent(event, false))}
-      <FoldLine durationMs={durationMs} expanded={expanded} onToggle={onToggle} />
+      <FoldLine
+        agentLabel={expanded ? null : AGENT_LABELS[session.agent]}
+        durationMs={durationMs}
+        expanded={expanded}
+        onToggle={onToggle}
+      />
       {expanded ? process.map((event) => renderEvent(event, false)) : null}
-      {answer ? renderEvent(answer, true) : null}
+      {answer ? renderEvent(answer, expanded) : null}
       {chromeAfter.map((event) => renderEvent(event, false))}
     </div>
   );
 }
 
 function FoldLine({
+  agentLabel,
   durationMs,
   expanded,
   onToggle,
 }: {
+  /** 折叠时把 Agent 名称接到用时前面；展开后名称回到最终答复上。 */
+  agentLabel: string | null;
   durationMs: number;
   expanded: boolean;
   onToggle: () => void;
 }) {
-  const label = `用时 ${formatElapsed(durationMs)}`;
+  const elapsed = `用时 ${formatElapsed(durationMs)}`;
+  const summary = agentLabel ? collapsedTurnSummary(agentLabel, durationMs) : elapsed;
   return (
     <div className="event-in min-w-0 px-6 py-1">
       <div className="mx-auto min-w-0 max-w-3xl">
         <button
           type="button"
           data-turn-fold
+          data-turn-summary={summary}
           data-expanded={expanded ? "true" : "false"}
           aria-expanded={expanded}
+          title={summary}
           onClick={onToggle}
-          className="group flex w-full min-w-0 items-center gap-2 rounded py-0.5 text-left"
+          className="group flex w-full min-w-0 flex-nowrap items-center gap-2 rounded py-0.5 text-left"
         >
-          <span className="min-w-0 break-words text-xs text-zinc-500 group-hover:text-zinc-400">
-            {label}
+          {agentLabel ? <Bot className="h-3.5 w-3.5 shrink-0 text-zinc-500" /> : null}
+          <span className="min-w-0 truncate text-xs text-zinc-500 group-hover:text-zinc-400">
+            {summary}
           </span>
           <ChevronRight
             className={cn(
