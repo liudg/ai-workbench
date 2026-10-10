@@ -1,5 +1,7 @@
 // 生成应用图标（无需任何第三方依赖，手写 PNG 编码器）
 // 用法: node scripts/gen-icons.mjs
+// Windows 安装包还需要 src-tauri/icons/icon.ico，用
+// `pnpm tauri icon src-tauri/icons/icon.png` 从 icon.png 生成后只保留 ico。
 import { deflateSync } from "node:zlib";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
