@@ -4,7 +4,7 @@
 //! - `models`          领域模型（IPC 协议）
 //! - `project_store`   项目列表持久化
 //! - `session_manager` 会话生命周期 / 事件日志 / 前端推送
-//! - `agents`          Agent CLI 适配层（Codex 真实进程，Claude Code 仍是桩）
+//! - `agents`          Agent CLI 适配层（Codex 真实进程，其余种类可先只做探测和更新）
 //! - `chat_images`     时间线本机图片：校验后放入 asset 协议
 //! - `commands`        前端 invoke 入口
 //! - `tray`            系统托盘与常驻后台

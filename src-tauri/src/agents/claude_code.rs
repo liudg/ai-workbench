@@ -91,6 +91,9 @@ impl AgentAdapter for ClaudeCodeAdapter {
             npm_package: "@anthropic-ai/claude-code",
             self_update: &["update"],
             locate: None,
+            version_args: &[],
+            aliases: &[],
+            note: "",
         })
     }
 

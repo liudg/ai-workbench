@@ -84,6 +84,9 @@ impl AgentAdapter for CodexCliAdapter {
             npm_package: "@openai/codex",
             self_update: &["update"],
             locate: Some(locate_codex_bin),
+            version_args: &[],
+            aliases: &[],
+            note: "",
         })
     }
 

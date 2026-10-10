@@ -127,7 +127,7 @@ export function NewSessionButton({
           ref={menuRef}
           role="menu"
           aria-label="选择 Agent"
-          className="fixed z-50 w-52 overflow-hidden rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
+          className="fixed z-50 w-60 overflow-hidden rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
           style={{ top: -9999, left: 8 }}
         >
           {installations === null ? (

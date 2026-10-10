@@ -56,7 +56,7 @@ export function SettingsView() {
             <div>
               <h2 className="text-base font-medium text-zinc-100">本地 Agent</h2>
               <p className="mt-1 max-w-lg text-sm leading-6 text-zinc-500">
-                检测这台电脑上已安装的 Agent CLI。有更新时，可以按各自的官方方式升级。
+                列出全部已注册的 Agent CLI。只有本机已经安装的会出现在新建会话里。工作台不代为安装；已安装的可以按各自的官方方式更新。
               </p>
             </div>
             <Button
@@ -88,7 +88,7 @@ export function SettingsView() {
                 return (
                   <li
                     key={item.kind}
-                    className="flex items-center gap-4 rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3"
+                    className="flex items-start gap-4 rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3"
                   >
                     <div className="min-w-0 flex-1">
                       <div className="text-sm font-medium text-zinc-100">

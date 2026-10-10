@@ -81,7 +81,8 @@ pnpm dev            # 打开 http://localhost:4573
 │ agents/codex/      Codex 适配器（编排）+ rpc / prompts / catalog /    │
 │                    process / resume。resume 实现 thread/list          │
 │ agents/claude_code.rs  Claude Code 桩适配器 + 空会话目录              │
-│ agents/stub.rs     Claude 桩会话：模拟流式输出与审批提问              │
+│ agents/external.rs 其余 CLI：探测/更新档案，会话仍是桩               │
+│ agents/stub.rs     桩会话：模拟流式输出与审批提问                    │
 │ tray.rs            托盘菜单（显示主窗口/退出）+ 单击唤起              │
 │ lib.rs             组装；on_window_event 拦截关闭 → 隐藏到托盘        │
 └────────────────────────────────────────────────────────────────────┘
@@ -117,7 +118,7 @@ pnpm dev            # 打开 http://localhost:4573
 
 ## 多 Agent 边界
 
-会话管理器不持有 `CodexDirectory`。每种 Agent 注册一个 `SessionDirectory`：Codex 用 `thread/list`（与 `codex resume --all` 同一份交互、未归档列表），Claude 桩返回空列表。侧边栏项目只来自工作台 `projects.json`。某个已注册项目下的会话，是这些目录里 cwd 对上该项目路径的并集，再加内存里已打开的会话，键是 `{agent}:{native_id}`。导入或移除项目只改工作台列表，不删除 Agent 的 rollout，也不改写 Agent 自己的项目列表。
+会话管理器不持有 `CodexDirectory`。每种 Agent 注册一个 `SessionDirectory`：Codex 用 `thread/list`（与 `codex resume --all` 同一份交互、未归档列表），其余种类在协议接上之前返回空列表。侧边栏项目只来自工作台 `projects.json`。某个已注册项目下的会话，是这些目录里 cwd 对上该项目路径的并集，再加内存里已打开的会话，键是 `{agent}:{native_id}`。导入或移除项目只改工作台列表，不删除 Agent 的 rollout，也不改写 Agent 自己的项目列表。
 
 `SessionContext` 只保留通用字段：工作目录、权限档位、要恢复的 native id，以及 `options`。Codex 从 `options.persist` 决定新线程是否写入官方 resume 列表；行协议留在 `agents/codex/`。
 
@@ -125,9 +126,24 @@ pnpm dev            # 打开 http://localhost:4573
 
 Codex 实现拆在 `agents/codex/`：`mod.rs` 只编排，`rpc` / `prompts` / `catalog` / `process` / `resume` 各管一块。
 
-设置页从侧栏左下角头像菜单进入。每个声明了 `cli_release` 的适配器都会被探测：有没有装、当前版本、官方源上有没有更新。Codex 的官方包是 npm 全局 `@openai/codex`；Claude Code 若是 npm 全局安装则升级 `@anthropic-ai/claude-code`，否则执行 `claude update`。新建会话只列出 `installed == true` 的 Agent。只装了一个就直接用它开会话；一个都没有时选择器是空状态。
+设置页从侧栏左下角头像菜单进入，列出 `AgentKind::all` 里的每一种。新建会话只列出 `installed == true` 的 Agent。只装了一个就直接用它开会话；一个都没有时选择器是空状态。工作台不代为安装。
 
-**Claude Code 的会话仍是桩**（`stub.rs`）。安装探测和升级已经走真实 CLI；`start_session()` 还没有挂上真实进程。接入时实现 `AgentAdapter` + `SessionDirectory`，工作目录用 `ctx.project_path`。认证交给 CLI 自身，应用不保存密钥。
+探测和更新都写在适配器的 `cli_release` 里。Codex 仍用自己的二进制查找，官方包是 npm 全局 `@openai/codex`，否则 `codex update`。Claude Code 若是 npm 全局安装则升级 `@anthropic-ai/claude-code`，否则执行 `claude update`。后加的种类在 `agents/external.rs`：
+
+| 种类 | 命令 | 官方更新 |
+| --- | --- | --- |
+| Cursor Agent | `agent`（别名 `cursor-agent`） | `agent update` |
+| GitHub Copilot CLI | `copilot` | npm `@github/copilot`，或 `copilot update` |
+| Kimi Code | `kimi` | npm `@moonshot-ai/kimi-code`，或 `kimi upgrade -y` |
+| Qwen Code | `qwen` | npm `@qwen-code/qwen-code`，或 `qwen update` |
+| OpenCode | `opencode` | npm `opencode-ai`，或 `opencode upgrade` |
+| Goose | `goose` | `goose update` |
+| Antigravity | `agy`，其次 `antigravity`，最后 `gemini` | `agy update`。只找到停更的 `gemini` 时不在应用内更新 |
+| Kiro CLI | `kiro-cli`，兼容入口 `q` | `kiro-cli update --non-interactive`；只找到旧的 `q` 时用 `q update` |
+
+Gemini CLI 与 Antigravity、Amazon Q 与 Kiro 各登记成一项，不做成两套会话。`q` 太容易和无关命令重名，版本输出里要出现 Kiro / Amazon Q，或者首行是 `q 1.2.3` 这种官方短版本，才算已安装。
+
+**除 Codex 以外，会话仍是桩**（`stub.rs` / `external.rs`）。安装探测和升级已经走真实 CLI；`start_session()` 还没有挂上真实进程。接入时实现 `AgentAdapter` + `SessionDirectory`，工作目录用 `ctx.project_path`。认证交给 CLI 自身，应用不保存密钥。
 
 ## 常用命令
 

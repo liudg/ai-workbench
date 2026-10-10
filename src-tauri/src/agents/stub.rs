@@ -291,9 +291,6 @@ impl AgentSession for StubAgentSession {
     }
 
     fn retarget(&self, kind: AgentKind) {
-        self.persona.lock().unwrap().cli_label = match kind {
-            AgentKind::CodexCli => "Codex CLI",
-            AgentKind::ClaudeCode => "Claude Code",
-        };
+        self.persona.lock().unwrap().cli_label = kind.display_name();
     }
 }

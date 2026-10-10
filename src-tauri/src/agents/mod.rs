@@ -1,11 +1,12 @@
-//! Agent 适配层：把不同 Agent CLI（Codex CLI / Claude Code）统一成同一套接口。
+//! Agent 适配层：把不同 Agent CLI 统一成同一套接口。
 //!
 //! Codex CLI 走本机 `codex app-server`（stdio JSON-RPC），并提供 `SessionDirectory`。
-//! Claude Code 仍是桩实现（见 `stub.rs`），目录返回空列表。
+//! 其余种类里，Claude Code 和还没接协议的 CLI 都是桩会话；探测和更新走各自的 `cli_release`。
 
 pub mod claude_code;
 pub mod codex;
 pub mod directory;
+pub mod external;
 pub mod install;
 mod stub;
 
@@ -95,7 +96,11 @@ pub trait AgentSession: Send + Sync {
     }
 
     /// 后续回合使用的模型和推理强度。空字符串表示不覆盖。
-    fn set_tuning(&self, _model: Option<String>, _effort: Option<String>) -> Result<(), AgentError> {
+    fn set_tuning(
+        &self,
+        _model: Option<String>,
+        _effort: Option<String>,
+    ) -> Result<(), AgentError> {
         Ok(())
     }
 
@@ -180,24 +185,28 @@ pub fn adapter_for(kind: AgentKind) -> Arc<dyn AgentAdapter> {
     match kind {
         AgentKind::CodexCli => Arc::new(codex::CodexCliAdapter::new()),
         AgentKind::ClaudeCode => Arc::new(claude_code::ClaudeCodeAdapter::new()),
+        AgentKind::CursorAgent
+        | AgentKind::CopilotCli
+        | AgentKind::KimiCode
+        | AgentKind::QwenCode
+        | AgentKind::OpenCode
+        | AgentKind::Goose
+        | AgentKind::Antigravity
+        | AgentKind::KiroCli => Arc::new(external::ExternalCliAdapter::new(kind)),
     }
 }
 
-/// 已声明本地 CLI 的适配器。顺序跟着 `AgentKind::all`，前端不再写死名单。
+/// 全部已注册种类。顺序跟着 `AgentKind::all`。没装上的也返回，设置页要列出它们。
 pub async fn list_installations() -> Vec<AgentInstallation> {
     let mut handles = Vec::new();
     for kind in AgentKind::all() {
         handles.push(tokio::spawn(async move {
-            let adapter = adapter_for(kind);
-            if adapter.cli_release().is_none() {
-                return None;
-            }
-            Some(adapter.installation().await)
+            adapter_for(kind).installation().await
         }));
     }
     let mut listed = Vec::new();
     for handle in handles {
-        if let Ok(Some(item)) = handle.await {
+        if let Ok(item) = handle.await {
             listed.push(item);
         }
     }
@@ -210,8 +219,15 @@ pub async fn upgrade(kind: AgentKind) -> Result<AgentInstallation, AgentError> {
 
 /// 已注册的会话目录。SessionManager 只保存 trait 对象。
 pub fn session_directories() -> Vec<Arc<dyn SessionDirectory>> {
-    vec![
+    let mut dirs: Vec<Arc<dyn SessionDirectory>> = vec![
         Arc::new(codex::CodexDirectory::new()),
         Arc::new(claude_code::ClaudeDirectory::new()),
-    ]
+    ];
+    for kind in AgentKind::all() {
+        if matches!(kind, AgentKind::CodexCli | AgentKind::ClaudeCode) {
+            continue;
+        }
+        dirs.push(Arc::new(external::EmptyDirectory::new(kind)));
+    }
+    dirs
 }
