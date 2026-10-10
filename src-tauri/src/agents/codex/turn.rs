@@ -69,7 +69,7 @@ impl Shared {
                 );
             }
         }
-        let (input, skill_labels) = {
+        let input = {
             let skills = self.skills.lock().unwrap();
             build_turn_input(&text, &skills)
         };
@@ -83,14 +83,6 @@ impl Shared {
                     )
                     .await;
             }
-        }
-        if !skill_labels.is_empty() {
-            emit(
-                &self.events,
-                SessionEventBody::System {
-                    text: format!("已引用技能 {}。", skill_labels.join("、")),
-                },
-            );
         }
         let mut params = json!({
             "threadId": thread_id,

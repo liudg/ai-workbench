@@ -172,7 +172,7 @@ impl AgentAdapter for CodexCliAdapter {
             persist: ctx.flag("persist"),
             turn_id: Mutex::new(None),
             model: Mutex::new(String::new()),
-            version: Mutex::new(version.clone()),
+            version: Mutex::new(version),
             cwd: strip_verbatim_prefix(&ctx.project_path),
             pending: Mutex::new(HashMap::new()),
             waiters: Mutex::new(HashMap::new()),
@@ -219,7 +219,6 @@ impl AgentAdapter for CodexCliAdapter {
             // 与 stdout 相同：按字节读行，GBK 日志行解码后继续，而不是静默结束读取。
             let mut lines = BufReader::new(stderr);
             let mut raw = Vec::new();
-            let mut seen_mcp = HashSet::new();
             loop {
                 raw.clear();
                 let Ok(n) = lines.read_until(b'\n', &mut raw).await else {
@@ -230,16 +229,8 @@ impl AgentAdapter for CodexCliAdapter {
                 }
                 trim_newline(&mut raw);
                 let line = decode_child_bytes(&raw);
-                match classify_codex_stderr(&line) {
-                    StderrClass::Ignore => {}
-                    StderrClass::Error(message) => {
-                        emit(&err_events, SessionEventBody::Error { message });
-                    }
-                    StderrClass::McpUnavailable { key, text } => {
-                        if seen_mcp.insert(key) {
-                            emit(&err_events, SessionEventBody::System { text });
-                        }
-                    }
+                if let StderrClass::Error(message) = classify_codex_stderr(&line) {
+                    emit(&err_events, SessionEventBody::Error { message });
                 }
             }
         });
@@ -272,25 +263,7 @@ impl AgentAdapter for CodexCliAdapter {
             }
         }
 
-        let connected = if shared.read_only() {
-            format!(
-                "Codex CLI {version} 已连接（目录 {}）。此会话只读，不能发送。",
-                ctx.project_path
-            )
-        } else {
-            format!(
-                "Codex CLI {version} 已连接（目录 {}）。权限：{}（sandbox {} / approval {}）。斜杠命令输入 / 查看，例如 /permissions、/status、/diff。",
-                ctx.project_path,
-                initial_access.label(),
-                initial_access.sandbox_mode(),
-                initial_access.approval_policy(),
-            )
-        };
-        emit(
-            &events,
-            SessionEventBody::System { text: connected },
-        );
-        // 写锁冲突的只读通知放在连接说明之后，打开本身仍然成功。
+        // 写锁冲突只发一条只读通知，放在历史载入之后。打开本身仍然成功。
         shared.finish_open();
         emit(
             &events,
@@ -341,7 +314,6 @@ impl AgentSession for CodexCliSession {
                     ));
                 };
                 *self.shared.access.lock().unwrap() = access;
-                self.shared.note_access();
                 self.shared.resolve_prompt(prompt_id, value.clone());
                 if self.shared.turn_open.load(Ordering::SeqCst) {
                     emit_status(&self.shared.events, SessionStatus::Running);
@@ -407,8 +379,6 @@ impl AgentSession for CodexCliSession {
             return Ok(());
         }
         *slot = access;
-        drop(slot);
-        self.shared.note_access();
         Ok(())
     }
 
@@ -427,17 +397,6 @@ impl AgentSession for CodexCliSession {
 
     fn read_only(&self) -> bool {
         self.shared.read_only()
-    }
-
-    fn retarget(&self, kind: AgentKind) {
-        if kind != AgentKind::CodexCli {
-            emit(
-                &self.shared.events,
-                SessionEventBody::System {
-                    text: "此会话已连接 Codex CLI。要使用 Claude Code，请新建会话。".into(),
-                },
-            );
-        }
     }
 }
 
