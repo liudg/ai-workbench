@@ -1,27 +1,23 @@
 //! AI 工作台 —— Tauri 应用入口。
 //!
 //! 模块划分：
-//! - `models`          领域模型（IPC 协议）
-//! - `project_store`   项目列表持久化
-//! - `session_manager` 会话生命周期 / 事件日志 / 前端推送
-//! - `agents`          Agent CLI 适配层（Codex 真实进程，其余种类可先只做探测和更新）
-//! - `chat_images`     时间线本机图片：校验后放入 asset 协议
-//! - `commands`        前端 invoke 入口
-//! - `tray`            系统托盘与常驻后台
+//! - `models` / `encoding`     共享协议与子进程编码
+//! - `features::projects`      项目列表持久化
+//! - `features::sessions`      会话生命周期 / 事件日志 / 前端推送
+//! - `features::agents`        多 Agent 适配层（公开契约；CLI 实现私有）
+//! - `features::images`        时间线本机图片
+//! - `features::ipc`           前端 invoke 入口
+//! - `tray`                    系统托盘与常驻后台
 
-mod agents;
-mod chat_images;
-mod commands;
 mod encoding;
+mod features;
 mod models;
-mod project_store;
-mod session_manager;
 mod tray;
 
 use tauri::Manager;
 
-use project_store::ProjectStore;
-use session_manager::SessionManager;
+use features::projects::ProjectStore;
+use features::sessions::SessionManager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -50,24 +46,24 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
-            commands::list_projects,
-            commands::create_project,
-            commands::import_project,
-            commands::remove_project,
-            commands::list_sessions,
-            commands::create_session,
-            commands::set_session_agent,
-            commands::set_session_access,
-            commands::list_agent_installations,
-            commands::update_agent,
-            commands::agent_profiles,
-            commands::agent_catalog,
-            commands::set_session_tuning,
-            commands::send_message,
-            commands::answer_prompt,
-            commands::stop_session,
-            commands::get_session_events,
-            chat_images::prepare_chat_image,
+            features::ipc::projects::list_projects,
+            features::ipc::projects::create_project,
+            features::ipc::projects::import_project,
+            features::ipc::projects::remove_project,
+            features::ipc::sessions::list_sessions,
+            features::ipc::sessions::create_session,
+            features::ipc::sessions::set_session_agent,
+            features::ipc::sessions::set_session_access,
+            features::ipc::agents::list_agent_installations,
+            features::ipc::agents::update_agent,
+            features::ipc::agents::agent_profiles,
+            features::ipc::sessions::agent_catalog,
+            features::ipc::sessions::set_session_tuning,
+            features::ipc::sessions::send_message,
+            features::ipc::sessions::answer_prompt,
+            features::ipc::sessions::stop_session,
+            features::ipc::sessions::get_session_events,
+            features::images::prepare_chat_image,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

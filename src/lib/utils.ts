@@ -21,7 +21,7 @@ export function formatMessageTime(ts: number): string {
   return `${WEEKDAYS[d.getDay()]} ${hh}:${mm}`;
 }
 
-/** 这次打开只读：另一个进程占着 Codex 线程写锁。 */
+/** 这次打开只读：另一个进程占着会话线程写锁。 */
 export function isReadOnlyOpen(events: { kind: string }[] | undefined): boolean {
   return events?.some((event) => event.kind === "read-only") ?? false;
 }

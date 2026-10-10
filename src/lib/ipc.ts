@@ -51,7 +51,7 @@ export interface Backend {
   ): Promise<Session>;
   /** 切换会话后续使用的 Agent。 */
   setSessionAgent(sessionId: string, agent: AgentKind): Promise<void>;
-  /** 更新 Codex 沙箱 / 审批。Claude 桩会话会忽略。 */
+  /** 更新权限档位。各适配器自行映射；桩会话会忽略。 */
   setAccessMode(sessionId: string, mode: AccessMode): Promise<void>;
   /** 各 Agent 的能力与斜杠命令。不需要已打开的会话。 */
   agentProfiles(): Promise<AgentProfile[]>;

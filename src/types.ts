@@ -28,11 +28,11 @@ export type PromptKind = "approval" | "choice" | "free-text" | "questions";
  */
 export type MessagePhase = "commentary" | "partial-answer" | "final-answer";
 
-/** 问题卡片中的一道题（Codex 原生提问；一轮可有多题） */
+/** 问题卡片中的一道题。适配器把原生提问映射进来；一轮可有多题。 */
 export interface PromptQuestion {
-  /** 阻塞式提问用 Codex 的 question id；async 提问按序合成 q1/q2… */
+  /** 阻塞式提问用上游 question id；async 提问按序合成 q1/q2… */
   id: string;
-  /** 题目标签（Codex header），可空 */
+  /** 题目标签，可空 */
   header?: string;
   question: string;
   /** 敏感回答，输入时掩码 */
@@ -72,7 +72,7 @@ export interface Session {
 export interface PromptOption {
   id: string;
   label: string;
-  /** 选项说明（Codex requestUserInput 的 description），可空 */
+  /** 选项说明，可空 */
   description?: string;
 }
 
@@ -140,7 +140,7 @@ export interface AgentInstallation {
   detail: string | null;
 }
 
-/** 作曲栏权限档位。Codex 会话会映射到 sandbox / approval。 */
+/** 作曲栏权限档位。适配器自行映射到各自的沙箱 / 审批。 */
 export type AccessMode = "full" | "ask" | "read-only";
 
 export const ACCESS_LABELS: Record<AccessMode, string> = {
