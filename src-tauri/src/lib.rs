@@ -30,8 +30,8 @@ pub fn run() {
                 .path()
                 .app_data_dir()
                 .map_err(|e| format!("无法定位应用数据目录: {e}"))?;
-            let store = ProjectStore::load(&data_dir)
-                .map_err(|e| format!("加载项目列表失败: {e}"))?;
+            let store =
+                ProjectStore::load(&data_dir).map_err(|e| format!("加载项目列表失败: {e}"))?;
             app.manage(store);
             app.manage(SessionManager::new(app.handle().clone(), &data_dir));
             tray::setup(app.handle())?;
@@ -77,6 +77,7 @@ pub fn run() {
             features::ipc::sessions::answer_prompt,
             features::ipc::sessions::stop_session,
             features::ipc::sessions::get_session_events,
+            features::ipc::sessions::load_older_history,
             features::ipc::host::list_mcp_servers,
             features::ipc::host::add_mcp_server,
             features::ipc::host::set_mcp_server_enabled,

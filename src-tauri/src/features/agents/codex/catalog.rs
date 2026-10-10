@@ -94,8 +94,8 @@ pub(super) fn slash_help() -> String {
      /permissions [完全访问|询问批准|替我批准|只读]  切换沙箱和审批\n\
      /status  查看模型、线程、目录和权限\n\
      /diff  查看 git diff --stat\n\
-     /review  Code review。Review uncommitted changes or compare against a branch\n\
-     /plan  Plan mode。Turn plan mode on；再发一次则 Turn plan mode off。/plan 后的文字会作为请求发出\n\
+     /review  代码审查。审查未提交的更改，或与某个分支进行比较\n\
+     /plan  计划模式。开启计划模式；再发一次则关闭计划模式。/plan 后的文字会作为请求发出\n\
      /model [模型 id]  指定下一轮模型\n\
      /compact  压缩上下文\n\
      /approve  说明如何处理自动审查拒绝（时间线上点允许或拒绝）\n\
@@ -180,7 +180,10 @@ pub(super) fn parse_models(value: &Value) -> Vec<AgentModelOption> {
                 .and_then(Value::as_str)
                 .unwrap_or("")
                 .to_string(),
-            is_default: item.get("isDefault").and_then(Value::as_bool).unwrap_or(false),
+            is_default: item
+                .get("isDefault")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
             default_effort,
             efforts,
         });
@@ -264,7 +267,8 @@ pub(super) fn build_turn_input(text: &str, skills: &[KnownSkill], images: &[Stri
             let token = &text[index + 1..end];
             if !token.is_empty() {
                 if let Some(skill) = skills.iter().find(|skill| {
-                    skill.mention.eq_ignore_ascii_case(token) || skill.name.eq_ignore_ascii_case(token)
+                    skill.mention.eq_ignore_ascii_case(token)
+                        || skill.name.eq_ignore_ascii_case(token)
                 }) {
                     elements.push(json!({
                         "byteRange": { "start": start, "end": end },
@@ -321,23 +325,91 @@ pub(super) fn split_command(text: &str) -> (String, String) {
 
 pub(super) fn slash_commands() -> Vec<SlashCommand> {
     vec![
-        SlashCommand { name: "/permissions".into(), hint: "切换完全访问、询问批准、替我批准或只读".into(), takes_args: true },
-        SlashCommand { name: "/status".into(), hint: "查看模型、线程、目录和权限".into(), takes_args: false },
-        SlashCommand { name: "/diff".into(), hint: "查看 git diff --stat".into(), takes_args: false },
-        SlashCommand { name: "/review".into(), hint: "Review uncommitted changes or compare against a branch".into(), takes_args: true },
-        SlashCommand { name: "/plan".into(), hint: "Turn plan mode on".into(), takes_args: true },
-        SlashCommand { name: "/model".into(), hint: "指定下一轮使用的模型".into(), takes_args: true },
-        SlashCommand { name: "/compact".into(), hint: "压缩当前线程的上下文".into(), takes_args: false },
-        SlashCommand { name: "/approve".into(), hint: "说明如何处理自动审查拒绝".into(), takes_args: false },
-        SlashCommand { name: "/init".into(), hint: "生成 AGENTS.md".into(), takes_args: false },
-        SlashCommand { name: "/new".into(), hint: "下一条消息开启新线程".into(), takes_args: false },
-        SlashCommand { name: "/clear".into(), hint: "放下当前线程，同 /new".into(), takes_args: false },
-        SlashCommand { name: "/stop".into(), hint: "停止当前会话".into(), takes_args: false },
-        SlashCommand { name: "/mcp".into(), hint: "查看已连接的 MCP 服务器和工具".into(), takes_args: true },
-        SlashCommand { name: "/goal".into(), hint: "设置、查看、暂停或清除任务目标".into(), takes_args: true },
-        SlashCommand { name: "/hooks".into(), hint: "列出当前目录发现的钩子".into(), takes_args: false },
-        SlashCommand { name: "/worktree".into(), hint: "查看或新建一个独立 Git 工作树".into(), takes_args: true },
-        SlashCommand { name: "/help".into(), hint: "列出工作台能执行的斜杠命令".into(), takes_args: false },
+        SlashCommand {
+            name: "/permissions".into(),
+            hint: "切换完全访问、询问批准、替我批准或只读".into(),
+            takes_args: true,
+        },
+        SlashCommand {
+            name: "/status".into(),
+            hint: "查看模型、线程、目录和权限".into(),
+            takes_args: false,
+        },
+        SlashCommand {
+            name: "/diff".into(),
+            hint: "查看 git diff --stat".into(),
+            takes_args: false,
+        },
+        SlashCommand {
+            name: "/review".into(),
+            hint: "审查未提交的更改，或与某个分支进行比较".into(),
+            takes_args: true,
+        },
+        SlashCommand {
+            name: "/plan".into(),
+            hint: "开启计划模式".into(),
+            takes_args: true,
+        },
+        SlashCommand {
+            name: "/model".into(),
+            hint: "指定下一轮使用的模型".into(),
+            takes_args: true,
+        },
+        SlashCommand {
+            name: "/compact".into(),
+            hint: "压缩当前线程的上下文".into(),
+            takes_args: false,
+        },
+        SlashCommand {
+            name: "/approve".into(),
+            hint: "说明如何处理自动审查拒绝".into(),
+            takes_args: false,
+        },
+        SlashCommand {
+            name: "/init".into(),
+            hint: "生成 AGENTS.md".into(),
+            takes_args: false,
+        },
+        SlashCommand {
+            name: "/new".into(),
+            hint: "下一条消息开启新线程".into(),
+            takes_args: false,
+        },
+        SlashCommand {
+            name: "/clear".into(),
+            hint: "放下当前线程，同 /new".into(),
+            takes_args: false,
+        },
+        SlashCommand {
+            name: "/stop".into(),
+            hint: "停止当前会话".into(),
+            takes_args: false,
+        },
+        SlashCommand {
+            name: "/mcp".into(),
+            hint: "查看已连接的 MCP 服务器和工具".into(),
+            takes_args: true,
+        },
+        SlashCommand {
+            name: "/goal".into(),
+            hint: "设置、查看、暂停或清除任务目标".into(),
+            takes_args: true,
+        },
+        SlashCommand {
+            name: "/hooks".into(),
+            hint: "列出当前目录发现的钩子".into(),
+            takes_args: false,
+        },
+        SlashCommand {
+            name: "/worktree".into(),
+            hint: "查看或新建一个独立 Git 工作树".into(),
+            takes_args: true,
+        },
+        SlashCommand {
+            name: "/help".into(),
+            hint: "列出工作台能执行的斜杠命令".into(),
+            takes_args: false,
+        },
     ]
 }
 
@@ -357,7 +429,10 @@ mod tests {
         let input = build_turn_input("请用 $documents 改合同", &skills, &[]);
         assert_eq!(input[1]["type"], json!("skill"));
         assert_eq!(input[1]["name"], json!("documents:documents"));
-        assert_eq!(input[0]["text_elements"][0]["placeholder"], json!("Documents"));
+        assert_eq!(
+            input[0]["text_elements"][0]["placeholder"],
+            json!("Documents")
+        );
     }
 
     #[test]

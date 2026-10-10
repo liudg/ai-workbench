@@ -14,9 +14,9 @@
 mod catalog;
 mod gap;
 mod host;
-mod queue;
 mod process;
 mod prompts;
+mod queue;
 mod resume;
 mod rpc;
 mod rpc_client;
@@ -39,12 +39,12 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::mpsc;
 
+use crate::encoding::{apply_utf8_env, decode_child_bytes};
 use crate::features::agents::install::CliRelease;
 use crate::features::agents::{
-    AgentAdapter, AgentError, AgentSession, DirectoryEntry, EventSink, SessionContext, TurnDelivery,
-    UserTurn,
+    AgentAdapter, AgentError, AgentSession, DirectoryEntry, EventSink, SessionContext,
+    TurnDelivery, UserTurn,
 };
-use crate::encoding::{apply_utf8_env, decode_child_bytes};
 use crate::models::{
     strip_verbatim_prefix, AgentCapabilities, AgentCatalog, AgentKind, AgentProfile, PromptAnswer,
     SessionEventBody, SessionStatus, OCCUPIED_SESSION_NOTICE,
@@ -54,7 +54,10 @@ use process::{
     apply_codex_network_env, classify_codex_stderr, codex_version, hide_console, resolve_codex_bin,
     trim_newline, StderrClass,
 };
-use prompts::{async_answer_text, blocking_answer_payload, is_accept, questions_summary};
+use prompts::{
+    async_answer_text, blocking_answer_payload, elicitation_action_label, elicitation_result,
+    is_accept, questions_summary,
+};
 use sandbox::SandboxChoice;
 use state::{emit, emit_status, Pending, Shared};
 
@@ -202,7 +205,11 @@ impl AgentAdapter for CodexCliAdapter {
         worktree::create_worktree(project_path).await
     }
 
-    async fn recycle_worktree(&self, project_path: &str, worktree_path: &str) -> Result<(), AgentError> {
+    async fn recycle_worktree(
+        &self,
+        project_path: &str,
+        worktree_path: &str,
+    ) -> Result<(), AgentError> {
         worktree::recycle_worktree(project_path, worktree_path).await
     }
 
@@ -215,9 +222,7 @@ impl AgentAdapter for CodexCliAdapter {
         host::add_environment(environment_id, exec_server_url, auth_bearer_token).await
     }
 
-    async fn list_environments(
-        &self,
-    ) -> Result<Vec<crate::models::EnvironmentRecord>, AgentError> {
+    async fn list_environments(&self) -> Result<Vec<crate::models::EnvironmentRecord>, AgentError> {
         host::list_environments().await
     }
 
@@ -235,11 +240,7 @@ impl AgentAdapter for CodexCliAdapter {
             .map_err(AgentError::Runtime)
     }
 
-    async fn set_thread_archived(
-        &self,
-        native_id: &str,
-        archived: bool,
-    ) -> Result<(), AgentError> {
+    async fn set_thread_archived(&self, native_id: &str, archived: bool) -> Result<(), AgentError> {
         CodexDirectory::shared()
             .set_archived(native_id, archived)
             .await
@@ -289,9 +290,7 @@ impl AgentAdapter for CodexCliAdapter {
             .take()
             .ok_or_else(|| AgentError::Runtime("Codex CLI 没有标准错误".into()))?;
 
-        let initial_access = SandboxChoice::from_mode(
-            ctx.access_mode.as_deref().unwrap_or("full"),
-        );
+        let initial_access = SandboxChoice::from_mode(ctx.access_mode.as_deref().unwrap_or("full"));
         let (queue_tx, mut queue_rx) = mpsc::unbounded_channel::<()>();
         let (out_tx, mut out_rx) = mpsc::unbounded_channel::<String>();
         tokio::spawn(async move {
@@ -346,6 +345,8 @@ impl AgentAdapter for CodexCliAdapter {
             latest_turn_id: Mutex::new(None),
             plan_ready: AtomicBool::new(false),
             review_output: Mutex::new(None),
+            history_cursor: Mutex::new(None),
+            activity: Mutex::new(HashMap::new()),
         });
         {
             let refresher = Arc::clone(&shared);
@@ -433,11 +434,7 @@ impl AgentAdapter for CodexCliAdapter {
         }
         let _ = shared.notify("initialized", json!({}));
 
-        if let Some(thread_id) = ctx
-            .resume_native_id
-            .clone()
-            .filter(|id| !id.is_empty())
-        {
+        if let Some(thread_id) = ctx.resume_native_id.clone().filter(|id| !id.is_empty()) {
             shared.restore_thread(&thread_id).await;
         } else if ctx.flag("persist") {
             if let Err(err) = shared.ensure_thread().await {
@@ -562,9 +559,7 @@ impl AgentSession for CodexCliSession {
         match pending {
             Pending::Access => {
                 let PromptAnswer::Single { value } = &answer else {
-                    return Err(AgentError::Runtime(
-                        "请选择完全访问、询问批准或只读".into(),
-                    ));
+                    return Err(AgentError::Runtime("请选择完全访问、询问批准或只读".into()));
                 };
                 let mut access = self.shared.access.lock().unwrap();
                 if !access.apply_preset(value) {
@@ -584,7 +579,11 @@ impl AgentSession for CodexCliSession {
                 let PromptAnswer::Single { value } = &answer else {
                     return Err(AgentError::Runtime("审批只接受允许或拒绝".into()));
                 };
-                let decision = if is_accept(value) { "accept" } else { "decline" };
+                let decision = if is_accept(value) {
+                    "accept"
+                } else {
+                    "decline"
+                };
                 self.shared.respond(rpc_id, json!({ "decision": decision }));
                 self.shared.resolve_prompt(prompt_id, value.clone());
                 if self.shared.turn_open.load(Ordering::SeqCst) {
@@ -605,16 +604,38 @@ impl AgentSession for CodexCliSession {
                     .accept_implement_plan(prompt_id, &answer)
                     .await?;
             }
+            Pending::Elicitation { rpc_id, questions } => {
+                let result = match elicitation_result(&questions, &answer) {
+                    Ok(result) => result,
+                    Err(err) => {
+                        self.shared.pending.lock().unwrap().insert(
+                            prompt_id.to_string(),
+                            Pending::Elicitation { rpc_id, questions },
+                        );
+                        return Err(err);
+                    }
+                };
+                let summary = match &answer {
+                    PromptAnswer::Elicitation { action, .. } => elicitation_action_label(action),
+                    _ => elicitation_action_label(""),
+                };
+                self.shared.respond(rpc_id, result);
+                self.shared.resolve_prompt(prompt_id, summary);
+                if self.shared.turn_open.load(Ordering::SeqCst) {
+                    emit_status(&self.shared.events, SessionStatus::Running);
+                }
+            }
             Pending::AsyncQuestions { questions } => {
                 let text = async_answer_text(&questions, &answer);
                 let summary = questions_summary(&questions, &answer);
                 if self.shared.turn_open.load(Ordering::SeqCst) {
                     if let Err(err) = self.shared.steer_turn(&text).await {
                         // 写回失败：恢复待答状态，卡片仍可操作
-                        self.shared.pending.lock().unwrap().insert(
-                            prompt_id.to_string(),
-                            Pending::AsyncQuestions { questions },
-                        );
+                        self.shared
+                            .pending
+                            .lock()
+                            .unwrap()
+                            .insert(prompt_id.to_string(), Pending::AsyncQuestions { questions });
                         return Err(err);
                     }
                     self.shared.resolve_prompt(prompt_id, summary);
@@ -685,10 +706,7 @@ impl AgentSession for CodexCliSession {
         self.shared.set_collaboration_mode(mode)
     }
 
-    async fn start_review(
-        &self,
-        target: crate::models::ReviewStart,
-    ) -> Result<(), AgentError> {
+    async fn start_review(&self, target: crate::models::ReviewStart) -> Result<(), AgentError> {
         self.shared.start_review(&target).await
     }
 
@@ -698,6 +716,10 @@ impl AgentSession for CodexCliSession {
 
     async fn revert_turn(&self, turn_id: &str) -> Result<(), AgentError> {
         self.shared.revert_turn(turn_id).await
+    }
+
+    async fn load_older_history(&self) -> Result<(Vec<SessionEventBody>, bool), AgentError> {
+        self.shared.load_older_history().await
     }
 }
 
@@ -955,10 +977,7 @@ mod tests {
     async fn gap_image_turn_and_queue() {
         let cwd = r"C:\Users\admin\Desktop\temp\ai-workbench-project\_gap-img-queue";
         let image = format!(r"{cwd}\probe.png");
-        assert!(
-            std::path::Path::new(&image).is_file(),
-            "missing {image}"
-        );
+        assert!(std::path::Path::new(&image).is_file(), "missing {image}");
         delete_gap_threads().await;
         let adapter = CodexCliAdapter::new();
         let (tx, mut rx) = mpsc::unbounded_channel();
@@ -1028,7 +1047,9 @@ mod tests {
         let deadline = tokio::time::Instant::now() + Duration::from_secs(6);
         while tokio::time::Instant::now() < deadline {
             match timeout(Duration::from_secs(1), rx.recv()).await {
-                Ok(Some(SessionEventBody::UserMessage { text, .. })) if text == "edited follow-up" => {
+                Ok(Some(SessionEventBody::UserMessage { text, .. }))
+                    if text == "edited follow-up" =>
+                {
                     saw_user = true;
                 }
                 Ok(Some(SessionEventBody::StatusChanged {
@@ -1171,7 +1192,9 @@ mod tests {
         while problem.is_empty() && tokio::time::Instant::now() < plan_deadline {
             match timeout(Duration::from_secs(10), rx.recv()).await {
                 Ok(Some(SessionEventBody::TurnAnchor { turn_id })) => plan_turn = turn_id,
-                Ok(Some(body @ (SessionEventBody::PlanSteps { .. } | SessionEventBody::PlanText { .. }))) => {
+                Ok(Some(
+                    body @ (SessionEventBody::PlanSteps { .. } | SessionEventBody::PlanText { .. }),
+                )) => {
                     eprintln!("plan item: {body:?}");
                     saw_plan = true;
                 }

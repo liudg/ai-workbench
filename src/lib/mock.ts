@@ -18,6 +18,7 @@ import {
   type AgentProfile,
   type McpServerRecord,
   type Project,
+  type OlderHistory,
   type PromptAnswer,
   type PromptOption,
   type QueuedTurn,
@@ -43,8 +44,8 @@ const CODEX_COMMANDS: SlashCommand[] = [
   { name: "/permissions", hint: "切换完全访问、询问批准或只读", takes_args: true },
   { name: "/status", hint: "查看模型、线程、目录和权限" },
   { name: "/diff", hint: "查看 git diff --stat" },
-  { name: "/review", hint: "Review uncommitted changes or compare against a branch", takes_args: true },
-  { name: "/plan", hint: "Turn plan mode on", takes_args: true },
+  { name: "/review", hint: "审查未提交的更改，或与某个分支进行比较", takes_args: true },
+  { name: "/plan", hint: "开启计划模式", takes_args: true },
   { name: "/model", hint: "指定下一轮使用的模型", takes_args: true },
   { name: "/compact", hint: "压缩当前线程的上下文" },
   { name: "/approve", hint: "说明如何处理自动审查拒绝" },
@@ -80,6 +81,7 @@ const CODEX_CAPABILITIES: AgentCapabilities = {
   supports_turn_diff: true,
   supports_revert: true,
   supports_review: true,
+  supports_paged_history: true,
   supports_network_access: true,
   supports_writable_roots: true,
 };
@@ -847,7 +849,7 @@ export const mockBackend: Backend = {
       latestAnchor.kind !== "turn-anchor" ||
       latestAnchor.turn_id !== turnId
     ) {
-      throw new Error(CODEX_DESKTOP.editLatestOnly);
+      throw new Error(CODEX_DESKTOP.editFailed);
     }
     let start = anchorIndex;
     for (let index = anchorIndex; index >= 0; index -= 1) {
@@ -1129,6 +1131,11 @@ export const mockBackend: Backend = {
     }
   },
 
+  async loadOlderHistory(sessionId): Promise<OlderHistory> {
+    const s = sessions.get(sessionId);
+    return { events: s ? [...s.events] : [], added: 0, exhausted: true };
+  },
+
   async answerPrompt(sessionId, promptId, answer: PromptAnswer) {
     const s = sessions.get(sessionId);
     if (!s) throw new Error("会话不存在");
@@ -1143,6 +1150,14 @@ export const mockBackend: Backend = {
     if (answer.type === "single") {
       summary = answer.value;
       approved = answer.value === "approve" || answer.value === "允许";
+    } else if (answer.type === "elicitation") {
+      summary =
+        answer.action === "accept"
+          ? CODEX_DESKTOP.elicitAccept
+          : answer.action === "decline"
+            ? CODEX_DESKTOP.elicitDecline
+            : CODEX_DESKTOP.elicitCancel;
+      approved = answer.action === "accept";
     } else if (answer.skipped) {
       summary = "已跳过";
     } else {

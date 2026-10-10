@@ -122,6 +122,9 @@ impl AgentSession for StubAgentSession {
                     SessionEventBody::ToolCall {
                         name: "read_file".into(),
                         summary: "读取 src/main.rs、Cargo.toml（模拟）".into(),
+                        detail: String::new(),
+                        stream_id: None,
+                        images: Vec::new(),
                     },
                 );
                 sleep(Duration::from_millis(600)).await;
@@ -130,6 +133,9 @@ impl AgentSession for StubAgentSession {
                     SessionEventBody::ToolCall {
                         name: "apply_patch".into(),
                         summary: "计划修改 3 个文件（模拟，未真正写入）".into(),
+                        detail: String::new(),
+                        stream_id: None,
+                        images: Vec::new(),
                     },
                 );
                 sleep(Duration::from_millis(400)).await;
@@ -213,15 +219,15 @@ impl AgentSession for StubAgentSession {
         let approved = match &answer {
             PromptAnswer::Single { value } => value == "approve" || value == "允许",
             PromptAnswer::Questions { skipped, .. } => !skipped,
+            PromptAnswer::Elicitation { action, .. } => action == "accept" || action == "接受",
         };
         let display = match &answer {
             PromptAnswer::Single { value } => value.clone(),
             PromptAnswer::Questions { skipped, .. } if *skipped => "已跳过".into(),
-            PromptAnswer::Questions { answers, .. } => answers
-                .values()
-                .cloned()
-                .collect::<Vec<_>>()
-                .join("；"),
+            PromptAnswer::Questions { answers, .. } => {
+                answers.values().cloned().collect::<Vec<_>>().join("；")
+            }
+            PromptAnswer::Elicitation { action, .. } => action.clone(),
         };
         emit(
             &self.events,

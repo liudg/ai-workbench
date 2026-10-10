@@ -27,8 +27,8 @@ use tokio::time::timeout;
 
 use async_trait::async_trait;
 
-use crate::features::agents::directory::{cwd_key, DirectoryEntry, SessionDirectory};
 use crate::encoding::{apply_utf8_env, decode_child_bytes};
+use crate::features::agents::directory::{cwd_key, DirectoryEntry, SessionDirectory};
 use crate::models::{strip_verbatim_prefix, MessagePhase, SessionEventBody, SessionStatus};
 
 use super::process::{apply_codex_network_env, hide_console, resolve_codex_bin};
@@ -37,7 +37,7 @@ const CACHE_TTL: Duration = Duration::from_secs(8);
 const PAGE_LIMIT: u32 = 100;
 const MAX_PAGES: usize = 40;
 const HISTORY_PAGE: u32 = 20;
-const HISTORY_PAGES: usize = 3;
+const TOOL_DETAIL_CAP: usize = 20_000;
 
 pub struct CodexDirectory {
     inner: tokio::sync::Mutex<DirectoryState>,
@@ -91,7 +91,11 @@ impl CodexDirectory {
 
     async fn list_cached(&self, archived: bool) -> Result<Vec<DirectoryEntry>, String> {
         let mut state = self.inner.lock().await;
-        let cache = if archived { &state.archived } else { &state.active };
+        let cache = if archived {
+            &state.archived
+        } else {
+            &state.active
+        };
         if let Some(cache) = cache {
             if cache.at.elapsed() < CACHE_TTL {
                 return cache.result.clone();
@@ -259,9 +263,12 @@ async fn rpc_retry(
 fn cwd_from_thread_payload(value: &Value) -> Option<String> {
     let thread = value.get("thread").unwrap_or(value);
     let cwd = strip_verbatim_prefix(thread.get("cwd").and_then(Value::as_str).unwrap_or(""));
-    if cwd.is_empty() { None } else { Some(cwd) }
+    if cwd.is_empty() {
+        None
+    } else {
+        Some(cwd)
+    }
 }
-
 
 pub fn thread_title(name: Option<&str>, preview: Option<&str>) -> String {
     let name = name.unwrap_or("").trim();
@@ -398,9 +405,14 @@ pub fn bodies_from_turns(turns: &[Value]) -> Vec<SessionEventBody> {
 }
 
 pub const HISTORY_TURN_LIMIT: u32 = HISTORY_PAGE;
-pub const HISTORY_PAGE_CAP: usize = HISTORY_PAGES;
 
 fn push_history_item(bodies: &mut Vec<SessionEventBody>, item: &Value) {
+    if let Some(view) = tool_view(item) {
+        if tool_visible(&view) {
+            bodies.push(tool_event(view, None));
+        }
+        return;
+    }
     match item.get("type").and_then(Value::as_str).unwrap_or("") {
         "userMessage" => {
             let text = user_item_text(item);
@@ -457,29 +469,240 @@ fn push_history_item(bodies: &mut Vec<SessionEventBody>, item: &Value) {
                 bodies.push(super::gap::parse_review_output(text));
             }
         }
-        "commandExecution" => {
-            let command = item.get("command").and_then(Value::as_str).unwrap_or("");
-            let status = item.get("status").and_then(Value::as_str).unwrap_or("");
-            let mut summary = if status.is_empty() {
-                command.to_string()
-            } else {
-                format!("{command} → {status}")
-            };
-            if let Some(output) = item.get("aggregatedOutput").and_then(Value::as_str) {
-                let output = output.trim();
-                if !output.is_empty() {
-                    summary.push('\n');
-                    summary.push_str(&take_chars(output, 240));
-                }
-            }
-            if !summary.trim().is_empty() {
-                bodies.push(SessionEventBody::ToolCall {
-                    name: "command".into(),
-                    summary,
-                });
+        _ => {}
+    }
+}
+
+pub(super) struct ToolView {
+    pub(super) name: String,
+    pub(super) summary: String,
+    pub(super) detail: String,
+    pub(super) images: Vec<String>,
+}
+
+pub(super) fn tool_view(item: &Value) -> Option<ToolView> {
+    match item.get("type").and_then(Value::as_str).unwrap_or("") {
+        "commandExecution" => Some(command_view(item)),
+        "fileChange" => Some(file_view(item)),
+        "mcpToolCall" => Some(mcp_view(item)),
+        "webSearch" => Some(web_view(item)),
+        kind if image_item_kind(kind) => Some(image_view(item)),
+        _ => None,
+    }
+}
+
+pub(super) fn tool_event(view: ToolView, stream_id: Option<String>) -> SessionEventBody {
+    SessionEventBody::ToolCall {
+        name: view.name,
+        summary: view.summary,
+        detail: take_chars(&view.detail, TOOL_DETAIL_CAP),
+        stream_id,
+        images: view
+            .images
+            .into_iter()
+            .map(|image| take_chars(&image, TOOL_DETAIL_CAP))
+            .collect(),
+    }
+}
+
+pub(super) fn tool_visible(view: &ToolView) -> bool {
+    !view.summary.trim().is_empty() || !view.detail.trim().is_empty() || !view.images.is_empty()
+}
+
+fn command_view(item: &Value) -> ToolView {
+    ToolView {
+        name: "command".into(),
+        summary: command_summary(item),
+        detail: command_output(item),
+        images: Vec::new(),
+    }
+}
+
+fn command_summary(item: &Value) -> String {
+    let command = item.get("command").and_then(Value::as_str).unwrap_or("");
+    let status = item.get("status").and_then(Value::as_str).unwrap_or("");
+    let exit = item
+        .get("exitCode")
+        .and_then(Value::as_i64)
+        .map(|code| format!("，退出码 {code}"))
+        .unwrap_or_default();
+    if status.is_empty() {
+        format!("{command}{exit}")
+    } else {
+        format!("{command} → {status}{exit}")
+    }
+}
+
+fn command_output(item: &Value) -> String {
+    let mut parts = Vec::new();
+    for key in ["aggregatedOutput", "output", "stdout", "stderr"] {
+        let Some(text) = item.get(key).and_then(Value::as_str) else {
+            continue;
+        };
+        let text = text.trim();
+        if text.is_empty() || parts.iter().any(|existing: &String| existing == text) {
+            continue;
+        }
+        parts.push(text.to_string());
+    }
+    parts.join("\n")
+}
+
+fn file_view(item: &Value) -> ToolView {
+    let changes = item.get("changes").cloned().unwrap_or(Value::Null);
+    let status = item.get("status").and_then(Value::as_str).unwrap_or("");
+    let paths = change_paths(&changes);
+    let summary = format!("{status} {paths}").trim().to_string();
+    ToolView {
+        name: "apply_patch".into(),
+        summary,
+        detail: format_changes(&changes),
+        images: Vec::new(),
+    }
+}
+
+pub(super) fn format_changes(changes: &Value) -> String {
+    let Some(list) = changes.as_array() else {
+        return String::new();
+    };
+    let mut out = String::new();
+    for change in list {
+        let path = change.get("path").and_then(Value::as_str).unwrap_or("");
+        let kind = change
+            .get("kind")
+            .or_else(|| change.get("type"))
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        let diff = change
+            .get("diff")
+            .or_else(|| change.get("unifiedDiff"))
+            .or_else(|| change.get("patch"))
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        if !out.is_empty() {
+            out.push_str("\n\n");
+        }
+        if !kind.is_empty() {
+            out.push_str(kind);
+            out.push(' ');
+        }
+        out.push_str(path);
+        if !diff.trim().is_empty() {
+            out.push('\n');
+            out.push_str(diff.trim());
+        }
+    }
+    out
+}
+
+pub(super) fn change_paths(changes: &Value) -> String {
+    changes
+        .as_array()
+        .map(|list| {
+            list.iter()
+                .filter_map(|change| change.get("path").and_then(Value::as_str))
+                .filter(|path| !path.is_empty())
+                .collect::<Vec<_>>()
+                .join("、")
+        })
+        .unwrap_or_default()
+}
+
+fn mcp_view(item: &Value) -> ToolView {
+    let tool = item.get("tool").and_then(Value::as_str).unwrap_or("mcp");
+    let server = item
+        .get("server")
+        .or_else(|| item.get("serverName"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let mut parts = Vec::new();
+    if let Some(args) = item.get("arguments").or_else(|| item.get("input")) {
+        if !args.is_null() {
+            parts.push(format!("参数\n{}", pretty_value(args)));
+        }
+    }
+    if let Some(result) = item.get("result").or_else(|| item.get("output")) {
+        if !result.is_null() {
+            parts.push(format!("结果\n{}", pretty_value(result)));
+        }
+    }
+    if let Some(err) = item.get("error") {
+        if !err.is_null() {
+            parts.push(format!("错误\n{}", pretty_value(err)));
+        }
+    }
+    ToolView {
+        name: tool.to_string(),
+        summary: format!("MCP {server} {tool}").trim().to_string(),
+        detail: parts.join("\n\n"),
+        images: Vec::new(),
+    }
+}
+
+fn web_view(item: &Value) -> ToolView {
+    let query = item.get("query").and_then(Value::as_str).unwrap_or("");
+    let mut parts = Vec::new();
+    if let Some(action) = item.get("action") {
+        if !action.is_null() {
+            parts.push(pretty_value(action));
+        }
+    }
+    if let Some(results) = item.get("results").or_else(|| item.get("output")) {
+        if !results.is_null() {
+            parts.push(pretty_value(results));
+        }
+    }
+    ToolView {
+        name: "web_search".into(),
+        summary: query.to_string(),
+        detail: parts.join("\n\n"),
+        images: Vec::new(),
+    }
+}
+
+fn image_item_kind(kind: &str) -> bool {
+    matches!(
+        kind.replace('_', "").to_ascii_lowercase().as_str(),
+        "image" | "imageview" | "imagegeneration" | "localimage"
+    )
+}
+
+fn image_view(item: &Value) -> ToolView {
+    let mut images = user_item_images(item);
+    if let Some(image) = image_from_part(item) {
+        if !images.contains(&image) {
+            images.push(image);
+        }
+    }
+    for key in ["path", "url"] {
+        if let Some(value) = item.get(key).and_then(Value::as_str) {
+            if !value.is_empty() && !images.contains(&value.to_string()) {
+                images.push(value.to_string());
             }
         }
-        _ => {}
+    }
+    let summary = images
+        .first()
+        .map(|image| {
+            if image.starts_with("data:") {
+                "图片".to_string()
+            } else {
+                image.clone()
+            }
+        })
+        .unwrap_or_else(|| "图片".into());
+    ToolView {
+        name: "image".into(),
+        summary,
+        detail: String::new(),
+        images,
+    }
+}
+
+fn pretty_value(value: &Value) -> String {
+    match value {
+        Value::String(text) => text.clone(),
+        other => serde_json::to_string_pretty(other).unwrap_or_else(|_| other.to_string()),
     }
 }
 
@@ -576,7 +799,7 @@ fn unix_millis(value: Option<&Value>) -> i64 {
     }
 }
 
-fn take_chars(text: &str, max: usize) -> String {
+pub(super) fn take_chars(text: &str, max: usize) -> String {
     let count = text.chars().count();
     if count <= max {
         text.to_string()
@@ -751,7 +974,12 @@ impl RpcClient {
         let _ = self.out.send(line);
     }
 
-    async fn request(&self, method: &str, params: Value, budget: Duration) -> Result<Value, String> {
+    async fn request(
+        &self,
+        method: &str,
+        params: Value,
+        budget: Duration,
+    ) -> Result<Value, String> {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let (tx, rx) = oneshot::channel();
         self.waiters.lock().unwrap().insert(id, tx);
@@ -823,7 +1051,10 @@ mod tests {
 
     #[test]
     fn title_prefers_name_then_preview() {
-        assert_eq!(thread_title(Some("概括当前项目"), Some("别的")), "概括当前项目");
+        assert_eq!(
+            thread_title(Some("概括当前项目"), Some("别的")),
+            "概括当前项目"
+        );
         assert_eq!(thread_title(Some("  "), Some("第一行\n第二行")), "第一行");
         assert_eq!(thread_title(None, Some("   ")), "未命名会话");
     }
@@ -889,13 +1120,21 @@ mod tests {
 
     #[test]
     fn history_turns_are_chronological_and_map_messages() {
-        let older = vec![json!({"id": "t1", "items": [{"type": "userMessage", "content": [{"type": "text", "text": "你好"}]}]})];
+        let older = vec![
+            json!({"id": "t1", "items": [{"type": "userMessage", "content": [{"type": "text", "text": "你好"}]}]}),
+        ];
         let newer = vec![json!({"id": "t2", "items": [{"type": "agentMessage", "text": "完成"}]})];
         let turns = chronological_turns(&[newer, older]);
         let bodies = bodies_from_turns(&turns);
-        assert!(matches!(bodies[0], SessionEventBody::UserMessage { ref text, .. } if text == "你好"));
-        assert!(matches!(bodies[1], SessionEventBody::TurnAnchor { ref turn_id } if turn_id == "t1"));
-        assert!(matches!(bodies[2], SessionEventBody::AgentMessage { ref text, phase: None, .. } if text == "完成"));
+        assert!(
+            matches!(bodies[0], SessionEventBody::UserMessage { ref text, .. } if text == "你好")
+        );
+        assert!(
+            matches!(bodies[1], SessionEventBody::TurnAnchor { ref turn_id } if turn_id == "t1")
+        );
+        assert!(
+            matches!(bodies[2], SessionEventBody::AgentMessage { ref text, phase: None, .. } if text == "完成")
+        );
     }
 
     #[test]
@@ -914,7 +1153,13 @@ mod tests {
         match &bodies[0] {
             SessionEventBody::UserMessage { text, images } => {
                 assert_eq!(text, "看这张");
-                assert_eq!(images, &vec!["C:/shot.png".to_string(), "https://example.com/a.png".to_string()]);
+                assert_eq!(
+                    images,
+                    &vec![
+                        "C:/shot.png".to_string(),
+                        "https://example.com/a.png".to_string()
+                    ]
+                );
             }
             _ => panic!("expected user message"),
         }
@@ -940,8 +1185,78 @@ mod tests {
             SessionEventBody::AgentMessage { text, phase, .. }
                 if text == "目录里有 src。" && *phase == Some(MessagePhase::FinalAnswer)
         ));
-        assert_eq!(MessagePhase::parse(Some("partial_answer")), Some(MessagePhase::PartialAnswer));
+        assert_eq!(
+            MessagePhase::parse(Some("partial_answer")),
+            Some(MessagePhase::PartialAnswer)
+        );
         assert_eq!(MessagePhase::parse(Some("unknown")), None);
+    }
+
+    #[test]
+    fn history_keeps_command_output_patches_mcp_and_search() {
+        let output = format!("{}GAP-HISTORY-TAIL", "A".repeat(400));
+        let turns = vec![json!({
+            "items": [
+                {
+                    "type": "commandExecution",
+                    "command": "echo marker",
+                    "status": "completed",
+                    "exitCode": 0,
+                    "aggregatedOutput": output
+                },
+                {
+                    "type": "fileChange",
+                    "status": "completed",
+                    "changes": [{
+                        "path": "gap-history.txt",
+                        "kind": "update",
+                        "diff": "@@ -0,0 +1 @@\n+gap-history-marker"
+                    }]
+                },
+                {
+                    "type": "mcpToolCall",
+                    "server": "docs",
+                    "tool": "lookup",
+                    "arguments": { "q": "codex" },
+                    "result": "found"
+                },
+                {
+                    "type": "webSearch",
+                    "query": "codex desktop",
+                    "results": [{ "title": "Codex" }]
+                },
+                {
+                    "type": "imageView",
+                    "path": "shot.png"
+                }
+            ]
+        })];
+        let bodies = bodies_from_turns(&turns);
+        assert!(matches!(
+            &bodies[0],
+            SessionEventBody::ToolCall { name, detail, .. }
+                if name == "command" && detail.contains("GAP-HISTORY-TAIL") && detail.len() > 240
+        ));
+        assert!(matches!(
+            &bodies[1],
+            SessionEventBody::ToolCall { name, detail, .. }
+                if name == "apply_patch" && detail.contains("gap-history-marker")
+        ));
+        assert!(matches!(
+            &bodies[2],
+            SessionEventBody::ToolCall { name, summary, detail, .. }
+                if name == "lookup" && summary.contains("docs") && detail.contains("found")
+        ));
+        assert!(matches!(
+            &bodies[3],
+            SessionEventBody::ToolCall { name, summary, detail, .. }
+                if name == "web_search" && summary == "codex desktop" && detail.contains("Codex")
+        ));
+        assert!(matches!(
+            &bodies[4],
+            SessionEventBody::ToolCall { name, images, .. }
+                if name == "image" && images.as_slice() == ["shot.png"]
+        ));
     }
 
     #[test]
@@ -966,7 +1281,10 @@ mod tests {
     async fn lists_interactive_resume_threads() {
         let directory = CodexDirectory::new();
         let threads = directory.list_threads().await.expect("thread/list");
-        assert!(!threads.is_empty(), "codex resume --all equivalent list was empty");
+        assert!(
+            !threads.is_empty(),
+            "codex resume --all equivalent list was empty"
+        );
         assert!(threads.iter().all(|thread| !thread.native_id.is_empty()));
         assert!(threads.iter().all(|thread| !thread.ephemeral));
         let again = directory.list_threads().await.expect("cached");
@@ -1001,7 +1319,10 @@ mod tests {
             )
             .await
             .expect("resume");
-        assert_eq!(session.native_id().as_deref(), Some(thread.native_id.as_str()));
+        assert_eq!(
+            session.native_id().as_deref(),
+            Some(thread.native_id.as_str())
+        );
         let mut saw_history = false;
         while let Ok(body) = rx.try_recv() {
             if matches!(
@@ -1022,10 +1343,7 @@ mod tests {
         use crate::features::agents::{AgentAdapter, SessionContext};
         use tokio::sync::mpsc;
 
-        let dir = std::env::temp_dir().join(format!(
-            "ai-workbench-resume-{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("ai-workbench-resume-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("temp cwd");
         let (tx, mut rx) = mpsc::unbounded_channel();
         let session = CodexCliAdapter::new()
@@ -1050,7 +1368,9 @@ mod tests {
             let deadline = std::time::Instant::now() + Duration::from_secs(90);
             while std::time::Instant::now() < deadline {
                 match timeout(Duration::from_millis(500), rx.recv()).await {
-                    Ok(Some(SessionEventBody::AgentMessage { text, .. })) if !text.trim().is_empty() => {
+                    Ok(Some(SessionEventBody::AgentMessage { text, .. }))
+                        if !text.trim().is_empty() =>
+                    {
                         saw_reply = true;
                         break;
                     }
@@ -1151,7 +1471,9 @@ mod tests {
 
         std::fs::create_dir_all(GAP_LIFECYCLE).expect("gap dir");
         let ids = Arc::new(Mutex::new(Vec::new()));
-        let _cleanup = GapCleanup { ids: Arc::clone(&ids) };
+        let _cleanup = GapCleanup {
+            ids: Arc::clone(&ids),
+        };
         let name = format!(
             "gap-lifecycle-{}-{}",
             std::process::id(),
@@ -1194,7 +1516,11 @@ mod tests {
                 .await
                 .expect("fork cwd")
         };
-        assert_eq!(cwd_key(&fork_cwd), gap_key(), "fork left the gap project: {fork_cwd}");
+        assert_eq!(
+            cwd_key(&fork_cwd),
+            gap_key(),
+            "fork left the gap project: {fork_cwd}"
+        );
 
         adapter
             .set_thread_archived(&id, true)
@@ -1223,10 +1549,167 @@ mod tests {
             .expect("thread/unarchive");
 
         for native in [id, forked.native_id] {
-            let cwd = directory.read_cwd(&native).await.expect("cwd before delete");
-            assert_eq!(cwd_key(&cwd), gap_key(), "refusing to delete {native} at {cwd}");
+            let cwd = directory
+                .read_cwd(&native)
+                .await
+                .expect("cwd before delete");
+            assert_eq!(
+                cwd_key(&cwd),
+                gap_key(),
+                "refusing to delete {native} at {cwd}"
+            );
             adapter.delete_thread(&native).await.expect("thread/delete");
         }
         ids.lock().unwrap().clear();
+    }
+
+    #[tokio::test]
+    #[ignore = "calls the local Codex CLI in _gap-history only"]
+    async fn gap_history_replays_full_command_output_and_patch() {
+        use crate::features::agents::codex::CodexCliAdapter;
+        use crate::features::agents::{AgentAdapter, AgentSession, SessionContext};
+        use tokio::sync::mpsc;
+
+        const GAP_HISTORY: &str = r"C:\Users\admin\Desktop\temp\ai-workbench-project\_gap-history";
+        std::fs::create_dir_all(GAP_HISTORY).expect("gap history dir");
+        let expected_key = cwd_key(GAP_HISTORY);
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let session = CodexCliAdapter::new()
+            .start_session(
+                SessionContext {
+                    project_path: GAP_HISTORY.into(),
+                    access_mode: Some("full".into()),
+                    resume_native_id: None,
+                    options: json!({ "persist": true }),
+                },
+                tx,
+            )
+            .await
+            .expect("thread/start");
+        let id = session.native_id().expect("native thread id");
+        let cleanup = {
+            let id = id.clone();
+            let expected_key = expected_key.clone();
+            move || {
+                let id = id.clone();
+                let expected_key = expected_key.clone();
+                async move {
+                    let directory = CodexDirectory::new();
+                    let Ok(cwd) = directory.read_cwd(&id).await else {
+                        return;
+                    };
+                    if cwd_key(&cwd) != expected_key {
+                        return;
+                    }
+                    let _ = directory.delete_thread(&id).await;
+                }
+            }
+        };
+        while rx.try_recv().is_ok() {}
+        let send = session
+            .send_message(
+                "只在当前目录做两件事，然后停止：\n\
+                 1. 写入文件 gap-history.txt，内容只有 gap-history-marker。\n\
+                 2. 原样执行 powershell -NoProfile -Command \"Write-Output (('A'*400)+'GAP-HISTORY-TAIL')\"。\n\
+                 不要概括命令输出。"
+                    .into(),
+            )
+            .await;
+        assert!(send.is_ok(), "send failed: {send:?}");
+        let deadline = std::time::Instant::now() + Duration::from_secs(180);
+        let mut failed = None;
+        let mut saw_running = false;
+        let mut finished = false;
+        while std::time::Instant::now() < deadline {
+            match timeout(Duration::from_millis(500), rx.recv()).await {
+                Ok(Some(SessionEventBody::Error { message })) => {
+                    failed = Some(message);
+                    break;
+                }
+                Ok(Some(SessionEventBody::StatusChanged {
+                    status: SessionStatus::Running,
+                })) => saw_running = true,
+                Ok(Some(SessionEventBody::StatusChanged {
+                    status: SessionStatus::Completed | SessionStatus::Failed,
+                })) if saw_running => {
+                    finished = true;
+                    break;
+                }
+                Ok(None) => break,
+                _ => {}
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        let _ = session.stop().await;
+        if !saw_running || !finished || failed.is_some() {
+            cleanup().await;
+            assert!(saw_running, "turn never started");
+            assert!(finished, "turn did not finish: {failed:?}");
+            if let Some(message) = failed {
+                panic!("codex turn failed: {message}");
+            }
+        }
+
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let resumed = CodexCliAdapter::new()
+            .start_session(
+                SessionContext {
+                    project_path: GAP_HISTORY.into(),
+                    access_mode: Some("full".into()),
+                    resume_native_id: Some(id.clone()),
+                    options: json!({ "persist": true }),
+                },
+                tx,
+            )
+            .await
+            .expect("thread/resume");
+        let mut history = Vec::new();
+        while let Ok(body) = rx.try_recv() {
+            history.push(body);
+        }
+        let (older, exhausted) = AgentSession::load_older_history(&*resumed)
+            .await
+            .expect("older history");
+        let _ = resumed.stop().await;
+        cleanup().await;
+
+        assert!(
+            history.iter().all(|body| !matches!(
+                body,
+                SessionEventBody::System { text } if text.contains("更早的 Codex 记录没有全部载入")
+            )),
+            "history was still truncated"
+        );
+        assert!(
+            history.iter().any(|body| matches!(
+                body,
+                SessionEventBody::ToolCall { detail, .. } if detail.contains("GAP-HISTORY-TAIL")
+            )),
+            "resumed history dropped the command tail: {history:?}"
+        );
+        let written =
+            std::fs::read_to_string(format!("{GAP_HISTORY}\\gap-history.txt")).unwrap_or_default();
+        assert!(
+            written.contains("gap-history-marker"),
+            "gap-history.txt was not written: {written:?}"
+        );
+        assert!(
+            history.iter().any(|body| match body {
+                SessionEventBody::ToolCall {
+                    summary, detail, ..
+                } => {
+                    summary.contains("gap-history.txt")
+                        || detail.contains("gap-history.txt")
+                        || detail.contains("gap-history-marker")
+                }
+                SessionEventBody::TurnDiff { diff, .. } => {
+                    diff.contains("gap-history.txt") || diff.contains("gap-history-marker")
+                }
+                _ => false,
+            }),
+            "resumed history dropped the file write: {history:?}"
+        );
+        assert!(exhausted, "a one-turn thread still had another page");
+        assert!(older.is_empty());
     }
 }

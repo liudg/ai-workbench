@@ -171,6 +171,23 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
       }
     },
 
+    async loadOlderHistory(sessionId) {
+      const page = await backend.loadOlderHistory(sessionId);
+      set((s) => {
+        const current = s.events[sessionId] ?? [];
+        const ids = new Set(page.events.map((event) => event.id));
+        const maxSeq = page.events.reduce((max, event) => Math.max(max, event.seq), 0);
+        const extra = current.filter((event) => !ids.has(event.id) && event.seq > maxSeq);
+        return {
+          events: {
+            ...s.events,
+            [sessionId]: extra.length > 0 ? [...page.events, ...extra] : page.events,
+          },
+        };
+      });
+      return page.exhausted;
+    },
+
     async answerPrompt(sessionId, promptId, answer) {
       try {
         await backend.answerPrompt(sessionId, promptId, answer);

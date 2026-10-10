@@ -20,7 +20,6 @@ import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -259,14 +258,10 @@ function UserMessage({
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>{CODEX_DESKTOP.editMessage}</DialogTitle>
-            <DialogDescription className="break-words whitespace-pre-wrap text-zinc-400">
-              {CODEX_DESKTOP.editConfirm}
-            </DialogDescription>
           </DialogHeader>
-          <p className="break-words text-xs text-zinc-500">{CODEX_DESKTOP.editLatestOnly}</p>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setConfirm(false)}>
-              Cancel
+              {CODEX_DESKTOP.cancelEdit}
             </Button>
             <Button
               type="button"
@@ -277,7 +272,7 @@ function UserMessage({
                 void revertTurn(session.id, target.turnId, draft.trim());
               }}
             >
-              {CODEX_DESKTOP.editMessage}
+              {CODEX_DESKTOP.sendEdit}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -455,6 +450,158 @@ function QuestionCard({
   );
 }
 
+function ElicitationCard({
+  event,
+  session,
+  resolvedAnswer,
+}: {
+  event: Extract<SessionEvent, { kind: "prompt" }>;
+  session: Session;
+  resolvedAnswer: string | null;
+}) {
+  const answerPrompt = useWorkbench((s) => s.answerPrompt);
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [flags, setFlags] = useState<Record<string, boolean>>({});
+  const interactive = resolvedAnswer === null && session.status === "needs-input";
+
+  const submit = (action: "accept" | "decline" | "cancel") => {
+    if (action !== "accept") {
+      answerPrompt(session.id, event.prompt_id, { type: "elicitation", action });
+      return;
+    }
+    const content: Record<string, string | number | boolean> = {};
+    for (const question of event.questions) {
+      if (question.input_kind === "boolean") {
+        content[question.id] = Boolean(flags[question.id]);
+        continue;
+      }
+      const raw = (values[question.id] ?? "").trim();
+      if (!raw) {
+        if (question.required) return;
+        continue;
+      }
+      if (question.input_kind === "integer") {
+        const parsed = Number.parseInt(raw, 10);
+        content[question.id] = Number.isNaN(parsed) ? raw : parsed;
+      } else if (question.input_kind === "number") {
+        const parsed = Number(raw);
+        content[question.id] = Number.isNaN(parsed) ? raw : parsed;
+      } else {
+        content[question.id] = raw;
+      }
+    }
+    answerPrompt(session.id, event.prompt_id, {
+      type: "elicitation",
+      action: "accept",
+      content,
+    });
+  };
+
+  return (
+    <div className="min-w-0 overflow-x-hidden rounded-lg border border-amber-500/25 bg-amber-500/[0.06] p-3">
+      <p className="min-w-0 break-words whitespace-pre-wrap text-sm leading-6 text-zinc-200">
+        {event.question}
+      </p>
+      {interactive ? (
+        <>
+          <div className="mt-3 space-y-3">
+            {event.questions.map((question) => (
+              <label key={question.id} className="block min-w-0">
+                <span className="mb-1 block break-words text-xs text-zinc-400">
+                  {question.header || question.id}
+                  {question.required ? " *" : ""}
+                </span>
+                {question.question && question.question !== question.header ? (
+                  <span className="mb-1 block break-words text-[11px] text-zinc-500">
+                    {question.question}
+                  </span>
+                ) : null}
+                {question.input_kind === "boolean" ? (
+                  <input
+                    type="checkbox"
+                    checked={Boolean(flags[question.id])}
+                    onChange={(change) =>
+                      setFlags((current) => ({
+                        ...current,
+                        [question.id]: change.target.checked,
+                      }))
+                    }
+                  />
+                ) : question.options.length > 0 ? (
+                  <select
+                    aria-label={question.header || question.id}
+                    value={values[question.id] ?? ""}
+                    className="h-8 w-full min-w-0 rounded-md border border-zinc-700 bg-zinc-950 px-2 text-sm text-zinc-200"
+                    onChange={(change) =>
+                      setValues((current) => ({
+                        ...current,
+                        [question.id]: change.target.value,
+                      }))
+                    }
+                  >
+                    <option value="" />
+                    {question.options.map((option) => (
+                      <option key={option.id} value={option.label}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <Input
+                    type={
+                      question.is_secret
+                        ? "password"
+                        : question.input_kind === "number" || question.input_kind === "integer"
+                          ? "number"
+                          : "text"
+                    }
+                    value={values[question.id] ?? ""}
+                    aria-label={question.header || question.id}
+                    className="h-8 min-w-0"
+                    onChange={(change) =>
+                      setValues((current) => ({
+                        ...current,
+                        [question.id]: change.target.value,
+                      }))
+                    }
+                  />
+                )}
+              </label>
+            ))}
+          </div>
+          <div className="mt-3 flex min-w-0 flex-wrap gap-2">
+            <Button type="button" size="sm" className="h-8" onClick={() => submit("accept")}>
+              {CODEX_DESKTOP.elicitAccept}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-8"
+              onClick={() => submit("decline")}
+            >
+              {CODEX_DESKTOP.elicitDecline}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-8"
+              onClick={() => submit("cancel")}
+            >
+              {CODEX_DESKTOP.elicitCancel}
+            </Button>
+          </div>
+        </>
+      ) : (
+        <p className="mt-2 break-words text-xs text-zinc-500">
+          {resolvedAnswer ? `已回答：${resolvedAnswer}` : "等待回答…"}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function PromptCard({
   event,
   session,
@@ -467,6 +614,16 @@ function PromptCard({
   const answerPrompt = useWorkbench((s) => s.answerPrompt);
   const [freeText, setFreeText] = useState("");
   const interactive = resolvedAnswer === null && session.status === "needs-input";
+
+  if (event.prompt_kind === "elicitation") {
+    return (
+      <ElicitationCard
+        event={event}
+        session={session}
+        resolvedAnswer={resolvedAnswer}
+      />
+    );
+  }
 
   if (event.prompt_kind === "questions") {
     return (
@@ -548,12 +705,12 @@ function PromptCard({
                 <Input
                   value={freeText}
                   onChange={(change) => setFreeText(change.target.value)}
-                  aria-label="Other"
-                  placeholder="Other"
+                  aria-label={CODEX_DESKTOP.other}
+                  placeholder={CODEX_DESKTOP.other}
                   className="h-8 min-w-0 flex-1"
                 />
                 <Button type="submit" size="sm" variant="outline" className="h-8 shrink-0">
-                  Other
+                  {CODEX_DESKTOP.other}
                 </Button>
               </form>
             )}
@@ -571,23 +728,28 @@ function PromptCard({
 function ToolCallItem({
   name,
   summary,
+  detail = "",
+  images = [],
   time,
 }: {
   name: string;
   summary: string;
+  detail?: string;
+  images?: string[];
   time: string;
 }) {
   const [open, setOpen] = useState(false);
-  const first = summary.split("\n")[0] ?? summary;
+  const first = summary.split("\n")[0] || name;
+  const copyText = [name, summary, detail].filter((part) => part.trim()).join("\n");
   return (
     <Row
       icon={<Wrench className="h-3.5 w-3.5" />}
       title="工具调用"
       time={time}
       tone="muted"
-      copyText={summary ? `${name}\n${summary}` : name}
+      copyText={copyText}
     >
-      <div className="min-w-0 rounded-md border border-zinc-800 bg-zinc-900/80 px-2.5 py-1.5 font-mono text-xs text-zinc-400">
+      <div className="min-w-0 overflow-x-hidden rounded-md border border-zinc-800 bg-zinc-900/80 px-2.5 py-1.5 font-mono text-xs text-zinc-400">
         <button
           type="button"
           aria-expanded={open}
@@ -602,9 +764,32 @@ function ToolCallItem({
           />
           <span className="min-w-0 break-all text-cyan-400">{name}</span>
         </button>
-        <p className="mt-1 whitespace-pre-wrap break-all pl-4 text-zinc-500">
-          {open ? summary : first}
-        </p>
+        {open ? (
+          <div className="mt-1 min-w-0 overflow-x-hidden pl-4">
+            {summary ? (
+              <p className="whitespace-pre-wrap break-all text-zinc-500">{summary}</p>
+            ) : null}
+            {detail ? (
+              <p className="mt-1 overflow-x-hidden whitespace-pre-wrap break-all text-zinc-400">
+                {detail}
+              </p>
+            ) : null}
+            {images.length > 0 && (
+              <div className="mt-1 flex min-w-0 flex-wrap gap-1.5 overflow-x-hidden">
+                {images.map((path) => (
+                  <ChatThumb
+                    key={path}
+                    path={path}
+                    name={fileName(path)}
+                    className="max-h-40 max-w-[160px] rounded-lg object-contain"
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          <p className="mt-1 overflow-x-hidden break-all pl-4 text-zinc-500">{first}</p>
+        )}
       </div>
     </Row>
   );
@@ -854,7 +1039,15 @@ export function EventItem({
       );
 
     case "tool-call":
-      return <ToolCallItem name={event.name} summary={event.summary} time={time} />;
+      return (
+        <ToolCallItem
+          name={event.name}
+          summary={event.summary}
+          detail={event.detail}
+          images={event.images}
+          time={time}
+        />
+      );
 
     case "prompt":
       return (

@@ -95,6 +95,7 @@ export interface WorkspaceSlice {
   startReview(sessionId: string, target: ReviewStart): Promise<void>;
   revertTurn(sessionId: string, turnId: string, text: string): Promise<void>;
   answerPrompt(sessionId: string, promptId: string, answer: PromptAnswer): Promise<void>;
+  loadOlderHistory(sessionId: string): Promise<boolean>;
   stopSession(sessionId: string): Promise<void>;
 }
 

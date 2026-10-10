@@ -133,6 +133,8 @@ pub enum PromptKind {
     FreeText,
     /// Codex 原生问题卡片：一轮可多题，每题编号选项 + 自由文本，可跳过
     Questions,
+    /// MCP `elicitation/request`：接受 / 拒绝 / 取消，外加表单字段。
+    Elicitation,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -157,8 +159,14 @@ pub struct PromptQuestion {
     /// 回答是敏感信息（Codex isSecret），输入时掩码
     #[serde(default)]
     pub is_secret: bool,
-    /// 编号展示的选项；空数组 = 纯自由文本题
+    /// 编号展示的选项；空数组 = 纯自由文本题。elicitation 的 enum 也放这里。
     pub options: Vec<PromptOption>,
+    /// elicitation 字段类型：string / number / integer / boolean。空表示普通问题。
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub input_kind: String,
+    /// elicitation 的 required。
+    #[serde(default)]
+    pub required: bool,
 }
 
 /// 前端对提问的回答。
@@ -171,6 +179,12 @@ pub enum PromptAnswer {
     Questions {
         answers: std::collections::HashMap<String, String>,
         skipped: bool,
+    },
+    /// MCP elicitation。`action` 为 accept / decline / cancel。接受时带表单内容。
+    Elicitation {
+        action: String,
+        #[serde(default)]
+        content: std::collections::HashMap<String, serde_json::Value>,
     },
 }
 
@@ -219,7 +233,9 @@ pub struct ReviewFinding {
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum ReviewStart {
     Uncommitted,
-    Base { branch: String },
+    Base {
+        branch: String,
+    },
     Commit {
         sha: String,
         #[serde(default)]
@@ -231,14 +247,14 @@ impl ReviewStart {
     /// 桌面端菜单文案。分支和提交把所选目标接在小节标题后面。
     pub fn label(&self) -> String {
         match self {
-            Self::Uncommitted => "Review uncommitted changes".into(),
-            Self::Base { branch } => format!("Review against a base branch: {branch}"),
+            Self::Uncommitted => "审查未提交的更改".into(),
+            Self::Base { branch } => format!("对照基础分支审查: {branch}"),
             Self::Commit { sha, title } => {
                 let short: String = sha.chars().take(7).collect();
                 if title.trim().is_empty() {
-                    format!("Review a commit: {short}")
+                    format!("提交: {short}")
                 } else {
-                    format!("Review a commit: {short} {}", title.trim())
+                    format!("提交: {short} {}", title.trim())
                 }
             }
         }
@@ -287,6 +303,15 @@ pub enum SessionEventBody {
     ToolCall {
         name: String,
         summary: String,
+        /// 命令输出、补丁正文、MCP 参数和结果。时间线默认折叠。
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        detail: String,
+        /// 同一条命令或补丁的流式更新复用这个 id。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        stream_id: Option<String>,
+        /// 历史或生成结果里的图片。气泡用缩略图。
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        images: Vec<String>,
     },
     /// Agent 发起的提问；在被 PromptResolved 覆盖前，会话处于 needs-input
     Prompt {
@@ -479,6 +504,9 @@ pub struct AgentCapabilities {
     /// `approvalsReviewer = auto_review`（替我批准）。探测前为 false。
     #[serde(default)]
     pub supports_approve_for_me: bool,
+    /// 继续会话后，时间线上滚再向适配器要更早的回合，而不是一次截断。
+    #[serde(default)]
+    pub supports_paged_history: bool,
 }
 
 impl AgentCapabilities {
@@ -508,6 +536,7 @@ impl AgentCapabilities {
             supports_writable_roots: false,
             supports_permission_profiles: false,
             supports_approve_for_me: false,
+            supports_paged_history: false,
         }
     }
 
@@ -537,6 +566,7 @@ impl AgentCapabilities {
             supports_writable_roots: true,
             supports_permission_profiles: false,
             supports_approve_for_me: false,
+            supports_paged_history: true,
         }
     }
 }
@@ -568,6 +598,14 @@ impl PermissionMenu {
             profiles: Vec::new(),
         }
     }
+}
+
+/// 上滚加载更早回合之后的整段事件日志。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OlderHistory {
+    pub events: Vec<SessionEvent>,
+    pub added: usize,
+    pub exhausted: bool,
 }
 
 /// 一条排在当前回合后面的用户消息。作曲栏展示它，不进时间线。
@@ -799,5 +837,6 @@ mod tests {
         assert!(!parsed.supports_writable_roots);
         assert!(!parsed.supports_permission_profiles);
         assert!(!parsed.supports_approve_for_me);
+        assert!(!parsed.supports_paged_history);
     }
 }

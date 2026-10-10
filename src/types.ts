@@ -20,7 +20,7 @@ export type SessionStatus =
   | "failed"
   | "stopped";
 
-export type PromptKind = "approval" | "choice" | "free-text" | "questions";
+export type PromptKind = "approval" | "choice" | "free-text" | "questions" | "elicitation";
 
 /**
  * 适配器标出的助手文本阶段。时间线只看这个字段，不比较 agent 种类。
@@ -37,14 +37,23 @@ export interface PromptQuestion {
   question: string;
   /** 敏感回答，输入时掩码 */
   is_secret: boolean;
-  /** 编号展示的选项；空数组 = 纯自由文本题 */
+  /** 编号展示的选项；空数组 = 纯自由文本题。elicitation 的 enum 也放这里。 */
   options: PromptOption[];
+  /** elicitation 字段类型：string / number / integer / boolean。 */
+  input_kind?: string;
+  /** elicitation 的 required。 */
+  required?: boolean;
 }
 
 /** 对提问的回答：审批/单选/单行文本走 single；问题卡片走 questions */
 export type PromptAnswer =
   | { type: "single"; value: string }
-  | { type: "questions"; answers: Record<string, string>; skipped: boolean };
+  | { type: "questions"; answers: Record<string, string>; skipped: boolean }
+  | {
+      type: "elicitation";
+      action: "accept" | "decline" | "cancel";
+      content?: Record<string, string | number | boolean>;
+    };
 
 export interface Project {
   id: string;
@@ -89,7 +98,15 @@ export type SessionEventBody =
       phase?: MessagePhase;
     }
   | { kind: "thinking"; text: string; stream_id?: string }
-  | { kind: "tool-call"; name: string; summary: string }
+  | {
+      kind: "tool-call";
+      name: string;
+      summary: string;
+      /** 命令输出、补丁正文、MCP 参数和结果。时间线默认折叠。 */
+      detail?: string;
+      stream_id?: string;
+      images?: string[];
+    }
   | {
       kind: "prompt";
       prompt_id: string;
@@ -291,6 +308,15 @@ export interface AgentCapabilities {
   supports_permission_profiles?: boolean;
   /** 替我批准（approvals reviewer auto_review）。 */
   supports_approve_for_me?: boolean;
+  /** 继续会话后，时间线上滚再要更早的回合。 */
+  supports_paged_history?: boolean;
+}
+
+/** 上滚加载更早回合之后的整段事件日志。 */
+export interface OlderHistory {
+  events: SessionEvent[];
+  added: number;
+  exhausted: boolean;
 }
 
 export interface QueuedTurn {

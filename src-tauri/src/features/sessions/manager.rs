@@ -382,6 +382,24 @@ impl SessionManager {
         handle.review_targets().await.map_err(|err| err.to_string())
     }
 
+    pub async fn load_older_history(&self, session_id: &str) -> Result<OlderHistory, String> {
+        let handle = self.agent_handle_ready(session_id).await?;
+        let (bodies, exhausted) = handle
+            .load_older_history()
+            .await
+            .map_err(|err| err.to_string())?;
+        let mut entries = self.entries.lock().unwrap();
+        let Some(entry) = entries.get_mut(session_id) else {
+            return Err("会话不存在".into());
+        };
+        let added = prepend_bodies(entry, session_id, bodies);
+        Ok(OlderHistory {
+            events: entry.events.clone(),
+            added,
+            exhausted,
+        })
+    }
+
     pub async fn revert_turn(&self, session_id: &str, turn_id: &str) -> Result<(), String> {
         let handle = self.agent_handle_ready(session_id).await?;
         handle
@@ -411,7 +429,10 @@ impl SessionManager {
                     images: Vec::new(),
                 },
             )?;
-            return handle.send_message(text).await.map_err(|err| err.to_string());
+            return handle
+                .send_message(text)
+                .await
+                .map_err(|err| err.to_string());
         }
         let client_id = new_id();
         let delivery = handle
@@ -423,10 +444,7 @@ impl SessionManager {
             .await
             .map_err(|err| err.to_string())?;
         if delivery == TurnDelivery::Started {
-            self.record_local(
-                session_id,
-                SessionEventBody::UserMessage { text, images },
-            )?;
+            self.record_local(session_id, SessionEventBody::UserMessage { text, images })?;
         }
         Ok(())
     }
@@ -452,7 +470,11 @@ impl SessionManager {
             .map_err(|err| err.to_string())
     }
 
-    pub async fn remove_queued_turn(&self, session_id: &str, queued_id: &str) -> Result<(), String> {
+    pub async fn remove_queued_turn(
+        &self,
+        session_id: &str,
+        queued_id: &str,
+    ) -> Result<(), String> {
         let handle = self.agent_handle_ready(session_id).await?;
         handle
             .remove_queued(queued_id)
@@ -561,7 +583,10 @@ impl SessionManager {
             self.ensure_events(store, session_id).await?;
         }
         let handle = self.agent_handle_ready(session_id).await?;
-        handle.permission_menu().await.map_err(|err| err.to_string())
+        handle
+            .permission_menu()
+            .await
+            .map_err(|err| err.to_string())
     }
 
     pub fn set_session_agent(&self, session_id: &str, agent: AgentKind) -> Result<(), String> {
@@ -669,19 +694,16 @@ impl SessionManager {
     ) -> Result<(AgentKind, String, Project), String> {
         if let Some(entry) = self.entries.lock().unwrap().get(session_id) {
             let project = self.resolve_project(store, &entry.meta.project_id)?;
-            return Ok((
-                entry.meta.agent,
-                entry.meta.native_id.clone(),
-                project,
-            ));
+            return Ok((entry.meta.agent, entry.meta.native_id.clone(), project));
         }
         let (agent, native) =
             parse_session_key(session_id).ok_or_else(|| "会话不存在".to_string())?;
         let (active, _) = self.listed().await;
         let (archived, _) = self.listed_archived().await;
-        let found = active.iter().chain(archived.iter()).find(|item| {
-            item.agent == agent && item.entry.native_id == native
-        });
+        let found = active
+            .iter()
+            .chain(archived.iter())
+            .find(|item| item.agent == agent && item.entry.native_id == native);
         let Some(found) = found else {
             return Err("会话不存在".into());
         };
@@ -931,13 +953,44 @@ fn is_conversation_activity(body: &SessionEventBody) -> bool {
             | SessionEventBody::AgentMessage { .. }
             | SessionEventBody::Thinking { .. }
             | SessionEventBody::ToolCall { .. }
-            |         SessionEventBody::Prompt { .. }
+            | SessionEventBody::Prompt { .. }
             | SessionEventBody::PromptResolved { .. }
             | SessionEventBody::PlanSteps { .. }
             | SessionEventBody::PlanText { .. }
             | SessionEventBody::ReviewFindings { .. }
             | SessionEventBody::TurnDiff { .. }
     )
+}
+
+/// 更早的回合插到日志前面。已有事件的 seq 整体上移，避免回退时把它们裁掉。
+fn prepend_bodies(
+    entry: &mut SessionEntry,
+    session_id: &str,
+    bodies: Vec<SessionEventBody>,
+) -> usize {
+    let added = bodies.len();
+    if added == 0 {
+        return 0;
+    }
+    let shift = added as u64;
+    for event in &mut entry.events {
+        event.seq = event.seq.saturating_add(shift);
+    }
+    entry.next_seq = entry.next_seq.saturating_add(shift);
+    let now = now_millis();
+    let mut older = Vec::with_capacity(added);
+    for (index, body) in bodies.into_iter().enumerate() {
+        older.push(SessionEvent {
+            id: new_id(),
+            session_id: session_id.to_string(),
+            seq: index as u64 + 1,
+            ts: now,
+            body,
+        });
+    }
+    older.append(&mut entry.events);
+    entry.events = older;
+    added
 }
 
 fn note_activity(entry: &mut SessionEntry, at: i64) {
@@ -980,7 +1033,7 @@ fn apply_rewind(
                 entry,
                 session_id,
                 SessionEventBody::Error {
-                    message: "Only the most recent message can be edited.".into(),
+                    message: "无法编辑消息".into(),
                 },
                 false,
             )
@@ -995,20 +1048,27 @@ fn truncate_from_turn(entry: &mut SessionEntry, turn_id: &str) -> Option<u64> {
     let anchor = entry.events.iter().rposition(|event| {
         matches!(&event.body, SessionEventBody::TurnAnchor { turn_id: id } if id == turn_id)
     })?;
-    let latest = entry.events.iter().rposition(|event| {
-        matches!(event.body, SessionEventBody::TurnAnchor { .. })
-    })?;
+    let latest = entry
+        .events
+        .iter()
+        .rposition(|event| matches!(event.body, SessionEventBody::TurnAnchor { .. }))?;
     if latest != anchor {
         return None;
     }
     let mut start = anchor;
     while start > 0 {
-        if matches!(entry.events[start].body, SessionEventBody::UserMessage { .. }) {
+        if matches!(
+            entry.events[start].body,
+            SessionEventBody::UserMessage { .. }
+        ) {
             break;
         }
         start -= 1;
     }
-    if !matches!(entry.events[start].body, SessionEventBody::UserMessage { .. }) {
+    if !matches!(
+        entry.events[start].body,
+        SessionEventBody::UserMessage { .. }
+    ) {
         start = anchor;
     }
     let seq = entry.events[start].seq;
@@ -1021,27 +1081,45 @@ fn replace_keyed(
     body: &SessionEventBody,
     record_activity: bool,
 ) -> Option<SessionEvent> {
-    let existing = entry.events.iter_mut().rev().find(|event| match (&event.body, body) {
-        (
-            SessionEventBody::TurnDiff { turn_id: existing, .. },
-            SessionEventBody::TurnDiff { turn_id, .. },
-        ) => existing == turn_id,
-        (
-            SessionEventBody::PlanSteps { turn_id: existing, .. },
-            SessionEventBody::PlanSteps { turn_id, .. },
-        ) => existing == turn_id,
-        (
-            SessionEventBody::PlanText {
-                stream_id: Some(existing),
-                ..
-            },
-            SessionEventBody::PlanText {
-                stream_id: Some(stream_id),
-                ..
-            },
-        ) => existing == stream_id,
-        _ => false,
-    })?;
+    let existing = entry
+        .events
+        .iter_mut()
+        .rev()
+        .find(|event| match (&event.body, body) {
+            (
+                SessionEventBody::TurnDiff {
+                    turn_id: existing, ..
+                },
+                SessionEventBody::TurnDiff { turn_id, .. },
+            ) => existing == turn_id,
+            (
+                SessionEventBody::PlanSteps {
+                    turn_id: existing, ..
+                },
+                SessionEventBody::PlanSteps { turn_id, .. },
+            ) => existing == turn_id,
+            (
+                SessionEventBody::PlanText {
+                    stream_id: Some(existing),
+                    ..
+                },
+                SessionEventBody::PlanText {
+                    stream_id: Some(stream_id),
+                    ..
+                },
+            ) => existing == stream_id,
+            (
+                SessionEventBody::ToolCall {
+                    stream_id: Some(existing),
+                    ..
+                },
+                SessionEventBody::ToolCall {
+                    stream_id: Some(stream_id),
+                    ..
+                },
+            ) => existing == stream_id,
+            _ => false,
+        })?;
     existing.body = body.clone();
     let at = now_millis();
     existing.ts = at;
@@ -1073,17 +1151,21 @@ fn replace_stream(
         } => (text, stream_id, true, None),
         _ => return None,
     };
-    let existing = entry.events.iter_mut().rev().find(|event| match &event.body {
-        SessionEventBody::AgentMessage {
-            stream_id: Some(id),
-            ..
-        } if !thinking => id == stream_id,
-        SessionEventBody::Thinking {
-            stream_id: Some(id),
-            ..
-        } if thinking => id == stream_id,
-        _ => false,
-    })?;
+    let existing = entry
+        .events
+        .iter_mut()
+        .rev()
+        .find(|event| match &event.body {
+            SessionEventBody::AgentMessage {
+                stream_id: Some(id),
+                ..
+            } if !thinking => id == stream_id,
+            SessionEventBody::Thinking {
+                stream_id: Some(id),
+                ..
+            } if thinking => id == stream_id,
+            _ => false,
+        })?;
     match &mut existing.body {
         SessionEventBody::AgentMessage {
             text: slot,
@@ -1204,7 +1286,10 @@ mod tests {
         assert_eq!(session.meta.updated_at, activity);
         assert_eq!(session.meta.title, "概括当前项目");
         assert_eq!(sidebar_updated_at(1_000, session.activity_at), activity);
-        assert_eq!(sidebar_updated_at(activity + 50, session.activity_at), activity + 50);
+        assert_eq!(
+            sidebar_updated_at(activity + 50, session.activity_at),
+            activity + 50
+        );
     }
 
     #[test]
@@ -1302,19 +1387,47 @@ mod tests {
     fn revert_keeps_earlier_turns_and_refuses_an_older_one() {
         let mut session = entry(1_000);
         session.events = vec![
-            stamped(1, SessionEventBody::UserMessage { text: "keep".into(), images: Vec::new() }),
-            stamped(2, SessionEventBody::TurnAnchor { turn_id: "old".into() }),
-            stamped(3, SessionEventBody::AgentMessage {
-                text: "old".into(),
-                stream_id: None,
-                phase: None,
-            }),
-            stamped(4, SessionEventBody::UserMessage { text: "drop".into(), images: Vec::new() }),
-            stamped(5, SessionEventBody::TurnAnchor { turn_id: "new".into() }),
-            stamped(6, SessionEventBody::TurnDiff {
-                turn_id: "new".into(),
-                diff: "diff --git a/a b/a\n".into(),
-            }),
+            stamped(
+                1,
+                SessionEventBody::UserMessage {
+                    text: "keep".into(),
+                    images: Vec::new(),
+                },
+            ),
+            stamped(
+                2,
+                SessionEventBody::TurnAnchor {
+                    turn_id: "old".into(),
+                },
+            ),
+            stamped(
+                3,
+                SessionEventBody::AgentMessage {
+                    text: "old".into(),
+                    stream_id: None,
+                    phase: None,
+                },
+            ),
+            stamped(
+                4,
+                SessionEventBody::UserMessage {
+                    text: "drop".into(),
+                    images: Vec::new(),
+                },
+            ),
+            stamped(
+                5,
+                SessionEventBody::TurnAnchor {
+                    turn_id: "new".into(),
+                },
+            ),
+            stamped(
+                6,
+                SessionEventBody::TurnDiff {
+                    turn_id: "new".into(),
+                    diff: "diff --git a/a b/a\n".into(),
+                },
+            ),
         ];
         assert!(truncate_from_turn(&mut session, "old").is_none());
         assert_eq!(session.events.len(), 6);
@@ -1324,5 +1437,94 @@ mod tests {
             session.events.last().unwrap().body,
             SessionEventBody::AgentMessage { .. }
         ));
+    }
+
+    #[test]
+    fn older_history_is_prepended_and_survives_rewind() {
+        let mut session = entry(1_000);
+        session.events = vec![
+            stamped(
+                1,
+                SessionEventBody::UserMessage {
+                    text: "new".into(),
+                    images: Vec::new(),
+                },
+            ),
+            stamped(
+                2,
+                SessionEventBody::TurnAnchor {
+                    turn_id: "new".into(),
+                },
+            ),
+        ];
+        session.next_seq = 3;
+        session.activity_at = Some(1_000);
+        let added = prepend_bodies(
+            &mut session,
+            "codex-cli:thread",
+            vec![
+                SessionEventBody::UserMessage {
+                    text: "old".into(),
+                    images: Vec::new(),
+                },
+                SessionEventBody::ToolCall {
+                    name: "command".into(),
+                    summary: "echo hi".into(),
+                    detail: "hi".into(),
+                    stream_id: None,
+                    images: Vec::new(),
+                },
+            ],
+        );
+        assert_eq!(added, 2);
+        assert_eq!(session.events[0].seq, 1);
+        assert_eq!(session.events[1].seq, 2);
+        assert_eq!(session.events[2].seq, 3);
+        assert_eq!(session.events[3].seq, 4);
+        assert_eq!(session.next_seq, 5);
+        assert_eq!(session.activity_at, Some(1_000));
+        assert_eq!(session.meta.updated_at, 1_000);
+        assert_eq!(truncate_from_turn(&mut session, "new"), Some(3));
+        assert_eq!(session.events.len(), 2);
+        assert!(matches!(
+            &session.events[1].body,
+            SessionEventBody::ToolCall { detail, .. } if detail == "hi"
+        ));
+    }
+
+    #[test]
+    fn streamed_tool_output_replaces_the_same_card() {
+        let mut session = entry(1_000);
+        mutate_entry(
+            &mut session,
+            "codex-cli:thread",
+            SessionEventBody::ToolCall {
+                name: "command".into(),
+                summary: "echo".into(),
+                detail: String::new(),
+                stream_id: Some("cmd".into()),
+                images: Vec::new(),
+            },
+            false,
+        );
+        assert!(replace_stream(
+            &mut session,
+            &SessionEventBody::ToolCall {
+                name: "command".into(),
+                summary: "echo → completed".into(),
+                detail: "hello".into(),
+                stream_id: Some("cmd".into()),
+                images: Vec::new(),
+            },
+            false,
+        )
+        .is_some());
+        assert_eq!(session.events.len(), 1);
+        assert!(matches!(
+            &session.events[0].body,
+            SessionEventBody::ToolCall { detail, summary, .. }
+                if detail == "hello" && summary == "echo → completed"
+        ));
+        assert_eq!(session.activity_at, None);
     }
 }

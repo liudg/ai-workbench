@@ -16,10 +16,13 @@ fn opens_turn(method: Option<&str>) -> bool {
     matches!(method, Some("turn/start" | "review/start"))
 }
 
-use super::process::truncate;
-use super::prompts::{approval_question, error_text, parse_tool_questions, rpc_error_text};
-use super::resume::reasoning_text;
-use super::state::{emit, emit_status, Pending, Shared, StreamBuf};
+use super::prompts::{
+    approval_question, error_text, parse_elicitation, parse_tool_questions, rpc_error_text,
+};
+use super::resume::{
+    change_paths, format_changes, reasoning_text, tool_event, tool_view, tool_visible,
+};
+use super::state::{emit, emit_status, ActivityBuf, Pending, Shared, StreamBuf};
 
 impl Shared {
     pub(super) fn stop(&self) {
@@ -141,10 +144,7 @@ impl Shared {
                         }
                     } else if opens_turn(method.as_deref()) {
                         self.turn_open.store(false, Ordering::SeqCst);
-                        emit(
-                            &self.events,
-                            SessionEventBody::Error { message: text },
-                        );
+                        emit(&self.events, SessionEventBody::Error { message: text });
                         emit_status(&self.events, SessionStatus::Failed);
                     } else {
                         let label = method.unwrap_or_else(|| "请求".into());
@@ -215,10 +215,39 @@ impl Shared {
                         prompt_kind: PromptKind::Approval,
                         question,
                         options: vec![
-                            PromptOption { id: "approve".into(), label: "允许".into(), description: String::new() },
-                            PromptOption { id: "reject".into(), label: "拒绝".into(), description: String::new() },
+                            PromptOption {
+                                id: "approve".into(),
+                                label: "允许".into(),
+                                description: String::new(),
+                            },
+                            PromptOption {
+                                id: "reject".into(),
+                                label: "拒绝".into(),
+                                description: String::new(),
+                            },
                         ],
                         questions: Vec::new(),
+                    },
+                );
+                emit_status(&self.events, SessionStatus::NeedsInput);
+            }
+            "elicitation/request" | "mcpServer/elicitation/request" => {
+                let (question, questions) = parse_elicitation(&params);
+                self.pending.lock().unwrap().insert(
+                    prompt_id.clone(),
+                    Pending::Elicitation {
+                        rpc_id: id,
+                        questions: questions.clone(),
+                    },
+                );
+                emit(
+                    &self.events,
+                    SessionEventBody::Prompt {
+                        prompt_id,
+                        prompt_kind: PromptKind::Elicitation,
+                        question,
+                        options: Vec::new(),
+                        questions,
                     },
                 );
                 emit_status(&self.events, SessionStatus::NeedsInput);
@@ -270,10 +299,7 @@ impl Shared {
                     let id = id.to_string();
                     *self.turn_id.lock().unwrap() = Some(id.clone());
                     *self.latest_turn_id.lock().unwrap() = Some(id.clone());
-                    emit(
-                        &self.events,
-                        SessionEventBody::TurnAnchor { turn_id: id },
-                    );
+                    emit(&self.events, SessionEventBody::TurnAnchor { turn_id: id });
                 }
                 emit_status(&self.events, SessionStatus::Running);
             }
@@ -331,8 +357,14 @@ impl Shared {
                 let delta = params.get("delta").and_then(Value::as_str).unwrap_or("");
                 self.push_stream(item_id, delta, false);
             }
+            "item/commandExecution/outputDelta" | "item/fileChange/outputDelta" => {
+                self.append_activity_delta(params, method.contains("fileChange"));
+            }
+            "item/fileChange/patchUpdated" => self.replace_patch(params),
             "item/started" | "item/completed" => {
-                let Some(item) = params.get("item") else { return };
+                let Some(item) = params.get("item") else {
+                    return;
+                };
                 self.handle_item(method == "item/completed", item);
             }
             "error" => {
@@ -363,6 +395,10 @@ impl Shared {
     }
 
     pub(super) fn handle_item(&self, completed: bool, item: &Value) {
+        if tool_view(item).is_some() {
+            self.upsert_tool(completed, item);
+            return;
+        }
         let kind = item.get("type").and_then(Value::as_str).unwrap_or("");
         let id = item.get("id").and_then(Value::as_str).unwrap_or("");
         match kind {
@@ -434,84 +470,7 @@ impl Shared {
                     }
                 }
             }
-            "commandExecution" => {
-                let command = item.get("command").and_then(Value::as_str).unwrap_or("");
-                if !completed {
-                    emit(
-                        &self.events,
-                        SessionEventBody::ToolCall {
-                            name: "command".into(),
-                            summary: truncate(command, 180),
-                        },
-                    );
-                    return;
-                }
-                let status = item.get("status").and_then(Value::as_str).unwrap_or("");
-                let exit = item
-                    .get("exitCode")
-                    .and_then(Value::as_i64)
-                    .map(|code| format!("，退出码 {code}"))
-                    .unwrap_or_default();
-                let output = item
-                    .get("aggregatedOutput")
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .trim();
-                let mut summary = format!("{command} → {status}{exit}");
-                if !output.is_empty() {
-                    summary.push('\n');
-                    summary.push_str(&truncate(output, 240));
-                }
-                emit(
-                    &self.events,
-                    SessionEventBody::ToolCall {
-                        name: "command".into(),
-                        summary,
-                    },
-                );
-            }
-            "fileChange" if completed => {
-                let changes = item
-                    .get("changes")
-                    .and_then(Value::as_array)
-                    .map(|list| {
-                        list.iter()
-                            .filter_map(|change| change.get("path").and_then(Value::as_str))
-                            .collect::<Vec<_>>()
-                            .join("、")
-                    })
-                    .unwrap_or_default();
-                let status = item.get("status").and_then(Value::as_str).unwrap_or("");
-                emit(
-                    &self.events,
-                    SessionEventBody::ToolCall {
-                        name: "apply_patch".into(),
-                        summary: format!("{status} {changes}").trim().to_string(),
-                    },
-                );
-            }
-            "mcpToolCall" if !completed => {
-                let tool = item.get("tool").and_then(Value::as_str).unwrap_or("mcp");
-                let server = item.get("server").and_then(Value::as_str).unwrap_or("");
-                emit(
-                    &self.events,
-                    SessionEventBody::ToolCall {
-                        name: tool.to_string(),
-                        summary: format!("MCP {server}"),
-                    },
-                );
-            }
             "userMessage" if completed => self.note_user_item(item),
-            "webSearch" if !completed => {
-                let query = item.get("query").and_then(Value::as_str).unwrap_or("");
-                emit(
-                    &self.events,
-                    SessionEventBody::ToolCall {
-                        name: "web_search".into(),
-                        summary: query.to_string(),
-                    },
-                );
-            }
             "plan" if completed => {
                 let text = item.get("text").and_then(Value::as_str).unwrap_or("");
                 if !text.is_empty() {
@@ -552,10 +511,12 @@ impl Shared {
 
     pub(super) fn push_stream(&self, item_id: &str, piece: &str, replace: bool) {
         let mut streams = self.streams.lock().unwrap();
-        let buf = streams.entry(item_id.to_string()).or_insert_with(|| StreamBuf {
-            text: String::new(),
-            last_emit: Instant::now() - Duration::from_secs(1),
-        });
+        let buf = streams
+            .entry(item_id.to_string())
+            .or_insert_with(|| StreamBuf {
+                text: String::new(),
+                last_emit: Instant::now() - Duration::from_secs(1),
+            });
         if replace {
             buf.text = piece.to_string();
         } else {
@@ -616,4 +577,139 @@ impl Shared {
             },
         );
     }
+
+    fn upsert_tool(&self, completed: bool, item: &Value) {
+        let Some(mut view) = tool_view(item) else {
+            return;
+        };
+        let id = item.get("id").and_then(Value::as_str).unwrap_or("");
+        if id.is_empty() {
+            if completed && tool_visible(&view) {
+                emit(&self.events, tool_event(view, None));
+            }
+            return;
+        }
+        let mut activity = self.activity.lock().unwrap();
+        let buf = activity
+            .entry(id.to_string())
+            .or_insert_with(|| ActivityBuf {
+                name: String::new(),
+                summary: String::new(),
+                detail: String::new(),
+                images: Vec::new(),
+                last_emit: Instant::now() - Duration::from_secs(1),
+            });
+        if !view.name.is_empty() {
+            buf.name = view.name.clone();
+        }
+        if view.summary.trim().chars().count() >= buf.summary.trim().chars().count() {
+            buf.summary = std::mem::take(&mut view.summary);
+        }
+        if completed {
+            if view.detail.chars().count() >= buf.detail.chars().count() {
+                buf.detail = std::mem::take(&mut view.detail);
+            }
+        } else if buf.detail.is_empty() {
+            buf.detail = std::mem::take(&mut view.detail);
+        }
+        if !view.images.is_empty() {
+            buf.images = std::mem::take(&mut view.images);
+        }
+        let body = activity_event(id, buf);
+        let visible = match &body {
+            SessionEventBody::ToolCall {
+                summary,
+                detail,
+                images,
+                ..
+            } => !summary.trim().is_empty() || !detail.trim().is_empty() || !images.is_empty(),
+            _ => false,
+        };
+        buf.last_emit = Instant::now();
+        drop(activity);
+        if visible {
+            emit(&self.events, body);
+        }
+    }
+
+    fn append_activity_delta(&self, params: &Value, file: bool) {
+        let Some(item_id) = params.get("itemId").and_then(Value::as_str) else {
+            return;
+        };
+        let delta = params.get("delta").and_then(Value::as_str).unwrap_or("");
+        if delta.is_empty() {
+            return;
+        }
+        let mut activity = self.activity.lock().unwrap();
+        let buf = activity
+            .entry(item_id.to_string())
+            .or_insert_with(|| ActivityBuf {
+                name: if file {
+                    "apply_patch".into()
+                } else {
+                    "command".into()
+                },
+                summary: String::new(),
+                detail: String::new(),
+                images: Vec::new(),
+                last_emit: Instant::now() - Duration::from_secs(1),
+            });
+        buf.detail.push_str(delta);
+        if buf.detail.chars().count() > 20_000 {
+            let capped = super::resume::take_chars(&buf.detail, 20_000);
+            buf.detail = capped;
+        }
+        let due = buf.last_emit.elapsed() >= Duration::from_millis(80);
+        if !due {
+            return;
+        }
+        buf.last_emit = Instant::now();
+        let body = activity_event(item_id, buf);
+        drop(activity);
+        emit(&self.events, body);
+    }
+
+    fn replace_patch(&self, params: &Value) {
+        let Some(item_id) = params.get("itemId").and_then(Value::as_str) else {
+            return;
+        };
+        let changes = params.get("changes").cloned().unwrap_or(Value::Null);
+        let detail = format_changes(&changes);
+        let paths = change_paths(&changes);
+        let mut activity = self.activity.lock().unwrap();
+        let buf = activity
+            .entry(item_id.to_string())
+            .or_insert_with(|| ActivityBuf {
+                name: "apply_patch".into(),
+                summary: String::new(),
+                detail: String::new(),
+                images: Vec::new(),
+                last_emit: Instant::now() - Duration::from_secs(1),
+            });
+        buf.name = "apply_patch".into();
+        if !paths.is_empty() {
+            buf.summary = paths;
+        }
+        buf.detail = detail;
+        buf.last_emit = Instant::now();
+        let body = activity_event(item_id, buf);
+        drop(activity);
+        emit(&self.events, body);
+    }
+}
+
+fn activity_event(item_id: &str, buf: &ActivityBuf) -> SessionEventBody {
+    tool_event(
+        super::resume::ToolView {
+            name: if buf.name.is_empty() {
+                "command".into()
+            } else {
+                buf.name.clone()
+            },
+            summary: buf.summary.clone(),
+            detail: buf.detail.clone(),
+            images: buf.images.clone(),
+        },
+        Some(item_id.to_string()),
+    )
 }

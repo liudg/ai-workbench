@@ -122,7 +122,7 @@ pnpm dev            # 打开 http://localhost:4573
 
 `SessionContext` 只保留通用字段：工作目录、权限档位、要恢复的 native id，以及 `options`。Codex 从 `options.persist` 决定新线程是否写入官方 resume 列表；行协议留在 `agents/codex/`。
 
-适配器声明能力：`supports_slash`、`supports_resume`、`supports_questions`、`supports_tuning`、`supports_skills`、`supports_plan`、`supports_review`、`supports_turn_diff`、`supports_revert`。前端作曲栏和斜杠菜单读 `agent_profiles`，不比较 `agent === "codex-cli"`。提问卡片仍由 `SessionEventBody::Prompt` 驱动，任何发出 Questions / Approval / Choice / FreeText 的 Agent 都走同一套 UI。斜杠命令表在 Codex 的 profile 里，不在前端放一张全局表。
+适配器声明能力：`supports_slash`、`supports_resume`、`supports_questions`、`supports_tuning`、`supports_skills`、`supports_plan`、`supports_review`、`supports_turn_diff`、`supports_revert`、`supports_paged_history`。前端作曲栏和斜杠菜单读 `agent_profiles`，不比较 `agent === "codex-cli"`。提问卡片仍由 `SessionEventBody::Prompt` 驱动，任何发出 Questions / Approval / Choice / FreeText / Elicitation 的 Agent 都走同一套 UI。斜杠命令表在 Codex 的 profile 里，不在前端放一张全局表。
 
 Codex 实现拆在 `agents/codex/`：`mod.rs` 只编排，`rpc` / `prompts` / `catalog` / `process` / `resume` 各管一块。
 

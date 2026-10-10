@@ -248,6 +248,15 @@ pub async fn stop_session(
     manager.stop_session(&session_id).await
 }
 
+/// 上滚再取一页更早的回合，并返回替换后的整段日志。
+#[tauri::command]
+pub async fn load_older_history(
+    manager: State<'_, SessionManager>,
+    session_id: String,
+) -> Result<crate::models::OlderHistory, String> {
+    manager.load_older_history(&session_id).await
+}
+
 /// 拉取会话完整事件日志（切换会话 / 重连时恢复时间线）。
 #[tauri::command]
 pub async fn get_session_events(

@@ -44,7 +44,7 @@ test("unified diff counts files and lines without a horizontal scroller", () => 
     "+}",
   ].join("\n");
   assert.deepEqual(diffStats(diff), { files: 1, added: 2, removed: 1 });
-  assert.equal(diffSummary(diff), "1 file changed  +2  −1");
+  assert.equal(diffSummary(diff), "1 个文件已更改  +2  −1");
 });
 
 test("hides the agent message that repeats the review text", () => {

@@ -9,20 +9,19 @@ use tokio::process::Command;
 use crate::encoding::decode_child_bytes;
 use crate::features::agents::AgentError;
 use crate::models::{
-    PlanStep, PromptKind, PromptOption, ReviewFinding, ReviewStart, ReviewTargets, SessionEventBody,
-    SessionStatus,
+    PlanStep, PromptKind, PromptOption, ReviewFinding, ReviewStart, ReviewTargets,
+    SessionEventBody, SessionStatus,
 };
 
 use super::process::hide_console;
 use super::state::{emit, emit_status, Collaboration, Pending, Shared};
 
-pub(super) const REVIEW_DESCRIPTION: &str =
-    "Review uncommitted changes or compare against a branch";
-pub(super) const IMPLEMENT_PROMPT: &str = "Implement this plan?";
-pub(super) const IMPLEMENT_OPTION: &str = "Yes, implement this plan";
+pub(super) const REVIEW_DESCRIPTION: &str = "审查未提交的更改，或与某个分支进行比较";
+pub(super) const IMPLEMENT_PROMPT: &str = "实施此计划？";
+pub(super) const IMPLEMENT_OPTION: &str = "是，实施此计划";
 pub(super) const IMPLEMENT_ID: &str = "implement";
-pub(super) const EDIT_LATEST_ONLY: &str = "Only the most recent message can be edited.";
-pub(super) const EDIT_WHILE_RUNNING: &str = "Cannot edit a message while a turn is in progress.";
+pub(super) const EDIT_LATEST_ONLY: &str = "无法编辑消息";
+pub(super) const EDIT_WHILE_RUNNING: &str = "无法编辑消息";
 
 pub(super) fn review_protocol(target: &ReviewStart) -> Value {
     match target {
@@ -51,9 +50,7 @@ pub(super) fn parse_review_slash(rest: &str) -> Result<Option<ReviewStart>, Agen
         "uncommitted" | "unstaged" => Ok(Some(ReviewStart::Uncommitted)),
         "base" | "branch" => {
             if tail.is_empty() {
-                Err(AgentError::Runtime(
-                    "用法：/review base <branch>".into(),
-                ))
+                Err(AgentError::Runtime("用法：/review base <branch>".into()))
             } else {
                 Ok(Some(ReviewStart::Base {
                     branch: tail.to_string(),
@@ -73,7 +70,8 @@ pub(super) fn parse_review_slash(rest: &str) -> Result<Option<ReviewStart>, Agen
             }
         }
         _ => Err(AgentError::Runtime(
-            "用法：/review、/review uncommitted、/review base <branch>、/review commit <sha>".into(),
+            "用法：/review、/review uncommitted、/review base <branch>、/review commit <sha>"
+                .into(),
         )),
     }
 }
@@ -162,7 +160,11 @@ pub(super) fn plan_collaboration_mode(model: &str, effort: Option<&str>) -> Valu
 }
 
 pub(super) fn plan_steps_event(params: &Value) -> Option<SessionEventBody> {
-    let turn_id = params.get("turnId").and_then(Value::as_str).unwrap_or("").trim();
+    let turn_id = params
+        .get("turnId")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
     if turn_id.is_empty() {
         return None;
     }
@@ -298,9 +300,7 @@ impl Shared {
         }
         let model = self.model.lock().unwrap().clone();
         if model.trim().is_empty() {
-            Err(AgentError::Runtime(
-                "Plan mode 需要当前线程的模型。".into(),
-            ))
+            Err(AgentError::Runtime("计划模式需要当前线程的模型。".into()))
         } else {
             Ok(model)
         }
@@ -456,9 +456,7 @@ impl Shared {
         answer: &crate::models::PromptAnswer,
     ) -> Result<(), AgentError> {
         let crate::models::PromptAnswer::Single { value } = answer else {
-            return Err(AgentError::Runtime(
-                "请选择实现计划，或输入其他回复".into(),
-            ));
+            return Err(AgentError::Runtime("请选择实现计划，或输入其他回复".into()));
         };
         let value = value.trim();
         if value.is_empty() {
@@ -505,19 +503,13 @@ mod tests {
             review_protocol(&base),
             json!({ "type": "baseBranch", "branch": "main" })
         );
-        assert_eq!(
-            ReviewStart::Uncommitted.label(),
-            "Review uncommitted changes"
-        );
-        assert_eq!(base.label(), "Review against a base branch: main");
+        assert_eq!(ReviewStart::Uncommitted.label(), "审查未提交的更改");
+        assert_eq!(base.label(), "对照基础分支审查: main");
         let commit = parse_review_slash("commit abcdef1 Fix the parser")
             .unwrap()
             .unwrap();
-        assert!(commit.label().starts_with("Review a commit"));
-        assert_eq!(
-            review_protocol(&commit)["type"],
-            json!("commit")
-        );
+        assert!(commit.label().starts_with("提交"));
+        assert_eq!(review_protocol(&commit)["type"], json!("commit"));
         assert_eq!(review_protocol(&commit)["sha"], json!("abcdef1"));
         assert_eq!(review_protocol(&commit)["title"], json!("Fix the parser"));
         assert!(parse_review_slash("please look").is_err());
@@ -558,9 +550,7 @@ mod tests {
         assert_eq!(stored, raw);
         let fallback = parse_review_output("Reviewer failed to output a response.");
         let SessionEventBody::ReviewFindings {
-            summary,
-            findings,
-            ..
+            summary, findings, ..
         } = fallback
         else {
             panic!("fallback");

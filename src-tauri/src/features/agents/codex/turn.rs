@@ -5,17 +5,22 @@ use std::sync::atomic::Ordering;
 use serde_json::{json, Value};
 use tokio::process::Command;
 
-use crate::features::agents::AgentError;
 use crate::encoding::{apply_utf8_env, decode_child_bytes};
+use crate::features::agents::AgentError;
 use crate::models::{
     PromptKind, PromptOption, SessionEventBody, SessionStatus, OCCUPIED_SESSION_NOTICE,
 };
 
 use super::catalog::{build_turn_input, slash_help, split_command};
 use super::process::{hide_console, truncate};
-use super::resume::{bodies_from_turns, chronological_turns, HISTORY_PAGE_CAP, HISTORY_TURN_LIMIT};
+use super::resume::{bodies_from_turns, chronological_turns, HISTORY_TURN_LIMIT};
 use super::sandbox::merge_json;
 use super::state::{emit, emit_status, Pending, Shared};
+
+struct HistoryPage {
+    data: Vec<Value>,
+    next: Option<String>,
+}
 
 impl Shared {
     pub(super) fn ensure_open(&self) -> Result<(), AgentError> {
@@ -162,55 +167,73 @@ impl Shared {
     }
 
     pub(super) async fn load_history(&self, thread_id: &str) {
-        let mut cursor: Option<String> = None;
-        let mut pages = Vec::new();
-        let mut older = false;
-        for _ in 0..HISTORY_PAGE_CAP {
-            let mut params = json!({
-                "threadId": thread_id,
-                "limit": HISTORY_TURN_LIMIT,
-                "itemsView": "summary",
-                "sortDirection": "desc",
-            });
-            if let Some(cursor) = &cursor {
-                params["cursor"] = json!(cursor);
+        *self.history_cursor.lock().unwrap() = None;
+        match self.fetch_history_page(thread_id, None).await {
+            Ok(page) => {
+                *self.history_cursor.lock().unwrap() = page.next;
+                let turns = chronological_turns(std::slice::from_ref(&page.data));
+                for body in bodies_from_turns(&turns) {
+                    emit(&self.events, body);
+                }
             }
-            let Ok(page) = self.request("thread/turns/list", params).await else {
-                break;
-            };
-            let data = page
-                .get("data")
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default();
-            pages.push(data);
-            let next = page
-                .get("nextCursor")
-                .and_then(Value::as_str)
-                .filter(|cursor| !cursor.is_empty())
-                .map(str::to_string);
-            if next.is_none() {
-                break;
+            Err(err) => {
+                emit(
+                    &self.events,
+                    SessionEventBody::System {
+                        text: format!("读取 Codex 历史失败：{err}"),
+                    },
+                );
             }
-            if pages.len() == HISTORY_PAGE_CAP {
-                older = true;
-                break;
-            }
-            cursor = next;
-        }
-        if older {
-            emit(
-                &self.events,
-                SessionEventBody::System {
-                    text: "更早的 Codex 记录没有全部载入。".into(),
-                },
-            );
-        }
-        let turns = chronological_turns(&pages);
-        for body in bodies_from_turns(&turns) {
-            emit(&self.events, body);
         }
         self.refresh_queue().await;
+    }
+
+    /// 上滚再取一页更早的回合。游标空表示已经到头。
+    pub(super) async fn load_older_history(
+        &self,
+    ) -> Result<(Vec<SessionEventBody>, bool), AgentError> {
+        self.ensure_open()?;
+        let thread_id = self.thread_id.lock().unwrap().clone().unwrap_or_default();
+        if thread_id.is_empty() {
+            return Ok((Vec::new(), true));
+        }
+        let cursor = self.history_cursor.lock().unwrap().clone();
+        let Some(cursor) = cursor else {
+            return Ok((Vec::new(), true));
+        };
+        let page = self.fetch_history_page(&thread_id, Some(cursor)).await?;
+        let exhausted = page.next.is_none();
+        *self.history_cursor.lock().unwrap() = page.next;
+        let turns = chronological_turns(std::slice::from_ref(&page.data));
+        Ok((bodies_from_turns(&turns), exhausted))
+    }
+
+    async fn fetch_history_page(
+        &self,
+        thread_id: &str,
+        cursor: Option<String>,
+    ) -> Result<HistoryPage, AgentError> {
+        let mut params = json!({
+            "threadId": thread_id,
+            "limit": HISTORY_TURN_LIMIT,
+            "itemsView": "full",
+            "sortDirection": "desc",
+        });
+        if let Some(cursor) = cursor {
+            params["cursor"] = json!(cursor);
+        }
+        let page = self.request("thread/turns/list", params).await?;
+        let data = page
+            .get("data")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let next = page
+            .get("nextCursor")
+            .and_then(Value::as_str)
+            .filter(|cursor| !cursor.is_empty())
+            .map(str::to_string);
+        Ok(HistoryPage { data, next })
     }
 
     pub(super) async fn ensure_thread(&self) -> Result<(), AgentError> {
@@ -292,7 +315,11 @@ impl Shared {
             "model" => {
                 if rest.is_empty() {
                     let model = self.model.lock().unwrap().clone();
-                    let shown = if model.is_empty() { "（线程尚未启动）" } else { &model };
+                    let shown = if model.is_empty() {
+                        "（线程尚未启动）"
+                    } else {
+                        &model
+                    };
                     emit(
                         &self.events,
                         SessionEventBody::System {
@@ -420,7 +447,11 @@ impl Shared {
             .unwrap_or_else(|| "（尚未开始）".into());
         let version = self.version.lock().unwrap().clone();
         let network = if access.uses_sandbox_network() {
-            if access.network_access { "开" } else { "关" }
+            if access.network_access {
+                "开"
+            } else {
+                "关"
+            }
         } else {
             "不适用"
         };
@@ -445,7 +476,11 @@ impl Shared {
             SessionEventBody::System {
                 text: format!(
                     "Codex {version}\n模型：{}\n线程：{thread}\n目录：{}\n权限：{permission}",
-                    if model.is_empty() { "（尚未开始）" } else { &model },
+                    if model.is_empty() {
+                        "（尚未开始）"
+                    } else {
+                        &model
+                    },
                     self.cwd,
                 ),
             },
@@ -552,7 +587,9 @@ impl Shared {
                     created.path
                 )
             }
-            _ => "用法：/worktree 查看，/worktree new 在工作树根目录新建一个 detached HEAD。".into(),
+            _ => {
+                "用法：/worktree 查看，/worktree new 在工作树根目录新建一个 detached HEAD。".into()
+            }
         };
         emit(&self.events, SessionEventBody::System { text });
         Ok(())
@@ -594,14 +631,25 @@ impl Shared {
         };
         emit(&self.events, SessionEventBody::System { text });
     }
-
 }
 
 fn access_prompt_options(approve_for_me: bool) -> Vec<PromptOption> {
     let mut options = vec![
-        PromptOption { id: "full".into(), label: "完全访问".into(), description: String::new() },
-        PromptOption { id: "ask".into(), label: "询问批准".into(), description: String::new() },
-        PromptOption { id: "read-only".into(), label: "只读".into(), description: String::new() },
+        PromptOption {
+            id: "full".into(),
+            label: "完全访问".into(),
+            description: String::new(),
+        },
+        PromptOption {
+            id: "ask".into(),
+            label: "询问批准".into(),
+            description: String::new(),
+        },
+        PromptOption {
+            id: "read-only".into(),
+            label: "只读".into(),
+            description: String::new(),
+        },
     ];
     if approve_for_me {
         options.insert(
@@ -620,7 +668,10 @@ fn access_prompt_options(approve_for_me: bool) -> Vec<PromptOption> {
 enum GoalAction {
     View,
     Clear,
-    Set { objective: String, status: &'static str },
+    Set {
+        objective: String,
+        status: &'static str,
+    },
 }
 
 fn goal_action(rest: &str) -> Result<GoalAction, AgentError> {
@@ -680,11 +731,11 @@ fn render_goal(goal: Option<&Value>) -> String {
         return "当前没有任务目标。用法：/goal <目标>，/goal edit <新目标>，/goal pause，/goal resume，/goal clear。".into();
     };
     let objective = goal.get("objective").and_then(Value::as_str).unwrap_or("");
-    let status = goal.get("status").and_then(Value::as_str).unwrap_or("active");
-    format!(
-        "任务目标（{}）：{objective}",
-        goal_status_label(status)
-    )
+    let status = goal
+        .get("status")
+        .and_then(Value::as_str)
+        .unwrap_or("active");
+    format!("任务目标（{}）：{objective}", goal_status_label(status))
 }
 
 fn goal_status_label(status: &str) -> &'static str {
@@ -707,7 +758,10 @@ mod goal_tests {
     fn goal_commands_match_desktop_slash() {
         assert!(matches!(goal_action("").unwrap(), GoalAction::View));
         assert!(matches!(goal_action("clear").unwrap(), GoalAction::Clear));
-        assert!(matches!(goal_action("edit").unwrap_err(), AgentError::Runtime(_)));
+        assert!(matches!(
+            goal_action("edit").unwrap_err(),
+            AgentError::Runtime(_)
+        ));
         match goal_action("edit 把测试补上").unwrap() {
             GoalAction::Set { objective, status } => {
                 assert_eq!(objective, "把测试补上");

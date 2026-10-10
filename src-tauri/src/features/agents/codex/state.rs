@@ -76,18 +76,39 @@ impl Collaboration {
 
 #[derive(Clone)]
 pub(super) enum Pending {
-    Approval { rpc_id: u64 },
+    Approval {
+        rpc_id: u64,
+    },
     /// 阻塞式 requestUserInput：答案写回 JSON-RPC 响应
-    UserInput { rpc_id: u64, questions: Vec<PromptQuestion> },
+    UserInput {
+        rpc_id: u64,
+        questions: Vec<PromptQuestion>,
+    },
     /// async 提问（agentMessage delivery=async）：答案经 turn/steer 写回
-    AsyncQuestions { questions: Vec<PromptQuestion> },
+    AsyncQuestions {
+        questions: Vec<PromptQuestion>,
+    },
     Access,
-    /// 计划完成后的 “Implement this plan?”。
+    /// 计划完成后的 “实施此计划？”。
     ImplementPlan,
+    /// MCP elicitation。答案写回 JSON-RPC，action 为 accept / decline / cancel。
+    Elicitation {
+        rpc_id: u64,
+        questions: Vec<PromptQuestion>,
+    },
 }
 
 pub(super) struct StreamBuf {
     pub(super) text: String,
+    pub(super) last_emit: Instant,
+}
+
+/// 同一条命令、补丁或 MCP 调用的流式正文。
+pub(super) struct ActivityBuf {
+    pub(super) name: String,
+    pub(super) summary: String,
+    pub(super) detail: String,
+    pub(super) images: Vec<String>,
     pub(super) last_emit: Instant,
 }
 
@@ -139,6 +160,10 @@ pub(super) struct Shared {
     pub(super) plan_ready: AtomicBool,
     /// 退出审查时的原文，用来丢掉紧随其后的重复 agentMessage。
     pub(super) review_output: Mutex<Option<String>>,
+    /// `thread/turns/list` 的下一页。空表示没有更早的回合。
+    pub(super) history_cursor: Mutex<Option<String>>,
+    /// 流式命令输出和补丁正文。键是 item id。
+    pub(super) activity: Mutex<HashMap<String, ActivityBuf>>,
 }
 
 /// `thread/resume` 撞上 active writer 之后的打开状态。
@@ -251,7 +276,10 @@ mod tests {
     #[test]
     fn occupied_notice_waits_until_open_finishes_and_is_once() {
         let mut occupancy = Occupancy::default();
-        assert!(!occupancy.block(), "startup conflict must not announce early");
+        assert!(
+            !occupancy.block(),
+            "startup conflict must not announce early"
+        );
         assert!(occupancy.blocked());
         assert!(occupancy.finish_open());
         assert!(!occupancy.finish_open());

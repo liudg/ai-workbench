@@ -29,6 +29,7 @@ import type {
   QueuedTurn,
   ReviewStart,
   ReviewTargets,
+  OlderHistory,
   Session,
   SessionEvent,
 } from "@/types";
@@ -111,6 +112,7 @@ export interface Backend {
   ): Promise<void>;
   stopSession(sessionId: string): Promise<void>;
   getSessionEvents(sessionId: string): Promise<SessionEvent[]>;
+  loadOlderHistory(sessionId: string): Promise<OlderHistory>;
 
   listMcpServers(): Promise<McpServerRecord[]>;
   addMcpServer(input: {
@@ -263,6 +265,8 @@ const tauriBackend: Backend = {
   stopSession: (sessionId) => invoke("stop_session", { sessionId }),
   getSessionEvents: (sessionId) =>
     invoke<SessionEvent[]>("get_session_events", { sessionId }),
+  loadOlderHistory: (sessionId) =>
+    invoke<OlderHistory>("load_older_history", { sessionId }),
 
   listMcpServers: () => invoke<McpServerRecord[]>("list_mcp_servers"),
   addMcpServer: (input) =>

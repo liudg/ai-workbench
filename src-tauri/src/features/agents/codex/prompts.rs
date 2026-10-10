@@ -24,10 +24,7 @@ impl Shared {
         if questions.is_empty() {
             return false;
         }
-        self.question_items
-            .lock()
-            .unwrap()
-            .insert(id.to_string());
+        self.question_items.lock().unwrap().insert(id.to_string());
         let prompt_id = format!("async-{id}");
         self.pending.lock().unwrap().insert(
             prompt_id.clone(),
@@ -167,6 +164,8 @@ pub(super) fn parse_tool_questions(params: &Value) -> Vec<PromptQuestion> {
                         question,
                         is_secret: q.get("isSecret").and_then(Value::as_bool).unwrap_or(false),
                         options,
+                        input_kind: String::new(),
+                        required: false,
                     })
                 })
                 .collect()
@@ -207,6 +206,8 @@ pub(super) fn parse_async_questions(item: &Value) -> Vec<PromptQuestion> {
                         question: title,
                         is_secret: false,
                         options,
+                        input_kind: String::new(),
+                        required: false,
                     })
                 })
                 .collect()
@@ -215,13 +216,19 @@ pub(super) fn parse_async_questions(item: &Value) -> Vec<PromptQuestion> {
 }
 
 /// 阻塞式提问的 JSON-RPC 响应：跳过的题不出现在 answers 里（Codex 视为未答）。
-pub(super) fn blocking_answer_payload(questions: &[PromptQuestion], answer: &PromptAnswer) -> Value {
+pub(super) fn blocking_answer_payload(
+    questions: &[PromptQuestion],
+    answer: &PromptAnswer,
+) -> Value {
     let mut map = serde_json::Map::new();
     match answer {
         PromptAnswer::Questions { answers, skipped } => {
             if !skipped {
                 for q in questions {
-                    if let Some(text) = answers.get(&q.id).map(|t| t.trim()).filter(|t| !t.is_empty())
+                    if let Some(text) = answers
+                        .get(&q.id)
+                        .map(|t| t.trim())
+                        .filter(|t| !t.is_empty())
                     {
                         map.insert(q.id.clone(), json!({ "answers": [text] }));
                     }
@@ -233,6 +240,7 @@ pub(super) fn blocking_answer_payload(questions: &[PromptQuestion], answer: &Pro
                 map.insert(q.id.clone(), json!({ "answers": [value] }));
             }
         }
+        PromptAnswer::Elicitation { .. } => {}
     }
     json!({ "answers": map })
 }
@@ -249,6 +257,7 @@ pub(super) fn async_answer_text(questions: &[PromptQuestion], answer: &PromptAns
                 lines.join("\n")
             }
         }
+        PromptAnswer::Elicitation { action, .. } => action.clone(),
     }
 }
 
@@ -264,6 +273,7 @@ pub(super) fn questions_summary(questions: &[PromptQuestion], answer: &PromptAns
                 lines.join("\n")
             }
         }
+        PromptAnswer::Elicitation { action, .. } => elicitation_action_label(action),
     }
 }
 
@@ -315,10 +325,186 @@ pub(super) fn rpc_error_text(err: &Value) -> String {
 }
 
 pub(super) fn is_accept(answer: &str) -> bool {
-    matches!(
-        answer.trim(),
-        "approve" | "accept" | "允许" | "yes" | "y"
-    )
+    matches!(answer.trim(), "approve" | "accept" | "允许" | "yes" | "y")
+}
+
+pub(super) fn elicitation_action_label(action: &str) -> String {
+    match action.trim() {
+        "accept" | "接受" => "接受".into(),
+        "decline" | "拒绝" => "拒绝".into(),
+        "cancel" | "取消" => "取消".into(),
+        other => other.to_string(),
+    }
+}
+
+/// `elicitation/request` 与桌面端的 `mcpServer/elicitation/request` 用同一张卡片。
+pub(super) fn parse_elicitation(params: &Value) -> (String, Vec<PromptQuestion>) {
+    let message = params
+        .get("message")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    let server = params
+        .get("serverName")
+        .or_else(|| params.get("server"))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    let url = params
+        .get("url")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    let mut question = String::new();
+    if !server.is_empty() {
+        question.push_str(server);
+    }
+    if !message.is_empty() {
+        if !question.is_empty() {
+            question.push('\n');
+        }
+        question.push_str(message);
+    }
+    if !url.is_empty() {
+        if !question.is_empty() {
+            question.push('\n');
+        }
+        question.push_str(url);
+    }
+    if question.is_empty() {
+        question = "需要补充信息".into();
+    }
+    let schema = params
+        .get("requestedSchema")
+        .or_else(|| params.get("schema"));
+    (question, schema.map(schema_fields).unwrap_or_default())
+}
+
+fn schema_fields(schema: &Value) -> Vec<PromptQuestion> {
+    let required = schema
+        .get("required")
+        .and_then(Value::as_array)
+        .map(|list| {
+            list.iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect::<std::collections::HashSet<_>>()
+        })
+        .unwrap_or_default();
+    let Some(properties) = schema.get("properties").and_then(Value::as_object) else {
+        return Vec::new();
+    };
+    properties
+        .iter()
+        .map(|(key, spec)| {
+            let kind = spec.get("type").and_then(Value::as_str).unwrap_or("string");
+            let title = spec.get("title").and_then(Value::as_str).unwrap_or("");
+            let description = spec
+                .get("description")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            let format = spec.get("format").and_then(Value::as_str).unwrap_or("");
+            let options = spec
+                .get("enum")
+                .and_then(Value::as_array)
+                .map(|list| {
+                    list.iter()
+                        .filter_map(Value::as_str)
+                        .map(|label| PromptOption {
+                            id: label.to_string(),
+                            label: label.to_string(),
+                            description: String::new(),
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            let question = if !description.is_empty() {
+                description.to_string()
+            } else if !title.is_empty() {
+                title.to_string()
+            } else {
+                key.clone()
+            };
+            PromptQuestion {
+                id: key.clone(),
+                header: if title.is_empty() {
+                    key.clone()
+                } else {
+                    title.to_string()
+                },
+                question,
+                is_secret: format == "password",
+                options,
+                input_kind: kind.to_string(),
+                required: required.contains(key),
+            }
+        })
+        .collect()
+}
+
+pub(super) fn elicitation_result(
+    questions: &[PromptQuestion],
+    answer: &PromptAnswer,
+) -> Result<Value, crate::features::agents::AgentError> {
+    use crate::features::agents::AgentError;
+    let PromptAnswer::Elicitation { action, content } = answer else {
+        return Err(AgentError::Runtime("请选择接受、拒绝或取消".into()));
+    };
+    let action = match action.trim() {
+        "accept" | "接受" => "accept",
+        "decline" | "拒绝" => "decline",
+        "cancel" | "取消" => "cancel",
+        _ => return Err(AgentError::Runtime("请选择接受、拒绝或取消".into())),
+    };
+    if action != "accept" {
+        return Ok(json!({ "action": action }));
+    }
+    let mut map = serde_json::Map::new();
+    for question in questions {
+        match content.get(&question.id) {
+            Some(value) => {
+                map.insert(question.id.clone(), coerce_field(question, value));
+            }
+            None if question.required => {
+                let label = if question.header.is_empty() {
+                    question.id.as_str()
+                } else {
+                    question.header.as_str()
+                };
+                return Err(AgentError::Runtime(format!("请填写{label}")));
+            }
+            None => {}
+        }
+    }
+    Ok(json!({ "action": "accept", "content": map }))
+}
+
+fn coerce_field(question: &PromptQuestion, value: &Value) -> Value {
+    match question.input_kind.as_str() {
+        "boolean" => match value {
+            Value::Bool(flag) => json!(flag),
+            Value::String(text) => json!(matches!(text.trim(), "true" | "1" | "yes" | "是")),
+            other => other.clone(),
+        },
+        "number" | "integer" => match value {
+            Value::Number(_) => value.clone(),
+            Value::String(text) => {
+                if question.input_kind == "integer" {
+                    text.trim()
+                        .parse::<i64>()
+                        .map(|number| json!(number))
+                        .unwrap_or_else(|_| json!(text))
+                } else {
+                    text.trim()
+                        .parse::<f64>()
+                        .map(|number| json!(number))
+                        .unwrap_or_else(|_| json!(text))
+                }
+            }
+            other => other.clone(),
+        },
+        _ => value.clone(),
+    }
 }
 
 #[cfg(test)]
@@ -382,7 +568,10 @@ mod tests {
         assert_eq!(questions[1].id, "q2");
         assert!(questions[1].options.is_empty());
         // 普通消息没有 questions 字段
-        assert!(parse_async_questions(&json!({ "type": "agentMessage", "id": "m", "text": "hi" })).is_empty());
+        assert!(
+            parse_async_questions(&json!({ "type": "agentMessage", "id": "m", "text": "hi" }))
+                .is_empty()
+        );
     }
 
     #[test]
@@ -393,7 +582,10 @@ mod tests {
         answers.insert("constraints".to_string(), "   ".to_string());
         let payload = blocking_answer_payload(
             &questions,
-            &PromptAnswer::Questions { answers, skipped: false },
+            &PromptAnswer::Questions {
+                answers,
+                skipped: false,
+            },
         );
         assert_eq!(payload["answers"]["framework"]["answers"][0], json!("Vite"));
         assert!(payload["answers"].get("constraints").is_none());
@@ -415,7 +607,10 @@ mod tests {
         answers.insert("framework".to_string(), "Vite".to_string());
         let text = async_answer_text(
             &questions,
-            &PromptAnswer::Questions { answers, skipped: false },
+            &PromptAnswer::Questions {
+                answers,
+                skipped: false,
+            },
         );
         assert_eq!(text, "1. Vite");
 
@@ -430,7 +625,9 @@ mod tests {
 
         let raw = async_answer_text(
             &questions,
-            &PromptAnswer::Single { value: "随便".into() },
+            &PromptAnswer::Single {
+                value: "随便".into(),
+            },
         );
         assert_eq!(raw, "随便");
     }
@@ -451,8 +648,67 @@ mod tests {
         answers.insert("constraints".to_string(), "无".to_string());
         let summary = questions_summary(
             &questions,
-            &PromptAnswer::Questions { answers, skipped: false },
+            &PromptAnswer::Questions {
+                answers,
+                skipped: false,
+            },
         );
         assert_eq!(summary, "1. Vite\n2. 无");
+    }
+
+    #[test]
+    fn elicitation_form_accepts_declines_and_cancels() {
+        let (question, fields) = parse_elicitation(&json!({
+            "serverName": "docs",
+            "message": "需要仓库地址",
+            "requestedSchema": {
+                "type": "object",
+                "required": ["url"],
+                "properties": {
+                    "url": { "type": "string", "title": "地址" },
+                    "count": { "type": "integer", "title": "数量" },
+                    "ok": { "type": "boolean", "title": "确认" }
+                }
+            }
+        }));
+        assert_eq!(question, "docs\n需要仓库地址");
+        assert_eq!(fields.len(), 3);
+        assert!(fields
+            .iter()
+            .any(|field| field.id == "url" && field.required));
+        let mut content = serde_json::Map::new();
+        content.insert("url".into(), json!("https://example.com"));
+        content.insert("count".into(), json!("3"));
+        content.insert("ok".into(), json!(true));
+        let accepted = elicitation_result(
+            &fields,
+            &PromptAnswer::Elicitation {
+                action: "接受".into(),
+                content: content.into_iter().collect(),
+            },
+        )
+        .unwrap();
+        assert_eq!(accepted["action"], json!("accept"));
+        assert_eq!(accepted["content"]["url"], json!("https://example.com"));
+        assert_eq!(accepted["content"]["count"], json!(3));
+        assert_eq!(accepted["content"]["ok"], json!(true));
+        let declined = elicitation_result(
+            &fields,
+            &PromptAnswer::Elicitation {
+                action: "decline".into(),
+                content: std::collections::HashMap::new(),
+            },
+        )
+        .unwrap();
+        assert_eq!(declined, json!({ "action": "decline" }));
+        let cancelled = elicitation_result(
+            &fields,
+            &PromptAnswer::Elicitation {
+                action: "cancel".into(),
+                content: std::collections::HashMap::new(),
+            },
+        )
+        .unwrap();
+        assert_eq!(cancelled, json!({ "action": "cancel" }));
     }
 }

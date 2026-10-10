@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type WheelEvent 
 import { MessageSquareDashed } from "lucide-react";
 
 import { pendingPrompt } from "@/lib/utils";
+import { useWorkbench } from "@/store";
 import type { Session, SessionEvent } from "@/types";
 import { Composer } from "../composer/Composer";
 import { buildTimeline, timelineStatus, turnDetailsOpen } from "./timeline";
@@ -23,7 +24,7 @@ function contentChars(events: SessionEvent[]): number {
         chars += event.text.length;
         break;
       case "tool-call":
-        chars += event.summary.length;
+        chars += event.summary.length + (event.detail?.length ?? 0);
         break;
       case "error":
         chars += event.message.length;
@@ -66,6 +67,12 @@ export function ChatView({
   const interactingRef = useRef(false);
   const pointerStopRef = useRef<(() => void) | null>(null);
   const seenSession = useRef(session.id);
+  const historyExhausted = useRef(false);
+  const historyLoading = useRef(false);
+  const loadOlderHistory = useWorkbench((s) => s.loadOlderHistory);
+  const pagedHistory = useWorkbench(
+    (s) => s.catalogs[session.id]?.capabilities.supports_paged_history === true,
+  );
 
   const pendingId = useMemo(() => pendingPrompt(events), [events]);
   const resolvedAnswers = useMemo(() => {
@@ -108,6 +115,8 @@ export function ChatView({
     setWorkOverrides(new Map());
     setFoldOverrides(new Map());
     setThinkingOverrides(new Map());
+    historyExhausted.current = false;
+    historyLoading.current = false;
   }, [session.id]);
 
   const pinRef = useRef(() => {});
@@ -149,17 +158,46 @@ export function ChatView({
     };
   }, []);
 
+  const requestOlder = () => {
+    if (!pagedHistory || historyExhausted.current || historyLoading.current) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    historyLoading.current = true;
+    const before = el.scrollHeight;
+    const top = el.scrollTop;
+    suppressPinRef.current = true;
+    followRef.current = false;
+    void loadOlderHistory(session.id)
+      .then((exhausted) => {
+        if (exhausted) historyExhausted.current = true;
+        requestAnimationFrame(() => {
+          const node = scrollRef.current;
+          if (node) node.scrollTop = top + Math.max(0, node.scrollHeight - before);
+          requestAnimationFrame(() => {
+            suppressPinRef.current = false;
+            historyLoading.current = false;
+          });
+        });
+      })
+      .catch(() => {
+        suppressPinRef.current = false;
+        historyLoading.current = false;
+      });
+  };
+
   const onTimelineScroll = () => {
     const el = scrollRef.current;
     if (!el || pinningRef.current) return;
     followRef.current =
       el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
+    if (el.scrollTop < 48) requestOlder();
   };
 
   const onTimelineWheel = (event: WheelEvent<HTMLDivElement>) => {
     if (event.deltaY >= 0) return;
     const el = scrollRef.current;
     if (!el) return;
+    if (el.scrollTop < 48) requestOlder();
     const pixels =
       event.deltaMode === 1
         ? event.deltaY * 16

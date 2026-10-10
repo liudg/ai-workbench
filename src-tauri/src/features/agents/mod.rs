@@ -18,8 +18,8 @@ use tokio::sync::mpsc;
 
 use crate::models::{
     AgentCapabilities, AgentCatalog, AgentInstallation, AgentKind, AgentProfile, EnvironmentRecord,
-    HookRecord, McpLogin, McpServerRecord, McpTransport, PermissionMenu, PluginCatalog, PromptAnswer,
-    ReviewStart, ReviewTargets, SessionEventBody, WorktreeInfo, WorktreeSettings,
+    HookRecord, McpLogin, McpServerRecord, McpTransport, PermissionMenu, PluginCatalog,
+    PromptAnswer, ReviewStart, ReviewTargets, SessionEventBody, WorktreeInfo, WorktreeSettings,
 };
 
 pub use directory::{
@@ -204,12 +204,12 @@ pub trait AgentSession: Send + Sync {
 
     /// 桌面端 Plan 开关。`plan` 或 `default`。
     fn set_collaboration_mode(&self, _mode: &str) -> Result<(), AgentError> {
-        Err(AgentError::Runtime("这个 Agent 没有 Plan mode".into()))
+        Err(AgentError::Runtime("这个 Agent 没有计划模式".into()))
     }
 
     /// `review/start`。调用方已经把菜单文案记成用户消息。
     async fn start_review(&self, _target: ReviewStart) -> Result<(), AgentError> {
-        Err(AgentError::Runtime("这个 Agent 不能发起 Code review".into()))
+        Err(AgentError::Runtime("这个 Agent 不能发起代码审查".into()))
     }
 
     /// Code review 菜单里的分支和最近提交。
@@ -223,9 +223,12 @@ pub trait AgentSession: Send + Sync {
 
     /// `thread/revert`。只回退对话，不改工作区文件。
     async fn revert_turn(&self, _turn_id: &str) -> Result<(), AgentError> {
-        Err(AgentError::Runtime(
-            "Only the most recent message can be edited.".into(),
-        ))
+        Err(AgentError::Runtime("无法编辑消息".into()))
+    }
+
+    /// 继续会话后，上滚再要一页更早的回合。默认没有更早的记录。
+    async fn load_older_history(&self) -> Result<(Vec<SessionEventBody>, bool), AgentError> {
+        Ok((Vec::new(), true))
     }
 }
 
@@ -376,7 +379,11 @@ pub trait AgentAdapter: Send + Sync {
         Err(self.unsupported("工作树"))
     }
 
-    async fn recycle_worktree(&self, _project_path: &str, _worktree_path: &str) -> Result<(), AgentError> {
+    async fn recycle_worktree(
+        &self,
+        _project_path: &str,
+        _worktree_path: &str,
+    ) -> Result<(), AgentError> {
         Err(self.unsupported("工作树"))
     }
 
@@ -410,7 +417,11 @@ pub trait AgentAdapter: Send + Sync {
     }
 
     /// `thread/archive` 或 `thread/unarchive`。
-    async fn set_thread_archived(&self, _native_id: &str, _archived: bool) -> Result<(), AgentError> {
+    async fn set_thread_archived(
+        &self,
+        _native_id: &str,
+        _archived: bool,
+    ) -> Result<(), AgentError> {
         Err(AgentError::Runtime(format!(
             "{} 不支持归档聊天",
             self.display_name()
@@ -494,9 +505,6 @@ mod tests {
             .rename_thread("thread", "标题")
             .await
             .expect_err("claude has no rename");
-        assert!(
-            err.to_string().contains("不支持重命名聊天"),
-            "{err}"
-        );
+        assert!(err.to_string().contains("不支持重命名聊天"), "{err}");
     }
 }

@@ -186,6 +186,7 @@ impl AgentAdapter for ExternalCliAdapter {
             supports_writable_roots: false,
             supports_permission_profiles: false,
             supports_approve_for_me: false,
+            supports_paged_history: false,
         }
     }
 
