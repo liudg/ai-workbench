@@ -221,10 +221,9 @@ pub(super) fn is_skill_token(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'.' | b':' | b'-')
 }
 
-pub(super) fn build_turn_input(text: &str, skills: &[KnownSkill]) -> (Value, Vec<String>) {
+pub(super) fn build_turn_input(text: &str, skills: &[KnownSkill]) -> Value {
     let bytes = text.as_bytes();
     let mut elements = Vec::new();
-    let mut labels = Vec::new();
     let mut attached: Vec<&KnownSkill> = Vec::new();
     let mut index = 0;
     while index < bytes.len() {
@@ -244,7 +243,6 @@ pub(super) fn build_turn_input(text: &str, skills: &[KnownSkill]) -> (Value, Vec
                         "placeholder": skill.label,
                     }));
                     if !attached.iter().any(|item| item.path == skill.path) {
-                        labels.push(skill.label.clone());
                         attached.push(skill);
                     }
                 }
@@ -266,7 +264,7 @@ pub(super) fn build_turn_input(text: &str, skills: &[KnownSkill]) -> (Value, Vec
             "path": skill.path,
         }));
     }
-    (Value::Array(input), labels)
+    Value::Array(input)
 }
 
 pub(super) fn split_command(text: &str) -> (String, String) {
@@ -309,8 +307,7 @@ mod tests {
             description: String::new(),
             path: "C:/skills/documents/SKILL.md".into(),
         }];
-        let (input, labels) = build_turn_input("请用 $documents 改合同", &skills);
-        assert_eq!(labels, vec!["Documents".to_string()]);
+        let input = build_turn_input("请用 $documents 改合同", &skills);
         assert_eq!(input[1]["type"], json!("skill"));
         assert_eq!(input[1]["name"], json!("documents:documents"));
         assert_eq!(input[0]["text_elements"][0]["placeholder"], json!("Documents"));

@@ -11,7 +11,6 @@ use crate::encoding::{apply_utf8_env, decode_child_bytes};
 pub(super) enum StderrClass {
     Ignore,
     Error(String),
-    McpUnavailable { key: String, text: String },
 }
 
 pub(super) const LOOPBACK_NO_PROXY: &[&str] = &["localhost", "127.0.0.1", "::1"];
@@ -80,8 +79,9 @@ pub(super) fn classify_codex_stderr(raw: &str) -> StderrClass {
     if is_thread_writer_conflict(trimmed) {
         return StderrClass::Ignore;
     }
-    if let Some(note) = mcp_transport_notice(trimmed) {
-        return note;
+    // 可选 MCP 握手失败不影响 app-server 对话，不进时间线。
+    if is_optional_mcp_noise(trimmed) {
+        return StderrClass::Ignore;
     }
     if trimmed.contains("ERROR") {
         return StderrClass::Error(truncate(trimmed, 300));
@@ -90,8 +90,8 @@ pub(super) fn classify_codex_stderr(raw: &str) -> StderrClass {
 }
 
 /// Codex 的可选 MCP 握手失败会以 `rmcp::transport::worker` ERROR 重试打到 stderr。
-/// 核心对话走 app-server 的 stdio，不依赖这些服务。
-pub(super) fn mcp_transport_notice(line: &str) -> Option<StderrClass> {
+/// 核心对话走 app-server 的 stdio，不依赖这些服务，所以不当成时间线通知。
+fn is_optional_mcp_noise(line: &str) -> bool {
     let lower = line.to_ascii_lowercase();
     let mentions_mcp = lower.contains("rmcp::") || lower.contains("mcp");
     let transport_failure = lower.contains("transport channel closed")
@@ -103,49 +103,7 @@ pub(super) fn mcp_transport_notice(line: &str) -> Option<StderrClass> {
         || lower.contains("http 502")
         || lower.contains("http 503")
         || lower.contains("http 504");
-    if !mentions_mcp
-        || !transport_failure
-        || !(lower.contains("error") || lower.contains("fatal"))
-    {
-        return None;
-    }
-    let target = mcp_failure_target(line);
-    let text = match &target {
-        Some(url) => format!("可选 MCP 未连接（{url}），已忽略，不影响对话。"),
-        None if lower.contains("502") => "可选 MCP 连接失败（HTTP 502），已忽略，不影响对话。".into(),
-        None if lower.contains("503") => "可选 MCP 连接失败（HTTP 503），已忽略，不影响对话。".into(),
-        None if lower.contains("504") => "可选 MCP 连接失败（HTTP 504），已忽略，不影响对话。".into(),
-        None => "可选 MCP 连接失败，已忽略，不影响对话。".into(),
-    };
-    let key = target.unwrap_or_else(|| {
-        if lower.contains("502") {
-            "http-502".into()
-        } else if lower.contains("503") {
-            "http-503".into()
-        } else if lower.contains("504") {
-            "http-504".into()
-        } else {
-            "mcp-transport".into()
-        }
-    });
-    Some(StderrClass::McpUnavailable { key, text })
-}
-
-pub(super) fn mcp_failure_target(line: &str) -> Option<String> {
-    let lower = line.to_ascii_lowercase();
-    let start = lower.find("https://").or_else(|| lower.find("http://"))?;
-    let rest = &line[start..];
-    let end = rest
-        .find(|ch: char| ch.is_whitespace() || matches!(ch, ')' | '"' | '\''))
-        .unwrap_or(rest.len());
-    let url = rest[..end]
-        .trim_end_matches(|ch: char| matches!(ch, '.' | ',' | ';' | ')' | ']' | '}' | '"'))
-        .to_string();
-    if url.len() < 8 {
-        None
-    } else {
-        Some(url)
-    }
+    mentions_mcp && transport_failure && (lower.contains("error") || lower.contains("fatal"))
 }
 
 pub(super) fn trim_newline(raw: &mut Vec<u8>) {
@@ -242,26 +200,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn collapses_optional_mcp_transport_noise() {
+    fn ignores_optional_mcp_transport_noise() {
         let ansi = "\u{1b}[2m2026-10-10T06:37:02.131976Z\u{1b}[0m \u{1b}[31mERROR\u{1b}[0m \u{1b}[2mrmcp::transport::worker\u{1b}[0m\u{1b}[2m:\u{1b}[0m worker quit with fatal: Transport channel closed, when UnexpectedServerResponse(\"HTTP 502: \")";
-        match classify_codex_stderr(ansi) {
-            StderrClass::McpUnavailable { key, text } => {
-                assert_eq!(key, "http-502");
-                assert_eq!(text, "可选 MCP 连接失败（HTTP 502），已忽略，不影响对话。");
-                assert!(!text.contains('\u{1b}'));
-            }
-            other => panic!("expected mcp notice, got {other:?}"),
-        }
+        assert_eq!(classify_codex_stderr(ansi), StderrClass::Ignore);
 
         let direct = "2026-10-10T06:45:44.207643Z ERROR rmcp::transport::worker: worker quit with fatal: Transport channel closed, when Client(HttpRequest(HttpRequest(\"http/request failed: error sending request for url (http://127.0.0.1:8080/mcp)\")))";
-        match classify_codex_stderr(direct) {
-            StderrClass::McpUnavailable { key, text } => {
-                assert_eq!(key, "http://127.0.0.1:8080/mcp");
-                assert!(text.contains("http://127.0.0.1:8080/mcp"));
-                assert!(text.contains("不影响对话"));
-            }
-            other => panic!("expected url notice, got {other:?}"),
-        }
+        assert_eq!(classify_codex_stderr(direct), StderrClass::Ignore);
     }
 
     #[test]

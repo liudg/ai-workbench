@@ -116,7 +116,7 @@ pub(super) struct Shared {
 }
 
 /// `thread/resume` 撞上 active writer 之后的打开状态。
-/// 通知只发一次，并且等连接说明写完再发，避免被后续系统行盖住。
+/// 只读通知只发一次，并且等打开结束后再发，避免插在历史记录前面。
 #[derive(Debug, Default)]
 pub(super) struct Occupancy {
     blocked: bool,

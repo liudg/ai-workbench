@@ -319,10 +319,6 @@ export const mockBackend: Backend = {
       timers: [],
     };
     sessions.set(sessionId, state);
-    pushEvent(sessionId, {
-      kind: "system",
-      text: `${agentLabel(kind)} 会话已就绪（浏览器预览 mock · 目录 ${project.path}）`,
-    });
     setStatus(sessionId, "completed");
     return { ...meta, status: "completed" };
   },
@@ -397,10 +393,6 @@ export const mockBackend: Backend = {
     const s = sessions.get(sessionId);
     if (!s) throw new Error("会话不存在");
     s.access = mode;
-    pushEvent(sessionId, {
-      kind: "system",
-      text: `权限已设为${mode === "full" ? "完全访问" : mode === "ask" ? "询问批准" : "只读"}。浏览器预览不会把它交给 Codex。`,
-    });
   },
 
   async sendMessage(sessionId, text) {
@@ -415,12 +407,6 @@ export const mockBackend: Backend = {
     if (s.meta.title.startsWith("会话 ") || s.meta.title === "未命名会话") {
       s.meta.title = text.split("\n")[0].slice(0, 24);
       sessionsChangedListeners.forEach((cb) => cb(s.meta.project_id));
-    }
-    if (text.includes("$documents")) {
-      pushEvent(sessionId, {
-        kind: "system",
-        text: "已引用技能 Documents。",
-      });
     }
     const profile = MOCK_PROFILES[s.meta.agent];
     if (profile.capabilities.supports_slash && text.trimStart().startsWith("/")) {

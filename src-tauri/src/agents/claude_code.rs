@@ -85,18 +85,12 @@ impl AgentAdapter for ClaudeCodeAdapter {
 
     async fn start_session(
         &self,
-        ctx: SessionContext,
+        _ctx: SessionContext,
         events: EventSink,
     ) -> Result<Arc<dyn AgentSession>, AgentError> {
         // TODO(real): 替换为 `claude -p --output-format stream-json` 或 portable-pty，
-        // 工作目录 = ctx.project_path，输出事件映射为 SessionEventBody 推入 events。
+        // 工作目录 = 项目路径，输出事件映射为 SessionEventBody 推入 events。
         let session = StubAgentSession::new(self.persona, events.clone(), self.capabilities());
-        let _ = events.send(crate::models::SessionEventBody::System {
-            text: format!(
-                "Claude Code 会话已就绪（桩模式 · 目录 {}）",
-                ctx.project_path
-            ),
-        });
         // 启动即就绪：进入等待输入的空闲态
         let _ = events.send(crate::models::SessionEventBody::StatusChanged {
             status: crate::models::SessionStatus::Completed,
