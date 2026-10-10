@@ -1024,9 +1024,9 @@ impl RpcClient {
 impl RpcClient {
     /// 关掉标准输入并等进程退出，释放线程写锁。超时再强制结束。
     async fn shutdown(self) {
-        let RpcClient { out, child, .. } = self;
-        drop(out);
-        let Some(mut child) = child.lock().unwrap().take() else {
+        let child = self.child.lock().unwrap().take();
+        drop(self);
+        let Some(mut child) = child else {
             return;
         };
         if timeout(Duration::from_secs(2), child.wait()).await.is_err() {
