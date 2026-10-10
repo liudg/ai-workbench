@@ -75,6 +75,58 @@ function agentLabel(agent: AgentKind) {
   return agent === "codex-cli" ? "Codex CLI" : "Claude Code";
 }
 
+/** 浏览器预览没有本机 Codex，用两条外部会话演示侧边栏结构。 */
+function seedNativeResume() {
+  const projectId = "codex:f:\\sample\\mercury_dev";
+  projects.push({
+    id: projectId,
+    name: "mercury_dev",
+    path: "F:\\sample\\mercury_dev",
+    default_agent: "codex-cli",
+    created_at: now() - 86_400_000,
+    updated_at: now(),
+    external: true,
+  });
+  const samples = [
+    {
+      id: "01a12492-d8e5-7e40-b438-95315ee95f7c",
+      title: "概括当前项目",
+      user: "概括当前项目",
+      agent: "这是浏览器预览里的 Codex resume 会话。桌面应用会改读本机 thread/list。",
+      updated: now() - 60_000,
+    },
+    {
+      id: "01a12492-d8e5-7e40-b438-95315ee95f7d",
+      title: "修复登录超时",
+      user: "登录超时怎么查",
+      agent: "先看超时发生在握手还是进游戏之后。",
+      updated: now() - 120_000,
+    },
+  ];
+  for (const sample of samples) {
+    sessions.set(sample.id, {
+      meta: {
+        id: sample.id,
+        project_id: projectId,
+        agent: "codex-cli",
+        title: sample.title,
+        status: "completed",
+        created_at: sample.updated - 3_600_000,
+        updated_at: sample.updated,
+      },
+      events: [],
+      turns: 1,
+      pendingPrompt: null,
+      access: "full",
+      timers: [],
+    });
+    pushEvent(sample.id, { kind: "user-message", text: sample.user });
+    pushEvent(sample.id, { kind: "agent-message", text: sample.agent });
+  }
+}
+
+seedNativeResume();
+
 const APPROVAL_OPTIONS: PromptOption[] = [
   { id: "approve", label: "允许" },
   { id: "reject", label: "拒绝" },
@@ -133,7 +185,7 @@ export const mockBackend: Backend = {
     return [...sessions.values()]
       .filter((s) => s.meta.project_id === projectId)
       .map((s) => ({ ...s.meta }))
-      .sort((a, b) => a.created_at - b.created_at);
+      .sort((a, b) => b.updated_at - a.updated_at);
   },
 
   async createSession(projectId, agent, accessMode) {
@@ -240,7 +292,7 @@ export const mockBackend: Backend = {
       kind: "user-message",
       text,
     });
-    if (s.meta.title.startsWith("会话 ")) {
+    if (s.meta.title.startsWith("会话 ") || s.meta.title === "未命名会话") {
       s.meta.title = text.split("\n")[0].slice(0, 24);
       sessionsChangedListeners.forEach((cb) => cb(s.meta.project_id));
     }

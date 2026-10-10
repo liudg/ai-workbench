@@ -25,8 +25,11 @@ fn notify_projects_changed(app: &AppHandle) {
 // ---------- 项目 ----------
 
 #[tauri::command]
-pub fn list_projects(store: State<'_, ProjectStore>) -> Vec<Project> {
-    store.list()
+pub async fn list_projects(
+    store: State<'_, ProjectStore>,
+    manager: State<'_, SessionManager>,
+) -> Result<Vec<Project>, String> {
+    Ok(manager.projects_for_sidebar(&store).await)
 }
 
 /// 新建项目：在 parent_dir 下创建目录 + 可选 git init。
@@ -51,6 +54,7 @@ pub fn create_project(
         default_agent,
         created_at: now,
         updated_at: now,
+        external: false,
     };
     store.add(project.clone())?;
     notify_projects_changed(&app);
@@ -81,6 +85,7 @@ pub fn import_project(
         default_agent,
         created_at: now,
         updated_at: now,
+        external: false,
     };
     store.add(project.clone())?;
     notify_projects_changed(&app);
@@ -95,6 +100,9 @@ pub async fn remove_project(
     manager: State<'_, SessionManager>,
     id: String,
 ) -> Result<(), String> {
+    if id.starts_with("codex:") && store.get(&id).is_none() {
+        return Err("这个目录来自 Codex resume 列表，不能单独移除。".into());
+    }
     manager.stop_sessions_of_project(&id).await;
     if store.remove(&id)? {
         notify_projects_changed(&app);
@@ -107,11 +115,12 @@ pub async fn remove_project(
 // ---------- 会话 ----------
 
 #[tauri::command]
-pub fn list_sessions(
+pub async fn list_sessions(
+    store: State<'_, ProjectStore>,
     manager: State<'_, SessionManager>,
     project_id: String,
-) -> Vec<Session> {
-    manager.list_sessions(&project_id)
+) -> Result<Vec<Session>, String> {
+    Ok(manager.sessions_for_sidebar(&store, &project_id).await)
 }
 
 /// 创建会话；agent 缺省时用项目默认 Agent。
@@ -123,7 +132,7 @@ pub async fn create_session(
     agent: Option<AgentKind>,
     access_mode: Option<String>,
 ) -> Result<Session, String> {
-    let project = store.get(&project_id).ok_or("项目不存在")?;
+    let project = manager.resolve_project(&store, &project_id).await?;
     manager
         .create_session(
             &project,
@@ -202,9 +211,10 @@ pub async fn stop_session(
 
 /// 拉取会话完整事件日志（切换会话 / 重连时恢复时间线）。
 #[tauri::command]
-pub fn get_session_events(
+pub async fn get_session_events(
+    store: State<'_, ProjectStore>,
     manager: State<'_, SessionManager>,
     session_id: String,
 ) -> Result<Vec<SessionEvent>, String> {
-    manager.get_events(&session_id)
+    manager.ensure_events(&store, &session_id).await
 }

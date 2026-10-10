@@ -49,12 +49,14 @@ function SessionTab({
 
 export function SessionTabs({ project }: { project: Project }) {
   const sessions = useWorkbench((s) => s.sessions[project.id]);
+  const opened = useWorkbench((s) => s.openedSessionIds[project.id]);
   const activeId = useWorkbench((s) => s.activeSessionId[project.id]);
   const selectSession = useWorkbench((s) => s.selectSession);
+  const visible = sessions?.filter((session) => opened?.includes(session.id));
 
   return (
     <div className="flex h-12 shrink-0 items-end gap-1 overflow-x-auto border-b border-zinc-800/80 bg-zinc-900/20 px-3 pt-3">
-      {sessions?.map((session) => (
+      {visible?.map((session) => (
         <SessionTab
           key={session.id}
           session={session}

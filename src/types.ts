@@ -19,6 +19,8 @@ export interface Project {
   default_agent: AgentKind;
   created_at: number;
   updated_at: number;
+  /** 由 Codex resume 挂上的目录，不在本地项目列表里。 */
+  external?: boolean;
 }
 
 export interface Session {

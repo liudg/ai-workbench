@@ -36,6 +36,8 @@ interface WorkbenchState {
   events: Record<string, SessionEvent[]>;
   selectedProjectId: string | null;
   activeSessionId: Record<string, string>;
+  /** 顶部标签只放打开过的会话，侧边栏才是完整 resume 列表。 */
+  openedSessionIds: Record<string, string[]>;
   dialog: DialogMode | null;
   /** 最近一次操作错误（对话框 / 状态栏展示） */
   lastError: string | null;
@@ -58,6 +60,7 @@ interface WorkbenchState {
   composerSeed: { sessionId: string; text: string; token: number } | null;
 
   init(): Promise<void>;
+  refreshAll(): Promise<void>;
   openDialog(mode: DialogMode): void;
   closeDialog(): void;
   clearError(): void;
@@ -87,6 +90,16 @@ interface WorkbenchState {
   stopSession(sessionId: string): Promise<void>;
 }
 
+function mergeEvents(
+  local: SessionEvent[] | undefined,
+  remote: SessionEvent[],
+): SessionEvent[] {
+  const map = new Map<string, SessionEvent>();
+  for (const event of remote) map.set(event.id, event);
+  for (const event of local ?? []) map.set(event.id, event);
+  return [...map.values()].sort((a, b) => a.seq - b.seq);
+}
+
 function stampAgents(list: Session[]): Session[] {
   const overrides = useWorkbench.getState().agentOverride;
   return list.map((session) =>
@@ -112,6 +125,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   events: {},
   selectedProjectId: null,
   activeSessionId: {},
+  openedSessionIds: {},
   dialog: null,
   lastError: null,
   update: { kind: "idle" },
@@ -160,16 +174,35 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       });
     });
 
-    const projects = await backend.listProjects();
-    const pairs = await Promise.all(projects.map((p) => loadSessions(p.id)));
-    const sessions: Record<string, Session[]> = {};
-    for (const [pid, list] of pairs) sessions[pid] = list;
-    set({ projects, sessions, ready: true });
-    if (projects.length > 0) {
-      await get().selectProject(projects[0].id);
-    }
+    await get().refreshAll();
+    const first = get().projects[0]?.id;
+    if (first) await get().selectProject(first);
+    window.setInterval(() => {
+      void get().refreshAll();
+    }, 20_000);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") void get().refreshAll();
+    });
     // 启动后静默检查更新：失败不打扰，有更新才弹窗
     get().checkUpdates(false);
+  },
+
+  async refreshAll() {
+    const projects = await backend.listProjects();
+    const pairs = await Promise.all(projects.map((p) => loadSessions(p.id)));
+    set((s) => {
+      const sessions = { ...s.sessions };
+      const ids = new Set(projects.map((project) => project.id));
+      for (const key of Object.keys(sessions)) {
+        if (!ids.has(key)) delete sessions[key];
+      }
+      for (const [pid, list] of pairs) sessions[pid] = list;
+      const selectedProjectId =
+        s.selectedProjectId && ids.has(s.selectedProjectId)
+          ? s.selectedProjectId
+          : (projects[0]?.id ?? null);
+      return { projects, sessions, selectedProjectId, ready: true };
+    });
   },
 
   async checkUpdates(manual) {
@@ -210,10 +243,8 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
 
   async selectProject(id) {
     set({ selectedProjectId: id });
-    if (!get().sessions[id]) {
-      const [pid, list] = await loadSessions(id);
-      set((s) => ({ sessions: { ...s.sessions, [pid]: list } }));
-    }
+    const [pid, list] = await loadSessions(id);
+    set((s) => ({ sessions: { ...s.sessions, [pid]: list } }));
     const activeId = get().activeSessionId[id];
     if (activeId && !get().events[activeId]) {
       const events = await backend.getSessionEvents(activeId);
@@ -277,6 +308,12 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
         preferredAgent: agent,
         sessions: { ...s.sessions, [projectId]: list },
         activeSessionId: { ...s.activeSessionId, [projectId]: session.id },
+        openedSessionIds: {
+          ...s.openedSessionIds,
+          [projectId]: s.openedSessionIds[projectId]?.includes(session.id)
+            ? s.openedSessionIds[projectId]
+            : [...(s.openedSessionIds[projectId] ?? []), session.id],
+        },
         events: { ...s.events, [session.id]: s.events[session.id] ?? [] },
         accessMode: {
           ...s.accessMode,
@@ -383,14 +420,27 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     set((s) => ({
       selectedProjectId: projectId,
       activeSessionId: { ...s.activeSessionId, [projectId]: sessionId },
+      openedSessionIds: {
+        ...s.openedSessionIds,
+        [projectId]: s.openedSessionIds[projectId]?.includes(sessionId)
+          ? s.openedSessionIds[projectId]
+          : [...(s.openedSessionIds[projectId] ?? []), sessionId],
+      },
     }));
     if (!get().sessions[projectId]) {
       const [pid, list] = await loadSessions(projectId);
       set((s) => ({ sessions: { ...s.sessions, [pid]: list } }));
     }
-    if (!get().events[sessionId]) {
-      const events = await backend.getSessionEvents(sessionId);
-      set((s) => ({ events: { ...s.events, [sessionId]: events } }));
+    try {
+      const remote = await backend.getSessionEvents(sessionId);
+      set((s) => ({
+        events: {
+          ...s.events,
+          [sessionId]: mergeEvents(s.events[sessionId], remote),
+        },
+      }));
+    } catch (e) {
+      set({ lastError: String(e) });
     }
   },
 

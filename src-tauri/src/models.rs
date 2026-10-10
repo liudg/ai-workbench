@@ -50,6 +50,9 @@ pub struct Project {
     pub default_agent: AgentKind,
     pub created_at: i64,
     pub updated_at: i64,
+    /// 来自 Codex resume 的目录，不写入 projects.json。
+    #[serde(default)]
+    pub external: bool,
 }
 
 /// 项目下的一次 Agent 会话。

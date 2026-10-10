@@ -23,6 +23,9 @@ use tokio::process::{Child, Command};
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::timeout;
 
+use crate::codex_resume::{
+    bodies_from_turns, chronological_turns, HISTORY_PAGE_CAP, HISTORY_TURN_LIMIT,
+};
 use crate::models::{
     strip_verbatim_prefix, AgentCatalog, AgentKind, AgentModelOption, AgentSkillOption, PromptKind,
     PromptOption, ReasoningEffortOption, SessionEventBody, SessionStatus,
@@ -108,6 +111,8 @@ struct Shared {
     effort: Mutex<Option<String>>,
     skills: Mutex<Vec<KnownSkill>>,
     thread_id: Mutex<Option<String>>,
+    /// 新线程写入 Codex resume 列表，而不是 ephemeral。
+    persist: bool,
     model: Mutex<String>,
     version: Mutex<String>,
     cwd: String,
@@ -210,6 +215,7 @@ impl AgentAdapter for CodexCliAdapter {
             effort: Mutex::new(None),
             skills: Mutex::new(Vec::new()),
             thread_id: Mutex::new(None),
+            persist: ctx.persist_thread,
             model: Mutex::new(String::new()),
             version: Mutex::new(version.clone()),
             cwd: strip_verbatim_prefix(&ctx.project_path),
@@ -276,6 +282,19 @@ impl AgentAdapter for CodexCliAdapter {
             return Err(err);
         }
         let _ = shared.notify("initialized", json!({}));
+
+        if let Some(thread_id) = ctx
+            .resume_thread_id
+            .clone()
+            .filter(|id| !id.is_empty())
+        {
+            shared.restore_thread(&thread_id).await;
+        } else if ctx.persist_thread {
+            if let Err(err) = shared.ensure_thread().await {
+                shared.stop();
+                return Err(err);
+            }
+        }
 
         emit(
             &events,
@@ -385,6 +404,10 @@ impl AgentSession for CodexCliSession {
         Ok(())
     }
 
+    fn native_thread_id(&self) -> Option<String> {
+        self.shared.thread_id.lock().unwrap().clone()
+    }
+
     fn retarget(&self, kind: AgentKind) {
         if kind != AgentKind::CodexCli {
             emit(
@@ -479,16 +502,91 @@ impl Shared {
         Ok(())
     }
 
+    async fn restore_thread(&self, thread_id: &str) {
+        *self.thread_id.lock().unwrap() = Some(thread_id.to_string());
+        self.load_history(thread_id).await;
+        match self
+            .request(
+                "thread/resume",
+                json!({
+                    "threadId": thread_id,
+                    "excludeTurns": true,
+                }),
+            )
+            .await
+        {
+            Ok(result) => {
+                if let Some(model) = result.get("model").and_then(Value::as_str) {
+                    *self.model.lock().unwrap() = model.to_string();
+                }
+            }
+            Err(err) => {
+                let raw = err.to_string();
+                let text = if raw.contains("active writer") {
+                    "这个 Codex 会话正在被另一个进程使用。历史已载入，直接发送可能会失败。".to_string()
+                } else {
+                    format!("恢复 Codex 会话失败：{raw}")
+                };
+                emit(&self.events, SessionEventBody::System { text });
+            }
+        }
+    }
+
+    async fn load_history(&self, thread_id: &str) {
+        let mut cursor: Option<String> = None;
+        let mut pages = Vec::new();
+        let mut older = false;
+        for _ in 0..HISTORY_PAGE_CAP {
+            let mut params = json!({
+                "threadId": thread_id,
+                "limit": HISTORY_TURN_LIMIT,
+                "itemsView": "summary",
+                "sortDirection": "desc",
+            });
+            if let Some(cursor) = &cursor {
+                params["cursor"] = json!(cursor);
+            }
+            let Ok(page) = self.request("thread/turns/list", params).await else {
+                break;
+            };
+            let data = page
+                .get("data")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            pages.push(data);
+            let next = page
+                .get("nextCursor")
+                .and_then(Value::as_str)
+                .filter(|cursor| !cursor.is_empty())
+                .map(str::to_string);
+            if next.is_none() {
+                break;
+            }
+            if pages.len() == HISTORY_PAGE_CAP {
+                older = true;
+                break;
+            }
+            cursor = next;
+        }
+        if older {
+            emit(
+                &self.events,
+                SessionEventBody::System {
+                    text: "更早的 Codex 记录没有全部载入。".into(),
+                },
+            );
+        }
+        let turns = chronological_turns(&pages);
+        for body in bodies_from_turns(&turns) {
+            emit(&self.events, body);
+        }
+    }
+
     async fn ensure_thread(&self) -> Result<(), AgentError> {
         if self.thread_id.lock().unwrap().is_some() {
             return Ok(());
         }
-        emit(
-            &self.events,
-            SessionEventBody::System {
-                text: "正在启动 Codex 线程…".into(),
-            },
-        );
         let access = *self.access.lock().unwrap();
         let result = self
             .request(
@@ -497,7 +595,7 @@ impl Shared {
                     "cwd": self.cwd,
                     "approvalPolicy": access.approval_policy(),
                     "sandbox": access.sandbox_mode(),
-                    "ephemeral": true,
+                    "ephemeral": !self.persist,
                 }),
             )
             .await?;
@@ -1838,6 +1936,8 @@ mod tests {
                     session_id: "catalog".into(),
                     project_path: std::env::temp_dir().to_string_lossy().to_string(),
                     access_mode: Some("read-only".into()),
+                    resume_thread_id: None,
+                    persist_thread: false,
                 },
                 tx,
             )
@@ -1864,6 +1964,8 @@ mod tests {
                     session_id: "smoke".into(),
                     project_path: cwd.to_string_lossy().to_string(),
                     access_mode: Some("read-only".into()),
+                    resume_thread_id: None,
+                    persist_thread: false,
                 },
                 tx,
             )

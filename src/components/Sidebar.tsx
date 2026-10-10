@@ -81,6 +81,7 @@ function ProjectItem({ project }: { project: Project }) {
             selected ? "flex" : "hidden group-hover:flex",
           )}
         >
+          {!project.external && (
           <div ref={menuRef} className="relative">
             <button
               type="button"
@@ -117,6 +118,7 @@ function ProjectItem({ project }: { project: Project }) {
               </div>
             )}
           </div>
+          )}
           <NewSessionButton
             projectId={project.id}
             className="flex h-6 w-6 items-center justify-center rounded text-zinc-200 hover:bg-zinc-700/80 hover:text-white"

@@ -9,6 +9,7 @@
 //! - `tray`            系统托盘与常驻后台
 
 mod agents;
+mod codex_resume;
 mod commands;
 mod models;
 mod project_store;

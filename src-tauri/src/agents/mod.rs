@@ -45,6 +45,10 @@ pub struct SessionContext {
     pub project_path: String,
     /// 创建会话时的权限档位（full / ask / read-only）。缺省由适配器自定。
     pub access_mode: Option<String>,
+    /// 已有的 Codex thread id。设置后走 `thread/resume`，不再另起 id。
+    pub resume_thread_id: Option<String>,
+    /// 新的 Codex 线程写入官方 resume 列表。Claude 桩忽略。
+    pub persist_thread: bool,
 }
 
 /// 一个正在运行的 Agent 会话的句柄（由适配器返回）。
@@ -76,6 +80,11 @@ pub trait AgentSession: Send + Sync {
     /// 后续回合使用的模型和推理强度。空字符串表示不覆盖。
     fn set_tuning(&self, _model: Option<String>, _effort: Option<String>) -> Result<(), AgentError> {
         Ok(())
+    }
+
+    /// Codex 官方 thread id。桩会话没有。
+    fn native_thread_id(&self) -> Option<String> {
+        None
     }
 }
 
