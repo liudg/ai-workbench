@@ -63,7 +63,6 @@ impl ClaudeCodeAdapter {
         Self {
             persona: StubPersona {
                 cli_label: "Claude Code",
-                bin_name: "claude",
             },
         }
     }

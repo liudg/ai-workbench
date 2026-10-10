@@ -28,22 +28,12 @@ pub(super) fn merge_no_proxy(current: &str) -> String {
     let mut parts = Vec::new();
     for item in current.split(',') {
         let item = item.trim();
-        if item.is_empty()
-            || parts
-                .iter()
-                .any(|existing: &String| existing.eq_ignore_ascii_case(item))
-        {
-            continue;
+        if !item.is_empty() {
+            push_unique(&mut parts, item);
         }
-        parts.push(item.to_string());
     }
     for host in LOOPBACK_NO_PROXY {
-        if !parts
-            .iter()
-            .any(|existing| existing.eq_ignore_ascii_case(host))
-        {
-            parts.push((*host).to_string());
-        }
+        push_unique(&mut parts, host);
     }
     parts.join(",")
 }

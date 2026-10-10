@@ -73,7 +73,14 @@ export function ChatView({
     events.forEach((event, index) => map.set(event.id, index));
     return map;
   }, [events]);
-  const layoutKey = `${events.length}:${contentChars(events)}:${status}`;
+  const layoutKey = useMemo(
+    () => `${events.length}:${contentChars(events)}:${status}`,
+    [events, status],
+  );
+  const hasVisibleEvent = useMemo(
+    () => events.some((event) => event.kind !== "status-changed"),
+    [events],
+  );
 
   const [workOverrides, setWorkOverrides] = useState<ReadonlyMap<string, boolean>>(
     new Map(),
@@ -184,7 +191,7 @@ export function ChatView({
         className="chat-log min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto py-4"
       >
         <div ref={contentRef} className="min-h-full min-w-0">
-          {events.filter((e) => e.kind !== "status-changed").length === 0 ? (
+          {!hasVisibleEvent ? (
             <div className="flex h-full flex-col items-center justify-center gap-3 text-zinc-600">
               <MessageSquareDashed className="h-8 w-8" strokeWidth={1.5} />
               <p className="text-sm">发送第一条消息，开始这轮会话</p>

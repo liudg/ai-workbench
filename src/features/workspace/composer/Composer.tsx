@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { ArrowUp, ChevronDown, Plus, Shield, X } from "lucide-react";
 
 import { backend } from "@/lib/ipc";
@@ -34,6 +34,12 @@ function placeMenu(anchor: HTMLElement, menu: HTMLElement) {
   if (top < 8) top = rect.bottom + 8;
   menu.style.top = `${top}px`;
   menu.style.left = `${left}px`;
+}
+
+function stepIndex(current: number, count: number, key: string) {
+  if (count === 0) return 0;
+  const next = key === "ArrowDown" ? current + 1 : current - 1;
+  return (next + count) % count;
 }
 
 function useComposerMenu(
@@ -105,7 +111,7 @@ export function Composer({
   const accessMenuRef = useRef<HTMLDivElement>(null);
   const modelMenuRef = useRef<HTMLDivElement>(null);
 
-  const closeMenu = () => setMenu(null);
+  const closeMenu = useCallback(() => setMenu(null), []);
   useComposerMenu(menu === "access", accessRef, accessMenuRef, closeMenu);
   useComposerMenu(menu === "model", modelRef, modelMenuRef, closeMenu);
 
@@ -340,12 +346,7 @@ export function Composer({
           onKeyDown={(e) => {
             if (skillOpen && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
               e.preventDefault();
-              setSkillIndex((current) => {
-                const count = skillMatches.length;
-                if (count === 0) return 0;
-                const next = e.key === "ArrowDown" ? current + 1 : current - 1;
-                return (next + count) % count;
-              });
+              setSkillIndex((current) => stepIndex(current, skillMatches.length, e.key));
               return;
             }
             if (
@@ -360,12 +361,7 @@ export function Composer({
             }
             if (slashOpen && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
               e.preventDefault();
-              setSlashIndex((current) => {
-                const count = slashMatches.length;
-                if (count === 0) return 0;
-                const next = e.key === "ArrowDown" ? current + 1 : current - 1;
-                return (next + count) % count;
-              });
+              setSlashIndex((current) => stepIndex(current, slashMatches.length, e.key));
               return;
             }
             if (

@@ -197,11 +197,9 @@ impl AgentAdapter for ExternalCliAdapter {
         _ctx: SessionContext,
         events: EventSink,
     ) -> Result<Arc<dyn AgentSession>, AgentError> {
-        let release = release_for(self.kind);
         let session = StubAgentSession::new(
             StubPersona {
                 cli_label: self.kind.display_name(),
-                bin_name: release.bins.first().copied().unwrap_or("agent"),
             },
             events.clone(),
             self.capabilities(),

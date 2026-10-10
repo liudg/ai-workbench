@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { ChevronRight, Ellipsis } from "lucide-react";
 
 import { cn, displayPath } from "@/lib/utils";
@@ -20,10 +20,10 @@ export function ProjectItem({ project }: { project: Project }) {
   const [collapsed, setCollapsed] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const closeMenu = () => {
+  const closeMenu = useCallback(() => {
     setMenuOpen(false);
     setConfirming(false);
-  };
+  }, []);
   useDismiss(menuOpen, menuRef, closeMenu);
 
   const status = sessions ? aggregateStatus(sessions) : null;

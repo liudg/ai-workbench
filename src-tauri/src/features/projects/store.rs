@@ -40,22 +40,16 @@ impl ProjectStore {
         self.projects.lock().unwrap().clone()
     }
 
+    fn find_project(&self, pred: impl Fn(&Project) -> bool) -> Option<Project> {
+        self.projects.lock().unwrap().iter().find(|p| pred(p)).cloned()
+    }
+
     pub fn get(&self, id: &str) -> Option<Project> {
-        self.projects
-            .lock()
-            .unwrap()
-            .iter()
-            .find(|p| p.id == id)
-            .cloned()
+        self.find_project(|project| project.id == id)
     }
 
     pub fn find_by_path(&self, path: &str) -> Option<Project> {
-        self.projects
-            .lock()
-            .unwrap()
-            .iter()
-            .find(|p| p.path == path)
-            .cloned()
+        self.find_project(|project| project.path == path)
     }
 
     pub fn add(&self, project: Project) -> Result<(), String> {

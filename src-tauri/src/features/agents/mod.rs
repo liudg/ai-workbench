@@ -51,9 +51,6 @@ pub type EventSink = mpsc::UnboundedSender<SessionEventBody>;
 /// 协议差异留在适配器里；个别开关放进 `options`。
 #[derive(Debug, Clone)]
 pub struct SessionContext {
-    /// 工作台会话 id（`{agent}:{native_id}`）。新建时可以先为空。
-    #[allow(dead_code)]
-    pub session_id: String,
     /// 项目根目录；真实 CLI 的工作目录
     pub project_path: String,
     /// 创建会话时的权限档位（full / ask / read-only）。缺省由适配器自定。

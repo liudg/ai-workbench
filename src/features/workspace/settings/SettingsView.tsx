@@ -34,7 +34,6 @@ export function SettingsView() {
   const refresh = useWorkbench((s) => s.refreshInstallations);
   const updateInstallation = useWorkbench((s) => s.updateInstallation);
   const closeSettings = useWorkbench((s) => s.closeSettings);
-  const rows = installations ?? [];
 
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col">
@@ -79,11 +78,11 @@ export function SettingsView() {
 
           {installations === null ? (
             <p className="mt-8 text-sm text-zinc-500">正在检测本地 Agent…</p>
-          ) : rows.length === 0 ? (
+          ) : installations.length === 0 ? (
             <p className="mt-8 text-sm text-zinc-500">没有可管理的本地 Agent。</p>
           ) : (
             <ul className="mt-6 space-y-2">
-              {rows.map((item) => {
+              {installations.map((item) => {
                 const updating = updatingKind === item.kind;
                 return (
                   <li

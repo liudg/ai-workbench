@@ -1,6 +1,6 @@
 import { backend } from "@/lib/ipc";
 import { isReadOnlyOpen } from "@/lib/utils";
-import type { AgentKind, Session, SessionEvent } from "@/types";
+import type { AgentKind, Project, Session, SessionEvent } from "@/types";
 
 export const MISSING_SESSION = "会话不存在或已结束";
 
@@ -37,4 +37,13 @@ export async function loadSessions(
 ): Promise<[string, Session[]]> {
   const list = await backend.listSessions(projectId);
   return [projectId, stampAgents(list, overrides())];
+}
+
+export async function loadWorkspaceLists(overrides: () => Record<string, AgentKind>): Promise<{
+  projects: Project[];
+  pairs: [string, Session[]][];
+}> {
+  const projects = await backend.listProjects();
+  const pairs = await Promise.all(projects.map((project) => loadSessions(project.id, overrides)));
+  return { projects, pairs };
 }

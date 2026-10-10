@@ -8,6 +8,11 @@ import type { SidebarSlice, WorkbenchGet, WorkbenchSet } from "../types";
 
 export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): SidebarSlice {
   const overrides = () => get().agentOverride;
+  const showProject = async (id: string) => {
+    const projects = await backend.listProjects();
+    set({ projects, dialog: null });
+    await get().selectProject(id);
+  };
   return {
     projects: [],
     sessions: {},
@@ -34,9 +39,7 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
     async createProject(input) {
       try {
         const result = await backend.createProject(input);
-        const projects = await backend.listProjects();
-        set({ projects, dialog: null });
-        await get().selectProject(result.project.id);
+        await showProject(result.project.id);
         return result.warning;
       } catch (e) {
         set({ lastError: String(e) });
@@ -47,9 +50,7 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
     async importProject(input) {
       try {
         const project = await backend.importProject(input);
-        const projects = await backend.listProjects();
-        set({ projects, dialog: null });
-        await get().selectProject(project.id);
+        await showProject(project.id);
       } catch (e) {
         set({ lastError: String(e) });
       }

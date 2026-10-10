@@ -22,6 +22,20 @@ fn notify_projects_changed(app: &AppHandle) {
     let _ = app.emit(EVT_PROJECTS_CHANGED, ());
 }
 
+fn ensure_unlisted(store: &ProjectStore, dir: &str) -> Result<(), String> {
+    if store.find_by_path(dir).is_some() {
+        Err("该目录已在项目列表中".into())
+    } else {
+        Ok(())
+    }
+}
+
+fn publish(app: &AppHandle, store: &ProjectStore, project: Project) -> Result<Project, String> {
+    store.add(project.clone())?;
+    notify_projects_changed(app);
+    Ok(project)
+}
+
 /// 侧边栏项目只来自工作台 projects.json，不扫描 Agent 会话目录。
 #[tauri::command]
 pub fn list_projects(store: State<'_, ProjectStore>) -> Result<Vec<Project>, String> {
@@ -39,21 +53,21 @@ pub fn create_project(
     init_git: bool,
 ) -> Result<CreateProjectResult, String> {
     let (dir, warning) = projects::create_project_dir(&parent_dir, &name, init_git)?;
-    if store.find_by_path(&dir).is_some() {
-        return Err("该目录已在项目列表中".into());
-    }
+    ensure_unlisted(&store, &dir)?;
     let now = now_millis();
-    let project = Project {
-        id: new_id(),
-        name: name.trim().to_string(),
-        path: dir,
-        default_agent,
-        created_at: now,
-        updated_at: now,
-        external: false,
-    };
-    store.add(project.clone())?;
-    notify_projects_changed(&app);
+    let project = publish(
+        &app,
+        &store,
+        Project {
+            id: new_id(),
+            name: name.trim().to_string(),
+            path: dir,
+            default_agent,
+            created_at: now,
+            updated_at: now,
+            external: false,
+        },
+    )?;
     Ok(CreateProjectResult { project, warning })
 }
 
@@ -67,25 +81,24 @@ pub fn import_project(
     default_agent: AgentKind,
 ) -> Result<Project, String> {
     let (dir, inferred_name) = projects::normalize_import_dir(&path)?;
-    if store.find_by_path(&dir).is_some() {
-        return Err("该目录已在项目列表中".into());
-    }
+    ensure_unlisted(&store, &dir)?;
     let now = now_millis();
-    let project = Project {
-        id: new_id(),
-        name: name
-            .map(|n| n.trim().to_string())
-            .filter(|n| !n.is_empty())
-            .unwrap_or(inferred_name),
-        path: dir,
-        default_agent,
-        created_at: now,
-        updated_at: now,
-        external: false,
-    };
-    store.add(project.clone())?;
-    notify_projects_changed(&app);
-    Ok(project)
+    publish(
+        &app,
+        &store,
+        Project {
+            id: new_id(),
+            name: name
+                .map(|n| n.trim().to_string())
+                .filter(|n| !n.is_empty())
+                .unwrap_or(inferred_name),
+            path: dir,
+            default_agent,
+            created_at: now,
+            updated_at: now,
+            external: false,
+        },
+    )
 }
 
 /// 从工作台列表移除项目（不删除磁盘目录，也不删除 Agent 的会话记录）。

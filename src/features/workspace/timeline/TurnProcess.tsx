@@ -1,20 +1,10 @@
 import { useState } from "react";
 import { ChevronRight } from "lucide-react";
 
-import { formatElapsed } from "./timeline";
+import { formatElapsed, isProcess } from "./timeline";
 import { cn } from "@/lib/utils";
 import type { Session, SessionEvent } from "@/types";
 import { EventItem } from "./EventItem";
-
-function isProcess(event: SessionEvent, answerId: string | null): boolean {
-  if (answerId != null && event.id === answerId) return false;
-  return (
-    event.kind === "thinking" ||
-    event.kind === "tool-call" ||
-    event.kind === "prompt" ||
-    event.kind === "agent-message"
-  );
-}
 
 /**
  * 一轮结束后的过程条：只显示用时和右侧箭头。

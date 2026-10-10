@@ -6,6 +6,8 @@ use std::path::{Component, Path, PathBuf};
 
 use tauri::{AppHandle, Manager};
 
+use crate::models::strip_verbatim_prefix;
+
 const MAX_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
 
 /// 确认路径是一张本机图片，并把它加入 asset 协议白名单。
@@ -167,14 +169,7 @@ fn is_isobmff_brand(header: &[u8], brands: &[&str]) -> bool {
 }
 
 fn display_path(path: &Path) -> String {
-    let text = path.to_string_lossy();
-    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
-        return format!(r"\\{rest}");
-    }
-    if let Some(rest) = text.strip_prefix(r"\\?\") {
-        return rest.to_string();
-    }
-    text.into_owned()
+    strip_verbatim_prefix(&path.to_string_lossy())
 }
 
 #[cfg(test)]

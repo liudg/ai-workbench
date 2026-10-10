@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type RefObject } from "react";
 import { Plus, SquarePen } from "lucide-react";
 
 import { installedAgents } from "@/lib/agents";
@@ -82,7 +82,7 @@ export function NewSessionButton({
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const close = () => setOpen(false);
+  const close = useCallback(() => setOpen(false), []);
   useFixedMenu(open, anchorRef, menuRef, close, "below");
 
   const choose = (agent: AgentKind) => {

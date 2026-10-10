@@ -238,14 +238,6 @@ export function effortLabel(id: string | undefined): string {
   return EFFORT_LABELS[id] ?? id;
 }
 
-export const STATUS_LABELS: Record<SessionStatus, string> = {
-  running: "运行中",
-  "needs-input": "待处理",
-  completed: "已完成",
-  failed: "失败",
-  stopped: "已停止",
-};
-
 /** 项目聚合状态：需要处理 > 运行中 > 失败 > 已完成 > 已停止 */
 export function aggregateStatus(sessions: Session[]): SessionStatus | null {
   if (sessions.length === 0) return null;

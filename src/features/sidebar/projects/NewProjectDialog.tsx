@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, Folder, FolderPlus } from "lucide-react";
 
 import { persistedAgentKind } from "@/lib/agents";
 import { backend } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
 import { useWorkbench } from "@/store";
+import { useDismiss } from "../use-dismiss";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -35,6 +36,8 @@ export function NewProjectDialog() {
   const [initGit, setInitGit] = useState(true);
   const [busy, setBusy] = useState(false);
   const sourceRef = useRef<HTMLDivElement>(null);
+  const closeSourceMenu = useCallback(() => setSourceMenu(false), []);
+  useDismiss(sourceMenu, sourceRef, closeSourceMenu);
 
   useEffect(() => {
     if (dialog) {
@@ -47,24 +50,6 @@ export function NewProjectDialog() {
       clearError();
     }
   }, [dialog, clearError]);
-
-  useEffect(() => {
-    if (!sourceMenu) return;
-    const onPointer = (event: MouseEvent) => {
-      if (!sourceRef.current?.contains(event.target as Node)) {
-        setSourceMenu(false);
-      }
-    };
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setSourceMenu(false);
-    };
-    document.addEventListener("mousedown", onPointer);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onPointer);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [sourceMenu]);
 
   const pickDir = async () => {
     const selected = await backend.pickDirectory(

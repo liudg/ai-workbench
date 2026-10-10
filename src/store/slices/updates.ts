@@ -1,5 +1,12 @@
-import { checkForUpdate, installUpdate } from "@/lib/updater";
+import { checkForUpdate, installUpdate, type UpdatePhase } from "@/lib/updater";
 import type { UpdatesSlice, WorkbenchSet } from "../types";
+
+function keepCurrentDownload(current: UpdatePhase, next: UpdatePhase) {
+  return (
+    current.kind === "downloading" &&
+    (next.kind === "checking" || next.kind === "available")
+  );
+}
 
 export function createUpdatesSlice(set: WorkbenchSet): UpdatesSlice {
   return {
@@ -12,12 +19,7 @@ export function createUpdatesSlice(set: WorkbenchSet): UpdatesSlice {
       }
       await checkForUpdate((phase) => {
         set((s) => {
-          if (
-            s.update.kind === "downloading" &&
-            (phase.kind === "checking" || phase.kind === "available")
-          ) {
-            return s;
-          }
+          if (keepCurrentDownload(s.update, phase)) return s;
           const next: Partial<UpdatesSlice> = { update: phase };
           if (!manual && phase.kind === "available") {
             next.updateDialogOpen = true;

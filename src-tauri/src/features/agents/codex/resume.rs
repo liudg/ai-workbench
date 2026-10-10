@@ -700,7 +700,6 @@ mod tests {
         let session = CodexCliAdapter::new()
             .start_session(
                 SessionContext {
-                    session_id: thread.native_id.clone(),
                     project_path: thread.cwd.clone(),
                     access_mode: None,
                     resume_native_id: Some(thread.native_id.clone()),
@@ -740,7 +739,6 @@ mod tests {
         let session = CodexCliAdapter::new()
             .start_session(
                 SessionContext {
-                    session_id: String::new(),
                     project_path: dir.display().to_string(),
                     access_mode: Some("full".into()),
                     resume_native_id: None,

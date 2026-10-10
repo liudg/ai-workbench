@@ -1,8 +1,5 @@
 import { backend } from "@/lib/ipc";
-import { loadSessions } from "../sync";
-import {
-  clearMissingSessionBanner,
-} from "../sync";
+import { clearMissingSessionBanner, loadSessions, loadWorkspaceLists } from "../sync";
 import type { ShellSlice, WorkbenchGet, WorkbenchSet } from "../types";
 
 let initStarted = false;
@@ -40,16 +37,13 @@ export function createShellSlice(set: WorkbenchSet, get: WorkbenchGet): ShellSli
         );
       });
       backend.onProjectsChanged(() => {
-        backend.listProjects().then(async (projects) => {
-          const pairs = await Promise.all(
-            projects.map((p) => loadSessions(p.id, overrides)),
-          );
+        void loadWorkspaceLists(overrides).then(({ projects, pairs }) =>
           set((s) => {
             const sessions = { ...s.sessions };
             for (const [pid, list] of pairs) sessions[pid] = list;
             return { projects, sessions };
-          });
-        });
+          }),
+        );
       });
 
       try {
@@ -74,8 +68,7 @@ export function createShellSlice(set: WorkbenchSet, get: WorkbenchGet): ShellSli
     },
 
     async refreshAll() {
-      const projects = await backend.listProjects();
-      const pairs = await Promise.all(projects.map((p) => loadSessions(p.id, overrides)));
+      const { projects, pairs } = await loadWorkspaceLists(overrides);
       set((s) => {
         const sessions = { ...s.sessions };
         const ids = new Set(projects.map((project) => project.id));

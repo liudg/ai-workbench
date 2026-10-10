@@ -87,7 +87,11 @@ export function pickAnswer(
   return settled ? messages[messages.length - 1] : null;
 }
 
-function isProcess(event: SessionEvent, answerId: string | null): boolean {
+function skippedInTimeline(event: SessionEvent): boolean {
+  return event.kind === "status-changed" || event.kind === "prompt-resolved";
+}
+
+export function isProcess(event: SessionEvent, answerId: string | null): boolean {
   if (answerId != null && event.id === answerId) return false;
   return (
     event.kind === "thinking" ||
@@ -113,7 +117,7 @@ function elapsedMs(events: readonly SessionEvent[]): number {
 function pushLive(blocks: TimelineNode[], events: readonly SessionEvent[]) {
   const answer = pickAnswer(events, false);
   for (const event of events) {
-    if (event.kind === "status-changed" || event.kind === "prompt-resolved") continue;
+    if (skippedInTimeline(event)) continue;
     if (event.kind === "tool-call") {
       const last = blocks[blocks.length - 1];
       if (last && last.type === "work") {
@@ -132,9 +136,7 @@ function pushLive(blocks: TimelineNode[], events: readonly SessionEvent[]) {
 }
 
 function pushSettled(blocks: TimelineNode[], events: readonly SessionEvent[]) {
-  const body = events.filter(
-    (event) => event.kind !== "status-changed" && event.kind !== "prompt-resolved",
-  );
+  const body = events.filter((event) => !skippedInTimeline(event));
   const answer = pickAnswer(body, true);
   const answerId = answer?.id ?? null;
   const process = body.filter((event) => isProcess(event, answerId));
@@ -172,7 +174,7 @@ export function buildTimeline(
   while (index < events.length && events[index].kind !== "user-message") {
     const event = events[index];
     index += 1;
-    if (event.kind === "status-changed" || event.kind === "prompt-resolved") continue;
+    if (skippedInTimeline(event)) continue;
     blocks.push({
       type: "event",
       event,

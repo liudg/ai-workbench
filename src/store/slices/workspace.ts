@@ -39,15 +39,13 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
       } catch (e) {
         const message = String(e);
         if (message === MISSING_SESSION) return;
-        set((s) => ({
-          lastError: isReadOnlyOpen(s.events[sessionId]) ? s.lastError : message,
-          catalogs: isReadOnlyOpen(s.events[sessionId])
-            ? s.catalogs
-            : {
-                ...s.catalogs,
-                [sessionId]: emptyCatalog(),
-              },
-        }));
+        set((s) => {
+          if (isReadOnlyOpen(s.events[sessionId])) return s;
+          return {
+            lastError: message,
+            catalogs: { ...s.catalogs, [sessionId]: emptyCatalog() },
+          };
+        });
       }
     },
 

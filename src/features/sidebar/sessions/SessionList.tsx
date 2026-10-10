@@ -19,16 +19,23 @@ export function SessionList({
   showAll: boolean;
   onToggleShowAll: () => void;
 }) {
-  const events = useWorkbench((s) => s.events);
   const selectSession = useWorkbench((s) => s.selectSession);
+  const readOnlyKey = useWorkbench((s) => {
+    let key = "";
+    for (const session of sessions) {
+      if (isReadOnlyOpen(s.events[session.id])) key += `${session.id}\n`;
+    }
+    return key;
+  });
   const visible = showAll ? sessions : sessions.slice(0, SESSION_PREVIEW_LIMIT);
   const overflow = sessions.length > SESSION_PREVIEW_LIMIT;
+  const readOnlyIds = new Set(readOnlyKey ? readOnlyKey.slice(0, -1).split("\n") : []);
 
   return (
     <div className="mt-0.5 space-y-0.5">
       {visible.map((session) => {
         const active = selected && session.id === activeSessionId;
-        const readOnly = isReadOnlyOpen(events[session.id]);
+        const readOnly = readOnlyIds.has(session.id);
         return (
           <button
             key={session.id}

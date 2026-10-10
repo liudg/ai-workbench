@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { RefreshCw, Settings } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -12,7 +12,7 @@ export function AccountMenu() {
   const checking = useWorkbench((s) => s.update.kind === "checking");
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
-  const close = () => setOpen(false);
+  const close = useCallback(() => setOpen(false), []);
   useDismiss(open, rootRef, close);
 
   return (

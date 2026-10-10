@@ -5,7 +5,7 @@
 //! 尚未出现在目录里的会话。键是 agent kind + native id。管理器不依赖
 //! 某一种 CLI 的目录类型。
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use tauri::{AppHandle, Emitter};
@@ -95,15 +95,14 @@ impl SessionManager {
                 session.updated_at = sidebar_updated_at(session.updated_at, entry.activity_at);
             }
         }
-        let known: HashSet<(AgentKind, String)> = sessions
-            .iter()
-            .map(|session| (session.agent, session.native_id.clone()))
-            .collect();
         let mut extras: Vec<Session> = live
             .values()
             .filter(|entry| {
                 entry.meta.project_id == project.id
-                    && !known.contains(&(entry.meta.agent, entry.meta.native_id.clone()))
+                    && !sessions.iter().any(|session| {
+                        session.agent == entry.meta.agent
+                            && session.native_id == entry.meta.native_id
+                    })
             })
             .map(|entry| entry.meta.clone())
             .collect();
@@ -167,7 +166,6 @@ impl SessionManager {
         let (tx, rx) = mpsc::unbounded_channel::<SessionEventBody>();
         let session_id = session_key(agent, &entry.native_id);
         let ctx = SessionContext {
-            session_id: session_id.clone(),
             project_path: project.path.clone(),
             access_mode: None,
             resume_native_id: Some(entry.native_id.clone()),
@@ -203,7 +201,6 @@ impl SessionManager {
         let (tx, rx) = mpsc::unbounded_channel::<SessionEventBody>();
         let sink: EventSink = tx;
         let ctx = SessionContext {
-            session_id: String::new(),
             project_path: project.path.clone(),
             access_mode,
             resume_native_id: None,

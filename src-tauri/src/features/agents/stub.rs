@@ -27,8 +27,6 @@ use super::{AgentError, AgentSession, EventSink};
 #[derive(Debug, Clone, Copy)]
 pub struct StubPersona {
     pub cli_label: &'static str,
-    #[allow(dead_code)]
-    pub bin_name: &'static str,
 }
 
 #[derive(Default)]

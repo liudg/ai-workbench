@@ -428,7 +428,6 @@ mod tests {
         let session = adapter
             .start_session(
                 SessionContext {
-                    session_id: "catalog".into(),
                     project_path: std::env::temp_dir().to_string_lossy().to_string(),
                     access_mode: Some("read-only".into()),
                     resume_native_id: None,
@@ -457,7 +456,6 @@ mod tests {
         let session = adapter
             .start_session(
                 SessionContext {
-                    session_id: "questions".into(),
                     project_path: cwd.to_string_lossy().to_string(),
                     access_mode: Some("read-only".into()),
                     resume_native_id: None,
@@ -551,7 +549,6 @@ mod tests {
         let session = adapter
             .start_session(
                 SessionContext {
-                    session_id: "questions-skip".into(),
                     project_path: cwd.to_string_lossy().to_string(),
                     access_mode: Some("read-only".into()),
                     resume_native_id: None,
@@ -624,7 +621,6 @@ mod tests {
         let session = adapter
             .start_session(
                 SessionContext {
-                    session_id: "smoke".into(),
                     project_path: cwd.to_string_lossy().to_string(),
                     access_mode: Some("read-only".into()),
                     resume_native_id: None,

@@ -1,7 +1,5 @@
 import type { SlashCommand } from "@/types";
 
-export type { SlashCommand };
-
 /** 从当前 Agent 的命令表里过滤。命令表来自后端 profile / catalog，不是全局 Codex 表。 */
 export function slashToken(text: string): string | null {
   if (!text.startsWith("/") || text.includes("\n")) return null;
