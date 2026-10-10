@@ -9,6 +9,7 @@ import { create } from "zustand";
 
 import type {
   AccessMode,
+  AgentCatalog,
   AgentKind,
   Attachment,
   Project,
@@ -51,6 +52,8 @@ interface WorkbenchState {
   lastAccessMode: AccessMode;
   accessMode: Record<string, AccessMode>;
   attachments: Record<string, Attachment[]>;
+  catalogs: Record<string, AgentCatalog>;
+  tuning: Record<string, { model: string; effort: string }>;
 
   init(): Promise<void>;
   openDialog(mode: DialogMode): void;
@@ -70,6 +73,8 @@ interface WorkbenchState {
   createSession(projectId: string, agent: AgentKind): Promise<void>;
   setSessionAgent(sessionId: string, agent: AgentKind): void;
   setAccessMode(sessionId: string, mode: AccessMode): void;
+  loadCatalog(sessionId: string): Promise<void>;
+  setTuning(sessionId: string, model: string, effort: string): void;
   addAttachments(sessionId: string, files: Attachment[]): void;
   removeAttachment(sessionId: string, path: string): void;
   clearAttachments(sessionId: string): void;
@@ -113,6 +118,8 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   lastAccessMode: "full",
   accessMode: {},
   attachments: {},
+  catalogs: {},
+  tuning: {},
 
   async init() {
     if (initStarted) return;
@@ -300,6 +307,38 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       accessMode: { ...s.accessMode, [sessionId]: mode },
     }));
     void backend.setAccessMode(sessionId, mode).catch((e) => {
+      set({ lastError: String(e) });
+    });
+  },
+
+  async loadCatalog(sessionId) {
+    if (get().catalogs[sessionId]) return;
+    try {
+      const catalog = await backend.agentCatalog(sessionId);
+      set((s) => ({ catalogs: { ...s.catalogs, [sessionId]: catalog } }));
+      if (!get().tuning[sessionId] && catalog.models.length > 0) {
+        const model =
+          catalog.models.find((item) => item.is_default) ?? catalog.models[0];
+        const effort =
+          model.default_effort || model.efforts[0]?.id || "";
+        get().setTuning(sessionId, model.id, effort);
+      }
+    } catch (e) {
+      set((s) => ({
+        lastError: String(e),
+        catalogs: {
+          ...s.catalogs,
+          [sessionId]: { models: [], skills: [] },
+        },
+      }));
+    }
+  },
+
+  setTuning(sessionId, model, effort) {
+    set((s) => ({
+      tuning: { ...s.tuning, [sessionId]: { model, effort } },
+    }));
+    void backend.setSessionTuning(sessionId, model, effort).catch((e) => {
       set({ lastError: String(e) });
     });
   },

@@ -23,7 +23,10 @@ use tokio::process::{Child, Command};
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::timeout;
 
-use crate::models::{AgentKind, PromptKind, PromptOption, SessionEventBody, SessionStatus};
+use crate::models::{
+    strip_verbatim_prefix, AgentCatalog, AgentKind, AgentModelOption, AgentSkillOption, PromptKind,
+    PromptOption, ReasoningEffortOption, SessionEventBody, SessionStatus,
+};
 
 use super::{AgentAdapter, AgentError, AgentSession, EventSink, SessionContext};
 
@@ -102,6 +105,8 @@ struct Shared {
     turn_open: AtomicBool,
     access: Mutex<Access>,
     model_override: Mutex<Option<String>>,
+    effort: Mutex<Option<String>>,
+    skills: Mutex<Vec<KnownSkill>>,
     thread_id: Mutex<Option<String>>,
     model: Mutex<String>,
     version: Mutex<String>,
@@ -151,6 +156,7 @@ impl AgentAdapter for CodexCliAdapter {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
+        hide_console(&mut command);
         let mut child = command.spawn().map_err(|e| {
             AgentError::Runtime(format!("无法启动 Codex CLI（{}）：{e}", bin.display()))
         })?;
@@ -198,10 +204,12 @@ impl AgentAdapter for CodexCliAdapter {
             turn_open: AtomicBool::new(false),
             access: Mutex::new(initial_access),
             model_override: Mutex::new(None),
+            effort: Mutex::new(None),
+            skills: Mutex::new(Vec::new()),
             thread_id: Mutex::new(None),
             model: Mutex::new(String::new()),
             version: Mutex::new(version.clone()),
-            cwd: ctx.project_path.clone(),
+            cwd: strip_verbatim_prefix(&ctx.project_path),
             pending: Mutex::new(HashMap::new()),
             waiters: Mutex::new(HashMap::new()),
             rpc_methods: Mutex::new(HashMap::new()),
@@ -368,6 +376,15 @@ impl AgentSession for CodexCliSession {
         Ok(())
     }
 
+    async fn catalog(&self) -> Result<AgentCatalog, AgentError> {
+        self.shared.catalog().await
+    }
+
+    fn set_tuning(&self, model: Option<String>, effort: Option<String>) -> Result<(), AgentError> {
+        self.shared.set_tuning(model, effort);
+        Ok(())
+    }
+
     fn retarget(&self, kind: AgentKind) {
         if kind != AgentKind::CodexCli {
             emit(
@@ -420,14 +437,39 @@ impl Shared {
             .clone()
             .ok_or_else(|| AgentError::Runtime("Codex 线程未建立".into()))?;
         let access = *self.access.lock().unwrap();
+        if self.skills.lock().unwrap().is_empty() {
+            if let Err(err) = self.refresh_skills().await {
+                emit(
+                    &self.events,
+                    SessionEventBody::System {
+                        text: format!("读取技能列表失败，本次按普通文本发送：{err}"),
+                    },
+                );
+            }
+        }
+        let (input, skill_labels) = {
+            let skills = self.skills.lock().unwrap();
+            build_turn_input(&text, &skills)
+        };
+        if !skill_labels.is_empty() {
+            emit(
+                &self.events,
+                SessionEventBody::System {
+                    text: format!("已引用技能 {}。", skill_labels.join("、")),
+                },
+            );
+        }
         let mut params = json!({
             "threadId": thread_id,
-            "input": [{ "type": "text", "text": text }],
+            "input": input,
             "approvalPolicy": access.approval_policy(),
             "sandboxPolicy": access.sandbox_policy(),
         });
         if let Some(model) = self.model_override.lock().unwrap().clone() {
             params["model"] = json!(model);
+        }
+        if let Some(effort) = self.effort.lock().unwrap().clone() {
+            params["effort"] = json!(effort);
         }
         self.turn_open.store(true, Ordering::SeqCst);
         if !self.write_method("turn/start", params) {
@@ -634,14 +676,14 @@ impl Shared {
     }
 
     async fn emit_diff(&self) {
-        let output = Command::new("git")
-            .arg("-C")
+        let mut git = Command::new("git");
+        git.arg("-C")
             .arg(&self.cwd)
             .arg("diff")
             .arg("--stat")
-            .arg("HEAD")
-            .output()
-            .await;
+            .arg("HEAD");
+        hide_console(&mut git);
+        let output = git.output().await;
         let text = match output {
             Ok(output) if output.status.success() => {
                 let mut body = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -1081,6 +1123,57 @@ impl Shared {
             },
         );
     }
+
+    fn set_tuning(&self, model: Option<String>, effort: Option<String>) {
+        if let Some(model) = model {
+            let trimmed = model.trim();
+            *self.model_override.lock().unwrap() = if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            };
+        }
+        if let Some(effort) = effort {
+            let trimmed = effort.trim();
+            *self.effort.lock().unwrap() = if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            };
+        }
+    }
+
+    async fn catalog(&self) -> Result<AgentCatalog, AgentError> {
+        let models = self
+            .request("model/list", json!({ "includeHidden": true }))
+            .await?;
+        self.refresh_skills().await?;
+        let skills = self
+            .skills
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|skill| AgentSkillOption {
+                name: skill.name.clone(),
+                mention: skill.mention.clone(),
+                label: skill.label.clone(),
+                description: skill.description.clone(),
+                path: skill.path.clone(),
+            })
+            .collect();
+        Ok(AgentCatalog {
+            models: parse_models(&models),
+            skills,
+        })
+    }
+
+    async fn refresh_skills(&self) -> Result<(), AgentError> {
+        let listed = self
+            .request("skills/list", json!({ "cwd": self.cwd }))
+            .await?;
+        *self.skills.lock().unwrap() = parse_skills(&listed);
+        Ok(())
+    }
 }
 
 fn approval_question(method: &str, params: &Value) -> String {
@@ -1263,8 +1356,20 @@ fn vendor_exe_near(shim: &Path) -> Option<PathBuf> {
     candidates.into_iter().find(|path| path.is_file())
 }
 
+fn hide_console(command: &mut Command) {
+    #[cfg(windows)]
+    {
+        // CREATE_NO_WINDOW：GUI 宿主拉起控制台程序时不要弹出黑窗口。
+        command.creation_flags(0x08000000);
+    }
+    let _ = command;
+}
+
 async fn codex_version(bin: &Path) -> String {
-    let Ok(output) = Command::new(bin).arg("--version").output().await else {
+    let mut command = Command::new(bin);
+    command.arg("--version");
+    hide_console(&mut command);
+    let Ok(output) = command.output().await else {
         return "未知版本".into();
     };
     let text = String::from_utf8_lossy(&output.stdout);
@@ -1273,6 +1378,202 @@ async fn codex_version(bin: &Path) -> String {
         .unwrap_or("codex")
         .trim()
         .to_string()
+}
+
+#[derive(Clone)]
+struct KnownSkill {
+    name: String,
+    mention: String,
+    label: String,
+    description: String,
+    path: String,
+}
+
+fn parse_models(value: &Value) -> Vec<AgentModelOption> {
+    let list = value
+        .get("data")
+        .or_else(|| value.get("models"))
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let mut models = Vec::new();
+    for item in list {
+        if item.get("hidden").and_then(Value::as_bool) == Some(true) {
+            continue;
+        }
+        let id = item
+            .get("model")
+            .and_then(Value::as_str)
+            .or_else(|| item.get("id").and_then(Value::as_str))
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        if id.is_empty() {
+            continue;
+        }
+        let label = item
+            .get("displayName")
+            .and_then(Value::as_str)
+            .filter(|text| !text.is_empty())
+            .unwrap_or(&id)
+            .to_string();
+        let efforts = item
+            .get("supportedReasoningEfforts")
+            .and_then(Value::as_array)
+            .map(|list| {
+                list.iter()
+                    .filter_map(|effort| {
+                        let id = effort
+                            .get("reasoningEffort")
+                            .and_then(Value::as_str)
+                            .unwrap_or("")
+                            .trim()
+                            .to_string();
+                        if id.is_empty() {
+                            return None;
+                        }
+                        Some(ReasoningEffortOption {
+                            description: effort
+                                .get("description")
+                                .and_then(Value::as_str)
+                                .unwrap_or("")
+                                .to_string(),
+                            id,
+                        })
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let default_effort = item
+            .get("defaultReasoningEffort")
+            .and_then(Value::as_str)
+            .filter(|text| !text.is_empty())
+            .map(str::to_string)
+            .or_else(|| efforts.first().map(|effort| effort.id.clone()))
+            .unwrap_or_default();
+        models.push(AgentModelOption {
+            id,
+            label,
+            description: item
+                .get("description")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
+            is_default: item.get("isDefault").and_then(Value::as_bool).unwrap_or(false),
+            default_effort,
+            efforts,
+        });
+    }
+    models.sort_by(|a, b| b.is_default.cmp(&a.is_default).then(a.label.cmp(&b.label)));
+    models
+}
+
+fn parse_skills(value: &Value) -> Vec<KnownSkill> {
+    let mut skills = Vec::new();
+    collect_skills(value, &mut skills);
+    skills
+}
+
+fn collect_skills(value: &Value, out: &mut Vec<KnownSkill>) {
+    if let Some(list) = value.as_array() {
+        for item in list {
+            collect_skills(item, out);
+        }
+        return;
+    }
+    let Some(list) = value.get("skills").and_then(Value::as_array) else {
+        return;
+    };
+    for skill in list {
+        if skill.get("enabled").and_then(Value::as_bool) == Some(false) {
+            continue;
+        }
+        let name = skill
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        let path = skill
+            .get("path")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        if name.is_empty() || path.is_empty() || out.iter().any(|item| item.path == path) {
+            continue;
+        }
+        let mention = name.rsplit(':').next().unwrap_or(&name).to_string();
+        let label = skill
+            .pointer("/interface/displayName")
+            .and_then(Value::as_str)
+            .filter(|text| !text.is_empty())
+            .unwrap_or(&mention)
+            .to_string();
+        out.push(KnownSkill {
+            description: skill
+                .get("description")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
+            name,
+            mention,
+            label,
+            path,
+        });
+    }
+}
+
+fn is_skill_token(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'.' | b':' | b'-')
+}
+
+fn build_turn_input(text: &str, skills: &[KnownSkill]) -> (Value, Vec<String>) {
+    let bytes = text.as_bytes();
+    let mut elements = Vec::new();
+    let mut labels = Vec::new();
+    let mut attached: Vec<&KnownSkill> = Vec::new();
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'$' {
+            let start = index;
+            let mut end = index + 1;
+            while end < bytes.len() && is_skill_token(bytes[end]) {
+                end += 1;
+            }
+            let token = &text[index + 1..end];
+            if !token.is_empty() {
+                if let Some(skill) = skills.iter().find(|skill| {
+                    skill.mention.eq_ignore_ascii_case(token) || skill.name.eq_ignore_ascii_case(token)
+                }) {
+                    elements.push(json!({
+                        "byteRange": { "start": start, "end": end },
+                        "placeholder": skill.label,
+                    }));
+                    if !attached.iter().any(|item| item.path == skill.path) {
+                        labels.push(skill.label.clone());
+                        attached.push(skill);
+                    }
+                }
+            }
+            index = end;
+            continue;
+        }
+        index += 1;
+    }
+    let mut text_item = json!({ "type": "text", "text": text });
+    if !elements.is_empty() {
+        text_item["text_elements"] = Value::Array(elements);
+    }
+    let mut input = vec![text_item];
+    for skill in attached {
+        input.push(json!({
+            "type": "skill",
+            "name": skill.name,
+            "path": skill.path,
+        }));
+    }
+    (Value::Array(input), labels)
 }
 
 fn split_command(text: &str) -> (String, String) {
@@ -1303,11 +1604,72 @@ mod tests {
     }
 
     #[test]
+    fn attaches_skill_mentions() {
+        let skills = vec![KnownSkill {
+            name: "documents:documents".into(),
+            mention: "documents".into(),
+            label: "Documents".into(),
+            description: String::new(),
+            path: "C:/skills/documents/SKILL.md".into(),
+        }];
+        let (input, labels) = build_turn_input("请用 $documents 改合同", &skills);
+        assert_eq!(labels, vec!["Documents".to_string()]);
+        assert_eq!(input[1]["type"], json!("skill"));
+        assert_eq!(input[1]["name"], json!("documents:documents"));
+        assert_eq!(input[0]["text_elements"][0]["placeholder"], json!("Documents"));
+    }
+
+    #[test]
+    fn reads_model_efforts() {
+        let models = parse_models(&json!({
+            "data": [{
+                "model": "gpt-test",
+                "displayName": "GPT Test",
+                "hidden": false,
+                "isDefault": true,
+                "defaultReasoningEffort": "medium",
+                "supportedReasoningEfforts": [
+                    { "reasoningEffort": "low", "description": "fast" },
+                    { "reasoningEffort": "medium", "description": "balanced" }
+                ]
+            }]
+        }));
+        assert_eq!(models[0].id, "gpt-test");
+        assert_eq!(models[0].efforts.len(), 2);
+        assert_eq!(models[0].default_effort, "medium");
+    }
+
+    #[test]
     fn splits_slash_args() {
         assert_eq!(
             split_command("/permissions 只读"),
             ("permissions".into(), "只读".into())
         );
+    }
+
+    #[tokio::test]
+    #[ignore = "calls the local Codex CLI"]
+    async fn catalog_lists_live_models() {
+        let adapter = CodexCliAdapter::new();
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let session = adapter
+            .start_session(
+                SessionContext {
+                    session_id: "catalog".into(),
+                    project_path: std::env::temp_dir().to_string_lossy().to_string(),
+                    access_mode: Some("read-only".into()),
+                },
+                tx,
+            )
+            .await
+            .expect("start");
+        let catalog = session.catalog().await.expect("catalog");
+        assert!(!catalog.models.is_empty(), "codex returned no models");
+        assert!(
+            catalog.models.iter().any(|model| !model.efforts.is_empty()),
+            "codex returned no reasoning efforts"
+        );
+        let _ = session.stop().await;
     }
 
     #[tokio::test]

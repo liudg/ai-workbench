@@ -102,11 +102,14 @@ pub fn create_project_dir(
         .map_err(|e| format!("创建目录失败 {}: {e}", dir.display()))?;
 
     let warning = if init_git {
-        match std::process::Command::new("git")
-            .arg("init")
-            .current_dir(&dir)
-            .output()
+        let mut git = std::process::Command::new("git");
+        git.arg("init").current_dir(&dir);
+        #[cfg(windows)]
         {
+            use std::os::windows::process::CommandExt;
+            git.creation_flags(0x08000000);
+        }
+        match git.output() {
             Ok(out) if out.status.success() => None,
             Ok(out) => Some(format!(
                 "git init 失败: {}",
@@ -135,5 +138,5 @@ pub fn normalize_import_dir(path: &str) -> Result<(String, String), String> {
         .map(|n| n.to_string_lossy().to_string())
         .filter(|n| !n.is_empty())
         .unwrap_or_else(|| "未命名项目".into());
-    Ok((canonical.to_string_lossy().to_string(), name))
+    Ok((strip_verbatim_prefix(&canonical.to_string_lossy()), name))
 }

@@ -132,6 +132,57 @@ pub struct SessionEvent {
     pub body: SessionEventBody,
 }
 
+/// 去掉 Windows `\\?\` 前缀，避免界面和 Codex 工作目录显示成 `\\?\F:\...`。
+pub fn strip_verbatim_prefix(path: &str) -> String {
+    if let Some(rest) = path.strip_prefix(r"\\?\UNC\") {
+        return format!(r"\\{rest}");
+    }
+    if let Some(rest) = path.strip_prefix(r"\\?\") {
+        return rest.to_string();
+    }
+    path.to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReasoningEffortOption {
+    pub id: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentModelOption {
+    pub id: String,
+    pub label: String,
+    pub description: String,
+    pub is_default: bool,
+    pub default_effort: String,
+    pub efforts: Vec<ReasoningEffortOption>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentSkillOption {
+    pub name: String,
+    pub mention: String,
+    pub label: String,
+    pub description: String,
+    pub path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentCatalog {
+    pub models: Vec<AgentModelOption>,
+    pub skills: Vec<AgentSkillOption>,
+}
+
+impl AgentCatalog {
+    pub fn empty() -> Self {
+        Self {
+            models: Vec::new(),
+            skills: Vec::new(),
+        }
+    }
+}
+
 pub fn now_millis() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

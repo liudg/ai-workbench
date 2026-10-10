@@ -85,6 +85,47 @@ export interface Attachment {
   path: string;
 }
 
+export interface ReasoningEffortOption {
+  id: string;
+  description: string;
+}
+
+export interface AgentModelOption {
+  id: string;
+  label: string;
+  description: string;
+  is_default: boolean;
+  default_effort: string;
+  efforts: ReasoningEffortOption[];
+}
+
+export interface AgentSkillOption {
+  name: string;
+  mention: string;
+  label: string;
+  description: string;
+  path: string;
+}
+
+export interface AgentCatalog {
+  models: AgentModelOption[];
+  skills: AgentSkillOption[];
+}
+
+export const EFFORT_LABELS: Record<string, string> = {
+  none: "关闭",
+  minimal: "极简",
+  low: "低",
+  medium: "中",
+  high: "高",
+  xhigh: "极高",
+};
+
+export function effortLabel(id: string | undefined): string {
+  if (!id) return "默认";
+  return EFFORT_LABELS[id] ?? id;
+}
+
 export const STATUS_LABELS: Record<SessionStatus, string> = {
   running: "运行中",
   "needs-input": "待处理",

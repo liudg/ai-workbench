@@ -12,7 +12,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tokio::sync::mpsc;
 
-use crate::models::{AgentKind, SessionEventBody};
+use crate::models::{AgentCatalog, AgentKind, SessionEventBody};
 
 /// 适配器运行时错误。
 #[derive(Debug, thiserror::Error)]
@@ -65,6 +65,16 @@ pub trait AgentSession: Send + Sync {
 
     /// 更新后续回合的权限档位。Codex 映射到 sandbox / approval；桩实现忽略。
     fn set_access_mode(&self, _mode: &str) -> Result<(), AgentError> {
+        Ok(())
+    }
+
+    /// 当前 Agent 报告的模型和技能。桩实现返回空列表。
+    async fn catalog(&self) -> Result<AgentCatalog, AgentError> {
+        Ok(AgentCatalog::empty())
+    }
+
+    /// 后续回合使用的模型和推理强度。空字符串表示不覆盖。
+    fn set_tuning(&self, _model: Option<String>, _effort: Option<String>) -> Result<(), AgentError> {
         Ok(())
     }
 }

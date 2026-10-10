@@ -9,8 +9,9 @@ import { Sidebar } from "@/components/Sidebar";
 import { StatusDot } from "@/components/StatusDot";
 import { UpdateDialog } from "@/components/UpdateDialog";
 import { Button } from "@/components/ui/button";
+import { displayPath } from "@/lib/utils";
 import { useWorkbench } from "@/store";
-import { AGENT_LABELS, STATUS_LABELS, type SessionEvent } from "@/types";
+import { STATUS_LABELS, type SessionEvent } from "@/types";
 
 // 稳定空引用：selector 必须返回缓存值，否则 useSyncExternalStore 会无限重渲染
 const EMPTY_EVENTS: SessionEvent[] = [];
@@ -44,14 +45,11 @@ function Workspace() {
             <span className="text-xs text-zinc-400">
               {STATUS_LABELS[session.status]}
             </span>
-            <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[11px] text-zinc-400">
-              {AGENT_LABELS[session.agent]}
-            </span>
             <span
               className="min-w-0 flex-1 truncate font-mono text-[11px] text-zinc-600"
-              title={project.path}
+              title={displayPath(project.path)}
             >
-              {project.path}
+              {displayPath(project.path)}
             </span>
             {(session.status === "running" ||
               session.status === "needs-input") && (

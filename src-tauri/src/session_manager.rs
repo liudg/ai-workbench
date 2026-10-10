@@ -234,6 +234,23 @@ impl SessionManager {
     }
 
     /// 更新会话当前 Agent。桩会话只影响后续文案；不重写已有时间线。
+    pub async fn agent_catalog(&self, session_id: &str) -> Result<AgentCatalog, String> {
+        let handle = self.agent_handle(session_id)?;
+        handle.catalog().await.map_err(|e| e.to_string())
+    }
+
+    pub fn set_session_tuning(
+        &self,
+        session_id: &str,
+        model: Option<String>,
+        effort: Option<String>,
+    ) -> Result<(), String> {
+        let handle = self.agent_handle(session_id)?;
+        handle
+            .set_tuning(model, effort)
+            .map_err(|e| e.to_string())
+    }
+
     pub fn set_session_access(&self, session_id: &str, mode: &str) -> Result<(), String> {
         let handle = self.agent_handle(session_id)?;
         handle

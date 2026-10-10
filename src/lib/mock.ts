@@ -4,6 +4,7 @@
 
 import type {
   AccessMode,
+  AgentCatalog,
   AgentKind,
   Project,
   PromptOption,
@@ -177,6 +178,50 @@ export const mockBackend: Backend = {
     sessionsChangedListeners.forEach((cb) => cb(s.meta.project_id));
   },
 
+  async agentCatalog(sessionId): Promise<AgentCatalog> {
+    const s = sessions.get(sessionId);
+    if (!s) throw new Error("会话不存在");
+    if (s.meta.agent !== "codex-cli") return { models: [], skills: [] };
+    return {
+      models: [
+        {
+          id: "gpt-6.1-sol",
+          label: "GPT-6.1-Sol",
+          description: "浏览器预览中的示例模型",
+          is_default: true,
+          default_effort: "medium",
+          efforts: [
+            { id: "low", description: "更快，推理更浅" },
+            { id: "medium", description: "速度和深度均衡" },
+            { id: "high", description: "更深的推理" },
+          ],
+        },
+        {
+          id: "gpt-6-astra",
+          label: "GPT-6-Astra",
+          description: "浏览器预览中的示例模型",
+          is_default: false,
+          default_effort: "high",
+          efforts: [
+            { id: "medium", description: "速度和深度均衡" },
+            { id: "high", description: "更深的推理" },
+          ],
+        },
+      ],
+      skills: [
+        {
+          name: "documents:documents",
+          mention: "documents",
+          label: "Documents",
+          description: "创建和编辑 Word 文档",
+          path: "C:/skills/documents/SKILL.md",
+        },
+      ],
+    };
+  },
+
+  async setSessionTuning() {},
+
   async setAccessMode(sessionId, mode) {
     const s = sessions.get(sessionId);
     if (!s) throw new Error("会话不存在");
@@ -198,6 +243,12 @@ export const mockBackend: Backend = {
     if (s.meta.title.startsWith("会话 ")) {
       s.meta.title = text.split("\n")[0].slice(0, 24);
       sessionsChangedListeners.forEach((cb) => cb(s.meta.project_id));
+    }
+    if (text.includes("$documents")) {
+      pushEvent(sessionId, {
+        kind: "system",
+        text: "已引用技能 Documents。",
+      });
     }
     if (text.trimStart().startsWith("/")) {
       if (text.trimStart().startsWith("/permissions")) {

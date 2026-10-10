@@ -134,6 +134,24 @@ pub async fn create_session(
 }
 
 #[tauri::command]
+pub async fn agent_catalog(
+    manager: State<'_, SessionManager>,
+    session_id: String,
+) -> Result<AgentCatalog, String> {
+    manager.agent_catalog(&session_id).await
+}
+
+#[tauri::command]
+pub fn set_session_tuning(
+    manager: State<'_, SessionManager>,
+    session_id: String,
+    model: Option<String>,
+    effort: Option<String>,
+) -> Result<(), String> {
+    manager.set_session_tuning(&session_id, model, effort)
+}
+
+#[tauri::command]
 pub fn set_session_access(
     manager: State<'_, SessionManager>,
     session_id: String,

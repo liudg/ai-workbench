@@ -55,6 +55,8 @@ pub fn run() {
             commands::create_session,
             commands::set_session_agent,
             commands::set_session_access,
+            commands::agent_catalog,
+            commands::set_session_tuning,
             commands::send_message,
             commands::answer_prompt,
             commands::stop_session,

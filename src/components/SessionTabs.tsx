@@ -2,7 +2,7 @@ import { Square } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useWorkbench } from "@/store";
-import { AGENT_LABELS, type Project, type Session } from "@/types";
+import { type Project, type Session } from "@/types";
 import { NewSessionButton } from "./NewSessionButton";
 import { StatusDot } from "./StatusDot";
 
@@ -31,9 +31,6 @@ function SessionTab({
     >
       <StatusDot status={session.status} />
       <span className="max-w-40 truncate">{session.title}</span>
-      <span className="hidden rounded bg-zinc-800 px-1 py-0.5 text-[10px] text-zinc-500 group-hover:inline lg:inline">
-        {AGENT_LABELS[session.agent]}
-      </span>
       {stoppable && (
         <button
           title="停止会话"

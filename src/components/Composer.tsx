@@ -2,16 +2,17 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { ArrowUp, ChevronDown, Plus, Shield, X } from "lucide-react";
 
 import { backend } from "@/lib/ipc";
+import { filterSkills, insertSkill, skillToken } from "@/lib/skills";
 import { filterSlash, slashToken, type SlashCommand } from "@/lib/slash";
 import { cn, pendingPrompt } from "@/lib/utils";
 import { useWorkbench } from "@/store";
 import {
   ACCESS_LABELS,
   ACCESS_OPTIONS,
-  AGENT_LABELS,
-  AGENT_OPTIONS,
+  effortLabel,
   type AccessMode,
-  type AgentKind,
+  type AgentModelOption,
+  type AgentSkillOption,
   type Attachment,
   type Session,
   type SessionEvent,
@@ -80,25 +81,34 @@ export function Composer({
 }) {
   const sendMessage = useWorkbench((s) => s.sendMessage);
   const answerPrompt = useWorkbench((s) => s.answerPrompt);
-  const setSessionAgent = useWorkbench((s) => s.setSessionAgent);
   const setAccessMode = useWorkbench((s) => s.setAccessMode);
+  const loadCatalog = useWorkbench((s) => s.loadCatalog);
+  const setTuning = useWorkbench((s) => s.setTuning);
+  const catalog = useWorkbench((s) => s.catalogs[session.id]);
+  const tuning = useWorkbench((s) => s.tuning[session.id]);
   const addAttachments = useWorkbench((s) => s.addAttachments);
   const removeAttachment = useWorkbench((s) => s.removeAttachment);
   const clearAttachments = useWorkbench((s) => s.clearAttachments);
   const mode = useWorkbench((s) => s.accessMode[session.id] ?? "full");
   const files = useWorkbench((s) => s.attachments[session.id] ?? EMPTY_FILES);
   const [text, setText] = useState("");
-  const [menu, setMenu] = useState<null | "access" | "agent">(null);
+  const [caret, setCaret] = useState(0);
+  const [menu, setMenu] = useState<null | "access" | "model">(null);
   const [slashIndex, setSlashIndex] = useState(0);
+  const [skillIndex, setSkillIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const accessRef = useRef<HTMLButtonElement>(null);
-  const agentRef = useRef<HTMLButtonElement>(null);
+  const modelRef = useRef<HTMLButtonElement>(null);
   const accessMenuRef = useRef<HTMLDivElement>(null);
-  const agentMenuRef = useRef<HTMLDivElement>(null);
+  const modelMenuRef = useRef<HTMLDivElement>(null);
 
   const closeMenu = () => setMenu(null);
   useComposerMenu(menu === "access", accessRef, accessMenuRef, closeMenu);
-  useComposerMenu(menu === "agent", agentRef, agentMenuRef, closeMenu);
+  useComposerMenu(menu === "model", modelRef, modelMenuRef, closeMenu);
+
+  useEffect(() => {
+    void loadCatalog(session.id);
+  }, [loadCatalog, session.id]);
 
   const pendingId = pendingPrompt(events);
   const busy = session.status === "running";
@@ -109,16 +119,56 @@ export function Composer({
   const slashMatches = token ? filterSlash(token) : [];
   const slashOpen = token !== null && (slashMatches.length > 0 || token.length > 1);
   const activeSlash = slashMatches[Math.min(slashIndex, slashMatches.length - 1)];
+  const skillQuery =
+    session.agent === "codex-cli" && !pendingId && !locked && !slashOpen
+      ? skillToken(text, caret)
+      : null;
+  const skillMatches = skillQuery !== null ? filterSkills(catalog?.skills ?? [], skillQuery) : [];
+  const skillOpen = skillQuery !== null;
+  const activeSkill = skillMatches[Math.min(skillIndex, Math.max(skillMatches.length - 1, 0))];
+  const selectedModel =
+    catalog?.models.find((item) => item.id === tuning?.model) ??
+    catalog?.models.find((item) => item.is_default) ??
+    catalog?.models[0];
+  const selectedEffort =
+    tuning?.effort &&
+    selectedModel?.efforts.some((item) => item.id === tuning.effort)
+      ? tuning.effort
+      : selectedModel?.default_effort;
+  const modelButton = selectedModel
+    ? `${selectedModel.label} · ${effortLabel(selectedEffort)}`
+    : catalog
+      ? "暂无模型"
+      : "读取模型…";
 
   useEffect(() => {
     setSlashIndex(0);
   }, [token]);
+
+  useEffect(() => {
+    setSkillIndex(0);
+  }, [skillQuery]);
 
   const placeholder = dead ? "会话已停止，请新建会话" : "随心输入";
 
   const applySlash = (cmd: SlashCommand) => {
     setText(cmd.takesArgs ? `${cmd.name} ` : cmd.name);
     textareaRef.current?.focus();
+  };
+
+  const applySkill = (skill: AgentSkillOption) => {
+    const next = insertSkill(text, caret, skill.mention);
+    setText(next);
+    const nextCaret = next.length;
+    setCaret(nextCaret);
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+      textareaRef.current?.setSelectionRange(next.length, next.length);
+    });
+  };
+
+  const rememberCaret = (element: HTMLTextAreaElement) => {
+    setCaret(element.selectionStart ?? element.value.length);
   };
 
   const submit = () => {
@@ -149,6 +199,43 @@ export function Composer({
   return (
     <div className="shrink-0 px-4 pb-4 pt-1">
       <div className="relative mx-auto max-w-3xl">
+      {skillOpen && (
+        <div
+          role="listbox"
+          aria-label="技能"
+          className="absolute bottom-full left-0 right-0 z-20 mb-2 max-h-64 overflow-y-auto rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
+        >
+          {skillMatches.length === 0 ? (
+            <p className="px-3 py-2 text-xs text-zinc-500">
+              {catalog ? "没有匹配的技能" : "正在读取技能…"}
+            </p>
+          ) : (
+            skillMatches.map((skill) => (
+              <button
+                key={skill.path}
+                type="button"
+                role="option"
+                aria-selected={skill === activeSkill}
+                className={cn(
+                  "flex w-full items-baseline gap-3 px-3 py-2 text-left hover:bg-zinc-800",
+                  skill === activeSkill && "bg-zinc-800",
+                )}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  applySkill(skill);
+                }}
+              >
+                <span className="font-mono text-sm text-zinc-100">{`$${skill.mention}`}</span>
+                <span className="truncate text-xs text-zinc-500">
+                  {skill.label}
+                  {skill.description ? ` · ${skill.description}` : ""}
+                </span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
       {slashOpen && (
         <div
           role="listbox"
@@ -218,8 +305,32 @@ export function Composer({
         <textarea
           ref={textareaRef}
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            rememberCaret(e.target);
+          }}
+          onSelect={(e) => rememberCaret(e.currentTarget)}
           onKeyDown={(e) => {
+            if (skillOpen && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+              e.preventDefault();
+              setSkillIndex((current) => {
+                const count = skillMatches.length;
+                if (count === 0) return 0;
+                const next = e.key === "ArrowDown" ? current + 1 : current - 1;
+                return (next + count) % count;
+              });
+              return;
+            }
+            if (
+              skillOpen &&
+              e.key === "Tab" &&
+              activeSkill &&
+              !e.nativeEvent.isComposing
+            ) {
+              e.preventDefault();
+              applySkill(activeSkill);
+              return;
+            }
             if (slashOpen && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
               e.preventDefault();
               setSlashIndex((current) => {
@@ -241,14 +352,23 @@ export function Composer({
               return;
             }
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-              const completing =
+              const completingSlash =
                 slashOpen &&
                 activeSlash &&
                 token !== activeSlash.name &&
                 !text.trim().includes(" ");
-              if (completing) {
+              if (completingSlash) {
                 e.preventDefault();
                 applySlash(activeSlash);
+                return;
+              }
+              const completingSkill =
+                skillOpen &&
+                activeSkill &&
+                skillQuery !== activeSkill.mention.toLowerCase();
+              if (completingSkill) {
+                e.preventDefault();
+                applySkill(activeSkill);
                 return;
               }
               e.preventDefault();
@@ -298,20 +418,20 @@ export function Composer({
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
             <button
-              ref={agentRef}
+              ref={modelRef}
               type="button"
-              className="inline-flex h-8 items-center gap-1 rounded-full px-2 text-sm text-zinc-200 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex h-8 max-w-52 items-center gap-1 rounded-full px-2 text-sm text-zinc-200 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
               aria-label="模型"
               aria-haspopup="menu"
-              aria-expanded={menu === "agent"}
-              disabled={locked}
+              aria-expanded={menu === "model"}
+              disabled={locked || !catalog}
               onClick={(event) => {
                 event.stopPropagation();
-                setMenu((current) => (current === "agent" ? null : "agent"));
+                setMenu((current) => (current === "model" ? null : "model"));
               }}
             >
-              <span>{AGENT_LABELS[session.agent]}</span>
-              <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+              <span className="truncate">{modelButton}</span>
+              <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />
             </button>
             <button
               type="button"
@@ -340,12 +460,22 @@ export function Composer({
           }}
         />
       )}
-      {menu === "agent" && (
-        <AgentMenu
-          menuRef={agentMenuRef}
-          agent={session.agent}
-          onPick={(next) => {
-            setSessionAgent(session.id, next);
+      {menu === "model" && (
+        <ModelMenu
+          menuRef={modelMenuRef}
+          models={catalog?.models ?? []}
+          modelId={selectedModel?.id}
+          effortId={selectedEffort}
+          onModel={(next) => {
+            const effort = next.efforts.some((item) => item.id === selectedEffort)
+              ? selectedEffort || next.default_effort
+              : next.default_effort || next.efforts[0]?.id || "";
+            setTuning(session.id, next.id, effort);
+            setMenu(null);
+          }}
+          onEffort={(effort) => {
+            if (!selectedModel) return;
+            setTuning(session.id, selectedModel.id, effort);
             setMenu(null);
           }}
         />
@@ -392,40 +522,83 @@ function AccessMenu({
   );
 }
 
-function AgentMenu({
+function ModelMenu({
   menuRef,
-  agent,
-  onPick,
+  models,
+  modelId,
+  effortId,
+  onModel,
+  onEffort,
 }: {
   menuRef: RefObject<HTMLDivElement>;
-  agent: AgentKind;
-  onPick: (agent: AgentKind) => void;
+  models: AgentModelOption[];
+  modelId?: string;
+  effortId?: string;
+  onModel: (model: AgentModelOption) => void;
+  onEffort: (effort: string) => void;
 }) {
+  const current = models.find((item) => item.id === modelId) ?? models[0];
   return (
     <div
       ref={menuRef}
       role="menu"
       aria-label="模型"
-      className="fixed z-50 w-52 overflow-hidden rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
+      className="fixed z-50 max-h-80 w-72 overflow-y-auto rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
       style={{ top: -9999, left: 8 }}
     >
-      {AGENT_OPTIONS.map((option) => (
-        <button
-          key={option}
-          type="button"
-          role="menuitemradio"
-          aria-checked={agent === option}
-          className={cn(
-            "block w-full px-3 py-2 text-left text-sm text-zinc-100 hover:bg-zinc-800",
-            agent === option && "bg-zinc-800/70",
-          )}
-          onClick={() => onPick(option)}
-        >
-          {AGENT_LABELS[option]}
-        </button>
-      ))}
-      <div className="mx-2 my-1 border-t border-zinc-800" />
-      <div className="px-3 py-2 text-xs text-zinc-600">更多模型即将支持</div>
+      <p className="px-3 pb-1 pt-2 text-[11px] text-zinc-500">模型</p>
+      {models.length === 0 ? (
+        <p className="px-3 py-2 text-xs text-zinc-500">当前 Agent 没有可选模型</p>
+      ) : (
+        models.map((model) => (
+          <button
+            key={model.id}
+            type="button"
+            role="menuitemradio"
+            aria-checked={model.id === modelId}
+            title={model.description}
+            className={cn(
+              "block w-full px-3 py-2 text-left hover:bg-zinc-800",
+              model.id === modelId && "bg-zinc-800/70",
+            )}
+            onClick={() => onModel(model)}
+          >
+            <span className="block text-sm text-zinc-100">{model.label}</span>
+            {model.description && (
+              <span className="block truncate text-[11px] text-zinc-500">
+                {model.description}
+              </span>
+            )}
+          </button>
+        ))
+      )}
+      {current && current.efforts.length > 0 && (
+        <>
+          <div className="mx-2 my-1 border-t border-zinc-800" />
+          <p className="px-3 pb-1 pt-1 text-[11px] text-zinc-500">推理强度</p>
+          {current.efforts.map((effort) => (
+            <button
+              key={effort.id}
+              type="button"
+              role="menuitemradio"
+              aria-checked={effort.id === effortId}
+              title={effort.description}
+              className={cn(
+                "flex w-full items-baseline gap-2 px-3 py-2 text-left hover:bg-zinc-800",
+                effort.id === effortId && "bg-zinc-800/70",
+              )}
+              onClick={() => onEffort(effort.id)}
+            >
+              <span className="text-sm text-zinc-100">{effortLabel(effort.id)}</span>
+              {effort.description && (
+                <span className="truncate text-[11px] text-zinc-500">
+                  {effort.description}
+                </span>
+              )}
+            </button>
+          ))}
+        </>
+      )}
     </div>
   );
 }

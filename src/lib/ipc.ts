@@ -8,6 +8,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import type {
   AgentKind,
   AccessMode,
+  AgentCatalog,
   Attachment,
   Project,
   Session,
@@ -49,6 +50,13 @@ export interface Backend {
   setSessionAgent(sessionId: string, agent: AgentKind): Promise<void>;
   /** 更新 Codex 沙箱 / 审批。Claude 桩会话会忽略。 */
   setAccessMode(sessionId: string, mode: AccessMode): Promise<void>;
+  /** 当前会话 Agent 报告的模型、推理强度和技能。 */
+  agentCatalog(sessionId: string): Promise<AgentCatalog>;
+  setSessionTuning(
+    sessionId: string,
+    model: string,
+    effort: string,
+  ): Promise<void>;
   sendMessage(sessionId: string, text: string): Promise<void>;
   answerPrompt(
     sessionId: string,
@@ -111,6 +119,10 @@ const tauriBackend: Backend = {
     invoke("set_session_agent", { sessionId, agent }),
   setAccessMode: (sessionId, mode) =>
     invoke("set_session_access", { sessionId, mode }),
+  agentCatalog: (sessionId) =>
+    invoke<AgentCatalog>("agent_catalog", { sessionId }),
+  setSessionTuning: (sessionId, model, effort) =>
+    invoke("set_session_tuning", { sessionId, model, effort }),
   sendMessage: (sessionId, text) =>
     invoke("send_message", { sessionId, text }),
   answerPrompt: (sessionId, promptId, answer) =>

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { Ellipsis, Plus, RefreshCw, TerminalSquare } from "lucide-react";
 
-import { cn } from "@/lib/utils";
+import { cn, displayPath } from "@/lib/utils";
 import { APP_VERSION } from "@/lib/version";
 import { useWorkbench } from "@/store";
 import { aggregateStatus, type Project } from "@/types";
@@ -58,7 +58,7 @@ function ProjectItem({ project }: { project: Project }) {
           "group flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors",
           selected ? "bg-zinc-800/80" : "hover:bg-zinc-800/40",
         )}
-        title={project.path}
+        title={displayPath(project.path)}
         onClick={() => selectProject(project.id)}
       >
         <StatusDot status={status} />
