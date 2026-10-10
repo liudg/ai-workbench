@@ -44,9 +44,14 @@ const notes = arg("notes", process.env.RELEASE_NOTES || `v${version} 版本更�
 // Tauri 2 默认签名安装包本身：<productName>_<version>_<arch>-setup.exe(+ .sig)。
 // createUpdaterArtifacts 设为 "v1Compatible" 时才是旧的 *.nsis.zip。
 const files = readdirSync(bundleDir);
-const artifact =
-  files.find((f) => f.endsWith("_x64-setup.exe") && files.includes(`${f}.sig`)) ||
-  files.find((f) => f.endsWith("_x64-setup.nsis.zip") && files.includes(`${f}.sig`));
+const signed = (suffix) =>
+  files.find(
+    (f) =>
+      f.includes(`_${version}_`) &&
+      f.endsWith(suffix) &&
+      files.includes(`${f}.sig`),
+  );
+const artifact = signed("_x64-setup.exe") || signed("_x64-setup.nsis.zip");
 if (!artifact) {
   console.error(
     `在 ${bundleDir} 未找到已签名的 *_x64-setup.exe 或 *_x64-setup.nsis.zip，请先运行 pnpm tauri build`,
