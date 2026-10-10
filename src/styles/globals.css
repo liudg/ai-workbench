@@ -50,6 +50,8 @@ body {
   animation: event-in 160ms ease-out;
 }
 
+/* 侧栏和标签保持不可选。时间线正文要能拖选、复制。
+   user-select 会继承，body 的 none 必须在这里显式打开。 */
 .chat-log {
   -webkit-user-select: text;
   user-select: text;

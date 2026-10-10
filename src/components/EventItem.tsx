@@ -101,7 +101,7 @@ function Row({
             />
           ) : null}
         </div>
-        <div className="pl-6">{children}</div>
+        <div className="cursor-text pl-6">{children}</div>
       </div>
     </div>
   );
@@ -122,7 +122,7 @@ function UserMessage({
     <div className="event-in group px-6 py-2">
       <div className="mx-auto flex max-w-3xl justify-end">
         <div className="flex max-w-[85%] flex-col items-end">
-          <div className="rounded-2xl rounded-br-sm bg-indigo-600/90 px-4 py-2.5 text-sm leading-6 text-white">
+          <div className="cursor-text rounded-2xl rounded-br-sm bg-indigo-600/90 px-4 py-2.5 text-sm leading-6 text-white">
             <p className="whitespace-pre-wrap">{text}</p>
           </div>
           <div className="flex max-h-0 items-center gap-1 overflow-hidden opacity-0 group-hover:mt-1 group-hover:max-h-6 group-hover:overflow-visible group-hover:opacity-100 group-focus-within:mt-1 group-focus-within:max-h-6 group-focus-within:overflow-visible group-focus-within:opacity-100">
