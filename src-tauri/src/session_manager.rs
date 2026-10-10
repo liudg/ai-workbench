@@ -224,7 +224,7 @@ impl SessionManager {
         &self,
         session_id: &str,
         prompt_id: &str,
-        answer: String,
+        answer: PromptAnswer,
     ) -> Result<(), String> {
         let handle = self.agent_handle(session_id)?;
         handle

@@ -13,6 +13,7 @@ import type {
   AgentKind,
   Attachment,
   Project,
+  PromptAnswer,
   Session,
   SessionEvent,
 } from "@/types";
@@ -80,7 +81,7 @@ interface WorkbenchState {
   clearAttachments(sessionId: string): void;
   selectSession(projectId: string, sessionId: string): Promise<void>;
   sendMessage(sessionId: string, text: string): Promise<void>;
-  answerPrompt(sessionId: string, promptId: string, answer: string): Promise<void>;
+  answerPrompt(sessionId: string, promptId: string, answer: PromptAnswer): Promise<void>;
   stopSession(sessionId: string): Promise<void>;
 }
 

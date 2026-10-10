@@ -177,7 +177,7 @@ export function Composer({
     const attached = useWorkbench.getState().attachments[session.id] ?? [];
     setText("");
     if (pendingId) {
-      answerPrompt(session.id, pendingId, value);
+      answerPrompt(session.id, pendingId, { type: "single", value });
     } else {
       const slash = value.startsWith("/");
       const body =

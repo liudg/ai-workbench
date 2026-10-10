@@ -74,12 +74,47 @@ pub enum PromptKind {
     Choice,
     /// 自由文本回答
     FreeText,
+    /// Codex 原生问题卡片：一轮可多题，每题编号选项 + 自由文本，可跳过
+    Questions,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PromptOption {
     pub id: String,
     pub label: String,
+    /// 选项的说明文字（Codex requestUserInput 的 description）
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub description: String,
+}
+
+/// 问题卡片中的一道题（对应 Codex requestUserInput 的单个 question，
+/// 或 async 提问消息里的一条 AsyncUserInputQuestion）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PromptQuestion {
+    /// 阻塞式提问用 Codex 的 question id；async 提问没有 id，用 q1/q2… 按序合成
+    pub id: String,
+    /// 题目标签（Codex header），可空
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub header: String,
+    pub question: String,
+    /// 回答是敏感信息（Codex isSecret），输入时掩码
+    #[serde(default)]
+    pub is_secret: bool,
+    /// 编号展示的选项；空数组 = 纯自由文本题
+    pub options: Vec<PromptOption>,
+}
+
+/// 前端对提问的回答。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "kebab-case")]
+pub enum PromptAnswer {
+    /// 审批决定 / 单选项 id / 单行自由文本
+    Single { value: String },
+    /// 问题卡片：按题回答（题 id → 文本）；skipped 表示整卡跳过
+    Questions {
+        answers: std::collections::HashMap<String, String>,
+        skipped: bool,
+    },
 }
 
 /// 会话事件体（时间线中的一条）。`kind` 字段作为判别标签。
@@ -105,6 +140,9 @@ pub enum SessionEventBody {
         prompt_kind: PromptKind,
         question: String,
         options: Vec<PromptOption>,
+        /// prompt_kind == Questions 时的逐题内容；其它类型为空
+        #[serde(default)]
+        questions: Vec<PromptQuestion>,
     },
     PromptResolved {
         prompt_id: String,

@@ -10,7 +10,25 @@ export type SessionStatus =
   | "failed"
   | "stopped";
 
-export type PromptKind = "approval" | "choice" | "free-text";
+export type PromptKind = "approval" | "choice" | "free-text" | "questions";
+
+/** 问题卡片中的一道题（Codex 原生提问；一轮可有多题） */
+export interface PromptQuestion {
+  /** 阻塞式提问用 Codex 的 question id；async 提问按序合成 q1/q2… */
+  id: string;
+  /** 题目标签（Codex header），可空 */
+  header?: string;
+  question: string;
+  /** 敏感回答，输入时掩码 */
+  is_secret: boolean;
+  /** 编号展示的选项；空数组 = 纯自由文本题 */
+  options: PromptOption[];
+}
+
+/** 对提问的回答：审批/单选/单行文本走 single；问题卡片走 questions */
+export type PromptAnswer =
+  | { type: "single"; value: string }
+  | { type: "questions"; answers: Record<string, string>; skipped: boolean };
 
 export interface Project {
   id: string;
@@ -34,6 +52,8 @@ export interface Session {
 export interface PromptOption {
   id: string;
   label: string;
+  /** 选项说明（Codex requestUserInput 的 description），可空 */
+  description?: string;
 }
 
 /** 事件体（对应 Rust 的 SessionEventBody；适配器只产生这一层） */
@@ -47,6 +67,8 @@ export type SessionEventBody =
       prompt_kind: PromptKind;
       question: string;
       options: PromptOption[];
+      /** prompt_kind === "questions" 时的逐题内容；其它类型为空 */
+      questions: PromptQuestion[];
     }
   | { kind: "prompt-resolved"; prompt_id: string; answer: string }
   | { kind: "status-changed"; status: SessionStatus }

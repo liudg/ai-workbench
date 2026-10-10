@@ -16,7 +16,9 @@ use async_trait::async_trait;
 use tokio::task::JoinHandle;
 use tokio::time::{sleep, Duration};
 
-use crate::models::{AgentKind, PromptKind, PromptOption, SessionEventBody, SessionStatus};
+use crate::models::{
+    AgentKind, PromptAnswer, PromptKind, PromptOption, SessionEventBody, SessionStatus,
+};
 
 use super::{AgentError, AgentSession, EventSink};
 
@@ -143,12 +145,15 @@ impl AgentSession for StubAgentSession {
                             PromptOption {
                                 id: "approve".into(),
                                 label: "允许".into(),
+                                description: String::new(),
                             },
                             PromptOption {
                                 id: "reject".into(),
                                 label: "拒绝".into(),
+                                description: String::new(),
                             },
                         ],
+                        questions: Vec::new(),
                     },
                 );
                 {
@@ -186,7 +191,7 @@ impl AgentSession for StubAgentSession {
         Ok(())
     }
 
-    async fn answer_prompt(&self, prompt_id: &str, answer: String) -> Result<(), AgentError> {
+    async fn answer_prompt(&self, prompt_id: &str, answer: PromptAnswer) -> Result<(), AgentError> {
         self.guard_open()?;
 
         {
@@ -202,11 +207,24 @@ impl AgentSession for StubAgentSession {
             st.busy = true;
         }
 
+        let approved = match &answer {
+            PromptAnswer::Single { value } => value == "approve" || value == "允许",
+            PromptAnswer::Questions { skipped, .. } => !skipped,
+        };
+        let display = match &answer {
+            PromptAnswer::Single { value } => value.clone(),
+            PromptAnswer::Questions { skipped, .. } if *skipped => "已跳过".into(),
+            PromptAnswer::Questions { answers, .. } => answers
+                .values()
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("；"),
+        };
         emit(
             &self.events,
             SessionEventBody::PromptResolved {
                 prompt_id: prompt_id.to_string(),
-                answer: answer.clone(),
+                answer: display,
             },
         );
         emit(
@@ -221,7 +239,7 @@ impl AgentSession for StubAgentSession {
         let state = Arc::clone(&self.state);
         let task = tokio::spawn(async move {
             sleep(Duration::from_millis(500)).await;
-            let verdict = if answer == "approve" || answer == "允许" {
+            let verdict = if approved {
                 "已按你的选择继续执行（模拟）。"
             } else {
                 "已取消该操作（模拟）。"
