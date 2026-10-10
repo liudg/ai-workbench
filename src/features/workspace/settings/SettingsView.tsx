@@ -1,9 +1,29 @@
+import { useState } from "react";
 import { ArrowLeft, RefreshCw } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useWorkbench } from "@/store";
 import type { AgentInstallation, UpdateVia } from "@/types";
 import { Button } from "@/components/ui/button";
+
+import {
+  EnvironmentPanel,
+  HooksPanel,
+  McpPanel,
+  PluginPanel,
+  WorktreePanel,
+} from "./panels";
+
+type Section = "agents" | "mcp" | "plugins" | "hooks" | "worktrees" | "environments";
+
+const SECTIONS: { id: Section; label: string }[] = [
+  { id: "agents", label: "本地 Agent" },
+  { id: "mcp", label: "MCP 服务器" },
+  { id: "plugins", label: "插件" },
+  { id: "hooks", label: "钩子" },
+  { id: "worktrees", label: "工作树" },
+  { id: "environments", label: "环境" },
+];
 
 function viaLabel(via: UpdateVia | null): string | null {
   if (via === "npm") return "npm";
@@ -26,14 +46,84 @@ function statusLine(item: AgentInstallation): string {
   return version;
 }
 
-export function SettingsView() {
+function AgentsPanel() {
   const installations = useWorkbench((s) => s.installations);
   const loading = useWorkbench((s) => s.installationsLoading);
   const error = useWorkbench((s) => s.installationError);
   const updatingKind = useWorkbench((s) => s.updatingKind);
   const refresh = useWorkbench((s) => s.refreshInstallations);
   const updateInstallation = useWorkbench((s) => s.updateInstallation);
+
+  return (
+    <section>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-base font-medium text-zinc-100">本地 Agent</h2>
+          <p className="mt-1 max-w-lg text-sm leading-6 text-zinc-500">
+            列出全部已注册的 Agent CLI。只有本机已经安装的会出现在新建会话里。工作台不代为安装；已安装的可以按各自的官方方式更新。
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={loading || updatingKind !== null}
+          onClick={() => void refresh()}
+        >
+          <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
+          重新检测
+        </Button>
+      </div>
+
+      {error && (
+        <p className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+          {error}
+        </p>
+      )}
+
+      {installations === null ? (
+        <p className="mt-8 text-sm text-zinc-500">正在检测本地 Agent…</p>
+      ) : installations.length === 0 ? (
+        <p className="mt-8 text-sm text-zinc-500">没有可管理的本地 Agent。</p>
+      ) : (
+        <ul className="mt-6 space-y-2">
+          {installations.map((item) => {
+            const updating = updatingKind === item.kind;
+            return (
+              <li
+                key={item.kind}
+                className="flex items-start gap-4 rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium text-zinc-100">{item.display_name}</div>
+                  <div className="mt-1 text-xs text-zinc-500">{statusLine(item)}</div>
+                  {item.detail && (
+                    <div className="mt-1 text-xs leading-5 text-amber-200/90">{item.detail}</div>
+                  )}
+                </div>
+                {item.update_available && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={updatingKind !== null}
+                    aria-label={`更新 ${item.display_name}`}
+                    onClick={() => void updateInstallation(item.kind)}
+                  >
+                    {updating ? "更新中" : "更新"}
+                  </Button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+export function SettingsView() {
   const closeSettings = useWorkbench((s) => s.closeSettings);
+  const [section, setSection] = useState<Section>("agents");
 
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col">
@@ -49,73 +139,37 @@ export function SettingsView() {
         <h1 className="text-sm font-semibold text-zinc-100">设置</h1>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-6 py-6">
-        <div className="mx-auto max-w-2xl">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-base font-medium text-zinc-100">本地 Agent</h2>
-              <p className="mt-1 max-w-lg text-sm leading-6 text-zinc-500">
-                列出全部已注册的 Agent CLI。只有本机已经安装的会出现在新建会话里。工作台不代为安装；已安装的可以按各自的官方方式更新。
-              </p>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={loading || updatingKind !== null}
-              onClick={() => void refresh()}
-            >
-              <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
-              重新检测
-            </Button>
+      <div className="flex min-h-0 flex-1">
+        <nav aria-label="设置" className="w-44 shrink-0 border-r border-zinc-800/80 px-3 py-4">
+          <ul className="space-y-1">
+            {SECTIONS.map((item) => (
+              <li key={item.id}>
+                <button
+                  type="button"
+                  className={cn(
+                    "w-full rounded-md px-3 py-2 text-left text-sm",
+                    section === item.id
+                      ? "bg-zinc-800 text-zinc-50"
+                      : "text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-100",
+                  )}
+                  aria-current={section === item.id ? "page" : undefined}
+                  onClick={() => setSection(item.id)}
+                >
+                  {item.label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </nav>
+        <div className="min-w-0 flex-1 overflow-y-auto px-6 py-6">
+          <div className="mx-auto max-w-2xl">
+            {section === "agents" && <AgentsPanel />}
+            {section === "mcp" && <McpPanel />}
+            {section === "plugins" && <PluginPanel />}
+            {section === "hooks" && <HooksPanel />}
+            {section === "worktrees" && <WorktreePanel />}
+            {section === "environments" && <EnvironmentPanel />}
           </div>
-
-          {error && (
-            <p className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
-              {error}
-            </p>
-          )}
-
-          {installations === null ? (
-            <p className="mt-8 text-sm text-zinc-500">正在检测本地 Agent…</p>
-          ) : installations.length === 0 ? (
-            <p className="mt-8 text-sm text-zinc-500">没有可管理的本地 Agent。</p>
-          ) : (
-            <ul className="mt-6 space-y-2">
-              {installations.map((item) => {
-                const updating = updatingKind === item.kind;
-                return (
-                  <li
-                    key={item.kind}
-                    className="flex items-start gap-4 rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-medium text-zinc-100">
-                        {item.display_name}
-                      </div>
-                      <div className="mt-1 text-xs text-zinc-500">{statusLine(item)}</div>
-                      {item.detail && (
-                        <div className="mt-1 text-xs leading-5 text-amber-200/90">
-                          {item.detail}
-                        </div>
-                      )}
-                    </div>
-                    {item.update_available && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        disabled={updatingKind !== null}
-                        aria-label={`更新 ${item.display_name}`}
-                        onClick={() => void updateInstallation(item.kind)}
-                      >
-                        {updating ? "更新中" : "更新"}
-                      </Button>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
         </div>
       </div>
     </div>
