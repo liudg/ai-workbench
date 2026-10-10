@@ -1,6 +1,7 @@
 // 浏览器预览用的内存 mock 后端。
 // 行为镜像 src-tauri 的适配器桩（stub.rs）：首轮消息演示工具调用 + 审批提问，
-// 之后轮次直接完成。让 UI 在没有 Rust 后端的浏览器里也能完整演示。
+// 第二轮演示提问卡，之后轮次在思考和工具之间穿插，再流式写出结论。
+// 让 UI 在没有 Rust 后端的浏览器里也能完整演示。
 
 import {
   AGENT_LABELS,
@@ -239,6 +240,26 @@ function noteActivity(sessionId: string) {
 
 function setStatus(sessionId: string, status: SessionStatus) {
   pushEvent(sessionId, { kind: "status-changed", status });
+}
+
+/** 同一条事件反复推送，模拟 stream_id 覆盖（事件条数不变，正文变长）。 */
+function upsertEvent(sessionId: string, eventId: string, body: SessionEventBody) {
+  const s = sessions.get(sessionId);
+  if (!s) return;
+  const index = s.events.findIndex((event) => event.id === eventId);
+  const event: SessionEvent =
+    index >= 0
+      ? { ...s.events[index], ...body, id: eventId }
+      : {
+          id: eventId,
+          session_id: sessionId,
+          seq: s.events.length + 1,
+          ts: now(),
+          ...body,
+        };
+  if (index >= 0) s.events[index] = event;
+  else s.events.push(event);
+  eventListeners.forEach((cb) => cb(event));
 }
 
 function schedule(s: MockSessionState, fn: () => void, ms: number) {
@@ -642,17 +663,55 @@ export const mockBackend: Backend = {
         950,
       );
     } else {
+      const answerId = id();
+      const label = text.slice(0, 24);
       schedule(
         s,
-        () => {
+        () =>
           pushEvent(sessionId, {
-            kind: "agent-message",
-            text: "本轮任务已完成（桩模式）。接入真实 CLI 后，这里将是真实的执行结果。",
-          });
-          setStatus(sessionId, "completed");
-        },
-        850,
+            kind: "thinking",
+            text: `先对一下「${label}」的入口。`,
+          }),
+        250,
       );
+      schedule(
+        s,
+        () =>
+          pushEvent(sessionId, {
+            kind: "tool-call",
+            name: "command",
+            summary: "rg --files\n已列出源码",
+          }),
+        550,
+      );
+      schedule(
+        s,
+        () =>
+          pushEvent(sessionId, {
+            kind: "thinking",
+            text: `「${label}」的工具已经返回，结论还在写，这组调用先保持展开。`,
+          }),
+        900,
+      );
+      const parts = [
+        `${label} 结论开头。`,
+        `${label} 结论开头。\n\n第二段正在变长。`,
+        `${label} 结论开头。\n\n第二段正在变长。\n\n第三段继续追加。`,
+        `${label} 结论开头。\n\n第二段正在变长。\n\n第三段继续追加。\n\n第四段收尾。`,
+      ];
+      parts.forEach((text, index) => {
+        schedule(
+          s,
+          () =>
+            upsertEvent(sessionId, answerId, {
+              kind: "agent-message",
+              text,
+              stream_id: "mock-answer",
+            }),
+          1200 + index * 350,
+        );
+      });
+      schedule(s, () => setStatus(sessionId, "completed"), 1200 + parts.length * 350);
     }
   },
 

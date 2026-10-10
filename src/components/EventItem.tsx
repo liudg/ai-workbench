@@ -485,7 +485,6 @@ function ThinkingBlock({
   expanded: boolean;
   onToggle: () => void;
 }) {
-  const first = text.split("\n")[0] ?? text;
   return (
     <div className="event-in group min-w-0 px-6 py-2">
       <div className="mx-auto min-w-0 max-w-3xl">
@@ -513,9 +512,11 @@ function ThinkingBlock({
             className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
           />
         </div>
-        <p className="min-w-0 break-words whitespace-pre-wrap pl-6 text-sm leading-6 text-zinc-400">
-          {expanded ? text : first}
-        </p>
+        {expanded ? (
+          <p className="min-w-0 break-words whitespace-pre-wrap pl-6 text-sm leading-6 text-zinc-400">
+            {text}
+          </p>
+        ) : null}
       </div>
     </div>
   );
