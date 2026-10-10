@@ -25,7 +25,7 @@ pnpm tauri build
 | `AI Workbench_<version>_x64-setup.exe.sig` | 上述安装包的 minisign 签名 |
 | `AI Workbench_<version>_x64-setup.nsis.zip`（及 `.sig`） | 仅当 `createUpdaterArtifacts` 为 `"v1Compatible"` 时生成的旧更新包 |
 
-> 文件名由 `productName`、`version`、架构决定（本机构建保留空格：`AI Workbench_0.1.9_x64-setup.exe`）。MSI 在 `bundle/msi/`，只用于手动安装。当前 Tauri 2 默认的 updater 下载对象是 **NSIS 的 `.exe`**（签名为同名 `.exe.sig`）；插件仍兼容旧的 `.nsis.zip`。
+> 文件名由 `productName`、`version`、架构决定（本机构建保留空格：`AI Workbench_0.2.0_x64-setup.exe`）。MSI 在 `bundle/msi/`，只用于手动安装。当前 Tauri 2 默认的 updater 下载对象是 **NSIS 的 `.exe`**（签名为同名 `.exe.sig`）；插件仍兼容旧的 `.nsis.zip`。
 
 ## 2. 生成更新清单 latest.json
 
