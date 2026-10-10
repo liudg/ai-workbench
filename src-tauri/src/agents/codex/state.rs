@@ -10,7 +10,11 @@ use tokio::process::Child;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::agents::EventSink;
-use crate::models::{PromptQuestion, SessionEventBody, SessionStatus};
+use crate::models::{
+    PromptQuestion, SessionEventBody, SessionStatus, OCCUPIED_SESSION_NOTICE,
+};
+
+use super::process::is_thread_writer_conflict;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Access {
@@ -107,6 +111,43 @@ pub(super) struct Shared {
     pub(super) titled: AtomicBool,
     /// 已渲染成问题卡片的 agentMessage item id：抑制后续的 delta / 重复文本
     pub(super) question_items: Mutex<HashSet<String>>,
+    /// 另一个进程持有线程写锁时，这次打开只读。
+    pub(super) occupancy: Mutex<Occupancy>,
+}
+
+/// `thread/resume` 撞上 active writer 之后的打开状态。
+/// 通知只发一次，并且等连接说明写完再发，避免被后续系统行盖住。
+#[derive(Debug, Default)]
+pub(super) struct Occupancy {
+    blocked: bool,
+    announced: bool,
+    open: bool,
+}
+
+impl Occupancy {
+    pub(super) fn blocked(&self) -> bool {
+        self.blocked
+    }
+
+    /// 记下占用。会话已经完成打开时，返回 true，调用方发出只读通知。
+    pub(super) fn block(&mut self) -> bool {
+        self.blocked = true;
+        self.announce_if_ready()
+    }
+
+    pub(super) fn finish_open(&mut self) -> bool {
+        self.open = true;
+        self.announce_if_ready()
+    }
+
+    fn announce_if_ready(&mut self) -> bool {
+        if self.blocked && self.open && !self.announced {
+            self.announced = true;
+            true
+        } else {
+            false
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -124,6 +165,44 @@ pub(super) fn emit(events: &EventSink, body: SessionEventBody) {
 
 pub(super) fn emit_status(events: &EventSink, status: SessionStatus) {
     emit(events, SessionEventBody::StatusChanged { status });
+}
+
+impl Shared {
+    pub(super) fn read_only(&self) -> bool {
+        self.occupancy.lock().unwrap().blocked()
+    }
+
+    /// 写锁冲突不是会话失败。返回 true 时调用方不要再记 Error / Failed。
+    pub(super) fn reject_writer_conflict(&self, message: &str) -> bool {
+        if !is_thread_writer_conflict(message) {
+            return false;
+        }
+        self.mark_occupied();
+        true
+    }
+
+    pub(super) fn finish_open(&self) {
+        let announce = self.occupancy.lock().unwrap().finish_open();
+        if announce {
+            emit_occupied(&self.events);
+        }
+    }
+
+    fn mark_occupied(&self) {
+        let announce = self.occupancy.lock().unwrap().block();
+        if announce {
+            emit_occupied(&self.events);
+        }
+    }
+}
+
+fn emit_occupied(events: &EventSink) {
+    emit(
+        events,
+        SessionEventBody::ReadOnly {
+            text: OCCUPIED_SESSION_NOTICE.to_string(),
+        },
+    );
 }
 
 #[cfg(test)]
@@ -144,5 +223,23 @@ mod tests {
             Access::ReadOnly.sandbox_policy()["type"],
             json!("readOnly")
         );
+    }
+
+    #[test]
+    fn occupied_notice_waits_until_open_finishes_and_is_once() {
+        let mut occupancy = Occupancy::default();
+        assert!(!occupancy.block(), "startup conflict must not announce early");
+        assert!(occupancy.blocked());
+        assert!(occupancy.finish_open());
+        assert!(!occupancy.finish_open());
+        assert!(!occupancy.block());
+    }
+
+    #[test]
+    fn occupied_after_open_announces_immediately() {
+        let mut occupancy = Occupancy::default();
+        assert!(!occupancy.finish_open());
+        assert!(occupancy.block());
+        assert!(!occupancy.block());
     }
 }

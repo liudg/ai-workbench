@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { ChevronRight, Ellipsis, Plus, RefreshCw, TerminalSquare } from "lucide-react";
 
-import { cn, displayPath } from "@/lib/utils";
+import { cn, displayPath, isReadOnlyOpen } from "@/lib/utils";
 import { APP_VERSION } from "@/lib/version";
 import { useWorkbench } from "@/store";
 import { aggregateStatus, type Project } from "@/types";
@@ -34,6 +34,7 @@ const SESSION_PREVIEW_LIMIT = 8;
 
 function ProjectItem({ project }: { project: Project }) {
   const sessions = useWorkbench((s) => s.sessions[project.id]);
+  const events = useWorkbench((s) => s.events);
   const selected = useWorkbench((s) => s.selectedProjectId === project.id);
   const activeSessionId = useWorkbench((s) => s.activeSessionId[project.id]);
   const selectProject = useWorkbench((s) => s.selectProject);
@@ -153,6 +154,7 @@ function ProjectItem({ project }: { project: Project }) {
         <div className="mt-0.5 space-y-0.5">
           {visible.map((session) => {
             const active = selected && session.id === activeSessionId;
+            const readOnly = isReadOnlyOpen(events[session.id]);
             return (
               <button
                 key={session.id}
@@ -166,6 +168,11 @@ function ProjectItem({ project }: { project: Project }) {
                 onClick={() => selectSession(project.id, session.id)}
               >
                 <span className="min-w-0 flex-1 truncate">{session.title}</span>
+                {readOnly && (
+                  <span className="ml-1 shrink-0 rounded bg-amber-400/15 px-1.5 py-0.5 text-[10px] leading-4 text-amber-200">
+                    只读
+                  </span>
+                )}
               </button>
             );
           })}

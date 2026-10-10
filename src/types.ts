@@ -78,6 +78,8 @@ export type SessionEventBody =
   | { kind: "prompt-resolved"; prompt_id: string; answer: string }
   | { kind: "status-changed"; status: SessionStatus }
   | { kind: "system"; text: string }
+  /** 线程被其他进程占用。历史已打开，输入框不可发送。 */
+  | { kind: "read-only"; text: string }
   | { kind: "error"; message: string };
 
 /** 完整事件 = 事件体 + 信封（id / seq / ts 由 SessionManager 统一赋值） */

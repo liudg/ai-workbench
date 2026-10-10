@@ -302,17 +302,34 @@ impl SessionManager {
         Ok(())
     }
 
-    fn agent_handle(&self, session_id: &str) -> Result<Arc<dyn AgentSession>, String> {
+    fn lookup_agent(&self, session_id: &str) -> Option<Arc<dyn AgentSession>> {
         self.entries
             .lock()
             .unwrap()
             .get(session_id)
             .and_then(|entry| entry.agent.clone())
+    }
+
+    fn agent_handle(&self, session_id: &str) -> Result<Arc<dyn AgentSession>, String> {
+        self.lookup_agent(session_id)
             .ok_or_else(|| "会话不存在或已结束".to_string())
     }
 
+    /// 侧边栏会先选中会话，而 `thread/resume` 还在进行。
+    /// 等这次打开结束再取句柄，避免把「正在打开」说成会话不存在。
+    async fn agent_handle_ready(&self, session_id: &str) -> Result<Arc<dyn AgentSession>, String> {
+        if let Some(handle) = self.lookup_agent(session_id) {
+            return Ok(handle);
+        }
+        let _guard = self.opening.lock().await;
+        self.agent_handle(session_id)
+    }
+
     pub async fn send_message(&self, session_id: &str, text: String) -> Result<(), String> {
-        let handle = self.agent_handle(session_id)?;
+        let handle = self.agent_handle_ready(session_id).await?;
+        if handle.read_only() {
+            return Err(OCCUPIED_SESSION_NOTICE.to_string());
+        }
         self.record_local(session_id, SessionEventBody::UserMessage { text: text.clone() })?;
         handle.send_message(text).await.map_err(|err| err.to_string())
     }
@@ -323,7 +340,10 @@ impl SessionManager {
         prompt_id: &str,
         answer: PromptAnswer,
     ) -> Result<(), String> {
-        let handle = self.agent_handle(session_id)?;
+        let handle = self.agent_handle_ready(session_id).await?;
+        if handle.read_only() {
+            return Err(OCCUPIED_SESSION_NOTICE.to_string());
+        }
         handle
             .answer_prompt(prompt_id, answer)
             .await
@@ -331,7 +351,7 @@ impl SessionManager {
     }
 
     pub async fn agent_catalog(&self, session_id: &str) -> Result<AgentCatalog, String> {
-        let handle = self.agent_handle(session_id)?;
+        let handle = self.agent_handle_ready(session_id).await?;
         handle.catalog().await.map_err(|err| err.to_string())
     }
 
@@ -373,7 +393,7 @@ impl SessionManager {
     }
 
     pub async fn stop_session(&self, session_id: &str) -> Result<(), String> {
-        let handle = self.agent_handle(session_id)?;
+        let handle = self.agent_handle_ready(session_id).await?;
         handle.stop().await.map_err(|err| err.to_string())
     }
 

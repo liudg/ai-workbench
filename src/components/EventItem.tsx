@@ -8,6 +8,7 @@ import {
   Copy,
   HelpCircle,
   Info,
+  Lock,
   Pencil,
   Wrench,
   X,
@@ -562,6 +563,16 @@ export function EventItem({
           <div className="mx-auto flex max-w-3xl gap-1.5 text-xs leading-5 text-zinc-500">
             <Info className="mt-0.5 h-3 w-3 shrink-0" />
             <p className="min-w-0 whitespace-pre-wrap">{event.text}</p>
+          </div>
+        </div>
+      );
+
+    case "read-only":
+      return (
+        <div className="event-in px-6 py-2">
+          <div className="mx-auto flex max-w-3xl items-start gap-2 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-sm leading-6 text-amber-100">
+            <Lock className="mt-0.5 h-4 w-4 shrink-0" />
+            <p className="min-w-0">{event.text}</p>
           </div>
         </div>
       );

@@ -4,7 +4,7 @@ import { ArrowUp, ChevronDown, Plus, Shield, X } from "lucide-react";
 import { backend } from "@/lib/ipc";
 import { filterSkills, insertSkill, skillToken } from "@/lib/skills";
 import { filterSlash, slashToken } from "@/lib/slash";
-import { cn, pendingPrompt } from "@/lib/utils";
+import { cn, isReadOnlyOpen, pendingPrompt } from "@/lib/utils";
 import { useWorkbench } from "@/store";
 import {
   ACCESS_LABELS,
@@ -126,9 +126,10 @@ export function Composer({
   }, [composerSeed, session.id]);
 
   const pendingId = pendingPrompt(events);
+  const occupied = isReadOnlyOpen(events);
   const busy = session.status === "running";
   const dead = session.status === "stopped" || session.status === "failed";
-  const locked = busy || dead;
+  const locked = busy || dead || occupied;
   const caps = profile?.capabilities ?? catalog?.capabilities;
   const commands = profile?.commands ?? catalog?.commands ?? [];
   const token =
@@ -166,7 +167,11 @@ export function Composer({
     setSkillIndex(0);
   }, [skillQuery]);
 
-  const placeholder = dead ? "会话已停止，请新建会话" : "随心输入";
+  const placeholder = occupied
+    ? "此会话正被其他进程占用，只能查看"
+    : dead
+      ? "会话已停止，请新建会话"
+      : "随心输入";
 
   const applySlash = (cmd: SlashCommand) => {
     setText(cmd.takes_args ? `${cmd.name} ` : cmd.name);
@@ -215,6 +220,11 @@ export function Composer({
 
   return (
     <div className="shrink-0 px-4 pb-4 pt-1">
+      {occupied && (
+        <p className="mx-auto mb-2 flex max-w-3xl items-center justify-center gap-1.5 text-center text-xs leading-5 text-amber-200/90">
+          此会话正被其他进程占用，当前只读，不能发送。
+        </p>
+      )}
       <div className="relative mx-auto max-w-3xl">
       {skillOpen && (
         <div

@@ -176,10 +176,18 @@ pub enum SessionEventBody {
     System {
         text: String,
     },
+    /// 线程已被另一个进程占用。历史可以看，但不能发送。
+    ReadOnly {
+        text: String,
+    },
     Error {
         message: String,
     },
 }
+
+/// 打开已被其他进程持有写锁的 Codex 线程时，给时间线和发送拒绝用的同一句说明。
+pub const OCCUPIED_SESSION_NOTICE: &str =
+    "这个 Codex 会话正在被另一个进程占用，已只读打开。可以查看历史，不能在这里发送。";
 
 /// 带序列号与时间戳的完整事件（IPC 传输与前端渲染的单位）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
