@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { MoreHorizontal, Plus, RefreshCw, TerminalSquare, Trash2 } from "lucide-react";
+import { Ellipsis, Plus, RefreshCw, TerminalSquare, Trash2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { APP_VERSION } from "@/lib/version";
@@ -95,40 +95,33 @@ function ProjectHeader() {
 
   return (
     <div className="flex items-center justify-between px-3 pb-1 pt-2">
-      <span className="px-1 text-[13px] font-medium text-zinc-400">项目</span>
-      <div ref={menuRef} className="relative flex items-center">
+      <span className="px-1 text-[13px] font-medium text-zinc-300">项目</span>
+      <div className="flex items-center gap-1">
+        <div ref={menuRef} className="relative">
+          <button
+            type="button"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-200 transition-colors hover:bg-zinc-800/70 hover:text-white"
+            aria-label="更多"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            <Ellipsis className="h-4 w-4" strokeWidth={2} />
+          </button>
+          {menuOpen && (
+            <div className="absolute right-0 top-full z-30 mt-1 w-36 rounded-xl border border-zinc-700/80 bg-zinc-900 px-3 py-2 text-xs text-zinc-500 shadow-xl shadow-black/40">
+              暂无更多操作
+            </div>
+          )}
+        </div>
         <button
           type="button"
-          className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
-          aria-label="项目更多操作"
-          aria-expanded={menuOpen}
-          onClick={() => setMenuOpen((open) => !open)}
-        >
-          <MoreHorizontal className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-50"
+          className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-100 transition-colors hover:bg-zinc-800/70 hover:text-white"
           aria-label="创建项目"
           title="创建项目"
           onClick={() => openDialog("create")}
         >
-          <Plus className="h-4 w-4" strokeWidth={2.25} />
+          <Plus className="h-[18px] w-[18px]" strokeWidth={2} />
         </button>
-        {menuOpen && (
-          <div className="absolute right-0 top-full z-30 mt-1 w-40 overflow-hidden rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/40">
-            <button
-              type="button"
-              className="flex w-full items-center px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800"
-              onClick={() => {
-                setMenuOpen(false);
-                openDialog("import");
-              }}
-            >
-              导入文件夹
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );
