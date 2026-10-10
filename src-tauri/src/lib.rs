@@ -10,6 +10,7 @@
 
 mod agents;
 mod commands;
+mod encoding;
 mod models;
 mod project_store;
 mod session_manager;

@@ -23,6 +23,7 @@ use tokio::process::{Child, Command};
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::timeout;
 
+use crate::encoding::{apply_utf8_env, decode_child_bytes};
 use crate::models::{
     strip_verbatim_prefix, AgentCatalog, AgentKind, AgentModelOption, AgentSkillOption, PromptKind,
     PromptOption, ReasoningEffortOption, SessionEventBody, SessionStatus,
@@ -157,6 +158,7 @@ impl AgentAdapter for CodexCliAdapter {
             .stderr(Stdio::piped())
             .kill_on_drop(true);
         hide_console(&mut command);
+        apply_utf8_env(&mut command);
         let mut child = command.spawn().map_err(|e| {
             AgentError::Runtime(format!("无法启动 Codex CLI（{}）：{e}", bin.display()))
         })?;
@@ -218,13 +220,19 @@ impl AgentAdapter for CodexCliAdapter {
 
         let reader = Arc::clone(&shared);
         tokio::spawn(async move {
-            let mut lines = BufReader::new(stdout).lines();
+            // 按字节读行再解码：单条 GBK（代码页 936）消息不会再中断 JSON-RPC 循环。
+            let mut lines = BufReader::new(stdout);
+            let mut raw = Vec::new();
             loop {
-                match lines.next_line().await {
-                    Ok(Some(line)) => reader.handle_line(&line),
-                    Ok(None) => {
+                raw.clear();
+                match lines.read_until(b'\n', &mut raw).await {
+                    Ok(0) => {
                         reader.on_exit();
                         break;
+                    }
+                    Ok(_) => {
+                        let line = decode_child_bytes(&raw);
+                        reader.handle_line(line.trim_end_matches(['\r', '\n']));
                     }
                     Err(err) => {
                         emit(
@@ -242,8 +250,18 @@ impl AgentAdapter for CodexCliAdapter {
 
         let err_events = events.clone();
         tokio::spawn(async move {
-            let mut lines = BufReader::new(stderr).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
+            // 与 stdout 相同：按字节读行，GBK 日志行解码后继续，而不是静默结束读取。
+            let mut lines = BufReader::new(stderr);
+            let mut raw = Vec::new();
+            loop {
+                raw.clear();
+                let Ok(n) = lines.read_until(b'\n', &mut raw).await else {
+                    break;
+                };
+                if n == 0 {
+                    break;
+                }
+                let line = decode_child_bytes(&raw);
                 let trimmed = line.trim();
                 if trimmed.is_empty() || trimmed.contains("unrecognized configuration") {
                     continue;
@@ -679,14 +697,18 @@ impl Shared {
         let mut git = Command::new("git");
         git.arg("-C")
             .arg(&self.cwd)
+            // 中文文件名按 UTF-8 原样输出，而不是八进制转义。
+            .arg("-c")
+            .arg("core.quotepath=false")
             .arg("diff")
             .arg("--stat")
             .arg("HEAD");
         hide_console(&mut git);
+        apply_utf8_env(&mut git);
         let output = git.output().await;
         let text = match output {
             Ok(output) if output.status.success() => {
-                let mut body = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                let mut body = decode_child_bytes(&output.stdout).trim().to_string();
                 if body.is_empty() {
                     body = "工作区相对 HEAD 没有差异。".into();
                 }
@@ -697,7 +719,7 @@ impl Shared {
                 body
             }
             Ok(output) => {
-                let err = String::from_utf8_lossy(&output.stderr);
+                let err = decode_child_bytes(&output.stderr);
                 format!("无法读取 git diff：{}", err.trim())
             }
             Err(err) => format!("无法运行 git：{err}"),
@@ -1369,10 +1391,11 @@ async fn codex_version(bin: &Path) -> String {
     let mut command = Command::new(bin);
     command.arg("--version");
     hide_console(&mut command);
+    apply_utf8_env(&mut command);
     let Ok(output) = command.output().await else {
         return "未知版本".into();
     };
-    let text = String::from_utf8_lossy(&output.stdout);
+    let text = decode_child_bytes(&output.stdout);
     text.lines()
         .next()
         .unwrap_or("codex")
