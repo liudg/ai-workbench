@@ -7,6 +7,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 
 import type {
   AgentKind,
+  AccessMode,
   Attachment,
   Project,
   Session,
@@ -39,9 +40,15 @@ export interface Backend {
   removeProject(id: string): Promise<void>;
 
   listSessions(projectId: string): Promise<Session[]>;
-  createSession(projectId: string, agent?: AgentKind): Promise<Session>;
-  /** 切换会话后续使用的 Agent。权限与附件仍只存在前端。 */
+  createSession(
+    projectId: string,
+    agent?: AgentKind,
+    accessMode?: AccessMode,
+  ): Promise<Session>;
+  /** 切换会话后续使用的 Agent。 */
   setSessionAgent(sessionId: string, agent: AgentKind): Promise<void>;
+  /** 更新 Codex 沙箱 / 审批。Claude 桩会话会忽略。 */
+  setAccessMode(sessionId: string, mode: AccessMode): Promise<void>;
   sendMessage(sessionId: string, text: string): Promise<void>;
   answerPrompt(
     sessionId: string,
@@ -94,10 +101,16 @@ const tauriBackend: Backend = {
 
   listSessions: (projectId) =>
     invoke<Session[]>("list_sessions", { projectId }),
-  createSession: (projectId, agent) =>
-    invoke<Session>("create_session", { projectId, agent: agent ?? null }),
+  createSession: (projectId, agent, accessMode) =>
+    invoke<Session>("create_session", {
+      projectId,
+      agent: agent ?? null,
+      accessMode: accessMode ?? null,
+    }),
   setSessionAgent: (sessionId, agent) =>
     invoke("set_session_agent", { sessionId, agent }),
+  setAccessMode: (sessionId, mode) =>
+    invoke("set_session_access", { sessionId, mode }),
   sendMessage: (sessionId, text) =>
     invoke("send_message", { sessionId, text }),
   answerPrompt: (sessionId, promptId, answer) =>

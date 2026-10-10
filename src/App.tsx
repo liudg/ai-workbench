@@ -81,6 +81,9 @@ function Workspace() {
 export default function App() {
   const ready = useWorkbench((s) => s.ready);
   const init = useWorkbench((s) => s.init);
+  const lastError = useWorkbench((s) => s.lastError);
+  const dialogOpen = useWorkbench((s) => s.dialog !== null);
+  const clearError = useWorkbench((s) => s.clearError);
 
   useEffect(() => {
     init();
@@ -98,6 +101,18 @@ export default function App() {
     <div className="flex h-screen w-screen overflow-hidden bg-zinc-950 text-zinc-200">
       <Sidebar />
       <main className="flex min-w-0 flex-1 flex-col">
+        {lastError && !dialogOpen && (
+          <div className="flex items-start gap-3 border-b border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-200">
+            <p className="min-w-0 flex-1">{lastError}</p>
+            <button
+              type="button"
+              className="shrink-0 text-xs text-red-300 hover:text-white"
+              onClick={clearError}
+            >
+              关闭
+            </button>
+          </div>
+        )}
         <Workspace />
       </main>
       <NewProjectDialog />

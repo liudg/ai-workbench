@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { ArrowUp, ChevronDown, Plus, Shield, X } from "lucide-react";
 
 import { backend } from "@/lib/ipc";
+import { filterSlash, slashToken, type SlashCommand } from "@/lib/slash";
 import { cn, pendingPrompt } from "@/lib/utils";
 import { useWorkbench } from "@/store";
 import {
@@ -88,6 +89,7 @@ export function Composer({
   const files = useWorkbench((s) => s.attachments[session.id] ?? EMPTY_FILES);
   const [text, setText] = useState("");
   const [menu, setMenu] = useState<null | "access" | "agent">(null);
+  const [slashIndex, setSlashIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const accessRef = useRef<HTMLButtonElement>(null);
   const agentRef = useRef<HTMLButtonElement>(null);
@@ -102,8 +104,22 @@ export function Composer({
   const busy = session.status === "running";
   const dead = session.status === "stopped" || session.status === "failed";
   const locked = busy || dead;
+  const token =
+    session.agent === "codex-cli" && !pendingId && !locked ? slashToken(text) : null;
+  const slashMatches = token ? filterSlash(token) : [];
+  const slashOpen = token !== null && (slashMatches.length > 0 || token.length > 1);
+  const activeSlash = slashMatches[Math.min(slashIndex, slashMatches.length - 1)];
+
+  useEffect(() => {
+    setSlashIndex(0);
+  }, [token]);
 
   const placeholder = dead ? "会话已停止，请新建会话" : "随心输入";
+
+  const applySlash = (cmd: SlashCommand) => {
+    setText(cmd.takesArgs ? `${cmd.name} ` : cmd.name);
+    textareaRef.current?.focus();
+  };
 
   const submit = () => {
     const value = text.trim();
@@ -113,12 +129,13 @@ export function Composer({
     if (pendingId) {
       answerPrompt(session.id, pendingId, value);
     } else {
+      const slash = value.startsWith("/");
       const body =
-        attached.length > 0
+        !slash && attached.length > 0
           ? `${value}\n\n附件：${attached.map((file) => file.name).join("、")}`
           : value;
       sendMessage(session.id, body);
-      clearAttachments(session.id);
+      if (!slash) clearAttachments(session.id);
     }
     textareaRef.current?.focus();
   };
@@ -131,8 +148,47 @@ export function Composer({
 
   return (
     <div className="shrink-0 px-4 pb-4 pt-1">
+      <div className="relative mx-auto max-w-3xl">
+      {slashOpen && (
+        <div
+          role="listbox"
+          aria-label="斜杠命令"
+          className="absolute bottom-full left-0 right-0 z-20 mb-2 overflow-hidden rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
+        >
+          {slashMatches.length === 0 && (
+            <p className="px-3 py-2 text-xs text-zinc-500">
+              这条斜杠命令不会发给模型。回车后会在时间线里说明。
+            </p>
+          )}
+          {slashMatches.map((cmd, index) => (
+            <button
+              key={cmd.name}
+              type="button"
+              role="option"
+              aria-selected={index === Math.min(slashIndex, slashMatches.length - 1)}
+              className={cn(
+                "flex w-full items-baseline gap-3 px-3 py-2 text-left hover:bg-zinc-800",
+                index === Math.min(slashIndex, slashMatches.length - 1) && "bg-zinc-800",
+              )}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                applySlash(cmd);
+              }}
+            >
+              <span className="font-mono text-sm text-zinc-100">{cmd.name}</span>
+              <span className="truncate text-xs text-zinc-500">{cmd.hint}</span>
+            </button>
+          ))}
+          {token === "/" && (
+            <p className="border-t border-zinc-800 px-3 py-2 text-[11px] leading-4 text-zinc-600">
+              /vim、/theme 等终端命令可以输入，但不会发给模型。
+            </p>
+          )}
+        </div>
+      )}
       <div
-        className="mx-auto max-w-3xl rounded-[28px] border border-zinc-700/90 bg-zinc-900 px-3 pb-2.5 pt-3 shadow-lg shadow-black/20 transition-colors focus-within:border-zinc-500"
+        className="rounded-[28px] border border-zinc-700/90 bg-zinc-900 px-3 pb-2.5 pt-3 shadow-lg shadow-black/20 transition-colors focus-within:border-zinc-500"
         onClick={() => textareaRef.current?.focus()}
       >
         {files.length > 0 && (
@@ -164,7 +220,37 @@ export function Composer({
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
+            if (slashOpen && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+              e.preventDefault();
+              setSlashIndex((current) => {
+                const count = slashMatches.length;
+                if (count === 0) return 0;
+                const next = e.key === "ArrowDown" ? current + 1 : current - 1;
+                return (next + count) % count;
+              });
+              return;
+            }
+            if (
+              slashOpen &&
+              e.key === "Tab" &&
+              activeSlash &&
+              !e.nativeEvent.isComposing
+            ) {
+              e.preventDefault();
+              applySlash(activeSlash);
+              return;
+            }
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+              const completing =
+                slashOpen &&
+                activeSlash &&
+                token !== activeSlash.name &&
+                !text.trim().includes(" ");
+              if (completing) {
+                e.preventDefault();
+                applySlash(activeSlash);
+                return;
+              }
               e.preventDefault();
               submit();
             }
@@ -242,6 +328,7 @@ export function Composer({
             </button>
           </div>
         </div>
+      </div>
       </div>
       {menu === "access" && (
         <AccessMenu

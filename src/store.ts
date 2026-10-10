@@ -45,7 +45,7 @@ interface WorkbenchState {
 
   /** 下次新建会话默认选中的 Agent */
   preferredAgent: AgentKind;
-  /** 前端覆盖的会话 Agent（桩：不回写后端） */
+  /** 前端覆盖的会话 Agent，并回写后端 */
   agentOverride: Record<string, AgentKind>;
   /** 每个会话的权限档位，新建会话继承上一档 */
   lastAccessMode: AccessMode;
@@ -120,11 +120,15 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     backend.onSessionEvent((event) => {
       set((s) => {
         const log = s.events[event.session_id] ?? [];
-        if (log.some((e) => e.id === event.id)) return s;
+        const index = log.findIndex((item) => item.id === event.id);
+        const next =
+          index >= 0
+            ? log.map((item, i) => (i === index ? event : item))
+            : [...log, event];
         return {
           events: {
             ...s.events,
-            [event.session_id]: [...log, event],
+            [event.session_id]: next,
           },
         };
       });
@@ -251,7 +255,11 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
 
   async createSession(projectId, agent) {
     try {
-      const session = await backend.createSession(projectId, agent);
+      const session = await backend.createSession(
+        projectId,
+        agent,
+        get().lastAccessMode,
+      );
       const [, list] = await loadSessions(projectId);
       set((s) => ({
         selectedProjectId: projectId,
@@ -291,6 +299,9 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       lastAccessMode: mode,
       accessMode: { ...s.accessMode, [sessionId]: mode },
     }));
+    void backend.setAccessMode(sessionId, mode).catch((e) => {
+      set({ lastError: String(e) });
+    });
   },
 
   addAttachments(sessionId, files) {

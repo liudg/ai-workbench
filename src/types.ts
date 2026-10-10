@@ -39,7 +39,7 @@ export interface PromptOption {
 /** 事件体（对应 Rust 的 SessionEventBody；适配器只产生这一层） */
 export type SessionEventBody =
   | { kind: "user-message"; text: string }
-  | { kind: "agent-message"; text: string }
+  | { kind: "agent-message"; text: string; stream_id?: string }
   | { kind: "tool-call"; name: string; summary: string }
   | {
       kind: "prompt";
@@ -69,7 +69,7 @@ export const AGENT_LABELS: Record<AgentKind, string> = {
 /** 新建会话时可选的 Agent。后续模型接在这个列表上。 */
 export const AGENT_OPTIONS: AgentKind[] = ["codex-cli", "claude-code"];
 
-/** 作曲栏权限档位。后端仍是桩，选择只保存在前端。 */
+/** 作曲栏权限档位。Codex 会话会映射到 sandbox / approval。 */
 export type AccessMode = "full" | "ask" | "read-only";
 
 export const ACCESS_LABELS: Record<AccessMode, string> = {

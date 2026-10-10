@@ -69,7 +69,9 @@ function PromptCard({
     <div className="rounded-lg border border-amber-500/25 bg-amber-500/[0.06] p-3">
       <div className="mb-2 flex items-start gap-2">
         <HelpCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
-        <p className="text-sm leading-6 text-zinc-200">{event.question}</p>
+        <p className="whitespace-pre-wrap text-sm leading-6 text-zinc-200">
+          {event.question}
+        </p>
       </div>
       {interactive ? (
         event.prompt_kind === "free-text" ? (
@@ -163,9 +165,11 @@ export function EventItem({
           time={time}
           tone="muted"
         >
-          <div className="inline-flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-900/80 px-2.5 py-1.5 font-mono text-xs text-zinc-400">
+          <div className="rounded-md border border-zinc-800 bg-zinc-900/80 px-2.5 py-1.5 font-mono text-xs text-zinc-400">
             <span className="text-cyan-400">{event.name}</span>
-            <span className="text-zinc-500">{event.summary}</span>
+            <p className="mt-1 whitespace-pre-wrap break-all text-zinc-500">
+              {event.summary}
+            </p>
           </div>
         </Row>
       );
@@ -191,9 +195,11 @@ export function EventItem({
 
     case "system":
       return (
-        <div className="event-in flex items-center justify-center gap-1.5 px-6 py-1.5 text-xs text-zinc-600">
-          <Info className="h-3 w-3" />
-          {event.text}
+        <div className="event-in px-6 py-1.5">
+          <div className="mx-auto flex max-w-3xl gap-1.5 text-xs leading-5 text-zinc-500">
+            <Info className="mt-0.5 h-3 w-3 shrink-0" />
+            <p className="min-w-0 whitespace-pre-wrap">{event.text}</p>
+          </div>
         </div>
       );
 

@@ -1,13 +1,7 @@
 //! Agent 适配层：把不同 Agent CLI（Codex CLI / Claude Code）统一成同一套接口。
 //!
-//! v1 为骨架版本：适配器均为「桩实现」（见 `stub.rs`），用模拟输出打通
-//! UI / 会话管理 / 事件总线全链路。接入真实 CLI 时，只需为每个适配器提供
-//! 新的 `AgentAdapter` 实现（建议仍放在本目录），无需改动上层。
-//!
-//! 真实集成思路（写在适配器各自文件头注释中）：
-//! - 交互式 CLI（如 Claude Code）→ 用 `portable-pty` 挂伪终端，解析输出；
-//! - 支持结构化输出的 CLI（如 `codex exec --json`）→ 用 `tokio::process::Command`
-//!   管道读取 JSONL 事件流，逐条转成 `SessionEventBody`。
+//! Codex CLI 走本机 `codex app-server`（stdio JSON-RPC）。
+//! Claude Code 仍是桩实现（见 `stub.rs`）。
 
 pub mod claude_code;
 pub mod codex_cli;
@@ -49,6 +43,8 @@ pub struct SessionContext {
     pub session_id: String,
     /// 项目根目录；真实 CLI 的工作目录
     pub project_path: String,
+    /// 创建会话时的权限档位（full / ask / read-only）。缺省由适配器自定。
+    pub access_mode: Option<String>,
 }
 
 /// 一个正在运行的 Agent 会话的句柄（由适配器返回）。
@@ -66,6 +62,11 @@ pub trait AgentSession: Send + Sync {
 
     /// 切换本会话后续输出使用的 Agent。桩实现只改文案；真实 CLI 接入后在此重绑进程。
     fn retarget(&self, _kind: AgentKind) {}
+
+    /// 更新后续回合的权限档位。Codex 映射到 sandbox / approval；桩实现忽略。
+    fn set_access_mode(&self, _mode: &str) -> Result<(), AgentError> {
+        Ok(())
+    }
 }
 
 /// Agent 适配器：一种 Agent CLI 对应一个实现。

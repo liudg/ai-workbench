@@ -91,6 +91,9 @@ pub enum SessionEventBody {
     },
     AgentMessage {
         text: String,
+        /// 同一条流式回复复用这个 id，会话层会覆盖已有事件而不是追加。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        stream_id: Option<String>,
     },
     ToolCall {
         name: String,

@@ -3,6 +3,7 @@
 // 之后轮次直接完成。让 UI 在没有 Rust 后端的浏览器里也能完整演示。
 
 import type {
+  AccessMode,
   AgentKind,
   Project,
   PromptOption,
@@ -17,6 +18,7 @@ import type {
   CreateProjectResult,
   ImportProjectInput,
 } from "./ipc";
+import { slashPreview } from "./slash";
 
 let seq = 0;
 const id = () => `mock-${Date.now().toString(36)}-${(seq++).toString(36)}`;
@@ -27,6 +29,7 @@ interface MockSessionState {
   events: SessionEvent[];
   turns: number;
   pendingPrompt: string | null;
+  access: AccessMode;
   timers: ReturnType<typeof setTimeout>[];
 }
 
@@ -132,7 +135,7 @@ export const mockBackend: Backend = {
       .sort((a, b) => a.created_at - b.created_at);
   },
 
-  async createSession(projectId, agent) {
+  async createSession(projectId, agent, accessMode) {
     const project = projects.find((p) => p.id === projectId);
     if (!project) throw new Error("项目不存在");
     const kind = agent ?? project.default_agent;
@@ -154,6 +157,7 @@ export const mockBackend: Backend = {
       events: [],
       turns: 0,
       pendingPrompt: null,
+      access: accessMode ?? "full",
       timers: [],
     };
     sessions.set(sessionId, state);
@@ -173,6 +177,16 @@ export const mockBackend: Backend = {
     sessionsChangedListeners.forEach((cb) => cb(s.meta.project_id));
   },
 
+  async setAccessMode(sessionId, mode) {
+    const s = sessions.get(sessionId);
+    if (!s) throw new Error("会话不存在");
+    s.access = mode;
+    pushEvent(sessionId, {
+      kind: "system",
+      text: `权限已设为${mode === "full" ? "完全访问" : mode === "ask" ? "询问批准" : "只读"}。浏览器预览不会把它交给 Codex。`,
+    });
+  },
+
   async sendMessage(sessionId, text) {
     const s = sessions.get(sessionId);
     if (!s) throw new Error("会话不存在");
@@ -184,6 +198,17 @@ export const mockBackend: Backend = {
     if (s.meta.title.startsWith("会话 ")) {
       s.meta.title = text.split("\n")[0].slice(0, 24);
       sessionsChangedListeners.forEach((cb) => cb(s.meta.project_id));
+    }
+    if (text.trimStart().startsWith("/")) {
+      if (text.trimStart().startsWith("/permissions")) {
+        const arg = text.trim().split(/\s+/).slice(1).join(" ");
+        if (arg === "完全访问" || arg === "full") s.access = "full";
+        if (arg === "询问批准" || arg === "ask") s.access = "ask";
+        if (arg === "只读" || arg === "read-only") s.access = "read-only";
+      }
+      pushEvent(sessionId, { kind: "system", text: slashPreview(text) });
+      setStatus(sessionId, "completed");
+      return;
     }
     s.turns += 1;
     const turn = s.turns;

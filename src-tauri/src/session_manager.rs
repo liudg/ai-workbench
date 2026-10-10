@@ -61,7 +61,12 @@ impl SessionManager {
     }
 
     /// 启动新会话：建立事件通道 → 注册条目 → 启动转发任务 → 交给适配器。
-    pub async fn create_session(&self, project: &Project, agent: AgentKind) -> Result<Session, String> {
+    pub async fn create_session(
+        &self,
+        project: &Project,
+        agent: AgentKind,
+        access_mode: Option<String>,
+    ) -> Result<Session, String> {
         let session_id = new_id();
         let now = now_millis();
         let ordinal = self.list_sessions(&project.id).len() + 1;
@@ -94,6 +99,16 @@ impl SessionManager {
         let sid = session_id.clone();
         tauri::async_runtime::spawn(async move {
             while let Some(body) = rx.recv().await {
+                let replaced = {
+                    let mut entries = entries.lock().unwrap();
+                    let Some(entry) = entries.get_mut(&sid) else { break };
+                    replace_stream(entry, &body)
+                };
+                if let Some(event) = replaced {
+                    let _ = app.emit(EVT_SESSION_EVENT, &event);
+                    continue;
+                }
+
                 let mut entries = entries.lock().unwrap();
                 let Some(entry) = entries.get_mut(&sid) else { break };
                 let status_changed = match &body {
@@ -126,10 +141,11 @@ impl SessionManager {
             }
         });
 
-        // 交给适配器启动真实（当前为桩）会话
+        // 交给适配器启动会话（Codex 为真实进程，Claude 仍是桩）
         let ctx = SessionContext {
             session_id: session_id.clone(),
             project_path: project.path.clone(),
+            access_mode,
         };
         match adapter_for(agent).start_session(ctx, sink).await {
             Ok(handle) => {
@@ -218,6 +234,13 @@ impl SessionManager {
     }
 
     /// 更新会话当前 Agent。桩会话只影响后续文案；不重写已有时间线。
+    pub fn set_session_access(&self, session_id: &str, mode: &str) -> Result<(), String> {
+        let handle = self.agent_handle(session_id)?;
+        handle
+            .set_access_mode(mode)
+            .map_err(|e| e.to_string())
+    }
+
     pub fn set_session_agent(&self, session_id: &str, agent: AgentKind) -> Result<(), String> {
         let (handle, project_id) = {
             let mut entries = self.entries.lock().unwrap();
@@ -264,4 +287,30 @@ impl SessionManager {
             serde_json::json!({ "project_id": project_id }),
         );
     }
+}
+
+/// 同一 `stream_id` 的助手消息覆盖上一条，并沿用原来的事件 id。
+fn replace_stream(entry: &mut SessionEntry, body: &SessionEventBody) -> Option<SessionEvent> {
+    let SessionEventBody::AgentMessage {
+        text,
+        stream_id: Some(stream_id),
+    } = body
+    else {
+        return None;
+    };
+    let existing = entry.events.iter_mut().rev().find(|event| {
+        matches!(
+            &event.body,
+            SessionEventBody::AgentMessage {
+                stream_id: Some(id),
+                ..
+            } if id == stream_id
+        )
+    })?;
+    if let SessionEventBody::AgentMessage { text: slot, .. } = &mut existing.body {
+        *slot = text.clone();
+    }
+    existing.ts = now_millis();
+    entry.meta.updated_at = existing.ts;
+    Some(existing.clone())
 }

@@ -121,11 +121,25 @@ pub async fn create_session(
     manager: State<'_, SessionManager>,
     project_id: String,
     agent: Option<AgentKind>,
+    access_mode: Option<String>,
 ) -> Result<Session, String> {
     let project = store.get(&project_id).ok_or("项目不存在")?;
     manager
-        .create_session(&project, agent.unwrap_or(project.default_agent))
+        .create_session(
+            &project,
+            agent.unwrap_or(project.default_agent),
+            access_mode,
+        )
         .await
+}
+
+#[tauri::command]
+pub fn set_session_access(
+    manager: State<'_, SessionManager>,
+    session_id: String,
+    mode: String,
+) -> Result<(), String> {
+    manager.set_session_access(&session_id, &mode)
 }
 
 #[tauri::command]
