@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { cn, formatMessageTime } from "@/lib/utils";
+import { AssistantAnswer } from "./AssistantAnswer";
 import { MessageContent } from "./MessageContent";
 import { useWorkbench } from "@/store";
 import {
@@ -550,10 +551,7 @@ export function EventItem({
           copyText={event.text}
           actionsBelow
         >
-          <MessageContent
-            text={event.text}
-            className="text-sm leading-6 text-zinc-300"
-          />
+          <AssistantAnswer text={event.text} />
         </Row>
       );
 

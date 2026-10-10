@@ -338,7 +338,7 @@ function seedRegisteredProject() {
     }
     pushEvent(sessionId, {
       kind: "agent-message",
-      text: "这是工作台已注册项目下的预览会话。",
+      text: index === 0 ? PREVIEW_ANSWER : "这是工作台已注册项目下的预览会话。",
     });
     if (index === 1) {
       pushEvent(sessionId, { kind: "read-only", text: OCCUPIED_NOTICE });
@@ -352,6 +352,48 @@ function seedRegisteredProject() {
     now(),
   );
 }
+
+const PREVIEW_ANSWER = `\`mercury_ai\` 是一个用 **Unity 2021.3.18f1c1、C#** 开发的战斗 AI 行为树编辑器。策划人员可以通过创建节点、填写参数、连接节点来配置角色或怪物的战斗行为，保存后生成供游戏使用的 JSON 数据。
+
+项目现有配置涉及星宿、助战、宠物、主线战斗、副本、爬塔和世界妖王等内容。
+
+**功能**
+
+- **行为编排**：支持基础动作、执行子树、执行其他 AI，以及顺序、选择、并行、随机和集合遍历节点。
+- **条件与目标处理**：支持条件检查、目标过滤、目标选择、目标集合检查和重复目标过滤。
+- **辅助计算**：支持变量设置、战斗单位集合创建、排序、选择和集合运算。
+- **编辑操作**：提供配置列表、名称搜索、新建、重命名、删除、节点复制粘贴和撤销功能。
+- **连接检查**：限制根节点数量，并检查节点连接是否合法。
+
+动作、条件、目标过滤、目标选择和触发点的具体选项由配置表提供，参数控件也根据表中定义生成。
+
+**目录与代码职责**
+
+| 路径 | 内容 |
+| --- | --- |
+| \`Assets/Scripts/CodeV_AI/Editor\` | AI 编辑器窗口、业务节点、参数控件、配置表读取和导出逻辑 |
+| \`Assets/Scripts/CodeV_AI/Runtime/NodeData\` | 动作、条件、组合、装饰和辅助节点的数据结构 |
+| \`Assets/ThirdParty/AI/FNode\` | 通用节点图框架，负责节点、连线、序列化和编辑历史 |
+| \`Assets/ThirdParty/AI/VisualAssets\` | 编辑器的 UXML 布局和样式资源 |
+| \`Assets/ThirdParty/AI/Export/Graph_Unity\` | 可继续编辑的行为树 JSON，当前有 198 个文件 |
+| \`AIInput_Dev\` | 配置表输入，当前有 428 个 \`bytes\` 文件；代码直接读取其中五类 AI 表 |
+| \`AIOutput\` | 导出的行为树 JSON，当前有 194 个文件 |
+
+界面主要使用 **UI Toolkit 和 GraphView**，部分窗口使用 **Odin Inspector**。JSON 序列化使用 **Newtonsoft.Json**，二进制配置表通过 **Luban 的 ByteBuf** 读取。
+
+**使用流程与代码入口**
+
+在 Unity 菜单选择 **AI → 启动**，打开编辑器窗口。选择已有配置或新建配置，编辑节点和参数，通过“保存”或 \`Ctrl+S\` 保存图文件并导出到 \`AIOutput\`。文件命名采用 \`ai_{id}_{name}.json\`。
+
+阅读代码可以从这些文件开始：
+
+- [AIEditorWindow.cs](F:/mercury_resource/client/mercury_ai/Assets/Scripts/CodeV_AI/Editor/AIEditorWindow.cs)：窗口创建、文件列表、搜索、图加载和连接检查。
+- [AIUtility.cs](F:/mercury_resource/client/mercury_ai/Assets/Scripts/CodeV_AI/Editor/Utility/AIUtility.cs)：文件路径、配置表加载、图保存和导出。
+- [ConfigUtility.cs](F:/mercury_resource/client/mercury_ai/Assets/Scripts/CodeV_AI/Editor/Utility/ConfigUtility.cs)：五类 AI 配置表的查询接口。
+- [EditorGraphUtility.cs](F:/mercury_resource/client/mercury_ai/Assets/ThirdParty/AI/FNode/FNode.Editor/Utilities/EditorGraphUtility.cs)：将编辑器节点和连线转换为导出数据。
+
+![编辑器](F:/mercury_resource/client/mercury_ai/Temp/editor-preview.png)
+`;
 
 seedRegisteredProject();
 
