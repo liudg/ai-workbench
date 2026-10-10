@@ -4,6 +4,7 @@
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 
+use crate::agents::directory::group_projects;
 use crate::models::*;
 use crate::project_store::{self, ProjectStore};
 use crate::session_manager::SessionManager;
@@ -24,12 +25,10 @@ fn notify_projects_changed(app: &AppHandle) {
 
 // ---------- 项目 ----------
 
+/// 侧边栏项目只来自工作台 projects.json，不扫描 Agent 会话目录。
 #[tauri::command]
-pub async fn list_projects(
-    store: State<'_, ProjectStore>,
-    manager: State<'_, SessionManager>,
-) -> Result<Vec<Project>, String> {
-    Ok(manager.projects_for_sidebar(&store).await)
+pub fn list_projects(store: State<'_, ProjectStore>) -> Result<Vec<Project>, String> {
+    Ok(group_projects(&store.list()))
 }
 
 /// 新建项目：在 parent_dir 下创建目录 + 可选 git init。
@@ -61,7 +60,7 @@ pub fn create_project(
     Ok(CreateProjectResult { project, warning })
 }
 
-/// 导入已有目录作为项目。
+/// 导入已有目录作为工作台项目。只写入 projects.json，不改 Agent 的会话存储。
 #[tauri::command]
 pub fn import_project(
     app: AppHandle,
@@ -92,7 +91,7 @@ pub fn import_project(
     Ok(project)
 }
 
-/// 从列表移除项目（不删除磁盘目录），并停止其全部会话。
+/// 从工作台列表移除项目（不删除磁盘目录，也不删除 Agent 的会话记录）。
 #[tauri::command]
 pub async fn remove_project(
     app: AppHandle,
@@ -132,7 +131,7 @@ pub async fn create_session(
     agent: Option<AgentKind>,
     access_mode: Option<String>,
 ) -> Result<Session, String> {
-    let project = manager.resolve_project(&store, &project_id).await?;
+    let project = manager.resolve_project(&store, &project_id)?;
     manager
         .create_session(
             &project,

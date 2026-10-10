@@ -3,7 +3,6 @@ import { useEffect } from "react";
 import { ChatView } from "@/components/ChatView";
 import { NoProjectSelected, NoSession } from "@/components/EmptyState";
 import { NewProjectDialog } from "@/components/NewProjectDialog";
-import { SessionTabs } from "@/components/SessionTabs";
 import { Sidebar } from "@/components/Sidebar";
 import { UpdateDialog } from "@/components/UpdateDialog";
 import { useWorkbench } from "@/store";
@@ -32,12 +31,11 @@ function Workspace() {
 
   return (
     <div className="relative flex h-full min-w-0 flex-1 flex-col">
-      <SessionTabs project={project} />
       {session ? (
         <ChatView session={session} events={events} />
       ) : sessions && sessions.length > 0 ? (
         <div className="flex h-full items-center justify-center px-8 text-center text-sm leading-6 text-zinc-500">
-          从左侧选择一个会话。列表是各 Agent 会话目录的并集；Codex 与本机 codex resume --all 相同。
+          从左侧选择一个会话。
         </div>
       ) : sessions ? (
         <NoSession projectId={project.id} />

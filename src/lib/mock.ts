@@ -78,11 +78,17 @@ const now = () => Date.now();
 
 interface MockSessionState {
   meta: Session;
+  /** Agent 目录里的 cwd。列表按项目路径过滤，不按是否曾被工作台移除。 */
+  cwd: string;
   events: SessionEvent[];
   turns: number;
   pendingPrompt: string | null;
   access: AccessMode;
   timers: ReturnType<typeof setTimeout>[];
+}
+
+function cwdKey(path: string) {
+  return path.trim().replace(/[\\/]+$/, "").replace(/^\\\\\?\\/, "").toLowerCase();
 }
 
 const projects: Project[] = [];
@@ -126,55 +132,62 @@ function agentLabel(agent: AgentKind) {
   return AGENT_LABELS[agent];
 }
 
-/** 浏览器预览没有本机 Codex，用两条外部会话演示侧边栏结构。 */
-function seedNativeResume() {
-  const projectId = "dir:f:\\sample\\mercury_dev";
+function putSession(cwd: string, projectId: string, nativeId: string, title: string, updated: number) {
+  const sessionId = `codex-cli:${nativeId}`;
+  sessions.set(sessionId, {
+    meta: {
+      id: sessionId,
+      project_id: projectId,
+      agent: "codex-cli",
+      native_id: nativeId,
+      title,
+      status: "completed",
+      created_at: updated - 3_600_000,
+      updated_at: updated,
+    },
+    cwd,
+    events: [],
+    turns: 1,
+    pendingPrompt: null,
+    access: "full",
+    timers: [],
+  });
+  return sessionId;
+}
+
+/**
+ * 浏览器预览没有本机 Agent 目录。这里只放一个已在工作台注册的项目，
+ * 另有一条其它 cwd 的会话，不应出现在侧边栏。
+ */
+function seedRegisteredProject() {
+  const projectId = "wb-mercury-dev";
+  const path = "F:\\sample\\mercury_dev";
   projects.push({
     id: projectId,
     name: "mercury_dev",
-    path: "F:\\sample\\mercury_dev",
+    path,
     default_agent: "codex-cli",
     created_at: now() - 86_400_000,
     updated_at: now(),
-    external: true,
+    external: false,
   });
-  const samples = [
-    {
-      id: "01a12492-d8e5-7e40-b438-95315ee95f7c",
-      title: "概括当前项目",
-      user: "概括当前项目",
-      agent: "这是浏览器预览里的 Codex resume 会话。桌面应用会改读本机 thread/list。",
-      updated: now() - 60_000,
-    },
-    {
-      id: "01a12492-d8e5-7e40-b438-95315ee95f7d",
-      title: "修复登录超时",
-      user: "登录超时怎么查",
-      agent: "先看超时发生在握手还是进游戏之后。",
-      updated: now() - 120_000,
-    },
+  const titles = [
+    "确认线性渲染的 UI 校色",
+    "分析大世界第三人称",
+    "概括当前项目",
+    "审查 GameMcp 修改",
+    "核对存档迁移",
+    "整理关卡脚本",
+    "检查相机碰撞",
+    "复盘昨日构建",
+    "隐藏会话甲",
+    "隐藏会话乙",
   ];
-  for (const sample of samples) {
-    sessions.set(`codex-cli:${sample.id}`, {
-      meta: {
-        id: `codex-cli:${sample.id}`,
-        project_id: projectId,
-        agent: "codex-cli",
-        native_id: sample.id,
-        title: sample.title,
-        status: "completed",
-        created_at: sample.updated - 3_600_000,
-        updated_at: sample.updated,
-      },
-      events: [],
-      turns: 1,
-      pendingPrompt: null,
-      access: "full",
-      timers: [],
-    });
-    const sessionId = `codex-cli:${sample.id}`;
-    pushEvent(sessionId, { kind: "user-message", text: sample.user });
-    if (sample.id.endsWith("f7c")) {
+  titles.forEach((title, index) => {
+    const updated = now() - index * 60_000;
+    const sessionId = putSession(path, projectId, `preview-${index}`, title, updated);
+    pushEvent(sessionId, { kind: "user-message", text: title });
+    if (index === 2) {
       pushEvent(sessionId, {
         kind: "thinking",
         text: "先看目录结构和最近改动，再写概括。",
@@ -184,17 +197,22 @@ function seedNativeResume() {
         name: "command",
         summary: "rg --files\n已列出源码",
       });
-      pushEvent(sessionId, {
-        kind: "tool-call",
-        name: "command",
-        summary: "git status",
-      });
     }
-    pushEvent(sessionId, { kind: "agent-message", text: sample.agent });
-  }
+    pushEvent(sessionId, {
+      kind: "agent-message",
+      text: "这是工作台已注册项目下的预览会话。",
+    });
+  });
+  putSession(
+    "D:\\other\\not-in-workbench",
+    "dir:d:\\other\\not-in-workbench",
+    "unregistered",
+    "不应出现的目录",
+    now(),
+  );
 }
 
-seedNativeResume();
+seedRegisteredProject();
 
 const APPROVAL_OPTIONS: PromptOption[] = [
   { id: "approve", label: "允许" },
@@ -239,21 +257,28 @@ export const mockBackend: Backend = {
   },
 
   async removeProject(projectId) {
+    const project = projects.find((p) => p.id === projectId);
     const idx = projects.findIndex((p) => p.id === projectId);
     if (idx >= 0) projects.splice(idx, 1);
-    for (const [sid, s] of sessions) {
-      if (s.meta.project_id === projectId) {
-        s.timers.forEach(clearTimeout);
-        sessions.delete(sid);
+    if (project) {
+      const key = cwdKey(project.path);
+      for (const s of sessions.values()) {
+        if (cwdKey(s.cwd) === key) {
+          s.timers.forEach(clearTimeout);
+          s.timers = [];
+        }
       }
     }
     projectsChangedListeners.forEach((cb) => cb());
   },
 
   async listSessions(projectId) {
+    const project = projects.find((p) => p.id === projectId);
+    if (!project) return [];
+    const key = cwdKey(project.path);
     return [...sessions.values()]
-      .filter((s) => s.meta.project_id === projectId)
-      .map((s) => ({ ...s.meta }))
+      .filter((s) => cwdKey(s.cwd) === key)
+      .map((s) => ({ ...s.meta, project_id: project.id }))
       .sort((a, b) => b.updated_at - a.updated_at);
   },
 
@@ -279,6 +304,7 @@ export const mockBackend: Backend = {
     };
     const state: MockSessionState = {
       meta,
+      cwd: project.path,
       events: [],
       turns: 0,
       pendingPrompt: null,

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { Ellipsis, Plus, RefreshCw, TerminalSquare } from "lucide-react";
+import { ChevronRight, Ellipsis, Plus, RefreshCw, TerminalSquare } from "lucide-react";
 
 import { cn, displayPath } from "@/lib/utils";
 import { APP_VERSION } from "@/lib/version";
@@ -30,6 +30,8 @@ function useDismiss(
   }, [open, ref, onClose]);
 }
 
+const SESSION_PREVIEW_LIMIT = 8;
+
 function ProjectItem({ project }: { project: Project }) {
   const sessions = useWorkbench((s) => s.sessions[project.id]);
   const selected = useWorkbench((s) => s.selectedProjectId === project.id);
@@ -39,6 +41,8 @@ function ProjectItem({ project }: { project: Project }) {
   const removeProject = useWorkbench((s) => s.removeProject);
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+  const [showAll, setShowAll] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const closeMenu = () => {
     setMenuOpen(false);
@@ -50,6 +54,18 @@ function ProjectItem({ project }: { project: Project }) {
   const runningCount = sessions?.filter(
     (s) => s.status === "running" || s.status === "needs-input",
   ).length;
+  const items = sessions ?? [];
+  const visible = showAll ? items : items.slice(0, SESSION_PREVIEW_LIMIT);
+  const overflow = items.length > SESSION_PREVIEW_LIMIT;
+
+  const onHeaderClick = () => {
+    if (selected) {
+      setCollapsed((value) => !value);
+      return;
+    }
+    setCollapsed(false);
+    void selectProject(project.id);
+  };
 
   return (
     <div className="py-0.5">
@@ -59,8 +75,15 @@ function ProjectItem({ project }: { project: Project }) {
           selected ? "bg-zinc-800/80" : "hover:bg-zinc-800/40",
         )}
         title={displayPath(project.path)}
-        onClick={() => selectProject(project.id)}
+        aria-expanded={!collapsed}
+        onClick={onHeaderClick}
       >
+        <ChevronRight
+          className={cn(
+            "h-3.5 w-3.5 shrink-0 text-zinc-500 transition-transform",
+            !collapsed && "rotate-90",
+          )}
+        />
         <StatusDot status={status} />
         <span className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-200">
           {project.name}
@@ -126,9 +149,9 @@ function ProjectItem({ project }: { project: Project }) {
           />
         </div>
       </div>
-      {sessions && sessions.length > 0 && (
+      {!collapsed && items.length > 0 && (
         <div className="mt-0.5 space-y-0.5">
-          {sessions.map((session) => {
+          {visible.map((session) => {
             const active = selected && session.id === activeSessionId;
             return (
               <button
@@ -146,6 +169,15 @@ function ProjectItem({ project }: { project: Project }) {
               </button>
             );
           })}
+          {overflow && (
+            <button
+              type="button"
+              className="w-full rounded-md py-1 pl-7 pr-2 text-left text-[13px] text-zinc-500 hover:bg-zinc-800/40 hover:text-zinc-200"
+              onClick={() => setShowAll((value) => !value)}
+            >
+              {showAll ? "收起" : "展开显示"}
+            </button>
+          )}
         </div>
       )}
     </div>

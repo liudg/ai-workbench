@@ -37,7 +37,7 @@ export interface Project {
   default_agent: AgentKind;
   created_at: number;
   updated_at: number;
-  /** 由某个 Agent 的会话目录挂上，不在本地项目列表里。 */
+  /** 保留字段。侧边栏不再挂上来自 Agent 目录、尚未导入的项目。 */
   external?: boolean;
 }
 

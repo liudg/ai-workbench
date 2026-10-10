@@ -1,9 +1,8 @@
 //! 每个 Agent 一份会话目录。SessionManager 只做并集，不认识某一种 CLI。
 //!
-//! 侧边栏条目的键是 `agent kind + native id`。同一个原生 id 出现在两个 Agent
-//! 名下时，仍是两条会话。
-
-use std::collections::{HashMap, HashSet};
+//! 侧边栏里的项目只来自工作台已保存的列表。某个项目下的会话，是各目录里
+//! cwd 对上该项目路径的条目。键是 `agent kind + native id`。同一个原生 id
+//! 出现在两个 Agent 名下时，仍是两条会话。
 
 use async_trait::async_trait;
 
@@ -43,66 +42,16 @@ pub fn session_key(agent: AgentKind, native_id: &str) -> String {
     format!("{}:{native_id}", agent.as_str())
 }
 
-/// 已保存的项目在前；各 Agent 目录里出现、但还没导入的目录按最近更新排在后面。
-pub fn group_projects(stored: &[Project], listed: &[SourcedEntry]) -> Vec<Project> {
-    let mut seen = HashSet::new();
-    let mut projects = Vec::with_capacity(stored.len());
-    for project in stored {
-        let mut project = project.clone();
-        project.external = false;
-        seen.insert(cwd_key(&project.path));
-        projects.push(project);
-    }
-
-    struct Slot {
-        cwd: String,
-        created: i64,
-        updated: i64,
-        agent: AgentKind,
-    }
-
-    let mut discovered: HashMap<String, Slot> = HashMap::new();
-    for item in listed {
-        let thread = &item.entry;
-        if thread.ephemeral || seen.contains(&thread.cwd_key) {
-            continue;
-        }
-        let slot = discovered
-            .entry(thread.cwd_key.clone())
-            .or_insert_with(|| Slot {
-                cwd: thread.cwd.clone(),
-                created: thread.created_at,
-                updated: thread.updated_at,
-                agent: item.agent,
-            });
-        if thread.created_at > 0 && (slot.created == 0 || thread.created_at < slot.created) {
-            slot.created = thread.created_at;
-        }
-        if thread.updated_at > slot.updated {
-            slot.updated = thread.updated_at;
-            slot.agent = item.agent;
-        }
-    }
-
-    let mut extra: Vec<Project> = discovered
-        .into_iter()
-        .map(|(key, slot)| Project {
-            id: virtual_project_id(&key),
-            name: folder_name(&slot.cwd),
-            path: slot.cwd,
-            default_agent: slot.agent,
-            created_at: slot.created,
-            updated_at: slot.updated,
-            external: true,
+/// 侧边栏项目只含工作台已保存的列表。Agent 目录里的其它 cwd 不会变成项目。
+pub fn group_projects(stored: &[Project]) -> Vec<Project> {
+    stored
+        .iter()
+        .map(|project| {
+            let mut project = project.clone();
+            project.external = false;
+            project
         })
-        .collect();
-    extra.sort_by(|a, b| {
-        b.updated_at
-            .cmp(&a.updated_at)
-            .then_with(|| a.name.cmp(&b.name))
-    });
-    projects.extend(extra);
-    projects
+        .collect()
 }
 
 pub fn sessions_for_project(project: &Project, listed: &[SourcedEntry]) -> Vec<Session> {
@@ -125,14 +74,6 @@ pub fn sessions_for_project(project: &Project, listed: &[SourcedEntry]) -> Vec<S
     sessions
 }
 
-pub fn virtual_project_id(key: &str) -> String {
-    if key.is_empty() {
-        "dir:(unknown)".into()
-    } else {
-        format!("dir:{key}")
-    }
-}
-
 pub fn cwd_key(path: &str) -> String {
     let stripped = strip_verbatim_prefix(path.trim());
     let trimmed = stripped.trim_end_matches(['\\', '/']);
@@ -144,16 +85,6 @@ pub fn cwd_key(path: &str) -> String {
     {
         trimmed.to_string()
     }
-}
-
-fn folder_name(path: &str) -> String {
-    let trimmed = path.trim_end_matches(['\\', '/']);
-    trimmed
-        .rsplit(['\\', '/'])
-        .next()
-        .filter(|name| !name.is_empty())
-        .unwrap_or("未知目录")
-        .to_string()
 }
 
 #[cfg(test)]
@@ -203,41 +134,41 @@ mod tests {
     }
 
     #[test]
-    fn groups_resume_cwds_without_replacing_saved_projects() {
+    fn sidebar_projects_are_only_registered() {
         let stored = vec![project("saved", r"F:\app")];
         let listed = vec![
             sourced(AgentKind::CodexCli, "inside", r"f:\app", 50),
             sourced(AgentKind::CodexCli, "outside", r"D:\other\demo", 80),
-            sourced(AgentKind::CodexCli, "outside-2", r"D:\other\demo", 90),
+            sourced(AgentKind::ClaudeCode, "outside-2", r"D:\other\demo", 90),
         ];
-        let projects = group_projects(&stored, &listed);
-        assert_eq!(projects.len(), 2);
+        let projects = group_projects(&stored);
+        assert_eq!(projects.len(), 1);
         assert!(!projects[0].external);
         assert_eq!(projects[0].id, "saved");
-        assert!(projects[1].external);
-        assert_eq!(projects[1].name, "demo");
-        assert_eq!(
-            projects[1].id,
-            virtual_project_id(&cwd_key(r"D:\other\demo"))
-        );
+        assert!(projects.iter().all(|item| item.name != "demo"));
 
         let saved_sessions = sessions_for_project(&projects[0], &listed);
         assert_eq!(saved_sessions.len(), 1);
         assert_eq!(saved_sessions[0].id, "codex-cli:inside");
         assert_eq!(saved_sessions[0].native_id, "inside");
         assert_eq!(saved_sessions[0].project_id, "saved");
-
-        let external_sessions = sessions_for_project(&projects[1], &listed);
-        assert_eq!(external_sessions.len(), 2);
-        assert_eq!(external_sessions[0].id, "codex-cli:outside-2");
     }
 
     #[test]
-    fn skips_ephemeral_threads_when_grouping() {
+    fn agent_directories_do_not_become_projects() {
+        let listed = vec![sourced(AgentKind::CodexCli, "outside", r"D:\other\demo", 80)];
+        assert!(group_projects(&[]).is_empty());
+        let stored = project("saved", r"F:\app");
+        assert!(sessions_for_project(&stored, &listed).is_empty());
+    }
+
+    #[test]
+    fn skips_ephemeral_threads_for_a_registered_project() {
+        let stored = project("saved", r"F:\scratch");
         let mut ghost = sourced(AgentKind::CodexCli, "temp", r"F:\scratch", 10);
         ghost.entry.ephemeral = true;
-        let projects = group_projects(&[], &[ghost]);
-        assert!(projects.is_empty());
+        assert!(group_projects(&[]).is_empty());
+        assert!(sessions_for_project(&stored, &[ghost]).is_empty());
     }
 
     #[test]

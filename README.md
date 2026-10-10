@@ -60,8 +60,7 @@ pnpm dev            # 打开 http://localhost:4573
 ```
 ┌──────────────────────────── 前端（src/）────────────────────────────┐
 │ App.tsx              左右布局 + 工作区路由                            │
-│ components/Sidebar   项目列表（聚合状态点、活跃数、新建/导入/移除）     │
-│ components/SessionTabs  会话标签页（状态点、Agent 徽章、停止）         │
+│ components/Sidebar   已注册项目（可折叠；超过 8 条会话可展开）         │
 │ components/ChatView  会话时间线（自动吸底滚动、运行中指示）            │
 │ components/EventItem 事件渲染：用户气泡/Agent消息/工具卡/内联审批卡    │
 │ components/Composer  输入框（有待答提问时自动转为「回答」通道）        │
@@ -76,7 +75,7 @@ pnpm dev            # 打开 http://localhost:4573
 │ models.rs          Project / Session / SessionEventBody（IPC 协议）  │
 │ project_store.rs   项目列表持久化 projects.json（app_data_dir）；     │
 │                    建目录 + git init + 导入校验                      │
-│ session_manager.rs 会话注册表。侧边栏 = 各 SessionDirectory 与已打开会话的并集 │
+│ session_manager.rs 会话注册表。项目只来自 projects.json；会话按项目 cwd 过滤 │
 │ agents/mod.rs      AgentAdapter / AgentSession / SessionContext      │
 │ agents/directory.rs  SessionDirectory：按 agent + native id 聚合      │
 │ agents/codex/      Codex 适配器（编排）+ rpc / prompts / catalog /    │
@@ -117,7 +116,7 @@ pnpm dev            # 打开 http://localhost:4573
 
 ## 多 Agent 边界
 
-会话管理器不持有 `CodexDirectory`。每种 Agent 注册一个 `SessionDirectory`：Codex 用 `thread/list`（与 `codex resume --all` 同一份交互、未归档列表），Claude 桩返回空列表。侧边栏是这些目录和内存里已打开会话的并集，键是 `{agent}:{native_id}`。
+会话管理器不持有 `CodexDirectory`。每种 Agent 注册一个 `SessionDirectory`：Codex 用 `thread/list`（与 `codex resume --all` 同一份交互、未归档列表），Claude 桩返回空列表。侧边栏项目只来自工作台 `projects.json`。某个已注册项目下的会话，是这些目录里 cwd 对上该项目路径的并集，再加内存里已打开的会话，键是 `{agent}:{native_id}`。导入或移除项目只改工作台列表，不删除 Agent 的 rollout，也不改写 Agent 自己的项目列表。
 
 `SessionContext` 只保留通用字段：工作目录、权限档位、要恢复的 native id，以及 `options`。Codex 从 `options.persist` 决定新线程是否写入官方 resume 列表；行协议留在 `agents/codex/`。
 
