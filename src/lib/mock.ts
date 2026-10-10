@@ -2,17 +2,21 @@
 // 行为镜像 src-tauri 的适配器桩（stub.rs）：首轮消息演示工具调用 + 审批提问，
 // 之后轮次直接完成。让 UI 在没有 Rust 后端的浏览器里也能完整演示。
 
-import type {
-  AccessMode,
-  AgentCatalog,
-  AgentKind,
-  Project,
-  PromptAnswer,
-  PromptOption,
-  Session,
-  SessionEvent,
-  SessionEventBody,
-  SessionStatus,
+import {
+  AGENT_LABELS,
+  type AccessMode,
+  type AgentCapabilities,
+  type AgentCatalog,
+  type AgentKind,
+  type AgentProfile,
+  type Project,
+  type PromptAnswer,
+  type PromptOption,
+  type Session,
+  type SessionEvent,
+  type SessionEventBody,
+  type SessionStatus,
+  type SlashCommand,
 } from "@/types";
 import type {
   Backend,
@@ -21,6 +25,52 @@ import type {
   ImportProjectInput,
 } from "./ipc";
 import { slashPreview } from "./slash";
+
+const CODEX_COMMANDS: SlashCommand[] = [
+  { name: "/permissions", hint: "切换完全访问、询问批准或只读", takes_args: true },
+  { name: "/status", hint: "查看模型、线程、目录和权限" },
+  { name: "/diff", hint: "查看 git diff --stat" },
+  { name: "/review", hint: "请 Codex 审查当前工作区", takes_args: true },
+  { name: "/plan", hint: "只出计划，不改文件", takes_args: true },
+  { name: "/model", hint: "指定下一轮使用的模型", takes_args: true },
+  { name: "/compact", hint: "压缩当前线程的上下文" },
+  { name: "/approve", hint: "说明如何处理自动审查拒绝" },
+  { name: "/init", hint: "生成 AGENTS.md" },
+  { name: "/new", hint: "下一条消息开启新线程" },
+  { name: "/clear", hint: "放下当前线程，同 /new" },
+  { name: "/stop", hint: "停止当前会话" },
+  { name: "/help", hint: "列出工作台能执行的斜杠命令" },
+];
+
+const CODEX_CAPABILITIES: AgentCapabilities = {
+  supports_slash: true,
+  supports_resume: true,
+  supports_questions: true,
+  supports_tuning: true,
+  supports_skills: true,
+};
+
+const CLAUDE_CAPABILITIES: AgentCapabilities = {
+  supports_slash: false,
+  supports_resume: false,
+  supports_questions: true,
+  supports_tuning: false,
+  supports_skills: false,
+};
+
+/** 浏览器预览镜像后端 `agent_profiles`：按 Agent 给能力，而不是全局斜杠表。 */
+const MOCK_PROFILES: Record<AgentKind, AgentProfile> = {
+  "codex-cli": {
+    kind: "codex-cli",
+    capabilities: CODEX_CAPABILITIES,
+    commands: CODEX_COMMANDS,
+  },
+  "claude-code": {
+    kind: "claude-code",
+    capabilities: CLAUDE_CAPABILITIES,
+    commands: [],
+  },
+};
 
 let seq = 0;
 const id = () => `mock-${Date.now().toString(36)}-${(seq++).toString(36)}`;
@@ -73,12 +123,12 @@ function schedule(s: MockSessionState, fn: () => void, ms: number) {
 }
 
 function agentLabel(agent: AgentKind) {
-  return agent === "codex-cli" ? "Codex CLI" : "Claude Code";
+  return AGENT_LABELS[agent];
 }
 
 /** 浏览器预览没有本机 Codex，用两条外部会话演示侧边栏结构。 */
 function seedNativeResume() {
-  const projectId = "codex:f:\\sample\\mercury_dev";
+  const projectId = "dir:f:\\sample\\mercury_dev";
   projects.push({
     id: projectId,
     name: "mercury_dev",
@@ -105,11 +155,12 @@ function seedNativeResume() {
     },
   ];
   for (const sample of samples) {
-    sessions.set(sample.id, {
+    sessions.set(`codex-cli:${sample.id}`, {
       meta: {
-        id: sample.id,
+        id: `codex-cli:${sample.id}`,
         project_id: projectId,
         agent: "codex-cli",
+        native_id: sample.id,
         title: sample.title,
         status: "completed",
         created_at: sample.updated - 3_600_000,
@@ -121,24 +172,25 @@ function seedNativeResume() {
       access: "full",
       timers: [],
     });
-    pushEvent(sample.id, { kind: "user-message", text: sample.user });
+    const sessionId = `codex-cli:${sample.id}`;
+    pushEvent(sessionId, { kind: "user-message", text: sample.user });
     if (sample.id.endsWith("f7c")) {
-      pushEvent(sample.id, {
+      pushEvent(sessionId, {
         kind: "thinking",
         text: "先看目录结构和最近改动，再写概括。",
       });
-      pushEvent(sample.id, {
+      pushEvent(sessionId, {
         kind: "tool-call",
         name: "command",
         summary: "rg --files\n已列出源码",
       });
-      pushEvent(sample.id, {
+      pushEvent(sessionId, {
         kind: "tool-call",
         name: "command",
         summary: "git status",
       });
     }
-    pushEvent(sample.id, { kind: "agent-message", text: sample.agent });
+    pushEvent(sessionId, { kind: "agent-message", text: sample.agent });
   }
 }
 
@@ -209,15 +261,18 @@ export const mockBackend: Backend = {
     const project = projects.find((p) => p.id === projectId);
     if (!project) throw new Error("项目不存在");
     const kind = agent ?? project.default_agent;
-    const sessionId = id();
+    const nativeId = id();
+    const sessionId = `${kind}:${nativeId}`;
     const count = [...sessions.values()].filter(
       (s) => s.meta.project_id === projectId,
     ).length;
+    const profile = MOCK_PROFILES[kind];
     const meta: Session = {
       id: sessionId,
       project_id: projectId,
       agent: kind,
-      title: `会话 ${count + 1}`,
+      native_id: nativeId,
+      title: profile.capabilities.supports_resume ? "未命名会话" : `会话 ${count + 1}`,
       status: "running",
       created_at: now(),
       updated_at: now(),
@@ -247,10 +302,22 @@ export const mockBackend: Backend = {
     sessionsChangedListeners.forEach((cb) => cb(s.meta.project_id));
   },
 
+  async agentProfiles() {
+    return Object.values(MOCK_PROFILES);
+  },
+
   async agentCatalog(sessionId): Promise<AgentCatalog> {
     const s = sessions.get(sessionId);
     if (!s) throw new Error("会话不存在");
-    if (s.meta.agent !== "codex-cli") return { models: [], skills: [] };
+    const profile = MOCK_PROFILES[s.meta.agent];
+    if (!profile.capabilities.supports_tuning && !profile.capabilities.supports_skills) {
+      return {
+        models: [],
+        skills: [],
+        commands: profile.commands,
+        capabilities: profile.capabilities,
+      };
+    }
     return {
       models: [
         {
@@ -286,6 +353,8 @@ export const mockBackend: Backend = {
           path: "C:/skills/documents/SKILL.md",
         },
       ],
+      commands: profile.commands,
+      capabilities: profile.capabilities,
     };
   },
 
@@ -319,14 +388,15 @@ export const mockBackend: Backend = {
         text: "已引用技能 Documents。",
       });
     }
-    if (text.trimStart().startsWith("/")) {
+    const profile = MOCK_PROFILES[s.meta.agent];
+    if (profile.capabilities.supports_slash && text.trimStart().startsWith("/")) {
       if (text.trimStart().startsWith("/permissions")) {
         const arg = text.trim().split(/\s+/).slice(1).join(" ");
         if (arg === "完全访问" || arg === "full") s.access = "full";
         if (arg === "询问批准" || arg === "ask") s.access = "ask";
         if (arg === "只读" || arg === "read-only") s.access = "read-only";
       }
-      pushEvent(sessionId, { kind: "system", text: slashPreview(text) });
+      pushEvent(sessionId, { kind: "system", text: slashPreview(profile.commands, text) });
       setStatus(sessionId, "completed");
       return;
     }

@@ -9,6 +9,7 @@ import type {
   AgentKind,
   AccessMode,
   AgentCatalog,
+  AgentProfile,
   Attachment,
   Project,
   PromptAnswer,
@@ -51,6 +52,8 @@ export interface Backend {
   setSessionAgent(sessionId: string, agent: AgentKind): Promise<void>;
   /** 更新 Codex 沙箱 / 审批。Claude 桩会话会忽略。 */
   setAccessMode(sessionId: string, mode: AccessMode): Promise<void>;
+  /** 各 Agent 的能力与斜杠命令。不需要已打开的会话。 */
+  agentProfiles(): Promise<AgentProfile[]>;
   /** 当前会话 Agent 报告的模型、推理强度和技能。 */
   agentCatalog(sessionId: string): Promise<AgentCatalog>;
   setSessionTuning(
@@ -120,6 +123,7 @@ const tauriBackend: Backend = {
     invoke("set_session_agent", { sessionId, agent }),
   setAccessMode: (sessionId, mode) =>
     invoke("set_session_access", { sessionId, mode }),
+  agentProfiles: () => invoke<AgentProfile[]>("agent_profiles"),
   agentCatalog: (sessionId) =>
     invoke<AgentCatalog>("agent_catalog", { sessionId }),
   setSessionTuning: (sessionId, model, effort) =>

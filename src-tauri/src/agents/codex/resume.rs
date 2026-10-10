@@ -1,4 +1,8 @@
-//! Codex `resume --all` 会话目录。
+//! Codex 会话目录：`thread/list` 等同于 `codex resume --all`。
+//!
+//! 实现 [`SessionDirectory`](crate::agents::directory::SessionDirectory)。
+//! 会话 id 就是 Codex thread id。本模块只负责列出线程；真正恢复用
+//! `thread/resume`，历史用 `thread/turns/list`。
 //!
 //! `codex resume --all` 关闭 cwd 过滤，但仍只显示交互会话（不含
 //! `--include-non-interactive`，也不含已归档）。这与 app-server
@@ -9,8 +13,7 @@
 //! 会话 id 就是 Codex thread id。本模块只负责列出线程；真正恢复用
 //! `thread/resume`，历史用 `thread/turns/list`。
 
-use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::collections::HashMap;
 use std::process::Stdio;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -22,28 +25,19 @@ use tokio::process::{Child, Command};
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::timeout;
 
+use async_trait::async_trait;
+
+use crate::agents::directory::{cwd_key, DirectoryEntry, SessionDirectory};
 use crate::encoding::{apply_utf8_env, decode_child_bytes};
-use crate::models::{
-    strip_verbatim_prefix, AgentKind, Project, Session, SessionEventBody, SessionStatus,
-};
+use crate::models::{strip_verbatim_prefix, SessionEventBody, SessionStatus};
+
+use super::process::{apply_loopback_no_proxy, hide_console, resolve_codex_bin};
 
 const CACHE_TTL: Duration = Duration::from_secs(8);
 const PAGE_LIMIT: u32 = 100;
 const MAX_PAGES: usize = 40;
 const HISTORY_PAGE: u32 = 20;
 const HISTORY_PAGES: usize = 3;
-
-#[derive(Debug, Clone)]
-pub struct CodexThread {
-    pub id: String,
-    pub cwd: String,
-    pub key: String,
-    pub title: String,
-    pub created_at: i64,
-    pub updated_at: i64,
-    pub status: SessionStatus,
-    pub ephemeral: bool,
-}
 
 pub struct CodexDirectory {
     inner: tokio::sync::Mutex<DirectoryState>,
@@ -56,7 +50,7 @@ struct DirectoryState {
 
 struct Cache {
     at: Instant,
-    result: Result<Vec<CodexThread>, String>,
+    result: Result<Vec<DirectoryEntry>, String>,
 }
 
 impl CodexDirectory {
@@ -74,7 +68,7 @@ impl CodexDirectory {
     }
 
     /// 交互、未归档的全部线程。短时间内复用上一次结果，避免每个项目都拉起进程。
-    pub async fn list_threads(&self) -> Result<Vec<CodexThread>, String> {
+    pub async fn list_threads(&self) -> Result<Vec<DirectoryEntry>, String> {
         let mut state = self.inner.lock().await;
         if let Some(cache) = &state.cache {
             if cache.at.elapsed() < CACHE_TTL {
@@ -96,7 +90,22 @@ impl Default for CodexDirectory {
     }
 }
 
-async fn fetch_threads(client: &mut Option<RpcClient>) -> Result<Vec<CodexThread>, String> {
+#[async_trait]
+impl SessionDirectory for CodexDirectory {
+    fn kind(&self) -> crate::models::AgentKind {
+        crate::models::AgentKind::CodexCli
+    }
+
+    async fn list(&self) -> Result<Vec<DirectoryEntry>, String> {
+        self.list_threads().await
+    }
+
+    async fn invalidate(&self) {
+        CodexDirectory::invalidate(self).await
+    }
+}
+
+async fn fetch_threads(client: &mut Option<RpcClient>) -> Result<Vec<DirectoryEntry>, String> {
     let mut last_err = String::from("无法读取 Codex 会话");
     for attempt in 0..2 {
         if client.is_none() {
@@ -116,93 +125,6 @@ async fn fetch_threads(client: &mut Option<RpcClient>) -> Result<Vec<CodexThread
     Err(last_err)
 }
 
-/// 已保存的项目在前；resume 里出现、但还没导入的目录按最近更新排在后面。
-pub fn group_projects(stored: &[Project], threads: &[CodexThread]) -> Vec<Project> {
-    let mut seen = HashSet::new();
-    let mut projects = Vec::with_capacity(stored.len());
-    for project in stored {
-        let mut project = project.clone();
-        project.external = false;
-        seen.insert(cwd_key(&project.path));
-        projects.push(project);
-    }
-
-    let mut discovered: HashMap<String, (String, i64, i64)> = HashMap::new();
-    for thread in threads {
-        if thread.ephemeral || seen.contains(&thread.key) {
-            continue;
-        }
-        let slot = discovered
-            .entry(thread.key.clone())
-            .or_insert_with(|| (thread.cwd.clone(), thread.created_at, thread.updated_at));
-        if thread.created_at > 0 && (slot.1 == 0 || thread.created_at < slot.1) {
-            slot.1 = thread.created_at;
-        }
-        if thread.updated_at > slot.2 {
-            slot.2 = thread.updated_at;
-        }
-    }
-
-    let mut extra: Vec<Project> = discovered
-        .into_iter()
-        .map(|(key, (cwd, created, updated))| Project {
-            id: virtual_project_id(&key),
-            name: folder_name(&cwd),
-            path: cwd,
-            default_agent: AgentKind::CodexCli,
-            created_at: created,
-            updated_at: updated,
-            external: true,
-        })
-        .collect();
-    extra.sort_by(|a, b| {
-        b.updated_at
-            .cmp(&a.updated_at)
-            .then_with(|| a.name.cmp(&b.name))
-    });
-    projects.extend(extra);
-    projects
-}
-
-pub fn sessions_for_project(project: &Project, threads: &[CodexThread]) -> Vec<Session> {
-    let key = cwd_key(&project.path);
-    let mut sessions: Vec<Session> = threads
-        .iter()
-        .filter(|thread| !thread.ephemeral && thread.key == key)
-        .map(|thread| Session {
-            id: thread.id.clone(),
-            project_id: project.id.clone(),
-            agent: AgentKind::CodexCli,
-            title: thread.title.clone(),
-            status: thread.status,
-            created_at: thread.created_at,
-            updated_at: thread.updated_at,
-        })
-        .collect();
-    sessions.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
-    sessions
-}
-
-pub fn virtual_project_id(key: &str) -> String {
-    if key.is_empty() {
-        "codex:(unknown)".into()
-    } else {
-        format!("codex:{key}")
-    }
-}
-
-pub fn cwd_key(path: &str) -> String {
-    let stripped = strip_verbatim_prefix(path.trim());
-    let trimmed = stripped.trim_end_matches(['\\', '/']);
-    #[cfg(windows)]
-    {
-        trimmed.to_lowercase()
-    }
-    #[cfg(not(windows))]
-    {
-        trimmed.to_string()
-    }
-}
 
 pub fn thread_title(name: Option<&str>, preview: Option<&str>) -> String {
     let name = name.unwrap_or("").trim();
@@ -245,7 +167,7 @@ pub fn status_from_thread(status: &Value) -> SessionStatus {
     }
 }
 
-pub fn parse_thread(value: &Value) -> Option<CodexThread> {
+pub fn parse_thread(value: &Value) -> Option<DirectoryEntry> {
     let id = value.get("id").and_then(Value::as_str)?.trim().to_string();
     if id.is_empty() {
         return None;
@@ -255,18 +177,18 @@ pub fn parse_thread(value: &Value) -> Option<CodexThread> {
         .get("ephemeral")
         .and_then(Value::as_bool)
         .unwrap_or(false);
-    Some(CodexThread {
+    Some(DirectoryEntry {
+        native_id: id,
+        cwd_key: cwd_key(&cwd),
+        cwd,
         title: thread_title(
             value.get("name").and_then(Value::as_str),
             value.get("preview").and_then(Value::as_str),
         ),
-        key: cwd_key(&cwd),
-        cwd,
         created_at: unix_millis(value.get("createdAt")),
         updated_at: unix_millis(value.get("updatedAt")),
         status: status_from_thread(value.get("status").unwrap_or(&Value::Null)),
         ephemeral,
-        id,
     })
 }
 
@@ -397,15 +319,6 @@ fn user_item_text(item: &Value) -> String {
     }
 }
 
-fn folder_name(path: &str) -> String {
-    let trimmed = path.trim_end_matches(['\\', '/']);
-    trimmed
-        .rsplit(['\\', '/'])
-        .next()
-        .filter(|name| !name.is_empty())
-        .unwrap_or("未知目录")
-        .to_string()
-}
 
 fn unix_millis(value: Option<&Value>) -> i64 {
     let Some(value) = value else {
@@ -442,7 +355,7 @@ struct RpcClient {
 
 impl RpcClient {
     async fn spawn() -> Result<Self, String> {
-        let bin = resolve_codex_bin()?;
+        let bin = resolve_codex_bin().map_err(|err| err.to_string())?;
         let mut command = Command::new(bin);
         command
             .arg("app-server")
@@ -533,7 +446,7 @@ impl RpcClient {
         Ok(client)
     }
 
-    async fn list_pages(&self) -> Result<Vec<CodexThread>, String> {
+    async fn list_pages(&self) -> Result<Vec<DirectoryEntry>, String> {
         let mut cursor: Option<String> = None;
         let mut threads = Vec::new();
         for _ in 0..MAX_PAGES {
@@ -648,116 +561,10 @@ fn answer_server_request(out: &mpsc::UnboundedSender<String>, id: u64, message: 
     let _ = out.send(line);
 }
 
-fn resolve_codex_bin() -> Result<PathBuf, String> {
-    if let Some(path) = std::env::var_os("CODEX_BIN").map(PathBuf::from) {
-        if path.is_file() {
-            return Ok(path);
-        }
-    }
-    let path_var = std::env::var_os("PATH").unwrap_or_default();
-    for dir in std::env::split_paths(&path_var) {
-        let exe = dir.join("codex.exe");
-        if exe.is_file() {
-            return Ok(exe);
-        }
-    }
-    for dir in std::env::split_paths(&path_var) {
-        for name in ["codex.cmd", "codex.ps1", "codex"] {
-            let shim = dir.join(name);
-            if shim.is_file() {
-                if let Some(found) = vendor_exe_near(&shim) {
-                    return Ok(found);
-                }
-            }
-        }
-    }
-    if let Some(appdata) = std::env::var_os("APPDATA") {
-        let candidate = PathBuf::from(appdata).join(
-            "npm/node_modules/@openai/codex/node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/bin/codex.exe",
-        );
-        if candidate.is_file() {
-            return Ok(candidate);
-        }
-    }
-    Err("未找到 Codex CLI。请先安装并确保 `codex` 在 PATH 中。".into())
-}
-
-fn vendor_exe_near(shim: &Path) -> Option<PathBuf> {
-    let parent = shim.parent()?;
-    let rel = Path::new("node_modules/@openai/codex/node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/bin/codex.exe");
-    [parent.join(rel), parent.join("..").join(rel)]
-        .into_iter()
-        .find(|path| path.is_file())
-}
-
-fn hide_console(command: &mut Command) {
-    #[cfg(windows)]
-    {
-        command.creation_flags(0x08000000);
-    }
-    let _ = command;
-}
-
-fn apply_loopback_no_proxy(command: &mut Command) {
-    let current = std::env::var("NO_PROXY")
-        .or_else(|_| std::env::var("no_proxy"))
-        .unwrap_or_default();
-    let mut parts = Vec::new();
-    for item in current.split(',') {
-        let item = item.trim();
-        if item.is_empty()
-            || parts
-                .iter()
-                .any(|existing: &String| existing.eq_ignore_ascii_case(item))
-        {
-            continue;
-        }
-        parts.push(item.to_string());
-    }
-    for host in ["localhost", "127.0.0.1", "::1"] {
-        if !parts.iter().any(|existing| existing.eq_ignore_ascii_case(host)) {
-            parts.push(host.to_string());
-        }
-    }
-    let value = parts.join(",");
-    command.env("NO_PROXY", &value);
-    command.env("no_proxy", &value);
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
-
-    fn project(id: &str, path: &str) -> Project {
-        Project {
-            id: id.into(),
-            name: "已保存".into(),
-            path: path.into(),
-            default_agent: AgentKind::CodexCli,
-            created_at: 1,
-            updated_at: 2,
-            external: false,
-        }
-    }
-
-    fn thread(id: &str, cwd: &str, updated: i64) -> CodexThread {
-        CodexThread {
-            id: id.into(),
-            key: cwd_key(cwd),
-            cwd: cwd.into(),
-            title: id.into(),
-            created_at: updated - 10,
-            updated_at: updated,
-            status: SessionStatus::Completed,
-            ephemeral: false,
-        }
-    }
-
-    #[test]
-    fn cwd_key_ignores_verbatim_prefix_and_case() {
-        assert_eq!(cwd_key(r"\\?\F:\App\"), cwd_key(r"f:\app"));
-    }
 
     #[test]
     fn title_prefers_name_then_preview() {
@@ -791,40 +598,6 @@ mod tests {
     }
 
     #[test]
-    fn groups_resume_cwds_without_replacing_saved_projects() {
-        let stored = vec![project("saved", r"F:\app")];
-        let threads = vec![
-            thread("inside", r"f:\app", 50),
-            thread("outside", r"D:\other\demo", 80),
-            thread("outside-2", r"D:\other\demo", 90),
-        ];
-        let projects = group_projects(&stored, &threads);
-        assert_eq!(projects.len(), 2);
-        assert!(!projects[0].external);
-        assert_eq!(projects[0].id, "saved");
-        assert!(projects[1].external);
-        assert_eq!(projects[1].name, "demo");
-        assert_eq!(projects[1].id, virtual_project_id(&cwd_key(r"D:\other\demo")));
-
-        let saved_sessions = sessions_for_project(&projects[0], &threads);
-        assert_eq!(saved_sessions.len(), 1);
-        assert_eq!(saved_sessions[0].id, "inside");
-        assert_eq!(saved_sessions[0].project_id, "saved");
-
-        let external_sessions = sessions_for_project(&projects[1], &threads);
-        assert_eq!(external_sessions.len(), 2);
-        assert_eq!(external_sessions[0].id, "outside-2");
-    }
-
-    #[test]
-    fn skips_ephemeral_threads_when_grouping() {
-        let mut ghost = thread("temp", r"F:\scratch", 10);
-        ghost.ephemeral = true;
-        let projects = group_projects(&[], &[ghost]);
-        assert!(projects.is_empty());
-    }
-
-    #[test]
     fn parses_thread_list_item_without_using_a_local_id() {
         let parsed = parse_thread(&json!({
             "id": "01a12492-d8e5-7e40-b438-95315ee95f7c",
@@ -837,7 +610,7 @@ mod tests {
             "status": { "type": "notLoaded" }
         }))
         .unwrap();
-        assert_eq!(parsed.id, "01a12492-d8e5-7e40-b438-95315ee95f7c");
+        assert_eq!(parsed.native_id, "01a12492-d8e5-7e40-b438-95315ee95f7c");
         assert_eq!(parsed.cwd, r"F:\mercury_resource\client\mercury_dev");
         assert_eq!(parsed.title, "概括当前项目");
         assert_eq!(parsed.created_at, 1_791_616_756_000);
@@ -877,7 +650,7 @@ mod tests {
         let directory = CodexDirectory::new();
         let threads = directory.list_threads().await.expect("thread/list");
         assert!(!threads.is_empty(), "codex resume --all equivalent list was empty");
-        assert!(threads.iter().all(|thread| !thread.id.is_empty()));
+        assert!(threads.iter().all(|thread| !thread.native_id.is_empty()));
         assert!(threads.iter().all(|thread| !thread.ephemeral));
         let again = directory.list_threads().await.expect("cached");
         assert_eq!(again.len(), threads.len());
@@ -887,7 +660,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "calls the local Codex CLI"]
     async fn resumes_an_existing_thread_by_its_id() {
-        use crate::agents::codex_cli::CodexCliAdapter;
+        use crate::agents::codex::CodexCliAdapter;
         use crate::agents::{AgentAdapter, SessionContext};
         use tokio::sync::mpsc;
 
@@ -902,17 +675,17 @@ mod tests {
         let session = CodexCliAdapter::new()
             .start_session(
                 SessionContext {
-                    session_id: thread.id.clone(),
+                    session_id: thread.native_id.clone(),
                     project_path: thread.cwd.clone(),
                     access_mode: None,
-                    resume_thread_id: Some(thread.id.clone()),
-                    persist_thread: true,
+                    resume_native_id: Some(thread.native_id.clone()),
+                    options: serde_json::json!({ "persist": true }),
                 },
                 tx,
             )
             .await
             .expect("resume");
-        assert_eq!(session.native_thread_id().as_deref(), Some(thread.id.as_str()));
+        assert_eq!(session.native_id().as_deref(), Some(thread.native_id.as_str()));
         let mut saw_history = false;
         while let Ok(body) = rx.try_recv() {
             if matches!(
@@ -929,7 +702,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "calls the local Codex CLI"]
     async fn persistent_start_shows_up_in_resume_list_then_is_deleted() {
-        use crate::agents::codex_cli::CodexCliAdapter;
+        use crate::agents::codex::CodexCliAdapter;
         use crate::agents::{AgentAdapter, SessionContext};
         use tokio::sync::mpsc;
 
@@ -945,14 +718,14 @@ mod tests {
                     session_id: String::new(),
                     project_path: dir.display().to_string(),
                     access_mode: Some("full".into()),
-                    resume_thread_id: None,
-                    persist_thread: true,
+                    resume_native_id: None,
+                    options: serde_json::json!({ "persist": true }),
                 },
                 tx,
             )
             .await
             .expect("thread/start");
-        let id = session.native_thread_id().expect("native thread id");
+        let id = session.native_id().expect("native thread id");
         assert!(!id.is_empty());
         let send = session
             .send_message("Reply with the single word ok. Do not use tools.".into())
@@ -979,7 +752,7 @@ mod tests {
         let listed = directory.list_threads().await;
         let found = listed
             .as_ref()
-            .map(|threads| threads.iter().any(|thread| thread.id == id))
+            .map(|threads| threads.iter().any(|thread| thread.native_id == id))
             .unwrap_or(false);
         let _ = session.stop().await;
 

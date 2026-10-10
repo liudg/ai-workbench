@@ -100,8 +100,8 @@ pub async fn remove_project(
     manager: State<'_, SessionManager>,
     id: String,
 ) -> Result<(), String> {
-    if id.starts_with("codex:") && store.get(&id).is_none() {
-        return Err("这个目录来自 Codex resume 列表，不能单独移除。".into());
+    if id.starts_with("dir:") && store.get(&id).is_none() {
+        return Err("这个目录来自 Agent 会话列表，不能单独移除。".into());
     }
     manager.stop_sessions_of_project(&id).await;
     if store.remove(&id)? {
@@ -140,6 +140,14 @@ pub async fn create_session(
             access_mode,
         )
         .await
+}
+
+#[tauri::command]
+pub fn agent_profiles() -> Vec<AgentProfile> {
+    AgentKind::all()
+        .into_iter()
+        .map(|kind| crate::agents::adapter_for(kind).profile())
+        .collect()
 }
 
 #[tauri::command]

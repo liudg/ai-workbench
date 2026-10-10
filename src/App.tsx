@@ -37,7 +37,7 @@ function Workspace() {
         <ChatView session={session} events={events} />
       ) : sessions && sessions.length > 0 ? (
         <div className="flex h-full items-center justify-center px-8 text-center text-sm leading-6 text-zinc-500">
-          从左侧选择一个会话。列表与本机 codex resume --all 相同，包括在工作台外开始的会话。
+          从左侧选择一个会话。列表是各 Agent 会话目录的并集；Codex 与本机 codex resume --all 相同。
         </div>
       ) : sessions ? (
         <NoSession projectId={project.id} />

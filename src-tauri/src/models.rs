@@ -15,6 +15,17 @@ pub enum AgentKind {
 }
 
 impl AgentKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            AgentKind::CodexCli => "codex-cli",
+            AgentKind::ClaudeCode => "claude-code",
+        }
+    }
+
+    pub fn all() -> [AgentKind; 2] {
+        [AgentKind::CodexCli, AgentKind::ClaudeCode]
+    }
+
     #[allow(dead_code)] // 前端目前用自己的 AGENT_LABELS；保留给后端展示场景
     pub fn display_name(&self) -> &'static str {
         match self {
@@ -50,7 +61,7 @@ pub struct Project {
     pub default_agent: AgentKind,
     pub created_at: i64,
     pub updated_at: i64,
-    /// 来自 Codex resume 的目录，不写入 projects.json。
+    /// 来自某个 Agent 的会话目录，不写入 projects.json。
     #[serde(default)]
     pub external: bool,
 }
@@ -61,6 +72,8 @@ pub struct Session {
     pub id: SessionId,
     pub project_id: ProjectId,
     pub agent: AgentKind,
+    /// Agent 自己的会话 id。工作台会话 id 是 `{agent}:{native_id}`。
+    pub native_id: String,
     pub title: String,
     pub status: SessionStatus,
     pub created_at: i64,
@@ -215,10 +228,60 @@ pub struct AgentSkillOption {
     pub path: String,
 }
 
+/// 适配器声明的能力。前端用它决定斜杠、技能、模型和 resume，不再比较 AgentKind 字符串。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentCapabilities {
+    pub supports_slash: bool,
+    pub supports_resume: bool,
+    pub supports_questions: bool,
+    pub supports_tuning: bool,
+    pub supports_skills: bool,
+}
+
+impl AgentCapabilities {
+    pub fn none() -> Self {
+        Self {
+            supports_slash: false,
+            supports_resume: false,
+            supports_questions: false,
+            supports_tuning: false,
+            supports_skills: false,
+        }
+    }
+
+    pub fn codex() -> Self {
+        Self {
+            supports_slash: true,
+            supports_resume: true,
+            supports_questions: true,
+            supports_tuning: true,
+            supports_skills: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SlashCommand {
+    pub name: String,
+    pub hint: String,
+    #[serde(default)]
+    pub takes_args: bool,
+}
+
+/// 不依赖已打开会话的静态能力说明。斜杠命令表在这里，模型/技能在会话 catalog 里。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentProfile {
+    pub kind: AgentKind,
+    pub capabilities: AgentCapabilities,
+    pub commands: Vec<SlashCommand>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentCatalog {
     pub models: Vec<AgentModelOption>,
     pub skills: Vec<AgentSkillOption>,
+    pub commands: Vec<SlashCommand>,
+    pub capabilities: AgentCapabilities,
 }
 
 impl AgentCatalog {
@@ -226,6 +289,8 @@ impl AgentCatalog {
         Self {
             models: Vec::new(),
             skills: Vec::new(),
+            commands: Vec::new(),
+            capabilities: AgentCapabilities::none(),
         }
     }
 }

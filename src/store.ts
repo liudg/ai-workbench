@@ -7,15 +7,17 @@
 
 import { create } from "zustand";
 
-import type {
-  AccessMode,
-  AgentCatalog,
-  AgentKind,
-  Attachment,
-  Project,
-  PromptAnswer,
-  Session,
-  SessionEvent,
+import {
+  emptyCatalog,
+  type AccessMode,
+  type AgentCatalog,
+  type AgentKind,
+  type AgentProfile,
+  type Attachment,
+  type Project,
+  type PromptAnswer,
+  type Session,
+  type SessionEvent,
 } from "@/types";
 import {
   backend,
@@ -55,6 +57,7 @@ interface WorkbenchState {
   lastAccessMode: AccessMode;
   accessMode: Record<string, AccessMode>;
   attachments: Record<string, Attachment[]>;
+  profiles: Partial<Record<AgentKind, AgentProfile>>;
   catalogs: Record<string, AgentCatalog>;
   tuning: Record<string, { model: string; effort: string }>;
   /** 点消息上的编辑后，把原文填回输入框 */
@@ -136,6 +139,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   lastAccessMode: "full",
   accessMode: {},
   attachments: {},
+  profiles: {},
   catalogs: {},
   tuning: {},
   composerSeed: null,
@@ -175,6 +179,14 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       });
     });
 
+    try {
+      const profiles = await backend.agentProfiles();
+      set({
+        profiles: Object.fromEntries(profiles.map((profile) => [profile.kind, profile])),
+      });
+    } catch (e) {
+      set({ lastError: String(e) });
+    }
     await get().refreshAll();
     const first = get().projects[0]?.id;
     if (first) await get().selectProject(first);
@@ -370,7 +382,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
         lastError: String(e),
         catalogs: {
           ...s.catalogs,
-          [sessionId]: { models: [], skills: [] },
+          [sessionId]: emptyCatalog(),
         },
       }));
     }

@@ -1,7 +1,7 @@
 //! 会话管理器：负责会话生命周期、事件日志、状态机与前端推送。
 //!
-//! Codex 会话的来源是官方 `thread/list`（与 `codex resume --all` 相同）。
-//! 内存里只保存已经打开的进程句柄和事件日志。Claude 仍使用本地桩 id。
+//! 侧边栏是已注册 `SessionDirectory` 与内存中已打开会话的并集，按
+//! agent kind + native id 去重。管理器不依赖某一种 CLI 的目录类型。
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
@@ -9,8 +9,10 @@ use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter};
 use tokio::sync::mpsc;
 
-use crate::agents::{adapter_for, AgentSession, EventSink, SessionContext};
-use crate::codex_resume::{group_projects, sessions_for_project, CodexDirectory, CodexThread};
+use crate::agents::directory::{
+    cwd_key, group_projects, session_key, sessions_for_project, SessionDirectory, SourcedEntry,
+};
+use crate::agents::{adapter_for, session_directories, AgentSession, EventSink, SessionContext};
 use crate::models::*;
 use crate::project_store::ProjectStore;
 
@@ -29,7 +31,7 @@ pub const EVT_SESSIONS_CHANGED: &str = "sessions-changed";
 pub struct SessionManager {
     entries: Arc<Mutex<HashMap<SessionId, SessionEntry>>>,
     app: AppHandle,
-    codex: CodexDirectory,
+    directories: Vec<Arc<dyn SessionDirectory>>,
     opening: tokio::sync::Mutex<()>,
 }
 
@@ -38,14 +40,31 @@ impl SessionManager {
         Self {
             entries: Arc::new(Mutex::new(HashMap::new())),
             app,
-            codex: CodexDirectory::new(),
+            directories: session_directories(),
             opening: tokio::sync::Mutex::new(()),
         }
     }
 
+    async fn listed(&self) -> (Vec<SourcedEntry>, Vec<String>) {
+        let mut listed = Vec::new();
+        let mut errors = Vec::new();
+        for directory in &self.directories {
+            let agent = directory.kind();
+            match directory.list().await {
+                Ok(entries) => {
+                    for entry in entries {
+                        listed.push(SourcedEntry { agent, entry });
+                    }
+                }
+                Err(err) => errors.push(err),
+            }
+        }
+        (listed, errors)
+    }
+
     pub async fn projects_for_sidebar(&self, store: &ProjectStore) -> Vec<Project> {
-        let threads = self.codex.list_threads().await.unwrap_or_default();
-        group_projects(&store.list(), &threads)
+        let (listed, _) = self.listed().await;
+        group_projects(&store.list(), &listed)
     }
 
     pub async fn resolve_project(
@@ -57,8 +76,8 @@ impl SessionManager {
             project.external = false;
             return Ok(project);
         }
-        let threads = self.codex.list_threads().await?;
-        group_projects(&store.list(), &threads)
+        let (listed, _) = self.listed().await;
+        group_projects(&store.list(), &listed)
             .into_iter()
             .find(|project| project.id == id)
             .ok_or_else(|| "项目不存在".to_string())
@@ -73,8 +92,8 @@ impl SessionManager {
             Ok(project) => project,
             Err(_) => return Vec::new(),
         };
-        let threads = self.codex.list_threads().await.unwrap_or_default();
-        let mut sessions = sessions_for_project(&project, &threads);
+        let (listed, _) = self.listed().await;
+        let mut sessions = sessions_for_project(&project, &listed);
         let live = self.entries.lock().unwrap();
         for session in &mut sessions {
             if let Some(entry) = live.get(&session.id) {
@@ -85,10 +104,16 @@ impl SessionManager {
                 session.updated_at = session.updated_at.max(entry.meta.updated_at);
             }
         }
-        let known: HashSet<String> = sessions.iter().map(|session| session.id.clone()).collect();
+        let known: HashSet<(AgentKind, String)> = sessions
+            .iter()
+            .map(|session| (session.agent, session.native_id.clone()))
+            .collect();
         let mut extras: Vec<Session> = live
             .values()
-            .filter(|entry| entry.meta.project_id == project.id && !known.contains(&entry.meta.id))
+            .filter(|entry| {
+                entry.meta.project_id == project.id
+                    && !known.contains(&(entry.meta.agent, entry.meta.native_id.clone()))
+            })
             .map(|entry| entry.meta.clone())
             .collect();
         drop(live);
@@ -122,41 +147,53 @@ impl SessionManager {
         if self.entries.lock().unwrap().contains_key(session_id) {
             return self.get_events(session_id);
         }
-        let threads = self.codex.list_threads().await?;
-        let thread = threads
+        let (listed, errors) = self.listed().await;
+        let found = listed
             .iter()
-            .find(|thread| thread.id == session_id)
-            .cloned()
-            .ok_or_else(|| "会话不存在".to_string())?;
-        let project = group_projects(&store.list(), &threads)
+            .find(|item| session_key(item.agent, &item.entry.native_id) == session_id)
+            .cloned();
+        let Some(found) = found else {
+            return Err(errors
+                .into_iter()
+                .next()
+                .unwrap_or_else(|| "会话不存在".to_string()));
+        };
+        let project = group_projects(&store.list(), &listed)
             .into_iter()
-            .find(|project| crate::codex_resume::cwd_key(&project.path) == thread.key)
+            .find(|project| cwd_key(&project.path) == found.entry.cwd_key)
             .ok_or_else(|| "找不到会话所在目录".to_string())?;
-        self.attach(&project, &thread).await?;
+        self.attach(&project, found.agent, &found.entry).await?;
         self.get_events(session_id)
     }
 
-    async fn attach(&self, project: &Project, thread: &CodexThread) -> Result<(), String> {
+    async fn attach(
+        &self,
+        project: &Project,
+        agent: AgentKind,
+        entry: &crate::agents::directory::DirectoryEntry,
+    ) -> Result<(), String> {
         let (tx, rx) = mpsc::unbounded_channel::<SessionEventBody>();
+        let session_id = session_key(agent, &entry.native_id);
         let ctx = SessionContext {
-            session_id: thread.id.clone(),
+            session_id: session_id.clone(),
             project_path: project.path.clone(),
             access_mode: None,
-            resume_thread_id: Some(thread.id.clone()),
-            persist_thread: true,
+            resume_native_id: Some(entry.native_id.clone()),
+            options: serde_json::json!({ "persist": true }),
         };
-        let handle = adapter_for(AgentKind::CodexCli)
+        let handle = adapter_for(agent)
             .start_session(ctx, tx)
             .await
             .map_err(|err| err.to_string())?;
         let meta = Session {
-            id: thread.id.clone(),
+            id: session_id,
             project_id: project.id.clone(),
-            agent: AgentKind::CodexCli,
-            title: thread.title.clone(),
-            status: thread.status,
-            created_at: thread.created_at,
-            updated_at: thread.updated_at,
+            agent,
+            native_id: entry.native_id.clone(),
+            title: entry.title.clone(),
+            status: entry.status,
+            created_at: entry.created_at,
+            updated_at: entry.updated_at,
         };
         self.install(meta, Some(handle), rx);
         Ok(())
@@ -169,29 +206,38 @@ impl SessionManager {
         agent: AgentKind,
         access_mode: Option<String>,
     ) -> Result<Session, String> {
+        let adapter = adapter_for(agent);
+        let caps = adapter.capabilities();
         let (tx, rx) = mpsc::unbounded_channel::<SessionEventBody>();
         let sink: EventSink = tx;
         let ctx = SessionContext {
             session_id: String::new(),
             project_path: project.path.clone(),
             access_mode,
-            resume_thread_id: None,
-            persist_thread: agent == AgentKind::CodexCli,
+            resume_native_id: None,
+            options: serde_json::json!({ "persist": caps.supports_resume }),
         };
-        let handle = adapter_for(agent)
+        let handle = adapter
             .start_session(ctx, sink)
             .await
             .map_err(|err| err.to_string())?;
-        let session_id = match handle.native_thread_id().filter(|id| !id.is_empty()) {
-            Some(id) => id,
-            None if agent == AgentKind::CodexCli => {
+        let session_id = match handle.native_id().filter(|id| !id.is_empty()) {
+            Some(id) => session_key(agent, &id),
+            None if caps.supports_resume => {
                 let _ = handle.stop().await;
-                return Err("Codex 没有返回可 resume 的 thread id，会话没有建立。".into());
+                return Err(format!(
+                    "{} 没有返回可 resume 的会话 id，会话没有建立。",
+                    agent.display_name()
+                ));
             }
-            None => new_id(),
+            None => session_key(agent, &new_id()),
         };
+        let native_id = session_id
+            .split_once(':')
+            .map(|(_, native)| native.to_string())
+            .unwrap_or_else(|| session_id.clone());
         let now = now_millis();
-        let title = if agent == AgentKind::CodexCli {
+        let title = if caps.supports_resume {
             "未命名会话".to_string()
         } else {
             format!("会话 {}", self.local_count(&project.id) + 1)
@@ -200,13 +246,18 @@ impl SessionManager {
             id: session_id.clone(),
             project_id: project.id.clone(),
             agent,
+            native_id,
             title,
             status: SessionStatus::Running,
             created_at: now,
             updated_at: now,
         };
         self.install(meta, Some(handle), rx);
-        self.codex.invalidate().await;
+        for directory in &self.directories {
+            if directory.kind() == agent {
+                directory.invalidate().await;
+            }
+        }
         self.entries
             .lock()
             .unwrap()
