@@ -73,7 +73,7 @@ function HoverActions({
   children?: React.ReactNode;
 }) {
   return (
-    <div className="mt-1 flex min-h-5 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+    <div className="mt-1 flex min-h-5 min-w-0 max-w-full items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
       <span className="px-0.5 text-[11px] tabular-nums text-zinc-500">{time}</span>
       {children}
     </div>
@@ -98,13 +98,13 @@ function Row({
   actionsBelow?: boolean;
 }) {
   return (
-    <div className="event-in group px-6 py-2">
-      <div className="mx-auto max-w-3xl">
-        <div className="mb-1 flex items-center gap-2">
-          <span className="text-zinc-500">{icon}</span>
+    <div className="event-in group min-w-0 px-6 py-2">
+      <div className="mx-auto min-w-0 max-w-3xl">
+        <div className="mb-1 flex min-w-0 items-center gap-2">
+          <span className="shrink-0 text-zinc-500">{icon}</span>
           <span
             className={cn(
-              "text-xs font-medium",
+              "min-w-0 break-words text-xs font-medium",
               tone === "muted" ? "text-zinc-500" : "text-zinc-400",
             )}
           >
@@ -124,7 +124,7 @@ function Row({
             </>
           )}
         </div>
-        <div className="cursor-text pl-6">
+        <div className="min-w-0 cursor-text break-words pl-6">
           {children}
           {actionsBelow ? (
             <HoverActions time={time}>
@@ -149,11 +149,11 @@ function UserMessage({
   const seedComposer = useWorkbench((s) => s.seedComposer);
 
   return (
-    <div className="event-in group px-6 py-2">
-      <div className="mx-auto flex max-w-3xl justify-end">
-        <div className="flex max-w-[85%] flex-col items-end">
-          <div className="cursor-text rounded-2xl rounded-br-sm bg-indigo-600/90 px-4 py-2.5 text-sm leading-6 text-white">
-            <p className="whitespace-pre-wrap">{text}</p>
+    <div className="event-in group min-w-0 px-6 py-2">
+      <div className="mx-auto flex min-w-0 max-w-3xl justify-end">
+        <div className="flex min-w-0 max-w-[85%] flex-col items-end">
+          <div className="min-w-0 max-w-full cursor-text rounded-2xl rounded-br-sm bg-indigo-600/90 px-4 py-2.5 text-sm leading-6 text-white">
+            <p className="break-words whitespace-pre-wrap">{text}</p>
           </div>
           <HoverActions time={time}>
             <CopyButton text={text} />
@@ -217,8 +217,8 @@ function QuestionCard({
   const canSend = Object.values(answers).some((text) => text.trim().length > 0);
 
   return (
-    <div className="rounded-lg border border-amber-500/25 bg-amber-500/[0.06] p-3">
-      <div className="mb-2 flex items-center gap-2">
+    <div className="min-w-0 rounded-lg border border-amber-500/25 bg-amber-500/[0.06] p-3">
+      <div className="mb-2 flex min-w-0 items-center gap-2">
         <HelpCircle className="h-4 w-4 shrink-0 text-amber-400" />
         <span className="text-xs font-medium text-zinc-400">问题</span>
         {interactive && (
@@ -246,7 +246,7 @@ function QuestionCard({
                     {question.header}
                   </p>
                 )}
-                <p className="whitespace-pre-wrap text-sm leading-6 text-zinc-200">
+                <p className="break-words whitespace-pre-wrap text-sm leading-6 text-zinc-200">
                   {question.question}
                 </p>
                 {question.options.length > 0 && (
@@ -259,7 +259,7 @@ function QuestionCard({
                           type="button"
                           title={opt.description || undefined}
                           className={cn(
-                            "flex w-full items-baseline gap-2.5 rounded-md border px-2.5 py-1.5 text-left transition-colors",
+                            "flex w-full min-w-0 items-baseline gap-2.5 rounded-md border px-2.5 py-1.5 text-left transition-colors",
                             selected
                               ? "border-indigo-500/60 bg-indigo-500/15"
                               : "border-zinc-800 bg-zinc-900/60 hover:border-zinc-700 hover:bg-zinc-800/70",
@@ -274,12 +274,12 @@ function QuestionCard({
                           >
                             {index + 1}.
                           </span>
-                          <span className="min-w-0">
-                            <span className="block text-sm text-zinc-200">
+                          <span className="min-w-0 break-words">
+                            <span className="block break-words text-sm text-zinc-200">
                               {opt.label}
                             </span>
                             {opt.description && (
-                              <span className="block text-xs leading-5 text-zinc-500">
+                              <span className="block break-words text-xs leading-5 text-zinc-500">
                                 {opt.description}
                               </span>
                             )}
@@ -328,12 +328,12 @@ function QuestionCard({
           {event.questions.map((question) => (
             <p
               key={question.id}
-              className="whitespace-pre-wrap text-sm leading-6 text-zinc-400"
+              className="break-words whitespace-pre-wrap text-sm leading-6 text-zinc-400"
             >
               {question.question}
             </p>
           ))}
-          <p className="mt-1 whitespace-pre-wrap text-xs text-zinc-500">
+          <p className="mt-1 break-words whitespace-pre-wrap text-xs text-zinc-500">
             {resolvedAnswer ? `已回答：\n${resolvedAnswer}` : "等待回答…"}
           </p>
         </>
@@ -371,17 +371,17 @@ function PromptCard({
     : null;
 
   return (
-    <div className="rounded-lg border border-amber-500/25 bg-amber-500/[0.06] p-3">
-      <div className="mb-2 flex items-start gap-2">
+    <div className="min-w-0 rounded-lg border border-amber-500/25 bg-amber-500/[0.06] p-3">
+      <div className="mb-2 flex min-w-0 items-start gap-2">
         <HelpCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
-        <p className="whitespace-pre-wrap text-sm leading-6 text-zinc-200">
+        <p className="min-w-0 break-words whitespace-pre-wrap text-sm leading-6 text-zinc-200">
           {event.question}
         </p>
       </div>
       {interactive ? (
         event.prompt_kind === "free-text" ? (
           <form
-            className="flex gap-2 pl-6"
+            className="flex min-w-0 gap-2 pl-6"
             onSubmit={(e) => {
               e.preventDefault();
               if (freeText.trim()) {
@@ -396,15 +396,15 @@ function PromptCard({
               value={freeText}
               onChange={(e) => setFreeText(e.target.value)}
               placeholder="输入你的回答…"
-              className="h-8"
+              className="h-8 min-w-0 flex-1"
               autoFocus
             />
-            <Button type="submit" size="sm" className="h-8">
+            <Button type="submit" size="sm" className="h-8 shrink-0">
               回答
             </Button>
           </form>
         ) : (
-          <div className="flex gap-2 pl-6">
+          <div className="flex min-w-0 flex-wrap gap-2 pl-6">
             {event.options.map((opt) => (
               <Button
                 key={opt.id}
@@ -423,7 +423,7 @@ function PromptCard({
           </div>
         )
       ) : (
-        <p className="pl-6 text-xs text-zinc-500">
+        <p className="min-w-0 break-words pl-6 text-xs text-zinc-500">
           {resolvedLabel ? `已回答：${resolvedLabel}` : "等待回答…"}
         </p>
       )}
@@ -450,12 +450,12 @@ function ToolCallItem({
       tone="muted"
       copyText={summary ? `${name}\n${summary}` : name}
     >
-      <div className="rounded-md border border-zinc-800 bg-zinc-900/80 px-2.5 py-1.5 font-mono text-xs text-zinc-400">
+      <div className="min-w-0 rounded-md border border-zinc-800 bg-zinc-900/80 px-2.5 py-1.5 font-mono text-xs text-zinc-400">
         <button
           type="button"
           aria-expanded={open}
           onClick={() => setOpen((value) => !value)}
-          className="flex w-full items-start gap-1 text-left"
+          className="flex w-full min-w-0 items-start gap-1 text-left"
         >
           <ChevronRight
             className={cn(
@@ -463,7 +463,7 @@ function ToolCallItem({
               open && "rotate-90",
             )}
           />
-          <span className="text-cyan-400">{name}</span>
+          <span className="min-w-0 break-all text-cyan-400">{name}</span>
         </button>
         <p className="mt-1 whitespace-pre-wrap break-all pl-4 text-zinc-500">
           {open ? summary : first}
@@ -486,9 +486,9 @@ function ThinkingBlock({
 }) {
   const first = text.split("\n")[0] ?? text;
   return (
-    <div className="event-in group px-6 py-2">
-      <div className="mx-auto max-w-3xl">
-        <div className="mb-1 flex items-center gap-2">
+    <div className="event-in group min-w-0 px-6 py-2">
+      <div className="mx-auto min-w-0 max-w-3xl">
+        <div className="mb-1 flex min-w-0 items-center gap-2">
           <button
             type="button"
             aria-expanded={expanded}
@@ -512,7 +512,7 @@ function ThinkingBlock({
             className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
           />
         </div>
-        <p className="whitespace-pre-wrap pl-6 text-sm leading-6 text-zinc-400">
+        <p className="min-w-0 break-words whitespace-pre-wrap pl-6 text-sm leading-6 text-zinc-400">
           {expanded ? text : first}
         </p>
       </div>
@@ -548,7 +548,7 @@ export function EventItem({
           copyText={event.text}
           actionsBelow
         >
-          <p className="whitespace-pre-wrap text-sm leading-6 text-zinc-300">
+          <p className="break-words whitespace-pre-wrap text-sm leading-6 text-zinc-300">
             {event.text}
           </p>
         </Row>
@@ -569,8 +569,8 @@ export function EventItem({
 
     case "prompt":
       return (
-        <div className="event-in px-6 py-2">
-          <div className="mx-auto max-w-3xl pl-6">
+        <div className="event-in min-w-0 px-6 py-2">
+          <div className="mx-auto min-w-0 max-w-3xl pl-6">
             <PromptCard
               event={event}
               session={session}
@@ -588,30 +588,30 @@ export function EventItem({
 
     case "system":
       return (
-        <div className="event-in px-6 py-1.5">
-          <div className="mx-auto flex max-w-3xl gap-1.5 text-xs leading-5 text-zinc-500">
+        <div className="event-in min-w-0 px-6 py-1.5">
+          <div className="mx-auto flex min-w-0 max-w-3xl gap-1.5 text-xs leading-5 text-zinc-500">
             <Info className="mt-0.5 h-3 w-3 shrink-0" />
-            <p className="min-w-0 whitespace-pre-wrap">{event.text}</p>
+            <p className="min-w-0 break-words whitespace-pre-wrap">{event.text}</p>
           </div>
         </div>
       );
 
     case "read-only":
       return (
-        <div className="event-in px-6 py-2">
-          <div className="mx-auto flex max-w-3xl items-start gap-2 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-sm leading-6 text-amber-100">
+        <div className="event-in min-w-0 px-6 py-2">
+          <div className="mx-auto flex min-w-0 max-w-3xl items-start gap-2 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-sm leading-6 text-amber-100">
             <Lock className="mt-0.5 h-4 w-4 shrink-0" />
-            <p className="min-w-0">{event.text}</p>
+            <p className="min-w-0 break-words">{event.text}</p>
           </div>
         </div>
       );
 
     case "error":
       return (
-        <div className="event-in px-6 py-2">
-          <div className="mx-auto flex max-w-3xl items-center gap-2 rounded-lg border border-red-500/25 bg-red-500/[0.06] px-3 py-2 text-sm text-red-300">
-            <AlertCircle className="h-4 w-4 shrink-0" />
-            {event.message}
+        <div className="event-in min-w-0 px-6 py-2">
+          <div className="mx-auto flex min-w-0 max-w-3xl items-start gap-2 rounded-lg border border-red-500/25 bg-red-500/[0.06] px-3 py-2 text-sm text-red-300">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <p className="min-w-0 break-words">{event.message}</p>
           </div>
         </div>
       );
