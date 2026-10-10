@@ -1,3 +1,4 @@
+import { sandboxForAgent } from "@/features/workspace/composer/access";
 import { backend } from "@/lib/ipc";
 import type { Session } from "@/types";
 import {
@@ -105,11 +106,27 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
 
     async createSession(projectId, agent) {
       try {
+        const sandbox = sandboxForAgent(
+          get().lastSandbox,
+          get().profiles[agent]?.capabilities,
+        );
         const session = await backend.createSession(
           projectId,
           agent,
-          get().lastAccessMode,
+          sandbox.profileId ? "ask" : sandbox.mode,
         );
+        if (
+          sandbox.networkAccess ||
+          sandbox.writableRoots.length > 0 ||
+          sandbox.profileId ||
+          sandbox.mode === "approve-for-me"
+        ) {
+          try {
+            await backend.setSandbox(session.id, sandbox);
+          } catch (error) {
+            set({ lastError: String(error) });
+          }
+        }
         const [, list] = await loadSessions(projectId, overrides);
         set((s) => ({
           selectedProjectId: projectId,
@@ -119,8 +136,14 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
           events: { ...s.events, [session.id]: s.events[session.id] ?? [] },
           accessMode: {
             ...s.accessMode,
-            [session.id]: s.lastAccessMode,
+            [session.id]: sandbox.profileId ? "ask" : sandbox.mode,
           },
+          sandboxes: {
+            ...s.sandboxes,
+            [session.id]: sandbox,
+          },
+          lastSandbox: sandbox,
+          lastAccessMode: sandbox.profileId ? "ask" : sandbox.mode,
         }));
       } catch (e) {
         set({ lastError: String(e) });

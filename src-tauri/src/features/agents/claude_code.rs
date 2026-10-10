@@ -96,6 +96,10 @@ impl AgentAdapter for ClaudeCodeAdapter {
             supports_turn_diff: false,
             supports_revert: false,
             supports_review: false,
+            supports_network_access: false,
+            supports_writable_roots: false,
+            supports_permission_profiles: false,
+            supports_approve_for_me: false,
         }
     }
 

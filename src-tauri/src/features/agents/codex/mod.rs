@@ -20,6 +20,7 @@ mod prompts;
 mod resume;
 mod rpc;
 mod rpc_client;
+mod sandbox;
 mod state;
 mod turn;
 mod worktree;
@@ -54,7 +55,8 @@ use process::{
     trim_newline, StderrClass,
 };
 use prompts::{async_answer_text, blocking_answer_payload, is_accept, questions_summary};
-use state::{emit, emit_status, Access, Pending, Shared};
+use sandbox::SandboxChoice;
+use state::{emit, emit_status, Pending, Shared};
 
 pub struct CodexCliAdapter;
 
@@ -287,11 +289,9 @@ impl AgentAdapter for CodexCliAdapter {
             .take()
             .ok_or_else(|| AgentError::Runtime("Codex CLI 没有标准错误".into()))?;
 
-        let initial_access = ctx
-            .access_mode
-            .as_deref()
-            .and_then(Access::parse)
-            .unwrap_or(Access::Full);
+        let initial_access = SandboxChoice::from_mode(
+            ctx.access_mode.as_deref().unwrap_or("full"),
+        );
         let (queue_tx, mut queue_rx) = mpsc::unbounded_channel::<()>();
         let (out_tx, mut out_rx) = mpsc::unbounded_channel::<String>();
         tokio::spawn(async move {
@@ -318,6 +318,8 @@ impl AgentAdapter for CodexCliAdapter {
             user_stop: AtomicBool::new(false),
             turn_open: AtomicBool::new(false),
             access: Mutex::new(initial_access),
+            wire: Mutex::new(sandbox::SandboxWire::default()),
+            wire_ready: AtomicBool::new(false),
             model_override: Mutex::new(None),
             effort: Mutex::new(None),
             skills: Mutex::new(Vec::new()),
@@ -564,12 +566,13 @@ impl AgentSession for CodexCliSession {
                         "请选择完全访问、询问批准或只读".into(),
                     ));
                 };
-                let Some(access) = Access::parse(value) else {
+                let mut access = self.shared.access.lock().unwrap();
+                if !access.apply_preset(value) {
                     return Err(AgentError::Runtime(
-                        "请选择完全访问、询问批准或只读".into(),
+                        "请选择完全访问、询问批准、替我批准或只读".into(),
                     ));
-                };
-                *self.shared.access.lock().unwrap() = access;
+                }
+                drop(access);
                 self.shared.resolve_prompt(prompt_id, value.clone());
                 if self.shared.turn_open.load(Ordering::SeqCst) {
                     emit_status(&self.shared.events, SessionStatus::Running);
@@ -632,15 +635,33 @@ impl AgentSession for CodexCliSession {
     }
 
     fn set_access_mode(&self, mode: &str) -> Result<(), AgentError> {
-        let access = Access::parse(mode).ok_or_else(|| {
-            AgentError::Runtime(format!("未知权限档位：{mode}"))
-        })?;
-        let mut slot = self.shared.access.lock().unwrap();
-        if *slot == access {
-            return Ok(());
-        }
-        *slot = access;
+        self.set_sandbox(mode, false, &[], "")
+    }
+
+    fn set_sandbox(
+        &self,
+        mode: &str,
+        network_access: bool,
+        writable_roots: &[String],
+        profile_id: &str,
+    ) -> Result<(), AgentError> {
+        let cwd = self.shared.cwd.clone();
+        let choice = sandbox::SandboxChoice::from_parts(
+            mode,
+            network_access,
+            writable_roots,
+            profile_id,
+            &cwd,
+        )?;
+        let wire = *self.shared.wire.lock().unwrap();
+        let ready = self.shared.wire_ready.load(Ordering::SeqCst);
+        sandbox::require_supported(&choice, wire, ready)?;
+        *self.shared.access.lock().unwrap() = choice;
         Ok(())
+    }
+
+    async fn permission_menu(&self) -> Result<crate::models::PermissionMenu, AgentError> {
+        self.shared.refresh_sandbox_features().await
     }
 
     async fn catalog(&self) -> Result<AgentCatalog, AgentError> {

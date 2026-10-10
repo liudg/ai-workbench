@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::Mutex;
 use std::time::Instant;
 
-use serde_json::{json, Value};
+use serde_json::Value;
 use tokio::process::Child;
 use tokio::sync::{mpsc, oneshot, Mutex as AsyncMutex};
 
@@ -57,15 +57,6 @@ impl Access {
             Self::Ask | Self::ReadOnly => "on-request",
         }
     }
-
-    /// `turn/start` 的 sandboxPolicy 对象（camelCase）。
-    pub(super) fn sandbox_policy(self) -> Value {
-        match self {
-            Self::Full => json!({ "type": "dangerFullAccess" }),
-            Self::Ask => json!({ "type": "workspaceWrite", "networkAccess": false }),
-            Self::ReadOnly => json!({ "type": "readOnly", "networkAccess": false }),
-        }
-    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -108,7 +99,9 @@ pub(super) struct Shared {
     pub(super) closed: AtomicBool,
     pub(super) user_stop: AtomicBool,
     pub(super) turn_open: AtomicBool,
-    pub(super) access: Mutex<Access>,
+    pub(super) access: Mutex<super::sandbox::SandboxChoice>,
+    pub(super) wire: Mutex<super::sandbox::SandboxWire>,
+    pub(super) wire_ready: AtomicBool,
     pub(super) model_override: Mutex<Option<String>>,
     pub(super) effort: Mutex<Option<String>>,
     pub(super) skills: Mutex<Vec<KnownSkill>>,
@@ -241,7 +234,6 @@ fn emit_occupied(events: &EventSink) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
 
     #[test]
     fn maps_permission_labels() {
@@ -252,10 +244,8 @@ mod tests {
         assert_eq!(Access::Full.approval_policy(), "never");
         assert_eq!(Access::Ask.sandbox_mode(), "workspace-write");
         assert_eq!(Access::Ask.approval_policy(), "on-request");
-        assert_eq!(
-            Access::ReadOnly.sandbox_policy()["type"],
-            json!("readOnly")
-        );
+        assert_eq!(Access::ReadOnly.sandbox_mode(), "read-only");
+        assert_eq!(Access::ReadOnly.approval_policy(), "on-request");
     }
 
     #[test]

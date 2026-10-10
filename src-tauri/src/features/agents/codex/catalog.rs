@@ -63,6 +63,7 @@ impl Shared {
     }
 
     pub(super) async fn catalog(&self) -> Result<AgentCatalog, AgentError> {
+        let _ = self.refresh_sandbox_features().await;
         let models = match self
             .request("model/list", json!({ "includeHidden": true }))
             .await
@@ -90,7 +91,7 @@ impl Shared {
 
 pub(super) fn slash_help() -> String {
     "可用斜杠命令：\n\
-     /permissions [完全访问|询问批准|只读]  切换沙箱和审批\n\
+     /permissions [完全访问|询问批准|替我批准|只读]  切换沙箱和审批\n\
      /status  查看模型、线程、目录和权限\n\
      /diff  查看 git diff --stat\n\
      /review  Code review。Review uncommitted changes or compare against a branch\n\
@@ -320,7 +321,7 @@ pub(super) fn split_command(text: &str) -> (String, String) {
 
 pub(super) fn slash_commands() -> Vec<SlashCommand> {
     vec![
-        SlashCommand { name: "/permissions".into(), hint: "切换完全访问、询问批准或只读".into(), takes_args: true },
+        SlashCommand { name: "/permissions".into(), hint: "切换完全访问、询问批准、替我批准或只读".into(), takes_args: true },
         SlashCommand { name: "/status".into(), hint: "查看模型、线程、目录和权限".into(), takes_args: false },
         SlashCommand { name: "/diff".into(), hint: "查看 git diff --stat".into(), takes_args: false },
         SlashCommand { name: "/review".into(), hint: "Review uncommitted changes or compare against a branch".into(), takes_args: true },

@@ -467,6 +467,18 @@ pub struct AgentCapabilities {
     /// `/review` 打开官方目标菜单，并走 `review/start`。
     #[serde(default)]
     pub supports_review: bool,
+    /// 询问批准 / 只读 / workspace-write 的网络开关。
+    #[serde(default)]
+    pub supports_network_access: bool,
+    /// `--add-dir` 额外可写目录。
+    #[serde(default)]
+    pub supports_writable_roots: bool,
+    /// app-server 具名权限配置档。探测前为 false。
+    #[serde(default)]
+    pub supports_permission_profiles: bool,
+    /// `approvalsReviewer = auto_review`（替我批准）。探测前为 false。
+    #[serde(default)]
+    pub supports_approve_for_me: bool,
 }
 
 impl AgentCapabilities {
@@ -492,6 +504,10 @@ impl AgentCapabilities {
             supports_turn_diff: false,
             supports_revert: false,
             supports_review: false,
+            supports_network_access: false,
+            supports_writable_roots: false,
+            supports_permission_profiles: false,
+            supports_approve_for_me: false,
         }
     }
 
@@ -517,6 +533,39 @@ impl AgentCapabilities {
             supports_turn_diff: true,
             supports_revert: true,
             supports_review: true,
+            supports_network_access: true,
+            supports_writable_roots: true,
+            supports_permission_profiles: false,
+            supports_approve_for_me: false,
+        }
+    }
+}
+
+/// 作曲栏权限菜单要不要画出替我批准和自定义配置档。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PermissionProfileOption {
+    pub id: String,
+    pub label: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PermissionMenu {
+    pub network_access: bool,
+    pub writable_roots: bool,
+    pub permission_profiles: bool,
+    pub approve_for_me: bool,
+    pub profiles: Vec<PermissionProfileOption>,
+}
+
+impl PermissionMenu {
+    pub fn unsupported() -> Self {
+        Self {
+            network_access: false,
+            writable_roots: false,
+            permission_profiles: false,
+            approve_for_me: false,
+            profiles: Vec::new(),
         }
     }
 }
@@ -742,5 +791,13 @@ mod tests {
         assert!(!parsed.supports_images);
         assert!(!parsed.supports_queue);
         assert!(!parsed.supports_mcp);
+        assert!(!parsed.supports_plan);
+        assert!(!parsed.supports_turn_diff);
+        assert!(!parsed.supports_revert);
+        assert!(!parsed.supports_review);
+        assert!(!parsed.supports_network_access);
+        assert!(!parsed.supports_writable_roots);
+        assert!(!parsed.supports_permission_profiles);
+        assert!(!parsed.supports_approve_for_me);
     }
 }

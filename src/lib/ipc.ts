@@ -9,6 +9,8 @@ import type {
   AgentInstallation,
   AgentKind,
   AccessMode,
+  PermissionMenu,
+  SessionSandbox,
   AgentCatalogRefresh,
   AgentProfile,
   CachedAgentCatalog,
@@ -68,8 +70,10 @@ export interface Backend {
   ): Promise<Session>;
   /** 切换会话后续使用的 Agent。 */
   setSessionAgent(sessionId: string, agent: AgentKind): Promise<void>;
-  /** 更新权限档位。各适配器自行映射；桩会话会忽略。 */
-  setAccessMode(sessionId: string, mode: AccessMode): Promise<void>;
+  /** 更新权限档位、网络、额外可写目录和配置档。各适配器自行映射。 */
+  setSandbox(sessionId: string, sandbox: SessionSandbox): Promise<void>;
+  /** 当前 app-server 是否提供网络档、配置档和替我批准。 */
+  permissionMenu(sessionId: string): Promise<PermissionMenu>;
   /** 各 Agent 的能力与斜杠命令。不需要已打开的会话。 */
   agentProfiles(): Promise<AgentProfile[]>;
   /** 本机 CLI 安装与官方更新状态。 */
@@ -210,8 +214,16 @@ const tauriBackend: Backend = {
     }),
   setSessionAgent: (sessionId, agent) =>
     invoke("set_session_agent", { sessionId, agent }),
-  setAccessMode: (sessionId, mode) =>
-    invoke("set_session_access", { sessionId, mode }),
+  setSandbox: (sessionId, sandbox) =>
+    invoke("set_session_access", {
+      sessionId,
+      mode: sandbox.profileId ? "ask" : sandbox.mode,
+      networkAccess: sandbox.networkAccess,
+      writableRoots: sandbox.writableRoots,
+      profileId: sandbox.profileId,
+    }),
+  permissionMenu: (sessionId) =>
+    invoke<PermissionMenu>("session_permission_menu", { sessionId }),
   agentProfiles: () => invoke<AgentProfile[]>("agent_profiles"),
   listAgentInstallations: () =>
     invoke<AgentInstallation[]>("list_agent_installations"),

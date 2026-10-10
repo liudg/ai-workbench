@@ -2,6 +2,7 @@ import type { StoreApi } from "zustand";
 
 import type {
   AccessMode,
+  SessionSandbox,
   AgentCatalog,
   AgentInstallation,
   AgentKind,
@@ -70,6 +71,8 @@ export interface WorkspaceSlice {
   events: Record<string, SessionEvent[]>;
   lastAccessMode: AccessMode;
   accessMode: Record<string, AccessMode>;
+  lastSandbox: SessionSandbox;
+  sandboxes: Record<string, SessionSandbox>;
   attachments: Record<string, Attachment[]>;
   queues: Record<string, QueuedTurn[]>;
   catalogs: Record<string, AgentCatalog>;
@@ -79,7 +82,7 @@ export interface WorkspaceSlice {
   catalogNotice: string | null;
   tuning: Record<string, { model: string; effort: string }>;
   composerSeed: { sessionId: string; text: string; images: string[]; token: number } | null;
-  setAccessMode(sessionId: string, mode: AccessMode): void;
+  setSandbox(sessionId: string, sandbox: SessionSandbox): void;
   loadCatalog(sessionId: string): Promise<void>;
   setTuning(sessionId: string, model: string, effort: string): void;
   addAttachments(sessionId: string, files: Attachment[]): void;

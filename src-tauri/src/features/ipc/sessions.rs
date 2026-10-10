@@ -106,8 +106,26 @@ pub fn set_session_access(
     manager: State<'_, SessionManager>,
     session_id: String,
     mode: String,
+    network_access: Option<bool>,
+    writable_roots: Option<Vec<String>>,
+    profile_id: Option<String>,
 ) -> Result<(), String> {
-    manager.set_session_access(&session_id, &mode)
+    manager.set_session_access(
+        &session_id,
+        &mode,
+        network_access.unwrap_or(false),
+        writable_roots.unwrap_or_default(),
+        profile_id.unwrap_or_default(),
+    )
+}
+
+#[tauri::command]
+pub async fn session_permission_menu(
+    store: State<'_, ProjectStore>,
+    manager: State<'_, SessionManager>,
+    session_id: String,
+) -> Result<PermissionMenu, String> {
+    manager.permission_menu(&store, &session_id).await
 }
 
 #[tauri::command]

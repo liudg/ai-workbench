@@ -80,6 +80,8 @@ const CODEX_CAPABILITIES: AgentCapabilities = {
   supports_turn_diff: true,
   supports_revert: true,
   supports_review: true,
+  supports_network_access: true,
+  supports_writable_roots: true,
 };
 
 const CLAUDE_CAPABILITIES: AgentCapabilities = {
@@ -870,10 +872,36 @@ export const mockBackend: Backend = {
     );
   },
 
-  async setAccessMode(sessionId, mode) {
+  async setSandbox(sessionId, sandbox) {
     const s = sessions.get(sessionId);
     if (!s) throw new Error("会话不存在");
-    s.access = mode;
+    s.access = sandbox.profileId ? "ask" : sandbox.mode;
+  },
+
+  async permissionMenu(sessionId) {
+    const s = sessions.get(sessionId);
+    if (!s || s.meta.agent !== "codex-cli") {
+      return {
+        network_access: false,
+        writable_roots: false,
+        permission_profiles: false,
+        approve_for_me: false,
+        profiles: [],
+      };
+    }
+    return {
+      network_access: true,
+      writable_roots: true,
+      permission_profiles: true,
+      approve_for_me: true,
+      profiles: [
+        {
+          id: "project-edit",
+          label: "project-edit",
+          description: "使用 config.toml 中定义的权限",
+        },
+      ],
+    };
   },
 
   async sendMessage(sessionId, text, images = []) {

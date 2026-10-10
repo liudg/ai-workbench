@@ -188,15 +188,49 @@ export interface AgentInstallation {
 }
 
 /** 作曲栏权限档位。适配器自行映射到各自的沙箱 / 审批。 */
-export type AccessMode = "full" | "ask" | "read-only";
+export type AccessMode = "full" | "ask" | "read-only" | "approve-for-me";
 
 export const ACCESS_LABELS: Record<AccessMode, string> = {
   full: "完全访问",
   ask: "询问批准",
   "read-only": "只读",
+  "approve-for-me": "替我批准",
 };
 
+/** 没有沙箱扩展能力时的三项。Codex 桌面菜单另见 access.ts。 */
 export const ACCESS_OPTIONS: AccessMode[] = ["full", "ask", "read-only"];
+
+/** 一次权限选择：档位、网络、额外可写目录、具名配置档。 */
+export interface SessionSandbox {
+  mode: AccessMode;
+  networkAccess: boolean;
+  writableRoots: string[];
+  profileId: string;
+}
+
+export function emptySandbox(mode: AccessMode = "full"): SessionSandbox {
+  return {
+    mode,
+    networkAccess: false,
+    writableRoots: [],
+    profileId: "",
+  };
+}
+
+export interface PermissionProfileOption {
+  id: string;
+  label: string;
+  description: string;
+}
+
+/** app-server 探测结果。键不存在时对应开关为 false。 */
+export interface PermissionMenu {
+  network_access: boolean;
+  writable_roots: boolean;
+  permission_profiles: boolean;
+  approve_for_me: boolean;
+  profiles: PermissionProfileOption[];
+}
 
 export interface Attachment {
   name: string;
@@ -249,6 +283,14 @@ export interface AgentCapabilities {
   supports_turn_diff?: boolean;
   supports_revert?: boolean;
   supports_review?: boolean;
+  /** 询问批准 / 只读 / workspace-write 的网络开关。 */
+  supports_network_access?: boolean;
+  /** 额外可写目录，对应 Codex `--add-dir`。 */
+  supports_writable_roots?: boolean;
+  /** 具名权限配置档。会话探测后才为 true。 */
+  supports_permission_profiles?: boolean;
+  /** 替我批准（approvals reviewer auto_review）。 */
+  supports_approve_for_me?: boolean;
 }
 
 export interface QueuedTurn {

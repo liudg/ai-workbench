@@ -1,6 +1,6 @@
 import { agentForSession, reduceCatalogResult, type CatalogOutcome } from "@/lib/catalog";
 import { backend } from "@/lib/ipc";
-import type { AgentCatalog } from "@/types";
+import { emptySandbox, type AgentCatalog } from "@/types";
 import type { WorkspaceSlice, WorkbenchGet, WorkbenchSet } from "../types";
 
 const catalogEpoch = new Map<string, number>();
@@ -17,6 +17,8 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
     events: {},
     lastAccessMode: "full",
     accessMode: {},
+    lastSandbox: emptySandbox(),
+    sandboxes: {},
     attachments: {},
     queues: {},
     catalogs: {},
@@ -25,12 +27,15 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
     tuning: {},
     composerSeed: null,
 
-    setAccessMode(sessionId, mode) {
+    setSandbox(sessionId, sandbox) {
+      const mode = sandbox.profileId ? "ask" : sandbox.mode;
       set((s) => ({
         lastAccessMode: mode,
+        lastSandbox: sandbox,
         accessMode: { ...s.accessMode, [sessionId]: mode },
+        sandboxes: { ...s.sandboxes, [sessionId]: sandbox },
       }));
-      void backend.setAccessMode(sessionId, mode).catch((e) => {
+      void backend.setSandbox(sessionId, sandbox).catch((e) => {
         set({ lastError: String(e) });
       });
     },

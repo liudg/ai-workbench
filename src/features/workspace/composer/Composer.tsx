@@ -13,18 +13,28 @@ import { collaborationMode } from "../timeline/codex-turn";
 import { ReviewMenu } from "./ReviewMenu";
 import { useWorkbench } from "@/store";
 import {
-  ACCESS_LABELS,
-  ACCESS_OPTIONS,
   effortLabel,
-  type AccessMode,
+  emptySandbox,
   type AgentModelOption,
   type AgentSkillOption,
   type Attachment,
+  type PermissionMenu,
   type QueuedTurn,
   type Session,
   type SessionEvent,
+  type SessionSandbox,
   type SlashCommand,
 } from "@/types";
+import { AccessMenu } from "./AccessMenu";
+import {
+  addWritableRoot,
+  buttonLabel,
+  removeWritableRoot,
+  sandboxAllowsExtras,
+  selectPreset,
+  selectProfile,
+  setNetwork,
+} from "./access";
 
 const EMPTY_FILES: Attachment[] = [];
 const EMPTY_QUEUE: QueuedTurn[] = [];
@@ -98,7 +108,7 @@ export function Composer({
   const setCollaborationMode = useWorkbench((s) => s.setCollaborationMode);
   const startReview = useWorkbench((s) => s.startReview);
   const answerPrompt = useWorkbench((s) => s.answerPrompt);
-  const setAccessMode = useWorkbench((s) => s.setAccessMode);
+  const setSandbox = useWorkbench((s) => s.setSandbox);
   const loadCatalog = useWorkbench((s) => s.loadCatalog);
   const setTuning = useWorkbench((s) => s.setTuning);
   const liveCatalog = useWorkbench((s) => s.catalogs[session.id]);
@@ -111,7 +121,10 @@ export function Composer({
   const removeAttachment = useWorkbench((s) => s.removeAttachment);
   const clearAttachments = useWorkbench((s) => s.clearAttachments);
   const replaceAttachments = useWorkbench((s) => s.replaceAttachments);
-  const mode = useWorkbench((s) => s.accessMode[session.id] ?? "full");
+  const sandbox = useWorkbench((s) => s.sandboxes[session.id] ?? s.lastSandbox ?? emptySandbox());
+  const projectPath = useWorkbench(
+    (s) => s.projects.find((project) => project.id === session.project_id)?.path ?? "",
+  );
   const files = useWorkbench((s) => s.attachments[session.id] ?? EMPTY_FILES);
   const queue = useWorkbench((s) => s.queues[session.id] ?? EMPTY_QUEUE);
   const composerSeed = useWorkbench((s) => s.composerSeed);
@@ -119,6 +132,7 @@ export function Composer({
   const [caret, setCaret] = useState(0);
   const [menu, setMenu] = useState<null | "access" | "model" | "attach">(null);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [permissionMenu, setPermissionMenu] = useState<PermissionMenu | null>(null);
   const [slashIndex, setSlashIndex] = useState(0);
   const [skillIndex, setSkillIndex] = useState(0);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -151,6 +165,12 @@ export function Composer({
       document.removeEventListener("mousedown", onPointer);
     };
   }, [reviewOpen, closeReview]);
+  const applySandbox = useCallback(
+    (next: SessionSandbox) => {
+      setSandbox(session.id, next);
+    },
+    [session.id, setSandbox],
+  );
   useComposerMenu(menu === "access", accessRef, accessMenuRef, closeMenu);
   useComposerMenu(menu === "model", modelRef, modelMenuRef, closeMenu);
   useComposerMenu(menu === "attach", plusRef, attachMenuRef, closeMenu);
@@ -194,7 +214,26 @@ export function Composer({
   const busy = session.status === "running";
   const dead = session.status === "stopped" || session.status === "failed";
   const caps = profile?.capabilities ?? catalog?.capabilities;
+  const extendedAccess = Boolean(
+    caps?.supports_network_access ||
+      caps?.supports_writable_roots ||
+      permissionMenu?.approve_for_me ||
+      permissionMenu?.permission_profiles,
+  );
   const imagesOn = Boolean(caps?.supports_images);
+  useEffect(() => {
+    if (!caps?.supports_network_access && !caps?.supports_writable_roots) return;
+    let cancelled = false;
+    void backend
+      .permissionMenu(session.id)
+      .then((menu) => {
+        if (!cancelled) setPermissionMenu(menu);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [caps?.supports_network_access, caps?.supports_writable_roots, session.id]);
   const queueOn = Boolean(caps?.supports_queue);
   const composerLocked = queueOn ? dead || occupied : busy || dead || occupied;
   const menusLocked = busy || dead || occupied;
@@ -741,7 +780,7 @@ export function Composer({
               type="button"
               className={cn(
                 "inline-flex h-8 min-w-0 max-w-full items-center gap-1 rounded-full px-2 text-sm hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40",
-                mode === "full" ? "text-orange-400" : "text-zinc-300",
+                sandbox.mode === "full" && !sandbox.profileId ? "text-orange-400" : "text-zinc-300",
               )}
               aria-label="权限"
               aria-haspopup="menu"
@@ -753,7 +792,9 @@ export function Composer({
               }}
             >
               <Shield className="h-3.5 w-3.5 shrink-0" />
-              <span className="min-w-0 truncate">{ACCESS_LABELS[mode]}</span>
+              <span className="min-w-0 truncate">
+                {buttonLabel(sandbox, permissionMenu?.profiles ?? [])}
+              </span>
               <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />
             </button>
           </div>
@@ -864,11 +905,32 @@ export function Composer({
       {menu === "access" && (
         <AccessMenu
           menuRef={accessMenuRef}
-          mode={mode}
-          onPick={(next) => {
-            setAccessMode(session.id, next);
-            setMenu(null);
+          sandbox={sandbox}
+          extended={extendedAccess}
+          approveForMe={Boolean(permissionMenu?.approve_for_me)}
+          profiles={
+            permissionMenu?.permission_profiles ? permissionMenu.profiles : []
+          }
+          showNetwork={
+            Boolean(caps?.supports_network_access) &&
+            (permissionMenu ? permissionMenu.network_access : true) &&
+            sandboxAllowsExtras(sandbox)
+          }
+          showWritable={
+            Boolean(caps?.supports_writable_roots) &&
+            (permissionMenu ? permissionMenu.writable_roots : true) &&
+            sandboxAllowsExtras(sandbox)
+          }
+          onPreset={(mode) => applySandbox(selectPreset(sandbox, mode))}
+          onProfile={(id) => applySandbox(selectProfile(sandbox, id))}
+          onNetwork={(enabled) => applySandbox(setNetwork(sandbox, enabled))}
+          onAddDir={() => {
+            void backend.pickDirectory("添加可写目录").then((path) => {
+              if (!path) return;
+              applySandbox(addWritableRoot(sandbox, path, projectPath));
+            });
           }}
+          onRemoveDir={(path) => applySandbox(removeWritableRoot(sandbox, path))}
         />
       )}
       {menu === "model" && caps?.supports_tuning && (
@@ -891,44 +953,6 @@ export function Composer({
           }}
         />
       )}
-    </div>
-  );
-}
-
-function AccessMenu({
-  menuRef,
-  mode,
-  onPick,
-}: {
-  menuRef: RefObject<HTMLDivElement>;
-  mode: AccessMode;
-  onPick: (mode: AccessMode) => void;
-}) {
-  return (
-    <div
-      ref={menuRef}
-      role="menu"
-      aria-label="权限"
-      className="fixed z-50 w-44 overflow-hidden rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
-      style={{ top: -9999, left: 8 }}
-    >
-      {ACCESS_OPTIONS.map((option) => (
-        <button
-          key={option}
-          type="button"
-          role="menuitemradio"
-          aria-checked={mode === option}
-          className={cn(
-            "flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-zinc-800",
-            option === "full" ? "text-orange-400" : "text-zinc-200",
-            mode === option && "bg-zinc-800/70",
-          )}
-          onClick={() => onPick(option)}
-        >
-          <Shield className="h-3.5 w-3.5" />
-          {ACCESS_LABELS[option]}
-        </button>
-      ))}
     </div>
   );
 }

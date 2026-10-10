@@ -58,6 +58,7 @@ pub fn run() {
             features::ipc::sessions::create_session,
             features::ipc::sessions::set_session_agent,
             features::ipc::sessions::set_session_access,
+            features::ipc::sessions::session_permission_menu,
             features::ipc::agents::list_agent_installations,
             features::ipc::agents::update_agent,
             features::ipc::agents::agent_profiles,

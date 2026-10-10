@@ -538,9 +538,30 @@ impl SessionManager {
             .map_err(|err| err.to_string())
     }
 
-    pub fn set_session_access(&self, session_id: &str, mode: &str) -> Result<(), String> {
+    pub fn set_session_access(
+        &self,
+        session_id: &str,
+        mode: &str,
+        network_access: bool,
+        writable_roots: Vec<String>,
+        profile_id: String,
+    ) -> Result<(), String> {
         let handle = self.agent_handle(session_id)?;
-        handle.set_access_mode(mode).map_err(|err| err.to_string())
+        handle
+            .set_sandbox(mode, network_access, &writable_roots, &profile_id)
+            .map_err(|err| err.to_string())
+    }
+
+    pub async fn permission_menu(
+        &self,
+        store: &crate::features::projects::ProjectStore,
+        session_id: &str,
+    ) -> Result<crate::models::PermissionMenu, String> {
+        if self.lookup_agent(session_id).is_none() {
+            self.ensure_events(store, session_id).await?;
+        }
+        let handle = self.agent_handle_ready(session_id).await?;
+        handle.permission_menu().await.map_err(|err| err.to_string())
     }
 
     pub fn set_session_agent(&self, session_id: &str, agent: AgentKind) -> Result<(), String> {

@@ -14,7 +14,8 @@ use crate::models::{
 use super::catalog::{build_turn_input, slash_help, split_command};
 use super::process::{hide_console, truncate};
 use super::resume::{bodies_from_turns, chronological_turns, HISTORY_PAGE_CAP, HISTORY_TURN_LIMIT};
-use super::state::{emit, emit_status, Access, Pending, Shared};
+use super::sandbox::merge_json;
+use super::state::{emit, emit_status, Pending, Shared};
 
 impl Shared {
     pub(super) fn ensure_open(&self) -> Result<(), AgentError> {
@@ -26,16 +27,12 @@ impl Shared {
     }
 
     pub(super) fn note_access(&self) {
-        let access = *self.access.lock().unwrap();
+        let access = self.access.lock().unwrap().clone();
+        let wire = *self.wire.lock().unwrap();
         emit(
             &self.events,
             SessionEventBody::System {
-                text: format!(
-                    "权限已设为{}（sandbox {} / approval {}）。下一条消息起生效。",
-                    access.label(),
-                    access.sandbox_mode(),
-                    access.approval_policy(),
-                ),
+                text: access.summary(wire),
             },
         );
     }
@@ -59,6 +56,12 @@ impl Shared {
         if self.turn_open.load(Ordering::SeqCst) {
             return Err(AgentError::Busy);
         }
+        self.ensure_wire().await;
+        super::sandbox::require_supported(
+            &self.access.lock().unwrap().clone(),
+            *self.wire.lock().unwrap(),
+            true,
+        )?;
         emit_status(&self.events, SessionStatus::Running);
         self.ensure_thread().await?;
         let thread_id = self
@@ -67,7 +70,8 @@ impl Shared {
             .unwrap()
             .clone()
             .ok_or_else(|| AgentError::Runtime("Codex 线程未建立".into()))?;
-        let access = *self.access.lock().unwrap();
+        let access = self.access.lock().unwrap().clone();
+        let wire = *self.wire.lock().unwrap();
         if self.skills.lock().unwrap().is_empty() {
             if let Err(err) = self.refresh_skills().await {
                 emit(
@@ -101,9 +105,8 @@ impl Shared {
         let mut params = json!({
             "threadId": thread_id,
             "input": input,
-            "approvalPolicy": access.approval_policy(),
-            "sandboxPolicy": access.sandbox_policy(),
         });
+        merge_json(&mut params, access.turn_permissions(wire));
         if !client_id.is_empty() {
             params["clientUserMessageId"] = json!(client_id);
         }
@@ -214,18 +217,15 @@ impl Shared {
         if self.thread_id.lock().unwrap().is_some() {
             return Ok(());
         }
-        let access = *self.access.lock().unwrap();
-        let result = self
-            .request(
-                "thread/start",
-                json!({
-                    "cwd": self.cwd,
-                    "approvalPolicy": access.approval_policy(),
-                    "sandbox": access.sandbox_mode(),
-                    "ephemeral": !self.persist,
-                }),
-            )
-            .await?;
+        self.ensure_wire().await;
+        let access = self.access.lock().unwrap().clone();
+        let wire = *self.wire.lock().unwrap();
+        let mut params = json!({
+            "cwd": self.cwd,
+            "ephemeral": !self.persist,
+        });
+        merge_json(&mut params, access.thread_permissions(wire));
+        let result = self.request("thread/start", params).await?;
         let thread_id = result
             .pointer("/thread/id")
             .and_then(Value::as_str)
@@ -276,13 +276,15 @@ impl Shared {
             "permissions" | "approvals" => {
                 if rest.is_empty() {
                     self.ask_access();
-                } else if let Some(access) = Access::parse(&rest) {
-                    *self.access.lock().unwrap() = access;
-                    self.note_access();
                 } else {
-                    return Err(AgentError::Runtime(
-                        "用法：/permissions 完全访问 | 询问批准 | 只读".into(),
-                    ));
+                    let mut access = self.access.lock().unwrap();
+                    if !access.apply_preset(&rest) {
+                        return Err(AgentError::Runtime(
+                            "用法：/permissions 完全访问 | 询问批准 | 替我批准 | 只读".into(),
+                        ));
+                    }
+                    drop(access);
+                    self.note_access();
                 }
             }
             "status" => self.emit_status_card(),
@@ -384,21 +386,23 @@ impl Shared {
 
     pub(super) fn ask_access(&self) {
         let prompt_id = "local-access".to_string();
+        let reviewer = self.wire.lock().unwrap().reviewer;
         self.pending
             .lock()
             .unwrap()
             .insert(prompt_id.clone(), Pending::Access);
+        let question = if reviewer {
+            "选择 Codex 权限。询问批准对应 workspace-write + on-request；替我批准使用同一沙箱，reviewer 为 auto_review；只读对应 read-only；完全访问对应 danger-full-access。"
+        } else {
+            "选择 Codex 权限。完全访问对应 danger-full-access；询问批准对应 workspace-write + on-request；只读对应 read-only。"
+        };
         emit(
             &self.events,
             SessionEventBody::Prompt {
                 prompt_id,
                 prompt_kind: PromptKind::Choice,
-                question: "选择 Codex 权限。完全访问对应 danger-full-access；询问批准对应 workspace-write + on-request；只读对应 read-only。".into(),
-                options: vec![
-                    PromptOption { id: "full".into(), label: "完全访问".into(), description: String::new() },
-                    PromptOption { id: "ask".into(), label: "询问批准".into(), description: String::new() },
-                    PromptOption { id: "read-only".into(), label: "只读".into(), description: String::new() },
-                ],
+                question: question.into(),
+                options: access_prompt_options(reviewer),
                 questions: Vec::new(),
             },
         );
@@ -406,7 +410,7 @@ impl Shared {
     }
 
     pub(super) fn emit_status_card(&self) {
-        let access = *self.access.lock().unwrap();
+        let access = self.access.lock().unwrap().clone();
         let model = self.model.lock().unwrap().clone();
         let thread = self
             .thread_id
@@ -415,16 +419,34 @@ impl Shared {
             .clone()
             .unwrap_or_else(|| "（尚未开始）".into());
         let version = self.version.lock().unwrap().clone();
+        let network = if access.uses_sandbox_network() {
+            if access.network_access { "开" } else { "关" }
+        } else {
+            "不适用"
+        };
+        let permission = if access.profile_id.is_empty() {
+            format!(
+                "{}（sandbox {} / approval {} / reviewer {} / 网络{}）",
+                access.label(),
+                access.mode.sandbox_mode(),
+                access.mode.approval_policy(),
+                access.reviewer(),
+                network,
+            )
+        } else {
+            format!(
+                "自定义配置档 {}（permissions / reviewer {}）",
+                access.profile_id,
+                access.reviewer()
+            )
+        };
         emit(
             &self.events,
             SessionEventBody::System {
                 text: format!(
-                    "Codex {version}\n模型：{}\n线程：{thread}\n目录：{}\n权限：{}（sandbox {} / approval {}）",
+                    "Codex {version}\n模型：{}\n线程：{thread}\n目录：{}\n权限：{permission}",
                     if model.is_empty() { "（尚未开始）" } else { &model },
                     self.cwd,
-                    access.label(),
-                    access.sandbox_mode(),
-                    access.approval_policy(),
                 ),
             },
         );
@@ -573,6 +595,25 @@ impl Shared {
         emit(&self.events, SessionEventBody::System { text });
     }
 
+}
+
+fn access_prompt_options(approve_for_me: bool) -> Vec<PromptOption> {
+    let mut options = vec![
+        PromptOption { id: "full".into(), label: "完全访问".into(), description: String::new() },
+        PromptOption { id: "ask".into(), label: "询问批准".into(), description: String::new() },
+        PromptOption { id: "read-only".into(), label: "只读".into(), description: String::new() },
+    ];
+    if approve_for_me {
+        options.insert(
+            2,
+            PromptOption {
+                id: "approve-for-me".into(),
+                label: "替我批准".into(),
+                description: String::new(),
+            },
+        );
+    }
+    options
 }
 
 #[derive(Debug)]

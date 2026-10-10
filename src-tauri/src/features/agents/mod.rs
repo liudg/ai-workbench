@@ -18,8 +18,8 @@ use tokio::sync::mpsc;
 
 use crate::models::{
     AgentCapabilities, AgentCatalog, AgentInstallation, AgentKind, AgentProfile, EnvironmentRecord,
-    HookRecord, McpLogin, McpServerRecord, McpTransport, PluginCatalog, PromptAnswer, ReviewStart,
-    ReviewTargets, SessionEventBody, WorktreeInfo, WorktreeSettings,
+    HookRecord, McpLogin, McpServerRecord, McpTransport, PermissionMenu, PluginCatalog, PromptAnswer,
+    ReviewStart, ReviewTargets, SessionEventBody, WorktreeInfo, WorktreeSettings,
 };
 
 pub use directory::{
@@ -155,6 +155,22 @@ pub trait AgentSession: Send + Sync {
     /// 更新后续回合的权限档位。Codex 映射到 sandbox / approval；桩实现忽略。
     fn set_access_mode(&self, _mode: &str) -> Result<(), AgentError> {
         Ok(())
+    }
+
+    /// 权限档位加上网络、额外可写目录和具名配置档。桩实现只保留档位。
+    fn set_sandbox(
+        &self,
+        mode: &str,
+        _network_access: bool,
+        _writable_roots: &[String],
+        _profile_id: &str,
+    ) -> Result<(), AgentError> {
+        self.set_access_mode(mode)
+    }
+
+    /// 当前 app-server 是否提供替我批准和权限配置档。
+    async fn permission_menu(&self) -> Result<PermissionMenu, AgentError> {
+        Ok(PermissionMenu::unsupported())
     }
 
     /// 当前 Agent 报告的模型和技能。桩实现返回空列表。
