@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { cn, formatMessageTime } from "@/lib/utils";
+import { MessageContent } from "./MessageContent";
 import { useWorkbench } from "@/store";
 import {
   AGENT_LABELS,
@@ -102,7 +103,7 @@ function Row({
             />
           ) : null}
         </div>
-        <div className="cursor-text pl-6">{children}</div>
+        <div className="min-w-0 cursor-text pl-6">{children}</div>
       </div>
     </div>
   );
@@ -120,11 +121,11 @@ function UserMessage({
   const seedComposer = useWorkbench((s) => s.seedComposer);
 
   return (
-    <div className="event-in group px-6 py-2">
-      <div className="mx-auto flex max-w-3xl justify-end">
-        <div className="flex max-w-[85%] flex-col items-end">
-          <div className="cursor-text rounded-2xl rounded-br-sm bg-indigo-600/90 px-4 py-2.5 text-sm leading-6 text-white">
-            <p className="whitespace-pre-wrap">{text}</p>
+    <div className="event-in group min-w-0 px-6 py-2">
+      <div className="mx-auto flex min-w-0 max-w-3xl justify-end">
+        <div className="flex min-w-0 max-w-[85%] flex-col items-end">
+          <div className="min-w-0 max-w-full cursor-text rounded-2xl rounded-br-sm bg-indigo-600/90 px-4 py-2.5 text-sm leading-6 text-white">
+            <MessageContent text={text} />
           </div>
           <div className="flex max-h-0 items-center gap-1 overflow-hidden opacity-0 group-hover:mt-1 group-hover:max-h-6 group-hover:overflow-visible group-hover:opacity-100 group-focus-within:mt-1 group-focus-within:max-h-6 group-focus-within:overflow-visible group-focus-within:opacity-100">
             <span className="px-0.5 text-[11px] tabular-nums text-zinc-500">{time}</span>
@@ -519,9 +520,10 @@ export function EventItem({
           time={time}
           copyText={event.text}
         >
-          <p className="whitespace-pre-wrap text-sm leading-6 text-zinc-300">
-            {event.text}
-          </p>
+          <MessageContent
+            text={event.text}
+            className="text-sm leading-6 text-zinc-300"
+          />
         </Row>
       );
 

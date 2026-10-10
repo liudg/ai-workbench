@@ -5,10 +5,12 @@
 //! - `project_store`   项目列表持久化
 //! - `session_manager` 会话生命周期 / 事件日志 / 前端推送
 //! - `agents`          Agent CLI 适配层（Codex 真实进程，Claude Code 仍是桩）
+//! - `chat_images`     时间线本机图片：校验后放入 asset 协议
 //! - `commands`        前端 invoke 入口
 //! - `tray`            系统托盘与常驻后台
 
 mod agents;
+mod chat_images;
 mod commands;
 mod encoding;
 mod models;
@@ -63,6 +65,7 @@ pub fn run() {
             commands::answer_prompt,
             commands::stop_session,
             commands::get_session_events,
+            chat_images::prepare_chat_image,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
