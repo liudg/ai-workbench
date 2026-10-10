@@ -113,6 +113,10 @@ impl Shared {
         if let Some(effort) = self.effort.lock().unwrap().clone() {
             params["effort"] = json!(effort);
         }
+        if let Err(err) = self.attach_plan_mode(&mut params) {
+            emit_status(&self.events, SessionStatus::Failed);
+            return Err(err);
+        }
         self.turn_open.store(true, Ordering::SeqCst);
         if !self.write_method("turn/start", params) {
             self.turn_open.store(false, Ordering::SeqCst);
@@ -303,21 +307,27 @@ impl Shared {
                     );
                 }
             }
-            "review" => {
-                let prompt = if rest.is_empty() {
-                    "Review the current working tree. Focus on behavior changes, bugs, and missing tests. Do not modify files.".into()
-                } else {
-                    format!("Review the current working tree. {rest}")
-                };
-                self.begin_turn(prompt).await?;
-            }
+            "review" => match super::gap::parse_review_slash(&rest)? {
+                None => emit(
+                    &self.events,
+                    SessionEventBody::System {
+                        text: super::gap::REVIEW_DESCRIPTION.into(),
+                    },
+                ),
+                Some(target) => self.start_review(&target).await?,
+            },
             "plan" => {
-                let prompt = if rest.is_empty() {
-                    "Switch to plan mode. Propose an execution plan only. Do not edit files or run mutating commands.".into()
+                if rest.is_empty() {
+                    let next = if self.collaboration_is_plan() {
+                        "default"
+                    } else {
+                        "plan"
+                    };
+                    self.set_collaboration_mode(next)?;
                 } else {
-                    format!("Plan only. Do not edit files or run mutating commands.\n\n{rest}")
-                };
-                self.begin_turn(prompt).await?;
+                    self.set_collaboration_mode("plan")?;
+                    self.begin_turn(rest).await?;
+                }
             }
             "compact" => {
                 self.ensure_thread().await?;

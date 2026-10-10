@@ -68,6 +68,21 @@ impl Access {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum Collaboration {
+    Default,
+    Plan,
+}
+
+impl Collaboration {
+    pub(super) fn as_str(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::Plan => "plan",
+        }
+    }
+}
+
 #[derive(Clone)]
 pub(super) enum Pending {
     Approval { rpc_id: u64 },
@@ -76,6 +91,8 @@ pub(super) enum Pending {
     /// async 提问（agentMessage delivery=async）：答案经 turn/steer 写回
     AsyncQuestions { questions: Vec<PromptQuestion> },
     Access,
+    /// 计划完成后的 “Implement this plan?”。
+    ImplementPlan,
 }
 
 pub(super) struct StreamBuf {
@@ -121,6 +138,14 @@ pub(super) struct Shared {
     pub(super) queued: Mutex<Vec<QueuedTurn>>,
     pub(super) queue_removed: Mutex<HashSet<String>>,
     pub(super) shown_users: Mutex<HashSet<String>>,
+    /// 桌面端 Plan 开关。只在 plan 时给 `turn/start` 带 collaborationMode。
+    pub(super) collaboration: Mutex<Collaboration>,
+    /// 最近一个已开始的回合。编辑只允许这一条。
+    pub(super) latest_turn_id: Mutex<Option<String>>,
+    /// 本回合收到过 `turn/plan/updated`，结束后问要不要实现。
+    pub(super) plan_ready: AtomicBool,
+    /// 退出审查时的原文，用来丢掉紧随其后的重复 agentMessage。
+    pub(super) review_output: Mutex<Option<String>>,
 }
 
 /// `thread/resume` 撞上 active writer 之后的打开状态。

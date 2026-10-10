@@ -10,6 +10,7 @@ import type {
   Project,
   PromptAnswer,
   QueuedTurn,
+  ReviewStart,
   Session,
   SessionEvent,
 } from "@/types";
@@ -87,6 +88,9 @@ export interface WorkspaceSlice {
   replaceAttachments(sessionId: string, files: Attachment[]): void;
   seedComposer(sessionId: string, text: string, images?: string[]): void;
   sendMessage(sessionId: string, text: string, images?: string[]): Promise<void>;
+  setCollaborationMode(sessionId: string, mode: "plan" | "default"): Promise<void>;
+  startReview(sessionId: string, target: ReviewStart): Promise<void>;
+  revertTurn(sessionId: string, turnId: string, text: string): Promise<void>;
   answerPrompt(sessionId: string, promptId: string, answer: PromptAnswer): Promise<void>;
   stopSession(sessionId: string): Promise<void>;
 }

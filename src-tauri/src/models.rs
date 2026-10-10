@@ -201,6 +201,64 @@ impl MessagePhase {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PlanStep {
+    pub step: String,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ReviewFinding {
+    pub title: String,
+    pub location: String,
+    pub body: String,
+}
+
+/// `review/start` 的目标。前端菜单和 `/review` 参数都进这里。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum ReviewStart {
+    Uncommitted,
+    Base { branch: String },
+    Commit {
+        sha: String,
+        #[serde(default)]
+        title: String,
+    },
+}
+
+impl ReviewStart {
+    /// 桌面端菜单文案。分支和提交把所选目标接在小节标题后面。
+    pub fn label(&self) -> String {
+        match self {
+            Self::Uncommitted => "Review uncommitted changes".into(),
+            Self::Base { branch } => format!("Review against a base branch: {branch}"),
+            Self::Commit { sha, title } => {
+                let short: String = sha.chars().take(7).collect();
+                if title.trim().is_empty() {
+                    format!("Review a commit: {short}")
+                } else {
+                    format!("Review a commit: {short} {}", title.trim())
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ReviewCommit {
+    pub sha: String,
+    pub title: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ReviewTargets {
+    pub branches: Vec<String>,
+    pub commits: Vec<ReviewCommit>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
 /// 会话事件体（时间线中的一条）。`kind` 字段作为判别标签。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
@@ -260,6 +318,48 @@ pub enum SessionEventBody {
     /// 作曲栏排队列表。会话层拦截，不写入时间线。
     QueueChanged {
         items: Vec<QueuedTurn>,
+    },
+    /// 隐藏锚点。`turn/started` 在用户消息之后发出，供 diff 和 revert 绑定。
+    TurnAnchor {
+        turn_id: String,
+    },
+    /// `turn/diff/updated`。同一 `turn_id` 覆盖上一条。
+    TurnDiff {
+        turn_id: String,
+        diff: String,
+    },
+    /// `turn/plan/updated`。同一 `turn_id` 覆盖上一条。
+    PlanSteps {
+        turn_id: String,
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        explanation: String,
+        steps: Vec<PlanStep>,
+    },
+    /// plan item 的正文。同一 `stream_id` 覆盖。
+    PlanText {
+        text: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        stream_id: Option<String>,
+    },
+    /// `enteredReviewMode` 的 user-facing hint。
+    ReviewNote {
+        text: String,
+    },
+    /// `exitedReviewMode` 解析后的审查结果。解析失败时 findings 为空。
+    ReviewFindings {
+        summary: String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        findings: Vec<ReviewFinding>,
+        raw: String,
+    },
+    /// 作曲栏 Plan 开关。不进时间线正文。
+    CollaborationMode {
+        mode: String,
+    },
+    /// 不入库。前端丢掉 `seq >= drop_from_seq` 的事件。
+    Rewind {
+        turn_id: String,
+        drop_from_seq: u64,
     },
 }
 
@@ -355,6 +455,18 @@ pub struct AgentCapabilities {
     /// 侧边栏 `thread/name/set`。
     #[serde(default)]
     pub supports_rename: bool,
+    /// `/plan` 和作曲栏 Plan 开关，走 `turn/start.collaborationMode`。
+    #[serde(default)]
+    pub supports_plan: bool,
+    /// 回合内展开 `turn/diff/updated`。
+    #[serde(default)]
+    pub supports_turn_diff: bool,
+    /// 最近一条用户消息可经 `thread/revert` 编辑。
+    #[serde(default)]
+    pub supports_revert: bool,
+    /// `/review` 打开官方目标菜单，并走 `review/start`。
+    #[serde(default)]
+    pub supports_review: bool,
 }
 
 impl AgentCapabilities {
@@ -376,6 +488,10 @@ impl AgentCapabilities {
             supports_archive: false,
             supports_delete: false,
             supports_rename: false,
+            supports_plan: false,
+            supports_turn_diff: false,
+            supports_revert: false,
+            supports_review: false,
         }
     }
 
@@ -397,6 +513,10 @@ impl AgentCapabilities {
             supports_archive: true,
             supports_delete: true,
             supports_rename: true,
+            supports_plan: true,
+            supports_turn_diff: true,
+            supports_revert: true,
+            supports_review: true,
         }
     }
 }

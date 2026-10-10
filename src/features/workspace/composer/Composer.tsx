@@ -8,6 +8,9 @@ import { filterSlash, slashToken } from "@/lib/slash";
 import { cn, isReadOnlyOpen, pendingPrompt } from "@/lib/utils";
 import { fileName, fileToBase64, isImagePath } from "./media";
 import { ChatThumb } from "../timeline/ChatThumb";
+import { CODEX_DESKTOP } from "../codex-desktop";
+import { collaborationMode } from "../timeline/codex-turn";
+import { ReviewMenu } from "./ReviewMenu";
 import { useWorkbench } from "@/store";
 import {
   ACCESS_LABELS,
@@ -92,6 +95,8 @@ export function Composer({
   events: SessionEvent[];
 }) {
   const sendMessage = useWorkbench((s) => s.sendMessage);
+  const setCollaborationMode = useWorkbench((s) => s.setCollaborationMode);
+  const startReview = useWorkbench((s) => s.startReview);
   const answerPrompt = useWorkbench((s) => s.answerPrompt);
   const setAccessMode = useWorkbench((s) => s.setAccessMode);
   const loadCatalog = useWorkbench((s) => s.loadCatalog);
@@ -113,12 +118,14 @@ export function Composer({
   const [text, setText] = useState("");
   const [caret, setCaret] = useState(0);
   const [menu, setMenu] = useState<null | "access" | "model" | "attach">(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
   const [slashIndex, setSlashIndex] = useState(0);
   const [skillIndex, setSkillIndex] = useState(0);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const reviewRootRef = useRef<HTMLDivElement>(null);
   const accessRef = useRef<HTMLButtonElement>(null);
   const modelRef = useRef<HTMLButtonElement>(null);
   const plusRef = useRef<HTMLButtonElement>(null);
@@ -127,6 +134,23 @@ export function Composer({
   const attachMenuRef = useRef<HTMLDivElement>(null);
 
   const closeMenu = useCallback(() => setMenu(null), []);
+  const closeReview = useCallback(() => setReviewOpen(false), []);
+  useEffect(() => {
+    if (!reviewOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeReview();
+    };
+    const onPointer = (event: MouseEvent) => {
+      if (reviewRootRef.current?.contains(event.target as Node)) return;
+      closeReview();
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onPointer);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onPointer);
+    };
+  }, [reviewOpen, closeReview]);
   useComposerMenu(menu === "access", accessRef, accessMenuRef, closeMenu);
   useComposerMenu(menu === "model", modelRef, modelMenuRef, closeMenu);
   useComposerMenu(menu === "attach", plusRef, attachMenuRef, closeMenu);
@@ -218,7 +242,19 @@ export function Composer({
         ? "添加后续消息"
         : "随心输入";
 
+  const planOn = collaborationMode(events) === "plan";
+
   const applySlash = (cmd: SlashCommand) => {
+    if (cmd.name === "/review" && caps?.supports_review) {
+      setText("");
+      setReviewOpen(true);
+      return;
+    }
+    if (cmd.name === "/plan" && caps?.supports_plan) {
+      setText("");
+      void setCollaborationMode(session.id, planOn ? "default" : "plan");
+      return;
+    }
     setText(cmd.takes_args ? `${cmd.name} ` : cmd.name);
     textareaRef.current?.focus();
   };
@@ -263,6 +299,24 @@ export function Composer({
 
   const submit = () => {
     const value = text.trim();
+    if (caps?.supports_plan && value === "/plan") {
+      setText("");
+      void setCollaborationMode(session.id, planOn ? "default" : "plan");
+      return;
+    }
+    const planRequest = value.match(/^\/plan\s+([\s\S]+)$/);
+    if (caps?.supports_plan && planRequest) {
+      setText("");
+      void setCollaborationMode(session.id, "plan").then(() => {
+        sendMessage(session.id, planRequest[1].trim());
+      });
+      return;
+    }
+    if (caps?.supports_review && value === "/review") {
+      setText("");
+      setReviewOpen(true);
+      return;
+    }
     const attached = useWorkbench.getState().attachments[session.id] ?? [];
     const imagePaths = imagesOn ? attached.map((file) => file.path) : [];
     if (editingId) {
@@ -358,7 +412,7 @@ export function Composer({
           {catalogNotice}
         </p>
       )}
-      <div className="relative mx-auto min-w-0 max-w-3xl">
+      <div ref={reviewRootRef} className="relative mx-auto min-w-0 max-w-3xl">
       {queueOn && queue.length > 0 && (
         <div className="mb-2 flex min-w-0 flex-col gap-1.5 overflow-x-hidden">
           {queue.map((item) => (
@@ -454,7 +508,16 @@ export function Composer({
           )}
         </div>
       )}
-      {slashOpen && (
+      {reviewOpen && (
+        <ReviewMenu
+          sessionId={session.id}
+          onStart={(target) => {
+            setReviewOpen(false);
+            void startReview(session.id, target);
+          }}
+        />
+      )}
+      {slashOpen && !reviewOpen && (
         <div
           role="listbox"
           aria-label="斜杠命令"
@@ -481,8 +544,20 @@ export function Composer({
                 applySlash(cmd);
               }}
             >
-              <span className="shrink-0 font-mono text-sm text-zinc-100">{cmd.name}</span>
-              <span className="min-w-0 truncate text-xs text-zinc-500">{cmd.hint}</span>
+              <span className="shrink-0 text-sm text-zinc-100">
+                {cmd.name === "/review"
+                  ? CODEX_DESKTOP.reviewTitle
+                  : cmd.name === "/plan"
+                    ? CODEX_DESKTOP.planTitle
+                    : cmd.name}
+              </span>
+              <span className="min-w-0 truncate text-xs text-zinc-500">
+                {cmd.name === "/plan"
+                  ? planOn
+                    ? CODEX_DESKTOP.planOff
+                    : CODEX_DESKTOP.planOn
+                  : cmd.hint}
+              </span>
             </button>
           ))}
           {token === "/" && (
@@ -683,6 +758,25 @@ export function Composer({
             </button>
           </div>
           <div className="flex min-w-0 items-center gap-1.5">
+            {caps?.supports_plan && (
+              <button
+                type="button"
+                aria-pressed={planOn}
+                aria-label={CODEX_DESKTOP.planLabel}
+                title={CODEX_DESKTOP.planTooltip}
+                disabled={menusLocked}
+                className={cn(
+                  "inline-flex h-8 shrink-0 items-center rounded-full px-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-40",
+                  planOn ? "bg-zinc-100 text-zinc-950" : "text-zinc-300 hover:bg-zinc-800",
+                )}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void setCollaborationMode(session.id, planOn ? "default" : "plan");
+                }}
+              >
+                {CODEX_DESKTOP.planLabel}
+              </button>
+            )}
             {caps?.supports_tuning && (
             <button
               ref={modelRef}

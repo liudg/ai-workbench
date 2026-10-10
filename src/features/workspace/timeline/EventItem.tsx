@@ -5,6 +5,7 @@ import {
   Brain,
   Check,
   ChevronRight,
+  Circle,
   Copy,
   HelpCircle,
   Info,
@@ -14,10 +15,22 @@ import {
   X,
 } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn, formatMessageTime } from "@/lib/utils";
 import { fileName } from "../composer/media";
+import { CODEX_DESKTOP } from "../codex-desktop";
 import { AssistantAnswer } from "./AssistantAnswer";
 import { ChatThumb } from "./ChatThumb";
+import { diffSummary, latestRevertTarget } from "./codex-turn";
 import { MessageContent } from "./MessageContent";
 import { useWorkbench } from "@/store";
 import {
@@ -26,8 +39,6 @@ import {
   type Session,
   type SessionEvent,
 } from "@/types";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 
 async function writeClipboard(text: string) {
   try {
@@ -141,18 +152,34 @@ function Row({
   );
 }
 
+const EMPTY_EVENTS: SessionEvent[] = [];
+
 function UserMessage({
-  sessionId,
+  session,
+  eventId,
   text,
   images,
   time,
 }: {
-  sessionId: string;
+  session: Session;
+  eventId: string;
   text: string;
   images: string[];
   time: string;
 }) {
   const seedComposer = useWorkbench((s) => s.seedComposer);
+  const revertTurn = useWorkbench((s) => s.revertTurn);
+  const events = useWorkbench((s) => s.events[session.id] ?? EMPTY_EVENTS);
+  const profile = useWorkbench((s) => s.profiles[session.agent]);
+  const catalog = useWorkbench((s) => s.catalogs[session.id]);
+  const caps = profile?.capabilities ?? catalog?.capabilities;
+  const [confirm, setConfirm] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(text);
+  const target = latestRevertTarget(events);
+  const protocolEdit = Boolean(caps?.supports_revert);
+  const isLatest = target?.userEventId === eventId;
+  const running = session.status === "running";
 
   return (
     <div className="event-in group min-w-0 px-6 py-2">
@@ -171,22 +198,90 @@ function UserMessage({
                 ))}
               </div>
             )}
-            {text ? <MessageContent text={text} /> : null}
+            {editing ? (
+              <textarea
+                aria-label={CODEX_DESKTOP.editMessage}
+                placeholder={CODEX_DESKTOP.editMessage}
+                value={draft}
+                autoFocus
+                rows={Math.min(6, Math.max(2, draft.split("\n").length))}
+                className="w-full min-w-0 resize-none overflow-x-hidden bg-transparent text-sm leading-6 text-white outline-none placeholder:text-indigo-200"
+                onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    setEditing(false);
+                    setDraft(text);
+                    return;
+                  }
+                  if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                    event.preventDefault();
+                    if (draft.trim()) setConfirm(true);
+                  }
+                }}
+              />
+            ) : text ? (
+              <MessageContent text={text} />
+            ) : null}
           </div>
           <HoverActions time={time}>
-            <CopyButton text={text} />
-            <button
-              type="button"
-              title="编辑"
-              aria-label="编辑"
-              className="rounded p-0.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
-              onClick={() => seedComposer(sessionId, text, images)}
-            >
-              <Pencil className="h-3.5 w-3.5" />
-            </button>
+            <CopyButton text={editing ? draft : text} />
+            {protocolEdit && isLatest ? (
+              <button
+                type="button"
+                title={running ? CODEX_DESKTOP.editWhileRunning : CODEX_DESKTOP.editMessage}
+                aria-label={CODEX_DESKTOP.editMessage}
+                disabled={running}
+                className="rounded p-0.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
+                onClick={() => {
+                  setDraft(text);
+                  setEditing(true);
+                }}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
+            {!protocolEdit && (
+              <button
+                type="button"
+                title="编辑"
+                aria-label="编辑"
+                className="rounded p-0.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
+                onClick={() => seedComposer(session.id, text, images)}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            )}
           </HoverActions>
         </div>
       </div>
+      <Dialog open={confirm} onOpenChange={setConfirm}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{CODEX_DESKTOP.editMessage}</DialogTitle>
+            <DialogDescription className="break-words whitespace-pre-wrap text-zinc-400">
+              {CODEX_DESKTOP.editConfirm}
+            </DialogDescription>
+          </DialogHeader>
+          <p className="break-words text-xs text-zinc-500">{CODEX_DESKTOP.editLatestOnly}</p>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setConfirm(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                setConfirm(false);
+                setEditing(false);
+                if (!target || !draft.trim()) return;
+                void revertTurn(session.id, target.turnId, draft.trim());
+              }}
+            >
+              {CODEX_DESKTOP.editMessage}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -438,6 +533,30 @@ function PromptCard({
                 {opt.label}
               </Button>
             ))}
+            {event.question === CODEX_DESKTOP.implementPrompt && (
+              <form
+                className="flex min-w-0 basis-full gap-2"
+                onSubmit={(submitEvent) => {
+                  submitEvent.preventDefault();
+                  if (!freeText.trim()) return;
+                  answerPrompt(session.id, event.prompt_id, {
+                    type: "single",
+                    value: freeText.trim(),
+                  });
+                }}
+              >
+                <Input
+                  value={freeText}
+                  onChange={(change) => setFreeText(change.target.value)}
+                  aria-label="Other"
+                  placeholder="Other"
+                  className="h-8 min-w-0 flex-1"
+                />
+                <Button type="submit" size="sm" variant="outline" className="h-8 shrink-0">
+                  Other
+                </Button>
+              </form>
+            )}
           </div>
         )
       ) : (
@@ -539,6 +658,107 @@ function ThinkingBlock({
   );
 }
 
+function TurnDiffBlock({ diff }: { diff: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="event-in min-w-0 px-6 py-1">
+      <div className="mx-auto min-w-0 max-w-3xl pl-6">
+        <button
+          type="button"
+          aria-expanded={open}
+          title={CODEX_DESKTOP.viewChanges}
+          className="flex min-w-0 items-center gap-1 text-left text-xs text-zinc-400 hover:text-zinc-200"
+          onClick={() => setOpen((value) => !value)}
+        >
+          <ChevronRight className={cn("h-3 w-3 shrink-0 transition-transform", open && "rotate-90")} />
+          <span>{CODEX_DESKTOP.viewChanges}</span>
+          <span className="min-w-0 break-all text-zinc-500">{diffSummary(diff)}</span>
+        </button>
+        {open ? (
+          <pre className="mt-2 max-w-full overflow-x-hidden whitespace-pre-wrap break-all rounded-md border border-zinc-800 bg-zinc-950/70 p-2 font-mono text-xs leading-5 text-zinc-300">
+            {diff}
+          </pre>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function PlanStepsBlock({
+  explanation,
+  steps,
+}: {
+  explanation: string;
+  steps: { step: string; status: string }[];
+}) {
+  return (
+    <div className="event-in min-w-0 px-6 py-2">
+      <div className="mx-auto min-w-0 max-w-3xl rounded-lg border border-zinc-800 bg-zinc-900/60 p-3">
+        <p className="text-xs font-medium text-zinc-300">{CODEX_DESKTOP.planTitle}</p>
+        {explanation ? (
+          <p className="mt-1 break-words whitespace-pre-wrap text-sm leading-6 text-zinc-400">
+            {explanation}
+          </p>
+        ) : null}
+        <ol className="mt-2 space-y-1.5">
+          {steps.map((step, index) => (
+            <li key={`${index}-${step.step}`} className="flex min-w-0 items-start gap-2 text-sm text-zinc-200">
+              <PlanMark status={step.status} />
+              <span className="min-w-0 break-words whitespace-pre-wrap">{step.step}</span>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </div>
+  );
+}
+
+function PlanMark({ status }: { status: string }) {
+  if (status === "completed") {
+    return <Check className="mt-1 h-3.5 w-3.5 shrink-0 text-emerald-400" />;
+  }
+  if (status === "inProgress") {
+    return <Circle className="mt-1 h-3.5 w-3.5 shrink-0 fill-zinc-200 text-zinc-200" />;
+  }
+  return <Circle className="mt-1 h-3.5 w-3.5 shrink-0 text-zinc-600" />;
+}
+
+function ReviewFindingsBlock({
+  summary,
+  findings,
+}: {
+  summary: string;
+  findings: { title: string; location: string; body: string }[];
+}) {
+  return (
+    <div className="event-in min-w-0 px-6 py-2">
+      <div className="mx-auto min-w-0 max-w-3xl rounded-lg border border-zinc-800 bg-zinc-900/60 p-3">
+        <p className="text-xs font-medium text-zinc-300">{CODEX_DESKTOP.reviewTitle}</p>
+        {summary ? (
+          <p className="mt-1 break-words whitespace-pre-wrap text-sm leading-6 text-zinc-200">
+            {summary}
+          </p>
+        ) : null}
+        <div className="mt-2 space-y-3">
+          {findings.map((finding, index) => (
+            <div key={`${finding.location}-${index}`} className="min-w-0">
+              <p className="break-words text-sm text-zinc-100">{finding.title}</p>
+              {finding.location ? (
+                <p className="break-all font-mono text-xs text-zinc-500">{finding.location}</p>
+              ) : null}
+              {finding.body ? (
+                <p className="mt-1 break-words whitespace-pre-wrap text-sm leading-6 text-zinc-400">
+                  {finding.body}
+                </p>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function EventItem({
   event,
   session,
@@ -561,12 +781,45 @@ export function EventItem({
     case "user-message":
       return (
         <UserMessage
-          sessionId={session.id}
+          session={session}
+          eventId={event.id}
           text={event.text}
           images={event.images ?? []}
           time={time}
         />
       );
+
+    case "turn-anchor":
+    case "collaboration-mode":
+    case "rewind":
+      return null;
+
+    case "turn-diff":
+      return <TurnDiffBlock diff={event.diff} />;
+
+    case "plan-steps":
+      return <PlanStepsBlock explanation={event.explanation ?? ""} steps={event.steps} />;
+
+    case "plan-text":
+      return (
+        <div className="event-in min-w-0 px-6 py-1">
+          <div className="mx-auto min-w-0 max-w-3xl pl-6">
+            <AssistantAnswer text={event.text} />
+          </div>
+        </div>
+      );
+
+    case "review-note":
+      return (
+        <div className="event-in min-w-0 px-6 py-1.5">
+          <p className="mx-auto min-w-0 max-w-3xl break-words whitespace-pre-wrap pl-6 text-xs leading-5 text-zinc-500">
+            {event.text}
+          </p>
+        </div>
+      );
+
+    case "review-findings":
+      return <ReviewFindingsBlock summary={event.summary} findings={event.findings} />;
 
     case "agent-message":
       if (!showAgentLabel) {

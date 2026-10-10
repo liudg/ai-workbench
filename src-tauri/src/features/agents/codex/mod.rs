@@ -12,6 +12,7 @@
 //! `resume_native_id` 走 `thread/resume`。
 
 mod catalog;
+mod gap;
 mod host;
 mod queue;
 mod process;
@@ -339,6 +340,10 @@ impl AgentAdapter for CodexCliAdapter {
             queued: Mutex::new(Vec::new()),
             queue_removed: Mutex::new(HashSet::new()),
             shown_users: Mutex::new(HashSet::new()),
+            collaboration: Mutex::new(state::Collaboration::Default),
+            latest_turn_id: Mutex::new(None),
+            plan_ready: AtomicBool::new(false),
+            review_output: Mutex::new(None),
         });
         {
             let refresher = Arc::clone(&shared);
@@ -592,6 +597,11 @@ impl AgentSession for CodexCliSession {
                     emit_status(&self.shared.events, SessionStatus::Running);
                 }
             }
+            Pending::ImplementPlan => {
+                self.shared
+                    .accept_implement_plan(prompt_id, &answer)
+                    .await?;
+            }
             Pending::AsyncQuestions { questions } => {
                 let text = async_answer_text(&questions, &answer);
                 let summary = questions_summary(&questions, &answer);
@@ -648,6 +658,25 @@ impl AgentSession for CodexCliSession {
 
     fn read_only(&self) -> bool {
         self.shared.read_only()
+    }
+
+    fn set_collaboration_mode(&self, mode: &str) -> Result<(), AgentError> {
+        self.shared.set_collaboration_mode(mode)
+    }
+
+    async fn start_review(
+        &self,
+        target: crate::models::ReviewStart,
+    ) -> Result<(), AgentError> {
+        self.shared.start_review(&target).await
+    }
+
+    async fn review_targets(&self) -> Result<crate::models::ReviewTargets, AgentError> {
+        Ok(gap::git_review_targets(&self.shared.cwd).await)
+    }
+
+    async fn revert_turn(&self, turn_id: &str) -> Result<(), AgentError> {
+        self.shared.revert_turn(turn_id).await
     }
 }
 
@@ -1038,5 +1067,131 @@ mod tests {
             }
         }
         None
+    }
+
+    #[tokio::test]
+    #[ignore = "calls the local Codex CLI in _gap-review-plan"]
+    async fn review_plan_diff_revert_in_gap_project() {
+        let cwd = r"C:\Users\admin\Desktop\temp\ai-workbench-project\_gap-review-plan";
+        let adapter = CodexCliAdapter::new();
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let session = adapter
+            .start_session(
+                SessionContext {
+                    project_path: cwd.to_string(),
+                    access_mode: Some("full".into()),
+                    resume_native_id: None,
+                    options: serde_json::json!({ "persist": true }),
+                },
+                tx,
+            )
+            .await
+            .expect("start");
+        let persisted = session.native_id().unwrap_or_default();
+        let mut problem = String::new();
+        if let Err(err) = session
+            .start_review(crate::models::ReviewStart::Uncommitted)
+            .await
+        {
+            problem = format!("review: {err}");
+        }
+        let mut saw_review = false;
+        let mut review_turn = String::new();
+        let review_deadline = tokio::time::Instant::now() + Duration::from_secs(150);
+        while problem.is_empty() && tokio::time::Instant::now() < review_deadline {
+            match timeout(Duration::from_secs(10), rx.recv()).await {
+                Ok(Some(SessionEventBody::TurnAnchor { turn_id })) => review_turn = turn_id,
+                Ok(Some(
+                    SessionEventBody::ReviewFindings { .. } | SessionEventBody::TurnDiff { .. },
+                )) => saw_review = true,
+                Ok(Some(SessionEventBody::StatusChanged {
+                    status: SessionStatus::Completed,
+                })) if saw_review => break,
+                Ok(Some(SessionEventBody::StatusChanged {
+                    status: SessionStatus::Failed,
+                })) => problem = "review failed".into(),
+                Ok(Some(SessionEventBody::Error { message })) => {
+                    problem = format!("codex error: {message}");
+                }
+                Ok(Some(_)) => {}
+                Ok(None) => break,
+                Err(_) => {}
+            }
+        }
+        if problem.is_empty() && !saw_review {
+            problem = "review did not emit findings or a turn diff".into();
+        }
+        if problem.is_empty() && review_turn.is_empty() {
+            problem = "review did not emit a turn id".into();
+        }
+        if problem.is_empty() {
+            if let Err(err) = session.revert_turn(&review_turn).await {
+                problem = format!("revert review turn: {err}");
+            }
+        }
+
+        if problem.is_empty() {
+            if let Err(err) = session.set_collaboration_mode("plan") {
+                problem = format!("plan mode: {err}");
+            }
+        }
+        if problem.is_empty() {
+            if let Err(err) = session
+                .send_message("Name two steps for renaming the seed note.".into())
+                .await
+            {
+                problem = format!("plan turn: {err}");
+            }
+        }
+        let mut saw_plan = false;
+        let mut plan_turn = String::new();
+        let mut last_text = String::new();
+        let plan_deadline = tokio::time::Instant::now() + Duration::from_secs(150);
+        while problem.is_empty() && tokio::time::Instant::now() < plan_deadline {
+            match timeout(Duration::from_secs(10), rx.recv()).await {
+                Ok(Some(SessionEventBody::TurnAnchor { turn_id })) => plan_turn = turn_id,
+                Ok(Some(body @ (SessionEventBody::PlanSteps { .. } | SessionEventBody::PlanText { .. }))) => {
+                    eprintln!("plan item: {body:?}");
+                    saw_plan = true;
+                }
+                Ok(Some(SessionEventBody::AgentMessage { text, .. })) => last_text = text,
+                Ok(Some(SessionEventBody::Prompt { .. })) if saw_plan => break,
+                Ok(Some(SessionEventBody::StatusChanged {
+                    status: SessionStatus::Completed,
+                })) if saw_plan => break,
+                Ok(Some(SessionEventBody::StatusChanged {
+                    status: SessionStatus::Completed,
+                })) => break,
+                Ok(Some(SessionEventBody::StatusChanged {
+                    status: SessionStatus::Failed,
+                })) => problem = format!("plan failed: {last_text}"),
+                Ok(Some(SessionEventBody::Error { message })) => {
+                    problem = format!("codex error: {message}");
+                }
+                Ok(Some(other)) => eprintln!("plan event: {other:?}"),
+                Ok(None) => break,
+                Err(_) => {}
+            }
+        }
+        let _ = session.stop().await;
+        if !persisted.is_empty() {
+            super::resume::delete_persisted_thread(&persisted)
+                .await
+                .expect("delete persisted gap thread");
+        }
+        if problem.is_empty() && !saw_plan && last_text.trim().is_empty() {
+            problem = "plan turn produced neither plan items nor a reply".into();
+        }
+        if problem.is_empty() && plan_turn.is_empty() {
+            problem = "plan turn did not emit a turn id".into();
+        }
+        if saw_plan {
+            eprintln!("plan turn emitted structured plan items");
+        } else if problem.is_empty() {
+            eprintln!("plan turn finished as assistant text: {last_text}");
+        }
+        if !problem.is_empty() {
+            panic!("{problem}");
+        }
     }
 }

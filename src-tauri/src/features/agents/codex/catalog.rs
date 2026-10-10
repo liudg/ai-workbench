@@ -93,8 +93,8 @@ pub(super) fn slash_help() -> String {
      /permissions [完全访问|询问批准|只读]  切换沙箱和审批\n\
      /status  查看模型、线程、目录和权限\n\
      /diff  查看 git diff --stat\n\
-     /review [说明]  请 Codex 审查工作区\n\
-     /plan [说明]  只出计划，不改文件\n\
+     /review  Code review。Review uncommitted changes or compare against a branch\n\
+     /plan  Plan mode。Turn plan mode on；再发一次则 Turn plan mode off。/plan 后的文字会作为请求发出\n\
      /model [模型 id]  指定下一轮模型\n\
      /compact  压缩上下文\n\
      /approve  说明如何处理自动审查拒绝（时间线上点允许或拒绝）\n\
@@ -323,8 +323,8 @@ pub(super) fn slash_commands() -> Vec<SlashCommand> {
         SlashCommand { name: "/permissions".into(), hint: "切换完全访问、询问批准或只读".into(), takes_args: true },
         SlashCommand { name: "/status".into(), hint: "查看模型、线程、目录和权限".into(), takes_args: false },
         SlashCommand { name: "/diff".into(), hint: "查看 git diff --stat".into(), takes_args: false },
-        SlashCommand { name: "/review".into(), hint: "请 Codex 审查当前工作区".into(), takes_args: true },
-        SlashCommand { name: "/plan".into(), hint: "只出计划，不改文件".into(), takes_args: true },
+        SlashCommand { name: "/review".into(), hint: "Review uncommitted changes or compare against a branch".into(), takes_args: true },
+        SlashCommand { name: "/plan".into(), hint: "Turn plan mode on".into(), takes_args: true },
         SlashCommand { name: "/model".into(), hint: "指定下一轮使用的模型".into(), takes_args: true },
         SlashCommand { name: "/compact".into(), hint: "压缩当前线程的上下文".into(), takes_args: false },
         SlashCommand { name: "/approve".into(), hint: "说明如何处理自动审查拒绝".into(), takes_args: false },

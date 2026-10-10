@@ -120,6 +120,41 @@ pub fn set_session_agent(
 }
 
 #[tauri::command]
+pub fn set_collaboration_mode(
+    manager: State<'_, SessionManager>,
+    session_id: String,
+    mode: String,
+) -> Result<(), String> {
+    manager.set_collaboration_mode(&session_id, &mode)
+}
+
+#[tauri::command]
+pub async fn review_targets(
+    manager: State<'_, SessionManager>,
+    session_id: String,
+) -> Result<crate::models::ReviewTargets, String> {
+    manager.review_targets(&session_id).await
+}
+
+#[tauri::command]
+pub async fn start_review(
+    manager: State<'_, SessionManager>,
+    session_id: String,
+    target: crate::models::ReviewStart,
+) -> Result<(), String> {
+    manager.start_review(&session_id, target).await
+}
+
+#[tauri::command]
+pub async fn revert_turn(
+    manager: State<'_, SessionManager>,
+    session_id: String,
+    turn_id: String,
+) -> Result<(), String> {
+    manager.revert_turn(&session_id, &turn_id).await
+}
+
+#[tauri::command]
 pub async fn send_message(
     manager: State<'_, SessionManager>,
     session_id: String,

@@ -346,11 +346,52 @@ pub fn chronological_turns(pages_newest_first: &[Vec<Value>]) -> Vec<Value> {
 pub fn bodies_from_turns(turns: &[Value]) -> Vec<SessionEventBody> {
     let mut bodies = Vec::new();
     for turn in turns {
+        let turn_id = turn
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim()
+            .to_string();
         let Some(items) = turn.get("items").and_then(Value::as_array) else {
             continue;
         };
+        let mut anchored = false;
+        let mut review_raw: Option<String> = None;
         for item in items {
+            let kind = item.get("type").and_then(Value::as_str).unwrap_or("");
+            if kind == "userMessage" && !anchored && !turn_id.is_empty() {
+                push_history_item(&mut bodies, item);
+                bodies.push(SessionEventBody::TurnAnchor {
+                    turn_id: turn_id.clone(),
+                });
+                anchored = true;
+                continue;
+            }
+            if kind == "agentMessage" {
+                let text = item
+                    .get("text")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .trim()
+                    .to_string();
+                if review_raw.as_deref() == Some(text.as_str()) && !text.is_empty() {
+                    review_raw = None;
+                    continue;
+                }
+            }
+            if kind == "exitedReviewMode" {
+                let text = item.get("review").and_then(Value::as_str).unwrap_or("");
+                review_raw = Some(text.trim().to_string());
+            }
             push_history_item(&mut bodies, item);
+        }
+        if let Some(diff) = turn.get("diff").and_then(Value::as_str) {
+            if !turn_id.is_empty() && !diff.is_empty() {
+                bodies.push(SessionEventBody::TurnDiff {
+                    turn_id,
+                    diff: diff.to_string(),
+                });
+            }
         }
     }
     bodies
@@ -391,6 +432,29 @@ fn push_history_item(bodies: &mut Vec<SessionEventBody>, item: &Value) {
                     text: take_chars(&text, 20_000),
                     stream_id: None,
                 });
+            }
+        }
+        "plan" => {
+            let text = item.get("text").and_then(Value::as_str).unwrap_or("");
+            if !text.is_empty() {
+                bodies.push(SessionEventBody::PlanText {
+                    text: take_chars(text, 20_000),
+                    stream_id: None,
+                });
+            }
+        }
+        "enteredReviewMode" => {
+            let text = item.get("review").and_then(Value::as_str).unwrap_or("");
+            if !text.is_empty() {
+                bodies.push(SessionEventBody::ReviewNote {
+                    text: take_chars(text, 4_000),
+                });
+            }
+        }
+        "exitedReviewMode" => {
+            let text = item.get("review").and_then(Value::as_str).unwrap_or("");
+            if !text.trim().is_empty() {
+                bodies.push(super::gap::parse_review_output(text));
             }
         }
         "commandExecution" => {
@@ -521,6 +585,20 @@ fn take_chars(text: &str, max: usize) -> String {
         out.push('…');
         out
     }
+}
+
+#[cfg(test)]
+pub(super) async fn delete_persisted_thread(thread_id: &str) -> Result<(), String> {
+    let client = RpcClient::spawn().await?;
+    let deleted = client
+        .request(
+            "thread/delete",
+            json!({ "threadId": thread_id }),
+            std::time::Duration::from_secs(30),
+        )
+        .await;
+    drop(client);
+    deleted.map(|_| ())
 }
 
 struct RpcClient {
@@ -816,7 +894,8 @@ mod tests {
         let turns = chronological_turns(&[newer, older]);
         let bodies = bodies_from_turns(&turns);
         assert!(matches!(bodies[0], SessionEventBody::UserMessage { ref text, .. } if text == "你好"));
-        assert!(matches!(bodies[1], SessionEventBody::AgentMessage { ref text, phase: None, .. } if text == "完成"));
+        assert!(matches!(bodies[1], SessionEventBody::TurnAnchor { ref turn_id } if turn_id == "t1"));
+        assert!(matches!(bodies[2], SessionEventBody::AgentMessage { ref text, phase: None, .. } if text == "完成"));
     }
 
     #[test]

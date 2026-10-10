@@ -104,7 +104,52 @@ export type SessionEventBody =
   | { kind: "system"; text: string }
   /** 线程被其他进程占用。历史已打开，输入框不可发送。 */
   | { kind: "read-only"; text: string }
-  | { kind: "error"; message: string };
+  | { kind: "error"; message: string }
+  | { kind: "turn-anchor"; turn_id: string }
+  | { kind: "turn-diff"; turn_id: string; diff: string }
+  | {
+      kind: "plan-steps";
+      turn_id: string;
+      explanation?: string;
+      steps: PlanStep[];
+    }
+  | { kind: "plan-text"; text: string; stream_id?: string }
+  | { kind: "review-note"; text: string }
+  | {
+      kind: "review-findings";
+      summary: string;
+      findings: ReviewFinding[];
+      raw: string;
+    }
+  | { kind: "collaboration-mode"; mode: string }
+  | { kind: "rewind"; turn_id: string; drop_from_seq: number };
+
+export interface PlanStep {
+  step: string;
+  status: string;
+}
+
+export interface ReviewFinding {
+  title: string;
+  location: string;
+  body: string;
+}
+
+export type ReviewStart =
+  | { kind: "uncommitted" }
+  | { kind: "base"; branch: string }
+  | { kind: "commit"; sha: string; title?: string };
+
+export interface ReviewCommit {
+  sha: string;
+  title: string;
+}
+
+export interface ReviewTargets {
+  branches: string[];
+  commits: ReviewCommit[];
+  error?: string | null;
+}
 
 /** 完整事件 = 事件体 + 信封（id / seq / ts 由 SessionManager 统一赋值） */
 export type SessionEvent = {
@@ -200,6 +245,10 @@ export interface AgentCapabilities {
   supports_archive?: boolean;
   supports_delete?: boolean;
   supports_rename?: boolean;
+  supports_plan?: boolean;
+  supports_turn_diff?: boolean;
+  supports_revert?: boolean;
+  supports_review?: boolean;
 }
 
 export interface QueuedTurn {
@@ -342,6 +391,10 @@ export const EMPTY_CAPABILITIES: AgentCapabilities = {
   supports_archive: false,
   supports_delete: false,
   supports_rename: false,
+  supports_plan: false,
+  supports_turn_diff: false,
+  supports_revert: false,
+  supports_review: false,
 };
 
 export function emptyCatalog(): AgentCatalog {

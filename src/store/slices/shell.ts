@@ -23,6 +23,15 @@ export function createShellSlice(set: WorkbenchSet, get: WorkbenchGet): ShellSli
       backend.onSessionEvent((event) => {
         set((s) => {
           const log = s.events[event.session_id] ?? [];
+          if (event.kind === "rewind") {
+            return {
+              events: {
+                ...s.events,
+                [event.session_id]: log.filter((item) => item.seq < event.drop_from_seq),
+              },
+              lastError: s.lastError,
+            };
+          }
           const index = log.findIndex((item) => item.id === event.id);
           const next =
             index >= 0

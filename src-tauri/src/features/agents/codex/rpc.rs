@@ -12,6 +12,10 @@ use crate::models::{MessagePhase, PromptKind, PromptOption, SessionEventBody, Se
 
 const RPC_TIMEOUT: Duration = Duration::from_secs(45);
 
+fn opens_turn(method: Option<&str>) -> bool {
+    matches!(method, Some("turn/start" | "review/start"))
+}
+
 use super::process::truncate;
 use super::prompts::{approval_question, error_text, parse_tool_questions, rpc_error_text};
 use super::resume::reasoning_text;
@@ -132,10 +136,10 @@ impl Shared {
                 if let Some(err) = message.get("error") {
                     let text = rpc_error_text(err);
                     if self.reject_writer_conflict(&text) {
-                        if method.as_deref() == Some("turn/start") {
+                        if opens_turn(method.as_deref()) {
                             self.turn_open.store(false, Ordering::SeqCst);
                         }
-                    } else if method.as_deref() == Some("turn/start") {
+                    } else if opens_turn(method.as_deref()) {
                         self.turn_open.store(false, Ordering::SeqCst);
                         emit(
                             &self.events,
@@ -263,7 +267,13 @@ impl Shared {
             "turn/started" => {
                 self.turn_open.store(true, Ordering::SeqCst);
                 if let Some(id) = params.pointer("/turn/id").and_then(Value::as_str) {
-                    *self.turn_id.lock().unwrap() = Some(id.to_string());
+                    let id = id.to_string();
+                    *self.turn_id.lock().unwrap() = Some(id.clone());
+                    *self.latest_turn_id.lock().unwrap() = Some(id.clone());
+                    emit(
+                        &self.events,
+                        SessionEventBody::TurnAnchor { turn_id: id },
+                    );
                 }
                 emit_status(&self.events, SessionStatus::Running);
             }
@@ -271,14 +281,36 @@ impl Shared {
                 self.turn_open.store(false, Ordering::SeqCst);
                 *self.turn_id.lock().unwrap() = None;
                 if let Some(message) = params.pointer("/turn/error").and_then(error_text) {
+                    self.plan_ready.store(false, Ordering::SeqCst);
                     if !self.reject_writer_conflict(&message) {
                         emit(&self.events, SessionEventBody::Error { message });
                         emit_status(&self.events, SessionStatus::Failed);
                     }
-                } else if self.pending.lock().unwrap().is_empty() {
+                } else if !self.maybe_offer_implement_plan()
+                    && self.pending.lock().unwrap().is_empty()
+                {
                     emit_status(&self.events, SessionStatus::Completed);
                 }
                 self.poke_queue();
+            }
+            "turn/diff/updated" => {
+                let turn_id = params.get("turnId").and_then(Value::as_str).unwrap_or("");
+                let diff = params.get("diff").and_then(Value::as_str).unwrap_or("");
+                if !turn_id.is_empty() && !diff.is_empty() {
+                    emit(
+                        &self.events,
+                        SessionEventBody::TurnDiff {
+                            turn_id: turn_id.to_string(),
+                            diff: diff.to_string(),
+                        },
+                    );
+                }
+            }
+            "turn/plan/updated" => {
+                if let Some(body) = super::gap::plan_steps_event(params) {
+                    self.plan_ready.store(true, Ordering::SeqCst);
+                    emit(&self.events, body);
+                }
             }
             "item/reasoning/summaryTextDelta" | "item/reasoning/textDelta" => {
                 let Some(item_id) = params.get("itemId").and_then(Value::as_str) else {
@@ -365,6 +397,11 @@ impl Shared {
             "agentMessage" => {
                 if self.maybe_emit_async_questions(id, item) {
                     return;
+                }
+                if let Some(text) = item.get("text").and_then(Value::as_str) {
+                    if self.consume_review_duplicate(text) {
+                        return;
+                    }
                 }
                 let phase = MessagePhase::parse(item.get("phase").and_then(Value::as_str));
                 if !id.is_empty() {
@@ -474,6 +511,40 @@ impl Shared {
                         summary: query.to_string(),
                     },
                 );
+            }
+            "plan" if completed => {
+                let text = item.get("text").and_then(Value::as_str).unwrap_or("");
+                if !text.is_empty() {
+                    emit(
+                        &self.events,
+                        SessionEventBody::PlanText {
+                            text: text.to_string(),
+                            stream_id: if id.is_empty() {
+                                None
+                            } else {
+                                Some(id.to_string())
+                            },
+                        },
+                    );
+                }
+            }
+            "enteredReviewMode" => {
+                let text = item.get("review").and_then(Value::as_str).unwrap_or("");
+                if !text.is_empty() {
+                    emit(
+                        &self.events,
+                        SessionEventBody::ReviewNote {
+                            text: text.to_string(),
+                        },
+                    );
+                }
+            }
+            "exitedReviewMode" => {
+                let text = item.get("review").and_then(Value::as_str).unwrap_or("");
+                self.note_review_output(text);
+                if !text.trim().is_empty() {
+                    emit(&self.events, super::gap::parse_review_output(text));
+                }
             }
             _ => {}
         }

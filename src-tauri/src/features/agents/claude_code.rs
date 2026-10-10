@@ -92,6 +92,10 @@ impl AgentAdapter for ClaudeCodeAdapter {
             supports_archive: false,
             supports_delete: false,
             supports_rename: false,
+            supports_plan: false,
+            supports_turn_diff: false,
+            supports_revert: false,
+            supports_review: false,
         }
     }
 

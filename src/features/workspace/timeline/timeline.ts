@@ -1,4 +1,5 @@
 import type { SessionEvent, SessionStatus } from "../../../types";
+import { isReviewDuplicate } from "./codex-turn.ts";
 
 /**
  * 时间线以事件日志里最后一次状态为准。
@@ -96,7 +97,17 @@ export function pickAnswer(
 }
 
 function skippedInTimeline(event: SessionEvent): boolean {
-  return event.kind === "status-changed" || event.kind === "prompt-resolved";
+  return (
+    event.kind === "status-changed" ||
+    event.kind === "prompt-resolved" ||
+    event.kind === "turn-anchor" ||
+    event.kind === "collaboration-mode" ||
+    event.kind === "rewind"
+  );
+}
+
+function hiddenInTimeline(events: readonly SessionEvent[], index: number): boolean {
+  return skippedInTimeline(events[index]) || isReviewDuplicate(events, index);
 }
 
 export function isProcess(event: SessionEvent, answerId: string | null): boolean {
@@ -123,9 +134,9 @@ function elapsedMs(events: readonly SessionEvent[]): number {
 }
 
 function pushLive(blocks: TimelineNode[], events: readonly SessionEvent[]) {
-  const answer = pickAnswer(events, false);
-  for (const event of events) {
-    if (skippedInTimeline(event)) continue;
+  const visible = events.filter((_, index) => !hiddenInTimeline(events, index));
+  const answer = pickAnswer(visible, false);
+  for (const event of visible) {
     if (event.kind === "tool-call") {
       const last = blocks[blocks.length - 1];
       if (last && last.type === "work") {
@@ -144,7 +155,7 @@ function pushLive(blocks: TimelineNode[], events: readonly SessionEvent[]) {
 }
 
 function pushSettled(blocks: TimelineNode[], events: readonly SessionEvent[]) {
-  const body = events.filter((event) => !skippedInTimeline(event));
+  const body = events.filter((_, index) => !hiddenInTimeline(events, index));
   const answer = pickAnswer(body, true);
   const answerId = answer?.id ?? null;
   const process = body.filter((event) => isProcess(event, answerId));
@@ -181,8 +192,9 @@ export function buildTimeline(
   let index = 0;
   while (index < events.length && events[index].kind !== "user-message") {
     const event = events[index];
+    const at = index;
     index += 1;
-    if (skippedInTimeline(event)) continue;
+    if (hiddenInTimeline(events, at)) continue;
     blocks.push({
       type: "event",
       event,

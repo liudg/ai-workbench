@@ -25,6 +25,8 @@ import type {
   Project,
   PromptAnswer,
   QueuedTurn,
+  ReviewStart,
+  ReviewTargets,
   Session,
   SessionEvent,
 } from "@/types";
@@ -94,6 +96,10 @@ export interface Backend {
   sessionQueue(sessionId: string): Promise<QueuedTurn[]>;
   interruptTurn(sessionId: string): Promise<void>;
   stageChatImage(dataBase64: string, name: string): Promise<Attachment>;
+  setCollaborationMode(sessionId: string, mode: "plan" | "default"): Promise<void>;
+  reviewTargets(sessionId: string): Promise<ReviewTargets>;
+  startReview(sessionId: string, target: ReviewStart): Promise<void>;
+  revertTurn(sessionId: string, turnId: string): Promise<void>;
   answerPrompt(
     sessionId: string,
     promptId: string,
@@ -232,6 +238,14 @@ const tauriBackend: Backend = {
   interruptTurn: (sessionId) => invoke("interrupt_turn", { sessionId }),
   stageChatImage: (dataBase64, name) =>
     invoke("stage_chat_image", { dataBase64, name }),
+  setCollaborationMode: (sessionId, mode) =>
+    invoke("set_collaboration_mode", { sessionId, mode }),
+  reviewTargets: (sessionId) =>
+    invoke<ReviewTargets>("review_targets", { sessionId }),
+  startReview: (sessionId, target) =>
+    invoke("start_review", { sessionId, target }),
+  revertTurn: (sessionId, turnId) =>
+    invoke("revert_turn", { sessionId, turnId }),
   answerPrompt: (sessionId, promptId, answer) =>
     invoke("answer_prompt", { sessionId, promptId, answer }),
   stopSession: (sessionId) => invoke("stop_session", { sessionId }),

@@ -18,8 +18,8 @@ use tokio::sync::mpsc;
 
 use crate::models::{
     AgentCapabilities, AgentCatalog, AgentInstallation, AgentKind, AgentProfile, EnvironmentRecord,
-    HookRecord, McpLogin, McpServerRecord, McpTransport, PluginCatalog, PromptAnswer,
-    SessionEventBody, WorktreeInfo, WorktreeSettings,
+    HookRecord, McpLogin, McpServerRecord, McpTransport, PluginCatalog, PromptAnswer, ReviewStart,
+    ReviewTargets, SessionEventBody, WorktreeInfo, WorktreeSettings,
 };
 
 pub use directory::{
@@ -184,6 +184,32 @@ pub trait AgentSession: Send + Sync {
     /// 让已经打开的会话重新读取 MCP 配置。桌面端的 Restart。
     async fn reload_mcp(&self) -> Result<(), AgentError> {
         Ok(())
+    }
+
+    /// 桌面端 Plan 开关。`plan` 或 `default`。
+    fn set_collaboration_mode(&self, _mode: &str) -> Result<(), AgentError> {
+        Err(AgentError::Runtime("这个 Agent 没有 Plan mode".into()))
+    }
+
+    /// `review/start`。调用方已经把菜单文案记成用户消息。
+    async fn start_review(&self, _target: ReviewStart) -> Result<(), AgentError> {
+        Err(AgentError::Runtime("这个 Agent 不能发起 Code review".into()))
+    }
+
+    /// Code review 菜单里的分支和最近提交。
+    async fn review_targets(&self) -> Result<ReviewTargets, AgentError> {
+        Ok(ReviewTargets {
+            branches: Vec::new(),
+            commits: Vec::new(),
+            error: None,
+        })
+    }
+
+    /// `thread/revert`。只回退对话，不改工作区文件。
+    async fn revert_turn(&self, _turn_id: &str) -> Result<(), AgentError> {
+        Err(AgentError::Runtime(
+            "Only the most recent message can be edited.".into(),
+        ))
     }
 }
 

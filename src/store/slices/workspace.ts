@@ -138,6 +138,34 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
       }
     },
 
+    async setCollaborationMode(sessionId, mode) {
+      try {
+        await backend.setCollaborationMode(sessionId, mode);
+      } catch (e) {
+        set({ lastError: String(e) });
+      }
+    },
+
+    async startReview(sessionId, target) {
+      try {
+        await backend.startReview(sessionId, target);
+      } catch (e) {
+        set({ lastError: String(e) });
+      }
+    },
+
+    async revertTurn(sessionId, turnId, text) {
+      let rewound = false;
+      try {
+        await backend.revertTurn(sessionId, turnId);
+        rewound = true;
+        await backend.sendMessage(sessionId, text);
+      } catch (e) {
+        set({ lastError: String(e) });
+        if (rewound) get().seedComposer(sessionId, text);
+      }
+    },
+
     async answerPrompt(sessionId, promptId, answer) {
       try {
         await backend.answerPrompt(sessionId, promptId, answer);

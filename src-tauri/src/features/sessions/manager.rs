@@ -351,6 +351,45 @@ impl SessionManager {
         self.agent_handle(session_id)
     }
 
+    pub fn set_collaboration_mode(&self, session_id: &str, mode: &str) -> Result<(), String> {
+        let handle = self.agent_handle(session_id)?;
+        handle
+            .set_collaboration_mode(mode)
+            .map_err(|err| err.to_string())
+    }
+
+    pub async fn start_review(&self, session_id: &str, target: ReviewStart) -> Result<(), String> {
+        let handle = self.agent_handle_ready(session_id).await?;
+        if handle.read_only() {
+            return Err(OCCUPIED_SESSION_NOTICE.to_string());
+        }
+        let label = target.label();
+        self.record_local(
+            session_id,
+            SessionEventBody::UserMessage {
+                text: label,
+                images: Vec::new(),
+            },
+        )?;
+        handle
+            .start_review(target)
+            .await
+            .map_err(|err| err.to_string())
+    }
+
+    pub async fn review_targets(&self, session_id: &str) -> Result<ReviewTargets, String> {
+        let handle = self.agent_handle_ready(session_id).await?;
+        handle.review_targets().await.map_err(|err| err.to_string())
+    }
+
+    pub async fn revert_turn(&self, session_id: &str, turn_id: &str) -> Result<(), String> {
+        let handle = self.agent_handle_ready(session_id).await?;
+        handle
+            .revert_turn(turn_id)
+            .await
+            .map_err(|err| err.to_string())
+    }
+
     pub async fn send_message(
         &self,
         session_id: &str,
@@ -778,6 +817,10 @@ fn apply_body(
         );
         return;
     }
+    if let SessionEventBody::Rewind { turn_id, .. } = &body {
+        apply_rewind(entries, app, session_id, turn_id);
+        return;
+    }
     let replaced = {
         let mut entries = entries.lock().unwrap();
         let Some(entry) = entries.get_mut(session_id) else {
@@ -867,8 +910,12 @@ fn is_conversation_activity(body: &SessionEventBody) -> bool {
             | SessionEventBody::AgentMessage { .. }
             | SessionEventBody::Thinking { .. }
             | SessionEventBody::ToolCall { .. }
-            | SessionEventBody::Prompt { .. }
+            |         SessionEventBody::Prompt { .. }
             | SessionEventBody::PromptResolved { .. }
+            | SessionEventBody::PlanSteps { .. }
+            | SessionEventBody::PlanText { .. }
+            | SessionEventBody::ReviewFindings { .. }
+            | SessionEventBody::TurnDiff { .. }
     )
 }
 
@@ -885,12 +932,114 @@ fn sidebar_updated_at(directory_updated_at: i64, activity_at: Option<i64>) -> i6
     }
 }
 
+fn apply_rewind(
+    entries: &Mutex<HashMap<SessionId, SessionEntry>>,
+    app: &AppHandle,
+    session_id: &str,
+    turn_id: &str,
+) {
+    let event = {
+        let mut entries = entries.lock().unwrap();
+        let Some(entry) = entries.get_mut(session_id) else {
+            return;
+        };
+        if let Some(drop_from) = truncate_from_turn(entry, turn_id) {
+            SessionEvent {
+                id: new_id(),
+                session_id: session_id.to_string(),
+                seq: drop_from,
+                ts: now_millis(),
+                body: SessionEventBody::Rewind {
+                    turn_id: turn_id.to_string(),
+                    drop_from_seq: drop_from,
+                },
+            }
+        } else {
+            mutate_entry(
+                entry,
+                session_id,
+                SessionEventBody::Error {
+                    message: "Only the most recent message can be edited.".into(),
+                },
+                false,
+            )
+            .event
+        }
+    };
+    let _ = app.emit(EVT_SESSION_EVENT, &event);
+}
+
+/// 从该回合的用户消息起截掉后面的时间线。不是最近一个回合时返回 None。
+fn truncate_from_turn(entry: &mut SessionEntry, turn_id: &str) -> Option<u64> {
+    let anchor = entry.events.iter().rposition(|event| {
+        matches!(&event.body, SessionEventBody::TurnAnchor { turn_id: id } if id == turn_id)
+    })?;
+    let latest = entry.events.iter().rposition(|event| {
+        matches!(event.body, SessionEventBody::TurnAnchor { .. })
+    })?;
+    if latest != anchor {
+        return None;
+    }
+    let mut start = anchor;
+    while start > 0 {
+        if matches!(entry.events[start].body, SessionEventBody::UserMessage { .. }) {
+            break;
+        }
+        start -= 1;
+    }
+    if !matches!(entry.events[start].body, SessionEventBody::UserMessage { .. }) {
+        start = anchor;
+    }
+    let seq = entry.events[start].seq;
+    entry.events.truncate(start);
+    Some(seq)
+}
+
+fn replace_keyed(
+    entry: &mut SessionEntry,
+    body: &SessionEventBody,
+    record_activity: bool,
+) -> Option<SessionEvent> {
+    let existing = entry.events.iter_mut().rev().find(|event| match (&event.body, body) {
+        (
+            SessionEventBody::TurnDiff { turn_id: existing, .. },
+            SessionEventBody::TurnDiff { turn_id, .. },
+        ) => existing == turn_id,
+        (
+            SessionEventBody::PlanSteps { turn_id: existing, .. },
+            SessionEventBody::PlanSteps { turn_id, .. },
+        ) => existing == turn_id,
+        (
+            SessionEventBody::PlanText {
+                stream_id: Some(existing),
+                ..
+            },
+            SessionEventBody::PlanText {
+                stream_id: Some(stream_id),
+                ..
+            },
+        ) => existing == stream_id,
+        _ => false,
+    })?;
+    existing.body = body.clone();
+    let at = now_millis();
+    existing.ts = at;
+    let event = existing.clone();
+    if record_activity {
+        note_activity(entry, at);
+    }
+    Some(event)
+}
+
 /// 同一 `stream_id` 的助手消息或思考覆盖上一条，并沿用原来的事件 id。
 fn replace_stream(
     entry: &mut SessionEntry,
     body: &SessionEventBody,
     record_activity: bool,
 ) -> Option<SessionEvent> {
+    if let Some(event) = replace_keyed(entry, body, record_activity) {
+        return Some(event);
+    }
     let (text, stream_id, thinking, phase) = match body {
         SessionEventBody::AgentMessage {
             text,
@@ -1116,5 +1265,43 @@ mod tests {
             }
             other => panic!("expected streamed agent message, got {other:?}"),
         }
+    }
+
+    fn stamped(seq: u64, body: SessionEventBody) -> SessionEvent {
+        SessionEvent {
+            id: seq.to_string(),
+            session_id: "codex-cli:thread".into(),
+            seq,
+            ts: seq as i64,
+            body,
+        }
+    }
+
+    #[test]
+    fn revert_keeps_earlier_turns_and_refuses_an_older_one() {
+        let mut session = entry(1_000);
+        session.events = vec![
+            stamped(1, SessionEventBody::UserMessage { text: "keep".into(), images: Vec::new() }),
+            stamped(2, SessionEventBody::TurnAnchor { turn_id: "old".into() }),
+            stamped(3, SessionEventBody::AgentMessage {
+                text: "old".into(),
+                stream_id: None,
+                phase: None,
+            }),
+            stamped(4, SessionEventBody::UserMessage { text: "drop".into(), images: Vec::new() }),
+            stamped(5, SessionEventBody::TurnAnchor { turn_id: "new".into() }),
+            stamped(6, SessionEventBody::TurnDiff {
+                turn_id: "new".into(),
+                diff: "diff --git a/a b/a\n".into(),
+            }),
+        ];
+        assert!(truncate_from_turn(&mut session, "old").is_none());
+        assert_eq!(session.events.len(), 6);
+        assert_eq!(truncate_from_turn(&mut session, "new"), Some(4));
+        assert_eq!(session.events.len(), 3);
+        assert!(matches!(
+            session.events.last().unwrap().body,
+            SessionEventBody::AgentMessage { .. }
+        ));
     }
 }

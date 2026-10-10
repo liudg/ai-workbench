@@ -3,9 +3,12 @@
 // 第二轮演示提问卡，之后轮次在思考和工具之间穿插，再流式写出结论。
 // 让 UI 在没有 Rust 后端的浏览器里也能完整演示。
 
+import { CODEX_DESKTOP } from "@/features/workspace/codex-desktop";
 import {
   AGENT_LABELS,
   type AccessMode,
+  type ReviewStart,
+  type ReviewTargets,
   type AgentCapabilities,
   type AgentCatalog,
   type AgentCatalogRefresh,
@@ -40,8 +43,8 @@ const CODEX_COMMANDS: SlashCommand[] = [
   { name: "/permissions", hint: "切换完全访问、询问批准或只读", takes_args: true },
   { name: "/status", hint: "查看模型、线程、目录和权限" },
   { name: "/diff", hint: "查看 git diff --stat" },
-  { name: "/review", hint: "请 Codex 审查当前工作区", takes_args: true },
-  { name: "/plan", hint: "只出计划，不改文件", takes_args: true },
+  { name: "/review", hint: "Review uncommitted changes or compare against a branch", takes_args: true },
+  { name: "/plan", hint: "Turn plan mode on", takes_args: true },
   { name: "/model", hint: "指定下一轮使用的模型", takes_args: true },
   { name: "/compact", hint: "压缩当前线程的上下文" },
   { name: "/approve", hint: "说明如何处理自动审查拒绝" },
@@ -73,6 +76,10 @@ const CODEX_CAPABILITIES: AgentCapabilities = {
   supports_rename: true,
   supports_images: true,
   supports_queue: true,
+  supports_plan: true,
+  supports_turn_diff: true,
+  supports_revert: true,
+  supports_review: true,
 };
 
 const CLAUDE_CAPABILITIES: AgentCapabilities = {
@@ -299,6 +306,8 @@ interface MockSessionState {
   events: SessionEvent[];
   turns: number;
   pendingPrompt: string | null;
+  planMode: boolean;
+  latestTurnId: string | null;
   access: AccessMode;
   timers: ReturnType<typeof setTimeout>[];
 }
@@ -410,6 +419,8 @@ function putSession(cwd: string, projectId: string, nativeId: string, title: str
     events: [],
     turns: 1,
     pendingPrompt: null,
+    planMode: false,
+    latestTurnId: null,
     access: "full",
     timers: [],
   });
@@ -449,6 +460,10 @@ function seedRegisteredProject() {
     const sessionId = putSession(path, projectId, `preview-${index}`, title, updated);
     pushEvent(sessionId, { kind: "user-message", text: title });
     if (index === 2) {
+      const turnId = "preview-turn";
+      const session = sessions.get(sessionId);
+      if (session) session.latestTurnId = turnId;
+      pushEvent(sessionId, { kind: "turn-anchor", turn_id: turnId });
       pushEvent(sessionId, {
         kind: "agent-message",
         text: "我会查看目录结构和最近改动。",
@@ -471,6 +486,34 @@ function seedRegisteredProject() {
     });
     if (index === 1) {
       pushEvent(sessionId, { kind: "read-only", text: OCCUPIED_NOTICE });
+    }
+    if (index === 2) {
+      pushEvent(sessionId, {
+        kind: "plan-steps",
+        turn_id: "preview-turn",
+        explanation: "Summarize the tree, then stop.",
+        steps: [
+          { step: "List the source files", status: "completed" },
+          { step: "Write the summary", status: "inProgress" },
+        ],
+      });
+      pushEvent(sessionId, {
+        kind: "turn-diff",
+        turn_id: "preview-turn",
+        diff: "diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1 +1,2 @@\n-fn main() {}\n+fn main() {\n+    println!(\"hi\");\n+}\n",
+      });
+      pushEvent(sessionId, {
+        kind: "review-findings",
+        summary: "The change looks safe.",
+        raw: "The change looks safe.\n\nReview comment:\n\n- Missing check — src/main.rs:1-2\n  The new line is untested.",
+        findings: [
+          {
+            title: "Missing check",
+            location: "src/main.rs:1-2",
+            body: "The new line is untested.",
+          },
+        ],
+      });
     }
   });
   putSession(
@@ -617,6 +660,8 @@ export const mockBackend: Backend = {
       events: source.events.map((event) => ({ ...event, id: id(), session_id: createdId })),
       turns: source.turns,
       pendingPrompt: null,
+      planMode: source.planMode,
+      latestTurnId: source.latestTurnId,
       access: source.access,
       timers: [],
     });
@@ -684,6 +729,8 @@ export const mockBackend: Backend = {
       events: [],
       turns: 0,
       pendingPrompt: null,
+      planMode: false,
+      latestTurnId: null,
       access: accessMode ?? "full",
       timers: [],
     };
@@ -738,6 +785,91 @@ export const mockBackend: Backend = {
 
   async setSessionTuning() {},
 
+  async setCollaborationMode(sessionId, mode) {
+    const s = sessions.get(sessionId);
+    if (!s) throw new Error("会话不存在");
+    s.planMode = mode === "plan";
+    pushEvent(sessionId, { kind: "collaboration-mode", mode });
+  },
+
+  async reviewTargets(): Promise<ReviewTargets> {
+    return {
+      branches: ["main", "feature/timeline"],
+      commits: [
+        { sha: "1aeb7f421d38c2a2520e3d1af10d5693db3581dd", title: "Keep the last successful model catalog when a refresh fails." },
+        { sha: "c9d43b7aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", title: "Put the agent name and elapsed time on one collapsed line." },
+      ],
+    };
+  },
+
+  async startReview(sessionId, target: ReviewStart) {
+    const s = sessions.get(sessionId);
+    if (!s) throw new Error("会话不存在");
+    const label =
+      target.kind === "uncommitted"
+        ? CODEX_DESKTOP.reviewUncommitted
+        : target.kind === "base"
+          ? `${CODEX_DESKTOP.reviewBase}: ${target.branch}`
+          : `${CODEX_DESKTOP.reviewCommit}: ${target.sha.slice(0, 7)} ${target.title ?? ""}`.trim();
+    pushEvent(sessionId, { kind: "user-message", text: label });
+    const turnId = id();
+    s.latestTurnId = turnId;
+    pushEvent(sessionId, { kind: "turn-anchor", turn_id: turnId });
+    pushEvent(sessionId, { kind: "review-note", text: label });
+    const raw = "The change looks safe.\n\nReview comment:\n\n- Missing check — src/main.rs:1-2\n  The new line is untested.";
+    pushEvent(sessionId, {
+      kind: "review-findings",
+      summary: "The change looks safe.",
+      raw,
+      findings: [{ title: "Missing check", location: "src/main.rs:1-2", body: "The new line is untested." }],
+    });
+    pushEvent(sessionId, {
+      kind: "turn-diff",
+      turn_id: turnId,
+      diff: "diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1 +1,2 @@\n-fn main() {}\n+fn main() {\n+}\n",
+    });
+    setStatus(sessionId, "completed");
+  },
+
+  async revertTurn(sessionId, turnId) {
+    const s = sessions.get(sessionId);
+    if (!s) throw new Error("会话不存在");
+    if (s.meta.status === "running") throw new Error(CODEX_DESKTOP.editWhileRunning);
+    const anchorIndex = s.events.findIndex(
+      (event) => event.kind === "turn-anchor" && event.turn_id === turnId,
+    );
+    const latestAnchor = [...s.events].reverse().find((event) => event.kind === "turn-anchor");
+    if (
+      anchorIndex < 0 ||
+      !latestAnchor ||
+      latestAnchor.kind !== "turn-anchor" ||
+      latestAnchor.turn_id !== turnId
+    ) {
+      throw new Error(CODEX_DESKTOP.editLatestOnly);
+    }
+    let start = anchorIndex;
+    for (let index = anchorIndex; index >= 0; index -= 1) {
+      if (s.events[index].kind === "user-message") {
+        start = index;
+        break;
+      }
+    }
+    const drop = s.events[start].seq;
+    s.events = s.events.slice(0, start);
+    s.latestTurnId = null;
+    eventListeners.forEach((cb) =>
+      cb({
+        id: id(),
+        session_id: sessionId,
+        seq: drop,
+        ts: now(),
+        kind: "rewind",
+        turn_id: turnId,
+        drop_from_seq: drop,
+      }),
+    );
+  },
+
   async setAccessMode(sessionId, mode) {
     const s = sessions.get(sessionId);
     if (!s) throw new Error("会话不存在");
@@ -782,6 +914,39 @@ export const mockBackend: Backend = {
       setStatus(sessionId, "completed");
       return;
     }
+    if (s.planMode && profile.capabilities.supports_plan) {
+      const turnId = id();
+      s.latestTurnId = turnId;
+      pushEvent(sessionId, { kind: "turn-anchor", turn_id: turnId });
+      pushEvent(sessionId, {
+        kind: "plan-steps",
+        turn_id: turnId,
+        explanation: text.slice(0, 180),
+        steps: [
+          { step: "Inspect the request", status: "completed" },
+          { step: "Write the plan", status: "inProgress" },
+        ],
+      });
+      pushEvent(sessionId, {
+        kind: "plan-text",
+        text: `1. Inspect the request\n2. Write the plan\n\n${text}`,
+      });
+      const promptId = id();
+      s.pendingPrompt = promptId;
+      pushEvent(sessionId, {
+        kind: "prompt",
+        prompt_id: promptId,
+        prompt_kind: "choice",
+        question: CODEX_DESKTOP.implementPrompt,
+        options: [{ id: CODEX_DESKTOP.implementId, label: CODEX_DESKTOP.implementOption }],
+        questions: [],
+      });
+      setStatus(sessionId, "needs-input");
+      return;
+    }
+    const turnId = id();
+    s.latestTurnId = turnId;
+    pushEvent(sessionId, { kind: "turn-anchor", turn_id: turnId });
     s.turns += 1;
     const turn = s.turns;
     setStatus(sessionId, "running");
@@ -967,6 +1132,30 @@ export const mockBackend: Backend = {
       prompt_id: promptId,
       answer: summary,
     });
+    if (
+      promptEvent?.question === CODEX_DESKTOP.implementPrompt &&
+      answer.type === "single"
+    ) {
+      const implement =
+        answer.value === CODEX_DESKTOP.implementId ||
+        answer.value === CODEX_DESKTOP.implementOption;
+      if (implement) {
+        s.planMode = false;
+        pushEvent(sessionId, { kind: "collaboration-mode", mode: "default" });
+      }
+      const follow = implement ? CODEX_DESKTOP.implementOption : answer.value;
+      pushEvent(sessionId, { kind: "user-message", text: follow });
+      const turnId = id();
+      s.latestTurnId = turnId;
+      pushEvent(sessionId, { kind: "turn-anchor", turn_id: turnId });
+      pushEvent(sessionId, {
+        kind: "agent-message",
+        text: implement ? "Implemented the plan." : follow,
+        phase: "final-answer",
+      });
+      setStatus(sessionId, "completed");
+      return;
+    }
     noteActivity(sessionId);
     setStatus(sessionId, "running");
     schedule(

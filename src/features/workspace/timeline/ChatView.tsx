@@ -31,6 +31,19 @@ function contentChars(events: SessionEvent[]): number {
       case "prompt":
         chars += event.question.length;
         break;
+      case "turn-diff":
+        chars += event.diff.length;
+        break;
+      case "plan-steps":
+        chars += (event.explanation?.length ?? 0) + event.steps.reduce((sum, step) => sum + step.step.length, 0);
+        break;
+      case "plan-text":
+      case "review-note":
+        chars += event.text.length;
+        break;
+      case "review-findings":
+        chars += event.summary.length + event.findings.reduce((sum, finding) => sum + finding.body.length, 0);
+        break;
       default:
         break;
     }
