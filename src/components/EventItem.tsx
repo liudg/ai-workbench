@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { cn, formatMessageTime } from "@/lib/utils";
+import { MessageContent } from "./MessageContent";
 import { useWorkbench } from "@/store";
 import {
   AGENT_LABELS,
@@ -153,7 +154,7 @@ function UserMessage({
       <div className="mx-auto flex min-w-0 max-w-3xl justify-end">
         <div className="flex min-w-0 max-w-[85%] flex-col items-end">
           <div className="min-w-0 max-w-full cursor-text rounded-2xl rounded-br-sm bg-indigo-600/90 px-4 py-2.5 text-sm leading-6 text-white">
-            <p className="break-words whitespace-pre-wrap">{text}</p>
+            <MessageContent text={text} />
           </div>
           <HoverActions time={time}>
             <CopyButton text={text} />
@@ -548,9 +549,10 @@ export function EventItem({
           copyText={event.text}
           actionsBelow
         >
-          <p className="break-words whitespace-pre-wrap text-sm leading-6 text-zinc-300">
-            {event.text}
-          </p>
+          <MessageContent
+            text={event.text}
+            className="text-sm leading-6 text-zinc-300"
+          />
         </Row>
       );
 
