@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
-import { ArrowUp, ChevronDown, Plus, Shield, X } from "lucide-react";
+import { ArrowUp, ChevronDown, Pencil, Plus, Shield, Trash2, X } from "lucide-react";
 
 import { modelButtonLabel, preferCatalog } from "@/lib/catalog";
 import { backend } from "@/lib/ipc";
 import { filterSkills, insertSkill, skillToken } from "./skills";
 import { filterSlash, slashToken } from "@/lib/slash";
 import { cn, isReadOnlyOpen, pendingPrompt } from "@/lib/utils";
+import { fileName, fileToBase64, isImagePath } from "./media";
+import { ChatThumb } from "../timeline/ChatThumb";
 import { useWorkbench } from "@/store";
 import {
   ACCESS_LABELS,
@@ -15,12 +17,14 @@ import {
   type AgentModelOption,
   type AgentSkillOption,
   type Attachment,
+  type QueuedTurn,
   type Session,
   type SessionEvent,
   type SlashCommand,
 } from "@/types";
 
 const EMPTY_FILES: Attachment[] = [];
+const EMPTY_QUEUE: QueuedTurn[] = [];
 
 function placeMenu(anchor: HTMLElement, menu: HTMLElement) {
   const rect = anchor.getBoundingClientRect();
@@ -101,54 +105,83 @@ export function Composer({
   const addAttachments = useWorkbench((s) => s.addAttachments);
   const removeAttachment = useWorkbench((s) => s.removeAttachment);
   const clearAttachments = useWorkbench((s) => s.clearAttachments);
+  const replaceAttachments = useWorkbench((s) => s.replaceAttachments);
   const mode = useWorkbench((s) => s.accessMode[session.id] ?? "full");
   const files = useWorkbench((s) => s.attachments[session.id] ?? EMPTY_FILES);
+  const queue = useWorkbench((s) => s.queues[session.id] ?? EMPTY_QUEUE);
   const composerSeed = useWorkbench((s) => s.composerSeed);
   const [text, setText] = useState("");
   const [caret, setCaret] = useState(0);
-  const [menu, setMenu] = useState<null | "access" | "model">(null);
+  const [menu, setMenu] = useState<null | "access" | "model" | "attach">(null);
   const [slashIndex, setSlashIndex] = useState(0);
   const [skillIndex, setSkillIndex] = useState(0);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const accessRef = useRef<HTMLButtonElement>(null);
   const modelRef = useRef<HTMLButtonElement>(null);
+  const plusRef = useRef<HTMLButtonElement>(null);
   const accessMenuRef = useRef<HTMLDivElement>(null);
   const modelMenuRef = useRef<HTMLDivElement>(null);
+  const attachMenuRef = useRef<HTMLDivElement>(null);
 
   const closeMenu = useCallback(() => setMenu(null), []);
   useComposerMenu(menu === "access", accessRef, accessMenuRef, closeMenu);
   useComposerMenu(menu === "model", modelRef, modelMenuRef, closeMenu);
+  useComposerMenu(menu === "attach", plusRef, attachMenuRef, closeMenu);
 
   useEffect(() => {
     void loadCatalog(session.id);
   }, [loadCatalog, session.id]);
 
   useEffect(() => {
+    let cancelled = false;
+    void backend.sessionQueue(session.id).then((items) => {
+      if (cancelled) return;
+      useWorkbench.setState((s) => ({
+        queues: { ...s.queues, [session.id]: items },
+      }));
+    }).catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [session.id]);
+
+  useEffect(() => {
     if (!composerSeed || composerSeed.sessionId !== session.id) return;
+    setEditingId(null);
     setText(composerSeed.text);
     setCaret(composerSeed.text.length);
+    replaceAttachments(
+      session.id,
+      composerSeed.images.map((path) => ({ path, name: fileName(path) })),
+    );
     requestAnimationFrame(() => {
       const el = textareaRef.current;
       if (!el) return;
       el.focus();
       el.setSelectionRange(composerSeed.text.length, composerSeed.text.length);
     });
-  }, [composerSeed, session.id]);
+  }, [composerSeed, replaceAttachments, session.id]);
 
   const pendingId = pendingPrompt(events);
   const occupied = isReadOnlyOpen(events);
   const busy = session.status === "running";
   const dead = session.status === "stopped" || session.status === "failed";
-  const locked = busy || dead || occupied;
   const caps = profile?.capabilities ?? catalog?.capabilities;
+  const imagesOn = Boolean(caps?.supports_images);
+  const queueOn = Boolean(caps?.supports_queue);
+  const composerLocked = queueOn ? dead || occupied : busy || dead || occupied;
+  const menusLocked = busy || dead || occupied;
   const commands = profile?.commands ?? catalog?.commands ?? [];
   const token =
-    caps?.supports_slash && !pendingId && !locked ? slashToken(text) : null;
+    caps?.supports_slash && !pendingId && !menusLocked ? slashToken(text) : null;
   const slashMatches = token ? filterSlash(commands, token) : [];
   const slashOpen = token !== null && (slashMatches.length > 0 || token.length > 1);
   const activeSlash = slashMatches[Math.min(slashIndex, slashMatches.length - 1)];
   const skillQuery =
-    caps?.supports_skills && !pendingId && !locked && !slashOpen
+    caps?.supports_skills && !pendingId && !menusLocked && !slashOpen
       ? skillToken(text, caret)
       : null;
   const skillMatches = skillQuery !== null ? filterSkills(catalog?.skills ?? [], skillQuery) : [];
@@ -181,7 +214,9 @@ export function Composer({
     ? "此会话正被其他进程占用，只能查看"
     : dead
       ? "会话已停止，请新建会话"
-      : "随心输入";
+      : queueOn && busy
+        ? "添加后续消息"
+        : "随心输入";
 
   const applySlash = (cmd: SlashCommand) => {
     setText(cmd.takes_args ? `${cmd.name} ` : cmd.name);
@@ -203,36 +238,116 @@ export function Composer({
     setCaret(element.selectionStart ?? element.value.length);
   };
 
+  const cancelEdit = () => {
+    setEditingId(null);
+    setText("");
+    setCaret(0);
+    clearAttachments(session.id);
+  };
+
+  const stageBlobs = async (blobs: File[]) => {
+    const images = blobs.filter((file) => file.type.startsWith("image/") || isImagePath(file.name));
+    const rejected = blobs.length > images.length;
+    if (rejected) setNotice("只能附加图片");
+    if (images.length === 0) return;
+    const staged = [];
+    for (const file of images) {
+      const data = await fileToBase64(file);
+      staged.push(await backend.stageChatImage(data, file.name || "image.png"));
+    }
+    if (staged.length) {
+      if (!rejected) setNotice(null);
+      addAttachments(session.id, staged);
+    }
+  };
+
   const submit = () => {
     const value = text.trim();
-    if (!value || locked) return;
     const attached = useWorkbench.getState().attachments[session.id] ?? [];
-    setText("");
+    const imagePaths = imagesOn ? attached.map((file) => file.path) : [];
+    if (editingId) {
+      if (!value && imagePaths.length === 0) return;
+      const queuedId = editingId;
+      setEditingId(null);
+      setText("");
+      clearAttachments(session.id);
+      void backend
+        .updateQueuedTurn(session.id, queuedId, value, imagePaths)
+        .catch((error: unknown) => {
+          useWorkbench.setState({ lastError: String(error) });
+        });
+      textareaRef.current?.focus();
+      return;
+    }
     if (pendingId) {
+      if (!value || composerLocked) return;
+      setText("");
       answerPrompt(session.id, pendingId, { type: "single", value });
+      textareaRef.current?.focus();
+      return;
+    }
+    const canSend = imagesOn ? Boolean(value || imagePaths.length) : Boolean(value);
+    if (!canSend || composerLocked) return;
+    setText("");
+    if (imagesOn) {
+      void sendMessage(session.id, value, imagePaths);
+      clearAttachments(session.id);
     } else {
       const slash = value.startsWith("/");
       const body =
         !slash && attached.length > 0
           ? `${value}\n\n附件：${attached.map((file) => file.name).join("、")}`
           : value;
-      sendMessage(session.id, body);
+      void sendMessage(session.id, body);
       if (!slash) clearAttachments(session.id);
     }
     textareaRef.current?.focus();
   };
 
   const pickFiles = async () => {
-    if (locked) return;
-    const picked = await backend.pickFiles();
-    if (picked.length) addAttachments(session.id, picked);
+    if (composerLocked) return;
+    setMenu(null);
+    const picked = imagesOn ? await backend.pickImageFiles() : await backend.pickFiles();
+    if (!picked.length) return;
+    if (imagesOn) {
+      const images = picked.filter((file) => isImagePath(file.path));
+      if (images.length !== picked.length) setNotice("只能附加图片");
+      if (images.length) {
+        setNotice(images.length === picked.length ? null : "只能附加图片");
+        addAttachments(session.id, images);
+      }
+      return;
+    }
+    addAttachments(session.id, picked);
   };
+
+  const beginEdit = (item: QueuedTurn) => {
+    setEditingId(item.id);
+    setText(item.text);
+    setCaret(item.text.length);
+    replaceAttachments(
+      session.id,
+      (item.images ?? []).map((path) => ({ path, name: fileName(path) })),
+    );
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  };
+
+  const stopMode =
+    queueOn && busy && !editingId && !pendingId && !text.trim() && files.length === 0;
 
   return (
     <div className="composer-root min-w-0 shrink-0 px-4 pb-4 pt-1">
       {occupied && (
         <p className="mx-auto mb-2 max-w-3xl break-words px-2 text-center text-xs leading-5 text-amber-200/90">
           此会话正被其他进程占用，当前只读，不能发送。
+        </p>
+      )}
+      {notice && (
+        <p
+          role="status"
+          className="mx-auto mb-2 max-w-3xl break-words px-2 text-center text-xs leading-5 text-amber-200/90"
+        >
+          {notice}
         </p>
       )}
       {catalogNotice && (
@@ -244,6 +359,64 @@ export function Composer({
         </p>
       )}
       <div className="relative mx-auto min-w-0 max-w-3xl">
+      {queueOn && queue.length > 0 && (
+        <div className="mb-2 flex min-w-0 flex-col gap-1.5 overflow-x-hidden">
+          {queue.map((item) => (
+            <div
+              key={item.id}
+              className={cn(
+                "flex min-w-0 items-start gap-2 overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/80 px-3 py-2",
+                editingId === item.id && "border-indigo-400/80",
+              )}
+            >
+              <div className="min-w-0 flex-1">
+                {item.text && (
+                  <p className="line-clamp-3 whitespace-pre-wrap break-words text-sm leading-5 text-zinc-200">
+                    {item.text}
+                  </p>
+                )}
+                {(item.images ?? []).length > 0 && (
+                  <div className="mt-1 flex min-w-0 flex-wrap gap-1 overflow-x-hidden">
+                    {(item.images ?? []).map((path) => (
+                      <ChatThumb
+                        key={path}
+                        path={path}
+                        name={fileName(path)}
+                        className="h-10 w-10 rounded-md object-cover"
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+                aria-label="编辑排队消息"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  beginEdit(item);
+                }}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+                aria-label="删除排队消息"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  if (editingId === item.id) cancelEdit();
+                  void backend.removeQueuedTurn(session.id, item.id).catch((error: unknown) => {
+                    useWorkbench.setState({ lastError: String(error) });
+                  });
+                }}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       {skillOpen && (
         <div
           role="listbox"
@@ -320,11 +493,50 @@ export function Composer({
         </div>
       )}
       <div
-        className="min-w-0 overflow-hidden rounded-[28px] border border-zinc-700/90 bg-zinc-900 px-3 pb-2.5 pt-3 shadow-lg shadow-black/20 transition-colors focus-within:border-zinc-500"
+        className={cn(
+          "min-w-0 overflow-hidden rounded-[28px] border border-zinc-700/90 bg-zinc-900 px-3 pb-2.5 pt-3 shadow-lg shadow-black/20 transition-colors focus-within:border-zinc-500",
+          dragOver && imagesOn && "border-indigo-400/80",
+        )}
         onClick={() => textareaRef.current?.focus()}
+        onDragOver={(event) => {
+          if (!imagesOn || composerLocked) return;
+          event.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(event) => {
+          if (!imagesOn || composerLocked) return;
+          event.preventDefault();
+          setDragOver(false);
+          void stageBlobs(Array.from(event.dataTransfer.files));
+        }}
       >
-        {files.length > 0 && (
-          <div className="mb-2 flex flex-wrap gap-1.5 px-1">
+        {files.length > 0 && imagesOn && (
+          <div className="mb-2 flex min-w-0 flex-wrap gap-2 overflow-x-hidden px-1">
+            {files.map((file) => (
+              <div key={file.path} className="group relative h-[72px] w-[72px] shrink-0">
+                <ChatThumb
+                  path={file.path}
+                  name={file.name}
+                  className="h-[72px] w-[72px] rounded-xl object-cover"
+                />
+                <button
+                  type="button"
+                  className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-zinc-950/85 text-zinc-100 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                  aria-label={`移除 ${file.name}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    removeAttachment(session.id, file.path);
+                  }}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        {files.length > 0 && !imagesOn && (
+          <div className="mb-2 flex min-w-0 flex-wrap gap-1.5 overflow-x-hidden px-1">
             {files.map((file) => (
               <span
                 key={file.path}
@@ -355,7 +567,19 @@ export function Composer({
             rememberCaret(e.target);
           }}
           onSelect={(e) => rememberCaret(e.currentTarget)}
+          onPaste={(event) => {
+            if (!imagesOn || composerLocked) return;
+            const blobs = Array.from(event.clipboardData.files);
+            if (!blobs.length) return;
+            event.preventDefault();
+            void stageBlobs(blobs);
+          }}
           onKeyDown={(e) => {
+            if (e.key === "Escape" && editingId) {
+              e.preventDefault();
+              cancelEdit();
+              return;
+            }
             if (skillOpen && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
               e.preventDefault();
               setSkillIndex((current) => stepIndex(current, skillMatches.length, e.key));
@@ -411,20 +635,27 @@ export function Composer({
             }
           }}
           placeholder={placeholder}
-          disabled={locked}
+          disabled={composerLocked}
           rows={Math.min(6, Math.max(2, text.split("\n").length))}
           className="max-h-40 w-full min-w-0 max-w-full resize-none overflow-x-hidden bg-transparent px-2 text-sm leading-6 text-zinc-100 placeholder:text-zinc-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
         />
         <div className="mt-1 flex min-w-0 items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-1">
             <button
+              ref={plusRef}
               type="button"
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-zinc-300 hover:bg-zinc-800 hover:text-zinc-50 disabled:cursor-not-allowed disabled:opacity-40"
               aria-label="添加附件"
               title="添加附件"
-              disabled={locked}
+              aria-haspopup={imagesOn ? "menu" : undefined}
+              aria-expanded={imagesOn ? menu === "attach" : undefined}
+              disabled={composerLocked}
               onClick={(event) => {
                 event.stopPropagation();
+                if (imagesOn) {
+                  setMenu((current) => (current === "attach" ? null : "attach"));
+                  return;
+                }
                 void pickFiles();
               }}
             >
@@ -440,7 +671,7 @@ export function Composer({
               aria-label="权限"
               aria-haspopup="menu"
               aria-expanded={menu === "access"}
-              disabled={locked}
+              disabled={composerLocked}
               onClick={(event) => {
                 event.stopPropagation();
                 setMenu((current) => (current === "access" ? null : "access"));
@@ -460,7 +691,7 @@ export function Composer({
               aria-label="模型"
               aria-haspopup="menu"
               aria-expanded={menu === "model"}
-              disabled={locked || !catalog}
+              disabled={composerLocked || !catalog}
               onClick={(event) => {
                 event.stopPropagation();
                 setMenu((current) => (current === "model" ? null : "model"));
@@ -470,23 +701,72 @@ export function Composer({
               <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />
             </button>
             )}
+            {editingId && (
+              <button
+                type="button"
+                className="h-8 shrink-0 rounded-full px-2 text-sm text-zinc-300 hover:bg-zinc-800"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  cancelEdit();
+                }}
+              >
+                取消
+              </button>
+            )}
             <button
               type="button"
               onClick={(event) => {
                 event.stopPropagation();
+                if (stopMode) {
+                  void backend.interruptTurn(session.id).catch((error: unknown) => {
+                    useWorkbench.setState({ lastError: String(error) });
+                  });
+                  return;
+                }
                 submit();
               }}
-              disabled={!text.trim() || locked}
+              disabled={
+                stopMode
+                  ? false
+                  : composerLocked ||
+                    !(pendingId
+                      ? text.trim()
+                      : imagesOn
+                        ? text.trim() || files.length > 0
+                        : text.trim())
+              }
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-950 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
-              title="发送"
-              aria-label="发送"
+              title={stopMode ? "停止" : "发送"}
+              aria-label={stopMode ? "停止" : "发送"}
             >
-              <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
+              {stopMode ? (
+                <span className="h-2.5 w-2.5 rounded-[2px] bg-current" />
+              ) : (
+                <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
+              )}
             </button>
           </div>
         </div>
       </div>
       </div>
+      {menu === "attach" && imagesOn && (
+        <div
+          ref={attachMenuRef}
+          role="menu"
+          aria-label="添加附件"
+          className="fixed z-50 w-52 overflow-hidden rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
+          style={{ top: -9999, left: 8 }}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            className="flex w-full items-center px-3 py-2 text-left text-sm text-zinc-100 hover:bg-zinc-800"
+            onClick={() => void pickFiles()}
+          >
+            添加照片和文件
+          </button>
+        </div>
+      )}
       {menu === "access" && (
         <AccessMenu
           menuRef={accessMenuRef}

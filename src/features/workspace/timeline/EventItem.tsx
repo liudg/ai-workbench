@@ -15,7 +15,9 @@ import {
 } from "lucide-react";
 
 import { cn, formatMessageTime } from "@/lib/utils";
+import { fileName } from "../composer/media";
 import { AssistantAnswer } from "./AssistantAnswer";
+import { ChatThumb } from "./ChatThumb";
 import { MessageContent } from "./MessageContent";
 import { useWorkbench } from "@/store";
 import {
@@ -142,10 +144,12 @@ function Row({
 function UserMessage({
   sessionId,
   text,
+  images,
   time,
 }: {
   sessionId: string;
   text: string;
+  images: string[];
   time: string;
 }) {
   const seedComposer = useWorkbench((s) => s.seedComposer);
@@ -154,8 +158,20 @@ function UserMessage({
     <div className="event-in group min-w-0 px-6 py-2">
       <div className="mx-auto flex min-w-0 max-w-3xl justify-end">
         <div className="flex min-w-0 max-w-[85%] flex-col items-end">
-          <div className="min-w-0 max-w-full cursor-text rounded-2xl rounded-br-sm bg-indigo-600/90 px-4 py-2.5 text-sm leading-6 text-white">
-            <MessageContent text={text} />
+          <div className="min-w-0 max-w-full cursor-text overflow-x-hidden rounded-2xl rounded-br-sm bg-indigo-600/90 px-4 py-2.5 text-sm leading-6 text-white">
+            {images.length > 0 && (
+              <div className="mb-1 flex min-w-0 flex-wrap gap-1.5 overflow-x-hidden">
+                {images.map((path) => (
+                  <ChatThumb
+                    key={path}
+                    path={path}
+                    name={fileName(path)}
+                    className="max-h-40 max-w-[160px] rounded-lg object-contain"
+                  />
+                ))}
+              </div>
+            )}
+            {text ? <MessageContent text={text} /> : null}
           </div>
           <HoverActions time={time}>
             <CopyButton text={text} />
@@ -164,7 +180,7 @@ function UserMessage({
               title="编辑"
               aria-label="编辑"
               className="rounded p-0.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
-              onClick={() => seedComposer(sessionId, text)}
+              onClick={() => seedComposer(sessionId, text, images)}
             >
               <Pencil className="h-3.5 w-3.5" />
             </button>
@@ -543,7 +559,14 @@ export function EventItem({
 
   switch (event.kind) {
     case "user-message":
-      return <UserMessage sessionId={session.id} text={event.text} time={time} />;
+      return (
+        <UserMessage
+          sessionId={session.id}
+          text={event.text}
+          images={event.images ?? []}
+          time={time}
+        />
+      );
 
     case "agent-message":
       if (!showAgentLabel) {

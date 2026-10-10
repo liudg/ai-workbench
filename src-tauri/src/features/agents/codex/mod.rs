@@ -909,6 +909,7 @@ mod tests {
             std::path::Path::new(&image).is_file(),
             "missing {image}"
         );
+        delete_gap_threads().await;
         let adapter = CodexCliAdapter::new();
         let (tx, mut rx) = mpsc::unbounded_channel();
         let session = adapter
@@ -925,7 +926,7 @@ mod tests {
             .expect("start");
         let started = session
             .deliver(UserTurn {
-                text: "Reply with exactly pong. Do not use tools.".into(),
+                text: "Count from 1 to 400, one number per line. Do not use tools.".into(),
                 images: vec![image.clone()],
                 client_id: "direct-1".into(),
             })
@@ -935,7 +936,7 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(800)).await;
         let queued = session
             .deliver(UserTurn {
-                text: "?????".into(),
+                text: "queued follow-up".into(),
                 images: vec![image],
                 client_id: "queued-1".into(),
             })
@@ -946,7 +947,7 @@ mod tests {
         let queued_id = wait_queue(&mut rx, |items| {
             items
                 .iter()
-                .find(|item| item.text == "?????")
+                .find(|item| item.text == "queued follow-up")
                 .map(|item| item.id.clone())
         })
         .await
@@ -955,7 +956,7 @@ mod tests {
             .update_queued(
                 &queued_id,
                 UserTurn {
-                    text: "?????".into(),
+                    text: "edited follow-up".into(),
                     images: Vec::new(),
                     client_id: String::new(),
                 },
@@ -965,14 +966,38 @@ mod tests {
         wait_queue(&mut rx, |items| {
             items
                 .iter()
-                .any(|item| item.id == queued_id && item.text == "?????")
+                .any(|item| item.id == queued_id && item.text == "edited follow-up")
                 .then_some(())
         })
         .await
         .expect("updated in place");
         session.interrupt().await.expect("interrupt");
-        let dispatched = wait_user(&mut rx, "?????").await;
-        assert!(!dispatched, "interrupt must leave the queued follow-up");
+        let mut saw_user = false;
+        let mut saw_completed = false;
+        let mut still_queued = false;
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(6);
+        while tokio::time::Instant::now() < deadline {
+            match timeout(Duration::from_secs(1), rx.recv()).await {
+                Ok(Some(SessionEventBody::UserMessage { text, .. })) if text == "edited follow-up" => {
+                    saw_user = true;
+                }
+                Ok(Some(SessionEventBody::StatusChanged {
+                    status: SessionStatus::Completed,
+                })) => saw_completed = true,
+                Ok(Some(SessionEventBody::QueueChanged { items })) => {
+                    still_queued = items.iter().any(|item| item.id == queued_id);
+                    if still_queued {
+                        break;
+                    }
+                }
+                Ok(Some(_)) => {}
+                _ => {}
+            }
+        }
+        assert!(
+            still_queued && !saw_user,
+            "interrupt must leave the queued follow-up (completed={saw_completed}, user={saw_user}, queued={still_queued})"
+        );
         session.remove_queued(&queued_id).await.expect("delete");
         wait_queue(&mut rx, |items| {
             (!items.iter().any(|item| item.id == queued_id)).then_some(())
@@ -981,6 +1006,19 @@ mod tests {
         .expect("deleted");
         let _ = session.discard_thread().await;
         let _ = session.stop().await;
+        delete_gap_threads().await;
+    }
+
+    async fn delete_gap_threads() {
+        let directory = CodexDirectory::new();
+        let Ok(threads) = directory.list_threads().await else {
+            return;
+        };
+        for thread in threads {
+            if thread.cwd.to_ascii_lowercase().contains("_gap-img-queue") {
+                let _ = directory.delete_thread(&thread.native_id).await;
+            }
+        }
     }
 
     async fn wait_queue<T>(
@@ -1000,22 +1038,5 @@ mod tests {
             }
         }
         None
-    }
-
-    async fn wait_user(rx: &mut mpsc::UnboundedReceiver<SessionEventBody>, text: &str) -> bool {
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(8);
-        while tokio::time::Instant::now() < deadline {
-            match timeout(Duration::from_secs(2), rx.recv()).await {
-                Ok(Some(SessionEventBody::UserMessage { text: body, .. })) if body == text => {
-                    return true;
-                }
-                Ok(Some(SessionEventBody::StatusChanged {
-                    status: SessionStatus::Completed,
-                })) => return false,
-                Ok(Some(_)) => {}
-                _ => {}
-            }
-        }
-        false
     }
 }
