@@ -1,7 +1,17 @@
 // 与 src-tauri/src/models.rs 一一对应的 IPC 协议类型。
 // serde 输出为 snake_case 字段 + kebab-case 枚举值，这里保持一致。
 
-export type AgentKind = "codex-cli" | "claude-code";
+export type AgentKind =
+  | "codex-cli"
+  | "claude-code"
+  | "cursor-agent"
+  | "copilot-cli"
+  | "kimi-code"
+  | "qwen-code"
+  | "opencode"
+  | "goose"
+  | "antigravity"
+  | "kiro-cli";
 
 export type SessionStatus =
   | "running"
@@ -93,6 +103,14 @@ export type SessionEvent = {
 export const AGENT_LABELS: Record<AgentKind, string> = {
   "codex-cli": "Codex CLI",
   "claude-code": "Claude Code",
+  "cursor-agent": "Cursor Agent",
+  "copilot-cli": "GitHub Copilot CLI",
+  "kimi-code": "Kimi Code",
+  "qwen-code": "Qwen Code",
+  opencode: "OpenCode",
+  goose: "Goose",
+  antigravity: "Antigravity",
+  "kiro-cli": "Kiro CLI",
 };
 
 /** 官方升级渠道。前端只展示，真正的命令留在适配器里。 */

@@ -63,6 +63,12 @@ const CLAUDE_CAPABILITIES: AgentCapabilities = {
   supports_skills: false,
 };
 
+const STUB_CAPABILITIES: AgentCapabilities = CLAUDE_CAPABILITIES;
+
+function stubProfile(kind: AgentKind): AgentProfile {
+  return { kind, capabilities: STUB_CAPABILITIES, commands: [] };
+}
+
 type PreviewAgents = "one" | "none" | "many" | "current";
 
 /** 浏览器预览没有本机 PATH。`?agents=` 切换探测结果，方便看设置页和空选择器。 */
@@ -74,32 +80,87 @@ function previewAgents(): PreviewAgents {
   return "one";
 }
 
+const STUB_DETAIL = "会话协议尚未接入，目前只做检测和更新。工作台不代为安装。";
+
+const GEMINI_NOTE =
+  "Gemini CLI（gemini）已于 2026-06-18 停更，官方后继是 Antigravity CLI。优先识别 agy，其次 antigravity，最后才是仍留在 PATH 上的 gemini。只找到 gemini 时不在应用内更新。";
+
+const KIRO_NOTE =
+  "Kiro CLI 是 Amazon Q Developer CLI 的后继。官方入口是 kiro-cli，q 仍是兼容入口。无关的 q 只有在版本输出里出现 Kiro 或 Amazon Q，或首行是 q 1.2.3 这种官方短版本时才算已安装。更新用 kiro-cli update --non-interactive；只找到旧的 q 时用 q update。";
+
+function previewDetail(row: (typeof PREVIEW_ROWS)[number]): string | null {
+  if (row.kind === "codex-cli" || row.kind === "claude-code") return null;
+  return row.note ? `${row.note} ${STUB_DETAIL}` : STUB_DETAIL;
+}
+
+const PREVIEW_ROWS: Array<{
+  kind: AgentKind;
+  display_name: string;
+  note: string | null;
+}> = [
+  { kind: "codex-cli", display_name: "Codex CLI", note: null },
+  { kind: "claude-code", display_name: "Claude Code", note: null },
+  { kind: "cursor-agent", display_name: "Cursor Agent", note: null },
+  { kind: "copilot-cli", display_name: "GitHub Copilot CLI", note: null },
+  { kind: "kimi-code", display_name: "Kimi Code", note: null },
+  { kind: "qwen-code", display_name: "Qwen Code", note: null },
+  { kind: "opencode", display_name: "OpenCode", note: null },
+  { kind: "goose", display_name: "Goose", note: null },
+  { kind: "antigravity", display_name: "Antigravity", note: GEMINI_NOTE },
+  { kind: "kiro-cli", display_name: "Kiro CLI", note: KIRO_NOTE },
+];
+
+function absentRow(row: (typeof PREVIEW_ROWS)[number]): AgentInstallation {
+  return {
+    kind: row.kind,
+    display_name: row.display_name,
+    installed: false,
+    version: null,
+    latest_version: null,
+    update_available: false,
+    update_via: null,
+    detail: previewDetail(row),
+  };
+}
+
 function previewInstallations(mode: PreviewAgents): AgentInstallation[] {
   const codexInstalled = mode !== "none";
   const codexUpdate = mode === "one";
-  const claudeInstalled = mode === "many";
-  return [
-    {
-      kind: "codex-cli",
-      display_name: "Codex CLI",
-      installed: codexInstalled,
-      version: !codexInstalled ? null : codexUpdate ? "0.160.0" : "0.162.0",
-      latest_version: codexInstalled ? "0.162.0" : null,
-      update_available: codexUpdate,
-      update_via: codexInstalled ? "npm" : null,
-      detail: null,
-    },
-    {
-      kind: "claude-code",
-      display_name: "Claude Code",
-      installed: claudeInstalled,
-      version: claudeInstalled ? "2.1.200" : null,
-      latest_version: claudeInstalled ? "2.1.292" : null,
-      update_available: claudeInstalled,
-      update_via: claudeInstalled ? "cli" : null,
-      detail: null,
-    },
-  ];
+  const many = mode === "many";
+  return PREVIEW_ROWS.map((row) => {
+    if (row.kind === "codex-cli") {
+      return {
+        ...absentRow(row),
+        installed: codexInstalled,
+        version: !codexInstalled ? null : codexUpdate ? "0.160.0" : "0.162.0",
+        latest_version: codexInstalled ? "0.162.0" : null,
+        update_available: codexUpdate,
+        update_via: codexInstalled ? "npm" : null,
+      };
+    }
+    if (row.kind === "claude-code" && many) {
+      return {
+        ...absentRow(row),
+        installed: true,
+        version: "2.1.200",
+        latest_version: "2.1.292",
+        update_available: true,
+        update_via: "cli",
+      };
+    }
+    if (many && (row.kind === "cursor-agent" || row.kind === "copilot-cli" || row.kind === "kiro-cli")) {
+      return {
+        ...absentRow(row),
+        installed: true,
+        version: row.kind === "cursor-agent" ? "2026.10.01" : "1.0.82",
+        latest_version: null,
+        update_available: true,
+        update_via: "cli",
+        detail: previewDetail(row),
+      };
+    }
+    return absentRow(row);
+  });
 }
 
 let mockInstallations = previewInstallations(previewAgents());
@@ -111,11 +172,15 @@ const MOCK_PROFILES: Record<AgentKind, AgentProfile> = {
     capabilities: CODEX_CAPABILITIES,
     commands: CODEX_COMMANDS,
   },
-  "claude-code": {
-    kind: "claude-code",
-    capabilities: CLAUDE_CAPABILITIES,
-    commands: [],
-  },
+  "claude-code": stubProfile("claude-code"),
+  "cursor-agent": stubProfile("cursor-agent"),
+  "copilot-cli": stubProfile("copilot-cli"),
+  "kimi-code": stubProfile("kimi-code"),
+  "qwen-code": stubProfile("qwen-code"),
+  opencode: stubProfile("opencode"),
+  goose: stubProfile("goose"),
+  antigravity: stubProfile("antigravity"),
+  "kiro-cli": stubProfile("kiro-cli"),
 };
 
 let seq = 0;
@@ -390,12 +455,13 @@ export const mockBackend: Backend = {
   async updateAgent(kind) {
     await new Promise((resolve) => setTimeout(resolve, 250));
     const item = mockInstallations.find((row) => row.kind === kind);
-    if (!item?.installed || !item.update_available || !item.latest_version) {
+    if (!item?.installed || !item.update_available) {
       throw new Error("没有可安装的更新");
     }
-    item.version = item.latest_version;
+    if (item.latest_version) item.version = item.latest_version;
     item.update_available = false;
-    item.detail = null;
+    const row = PREVIEW_ROWS.find((item) => item.kind === kind);
+    item.detail = row ? previewDetail(row) : null;
     return { ...item };
   },
 
