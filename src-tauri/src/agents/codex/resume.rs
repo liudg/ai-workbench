@@ -31,7 +31,7 @@ use crate::agents::directory::{cwd_key, DirectoryEntry, SessionDirectory};
 use crate::encoding::{apply_utf8_env, decode_child_bytes};
 use crate::models::{strip_verbatim_prefix, SessionEventBody, SessionStatus};
 
-use super::process::{apply_loopback_no_proxy, hide_console, resolve_codex_bin};
+use super::process::{apply_codex_network_env, hide_console, resolve_codex_bin};
 
 const CACHE_TTL: Duration = Duration::from_secs(8);
 const PAGE_LIMIT: u32 = 100;
@@ -364,7 +364,7 @@ impl RpcClient {
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .kill_on_drop(true);
-        apply_loopback_no_proxy(&mut command);
+        apply_codex_network_env(&mut command);
         apply_utf8_env(&mut command);
         hide_console(&mut command);
         let mut child = command
