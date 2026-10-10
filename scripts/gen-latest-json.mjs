@@ -41,19 +41,19 @@ const bundleDir = arg(
 );
 const notes = arg("notes", process.env.RELEASE_NOTES || `v${version} 版本更新`);
 
-// 产物命名由 tauri 决定：<productName>_<version>_<arch>-setup.nsis.zip(.sig)
+// Tauri 2 默认签名安装包本身：<productName>_<version>_<arch>-setup.exe(+ .sig)。
+// createUpdaterArtifacts 设为 "v1Compatible" 时才是旧的 *.nsis.zip。
 const files = readdirSync(bundleDir);
-const zip = files.find((f) => f.endsWith("_x64-setup.nsis.zip"));
-if (!zip) {
-  console.error(`在 ${bundleDir} 未找到 *_x64-setup.nsis.zip，请先运行 pnpm tauri build`);
+const artifact =
+  files.find((f) => f.endsWith("_x64-setup.exe") && files.includes(`${f}.sig`)) ||
+  files.find((f) => f.endsWith("_x64-setup.nsis.zip") && files.includes(`${f}.sig`));
+if (!artifact) {
+  console.error(
+    `在 ${bundleDir} 未找到已签名的 *_x64-setup.exe 或 *_x64-setup.nsis.zip，请先运行 pnpm tauri build`,
+  );
   process.exit(1);
 }
-const sigFile = files.find((f) => f === `${zip}.sig`);
-if (!sigFile) {
-  console.error(`未找到签名文件 ${zip}.sig（构建时缺少 TAURI_SIGNING_PRIVATE_KEY？）`);
-  process.exit(1);
-}
-const signature = readFileSync(join(bundleDir, sigFile), "utf8").trim();
+const signature = readFileSync(join(bundleDir, `${artifact}.sig`), "utf8").trim();
 
 const latest = {
   version,
@@ -62,7 +62,7 @@ const latest = {
   platforms: {
     "windows-x86_64": {
       signature,
-      url: `${baseUrl}/${zip}`,
+      url: `${baseUrl.replace(/\/$/, "")}/${encodeURIComponent(artifact)}`,
     },
   },
 };
@@ -71,4 +71,4 @@ const out = arg("out", join(root, "release", "latest.json"));
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(out, JSON.stringify(latest, null, 2) + "\n");
 console.log(`已生成 ${out}`);
-console.log(`  version: ${version}  artifact: ${zip}`);
+console.log(`  version: ${version}  artifact: ${artifact}`);

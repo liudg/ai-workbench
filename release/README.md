@@ -21,11 +21,11 @@ pnpm tauri build
 
 | 文件 | 用途 |
 | --- | --- |
-| `AI-Workbench_<version>_x64-setup.exe` | 给用户分发的安装包 |
-| `AI-Workbench_<version>_x64-setup.nsis.zip` | **更新包**（updater 下载对象） |
-| `AI-Workbench_<version>_x64-setup.nsis.zip.sig` | 更新包签名（构建时自动用私钥生成） |
+| `AI Workbench_<version>_x64-setup.exe` | 给用户分发的安装包。Tauri 2 默认也把它当作 **更新包** |
+| `AI Workbench_<version>_x64-setup.exe.sig` | 上述安装包的 minisign 签名 |
+| `AI Workbench_<version>_x64-setup.nsis.zip`（及 `.sig`） | 仅当 `createUpdaterArtifacts` 为 `"v1Compatible"` 时生成的旧更新包 |
 
-> 文件名由 `productName`、`version`、架构决定（tauri 会把 productName 中的空格转为 `-`）。MSI 产物在 `bundle/msi/`，但 **updater 只认 NSIS 的 `.nsis.zip`**。
+> 文件名由 `productName`、`version`、架构决定（本机构建保留空格：`AI Workbench_0.1.0_x64-setup.exe`）。MSI 在 `bundle/msi/`，只用于手动安装。当前 Tauri 2 默认的 updater 下载对象是 **NSIS 的 `.exe`**（签名为同名 `.exe.sig`）；插件仍兼容旧的 `.nsis.zip`。
 
 ## 2. 生成更新清单 latest.json
 
@@ -35,7 +35,7 @@ pnpm tauri build
 node scripts/gen-latest-json.mjs --url "https://github.com/<OWNER>/<REPO>/releases/download/v<version>" --notes "更新说明"
 ```
 
-脚本自动读取 `tauri.conf.json` 的版本号、在 NSIS 产物目录找到 `.nsis.zip` 与 `.sig`，生成 `release/latest.json`：
+脚本自动读取 `tauri.conf.json` 的版本号、在 NSIS 产物目录找到已签名的 `.exe`（或旧的 `.nsis.zip`）与 `.sig`，生成 `release/latest.json`：
 
 ```json
 {
@@ -45,7 +45,7 @@ node scripts/gen-latest-json.mjs --url "https://github.com/<OWNER>/<REPO>/releas
   "platforms": {
     "windows-x86_64": {
       "signature": "<.sig 文件内容>",
-      "url": "https://github.com/<OWNER>/<REPO>/releases/download/v0.1.1/AI-Workbench_0.1.1_x64-setup.nsis.zip"
+      "url": "https://github.com/<OWNER>/<REPO>/releases/download/v0.1.1/AI%20Workbench_0.1.1_x64-setup.exe"
     }
   }
 }
@@ -53,7 +53,7 @@ node scripts/gen-latest-json.mjs --url "https://github.com/<OWNER>/<REPO>/releas
 
 字段要求（Tauri updater 协议）：
 - `version`：必须**高于**用户已装版本（semver 比较），否则不提示更新；
-- `platforms.windows-x86_64.url`：指向 **`.nsis.zip`**（不是 `.exe`）；
+- `platforms.windows-x86_64.url`：指向与 `.sig` 对应的文件（当前构建是 **`-setup.exe`**）；
 - `signature`：该 zip 的 minisign 签名（`.sig` 文件全文）；
 - `notes` / `pub_date`：展示用，可选但建议保留。
 
@@ -68,10 +68,10 @@ https://github.com/OWNER/REPO/releases/latest/download/latest.json
 发布时把 `OWNER/REPO` 替换为实际仓库（同时改 `tauri.conf.json` 的 endpoints），然后：
 
 1. 在 GitHub 创建 Release（tag `v<version>`）；
-2. 上传 4 个文件：`latest.json`、`.nsis.zip`、`.sig`、`-setup.exe`；
+2. 上传 `latest.json`、`-setup.exe`、`.exe.sig`（若使用 v1 兼容包，再加 `.nsis.zip` 与其 `.sig`）；
 3. 标记为 Latest release。用户下次启动应用即收到更新提示。
 
-不使用 GitHub 时，`latest.json` 与 `.nsis.zip` 放到任何 HTTPS 静态托管均可（保持 endpoints 指向它）。
+不使用 GitHub 时，`latest.json` 与安装包放到任何 HTTPS 静态托管均可（保持 endpoints 指向它）。
 
 ## 4. GitHub Actions（已备好）
 
@@ -86,6 +86,6 @@ https://github.com/OWNER/REPO/releases/latest/download/latest.json
 
 - [ ] 三处版本号一致并已 bump
 - [ ] `tauri.conf.json` endpoints 指向真实更新源
-- [ ] Windows runner 构建通过，产物含 `.nsis.zip` 与 `.sig`
+- [ ] Windows runner 构建通过，产物含 `-setup.exe` 与 `.exe.sig`
 - [ ] `latest.json` 的 version 高于线上版本、url/signature 与产物一致
 - [ ] 用上一版本安装包实测「检查更新 → 立即更新 → 重启后为新版本」
