@@ -1,16 +1,14 @@
 import { backend } from "@/lib/ipc";
-import { isReadOnlyOpen } from "@/lib/utils";
 import type { AgentKind, Project, Session, SessionEvent } from "@/types";
 
-export const MISSING_SESSION = "会话不存在或已结束";
-
-export function clearMissingSessionBanner(
-  lastError: string | null,
-  events: { kind: string }[],
-): string | null {
-  if (lastError === MISSING_SESSION && isReadOnlyOpen(events)) return null;
-  return lastError;
-}
+export {
+  clearMissingSessionBanner,
+  deselectSession,
+  isMissingSessionError,
+  MISSING_SESSION,
+  visibleBanner,
+  withoutSession,
+} from "./missing-session";
 
 export function mergeEvents(
   local: SessionEvent[] | undefined,

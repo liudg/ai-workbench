@@ -55,6 +55,42 @@ pub fn soften_catalog(
     }
 }
 
+/// 计划开关、调参和权限会赶在 `thread/resume` 结束前发出。
+/// 句柄还没有时先等这次打开；没有人在打开，再确保一次。两次之后仍没有，会话才是真的不在。
+pub async fn command_when_ready<T, F, Fut, E, EFut>(
+    opening: &tokio::sync::Mutex<()>,
+    mut attempt: F,
+    ensure: E,
+) -> Result<T, String>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<T, String>>,
+    E: FnOnce() -> EFut,
+    EFut: std::future::Future<Output = Result<(), String>>,
+{
+    match attempt().await {
+        Ok(value) => return Ok(value),
+        Err(err) if !session_not_ready(&err) => return Err(err),
+        Err(_) => {}
+    }
+    {
+        let _guard = opening.lock().await;
+        match attempt().await {
+            Ok(value) => return Ok(value),
+            Err(err) if !session_not_ready(&err) => return Err(err),
+            Err(_) => {}
+        }
+    }
+    ensure().await?;
+    attempt().await
+}
+
+/// 刚 `thread/start` 的线程，以及 8 秒内的目录缓存，都可能暂时列不出它。
+/// 第一次没有就刷新后再认一次。
+pub fn after_list_refresh<T>(first: Option<T>, refreshed: Option<T>) -> Result<T, &'static str> {
+    first.or(refreshed).ok_or("会话不存在")
+}
+
 /// 第一次发现会话还没打开时，先 `ensure` 再取一次目录。第二次仍失败就返回，不再循环。
 pub async fn catalog_with_ready_retry<T, F, Fut, E, EFut>(
     mut fetch: F,
@@ -255,5 +291,91 @@ mod tests {
         assert_eq!(missing, "会话不存在或已结束");
         assert_eq!(ensured.load(Ordering::SeqCst), 1);
         assert_eq!(misses.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn plan_toggle_waits_until_the_in_flight_open_installs_a_handle() {
+        let opening = std::sync::Arc::new(tokio::sync::Mutex::new(()));
+        let guard = opening.lock().await;
+        let ready = std::sync::Arc::new(AtomicBool::new(false));
+        let flag = ready.clone();
+        let gate = opening.clone();
+        let task = tokio::spawn(async move {
+            command_when_ready(
+                &gate,
+                || {
+                    let flag = flag.clone();
+                    async move {
+                        if flag.load(Ordering::SeqCst) {
+                            Ok("plan")
+                        } else {
+                            Err("会话不存在或已结束".to_string())
+                        }
+                    }
+                },
+                || async { panic!("in-flight open must not ensure again") },
+            )
+            .await
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+        ready.store(true, Ordering::SeqCst);
+        drop(guard);
+        let mode = task.await.expect("join").expect("plan");
+        assert_eq!(mode, "plan");
+    }
+
+    #[tokio::test]
+    async fn missing_session_ensures_once_then_uses_the_handle() {
+        let opening = tokio::sync::Mutex::new(());
+        let attempts = AtomicUsize::new(0);
+        let ensured = AtomicUsize::new(0);
+        let mode = command_when_ready(
+            &opening,
+            || {
+                let attempt = attempts.fetch_add(1, Ordering::SeqCst);
+                async move {
+                    if attempt < 2 {
+                        Err("会话不存在或已结束".to_string())
+                    } else {
+                        Ok("plan")
+                    }
+                }
+            },
+            || async {
+                ensured.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            },
+        )
+        .await
+        .expect("attached");
+        assert_eq!(mode, "plan");
+        assert_eq!(ensured.load(Ordering::SeqCst), 1);
+        assert_eq!(attempts.load(Ordering::SeqCst), 3);
+    }
+
+    #[tokio::test]
+    async fn a_session_that_is_still_missing_after_ensure_stays_missing() {
+        let opening = tokio::sync::Mutex::new(());
+        let ensured = AtomicUsize::new(0);
+        let missing = command_when_ready(
+            &opening,
+            || async { Err::<(), String>("会话不存在或已结束".to_string()) },
+            || async {
+                ensured.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            },
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(missing, "会话不存在或已结束");
+        assert_eq!(ensured.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn a_thread_missing_from_the_first_list_is_accepted_after_refresh() {
+        let found = after_list_refresh(None, Some("codex-cli:new")).expect("refreshed");
+        assert_eq!(found, "codex-cli:new");
+        let err = after_list_refresh::<&str>(None, None).unwrap_err();
+        assert_eq!(err, "会话不存在");
     }
 }

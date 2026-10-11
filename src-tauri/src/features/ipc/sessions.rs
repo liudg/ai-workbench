@@ -92,17 +92,21 @@ pub async fn agent_catalog(
 }
 
 #[tauri::command]
-pub fn set_session_tuning(
+pub async fn set_session_tuning(
+    store: State<'_, ProjectStore>,
     manager: State<'_, SessionManager>,
     session_id: String,
     model: Option<String>,
     effort: Option<String>,
 ) -> Result<(), String> {
-    manager.set_session_tuning(&session_id, model, effort)
+    manager
+        .set_session_tuning(&store, &session_id, model, effort)
+        .await
 }
 
 #[tauri::command]
-pub fn set_session_access(
+pub async fn set_session_access(
+    store: State<'_, ProjectStore>,
     manager: State<'_, SessionManager>,
     session_id: String,
     mode: String,
@@ -110,13 +114,16 @@ pub fn set_session_access(
     writable_roots: Option<Vec<String>>,
     profile_id: Option<String>,
 ) -> Result<(), String> {
-    manager.set_session_access(
-        &session_id,
-        &mode,
-        network_access.unwrap_or(false),
-        writable_roots.unwrap_or_default(),
-        profile_id.unwrap_or_default(),
-    )
+    manager
+        .set_session_access(
+            &store,
+            &session_id,
+            &mode,
+            network_access.unwrap_or(false),
+            writable_roots.unwrap_or_default(),
+            profile_id.unwrap_or_default(),
+        )
+        .await
 }
 
 #[tauri::command]
@@ -138,12 +145,15 @@ pub fn set_session_agent(
 }
 
 #[tauri::command]
-pub fn set_collaboration_mode(
+pub async fn set_collaboration_mode(
+    store: State<'_, ProjectStore>,
     manager: State<'_, SessionManager>,
     session_id: String,
     mode: String,
 ) -> Result<(), String> {
-    manager.set_collaboration_mode(&session_id, &mode)
+    manager
+        .set_collaboration_mode(&store, &session_id, &mode)
+        .await
 }
 
 #[tauri::command]
@@ -251,10 +261,11 @@ pub async fn stop_session(
 /// 上滚再取一页更早的回合，并返回替换后的整段日志。
 #[tauri::command]
 pub async fn load_older_history(
+    store: State<'_, ProjectStore>,
     manager: State<'_, SessionManager>,
     session_id: String,
 ) -> Result<crate::models::OlderHistory, String> {
-    manager.load_older_history(&session_id).await
+    manager.load_older_history(&store, &session_id).await
 }
 
 /// 拉取会话完整事件日志（切换会话 / 重连时恢复时间线）。

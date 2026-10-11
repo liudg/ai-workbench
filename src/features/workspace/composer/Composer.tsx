@@ -12,6 +12,7 @@ import { CODEX_DESKTOP } from "../codex-desktop";
 import { collaborationMode } from "../timeline/codex-turn";
 import { ReviewMenu } from "./ReviewMenu";
 import { useWorkbench } from "@/store";
+import { isMissingSessionError } from "@/store/sync";
 import {
   effortLabel,
   emptySandbox,
@@ -367,7 +368,8 @@ export function Composer({
       void backend
         .updateQueuedTurn(session.id, queuedId, value, imagePaths)
         .catch((error: unknown) => {
-          useWorkbench.setState({ lastError: String(error) });
+          if (isMissingSessionError(error)) useWorkbench.getState().releaseMissingSession(session.id);
+          else useWorkbench.setState({ lastError: String(error) });
         });
       textareaRef.current?.focus();
       return;
@@ -500,7 +502,8 @@ export function Composer({
                   event.stopPropagation();
                   if (editingId === item.id) cancelEdit();
                   void backend.removeQueuedTurn(session.id, item.id).catch((error: unknown) => {
-                    useWorkbench.setState({ lastError: String(error) });
+                    if (isMissingSessionError(error)) useWorkbench.getState().releaseMissingSession(session.id);
+                    else useWorkbench.setState({ lastError: String(error) });
                   });
                 }}
               >
@@ -854,7 +857,8 @@ export function Composer({
                 event.stopPropagation();
                 if (stopMode) {
                   void backend.interruptTurn(session.id).catch((error: unknown) => {
-                    useWorkbench.setState({ lastError: String(error) });
+                    if (isMissingSessionError(error)) useWorkbench.getState().releaseMissingSession(session.id);
+                    else useWorkbench.setState({ lastError: String(error) });
                   });
                   return;
                 }

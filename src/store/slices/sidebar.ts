@@ -3,9 +3,12 @@ import { backend } from "@/lib/ipc";
 import type { Session } from "@/types";
 import {
   clearMissingSessionBanner,
+  deselectSession,
+  isMissingSessionError,
   loadArchivedSessions,
   loadSessions,
   mergeEvents,
+  withoutSession,
 } from "../sync";
 import type { SidebarNotice, SidebarSlice, WorkbenchGet, WorkbenchSet } from "../types";
 
@@ -54,6 +57,16 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
     preferredAgent: null,
     agentOverride: {},
 
+    releaseMissingSession(sessionId) {
+      set((s) => ({
+        sessions: withoutSession(s.sessions, sessionId),
+        archivedSessions: withoutSession(s.archivedSessions, sessionId),
+        activeSessionId: deselectSession(s.activeSessionId, sessionId),
+        lifecycleBusy: s.lifecycleBusy === sessionId ? null : s.lifecycleBusy,
+        lastError: null,
+      }));
+    },
+
     openDialog: (mode) => set({ dialog: mode, lastError: null }),
     closeDialog: () => set({ dialog: null, lastError: null }),
 
@@ -63,8 +76,16 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
       set((s) => ({ sessions: { ...s.sessions, [pid]: list } }));
       const activeId = get().activeSessionId[id];
       if (activeId && !get().events[activeId]) {
-        const events = await backend.getSessionEvents(activeId);
-        set((s) => ({ events: { ...s.events, [activeId]: events } }));
+        try {
+          const events = await backend.getSessionEvents(activeId);
+          set((s) => ({
+            events: { ...s.events, [activeId]: events },
+            lastError: clearMissingSessionBanner(s.lastError, events),
+          }));
+        } catch (error) {
+          if (isMissingSessionError(error)) get().releaseMissingSession(activeId);
+          else set({ lastError: String(error) });
+        }
       }
     },
 
@@ -124,7 +145,8 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
           try {
             await backend.setSandbox(session.id, sandbox);
           } catch (error) {
-            set({ lastError: String(error) });
+            if (isMissingSessionError(error)) get().releaseMissingSession(session.id);
+            else set({ lastError: String(error) });
           }
         }
         const [, list] = await loadSessions(projectId, overrides);
@@ -189,7 +211,8 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
           };
         });
       } catch (e) {
-        set({ lastError: String(e) });
+        if (isMissingSessionError(e)) get().releaseMissingSession(sessionId);
+        else set({ lastError: String(e) });
       }
     },
 

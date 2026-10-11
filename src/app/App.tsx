@@ -3,11 +3,12 @@ import { useEffect } from "react";
 import { NewProjectDialog, Sidebar } from "@/features/sidebar";
 import { RightPane, UpdateDialog } from "@/features/workspace";
 import { useWorkbench } from "@/store";
+import { visibleBanner } from "@/store/sync";
 
 export default function App() {
   const ready = useWorkbench((s) => s.ready);
   const init = useWorkbench((s) => s.init);
-  const lastError = useWorkbench((s) => s.lastError);
+  const lastError = useWorkbench((s) => visibleBanner(s.lastError));
   const dialogOpen = useWorkbench((s) => s.dialog !== null);
   const clearError = useWorkbench((s) => s.clearError);
 

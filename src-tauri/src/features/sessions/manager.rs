@@ -20,7 +20,8 @@ use crate::features::projects::ProjectStore;
 use crate::models::*;
 
 use super::catalog::{
-    catalog_with_ready_retry, soften_catalog, AgentCatalogRefresh, CachedAgentCatalog, CatalogCache,
+    after_list_refresh, catalog_with_ready_retry, command_when_ready, soften_catalog,
+    AgentCatalogRefresh, CachedAgentCatalog, CatalogCache,
 };
 
 struct SessionEntry {
@@ -155,18 +156,20 @@ impl SessionManager {
         if self.entries.lock().unwrap().contains_key(session_id) {
             return self.get_events(session_id);
         }
-        let (listed, errors) = self.listed().await;
-        let (archived, _) = self.listed_archived().await;
-        let found = listed
-            .iter()
-            .chain(archived.iter())
-            .find(|item| session_key(item.agent, &item.entry.native_id) == session_id)
-            .cloned();
+        let found = match self.find_sourced(session_id).await {
+            Ok(Some(found)) => Some(found),
+            Ok(None) => {
+                // 刚创建的线程，或还停在打开前那份 8 秒缓存里时，列表里暂时没有它。
+                self.invalidate_session_kind(session_id).await;
+                match self.find_sourced(session_id).await {
+                    Ok(refreshed) => after_list_refresh(None, refreshed).map_err(str::to_string).ok(),
+                    Err(err) => return Err(err),
+                }
+            }
+            Err(err) => return Err(err),
+        };
         let Some(found) = found else {
-            return Err(errors
-                .into_iter()
-                .next()
-                .unwrap_or_else(|| "会话不存在".to_string()));
+            return Err("会话不存在".to_string());
         };
         let project = store
             .list()
@@ -351,8 +354,31 @@ impl SessionManager {
         self.agent_handle(session_id)
     }
 
-    pub fn set_collaboration_mode(&self, session_id: &str, mode: &str) -> Result<(), String> {
-        let handle = self.agent_handle(session_id)?;
+    /// 计划、调参、权限和翻页历史都可能赶在打开之前。
+    /// 有人正在打开就等它；否则再确保一次。仍没有句柄，会话才是真的不在。
+    async fn open_agent(
+        &self,
+        store: &ProjectStore,
+        session_id: &str,
+    ) -> Result<Arc<dyn AgentSession>, String> {
+        command_when_ready(
+            &self.opening,
+            || {
+                let result = self.agent_handle(session_id);
+                async move { result }
+            },
+            || async { self.ensure_events(store, session_id).await.map(|_| ()) },
+        )
+        .await
+    }
+
+    pub async fn set_collaboration_mode(
+        &self,
+        store: &ProjectStore,
+        session_id: &str,
+        mode: &str,
+    ) -> Result<(), String> {
+        let handle = self.open_agent(store, session_id).await?;
         handle
             .set_collaboration_mode(mode)
             .map_err(|err| err.to_string())
@@ -382,8 +408,12 @@ impl SessionManager {
         handle.review_targets().await.map_err(|err| err.to_string())
     }
 
-    pub async fn load_older_history(&self, session_id: &str) -> Result<OlderHistory, String> {
-        let handle = self.agent_handle_ready(session_id).await?;
+    pub async fn load_older_history(
+        &self,
+        store: &ProjectStore,
+        session_id: &str,
+    ) -> Result<OlderHistory, String> {
+        let handle = self.open_agent(store, session_id).await?;
         let (bodies, exhausted) = handle
             .load_older_history()
             .await
@@ -548,27 +578,29 @@ impl SessionManager {
         .await
     }
 
-    pub fn set_session_tuning(
+    pub async fn set_session_tuning(
         &self,
+        store: &ProjectStore,
         session_id: &str,
         model: Option<String>,
         effort: Option<String>,
     ) -> Result<(), String> {
-        let handle = self.agent_handle(session_id)?;
+        let handle = self.open_agent(store, session_id).await?;
         handle
             .set_tuning(model, effort)
             .map_err(|err| err.to_string())
     }
 
-    pub fn set_session_access(
+    pub async fn set_session_access(
         &self,
+        store: &ProjectStore,
         session_id: &str,
         mode: &str,
         network_access: bool,
         writable_roots: Vec<String>,
         profile_id: String,
     ) -> Result<(), String> {
-        let handle = self.agent_handle(session_id)?;
+        let handle = self.open_agent(store, session_id).await?;
         handle
             .set_sandbox(mode, network_access, &writable_roots, &profile_id)
             .map_err(|err| err.to_string())
@@ -677,6 +709,36 @@ impl SessionManager {
                 directory.invalidate().await;
             }
         }
+    }
+
+    async fn invalidate_session_kind(&self, session_id: &str) {
+        if let Some((agent, _)) = parse_session_key(session_id) {
+            self.invalidate_kind(agent).await;
+            return;
+        }
+        for directory in &self.directories {
+            directory.invalidate().await;
+        }
+    }
+
+    /// 在未归档和已归档目录里找这条会话。目录自己失败且一份都没列出时，把那个错误交回去。
+    async fn find_sourced(&self, session_id: &str) -> Result<Option<SourcedEntry>, String> {
+        let (listed, errors) = self.listed().await;
+        let (archived, archived_errors) = self.listed_archived().await;
+        let found = listed
+            .iter()
+            .chain(archived.iter())
+            .find(|item| session_key(item.agent, &item.entry.native_id) == session_id)
+            .cloned();
+        if found.is_some() {
+            return Ok(found);
+        }
+        if listed.is_empty() && archived.is_empty() {
+            if let Some(err) = errors.into_iter().chain(archived_errors).next() {
+                return Err(err);
+            }
+        }
+        Ok(None)
     }
 
     fn emit_changed(&self, project_id: &str) {

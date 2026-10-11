@@ -57,6 +57,7 @@ export interface SidebarSlice {
   createSession(projectId: string, agent: AgentKind): Promise<void>;
   setSessionAgent(sessionId: string, agent: AgentKind): void;
   selectSession(projectId: string, sessionId: string): Promise<void>;
+  releaseMissingSession(sessionId: string): void;
   toggleArchived(projectId: string): Promise<void>;
   viewArchived(projectId: string): Promise<void>;
   renameSession(sessionId: string, name: string): Promise<boolean>;

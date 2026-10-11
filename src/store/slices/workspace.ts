@@ -1,7 +1,16 @@
 import { agentForSession, reduceCatalogResult, type CatalogOutcome } from "@/lib/catalog";
 import { backend } from "@/lib/ipc";
 import { emptySandbox, type AgentCatalog } from "@/types";
+import { isMissingSessionError } from "../sync";
 import type { WorkspaceSlice, WorkbenchGet, WorkbenchSet } from "../types";
+
+function reportSessionError(get: WorkbenchGet, set: WorkbenchSet, sessionId: string, error: unknown) {
+  if (isMissingSessionError(error)) {
+    get().releaseMissingSession(sessionId);
+    return;
+  }
+  set({ lastError: String(error) });
+}
 
 const catalogEpoch = new Map<string, number>();
 
@@ -36,7 +45,7 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
         sandboxes: { ...s.sandboxes, [sessionId]: sandbox },
       }));
       void backend.setSandbox(sessionId, sandbox).catch((e) => {
-        set({ lastError: String(e) });
+        reportSessionError(get, set, sessionId, e);
       });
     },
 
@@ -82,7 +91,7 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
         tuning: { ...s.tuning, [sessionId]: { model, effort } },
       }));
       void backend.setSessionTuning(sessionId, model, effort).catch((e) => {
-        set({ lastError: String(e) });
+        reportSessionError(get, set, sessionId, e);
       });
     },
 
@@ -139,7 +148,7 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
       try {
         await backend.sendMessage(sessionId, text, images);
       } catch (e) {
-        set({ lastError: String(e) });
+        reportSessionError(get, set, sessionId, e);
       }
     },
 
@@ -147,7 +156,7 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
       try {
         await backend.setCollaborationMode(sessionId, mode);
       } catch (e) {
-        set({ lastError: String(e) });
+        reportSessionError(get, set, sessionId, e);
       }
     },
 
@@ -155,7 +164,7 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
       try {
         await backend.startReview(sessionId, target);
       } catch (e) {
-        set({ lastError: String(e) });
+        reportSessionError(get, set, sessionId, e);
       }
     },
 
@@ -166,13 +175,22 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
         rewound = true;
         await backend.sendMessage(sessionId, text);
       } catch (e) {
-        set({ lastError: String(e) });
+        reportSessionError(get, set, sessionId, e);
         if (rewound) get().seedComposer(sessionId, text);
       }
     },
 
     async loadOlderHistory(sessionId) {
-      const page = await backend.loadOlderHistory(sessionId);
+      let page;
+      try {
+        page = await backend.loadOlderHistory(sessionId);
+      } catch (error) {
+        if (isMissingSessionError(error)) {
+          get().releaseMissingSession(sessionId);
+          return true;
+        }
+        throw error;
+      }
       set((s) => {
         const current = s.events[sessionId] ?? [];
         const ids = new Set(page.events.map((event) => event.id));
@@ -192,7 +210,7 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
       try {
         await backend.answerPrompt(sessionId, promptId, answer);
       } catch (e) {
-        set({ lastError: String(e) });
+        reportSessionError(get, set, sessionId, e);
       }
     },
 
@@ -200,7 +218,7 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
       try {
         await backend.stopSession(sessionId);
       } catch (e) {
-        set({ lastError: String(e) });
+        reportSessionError(get, set, sessionId, e);
       }
     },
   };
