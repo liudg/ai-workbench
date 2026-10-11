@@ -176,7 +176,9 @@ export function BrowserView({
             setError(DESKTOP_ZH.browserAnnotateFailed);
             return;
           }
-          void useWorkbench.getState().sendMessage(sid, "", [], [note]);
+          void backend.submitAnnotation(sid, note).catch(() => {
+            setError(DESKTOP_ZH.browserAnnotateFailed);
+          });
         } catch {
           setError(DESKTOP_ZH.browserAnnotateFailed);
         }

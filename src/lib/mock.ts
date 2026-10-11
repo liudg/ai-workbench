@@ -3,6 +3,8 @@
 // 第二轮演示提问卡，之后轮次在思考和工具之间穿插，再流式写出结论。
 // 让 UI 在没有 Rust 后端的浏览器里也能完整演示。
 
+import { FAKE_CAPABILITIES } from "@/features/changes-model/fake-adapter";
+import { parseUnifiedDiff, type FileChange } from "@/features/changes-model/diff-parse";
 import { foldPageAnnotations } from "@/features/panel/browser/annotate";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import {
@@ -210,7 +212,11 @@ const MOCK_PROFILES: Record<AgentKind, AgentProfile> = {
   "copilot-cli": stubProfile("copilot-cli"),
   "kimi-code": stubProfile("kimi-code"),
   "qwen-code": stubProfile("qwen-code"),
-  opencode: stubProfile("opencode"),
+  opencode: {
+    kind: "opencode",
+    capabilities: { ...STUB_CAPABILITIES, changes: FAKE_CAPABILITIES },
+    commands: [],
+  },
   goose: stubProfile("goose"),
   antigravity: stubProfile("antigravity"),
   "kiro-cli": stubProfile("kiro-cli"),
@@ -296,6 +302,22 @@ const queuedTurns = new Map<string, QueuedTurn[]>();
 const holdQueue = new Set<string>();
 const sessionsChangedListeners = new Set<Listener<string>>();
 const projectsChangedListeners = new Set<Listener<void>>();
+
+function pushFileTurn(sessionId: string, turnId: string, files: FileChange[]) {
+  for (const file of files) {
+    pushEvent(sessionId, {
+      kind: "file-change",
+      turn_id: turnId,
+      path: file.path,
+      status: file.status,
+      added: file.added,
+      removed: file.removed,
+      diff: file.diff,
+    });
+  }
+  if (files.length === 0) return;
+  pushEvent(sessionId, { kind: "turn-changes", turn_id: turnId, files });
+}
 
 function pushEvent(sessionId: string, body: SessionEventBody) {
   const s = sessions.get(sessionId);
@@ -469,39 +491,41 @@ function seedRegisteredProject() {
           { step: "Write the summary", status: "inProgress" },
         ],
       });
-      pushEvent(sessionId, {
-        kind: "turn-diff",
-        turn_id: "preview-turn",
-        diff: [
-          "diff --git a/index.html b/index.html",
-          "new file mode 100644",
-          "--- /dev/null",
-          "+++ b/index.html",
-          "@@ -0,0 +1,3 @@",
-          "+<!doctype html>",
-          "+<title>预览</title>",
-          "+<p>hello</p>",
-          "diff --git a/notes.md b/notes.md",
-          "new file mode 100644",
-          "--- /dev/null",
-          "+++ b/notes.md",
-          "@@ -0,0 +1 @@",
-          "+# 笔记",
-          "diff --git a/readme.txt b/readme.txt",
-          "--- a/readme.txt",
-          "+++ b/readme.txt",
-          "@@ -1 +1 @@",
-          "-old",
-          "+new",
-          "diff --git a/src/app.ts b/src/app.ts",
-          "--- a/src/app.ts",
-          "+++ b/src/app.ts",
-          "@@ -1 +1,2 @@",
-          "-export {}",
-          "+export {}",
-          "+export const n = 1",
-        ].join("\n"),
-      });
+      pushFileTurn(
+        sessionId,
+        "preview-turn",
+        parseUnifiedDiff(
+          [
+            "diff --git a/index.html b/index.html",
+            "new file mode 100644",
+            "--- /dev/null",
+            "+++ b/index.html",
+            "@@ -0,0 +1,3 @@",
+            "+<!doctype html>",
+            "+<title>预览</title>",
+            "+<p>hello</p>",
+            "diff --git a/notes.md b/notes.md",
+            "new file mode 100644",
+            "--- /dev/null",
+            "+++ b/notes.md",
+            "@@ -0,0 +1 @@",
+            "+# 笔记",
+            "diff --git a/readme.txt b/readme.txt",
+            "--- a/readme.txt",
+            "+++ b/readme.txt",
+            "@@ -1 +1 @@",
+            "-old",
+            "+new",
+            "diff --git a/src/app.ts b/src/app.ts",
+            "--- a/src/app.ts",
+            "+++ b/src/app.ts",
+            "@@ -1 +1,2 @@",
+            "-export {}",
+            "+export {}",
+            "+export const n = 1",
+          ].join("\n"),
+        ),
+      );
       pushEvent(sessionId, {
         kind: "review-findings",
         summary: "The change looks safe.",
@@ -820,11 +844,13 @@ export const mockBackend: Backend = {
       raw,
       findings: [{ title: "Missing check", location: "src/main.rs:1-2", body: "The new line is untested." }],
     });
-    pushEvent(sessionId, {
-      kind: "turn-diff",
-      turn_id: turnId,
-      diff: "diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1 +1,2 @@\n-fn main() {}\n+fn main() {\n+}\n",
-    });
+    pushFileTurn(
+      sessionId,
+      turnId,
+      parseUnifiedDiff(
+        "diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1 +1,2 @@\n-fn main() {}\n+fn main() {\n+}\n",
+      ),
+    );
     setStatus(sessionId, "completed");
   },
 
@@ -864,16 +890,31 @@ export const mockBackend: Backend = {
     await this.sendMessage(sessionId, note.comment ?? "", note.screenshot ? [note.screenshot] : [], [note]);
   },
 
-  async diffScopes() {
-    return [
-      { id: "uncommitted", label: "未提交", source: "git" },
-      { id: "unstaged", label: "未暂存", source: "git" },
-      { id: "staged", label: "已暂存", source: "git" },
-    ];
+  async diffScopes(sessionId) {
+    const agent = sessions.get(sessionId)?.meta.agent ?? "codex-cli";
+    const changes = MOCK_PROFILES[agent].capabilities.changes;
+    const scopes = [];
+    if (changes.turn_diff) scopes.push({ id: "turn", label: "上一轮", source: "turn" });
+    if (changes.git_scopes) {
+      scopes.push(
+        { id: "uncommitted", label: "未提交", source: "git" },
+        { id: "unstaged", label: "未暂存", source: "git" },
+        { id: "staged", label: "已暂存", source: "git" },
+      );
+    }
+    return scopes;
   },
 
-  async diffForScope() {
-    return "";
+  async diffForScope(_sessionId, scope, ignoreWhitespace) {
+    const marker = ignoreWhitespace ? "ws" : "keep";
+    return [
+      `diff --git a/${scope}.txt b/${scope}.txt`,
+      `--- a/${scope}.txt`,
+      `+++ b/${scope}.txt`,
+      "@@ -1 +1 @@",
+      `-${scope}-old`,
+      `+${scope}-${marker}`,
+    ].join("\n");
   },
 
   async sendMessage(sessionId, text, images = [], annotations = []) {
@@ -987,12 +1028,18 @@ export const mockBackend: Backend = {
       );
       schedule(
         s,
-        () =>
-          pushEvent(sessionId, {
-            kind: "tool-call",
-            name: "apply_patch",
-            summary: "计划修改 3 个文件（模拟，未真正写入）",
-          }),
+        () => {
+          if (!profile.capabilities.changes.per_file_patch && !profile.capabilities.changes.turn_diff) return;
+          pushFileTurn(sessionId, turnId, [
+            {
+              path: "src/demo.ts",
+              status: "M",
+              added: 1,
+              removed: 1,
+              diff: "@@ -1 +1 @@\n-old\n+new",
+            },
+          ]);
+        },
         1550,
       );
       schedule(
@@ -1117,18 +1164,6 @@ export const mockBackend: Backend = {
   async loadOlderHistory(sessionId): Promise<OlderHistory> {
     const s = sessions.get(sessionId);
     return { events: s ? [...s.events] : [], added: 0, exhausted: true };
-  },
-
-  async projectGitDiff(_projectId, scope, ignoreWhitespace) {
-    const marker = ignoreWhitespace ? "ws" : "keep";
-    return [
-      `diff --git a/${scope}.txt b/${scope}.txt`,
-      `--- a/${scope}.txt`,
-      `+++ b/${scope}.txt`,
-      "@@ -1 +1 @@",
-      `-${scope}-old`,
-      `+${scope}-${marker}`,
-    ].join("\n");
   },
 
   async readPreviewFile(_projectId, path) {

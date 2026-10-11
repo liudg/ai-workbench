@@ -12,12 +12,11 @@ import {
 
 import { cn } from "@/lib/utils";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
-import { diffScopeMenu } from "./scope";
-
-const SCOPES = diffScopeMenu();
+import type { DiffScopeItem } from "./scope";
 
 export function DiffToolbar({
   scope,
+  scopes,
   onScope,
   added,
   removed,
@@ -37,6 +36,7 @@ export function DiffToolbar({
   onToggleHideWs,
 }: {
   scope: string;
+  scopes: DiffScopeItem[];
   onScope: (id: string) => void;
   added: number;
   removed: number;
@@ -57,7 +57,7 @@ export function DiffToolbar({
 }) {
   const [menu, setMenu] = useState<"scope" | "options" | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
-  const current = SCOPES.find((item) => item.id === scope) ?? SCOPES[0];
+  const current = scopes.find((item) => item.id === scope) ?? scopes[0];
   useEffect(() => {
     if (!menu) return;
     const onKey = (event: KeyboardEvent) => {
@@ -89,7 +89,7 @@ export function DiffToolbar({
           className="inline-flex h-[22px] items-center gap-0.5 whitespace-nowrap rounded-full bg-zinc-800 px-1.5 text-[11px] text-zinc-100"
           onClick={() => setMenu((value) => (value === "scope" ? null : "scope"))}
         >
-          {current.label}
+          {current?.label ?? ""}
           <ChevronDown className="h-3 w-3 shrink-0 text-zinc-400" />
         </button>
         {menu === "scope" ? (
@@ -98,7 +98,7 @@ export function DiffToolbar({
             data-diff-scope-menu
             className="absolute left-0 top-full z-20 mt-1 w-40 rounded-xl border border-zinc-700 bg-zinc-900 py-1 shadow-lg"
           >
-            {SCOPES.map((item) => (
+            {scopes.map((item) => (
               <button
                 key={item.id}
                 type="button"

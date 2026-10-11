@@ -9,7 +9,8 @@ import {
 } from "react";
 
 import { backend } from "@/lib/ipc";
-import type { SessionEvent } from "@/types";
+import type { AgentKind, ChangeCapabilities, SessionEvent } from "@/types";
+import { showsFileChanges } from "@/features/changes-model/capabilities";
 import { sessionChanges, type FileChange } from "@/features/changes-model/diff-parse";
 import { useWorkbench } from "@/store";
 import type { PanelTab } from "./registry";
@@ -22,6 +23,7 @@ interface PanelApi {
   projectId: string;
   sessionId: string;
   sessionFiles: FileChange[];
+  changes: ChangeCapabilities | undefined;
   selectTab: (id: string) => void;
   closeTab: (id: string) => void;
   openDiff: (id: string, title: string, files: FileChange[]) => void;
@@ -48,18 +50,24 @@ export function PanelProvider({
   sessionId,
   projectId,
   projectPath,
+  agent,
   events,
   children,
 }: {
   sessionId: string;
   projectId: string;
   projectPath: string;
+  agent: AgentKind;
   events: readonly SessionEvent[];
   children: ReactNode;
 }) {
   const tabs = useWorkbench((s) => s.panelBySession[sessionId]?.tabs ?? EMPTY_TABS);
   const activeId = useWorkbench((s) => s.panelBySession[sessionId]?.activeId ?? "");
-  const sessionFiles = useMemo(() => sessionChanges(events), [events]);
+  const changes = useWorkbench((s) => s.profiles[agent]?.capabilities.changes);
+  const sessionFiles = useMemo(
+    () => (showsFileChanges(changes) ? sessionChanges(events) : []),
+    [changes, events],
+  );
   const filesRef = useRef(sessionFiles);
   filesRef.current = sessionFiles;
   const projectRef = useRef({ projectId, projectPath });
@@ -111,6 +119,7 @@ export function PanelProvider({
       projectId,
       sessionId,
       sessionFiles,
+      changes,
       selectTab,
       closeTab,
       openDiff,
@@ -124,6 +133,7 @@ export function PanelProvider({
       projectId,
       sessionId,
       sessionFiles,
+      changes,
       selectTab,
       closeTab,
       openDiff,

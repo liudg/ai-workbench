@@ -1,13 +1,12 @@
 /**
- * 文件变更只来自适配器事件，不看 Agent 种类。
+ * 变更卡、会话文件和差异页「上一轮」只读归一化事件。
  *
- * - `turn-diff`：回合统一 diff。适配器声明 `supports_turn_diff` 后写入。
- * - `tool-call` 且名字是 apply_patch / file_change：补丁事件。
+ * - `turn-changes`：这一轮的完整文件列表，后来的覆盖先前的。
+ * - `file-change`：没有汇总时，按路径合并逐条文件。
  *
- * 其它 Agent 以后写入同样的事件，变更卡和会话文件就会出现。
- * 一条都没有时，侧栏保持空状态。
+ * 统一 diff 只用来拆 `diff_for_scope` 返回的 git 范围。
  */
-import type { SessionEvent } from "../../types.ts";
+import type { FileChange as EventFile, SessionEvent } from "../../types.ts";
 
 export type FileStatus = "A" | "M" | "D" | "R";
 
@@ -36,11 +35,6 @@ interface Draft {
   deletedFile: boolean;
   added: number;
   removed: number;
-}
-
-export function isPatchTool(name: string): boolean {
-  const key = name.trim().toLowerCase().replace(/[^a-z]/g, "");
-  return key === "applypatch" || key === "filechange";
 }
 
 export function parseUnifiedDiff(diff: string): FileChange[] {
@@ -83,62 +77,21 @@ export function parseUnifiedDiff(diff: string): FileChange[] {
   return files;
 }
 
-const PATCH_SPLIT =
-  /\n\n(?=(?:add|added|create|created|delete|deleted|remove|removed|update|updated|modify|modified|change|changed|rename|renamed|move|moved|[AMDR])\s+\S)/i;
-
-const PATCH_HEADER =
-  /^(add|added|create|created|delete|deleted|remove|removed|update|updated|modify|modified|change|changed|rename|renamed|move|moved|[AMDR])\s+(\S.*)$/i;
-
-export function parsePatchDetail(detail: string): FileChange[] {
-  const trimmed = detail.trim();
-  if (!trimmed) return [];
-  const parts = trimmed.split(PATCH_SPLIT);
-  const out: FileChange[] = [];
-  for (const part of parts) {
-    const lines = part.split(/\r?\n/);
-    const header = lines[0] ?? "";
-    const match = PATCH_HEADER.exec(header);
-    if (!match) {
-      out.push(...parseUnifiedDiff(part));
-      continue;
-    }
-    const status = kindStatus(match[1]);
-    const path = match[2].trim();
-    const body = lines.slice(1).join("\n").trim();
-    const parsed = body ? parseUnifiedDiff(body) : [];
-    if (parsed.length === 1) {
-      out.push({
-        ...parsed[0],
-        path: displayPath(path || parsed[0].path),
-        status,
-      });
-    } else if (parsed.length > 1) {
-      out.push(...parsed);
-    } else if (path) {
-      out.push({ path: displayPath(path), status, added: 0, removed: 0, diff: body });
-    }
-  }
-  return out.filter((file) => file.path);
-}
-
 export function turnChanges(events: readonly SessionEvent[]): TurnChanges | null {
   let chosen: FileChange[] | null = null;
   let id = "";
   for (const event of events) {
-    if (event.kind !== "turn-diff") continue;
-    const files = parseUnifiedDiff(event.diff);
-    if (files.length === 0) continue;
-    chosen = files;
+    if (event.kind !== "turn-changes" || event.files.length === 0) continue;
+    chosen = event.files.map(copyFile);
     id = event.turn_id || event.id;
   }
   if (chosen) return pack(id, chosen);
 
   const map = new Map<string, FileChange>();
   for (const event of events) {
-    if (event.kind !== "tool-call" || !isPatchTool(event.name)) continue;
-    const files = parsePatchDetail(event.detail ?? "");
-    for (const file of files) map.set(normKey(file.path), file);
-    if (files.length > 0) id = event.stream_id || event.id;
+    if (event.kind !== "file-change" || !event.path) continue;
+    map.set(normKey(event.path), copyFile(event));
+    id = event.turn_id || event.id;
   }
   if (map.size === 0) return null;
   return pack(id, [...map.values()]);
@@ -256,18 +209,14 @@ function displayPath(path: string): string {
   return stripMarker(path).replace(/\\/g, "/").replace(/^\.\//, "");
 }
 
-function kindStatus(kind: string): FileStatus {
-  const key = kind.trim().toLowerCase();
-  if (key === "a" || key === "add" || key === "added" || key === "create" || key === "created") {
-    return "A";
-  }
-  if (key === "d" || key === "delete" || key === "deleted" || key === "remove" || key === "removed") {
-    return "D";
-  }
-  if (key === "r" || key === "rename" || key === "renamed" || key === "move" || key === "moved") {
-    return "R";
-  }
-  return "M";
+function copyFile(file: EventFile): FileChange {
+  return {
+    path: displayPath(file.path),
+    status: file.status,
+    added: file.added,
+    removed: file.removed,
+    diff: file.diff,
+  };
 }
 
 function normKey(path: string): string {

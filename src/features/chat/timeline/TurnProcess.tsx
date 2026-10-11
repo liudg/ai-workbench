@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
 import { Bot, ChevronRight } from "lucide-react";
 
+import { showsFileChanges } from "@/features/changes-model/capabilities";
 import { turnChanges } from "@/features/changes-model/diff-parse";
+import { useWorkbench } from "@/store";
 import { ChangeCard } from "../cards/ChangeCard";
 import { EventItem } from "../events/EventItem";
 import { collapsedTurnSummary, formatElapsed, isProcess } from "./timeline";
@@ -37,7 +39,11 @@ export function TurnProcess({
   const process = events.filter((event) => isProcess(event, answerId));
   const chromeBefore = before.filter((event) => !isProcess(event, answerId));
   const chromeAfter = after.filter((event) => !isProcess(event, answerId));
-  const changes = useMemo(() => turnChanges(events), [events]);
+  const changeFlags = useWorkbench((state) => state.profiles[session.agent]?.capabilities.changes);
+  const changes = useMemo(
+    () => (showsFileChanges(changeFlags) ? turnChanges(events) : null),
+    [changeFlags, events],
+  );
 
   const renderEvent = (event: SessionEvent, showAgentLabel: boolean) => (
     <EventItem

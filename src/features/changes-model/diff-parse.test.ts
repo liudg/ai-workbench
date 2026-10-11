@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import type { SessionEvent, SessionEventBody } from "../../types.ts";
-import { isPatchTool, parsePatchDetail, parseUnifiedDiff, sessionChanges, turnChanges } from "./diff-parse.ts";
+import { parseUnifiedDiff, sessionChanges, turnChanges } from "./diff-parse.ts";
 
 function event(id: string, body: SessionEventBody): SessionEvent {
   return { id, session_id: "s", seq: 1, ts: 1, ...body };
@@ -56,75 +56,92 @@ test("unified diff counts edits, additions, and deletions", () => {
   assert.equal(parseUnifiedDiff(renamed)[0]?.path, "new.ts");
 });
 
-test("patch events merge by path and turns prefer the latest turn diff", () => {
-  const detail = [
-    "update src/main.rs",
-    EDIT,
-    "",
-    "add README.md",
-    "--- /dev/null",
-    "+++ b/README.md",
-    "@@ -0,0 +1 @@",
-    "+hello",
-  ].join("\n");
-  const parsed = parsePatchDetail(detail);
+test("turn changes prefer the latest summary and otherwise merge file events", () => {
+  const fromFiles = turnChanges([
+    event("f1", {
+      kind: "file-change",
+      turn_id: "turn-1",
+      path: "src/main.rs",
+      status: "M",
+      added: 2,
+      removed: 1,
+      diff: EDIT,
+    }),
+    event("f2", {
+      kind: "file-change",
+      turn_id: "turn-1",
+      path: "README.md",
+      status: "A",
+      added: 1,
+      removed: 0,
+      diff: "+hello",
+    }),
+  ]);
+  assert.equal(fromFiles?.id, "turn-1");
   assert.deepEqual(
-    parsed.map((file) => [file.path, file.status, file.added]),
+    fromFiles?.files.map((file) => [file.path, file.status, file.added]),
     [
       ["src/main.rs", "M", 2],
       ["README.md", "A", 1],
     ],
   );
-  assert.equal(isPatchTool("apply_patch"), true);
-  assert.equal(isPatchTool("fileChange"), true);
-  assert.equal(isPatchTool("command"), false);
 
-  const fromPatch = turnChanges([
-    event("t1", {
-      kind: "tool-call",
-      name: "apply_patch",
-      summary: "src/main.rs",
-      detail,
+  const fromSummary = turnChanges([
+    event("f1", {
+      kind: "file-change",
+      turn_id: "turn-1",
+      path: "README.md",
+      status: "A",
+      added: 1,
+      removed: 0,
+      diff: "+hello",
+    }),
+    event("s1", {
+      kind: "turn-changes",
+      turn_id: "turn-1",
+      files: [
+        {
+          path: "src/main.rs",
+          status: "M",
+          added: 2,
+          removed: 1,
+          diff: EDIT,
+        },
+      ],
     }),
   ]);
-  assert.equal(fromPatch?.files.length, 2);
+  assert.equal(fromSummary?.id, "turn-1");
+  assert.deepEqual(fromSummary?.files.map((file) => file.path), ["src/main.rs"]);
+});
 
-  const fromDiff = turnChanges([
-    event("t1", {
-      kind: "tool-call",
-      name: "apply_patch",
-      summary: "README.md",
-      detail: "add README.md\n+hello",
-    }),
-    event("d1", { kind: "turn-diff", turn_id: "turn-1", diff: EDIT }),
-  ]);
-  assert.equal(fromDiff?.id, "turn-1");
-  assert.deepEqual(fromDiff?.files.map((file) => file.path), ["src/main.rs"]);
+test("old diff and tool events do not create a change card", () => {
+  assert.equal(
+    turnChanges([
+      event("d1", { kind: "turn-diff", turn_id: "turn-1", diff: EDIT }),
+      event("t1", { kind: "tool-call", name: "command", summary: "src/main.rs", detail: EDIT }),
+    ]),
+    null,
+  );
 });
 
 test("session files keep the later edit of the same path", () => {
-  const first = [
-    "diff --git a/src/app.ts b/src/app.ts",
-    "--- a/src/app.ts",
-    "+++ b/src/app.ts",
-    "@@ -1 +1 @@",
-    "-a",
-    "+b",
-  ].join("\n");
-  const second = [
-    "diff --git a/src/app.ts b/src/app.ts",
-    "--- a/src/app.ts",
-    "+++ b/src/app.ts",
-    "@@ -1 +1,2 @@",
-    "-b",
-    "+b",
-    "+c",
-  ].join("\n");
   const files = sessionChanges([
     event("u1", { kind: "user-message", text: "一" }),
-    event("d1", { kind: "turn-diff", turn_id: "t1", diff: first }),
+    event("d1", {
+      kind: "turn-changes",
+      turn_id: "t1",
+      files: [{ path: "src/app.ts", status: "M", added: 1, removed: 1, diff: "-a\n+b" }],
+    }),
     event("u2", { kind: "user-message", text: "二" }),
-    event("d2", { kind: "turn-diff", turn_id: "t2", diff: second }),
+    event("d2", {
+      kind: "file-change",
+      turn_id: "t2",
+      path: "src/app.ts",
+      status: "M",
+      added: 2,
+      removed: 1,
+      diff: "-b\n+b\n+c",
+    }),
   ]);
   assert.equal(files.length, 1);
   assert.equal(files[0]?.added, 2);

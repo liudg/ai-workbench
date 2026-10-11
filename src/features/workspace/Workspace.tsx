@@ -37,6 +37,7 @@ export function Workspace() {
         sessionId={session.id}
         projectId={project.id}
         projectPath={project.path}
+        agent={session.agent}
         events={events}
       >
         <div className="flex h-full min-w-0 flex-1">

@@ -7,7 +7,7 @@ export type DiffFoldRow =
   | { kind: "line"; tone: "add" | "del" | "context" | "meta"; text: string; lineNo: number | null };
 
 /**
- * 把统一 diff 收成 Codex 那样的行：块与块之间没出现的旧行变成
+ * 把统一 diff 收成折叠行：块与块之间没出现的旧行变成
  * 「N unmodified lines」，块内的上下文和改动照原样留下。
  */
 export function foldDiffLines(diff: string): DiffFoldRow[] {

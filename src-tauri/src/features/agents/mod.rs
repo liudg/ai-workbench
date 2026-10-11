@@ -9,6 +9,7 @@ mod claude_code;
 mod codex;
 mod directory;
 mod external;
+mod fake;
 mod install;
 mod providers;
 mod stub;

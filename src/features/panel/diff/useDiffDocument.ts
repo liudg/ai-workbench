@@ -1,17 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { backend } from "@/lib/ipc";
+import { backend, type DiffScope } from "@/lib/ipc";
 import { parseUnifiedDiff, type FileChange } from "@/features/changes-model/diff-parse";
 import { usePanel } from "@/features/panel/core/PanelProvider";
 import { filterFiles, useFileFilter } from "@/features/panel/files/file-filter";
 import { withoutWhitespaceChanges } from "./fold";
-import { loadProjectGitDiff } from "./git-diff";
+import { diffScopeMenu, filesForScope } from "./scope";
 
 export function useDiffDocument(turnFiles: FileChange[]) {
-  const { projectId, openHref } = usePanel();
+  const { projectId, sessionId, openHref, changes } = usePanel();
   const [filter] = useFileFilter();
   const [scope, setScope] = useState("turn");
   const [hideWs, setHideWs] = useState(false);
+  const [provided, setProvided] = useState<DiffScope[]>([]);
   const [gitFiles, setGitFiles] = useState<FileChange[] | null>(null);
   const [gitError, setGitError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -25,12 +26,36 @@ export function useDiffDocument(turnFiles: FileChange[]) {
   const [sources, setSources] = useState<Record<string, string>>({});
 
   useEffect(() => {
+    let cancel = false;
+    void backend
+      .diffScopes(sessionId)
+      .then((rows) => {
+        if (!cancel) setProvided(rows);
+      })
+      .catch(() => {
+        if (!cancel) setProvided([]);
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [sessionId]);
+
+  const scopes = useMemo(() => diffScopeMenu(provided, changes), [changes, provided]);
+  const selected = scopes.find((item) => item.id === scope && !item.submenu) ?? scopes.find((item) => !item.submenu);
+
+  useEffect(() => {
+    if (!selected || selected.id === scope) return;
+    setScope(selected.id);
+  }, [scope, selected]);
+
+  useEffect(() => {
     setHidden([]);
     setActivePath("");
   }, [scope]);
 
+  const remote = Boolean(selected && selected.source !== "turn" && !selected.submenu);
   useEffect(() => {
-    if (scope === "turn" || scope === "committed" || scope === "branch") {
+    if (!remote || !selected) {
       setGitFiles(null);
       setGitError("");
       setLoading(false);
@@ -40,7 +65,8 @@ export function useDiffDocument(turnFiles: FileChange[]) {
     setLoading(true);
     setGitError("");
     setGitFiles(null);
-    void loadProjectGitDiff(projectId, scope, hideWs)
+    void backend
+      .diffForScope(sessionId, selected.id, hideWs)
       .then((diff) => {
         if (cancel) return;
         setGitFiles(parseUnifiedDiff(diff));
@@ -55,19 +81,18 @@ export function useDiffDocument(turnFiles: FileChange[]) {
     return () => {
       cancel = true;
     };
-  }, [hideWs, projectId, scope]);
+  }, [hideWs, remote, selected, sessionId]);
 
   const listed = useMemo(() => {
-    const source = scope === "turn" ? turnFiles : (gitFiles ?? []);
-    const visible = source.filter((file) => !hidden.includes(file.path));
-    if (scope !== "turn" || !hideWs) return visible;
-    return visible.flatMap((file) => {
+    const source = filesForScope(selected, turnFiles, gitFiles).filter((file) => !hidden.includes(file.path));
+    if (!selected || selected.source !== "turn" || !hideWs) return source;
+    return source.flatMap((file) => {
       const parsed = parseUnifiedDiff(withoutWhitespaceChanges(file.diff)).filter(
         (item) => item.added + item.removed > 0,
       );
       return parsed.map((item) => ({ ...item, status: file.status }));
     });
-  }, [gitFiles, hidden, hideWs, scope, turnFiles]);
+  }, [gitFiles, hidden, hideWs, selected, turnFiles]);
 
   const shown = useMemo(() => filterFiles(listed, filter), [filter, listed]);
   const active = shown.find((file) => file.path === activePath) ?? shown[0];
@@ -104,7 +129,8 @@ export function useDiffDocument(turnFiles: FileChange[]) {
   };
 
   return {
-    scope,
+    scope: selected?.id ?? scope,
+    scopes,
     setScope,
     hideWs,
     setHideWs,

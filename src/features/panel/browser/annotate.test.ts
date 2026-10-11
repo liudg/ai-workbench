@@ -24,7 +24,7 @@ test("tab title is document.title and keeps the page's own number", () => {
   assert.equal(tabTitleFromDocument("虎豹自行车"), "虎豹自行车");
 });
 
-test("annotation count chip matches Codex", () => {
+test("annotation count chip uses the same copy for one and many", () => {
   assert.equal(annotationCountLabel(1), "1 条注释");
   assert.equal(annotationCountLabel(2), "2 条注释");
 });

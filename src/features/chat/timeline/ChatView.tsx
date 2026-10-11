@@ -4,6 +4,7 @@ import { MessageSquareDashed } from "lucide-react";
 import { pendingPrompt } from "@/lib/utils";
 import { useWorkbench } from "@/store";
 import type { Session, SessionEvent } from "@/types";
+import { showsFileChanges } from "@/features/changes-model/capabilities";
 import { lastSlice, turnChanges } from "@/features/changes-model/diff-parse";
 import { ChangeCard } from "../cards/ChangeCard";
 import { Composer } from "../composer/Composer";
@@ -34,8 +35,11 @@ function contentChars(events: SessionEvent[]): number {
       case "prompt":
         chars += event.question.length;
         break;
-      case "turn-diff":
+      case "file-change":
         chars += event.diff.length;
+        break;
+      case "turn-changes":
+        chars += event.files.reduce((sum, file) => sum + file.diff.length, 0);
         break;
       case "plan-steps":
         chars += (event.explanation?.length ?? 0) + event.steps.reduce((sum, step) => sum + step.step.length, 0);
@@ -103,10 +107,12 @@ export function ChatView({
     () => events.some((event) => event.kind !== "status-changed"),
     [events],
   );
+  const changeFlags = useWorkbench((state) => state.profiles[session.agent]?.capabilities.changes);
   const liveChanges = useMemo(() => {
+    if (!showsFileChanges(changeFlags)) return null;
     if (status !== "running" && status !== "needs-input") return null;
     return turnChanges(lastSlice(events));
-  }, [events, status]);
+  }, [changeFlags, events, status]);
 
   const [workOverrides, setWorkOverrides] = useState<ReadonlyMap<string, boolean>>(
     new Map(),

@@ -135,16 +135,9 @@ impl AgentSession for StubAgentSession {
                     },
                 );
                 sleep(Duration::from_millis(600)).await;
-                emit(
-                    &events,
-                    SessionEventBody::ToolCall {
-                        name: "apply_patch".into(),
-                        summary: "计划修改 3 个文件（模拟，未真正写入）".into(),
-                        detail: String::new(),
-                        stream_id: None,
-                        images: Vec::new(),
-                    },
-                );
+                for body in super::fake::demo_events(&format!("stub-{turn}")) {
+                    emit(&events, body);
+                }
                 sleep(Duration::from_millis(400)).await;
                 let prompt_id = crate::models::new_id();
                 emit(

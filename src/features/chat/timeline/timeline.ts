@@ -1,5 +1,4 @@
 import type { SessionEvent, SessionStatus } from "../../../types";
-import { isReviewDuplicate } from "../events/codex-turn.ts";
 
 /**
  * 时间线以事件日志里最后一次状态为准。
@@ -51,7 +50,7 @@ export function formatElapsed(ms: number): string {
 }
 
 /**
- * 折叠后的一行：`Codex CLI · 用时 3s`。
+ * 折叠后的一行：`Agent · 用时 3s`。
  * 名称由调用方按会话 Agent 传入，这里不区分种类。
  */
 export function collapsedTurnSummary(agentLabel: string, durationMs: number): string {
@@ -105,8 +104,33 @@ function skippedInTimeline(event: SessionEvent): boolean {
   );
 }
 
+/**
+ * 审查重复看 `dedupe_of`。
+ * 计划模式里与 plan-text 相同的正文看 `mode`，正文不同则留下。
+ */
+export function isSuppressedMessage(events: readonly SessionEvent[], index: number): boolean {
+  const event = events[index];
+  if (event.kind !== "agent-message") return false;
+  if (event.dedupe_of) return true;
+  if (event.mode !== "plan") return false;
+  const text = event.text.trim();
+  if (!text) return false;
+  return planTextNearby(events, index, text);
+}
+
+function planTextNearby(events: readonly SessionEvent[], index: number, text: string): boolean {
+  for (let step = -1; step <= 1; step += 2) {
+    for (let cursor = index + step; cursor >= 0 && cursor < events.length; cursor += step) {
+      const other = events[cursor];
+      if (other.kind === "user-message") break;
+      if (other.kind === "plan-text" && other.text.trim() === text) return true;
+    }
+  }
+  return false;
+}
+
 function hiddenInTimeline(events: readonly SessionEvent[], index: number): boolean {
-  return skippedInTimeline(events[index]) || isReviewDuplicate(events, index);
+  return skippedInTimeline(events[index]) || isSuppressedMessage(events, index);
 }
 
 export function isProcess(event: SessionEvent, answerId: string | null): boolean {

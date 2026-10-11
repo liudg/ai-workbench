@@ -13,6 +13,7 @@ export function DiffView({ files }: { files: FileChange[] }) {
       <div className="flex min-w-0 flex-1 flex-col">
         <DiffToolbar
           scope={doc.scope}
+          scopes={doc.scopes}
           onScope={doc.setScope}
           added={doc.added}
           removed={doc.removed}

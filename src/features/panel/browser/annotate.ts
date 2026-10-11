@@ -5,7 +5,7 @@ export function tabTitleFromDocument(title: string): string {
   return title.replace(/^\s+|\s+$/g, "");
 }
 
-/** Codex `commentAttachments.numAnnotations`：one/other 都是「N 条注释」。 */
+/** 批注数量：一条和多条都写成「N 条注释」。 */
 export function annotationCountLabel(count: number): string {
   return `${count} 条注释`;
 }

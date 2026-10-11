@@ -5,6 +5,7 @@ import {
   buildTimeline,
   collapsedTurnSummary,
   formatElapsed,
+  isSuppressedMessage,
   type TimelineNode,
 } from "./timeline.ts";
 import type { SessionEvent, SessionEventBody } from "../../../types.ts";
@@ -19,7 +20,7 @@ function turnNode(nodes: TimelineNode[]) {
   return turn;
 }
 
-test("formats elapsed time like Codex", () => {
+test("formats elapsed time as hours, minutes, and seconds", () => {
   assert.equal(formatElapsed(0), "0s");
   assert.equal(formatElapsed(12_400), "12s");
   assert.equal(formatElapsed(88_000), "1m 28s");
@@ -28,11 +29,39 @@ test("formats elapsed time like Codex", () => {
 });
 
 test("collapsed turn summary is the agent label, a middot, then elapsed time", () => {
-  assert.equal(collapsedTurnSummary("Codex CLI", 3_000), "Codex CLI · 用时 3s");
-  assert.equal(collapsedTurnSummary("Claude Code", 88_000), "Claude Code · 用时 1m 28s");
+  assert.equal(collapsedTurnSummary("Agent CLI", 3_000), "Agent CLI · 用时 3s");
+  assert.equal(collapsedTurnSummary("Other CLI", 88_000), "Other CLI · 用时 1m 28s");
+  assert.equal(collapsedTurnSummary("Sample CLI", 0), "Sample CLI · 用时 0s");
+});
+
+test("review duplicates use dedupe_of and plan duplicates use mode", () => {
+  const events = [
+    event("u1", 0, { kind: "user-message", text: "审查" }),
+    event("p1", 1, { kind: "plan-text", text: "先改 app.ts", mode: "plan" }),
+    event("a1", 2, { kind: "agent-message", text: "先改 app.ts", mode: "plan" }),
+    event("a2", 3, { kind: "agent-message", text: "计划写好了", mode: "plan" }),
+    event("r1", 4, {
+      kind: "review-findings",
+      summary: "通过",
+      raw: "通过",
+      findings: [],
+    }),
+    event("a3", 5, { kind: "agent-message", text: "通过", dedupe_of: "rev-1" }),
+    event("a4", 6, { kind: "agent-message", text: "通过" }),
+  ];
+  assert.equal(isSuppressedMessage(events, 2), true);
+  assert.equal(isSuppressedMessage(events, 3), false);
+  assert.equal(isSuppressedMessage(events, 5), true);
+  assert.equal(isSuppressedMessage(events, 6), false);
+  const nodes = buildTimeline(events, "completed");
+  const turn = turnNode(nodes);
   assert.equal(
-    collapsedTurnSummary("GitHub Copilot CLI", 0),
-    "GitHub Copilot CLI · 用时 0s",
+    turn.events.some((item) => item.id === "a1" || item.id === "a3"),
+    false,
+  );
+  assert.equal(
+    turn.events.some((item) => item.id === "a2"),
+    true,
   );
 });
 

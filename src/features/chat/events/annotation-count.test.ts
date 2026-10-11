@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import { annotationCountLabel, annotationCountOf } from "./annotation-count.ts";
 
-test("annotation chip matches Codex one/other copy", () => {
+test("annotation chip uses the same copy for one and many", () => {
   assert.equal(annotationCountOf(0), null);
   assert.equal(annotationCountOf(undefined), null);
   assert.deepEqual(annotationCountOf(2), { count: 2 });

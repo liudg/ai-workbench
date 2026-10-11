@@ -7,7 +7,7 @@ import {
 } from "../../../types.ts";
 
 /**
- * 官方 Codex 桌面端作曲栏权限菜单文案。
+ * 桌面端作曲栏权限菜单文案。
  * 英文原文来自 ChatGPT desktop「How should ChatGPT actions be approved?」。
  */
 export const PERMISSION_HEADING = "操作应如何获得批准？";
