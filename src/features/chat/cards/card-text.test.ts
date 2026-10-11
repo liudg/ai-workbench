@@ -20,5 +20,6 @@ test("change card actions are view and show-more, never undo", () => {
 
 test("change card title names the file, and deletions use an ascii hyphen", () => {
   assert.equal(editedFilesLabel([{ path: "src/annotate.html" }]), "已编辑 annotate.html");
+  assert.equal(editedFilesLabel([{ path: "C:\\work\\a.ts" }]), "已编辑 a.ts");
   assert.equal(editedFilesLabel([{ path: "a.ts" }, { path: "b.ts" }]), "已编辑 2 个文件");
 });

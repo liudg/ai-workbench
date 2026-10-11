@@ -1,0 +1,42 @@
+import { useShallow } from "zustand/react/shallow";
+
+import { preferCatalog } from "@/lib/catalog";
+import { useWorkbench } from "@/store";
+import { emptySandbox, type AgentKind, type Attachment, type QueuedTurn } from "@/types";
+
+const EMPTY_FILES: Attachment[] = [];
+const EMPTY_QUEUE: QueuedTurn[] = [];
+const FALLBACK_SANDBOX = emptySandbox();
+
+export function useComposerActions() {
+  return useWorkbench(
+    useShallow((state) => ({
+      sendMessage: state.sendMessage,
+      setCollaborationMode: state.setCollaborationMode,
+      startReview: state.startReview,
+      answerPrompt: state.answerPrompt,
+      setSandbox: state.setSandbox,
+      loadCatalog: state.loadCatalog,
+      setTuning: state.setTuning,
+      addAttachments: state.addAttachments,
+      removeAttachment: state.removeAttachment,
+      clearAttachments: state.clearAttachments,
+      replaceAttachments: state.replaceAttachments,
+    })),
+  );
+}
+
+export function useComposerSession(session: { id: string; agent: AgentKind; project_id: string }) {
+  return useWorkbench(
+    useShallow((state) => ({
+      catalog: preferCatalog(state.catalogs[session.id], state.catalogCache[session.agent]),
+      catalogNotice: state.catalogNotice,
+      profile: state.profiles[session.agent],
+      tuning: state.tuning[session.id],
+      sandbox: state.sandboxes[session.id] ?? state.lastSandbox ?? FALLBACK_SANDBOX,
+      projectPath: state.projects.find((project) => project.id === session.project_id)?.path ?? "",
+      files: state.attachments[session.id] ?? EMPTY_FILES,
+      queue: state.queues[session.id] ?? EMPTY_QUEUE,
+    })),
+  );
+}

@@ -1,5 +1,16 @@
-import { baseName } from "../../panel/files/path.ts";
+import type { FileStatus } from "../../changes-model/diff-parse.ts";
 import { DESKTOP_ZH } from "../../../shared/strings/desktop-zh.ts";
+
+export function baseName(path: string): string {
+  const parts = path.split(/[\\/]/).filter(Boolean);
+  return parts[parts.length - 1] ?? path;
+}
+
+export function fileStatusTone(status: FileStatus): "add" | "del" | "neutral" {
+  if (status === "A" || status === "M") return "add";
+  if (status === "D") return "del";
+  return "neutral";
+}
 
 /** 变更卡先列出的文件数，其余用「再显示」。 */
 export const FILE_LIST_LIMIT = 3;

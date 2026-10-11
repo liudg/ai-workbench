@@ -9,8 +9,6 @@ const IMAGE_EXTENSIONS = new Set([
   "avif",
 ]);
 
-export const IMAGE_FILE_EXTENSIONS = [...IMAGE_EXTENSIONS];
-
 /** 本机图片路径、data URL，或 http(s) 图片地址。 */
 export function isImagePath(path: string): boolean {
   const trimmed = path.trim();

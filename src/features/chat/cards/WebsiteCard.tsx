@@ -2,10 +2,10 @@ import { useEffect, useState } from "react";
 import { Globe } from "lucide-react";
 
 import { usePanelOptional } from "@/features/panel/core/PanelProvider";
-import { pageTitleFromHtml } from "@/features/panel/browser/browser";
-import { baseName } from "@/features/panel/files/path";
 import { backend } from "@/lib/ipc";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
+import { baseName } from "./card-text";
+import { pageTitleFromHtml } from "./page-title";
 
 export function WebsiteCard({ href, label }: { href: string; label: string }) {
   const preview = usePanelOptional();
