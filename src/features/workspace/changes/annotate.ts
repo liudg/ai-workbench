@@ -5,6 +5,11 @@ export function tabTitleFromDocument(title: string): string {
   return title.replace(/^\s+|\s+$/g, "");
 }
 
+/** Codex `commentAttachments.numAnnotations`：one/other 都是「N 条注释」。 */
+export function annotationCountLabel(count: number): string {
+  return `${count} 条注释`;
+}
+
 export function annotationLabel(note: PageAnnotation): string {
   if (note.kind === "region") return "区域";
   const text = note.text.trim();

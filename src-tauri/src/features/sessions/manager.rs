@@ -395,6 +395,7 @@ impl SessionManager {
             SessionEventBody::UserMessage {
                 text: label,
                 images: Vec::new(),
+                annotations: 0,
             },
         )?;
         handle
@@ -442,8 +443,10 @@ impl SessionManager {
             return Err(OCCUPIED_SESSION_NOTICE.to_string());
         }
         let slash = text.starts_with('/') && images.is_empty() && annotations.is_empty();
+        let display = text;
         let mut images = images;
-        let text = fold_page_annotations(&text, &mut images, &annotations);
+        let text = fold_page_annotations(&display, &mut images, &annotations);
+        let note_count = u32::try_from(annotations.len()).unwrap_or(u32::MAX);
         if text.is_empty() && images.is_empty() {
             return Err("消息不能为空".into());
         }
@@ -453,6 +456,7 @@ impl SessionManager {
                 SessionEventBody::UserMessage {
                     text: text.clone(),
                     images: Vec::new(),
+                    annotations: 0,
                 },
             )?;
             return handle
@@ -470,7 +474,14 @@ impl SessionManager {
             .await
             .map_err(|err| err.to_string())?;
         if delivery == TurnDelivery::Started {
-            self.record_local(session_id, SessionEventBody::UserMessage { text, images })?;
+            self.record_local(
+                session_id,
+                SessionEventBody::UserMessage {
+                    text: display,
+                    images,
+                    annotations: note_count,
+                },
+            )?;
         }
         Ok(())
     }
@@ -947,14 +958,23 @@ fn mutate_entry(
         entry.meta.status = *status;
     }
     let mut title_changed = false;
-    if let SessionEventBody::UserMessage { text, images } = &body {
+    if let SessionEventBody::UserMessage {
+        text,
+        images,
+        annotations,
+    } = &body
+    {
         if entry.meta.title.starts_with("会话 ") || entry.meta.title == "未命名会话" {
-            let source = if text.trim().is_empty() && !images.is_empty() {
-                "图片"
+            let owned = if !text.trim().is_empty() {
+                text.clone()
+            } else if *annotations > 0 {
+                format!("{annotations} 条注释")
+            } else if !images.is_empty() {
+                "图片".to_string()
             } else {
-                text.as_str()
+                String::new()
             };
-            let first_line = source.lines().next().unwrap_or("");
+            let first_line = owned.lines().next().unwrap_or("");
             let title: String = first_line.chars().take(24).collect();
             if !title.is_empty() {
                 entry.meta.title = title;
@@ -1198,6 +1218,7 @@ mod tests {
             SessionEventBody::UserMessage {
                 text: "历史里的问题".into(),
                 images: Vec::new(),
+                annotations: 0,
             },
             false,
         );
@@ -1245,6 +1266,7 @@ mod tests {
             SessionEventBody::UserMessage {
                 text: "概括当前项目\n第二行".into(),
                 images: Vec::new(),
+                annotations: 0,
             },
             true,
         );
@@ -1269,6 +1291,7 @@ mod tests {
             SessionEventBody::UserMessage {
                 text: "概括当前项目".into(),
                 images: Vec::new(),
+                annotations: 0,
             },
             false,
         );
@@ -1287,6 +1310,7 @@ mod tests {
             SessionEventBody::UserMessage {
                 text: String::new(),
                 images: vec!["C:/shot.png".into()],
+                annotations: 0,
             },
             true,
         );
@@ -1359,6 +1383,7 @@ mod tests {
                 SessionEventBody::UserMessage {
                     text: "new".into(),
                     images: Vec::new(),
+                    annotations: 0,
                 },
             ),
             stamped(
@@ -1377,6 +1402,7 @@ mod tests {
                 SessionEventBody::UserMessage {
                     text: "old".into(),
                     images: Vec::new(),
+                    annotations: 0,
                 },
                 SessionEventBody::ToolCall {
                     name: "command".into(),

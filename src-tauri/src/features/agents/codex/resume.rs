@@ -431,6 +431,7 @@ fn push_history_item(bodies: &mut Vec<SessionEventBody>, item: &Value) {
                 bodies.push(SessionEventBody::UserMessage {
                     text: take_chars(&text, 20_000),
                     images,
+                    annotations: 0,
                 });
             }
         }
@@ -1173,7 +1174,7 @@ mod tests {
         })];
         let bodies = bodies_from_turns(&turns);
         match &bodies[0] {
-            SessionEventBody::UserMessage { text, images } => {
+            SessionEventBody::UserMessage { text, images, .. } => {
                 assert_eq!(text, "看这张");
                 assert_eq!(
                     images,

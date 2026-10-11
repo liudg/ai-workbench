@@ -92,6 +92,16 @@
     return text.length > max ? text.slice(0, max) : text;
   }
 
+  function typingTarget(event) {
+    var path = event.composedPath ? event.composedPath() : [];
+    for (var i = 0; i < path.length; i++) {
+      var node = path[i];
+      if (!node || !node.tagName) continue;
+      if (node.tagName === "TEXTAREA" || node.tagName === "INPUT" || node.isContentEditable) return true;
+    }
+    return false;
+  }
+
   function install() {
     if (window.__awBrowserInstalled || !document.documentElement) return;
     window.__awBrowserInstalled = true;
@@ -102,29 +112,41 @@
     style.textContent = [
       ":host{all:initial;position:fixed;inset:0;z-index:2147483646;pointer-events:none}",
       ".blocker{position:absolute;inset:0;pointer-events:auto;cursor:crosshair;background:transparent}",
-      ".box{position:absolute;border:2px solid #38bdf8;background:rgba(56,189,248,.18);box-sizing:border-box;pointer-events:none;display:none}",
-      ".pop{position:absolute;width:280px;box-sizing:border-box;background:#18181b;color:#fafafa;border:1px solid #3f3f46;border-radius:12px;padding:8px;pointer-events:auto;box-shadow:0 12px 40px rgba(0,0,0,.35);font:13px/1.4 sans-serif}",
-      "textarea{display:block;width:100%;min-height:72px;box-sizing:border-box;margin:0;resize:vertical;border:1px solid #3f3f46;border-radius:8px;background:#09090b;color:#fafafa;padding:8px;font:inherit}",
-      ".row{display:flex;justify-content:flex-end;gap:8px;margin-top:8px}",
-      "button{border:0;border-radius:8px;padding:6px 10px;font:inherit;cursor:pointer}",
-      ".cancel{background:transparent;color:#d4d4d8}",
-      ".send{background:#fafafa;color:#09090b}",
-      ".fail{position:absolute;left:12px;bottom:12px;background:#7f1d1d;color:#fee2e2;border-radius:8px;padding:6px 8px;pointer-events:none}",
-      ".mark{position:absolute;width:18px;height:18px;border-radius:999px;background:#0284c7;color:#fff;font:11px/18px sans-serif;text-align:center;pointer-events:none}",
+      ".box{position:absolute;border:2px solid #2f6fed;background:transparent;box-sizing:border-box;pointer-events:none;display:none;border-radius:3px}",
+      ".dot{position:absolute;width:18px;height:18px;margin-left:-9px;margin-top:-9px;border-radius:999px;background:#2f6fed;color:#fff;font:12px/18px 'Segoe UI',sans-serif;text-align:center;pointer-events:none;display:none;z-index:4}",
+      ".hint{position:absolute;left:12px;top:12px;max-width:300px;background:#111;color:#fff;border-radius:12px;padding:8px 10px;font:13px/1.45 'Segoe UI',sans-serif;pointer-events:none;box-shadow:0 8px 24px rgba(0,0,0,.28)}",
+      ".hint kbd{display:inline-block;margin:0 2px;padding:0 5px;border-radius:5px;background:#2c2c2c;border:1px solid #444;font:12px/18px 'Segoe UI',sans-serif}",
+      ".editor{position:absolute;box-sizing:border-box;min-width:180px;background:#fff;color:#111;border-radius:14px;box-shadow:0 10px 28px rgba(0,0,0,.18);pointer-events:auto;display:flex;align-items:flex-end;gap:6px;padding:6px 8px 6px 6px;z-index:3;font:13px/1.4 'Segoe UI',sans-serif}",
+      ".editor textarea{flex:1;min-width:0;border:0;resize:none;outline:none;background:transparent;color:#111;font:inherit;min-height:22px;max-height:160px;padding:2px 0;overflow:hidden}",
+      ".editor textarea::placeholder{color:#9aa0a6}",
+      ".handle{width:14px;height:22px;display:grid;grid-template-columns:4px 4px;gap:2px 3px;align-content:center;justify-content:center;cursor:grab;flex:none;padding:0;border:0;background:transparent}",
+      ".handle i{width:3px;height:3px;border-radius:99px;background:#b0b6be;display:block}",
+      ".actions{display:flex;gap:4px;align-items:center;flex:none}",
+      ".mic{border:0;background:transparent;width:22px;height:22px;border-radius:99px;display:inline-flex;align-items:center;justify-content:center;padding:0;color:#6b7280}",
+      ".check{border:0;background:#111;color:#fff;width:22px;height:22px;border-radius:99px;display:none;align-items:center;justify-content:center;padding:0;cursor:pointer}",
+      ".fail{position:absolute;left:12px;bottom:12px;background:#7f1d1d;color:#fee2e2;border-radius:8px;padding:6px 8px;pointer-events:none;font:12px/1.4 sans-serif}",
     ].join("");
     var blocker = document.createElement("div");
     blocker.className = "blocker";
     var box = document.createElement("div");
     box.className = "box";
-    shadow.append(style, blocker, box);
+    var dot = document.createElement("div");
+    dot.className = "dot";
+    var hint = document.createElement("div");
+    hint.className = "hint";
+    hint.setAttribute("data-browser-annotate-hint", "1");
+    hint.innerHTML = "点击任意位置即可添加批注，也可拖动选取区域。按住<kbd>空格键</kbd>时可暂时操作网页。";
+    shadow.append(style, blocker, box, dot, hint);
     document.documentElement.appendChild(host);
 
     var mode = false;
     var suspended = false;
     var pop = null;
+    var field = null;
+    var check = null;
     var drag = null;
-    var seq = 0;
     var pending = null;
+    var hintOn = true;
 
     function showFail() {
       var old = shadow.querySelector(".fail");
@@ -141,23 +163,36 @@
       suspended = on;
       blocker.style.pointerEvents = mode && !on ? "auto" : "none";
       blocker.style.cursor = mode && !on ? "crosshair" : "auto";
-      if (on) box.style.display = "none";
+      if (on) {
+        box.style.display = "none";
+        dot.style.display = "none";
+      }
       post({ kind: "suspended", on: on });
+    }
+
+    function hideSelection() {
+      box.style.display = "none";
+      dot.style.display = "none";
+      dot.textContent = "";
     }
 
     function closePop() {
       if (pop) pop.remove();
       pop = null;
+      field = null;
+      check = null;
       pending = null;
+      hideSelection();
     }
 
     function apply(on, fromHost) {
       mode = !!on;
       host.style.display = mode ? "block" : "none";
       blocker.style.pointerEvents = mode ? "auto" : "none";
+      hintOn = mode;
+      hint.style.display = mode ? "block" : "none";
       if (!mode) {
         closePop();
-        box.style.display = "none";
         if (suspended) setSuspended(false);
       }
       if (!fromHost) post({ kind: "annotate", on: mode });
@@ -172,100 +207,155 @@
       return el;
     }
 
-    function placeBox(rect) {
+    function placeBox(rect, numbered) {
       box.style.display = "block";
       box.style.left = rect.left + "px";
       box.style.top = rect.top + "px";
       box.style.width = Math.max(1, rect.width) + "px";
       box.style.height = Math.max(1, rect.height) + "px";
+      dot.style.display = "block";
+      dot.style.left = (rect.left + rect.width / 2) + "px";
+      dot.style.top = rect.top + "px";
+      dot.textContent = numbered ? "1" : "";
     }
 
-    function openPop(note, anchor) {
+    function growField() {
+      if (!field || !check || !pop) return;
+      field.style.height = "auto";
+      field.style.height = Math.min(160, Math.max(22, field.scrollHeight)) + "px";
+      var filled = field.value.trim().length > 0;
+      check.style.display = filled ? "inline-flex" : "none";
+    }
+
+    function submitPop() {
+      if (!pop || !pending || !field) return;
+      var value = String(field.value || "").replace(/^\s+|\s+$/g, "");
+      if (!value) return;
+      if (value.length > 4000) value = value.slice(0, 4000);
+      pending.comment = value;
+      if (!post({ kind: "annotation", note: pending })) showFail();
       closePop();
-      pending = note;
-      pop = document.createElement("div");
-      pop.className = "pop";
-      var field = document.createElement("textarea");
-      field.placeholder = "添加评论…";
-      var row = document.createElement("div");
-      row.className = "row";
-      var cancel = document.createElement("button");
-      cancel.type = "button";
-      cancel.className = "cancel";
-      cancel.textContent = "取消";
-      var send = document.createElement("button");
-      send.type = "button";
-      send.className = "send";
-      send.textContent = "发送";
-      row.append(cancel, send);
-      pop.append(field, row);
-      var left = Math.max(8, Math.min(anchor.left, window.innerWidth - 296));
-      var top = Math.max(8, Math.min(anchor.top, window.innerHeight - 160));
+    }
+
+    function placeEditor(rect) {
+      var width = Math.max(200, Math.min(rect.width, Math.max(200, window.innerWidth - 16)));
+      var left = rect.left;
+      if (left + width > window.innerWidth - 8) left = Math.max(8, window.innerWidth - width - 8);
+      if (left < 8) left = 8;
+      var top = rect.top - 16;
+      if (top < 8) top = 8;
       pop.style.left = left + "px";
       pop.style.top = top + "px";
+      pop.style.width = width + "px";
+    }
+
+    function openEditor(note, rect) {
+      closePop();
+      pending = note;
+      hintOn = false;
+      hint.style.display = "none";
+      placeBox(rect, true);
+      pop = document.createElement("div");
+      pop.className = "editor";
+      pop.setAttribute("data-browser-comment-editor", "1");
+      var handle = document.createElement("button");
+      handle.type = "button";
+      handle.className = "handle";
+      handle.setAttribute("aria-hidden", "true");
+      handle.tabIndex = -1;
+      for (var i = 0; i < 6; i++) handle.appendChild(document.createElement("i"));
+      field = document.createElement("textarea");
+      field.rows = 1;
+      field.placeholder = "添加评论…";
+      var actions = document.createElement("div");
+      actions.className = "actions";
+      var mic = document.createElement("button");
+      mic.type = "button";
+      mic.className = "mic";
+      mic.tabIndex = -1;
+      mic.setAttribute("aria-hidden", "true");
+      mic.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4"/></svg>';
+      check = document.createElement("button");
+      check.type = "button";
+      check.className = "check";
+      check.setAttribute("data-browser-comment-submit", "1");
+      check.title = "发送";
+      check.setAttribute("aria-label", "发送");
+      check.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12.5 10 17.5 19 7"/></svg>';
+      actions.append(mic, check);
+      pop.append(handle, field, actions);
       shadow.appendChild(pop);
-      cancel.addEventListener("click", function (event) {
+      placeEditor(rect);
+      handle.addEventListener("mousedown", function (event) {
         event.preventDefault();
         event.stopPropagation();
-        closePop();
+        var startX = event.clientX;
+        var startY = event.clientY;
+        var origLeft = parseFloat(pop.style.left) || 0;
+        var origTop = parseFloat(pop.style.top) || 0;
+        function move(ev) {
+          pop.style.left = (origLeft + ev.clientX - startX) + "px";
+          pop.style.top = (origTop + ev.clientY - startY) + "px";
+        }
+        function up() {
+          window.removeEventListener("mousemove", move, true);
+          window.removeEventListener("mouseup", up, true);
+        }
+        window.addEventListener("mousemove", move, true);
+        window.addEventListener("mouseup", up, true);
       });
-      send.addEventListener("click", function (event) {
+      mic.addEventListener("mousedown", function (event) {
+        event.preventDefault();
+      });
+      check.addEventListener("mousedown", function (event) {
+        event.preventDefault();
+      });
+      check.addEventListener("click", function (event) {
         event.preventDefault();
         event.stopPropagation();
-        note.comment = clip(field.value, 4000);
-        if (!post({ kind: "annotation", note: note })) showFail();
-        else {
-          seq += 1;
-          var mark = document.createElement("div");
-          mark.className = "mark";
-          mark.textContent = String(seq);
-          mark.style.left = Math.max(0, note.x) + "px";
-          mark.style.top = Math.max(0, note.y) + "px";
-          shadow.appendChild(mark);
-        }
-        closePop();
+        submitPop();
       });
-      field.addEventListener("keydown", function (event) {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          event.stopPropagation();
-          closePop();
-        }
-        event.stopPropagation();
-      });
+      field.addEventListener("input", growField);
       field.focus();
     }
 
     function noteForElement(el) {
       var rect = el.getBoundingClientRect();
       return {
-        id: "ann-" + Date.now() + "-" + (seq + 1),
+        id: "ann-" + Date.now(),
         url: String(location.href || ""),
         selector: cssPath(el),
         text: clip(el.innerText || el.textContent || "", 500),
         comment: "",
         x: Math.round(rect.left),
         y: Math.round(rect.top),
-        width: Math.round(rect.width),
-        height: Math.round(rect.height),
+        width: Math.round(Math.max(1, rect.width)),
+        height: Math.round(Math.max(1, rect.height)),
         kind: "element",
       };
     }
 
     blocker.addEventListener("mousemove", function (event) {
-      if (!mode || suspended || drag) return;
+      if (!mode || suspended || drag || pop) return;
       var el = pageElement(event.clientX, event.clientY);
       if (!el) {
-        box.style.display = "none";
+        hideSelection();
         return;
       }
-      placeBox(el.getBoundingClientRect());
+      if (hintOn) {
+        hintOn = false;
+        hint.style.display = "none";
+      }
+      placeBox(el.getBoundingClientRect(), false);
     });
     blocker.addEventListener("mousedown", function (event) {
       if (!mode || suspended || event.button !== 0) return;
-      if (pop && pop.contains(event.target)) return;
+      if (pop) {
+        event.preventDefault();
+        closePop();
+        return;
+      }
       event.preventDefault();
-      closePop();
       drag = { x: event.clientX, y: event.clientY, moved: false };
     });
     window.addEventListener("mousemove", function (event) {
@@ -279,7 +369,7 @@
         top: Math.min(drag.y, event.clientY),
         width: Math.abs(w),
         height: Math.abs(h),
-      });
+      }, false);
     });
     window.addEventListener("mouseup", function (event) {
       if (!drag || !mode) {
@@ -293,8 +383,9 @@
         var top = Math.min(start.y, event.clientY);
         var width = Math.abs(event.clientX - start.x);
         var height = Math.abs(event.clientY - start.y);
-        openPop({
-          id: "ann-" + Date.now() + "-" + (seq + 1),
+        var rect = { left: left, top: top, width: width, height: height };
+        openEditor({
+          id: "ann-" + Date.now(),
           url: String(location.href || ""),
           selector: "",
           text: "",
@@ -304,27 +395,44 @@
           width: Math.round(width),
           height: Math.round(height),
           kind: "region",
-        }, { left: left, top: top + height + 8 });
+        }, rect);
         return;
       }
       var el = pageElement(start.x, start.y);
       if (!el) return;
       var note = noteForElement(el);
-      placeBox(el.getBoundingClientRect());
-      openPop(note, { left: note.x, top: note.y + note.height + 8 });
+      openEditor(note, el.getBoundingClientRect());
     });
     window.addEventListener("keydown", function (event) {
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey && event.code === "Period") {
+        event.preventDefault();
+        event.stopPropagation();
+        apply(!mode, false);
+        return;
+      }
       if (!mode) return;
       if (event.key === "Escape") {
-        if (pop) return;
-        if (event.target && event.target.tagName === "TEXTAREA") return;
+        if (pop) {
+          event.preventDefault();
+          event.stopPropagation();
+          closePop();
+          return;
+        }
+        if (typingTarget(event)) return;
         event.preventDefault();
         apply(false, false);
         return;
       }
-      if (event.code === "Space" && !event.repeat) {
-        if (event.target && (event.target.tagName === "TEXTAREA" || event.target.tagName === "INPUT")) return;
+      if (pop && event.key === "Enter" && (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey) {
+        if (event.repeat) return;
         event.preventDefault();
+        event.stopPropagation();
+        submitPop();
+        return;
+      }
+      if (event.code === "Space" && !event.repeat && !typingTarget(event) && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
+        event.preventDefault();
+        event.stopPropagation();
         setSuspended(true);
       }
     }, true);
@@ -333,6 +441,7 @@
     }, true);
 
     host.style.display = "none";
+    hint.style.display = "none";
     if (window.__awAnnotateWanted) apply(true, true);
     reportTitle();
     var titleNode = document.querySelector("title");

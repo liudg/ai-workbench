@@ -8,6 +8,7 @@ import {
   Circle,
   Copy,
   HelpCircle,
+  MessageSquare,
   Info,
   Lock,
   Wrench,
@@ -20,6 +21,7 @@ import { cn, formatMessageTime } from "@/lib/utils";
 import { fileName } from "../composer/media";
 import { CODEX_DESKTOP } from "../codex-desktop";
 import { AssistantAnswer } from "./AssistantAnswer";
+import { annotationCountLabel } from "../changes/annotate";
 import { ChatThumb } from "./ChatThumb";
 import { MessageContent } from "./MessageContent";
 import { useWorkbench } from "@/store";
@@ -145,31 +147,54 @@ function Row({
 function UserMessage({
   text,
   images,
+  annotations = 0,
   time,
 }: {
   text: string;
   images: string[];
+  annotations?: number;
   time: string;
 }) {
+  const annotationOnly = annotations > 0 && !text.trim();
   return (
     <div className="event-in group min-w-0 px-6 py-2">
       <div className="mx-auto flex min-w-0 max-w-3xl justify-end">
-        <div className="flex min-w-0 max-w-[85%] flex-col items-end">
-          <div className="min-w-0 max-w-full cursor-text overflow-x-hidden rounded-2xl rounded-br-sm bg-indigo-600/90 px-4 py-2.5 text-sm leading-6 text-white">
-            {images.length > 0 && (
-              <div className="mb-1 flex min-w-0 flex-wrap gap-1.5 overflow-x-hidden">
-                {images.map((path) => (
-                  <ChatThumb
-                    key={path}
-                    path={path}
-                    name={fileName(path)}
-                    className="max-h-40 max-w-[160px] rounded-lg object-contain"
-                  />
-                ))}
-              </div>
-            )}
-            {text ? <MessageContent text={text} /> : null}
-          </div>
+        <div className="flex min-w-0 max-w-[85%] flex-col items-end gap-2">
+          {annotationOnly ? (
+            images.map((path) => (
+              <ChatThumb
+                key={path}
+                path={path}
+                name={fileName(path)}
+                className="max-h-28 max-w-[140px] rounded-lg object-cover"
+              />
+            ))
+          ) : (
+            <div className="min-w-0 max-w-full cursor-text overflow-x-hidden rounded-2xl rounded-br-sm bg-indigo-600/90 px-4 py-2.5 text-sm leading-6 text-white">
+              {images.length > 0 && (
+                <div className="mb-1 flex min-w-0 flex-wrap gap-1.5 overflow-x-hidden">
+                  {images.map((path) => (
+                    <ChatThumb
+                      key={path}
+                      path={path}
+                      name={fileName(path)}
+                      className="max-h-40 max-w-[160px] rounded-lg object-contain"
+                    />
+                  ))}
+                </div>
+              )}
+              {text ? <MessageContent text={text} /> : null}
+            </div>
+          )}
+          {annotations > 0 ? (
+            <span
+              data-annotation-count={annotations}
+              className="inline-flex items-center gap-1 rounded-full border border-zinc-200 bg-zinc-100 px-2 py-0.5 text-xs text-zinc-700"
+            >
+              <MessageSquare className="h-3 w-3" />
+              {annotationCountLabel(annotations)}
+            </span>
+          ) : null}
           <HoverActions time={time}>
             {text ? <CopyButton text={text} /> : null}
           </HoverActions>
@@ -837,7 +862,12 @@ export function EventItem({
   switch (event.kind) {
     case "user-message":
       return (
-        <UserMessage text={event.text} images={event.images ?? []} time={time} />
+        <UserMessage
+          text={event.text}
+          images={event.images ?? []}
+          annotations={event.annotations}
+          time={time}
+        />
       );
 
     case "turn-anchor":

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import type { PageAnnotation } from "@/types";
-import { annotationLabel, foldPageAnnotations, tabTitleFromDocument } from "./annotate.ts";
+import { annotationCountLabel, annotationLabel, foldPageAnnotations, tabTitleFromDocument } from "./annotate.ts";
 
 const note = (patch: Partial<PageAnnotation>): PageAnnotation => ({
   id: "1",
@@ -22,6 +22,11 @@ test("tab title is document.title and keeps the page's own number", () => {
   assert.equal(tabTitleFromDocument("虎豹自行车 92"), "虎豹自行车 92");
   assert.equal(tabTitleFromDocument("  虎豹自行车  "), "虎豹自行车");
   assert.equal(tabTitleFromDocument("虎豹自行车"), "虎豹自行车");
+});
+
+test("annotation count chip matches Codex", () => {
+  assert.equal(annotationCountLabel(1), "1 条注释");
+  assert.equal(annotationCountLabel(2), "2 条注释");
 });
 
 test("annotation chip uses region, text, then selector", () => {

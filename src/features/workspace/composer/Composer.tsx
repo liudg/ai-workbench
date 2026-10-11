@@ -8,7 +8,6 @@ import { filterSlash, slashToken } from "@/lib/slash";
 import { cn, isReadOnlyOpen, pendingPrompt } from "@/lib/utils";
 import { fileName, fileToBase64, isImagePath } from "./media";
 import { ChatThumb } from "../timeline/ChatThumb";
-import { annotationLabel } from "../changes/annotate";
 import { CODEX_DESKTOP } from "../codex-desktop";
 import { collaborationMode } from "../timeline/codex-turn";
 import { ReviewMenu } from "./ReviewMenu";
@@ -20,7 +19,6 @@ import {
   type AgentModelOption,
   type AgentSkillOption,
   type Attachment,
-  type PageAnnotation,
   type PermissionMenu,
   type QueuedTurn,
   type Session,
@@ -40,7 +38,6 @@ import {
 } from "./access";
 
 const EMPTY_FILES: Attachment[] = [];
-const EMPTY_NOTES: PageAnnotation[] = [];
 const EMPTY_QUEUE: QueuedTurn[] = [];
 
 function placeMenu(anchor: HTMLElement, menu: HTMLElement) {
@@ -125,14 +122,11 @@ export function Composer({
   const removeAttachment = useWorkbench((s) => s.removeAttachment);
   const clearAttachments = useWorkbench((s) => s.clearAttachments);
   const replaceAttachments = useWorkbench((s) => s.replaceAttachments);
-  const removePageAnnotation = useWorkbench((s) => s.removePageAnnotation);
-  const clearPageAnnotations = useWorkbench((s) => s.clearPageAnnotations);
   const sandbox = useWorkbench((s) => s.sandboxes[session.id] ?? s.lastSandbox ?? emptySandbox());
   const projectPath = useWorkbench(
     (s) => s.projects.find((project) => project.id === session.project_id)?.path ?? "",
   );
   const files = useWorkbench((s) => s.attachments[session.id] ?? EMPTY_FILES);
-  const notes = useWorkbench((s) => s.pageAnnotations[session.id] ?? EMPTY_NOTES);
   const queue = useWorkbench((s) => s.queues[session.id] ?? EMPTY_QUEUE);
   const [text, setText] = useState("");
   const [caret, setCaret] = useState(0);
@@ -307,7 +301,6 @@ export function Composer({
     setText("");
     setCaret(0);
     clearAttachments(session.id);
-    clearPageAnnotations(session.id);
   };
 
   const stageBlobs = async (blobs: File[]) => {
@@ -328,21 +321,20 @@ export function Composer({
 
   const submit = () => {
     const value = text.trim();
-    const pendingNotes = useWorkbench.getState().pageAnnotations[session.id] ?? EMPTY_NOTES;
-    if (pendingNotes.length === 0 && caps?.supports_plan && value === "/plan") {
+    if (caps?.supports_plan && value === "/plan") {
       setText("");
       void setCollaborationMode(session.id, planOn ? "default" : "plan");
       return;
     }
     const planRequest = value.match(/^\/plan\s+([\s\S]+)$/);
-    if (pendingNotes.length === 0 && caps?.supports_plan && planRequest) {
+    if (caps?.supports_plan && planRequest) {
       setText("");
       void setCollaborationMode(session.id, "plan").then(() => {
         sendMessage(session.id, planRequest[1].trim());
       });
       return;
     }
-    if (pendingNotes.length === 0 && caps?.supports_review && value === "/review") {
+    if (caps?.supports_review && value === "/review") {
       setText("");
       setReviewOpen(true);
       return;
@@ -371,22 +363,20 @@ export function Composer({
       textareaRef.current?.focus();
       return;
     }
-    const canSend = Boolean(value || imagePaths.length || pendingNotes.length);
+    const canSend = Boolean(value || imagePaths.length);
     if (!canSend || composerLocked) return;
     setText("");
     if (imagesOn) {
-      void sendMessage(session.id, value, imagePaths, pendingNotes);
+      void sendMessage(session.id, value, imagePaths);
       clearAttachments(session.id);
-      clearPageAnnotations(session.id);
     } else {
-      const slash = value.startsWith("/") && pendingNotes.length === 0;
+      const slash = value.startsWith("/");
       const body =
         !slash && attached.length > 0
           ? `${value}\n\n附件：${attached.map((file) => file.name).join("、")}`
           : value;
-      void sendMessage(session.id, body, [], pendingNotes);
+      void sendMessage(session.id, body, []);
       if (!slash) clearAttachments(session.id);
-      clearPageAnnotations(session.id);
     }
     textareaRef.current?.focus();
   };
@@ -420,7 +410,7 @@ export function Composer({
   };
 
   const stopMode =
-    queueOn && busy && !editingId && !pendingId && !text.trim() && files.length === 0 && notes.length === 0;
+    queueOn && busy && !editingId && !pendingId && !text.trim() && files.length === 0;
 
   return (
     <div className="composer-root min-w-0 shrink-0 px-4 pb-4 pt-1">
@@ -644,33 +634,6 @@ export function Composer({
             ))}
           </div>
         )}
-        {notes.length > 0 && (
-          <div className="mb-2 flex min-w-0 flex-wrap gap-1.5 overflow-x-hidden px-1">
-            {notes.map((note) => (
-              <span
-                key={note.id}
-                title={note.comment || note.selector || note.url}
-                className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-full bg-sky-500/15 px-2.5 py-1 text-xs text-sky-100"
-              >
-                {note.screenshot ? (
-                  <ChatThumb path={note.screenshot} name={annotationLabel(note)} className="h-5 w-5 rounded object-cover" />
-                ) : null}
-                <span className="min-w-0 truncate">{annotationLabel(note)}</span>
-                <button
-                  type="button"
-                  className="rounded-full text-sky-200/80 hover:text-white"
-                  aria-label={CODEX_DESKTOP.browserRemoveAnnotation}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    removePageAnnotation(session.id, note.id);
-                  }}
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            ))}
-          </div>
-        )}
         {files.length > 0 && !imagesOn && (
           <div className="mb-2 flex min-w-0 flex-wrap gap-1.5 overflow-x-hidden px-1">
             {files.map((file) => (
@@ -890,8 +853,8 @@ export function Composer({
                     !(pendingId
                       ? text.trim()
                       : imagesOn
-                        ? text.trim() || files.length > 0 || notes.length > 0
-                        : text.trim() || notes.length > 0)
+                        ? text.trim() || files.length > 0
+                        : text.trim())
               }
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-950 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
               title={stopMode ? "停止" : "发送"}

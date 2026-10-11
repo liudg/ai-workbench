@@ -446,6 +446,7 @@ impl Shared {
             SessionEventBody::UserMessage {
                 text: shown.clone(),
                 images: Vec::new(),
+                annotations: 0,
             },
         );
         self.begin_turn(shown).await

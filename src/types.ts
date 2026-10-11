@@ -89,7 +89,7 @@ export interface PromptOption {
 
 /** 事件体（对应 Rust 的 SessionEventBody；适配器只产生这一层） */
 export type SessionEventBody =
-  | { kind: "user-message"; text: string; images?: string[] }
+  | { kind: "user-message"; text: string; images?: string[]; annotations?: number }
   | {
       kind: "agent-message";
       text: string;

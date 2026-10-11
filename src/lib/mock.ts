@@ -866,7 +866,8 @@ export const mockBackend: Backend = {
     if (s.pendingPrompt) throw new Error("存在待回答的提问，请先处理");
     const profile = MOCK_PROFILES[s.meta.agent];
     const slash = text.trimStart().startsWith("/") && images.length === 0 && annotations.length === 0;
-    const folded = foldPageAnnotations(text, annotations);
+    const display = text;
+    const folded = foldPageAnnotations(display, annotations);
     text = folded.text;
     images = [...images];
     for (const path of folded.images) {
@@ -882,12 +883,19 @@ export const mockBackend: Backend = {
     }
     pushEvent(sessionId, {
       kind: "user-message",
-      text,
+      text: display,
       images,
+      ...(annotations.length ? { annotations: annotations.length } : {}),
     });
     noteActivity(sessionId);
     if (s.meta.title.startsWith("会话 ") || s.meta.title === "未命名会话") {
-      const source = text.trim() || (images.length ? "图片" : "");
+      const source = display.trim()
+        ? display
+        : annotations.length
+          ? `${annotations.length} 条注释`
+          : images.length
+            ? "图片"
+            : "";
       if (source) {
         s.meta.title = source.split("\n")[0].slice(0, 24);
         sessionsChangedListeners.forEach((cb) => cb(s.meta.project_id));

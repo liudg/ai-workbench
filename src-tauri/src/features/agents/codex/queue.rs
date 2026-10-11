@@ -213,7 +213,7 @@ impl Shared {
         }
         emit(
             &self.events,
-            SessionEventBody::UserMessage { text, images },
+            SessionEventBody::UserMessage { text, images, annotations: 0 },
         );
     }
 
@@ -238,6 +238,7 @@ impl Shared {
                     SessionEventBody::UserMessage {
                         text: item.text.clone(),
                         images: item.images.clone(),
+                        annotations: 0,
                     },
                 );
             }

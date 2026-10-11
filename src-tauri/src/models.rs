@@ -309,6 +309,10 @@ fn is_false(value: &bool) -> bool {
     !*value
 }
 
+fn is_zero(value: &u32) -> bool {
+    *value == 0
+}
+
 /// 会话事件体（时间线中的一条）。`kind` 字段作为判别标签。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
@@ -318,6 +322,9 @@ pub enum SessionEventBody {
         /// 本机路径或 `data:` / `https:` 图片。气泡用缩略图，不把文件名拼进文本。
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         images: Vec<String>,
+        /// 浏览器批注条数。大于 0 时时间线显示「N 条注释」，正文仍只给 Agent。
+        #[serde(default, skip_serializing_if = "is_zero")]
+        annotations: u32,
     },
     AgentMessage {
         text: String,

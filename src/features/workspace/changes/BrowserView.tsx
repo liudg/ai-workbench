@@ -42,7 +42,6 @@ export function BrowserView({
   const [history, setHistory] = useState<BrowserHistory>(() => recallHistory(tabId));
   const [draft, setDraft] = useState<string | null>(null);
   const [annotating, setAnnotating] = useState(false);
-  const [suspended, setSuspended] = useState(false);
   const [snapshotFailed, setSnapshotFailed] = useState(false);
   const [frameKey, setFrameKey] = useState(0);
   const [error, setError] = useState("");
@@ -146,15 +145,18 @@ export function BrowserView({
       if (notice.kind === "annotate") {
         const on = notice.value === "1";
         setAnnotating(on);
-        if (!on) setSuspended(false);
       }
-      if (notice.kind === "suspended") setSuspended(notice.value === "1");
       if (notice.kind === "annotation") {
         try {
           const note = JSON.parse(notice.value) as PageAnnotation;
-          if (!note.id) return;
-          useWorkbench.getState().addPageAnnotation(sessionRef.current, note);
+          if (!note.id || !note.comment.trim()) return;
           setSnapshotFailed(Boolean(note.snapshotFailed));
+          const sid = sessionRef.current;
+          if (!sid) {
+            setError(CODEX_DESKTOP.browserAnnotateFailed);
+            return;
+          }
+          void useWorkbench.getState().sendMessage(sid, "", [], [note]);
         } catch {
           setError(CODEX_DESKTOP.browserAnnotateFailed);
         }
@@ -202,6 +204,33 @@ export function BrowserView({
   const shown = draft ?? currentEntry(history)?.address ?? (path ? displayFileAddress(path) : "");
   const frameTarget = currentEntry(history)?.target ?? "";
   const localFrame = frameTarget.startsWith("http://asset.localhost/") || frameTarget.startsWith("https://asset.localhost/");
+  const frameTargetRef = useRef(frameTarget);
+  frameTargetRef.current = frameTarget;
+
+  const toggleAnnotate = useCallback(() => {
+    if (!frameTargetRef.current) return;
+    const next = !annotatingRef.current;
+    setAnnotating(next);
+    if (isTauri && native) {
+      void backend.browserAnnotate(next).catch(() => {
+        setError(CODEX_DESKTOP.browserAnnotateFailed);
+      });
+    }
+  }, [native]);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || !event.shiftKey || event.altKey) return;
+      if (event.code !== "Period") return;
+      if (!frameTargetRef.current) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("textarea, input") && !target.closest("[data-browser]")) return;
+      event.preventDefault();
+      toggleAnnotate();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [toggleAnnotate]);
 
   const submit = (value: string) => {
     const plan = parseAddressInput(value);
@@ -261,65 +290,69 @@ export function BrowserView({
         >
           <RotateCw className="h-3.5 w-3.5" />
         </ChromeButton>
-        <input
-          data-browser-address
-          aria-label={CODEX_DESKTOP.browserAddressPlaceholder}
-          placeholder={CODEX_DESKTOP.browserAddressPlaceholder}
-          className="h-7 min-w-0 flex-1 rounded-md border border-zinc-700 bg-zinc-950 px-2 text-xs text-zinc-100 outline-none focus:border-zinc-500"
-          value={shown}
-          spellCheck={false}
-          onFocus={() => setDraft(currentEntry(history)?.address ?? shown)}
-          onChange={(event) => setDraft(event.target.value)}
-          onBlur={() => setDraft(null)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              submit(draft ?? shown);
-            }
-          }}
-        />
-        <button
-          type="button"
-          data-browser-annotate
-          aria-pressed={annotating}
-          title={CODEX_DESKTOP.browserAnnotateTooltip}
-          className={cn(
-            "shrink-0 rounded-md px-2 py-1 text-xs",
-            annotating ? "bg-sky-500/20 text-sky-200" : "text-zinc-300 hover:bg-zinc-800",
-          )}
-          onClick={() => {
-            const next = !annotating;
-            setAnnotating(next);
-            if (!next) setSuspended(false);
-            if (isTauri && native) {
-              void backend.browserAnnotate(next).catch(() => {
-                setError(CODEX_DESKTOP.browserAnnotateFailed);
+        {frameTarget ? (
+          <div className="group relative shrink-0">
+            <button
+              type="button"
+              data-browser-annotate
+              aria-pressed={annotating}
+              className={cn(
+                "inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs",
+                annotating ? "bg-[#d7e8ff] text-[#2457d6]" : "text-zinc-300 hover:bg-zinc-800",
+              )}
+              onClick={toggleAnnotate}
+            >
+              <AnnotatePin />
+              {CODEX_DESKTOP.browserAnnotate}
+            </button>
+            <div
+              role="tooltip"
+              className="pointer-events-none absolute left-0 top-full z-30 mt-1 hidden w-max max-w-[260px] items-center gap-1.5 rounded-lg bg-zinc-950 px-2 py-1.5 text-[11px] leading-4 text-white shadow-lg group-hover:flex"
+            >
+              <span>{CODEX_DESKTOP.browserAnnotateTooltip}</span>
+              <kbd className="shrink-0 rounded bg-zinc-700 px-1 py-0.5 text-[10px] text-zinc-100">
+                {CODEX_DESKTOP.browserAnnotateShortcut}
+              </kbd>
+            </div>
+          </div>
+        ) : null}
+        <div className="relative min-w-0 flex-1">
+          <input
+            data-browser-address
+            aria-label={CODEX_DESKTOP.browserAddressPlaceholder}
+            placeholder={CODEX_DESKTOP.browserAddressPlaceholder}
+            className="h-7 w-full rounded-full border border-zinc-700 bg-zinc-950 px-2 pr-7 text-xs text-zinc-100 outline-none focus:border-zinc-500"
+            value={shown}
+            spellCheck={false}
+            onFocus={() => setDraft(currentEntry(history)?.address ?? shown)}
+            onChange={(event) => setDraft(event.target.value)}
+            onBlur={() => setDraft(null)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                submit(draft ?? shown);
+              }
+            }}
+          />
+          <button
+            type="button"
+            aria-label={CODEX_DESKTOP.browserOpenExternal}
+            title={CODEX_DESKTOP.browserOpenExternal}
+            disabled={!shown}
+            data-browser-external
+            className="absolute right-1 top-1/2 -translate-y-1/2 rounded-full p-1 text-zinc-400 hover:text-zinc-100 disabled:text-zinc-600"
+            onClick={() => {
+              const target = currentEntry(history)?.address || shown;
+              void backend.browserOpenExternal(target).catch((err: unknown) => {
+                setError(message(err, CODEX_DESKTOP.browserExternalFailed));
               });
-            }
-          }}
-        >
-          {annotating ? CODEX_DESKTOP.browserAnnotating : CODEX_DESKTOP.browserAnnotate}
-        </button>
-        <ChromeButton
-          label={CODEX_DESKTOP.browserOpenExternal}
-          disabled={!shown}
-          data-browser-external
-          onClick={() => {
-            const target = currentEntry(history)?.address || shown;
-            void backend.browserOpenExternal(target).catch((err: unknown) => {
-              setError(message(err, CODEX_DESKTOP.browserExternalFailed));
-            });
-          }}
-        >
-          <ExternalLink className="h-3.5 w-3.5" />
-        </ChromeButton>
+            }}
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
       {error ? <p className="shrink-0 px-3 py-1 text-xs text-red-300">{error}</p> : null}
-      {annotating ? (
-        <p className="shrink-0 truncate px-3 py-1 text-[11px] text-zinc-400" data-browser-annotate-hint>
-          {suspended ? CODEX_DESKTOP.browserAnnotateSuspended : CODEX_DESKTOP.browserAnnotateHint}
-        </p>
-      ) : null}
       {snapshotFailed ? (
         <p className="shrink-0 px-3 py-1 text-[11px] text-amber-200/90">{CODEX_DESKTOP.browserSnapshotFailed}</p>
       ) : null}
@@ -377,6 +410,20 @@ function ChromeButton({
     >
       {children}
     </button>
+  );
+}
+
+function AnnotatePin() {
+  return (
+    <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true">
+      <path
+        d="M8 1.6a3.6 3.6 0 0 0-3.6 3.6c0 2.7 3.6 7.6 3.6 7.6s3.6-4.9 3.6-7.6A3.6 3.6 0 0 0 8 1.6Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+      />
+      <circle cx="8" cy="5.2" r="1.15" fill="currentColor" />
+    </svg>
   );
 }
 
