@@ -243,6 +243,97 @@ export function baseName(path: string): string {
   return parts[parts.length - 1] ?? path;
 }
 
+/** 变更页「上一轮」菜单。已提交、分支在参考里有尖角，子菜单没有打开。 */
+export function diffScopeMenu(): { id: string; label: string; submenu: boolean }[] {
+  return [
+    { id: "turn", label: CODEX_DESKTOP.diffPreviousTurn, submenu: false },
+    { id: "uncommitted", label: CODEX_DESKTOP.diffUncommitted, submenu: false },
+    { id: "unstaged", label: CODEX_DESKTOP.diffUnstaged, submenu: false },
+    { id: "staged", label: CODEX_DESKTOP.diffStaged, submenu: false },
+    { id: "committed", label: CODEX_DESKTOP.diffCommitted, submenu: true },
+    { id: "branch", label: CODEX_DESKTOP.diffBranch, submenu: true },
+  ];
+}
+
+export function unmodifiedLinesLabel(count: number): string {
+  return `${count} unmodified lines`;
+}
+
+export type DiffFoldRow =
+  | { kind: "collapse"; count: number }
+  | { kind: "line"; tone: "add" | "del" | "context" | "meta"; text: string; lineNo: number | null };
+
+/**
+ * 把统一 diff 收成 Codex 那样的行：块与块之间没出现的旧行变成
+ * 「N unmodified lines」，块内的上下文和改动照原样留下。
+ */
+export function foldDiffLines(diff: string): DiffFoldRow[] {
+  const rows: DiffFoldRow[] = [];
+  let inHunk = false;
+  let oldLine = 0;
+  let newLine = 0;
+  let lastNo: number | null = null;
+  const emit = (tone: "add" | "del" | "context", text: string, lineNo: number) => {
+    if (lastNo === null) {
+      if (lineNo > 1) rows.push({ kind: "collapse", count: lineNo - 1 });
+    } else {
+      const gap = lineNo - lastNo - 1;
+      if (gap > 0) rows.push({ kind: "collapse", count: gap });
+    }
+    rows.push({ kind: "line", tone, text, lineNo });
+    lastNo = lineNo;
+  };
+  for (const line of diff.split(/\r?\n/)) {
+    if (line.startsWith("diff --git ")) {
+      inHunk = false;
+      lastNo = null;
+      continue;
+    }
+    if (
+      line.startsWith("index ") ||
+      line.startsWith("--- ") ||
+      line.startsWith("+++ ") ||
+      line.startsWith("new file") ||
+      line.startsWith("deleted file") ||
+      line.startsWith("old mode") ||
+      line.startsWith("new mode") ||
+      line.startsWith("similarity ") ||
+      line.startsWith("rename ") ||
+      line.startsWith("copy ")
+    ) {
+      continue;
+    }
+    const hunk = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
+    if (hunk) {
+      oldLine = Number(hunk[1]);
+      newLine = Number(hunk[2]);
+      inHunk = true;
+      continue;
+    }
+    if (!inHunk) continue;
+    if (line.startsWith("\\")) {
+      const text = line.replace(/^\\/, "").trim();
+      rows.push({ kind: "line", tone: "meta", text, lineNo: null });
+      continue;
+    }
+    if (line.startsWith("+")) {
+      emit("add", line.slice(1), newLine);
+      newLine += 1;
+      continue;
+    }
+    if (line.startsWith("-")) {
+      emit("del", line.slice(1), oldLine);
+      oldLine += 1;
+      continue;
+    }
+    const text = line.startsWith(" ") ? line.slice(1) : line;
+    emit("context", text, newLine);
+    oldLine += 1;
+    newLine += 1;
+  }
+  return rows;
+}
+
 function eventSlices(events: readonly SessionEvent[]): SessionEvent[][] {
   const slices: SessionEvent[][] = [];
   let current: SessionEvent[] = [];

@@ -116,14 +116,10 @@
       ".dot{position:absolute;width:18px;height:18px;margin-left:-9px;margin-top:-9px;border-radius:999px;background:#2f6fed;color:#fff;font:12px/18px 'Segoe UI',sans-serif;text-align:center;pointer-events:none;display:none;z-index:4}",
       ".hint{position:absolute;left:12px;top:12px;max-width:300px;background:#111;color:#fff;border-radius:12px;padding:8px 10px;font:13px/1.45 'Segoe UI',sans-serif;pointer-events:none;box-shadow:0 8px 24px rgba(0,0,0,.28)}",
       ".hint kbd{display:inline-block;margin:0 2px;padding:0 5px;border-radius:5px;background:#2c2c2c;border:1px solid #444;font:12px/18px 'Segoe UI',sans-serif}",
-      ".editor{position:absolute;box-sizing:border-box;min-width:180px;background:#fff;color:#111;border-radius:14px;box-shadow:0 10px 28px rgba(0,0,0,.18);pointer-events:auto;display:flex;align-items:flex-end;gap:6px;padding:6px 8px 6px 6px;z-index:3;font:13px/1.4 'Segoe UI',sans-serif}",
-      ".editor textarea{flex:1;min-width:0;border:0;resize:none;outline:none;background:transparent;color:#111;font:inherit;min-height:22px;max-height:160px;padding:2px 0;overflow:hidden}",
+      ".editor{position:absolute;box-sizing:border-box;min-width:120px;height:28px;background:#fff;color:#111;border-radius:14px;box-shadow:0 6px 18px rgba(0,0,0,.16);pointer-events:auto;display:flex;align-items:center;gap:4px;padding:2px 4px 2px 10px;z-index:3;font:13px/1.4 'Segoe UI',sans-serif}",
+      ".editor textarea{flex:1;min-width:0;border:0;resize:none;outline:none;background:transparent;color:#111;font:inherit;height:22px;max-height:22px;padding:0;overflow:hidden}",
       ".editor textarea::placeholder{color:#9aa0a6}",
-      ".handle{width:14px;height:22px;display:grid;grid-template-columns:4px 4px;gap:2px 3px;align-content:center;justify-content:center;cursor:grab;flex:none;padding:0;border:0;background:transparent}",
-      ".handle i{width:3px;height:3px;border-radius:99px;background:#b0b6be;display:block}",
-      ".actions{display:flex;gap:4px;align-items:center;flex:none}",
-      ".mic{border:0;background:transparent;width:22px;height:22px;border-radius:99px;display:inline-flex;align-items:center;justify-content:center;padding:0;color:#6b7280}",
-      ".check{border:0;background:#111;color:#fff;width:22px;height:22px;border-radius:99px;display:none;align-items:center;justify-content:center;padding:0;cursor:pointer}",
+      ".check{border:0;background:#111;color:#fff;width:22px;height:22px;border-radius:99px;display:none;align-items:center;justify-content:center;padding:0;cursor:pointer;flex:none}",
       ".fail{position:absolute;left:12px;bottom:12px;background:#7f1d1d;color:#fee2e2;border-radius:8px;padding:6px 8px;pointer-events:none;font:12px/1.4 sans-serif}",
     ].join("");
     var blocker = document.createElement("div");
@@ -238,13 +234,15 @@
     }
 
     function placeEditor(rect) {
-      var dotX = rect.left + rect.width / 2;
-      var left = dotX + 14;
-      var room = window.innerWidth - left - 8;
-      var width = Math.max(180, Math.min(Math.max(rect.width, 220), room));
+      var pad = 4;
+      var width = Math.min(260, Math.max(120, rect.width - pad * 2));
+      var left = rect.left + Math.max(pad, rect.width - width - pad);
       if (left + width > window.innerWidth - 8) left = Math.max(8, window.innerWidth - width - 8);
+      if (left < rect.left) left = rect.left;
       if (left < 8) left = 8;
-      var top = rect.top - 18;
+      var top = rect.top + pad;
+      if (rect.height > 36) top = rect.top + (rect.height - 28) / 2;
+      if (top < rect.top) top = rect.top;
       if (top < 8) top = 8;
       pop.style.left = left + "px";
       pop.style.top = top + "px";
@@ -260,23 +258,9 @@
       pop = document.createElement("div");
       pop.className = "editor";
       pop.setAttribute("data-browser-comment-editor", "1");
-      var handle = document.createElement("button");
-      handle.type = "button";
-      handle.className = "handle";
-      handle.setAttribute("aria-hidden", "true");
-      handle.tabIndex = -1;
-      for (var i = 0; i < 6; i++) handle.appendChild(document.createElement("i"));
       field = document.createElement("textarea");
       field.rows = 1;
       field.placeholder = "添加评论…";
-      var actions = document.createElement("div");
-      actions.className = "actions";
-      var mic = document.createElement("button");
-      mic.type = "button";
-      mic.className = "mic";
-      mic.tabIndex = -1;
-      mic.setAttribute("aria-hidden", "true");
-      mic.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4"/></svg>';
       check = document.createElement("button");
       check.type = "button";
       check.className = "check";
@@ -284,31 +268,9 @@
       check.title = "发送";
       check.setAttribute("aria-label", "发送");
       check.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12.5 10 17.5 19 7"/></svg>';
-      actions.append(mic, check);
-      pop.append(handle, field, actions);
+      pop.append(field, check);
       shadow.appendChild(pop);
       placeEditor(rect);
-      handle.addEventListener("mousedown", function (event) {
-        event.preventDefault();
-        event.stopPropagation();
-        var startX = event.clientX;
-        var startY = event.clientY;
-        var origLeft = parseFloat(pop.style.left) || 0;
-        var origTop = parseFloat(pop.style.top) || 0;
-        function move(ev) {
-          pop.style.left = (origLeft + ev.clientX - startX) + "px";
-          pop.style.top = (origTop + ev.clientY - startY) + "px";
-        }
-        function up() {
-          window.removeEventListener("mousemove", move, true);
-          window.removeEventListener("mouseup", up, true);
-        }
-        window.addEventListener("mousemove", move, true);
-        window.addEventListener("mouseup", up, true);
-      });
-      mic.addEventListener("mousedown", function (event) {
-        event.preventDefault();
-      });
       check.addEventListener("mousedown", function (event) {
         event.preventDefault();
       });

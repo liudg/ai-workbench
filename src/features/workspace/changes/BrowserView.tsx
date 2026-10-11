@@ -225,7 +225,7 @@ export function BrowserView({
     const onKey = (event: KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey) || !event.shiftKey || event.altKey) return;
       if (event.code !== "Period") return;
-      if (!frameTargetRef.current) return;
+      if (!frameTargetRef.current || !currentEntry(historyRef.current)?.loaded) return;
       const target = event.target as HTMLElement | null;
       if (target?.closest("textarea, input") && !target.closest("[data-browser]")) return;
       event.preventDefault();
@@ -293,7 +293,7 @@ export function BrowserView({
         >
           <RotateCw className="h-3.5 w-3.5" />
         </ChromeButton>
-        {frameTarget ? (
+        {frameTarget && currentEntry(history)?.loaded ? (
           <div className="group relative shrink-0">
             <button
               type="button"
@@ -375,6 +375,13 @@ export function BrowserView({
             key={frameKey}
             className="h-full w-full border-0 bg-zinc-950"
             data-browser-frame="iframe"
+            onLoad={() => {
+              const current = currentEntry(historyRef.current);
+              if (!current || current.loaded) return;
+              const entries = historyRef.current.entries.slice();
+              entries[historyRef.current.index] = { ...current, loaded: true };
+              commit({ ...historyRef.current, entries });
+            }}
           />
         ) : null}
       </div>

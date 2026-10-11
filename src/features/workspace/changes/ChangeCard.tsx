@@ -77,7 +77,7 @@ export function ChangeCard({ changes }: { changes: TurnChanges }) {
               data-view-changes
               className="rounded px-2 py-1 text-xs text-zinc-100 hover:bg-zinc-800"
               onClick={() =>
-                preview.openDiff(`diff:${changes.id}`, CODEX_DESKTOP.viewChanges, changes.files)
+                preview.openDiff(`diff:${changes.id}`, CODEX_DESKTOP.changesTab, changes.files)
               }
             >
               {CODEX_DESKTOP.viewChanges}

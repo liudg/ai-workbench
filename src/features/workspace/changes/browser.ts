@@ -5,6 +5,8 @@ export interface BrowserEntry {
   address: string;
   /** 交给 webview 的地址。 */
   target: string;
+  /** 页面加载完成前不出现批注。 */
+  loaded?: boolean;
 }
 
 export interface BrowserHistory {
@@ -73,17 +75,18 @@ export function noteLoaded(history: BrowserHistory, loadedUrl: string): BrowserH
   const target = loadedUrl;
   if (!address || address === "about:blank") return history;
   const current = currentEntry(history);
-  if (!current) return visit(history, { address, target });
+  if (!current) return visit(history, { address, target, loaded: true });
   if (current.target === target || (file && current.address === file)) {
-    if (current.address === address && current.target === target) return history;
+    if (current.loaded && current.address === address && current.target === target) return history;
     const entries = history.entries.slice();
     entries[history.index] = {
       address: file ?? current.address,
       target,
+      loaded: true,
     };
     return { ...history, entries };
   }
-  return visit(history, { address, target });
+  return visit(history, { address, target, loaded: true });
 }
 
 export function displayFileAddress(path: string): string {

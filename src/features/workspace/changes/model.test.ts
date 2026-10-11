@@ -8,6 +8,8 @@ import {
   FILE_LIST_LIMIT,
   isPatchTool,
   parsePatchDetail,
+  diffScopeMenu,
+  foldDiffLines,
   parseUnifiedDiff,
   previewKindForPath,
   resolvePreviewPath,
@@ -155,6 +157,52 @@ test("change card actions are view and show-more, never undo", () => {
   assert.equal(visibleChangeFiles([1, 2, 3, 4], true, false).length, FILE_LIST_LIMIT);
   assert.deepEqual(visibleChangeFiles([1, 2, 3, 4], true, true), [1, 2, 3, 4]);
   assert.deepEqual(visibleChangeFiles([1, 2], false, false), []);
+});
+
+test("diff scope menu matches the Codex previous-turn list", () => {
+  assert.deepEqual(
+    diffScopeMenu().map((item) => [item.label, item.submenu]),
+    [
+      ["上一轮", false],
+      ["未提交", false],
+      ["未暂存", false],
+      ["已暂存", false],
+      ["已提交", true],
+      ["分支", true],
+    ],
+  );
+});
+
+test("unchanged lines between hunks collapse into unmodified bars", () => {
+  const diff = [
+    "diff --git a/annotate.html b/annotate.html",
+    "--- a/annotate.html",
+    "+++ b/annotate.html",
+    "@@ -11,3 +11,4 @@",
+    " p.note { color: #555; }",
+    "+#p1 { font-size: 18px; }",
+    " </",
+    "@@ -22,1 +23,2 @@",
+    "-</html>",
+    "\\ No newline at end of file",
+    "+</html>",
+  ].join("\n");
+  const rows = foldDiffLines(diff);
+  assert.deepEqual(
+    rows.map((row) =>
+      row.kind === "collapse" ? `hide ${row.count}` : `${row.tone}:${row.lineNo}:${row.text}`,
+    ),
+    [
+      "hide 10",
+      "context:11:p.note { color: #555; }",
+      "add:12:#p1 { font-size: 18px; }",
+      "context:13:</",
+      "hide 8",
+      "del:22:</html>",
+      "meta:null:No newline at end of file",
+      "add:23:</html>",
+    ],
+  );
 });
 
 test("preview links stay inside the project", () => {

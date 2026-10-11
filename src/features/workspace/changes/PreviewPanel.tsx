@@ -4,8 +4,8 @@ import { cn } from "@/lib/utils";
 import { AssistantAnswer } from "../timeline/AssistantAnswer";
 import { CODEX_DESKTOP } from "../codex-desktop";
 import { BrowserView } from "./BrowserView";
+import { DiffView } from "./DiffView";
 import { usePreview, type PreviewTab } from "./preview-context";
-import type { FileChange } from "./model";
 
 export function PreviewPanel() {
   const { tabs, activeId, selectTab, closeTab, openBlank, setTabTitle, projectId } = usePreview();
@@ -74,7 +74,7 @@ function TabBody({
   projectId: string;
   onTitle: (id: string, title: string) => void;
 }) {
-  if (tab.kind === "diff") return <DiffBody files={tab.files} />;
+  if (tab.kind === "diff") return <DiffView files={tab.files} />;
   if (tab.kind === "html") {
     if (tab.status === "error") {
       return <p className="px-4 py-6 text-sm text-red-300">{tab.error}</p>;
@@ -111,54 +111,6 @@ function TabBody({
       </pre>
     </div>
   );
-}
-
-function DiffBody({ files }: { files: FileChange[] }) {
-  if (files.length === 0) {
-    return <p className="px-4 py-6 text-sm text-zinc-500">{CODEX_DESKTOP.noFileChanges}</p>;
-  }
-  return (
-    <div className="h-full overflow-auto" data-diff-view>
-      {files.map((file) => (
-        <section key={file.path} className="border-b border-zinc-800">
-          <header className="sticky top-0 flex min-w-0 items-center gap-2 bg-zinc-950/95 px-3 py-2 text-xs">
-            <span className="w-4 shrink-0 font-mono text-zinc-400">{file.status}</span>
-            <span className="min-w-0 flex-1 truncate font-mono text-zinc-200" title={file.path}>
-              {file.path}
-            </span>
-            <span className="font-mono text-emerald-400">+{file.added}</span>
-            <span className="font-mono text-red-400">−{file.removed}</span>
-          </header>
-          <DiffText diff={file.diff} />
-        </section>
-      ))}
-    </div>
-  );
-}
-
-function DiffText({ diff }: { diff: string }) {
-  if (!diff.trim()) {
-    return <p className="px-3 py-2 text-xs text-zinc-500">没有可显示的差异文本。</p>;
-  }
-  return (
-    <pre className="overflow-x-auto px-0 py-1 font-mono text-xs leading-5">
-      {diff.split(/\r?\n/).map((line, index) => (
-        <div key={index} className={cn("px-3", diffLineClass(line))}>
-          {line.length > 0 ? line : " "}
-        </div>
-      ))}
-    </pre>
-  );
-}
-
-function diffLineClass(line: string): string {
-  if (line.startsWith("diff --git ") || line.startsWith("--- ") || line.startsWith("+++ ")) {
-    return "text-zinc-500";
-  }
-  if (line.startsWith("@@")) return "text-sky-300/90";
-  if (line.startsWith("+")) return "bg-emerald-500/10 text-emerald-300";
-  if (line.startsWith("-")) return "bg-red-500/10 text-red-300";
-  return "text-zinc-300";
 }
 
 function Truncated() {

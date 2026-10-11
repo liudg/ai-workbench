@@ -64,8 +64,10 @@ test("loaded file url keeps the disk path in the address bar", () => {
     address: "C:/demo/a.html",
     target: "http://asset.localhost/C%3A/demo/a.html",
   });
+  assert.equal(currentEntry(history)?.loaded, undefined);
   history = noteLoaded(history, "http://asset.localhost/C%3A/demo/a.html");
   assert.equal(currentEntry(history)?.address, "C:/demo/a.html");
+  assert.equal(currentEntry(history)?.loaded, true);
   history = noteLoaded(history, "https://example.com/moved");
   assert.equal(currentEntry(history)?.address, "https://example.com/moved");
   assert.equal(canGoBack(history), true);
