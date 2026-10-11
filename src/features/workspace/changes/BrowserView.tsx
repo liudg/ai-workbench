@@ -53,6 +53,7 @@ export function BrowserView({
   historyRef.current = history;
   const annotatingRef = useRef(annotating);
   annotatingRef.current = annotating;
+  const liveTitle = useRef(false);
 
   const commit = useCallback(
     (next: BrowserHistory) => {
@@ -92,6 +93,11 @@ export function BrowserView({
   );
 
   useEffect(() => {
+    liveTitle.current = false;
+  }, [path, tabId]);
+
+  useEffect(() => {
+    if (liveTitle.current) return;
     const title = tabTitleFromDocument(pageTitleFromHtml(text));
     if (title) onTitle(title);
   }, [onTitle, text]);
@@ -125,7 +131,10 @@ export function BrowserView({
     const unlisten = backend.onBrowserNotice((notice) => {
       if (notice.kind === "title") {
         const title = tabTitleFromDocument(notice.value);
-        if (title) onTitle(title);
+        if (title) {
+          liveTitle.current = true;
+          onTitle(title);
+        }
       }
       if (notice.kind === "load") {
         const next = noteLoaded(historyRef.current, notice.value);

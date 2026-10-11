@@ -57,6 +57,8 @@ fn host_state() -> &'static Mutex<BrowserState> {
 }
 
 static CHANNEL_HOOKED: AtomicBool = AtomicBool::new(false);
+static PULLING: AtomicBool = AtomicBool::new(false);
+static PULL_AT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 pub fn display_file_address(path: &Path) -> String {
     strip_verbatim_prefix(&path.to_string_lossy()).replace('\\', "/")
@@ -236,6 +238,7 @@ fn show_browser(app: AppHandle, url: Url, x: f64, y: f64, width: f64, height: f6
     if width < 8.0 || height < 8.0 {
         return Ok(());
     }
+    ensure_page_pull(app.clone());
     let requested = url.to_string();
     let _guard = host_lock().lock().map_err(|_| "浏览器正忙".to_string())?;
     if let Some(webview) = app.get_webview(LABEL) {
@@ -428,11 +431,63 @@ fn stage_png(app: &AppHandle, bytes: &[u8]) -> Result<String, String> {
     Ok(strip_verbatim_prefix(&path.to_string_lossy()))
 }
 
+fn seen_messages() -> &'static Mutex<Vec<u64>> {
+    static SEEN: OnceLock<Mutex<Vec<u64>>> = OnceLock::new();
+    SEEN.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+fn parse_drained_messages(raw: &str) -> Vec<serde_json::Value> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(raw) else {
+        return Vec::new();
+    };
+    let value = match value {
+        serde_json::Value::String(text) => {
+            serde_json::from_str::<serde_json::Value>(&text).unwrap_or(serde_json::Value::Null)
+        }
+        other => other,
+    };
+    match value {
+        serde_json::Value::Array(items) => items,
+        _ => Vec::new(),
+    }
+}
+
+fn claim_message(value: &serde_json::Value) -> bool {
+    let Some(mid) = value.get("mid").and_then(|item| item.as_u64()) else {
+        return true;
+    };
+    let mut seen = seen_messages()
+        .lock()
+        .unwrap_or_else(|err| err.into_inner());
+    if seen.contains(&mid) {
+        return false;
+    }
+    seen.push(mid);
+    if seen.len() > 128 {
+        let extra = seen.len() - 128;
+        seen.drain(0..extra);
+    }
+    true
+}
+
 fn handle_page_payload(app: &AppHandle, raw: &str) {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(raw) else {
         return;
     };
+    dispatch_page_message(app, value);
+}
+
+fn apply_drained(app: &AppHandle, raw: &str) {
+    for item in parse_drained_messages(raw) {
+        dispatch_page_message(app, item);
+    }
+}
+
+fn dispatch_page_message(app: &AppHandle, value: serde_json::Value) {
     if value.get("channel").and_then(|item| item.as_str()) != Some("aw-browser") {
+        return;
+    }
+    if !claim_message(&value) {
         return;
     }
     let kind = value.get("kind").and_then(|item| item.as_str()).unwrap_or("");
@@ -456,6 +511,71 @@ fn handle_page_payload(app: &AppHandle, raw: &str) {
         }
         _ => {}
     }
+}
+
+fn ensure_page_pull(app: AppHandle) {
+    #[cfg(not(windows))]
+    {
+        let _ = app;
+    }
+    #[cfg(windows)]
+    {
+        static STARTED: OnceLock<()> = OnceLock::new();
+        STARTED.get_or_init(|| {
+            std::thread::spawn(move || loop {
+                std::thread::sleep(Duration::from_millis(120));
+                let hidden = host_state()
+                    .lock()
+                    .map(|state| state.hidden)
+                    .unwrap_or(true);
+                if hidden {
+                    continue;
+                }
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|elapsed| elapsed.as_millis() as u64)
+                    .unwrap_or(0);
+                if PULLING.load(Ordering::SeqCst) {
+                    let started = PULL_AT.load(Ordering::SeqCst);
+                    if now.saturating_sub(started) < 2_000 {
+                        continue;
+                    }
+                }
+                PULL_AT.store(now, Ordering::SeqCst);
+                PULLING.store(true, Ordering::SeqCst);
+                let Some(webview) = app.get_webview(LABEL) else {
+                    PULLING.store(false, Ordering::SeqCst);
+                    continue;
+                };
+                let app_for_pull = app.clone();
+                let queued = webview.with_webview(move |platform| {
+                    if start_pull(platform, app_for_pull).is_err() {
+                        PULLING.store(false, Ordering::SeqCst);
+                    }
+                });
+                if queued.is_err() {
+                    PULLING.store(false, Ordering::SeqCst);
+                }
+            });
+        });
+    }
+}
+
+#[cfg(windows)]
+fn start_pull(platform: tauri::webview::PlatformWebview, app: AppHandle) -> Result<(), String> {
+    use webview2_com::ExecuteScriptCompletedHandler;
+    use windows::core::HSTRING;
+    let controller = platform.controller();
+    let core = unsafe { controller.CoreWebView2() }.map_err(|err| err.to_string())?;
+    let script = HSTRING::from("window.__awDrain?window.__awDrain():[]");
+    let handler = ExecuteScriptCompletedHandler::create(Box::new(move |hr, raw| {
+        PULLING.store(false, Ordering::SeqCst);
+        if hr.is_ok() {
+            apply_drained(&app, &raw);
+        }
+        Ok(())
+    }));
+    unsafe { core.ExecuteScript(&script, &handler) }.map_err(|err| err.to_string())
 }
 
 fn install_page_channel(webview: &tauri::Webview, app: AppHandle) {
@@ -714,6 +834,17 @@ mod tests {
             display_file_address(path),
             "C:/Users/admin/Documents/Playground/tiger.html"
         );
+    }
+
+    #[test]
+    fn drained_script_result_is_a_message_list() {
+        let raw = r#"[{"channel":"aw-browser","kind":"title","title":"虎豹自行车 28","mid":1}]"#;
+        let items = parse_drained_messages(raw);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0]["title"], "虎豹自行车 28");
+        let wrapped = serde_json::to_string(raw).unwrap();
+        assert_eq!(parse_drained_messages(&wrapped).len(), 1);
+        assert!(parse_drained_messages("null").is_empty());
     }
 
     #[test]

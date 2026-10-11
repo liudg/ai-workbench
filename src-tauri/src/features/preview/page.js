@@ -2,27 +2,26 @@
   if (window.__awBrowserBoot) return;
   window.__awBrowserBoot = true;
 
+  var outbound = [];
+  var outboundMid = 1;
   function post(payload) {
     payload.channel = "aw-browser";
+    payload.mid = outboundMid;
+    outboundMid += 1;
+    outbound.push(payload);
     try {
       if (window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
         window.chrome.webview.postMessage(payload);
-        return true;
       }
-    } catch (err) {
-      return false;
-    }
-    try {
-      var invoke = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke;
-      if (!invoke) return false;
-      if (payload.kind === "title") invoke("browser_page_title", { title: payload.title || "" });
-      else if (payload.kind === "annotation") invoke("browser_annotation_submit", { note: payload.note });
-      else invoke("browser_annotate_state", { kind: payload.kind, on: !!payload.on });
-      return true;
-    } catch (err) {
-      return false;
-    }
+    } catch (err) {}
+    return true;
   }
+  window.__awDrain = function () {
+    if (!outbound.length) return [];
+    var items = outbound;
+    outbound = [];
+    return items;
+  };
 
   function reportTitle() {
     var title = "";
