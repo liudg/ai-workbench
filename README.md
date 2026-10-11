@@ -32,7 +32,7 @@ pnpm tauri:dev      # 开发模式（前端热更新 + Rust 增量编译）
 ### 打包
 
 ```powershell
-pnpm tauri:build    # 产出 NSIS 安装包 / 绿色 exe（src-tauri/target/release）
+pnpm tauri:build    # 产出 NSIS 安装包，并复制到 release/（只保留当前版本）
 ```
 
 ### 免 Rust 的浏览器预览

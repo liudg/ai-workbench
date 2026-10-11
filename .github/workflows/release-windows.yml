@@ -34,6 +34,9 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
+      - name: 复制安装包到 release/（只保留当前版本）
+        run: node scripts/copy-installer.mjs
+
       - name: 生成 latest.json（URL 自动取当前仓库与 tag）
         run: node scripts/gen-latest-json.mjs
 

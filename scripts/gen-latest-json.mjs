@@ -12,6 +12,8 @@ import { readFileSync, readdirSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { copyLatestInstaller } from "./copy-installer.mjs";
+
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 function arg(name, fallback) {
@@ -75,5 +77,6 @@ const latest = {
 const out = arg("out", join(root, "release", "latest.json"));
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(out, JSON.stringify(latest, null, 2) + "\n");
+copyLatestInstaller({ rootDir: root, bundleDir, releaseDir: dirname(out) });
 console.log(`已生成 ${out}`);
 console.log(`  version: ${version}  artifact: ${artifact}`);

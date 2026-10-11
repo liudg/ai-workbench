@@ -1408,14 +1408,107 @@ mod tests {
     }
 
     #[test]
-    fn history_replay_fills_counts_from_turn_diff_when_patch_is_blank() {
+    fn history_file_change_counts_unified_diff_and_diff() {
+        let turns = vec![json!({
+            "id": "turn-keys",
+            "items": [{
+                "type": "fileChange",
+                "changes": [
+                    {
+                        "path": "from-diff.md",
+                        "kind": "update",
+                        "diff": "@@ -1 +1 @@\n-a\n+b\n"
+                    },
+                    {
+                        "path": "from-unified.md",
+                        "kind": "update",
+                        "unified_diff": "@@ -1 +1,2 @@\n-old\n+u1\n+u2\n"
+                    }
+                ]
+            }]
+        })];
+        let bodies = bodies_from_turns(&turns);
+        assert!(bodies.iter().any(|body| matches!(
+            body,
+            SessionEventBody::FileChange { path, added, removed, .. }
+                if path == "from-diff.md" && *added == 1 && *removed == 1
+        )));
+        assert!(bodies.iter().any(|body| matches!(
+            body,
+            SessionEventBody::FileChange { path, added, removed, .. }
+                if path == "from-unified.md" && *added == 2 && *removed == 1
+        )));
+        assert!(bodies.iter().any(|body| matches!(
+            body,
+            SessionEventBody::TurnChanges { turn_id, files }
+                if turn_id == "turn-keys"
+                    && files.len() == 2
+                    && files.iter().any(|file| file.path == "from-diff.md" && file.added == 1 && file.removed == 1)
+                    && files.iter().any(|file| file.path == "from-unified.md" && file.added == 2 && file.removed == 1)
+        )));
+    }
+
+    #[test]
+    fn history_nonempty_diff_replaces_counts() {
+        let turns = vec![json!({
+            "id": "turn-replace",
+            "items": [
+                {"type": "fileChange", "changes": [{
+                    "path": "notes.md",
+                    "kind": { "type": "update", "move_path": null },
+                    "diff": "@@ -1 +1,3 @@\n-old\n+new-a\n+new-b\n"
+                }]},
+                {"type": "fileChange", "changes": [{
+                    "path": "notes.md",
+                    "kind": { "type": "update", "move_path": null },
+                    "unified_diff": "@@ -1 +1 @@\n-old\n+only\n"
+                }]}
+            ]
+        })];
+        let bodies = bodies_from_turns(&turns);
+        let notes: Vec<_> = bodies
+            .iter()
+            .filter_map(|body| match body {
+                SessionEventBody::FileChange {
+                    path,
+                    added,
+                    removed,
+                    diff,
+                    ..
+                } if path == "notes.md" => Some((*added, *removed, diff.as_str())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(notes.len(), 2);
+        assert!(notes
+            .iter()
+            .all(|(added, removed, diff)| *added == 1 && *removed == 1 && diff.contains("+only")));
+        assert!(bodies.iter().any(|body| matches!(
+            body,
+            SessionEventBody::TurnChanges { turn_id, files }
+                if turn_id == "turn-replace"
+                    && files.len() == 1
+                    && files[0].added == 1
+                    && files[0].removed == 1
+                    && files[0].diff.contains("+only")
+                    && !files[0].diff.contains("+new-b")
+        )));
+    }
+
+    #[test]
+    fn history_turn_diff_fills_only_empty_files() {
         let turns = vec![json!({
             "id": "turn-blank",
-            "diff": "diff --git a/notes.md b/notes.md\n--- a/notes.md\n+++ b/notes.md\n@@ -1 +1,3 @@\n-old\n+new-a\n+new-b\n",
+            "diff": "diff --git a/kept.md b/kept.md\n--- a/kept.md\n+++ b/kept.md\n@@ -1 +1 @@\n-a\n+from-turn\ndiff --git a/blank.md b/blank.md\n--- a/blank.md\n+++ b/blank.md\n@@ -0,0 +1,2 @@\n+one\n+two\n",
             "items": [
                 {"type": "userMessage", "content": [{"type": "text", "text": "改 notes"}]},
                 {"type": "fileChange", "changes": [{
-                    "path": "C:/proj/notes.md",
+                    "path": "kept.md",
+                    "kind": { "type": "update", "move_path": null },
+                    "diff": "@@ -1 +1,3 @@\n-old\n+new-a\n+new-b\n"
+                }]},
+                {"type": "fileChange", "changes": [{
+                    "path": "C:/proj/blank.md",
                     "kind": { "type": "update", "move_path": null },
                     "diff": ""
                 }]}
@@ -1424,17 +1517,96 @@ mod tests {
         let bodies = bodies_from_turns(&turns);
         assert!(bodies.iter().any(|body| matches!(
             body,
-            SessionEventBody::FileChange { added, removed, diff, .. }
-                if *added == 2 && *removed == 1 && diff.contains("+new-a")
+            SessionEventBody::FileChange { path, added, removed, diff, .. }
+                if path == "kept.md"
+                    && *added == 2
+                    && *removed == 1
+                    && diff.contains("+new-a")
+                    && !diff.contains("+from-turn")
+        )));
+        assert!(bodies.iter().any(|body| matches!(
+            body,
+            SessionEventBody::FileChange { path, added, removed, diff, .. }
+                if path == "C:/proj/blank.md"
+                    && *added == 2
+                    && *removed == 0
+                    && diff.contains("+one")
         )));
         assert!(bodies.iter().any(|body| matches!(
             body,
             SessionEventBody::TurnChanges { turn_id, files }
                 if turn_id == "turn-blank"
+                    && files.len() == 2
+                    && files.iter().any(|file| {
+                        file.path == "kept.md"
+                            && file.added == 2
+                            && file.removed == 1
+                            && file.diff.contains("+new-a")
+                    })
+                    && files.iter().any(|file| {
+                        file.path == "C:/proj/blank.md"
+                            && file.added == 2
+                            && file.removed == 0
+                            && file.diff.contains("+two")
+                    })
+        )));
+    }
+
+    #[test]
+    fn resume_replay_without_turn_diff_keeps_counts() {
+        let newest = vec![json!({
+            "id": "turn-new",
+            "items": [
+                {"type": "userMessage", "content": [{"type": "text", "text": "加一行"}]},
+                {"type": "fileChange", "changes": [{
+                    "path": "new.md",
+                    "kind": "add",
+                    "unified_diff": "@@ -0,0 +1 @@\n+new-line\n"
+                }]}
+            ]
+        })];
+        let older = vec![json!({
+            "id": "turn-old",
+            "items": [
+                {"type": "userMessage", "content": [{"type": "text", "text": "改旧文件"}]},
+                {"type": "fileChange", "changes": [{
+                    "path": "old.md",
+                    "kind": "update",
+                    "diff": "@@ -1,2 +1 @@\n-a\n-b\n+c\n"
+                }]}
+            ]
+        })];
+        let turns = chronological_turns(&[newest, older]);
+        assert!(turns.iter().all(|turn| turn.get("diff").is_none()));
+        assert_eq!(
+            turns
+                .iter()
+                .filter_map(|turn| turn.get("id").and_then(Value::as_str))
+                .collect::<Vec<_>>(),
+            ["turn-old", "turn-new"]
+        );
+        let bodies = bodies_from_turns(&turns);
+        assert!(bodies.iter().any(|body| matches!(
+            body,
+            SessionEventBody::TurnChanges { turn_id, files }
+                if turn_id == "turn-old"
                     && files.len() == 1
-                    && files[0].path == "C:/proj/notes.md"
-                    && files[0].added == 2
-                    && files[0].removed == 1
+                    && files[0].path == "old.md"
+                    && files[0].added == 1
+                    && files[0].removed == 2
+        )));
+        assert!(bodies.iter().any(|body| matches!(
+            body,
+            SessionEventBody::TurnChanges { turn_id, files }
+                if turn_id == "turn-new"
+                    && files.len() == 1
+                    && files[0].path == "new.md"
+                    && files[0].added == 1
+                    && files[0].removed == 0
+        )));
+        assert!(bodies.iter().all(|body| !matches!(
+            body,
+            SessionEventBody::FileChange { added, removed, .. } if *added == 0 && *removed == 0
         )));
     }
 

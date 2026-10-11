@@ -15,9 +15,10 @@ pnpm install --frozen-lockfile
 $env:TAURI_SIGNING_PRIVATE_KEY = "<私钥内容，或私钥文件路径>"
 $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "<私钥密码，本项目为空字符串可省略>"
 pnpm tauri build
+node scripts/copy-installer.mjs
 ```
 
-产物位于 `src-tauri/target/release/bundle/nsis/`：
+`pnpm tauri:build` 会在构建后自动执行复制。产物仍在 `src-tauri/target/release/bundle/nsis/`，同时当前版本的安装包会复制到仓库 `release/`，并删掉该目录里其它版本的安装包。`release/` 只留最新一份；`latest.json` 与本说明保留。安装包已在 `.gitignore` 中，不会入库。
 
 | 文件 | 用途 |
 | --- | --- |

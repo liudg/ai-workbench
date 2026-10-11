@@ -30,5 +30,7 @@ vite.config.d.ts
 
 # Local installers. Updater metadata stays in release/latest.json.
 release/*.exe
+release/*.exe.sig
+release/*.sig
 release/*.nsis.zip
 release/*.zip
