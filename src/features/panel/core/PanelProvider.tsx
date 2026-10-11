@@ -5,38 +5,16 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useState,
   type ReactNode,
 } from "react";
 
 import { backend } from "@/lib/ipc";
 import type { SessionEvent } from "@/types";
 import { sessionChanges, type FileChange } from "@/features/changes-model/diff-parse";
-import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
-import { clearBrowserHistories, forgetHistory, pageTitleFromHtml } from "../browser/browser";
-import { baseName } from "../files/path";
-import {
-  lineFromHref,
-  previewKindForPath,
-  resolvePreviewPath,
-  sameFile,
-  type PreviewKind,
-} from "./preview-kind";
+import { useWorkbench } from "@/store";
+import type { PanelTab } from "./registry";
 
-export type PanelTab =
-  | { id: string; kind: "diff"; title: string; files: FileChange[] }
-  | {
-      id: string;
-      kind: PreviewKind;
-      title: string;
-      path: string;
-      url?: string;
-      line: number | null;
-      status: "loading" | "ready" | "error";
-      text: string;
-      truncated: boolean;
-      error: string;
-    };
+const EMPTY_TABS: PanelTab[] = [];
 
 interface PanelApi {
   tabs: PanelTab[];
@@ -64,25 +42,7 @@ export function usePanelOptional(): PanelApi | null {
   return useContext(PreviewContext);
 }
 
-function errorText(error: unknown): string {
-  if (typeof error === "string" && error.trim()) return error;
-  if (error instanceof Error && error.message.trim()) return error.message;
-  return "无法读取文件";
-}
-
-function documentTab(id: string, kind: PreviewKind, path: string, line: number | null): PanelTab {
-  return {
-    id,
-    kind,
-    title: baseName(path),
-    path,
-    line,
-    status: "loading",
-    text: "",
-    truncated: false,
-    error: "",
-  };
-}
+export type { PanelTab };
 
 export function PanelProvider({
   sessionId,
@@ -97,219 +57,49 @@ export function PanelProvider({
   events: readonly SessionEvent[];
   children: ReactNode;
 }) {
-  const [tabs, setTabs] = useState<PanelTab[]>([]);
-  const [activeId, setActiveId] = useState("");
-  const [boundSession, setBoundSession] = useState(sessionId);
-  const tickets = useRef(new Map<string, number>());
-  const ticket = useRef(0);
-  if (boundSession !== sessionId) {
-    setBoundSession(sessionId);
-    setTabs([]);
-    setActiveId("");
-    tickets.current.clear();
-    clearBrowserHistories();
-  }
-
+  const tabs = useWorkbench((s) => s.panelBySession[sessionId]?.tabs ?? EMPTY_TABS);
+  const activeId = useWorkbench((s) => s.panelBySession[sessionId]?.activeId ?? "");
   const sessionFiles = useMemo(() => sessionChanges(events), [events]);
-  const tabsRef = useRef(tabs);
-  tabsRef.current = tabs;
   const filesRef = useRef(sessionFiles);
   filesRef.current = sessionFiles;
   const projectRef = useRef({ projectId, projectPath });
   projectRef.current = { projectId, projectPath };
 
-  const openDiff = useCallback((id: string, title: string, files: FileChange[]) => {
-    setTabs((current) => {
-      const rest = current.filter((tab) => tab.id !== id);
-      return [...rest, { id, kind: "diff", title, files }];
-    });
-    setActiveId(id);
-  }, []);
-
-  const readDocument = useCallback(
-    (id: string, path: string, kind: PreviewKind) => {
-      const mine = ticket.current + 1;
-      ticket.current = mine;
-      tickets.current.set(id, mine);
-      const { projectId: currentProject, projectPath: root } = projectRef.current;
-      void backend
-        .readPreviewFile(currentProject, path)
-        .then((doc) => {
-          if (tickets.current.get(id) !== mine) return;
-          if (doc.kind === "binary") {
-            setTabs((current) =>
-              current.map((tab) =>
-                tab.id === id && tab.kind !== "diff"
-                  ? { ...tab, status: "error", error: "这个文件不能以文本预览。" }
-                  : tab,
-              ),
-            );
-            return;
-          }
-          const nextKind =
-            doc.kind === "html" || doc.kind === "markdown" || doc.kind === "text"
-              ? doc.kind
-              : kind;
-          const htmlTitle = nextKind === "html" ? pageTitleFromHtml(doc.text) : "";
-          setTabs((current) =>
-            current.map((tab) =>
-              tab.id === id && tab.kind !== "diff"
-                ? {
-                    ...tab,
-                    kind: nextKind,
-                    title: htmlTitle || tab.title,
-                    status: "ready",
-                    text: doc.text,
-                    truncated: doc.truncated,
-                    error: "",
-                  }
-                : tab,
-            ),
-          );
-        })
-        .catch((error: unknown) => {
-          if (tickets.current.get(id) !== mine) return;
-          const match = filesRef.current.find((file) => sameFile(root, file.path, path));
-          if (match) {
-            setTabs((current) => current.filter((tab) => tab.id !== id));
-            openDiff(`diff-file:${match.path}`, baseName(match.path), [match]);
-            return;
-          }
-          const message = errorText(error);
-          setTabs((current) =>
-            current.map((tab) =>
-              tab.id === id && tab.kind !== "diff"
-                ? { ...tab, status: "error", error: message }
-                : tab,
-            ),
-          );
-        });
-    },
-    [openDiff],
+  const selectTab = useCallback(
+    (id: string) => useWorkbench.getState().panelSelectTab(sessionId, id),
+    [sessionId],
   );
-
+  const closeTab = useCallback(
+    (id: string) => useWorkbench.getState().panelCloseTab(sessionId, id),
+    [sessionId],
+  );
+  const openDiff = useCallback(
+    (id: string, title: string, files: FileChange[]) => {
+      useWorkbench.getState().panelOpenDiff(sessionId, id, title, files);
+    },
+    [sessionId],
+  );
   const openHref = useCallback(
     (href: string, line?: number) => {
-      const trimmed = href.trim();
-      if (/^https?:\/\//i.test(trimmed)) {
-        const id = `web:${trimmed}`;
-        setTabs((current) => {
-          if (current.some((tab) => tab.id === id)) return current;
-          return [
-            ...current,
-            {
-              id,
-              kind: "html",
-              title: baseName(trimmed) || DESKTOP_ZH.browserNewTab,
-              path: "",
-              url: trimmed,
-              line: null,
-              status: "ready",
-              text: "",
-              truncated: false,
-              error: "",
-            },
-          ];
-        });
-        setActiveId(id);
-        return;
-      }
-      const root = projectRef.current.projectPath;
-      const resolved = resolvePreviewPath(root, trimmed);
-      const lineNo = line ?? lineFromHref(trimmed);
-      if (!resolved) {
-        const id = `blocked:${trimmed}`;
-        setTabs((current) => {
-          if (current.some((tab) => tab.id === id)) return current;
-          return [
-            ...current,
-            {
-              id,
-              kind: "text",
-              title: baseName(trimmed) || "文件",
-              path: trimmed,
-              line: lineNo,
-              status: "error",
-              text: "",
-              truncated: false,
-              error: "只能预览当前项目里的文件",
-            },
-          ];
-        });
-        setActiveId(id);
-        return;
-      }
-      const kind = previewKindForPath(resolved);
-      const id = `doc:${resolved.toLowerCase()}`;
-      const existing = tabsRef.current.find((tab) => tab.id === id);
-      if (!existing) {
-        setTabs((current) => [...current, documentTab(id, kind, resolved, lineNo)]);
-      } else if (existing.kind === "diff") {
-        setTabs((current) => [...current.filter((tab) => tab.id !== id), documentTab(id, kind, resolved, lineNo)]);
-      } else if (existing.status === "error") {
-        setTabs((current) =>
-          current.map((tab) => (tab.id === id ? documentTab(id, kind, resolved, lineNo) : tab)),
-        );
-      } else {
-        setTabs((current) =>
-          current.map((tab) => (tab.id === id && tab.kind !== "diff" ? { ...tab, line: lineNo } : tab)),
-        );
-      }
-      setActiveId(id);
-      if (!existing || existing.kind === "diff" || existing.status !== "ready") {
-        readDocument(id, resolved, kind);
-      }
-    },
-    [readDocument],
-  );
-
-  const closeTab = useCallback((id: string) => {
-    tickets.current.delete(id);
-    forgetHistory(id);
-    const next = tabsRef.current.filter((tab) => tab.id !== id);
-    tabsRef.current = next;
-    setTabs(next);
-    setActiveId((active) => (active === id ? (next[next.length - 1]?.id ?? "") : active));
-  }, []);
-
-  const selectTab = useCallback((id: string) => setActiveId(id), []);
-
-  const openBlank = useCallback(() => {
-    const id = `browser:${Date.now()}`;
-    setTabs((current) => [
-      ...current,
-      {
-        id,
-        kind: "html",
-        title: DESKTOP_ZH.browserNewTab,
-        path: "",
-        line: null,
-        status: "ready",
-        text: "",
-        truncated: false,
-        error: "",
-      },
-    ]);
-    setActiveId(id);
-  }, []);
-
-  const setTabTitle = useCallback((id: string, title: string) => {
-    const next = title.trim();
-    if (!next) return;
-    setTabs((current) => {
-      let changed = false;
-      const tabs = current.map((tab) => {
-        if (tab.id !== id || tab.title === next) return tab;
-        changed = true;
-        return { ...tab, title: next };
+      const project = projectRef.current;
+      void useWorkbench.getState().panelOpenHref(sessionId, href, line, {
+        projectId: project.projectId,
+        projectPath: project.projectPath,
+        sessionFiles: filesRef.current,
       });
-      return changed ? tabs : current;
-    });
-  }, []);
+    },
+    [sessionId],
+  );
+  const openBlank = useCallback(() => {
+    useWorkbench.getState().panelOpenBlank(sessionId);
+  }, [sessionId]);
+  const setTabTitle = useCallback(
+    (id: string, title: string) => useWorkbench.getState().panelSetTitle(sessionId, id, title),
+    [sessionId],
+  );
 
   useEffect(() => {
     return () => {
-      clearBrowserHistories();
       void backend.browserClose();
     };
   }, []);
@@ -328,7 +118,19 @@ export function PanelProvider({
       openBlank,
       setTabTitle,
     }),
-    [tabs, activeId, projectId, sessionId, sessionFiles, selectTab, closeTab, openDiff, openHref, openBlank, setTabTitle],
+    [
+      tabs,
+      activeId,
+      projectId,
+      sessionId,
+      sessionFiles,
+      selectTab,
+      closeTab,
+      openDiff,
+      openHref,
+      openBlank,
+      setTabTitle,
+    ],
   );
 
   return <PreviewContext.Provider value={api}>{children}</PreviewContext.Provider>;

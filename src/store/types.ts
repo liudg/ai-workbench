@@ -18,6 +18,7 @@ import type {
 } from "@/types";
 import type { CreateProjectInput, ImportProjectInput } from "@/lib/ipc";
 import type { UpdatePhase } from "@/lib/updater";
+import type { PanelSlice } from "./slices/panel";
 
 export type DialogMode = "create" | "import";
 export type AppScreen = "workspace" | "settings";
@@ -129,7 +130,8 @@ export type WorkbenchState = ShellSlice &
   SidebarSlice &
   WorkspaceSlice &
   SettingsSlice &
-  UpdatesSlice;
+  UpdatesSlice &
+  PanelSlice;
 
 export type WorkbenchSet = StoreApi<WorkbenchState>["setState"];
 export type WorkbenchGet = StoreApi<WorkbenchState>["getState"];

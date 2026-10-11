@@ -5,7 +5,6 @@ import { backend, isTauri } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
 import { useWorkbench } from "@/store";
 import type { PageAnnotation } from "@/types";
-import { usePanel } from "@/features/panel/core/PanelProvider";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { tabTitleFromDocument } from "./annotate";
 import {
@@ -13,20 +12,22 @@ import {
   canGoForward,
   currentEntry,
   displayFileAddress,
+  emptyHistory,
   goBack,
   goForward,
   noteLoaded,
   pageTitleFromHtml,
   parseAddressInput,
-  recallHistory,
-  rememberHistory,
   visit,
   type BrowserHistory,
 } from "./browser";
 
+const EMPTY_HISTORY = emptyHistory();
+
 export function BrowserView({
   tabId,
   projectId,
+  sessionId,
   path,
   initialUrl,
   text,
@@ -34,14 +35,14 @@ export function BrowserView({
 }: {
   tabId: string;
   projectId: string;
+  sessionId: string;
   path: string;
   initialUrl?: string;
   text: string;
   onTitle: (title: string) => void;
 }) {
-  const { sessionId } = usePanel();
   const viewport = useRef<HTMLDivElement>(null);
-  const [history, setHistory] = useState<BrowserHistory>(() => recallHistory(tabId));
+  const history = useWorkbench((s) => s.panelBySession[sessionId]?.histories[tabId] ?? EMPTY_HISTORY);
   const [draft, setDraft] = useState<string | null>(null);
   const [annotating, setAnnotating] = useState(false);
   const [snapshotFailed, setSnapshotFailed] = useState(false);
@@ -60,10 +61,9 @@ export function BrowserView({
   const commit = useCallback(
     (next: BrowserHistory) => {
       historyRef.current = next;
-      rememberHistory(tabId, next);
-      setHistory(next);
+      useWorkbench.getState().panelRememberHistory(sessionId, tabId, next);
     },
-    [tabId],
+    [sessionId, tabId],
   );
 
   const placeNative = useCallback(async (target: string) => {

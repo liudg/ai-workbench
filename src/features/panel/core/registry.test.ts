@@ -1,0 +1,156 @@
+import assert from "node:assert/strict";
+import { describe, test } from "node:test";
+import { create } from "zustand";
+
+import { createPanelSlice, type PanelSlice } from "../../../store/slices/panel.ts";
+import * as browser from "../browser/browser.ts";
+import { matchDiff, matchHtml, matchMarkdown, matchText } from "../viewers/kinds.ts";
+import { targetFromHref } from "./open-target.ts";
+import {
+  registerViewer,
+  resolveViewer,
+  type OpenTarget,
+  type PanelViewer,
+  type ViewerContext,
+} from "./registry.ts";
+
+const ctx: ViewerContext = {
+  projectId: "project-1",
+  projectPath: "C:/work/demo",
+  sessionFiles: [],
+};
+
+function testStore() {
+  return create<PanelSlice>()((set, get) => createPanelSlice(set, get));
+}
+
+function stub(id: string, match: PanelViewer["match"], load?: PanelViewer["load"]): PanelViewer {
+  return {
+    id,
+    match,
+    icon: () => null,
+    title: (payload: { title?: string }) => payload?.title ?? id,
+    load,
+    View: () => null,
+  };
+}
+
+describe("panel viewers", { concurrency: 1 }, () => {
+  test("a fake viewer registers and opens without editing core", async () => {
+    const seen: OpenTarget[] = [];
+    const undo = registerViewer({
+      id: "probe",
+      match: (target) => (target.kind === "custom" && target.type === "probe" ? 50 : 0),
+      icon: () => null,
+      title: (payload: { title?: string }) => payload.title ?? "",
+      menu: [{ id: "ping", label: "Ping" }],
+      async load(target) {
+        seen.push(target);
+        return { title: "探针", marker: 1 };
+      },
+      View: () => null,
+    });
+    try {
+      assert.equal(resolveViewer({ kind: "custom", type: "probe" })?.id, "probe");
+      assert.equal(resolveViewer({ kind: "custom", type: "probe" })?.menu?.[0]?.label, "Ping");
+      const store = testStore();
+      await store.getState().panelOpenTarget("session-a", { kind: "custom", type: "probe" }, ctx);
+      const tab = store.getState().panelBySession["session-a"]?.tabs[0];
+      assert.equal(tab?.viewerId, "probe");
+      assert.equal(tab?.status, "ready");
+      assert.equal((tab?.payload as { marker?: number }).marker, 1);
+      assert.equal(seen.length, 1);
+      assert.equal(store.getState().panelBySession["session-a"]?.tabs[0]?.id, "custom:probe");
+    } finally {
+      undo();
+    }
+    assert.equal(resolveViewer({ kind: "custom", type: "probe" }), null);
+  });
+
+  test("builtin matchers claim html, markdown, text with a line, and diff", () => {
+    const undo = [
+      registerViewer(stub("html", matchHtml)),
+      registerViewer(stub("markdown", matchMarkdown)),
+      registerViewer(stub("text", matchText)),
+      registerViewer(stub("diff", matchDiff)),
+    ];
+    try {
+      assert.equal(resolveViewer({ kind: "file", path: "C:/work/demo/index.html", line: null })?.id, "html");
+      assert.equal(resolveViewer({ kind: "file", path: "C:/work/demo/index.html", line: 4 })?.id, "text");
+      assert.equal(resolveViewer({ kind: "file", path: "C:/work/demo/notes.md", line: null })?.id, "markdown");
+      assert.equal(resolveViewer({ kind: "file", path: "C:/work/demo/src/app.ts", line: 2 })?.id, "text");
+      assert.equal(resolveViewer({ kind: "file", path: "C:/work/demo/src/app.ts", line: null })?.id, "text");
+      assert.equal(resolveViewer({ kind: "url", url: "https://example.com" })?.id, "html");
+      assert.equal(resolveViewer({ kind: "blank" })?.id, "html");
+      assert.equal(resolveViewer({ kind: "blocked", href: "../x", line: null, message: "no" })?.id, "text");
+      assert.equal(
+        resolveViewer({ kind: "diff", id: "d", title: "变更", files: [] })?.id,
+        "diff",
+      );
+      assert.equal(
+        resolveViewer({ kind: "file", path: "C:/work/demo/index.html", line: null, viewerId: "markdown" })?.id,
+        "markdown",
+      );
+    } finally {
+      for (const release of undo) release();
+    }
+  });
+
+  test("opening one session leaves the other session's tabs and browser history", async () => {
+    assert.equal("rememberHistory" in browser, false);
+    assert.equal("clearBrowserHistories" in browser, false);
+    const undo = [
+      registerViewer(
+        stub("text", matchText, async (target) => ({
+          title: "app.ts",
+          text: "one\ntwo",
+          truncated: false,
+          line: target.kind === "file" ? target.line : null,
+        })),
+      ),
+      registerViewer(
+        stub("probe", (target) => (target.kind === "custom" && target.type === "probe" ? 40 : 0), async () => ({
+          title: "其它",
+        })),
+      ),
+    ];
+    try {
+      const store = testStore();
+      await store.getState().panelOpenHref("left", "src/app.ts#L2", undefined, ctx);
+      const left = store.getState().panelBySession.left;
+      assert.equal(left?.tabs[0]?.viewerId, "text");
+      assert.equal(left?.tabs[0]?.status, "ready");
+      assert.equal((left?.tabs[0]?.payload as { line?: number }).line, 2);
+      const tabId = left?.tabs[0]?.id ?? "";
+      store.getState().panelRememberHistory("left", tabId, {
+        entries: [{ address: "C:/work/demo/src/app.ts", target: "http://asset.localhost/app.ts" }],
+        index: 0,
+      });
+      await store.getState().panelOpenTarget("right", { kind: "custom", type: "probe" }, ctx);
+      store.getState().panelCloseTab("right", "custom:probe");
+      const after = store.getState().panelBySession;
+      assert.equal(after.left?.tabs.length, 1);
+      assert.equal(after.left?.tabs[0]?.viewerId, "text");
+      assert.equal(after.left?.histories[tabId]?.entries[0]?.address, "C:/work/demo/src/app.ts");
+      assert.equal(after.right?.tabs.length, 0);
+      assert.deepEqual(after.right?.histories, {});
+    } finally {
+      for (const release of undo) release();
+    }
+  });
+
+  test("hrefs become urls, project files, or blocked targets", () => {
+    assert.deepEqual(targetFromHref("C:/work/demo", "https://example.com/a"), {
+      kind: "url",
+      url: "https://example.com/a",
+    });
+    assert.deepEqual(targetFromHref("C:/work/demo", "src/app.ts#L4"), {
+      kind: "file",
+      path: "C:/work/demo/src/app.ts",
+      line: 4,
+    });
+    const blocked = targetFromHref("C:/work/demo", "../secret.txt");
+    assert.equal(blocked.kind, "blocked");
+    if (blocked.kind === "blocked") assert.equal(blocked.message, "只能预览当前项目里的文件");
+  });
+});

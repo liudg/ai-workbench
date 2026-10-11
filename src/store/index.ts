@@ -1,5 +1,6 @@
 import { create } from "zustand";
 
+import { createPanelSlice } from "./slices/panel";
 import { createSettingsSlice } from "./slices/settings";
 import { createShellSlice } from "./slices/shell";
 import { createSidebarSlice } from "./slices/sidebar";
@@ -15,4 +16,5 @@ export const useWorkbench = create<WorkbenchState>()((set, get) => ({
   ...createWorkspaceSlice(set, get),
   ...createSettingsSlice(set, get),
   ...createUpdatesSlice(set),
+  ...createPanelSlice(set, get),
 }));

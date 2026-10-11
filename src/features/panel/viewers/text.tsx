@@ -1,0 +1,45 @@
+import { Code } from "lucide-react";
+
+import { baseName } from "../files/path";
+import { payloadTitle, type PanelViewer, type ViewerViewProps } from "../core/registry";
+import { SourceView } from "./SourceView";
+import { TextPreview } from "./TextPreview";
+import { readPreviewDocument, reopenIfDifferent } from "./document";
+import { PreviewFailed, PreviewPending } from "./frame";
+import { matchText } from "./kinds";
+
+interface TextPayload {
+  title?: string;
+  path?: string;
+  text?: string;
+  truncated?: boolean;
+  line?: number | null;
+  error?: string;
+}
+
+function TextViewerBody({ payload, status }: ViewerViewProps<TextPayload>) {
+  if (status === "loading") return <PreviewPending />;
+  if (status === "error") return <PreviewFailed message={payload.error ?? ""} />;
+  if (payload.line != null) return <SourceView text={payload.text ?? ""} line={payload.line} />;
+  return <TextPreview text={payload.text ?? ""} truncated={Boolean(payload.truncated)} />;
+}
+
+export const textViewer: PanelViewer<TextPayload> = {
+  id: "text",
+  match: matchText,
+  icon: Code,
+  title: (payload) => payloadTitle(payload) || baseName(payload.path || "") || "文件",
+  async load(target, ctx) {
+    if (target.kind !== "file") return { title: "文件", text: "", truncated: false, line: null };
+    const doc = await readPreviewDocument(ctx, target.path);
+    reopenIfDifferent(doc.kind, "text", target.path, target.line);
+    return {
+      title: baseName(target.path),
+      path: target.path,
+      text: doc.text,
+      truncated: doc.truncated,
+      line: target.line,
+    };
+  },
+  View: TextViewerBody,
+};

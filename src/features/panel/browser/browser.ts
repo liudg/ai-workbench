@@ -1,4 +1,7 @@
-/** 预览面板内置浏览器的地址、标题和历史。不绑定某个 Agent。 */
+/**
+ * 预览面板内置浏览器的地址、标题和历史运算。
+ * 每个标签的历史记在面板 store 里，按会话分开，切换会话不用清空。
+ */
 
 export interface BrowserEntry {
   /** 地址栏显示的文字。本地文件用磁盘路径。 */
@@ -14,26 +17,8 @@ export interface BrowserHistory {
   index: number;
 }
 
-const histories = new Map<string, BrowserHistory>();
-
 export function emptyHistory(): BrowserHistory {
   return { entries: [], index: -1 };
-}
-
-export function recallHistory(id: string): BrowserHistory {
-  return histories.get(id) ?? emptyHistory();
-}
-
-export function rememberHistory(id: string, history: BrowserHistory) {
-  histories.set(id, history);
-}
-
-export function forgetHistory(id: string) {
-  histories.delete(id);
-}
-
-export function clearBrowserHistories() {
-  histories.clear();
 }
 
 export function currentEntry(history: BrowserHistory): BrowserEntry | null {

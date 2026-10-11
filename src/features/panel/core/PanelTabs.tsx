@@ -1,18 +1,19 @@
-import { FileDiff, Globe, Plus, X } from "lucide-react";
+import { useCallback } from "react";
+import { Plus, X } from "lucide-react";
 
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { cn } from "@/lib/utils";
-import { BrowserView } from "../browser/BrowserView";
-import { DiffView } from "../diff/DiffView";
-import { MarkdownPreview } from "../viewers/MarkdownPreview";
-import { SourceView } from "../viewers/SourceView";
-import { TextPreview } from "../viewers/TextPreview";
-import { usePanel, type PanelTab } from "./PanelProvider";
+import { registerBuiltinViewers } from "../viewers/register";
+import { viewerById, type PanelTab } from "./registry";
+import { usePanel } from "./PanelProvider";
+
+registerBuiltinViewers();
 
 export function PanelTabs() {
-  const { tabs, activeId, selectTab, closeTab, openBlank, setTabTitle, projectId } = usePanel();
+  const { tabs, activeId, selectTab, closeTab, openBlank, setTabTitle, projectId, sessionId } = usePanel();
   const active = tabs.find((tab) => tab.id === activeId) ?? tabs[tabs.length - 1];
   if (!active) return null;
+  const menu = viewerById(active.viewerId)?.menu;
 
   return (
     <section
@@ -22,6 +23,9 @@ export function PanelTabs() {
       <div className="flex h-9 shrink-0 items-stretch gap-0.5 overflow-x-auto border-b border-zinc-800 px-1">
         {tabs.map((tab) => {
           const selected = tab.id === active.id;
+          const viewer = viewerById(tab.viewerId);
+          const Icon = viewer?.icon;
+          const title = viewer ? viewer.title(tab.payload) : "";
           return (
             <div
               key={tab.id}
@@ -32,15 +36,16 @@ export function PanelTabs() {
             >
               <button
                 type="button"
-                data-preview-tab={tab.kind}
+                data-preview-tab={tab.viewerId}
                 className="flex min-w-0 flex-1 items-center gap-1 px-2 py-1.5 text-left text-xs"
                 onClick={() => selectTab(tab.id)}
               >
-                {tab.kind === "diff" ? (
-                  <FileDiff className="h-3 w-3 shrink-0" data-tab-icon="diff" />
+                {Icon ? (
+                  <span className="inline-flex shrink-0" data-tab-icon={tab.viewerId}>
+                    <Icon className="h-3 w-3" />
+                  </span>
                 ) : null}
-                {tab.kind === "html" ? <Globe className="h-3 w-3 shrink-0" data-tab-icon="web" /> : null}
-                <span className="truncate">{tab.title}</span>
+                <span className="truncate">{title}</span>
               </button>
               <button
                 type="button"
@@ -64,8 +69,32 @@ export function PanelTabs() {
           <Plus className="h-3.5 w-3.5" />
         </button>
       </div>
+      {menu && menu.length > 0 ? (
+        <div
+          className="flex shrink-0 items-center gap-1 border-b border-zinc-800 px-2 py-1"
+          data-viewer-menu={active.viewerId}
+        >
+          {menu.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              disabled={item.disabled}
+              className="rounded px-2 py-0.5 text-xs text-zinc-300 hover:bg-zinc-800 disabled:text-zinc-600"
+              onClick={() => item.onSelect?.()}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
       <div className="min-h-0 flex-1 overflow-hidden">
-        <TabBody key={active.id} tab={active} projectId={projectId} onTitle={setTabTitle} />
+        <TabBody
+          key={`${sessionId}:${active.id}`}
+          tab={active}
+          projectId={projectId}
+          sessionId={sessionId}
+          onTitle={setTabTitle}
+        />
       </div>
     </section>
   );
@@ -74,42 +103,26 @@ export function PanelTabs() {
 function TabBody({
   tab,
   projectId,
+  sessionId,
   onTitle,
 }: {
   tab: PanelTab;
   projectId: string;
+  sessionId: string;
   onTitle: (id: string, title: string) => void;
 }) {
-  if (tab.kind === "diff") return <DiffView files={tab.files} />;
-  if (tab.line != null) {
-    if (tab.status === "loading") return <p className="px-4 py-6 text-sm text-zinc-500">正在读取…</p>;
-    if (tab.status === "error") return <p className="px-4 py-6 text-sm text-red-300">{tab.error}</p>;
-    return <SourceView text={tab.text} line={tab.line} />;
-  }
-  if (tab.kind === "html") {
-    if (tab.status === "error") {
-      return <p className="px-4 py-6 text-sm text-red-300">{tab.error}</p>;
-    }
-    return (
-      <BrowserView
-        tabId={tab.id}
-        projectId={projectId}
-        path={tab.path}
-        initialUrl={tab.url}
-        text={tab.text}
-        onTitle={(title) => onTitle(tab.id, title)}
-      />
-    );
-  }
-  if (tab.status === "loading") {
-    return <p className="px-4 py-6 text-sm text-zinc-500">正在读取…</p>;
-  }
-  if (tab.status === "error") {
-    return <p className="px-4 py-6 text-sm text-red-300">{tab.error}</p>;
-  }
-  if (tab.kind === "markdown") {
-    return <MarkdownPreview text={tab.text} truncated={tab.truncated} />;
-  }
-  return <TextPreview text={tab.text} truncated={tab.truncated} />;
+  const viewer = viewerById(tab.viewerId);
+  const setTitle = useCallback((title: string) => onTitle(tab.id, title), [onTitle, tab.id]);
+  if (!viewer) return null;
+  const View = viewer.View;
+  return (
+    <View
+      tabId={tab.id}
+      payload={tab.payload}
+      status={tab.status}
+      sessionId={sessionId}
+      projectId={projectId}
+      setTitle={setTitle}
+    />
+  );
 }
-
