@@ -249,13 +249,8 @@ impl Shared {
     ) -> Vec<crate::models::FileChange> {
         let mut map = self.turn_files.lock().unwrap();
         let slot = map.entry(turn_id.to_string()).or_default();
-        for file in updated {
-            if let Some(existing) = slot.iter_mut().find(|item| item.path == file.path) {
-                *existing = file.clone();
-            } else {
-                slot.push(file.clone());
-            }
-        }
+        let merged = crate::features::agents::changes::merge_file_list(slot, updated);
+        *slot = merged;
         slot.clone()
     }
 

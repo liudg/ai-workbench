@@ -369,9 +369,9 @@ pub fn bodies_from_turns(turns: &[Value]) -> Vec<SessionEventBody> {
         let Some(items) = turn.get("items").and_then(Value::as_array) else {
             continue;
         };
-        let plan = items.iter().any(|item| {
-            item.get("type").and_then(Value::as_str) == Some("plan")
-        });
+        let plan = items
+            .iter()
+            .any(|item| item.get("type").and_then(Value::as_str) == Some("plan"));
         let mut anchored = false;
         let mut review: Option<(String, String)> = None;
         let mut files = Vec::new();
@@ -422,27 +422,37 @@ pub fn bodies_from_turns(turns: &[Value]) -> Vec<SessionEventBody> {
             }
             push_history_item(&mut bodies, &turn_id, plan, &mut files, item);
         }
-        if !files.is_empty() {
-            bodies.push(SessionEventBody::TurnChanges {
+        let turn_diff = turn.get("diff").and_then(Value::as_str).unwrap_or("");
+        let mut summarized = false;
+        if !turn_id.is_empty() && !turn_diff.is_empty() {
+            let had_files = !files.is_empty();
+            files = crate::features::agents::changes::overlay_unified_diff(&files, turn_diff);
+            if had_files {
+                crate::features::agents::changes::sync_file_change_counts(
+                    &mut bodies,
+                    &turn_id,
+                    &files,
+                );
+            } else if !files.is_empty() {
+                crate::features::agents::changes::push_file_change_events(
+                    &mut bodies,
+                    &turn_id,
+                    &files,
+                );
+                summarized = true;
+            }
+            bodies.push(SessionEventBody::TurnDiff {
                 turn_id: turn_id.clone(),
-                files: files.clone(),
+                diff: turn_diff.to_string(),
             });
         }
-        if let Some(diff) = turn.get("diff").and_then(Value::as_str) {
-            if !turn_id.is_empty() && !diff.is_empty() {
-                if files.is_empty() {
-                    let parsed = crate::features::agents::changes::parse_unified_files(diff);
-                    crate::features::agents::changes::push_file_change_events(
-                        &mut bodies,
-                        &turn_id,
-                        &parsed,
-                    );
-                }
-                bodies.push(SessionEventBody::TurnDiff {
-                    turn_id,
-                    diff: diff.to_string(),
-                });
-            }
+        if !files.is_empty() && !summarized {
+            crate::features::agents::changes::sync_file_change_counts(
+                &mut bodies,
+                &turn_id,
+                &files,
+            );
+            bodies.push(SessionEventBody::TurnChanges { turn_id, files });
         }
     }
     bodies
@@ -461,17 +471,21 @@ fn push_history_item(
         let parsed = crate::features::agents::changes::file_changes_from_codex(
             item.get("changes").unwrap_or(&serde_json::Value::Null),
         );
+        *files = crate::features::agents::changes::merge_file_list(files, &parsed);
         for file in &parsed {
+            let stored = files
+                .iter()
+                .find(|item| crate::features::agents::changes::same_file(&item.path, &file.path))
+                .unwrap_or(file);
             bodies.push(SessionEventBody::FileChange {
                 turn_id: turn_id.to_string(),
-                path: file.path.clone(),
-                status: file.status,
-                added: file.added,
-                removed: file.removed,
-                diff: file.diff.clone(),
+                path: stored.path.clone(),
+                status: stored.status,
+                added: stored.added,
+                removed: stored.removed,
+                diff: stored.diff.clone(),
             });
         }
-        files.extend(parsed);
         return;
     }
     if let Some(view) = tool_view(item) {
@@ -1352,6 +1366,75 @@ mod tests {
         assert!(!bodies.iter().any(|body| matches!(
             body,
             SessionEventBody::ToolCall { name, .. } if name == "apply_patch"
+        )));
+    }
+
+    #[test]
+    fn history_replay_keeps_patch_counts_when_a_later_diff_is_empty() {
+        let turns = vec![json!({
+            "id": "turn-count",
+            "items": [
+                {"type": "userMessage", "content": [{"type": "text", "text": "改 notes"}]},
+                {"type": "fileChange", "changes": [{
+                    "path": "C:\\proj\\notes.md",
+                    "kind": { "type": "update", "move_path": null },
+                    "diff": "@@ -1 +1,3 @@\n-old\n+new-a\n+new-b\n"
+                }]},
+                {"type": "fileChange", "changes": [{
+                    "path": "C:\\proj\\notes.md",
+                    "kind": { "type": "update", "move_path": null },
+                    "diff": ""
+                }]}
+            ]
+        })];
+        let bodies = bodies_from_turns(&turns);
+        assert!(bodies.iter().any(|body| matches!(
+            body,
+            SessionEventBody::FileChange { path, added, removed, .. }
+                if path == "C:/proj/notes.md" && *added == 2 && *removed == 1
+        )));
+        assert!(bodies.iter().all(|body| !matches!(
+            body,
+            SessionEventBody::FileChange { added, removed, .. } if *added == 0 && *removed == 0
+        )));
+        assert!(bodies.iter().any(|body| matches!(
+            body,
+            SessionEventBody::TurnChanges { turn_id, files }
+                if turn_id == "turn-count"
+                    && files.len() == 1
+                    && files[0].added == 2
+                    && files[0].removed == 1
+        )));
+    }
+
+    #[test]
+    fn history_replay_fills_counts_from_turn_diff_when_patch_is_blank() {
+        let turns = vec![json!({
+            "id": "turn-blank",
+            "diff": "diff --git a/notes.md b/notes.md\n--- a/notes.md\n+++ b/notes.md\n@@ -1 +1,3 @@\n-old\n+new-a\n+new-b\n",
+            "items": [
+                {"type": "userMessage", "content": [{"type": "text", "text": "改 notes"}]},
+                {"type": "fileChange", "changes": [{
+                    "path": "C:/proj/notes.md",
+                    "kind": { "type": "update", "move_path": null },
+                    "diff": ""
+                }]}
+            ]
+        })];
+        let bodies = bodies_from_turns(&turns);
+        assert!(bodies.iter().any(|body| matches!(
+            body,
+            SessionEventBody::FileChange { added, removed, diff, .. }
+                if *added == 2 && *removed == 1 && diff.contains("+new-a")
+        )));
+        assert!(bodies.iter().any(|body| matches!(
+            body,
+            SessionEventBody::TurnChanges { turn_id, files }
+                if turn_id == "turn-blank"
+                    && files.len() == 1
+                    && files[0].path == "C:/proj/notes.md"
+                    && files[0].added == 2
+                    && files[0].removed == 1
         )));
     }
 

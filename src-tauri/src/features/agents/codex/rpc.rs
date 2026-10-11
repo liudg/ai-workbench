@@ -334,17 +334,21 @@ impl Shared {
                             diff: diff.to_string(),
                         },
                     );
-                    let files = crate::features::agents::changes::parse_unified_files(diff);
-                    if !files.is_empty()
-                        && self
-                            .turn_files
+                    let existing = self
+                        .turn_files
+                        .lock()
+                        .unwrap()
+                        .get(turn_id)
+                        .cloned()
+                        .unwrap_or_default();
+                    let overlaid =
+                        crate::features::agents::changes::overlay_unified_diff(&existing, diff);
+                    if overlaid != existing {
+                        self.turn_files
                             .lock()
                             .unwrap()
-                            .get(turn_id)
-                            .map(|items| items.is_empty())
-                            .unwrap_or(true)
-                    {
-                        self.emit_normalized_changes(turn_id, &files);
+                            .insert(turn_id.to_string(), overlaid.clone());
+                        self.emit_turn_files(turn_id, &overlaid);
                     }
                 }
             }
@@ -592,8 +596,26 @@ impl Shared {
         if turn_id.is_empty() || updated.is_empty() {
             return;
         }
-        let all = self.remember_file_changes(turn_id, updated);
-        for file in updated {
+        let mut all = self.remember_file_changes(turn_id, updated);
+        let turn_diff = self.turn_diffs.lock().unwrap().get(turn_id).cloned();
+        if let Some(diff) = turn_diff {
+            let overlaid = crate::features::agents::changes::overlay_unified_diff(&all, &diff);
+            if overlaid != all {
+                all = overlaid;
+                self.turn_files
+                    .lock()
+                    .unwrap()
+                    .insert(turn_id.to_string(), all.clone());
+            }
+        }
+        self.emit_turn_files(turn_id, &all);
+    }
+
+    fn emit_turn_files(&self, turn_id: &str, files: &[crate::models::FileChange]) {
+        if turn_id.is_empty() || files.is_empty() {
+            return;
+        }
+        for file in files {
             emit(
                 &self.events,
                 SessionEventBody::FileChange {
@@ -610,7 +632,7 @@ impl Shared {
             &self.events,
             SessionEventBody::TurnChanges {
                 turn_id: turn_id.to_string(),
-                files: all,
+                files: files.to_vec(),
             },
         );
     }

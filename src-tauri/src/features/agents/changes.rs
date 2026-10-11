@@ -6,10 +6,22 @@ use serde_json::Value;
 use crate::models::{FileChange, FileStatus, SessionEventBody};
 
 pub fn file_changes_from_codex(changes: &Value) -> Vec<FileChange> {
-    let Some(list) = changes.as_array() else {
+    if let Some(list) = changes.as_array() {
+        return list.iter().filter_map(file_change_from_value).collect();
+    }
+    let Some(map) = changes.as_object() else {
         return Vec::new();
     };
-    list.iter().filter_map(file_change_from_value).collect()
+    map.iter()
+        .filter_map(|(path, change)| {
+            let mut change = change.clone();
+            if let Some(obj) = change.as_object_mut() {
+                obj.entry("path")
+                    .or_insert_with(|| Value::String(path.clone()));
+            }
+            file_change_from_value(&change)
+        })
+        .collect()
 }
 
 pub fn file_change_from_value(change: &Value) -> Option<FileChange> {
@@ -18,27 +30,125 @@ pub fn file_change_from_value(change: &Value) -> Option<FileChange> {
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|path| !path.is_empty())?;
-    let kind = change
-        .get("kind")
-        .or_else(|| change.get("type"))
-        .or_else(|| change.get("status"))
-        .and_then(Value::as_str)
-        .unwrap_or("");
-    let diff = change
-        .get("diff")
-        .or_else(|| change.get("unifiedDiff"))
-        .or_else(|| change.get("patch"))
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .to_string();
+    let kind = change_kind(change);
+    let diff = change_diff(change);
     let (added, removed) = diff_counts(&diff);
+    let mut path = display_path(path);
+    let mut status = file_status(&kind.name);
+    if !kind.move_path.is_empty() {
+        status = FileStatus::Renamed;
+        path = display_path(&kind.move_path);
+    }
     Some(FileChange {
-        path: display_path(path),
-        status: file_status(kind),
+        path,
+        status,
         added,
         removed,
         diff,
     })
+}
+
+/// 同一路径后来的空 diff 不能把已经从 hunk / patch 算出来的行数清掉。
+pub fn merge_file_list(existing: &[FileChange], incoming: &[FileChange]) -> Vec<FileChange> {
+    let mut out = existing.to_vec();
+    for file in incoming {
+        if let Some(slot) = out
+            .iter_mut()
+            .find(|item| same_file(&item.path, &file.path))
+        {
+            *slot = merge_file_change(slot, file);
+        } else {
+            out.push(file.clone());
+        }
+    }
+    out
+}
+
+pub fn merge_file_change(existing: &FileChange, incoming: &FileChange) -> FileChange {
+    if incoming.diff.trim().is_empty() && !existing.diff.trim().is_empty() {
+        existing.clone()
+    } else {
+        incoming.clone()
+    }
+}
+
+/// 逐文件补丁没有正文时，用回合统一 diff 补上 added/removed。
+pub fn overlay_unified_diff(files: &[FileChange], diff: &str) -> Vec<FileChange> {
+    let parsed = parse_unified_files(diff);
+    if parsed.is_empty() {
+        return files.to_vec();
+    }
+    if files.is_empty() {
+        return parsed;
+    }
+    let mut out = files.to_vec();
+    for file in parsed {
+        if let Some(slot) = out
+            .iter_mut()
+            .find(|item| same_file(&item.path, &file.path))
+        {
+            if slot.diff.trim().is_empty() {
+                slot.added = file.added;
+                slot.removed = file.removed;
+                slot.diff = file.diff;
+                if slot.status == FileStatus::Modified {
+                    slot.status = file.status;
+                }
+            }
+        } else {
+            out.push(file);
+        }
+    }
+    out
+}
+
+pub fn sync_file_change_counts(
+    bodies: &mut [SessionEventBody],
+    turn_id: &str,
+    files: &[FileChange],
+) {
+    for body in bodies {
+        let SessionEventBody::FileChange {
+            turn_id: event_turn,
+            path,
+            status,
+            added,
+            removed,
+            diff,
+        } = body
+        else {
+            continue;
+        };
+        if event_turn != turn_id {
+            continue;
+        }
+        let Some(file) = files.iter().find(|file| same_file(&file.path, path)) else {
+            continue;
+        };
+        *status = file.status;
+        *added = file.added;
+        *removed = file.removed;
+        *diff = file.diff.clone();
+    }
+}
+
+pub fn same_file(left: &str, right: &str) -> bool {
+    let left = display_path(left).to_ascii_lowercase();
+    let right = display_path(right).to_ascii_lowercase();
+    if left.is_empty() || right.is_empty() {
+        return false;
+    }
+    if left == right {
+        return true;
+    }
+    let (short, long) = if left.len() <= right.len() {
+        (left.as_str(), right.as_str())
+    } else {
+        (right.as_str(), left.as_str())
+    };
+    long.len() > short.len()
+        && long.as_bytes()[long.len() - short.len() - 1] == b'/'
+        && long.ends_with(short)
 }
 
 pub fn parse_unified_files(diff: &str) -> Vec<FileChange> {
@@ -80,7 +190,11 @@ pub fn parse_unified_files(diff: &str) -> Vec<FileChange> {
     files
 }
 
-pub fn push_file_change_events(bodies: &mut Vec<SessionEventBody>, turn_id: &str, files: &[FileChange]) {
+pub fn push_file_change_events(
+    bodies: &mut Vec<SessionEventBody>,
+    turn_id: &str,
+    files: &[FileChange],
+) {
     if files.is_empty() {
         return;
     }
@@ -107,6 +221,70 @@ pub fn file_status(kind: &str) -> FileStatus {
         "r" | "rename" | "renamed" | "move" | "moved" => FileStatus::Renamed,
         _ => FileStatus::Modified,
     }
+}
+
+struct ChangeKind {
+    name: String,
+    move_path: String,
+}
+
+fn change_kind(change: &Value) -> ChangeKind {
+    let Some(raw) = change
+        .get("kind")
+        .or_else(|| change.get("type"))
+        .or_else(|| change.get("status"))
+    else {
+        return ChangeKind {
+            name: String::new(),
+            move_path: String::new(),
+        };
+    };
+    let mut kind = if let Some(text) = raw.as_str() {
+        ChangeKind {
+            name: text.to_string(),
+            move_path: String::new(),
+        }
+    } else {
+        ChangeKind {
+            name: raw
+                .get("type")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
+            move_path: raw
+                .get("move_path")
+                .or_else(|| raw.get("movePath"))
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
+        }
+    };
+    if kind.move_path.is_empty() {
+        if let Some(text) = change
+            .get("move_path")
+            .or_else(|| change.get("movePath"))
+            .and_then(Value::as_str)
+        {
+            kind.move_path = text.to_string();
+        }
+    }
+    kind
+}
+
+fn change_diff(change: &Value) -> String {
+    let mut empty = String::new();
+    for key in ["diff", "unifiedDiff", "unified_diff", "patch"] {
+        let Some(text) = change.get(key).and_then(Value::as_str) else {
+            continue;
+        };
+        if !text.is_empty() {
+            return text.to_string();
+        }
+        if empty.is_empty() {
+            empty = text.to_string();
+        }
+    }
+    empty
 }
 
 fn diff_counts(diff: &str) -> (u32, u32) {
@@ -349,5 +527,104 @@ rename to new-name.txt
             body,
             SessionEventBody::ToolCall { name, .. } if name == "apply_patch"
         )));
+    }
+
+    #[test]
+    fn codex_object_kind_and_patch_body_count_lines() {
+        let hunk = "@@ -1,3 +1,4 @@\n line\n-old\n+new-a\n+new-b\n";
+        let files = file_changes_from_codex(&json!([{
+            "path": "notes.md",
+            "kind": { "type": "update", "move_path": null },
+            "diff": hunk
+        }]));
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].status, FileStatus::Modified);
+        assert_eq!((files[0].added, files[0].removed), (2, 1));
+
+        let patch = "\
+*** Begin Patch
+*** Update File: notes.md
+@@
+ context
+-old
++new-a
++new-b
+*** End Patch
+";
+        let from_patch = file_changes_from_codex(&json!([{
+            "path": "notes.md",
+            "kind": { "type": "add" },
+            "patch": patch
+        }]));
+        assert_eq!(from_patch[0].status, FileStatus::Added);
+        assert_eq!((from_patch[0].added, from_patch[0].removed), (2, 1));
+
+        let renamed = file_changes_from_codex(&json!([{
+            "path": "src/prev.ts",
+            "kind": { "type": "update", "move_path": "src/next.ts" },
+            "diff": "@@ -1 +1 @@\n-a\n+b\n"
+        }]));
+        assert_eq!(renamed[0].status, FileStatus::Renamed);
+        assert_eq!(renamed[0].path, "src/next.ts");
+        assert_eq!((renamed[0].added, renamed[0].removed), (1, 1));
+    }
+
+    #[test]
+    fn empty_followup_keeps_counts_and_turn_diff_fills_a_blank_patch() {
+        let first = file_changes_from_codex(&json!([{
+            "path": "C:\\proj\\notes.md",
+            "kind": { "type": "update", "move_path": null },
+            "diff": "@@ -1 +1,3 @@\n-old\n+new-a\n+new-b\n"
+        }]));
+        let blank = file_changes_from_codex(&json!([{
+            "path": "C:\\proj\\notes.md",
+            "kind": { "type": "update", "move_path": null },
+            "diff": ""
+        }]));
+        let merged = merge_file_list(&first, &blank);
+        assert_eq!(merged.len(), 1);
+        assert_eq!((merged[0].added, merged[0].removed), (2, 1));
+        assert!(merged[0].diff.contains("+new-a"));
+
+        let later = file_changes_from_codex(&json!([{
+            "path": "C:\\proj\\notes.md",
+            "kind": { "type": "update", "move_path": null },
+            "diff": "@@ -1 +1 @@\n-old\n+only\n"
+        }]));
+        let replaced = merge_file_list(&merged, &later);
+        assert_eq!((replaced[0].added, replaced[0].removed), (1, 1));
+
+        let empty = file_changes_from_codex(&json!([{
+            "path": "C:/proj/notes.md",
+            "kind": { "type": "update", "move_path": null },
+            "diff": "",
+            "unified_diff": ""
+        }]));
+        assert_eq!((empty[0].added, empty[0].removed), (0, 0));
+        let filled = overlay_unified_diff(
+            &empty,
+            "\
+diff --git a/notes.md b/notes.md
+--- a/notes.md
++++ b/notes.md
+@@ -1 +1,3 @@
+-old
++new-a
++new-b
+",
+        );
+        assert_eq!((filled[0].added, filled[0].removed), (2, 1));
+        assert!(filled[0].diff.contains("+new-b"));
+        assert_eq!(filled[0].path, "C:/proj/notes.md");
+
+        let rollout = file_changes_from_codex(&json!({
+            "notes.md": {
+                "type": "update",
+                "unified_diff": "@@ -1 +1,3 @@\n-old\n+new-a\n+new-b\n",
+                "move_path": null
+            }
+        }));
+        assert_eq!(rollout[0].path, "notes.md");
+        assert_eq!((rollout[0].added, rollout[0].removed), (2, 1));
     }
 }
