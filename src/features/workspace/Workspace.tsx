@@ -1,10 +1,10 @@
 import { useWorkbench } from "@/store";
 import { type SessionEvent } from "@/types";
-import { PreviewPanel } from "./changes/PreviewPanel";
-import { PreviewProvider } from "./changes/preview-context";
-import { SessionFiles } from "./changes/SessionFiles";
+import { ChatView } from "@/features/chat/timeline/ChatView";
+import { PanelTabs } from "@/features/panel/core/PanelTabs";
+import { PanelProvider } from "@/features/panel/core/PanelProvider";
+import { SessionFiles } from "@/features/panel/files/SessionFiles";
 import { NoProjectSelected, NoSession } from "./empty/EmptyState";
-import { ChatView } from "./timeline/ChatView";
 
 const EMPTY_EVENTS: SessionEvent[] = [];
 
@@ -33,7 +33,7 @@ export function Workspace() {
 
   if (session) {
     return (
-      <PreviewProvider
+      <PanelProvider
         sessionId={session.id}
         projectId={project.id}
         projectPath={project.path}
@@ -43,10 +43,10 @@ export function Workspace() {
           <div className="relative flex h-full min-w-0 flex-1 flex-col">
             <ChatView session={session} events={events} />
           </div>
-          <PreviewPanel />
+          <PanelTabs />
           <SessionFiles sessionId={session.id} />
         </div>
-      </PreviewProvider>
+      </PanelProvider>
     );
   }
 

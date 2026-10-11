@@ -1,4 +1,4 @@
-import { sandboxForAgent } from "@/features/workspace/composer/access";
+import { sandboxForAgent } from "@/features/chat/composer/access";
 import { backend } from "@/lib/ipc";
 import type { Session } from "@/types";
 import {

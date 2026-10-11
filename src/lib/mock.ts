@@ -3,8 +3,8 @@
 // 第二轮演示提问卡，之后轮次在思考和工具之间穿插，再流式写出结论。
 // 让 UI 在没有 Rust 后端的浏览器里也能完整演示。
 
-import { foldPageAnnotations } from "@/features/workspace/changes/annotate";
-import { CODEX_DESKTOP } from "@/features/workspace/codex-desktop";
+import { foldPageAnnotations } from "@/features/panel/browser/annotate";
+import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import {
   AGENT_LABELS,
   type AccessMode,
@@ -804,10 +804,10 @@ export const mockBackend: Backend = {
     if (!s) throw new Error("会话不存在");
     const label =
       target.kind === "uncommitted"
-        ? CODEX_DESKTOP.reviewUncommitted
+        ? DESKTOP_ZH.reviewUncommitted
         : target.kind === "base"
-          ? `${CODEX_DESKTOP.reviewBase}: ${target.branch}`
-          : `${CODEX_DESKTOP.reviewCommit}: ${target.sha.slice(0, 7)} ${target.title ?? ""}`.trim();
+          ? `${DESKTOP_ZH.reviewBase}: ${target.branch}`
+          : `${DESKTOP_ZH.reviewCommit}: ${target.sha.slice(0, 7)} ${target.title ?? ""}`.trim();
     pushEvent(sessionId, { kind: "user-message", text: label });
     const turnId = id();
     pushEvent(sessionId, { kind: "turn-anchor", turn_id: turnId });
@@ -934,8 +934,8 @@ export const mockBackend: Backend = {
         kind: "prompt",
         prompt_id: promptId,
         prompt_kind: "choice",
-        question: CODEX_DESKTOP.implementPrompt,
-        options: [{ id: CODEX_DESKTOP.implementId, label: CODEX_DESKTOP.implementOption }],
+        question: DESKTOP_ZH.implementPrompt,
+        options: [{ id: DESKTOP_ZH.implementId, label: DESKTOP_ZH.implementOption }],
         questions: [],
       });
       setStatus(sessionId, "needs-input");
@@ -1164,10 +1164,10 @@ export const mockBackend: Backend = {
     } else if (answer.type === "elicitation") {
       summary =
         answer.action === "accept"
-          ? CODEX_DESKTOP.elicitAccept
+          ? DESKTOP_ZH.elicitAccept
           : answer.action === "decline"
-            ? CODEX_DESKTOP.elicitDecline
-            : CODEX_DESKTOP.elicitCancel;
+            ? DESKTOP_ZH.elicitDecline
+            : DESKTOP_ZH.elicitCancel;
       approved = answer.action === "accept";
     } else if (answer.skipped) {
       summary = "已跳过";
@@ -1187,17 +1187,17 @@ export const mockBackend: Backend = {
       answer: summary,
     });
     if (
-      promptEvent?.question === CODEX_DESKTOP.implementPrompt &&
+      promptEvent?.question === DESKTOP_ZH.implementPrompt &&
       answer.type === "single"
     ) {
       const implement =
-        answer.value === CODEX_DESKTOP.implementId ||
-        answer.value === CODEX_DESKTOP.implementOption;
+        answer.value === DESKTOP_ZH.implementId ||
+        answer.value === DESKTOP_ZH.implementOption;
       if (implement) {
         s.planMode = false;
         pushEvent(sessionId, { kind: "collaboration-mode", mode: "default" });
       }
-      const follow = implement ? CODEX_DESKTOP.implementOption : answer.value;
+      const follow = implement ? DESKTOP_ZH.implementOption : answer.value;
       pushEvent(sessionId, { kind: "user-message", text: follow });
       const turnId = id();
       pushEvent(sessionId, { kind: "turn-anchor", turn_id: turnId });
