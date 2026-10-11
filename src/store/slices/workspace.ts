@@ -34,7 +34,6 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
     catalogCache: {},
     catalogNotice: null,
     tuning: {},
-    composerSeed: null,
 
     setSandbox(sessionId, sandbox) {
       const mode = sandbox.profileId ? "ask" : sandbox.mode;
@@ -133,17 +132,6 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
       }));
     },
 
-    seedComposer(sessionId, text, images) {
-      set({
-        composerSeed: {
-          sessionId,
-          text,
-          images: images ?? [],
-          token: Date.now(),
-        },
-      });
-    },
-
     async sendMessage(sessionId, text, images) {
       try {
         await backend.sendMessage(sessionId, text, images);
@@ -165,18 +153,6 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
         await backend.startReview(sessionId, target);
       } catch (e) {
         reportSessionError(get, set, sessionId, e);
-      }
-    },
-
-    async revertTurn(sessionId, turnId, text) {
-      let rewound = false;
-      try {
-        await backend.revertTurn(sessionId, turnId);
-        rewound = true;
-        await backend.sendMessage(sessionId, text);
-      } catch (e) {
-        reportSessionError(get, set, sessionId, e);
-        if (rewound) get().seedComposer(sessionId, text);
       }
     },
 

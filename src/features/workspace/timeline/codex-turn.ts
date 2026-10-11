@@ -12,27 +12,6 @@ export function collaborationMode(events: readonly SessionEvent[]): "plan" | "de
   return "default";
 }
 
-export function latestRevertTarget(
-  events: readonly SessionEvent[],
-): { turnId: string; userEventId: string } | null {
-  let anchorIndex = -1;
-  let turnId = "";
-  events.forEach((event, index) => {
-    if (event.kind === "turn-anchor") {
-      anchorIndex = index;
-      turnId = event.turn_id;
-    }
-  });
-  if (anchorIndex < 0 || !turnId) return null;
-  for (let index = anchorIndex; index >= 0; index -= 1) {
-    if (events[index].kind !== "user-message") continue;
-    const laterUser = events.slice(index + 1).some((event) => event.kind === "user-message");
-    if (laterUser) return null;
-    return { turnId, userEventId: events[index].id };
-  }
-  return null;
-}
-
 export function diffStats(diff: string): { files: number; added: number; removed: number } {
   const files = new Set<string>();
   let added = 0;

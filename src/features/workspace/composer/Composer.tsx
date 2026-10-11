@@ -128,7 +128,6 @@ export function Composer({
   );
   const files = useWorkbench((s) => s.attachments[session.id] ?? EMPTY_FILES);
   const queue = useWorkbench((s) => s.queues[session.id] ?? EMPTY_QUEUE);
-  const composerSeed = useWorkbench((s) => s.composerSeed);
   const [text, setText] = useState("");
   const [caret, setCaret] = useState(0);
   const [menu, setMenu] = useState<null | "access" | "model" | "attach">(null);
@@ -192,23 +191,6 @@ export function Composer({
       cancelled = true;
     };
   }, [session.id]);
-
-  useEffect(() => {
-    if (!composerSeed || composerSeed.sessionId !== session.id) return;
-    setEditingId(null);
-    setText(composerSeed.text);
-    setCaret(composerSeed.text.length);
-    replaceAttachments(
-      session.id,
-      composerSeed.images.map((path) => ({ path, name: fileName(path) })),
-    );
-    requestAnimationFrame(() => {
-      const el = textareaRef.current;
-      if (!el) return;
-      el.focus();
-      el.setSelectionRange(composerSeed.text.length, composerSeed.text.length);
-    });
-  }, [composerSeed, replaceAttachments, session.id]);
 
   const pendingId = pendingPrompt(events);
   const occupied = isReadOnlyOpen(events);

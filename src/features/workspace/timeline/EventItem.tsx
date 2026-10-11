@@ -10,26 +10,18 @@ import {
   HelpCircle,
   Info,
   Lock,
-  Pencil,
   Wrench,
   X,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { cn, formatMessageTime } from "@/lib/utils";
 import { fileName } from "../composer/media";
 import { CODEX_DESKTOP } from "../codex-desktop";
 import { AssistantAnswer } from "./AssistantAnswer";
 import { ChatThumb } from "./ChatThumb";
-import { diffSummary, latestRevertTarget } from "./codex-turn";
+import { diffSummary } from "./codex-turn";
 import { MessageContent } from "./MessageContent";
 import { useWorkbench } from "@/store";
 import {
@@ -151,35 +143,15 @@ function Row({
   );
 }
 
-const EMPTY_EVENTS: SessionEvent[] = [];
-
 function UserMessage({
-  session,
-  eventId,
   text,
   images,
   time,
 }: {
-  session: Session;
-  eventId: string;
   text: string;
   images: string[];
   time: string;
 }) {
-  const seedComposer = useWorkbench((s) => s.seedComposer);
-  const revertTurn = useWorkbench((s) => s.revertTurn);
-  const events = useWorkbench((s) => s.events[session.id] ?? EMPTY_EVENTS);
-  const profile = useWorkbench((s) => s.profiles[session.agent]);
-  const catalog = useWorkbench((s) => s.catalogs[session.id]);
-  const caps = profile?.capabilities ?? catalog?.capabilities;
-  const [confirm, setConfirm] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(text);
-  const target = latestRevertTarget(events);
-  const protocolEdit = Boolean(caps?.supports_revert);
-  const isLatest = target?.userEventId === eventId;
-  const running = session.status === "running";
-
   return (
     <div className="event-in group min-w-0 px-6 py-2">
       <div className="mx-auto flex min-w-0 max-w-3xl justify-end">
@@ -197,86 +169,13 @@ function UserMessage({
                 ))}
               </div>
             )}
-            {editing ? (
-              <textarea
-                aria-label={CODEX_DESKTOP.editMessage}
-                placeholder={CODEX_DESKTOP.editMessage}
-                value={draft}
-                autoFocus
-                rows={Math.min(6, Math.max(2, draft.split("\n").length))}
-                className="w-full min-w-0 resize-none overflow-x-hidden bg-transparent text-sm leading-6 text-white outline-none placeholder:text-indigo-200"
-                onChange={(event) => setDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") {
-                    event.preventDefault();
-                    setEditing(false);
-                    setDraft(text);
-                    return;
-                  }
-                  if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-                    event.preventDefault();
-                    if (draft.trim()) setConfirm(true);
-                  }
-                }}
-              />
-            ) : text ? (
-              <MessageContent text={text} />
-            ) : null}
+            {text ? <MessageContent text={text} /> : null}
           </div>
           <HoverActions time={time}>
-            <CopyButton text={editing ? draft : text} />
-            {protocolEdit && isLatest ? (
-              <button
-                type="button"
-                title={running ? CODEX_DESKTOP.editWhileRunning : CODEX_DESKTOP.editMessage}
-                aria-label={CODEX_DESKTOP.editMessage}
-                disabled={running}
-                className="rounded p-0.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
-                onClick={() => {
-                  setDraft(text);
-                  setEditing(true);
-                }}
-              >
-                <Pencil className="h-3.5 w-3.5" />
-              </button>
-            ) : null}
-            {!protocolEdit && (
-              <button
-                type="button"
-                title="编辑"
-                aria-label="编辑"
-                className="rounded p-0.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
-                onClick={() => seedComposer(session.id, text, images)}
-              >
-                <Pencil className="h-3.5 w-3.5" />
-              </button>
-            )}
+            {text ? <CopyButton text={text} /> : null}
           </HoverActions>
         </div>
       </div>
-      <Dialog open={confirm} onOpenChange={setConfirm}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>{CODEX_DESKTOP.editMessage}</DialogTitle>
-          </DialogHeader>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setConfirm(false)}>
-              {CODEX_DESKTOP.cancelEdit}
-            </Button>
-            <Button
-              type="button"
-              onClick={() => {
-                setConfirm(false);
-                setEditing(false);
-                if (!target || !draft.trim()) return;
-                void revertTurn(session.id, target.turnId, draft.trim());
-              }}
-            >
-              {CODEX_DESKTOP.sendEdit}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
@@ -965,18 +864,11 @@ export function EventItem({
   switch (event.kind) {
     case "user-message":
       return (
-        <UserMessage
-          session={session}
-          eventId={event.id}
-          text={event.text}
-          images={event.images ?? []}
-          time={time}
-        />
+        <UserMessage text={event.text} images={event.images ?? []} time={time} />
       );
 
     case "turn-anchor":
     case "collaboration-mode":
-    case "rewind":
       return null;
 
     case "turn-diff":

@@ -104,7 +104,6 @@ export interface Backend {
   setCollaborationMode(sessionId: string, mode: "plan" | "default"): Promise<void>;
   reviewTargets(sessionId: string): Promise<ReviewTargets>;
   startReview(sessionId: string, target: ReviewStart): Promise<void>;
-  revertTurn(sessionId: string, turnId: string): Promise<void>;
   answerPrompt(
     sessionId: string,
     promptId: string,
@@ -258,8 +257,6 @@ const tauriBackend: Backend = {
     invoke<ReviewTargets>("review_targets", { sessionId }),
   startReview: (sessionId, target) =>
     invoke("start_review", { sessionId, target }),
-  revertTurn: (sessionId, turnId) =>
-    invoke("revert_turn", { sessionId, turnId }),
   answerPrompt: (sessionId, promptId, answer) =>
     invoke("answer_prompt", { sessionId, promptId, answer }),
   stopSession: (sessionId) => invoke("stop_session", { sessionId }),

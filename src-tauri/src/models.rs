@@ -344,7 +344,7 @@ pub enum SessionEventBody {
     QueueChanged {
         items: Vec<QueuedTurn>,
     },
-    /// 隐藏锚点。`turn/started` 在用户消息之后发出，供 diff 和 revert 绑定。
+    /// 隐藏锚点。`turn/started` 在用户消息之后发出，供 diff 绑定。
     TurnAnchor {
         turn_id: String,
     },
@@ -380,11 +380,6 @@ pub enum SessionEventBody {
     /// 作曲栏 Plan 开关。不进时间线正文。
     CollaborationMode {
         mode: String,
-    },
-    /// 不入库。前端丢掉 `seq >= drop_from_seq` 的事件。
-    Rewind {
-        turn_id: String,
-        drop_from_seq: u64,
     },
 }
 
@@ -486,9 +481,6 @@ pub struct AgentCapabilities {
     /// 回合内展开 `turn/diff/updated`。
     #[serde(default)]
     pub supports_turn_diff: bool,
-    /// 最近一条用户消息可经 `thread/revert` 编辑。
-    #[serde(default)]
-    pub supports_revert: bool,
     /// `/review` 打开官方目标菜单，并走 `review/start`。
     #[serde(default)]
     pub supports_review: bool,
@@ -530,7 +522,6 @@ impl AgentCapabilities {
             supports_rename: false,
             supports_plan: false,
             supports_turn_diff: false,
-            supports_revert: false,
             supports_review: false,
             supports_network_access: false,
             supports_writable_roots: false,
@@ -560,7 +551,6 @@ impl AgentCapabilities {
             supports_rename: true,
             supports_plan: true,
             supports_turn_diff: true,
-            supports_revert: true,
             supports_review: true,
             supports_network_access: true,
             supports_writable_roots: true,
@@ -831,7 +821,6 @@ mod tests {
         assert!(!parsed.supports_mcp);
         assert!(!parsed.supports_plan);
         assert!(!parsed.supports_turn_diff);
-        assert!(!parsed.supports_revert);
         assert!(!parsed.supports_review);
         assert!(!parsed.supports_network_access);
         assert!(!parsed.supports_writable_roots);

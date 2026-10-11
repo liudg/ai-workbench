@@ -174,15 +174,6 @@ pub async fn start_review(
 }
 
 #[tauri::command]
-pub async fn revert_turn(
-    manager: State<'_, SessionManager>,
-    session_id: String,
-    turn_id: String,
-) -> Result<(), String> {
-    manager.revert_turn(&session_id, &turn_id).await
-}
-
-#[tauri::command]
 pub async fn send_message(
     manager: State<'_, SessionManager>,
     session_id: String,

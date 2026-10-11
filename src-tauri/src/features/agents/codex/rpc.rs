@@ -298,7 +298,6 @@ impl Shared {
                 if let Some(id) = params.pointer("/turn/id").and_then(Value::as_str) {
                     let id = id.to_string();
                     *self.turn_id.lock().unwrap() = Some(id.clone());
-                    *self.latest_turn_id.lock().unwrap() = Some(id.clone());
                     emit(&self.events, SessionEventBody::TurnAnchor { turn_id: id });
                 }
                 emit_status(&self.events, SessionStatus::Running);

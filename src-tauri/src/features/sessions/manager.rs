@@ -430,14 +430,6 @@ impl SessionManager {
         })
     }
 
-    pub async fn revert_turn(&self, session_id: &str, turn_id: &str) -> Result<(), String> {
-        let handle = self.agent_handle_ready(session_id).await?;
-        handle
-            .revert_turn(turn_id)
-            .await
-            .map_err(|err| err.to_string())
-    }
-
     pub async fn send_message(
         &self,
         session_id: &str,
@@ -922,10 +914,6 @@ fn apply_body(
         );
         return;
     }
-    if let SessionEventBody::Rewind { turn_id, .. } = &body {
-        apply_rewind(entries, app, session_id, turn_id);
-        return;
-    }
     let replaced = {
         let mut entries = entries.lock().unwrap();
         let Some(entry) = entries.get_mut(session_id) else {
@@ -1024,7 +1012,7 @@ fn is_conversation_activity(body: &SessionEventBody) -> bool {
     )
 }
 
-/// 更早的回合插到日志前面。已有事件的 seq 整体上移，避免回退时把它们裁掉。
+/// 更早的回合插到日志前面。已有事件的 seq 整体上移，新插入的页使用更小的序号。
 fn prepend_bodies(
     entry: &mut SessionEntry,
     session_id: &str,
@@ -1066,76 +1054,6 @@ fn sidebar_updated_at(directory_updated_at: i64, activity_at: Option<i64>) -> i6
         Some(activity) => directory_updated_at.max(activity),
         None => directory_updated_at,
     }
-}
-
-fn apply_rewind(
-    entries: &Mutex<HashMap<SessionId, SessionEntry>>,
-    app: &AppHandle,
-    session_id: &str,
-    turn_id: &str,
-) {
-    let event = {
-        let mut entries = entries.lock().unwrap();
-        let Some(entry) = entries.get_mut(session_id) else {
-            return;
-        };
-        if let Some(drop_from) = truncate_from_turn(entry, turn_id) {
-            SessionEvent {
-                id: new_id(),
-                session_id: session_id.to_string(),
-                seq: drop_from,
-                ts: now_millis(),
-                body: SessionEventBody::Rewind {
-                    turn_id: turn_id.to_string(),
-                    drop_from_seq: drop_from,
-                },
-            }
-        } else {
-            mutate_entry(
-                entry,
-                session_id,
-                SessionEventBody::Error {
-                    message: "无法编辑消息".into(),
-                },
-                false,
-            )
-            .event
-        }
-    };
-    let _ = app.emit(EVT_SESSION_EVENT, &event);
-}
-
-/// 从该回合的用户消息起截掉后面的时间线。不是最近一个回合时返回 None。
-fn truncate_from_turn(entry: &mut SessionEntry, turn_id: &str) -> Option<u64> {
-    let anchor = entry.events.iter().rposition(|event| {
-        matches!(&event.body, SessionEventBody::TurnAnchor { turn_id: id } if id == turn_id)
-    })?;
-    let latest = entry
-        .events
-        .iter()
-        .rposition(|event| matches!(event.body, SessionEventBody::TurnAnchor { .. }))?;
-    if latest != anchor {
-        return None;
-    }
-    let mut start = anchor;
-    while start > 0 {
-        if matches!(
-            entry.events[start].body,
-            SessionEventBody::UserMessage { .. }
-        ) {
-            break;
-        }
-        start -= 1;
-    }
-    if !matches!(
-        entry.events[start].body,
-        SessionEventBody::UserMessage { .. }
-    ) {
-        start = anchor;
-    }
-    let seq = entry.events[start].seq;
-    entry.events.truncate(start);
-    Some(seq)
 }
 
 fn replace_keyed(
@@ -1446,63 +1364,7 @@ mod tests {
     }
 
     #[test]
-    fn revert_keeps_earlier_turns_and_refuses_an_older_one() {
-        let mut session = entry(1_000);
-        session.events = vec![
-            stamped(
-                1,
-                SessionEventBody::UserMessage {
-                    text: "keep".into(),
-                    images: Vec::new(),
-                },
-            ),
-            stamped(
-                2,
-                SessionEventBody::TurnAnchor {
-                    turn_id: "old".into(),
-                },
-            ),
-            stamped(
-                3,
-                SessionEventBody::AgentMessage {
-                    text: "old".into(),
-                    stream_id: None,
-                    phase: None,
-                },
-            ),
-            stamped(
-                4,
-                SessionEventBody::UserMessage {
-                    text: "drop".into(),
-                    images: Vec::new(),
-                },
-            ),
-            stamped(
-                5,
-                SessionEventBody::TurnAnchor {
-                    turn_id: "new".into(),
-                },
-            ),
-            stamped(
-                6,
-                SessionEventBody::TurnDiff {
-                    turn_id: "new".into(),
-                    diff: "diff --git a/a b/a\n".into(),
-                },
-            ),
-        ];
-        assert!(truncate_from_turn(&mut session, "old").is_none());
-        assert_eq!(session.events.len(), 6);
-        assert_eq!(truncate_from_turn(&mut session, "new"), Some(4));
-        assert_eq!(session.events.len(), 3);
-        assert!(matches!(
-            session.events.last().unwrap().body,
-            SessionEventBody::AgentMessage { .. }
-        ));
-    }
-
-    #[test]
-    fn older_history_is_prepended_and_survives_rewind() {
+    fn older_history_is_prepended_without_moving_activity() {
         let mut session = entry(1_000);
         session.events = vec![
             stamped(
@@ -1546,8 +1408,7 @@ mod tests {
         assert_eq!(session.next_seq, 5);
         assert_eq!(session.activity_at, Some(1_000));
         assert_eq!(session.meta.updated_at, 1_000);
-        assert_eq!(truncate_from_turn(&mut session, "new"), Some(3));
-        assert_eq!(session.events.len(), 2);
+        assert_eq!(session.events.len(), 4);
         assert!(matches!(
             &session.events[1].body,
             SessionEventBody::ToolCall { detail, .. } if detail == "hi"

@@ -138,8 +138,7 @@ export type SessionEventBody =
       findings: ReviewFinding[];
       raw: string;
     }
-  | { kind: "collaboration-mode"; mode: string }
-  | { kind: "rewind"; turn_id: string; drop_from_seq: number };
+  | { kind: "collaboration-mode"; mode: string };
 
 export interface PlanStep {
   step: string;
@@ -298,7 +297,6 @@ export interface AgentCapabilities {
   supports_rename?: boolean;
   supports_plan?: boolean;
   supports_turn_diff?: boolean;
-  supports_revert?: boolean;
   supports_review?: boolean;
   /** 询问批准 / 只读 / workspace-write 的网络开关。 */
   supports_network_access?: boolean;
@@ -461,7 +459,6 @@ export const EMPTY_CAPABILITIES: AgentCapabilities = {
   supports_rename: false,
   supports_plan: false,
   supports_turn_diff: false,
-  supports_revert: false,
   supports_review: false,
 };
 

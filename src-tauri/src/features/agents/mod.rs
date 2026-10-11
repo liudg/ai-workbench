@@ -221,11 +221,6 @@ pub trait AgentSession: Send + Sync {
         })
     }
 
-    /// `thread/revert`。只回退对话，不改工作区文件。
-    async fn revert_turn(&self, _turn_id: &str) -> Result<(), AgentError> {
-        Err(AgentError::Runtime("无法编辑消息".into()))
-    }
-
     /// 继续会话后，上滚再要一页更早的回合。默认没有更早的记录。
     async fn load_older_history(&self) -> Result<(Vec<SessionEventBody>, bool), AgentError> {
         Ok((Vec::new(), true))

@@ -342,7 +342,6 @@ impl AgentAdapter for CodexCliAdapter {
             queue_removed: Mutex::new(HashSet::new()),
             shown_users: Mutex::new(HashSet::new()),
             collaboration: Mutex::new(state::Collaboration::Default),
-            latest_turn_id: Mutex::new(None),
             plan_ready: AtomicBool::new(false),
             review_output: Mutex::new(None),
             history_cursor: Mutex::new(None),
@@ -712,10 +711,6 @@ impl AgentSession for CodexCliSession {
 
     async fn review_targets(&self) -> Result<crate::models::ReviewTargets, AgentError> {
         Ok(gap::git_review_targets(&self.shared.cwd).await)
-    }
-
-    async fn revert_turn(&self, turn_id: &str) -> Result<(), AgentError> {
-        self.shared.revert_turn(turn_id).await
     }
 
     async fn load_older_history(&self) -> Result<(Vec<SessionEventBody>, bool), AgentError> {
@@ -1113,7 +1108,7 @@ mod tests {
 
     #[tokio::test]
     #[ignore = "calls the local Codex CLI in _gap-review-plan"]
-    async fn review_plan_diff_revert_in_gap_project() {
+    async fn review_plan_diff_in_gap_project() {
         let cwd = r"C:\Users\admin\Desktop\temp\ai-workbench-project\_gap-review-plan";
         let adapter = CodexCliAdapter::new();
         let (tx, mut rx) = mpsc::unbounded_channel();
@@ -1165,11 +1160,6 @@ mod tests {
         }
         if problem.is_empty() && review_turn.is_empty() {
             problem = "review did not emit a turn id".into();
-        }
-        if problem.is_empty() {
-            if let Err(err) = session.revert_turn(&review_turn).await {
-                problem = format!("revert review turn: {err}");
-            }
         }
 
         if problem.is_empty() {

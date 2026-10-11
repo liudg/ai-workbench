@@ -1,4 +1,4 @@
-//! Codex 桌面端已经在用的 review / plan / diff / revert。
+//! Codex 桌面端已经在用的 review / plan / diff。
 //! 这里只组协议参数和解析官方文本，不另写一套给模型的提示。
 
 use std::process::Stdio;
@@ -20,8 +20,6 @@ pub(super) const REVIEW_DESCRIPTION: &str = "审查未提交的更改，或与�
 pub(super) const IMPLEMENT_PROMPT: &str = "实施此计划？";
 pub(super) const IMPLEMENT_OPTION: &str = "是，实施此计划";
 pub(super) const IMPLEMENT_ID: &str = "implement";
-pub(super) const EDIT_LATEST_ONLY: &str = "无法编辑消息";
-pub(super) const EDIT_WHILE_RUNNING: &str = "无法编辑消息";
 
 pub(super) fn review_protocol(target: &ReviewStart) -> Value {
     match target {
@@ -360,46 +358,6 @@ impl Shared {
                 .store(false, std::sync::atomic::Ordering::SeqCst);
             return Err(AgentError::Runtime("无法向 Codex CLI 写入审查".into()));
         }
-        Ok(())
-    }
-
-    pub(super) async fn revert_turn(&self, turn_id: &str) -> Result<(), AgentError> {
-        self.ensure_open()?;
-        if self.read_only() {
-            return Err(AgentError::Runtime(
-                crate::models::OCCUPIED_SESSION_NOTICE.into(),
-            ));
-        }
-        if self.turn_open.load(std::sync::atomic::Ordering::SeqCst) {
-            return Err(AgentError::Runtime(EDIT_WHILE_RUNNING.into()));
-        }
-        let latest = self
-            .latest_turn_id
-            .lock()
-            .unwrap()
-            .clone()
-            .unwrap_or_default();
-        if latest.is_empty() || latest != turn_id {
-            return Err(AgentError::Runtime(EDIT_LATEST_ONLY.into()));
-        }
-        self.ensure_thread().await?;
-        let thread_id = self.thread_id.lock().unwrap().clone().unwrap_or_default();
-        if thread_id.is_empty() {
-            return Err(AgentError::Runtime("Codex 线程未建立".into()));
-        }
-        self.request(
-            "thread/revert",
-            json!({ "threadId": thread_id, "beforeTurnId": turn_id }),
-        )
-        .await?;
-        *self.latest_turn_id.lock().unwrap() = None;
-        emit(
-            &self.events,
-            SessionEventBody::Rewind {
-                turn_id: turn_id.to_string(),
-                drop_from_seq: 0,
-            },
-        );
         Ok(())
     }
 

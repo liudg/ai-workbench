@@ -7,7 +7,6 @@ import {
   diffStats,
   diffSummary,
   isReviewDuplicate,
-  latestRevertTarget,
 } from "./codex-turn.ts";
 
 function event(id: string, seq: number, body: SessionEventBody): SessionEvent {
@@ -21,16 +20,6 @@ test("plan mode follows the latest collaboration event", () => {
   ];
   assert.equal(collaborationMode(events), "default");
   assert.equal(collaborationMode([]), "default");
-});
-
-test("only the latest anchored user message can be edited", () => {
-  const events = [
-    event("u1", 1, { kind: "user-message", text: "first" }),
-    event("a1", 2, { kind: "turn-anchor", turn_id: "old" }),
-    event("u2", 3, { kind: "user-message", text: "second" }),
-    event("a2", 4, { kind: "turn-anchor", turn_id: "new" }),
-  ];
-  assert.deepEqual(latestRevertTarget(events), { turnId: "new", userEventId: "u2" });
 });
 
 test("unified diff counts files and lines without a horizontal scroller", () => {

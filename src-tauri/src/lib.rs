@@ -68,7 +68,6 @@ pub fn run() {
             features::ipc::sessions::set_collaboration_mode,
             features::ipc::sessions::review_targets,
             features::ipc::sessions::start_review,
-            features::ipc::sessions::revert_turn,
             features::ipc::sessions::send_message,
             features::ipc::sessions::update_queued_turn,
             features::ipc::sessions::remove_queued_turn,

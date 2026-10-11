@@ -79,7 +79,6 @@ const CODEX_CAPABILITIES: AgentCapabilities = {
   supports_queue: true,
   supports_plan: true,
   supports_turn_diff: true,
-  supports_revert: true,
   supports_review: true,
   supports_paged_history: true,
   supports_network_access: true,
@@ -311,7 +310,6 @@ interface MockSessionState {
   turns: number;
   pendingPrompt: string | null;
   planMode: boolean;
-  latestTurnId: string | null;
   access: AccessMode;
   timers: ReturnType<typeof setTimeout>[];
 }
@@ -424,7 +422,6 @@ function putSession(cwd: string, projectId: string, nativeId: string, title: str
     turns: 1,
     pendingPrompt: null,
     planMode: false,
-    latestTurnId: null,
     access: "full",
     timers: [],
   });
@@ -465,8 +462,6 @@ function seedRegisteredProject() {
     pushEvent(sessionId, { kind: "user-message", text: title });
     if (index === 2) {
       const turnId = "preview-turn";
-      const session = sessions.get(sessionId);
-      if (session) session.latestTurnId = turnId;
       pushEvent(sessionId, { kind: "turn-anchor", turn_id: turnId });
       pushEvent(sessionId, {
         kind: "agent-message",
@@ -665,7 +660,6 @@ export const mockBackend: Backend = {
       turns: source.turns,
       pendingPrompt: null,
       planMode: source.planMode,
-      latestTurnId: source.latestTurnId,
       access: source.access,
       timers: [],
     });
@@ -734,7 +728,6 @@ export const mockBackend: Backend = {
       turns: 0,
       pendingPrompt: null,
       planMode: false,
-      latestTurnId: null,
       access: accessMode ?? "full",
       timers: [],
     };
@@ -817,7 +810,6 @@ export const mockBackend: Backend = {
           : `${CODEX_DESKTOP.reviewCommit}: ${target.sha.slice(0, 7)} ${target.title ?? ""}`.trim();
     pushEvent(sessionId, { kind: "user-message", text: label });
     const turnId = id();
-    s.latestTurnId = turnId;
     pushEvent(sessionId, { kind: "turn-anchor", turn_id: turnId });
     pushEvent(sessionId, { kind: "review-note", text: label });
     const raw = "The change looks safe.\n\nReview comment:\n\n- Missing check — src/main.rs:1-2\n  The new line is untested.";
@@ -833,45 +825,6 @@ export const mockBackend: Backend = {
       diff: "diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1 +1,2 @@\n-fn main() {}\n+fn main() {\n+}\n",
     });
     setStatus(sessionId, "completed");
-  },
-
-  async revertTurn(sessionId, turnId) {
-    const s = sessions.get(sessionId);
-    if (!s) throw new Error("会话不存在");
-    if (s.meta.status === "running") throw new Error(CODEX_DESKTOP.editWhileRunning);
-    const anchorIndex = s.events.findIndex(
-      (event) => event.kind === "turn-anchor" && event.turn_id === turnId,
-    );
-    const latestAnchor = [...s.events].reverse().find((event) => event.kind === "turn-anchor");
-    if (
-      anchorIndex < 0 ||
-      !latestAnchor ||
-      latestAnchor.kind !== "turn-anchor" ||
-      latestAnchor.turn_id !== turnId
-    ) {
-      throw new Error(CODEX_DESKTOP.editFailed);
-    }
-    let start = anchorIndex;
-    for (let index = anchorIndex; index >= 0; index -= 1) {
-      if (s.events[index].kind === "user-message") {
-        start = index;
-        break;
-      }
-    }
-    const drop = s.events[start].seq;
-    s.events = s.events.slice(0, start);
-    s.latestTurnId = null;
-    eventListeners.forEach((cb) =>
-      cb({
-        id: id(),
-        session_id: sessionId,
-        seq: drop,
-        ts: now(),
-        kind: "rewind",
-        turn_id: turnId,
-        drop_from_seq: drop,
-      }),
-    );
   },
 
   async setSandbox(sessionId, sandbox) {
@@ -946,7 +899,6 @@ export const mockBackend: Backend = {
     }
     if (s.planMode && profile.capabilities.supports_plan) {
       const turnId = id();
-      s.latestTurnId = turnId;
       pushEvent(sessionId, { kind: "turn-anchor", turn_id: turnId });
       pushEvent(sessionId, {
         kind: "plan-steps",
@@ -975,7 +927,6 @@ export const mockBackend: Backend = {
       return;
     }
     const turnId = id();
-    s.latestTurnId = turnId;
     pushEvent(sessionId, { kind: "turn-anchor", turn_id: turnId });
     s.turns += 1;
     const turn = s.turns;
@@ -1189,7 +1140,6 @@ export const mockBackend: Backend = {
       const follow = implement ? CODEX_DESKTOP.implementOption : answer.value;
       pushEvent(sessionId, { kind: "user-message", text: follow });
       const turnId = id();
-      s.latestTurnId = turnId;
       pushEvent(sessionId, { kind: "turn-anchor", turn_id: turnId });
       pushEvent(sessionId, {
         kind: "agent-message",

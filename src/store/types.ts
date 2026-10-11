@@ -82,7 +82,6 @@ export interface WorkspaceSlice {
   /** 目录刷新失败时的一条弱提示。不占用全局红色错误条。 */
   catalogNotice: string | null;
   tuning: Record<string, { model: string; effort: string }>;
-  composerSeed: { sessionId: string; text: string; images: string[]; token: number } | null;
   setSandbox(sessionId: string, sandbox: SessionSandbox): void;
   loadCatalog(sessionId: string): Promise<void>;
   setTuning(sessionId: string, model: string, effort: string): void;
@@ -90,11 +89,9 @@ export interface WorkspaceSlice {
   removeAttachment(sessionId: string, path: string): void;
   clearAttachments(sessionId: string): void;
   replaceAttachments(sessionId: string, files: Attachment[]): void;
-  seedComposer(sessionId: string, text: string, images?: string[]): void;
   sendMessage(sessionId: string, text: string, images?: string[]): Promise<void>;
   setCollaborationMode(sessionId: string, mode: "plan" | "default"): Promise<void>;
   startReview(sessionId: string, target: ReviewStart): Promise<void>;
-  revertTurn(sessionId: string, turnId: string, text: string): Promise<void>;
   answerPrompt(sessionId: string, promptId: string, answer: PromptAnswer): Promise<void>;
   loadOlderHistory(sessionId: string): Promise<boolean>;
   stopSession(sessionId: string): Promise<void>;

@@ -101,8 +101,7 @@ function skippedInTimeline(event: SessionEvent): boolean {
     event.kind === "status-changed" ||
     event.kind === "prompt-resolved" ||
     event.kind === "turn-anchor" ||
-    event.kind === "collaboration-mode" ||
-    event.kind === "rewind"
+    event.kind === "collaboration-mode"
   );
 }
 

@@ -180,7 +180,6 @@ impl AgentAdapter for ExternalCliAdapter {
             supports_rename: false,
             supports_plan: false,
             supports_turn_diff: false,
-            supports_revert: false,
             supports_review: false,
             supports_network_access: false,
             supports_writable_roots: false,
