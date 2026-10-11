@@ -203,6 +203,7 @@ pub(super) fn plan_steps_event(params: &Value) -> Option<SessionEventBody> {
         turn_id: turn_id.to_string(),
         explanation,
         steps,
+        mode: Some("plan".into()),
     })
 }
 
@@ -275,6 +276,10 @@ async fn git<const N: usize>(cwd: &str, args: [&str; N]) -> Result<String, Strin
 impl Shared {
     pub(super) fn collaboration_is_plan(&self) -> bool {
         *self.collaboration.lock().unwrap() == Collaboration::Plan
+    }
+
+    pub(super) fn plan_marker(&self) -> Option<String> {
+        self.collaboration_is_plan().then(|| "plan".to_string())
     }
 
     pub(super) fn set_collaboration_mode(&self, mode: &str) -> Result<(), AgentError> {
@@ -361,27 +366,34 @@ impl Shared {
         Ok(())
     }
 
-    pub(super) fn note_review_output(&self, text: &str) {
+    pub(super) fn note_review_output(&self, id: &str, text: &str) {
         let trimmed = text.trim();
         *self.review_output.lock().unwrap() = if trimmed.is_empty() {
             None
         } else {
-            Some(trimmed.to_string())
+            let id = if id.trim().is_empty() {
+                "review".to_string()
+            } else {
+                id.trim().to_string()
+            };
+            Some((id, trimmed.to_string()))
         };
     }
 
-    /// 退出审查后的 agentMessage 与 findings 原文相同，不再画第二条。
-    pub(super) fn consume_review_duplicate(&self, text: &str) -> bool {
+    /// 退出审查后的 agentMessage 与 findings 原文相同。返回审查 item id，调用方写入 `dedupe_of`。
+    pub(super) fn take_review_duplicate(&self, text: &str) -> Option<String> {
         let trimmed = text.trim();
         if trimmed.is_empty() {
-            return false;
+            return None;
         }
         let mut slot = self.review_output.lock().unwrap();
-        if slot.as_deref() == Some(trimmed) {
-            *slot = None;
-            true
-        } else {
-            false
+        match slot.as_ref() {
+            Some((id, stored)) if stored == trimmed => {
+                let id = id.clone();
+                *slot = None;
+                Some(id)
+            }
+            _ => None,
         }
     }
 
@@ -547,10 +559,12 @@ mod tests {
             turn_id,
             explanation,
             steps,
+            mode,
         } = body
         else {
             panic!("steps");
         };
+        assert_eq!(mode.as_deref(), Some("plan"));
         assert_eq!(turn_id, "turn-1");
         assert_eq!(explanation, "Ship the parser first.");
         assert_eq!(steps[1].status, "inProgress");

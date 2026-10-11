@@ -5,12 +5,29 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tokio::process::Command;
 
 use crate::encoding::{apply_utf8_env, decode_child_bytes};
 use crate::features::agents::AgentError;
-use crate::models::{strip_verbatim_prefix, WorktreeInfo, WorktreeSettings};
+use crate::models::strip_verbatim_prefix;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub(super) struct WorktreeInfo {
+    pub path: String,
+    pub head: String,
+    pub branch: String,
+    pub detached: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub(super) struct WorktreeSettings {
+    pub root: String,
+    /// 官方默认保留最近 15 个 Codex 管理的工作树。
+    pub keep: u32,
+    pub auto_prune: bool,
+    pub worktrees: Vec<WorktreeInfo>,
+}
 
 use super::process::hide_console;
 

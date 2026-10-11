@@ -1,9 +1,46 @@
 //! 斜杠 `/mcp` 和 `/hooks` 用的解析与文案。
 //! 会话线程自己发 `config/read`、`mcpServerStatus/list` 和 `hooks/list`。
 
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::models::{HookRecord, McpServerRecord, McpTransport};
+/// MCP 传输：STDIO 或 Streamable HTTP。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub(super) enum McpTransport {
+    Stdio,
+    Http,
+}
+
+/// 一条 MCP 服务器。配置来自 `config/read`，运行状态来自 `mcpServerStatus/list`。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub(super) struct McpServerRecord {
+    pub name: String,
+    pub transport: McpTransport,
+    pub command: String,
+    pub args: Vec<String>,
+    pub url: String,
+    pub enabled: bool,
+    /// 协议原值：unknown / unsupported / notLoggedIn / bearerToken / oAuth。空表示没有状态。
+    pub auth_status: String,
+    /// 协议原值：notStarted / starting / connected / authenticationRequired / failed / cancelled / disabled。
+    pub runtime_status: String,
+    pub tool_names: Vec<String>,
+    pub tools_error: String,
+    /// 非空表示服务器由插件提供。
+    pub plugin_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub(super) struct HookRecord {
+    pub cwd: String,
+    pub event_name: String,
+    pub handler: String,
+    pub source: String,
+    pub trust_status: String,
+    pub enabled: bool,
+    pub status_message: String,
+}
 
 pub(super) fn merge_mcp_servers(config: &Value, status_pages: &[Value]) -> Vec<McpServerRecord> {
     let configured = config

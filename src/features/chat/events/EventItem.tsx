@@ -875,6 +875,8 @@ export function EventItem({
       return null;
 
     case "turn-diff":
+    case "file-change":
+    case "turn-changes":
       return null;
 
     case "plan-steps":

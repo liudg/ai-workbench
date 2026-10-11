@@ -8,7 +8,8 @@ use tokio::process::Command;
 use crate::encoding::{apply_utf8_env, decode_child_bytes};
 use crate::features::agents::AgentError;
 use crate::models::{
-    PromptKind, PromptOption, SessionEventBody, SessionStatus, OCCUPIED_SESSION_NOTICE,
+    PageAnnotation, PromptKind, PromptOption, SessionEventBody, SessionStatus,
+    OCCUPIED_SESSION_NOTICE,
 };
 
 use super::catalog::{build_turn_input, slash_help, split_command};
@@ -43,7 +44,8 @@ impl Shared {
     }
 
     pub(super) async fn begin_turn(&self, text: String) -> Result<(), AgentError> {
-        self.begin_user_turn(text, Vec::new(), String::new()).await
+        self.begin_user_turn(text, Vec::new(), String::new(), Vec::new())
+            .await
     }
 
     pub(super) async fn begin_user_turn(
@@ -51,6 +53,7 @@ impl Shared {
         text: String,
         images: Vec<String>,
         client_id: String,
+        annotations: Vec<PageAnnotation>,
     ) -> Result<(), AgentError> {
         if self.read_only() {
             return Err(AgentError::Runtime(OCCUPIED_SESSION_NOTICE.into()));
@@ -89,7 +92,7 @@ impl Shared {
         }
         let input = {
             let skills = self.skills.lock().unwrap();
-            build_turn_input(&text, &skills, &images)
+            build_turn_input(&text, &skills, &images, &annotations)
         };
         if !self.titled.swap(true, Ordering::SeqCst) {
             let label = if text.trim().is_empty() {
@@ -173,6 +176,7 @@ impl Shared {
                 *self.history_cursor.lock().unwrap() = page.next;
                 let turns = chronological_turns(std::slice::from_ref(&page.data));
                 for body in bodies_from_turns(&turns) {
+                    self.note_replayed(&body);
                     emit(&self.events, body);
                 }
             }
@@ -205,7 +209,54 @@ impl Shared {
         let exhausted = page.next.is_none();
         *self.history_cursor.lock().unwrap() = page.next;
         let turns = chronological_turns(std::slice::from_ref(&page.data));
-        Ok((bodies_from_turns(&turns), exhausted))
+        let bodies = bodies_from_turns(&turns);
+        for body in &bodies {
+            self.note_replayed(body);
+        }
+        Ok((bodies, exhausted))
+    }
+
+    pub(super) fn note_replayed(&self, body: &SessionEventBody) {
+        match body {
+            SessionEventBody::TurnDiff { turn_id, diff } => {
+                self.remember_turn_diff(turn_id, diff);
+            }
+            SessionEventBody::TurnChanges { turn_id, files } => {
+                self.turn_files
+                    .lock()
+                    .unwrap()
+                    .insert(turn_id.clone(), files.clone());
+            }
+            _ => {}
+        }
+    }
+
+    pub(super) fn remember_turn_diff(&self, turn_id: &str, diff: &str) {
+        if turn_id.is_empty() || diff.is_empty() {
+            return;
+        }
+        self.turn_diffs
+            .lock()
+            .unwrap()
+            .insert(turn_id.to_string(), diff.to_string());
+        *self.last_turn_id.lock().unwrap() = Some(turn_id.to_string());
+    }
+
+    pub(super) fn remember_file_changes(
+        &self,
+        turn_id: &str,
+        updated: &[crate::models::FileChange],
+    ) -> Vec<crate::models::FileChange> {
+        let mut map = self.turn_files.lock().unwrap();
+        let slot = map.entry(turn_id.to_string()).or_default();
+        for file in updated {
+            if let Some(existing) = slot.iter_mut().find(|item| item.path == file.path) {
+                *existing = file.clone();
+            } else {
+                slot.push(file.clone());
+            }
+        }
+        slot.clone()
     }
 
     async fn fetch_history_page(

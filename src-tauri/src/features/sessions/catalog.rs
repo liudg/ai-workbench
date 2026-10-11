@@ -165,7 +165,8 @@ impl CatalogCache {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{AgentCapabilities, AgentModelOption};
+    use crate::features::agents::adapter_for;
+    use crate::models::AgentModelOption;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
     fn model(id: &str) -> AgentModelOption {
@@ -184,7 +185,7 @@ mod tests {
             models: vec![model(id)],
             skills: Vec::new(),
             commands: Vec::new(),
-            capabilities: AgentCapabilities::codex(),
+            capabilities: adapter_for(AgentKind::CodexCli).capabilities(),
         }
     }
 

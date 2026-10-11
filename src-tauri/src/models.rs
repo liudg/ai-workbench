@@ -313,6 +313,29 @@ fn is_zero(value: &u32) -> bool {
     *value == 0
 }
 
+/// 归一化文件状态：新增 / 修改 / 删除 / 重命名。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum FileStatus {
+    #[serde(rename = "A")]
+    Added,
+    #[serde(rename = "M")]
+    Modified,
+    #[serde(rename = "D")]
+    Deleted,
+    #[serde(rename = "R")]
+    Renamed,
+}
+
+/// `turn-changes.files[]` 里的一个文件。`file-change` 事件另外带 `turn_id`。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct FileChange {
+    pub path: String,
+    pub status: FileStatus,
+    pub added: u32,
+    pub removed: u32,
+    pub diff: String,
+}
+
 /// 会话事件体（时间线中的一条）。`kind` 字段作为判别标签。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
@@ -334,6 +357,12 @@ pub enum SessionEventBody {
         /// 适配器标出的阶段。缺省不是「最终答复」，只是阶段未知。
         #[serde(default, skip_serializing_if = "Option::is_none")]
         phase: Option<MessagePhase>,
+        /// 计划模式等由适配器标出。缺省表示不是计划模式。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        mode: Option<String>,
+        /// 这条消息与另一条事件重复。值为来源 id，例如审查结果的 item id。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        dedupe_of: Option<String>,
     },
     /// 模型思考。有 `stream_id` 时覆盖同一条，而不是追加。
     Thinking {
@@ -388,11 +417,28 @@ pub enum SessionEventBody {
     /// 隐藏锚点。`turn/started` 在用户消息之后发出，供 diff 绑定。
     TurnAnchor {
         turn_id: String,
+        /// 该回合处于计划模式时为 `plan`。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        mode: Option<String>,
     },
     /// `turn/diff/updated`。同一 `turn_id` 覆盖上一条。
     TurnDiff {
         turn_id: String,
         diff: String,
+    },
+    /// 一个文件的归一化变更。同一 `turn_id` + `path` 覆盖上一条。
+    FileChange {
+        turn_id: String,
+        path: String,
+        status: FileStatus,
+        added: u32,
+        removed: u32,
+        diff: String,
+    },
+    /// 一轮文件变更汇总。同一 `turn_id` 覆盖上一条。
+    TurnChanges {
+        turn_id: String,
+        files: Vec<FileChange>,
     },
     /// `turn/plan/updated`。同一 `turn_id` 覆盖上一条。
     PlanSteps {
@@ -400,12 +446,17 @@ pub enum SessionEventBody {
         #[serde(default, skip_serializing_if = "String::is_empty")]
         explanation: String,
         steps: Vec<PlanStep>,
+        /// 计划事件来自计划模式。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        mode: Option<String>,
     },
     /// plan item 的正文。同一 `stream_id` 覆盖。
     PlanText {
         text: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         stream_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        mode: Option<String>,
     },
     /// `enteredReviewMode` 的 user-facing hint。
     ReviewNote {
@@ -475,6 +526,46 @@ pub struct AgentSkillOption {
     pub path: String,
 }
 
+/// 变更从哪来。替代原来的单个 `supports_turn_diff`。
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ChangeCapabilities {
+    /// 回合统一 diff（`turn-diff`）。
+    #[serde(default)]
+    pub turn_diff: bool,
+    /// 逐文件补丁（`file-change` / `turn-changes`）。
+    #[serde(default)]
+    pub per_file_patch: bool,
+    /// 未提交 / 未暂存 / 已暂存。默认实现走 git。
+    #[serde(default)]
+    pub git_scopes: bool,
+}
+
+impl ChangeCapabilities {
+    pub fn none() -> Self {
+        Self {
+            turn_diff: false,
+            per_file_patch: false,
+            git_scopes: false,
+        }
+    }
+
+    pub fn git_only() -> Self {
+        Self {
+            turn_diff: false,
+            per_file_patch: false,
+            git_scopes: true,
+        }
+    }
+
+    pub fn codex() -> Self {
+        Self {
+            turn_diff: true,
+            per_file_patch: true,
+            git_scopes: true,
+        }
+    }
+}
+
 /// 适配器声明的能力。前端用它决定斜杠、技能、模型和 resume，不再比较 AgentKind 字符串。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentCapabilities {
@@ -507,9 +598,9 @@ pub struct AgentCapabilities {
     /// `/plan` 和作曲栏 Plan 开关，走 `turn/start.collaborationMode`。
     #[serde(default)]
     pub supports_plan: bool,
-    /// 回合内展开 `turn/diff/updated`。
+    /// 回合 diff、逐文件补丁、git 范围。
     #[serde(default)]
-    pub supports_turn_diff: bool,
+    pub changes: ChangeCapabilities,
     /// `/review` 打开官方目标菜单，并走 `review/start`。
     #[serde(default)]
     pub supports_review: bool,
@@ -546,7 +637,7 @@ impl AgentCapabilities {
             supports_delete: false,
             supports_rename: false,
             supports_plan: false,
-            supports_turn_diff: false,
+            changes: ChangeCapabilities::none(),
             supports_review: false,
             supports_network_access: false,
             supports_writable_roots: false,
@@ -571,7 +662,7 @@ impl AgentCapabilities {
             supports_delete: true,
             supports_rename: true,
             supports_plan: true,
-            supports_turn_diff: true,
+            changes: ChangeCapabilities::codex(),
             supports_review: true,
             supports_network_access: true,
             supports_writable_roots: true,
@@ -703,61 +794,6 @@ impl AgentInstallation {
     }
 }
 
-/// MCP 传输：STDIO 或 Streamable HTTP。
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
-pub enum McpTransport {
-    Stdio,
-    Http,
-}
-
-/// 一条 MCP 服务器。配置来自 `config/read`，运行状态来自 `mcpServerStatus/list`。
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct McpServerRecord {
-    pub name: String,
-    pub transport: McpTransport,
-    pub command: String,
-    pub args: Vec<String>,
-    pub url: String,
-    pub enabled: bool,
-    /// 协议原值：unknown / unsupported / notLoggedIn / bearerToken / oAuth。空表示没有状态。
-    pub auth_status: String,
-    /// 协议原值：notStarted / starting / connected / authenticationRequired / failed / cancelled / disabled。
-    pub runtime_status: String,
-    pub tool_names: Vec<String>,
-    pub tools_error: String,
-    /// 非空表示服务器由插件提供。
-    pub plugin_id: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct HookRecord {
-    pub cwd: String,
-    pub event_name: String,
-    pub handler: String,
-    pub source: String,
-    pub trust_status: String,
-    pub enabled: bool,
-    pub status_message: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct WorktreeInfo {
-    pub path: String,
-    pub head: String,
-    pub branch: String,
-    pub detached: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct WorktreeSettings {
-    pub root: String,
-    /// 官方默认保留最近 15 个 Codex 管理的工作树。
-    pub keep: u32,
-    pub auto_prune: bool,
-    pub worktrees: Vec<WorktreeInfo>,
-}
-
 pub fn now_millis() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -790,7 +826,9 @@ mod tests {
         assert!(!parsed.supports_queue);
         assert!(!parsed.supports_goals);
         assert!(!parsed.supports_plan);
-        assert!(!parsed.supports_turn_diff);
+        assert!(!parsed.changes.turn_diff);
+        assert!(!parsed.changes.per_file_patch);
+        assert!(!parsed.changes.git_scopes);
         assert!(!parsed.supports_review);
         assert!(!parsed.supports_network_access);
         assert!(!parsed.supports_writable_roots);

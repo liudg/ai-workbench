@@ -19,9 +19,7 @@ fn opens_turn(method: Option<&str>) -> bool {
 use super::prompts::{
     approval_question, error_text, parse_elicitation, parse_tool_questions, rpc_error_text,
 };
-use super::resume::{
-    change_paths, format_changes, reasoning_text, tool_event, tool_view, tool_visible,
-};
+use super::resume::{reasoning_text, tool_event, tool_view, tool_visible};
 use super::state::{emit, emit_status, ActivityBuf, Pending, Shared, StreamBuf};
 
 impl Shared {
@@ -298,7 +296,13 @@ impl Shared {
                 if let Some(id) = params.pointer("/turn/id").and_then(Value::as_str) {
                     let id = id.to_string();
                     *self.turn_id.lock().unwrap() = Some(id.clone());
-                    emit(&self.events, SessionEventBody::TurnAnchor { turn_id: id });
+                    emit(
+                        &self.events,
+                        SessionEventBody::TurnAnchor {
+                            turn_id: id,
+                            mode: self.plan_marker(),
+                        },
+                    );
                 }
                 emit_status(&self.events, SessionStatus::Running);
             }
@@ -322,6 +326,7 @@ impl Shared {
                 let turn_id = params.get("turnId").and_then(Value::as_str).unwrap_or("");
                 let diff = params.get("diff").and_then(Value::as_str).unwrap_or("");
                 if !turn_id.is_empty() && !diff.is_empty() {
+                    self.remember_turn_diff(turn_id, diff);
                     emit(
                         &self.events,
                         SessionEventBody::TurnDiff {
@@ -329,6 +334,18 @@ impl Shared {
                             diff: diff.to_string(),
                         },
                     );
+                    let files = crate::features::agents::changes::parse_unified_files(diff);
+                    if !files.is_empty()
+                        && self
+                            .turn_files
+                            .lock()
+                            .unwrap()
+                            .get(turn_id)
+                            .map(|items| items.is_empty())
+                            .unwrap_or(true)
+                    {
+                        self.emit_normalized_changes(turn_id, &files);
+                    }
                 }
             }
             "turn/plan/updated" => {
@@ -354,7 +371,7 @@ impl Shared {
                     return;
                 }
                 let delta = params.get("delta").and_then(Value::as_str).unwrap_or("");
-                self.push_stream(item_id, delta, false);
+                self.push_stream(item_id, delta, false, None);
             }
             "item/commandExecution/outputDelta" | "item/fileChange/outputDelta" => {
                 self.append_activity_delta(params, method.contains("fileChange"));
@@ -394,6 +411,16 @@ impl Shared {
     }
 
     pub(super) fn handle_item(&self, completed: bool, item: &Value) {
+        if item.get("type").and_then(Value::as_str) == Some("fileChange") {
+            let turn_id = self.current_turn_id();
+            let files = crate::features::agents::changes::file_changes_from_codex(
+                item.get("changes").unwrap_or(&Value::Null),
+            );
+            if !files.is_empty() {
+                self.emit_normalized_changes(&turn_id, &files);
+            }
+            return;
+        }
         if tool_view(item).is_some() {
             self.upsert_tool(completed, item);
             return;
@@ -433,11 +460,10 @@ impl Shared {
                 if self.maybe_emit_async_questions(id, item) {
                     return;
                 }
-                if let Some(text) = item.get("text").and_then(Value::as_str) {
-                    if self.consume_review_duplicate(text) {
-                        return;
-                    }
-                }
+                let dedupe_of = item
+                    .get("text")
+                    .and_then(Value::as_str)
+                    .and_then(|text| self.take_review_duplicate(text));
                 let phase = MessagePhase::parse(item.get("phase").and_then(Value::as_str));
                 if !id.is_empty() {
                     if let Some(phase) = phase {
@@ -456,7 +482,7 @@ impl Shared {
                                 last_emit: Instant::now(),
                             },
                         );
-                        self.push_stream(id, text, true);
+                        self.push_stream(id, text, true, dedupe_of.clone());
                     } else if !text.is_empty() {
                         emit(
                             &self.events,
@@ -464,6 +490,8 @@ impl Shared {
                                 text: text.to_string(),
                                 stream_id: None,
                                 phase,
+                                mode: self.plan_marker(),
+                                dedupe_of,
                             },
                         );
                     }
@@ -482,6 +510,7 @@ impl Shared {
                             } else {
                                 Some(id.to_string())
                             },
+                            mode: Some("plan".into()),
                         },
                     );
                 }
@@ -504,7 +533,8 @@ impl Shared {
             }
             "exitedReviewMode" => {
                 let text = item.get("review").and_then(Value::as_str).unwrap_or("");
-                self.note_review_output(text);
+                let review_id = item.get("id").and_then(Value::as_str).unwrap_or("review");
+                self.note_review_output(review_id, text);
                 if !text.trim().is_empty() {
                     emit(&self.events, super::gap::parse_review_output(text));
                 }
@@ -513,7 +543,13 @@ impl Shared {
         }
     }
 
-    pub(super) fn push_stream(&self, item_id: &str, piece: &str, replace: bool) {
+    pub(super) fn push_stream(
+        &self,
+        item_id: &str,
+        piece: &str,
+        replace: bool,
+        dedupe_of: Option<String>,
+    ) {
         let mut streams = self.streams.lock().unwrap();
         let buf = streams
             .entry(item_id.to_string())
@@ -542,6 +578,39 @@ impl Shared {
                 text,
                 stream_id: Some(item_id.to_string()),
                 phase,
+                mode: self.plan_marker(),
+                dedupe_of,
+            },
+        );
+    }
+
+    fn current_turn_id(&self) -> String {
+        self.turn_id.lock().unwrap().clone().unwrap_or_default()
+    }
+
+    fn emit_normalized_changes(&self, turn_id: &str, updated: &[crate::models::FileChange]) {
+        if turn_id.is_empty() || updated.is_empty() {
+            return;
+        }
+        let all = self.remember_file_changes(turn_id, updated);
+        for file in updated {
+            emit(
+                &self.events,
+                SessionEventBody::FileChange {
+                    turn_id: turn_id.to_string(),
+                    path: file.path.clone(),
+                    status: file.status,
+                    added: file.added,
+                    removed: file.removed,
+                    diff: file.diff.clone(),
+                },
+            );
+        }
+        emit(
+            &self.events,
+            SessionEventBody::TurnChanges {
+                turn_id: turn_id.to_string(),
+                files: all,
             },
         );
     }
@@ -637,6 +706,9 @@ impl Shared {
     }
 
     fn append_activity_delta(&self, params: &Value, file: bool) {
+        if file {
+            return;
+        }
         let Some(item_id) = params.get("itemId").and_then(Value::as_str) else {
             return;
         };
@@ -648,11 +720,7 @@ impl Shared {
         let buf = activity
             .entry(item_id.to_string())
             .or_insert_with(|| ActivityBuf {
-                name: if file {
-                    "apply_patch".into()
-                } else {
-                    "command".into()
-                },
+                name: "command".into(),
                 summary: String::new(),
                 detail: String::new(),
                 images: Vec::new(),
@@ -674,31 +742,16 @@ impl Shared {
     }
 
     fn replace_patch(&self, params: &Value) {
-        let Some(item_id) = params.get("itemId").and_then(Value::as_str) else {
-            return;
-        };
-        let changes = params.get("changes").cloned().unwrap_or(Value::Null);
-        let detail = format_changes(&changes);
-        let paths = change_paths(&changes);
-        let mut activity = self.activity.lock().unwrap();
-        let buf = activity
-            .entry(item_id.to_string())
-            .or_insert_with(|| ActivityBuf {
-                name: "apply_patch".into(),
-                summary: String::new(),
-                detail: String::new(),
-                images: Vec::new(),
-                last_emit: Instant::now() - Duration::from_secs(1),
-            });
-        buf.name = "apply_patch".into();
-        if !paths.is_empty() {
-            buf.summary = paths;
-        }
-        buf.detail = detail;
-        buf.last_emit = Instant::now();
-        let body = activity_event(item_id, buf);
-        drop(activity);
-        emit(&self.events, body);
+        let turn_id = params
+            .get("turnId")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .filter(|id| !id.is_empty())
+            .unwrap_or_else(|| self.current_turn_id());
+        let files = crate::features::agents::changes::file_changes_from_codex(
+            params.get("changes").unwrap_or(&Value::Null),
+        );
+        self.emit_normalized_changes(&turn_id, &files);
     }
 }
 

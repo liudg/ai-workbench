@@ -4,8 +4,8 @@ use serde_json::{json, Value};
 
 use crate::features::agents::AgentError;
 use crate::models::{
-    AgentCapabilities, AgentCatalog, AgentModelOption, AgentSkillOption, ReasoningEffortOption,
-    SlashCommand,
+    AgentCapabilities, AgentCatalog, AgentModelOption, AgentSkillOption, PageAnnotation,
+    ReasoningEffortOption, SlashCommand,
 };
 
 use super::state::{KnownSkill, Shared};
@@ -252,7 +252,12 @@ pub(super) fn is_skill_token(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'.' | b':' | b'-')
 }
 
-pub(super) fn build_turn_input(text: &str, skills: &[KnownSkill], images: &[String]) -> Value {
+pub(super) fn build_turn_input(
+    text: &str,
+    skills: &[KnownSkill],
+    images: &[String],
+    annotations: &[PageAnnotation],
+) -> Value {
     let bytes = text.as_bytes();
     let mut elements = Vec::new();
     let mut attached: Vec<&KnownSkill> = Vec::new();
@@ -285,7 +290,7 @@ pub(super) fn build_turn_input(text: &str, skills: &[KnownSkill], images: &[Stri
         index += 1;
     }
     let mut input = Vec::new();
-    if !text.is_empty() || images.is_empty() {
+    if !text.is_empty() || (images.is_empty() && annotations.is_empty()) {
         let mut text_item = json!({ "type": "text", "text": text });
         if !elements.is_empty() {
             text_item["text_elements"] = Value::Array(elements);
@@ -302,7 +307,43 @@ pub(super) fn build_turn_input(text: &str, skills: &[KnownSkill], images: &[Stri
     for image in images {
         input.push(image_input_item(image));
     }
+    for note in annotations {
+        push_comment_attachment(&mut input, note, images);
+    }
     Value::Array(input)
+}
+
+/// Codex 注释附件：评论文本单独成一条，截图走 localImage，不折进通用中文模板。
+fn push_comment_attachment(input: &mut Vec<Value>, note: &PageAnnotation, images: &[String]) {
+    let comment = comment_attachment_text(note);
+    if !comment.is_empty() {
+        input.push(json!({ "type": "text", "text": comment }));
+    }
+    if let Some(path) = note
+        .screenshot
+        .as_deref()
+        .map(str::trim)
+        .filter(|path| !path.is_empty())
+    {
+        if !images.iter().any(|image| image == path) {
+            input.push(image_input_item(path));
+        }
+    }
+}
+
+fn comment_attachment_text(note: &PageAnnotation) -> String {
+    let comment = note.comment.trim();
+    if !comment.is_empty() {
+        return comment.to_string();
+    }
+    let selector = note.selector.trim();
+    let url = note.url.trim();
+    match (selector.is_empty(), url.is_empty()) {
+        (false, false) => format!("{selector} {url}"),
+        (false, true) => selector.to_string(),
+        (true, false) => url.to_string(),
+        (true, true) => String::new(),
+    }
 }
 
 fn image_input_item(raw: &str) -> Value {
@@ -426,7 +467,7 @@ mod tests {
             description: String::new(),
             path: "C:/skills/documents/SKILL.md".into(),
         }];
-        let input = build_turn_input("请用 $documents 改合同", &skills, &[]);
+        let input = build_turn_input("请用 $documents 改合同", &skills, &[], &[]);
         assert_eq!(input[1]["type"], json!("skill"));
         assert_eq!(input[1]["name"], json!("documents:documents"));
         assert_eq!(
@@ -445,6 +486,7 @@ mod tests {
                 "data:image/png;base64,aaaa".into(),
                 "https://example.com/a.png".into(),
             ],
+            &[],
         );
         let items = input.as_array().unwrap();
         assert_eq!(items.len(), 3);
@@ -500,6 +542,33 @@ mod tests {
         assert_eq!(models[0].id, "gpt-test");
         assert_eq!(models[0].efforts.len(), 2);
         assert_eq!(models[0].default_effort, "medium");
+    }
+
+    #[test]
+    fn page_annotation_is_a_comment_item_and_local_image() {
+        let note = PageAnnotation {
+            id: "n1".into(),
+            url: "https://example.com/page".into(),
+            selector: "button.save".into(),
+            text: "保存".into(),
+            comment: "看这里".into(),
+            x: 1,
+            y: 2,
+            width: 3,
+            height: 4,
+            kind: "element".into(),
+            screenshot: Some("C:/shot.png".into()),
+            snapshot_failed: false,
+        };
+        let input = build_turn_input("", &[], &[], &[note]);
+        let items = input.as_array().expect("input items");
+        assert!(items.iter().any(|item| {
+            item["type"] == json!("text") && item["text"] == json!("看这里")
+        }));
+        assert!(items.iter().any(|item| {
+            item["type"] == json!("localImage") && item["path"] == json!("C:/shot.png")
+        }));
+        assert!(!input.to_string().contains("页面批注"));
     }
 
     #[test]

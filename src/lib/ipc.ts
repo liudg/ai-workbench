@@ -58,6 +58,13 @@ export interface BrowserFile {
   url: string;
 }
 
+export interface DiffScope {
+  id: string;
+  label: string;
+  /** `git` 或 `turn`。 */
+  source: string;
+}
+
 export interface BrowserNotice {
   kind: string;
   value: string;
@@ -106,6 +113,15 @@ export interface Backend {
     images?: string[],
     annotations?: PageAnnotation[],
   ): Promise<void>;
+  /** 把一条页面批注交给当前会话的 AnnotationSink。 */
+  submitAnnotation(sessionId: string, note: PageAnnotation): Promise<void>;
+  /** DiffScopeProvider：当前适配器提供的差异范围。 */
+  diffScopes(sessionId: string): Promise<DiffScope[]>;
+  diffForScope(
+    sessionId: string,
+    scope: string,
+    ignoreWhitespace: boolean,
+  ): Promise<string>;
   updateQueuedTurn(
     sessionId: string,
     queuedId: string,
@@ -242,6 +258,11 @@ const tauriBackend: Backend = {
       images: images ?? [],
       annotations: annotations ?? [],
     }),
+  submitAnnotation: (sessionId, note) =>
+    invoke("submit_annotation", { sessionId, note }),
+  diffScopes: (sessionId) => invoke<DiffScope[]>("diff_scopes", { sessionId }),
+  diffForScope: (sessionId, scope, ignoreWhitespace) =>
+    invoke<string>("diff_for_scope", { sessionId, scope, ignoreWhitespace }),
   updateQueuedTurn: (sessionId, queuedId, text, images) =>
     invoke("update_queued_turn", {
       sessionId,

@@ -96,6 +96,10 @@ export type SessionEventBody =
       stream_id?: string;
       /** 过程旁白 / 部分答复 / 最终答复。缺省表示阶段未知。 */
       phase?: MessagePhase;
+      /** 计划模式等由适配器标出。缺省表示不是计划模式。 */
+      mode?: string;
+      /** 与另一条事件重复。值为来源 id，例如审查结果的 item id。 */
+      dedupe_of?: string;
     }
   | { kind: "thinking"; text: string; stream_id?: string }
   | {
@@ -122,15 +126,26 @@ export type SessionEventBody =
   /** 线程被其他进程占用。历史已打开，输入框不可发送。 */
   | { kind: "read-only"; text: string }
   | { kind: "error"; message: string }
-  | { kind: "turn-anchor"; turn_id: string }
+  | { kind: "turn-anchor"; turn_id: string; mode?: string }
   | { kind: "turn-diff"; turn_id: string; diff: string }
+  | {
+      kind: "file-change";
+      turn_id: string;
+      path: string;
+      status: FileStatus;
+      added: number;
+      removed: number;
+      diff: string;
+    }
+  | { kind: "turn-changes"; turn_id: string; files: FileChange[] }
   | {
       kind: "plan-steps";
       turn_id: string;
       explanation?: string;
       steps: PlanStep[];
+      mode?: string;
     }
-  | { kind: "plan-text"; text: string; stream_id?: string }
+  | { kind: "plan-text"; text: string; stream_id?: string; mode?: string }
   | { kind: "review-note"; text: string }
   | {
       kind: "review-findings";
@@ -139,6 +154,16 @@ export type SessionEventBody =
       raw: string;
     }
   | { kind: "collaboration-mode"; mode: string };
+
+export type FileStatus = "A" | "M" | "D" | "R";
+
+export interface FileChange {
+  path: string;
+  status: FileStatus;
+  added: number;
+  removed: number;
+  diff: string;
+}
 
 export interface PlanStep {
   step: string;
@@ -291,6 +316,16 @@ export interface AgentSkillOption {
   path: string;
 }
 
+/** 变更从哪来。替代单个 `supports_turn_diff`。 */
+export interface ChangeCapabilities {
+  /** 回合统一 diff（`turn-diff`）。 */
+  turn_diff: boolean;
+  /** 逐文件补丁（`file-change` / `turn-changes`）。 */
+  per_file_patch: boolean;
+  /** 未提交 / 未暂存 / 已暂存。 */
+  git_scopes: boolean;
+}
+
 /** 适配器能力。作曲栏和斜杠菜单看这些开关，不比较 agent 字符串。 */
 export interface AgentCapabilities {
   supports_slash: boolean;
@@ -308,7 +343,7 @@ export interface AgentCapabilities {
   supports_delete?: boolean;
   supports_rename?: boolean;
   supports_plan?: boolean;
-  supports_turn_diff?: boolean;
+  changes: ChangeCapabilities;
   supports_review?: boolean;
   /** 询问批准 / 只读 / workspace-write 的网络开关。 */
   supports_network_access?: boolean;
@@ -382,7 +417,7 @@ export const EMPTY_CAPABILITIES: AgentCapabilities = {
   supports_delete: false,
   supports_rename: false,
   supports_plan: false,
-  supports_turn_diff: false,
+  changes: { turn_diff: false, per_file_patch: false, git_scopes: false },
   supports_review: false,
 };
 

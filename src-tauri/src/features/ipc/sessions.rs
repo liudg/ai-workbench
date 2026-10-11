@@ -2,6 +2,7 @@
 
 use tauri::State;
 
+use crate::features::agents::DiffScope;
 use crate::features::projects::ProjectStore;
 use crate::features::sessions::{AgentCatalogRefresh, CachedAgentCatalog, SessionManager};
 use crate::models::*;
@@ -189,6 +190,36 @@ pub async fn send_message(
     }
     manager
         .send_message(&session_id, text, images, annotations)
+        .await
+}
+
+#[tauri::command]
+pub async fn submit_annotation(
+    manager: State<'_, SessionManager>,
+    session_id: String,
+    note: PageAnnotation,
+) -> Result<(), String> {
+    manager.submit_annotation(&session_id, note).await
+}
+
+#[tauri::command]
+pub async fn diff_scopes(
+    manager: State<'_, SessionManager>,
+    session_id: String,
+) -> Result<Vec<DiffScope>, String> {
+    manager.diff_scopes(&session_id).await
+}
+
+#[tauri::command]
+pub async fn diff_for_scope(
+    store: State<'_, ProjectStore>,
+    manager: State<'_, SessionManager>,
+    session_id: String,
+    scope: String,
+    ignore_whitespace: bool,
+) -> Result<String, String> {
+    manager
+        .diff_for_scope(&store, &session_id, &scope, ignore_whitespace)
         .await
 }
 

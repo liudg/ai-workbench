@@ -12,9 +12,9 @@ use tauri::{AppHandle, Emitter};
 use tokio::sync::mpsc;
 
 use crate::features::agents::{
-    adapter_for, cwd_key, fold_page_annotations, session_directories, session_key,
-    sessions_for_project, AgentSession, DirectoryEntry, EventSink, SessionContext, SessionDirectory,
-    SourcedEntry, TurnDelivery, UserTurn,
+    adapter_for, cwd_key, session_directories, session_key, sessions_for_project, AgentSession,
+    DiffScope, DirectoryEntry, EventSink, SessionContext, SessionDirectory, SourcedEntry,
+    TurnDelivery, UserTurn,
 };
 use crate::features::projects::ProjectStore;
 use crate::models::*;
@@ -444,32 +444,44 @@ impl SessionManager {
         }
         let slash = text.starts_with('/') && images.is_empty() && annotations.is_empty();
         let display = text;
-        let mut images = images;
-        let text = fold_page_annotations(&display, &mut images, &annotations);
         let note_count = u32::try_from(annotations.len()).unwrap_or(u32::MAX);
-        if text.is_empty() && images.is_empty() {
+        let mut recorded_images = images.clone();
+        for note in &annotations {
+            if let Some(path) = note
+                .screenshot
+                .as_deref()
+                .map(str::trim)
+                .filter(|path| !path.is_empty())
+            {
+                if !recorded_images.iter().any(|item| item == path) {
+                    recorded_images.push(path.to_string());
+                }
+            }
+        }
+        if display.trim().is_empty() && recorded_images.is_empty() && annotations.is_empty() {
             return Err("消息不能为空".into());
         }
         if slash {
             self.record_local(
                 session_id,
                 SessionEventBody::UserMessage {
-                    text: text.clone(),
+                    text: display.clone(),
                     images: Vec::new(),
                     annotations: 0,
                 },
             )?;
             return handle
-                .send_message(text)
+                .send_message(display)
                 .await
                 .map_err(|err| err.to_string());
         }
         let client_id = new_id();
         let delivery = handle
             .deliver(UserTurn {
-                text: text.clone(),
-                images: images.clone(),
+                text: display.clone(),
+                images,
                 client_id,
+                annotations,
             })
             .await
             .map_err(|err| err.to_string())?;
@@ -478,12 +490,79 @@ impl SessionManager {
                 session_id,
                 SessionEventBody::UserMessage {
                     text: display,
-                    images,
+                    images: recorded_images,
                     annotations: note_count,
                 },
             )?;
         }
         Ok(())
+    }
+
+    /// 提交一条页面批注。排队时不写气泡，等队列真正发出时再记。
+    pub async fn submit_annotation(
+        &self,
+        session_id: &str,
+        note: PageAnnotation,
+    ) -> Result<(), String> {
+        let handle = self.agent_handle_ready(session_id).await?;
+        if handle.read_only() {
+            return Err(OCCUPIED_SESSION_NOTICE.to_string());
+        }
+        let comment = note.comment.trim().to_string();
+        let mut images = Vec::new();
+        if let Some(path) = note
+            .screenshot
+            .as_deref()
+            .map(str::trim)
+            .filter(|path| !path.is_empty())
+        {
+            images.push(path.to_string());
+        }
+        let delivery = handle
+            .submit_annotation(note)
+            .await
+            .map_err(|err| err.to_string())?;
+        if delivery == TurnDelivery::Started {
+            self.record_local(
+                session_id,
+                SessionEventBody::UserMessage {
+                    text: comment,
+                    images,
+                    annotations: 1,
+                },
+            )?;
+        }
+        Ok(())
+    }
+
+    pub async fn diff_scopes(&self, session_id: &str) -> Result<Vec<DiffScope>, String> {
+        let handle = self.agent_handle_ready(session_id).await?;
+        handle
+            .diff_scopes()
+            .await
+            .map_err(|err| err.to_string())
+    }
+
+    pub async fn diff_for_scope(
+        &self,
+        store: &ProjectStore,
+        session_id: &str,
+        scope: &str,
+        ignore_whitespace: bool,
+    ) -> Result<String, String> {
+        let project_id = self
+            .entries
+            .lock()
+            .unwrap()
+            .get(session_id)
+            .map(|entry| entry.meta.project_id.clone())
+            .ok_or_else(|| "会话不存在".to_string())?;
+        let project = self.resolve_project(store, &project_id)?;
+        let handle = self.agent_handle_ready(session_id).await?;
+        handle
+            .diff_for_scope(&project.path, scope, ignore_whitespace)
+            .await
+            .map_err(|err| err.to_string())
     }
 
     pub async fn update_queued_turn(
@@ -501,6 +580,7 @@ impl SessionManager {
                     text,
                     images,
                     client_id: String::new(),
+                    annotations: Vec::new(),
                 },
             )
             .await
@@ -1016,6 +1096,8 @@ fn is_conversation_activity(body: &SessionEventBody) -> bool {
             | SessionEventBody::PlanText { .. }
             | SessionEventBody::ReviewFindings { .. }
             | SessionEventBody::TurnDiff { .. }
+            | SessionEventBody::FileChange { .. }
+            | SessionEventBody::TurnChanges { .. }
     )
 }
 
@@ -1080,6 +1162,20 @@ fn replace_keyed(
                 SessionEventBody::TurnDiff { turn_id, .. },
             ) => existing == turn_id,
             (
+                SessionEventBody::FileChange {
+                    turn_id: existing,
+                    path: existing_path,
+                    ..
+                },
+                SessionEventBody::FileChange { turn_id, path, .. },
+            ) => existing == turn_id && existing_path == path,
+            (
+                SessionEventBody::TurnChanges {
+                    turn_id: existing, ..
+                },
+                SessionEventBody::TurnChanges { turn_id, .. },
+            ) => existing == turn_id,
+            (
                 SessionEventBody::PlanSteps {
                     turn_id: existing, ..
                 },
@@ -1126,16 +1222,25 @@ fn replace_stream(
     if let Some(event) = replace_keyed(entry, body, record_activity) {
         return Some(event);
     }
-    let (text, stream_id, thinking, phase) = match body {
+    let (text, stream_id, thinking, phase, mode, dedupe_of) = match body {
         SessionEventBody::AgentMessage {
             text,
             stream_id: Some(stream_id),
             phase,
-        } => (text, stream_id, false, *phase),
+            mode,
+            dedupe_of,
+        } => (
+            text,
+            stream_id,
+            false,
+            *phase,
+            mode.clone(),
+            dedupe_of.clone(),
+        ),
         SessionEventBody::Thinking {
             text,
             stream_id: Some(stream_id),
-        } => (text, stream_id, true, None),
+        } => (text, stream_id, true, None, None, None),
         _ => return None,
     };
     let existing = entry
@@ -1157,11 +1262,19 @@ fn replace_stream(
         SessionEventBody::AgentMessage {
             text: slot,
             phase: slot_phase,
+            mode: slot_mode,
+            dedupe_of: slot_dedupe,
             ..
         } if !thinking => {
             *slot = text.clone();
             if let Some(phase) = phase {
                 *slot_phase = Some(phase);
+            }
+            if mode.is_some() {
+                *slot_mode = mode;
+            }
+            if dedupe_of.is_some() {
+                *slot_dedupe = dedupe_of;
             }
         }
         SessionEventBody::Thinking { text: slot, .. } if thinking => *slot = text.clone(),
@@ -1229,6 +1342,8 @@ mod tests {
                 text: "历史回答".into(),
                 stream_id: None,
                 phase: None,
+                mode: None,
+                dedupe_of: None,
             },
             false,
         );
@@ -1327,6 +1442,8 @@ mod tests {
                 text: "先".into(),
                 stream_id: Some("s1".into()),
                 phase: None,
+                mode: None,
+                dedupe_of: None,
             },
             false,
         );
@@ -1336,6 +1453,8 @@ mod tests {
                 text: "先看目录".into(),
                 stream_id: Some("s1".into()),
                 phase: None,
+                mode: None,
+                dedupe_of: None,
             },
             false,
         )
@@ -1349,6 +1468,8 @@ mod tests {
                 text: "先看目录结构".into(),
                 stream_id: Some("s1".into()),
                 phase: Some(crate::models::MessagePhase::Commentary),
+                mode: Some("plan".into()),
+                dedupe_of: Some("rev-1".into()),
             },
             true,
         )
@@ -1356,9 +1477,17 @@ mod tests {
         assert_eq!(session.activity_at, Some(session.meta.updated_at));
         assert!(session.meta.updated_at >= 1_000);
         match &session.events[0].body {
-            SessionEventBody::AgentMessage { text, phase, .. } => {
+            SessionEventBody::AgentMessage {
+                text,
+                phase,
+                mode,
+                dedupe_of,
+                ..
+            } => {
                 assert_eq!(text, "先看目录结构");
                 assert_eq!(phase, &Some(crate::models::MessagePhase::Commentary));
+                assert_eq!(mode.as_deref(), Some("plan"));
+                assert_eq!(dedupe_of.as_deref(), Some("rev-1"));
             }
             other => panic!("expected streamed agent message, got {other:?}"),
         }
@@ -1390,6 +1519,7 @@ mod tests {
                 2,
                 SessionEventBody::TurnAnchor {
                     turn_id: "new".into(),
+                    mode: None,
                 },
             ),
         ];

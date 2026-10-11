@@ -369,14 +369,19 @@ pub fn bodies_from_turns(turns: &[Value]) -> Vec<SessionEventBody> {
         let Some(items) = turn.get("items").and_then(Value::as_array) else {
             continue;
         };
+        let plan = items.iter().any(|item| {
+            item.get("type").and_then(Value::as_str) == Some("plan")
+        });
         let mut anchored = false;
-        let mut review_raw: Option<String> = None;
+        let mut review: Option<(String, String)> = None;
+        let mut files = Vec::new();
         for item in items {
             let kind = item.get("type").and_then(Value::as_str).unwrap_or("");
             if kind == "userMessage" && !anchored && !turn_id.is_empty() {
-                push_history_item(&mut bodies, item);
+                push_history_item(&mut bodies, &turn_id, plan, &mut files, item);
                 bodies.push(SessionEventBody::TurnAnchor {
                     turn_id: turn_id.clone(),
+                    mode: plan.then(|| "plan".to_string()),
                 });
                 anchored = true;
                 continue;
@@ -388,19 +393,51 @@ pub fn bodies_from_turns(turns: &[Value]) -> Vec<SessionEventBody> {
                     .unwrap_or("")
                     .trim()
                     .to_string();
-                if review_raw.as_deref() == Some(text.as_str()) && !text.is_empty() {
-                    review_raw = None;
-                    continue;
+                if let Some((id, stored)) = review.clone() {
+                    if stored == text && !text.is_empty() {
+                        review = None;
+                        bodies.push(SessionEventBody::AgentMessage {
+                            text: take_chars(&text, 20_000),
+                            stream_id: None,
+                            phase: MessagePhase::parse(item.get("phase").and_then(Value::as_str)),
+                            mode: plan.then(|| "plan".to_string()),
+                            dedupe_of: Some(id),
+                        });
+                        continue;
+                    }
                 }
             }
             if kind == "exitedReviewMode" {
                 let text = item.get("review").and_then(Value::as_str).unwrap_or("");
-                review_raw = Some(text.trim().to_string());
+                let trimmed = text.trim();
+                if !trimmed.is_empty() {
+                    let id = item
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .filter(|id| !id.is_empty())
+                        .unwrap_or("review")
+                        .to_string();
+                    review = Some((id, trimmed.to_string()));
+                }
             }
-            push_history_item(&mut bodies, item);
+            push_history_item(&mut bodies, &turn_id, plan, &mut files, item);
+        }
+        if !files.is_empty() {
+            bodies.push(SessionEventBody::TurnChanges {
+                turn_id: turn_id.clone(),
+                files: files.clone(),
+            });
         }
         if let Some(diff) = turn.get("diff").and_then(Value::as_str) {
             if !turn_id.is_empty() && !diff.is_empty() {
+                if files.is_empty() {
+                    let parsed = crate::features::agents::changes::parse_unified_files(diff);
+                    crate::features::agents::changes::push_file_change_events(
+                        &mut bodies,
+                        &turn_id,
+                        &parsed,
+                    );
+                }
                 bodies.push(SessionEventBody::TurnDiff {
                     turn_id,
                     diff: diff.to_string(),
@@ -413,7 +450,30 @@ pub fn bodies_from_turns(turns: &[Value]) -> Vec<SessionEventBody> {
 
 pub const HISTORY_TURN_LIMIT: u32 = HISTORY_PAGE;
 
-fn push_history_item(bodies: &mut Vec<SessionEventBody>, item: &Value) {
+fn push_history_item(
+    bodies: &mut Vec<SessionEventBody>,
+    turn_id: &str,
+    plan: bool,
+    files: &mut Vec<crate::models::FileChange>,
+    item: &Value,
+) {
+    if item.get("type").and_then(Value::as_str) == Some("fileChange") {
+        let parsed = crate::features::agents::changes::file_changes_from_codex(
+            item.get("changes").unwrap_or(&serde_json::Value::Null),
+        );
+        for file in &parsed {
+            bodies.push(SessionEventBody::FileChange {
+                turn_id: turn_id.to_string(),
+                path: file.path.clone(),
+                status: file.status,
+                added: file.added,
+                removed: file.removed,
+                diff: file.diff.clone(),
+            });
+        }
+        files.extend(parsed);
+        return;
+    }
     if let Some(view) = tool_view(item) {
         if tool_visible(&view) {
             bodies.push(tool_event(view, None));
@@ -442,6 +502,8 @@ fn push_history_item(bodies: &mut Vec<SessionEventBody>, item: &Value) {
                     text: take_chars(text, 20_000),
                     stream_id: None,
                     phase: MessagePhase::parse(item.get("phase").and_then(Value::as_str)),
+                    mode: plan.then(|| "plan".to_string()),
+                    dedupe_of: None,
                 });
             }
         }
@@ -460,6 +522,7 @@ fn push_history_item(bodies: &mut Vec<SessionEventBody>, item: &Value) {
                 bodies.push(SessionEventBody::PlanText {
                     text: take_chars(text, 20_000),
                     stream_id: None,
+                    mode: Some("plan".into()),
                 });
             }
         }
@@ -491,7 +554,6 @@ pub(super) struct ToolView {
 pub(super) fn tool_view(item: &Value) -> Option<ToolView> {
     match item.get("type").and_then(Value::as_str).unwrap_or("") {
         "commandExecution" => Some(command_view(item)),
-        "fileChange" => Some(file_view(item)),
         "mcpToolCall" => Some(mcp_view(item)),
         "webSearch" => Some(web_view(item)),
         kind if image_item_kind(kind) => Some(image_view(item)),
@@ -554,66 +616,6 @@ fn command_output(item: &Value) -> String {
         parts.push(text.to_string());
     }
     parts.join("\n")
-}
-
-fn file_view(item: &Value) -> ToolView {
-    let changes = item.get("changes").cloned().unwrap_or(Value::Null);
-    let status = item.get("status").and_then(Value::as_str).unwrap_or("");
-    let paths = change_paths(&changes);
-    let summary = format!("{status} {paths}").trim().to_string();
-    ToolView {
-        name: "apply_patch".into(),
-        summary,
-        detail: format_changes(&changes),
-        images: Vec::new(),
-    }
-}
-
-pub(super) fn format_changes(changes: &Value) -> String {
-    let Some(list) = changes.as_array() else {
-        return String::new();
-    };
-    let mut out = String::new();
-    for change in list {
-        let path = change.get("path").and_then(Value::as_str).unwrap_or("");
-        let kind = change
-            .get("kind")
-            .or_else(|| change.get("type"))
-            .and_then(Value::as_str)
-            .unwrap_or("");
-        let diff = change
-            .get("diff")
-            .or_else(|| change.get("unifiedDiff"))
-            .or_else(|| change.get("patch"))
-            .and_then(Value::as_str)
-            .unwrap_or("");
-        if !out.is_empty() {
-            out.push_str("\n\n");
-        }
-        if !kind.is_empty() {
-            out.push_str(kind);
-            out.push(' ');
-        }
-        out.push_str(path);
-        if !diff.trim().is_empty() {
-            out.push('\n');
-            out.push_str(diff.trim());
-        }
-    }
-    out
-}
-
-pub(super) fn change_paths(changes: &Value) -> String {
-    changes
-        .as_array()
-        .map(|list| {
-            list.iter()
-                .filter_map(|change| change.get("path").and_then(Value::as_str))
-                .filter(|path| !path.is_empty())
-                .collect::<Vec<_>>()
-                .join("、")
-        })
-        .unwrap_or_default()
 }
 
 fn mcp_view(item: &Value) -> ToolView {
@@ -1153,7 +1155,7 @@ mod tests {
             matches!(bodies[0], SessionEventBody::UserMessage { ref text, .. } if text == "你好")
         );
         assert!(
-            matches!(bodies[1], SessionEventBody::TurnAnchor { ref turn_id } if turn_id == "t1")
+            matches!(bodies[1], SessionEventBody::TurnAnchor { ref turn_id, .. } if turn_id == "t1")
         );
         assert!(
             matches!(bodies[2], SessionEventBody::AgentMessage { ref text, phase: None, .. } if text == "完成")
@@ -1262,9 +1264,17 @@ mod tests {
         ));
         assert!(matches!(
             &bodies[1],
-            SessionEventBody::ToolCall { name, detail, .. }
-                if name == "apply_patch" && detail.contains("gap-history-marker")
+            SessionEventBody::FileChange { path, diff, .. }
+                if path == "gap-history.txt" && diff.contains("gap-history-marker")
         ));
+        assert!(bodies.iter().any(|body| matches!(
+            body,
+            SessionEventBody::TurnChanges { files, .. } if files.iter().any(|file| file.path == "gap-history.txt")
+        )));
+        assert!(!bodies.iter().any(|body| matches!(
+            body,
+            SessionEventBody::ToolCall { name, .. } if name == "apply_patch"
+        )));
         assert!(matches!(
             &bodies[2],
             SessionEventBody::ToolCall { name, summary, detail, .. }
@@ -1280,6 +1290,69 @@ mod tests {
             SessionEventBody::ToolCall { name, images, .. }
                 if name == "image" && images.as_slice() == ["shot.png"]
         ));
+    }
+
+    #[test]
+    fn history_replays_file_changes_plan_mode_and_review_dedupe() {
+        let review = "审查结论：通过";
+        let turns = vec![json!({
+            "id": "turn-plan",
+            "diff": "diff --git a/src/app.ts b/src/app.ts\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1 +1 @@\n-old\n+new\n",
+            "items": [
+                {"type": "userMessage", "content": [{"type": "text", "text": "做个计划"}]},
+                {"type": "plan", "text": "先改 app.ts"},
+                {"type": "agentMessage", "text": "计划写好了"},
+                {"type": "exitedReviewMode", "id": "rev-1", "review": review},
+                {"type": "agentMessage", "text": review},
+                {
+                    "type": "fileChange",
+                    "changes": [{
+                        "path": "src/app.ts",
+                        "kind": "update",
+                        "diff": "@@ -1 +1 @@\n-old\n+new"
+                    }]
+                }
+            ]
+        })];
+        let bodies = bodies_from_turns(&turns);
+        assert!(matches!(
+            &bodies[1],
+            SessionEventBody::TurnAnchor { turn_id, mode, .. }
+                if turn_id == "turn-plan" && mode.as_deref() == Some("plan")
+        ));
+        assert!(bodies.iter().any(|body| matches!(
+            body,
+            SessionEventBody::PlanText { text, mode, .. }
+                if text == "先改 app.ts" && mode.as_deref() == Some("plan")
+        )));
+        assert!(bodies.iter().any(|body| matches!(
+            body,
+            SessionEventBody::AgentMessage { text, mode, dedupe_of, .. }
+                if text == "计划写好了"
+                    && mode.as_deref() == Some("plan")
+                    && dedupe_of.is_none()
+        )));
+        assert!(bodies.iter().any(|body| matches!(
+            body,
+            SessionEventBody::AgentMessage { text, dedupe_of, .. }
+                if text == review && dedupe_of.as_deref() == Some("rev-1")
+        )));
+        assert!(bodies.iter().any(|body| matches!(
+            body,
+            SessionEventBody::FileChange { turn_id, path, status, .. }
+                if turn_id == "turn-plan"
+                    && path == "src/app.ts"
+                    && *status == crate::models::FileStatus::Modified
+        )));
+        assert!(bodies.iter().any(|body| matches!(
+            body,
+            SessionEventBody::TurnChanges { turn_id, files }
+                if turn_id == "turn-plan" && files.iter().any(|file| file.path == "src/app.ts")
+        )));
+        assert!(!bodies.iter().any(|body| matches!(
+            body,
+            SessionEventBody::ToolCall { name, .. } if name == "apply_patch"
+        )));
     }
 
     #[test]

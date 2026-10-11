@@ -11,7 +11,7 @@ use tokio::sync::{mpsc, oneshot, Mutex as AsyncMutex};
 
 use crate::features::agents::EventSink;
 use crate::models::{
-    MessagePhase, PromptQuestion, QueuedTurn, SessionEventBody, SessionStatus,
+    FileChange, MessagePhase, PromptQuestion, QueuedTurn, SessionEventBody, SessionStatus,
     OCCUPIED_SESSION_NOTICE,
 };
 
@@ -131,6 +131,11 @@ pub(super) struct Shared {
     pub(super) persist: bool,
     /// 当前回合 id（turn/started 时记录）；async 提问的回答经 turn/steer 时需要它
     pub(super) turn_id: Mutex<Option<String>>,
+    /// 已归一的逐文件变更。键是 turn id。
+    pub(super) turn_files: Mutex<HashMap<String, Vec<FileChange>>>,
+    /// `turn/diff/updated` 和历史里的回合 diff。
+    pub(super) turn_diffs: Mutex<HashMap<String, String>>,
+    pub(super) last_turn_id: Mutex<Option<String>>,
     pub(super) model: Mutex<String>,
     pub(super) version: Mutex<String>,
     pub(super) cwd: String,
@@ -156,8 +161,8 @@ pub(super) struct Shared {
     pub(super) collaboration: Mutex<Collaboration>,
     /// 本回合已经有可实施的计划（`turn/plan/updated` 或计划模式的 plan item），结束后问要不要实施。
     pub(super) plan_ready: AtomicBool,
-    /// 退出审查时的原文，用来丢掉紧随其后的重复 agentMessage。
-    pub(super) review_output: Mutex<Option<String>>,
+    /// 退出审查时的 (item id, 原文)。紧随其后的重复 agentMessage 带上 `dedupe_of`。
+    pub(super) review_output: Mutex<Option<(String, String)>>,
     /// `thread/turns/list` 的下一页。空表示没有更早的回合。
     pub(super) history_cursor: Mutex<Option<String>>,
     /// 流式命令输出和补丁正文。键是 item id。

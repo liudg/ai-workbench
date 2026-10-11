@@ -74,7 +74,7 @@ const CODEX_CAPABILITIES: AgentCapabilities = {
   supports_images: true,
   supports_queue: true,
   supports_plan: true,
-  supports_turn_diff: true,
+  changes: { turn_diff: true, per_file_patch: true, git_scopes: true },
   supports_review: true,
   supports_paged_history: true,
   supports_network_access: true,
@@ -93,6 +93,7 @@ const CLAUDE_CAPABILITIES: AgentCapabilities = {
   supports_rename: false,
   supports_images: false,
   supports_queue: false,
+  changes: { turn_diff: false, per_file_patch: false, git_scopes: true },
 };
 
 const STUB_CAPABILITIES: AgentCapabilities = CLAUDE_CAPABILITIES;
@@ -857,6 +858,22 @@ export const mockBackend: Backend = {
         },
       ],
     };
+  },
+
+  async submitAnnotation(sessionId, note) {
+    await this.sendMessage(sessionId, note.comment ?? "", note.screenshot ? [note.screenshot] : [], [note]);
+  },
+
+  async diffScopes() {
+    return [
+      { id: "uncommitted", label: "未提交", source: "git" },
+      { id: "unstaged", label: "未暂存", source: "git" },
+      { id: "staged", label: "已暂存", source: "git" },
+    ];
+  },
+
+  async diffForScope() {
+    return "";
   },
 
   async sendMessage(sessionId, text, images = [], annotations = []) {

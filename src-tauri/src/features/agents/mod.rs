@@ -4,12 +4,19 @@
 //! 提问卡、审批、模型目录等共享能力走 `AgentSession` / `AgentAdapter`，
 //! 会话管理和命令层不要解析某一种 CLI 的协议。
 
+mod changes;
 mod claude_code;
 mod codex;
 mod directory;
 mod external;
 mod install;
+mod providers;
 mod stub;
+
+pub use providers::{
+    submit_annotation_as_attachment, AnnotationSink, DiffScope, DiffScopeProvider, FileChangeSource,
+    PreviewProvider, TurnDiffProvider,
+};
 
 use std::sync::Arc;
 
@@ -76,6 +83,8 @@ pub struct UserTurn {
     pub text: String,
     pub images: Vec<String>,
     pub client_id: String,
+    /// 页面批注。默认折进正文和图片附件；Codex 改写成注释附件。
+    pub annotations: Vec<PageAnnotation>,
 }
 
 /// `deliver` 的结果。排队时调用方不要再写用户气泡。
@@ -167,13 +176,23 @@ fn fold_images_into_text(text: &str, images: &[String]) -> String {
 /// 一个正在运行的 Agent 会话的句柄（由适配器返回）。
 /// 所有方法都是非阻塞的：把输入写入 CLI 后立即返回，输出经 `EventSink` 异步推送。
 #[async_trait]
-pub trait AgentSession: Send + Sync {
+pub trait AgentSession:
+    TurnDiffProvider
+    + FileChangeSource
+    + DiffScopeProvider
+    + PreviewProvider
+    + AnnotationSink
+    + Send
+    + Sync
+{
     /// 发送一条用户消息（一轮新任务）。
     async fn send_message(&self, text: String) -> Result<(), AgentError>;
 
     /// 带图片的发送。默认把文件名拼进文本，再走 `send_message`。
     async fn deliver(&self, turn: UserTurn) -> Result<TurnDelivery, AgentError> {
-        let text = fold_images_into_text(&turn.text, &turn.images);
+        let mut images = turn.images;
+        let text = fold_page_annotations(&turn.text, &mut images, &turn.annotations);
+        let text = fold_images_into_text(&text, &images);
         self.send_message(text).await?;
         Ok(TurnDelivery::Started)
     }

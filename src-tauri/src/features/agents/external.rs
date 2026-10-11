@@ -10,7 +10,7 @@ use crate::features::agents::directory::{DirectoryEntry, SessionDirectory};
 use crate::features::agents::install::{AliasCheck, AliasRule, CliRelease};
 use crate::features::agents::stub::{StubAgentSession, StubPersona};
 use crate::features::agents::{AgentAdapter, AgentError, AgentSession, EventSink, SessionContext};
-use crate::models::{AgentCapabilities, AgentInstallation, AgentKind};
+use crate::models::{AgentCapabilities, AgentInstallation, AgentKind, ChangeCapabilities};
 
 const STUB_NOTE: &str = "会话坝议尚未接入，目剝坪坚检测和更新。";
 
@@ -175,7 +175,7 @@ impl AgentAdapter for ExternalCliAdapter {
             supports_delete: false,
             supports_rename: false,
             supports_plan: false,
-            supports_turn_diff: false,
+            changes: ChangeCapabilities::git_only(),
             supports_review: false,
             supports_network_access: false,
             supports_writable_roots: false,

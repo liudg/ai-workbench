@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use serde_json::{json, Value};
 
 use crate::features::agents::AgentError;
-use crate::models::{QueuedTurn, SessionEventBody};
+use crate::models::{PageAnnotation, QueuedTurn, SessionEventBody};
 
 use super::catalog::build_turn_input;
 use super::resume::{image_from_part, user_item_images, user_item_text};
@@ -64,6 +64,7 @@ impl Shared {
         text: String,
         images: Vec<String>,
         client_id: String,
+        annotations: Vec<PageAnnotation>,
     ) -> Result<(), AgentError> {
         self.ensure_thread().await?;
         let thread_id = self
@@ -74,7 +75,7 @@ impl Shared {
             .ok_or_else(|| AgentError::Runtime("Codex 线程未建立".into()))?;
         let input = {
             let skills = self.skills.lock().unwrap();
-            build_turn_input(&text, &skills, &images)
+            build_turn_input(&text, &skills, &images, &annotations)
         };
         let result = self
             .request(
@@ -104,6 +105,7 @@ impl Shared {
         id: &str,
         text: String,
         images: Vec<String>,
+        annotations: Vec<PageAnnotation>,
     ) -> Result<(), AgentError> {
         let thread_id = self
             .thread_id
@@ -113,7 +115,7 @@ impl Shared {
             .ok_or_else(|| AgentError::Runtime("Codex 线程未建立".into()))?;
         let input = {
             let skills = self.skills.lock().unwrap();
-            build_turn_input(&text, &skills, &images)
+            build_turn_input(&text, &skills, &images, &annotations)
         };
         let result = self
             .request(

@@ -42,6 +42,7 @@ function catalog(id: string, skills: string[] = []): AgentCatalog {
       supports_rename: true,
       supports_images: true,
       supports_queue: true,
+      changes: { turn_diff: false, per_file_patch: false, git_scopes: false },
     },
   };
 }

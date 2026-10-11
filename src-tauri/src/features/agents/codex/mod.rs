@@ -40,13 +40,15 @@ use tokio::sync::mpsc;
 
 use crate::encoding::{apply_utf8_env, decode_child_bytes};
 use crate::features::agents::install::CliRelease;
+use crate::features::agents::providers::{default_git_scopes, turn_scope};
 use crate::features::agents::{
-    AgentAdapter, AgentError, AgentSession, DirectoryEntry, EventSink, SessionContext,
-    TurnDelivery, UserTurn,
+    submit_annotation_as_attachment, AgentAdapter, AgentError, AgentSession, AnnotationSink,
+    DiffScopeProvider, DirectoryEntry, EventSink, FileChangeSource, PreviewProvider, SessionContext,
+    TurnDelivery, TurnDiffProvider, UserTurn,
 };
 use crate::models::{
-    strip_verbatim_prefix, AgentCapabilities, AgentCatalog, AgentKind, AgentProfile, PromptAnswer,
-    SessionEventBody, SessionStatus, OCCUPIED_SESSION_NOTICE,
+    strip_verbatim_prefix, AgentCapabilities, AgentCatalog, AgentKind, AgentProfile, FileChange,
+    PageAnnotation, PromptAnswer, SessionEventBody, SessionStatus, OCCUPIED_SESSION_NOTICE,
 };
 
 use process::{
@@ -211,6 +213,9 @@ impl AgentAdapter for CodexCliAdapter {
             thread_id: Mutex::new(None),
             persist: ctx.flag("persist"),
             turn_id: Mutex::new(None),
+            turn_files: Mutex::new(HashMap::new()),
+            turn_diffs: Mutex::new(HashMap::new()),
+            last_turn_id: Mutex::new(None),
             model: Mutex::new(String::new()),
             version: Mutex::new(version),
             cwd: strip_verbatim_prefix(&ctx.project_path),
@@ -358,7 +363,7 @@ impl AgentSession for CodexCliSession {
         }
         if self.shared.turn_open.load(Ordering::SeqCst) {
             self.shared
-                .enqueue(turn.text, turn.images, turn.client_id)
+                .enqueue(turn.text, turn.images, turn.client_id, turn.annotations)
                 .await?;
             return Ok(TurnDelivery::Queued);
         }
@@ -370,14 +375,16 @@ impl AgentSession for CodexCliSession {
                 .insert(turn.client_id.clone());
         }
         self.shared
-            .begin_user_turn(turn.text, turn.images, turn.client_id)
+            .begin_user_turn(turn.text, turn.images, turn.client_id, turn.annotations)
             .await?;
         Ok(TurnDelivery::Started)
     }
 
     async fn update_queued(&self, id: &str, turn: UserTurn) -> Result<(), AgentError> {
         self.shared.ensure_open()?;
-        self.shared.update_queued(id, turn.text, turn.images).await
+        self.shared
+            .update_queued(id, turn.text, turn.images, turn.annotations)
+            .await
     }
 
     async fn remove_queued(&self, id: &str) -> Result<(), AgentError> {
@@ -584,6 +591,66 @@ impl AgentSession for CodexCliSession {
 
     async fn load_older_history(&self) -> Result<(Vec<SessionEventBody>, bool), AgentError> {
         self.shared.load_older_history().await
+    }
+}
+
+#[async_trait]
+impl TurnDiffProvider for CodexCliSession {
+    async fn turn_diff(&self, turn_id: &str) -> Result<Option<String>, AgentError> {
+        Ok(self
+            .shared
+            .turn_diffs
+            .lock()
+            .unwrap()
+            .get(turn_id)
+            .cloned())
+    }
+}
+
+#[async_trait]
+impl FileChangeSource for CodexCliSession {
+    async fn file_changes(&self, turn_id: &str) -> Result<Vec<FileChange>, AgentError> {
+        Ok(self
+            .shared
+            .turn_files
+            .lock()
+            .unwrap()
+            .get(turn_id)
+            .cloned()
+            .unwrap_or_default())
+    }
+}
+
+#[async_trait]
+impl DiffScopeProvider for CodexCliSession {
+    async fn diff_scopes(&self) -> Result<Vec<crate::features::agents::DiffScope>, AgentError> {
+        let mut scopes = vec![turn_scope()];
+        scopes.extend(default_git_scopes());
+        Ok(scopes)
+    }
+
+    async fn last_turn_diff(&self) -> Result<String, AgentError> {
+        let id = self.shared.last_turn_id.lock().unwrap().clone();
+        let Some(id) = id else {
+            return Err(AgentError::Runtime("还没有上一轮差异".into()));
+        };
+        self.shared
+            .turn_diffs
+            .lock()
+            .unwrap()
+            .get(&id)
+            .cloned()
+            .ok_or_else(|| AgentError::Runtime("还没有上一轮差异".into()))
+    }
+}
+
+#[async_trait]
+impl PreviewProvider for CodexCliSession {}
+
+#[async_trait]
+impl AnnotationSink for CodexCliSession {
+    async fn submit_annotation(&self, note: PageAnnotation) -> Result<TurnDelivery, AgentError> {
+        submit_annotation_as_attachment(self, note).await
     }
 }
 
@@ -862,6 +929,7 @@ mod tests {
                 text: "Count from 1 to 400, one number per line. Do not use tools.".into(),
                 images: vec![image.clone()],
                 client_id: "direct-1".into(),
+                annotations: Vec::new(),
             })
             .await
             .expect("image turn");
@@ -872,6 +940,7 @@ mod tests {
                 text: "queued follow-up".into(),
                 images: vec![image],
                 client_id: "queued-1".into(),
+                annotations: Vec::new(),
             })
             .await
             .expect("queue");
@@ -892,6 +961,7 @@ mod tests {
                     text: "edited follow-up".into(),
                     images: Vec::new(),
                     client_id: String::new(),
+                    annotations: Vec::new(),
                 },
             )
             .await
@@ -1006,7 +1076,7 @@ mod tests {
         let review_deadline = tokio::time::Instant::now() + Duration::from_secs(150);
         while problem.is_empty() && tokio::time::Instant::now() < review_deadline {
             match timeout(Duration::from_secs(10), rx.recv()).await {
-                Ok(Some(SessionEventBody::TurnAnchor { turn_id })) => review_turn = turn_id,
+                Ok(Some(SessionEventBody::TurnAnchor { turn_id, .. })) => review_turn = turn_id,
                 Ok(Some(
                     SessionEventBody::ReviewFindings { .. } | SessionEventBody::TurnDiff { .. },
                 )) => saw_review = true,
@@ -1050,7 +1120,7 @@ mod tests {
         let plan_deadline = tokio::time::Instant::now() + Duration::from_secs(150);
         while problem.is_empty() && tokio::time::Instant::now() < plan_deadline {
             match timeout(Duration::from_secs(10), rx.recv()).await {
-                Ok(Some(SessionEventBody::TurnAnchor { turn_id })) => plan_turn = turn_id,
+                Ok(Some(SessionEventBody::TurnAnchor { turn_id, .. })) => plan_turn = turn_id,
                 Ok(Some(
                     body @ (SessionEventBody::PlanSteps { .. } | SessionEventBody::PlanText { .. }),
                 )) => {

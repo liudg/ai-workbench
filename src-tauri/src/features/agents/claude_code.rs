@@ -20,7 +20,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use crate::features::agents::directory::{DirectoryEntry, SessionDirectory};
-use crate::models::{AgentCapabilities, AgentKind};
+use crate::models::{AgentCapabilities, AgentKind, ChangeCapabilities};
 
 use super::install::CliRelease;
 use super::stub::{StubAgentSession, StubPersona};
@@ -89,7 +89,7 @@ impl AgentAdapter for ClaudeCodeAdapter {
             supports_delete: false,
             supports_rename: false,
             supports_plan: false,
-            supports_turn_diff: false,
+            changes: ChangeCapabilities::git_only(),
             supports_review: false,
             supports_network_access: false,
             supports_writable_roots: false,

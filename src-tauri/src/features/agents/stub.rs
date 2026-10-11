@@ -21,7 +21,12 @@ use crate::models::{
     PromptOption, SessionEventBody, SessionStatus,
 };
 
-use super::{AgentError, AgentSession, EventSink};
+use super::providers::{
+    submit_annotation_as_attachment, AnnotationSink, DiffScopeProvider, FileChangeSource,
+    PreviewProvider, TurnDiffProvider,
+};
+use super::{AgentError, AgentSession, EventSink, TurnDelivery};
+use crate::models::PageAnnotation;
 
 /// 不同 CLI 的「人格」差异，仅影响演示文案。
 #[derive(Debug, Clone, Copy)]
@@ -111,6 +116,8 @@ impl AgentSession for StubAgentSession {
                     ),
                     stream_id: None,
                     phase: Some(MessagePhase::Commentary),
+                    mode: None,
+                    dedupe_of: None,
                 },
             );
 
@@ -184,6 +191,8 @@ impl AgentSession for StubAgentSession {
                             .into(),
                         stream_id: None,
                         phase: Some(MessagePhase::FinalAnswer),
+                        mode: None,
+                        dedupe_of: None,
                     },
                 );
                 state.lock().unwrap().busy = false;
@@ -259,6 +268,8 @@ impl AgentSession for StubAgentSession {
                     text: format!("{verdict}\n\n{} 桩会话本轮结束。", persona.cli_label),
                     stream_id: None,
                     phase: Some(MessagePhase::FinalAnswer),
+                    mode: None,
+                    dedupe_of: None,
                 },
             );
             state.lock().unwrap().busy = false;
@@ -299,5 +310,24 @@ impl AgentSession for StubAgentSession {
 
     fn retarget(&self, kind: AgentKind) {
         self.persona.lock().unwrap().cli_label = kind.display_name();
+    }
+}
+
+#[async_trait]
+impl TurnDiffProvider for StubAgentSession {}
+
+#[async_trait]
+impl FileChangeSource for StubAgentSession {}
+
+#[async_trait]
+impl DiffScopeProvider for StubAgentSession {}
+
+#[async_trait]
+impl PreviewProvider for StubAgentSession {}
+
+#[async_trait]
+impl AnnotationSink for StubAgentSession {
+    async fn submit_annotation(&self, note: PageAnnotation) -> Result<TurnDelivery, AgentError> {
+        submit_annotation_as_attachment(self, note).await
     }
 }
