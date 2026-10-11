@@ -147,16 +147,21 @@ fn split_title_location(rest: &str) -> (String, String) {
     (rest.trim().to_string(), String::new())
 }
 
-/// 实验接口 `turn/start.collaborationMode`。`developer_instructions: null` 用内置计划说明。
-pub(super) fn plan_collaboration_mode(model: &str, effort: Option<&str>) -> Value {
+/// 实验接口 `turn/start.collaborationMode`。`developer_instructions: null` 用内置说明。
+/// 退出计划时也要显式带 `default`，否则线程会沿用上一回合的计划模式。
+pub(super) fn collaboration_mode_value(mode: &str, model: &str, effort: Option<&str>) -> Value {
     json!({
-        "mode": "plan",
+        "mode": mode,
         "settings": {
             "model": model,
             "reasoning_effort": effort,
             "developer_instructions": Value::Null,
         }
     })
+}
+
+pub(super) fn plan_collaboration_mode(model: &str, effort: Option<&str>) -> Value {
+    collaboration_mode_value("plan", model, effort)
 }
 
 pub(super) fn plan_steps_event(params: &Value) -> Option<SessionEventBody> {
@@ -307,12 +312,18 @@ impl Shared {
     }
 
     pub(super) fn attach_plan_mode(&self, params: &mut Value) -> Result<(), AgentError> {
-        if !self.collaboration_is_plan() {
-            return Ok(());
-        }
-        let model = self.plan_model()?;
+        let plan = self.collaboration_is_plan();
+        let model = match self.plan_model() {
+            Ok(model) => model,
+            Err(err) if plan => return Err(err),
+            Err(_) => return Ok(()),
+        };
         let effort = self.effort.lock().unwrap().clone();
-        params["collaborationMode"] = plan_collaboration_mode(&model, effort.as_deref());
+        params["collaborationMode"] = if plan {
+            plan_collaboration_mode(&model, effort.as_deref())
+        } else {
+            collaboration_mode_value("default", &model, effort.as_deref())
+        };
         Ok(())
     }
 
@@ -528,6 +539,9 @@ mod tests {
         assert!(!text.contains("developer_instructions\":\""));
         let with_effort = plan_collaboration_mode("gpt-test", Some("medium"));
         assert_eq!(with_effort["settings"]["reasoning_effort"], json!("medium"));
+        let default_mode = collaboration_mode_value("default", "gpt-test", None);
+        assert_eq!(default_mode["mode"], json!("default"));
+        assert!(default_mode["settings"]["developer_instructions"].is_null());
     }
 
     #[test]

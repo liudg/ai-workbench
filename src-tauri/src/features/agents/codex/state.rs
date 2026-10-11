@@ -152,7 +152,7 @@ pub(super) struct Shared {
     pub(super) queued: Mutex<Vec<QueuedTurn>>,
     pub(super) queue_removed: Mutex<HashSet<String>>,
     pub(super) shown_users: Mutex<HashSet<String>>,
-    /// 桌面端 Plan 开关。只在 plan 时给 `turn/start` 带 collaborationMode。
+    /// 桌面端 Plan 开关。`turn/start` 始终带当前 collaborationMode，退出计划时显式写 default。
     pub(super) collaboration: Mutex<Collaboration>,
     /// 最近一个已开始的回合。编辑只允许这一条。
     pub(super) latest_turn_id: Mutex<Option<String>>,
