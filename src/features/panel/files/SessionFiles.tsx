@@ -24,7 +24,7 @@ export function SessionFiles({ sessionId }: { sessionId: string }) {
     if (!toggled.current && sessionFiles.length > 0) setExpanded(true);
   }, [sessionFiles]);
 
-  const diffOpen = tabs.some((tab) => tab.id === activeId && tab.kind === "diff");
+  const diffOpen = tabs.some((tab) => tab.id === activeId && tab.viewerId === "diff");
   if (diffOpen) return null;
 
   const shown = filterFiles(sessionFiles, filter);
