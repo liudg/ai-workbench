@@ -9,8 +9,17 @@ import {
   isPatchTool,
   parsePatchDetail,
   diffScopeMenu,
+  applyWordDiff,
+  editedFilesLabel,
+  expandDiffLines,
+  fileLineRef,
+  fileStatusTone,
   foldDiffLines,
+  groupByDirectory,
+  isHtmlHref,
+  lineFromHref,
   parseUnifiedDiff,
+  withoutWhitespaceChanges,
   previewKindForPath,
   resolvePreviewPath,
   sessionChanges,
@@ -216,4 +225,57 @@ test("preview links stay inside the project", () => {
   assert.equal(previewKindForPath("C:/work/demo/index.html"), "html");
   assert.equal(previewKindForPath("notes.md"), "markdown");
   assert.equal(previewKindForPath("src/app.ts"), "text");
+});
+
+test("change card title names the file, and deletions use an ascii hyphen", () => {
+  assert.equal(editedFilesLabel([{ path: "src/annotate.html" }]), "已编辑 annotate.html");
+  assert.equal(editedFilesLabel([{ path: "a.ts" }, { path: "b.ts" }]), "已编辑 2 个文件");
+  assert.equal(fileStatusTone("M"), "add");
+  assert.equal(fileStatusTone("A"), "add");
+  assert.equal(fileStatusTone("D"), "del");
+  assert.equal(fileStatusTone("R"), "neutral");
+});
+
+test("file lists group by directory", () => {
+  assert.deepEqual(
+    groupByDirectory([
+      { path: "Tools/Lab/a.ts" },
+      { path: "Tools/Lab/b.ts" },
+      { path: "readme.txt" },
+    ]).map((group) => [group.dir, group.files.map((file) => file.path)]),
+    [
+      ["Tools/Lab", ["Tools/Lab/a.ts", "Tools/Lab/b.ts"]],
+      ["", ["readme.txt"]],
+    ],
+  );
+});
+
+test("line references and html links parse without inventing a scheme", () => {
+  assert.deepEqual(fileLineRef("annotate.html (line 12)"), { path: "annotate.html", line: 12 });
+  assert.equal(fileLineRef("annotate.html"), null);
+  assert.equal(fileLineRef("note (line 0)"), null);
+  assert.equal(lineFromHref("src/app.ts#L2"), 2);
+  assert.equal(lineFromHref("src/app.ts"), null);
+  assert.equal(isHtmlHref("index.html"), true);
+  assert.equal(isHtmlHref("https://example.com/a.html?q=1"), true);
+  assert.equal(isHtmlHref("notes.md"), false);
+});
+
+test("whitespace-only edits drop out and expand fills the new file", () => {
+  const spaced = ["@@ -1 +1 @@", "-a b", "+a  b", " same"].join("\n");
+  assert.equal(withoutWhitespaceChanges(spaced).includes("+a  b"), false);
+  const kept = ["@@ -1 +1 @@", "-old", "+new"].join("\n");
+  assert.equal(withoutWhitespaceChanges(kept).includes("+new"), true);
+
+  const source = ["one", "TWO", "three"].join("\n");
+  const diff = ["@@ -2 +2 @@", "-two", "+TWO"].join("\n");
+  const rows = expandDiffLines(diff, source);
+  assert.equal(rows.some((row) => row.kind === "collapse"), false);
+  assert.deepEqual(
+    rows.map((row) => (row.kind === "line" ? `${row.tone}:${row.lineNo}:${row.text}` : "hide")),
+    ["context:1:one", "del:2:two", "add:2:TWO", "context:3:three"],
+  );
+  const words = applyWordDiff(rows).filter((row) => row.kind === "line" && row.parts);
+  const add = words.find((row) => row.kind === "line" && row.tone === "add");
+  assert.equal(add?.kind === "line" && add.parts?.some((part) => part.changed && part.text === "TWO"), true);
 });

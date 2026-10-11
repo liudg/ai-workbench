@@ -3,8 +3,9 @@ import { ChevronLeft, Files } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { CODEX_DESKTOP } from "../codex-desktop";
+import { FileDirectoryGroups } from "./FileDirectoryGroups";
 import { usePreview } from "./preview-context";
-import { baseName, type FileChange } from "./model";
+import { baseName, fileStatusTone, type FileChange, type FileStatus } from "./model";
 
 export function SessionFiles({ sessionId }: { sessionId: string }) {
   const { sessionFiles, openDiff } = usePreview();
@@ -79,20 +80,40 @@ export function SessionFiles({ sessionId }: { sessionId: string }) {
               </p>
             ) : (
               <ul>
-                {shown.map((file) => (
-                  <li key={file.path}>
-                    <SessionFileRow
-                      file={file}
-                      onOpen={() => openDiff(`session:${file.path}`, baseName(file.path), [file])}
-                    />
-                  </li>
-                ))}
+                <FileDirectoryGroups
+                  files={shown}
+                  render={(file) => (
+                    <li key={file.path}>
+                      <SessionFileRow
+                        file={file}
+                        onOpen={() => openDiff(`session:${file.path}`, baseName(file.path), [file])}
+                      />
+                    </li>
+                  )}
+                />
               </ul>
             )}
           </div>
         </>
       ) : null}
     </aside>
+  );
+}
+
+function StatusMark({ status }: { status: FileStatus }) {
+  const tone = fileStatusTone(status);
+  return (
+    <span
+      data-file-status={status}
+      className={cn(
+        "w-4 shrink-0 font-mono text-[11px]",
+        tone === "add" && "text-emerald-400",
+        tone === "del" && "text-red-400",
+        tone === "neutral" && "text-zinc-400",
+      )}
+    >
+      {status}
+    </span>
   );
 }
 
@@ -105,10 +126,10 @@ function SessionFileRow({ file, onOpen }: { file: FileChange; onOpen: () => void
       className="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-zinc-800/80"
       onClick={onOpen}
     >
-      <span className="w-4 shrink-0 font-mono text-[11px] text-zinc-400">{file.status}</span>
-      <span className="min-w-0 flex-1 truncate font-mono text-xs text-zinc-200">{file.path}</span>
+      <StatusMark status={file.status} />
+      <span className="min-w-0 flex-1 truncate font-mono text-xs text-zinc-200">{baseName(file.path)}</span>
       <span className="shrink-0 font-mono text-[11px] tabular-nums text-emerald-400">+{file.added}</span>
-      <span className="shrink-0 font-mono text-[11px] tabular-nums text-red-400">−{file.removed}</span>
+      <span className="shrink-0 font-mono text-[11px] tabular-nums text-red-400">-{file.removed}</span>
     </button>
   );
 }

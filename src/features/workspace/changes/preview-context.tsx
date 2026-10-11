@@ -16,6 +16,7 @@ import { CODEX_DESKTOP } from "../codex-desktop";
 import {
   baseName,
   previewKindForPath,
+  lineFromHref,
   resolvePreviewPath,
   sameFile,
   sessionChanges,
@@ -30,6 +31,8 @@ export type PreviewTab =
       kind: PreviewKind;
       title: string;
       path: string;
+      url?: string;
+      line: number | null;
       status: "loading" | "ready" | "error";
       text: string;
       truncated: boolean;
@@ -45,7 +48,7 @@ interface PreviewApi {
   selectTab: (id: string) => void;
   closeTab: (id: string) => void;
   openDiff: (id: string, title: string, files: FileChange[]) => void;
-  openHref: (href: string) => void;
+  openHref: (href: string, line?: number) => void;
   openBlank: () => void;
   setTabTitle: (id: string, title: string) => void;
 }
@@ -68,12 +71,13 @@ function errorText(error: unknown): string {
   return "无法读取文件";
 }
 
-function documentTab(id: string, kind: PreviewKind, path: string): PreviewTab {
+function documentTab(id: string, kind: PreviewKind, path: string, line: number | null): PreviewTab {
   return {
     id,
     kind,
     title: baseName(path),
     path,
+    line,
     status: "loading",
     text: "",
     truncated: false,
@@ -186,11 +190,36 @@ export function PreviewProvider({
   );
 
   const openHref = useCallback(
-    (href: string) => {
+    (href: string, line?: number) => {
+      const trimmed = href.trim();
+      if (/^https?:\/\//i.test(trimmed)) {
+        const id = `web:${trimmed}`;
+        setTabs((current) => {
+          if (current.some((tab) => tab.id === id)) return current;
+          return [
+            ...current,
+            {
+              id,
+              kind: "html",
+              title: baseName(trimmed) || CODEX_DESKTOP.browserNewTab,
+              path: "",
+              url: trimmed,
+              line: null,
+              status: "ready",
+              text: "",
+              truncated: false,
+              error: "",
+            },
+          ];
+        });
+        setActiveId(id);
+        return;
+      }
       const root = projectRef.current.projectPath;
-      const resolved = resolvePreviewPath(root, href);
+      const resolved = resolvePreviewPath(root, trimmed);
+      const lineNo = line ?? lineFromHref(trimmed);
       if (!resolved) {
-        const id = `blocked:${href}`;
+        const id = `blocked:${trimmed}`;
         setTabs((current) => {
           if (current.some((tab) => tab.id === id)) return current;
           return [
@@ -198,8 +227,9 @@ export function PreviewProvider({
             {
               id,
               kind: "text",
-              title: baseName(href) || "文件",
-              path: href,
+              title: baseName(trimmed) || "文件",
+              path: trimmed,
+              line: lineNo,
               status: "error",
               text: "",
               truncated: false,
@@ -214,10 +244,16 @@ export function PreviewProvider({
       const id = `doc:${resolved.toLowerCase()}`;
       const existing = tabsRef.current.find((tab) => tab.id === id);
       if (!existing) {
-        setTabs((current) => [...current, documentTab(id, kind, resolved)]);
-      } else if (existing.kind !== "diff" && existing.status === "error") {
+        setTabs((current) => [...current, documentTab(id, kind, resolved, lineNo)]);
+      } else if (existing.kind === "diff") {
+        setTabs((current) => [...current.filter((tab) => tab.id !== id), documentTab(id, kind, resolved, lineNo)]);
+      } else if (existing.status === "error") {
         setTabs((current) =>
-          current.map((tab) => (tab.id === id ? documentTab(id, kind, resolved) : tab)),
+          current.map((tab) => (tab.id === id ? documentTab(id, kind, resolved, lineNo) : tab)),
+        );
+      } else {
+        setTabs((current) =>
+          current.map((tab) => (tab.id === id && tab.kind !== "diff" ? { ...tab, line: lineNo } : tab)),
         );
       }
       setActiveId(id);
@@ -246,8 +282,9 @@ export function PreviewProvider({
       {
         id,
         kind: "html",
-        title: CODEX_DESKTOP.browserEmptyTitle,
+        title: CODEX_DESKTOP.browserNewTab,
         path: "",
+        line: null,
         status: "ready",
         text: "",
         truncated: false,

@@ -451,7 +451,7 @@ function seedRegisteredProject() {
         index === 0
           ? PREVIEW_ANSWER
           : index === 2
-            ? "结论里的文件可以直接打开：[index.html](index.html)、[notes.md](notes.md)、[readme.txt](readme.txt)。"
+            ? "结论里的文件可以直接打开：[index.html](index.html)、[notes.md](notes.md)、[readme.txt](readme.txt)。\n\n看 `src/app.ts (line 2)`。\n\n[预览页](index.html)"
             : "这是工作台已注册项目下的预览会话。",
       phase: "final-answer",
     });
@@ -1100,6 +1100,18 @@ export const mockBackend: Backend = {
   async loadOlderHistory(sessionId): Promise<OlderHistory> {
     const s = sessions.get(sessionId);
     return { events: s ? [...s.events] : [], added: 0, exhausted: true };
+  },
+
+  async projectGitDiff(_projectId, scope, ignoreWhitespace) {
+    const marker = ignoreWhitespace ? "ws" : "keep";
+    return [
+      `diff --git a/${scope}.txt b/${scope}.txt`,
+      `--- a/${scope}.txt`,
+      `+++ b/${scope}.txt`,
+      "@@ -1 +1 @@",
+      `-${scope}-old`,
+      `+${scope}-${marker}`,
+    ].join("\n");
   },
 
   async readPreviewFile(_projectId, path) {

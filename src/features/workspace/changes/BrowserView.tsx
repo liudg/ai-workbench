@@ -28,12 +28,14 @@ export function BrowserView({
   tabId,
   projectId,
   path,
+  initialUrl,
   text,
   onTitle,
 }: {
   tabId: string;
   projectId: string;
   path: string;
+  initialUrl?: string;
   text: string;
   onTitle: (title: string) => void;
 }) {
@@ -103,6 +105,13 @@ export function BrowserView({
   }, [onTitle, text]);
 
   const openedFile = useRef("");
+  const openedRemote = useRef("");
+  useEffect(() => {
+    if (path || !initialUrl || openedRemote.current === initialUrl) return;
+    openedRemote.current = initialUrl;
+    void openTarget({ address: initialUrl, target: initialUrl }, "visit");
+  }, [initialUrl, openTarget, path]);
+
   useEffect(() => {
     if (!path) return;
     const address = displayFileAddress(path);

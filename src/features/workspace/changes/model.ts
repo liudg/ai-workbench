@@ -334,6 +334,343 @@ export function foldDiffLines(diff: string): DiffFoldRow[] {
   return rows;
 }
 
+export function editedFilesLabel(files: readonly { path: string }[]): string {
+  if (files.length === 1) {
+    return CODEX_DESKTOP.editedFile.replace("{name}", baseName(files[0]?.path ?? ""));
+  }
+  return CODEX_DESKTOP.editedFiles.replace("{count}", String(files.length));
+}
+
+export function directoryOf(path: string): string {
+  const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "");
+  const index = normalized.lastIndexOf("/");
+  return index > 0 ? normalized.slice(0, index) : "";
+}
+
+export function groupByDirectory<T extends { path: string }>(
+  files: readonly T[],
+): { dir: string; files: T[] }[] {
+  const order: string[] = [];
+  const map = new Map<string, T[]>();
+  for (const file of files) {
+    const dir = directoryOf(file.path);
+    const list = map.get(dir);
+    if (list) list.push(file);
+    else {
+      order.push(dir);
+      map.set(dir, [file]);
+    }
+  }
+  return order.map((dir) => ({ dir, files: map.get(dir) ?? [] }));
+}
+
+export function fileStatusTone(status: FileStatus): "add" | "del" | "neutral" {
+  if (status === "A" || status === "M") return "add";
+  if (status === "D") return "del";
+  return "neutral";
+}
+
+/** `annotate.html (line 12)` → 路径和行号。行号从 1 开始。 */
+export function fileLineRef(label: string): { path: string; line: number } | null {
+  const match = /^(.*\S)\s+\(line\s+(\d+)\)\s*$/i.exec(label.trim());
+  if (!match) return null;
+  const line = Number(match[2]);
+  if (!Number.isInteger(line) || line < 1) return null;
+  const path = match[1].trim();
+  if (!path) return null;
+  return { path, line };
+}
+
+export function lineFromHref(href: string): number | null {
+  const hash = href.split("#")[1]?.split("&")[0] ?? "";
+  const match = /^L(\d+)$/i.exec(hash);
+  if (!match) return null;
+  const line = Number(match[1]);
+  return Number.isInteger(line) && line >= 1 ? line : null;
+}
+
+export function isHtmlHref(href: string): boolean {
+  const bare = href.trim().split(/[?#]/)[0] ?? "";
+  return /\.html?$/i.test(bare);
+}
+
+export function sourceLines(text: string): string[] {
+  const lines = text.split(/\r?\n/);
+  if (text.endsWith("\n") && lines[lines.length - 1] === "") lines.pop();
+  return lines;
+}
+
+/** 去掉只改空白的增删行。git 范围另由 `git diff -w` 处理。 */
+export function withoutWhitespaceChanges(diff: string): string {
+  const lines = diff.split(/\r?\n/);
+  const out: string[] = [];
+  let index = 0;
+  while (index < lines.length) {
+    const line = lines[index] ?? "";
+    if (!line.startsWith("@@")) {
+      out.push(line);
+      index += 1;
+      continue;
+    }
+    index += 1;
+    const body: string[] = [];
+    while (index < lines.length) {
+      const next = lines[index] ?? "";
+      if (next.startsWith("@@") || next.startsWith("diff --git ")) break;
+      body.push(next);
+      index += 1;
+    }
+    const filtered = filterWhitespaceHunk(body);
+    if (filtered.some((row) => row.startsWith("+") || row.startsWith("-"))) {
+      out.push(line, ...filtered);
+    }
+  }
+  return out.join("\n");
+}
+
+/**
+ * 展开灰条。有全文时按新文件补上未改动行；没有全文时只留下差异块。
+ */
+export function expandDiffLines(diff: string, source: string | null): DiffFoldRow[] {
+  if (source == null) return foldDiffLines(diff).filter((row) => row.kind !== "collapse");
+  const src = sourceLines(source);
+  const hunks = parseHunks(diff);
+  const rows: DiffFoldRow[] = [];
+  let cursor = 1;
+  const emitUntil = (until: number) => {
+    while (cursor < until && cursor <= src.length) {
+      rows.push({ kind: "line", tone: "context", text: src[cursor - 1] ?? "", lineNo: cursor });
+      cursor += 1;
+    }
+  };
+  for (const hunk of hunks) {
+    emitUntil(hunk.newStart);
+    let oldLine = hunk.oldStart;
+    for (const line of hunk.lines) {
+      if (line.kind === "meta") {
+        rows.push({ kind: "line", tone: "meta", text: line.text, lineNo: null });
+        continue;
+      }
+      if (line.kind === "del") {
+        rows.push({ kind: "line", tone: "del", text: line.text, lineNo: oldLine });
+        oldLine += 1;
+        continue;
+      }
+      const text = cursor <= src.length ? (src[cursor - 1] ?? line.text) : line.text;
+      rows.push({
+        kind: "line",
+        tone: line.kind === "add" ? "add" : "context",
+        text,
+        lineNo: cursor,
+      });
+      if (line.kind === "context") oldLine += 1;
+      cursor += 1;
+    }
+  }
+  emitUntil(src.length + 1);
+  return rows;
+}
+
+/** 差异里的新文件一侧，不含灰条外面的原文。渲染预览在读不到全文时用它。 */
+export function previewTextFromDiff(diff: string): string {
+  const lines: string[] = [];
+  let inHunk = false;
+  for (const line of diff.split(/\r?\n/)) {
+    if (line.startsWith("@@")) {
+      inHunk = true;
+      continue;
+    }
+    if (line.startsWith("diff --git ")) {
+      inHunk = false;
+      continue;
+    }
+    if (!inHunk) continue;
+    if (line.startsWith("+") || line.startsWith(" ")) lines.push(line.slice(1));
+  }
+  return lines.join("\n");
+}
+
+export interface WordPart {
+  text: string;
+  changed: boolean;
+}
+
+export type DiffDisplayRow =
+  | { kind: "collapse"; count: number }
+  | {
+      kind: "line";
+      tone: "add" | "del" | "context" | "meta";
+      text: string;
+      lineNo: number | null;
+      parts: WordPart[] | null;
+    };
+
+export function applyWordDiff(rows: readonly DiffFoldRow[]): DiffDisplayRow[] {
+  const out: DiffDisplayRow[] = rows.map((row) =>
+    row.kind === "collapse" ? row : { ...row, parts: null },
+  );
+  let index = 0;
+  while (index < out.length) {
+    const start = index;
+    while (isTone(out[index], "del")) index += 1;
+    const delEnd = index;
+    while (isTone(out[index], "add")) index += 1;
+    const addEnd = index;
+    if (delEnd === start) {
+      index = Math.max(index, start + 1);
+      continue;
+    }
+    const pair = Math.min(delEnd - start, addEnd - delEnd);
+    for (let cursor = 0; cursor < pair; cursor += 1) {
+      const before = out[start + cursor];
+      const after = out[delEnd + cursor];
+      if (before?.kind !== "line" || after?.kind !== "line") continue;
+      const parts = wordDiffParts(before.text, after.text);
+      before.parts = parts.before;
+      after.parts = parts.after;
+    }
+  }
+  return out;
+}
+
+export function wordDiffParts(before: string, after: string): { before: WordPart[]; after: WordPart[] } {
+  const left = tokenize(before);
+  const right = tokenize(after);
+  if (left.length * right.length > 4000) {
+    const changed = before !== after;
+    return {
+      before: [{ text: before, changed }],
+      after: [{ text: after, changed }],
+    };
+  }
+  const shared = lcsMask(left, right);
+  return {
+    before: mergeParts(left, shared.left),
+    after: mergeParts(right, shared.right),
+  };
+}
+
+function filterWhitespaceHunk(body: string[]): string[] {
+  const out: string[] = [];
+  let index = 0;
+  while (index < body.length) {
+    const line = body[index] ?? "";
+    if (!line.startsWith("-") && !line.startsWith("+")) {
+      out.push(line);
+      index += 1;
+      continue;
+    }
+    const removed: string[] = [];
+    const added: string[] = [];
+    const notes: string[] = [];
+    while (index < body.length && ((body[index] ?? "").startsWith("-") || (body[index] ?? "").startsWith("\\"))) {
+      const row = body[index] ?? "";
+      if (row.startsWith("\\")) notes.push(row);
+      else removed.push(row.slice(1));
+      index += 1;
+    }
+    while (index < body.length && ((body[index] ?? "").startsWith("+") || (body[index] ?? "").startsWith("\\"))) {
+      const row = body[index] ?? "";
+      if (row.startsWith("\\")) notes.push(row);
+      else added.push(row.slice(1));
+      index += 1;
+    }
+    if (collapseSpace(removed.join("\n")) === collapseSpace(added.join("\n"))) continue;
+    for (const row of removed) out.push(`-${row}`);
+    for (const row of added) out.push(`+${row}`);
+    out.push(...notes);
+  }
+  return out;
+}
+
+function collapseSpace(text: string): string {
+  return text.replace(/\s+/g, "");
+}
+
+interface ParsedHunkLine {
+  kind: "add" | "del" | "context" | "meta";
+  text: string;
+}
+
+interface ParsedHunk {
+  oldStart: number;
+  newStart: number;
+  lines: ParsedHunkLine[];
+}
+
+function parseHunks(diff: string): ParsedHunk[] {
+  const hunks: ParsedHunk[] = [];
+  let current: ParsedHunk | null = null;
+  for (const line of diff.split(/\r?\n/)) {
+    const header = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
+    if (header) {
+      current = { oldStart: Number(header[1]), newStart: Number(header[2]), lines: [] };
+      hunks.push(current);
+      continue;
+    }
+    if (
+      line.startsWith("diff --git ") ||
+      line.startsWith("index ") ||
+      line.startsWith("--- ") ||
+      line.startsWith("+++ ") ||
+      line.startsWith("new file") ||
+      line.startsWith("deleted file")
+    ) {
+      current = null;
+      continue;
+    }
+    if (!current) continue;
+    if (line.startsWith("\\")) current.lines.push({ kind: "meta", text: line.replace(/^\\/, "").trim() });
+    else if (line.startsWith("+")) current.lines.push({ kind: "add", text: line.slice(1) });
+    else if (line.startsWith("-")) current.lines.push({ kind: "del", text: line.slice(1) });
+    else current.lines.push({ kind: "context", text: line.startsWith(" ") ? line.slice(1) : line });
+  }
+  return hunks;
+}
+
+function isTone(row: DiffDisplayRow | undefined, tone: "add" | "del"): boolean {
+  return row?.kind === "line" && row.tone === tone;
+}
+
+function tokenize(text: string): string[] {
+  return text.match(/\s+|[A-Za-z0-9_]+|./g) ?? [];
+}
+
+function lcsMask(left: string[], right: string[]): { left: boolean[]; right: boolean[] } {
+  const n = left.length;
+  const m = right.length;
+  const dp: number[][] = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0));
+  for (let i = n - 1; i >= 0; i -= 1) {
+    for (let j = m - 1; j >= 0; j -= 1) {
+      dp[i][j] = left[i] === right[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  const leftChanged = new Array<boolean>(n).fill(true);
+  const rightChanged = new Array<boolean>(m).fill(true);
+  let i = 0;
+  let j = 0;
+  while (i < n && j < m) {
+    if (left[i] === right[j]) {
+      leftChanged[i] = false;
+      rightChanged[j] = false;
+      i += 1;
+      j += 1;
+    } else if (dp[i + 1][j] >= dp[i][j + 1]) i += 1;
+    else j += 1;
+  }
+  return { left: leftChanged, right: rightChanged };
+}
+
+function mergeParts(tokens: string[], changed: boolean[]): WordPart[] {
+  const parts: WordPart[] = [];
+  for (let index = 0; index < tokens.length; index += 1) {
+    const last = parts[parts.length - 1];
+    if (last && last.changed === changed[index]) last.text += tokens[index] ?? "";
+    else parts.push({ text: tokens[index] ?? "", changed: changed[index] ?? false });
+  }
+  return parts;
+}
+
 function eventSlices(events: readonly SessionEvent[]): SessionEvent[][] {
   const slices: SessionEvent[][] = [];
   let current: SessionEvent[] = [];

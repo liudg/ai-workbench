@@ -1,10 +1,12 @@
-import { Plus, X } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { FileDiff, Globe, Plus, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { AssistantAnswer } from "../timeline/AssistantAnswer";
 import { CODEX_DESKTOP } from "../codex-desktop";
 import { BrowserView } from "./BrowserView";
 import { DiffView } from "./DiffView";
+import { sourceLines } from "./model";
 import { usePreview, type PreviewTab } from "./preview-context";
 
 export function PreviewPanel() {
@@ -31,10 +33,14 @@ export function PreviewPanel() {
               <button
                 type="button"
                 data-preview-tab={tab.kind}
-                className="min-w-0 flex-1 truncate px-2 py-1.5 text-left text-xs"
+                className="flex min-w-0 flex-1 items-center gap-1 px-2 py-1.5 text-left text-xs"
                 onClick={() => selectTab(tab.id)}
               >
-                {tab.title}
+                {tab.kind === "diff" ? (
+                  <FileDiff className="h-3 w-3 shrink-0" data-tab-icon="diff" />
+                ) : null}
+                {tab.kind === "html" ? <Globe className="h-3 w-3 shrink-0" data-tab-icon="web" /> : null}
+                <span className="truncate">{tab.title}</span>
               </button>
               <button
                 type="button"
@@ -75,6 +81,11 @@ function TabBody({
   onTitle: (id: string, title: string) => void;
 }) {
   if (tab.kind === "diff") return <DiffView files={tab.files} />;
+  if (tab.line != null) {
+    if (tab.status === "loading") return <p className="px-4 py-6 text-sm text-zinc-500">正在读取…</p>;
+    if (tab.status === "error") return <p className="px-4 py-6 text-sm text-red-300">{tab.error}</p>;
+    return <SourceView text={tab.text} line={tab.line} />;
+  }
   if (tab.kind === "html") {
     if (tab.status === "error") {
       return <p className="px-4 py-6 text-sm text-red-300">{tab.error}</p>;
@@ -84,6 +95,7 @@ function TabBody({
         tabId={tab.id}
         projectId={projectId}
         path={tab.path}
+        initialUrl={tab.url}
         text={tab.text}
         onTitle={(title) => onTitle(tab.id, title)}
       />
@@ -115,5 +127,35 @@ function TabBody({
 
 function Truncated() {
   return <p className="px-4 pt-3 text-xs text-zinc-500">只显示了文件的开头部分。</p>;
+}
+
+function SourceView({ text, line }: { text: string; line: number }) {
+  const scroller = useRef<HTMLDivElement>(null);
+  const lines = sourceLines(text);
+  useEffect(() => {
+    scroller.current
+      ?.querySelector(`[data-source-line="${line}"]`)
+      ?.scrollIntoView({ block: "center" });
+  }, [line, text]);
+  return (
+    <div ref={scroller} className="h-full overflow-auto font-mono text-xs leading-5">
+      {lines.map((content, index) => {
+        const number = index + 1;
+        const hit = number === line;
+        return (
+          <div
+            key={number}
+            data-source-line={number}
+            className={cn("flex min-w-0", hit && "bg-amber-400/20")}
+          >
+            <span className="w-10 shrink-0 select-none px-2 text-right text-zinc-500">{number}</span>
+            <span className="min-w-0 flex-1 whitespace-pre-wrap break-words px-2 text-zinc-200">
+              {content.length > 0 ? content : " "}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 

@@ -23,7 +23,7 @@ export function diffStats(diff: string): { files: number; added: number; removed
 
 export function diffSummary(diff: string): string {
   const stats = diffStats(diff);
-  return `${filesChangedLabel(stats.files)}  +${stats.added}  −${stats.removed}`;
+  return `${filesChangedLabel(stats.files)}  +${stats.added}  -${stats.removed}`;
 }
 
 /** 退出审查后的 agentMessage 与 findings 原文相同，时间线只留卡片。 */

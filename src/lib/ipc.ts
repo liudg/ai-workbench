@@ -129,6 +129,11 @@ export interface Backend {
   loadOlderHistory(sessionId: string): Promise<OlderHistory>;
   /** 读取项目目录内的文本，供 HTML / Markdown / 纯文本预览。 */
   readPreviewFile(projectId: string, path: string): Promise<PreviewDocument>;
+  /**
+   * 项目工作树的 git diff。scope 为 uncommitted / unstaged / staged。
+   * 已提交、分支没有观察到子菜单，调用方不要传。
+   */
+  projectGitDiff(projectId: string, scope: string, ignoreWhitespace: boolean): Promise<string>;
   /** 把项目内文件放进内置浏览器可加载的地址。 */
   prepareBrowserFile(projectId: string, path: string): Promise<BrowserFile>;
   browserShow(url: string, x: number, y: number, width: number, height: number): Promise<void>;
@@ -266,6 +271,8 @@ const tauriBackend: Backend = {
     invoke<OlderHistory>("load_older_history", { sessionId }),
   readPreviewFile: (projectId, path) =>
     invoke<PreviewDocument>("read_preview_file", { projectId, path }),
+  projectGitDiff: (projectId, scope, ignoreWhitespace) =>
+    invoke<string>("project_git_diff", { projectId, scope, ignoreWhitespace }),
   prepareBrowserFile: (projectId, path) =>
     invoke<BrowserFile>("prepare_browser_file", { projectId, path }),
   browserShow: (url, x, y, width, height) =>

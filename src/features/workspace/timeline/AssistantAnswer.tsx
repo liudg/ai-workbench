@@ -1,8 +1,10 @@
-import { useMemo, useState, type ReactNode } from "react";
-import { ChevronRight } from "lucide-react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { ChevronRight, Globe } from "lucide-react";
 
+import { backend } from "@/lib/ipc";
 import {
   codeDisplayLines,
+  inlinePlain,
   parseAnswer,
   type Align,
   type AnswerBlock,
@@ -10,7 +12,15 @@ import {
   type Inline,
 } from "./answer-markdown";
 import { cn } from "@/lib/utils";
-import { isFileHref } from "../changes/model";
+import { pageTitleFromHtml } from "../changes/browser";
+import { CODEX_DESKTOP } from "../codex-desktop";
+import {
+  baseName,
+  fileLineRef,
+  isFileHref,
+  isHtmlHref,
+  lineFromHref,
+} from "../changes/model";
 import { usePreviewOptional } from "../changes/preview-context";
 import { MessageImage } from "./MessageContent";
 
@@ -34,12 +44,15 @@ function BlockView({ block }: { block: AnswerBlock }) {
           <Inlines nodes={block.inlines} />
         </div>
       );
-    case "paragraph":
+    case "paragraph": {
+      const site = loneHtmlLink(block.inlines);
+      if (site) return <WebsiteCard href={site.href} label={site.label} />;
       return (
         <div className="answer-p" data-answer-block="paragraph">
           <Inlines nodes={block.inlines} />
         </div>
       );
+    }
     case "list":
       return (
         <MaybeCollapsed meta={block.meta}>
@@ -234,11 +247,7 @@ function InlineView({ node }: { node: Inline }) {
         </em>
       );
     case "code":
-      return (
-        <code className="answer-inline-code" title={node.title}>
-          {node.display ?? node.text}
-        </code>
-      );
+      return <CodeSpan node={node} />;
     case "path":
       return (
         <span className="answer-path" title={node.full}>
@@ -254,17 +263,44 @@ function InlineView({ node }: { node: Inline }) {
   }
 }
 
+function CodeSpan({ node }: { node: Extract<Inline, { type: "code" }> }) {
+  const preview = usePreviewOptional();
+  const ref = fileLineRef(node.text);
+  if (ref && preview && isFileHref(ref.path)) {
+    return (
+      <button
+        type="button"
+        className="answer-inline-code"
+        data-line-ref={ref.line}
+        title={node.title ?? ref.path}
+        onClick={() => preview.openHref(ref.path, ref.line)}
+      >
+        {node.display ?? node.text}
+      </button>
+    );
+  }
+  return (
+    <code className="answer-inline-code" title={node.title}>
+      {node.display ?? node.text}
+    </code>
+  );
+}
+
 function LinkView({ node }: { node: Extract<Inline, { type: "link" }> }) {
   const preview = usePreviewOptional();
-  if (/^https?:\/\//i.test(node.href)) {
+  const plain = inlinePlain(node.inlines);
+  const ref = fileLineRef(plain);
+  const line = ref?.line ?? lineFromHref(node.href) ?? undefined;
+  const target = ref?.path ?? node.href;
+  if (/^https?:\/\//i.test(node.href) && !isHtmlHref(node.href)) {
     return (
       <a href={node.href} title={node.title} target="_blank" rel="noreferrer noopener">
         <Inlines nodes={node.inlines} />
       </a>
     );
   }
-  if (!isFileHref(node.href) || !preview) {
-    if (!isFileHref(node.href)) return <Inlines nodes={node.inlines} />;
+  if ((!isFileHref(target) && !isHtmlHref(node.href)) || !preview) {
+    if (!isFileHref(target) && !isHtmlHref(node.href)) return <Inlines nodes={node.inlines} />;
     return (
       <span className="answer-file" title={node.title ?? node.href}>
         <Inlines nodes={node.inlines} />
@@ -275,10 +311,62 @@ function LinkView({ node }: { node: Extract<Inline, { type: "link" }> }) {
     <button
       type="button"
       className="answer-file"
+      data-line-ref={line}
       title={node.title ?? node.href}
-      onClick={() => preview.openHref(node.href)}
+      onClick={() => preview.openHref(target, line)}
     >
       <Inlines nodes={node.inlines} />
     </button>
+  );
+}
+
+function loneHtmlLink(inlines: Inline[]): { href: string; label: string } | null {
+  const content = inlines.filter(
+    (node) => node.type !== "break" && !(node.type === "text" && node.text.trim() === ""),
+  );
+  if (content.length !== 1 || content[0].type !== "link") return null;
+  const link = content[0];
+  if (!isHtmlHref(link.href)) return null;
+  return { href: link.href, label: inlinePlain(link.inlines) || baseName(link.href) };
+}
+
+function WebsiteCard({ href, label }: { href: string; label: string }) {
+  const preview = usePreviewOptional();
+  const projectId = preview?.projectId ?? "";
+  const [title, setTitle] = useState(label || baseName(href));
+  useEffect(() => {
+    if (!projectId || /^https?:\/\//i.test(href)) return;
+    let cancel = false;
+    void backend
+      .readPreviewFile(projectId, href)
+      .then((doc) => {
+        if (cancel) return;
+        const parsed = pageTitleFromHtml(doc.text);
+        if (parsed) setTitle(parsed);
+      })
+      .catch(() => {});
+    return () => {
+      cancel = true;
+    };
+  }, [href, projectId]);
+  return (
+    <div
+      data-website-card
+      className="my-2 flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2"
+    >
+      <Globe className="h-4 w-4 shrink-0 text-zinc-300" />
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm text-zinc-100">{title}</div>
+        <div className="text-xs text-zinc-500">{CODEX_DESKTOP.website}</div>
+      </div>
+      <button
+        type="button"
+        data-open-with
+        className="shrink-0 rounded px-2 py-1 text-xs text-zinc-100 hover:bg-zinc-800"
+        onClick={() => preview?.openHref(href)}
+      >
+        {CODEX_DESKTOP.openWith}
+      </button>
+    </div>
   );
 }
