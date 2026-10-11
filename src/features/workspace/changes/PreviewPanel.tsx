@@ -65,7 +65,7 @@ export function PreviewPanel() {
         </button>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
-        <TabBody tab={active} projectId={projectId} onTitle={setTabTitle} />
+        <TabBody key={active.id} tab={active} projectId={projectId} onTitle={setTabTitle} />
       </div>
     </section>
   );
