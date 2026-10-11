@@ -633,23 +633,6 @@ impl SessionManager {
         Ok(())
     }
 
-    pub async fn reload_live_mcp(&self) -> Vec<String> {
-        let handles: Vec<_> = self
-            .entries
-            .lock()
-            .unwrap()
-            .values()
-            .filter_map(|entry| entry.agent.clone())
-            .collect();
-        let mut warnings = Vec::new();
-        for handle in handles {
-            if let Err(err) = handle.reload_mcp().await {
-                warnings.push(err.to_string());
-            }
-        }
-        warnings
-    }
-
     pub async fn stop_session(&self, session_id: &str) -> Result<(), String> {
         let handle = self.agent_handle_ready(session_id).await?;
         handle.stop().await.map_err(|err| err.to_string())

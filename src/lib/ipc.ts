@@ -14,15 +14,6 @@ import type {
   AgentCatalogRefresh,
   AgentProfile,
   CachedAgentCatalog,
-  EnvironmentRecord,
-  HookRecord,
-  McpLogin,
-  McpServerRecord,
-  McpTransport,
-  PluginCatalog,
-  ReloadReport,
-  WorktreeInfo,
-  WorktreeSettings,
   Attachment,
   Project,
   PromptAnswer,
@@ -112,47 +103,6 @@ export interface Backend {
   stopSession(sessionId: string): Promise<void>;
   getSessionEvents(sessionId: string): Promise<SessionEvent[]>;
   loadOlderHistory(sessionId: string): Promise<OlderHistory>;
-
-  listMcpServers(): Promise<McpServerRecord[]>;
-  addMcpServer(input: {
-    name: string;
-    transport: McpTransport;
-    commandLine: string;
-    url: string;
-  }): Promise<void>;
-  setMcpServerEnabled(name: string, enabled: boolean): Promise<void>;
-  removeMcpServer(name: string): Promise<void>;
-  loginMcpServer(name: string): Promise<McpLogin>;
-  reloadMcpServers(): Promise<ReloadReport>;
-
-  listPlugins(cwd: string | null): Promise<PluginCatalog>;
-  installPlugin(input: {
-    pluginName: string;
-    marketplacePath: string;
-    marketplaceName: string;
-  }): Promise<void>;
-  uninstallPlugin(pluginId: string): Promise<void>;
-  addMarketplace(source: string, refName: string): Promise<void>;
-  removeMarketplace(name: string): Promise<void>;
-  upgradeMarketplace(name: string): Promise<void>;
-
-  listHooks(cwd: string | null): Promise<HookRecord[]>;
-
-  worktreeSettings(projectPath: string | null): Promise<WorktreeSettings>;
-  saveWorktreeSettings(
-    root: string,
-    keep: number,
-    autoPrune: boolean,
-  ): Promise<WorktreeSettings>;
-  createWorktree(projectPath: string): Promise<WorktreeInfo>;
-  recycleWorktree(projectPath: string, worktreePath: string): Promise<void>;
-
-  addEnvironment(input: {
-    environmentId: string;
-    execServerUrl: string;
-    authBearerToken: string;
-  }): Promise<EnvironmentRecord>;
-  listEnvironments(): Promise<EnvironmentRecord[]>;
 
   /** 打开系统目录选择器；返回 null 表示取消 */
   pickDirectory(title: string): Promise<string | null>;
@@ -264,48 +214,6 @@ const tauriBackend: Backend = {
     invoke<SessionEvent[]>("get_session_events", { sessionId }),
   loadOlderHistory: (sessionId) =>
     invoke<OlderHistory>("load_older_history", { sessionId }),
-
-  listMcpServers: () => invoke<McpServerRecord[]>("list_mcp_servers"),
-  addMcpServer: (input) =>
-    invoke("add_mcp_server", {
-      name: input.name,
-      transport: input.transport,
-      commandLine: input.commandLine,
-      url: input.url,
-    }),
-  setMcpServerEnabled: (name, enabled) =>
-    invoke("set_mcp_server_enabled", { name, enabled }),
-  removeMcpServer: (name) => invoke("remove_mcp_server", { name }),
-  loginMcpServer: (name) => invoke<McpLogin>("login_mcp_server", { name }),
-  reloadMcpServers: () => invoke<ReloadReport>("reload_mcp_servers"),
-  listPlugins: (cwd) => invoke<PluginCatalog>("list_plugins", { cwd }),
-  installPlugin: (input) =>
-    invoke("install_plugin", {
-      pluginName: input.pluginName,
-      marketplacePath: input.marketplacePath,
-      marketplaceName: input.marketplaceName,
-    }),
-  uninstallPlugin: (pluginId) => invoke("uninstall_plugin", { pluginId }),
-  addMarketplace: (source, refName) =>
-    invoke("add_marketplace", { source, refName }),
-  removeMarketplace: (name) => invoke("remove_marketplace", { name }),
-  upgradeMarketplace: (name) => invoke("upgrade_marketplace", { name }),
-  listHooks: (cwd) => invoke<HookRecord[]>("list_hooks", { cwd }),
-  worktreeSettings: (projectPath) =>
-    invoke<WorktreeSettings>("worktree_settings", { projectPath }),
-  saveWorktreeSettings: (root, keep, autoPrune) =>
-    invoke<WorktreeSettings>("save_worktree_settings", { root, keep, autoPrune }),
-  createWorktree: (projectPath) =>
-    invoke<WorktreeInfo>("create_worktree", { projectPath }),
-  recycleWorktree: (projectPath, worktreePath) =>
-    invoke("recycle_worktree", { projectPath, worktreePath }),
-  addEnvironment: (input) =>
-    invoke<EnvironmentRecord>("add_environment", {
-      environmentId: input.environmentId,
-      execServerUrl: input.execServerUrl,
-      authBearerToken: input.authBearerToken,
-    }),
-  listEnvironments: () => invoke<EnvironmentRecord[]>("list_environments"),
 
   pickDirectory: async (title) => {
     const selected = await open({ directory: true, multiple: false, title });

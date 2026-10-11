@@ -1,29 +1,9 @@
-import { useState } from "react";
 import { ArrowLeft, RefreshCw } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useWorkbench } from "@/store";
 import type { AgentInstallation, UpdateVia } from "@/types";
 import { Button } from "@/components/ui/button";
-
-import {
-  EnvironmentPanel,
-  HooksPanel,
-  McpPanel,
-  PluginPanel,
-  WorktreePanel,
-} from "./panels";
-
-type Section = "agents" | "mcp" | "plugins" | "hooks" | "worktrees" | "environments";
-
-const SECTIONS: { id: Section; label: string }[] = [
-  { id: "agents", label: "本地 Agent" },
-  { id: "mcp", label: "MCP 服务器" },
-  { id: "plugins", label: "插件" },
-  { id: "hooks", label: "钩子" },
-  { id: "worktrees", label: "工作树" },
-  { id: "environments", label: "环境" },
-];
 
 function viaLabel(via: UpdateVia | null): string | null {
   if (via === "npm") return "npm";
@@ -123,7 +103,6 @@ function AgentsPanel() {
 
 export function SettingsView() {
   const closeSettings = useWorkbench((s) => s.closeSettings);
-  const [section, setSection] = useState<Section>("agents");
 
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col">
@@ -142,33 +121,20 @@ export function SettingsView() {
       <div className="flex min-h-0 flex-1">
         <nav aria-label="设置" className="w-44 shrink-0 border-r border-zinc-800/80 px-3 py-4">
           <ul className="space-y-1">
-            {SECTIONS.map((item) => (
-              <li key={item.id}>
-                <button
-                  type="button"
-                  className={cn(
-                    "w-full rounded-md px-3 py-2 text-left text-sm",
-                    section === item.id
-                      ? "bg-zinc-800 text-zinc-50"
-                      : "text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-100",
-                  )}
-                  aria-current={section === item.id ? "page" : undefined}
-                  onClick={() => setSection(item.id)}
-                >
-                  {item.label}
-                </button>
-              </li>
-            ))}
+            <li>
+              <button
+                type="button"
+                className="w-full rounded-md bg-zinc-800 px-3 py-2 text-left text-sm text-zinc-50"
+                aria-current="page"
+              >
+                本地 Agent
+              </button>
+            </li>
           </ul>
         </nav>
         <div className="min-w-0 flex-1 overflow-y-auto px-6 py-6">
           <div className="mx-auto max-w-2xl">
-            {section === "agents" && <AgentsPanel />}
-            {section === "mcp" && <McpPanel />}
-            {section === "plugins" && <PluginPanel />}
-            {section === "hooks" && <HooksPanel />}
-            {section === "worktrees" && <WorktreePanel />}
-            {section === "environments" && <EnvironmentPanel />}
+            <AgentsPanel />
           </div>
         </div>
       </div>

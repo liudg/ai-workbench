@@ -16,7 +16,6 @@ import {
   type CachedAgentCatalog,
   type AgentKind,
   type AgentProfile,
-  type McpServerRecord,
   type Project,
   type OlderHistory,
   type PromptAnswer,
@@ -66,11 +65,7 @@ const CODEX_CAPABILITIES: AgentCapabilities = {
   supports_questions: true,
   supports_tuning: true,
   supports_skills: true,
-  supports_mcp: true,
-  supports_plugins: true,
-  supports_hooks: true,
   supports_goals: true,
-  supports_worktrees: true,
   supports_fork: true,
   supports_archive: true,
   supports_delete: true,
@@ -200,35 +195,6 @@ function previewInstallations(mode: PreviewAgents): AgentInstallation[] {
 }
 
 let mockInstallations = previewInstallations(previewAgents());
-
-let mockMcp: McpServerRecord[] = [
-  {
-    name: "context7",
-    transport: "stdio",
-    command: "npx",
-    args: ["-y", "@upstash/context7-mcp"],
-    url: "",
-    enabled: true,
-    auth_status: "unsupported",
-    runtime_status: "connected",
-    tool_names: ["resolve-library-id", "query-docs"],
-    tools_error: "",
-    plugin_id: "",
-  },
-  {
-    name: "figma",
-    transport: "http",
-    command: "",
-    args: [],
-    url: "https://mcp.figma.com/mcp",
-    enabled: true,
-    auth_status: "notLoggedIn",
-    runtime_status: "authenticationRequired",
-    tool_names: [],
-    tools_error: "",
-    plugin_id: "",
-  },
-];
 
 /** 浏览器预览镜像后端 `agent_profiles`：按 Agent 给能力，而不是全局斜杠表。 */
 const MOCK_PROFILES: Record<AgentKind, AgentProfile> = {
@@ -1179,144 +1145,6 @@ export const mockBackend: Backend = {
 
   async getSessionEvents(sessionId) {
     return [...(sessions.get(sessionId)?.events ?? [])];
-  },
-
-  async listMcpServers() {
-    return mockMcp.map((item) => ({ ...item, args: [...item.args], tool_names: [...item.tool_names] }));
-  },
-  async addMcpServer(input) {
-    mockMcp = mockMcp.filter((item) => item.name !== input.name);
-    mockMcp.push({
-      name: input.name,
-      transport: input.transport,
-      command: input.transport === "stdio" ? input.commandLine : "",
-      args: [],
-      url: input.transport === "http" ? input.url : "",
-      enabled: true,
-      auth_status: input.transport === "http" ? "notLoggedIn" : "unsupported",
-      runtime_status: "notStarted",
-      tool_names: [],
-      tools_error: "",
-      plugin_id: "",
-    });
-  },
-  async setMcpServerEnabled(name, enabled) {
-    mockMcp = mockMcp.map((item) =>
-      item.name === name
-        ? { ...item, enabled, runtime_status: enabled ? item.runtime_status : "disabled" }
-        : item,
-    );
-  },
-  async removeMcpServer(name) {
-    mockMcp = mockMcp.filter((item) => item.name !== name);
-  },
-  async loginMcpServer(name) {
-    const server = mockMcp.find((item) => item.name === name);
-    if (!server) throw new Error("找不到 MCP 服务器");
-    server.auth_status = "oAuth";
-    server.runtime_status = "connected";
-    return { authorization_url: "https://example.com/oauth/mock" };
-  },
-  async reloadMcpServers() {
-    return { warnings: [] };
-  },
-  async listPlugins() {
-    return {
-      marketplaces: [
-        {
-          name: "openai-bundled",
-          display_name: "OpenAI",
-          path: "",
-          plugins: [
-            {
-              id: "browser@openai-bundled",
-              name: "browser",
-              display_name: "Browser",
-              description: "Browse the web from Codex",
-              developer: "OpenAI",
-              marketplace_name: "openai-bundled",
-              marketplace_path: "",
-              installed: true,
-              enabled: true,
-              availability: "AVAILABLE",
-              install_policy: "INSTALLED_BY_DEFAULT",
-              source: "local",
-              needs_install_confirm: false,
-            },
-            {
-              id: "documents@openai",
-              name: "documents",
-              display_name: "Documents",
-              description: "Create and edit documents",
-              developer: "OpenAI",
-              marketplace_name: "openai-bundled",
-              marketplace_path: "",
-              installed: false,
-              enabled: false,
-              availability: "AVAILABLE",
-              install_policy: "AVAILABLE",
-              source: "remote",
-              needs_install_confirm: true,
-            },
-          ],
-        },
-      ],
-      errors: [],
-    };
-  },
-  async installPlugin(input) {
-    void input;
-  },
-  async uninstallPlugin() {},
-  async addMarketplace() {},
-  async removeMarketplace() {},
-  async upgradeMarketplace() {},
-  async listHooks() {
-    return [
-      {
-        cwd: "C:/repo",
-        event_name: "preToolUse",
-        handler: "echo review",
-        source: "project",
-        trust_status: "untrusted",
-        enabled: true,
-        status_message: "",
-      },
-    ];
-  },
-  async worktreeSettings() {
-    return {
-      root: "C:/Users/you/.codex/worktrees",
-      keep: 15,
-      auto_prune: true,
-      worktrees: [
-        {
-          path: "C:/Users/you/.codex/worktrees/demo/1",
-          head: "abc",
-          branch: "",
-          detached: true,
-        },
-      ],
-    };
-  },
-  async saveWorktreeSettings(root, keep, autoPrune) {
-    return { root, keep, auto_prune: autoPrune, worktrees: [] };
-  },
-  async createWorktree(projectPath) {
-    return { path: `${projectPath}-worktree`, head: "", branch: "", detached: true };
-  },
-  async recycleWorktree() {},
-  async addEnvironment(input) {
-    return {
-      id: input.environmentId,
-      status: "pending",
-      error: "",
-      cwd: "",
-      shell: "",
-    };
-  },
-  async listEnvironments() {
-    return [];
   },
 
   async pickDirectory(title) {

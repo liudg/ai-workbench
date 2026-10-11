@@ -17,9 +17,8 @@ use async_trait::async_trait;
 use tokio::sync::mpsc;
 
 use crate::models::{
-    AgentCapabilities, AgentCatalog, AgentInstallation, AgentKind, AgentProfile, EnvironmentRecord,
-    HookRecord, McpLogin, McpServerRecord, McpTransport, PermissionMenu, PluginCatalog,
-    PromptAnswer, ReviewStart, ReviewTargets, SessionEventBody, WorktreeInfo, WorktreeSettings,
+    AgentCapabilities, AgentCatalog, AgentInstallation, AgentKind, AgentProfile, PermissionMenu,
+    PromptAnswer, ReviewStart, ReviewTargets, SessionEventBody,
 };
 
 pub use directory::{
@@ -197,11 +196,6 @@ pub trait AgentSession: Send + Sync {
         false
     }
 
-    /// 让已经打开的会话重新读取 MCP 配置。桌面端的 Restart。
-    async fn reload_mcp(&self) -> Result<(), AgentError> {
-        Ok(())
-    }
-
     /// 桌面端 Plan 开关。`plan` 或 `default`。
     fn set_collaboration_mode(&self, _mode: &str) -> Result<(), AgentError> {
         Err(AgentError::Runtime("这个 Agent 没有计划模式".into()))
@@ -291,110 +285,6 @@ pub trait AgentAdapter: Send + Sync {
         events: EventSink,
     ) -> Result<Arc<dyn AgentSession>, AgentError>;
 
-    async fn list_mcp_servers(&self) -> Result<Vec<McpServerRecord>, AgentError> {
-        Err(self.unsupported("MCP 服务器"))
-    }
-
-    async fn add_mcp_server(
-        &self,
-        _name: &str,
-        _transport: McpTransport,
-        _command_line: &str,
-        _url: &str,
-    ) -> Result<(), AgentError> {
-        Err(self.unsupported("MCP 服务器"))
-    }
-
-    async fn set_mcp_server_enabled(&self, _name: &str, _enabled: bool) -> Result<(), AgentError> {
-        Err(self.unsupported("MCP 服务器"))
-    }
-
-    async fn remove_mcp_server(&self, _name: &str) -> Result<(), AgentError> {
-        Err(self.unsupported("MCP 服务器"))
-    }
-
-    async fn login_mcp_server(&self, _name: &str) -> Result<McpLogin, AgentError> {
-        Err(self.unsupported("MCP 登录"))
-    }
-
-    async fn reload_mcp_config(&self) -> Result<(), AgentError> {
-        Err(self.unsupported("MCP 重启"))
-    }
-
-    async fn list_plugins(&self, _cwd: Option<&str>) -> Result<PluginCatalog, AgentError> {
-        Err(self.unsupported("插件"))
-    }
-
-    async fn install_plugin(
-        &self,
-        _plugin_name: &str,
-        _marketplace_path: &str,
-        _marketplace_name: &str,
-    ) -> Result<(), AgentError> {
-        Err(self.unsupported("插件"))
-    }
-
-    async fn uninstall_plugin(&self, _plugin_id: &str) -> Result<(), AgentError> {
-        Err(self.unsupported("插件"))
-    }
-
-    async fn add_marketplace(&self, _source: &str, _ref_name: &str) -> Result<(), AgentError> {
-        Err(self.unsupported("marketplace"))
-    }
-
-    async fn remove_marketplace(&self, _name: &str) -> Result<(), AgentError> {
-        Err(self.unsupported("marketplace"))
-    }
-
-    async fn upgrade_marketplace(&self, _name: &str) -> Result<(), AgentError> {
-        Err(self.unsupported("marketplace"))
-    }
-
-    async fn list_hooks(&self, _cwd: Option<&str>) -> Result<Vec<HookRecord>, AgentError> {
-        Err(self.unsupported("钩子"))
-    }
-
-    async fn worktree_settings(
-        &self,
-        _project_path: Option<&str>,
-    ) -> Result<WorktreeSettings, AgentError> {
-        Err(self.unsupported("工作树"))
-    }
-
-    async fn save_worktree_settings(
-        &self,
-        _root: &str,
-        _keep: u32,
-        _auto_prune: bool,
-    ) -> Result<WorktreeSettings, AgentError> {
-        Err(self.unsupported("工作树"))
-    }
-
-    async fn create_worktree(&self, _project_path: &str) -> Result<WorktreeInfo, AgentError> {
-        Err(self.unsupported("工作树"))
-    }
-
-    async fn recycle_worktree(
-        &self,
-        _project_path: &str,
-        _worktree_path: &str,
-    ) -> Result<(), AgentError> {
-        Err(self.unsupported("工作树"))
-    }
-
-    async fn add_environment(
-        &self,
-        _environment_id: &str,
-        _exec_server_url: &str,
-        _auth_bearer_token: &str,
-    ) -> Result<EnvironmentRecord, AgentError> {
-        Err(self.unsupported("环境"))
-    }
-
-    async fn list_environments(&self) -> Result<Vec<EnvironmentRecord>, AgentError> {
-        Err(self.unsupported("环境"))
-    }
-
     /// `thread/fork`。历史由 Codex 复制；`excludeTurns` 只影响回包体积。
     async fn fork_thread(&self, _native_id: &str) -> Result<DirectoryEntry, AgentError> {
         Err(AgentError::Runtime(format!(
@@ -431,9 +321,6 @@ pub trait AgentAdapter: Send + Sync {
         )))
     }
 
-    fn unsupported(&self, feature: &str) -> AgentError {
-        AgentError::Runtime(format!("{} 没有{feature}", self.display_name()))
-    }
 }
 
 /// 按类型取得适配器实例。

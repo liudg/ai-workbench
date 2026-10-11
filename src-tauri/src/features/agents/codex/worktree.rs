@@ -1,12 +1,11 @@
-//! 工作树。桌面端在设置 → Worktrees 里改根目录和保留数量，
-//! 新对话在 composer 下选择 Worktree。这里提供同一套根目录、列表和创建。
-//! 删除只进回收站，不用 `git worktree remove --force`。
+//! 斜杠 `/worktree` 和 `/worktree new`。
+//! 根目录读 `codex-worktrees.json`；没有这份文件时用 Codex 主目录下的 worktrees。
 
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use tokio::process::Command;
 
 use crate::encoding::{apply_utf8_env, decode_child_bytes};
@@ -17,14 +16,14 @@ use super::process::hide_console;
 
 const DEFAULT_KEEP: u32 = 15;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct Prefs {
     root: String,
     keep: u32,
     auto_prune: bool,
 }
 
-pub async fn settings_for(project_path: Option<&str>) -> Result<WorktreeSettings, AgentError> {
+async fn settings_for(project_path: Option<&str>) -> Result<WorktreeSettings, AgentError> {
     let prefs = load_prefs();
     let worktrees = match project_path.map(str::trim).filter(|path| !path.is_empty()) {
         Some(path) => list_worktrees(path).await?,
@@ -35,26 +34,6 @@ pub async fn settings_for(project_path: Option<&str>) -> Result<WorktreeSettings
         keep: prefs.keep,
         auto_prune: prefs.auto_prune,
         worktrees,
-    })
-}
-
-pub fn save_settings(root: &str, keep: u32, auto_prune: bool) -> Result<WorktreeSettings, AgentError> {
-    let root = root.trim();
-    if root.is_empty() {
-        return Err(AgentError::Runtime("填写工作树根目录".into()));
-    }
-    let keep = keep.clamp(1, 100);
-    let prefs = Prefs {
-        root: root.to_string(),
-        keep,
-        auto_prune,
-    };
-    write_prefs(&prefs)?;
-    Ok(WorktreeSettings {
-        root: prefs.root,
-        keep: prefs.keep,
-        auto_prune: prefs.auto_prune,
-        worktrees: Vec::new(),
     })
 }
 
@@ -97,27 +76,6 @@ pub async fn create_worktree(project_path: &str) -> Result<WorktreeInfo, AgentEr
         branch: String::new(),
         detached: true,
     })
-}
-
-pub async fn recycle_worktree(project_path: &str, worktree_path: &str) -> Result<(), AgentError> {
-    let worktree_path = worktree_path.trim();
-    let project_path = project_path.trim();
-    if worktree_path.is_empty() {
-        return Err(AgentError::Runtime("缺少工作树路径".into()));
-    }
-    let prefs = load_prefs();
-    let root = PathBuf::from(&prefs.root);
-    let target = PathBuf::from(worktree_path);
-    if !target.starts_with(&root) {
-        return Err(AgentError::Runtime(
-            "只能把工作树根目录里的 Codex 工作树移到回收站。".into(),
-        ));
-    }
-    recycle_directory(&target)?;
-    if !project_path.is_empty() {
-        let _ = git(project_path, &["worktree", "prune"]).await;
-    }
-    Ok(())
 }
 
 pub async fn render_worktrees(project_path: &str) -> Result<String, AgentError> {
@@ -231,17 +189,6 @@ fn load_prefs() -> Prefs {
     }
 }
 
-fn write_prefs(prefs: &Prefs) -> Result<(), AgentError> {
-    let path = prefs_path();
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|err| AgentError::Runtime(format!("无法保存工作树设置：{err}")))?;
-    }
-    let raw = serde_json::to_string_pretty(prefs)
-        .map_err(|err| AgentError::Runtime(err.to_string()))?;
-    fs::write(path, raw).map_err(|err| AgentError::Runtime(format!("无法保存工作树设置：{err}")))
-}
-
 fn prefs_path() -> PathBuf {
     data_dir().join("codex-worktrees.json")
 }
@@ -275,49 +222,6 @@ fn codex_home() -> PathBuf {
         return PathBuf::from(home).join(".codex");
     }
     PathBuf::from(".codex")
-}
-
-fn recycle_directory(path: &Path) -> Result<(), AgentError> {
-    if !path.exists() {
-        return Err(AgentError::Runtime("工作树目录已经不在了".into()));
-    }
-    #[cfg(windows)]
-    {
-        let mut command = std::process::Command::new("powershell");
-        command
-            .args([
-                "-NoProfile",
-                "-Command",
-                "Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($env:AI_WORKBENCH_RECYCLE, 'OnlyErrorDialogs', 'SendToRecycleBin')",
-            ])
-            .env("AI_WORKBENCH_RECYCLE", path)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            command.creation_flags(0x08000000);
-        }
-        let output = command
-            .output()
-            .map_err(|err| AgentError::Runtime(format!("无法移到回收站：{err}")))?;
-        if !output.status.success() {
-            let err = String::from_utf8_lossy(&output.stderr);
-            return Err(AgentError::Runtime(format!(
-                "无法移到回收站：{}",
-                err.trim()
-            )));
-        }
-        Ok(())
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = path;
-        Err(AgentError::Runtime(
-            "只把工作树送进回收站；当前系统没有回收站。".into(),
-        ))
-    }
 }
 
 #[cfg(test)]

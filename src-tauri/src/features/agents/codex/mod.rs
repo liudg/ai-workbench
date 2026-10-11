@@ -19,7 +19,6 @@ mod prompts;
 mod queue;
 mod resume;
 mod rpc;
-mod rpc_client;
 mod sandbox;
 mod state;
 mod turn;
@@ -111,119 +110,6 @@ impl AgentAdapter for CodexCliAdapter {
 
     async fn detect(&self) -> Result<(), AgentError> {
         resolve_codex_bin().map(|_| ())
-    }
-
-    async fn list_mcp_servers(&self) -> Result<Vec<crate::models::McpServerRecord>, AgentError> {
-        host::list_mcp_servers().await
-    }
-
-    async fn add_mcp_server(
-        &self,
-        name: &str,
-        transport: crate::models::McpTransport,
-        command_line: &str,
-        url: &str,
-    ) -> Result<(), AgentError> {
-        host::add_mcp_server(name, transport, command_line, url).await
-    }
-
-    async fn set_mcp_server_enabled(&self, name: &str, enabled: bool) -> Result<(), AgentError> {
-        host::set_mcp_server_enabled(name, enabled).await
-    }
-
-    async fn remove_mcp_server(&self, name: &str) -> Result<(), AgentError> {
-        host::remove_mcp_server(name).await
-    }
-
-    async fn login_mcp_server(&self, name: &str) -> Result<crate::models::McpLogin, AgentError> {
-        host::login_mcp_server(name).await
-    }
-
-    async fn reload_mcp_config(&self) -> Result<(), AgentError> {
-        host::reload_mcp_config().await
-    }
-
-    async fn list_plugins(
-        &self,
-        cwd: Option<&str>,
-    ) -> Result<crate::models::PluginCatalog, AgentError> {
-        host::list_plugins(cwd).await
-    }
-
-    async fn install_plugin(
-        &self,
-        plugin_name: &str,
-        marketplace_path: &str,
-        marketplace_name: &str,
-    ) -> Result<(), AgentError> {
-        host::install_plugin(plugin_name, marketplace_path, marketplace_name).await
-    }
-
-    async fn uninstall_plugin(&self, plugin_id: &str) -> Result<(), AgentError> {
-        host::uninstall_plugin(plugin_id).await
-    }
-
-    async fn add_marketplace(&self, source: &str, ref_name: &str) -> Result<(), AgentError> {
-        host::add_marketplace(source, ref_name).await
-    }
-
-    async fn remove_marketplace(&self, name: &str) -> Result<(), AgentError> {
-        host::remove_marketplace(name).await
-    }
-
-    async fn upgrade_marketplace(&self, name: &str) -> Result<(), AgentError> {
-        host::upgrade_marketplace(name).await
-    }
-
-    async fn list_hooks(
-        &self,
-        cwd: Option<&str>,
-    ) -> Result<Vec<crate::models::HookRecord>, AgentError> {
-        host::list_hooks(cwd).await
-    }
-
-    async fn worktree_settings(
-        &self,
-        project_path: Option<&str>,
-    ) -> Result<crate::models::WorktreeSettings, AgentError> {
-        worktree::settings_for(project_path).await
-    }
-
-    async fn save_worktree_settings(
-        &self,
-        root: &str,
-        keep: u32,
-        auto_prune: bool,
-    ) -> Result<crate::models::WorktreeSettings, AgentError> {
-        worktree::save_settings(root, keep, auto_prune)
-    }
-
-    async fn create_worktree(
-        &self,
-        project_path: &str,
-    ) -> Result<crate::models::WorktreeInfo, AgentError> {
-        worktree::create_worktree(project_path).await
-    }
-
-    async fn recycle_worktree(
-        &self,
-        project_path: &str,
-        worktree_path: &str,
-    ) -> Result<(), AgentError> {
-        worktree::recycle_worktree(project_path, worktree_path).await
-    }
-
-    async fn add_environment(
-        &self,
-        environment_id: &str,
-        exec_server_url: &str,
-        auth_bearer_token: &str,
-    ) -> Result<crate::models::EnvironmentRecord, AgentError> {
-        host::add_environment(environment_id, exec_server_url, auth_bearer_token).await
-    }
-
-    async fn list_environments(&self) -> Result<Vec<crate::models::EnvironmentRecord>, AgentError> {
-        host::list_environments().await
     }
 
     async fn fork_thread(&self, native_id: &str) -> Result<DirectoryEntry, AgentError> {
@@ -460,13 +346,6 @@ struct CodexCliSession {
 
 #[async_trait]
 impl AgentSession for CodexCliSession {
-    async fn reload_mcp(&self) -> Result<(), AgentError> {
-        self.shared
-            .request("config/mcpServer/reload", serde_json::Value::Null)
-            .await
-            .map(|_| ())
-    }
-
     async fn send_message(&self, text: String) -> Result<(), AgentError> {
         self.shared.ensure_open()?;
         if self.shared.read_only() {

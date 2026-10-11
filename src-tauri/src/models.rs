@@ -442,21 +442,9 @@ pub struct AgentCapabilities {
     pub supports_questions: bool,
     pub supports_tuning: bool,
     pub supports_skills: bool,
-    /// 设置页 MCP 服务器：列表、增删、登录、重启。
-    #[serde(default)]
-    pub supports_mcp: bool,
-    /// 插件目录和 marketplace。
-    #[serde(default)]
-    pub supports_plugins: bool,
-    /// `hooks/list`。
-    #[serde(default)]
-    pub supports_hooks: bool,
     /// 斜杠 `/goal`。
     #[serde(default)]
     pub supports_goals: bool,
-    /// 工作树和 `environment/*`。
-    #[serde(default)]
-    pub supports_worktrees: bool,
     /// 图片附件作为回合输入项发送，作曲栏显示缩略图。
     #[serde(default)]
     pub supports_images: bool,
@@ -509,11 +497,7 @@ impl AgentCapabilities {
             supports_questions: false,
             supports_tuning: false,
             supports_skills: false,
-            supports_mcp: false,
-            supports_plugins: false,
-            supports_hooks: false,
             supports_goals: false,
-            supports_worktrees: false,
             supports_images: false,
             supports_queue: false,
             supports_fork: false,
@@ -538,11 +522,7 @@ impl AgentCapabilities {
             supports_questions: true,
             supports_tuning: true,
             supports_skills: true,
-            supports_mcp: true,
-            supports_plugins: true,
-            supports_hooks: true,
             supports_goals: true,
-            supports_worktrees: true,
             supports_images: true,
             supports_queue: true,
             supports_fork: true,
@@ -682,7 +662,7 @@ impl AgentInstallation {
     }
 }
 
-/// MCP 传输。桌面端添加服务器时二选一：STDIO 或 Streamable HTTP。
+/// MCP 传输：STDIO 或 Streamable HTTP。
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum McpTransport {
@@ -705,49 +685,8 @@ pub struct McpServerRecord {
     pub runtime_status: String,
     pub tool_names: Vec<String>,
     pub tools_error: String,
-    /// 非空表示服务器由插件提供，不能在 MCP 列表里直接删除。
+    /// 非空表示服务器由插件提供。
     pub plugin_id: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct McpLogin {
-    pub authorization_url: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ReloadReport {
-    pub warnings: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct PluginRecord {
-    pub id: String,
-    pub name: String,
-    pub display_name: String,
-    pub description: String,
-    pub developer: String,
-    pub marketplace_name: String,
-    pub marketplace_path: String,
-    pub installed: bool,
-    pub enabled: bool,
-    pub availability: String,
-    pub install_policy: String,
-    pub source: String,
-    pub needs_install_confirm: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct MarketplaceRecord {
-    pub name: String,
-    pub display_name: String,
-    pub path: String,
-    pub plugins: Vec<PluginRecord>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct PluginCatalog {
-    pub marketplaces: Vec<MarketplaceRecord>,
-    pub errors: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -776,16 +715,6 @@ pub struct WorktreeSettings {
     pub keep: u32,
     pub auto_prune: bool,
     pub worktrees: Vec<WorktreeInfo>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct EnvironmentRecord {
-    pub id: String,
-    /// ready / pending / disconnected / unknown
-    pub status: String,
-    pub error: String,
-    pub cwd: String,
-    pub shell: String,
 }
 
 pub fn now_millis() -> i64 {
@@ -818,7 +747,7 @@ mod tests {
         assert!(parsed.supports_slash);
         assert!(!parsed.supports_images);
         assert!(!parsed.supports_queue);
-        assert!(!parsed.supports_mcp);
+        assert!(!parsed.supports_goals);
         assert!(!parsed.supports_plan);
         assert!(!parsed.supports_turn_diff);
         assert!(!parsed.supports_review);
