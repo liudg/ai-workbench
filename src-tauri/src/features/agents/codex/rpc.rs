@@ -486,6 +486,11 @@ impl Shared {
                         },
                     );
                 }
+                // 当前 Codex 计划模式产出 item type=plan，并禁止 update_plan。
+                // 实施卡片原先只认 turn/plan/updated，所以计划写出来也不会出现「实施此计划？」。
+                if self.collaboration_is_plan() && !text.trim().is_empty() {
+                    self.plan_ready.store(true, Ordering::SeqCst);
+                }
             }
             "enteredReviewMode" => {
                 let text = item.get("review").and_then(Value::as_str).unwrap_or("");

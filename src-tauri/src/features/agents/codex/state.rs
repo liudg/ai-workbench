@@ -156,7 +156,7 @@ pub(super) struct Shared {
     pub(super) collaboration: Mutex<Collaboration>,
     /// 最近一个已开始的回合。编辑只允许这一条。
     pub(super) latest_turn_id: Mutex<Option<String>>,
-    /// 本回合收到过 `turn/plan/updated`，结束后问要不要实现。
+    /// 本回合已经有可实施的计划（`turn/plan/updated` 或计划模式的 plan item），结束后问要不要实施。
     pub(super) plan_ready: AtomicBool,
     /// 退出审查时的原文，用来丢掉紧随其后的重复 agentMessage。
     pub(super) review_output: Mutex<Option<String>>,
