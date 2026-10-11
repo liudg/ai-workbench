@@ -1,5 +1,8 @@
 import { useWorkbench } from "@/store";
 import { type SessionEvent } from "@/types";
+import { PreviewPanel } from "./changes/PreviewPanel";
+import { PreviewProvider } from "./changes/preview-context";
+import { SessionFiles } from "./changes/SessionFiles";
 import { NoProjectSelected, NoSession } from "./empty/EmptyState";
 import { ChatView } from "./timeline/ChatView";
 
@@ -28,11 +31,28 @@ export function Workspace() {
 
   if (!project) return <NoProjectSelected />;
 
+  if (session) {
+    return (
+      <PreviewProvider
+        sessionId={session.id}
+        projectId={project.id}
+        projectPath={project.path}
+        events={events}
+      >
+        <div className="flex h-full min-w-0 flex-1">
+          <div className="relative flex h-full min-w-0 flex-1 flex-col">
+            <ChatView session={session} events={events} />
+          </div>
+          <PreviewPanel />
+          <SessionFiles sessionId={session.id} />
+        </div>
+      </PreviewProvider>
+    );
+  }
+
   return (
     <div className="relative flex h-full min-w-0 flex-1 flex-col">
-      {session ? (
-        <ChatView session={session} events={events} />
-      ) : sessions && sessions.length > 0 ? (
+      {sessions && sessions.length > 0 ? (
         <div className="flex h-full items-center justify-center px-8 text-center text-sm leading-6 text-zinc-500">
           从左侧选择一个会话。
         </div>

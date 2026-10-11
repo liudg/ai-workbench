@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Bot, ChevronRight } from "lucide-react";
 
+import { ChangeCard } from "../changes/ChangeCard";
+import { turnChanges } from "../changes/model";
 import { collapsedTurnSummary, formatElapsed, isProcess } from "./timeline";
 import { cn } from "@/lib/utils";
 import { AGENT_LABELS, type Session, type SessionEvent } from "@/types";
@@ -35,6 +37,7 @@ export function TurnProcess({
   const process = events.filter((event) => isProcess(event, answerId));
   const chromeBefore = before.filter((event) => !isProcess(event, answerId));
   const chromeAfter = after.filter((event) => !isProcess(event, answerId));
+  const changes = useMemo(() => turnChanges(events), [events]);
 
   const renderEvent = (event: SessionEvent, showAgentLabel: boolean) => (
     <EventItem
@@ -73,6 +76,7 @@ export function TurnProcess({
       {expanded ? process.map((event) => renderEvent(event, false)) : null}
       {answer ? renderEvent(answer, expanded) : null}
       {chromeAfter.map((event) => renderEvent(event, false))}
+      {changes ? <ChangeCard changes={changes} /> : null}
     </div>
   );
 }

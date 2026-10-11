@@ -446,7 +446,12 @@ function seedRegisteredProject() {
     }
     pushEvent(sessionId, {
       kind: "agent-message",
-      text: index === 0 ? PREVIEW_ANSWER : "这是工作台已注册项目下的预览会话。",
+      text:
+        index === 0
+          ? PREVIEW_ANSWER
+          : index === 2
+            ? "结论里的文件可以直接打开：[index.html](index.html)、[notes.md](notes.md)、[readme.txt](readme.txt)。"
+            : "这是工作台已注册项目下的预览会话。",
       phase: "final-answer",
     });
     if (index === 1) {
@@ -465,7 +470,35 @@ function seedRegisteredProject() {
       pushEvent(sessionId, {
         kind: "turn-diff",
         turn_id: "preview-turn",
-        diff: "diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1 +1,2 @@\n-fn main() {}\n+fn main() {\n+    println!(\"hi\");\n+}\n",
+        diff: [
+          "diff --git a/index.html b/index.html",
+          "new file mode 100644",
+          "--- /dev/null",
+          "+++ b/index.html",
+          "@@ -0,0 +1,3 @@",
+          "+<!doctype html>",
+          "+<title>预览</title>",
+          "+<p>hello</p>",
+          "diff --git a/notes.md b/notes.md",
+          "new file mode 100644",
+          "--- /dev/null",
+          "+++ b/notes.md",
+          "@@ -0,0 +1 @@",
+          "+# 笔记",
+          "diff --git a/readme.txt b/readme.txt",
+          "--- a/readme.txt",
+          "+++ b/readme.txt",
+          "@@ -1 +1 @@",
+          "-old",
+          "+new",
+          "diff --git a/src/app.ts b/src/app.ts",
+          "--- a/src/app.ts",
+          "+++ b/src/app.ts",
+          "@@ -1 +1,2 @@",
+          "-export {}",
+          "+export {}",
+          "+export const n = 1",
+        ].join("\n"),
       });
       pushEvent(sessionId, {
         kind: "review-findings",
@@ -1051,6 +1084,24 @@ export const mockBackend: Backend = {
   async loadOlderHistory(sessionId): Promise<OlderHistory> {
     const s = sessions.get(sessionId);
     return { events: s ? [...s.events] : [], added: 0, exhausted: true };
+  },
+
+  async readPreviewFile(_projectId, path) {
+    const name = path.split(/[\\/]/).filter(Boolean).pop() ?? path;
+    const lower = name.toLowerCase();
+    if (lower.endsWith(".html") || lower.endsWith(".htm")) {
+      return {
+        path,
+        name,
+        kind: "html",
+        truncated: false,
+        text: `<!doctype html><html><head><meta charset="utf-8"><title>${name}</title></head><body style="font-family:sans-serif;margin:24px"><h1>${name}</h1><p>浏览器里的网页预览卡片。</p></body></html>`,
+      };
+    }
+    if (lower.endsWith(".md") || lower.endsWith(".markdown")) {
+      return { path, name, kind: "markdown", truncated: false, text: `# ${name}\n\n浏览器里的 Markdown 预览。` };
+    }
+    return { path, name, kind: "text", truncated: false, text: `${name}\n浏览器里的文本预览。` };
   },
 
   async answerPrompt(sessionId, promptId, answer: PromptAnswer) {

@@ -72,6 +72,12 @@ body {
   user-select: none;
   cursor: default;
 }
+.chat-log button.answer-file,
+.chat-log .change-card button,
+.chat-log button[data-show-more],
+.chat-log button[data-view-changes] {
+  cursor: pointer;
+}
 .chat-log input,
 .chat-log textarea,
 input,
@@ -162,12 +168,21 @@ ol.answer-list {
   padding: 0.08em 0.38em;
 }
 .answer-path,
-.answer-file {
+span.answer-file {
   cursor: help;
 }
 .answer-file {
   border-bottom: 1px dotted rgb(161 161 170 / 0.7);
   color: #f4f4f5;
+}
+button.answer-file {
+  border: 0;
+  border-bottom: 1px dotted rgb(125 211 252 / 0.7);
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  color: #7dd3fc;
+  cursor: pointer;
 }
 .answer-pre {
   margin: 0;

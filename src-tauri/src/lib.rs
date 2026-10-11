@@ -79,6 +79,7 @@ pub fn run() {
             features::ipc::sessions::load_older_history,
             features::images::prepare_chat_image,
             features::images::stage_chat_image,
+            features::preview::read_preview_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

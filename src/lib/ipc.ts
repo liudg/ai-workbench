@@ -44,6 +44,14 @@ export interface ImportProjectInput {
   defaultAgent: AgentKind;
 }
 
+export interface PreviewDocument {
+  path: string;
+  name: string;
+  kind: string;
+  text: string;
+  truncated: boolean;
+}
+
 export interface Backend {
   listProjects(): Promise<Project[]>;
   createProject(input: CreateProjectInput): Promise<CreateProjectResult>;
@@ -103,6 +111,8 @@ export interface Backend {
   stopSession(sessionId: string): Promise<void>;
   getSessionEvents(sessionId: string): Promise<SessionEvent[]>;
   loadOlderHistory(sessionId: string): Promise<OlderHistory>;
+  /** 读取项目目录内的文本，供 HTML / Markdown / 纯文本预览。 */
+  readPreviewFile(projectId: string, path: string): Promise<PreviewDocument>;
 
   /** 打开系统目录选择器；返回 null 表示取消 */
   pickDirectory(title: string): Promise<string | null>;
@@ -214,6 +224,8 @@ const tauriBackend: Backend = {
     invoke<SessionEvent[]>("get_session_events", { sessionId }),
   loadOlderHistory: (sessionId) =>
     invoke<OlderHistory>("load_older_history", { sessionId }),
+  readPreviewFile: (projectId, path) =>
+    invoke<PreviewDocument>("read_preview_file", { projectId, path }),
 
   pickDirectory: async (title) => {
     const selected = await open({ directory: true, multiple: false, title });

@@ -21,7 +21,6 @@ import { fileName } from "../composer/media";
 import { CODEX_DESKTOP } from "../codex-desktop";
 import { AssistantAnswer } from "./AssistantAnswer";
 import { ChatThumb } from "./ChatThumb";
-import { diffSummary } from "./codex-turn";
 import { MessageContent } from "./MessageContent";
 import { useWorkbench } from "@/store";
 import {
@@ -742,32 +741,6 @@ function ThinkingBlock({
   );
 }
 
-function TurnDiffBlock({ diff }: { diff: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="event-in min-w-0 px-6 py-1">
-      <div className="mx-auto min-w-0 max-w-3xl pl-6">
-        <button
-          type="button"
-          aria-expanded={open}
-          title={CODEX_DESKTOP.viewChanges}
-          className="flex min-w-0 items-center gap-1 text-left text-xs text-zinc-400 hover:text-zinc-200"
-          onClick={() => setOpen((value) => !value)}
-        >
-          <ChevronRight className={cn("h-3 w-3 shrink-0 transition-transform", open && "rotate-90")} />
-          <span>{CODEX_DESKTOP.viewChanges}</span>
-          <span className="min-w-0 break-all text-zinc-500">{diffSummary(diff)}</span>
-        </button>
-        {open ? (
-          <pre className="mt-2 max-w-full overflow-x-hidden whitespace-pre-wrap break-all rounded-md border border-zinc-800 bg-zinc-950/70 p-2 font-mono text-xs leading-5 text-zinc-300">
-            {diff}
-          </pre>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
 function PlanStepsBlock({
   explanation,
   steps,
@@ -872,7 +845,7 @@ export function EventItem({
       return null;
 
     case "turn-diff":
-      return <TurnDiffBlock diff={event.diff} />;
+      return null;
 
     case "plan-steps":
       return <PlanStepsBlock explanation={event.explanation ?? ""} steps={event.steps} />;

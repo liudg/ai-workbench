@@ -4,6 +4,8 @@ import { MessageSquareDashed } from "lucide-react";
 import { pendingPrompt } from "@/lib/utils";
 import { useWorkbench } from "@/store";
 import type { Session, SessionEvent } from "@/types";
+import { ChangeCard } from "../changes/ChangeCard";
+import { lastSlice, turnChanges } from "../changes/model";
 import { Composer } from "../composer/Composer";
 import { buildTimeline, timelineStatus, turnDetailsOpen } from "./timeline";
 import { EventItem } from "./EventItem";
@@ -101,6 +103,10 @@ export function ChatView({
     () => events.some((event) => event.kind !== "status-changed"),
     [events],
   );
+  const liveChanges = useMemo(() => {
+    if (status !== "running" && status !== "needs-input") return null;
+    return turnChanges(lastSlice(events));
+  }, [events, status]);
 
   const [workOverrides, setWorkOverrides] = useState<ReadonlyMap<string, boolean>>(
     new Map(),
@@ -319,6 +325,7 @@ export function ChatView({
               );
             })
           )}
+          {liveChanges ? <ChangeCard changes={liveChanges} /> : null}
           {status === "running" && (
             <div className="min-w-0 px-6 py-2">
               <div className="mx-auto flex min-w-0 max-w-3xl items-center gap-2 pl-6 text-xs text-zinc-500">

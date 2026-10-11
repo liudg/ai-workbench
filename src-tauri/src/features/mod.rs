@@ -3,5 +3,6 @@
 pub mod agents;
 pub mod images;
 pub mod ipc;
+pub mod preview;
 pub mod projects;
 pub mod sessions;

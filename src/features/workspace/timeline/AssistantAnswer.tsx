@@ -10,6 +10,8 @@ import {
   type Inline,
 } from "./answer-markdown";
 import { cn } from "@/lib/utils";
+import { isFileHref } from "../changes/model";
+import { usePreviewOptional } from "../changes/preview-context";
 import { MessageImage } from "./MessageContent";
 
 export function AssistantAnswer({ text }: { text: string }) {
@@ -253,6 +255,7 @@ function InlineView({ node }: { node: Inline }) {
 }
 
 function LinkView({ node }: { node: Extract<Inline, { type: "link" }> }) {
+  const preview = usePreviewOptional();
   if (/^https?:\/\//i.test(node.href)) {
     return (
       <a href={node.href} title={node.title} target="_blank" rel="noreferrer noopener">
@@ -260,15 +263,22 @@ function LinkView({ node }: { node: Extract<Inline, { type: "link" }> }) {
       </a>
     );
   }
-  const local =
-    /^[A-Za-z]:[\\/]/.test(node.href) ||
-    node.href.startsWith("\\\\") ||
-    node.href.startsWith("/") ||
-    /^(?:[\w.+@-]+[\\/]){2,}/.test(node.href);
-  if (!local) return <Inlines nodes={node.inlines} />;
+  if (!isFileHref(node.href) || !preview) {
+    if (!isFileHref(node.href)) return <Inlines nodes={node.inlines} />;
+    return (
+      <span className="answer-file" title={node.title ?? node.href}>
+        <Inlines nodes={node.inlines} />
+      </span>
+    );
+  }
   return (
-    <span className="answer-file" title={node.title ?? node.href}>
+    <button
+      type="button"
+      className="answer-file"
+      title={node.title ?? node.href}
+      onClick={() => preview.openHref(node.href)}
+    >
       <Inlines nodes={node.inlines} />
-    </span>
+    </button>
   );
 }
