@@ -2,17 +2,21 @@
 //! 子 webview 承载页面，地址栏和按钮留在主界面。
 
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
+use std::time::Duration;
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Url, WebviewUrl};
 
 use super::resolve_preview_file;
+use crate::features::images::stage_image_bytes;
 use crate::features::projects::ProjectStore;
-use crate::models::strip_verbatim_prefix;
+use crate::models::{strip_verbatim_prefix, PageAnnotation};
 
 const LABEL: &str = "preview-browser";
 const EVENT: &str = "preview-browser";
+const PAGE_JS: &str = include_str!("page.js");
 
 #[derive(Debug, Clone, Serialize)]
 pub struct BrowserFile {
@@ -26,10 +30,33 @@ struct BrowserNotice {
     value: String,
 }
 
+struct BrowserState {
+    url: String,
+    hidden: bool,
+    bounds: Option<(i32, i32, i32, i32)>,
+}
+
+impl Default for BrowserState {
+    fn default() -> Self {
+        Self {
+            url: String::new(),
+            hidden: true,
+            bounds: None,
+        }
+    }
+}
+
 fn host_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
 }
+
+fn host_state() -> &'static Mutex<BrowserState> {
+    static STATE: OnceLock<Mutex<BrowserState>> = OnceLock::new();
+    STATE.get_or_init(|| Mutex::new(BrowserState::default()))
+}
+
+static CHANNEL_HOOKED: AtomicBool = AtomicBool::new(false);
 
 pub fn display_file_address(path: &Path) -> String {
     strip_verbatim_prefix(&path.to_string_lossy()).replace('\\', "/")
@@ -68,6 +95,23 @@ pub fn external_open_target(raw: &str) -> Result<String, String> {
         return Ok(path);
     }
     Err("无法在外部浏览器中打开".into())
+}
+
+pub fn should_navigate(stored: &str, requested: &str, live: Option<&str>) -> bool {
+    if urls_equivalent(stored, requested) {
+        return false;
+    }
+    if live.is_some_and(|url| urls_equivalent(url, requested)) {
+        return false;
+    }
+    true
+}
+
+fn urls_equivalent(left: &str, right: &str) -> bool {
+    fn norm(value: &str) -> String {
+        value.trim().trim_end_matches('/').to_string()
+    }
+    !left.is_empty() && norm(left) == norm(right)
 }
 
 #[tauri::command]
@@ -115,7 +159,7 @@ pub async fn browser_bounds(app: AppHandle, x: f64, y: f64, width: f64, height: 
     let Some(webview) = app.get_webview(LABEL) else {
         return Ok(());
     };
-    place(&webview, x, y, width, height)
+    place(&webview, x, y, width, height, false)
 }
 
 #[tauri::command]
@@ -123,6 +167,9 @@ pub async fn browser_hide(app: AppHandle) -> Result<(), String> {
     let _guard = host_lock().lock().map_err(|_| "浏览器正忙".to_string())?;
     if let Some(webview) = app.get_webview(LABEL) {
         webview.hide().map_err(|err| format!("无法隐藏浏览器: {err}"))?;
+        if let Ok(mut state) = host_state().lock() {
+            state.hidden = true;
+        }
     }
     Ok(())
 }
@@ -144,14 +191,26 @@ pub async fn browser_annotate(app: AppHandle, on: bool) -> Result<(), String> {
     let Some(webview) = app.get_webview(LABEL) else {
         return Ok(());
     };
-    let script = if on {
-        r#"(function(){var root=document.documentElement;if(!root)return;root.setAttribute("data-aw-annotate","1");if(document.getElementById("aw-annotate-style"))return;var style=document.createElement("style");style.id="aw-annotate-style";style.textContent="html[data-aw-annotate='1'],html[data-aw-annotate='1'] *{cursor:crosshair !important}";(document.head||root).appendChild(style);})();"#
-    } else {
-        r#"(function(){var root=document.documentElement;if(!root)return;root.removeAttribute("data-aw-annotate");var old=document.getElementById("aw-annotate-style");if(old)old.remove();})();"#
-    };
-    webview
-        .eval(script)
-        .map_err(|err| format!("无法切换批注: {err}"))
+    let script = format!("window.__awSetAnnotate&&window.__awSetAnnotate({on}, true);");
+    let _ = webview.eval(script);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn browser_page_title(app: AppHandle, title: String) {
+    emit_title(&app, &title);
+}
+
+#[tauri::command]
+pub fn browser_annotate_state(app: AppHandle, kind: String, on: bool) {
+    if kind == "annotate" || kind == "suspended" {
+        emit_flag(&app, &kind, on);
+    }
+}
+
+#[tauri::command]
+pub fn browser_annotation_submit(app: AppHandle, note: PageAnnotation) {
+    accept_annotation(app, note);
 }
 
 #[tauri::command]
@@ -168,42 +227,49 @@ pub async fn browser_close(app: AppHandle) -> Result<(), String> {
             .close()
             .map_err(|err| format!("无法关闭浏览器: {err}"))?;
     }
+    CHANNEL_HOOKED.store(false, Ordering::SeqCst);
+    *host_state().lock().unwrap_or_else(|err| err.into_inner()) = BrowserState::default();
     Ok(())
 }
 
 fn show_browser(app: AppHandle, url: Url, x: f64, y: f64, width: f64, height: f64) -> Result<(), String> {
-    let _guard = host_lock().lock().map_err(|_| "浏览器正忙".to_string())?;
     if width < 8.0 || height < 8.0 {
-        if let Some(webview) = app.get_webview(LABEL) {
-            webview.hide().map_err(|err| format!("无法隐藏浏览器: {err}"))?;
-        }
         return Ok(());
     }
+    let requested = url.to_string();
+    let _guard = host_lock().lock().map_err(|_| "浏览器正忙".to_string())?;
     if let Some(webview) = app.get_webview(LABEL) {
-        place(&webview, x, y, width, height)?;
-        let current = webview.url().ok();
-        if current.as_ref() != Some(&url) {
+        place(&webview, x, y, width, height, true)?;
+        let live = webview.url().ok().map(|item| item.to_string());
+        let stored = host_state()
+            .lock()
+            .map(|state| state.url.clone())
+            .unwrap_or_default();
+        if should_navigate(&stored, &requested, live.as_deref()) {
             webview
                 .navigate(url)
                 .map_err(|err| format!("无法打开此地址: {err}"))?;
         }
+        if let Ok(mut state) = host_state().lock() {
+            state.url = requested;
+            state.hidden = false;
+        }
         webview.show().map_err(|err| format!("无法显示浏览器: {err}"))?;
+        raise_surface(&webview);
         return Ok(());
+    }
+    CHANNEL_HOOKED.store(false, Ordering::SeqCst);
+    if let Ok(mut state) = host_state().lock() {
+        state.url = requested;
+        state.hidden = false;
+        state.bounds = None;
     }
     let window = app.get_webview_window("main").ok_or("没有主窗口")?;
     let window = window.as_ref().window();
-    let app_for_title = app.clone();
     let app_for_load = app.clone();
     let builder = tauri::webview::WebviewBuilder::new(LABEL, WebviewUrl::External(url))
-        .on_document_title_changed(move |_webview, title| {
-            let _ = app_for_title.emit(
-                EVENT,
-                BrowserNotice {
-                    kind: "title".into(),
-                    value: title,
-                },
-            );
-        })
+        .background_color(tauri::webview::Color(15, 23, 42, 255))
+        .initialization_script(PAGE_JS)
         .on_page_load(move |_webview, payload| {
             if payload.event() != tauri::webview::PageLoadEvent::Finished {
                 return;
@@ -225,6 +291,8 @@ fn show_browser(app: AppHandle, url: Url, x: f64, y: f64, width: f64, height: f6
             LogicalSize::new(width, height),
         )
         .map_err(|err| format!("无法打开内置浏览器: {err}"))?;
+    install_page_channel(&webview, app);
+    place(&webview, x, y, width, height, true)?;
     webview.show().ok();
     Ok(())
 }
@@ -235,18 +303,345 @@ fn place(
     y: f64,
     width: f64,
     height: f64,
+    always_raise: bool,
 ) -> Result<(), String> {
     if width < 8.0 || height < 8.0 {
-        webview.hide().map_err(|err| format!("无法隐藏浏览器: {err}"))?;
         return Ok(());
     }
-    webview
-        .set_position(LogicalPosition::new(x, y))
-        .map_err(|err| format!("无法移动浏览器: {err}"))?;
-    webview
-        .set_size(LogicalSize::new(width, height))
-        .map_err(|err| format!("无法调整浏览器: {err}"))?;
+    let key = (
+        x.round() as i32,
+        y.round() as i32,
+        width.round() as i32,
+        height.round() as i32,
+    );
+    let (moved, reveal) = {
+        let mut state = host_state()
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+        let moved = state.bounds != Some(key);
+        let reveal = state.hidden;
+        if !moved && !reveal && !always_raise {
+            return Ok(());
+        }
+        state.bounds = Some(key);
+        state.hidden = false;
+        (moved, reveal)
+    };
+    if moved {
+        webview
+            .set_position(LogicalPosition::new(x, y))
+            .map_err(|err| format!("无法移动浏览器: {err}"))?;
+        webview
+            .set_size(LogicalSize::new(width, height))
+            .map_err(|err| format!("无法调整浏览器: {err}"))?;
+    }
+    if reveal {
+        webview.show().map_err(|err| format!("无法显示浏览器: {err}"))?;
+    }
+    if moved || reveal || always_raise {
+        raise_surface(webview);
+    }
     Ok(())
+}
+
+fn emit_title(app: &AppHandle, title: &str) {
+    if title.trim().is_empty() {
+        return;
+    }
+    let _ = app.emit(
+        EVENT,
+        BrowserNotice {
+            kind: "title".into(),
+            value: title.to_string(),
+        },
+    );
+}
+
+fn emit_flag(app: &AppHandle, kind: &str, on: bool) {
+    let _ = app.emit(
+        EVENT,
+        BrowserNotice {
+            kind: kind.to_string(),
+            value: if on { "1" } else { "0" }.to_string(),
+        },
+    );
+}
+
+fn emit_annotation(app: &AppHandle, note: &PageAnnotation) {
+    let Ok(value) = serde_json::to_string(note) else {
+        return;
+    };
+    let _ = app.emit(
+        EVENT,
+        BrowserNotice {
+            kind: "annotation".into(),
+            value,
+        },
+    );
+}
+
+fn accept_annotation(app: AppHandle, note: PageAnnotation) {
+    std::thread::spawn(move || {
+        let mut note = normalize_note(note);
+        match capture_png(&app) {
+            Ok(bytes) => match stage_png(&app, &bytes) {
+                Ok(path) => note.screenshot = Some(path),
+                Err(_) => note.snapshot_failed = true,
+            },
+            Err(_) => note.snapshot_failed = true,
+        }
+        emit_annotation(&app, &note);
+    });
+}
+
+fn normalize_note(mut note: PageAnnotation) -> PageAnnotation {
+    if note.id.trim().is_empty() {
+        note.id = uuid::Uuid::new_v4().to_string();
+    }
+    note.url = note.url.trim().to_string();
+    note.selector = clamp_chars(note.selector.trim(), 500);
+    note.text = clamp_chars(note.text.trim(), 500);
+    note.comment = clamp_chars(note.comment.trim(), 4000);
+    note
+}
+
+fn clamp_chars(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        return text.to_string();
+    }
+    let mut out: String = text.chars().take(max).collect();
+    out.push('…');
+    out
+}
+
+fn stage_png(app: &AppHandle, bytes: &[u8]) -> Result<String, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|err| err.to_string())?
+        .join("staged-images");
+    std::fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
+    let (_name, path) = stage_image_bytes(&dir, "annotation.png", bytes)?;
+    app.asset_protocol_scope()
+        .allow_file(&path)
+        .map_err(|err| err.to_string())?;
+    Ok(strip_verbatim_prefix(&path.to_string_lossy()))
+}
+
+fn handle_page_payload(app: &AppHandle, raw: &str) {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(raw) else {
+        return;
+    };
+    if value.get("channel").and_then(|item| item.as_str()) != Some("aw-browser") {
+        return;
+    }
+    let kind = value.get("kind").and_then(|item| item.as_str()).unwrap_or("");
+    match kind {
+        "title" => {
+            let title = value.get("title").and_then(|item| item.as_str()).unwrap_or("");
+            emit_title(app, title);
+        }
+        "annotate" | "suspended" => {
+            let on = value.get("on").and_then(|item| item.as_bool()).unwrap_or(false);
+            emit_flag(app, kind, on);
+        }
+        "annotation" => {
+            let Some(note) = value.get("note").cloned() else {
+                return;
+            };
+            let Ok(note) = serde_json::from_value::<PageAnnotation>(note) else {
+                return;
+            };
+            accept_annotation(app.clone(), note);
+        }
+        _ => {}
+    }
+}
+
+fn install_page_channel(webview: &tauri::Webview, app: AppHandle) {
+    #[cfg(windows)]
+    {
+        if CHANNEL_HOOKED.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let hooked = webview.with_webview(move |platform| attach_channel(platform, app));
+        if hooked.is_err() {
+            CHANNEL_HOOKED.store(false, Ordering::SeqCst);
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (webview, app);
+    }
+}
+
+fn raise_surface(webview: &tauri::Webview) {
+    let _ = webview.with_webview(|platform| {
+        #[cfg(windows)]
+        raise_platform(platform);
+        #[cfg(not(windows))]
+        let _ = platform;
+    });
+}
+
+fn capture_png(app: &AppHandle) -> Result<Vec<u8>, String> {
+    #[cfg(not(windows))]
+    {
+        let _ = app;
+        return Err("截图不可用".into());
+    }
+    #[cfg(windows)]
+    {
+        let webview = app.get_webview(LABEL).ok_or("没有浏览器")?;
+        let (tx, rx) = std::sync::mpsc::channel();
+        webview
+            .with_webview(move |platform| {
+                if let Err(err) = start_capture(platform, tx.clone()) {
+                    let _ = tx.send(Err(err));
+                }
+            })
+            .map_err(|err| err.to_string())?;
+        rx.recv_timeout(Duration::from_secs(4))
+            .map_err(|_| "截图超时".to_string())?
+    }
+}
+
+#[cfg(windows)]
+fn attach_channel(platform: tauri::webview::PlatformWebview, app: AppHandle) {
+    use webview2_com::WebMessageReceivedEventHandler;
+    let controller = platform.controller();
+    let Ok(webview) = (unsafe { controller.CoreWebView2() }) else {
+        return;
+    };
+    let handler = WebMessageReceivedEventHandler::create(Box::new(move |_view, args| {
+        let Some(args) = args else {
+            return Ok(());
+        };
+        let mut raw = windows::core::PWSTR::null();
+        if unsafe { args.WebMessageAsJson(&mut raw) }.is_err() {
+            return Ok(());
+        }
+        let text = take_pwstr(raw);
+        handle_page_payload(&app, &text);
+        Ok(())
+    }));
+    let mut token = 0i64;
+    let _ = unsafe { webview.add_WebMessageReceived(&handler, &mut token) };
+    raise_platform(platform);
+}
+
+#[cfg(windows)]
+fn raise_platform(platform: tauri::webview::PlatformWebview) {
+    use webview2_com::Microsoft::Web::WebView2::Win32::{
+        ICoreWebView2Controller2, COREWEBVIEW2_COLOR,
+    };
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SetWindowPos, HWND_TOP, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW,
+    };
+    use windows::core::Interface;
+    let controller = platform.controller();
+    if let Ok(controller2) = controller.cast::<ICoreWebView2Controller2>() {
+        let _ = unsafe {
+            controller2.SetDefaultBackgroundColor(COREWEBVIEW2_COLOR {
+                A: 255,
+                R: 15,
+                G: 23,
+                B: 42,
+            })
+        };
+    }
+    let _ = unsafe { controller.SetIsVisible(true) };
+    let _ = unsafe { controller.NotifyParentWindowPositionChanged() };
+    let mut hwnd = HWND::default();
+    if unsafe { controller.ParentWindow(&mut hwnd) }.is_ok() {
+        let _ = unsafe {
+            SetWindowPos(
+                hwnd,
+                Some(HWND_TOP),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+            )
+        };
+    }
+}
+
+#[cfg(windows)]
+fn start_capture(
+    platform: tauri::webview::PlatformWebview,
+    tx: std::sync::mpsc::Sender<Result<Vec<u8>, String>>,
+) -> Result<(), String> {
+    use webview2_com::CapturePreviewCompletedHandler;
+    use webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_PNG;
+    use windows::Win32::Foundation::HGLOBAL;
+    use windows::Win32::System::Com::StructuredStorage::CreateStreamOnHGlobal;
+    let controller = platform.controller();
+    let core = unsafe { controller.CoreWebView2() }.map_err(|err| err.to_string())?;
+    let stream = unsafe { CreateStreamOnHGlobal(HGLOBAL(std::ptr::null_mut()), true) }
+        .map_err(|err| err.to_string())?;
+    let stream_for_cb = stream.clone();
+    let tx_cb = tx.clone();
+    let handler = CapturePreviewCompletedHandler::create(Box::new(move |hr| {
+        let result = match hr {
+            Ok(()) => read_png(&stream_for_cb),
+            Err(err) => Err(err.to_string()),
+        };
+        let _ = tx_cb.send(result);
+        Ok(())
+    }));
+    unsafe {
+        core.CapturePreview(
+            COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_PNG,
+            &stream,
+            &handler,
+        )
+    }
+    .map_err(|err| err.to_string())?;
+    Ok(())
+}
+
+#[cfg(windows)]
+fn read_png(stream: &windows::Win32::System::Com::IStream) -> Result<Vec<u8>, String> {
+    use windows::Win32::System::Com::{STATFLAG_NONAME, STATSTG, STREAM_SEEK_SET};
+    unsafe {
+        stream
+            .Seek(0, STREAM_SEEK_SET, None)
+            .map_err(|err| err.to_string())?;
+        let mut stat = STATSTG::default();
+        stream
+            .Stat(&mut stat, STATFLAG_NONAME)
+            .map_err(|err| err.to_string())?;
+        let size = usize::try_from(stat.cbSize).map_err(|_| "截图为空".to_string())?;
+        if !(8..=20 * 1024 * 1024).contains(&size) {
+            return Err("截图为空".into());
+        }
+        let mut buf = vec![0u8; size];
+        let mut read = 0u32;
+        stream
+            .Read(buf.as_mut_ptr().cast(), size as u32, Some(&mut read))
+            .ok()
+            .map_err(|err| err.to_string())?;
+        buf.truncate(read as usize);
+        if buf.len() < 8 || buf[0..8] != *b"\x89PNG\r\n\x1a\n" {
+            return Err("截图不是 PNG".into());
+        }
+        Ok(buf)
+    }
+}
+
+#[cfg(windows)]
+fn take_pwstr(ptr: windows::core::PWSTR) -> String {
+    if ptr.is_null() {
+        return String::new();
+    }
+    let text = unsafe { ptr.to_string() }.unwrap_or_default();
+    unsafe {
+        windows::Win32::System::Com::CoTaskMemFree(Some(ptr.as_ptr().cast()));
+    }
+    text
 }
 
 #[cfg(windows)]
@@ -319,5 +714,25 @@ mod tests {
             display_file_address(path),
             "C:/Users/admin/Documents/Playground/tiger.html"
         );
+    }
+
+    #[test]
+    fn same_address_does_not_navigate_again() {
+        assert!(!should_navigate(
+            "https://example.com/a",
+            "https://example.com/a/",
+            None
+        ));
+        assert!(!should_navigate(
+            "https://example.com/a",
+            "https://example.com/b",
+            Some("https://example.com/b")
+        ));
+        assert!(should_navigate(
+            "https://example.com/a",
+            "https://example.com/b",
+            Some("https://example.com/a")
+        ));
+        assert!(should_navigate("", "https://example.com/a", None));
     }
 }

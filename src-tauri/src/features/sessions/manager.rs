@@ -12,9 +12,9 @@ use tauri::{AppHandle, Emitter};
 use tokio::sync::mpsc;
 
 use crate::features::agents::{
-    adapter_for, cwd_key, session_directories, session_key, sessions_for_project, AgentSession,
-    DirectoryEntry, EventSink, SessionContext, SessionDirectory, SourcedEntry, TurnDelivery,
-    UserTurn,
+    adapter_for, cwd_key, fold_page_annotations, session_directories, session_key,
+    sessions_for_project, AgentSession, DirectoryEntry, EventSink, SessionContext, SessionDirectory,
+    SourcedEntry, TurnDelivery, UserTurn,
 };
 use crate::features::projects::ProjectStore;
 use crate::models::*;
@@ -435,15 +435,19 @@ impl SessionManager {
         session_id: &str,
         text: String,
         images: Vec<String>,
+        annotations: Vec<crate::models::PageAnnotation>,
     ) -> Result<(), String> {
         let handle = self.agent_handle_ready(session_id).await?;
         if handle.read_only() {
             return Err(OCCUPIED_SESSION_NOTICE.to_string());
         }
+        let slash = text.starts_with('/') && images.is_empty() && annotations.is_empty();
+        let mut images = images;
+        let text = fold_page_annotations(&text, &mut images, &annotations);
         if text.is_empty() && images.is_empty() {
             return Err("消息不能为空".into());
         }
-        if text.starts_with('/') && images.is_empty() {
+        if slash {
             self.record_local(
                 session_id,
                 SessionEventBody::UserMessage {

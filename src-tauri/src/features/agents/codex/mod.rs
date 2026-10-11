@@ -50,8 +50,8 @@ use crate::models::{
 };
 
 use process::{
-    apply_codex_network_env, classify_codex_stderr, codex_version, hide_console, resolve_codex_bin,
-    trim_newline, StderrClass,
+    apply_codex_network_env, classify_codex_stderr, codex_version, hide_console,
+    remember_agent_stderr, resolve_codex_bin, trim_newline, StderrClass,
 };
 use prompts::{
     async_answer_text, blocking_answer_payload, elicitation_action_label, elicitation_result,
@@ -274,12 +274,10 @@ impl AgentAdapter for CodexCliAdapter {
             }
         });
 
-        let err_events = events.clone();
         tokio::spawn(async move {
             // 与 stdout 相同：按字节读行，GBK 日志行解码后继续，而不是静默结束读取。
             let mut lines = BufReader::new(stderr);
             let mut raw = Vec::new();
-            let mut seen_notice = HashSet::new();
             loop {
                 raw.clear();
                 let Ok(n) = lines.read_until(b'\n', &mut raw).await else {
@@ -290,16 +288,8 @@ impl AgentAdapter for CodexCliAdapter {
                 }
                 trim_newline(&mut raw);
                 let line = decode_child_bytes(&raw);
-                match classify_codex_stderr(&line) {
-                    StderrClass::Ignore => {}
-                    StderrClass::Error(message) => {
-                        emit(&err_events, SessionEventBody::Error { message });
-                    }
-                    StderrClass::Notice(text) => {
-                        if seen_notice.insert(text.clone()) {
-                            emit(&err_events, SessionEventBody::System { text });
-                        }
-                    }
+                if let StderrClass::Log(message) = classify_codex_stderr(&line) {
+                    remember_agent_stderr(&message);
                 }
             }
         });

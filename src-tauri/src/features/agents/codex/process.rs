@@ -1,6 +1,7 @@
 //! 启动 Codex 进程：定位二进制、隐藏控制台、系统代理、stderr 分类。
 
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 
 use tokio::process::Command;
 
@@ -10,9 +11,8 @@ use crate::encoding::{apply_utf8_env, decode_child_bytes};
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum StderrClass {
     Ignore,
-    Error(String),
-    /// 可见，但不把会话标成失败。模型目录刷新超时后 Codex 会继续用缓存。
-    Notice(String),
+    /// app-server 自己的 tracing。只写日志，不进时间线。
+    Log(String),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -218,51 +218,54 @@ pub(super) fn is_thread_writer_conflict(text: &str) -> bool {
 pub(super) fn classify_codex_stderr(raw: &str) -> StderrClass {
     let cleaned = strip_ansi(raw);
     let trimmed = cleaned.trim();
-    if trimmed.is_empty() || trimmed.contains("unrecognized configuration") {
+    if trimmed.is_empty() {
         return StderrClass::Ignore;
     }
-    // 占用冲突由 thread/resume 的结果转成只读通知，不要再当成会话失败打到时间线。
-    if is_thread_writer_conflict(trimmed) {
-        return StderrClass::Ignore;
-    }
-    // 可选 MCP 握手失败不影响 app-server 对话，不进时间线。
-    if is_optional_mcp_noise(trimmed) {
-        return StderrClass::Ignore;
-    }
-    // 模型目录刷新超时不是会话失败。系统代理负责让请求走出去；仍超时则只提示一次。
-    if is_models_refresh_timeout(trimmed) {
-        return StderrClass::Notice("模型列表刷新超时，已继续使用已有模型。".into());
-    }
-    if trimmed.contains("ERROR") {
-        return StderrClass::Error(truncate(trimmed, 300));
-    }
-    StderrClass::Ignore
+    // 协议错误和回合失败走 stdout 的 JSON-RPC。stderr 整行都是 tracing。
+    StderrClass::Log(truncate(trimmed, 4000))
 }
 
-/// `codex_models_manager` 刷新超时。其它刷新失败仍按错误显示。
-fn is_models_refresh_timeout(line: &str) -> bool {
-    let lower = line.to_ascii_lowercase();
-    let timed_out = lower.contains("timed out") || lower.contains("timeout waiting");
-    lower.contains("codex_models_manager")
-        && lower.contains("failed to refresh available models")
-        && timed_out
+const STDERR_LOG_LIMIT: u64 = 4 * 1024 * 1024;
+
+fn stderr_log_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
 }
 
-/// Codex 的可选 MCP 握手失败会以 `rmcp::transport::worker` ERROR 重试打到 stderr。
-/// 核心对话走 app-server 的 stdio，不依赖这些服务，所以不当成时间线通知。
-fn is_optional_mcp_noise(line: &str) -> bool {
-    let lower = line.to_ascii_lowercase();
-    let mentions_mcp = lower.contains("rmcp::") || lower.contains("mcp");
-    let transport_failure = lower.contains("transport channel closed")
-        || lower.contains("unexpectedserverresponse")
-        || lower.contains("unexpected server response")
-        || lower.contains("error sending request")
-        || lower.contains("connection refused")
-        || lower.contains("os error 10061")
-        || lower.contains("http 502")
-        || lower.contains("http 503")
-        || lower.contains("http 504");
-    mentions_mcp && transport_failure && (lower.contains("error") || lower.contains("fatal"))
+pub(super) fn remember_agent_stderr(line: &str) {
+    let Some(path) = stderr_log_path() else {
+        return;
+    };
+    let _guard = stderr_log_lock().lock().unwrap_or_else(|err| err.into_inner());
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    rotate_stderr_log(&path);
+    let mut file = match std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+        Ok(file) => file,
+        Err(_) => return,
+    };
+    use std::io::Write;
+    let _ = writeln!(file, "{line}");
+}
+
+fn stderr_log_path() -> Option<PathBuf> {
+    let root = std::env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(PathBuf::from))?;
+    Some(root.join("ai-workbench").join("logs").join("agent-stderr.log"))
+}
+
+fn rotate_stderr_log(path: &Path) {
+    let Ok(meta) = std::fs::metadata(path) else {
+        return;
+    };
+    if meta.len() < STDERR_LOG_LIMIT {
+        return;
+    }
+    let backup = path.with_extension("1.log");
+    let _ = std::fs::remove_file(&backup);
+    let _ = std::fs::rename(path, backup);
 }
 
 pub(super) fn trim_newline(raw: &mut Vec<u8>) {
@@ -358,18 +361,18 @@ mod tests {
     #[test]
     fn ignores_optional_mcp_transport_noise() {
         let ansi = "\u{1b}[2m2026-10-10T06:37:02.131976Z\u{1b}[0m \u{1b}[31mERROR\u{1b}[0m \u{1b}[2mrmcp::transport::worker\u{1b}[0m\u{1b}[2m:\u{1b}[0m worker quit with fatal: Transport channel closed, when UnexpectedServerResponse(\"HTTP 502: \")";
-        assert_eq!(classify_codex_stderr(ansi), StderrClass::Ignore);
+        assert!(matches!(classify_codex_stderr(ansi), StderrClass::Log(_)));
 
         let direct = "2026-10-10T06:45:44.207643Z ERROR rmcp::transport::worker: worker quit with fatal: Transport channel closed, when Client(HttpRequest(HttpRequest(\"http/request failed: error sending request for url (http://127.0.0.1:8080/mcp)\")))";
-        assert_eq!(classify_codex_stderr(direct), StderrClass::Ignore);
+        assert!(matches!(classify_codex_stderr(direct), StderrClass::Log(_)));
     }
 
     #[test]
     fn hides_thread_store_writer_conflict() {
         let persistence = "2026-10-10T09:25:25.276357Z ERROR codex_core::session::session failed to initialize thread persistence: thread-store conflict: thread 01a124c7-226b-7bb0-a774-c5fccdab7471 already has an active writer";
         let create = "2026-10-10T09:25:25.278837Z ERROR codex_core::session Failed to create session: thread-store conflict: thread 01a124c7-226b-7bb0-a774-c5fccdab7471 already has an active writer";
-        assert_eq!(classify_codex_stderr(persistence), StderrClass::Ignore);
-        assert_eq!(classify_codex_stderr(create), StderrClass::Ignore);
+        assert!(matches!(classify_codex_stderr(persistence), StderrClass::Log(_)));
+        assert!(matches!(classify_codex_stderr(create), StderrClass::Log(_)));
         assert!(is_thread_writer_conflict(
             "thread abc already has an active writer"
         ));
@@ -381,15 +384,21 @@ mod tests {
         let line =
             "\u{1b}[31m2026-10-10T06:45:41Z ERROR codex_core: authentication failed\u{1b}[0m";
         match classify_codex_stderr(line) {
-            StderrClass::Error(message) => {
+            StderrClass::Log(message) => {
                 assert!(message.contains("authentication failed"));
                 assert!(!message.contains('\u{1b}'));
             }
-            other => panic!("expected error, got {other:?}"),
+            other => panic!("expected log, got {other:?}"),
+        }
+        let memory = r"2026-10-11T05:34:12Z ERROR codex_core::tools::router: error=apply_patch verification failed: invalid patch: multiple operations target C:\Users\admin\.codex\memories\memory_summary.md";
+        match classify_codex_stderr(memory) {
+            StderrClass::Log(message) => assert!(message.contains("memory_summary.md")),
+            other => panic!("expected log, got {other:?}"),
         }
         let config =
             "ERROR codex_app_server: Codex is ignoring 1 unrecognized configuration setting.";
-        assert_eq!(classify_codex_stderr(config), StderrClass::Ignore);
+        assert!(matches!(classify_codex_stderr(config), StderrClass::Log(_)));
+        assert!(matches!(classify_codex_stderr("  "), StderrClass::Ignore));
     }
 
     #[test]
@@ -441,20 +450,6 @@ mod tests {
         assert!(merged.split(',').any(|item| item == ".taole.com"));
         assert!(!merged.split(',').any(|item| item == "*"));
         assert!(!merged.split(',').any(|item| item.contains("127.*")));
-    }
-
-    #[test]
-    fn models_refresh_timeout_stays_visible_without_failing_the_session() {
-        let line = "2026-10-10T10:23:16.863473Z ERROR codex_models_manager::manager: failed to refresh available models: request timed out";
-        assert_eq!(
-            classify_codex_stderr(line),
-            StderrClass::Notice("模型列表刷新超时，已继续使用已有模型。".into())
-        );
-        let other = "2026-10-10T10:23:16Z ERROR codex_models_manager::manager: failed to refresh available models: authentication failed";
-        match classify_codex_stderr(other) {
-            StderrClass::Error(message) => assert!(message.contains("authentication failed")),
-            other => panic!("expected error, got {other:?}"),
-        }
     }
 
     #[cfg(windows)]

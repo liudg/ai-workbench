@@ -275,6 +275,40 @@ pub struct ReviewTargets {
     pub error: Option<String>,
 }
 
+/// 内置浏览器批注。适配层把它折进用户回合，具体 Agent 不再单独解析。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PageAnnotation {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub url: String,
+    #[serde(default)]
+    pub selector: String,
+    #[serde(default)]
+    pub text: String,
+    #[serde(default)]
+    pub comment: String,
+    #[serde(default)]
+    pub x: i32,
+    #[serde(default)]
+    pub y: i32,
+    #[serde(default)]
+    pub width: i32,
+    #[serde(default)]
+    pub height: i32,
+    /// `element` 或 `region`。
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub screenshot: Option<String>,
+    #[serde(rename = "snapshotFailed", default, skip_serializing_if = "is_false")]
+    pub snapshot_failed: bool,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
 /// 会话事件体（时间线中的一条）。`kind` 字段作为判别标签。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]

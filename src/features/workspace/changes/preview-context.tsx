@@ -40,6 +40,7 @@ interface PreviewApi {
   tabs: PreviewTab[];
   activeId: string;
   projectId: string;
+  sessionId: string;
   sessionFiles: FileChange[];
   selectTab: (id: string) => void;
   closeTab: (id: string) => void;
@@ -276,6 +277,7 @@ export function PreviewProvider({
       tabs,
       activeId,
       projectId,
+      sessionId,
       sessionFiles,
       selectTab,
       closeTab,
@@ -284,7 +286,7 @@ export function PreviewProvider({
       openBlank,
       setTabTitle,
     }),
-    [tabs, activeId, projectId, sessionFiles, selectTab, closeTab, openDiff, openHref, openBlank, setTabTitle],
+    [tabs, activeId, projectId, sessionId, sessionFiles, selectTab, closeTab, openDiff, openHref, openBlank, setTabTitle],
   );
 
   return <PreviewContext.Provider value={api}>{children}</PreviewContext.Provider>;

@@ -17,8 +17,8 @@ use async_trait::async_trait;
 use tokio::sync::mpsc;
 
 use crate::models::{
-    AgentCapabilities, AgentCatalog, AgentInstallation, AgentKind, AgentProfile, PermissionMenu,
-    PromptAnswer, ReviewStart, ReviewTargets, SessionEventBody,
+    AgentCapabilities, AgentCatalog, AgentInstallation, AgentKind, AgentProfile, PageAnnotation,
+    PermissionMenu, PromptAnswer, ReviewStart, ReviewTargets, SessionEventBody,
 };
 
 pub use directory::{
@@ -83,6 +83,63 @@ pub struct UserTurn {
 pub enum TurnDelivery {
     Started,
     Queued,
+}
+
+/// 把页面批注折进即将发给任何 Agent 的正文，并把截图路径并进图片列表。
+pub fn fold_page_annotations(
+    text: &str,
+    images: &mut Vec<String>,
+    notes: &[PageAnnotation],
+) -> String {
+    if notes.is_empty() {
+        return text.to_string();
+    }
+    let mut blocks = Vec::with_capacity(notes.len());
+    for (index, note) in notes.iter().enumerate() {
+        let mut lines = vec![format!("页面批注 {}", index + 1)];
+        let comment = note.comment.trim();
+        if !comment.is_empty() {
+            lines.push(format!("评论：{comment}"));
+        }
+        let url = note.url.trim();
+        if !url.is_empty() {
+            lines.push(format!("页面：{url}"));
+        }
+        let selector = note.selector.trim();
+        if !selector.is_empty() {
+            lines.push(format!("选择器：{selector}"));
+        }
+        let element = note.text.trim();
+        if !element.is_empty() {
+            lines.push(format!("元素文本：{}", clamp_chars(element, 500)));
+        }
+        lines.push(format!(
+            "区域：{},{} {}×{}",
+            note.x, note.y, note.width, note.height
+        ));
+        if let Some(path) = note.screenshot.as_ref().map(|item| item.trim()).filter(|item| !item.is_empty()) {
+            lines.push("附图为该区域所在页面的截图。".into());
+            if !images.iter().any(|item| item == path) {
+                images.push(path.to_string());
+            }
+        }
+        blocks.push(lines.join("\n"));
+    }
+    let extra = blocks.join("\n\n");
+    if text.trim().is_empty() {
+        extra
+    } else {
+        format!("{text}\n\n{extra}")
+    }
+}
+
+fn clamp_chars(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        return text.to_string();
+    }
+    let mut out: String = text.chars().take(max).collect();
+    out.push('…');
+    out
 }
 
 fn fold_images_into_text(text: &str, images: &[String]) -> String {
@@ -378,6 +435,53 @@ pub fn session_directories() -> Vec<Arc<dyn SessionDirectory>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn folds_page_annotation_into_any_agent_turn() {
+        let notes = vec![PageAnnotation {
+            id: "1".into(),
+            url: "https://example.com/bike".into(),
+            selector: "#bike".into(),
+            text: "虎豹".into(),
+            comment: "改成红色".into(),
+            x: 10,
+            y: 20,
+            width: 30,
+            height: 40,
+            kind: "element".into(),
+            screenshot: Some("C:/shot.png".into()),
+            snapshot_failed: false,
+        }];
+        let mut images = Vec::new();
+        let text = fold_page_annotations("看这里", &mut images, &notes);
+        assert!(text.starts_with("看这里\n\n页面批注 1\n"));
+        assert!(text.contains("评论：改成红色"));
+        assert!(text.contains("页面：https://example.com/bike"));
+        assert!(text.contains("选择器：#bike"));
+        assert!(text.contains("元素文本：虎豹"));
+        assert!(text.contains("区域：10,20 30×40"));
+        assert!(text.contains("附图为该区域所在页面的截图。"));
+        assert_eq!(images, vec!["C:/shot.png".to_string()]);
+
+        let region = PageAnnotation {
+            id: "2".into(),
+            url: String::new(),
+            selector: String::new(),
+            text: String::new(),
+            comment: String::new(),
+            x: 1,
+            y: 2,
+            width: 3,
+            height: 4,
+            kind: "region".into(),
+            screenshot: None,
+            snapshot_failed: true,
+        };
+        let mut images = Vec::new();
+        let text = fold_page_annotations("", &mut images, &[region]);
+        assert_eq!(text, "页面批注 1\n区域：1,2 3×4");
+        assert!(images.is_empty());
+    }
 
     #[tokio::test]
     async fn claude_rename_is_unsupported_without_spawning() {

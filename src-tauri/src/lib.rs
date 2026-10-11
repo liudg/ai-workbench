@@ -86,6 +86,9 @@ pub fn run() {
             features::preview::browser::browser_hide,
             features::preview::browser::browser_reload,
             features::preview::browser::browser_annotate,
+            features::preview::browser::browser_page_title,
+            features::preview::browser::browser_annotate_state,
+            features::preview::browser::browser_annotation_submit,
             features::preview::browser::browser_open_external,
             features::preview::browser::browser_close,
         ])

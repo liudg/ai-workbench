@@ -8,6 +8,7 @@ import type {
   AgentKind,
   AgentProfile,
   Attachment,
+  PageAnnotation,
   Project,
   PromptAnswer,
   QueuedTurn,
@@ -75,6 +76,7 @@ export interface WorkspaceSlice {
   lastSandbox: SessionSandbox;
   sandboxes: Record<string, SessionSandbox>;
   attachments: Record<string, Attachment[]>;
+  pageAnnotations: Record<string, PageAnnotation[]>;
   queues: Record<string, QueuedTurn[]>;
   catalogs: Record<string, AgentCatalog>;
   /** 按 Agent 记住的上次成功目录。作曲栏先显示它，再后台刷新。 */
@@ -89,7 +91,15 @@ export interface WorkspaceSlice {
   removeAttachment(sessionId: string, path: string): void;
   clearAttachments(sessionId: string): void;
   replaceAttachments(sessionId: string, files: Attachment[]): void;
-  sendMessage(sessionId: string, text: string, images?: string[]): Promise<void>;
+  addPageAnnotation(sessionId: string, note: PageAnnotation): void;
+  removePageAnnotation(sessionId: string, id: string): void;
+  clearPageAnnotations(sessionId: string): void;
+  sendMessage(
+    sessionId: string,
+    text: string,
+    images?: string[],
+    annotations?: PageAnnotation[],
+  ): Promise<void>;
   setCollaborationMode(sessionId: string, mode: "plan" | "default"): Promise<void>;
   startReview(sessionId: string, target: ReviewStart): Promise<void>;
   answerPrompt(sessionId: string, promptId: string, answer: PromptAnswer): Promise<void>;

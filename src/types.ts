@@ -253,6 +253,22 @@ export interface Attachment {
   path: string;
 }
 
+/** 内置浏览器批注。发送时由适配层折进回合，不绑某个 Agent。 */
+export interface PageAnnotation {
+  id: string;
+  url: string;
+  selector: string;
+  text: string;
+  comment: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  kind: string;
+  screenshot?: string;
+  snapshotFailed?: boolean;
+}
+
 export interface ReasoningEffortOption {
   id: string;
   description: string;

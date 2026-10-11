@@ -29,6 +29,7 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
     lastSandbox: emptySandbox(),
     sandboxes: {},
     attachments: {},
+    pageAnnotations: {},
     queues: {},
     catalogs: {},
     catalogCache: {},
@@ -132,9 +133,37 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
       }));
     },
 
-    async sendMessage(sessionId, text, images) {
+    addPageAnnotation(sessionId, note) {
+      set((s) => {
+        const current = s.pageAnnotations[sessionId] ?? [];
+        if (current.some((item) => item.id === note.id)) return {};
+        return {
+          pageAnnotations: {
+            ...s.pageAnnotations,
+            [sessionId]: [...current, note],
+          },
+        };
+      });
+    },
+
+    removePageAnnotation(sessionId, id) {
+      set((s) => ({
+        pageAnnotations: {
+          ...s.pageAnnotations,
+          [sessionId]: (s.pageAnnotations[sessionId] ?? []).filter((item) => item.id !== id),
+        },
+      }));
+    },
+
+    clearPageAnnotations(sessionId) {
+      set((s) => ({
+        pageAnnotations: { ...s.pageAnnotations, [sessionId]: [] },
+      }));
+    },
+
+    async sendMessage(sessionId, text, images, annotations) {
       try {
-        await backend.sendMessage(sessionId, text, images);
+        await backend.sendMessage(sessionId, text, images, annotations);
       } catch (e) {
         reportSessionError(get, set, sessionId, e);
       }

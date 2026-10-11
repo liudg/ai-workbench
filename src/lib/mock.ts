@@ -3,6 +3,7 @@
 // 第二轮演示提问卡，之后轮次在思考和工具之间穿插，再流式写出结论。
 // 让 UI 在没有 Rust 后端的浏览器里也能完整演示。
 
+import { foldPageAnnotations } from "@/features/workspace/changes/annotate";
 import { CODEX_DESKTOP } from "@/features/workspace/codex-desktop";
 import {
   AGENT_LABELS,
@@ -858,13 +859,20 @@ export const mockBackend: Backend = {
     };
   },
 
-  async sendMessage(sessionId, text, images = []) {
+  async sendMessage(sessionId, text, images = [], annotations = []) {
     const s = sessions.get(sessionId);
     if (!s) throw new Error("会话不存在");
     if (isReadOnlyOpen(s.events)) throw new Error(OCCUPIED_NOTICE);
     if (s.pendingPrompt) throw new Error("存在待回答的提问，请先处理");
     const profile = MOCK_PROFILES[s.meta.agent];
-    const slash = text.trimStart().startsWith("/") && images.length === 0;
+    const slash = text.trimStart().startsWith("/") && images.length === 0 && annotations.length === 0;
+    const folded = foldPageAnnotations(text, annotations);
+    text = folded.text;
+    images = [...images];
+    for (const path of folded.images) {
+      if (!images.includes(path)) images.push(path);
+    }
+    if (!text.trim() && images.length === 0) throw new Error("消息不能为空");
     if (profile.capabilities.supports_queue && s.meta.status === "running" && !slash) {
       const list = queuedTurns.get(sessionId) ?? [];
       list.push({ id: id(), text, images, client_id: id() });

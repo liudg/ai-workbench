@@ -3,7 +3,10 @@ import { ArrowLeft, ArrowRight, ExternalLink, RotateCw } from "lucide-react";
 
 import { backend, isTauri } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
+import { useWorkbench } from "@/store";
+import type { PageAnnotation } from "@/types";
 import { CODEX_DESKTOP } from "../codex-desktop";
+import { tabTitleFromDocument } from "./annotate";
 import {
   canGoBack,
   canGoForward,
@@ -19,6 +22,7 @@ import {
   visit,
   type BrowserHistory,
 } from "./browser";
+import { usePreview } from "./preview-context";
 
 export function BrowserView({
   tabId,
@@ -33,13 +37,18 @@ export function BrowserView({
   text: string;
   onTitle: (title: string) => void;
 }) {
+  const { sessionId } = usePreview();
   const viewport = useRef<HTMLDivElement>(null);
   const [history, setHistory] = useState<BrowserHistory>(() => recallHistory(tabId));
   const [draft, setDraft] = useState<string | null>(null);
   const [annotating, setAnnotating] = useState(false);
+  const [suspended, setSuspended] = useState(false);
+  const [snapshotFailed, setSnapshotFailed] = useState(false);
   const [frameKey, setFrameKey] = useState(0);
   const [error, setError] = useState("");
   const [native, setNative] = useState(isTauri);
+  const sessionRef = useRef(sessionId);
+  sessionRef.current = sessionId;
   const historyRef = useRef(history);
   historyRef.current = history;
   const annotatingRef = useRef(annotating);
@@ -58,10 +67,7 @@ export function BrowserView({
     const node = viewport.current;
     if (!node || !isTauri) return;
     const rect = node.getBoundingClientRect();
-    if (!target || rect.width < 8 || rect.height < 8) {
-      await backend.browserHide();
-      return;
-    }
+    if (!target || rect.width < 8 || rect.height < 8) return;
     await backend.browserShow(target, rect.left, rect.top, rect.width, rect.height);
   }, []);
 
@@ -86,7 +92,7 @@ export function BrowserView({
   );
 
   useEffect(() => {
-    const title = pageTitleFromHtml(text);
+    const title = tabTitleFromDocument(pageTitleFromHtml(text));
     if (title) onTitle(title);
   }, [onTitle, text]);
 
@@ -117,37 +123,68 @@ export function BrowserView({
   useEffect(() => {
     if (!isTauri) return;
     const unlisten = backend.onBrowserNotice((notice) => {
-      if (notice.kind === "title" && notice.value.trim()) onTitle(notice.value.trim());
+      if (notice.kind === "title") {
+        const title = tabTitleFromDocument(notice.value);
+        if (title) onTitle(title);
+      }
       if (notice.kind === "load") {
         const next = noteLoaded(historyRef.current, notice.value);
         if (next !== historyRef.current) commit(next);
+        const target = currentEntry(historyRef.current)?.target ?? "";
+        if (target) void placeNative(target).catch(() => setNative(false));
         if (annotatingRef.current) void backend.browserAnnotate(true);
+      }
+      if (notice.kind === "annotate") {
+        const on = notice.value === "1";
+        setAnnotating(on);
+        if (!on) setSuspended(false);
+      }
+      if (notice.kind === "suspended") setSuspended(notice.value === "1");
+      if (notice.kind === "annotation") {
+        try {
+          const note = JSON.parse(notice.value) as PageAnnotation;
+          if (!note.id) return;
+          useWorkbench.getState().addPageAnnotation(sessionRef.current, note);
+          setSnapshotFailed(Boolean(note.snapshotFailed));
+        } catch {
+          setError(CODEX_DESKTOP.browserAnnotateFailed);
+        }
       }
     });
     return unlisten;
-  }, [commit, onTitle]);
+  }, [commit, onTitle, placeNative]);
 
   useEffect(() => {
     if (!isTauri || !native) return;
     const node = viewport.current;
     if (!node) return;
     let last = "";
+    let frame = 0;
     const sync = () => {
       const rect = node.getBoundingClientRect();
       const target = currentEntry(historyRef.current)?.target ?? "";
+      if (rect.width < 8 || rect.height < 8 || !target) return;
       const key = `${Math.round(rect.left)}:${Math.round(rect.top)}:${Math.round(rect.width)}:${Math.round(rect.height)}:${target}`;
       if (key === last) return;
       last = key;
       void placeNative(target).catch(() => setNative(false));
     };
-    sync();
-    const observer = new ResizeObserver(sync);
+    let frames = 0;
+    const tick = () => {
+      sync();
+      frames += 1;
+      if (frames < 30) frame = window.requestAnimationFrame(tick);
+    };
+    frame = window.requestAnimationFrame(tick);
+    const observer = new ResizeObserver(() => {
+      last = "";
+      sync();
+    });
     observer.observe(node);
-    const timer = window.setInterval(sync, 200);
     window.addEventListener("resize", sync);
     return () => {
       observer.disconnect();
-      window.clearInterval(timer);
+      window.cancelAnimationFrame(frame);
       window.removeEventListener("resize", sync);
       void backend.browserHide();
     };
@@ -244,7 +281,12 @@ export function BrowserView({
           onClick={() => {
             const next = !annotating;
             setAnnotating(next);
-            if (isTauri && native) void backend.browserAnnotate(next);
+            if (!next) setSuspended(false);
+            if (isTauri && native) {
+              void backend.browserAnnotate(next).catch(() => {
+                setError(CODEX_DESKTOP.browserAnnotateFailed);
+              });
+            }
           }}
         >
           {annotating ? CODEX_DESKTOP.browserAnnotating : CODEX_DESKTOP.browserAnnotate}
@@ -264,7 +306,15 @@ export function BrowserView({
         </ChromeButton>
       </div>
       {error ? <p className="shrink-0 px-3 py-1 text-xs text-red-300">{error}</p> : null}
-      <div ref={viewport} className="relative min-h-0 min-w-0 flex-1 bg-white" data-browser-viewport>
+      {annotating ? (
+        <p className="shrink-0 truncate px-3 py-1 text-[11px] text-zinc-400" data-browser-annotate-hint>
+          {suspended ? CODEX_DESKTOP.browserAnnotateSuspended : CODEX_DESKTOP.browserAnnotateHint}
+        </p>
+      ) : null}
+      {snapshotFailed ? (
+        <p className="shrink-0 px-3 py-1 text-[11px] text-amber-200/90">{CODEX_DESKTOP.browserSnapshotFailed}</p>
+      ) : null}
+      <div ref={viewport} className="relative min-h-0 min-w-0 flex-1 bg-zinc-950" data-browser-viewport>
         {!frameTarget ? (
           <div className="flex h-full flex-col items-center justify-center gap-1 bg-zinc-950 px-6 text-center">
             <p className="text-sm text-zinc-200">{CODEX_DESKTOP.browserEmptyTitle}</p>
@@ -278,7 +328,7 @@ export function BrowserView({
             src={localFrame ? undefined : frameTarget}
             srcDoc={localFrame ? text || undefined : undefined}
             key={frameKey}
-            className="h-full w-full border-0 bg-white"
+            className="h-full w-full border-0 bg-zinc-950"
             data-browser-frame="iframe"
           />
         ) : null}

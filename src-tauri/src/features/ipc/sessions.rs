@@ -179,13 +179,17 @@ pub async fn send_message(
     session_id: String,
     text: String,
     images: Option<Vec<String>>,
+    annotations: Option<Vec<PageAnnotation>>,
 ) -> Result<(), String> {
     let text = text.trim().to_string();
     let images = images.unwrap_or_default();
-    if text.is_empty() && images.is_empty() {
+    let annotations = annotations.unwrap_or_default();
+    if text.is_empty() && images.is_empty() && annotations.is_empty() {
         return Err("消息不能为空".into());
     }
-    manager.send_message(&session_id, text, images).await
+    manager
+        .send_message(&session_id, text, images, annotations)
+        .await
 }
 
 #[tauri::command]

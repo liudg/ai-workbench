@@ -15,6 +15,7 @@ import type {
   AgentProfile,
   CachedAgentCatalog,
   Attachment,
+  PageAnnotation,
   Project,
   PromptAnswer,
   QueuedTurn,
@@ -99,7 +100,12 @@ export interface Backend {
     model: string,
     effort: string,
   ): Promise<void>;
-  sendMessage(sessionId: string, text: string, images?: string[]): Promise<void>;
+  sendMessage(
+    sessionId: string,
+    text: string,
+    images?: string[],
+    annotations?: PageAnnotation[],
+  ): Promise<void>;
   updateQueuedTurn(
     sessionId: string,
     queuedId: string,
@@ -215,8 +221,13 @@ const tauriBackend: Backend = {
     invoke<AgentCatalogRefresh>("agent_catalog", { sessionId }),
   setSessionTuning: (sessionId, model, effort) =>
     invoke("set_session_tuning", { sessionId, model, effort }),
-  sendMessage: (sessionId, text, images) =>
-    invoke("send_message", { sessionId, text, images: images ?? [] }),
+  sendMessage: (sessionId, text, images, annotations) =>
+    invoke("send_message", {
+      sessionId,
+      text,
+      images: images ?? [],
+      annotations: annotations ?? [],
+    }),
   updateQueuedTurn: (sessionId, queuedId, text, images) =>
     invoke("update_queued_turn", {
       sessionId,
