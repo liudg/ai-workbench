@@ -53,6 +53,7 @@ export function BrowserView({
   const annotatingRef = useRef(annotating);
   annotatingRef.current = annotating;
   const liveTitle = useRef(false);
+  const sentAnnotations = useRef(new Set<string>());
 
   const commit = useCallback(
     (next: BrowserHistory) => {
@@ -150,6 +151,8 @@ export function BrowserView({
         try {
           const note = JSON.parse(notice.value) as PageAnnotation;
           if (!note.id || !note.comment.trim()) return;
+          if (sentAnnotations.current.has(note.id)) return;
+          sentAnnotations.current.add(note.id);
           setSnapshotFailed(Boolean(note.snapshotFailed));
           const sid = sessionRef.current;
           if (!sid) {

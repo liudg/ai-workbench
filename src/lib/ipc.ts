@@ -162,10 +162,19 @@ function subscribe<T>(
   cb: (payload: T) => void,
 ): () => void {
   let unlisten: (() => void) | undefined;
+  let stopped = false;
   listen<T>(channel, (e) => cb(e.payload)).then((u) => {
+    if (stopped) {
+      u();
+      return;
+    }
     unlisten = u;
   });
-  return () => unlisten?.();
+  return () => {
+    stopped = true;
+    unlisten?.();
+    unlisten = undefined;
+  };
 }
 
 const tauriBackend: Backend = {

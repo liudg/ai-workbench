@@ -238,11 +238,13 @@
     }
 
     function placeEditor(rect) {
-      var width = Math.max(200, Math.min(rect.width, Math.max(200, window.innerWidth - 16)));
-      var left = rect.left;
+      var dotX = rect.left + rect.width / 2;
+      var left = dotX + 14;
+      var room = window.innerWidth - left - 8;
+      var width = Math.max(180, Math.min(Math.max(rect.width, 220), room));
       if (left + width > window.innerWidth - 8) left = Math.max(8, window.innerWidth - width - 8);
       if (left < 8) left = 8;
-      var top = rect.top - 16;
+      var top = rect.top - 18;
       if (top < 8) top = 8;
       pop.style.left = left + "px";
       pop.style.top = top + "px";
