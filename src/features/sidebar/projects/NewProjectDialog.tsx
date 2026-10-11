@@ -64,7 +64,12 @@ export function NewProjectDialog() {
     if (!valid || busy) return;
     const defaultAgent = persistedAgentKind(installations, preferredAgent);
     if (!defaultAgent) {
-      useWorkbench.setState({ lastError: "正在检测本地 Agent，请稍后再创建项目。" });
+      useWorkbench.setState({
+        lastError:
+          installations === null
+            ? "正在检测本地 Agent，请稍后再创建项目。"
+            : "未检测到已安装的 Agent。",
+      });
       return;
     }
     setBusy(true);

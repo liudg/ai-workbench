@@ -51,6 +51,7 @@ export function NewSessionButton({
         className={cn(
           appearance === "primary" && buttonVariants({ variant: "default" }),
           className,
+          open && "pointer-events-auto opacity-100",
         )}
         aria-label={title}
         aria-haspopup="menu"
@@ -99,6 +100,7 @@ export function NewSessionButton({
                   key={agent.kind}
                   type="button"
                   role="menuitem"
+                  data-agent={agent.kind}
                   className="block w-full px-3 py-2 text-left text-sm text-zinc-100 hover:bg-zinc-800"
                   onClick={(event) => {
                     event.stopPropagation();

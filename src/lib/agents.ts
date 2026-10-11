@@ -1,15 +1,19 @@
-import type { AgentInstallation, AgentKind } from "@/types";
+import type { AgentInstallation, AgentKind } from "../types.ts";
 
-/** 新建会话可选的 Agent：只保留本机已经探测到的安装。 */
+/**
+ * 新建会话可选的 Agent。与设置页「本地 Agent」同一份探测结果，
+ * 只保留 `installed === true`。探测为空或都未安装时返回空数组，不补种类默认值。
+ */
 export function installedAgents(
   list: AgentInstallation[] | null | undefined,
 ): AgentInstallation[] {
-  return (list ?? []).filter((item) => item.installed);
+  if (!list?.length) return [];
+  return list.filter((item) => item.installed === true);
 }
 
 /**
- * 写进项目记录的默认 Agent。优先用已安装且用户最近选过的；
- * 都没装时才退回探测名单的第一项，界面不会把它列进选择器。
+ * 写进项目记录的默认 Agent。只用已安装、且用户最近选过的；
+ * 否则用探测结果里第一个已安装项。一个都没装时返回 null，不拿注册表第一项充数。
  */
 export function persistedAgentKind(
   list: AgentInstallation[] | null | undefined,
@@ -19,8 +23,7 @@ export function persistedAgentKind(
   if (preferred && installed.some((item) => item.kind === preferred)) {
     return preferred;
   }
-  if (installed.length > 0) return installed[0].kind;
-  return list?.[0]?.kind ?? null;
+  return installed[0]?.kind ?? null;
 }
 
 export function keepPreferredAgent(

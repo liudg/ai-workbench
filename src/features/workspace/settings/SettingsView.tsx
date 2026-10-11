@@ -72,6 +72,8 @@ function AgentsPanel() {
             return (
               <li
                 key={item.kind}
+                data-agent={item.kind}
+                data-installed={item.installed ? "true" : "false"}
                 className="flex items-start gap-4 rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3"
               >
                 <div className="min-w-0 flex-1">
