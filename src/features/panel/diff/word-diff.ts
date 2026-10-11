@@ -43,7 +43,7 @@ export function applyWordDiff(rows: readonly DiffFoldRow[]): DiffDisplayRow[] {
   return out;
 }
 
-export function wordDiffParts(before: string, after: string): { before: WordPart[]; after: WordPart[] } {
+function wordDiffParts(before: string, after: string): { before: WordPart[]; after: WordPart[] } {
   const left = tokenize(before);
   const right = tokenize(after);
   if (left.length * right.length > 4000) {

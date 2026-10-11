@@ -4,7 +4,7 @@ import { Globe } from "lucide-react";
 import { usePanelOptional } from "@/features/panel/core/PanelProvider";
 import { backend } from "@/lib/ipc";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
-import { baseName } from "./card-text";
+import { baseName } from "@/features/panel/files/path";
 import { pageTitleFromHtml } from "./page-title";
 
 export function WebsiteCard({ href, label }: { href: string; label: string }) {

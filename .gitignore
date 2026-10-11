@@ -27,3 +27,8 @@ Thumbs.db
 vite.config.js
 vite.config.d.ts
 .playwright-mcp/
+
+# Local installers. Updater metadata stays in release/latest.json.
+release/*.exe
+release/*.nsis.zip
+release/*.zip

@@ -21,10 +21,7 @@ use crate::models::{
     PromptOption, SessionEventBody, SessionStatus,
 };
 
-use super::providers::{
-    submit_annotation_as_attachment, AnnotationSink, DiffScopeProvider, FileChangeSource,
-    PreviewProvider, TurnDiffProvider,
-};
+use super::providers::{submit_annotation_as_attachment, AnnotationSink, DiffScopeProvider};
 use super::{AgentError, AgentSession, EventSink, TurnDelivery};
 use crate::models::PageAnnotation;
 
@@ -307,16 +304,7 @@ impl AgentSession for StubAgentSession {
 }
 
 #[async_trait]
-impl TurnDiffProvider for StubAgentSession {}
-
-#[async_trait]
-impl FileChangeSource for StubAgentSession {}
-
-#[async_trait]
 impl DiffScopeProvider for StubAgentSession {}
-
-#[async_trait]
-impl PreviewProvider for StubAgentSession {}
 
 #[async_trait]
 impl AnnotationSink for StubAgentSession {

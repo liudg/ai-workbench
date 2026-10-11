@@ -17,7 +17,7 @@ export const FAKE_FILE: FileChange = {
   diff: ["@@ -1 +1,2 @@", "-old", "+new", "+line"].join("\n"),
 };
 
-export function fakeAdapterBodies(): SessionEventBody[] {
+function fakeAdapterBodies(): SessionEventBody[] {
   return [
     { kind: "user-message", text: "改一下说明" },
     {

@@ -316,7 +316,7 @@ export interface AgentSkillOption {
   path: string;
 }
 
-/** 变更从哪来。替代单个 `supports_turn_diff`。 */
+/** 变更从哪来：回合 diff、逐文件补丁、git 范围。 */
 export interface ChangeCapabilities {
   /** 回合统一 diff（`turn-diff`）。 */
   turn_diff: boolean;
@@ -401,33 +401,6 @@ export interface AgentCatalogRefresh {
 export interface CachedAgentCatalog {
   kind: AgentKind;
   catalog: AgentCatalog;
-}
-
-export const EMPTY_CAPABILITIES: AgentCapabilities = {
-  supports_slash: false,
-  supports_resume: false,
-  supports_questions: false,
-  supports_tuning: false,
-  supports_skills: false,
-  supports_goals: false,
-  supports_images: false,
-  supports_queue: false,
-  supports_fork: false,
-  supports_archive: false,
-  supports_delete: false,
-  supports_rename: false,
-  supports_plan: false,
-  changes: { turn_diff: false, per_file_patch: false, git_scopes: false },
-  supports_review: false,
-};
-
-export function emptyCatalog(): AgentCatalog {
-  return {
-    models: [],
-    skills: [],
-    commands: [],
-    capabilities: { ...EMPTY_CAPABILITIES },
-  };
 }
 
 export const EFFORT_LABELS: Record<string, string> = {

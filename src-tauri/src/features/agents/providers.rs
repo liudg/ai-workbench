@@ -1,18 +1,14 @@
 //! 适配器表面能力。会话管理只调用这些 trait，不解析某一种 CLI 的补丁或批注格式。
 //!
-//! - [`TurnDiffProvider`]：按回合 id 取统一 diff。
-//! - [`FileChangeSource`]：该回合已归一的逐文件变更。事件本身由适配器写入 `file-change` / `turn-changes`。
-//! - [`DiffScopeProvider`]：差异范围。默认走 `features/git`；适配器可覆盖「上一轮」。
-//! - [`PreviewProvider`]：把 href 解析成 [`OpenTarget`]，默认相对项目根。
-//! - [`AnnotationSink`]：提交 [`PageAnnotation`]。默认折进附件发送；Codex 改走自己的注释附件。
+//! - [`DiffScopeProvider`]：差异范围。默认走 `features/git`；上一轮来自适配器保存的回合 diff。
+//! - [`AnnotationSink`]：提交 [`PageAnnotation`]。默认折进附件发送。
+//!
+//! 逐文件变更由适配器写入 `file-change` / `turn-changes`，前端直接读事件。
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-pub use crate::features::preview::OpenTarget;
-
-use crate::features::preview::resolve_open_target;
-use crate::models::{FileChange, PageAnnotation};
+use crate::models::PageAnnotation;
 
 use super::{AgentError, AgentSession, TurnDelivery, UserTurn};
 
@@ -45,27 +41,7 @@ fn scope(id: &str, label: &str, source: &str) -> DiffScope {
 }
 
 pub fn is_turn_scope(scope: &str) -> bool {
-    matches!(scope, "turn" | "last-turn" | "last_turn")
-}
-
-#[async_trait]
-pub trait TurnDiffProvider: Send + Sync {
-    /// 按回合 id 取统一 diff。本阶段由适配器保存，命令层还没单独暴露。
-    #[allow(dead_code)]
-    async fn turn_diff(&self, turn_id: &str) -> Result<Option<String>, AgentError> {
-        let _ = turn_id;
-        Ok(None)
-    }
-}
-
-#[async_trait]
-pub trait FileChangeSource: Send + Sync {
-    /// 该回合已归一的逐文件变更。事件写入时间线；本阶段没有单独的查询命令。
-    #[allow(dead_code)]
-    async fn file_changes(&self, turn_id: &str) -> Result<Vec<FileChange>, AgentError> {
-        let _ = turn_id;
-        Ok(Vec::new())
-    }
+    scope == "turn"
 }
 
 #[async_trait]
@@ -93,15 +69,6 @@ pub trait DiffScopeProvider: Send + Sync {
 
     async fn last_turn_diff(&self) -> Result<String, AgentError> {
         Err(AgentError::Runtime("这个 Agent 没有上一轮差异".into()))
-    }
-}
-
-#[async_trait]
-pub trait PreviewProvider: Send + Sync {
-    /// 把 href 解析成打开目标。默认相对项目根；本阶段没有单独的命令。
-    #[allow(dead_code)]
-    fn resolve_href(&self, project_root: &str, href: &str) -> Result<OpenTarget, AgentError> {
-        resolve_open_target(std::path::Path::new(project_root), href).map_err(AgentError::Runtime)
     }
 }
 

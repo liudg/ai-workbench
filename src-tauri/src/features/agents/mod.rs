@@ -15,8 +15,7 @@ mod providers;
 mod stub;
 
 pub use providers::{
-    submit_annotation_as_attachment, AnnotationSink, DiffScope, DiffScopeProvider, FileChangeSource,
-    PreviewProvider, TurnDiffProvider,
+    submit_annotation_as_attachment, AnnotationSink, DiffScope, DiffScopeProvider,
 };
 
 use std::sync::Arc;
@@ -177,15 +176,7 @@ fn fold_images_into_text(text: &str, images: &[String]) -> String {
 /// 一个正在运行的 Agent 会话的句柄（由适配器返回）。
 /// 所有方法都是非阻塞的：把输入写入 CLI 后立即返回，输出经 `EventSink` 异步推送。
 #[async_trait]
-pub trait AgentSession:
-    TurnDiffProvider
-    + FileChangeSource
-    + DiffScopeProvider
-    + PreviewProvider
-    + AnnotationSink
-    + Send
-    + Sync
-{
+pub trait AgentSession: DiffScopeProvider + AnnotationSink + Send + Sync {
     /// 发送一条用户消息（一轮新任务）。
     async fn send_message(&self, text: String) -> Result<(), AgentError>;
 

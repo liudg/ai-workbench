@@ -43,12 +43,11 @@ use crate::features::agents::install::CliRelease;
 use crate::features::agents::providers::{default_git_scopes, turn_scope};
 use crate::features::agents::{
     submit_annotation_as_attachment, AgentAdapter, AgentError, AgentSession, AnnotationSink,
-    DiffScopeProvider, DirectoryEntry, EventSink, FileChangeSource, PreviewProvider, SessionContext,
-    TurnDelivery, TurnDiffProvider, UserTurn,
+    DiffScopeProvider, DirectoryEntry, EventSink, SessionContext, TurnDelivery, UserTurn,
 };
 use crate::models::{
-    strip_verbatim_prefix, AgentCapabilities, AgentCatalog, AgentKind, AgentProfile, FileChange,
-    PageAnnotation, PromptAnswer, SessionEventBody, SessionStatus, OCCUPIED_SESSION_NOTICE,
+    strip_verbatim_prefix, AgentCapabilities, AgentCatalog, AgentKind, AgentProfile, PageAnnotation,
+    PromptAnswer, SessionEventBody, SessionStatus, OCCUPIED_SESSION_NOTICE,
 };
 
 use process::{
@@ -595,33 +594,6 @@ impl AgentSession for CodexCliSession {
 }
 
 #[async_trait]
-impl TurnDiffProvider for CodexCliSession {
-    async fn turn_diff(&self, turn_id: &str) -> Result<Option<String>, AgentError> {
-        Ok(self
-            .shared
-            .turn_diffs
-            .lock()
-            .unwrap()
-            .get(turn_id)
-            .cloned())
-    }
-}
-
-#[async_trait]
-impl FileChangeSource for CodexCliSession {
-    async fn file_changes(&self, turn_id: &str) -> Result<Vec<FileChange>, AgentError> {
-        Ok(self
-            .shared
-            .turn_files
-            .lock()
-            .unwrap()
-            .get(turn_id)
-            .cloned()
-            .unwrap_or_default())
-    }
-}
-
-#[async_trait]
 impl DiffScopeProvider for CodexCliSession {
     async fn diff_scopes(&self) -> Result<Vec<crate::features::agents::DiffScope>, AgentError> {
         let mut scopes = vec![turn_scope()];
@@ -643,9 +615,6 @@ impl DiffScopeProvider for CodexCliSession {
             .ok_or_else(|| AgentError::Runtime("还没有上一轮差异".into()))
     }
 }
-
-#[async_trait]
-impl PreviewProvider for CodexCliSession {}
 
 #[async_trait]
 impl AnnotationSink for CodexCliSession {

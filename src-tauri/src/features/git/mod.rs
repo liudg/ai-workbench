@@ -3,24 +3,7 @@
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-use tauri::State;
-
-use crate::features::projects::ProjectStore;
-
 const MAX_DIFF_BYTES: usize = 2 * 1024 * 1024;
-
-#[tauri::command]
-pub fn project_git_diff(
-    store: State<'_, ProjectStore>,
-    project_id: String,
-    scope: String,
-    ignore_whitespace: bool,
-) -> Result<String, String> {
-    let project = store
-        .get(&project_id)
-        .ok_or_else(|| "项目不存在".to_string())?;
-    git_diff_text(Path::new(&project.path), &scope, ignore_whitespace)
-}
 
 pub fn git_diff_text(root: &Path, scope: &str, ignore_whitespace: bool) -> Result<String, String> {
     if !root.is_dir() {

@@ -526,7 +526,7 @@ pub struct AgentSkillOption {
     pub path: String,
 }
 
-/// 变更从哪来。替代原来的单个 `supports_turn_diff`。
+/// 变更从哪来：回合 diff、逐文件补丁、git 范围。
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ChangeCapabilities {
     /// 回合统一 diff（`turn-diff`）。

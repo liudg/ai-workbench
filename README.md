@@ -59,32 +59,26 @@ pnpm dev            # 打开 http://localhost:4573
 
 ```
 ┌──────────────────────────── 前端（src/）────────────────────────────┐
-│ App.tsx              左右布局 + 工作区路由                            │
-│ components/Sidebar   已注册项目（可折叠；超过 8 条会话可展开）         │
-│ components/ChatView  会话时间线（自动吸底滚动、运行中指示）            │
-│ components/EventItem 事件渲染：用户气泡/Agent消息/工具卡/内联审批卡    │
-│ components/Composer  输入框（有待答提问时自动转为「回答」通道）        │
-│ store.ts (zustand)   状态 + 与后端双向同步；项目列表以重拉为唯一数据源 │
-│ lib/ipc.ts           Backend 接口：Tauri 实现 / 浏览器 mock 双实现     │
-│ types.ts             与 Rust models.rs 一一对应的 IPC 协议类型         │
+│ app/App.tsx          左右布局 + 工作区路由                            │
+│ features/sidebar     已注册项目（可折叠；超过 8 条会话可展开）         │
+│ features/chat        时间线、事件、作曲栏                            │
+│ features/panel       差异、会话文件、内置浏览器、预览                 │
+│ store/               zustand；项目列表以重拉为唯一数据源              │
+│ lib/ipc.ts           Backend 接口：Tauri 实现 / 浏览器 mock           │
+│ types.ts             与 Rust models.rs 对应的 IPC 协议类型            │
 └────────────────────────────────┬───────────────────────────────────┘
                                  │ invoke / listen
 ┌────────────────────────────────┴───────────────────────────────────┐
 │                     后端（src-tauri/src/）                           │
-│ commands.rs        全部 invoke 入口（参数 camelCase）                │
-│ models.rs          Project / Session / SessionEventBody（IPC 协议）  │
-│ project_store.rs   项目列表持久化 projects.json（app_data_dir）；     │
-│                    建目录 + git init + 导入校验                      │
-│ session_manager.rs 会话注册表。项目只来自 projects.json；会话按项目 cwd 过滤 │
-│ agents/mod.rs      AgentAdapter / AgentSession / SessionContext      │
-│ agents/directory.rs  SessionDirectory：按 agent + native id 聚合      │
-│ agents/codex/      Codex 适配器（编排）+ rpc / prompts / catalog /    │
-│                    process / resume。resume 实现 thread/list          │
-│ agents/claude_code.rs  Claude Code 桩适配器 + 空会话目录              │
-│ agents/external.rs 其余 CLI：探测/更新档案，会话仍是桩               │
-│ agents/stub.rs     桩会话：模拟流式输出与审批提问                    │
+│ features/ipc/      invoke 入口（参数 camelCase）                     │
+│ models.rs          Project / Session / SessionEventBody              │
+│ features/projects  项目列表 projects.json；建目录 + git init         │
+│ features/sessions  会话注册表。项目只来自 projects.json               │
+│ features/agents    AgentAdapter / AgentSession / 会话目录            │
+│ features/git       未提交 / 未暂存 / 已暂存 diff                      │
+│ features/preview   文本预览与内置浏览器                               │
 │ tray.rs            托盘菜单（显示主窗口/退出）+ 单击唤起              │
-│ lib.rs             组装；on_window_event 拦截关闭 → 隐藏到托盘        │
+│ lib.rs             组装；关窗隐藏到托盘                               │
 └────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -122,7 +116,7 @@ pnpm dev            # 打开 http://localhost:4573
 
 `SessionContext` 只保留通用字段：工作目录、权限档位、要恢复的 native id，以及 `options`。Codex 从 `options.persist` 决定新线程是否写入官方 resume 列表；行协议留在 `agents/codex/`。
 
-适配器声明能力：`supports_slash`、`supports_resume`、`supports_questions`、`supports_tuning`、`supports_skills`、`supports_plan`、`supports_review`、`supports_turn_diff`、`supports_paged_history`。前端作曲栏和斜杠菜单读 `agent_profiles`，不比较 `agent === "codex-cli"`。提问卡片仍由 `SessionEventBody::Prompt` 驱动，任何发出 Questions / Approval / Choice / FreeText / Elicitation 的 Agent 都走同一套 UI。斜杠命令表在 Codex 的 profile 里，不在前端放一张全局表。
+适配器声明能力：`supports_slash`、`supports_resume`、`supports_questions`、`supports_tuning`、`supports_skills`、`supports_goals`、`supports_images`、`supports_queue`、`supports_fork`、`supports_archive`、`supports_delete`、`supports_rename`、`supports_plan`、`supports_review`、`supports_network_access`、`supports_writable_roots`、`supports_permission_profiles`、`supports_approve_for_me`、`supports_paged_history`。变更单独放在 `changes`：`turn_diff`（回合统一 diff）、`per_file_patch`（`file-change` / `turn-changes`）、`git_scopes`（未提交 / 未暂存 / 已暂存）。前端作曲栏、斜杠菜单和变更卡读 `agent_profiles`，不比较 `agent === "codex-cli"`。提问卡片仍由 `SessionEventBody::Prompt` 驱动。斜杠命令表在 Codex 的 profile 里，含 `/mcp`、`/hooks`、`/goal`、`/worktree`，不在前端放一张全局表。
 
 Codex 实现拆在 `agents/codex/`：`mod.rs` 只编排，`rpc` / `prompts` / `catalog` / `process` / `resume` 各管一块。
 

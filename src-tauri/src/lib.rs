@@ -83,7 +83,6 @@ pub fn run() {
             features::images::prepare_chat_image,
             features::images::stage_chat_image,
             features::preview::read_preview_file,
-            features::git::project_git_diff,
             features::preview::browser::prepare_browser_file,
             features::preview::browser::browser_show,
             features::preview::browser::browser_bounds,

@@ -7,7 +7,7 @@ use std::fs::File;
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tauri::State;
 
 use crate::features::projects::ProjectStore;
@@ -159,49 +159,6 @@ fn path_key(path: &Path) -> String {
     text.to_lowercase()
 }
 
-/// 链接要打开成什么。默认相对项目根解析文件；http(s) 进内置浏览器。
-#[allow(dead_code)]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(tag = "kind", rename_all = "kebab-case")]
-pub enum OpenTarget {
-    File { path: String },
-    Browser { url: String },
-    External { url: String },
-}
-
-#[allow(dead_code)]
-pub fn resolve_open_target(project_root: &Path, href: &str) -> Result<OpenTarget, String> {
-    let href = href.trim();
-    if href.is_empty() {
-        return Err("没有链接".into());
-    }
-    let lower = href.to_ascii_lowercase();
-    if lower.starts_with("https://") || lower.starts_with("http://") {
-        return Ok(OpenTarget::Browser {
-            url: href.to_string(),
-        });
-    }
-    if lower.starts_with("file:") || path_like(href) {
-        let full = resolve_preview_file(project_root, href)?;
-        return Ok(OpenTarget::File {
-            path: strip_verbatim_prefix(&full.to_string_lossy()),
-        });
-    }
-    Ok(OpenTarget::External {
-        url: href.to_string(),
-    })
-}
-
-fn path_like(href: &str) -> bool {
-    if href.contains("://") {
-        return false;
-    }
-    !matches!(
-        href.split_once(':'),
-        Some((scheme, _)) if scheme.len() != 1 && !scheme.contains(['\\', '/'])
-    )
-}
-
 fn preview_kind(path: &Path) -> &'static str {
     match path
         .extension()
@@ -272,42 +229,6 @@ mod tests {
         assert!(read_preview_at(&root, "ok.txt").is_ok());
         let _ = fs::remove_dir_all(&root);
         let _ = fs::remove_dir_all(&outside);
-    }
-
-    #[test]
-    fn phase_1a_resolves_preview_and_git_diff_in_rf_1a() {
-        let root = PathBuf::from(r"C:\Users\admin\Desktop\temp\ai-workbench-project\_rf-1a");
-        fs::create_dir_all(&root).expect("create _rf-1a");
-        let git = |args: &[&str]| {
-            std::process::Command::new("git")
-                .args(args)
-                .current_dir(&root)
-                .env("GIT_AUTHOR_NAME", "phase1a")
-                .env("GIT_AUTHOR_EMAIL", "phase1a@local")
-                .env("GIT_COMMITTER_NAME", "phase1a")
-                .env("GIT_COMMITTER_EMAIL", "phase1a@local")
-                .output()
-                .expect("git")
-        };
-        let init = git(&["init"]);
-        assert!(init.status.success(), "{}", String::from_utf8_lossy(&init.stderr));
-        fs::write(root.join("note.txt"), "phase-1a-base\n").unwrap();
-        assert!(git(&["add", "note.txt"]).status.success());
-        let _ = git(&["commit", "-m", "phase-1a base"]);
-        fs::write(root.join("note.txt"), "phase-1a-base\nphase-1a-edit\n").unwrap();
-
-        let diff = crate::features::git::git_diff_text(&root, "unstaged", false).expect("unstaged");
-        assert!(diff.contains("phase-1a-edit"), "{diff}");
-        let uncommitted =
-            crate::features::git::git_diff_text(&root, "uncommitted", false).expect("uncommitted");
-        assert!(uncommitted.contains("phase-1a-edit"), "{uncommitted}");
-
-        let file = resolve_open_target(&root, "note.txt").expect("file");
-        assert!(matches!(file, OpenTarget::File { path } if path.contains("note.txt")));
-        let page = resolve_open_target(&root, "https://example.com/rf").expect("browser");
-        assert!(matches!(page, OpenTarget::Browser { url } if url == "https://example.com/rf"));
-        let mail = resolve_open_target(&root, "mailto:phase1a@local").expect("external");
-        assert!(matches!(mail, OpenTarget::External { url } if url == "mailto:phase1a@local"));
     }
 
     #[test]
