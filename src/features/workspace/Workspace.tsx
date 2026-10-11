@@ -1,9 +1,8 @@
 import { useWorkbench } from "@/store";
 import { type SessionEvent } from "@/types";
 import { ChatView } from "@/features/chat/timeline/ChatView";
-import { PanelTabs } from "@/features/panel/core/PanelTabs";
 import { PanelProvider } from "@/features/panel/core/PanelProvider";
-import { SessionFiles } from "@/features/panel/files/SessionFiles";
+import { SessionSplit } from "@/features/panel/core/SessionSplit";
 import { NoProjectSelected, NoSession } from "./empty/EmptyState";
 
 const EMPTY_EVENTS: SessionEvent[] = [];
@@ -40,13 +39,9 @@ export function Workspace() {
         agent={session.agent}
         events={events}
       >
-        <div className="flex h-full min-w-0 flex-1">
-          <div className="relative flex h-full min-w-0 flex-1 flex-col">
-            <ChatView session={session} events={events} />
-          </div>
-          <PanelTabs />
-          <SessionFiles sessionId={session.id} />
-        </div>
+        <SessionSplit>
+          <ChatView session={session} events={events} />
+        </SessionSplit>
       </PanelProvider>
     );
   }

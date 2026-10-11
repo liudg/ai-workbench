@@ -1,0 +1,140 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+
+import {
+  CHAT_MIN_WIDTH,
+  CLOSED_FILES_RAIL,
+  DIFF_LIST_MIN,
+  FILES_EXPANDED_WIDTH,
+  FILES_RAIL_WIDTH,
+  PANEL_PREFERRED_WIDTH,
+  diffListWidth,
+  noteFilesRail,
+  toggleFilesRail,
+  withPreviewRail,
+  workspaceColumns,
+  type FilesRailState,
+} from "./layout.ts";
+
+const SIDEBAR = 288;
+
+function openPreview(state: FilesRailState): FilesRailState {
+  return withPreviewRail(state, true);
+}
+
+function closePreview(state: FilesRailState): FilesRailState {
+  return withPreviewRail(state, false);
+}
+
+test("opening the preview collapses the file rail and closing it restores", () => {
+  const expanded = openPreview({ ...CLOSED_FILES_RAIL, filesExpanded: true });
+  assert.equal(expanded.filesExpanded, false);
+  assert.equal(expanded.filesBeforePreview, true);
+  assert.equal(closePreview(expanded).filesExpanded, true);
+  assert.equal(closePreview(expanded).filesBeforePreview, null);
+
+  const collapsed = openPreview({ ...CLOSED_FILES_RAIL, filesExpanded: false });
+  assert.equal(collapsed.filesExpanded, false);
+  assert.equal(collapsed.filesBeforePreview, false);
+  assert.equal(closePreview(collapsed).filesExpanded, false);
+});
+
+test("reopening the rail while a preview is open does not change the restore point", () => {
+  let rail = openPreview({ ...CLOSED_FILES_RAIL, filesExpanded: true });
+  rail = withPreviewRail(toggleFilesRail(rail), true);
+  assert.equal(rail.filesExpanded, true);
+  assert.equal(rail.filesTouched, true);
+  assert.equal(rail.filesBeforePreview, true);
+  rail = withPreviewRail(toggleFilesRail(rail), true);
+  assert.equal(rail.filesExpanded, false);
+  assert.equal(closePreview(rail).filesExpanded, true);
+  assert.equal(closePreview(rail).filesBeforePreview, null);
+});
+
+test("a second tab does not recapture the rail, and one remaining tab keeps it collapsed", () => {
+  const first = openPreview({ ...CLOSED_FILES_RAIL, filesExpanded: true });
+  const second = withPreviewRail(first, true);
+  assert.equal(second, first);
+  assert.equal(withPreviewRail(first, true).filesExpanded, false);
+});
+
+test("files expand when they arrive, unless the user or an open preview already decided", () => {
+  const arrived = noteFilesRail(CLOSED_FILES_RAIL, true);
+  assert.equal(arrived?.filesExpanded, true);
+  assert.equal(noteFilesRail(CLOSED_FILES_RAIL, false), null);
+  assert.equal(noteFilesRail({ ...CLOSED_FILES_RAIL, filesTouched: true }, true), null);
+  assert.equal(noteFilesRail({ ...CLOSED_FILES_RAIL, filesExpanded: true }, true), null);
+
+  const held = openPreview(CLOSED_FILES_RAIL);
+  const remembered = noteFilesRail(held, true);
+  assert.equal(remembered?.filesExpanded, false);
+  assert.equal(remembered?.filesBeforePreview, true);
+  assert.equal(closePreview(remembered ?? held).filesExpanded, true);
+});
+
+test("chat keeps its minimum and the preview shrinks instead", () => {
+  const wide = workspaceColumns({
+    rowWidth: 1600,
+    panelOpen: true,
+    filesExpanded: false,
+    filesVisible: true,
+  });
+  assert.equal(wide.panel, PANEL_PREFERRED_WIDTH);
+  assert.ok(wide.chat >= CHAT_MIN_WIDTH);
+  assert.equal(wide.chat + wide.panel + wide.files, 1600);
+
+  const medium = workspaceColumns({
+    rowWidth: 1280 - SIDEBAR,
+    panelOpen: true,
+    filesExpanded: false,
+    filesVisible: true,
+  });
+  assert.ok(medium.chat >= CHAT_MIN_WIDTH);
+  assert.ok(medium.panel < PANEL_PREFERRED_WIDTH);
+  assert.equal(medium.files, FILES_RAIL_WIDTH);
+  assert.equal(medium.chat + medium.panel + medium.files, 1280 - SIDEBAR);
+
+  const narrow = workspaceColumns({
+    rowWidth: 1024 - SIDEBAR,
+    panelOpen: true,
+    filesExpanded: true,
+    filesVisible: true,
+  });
+  assert.ok(narrow.chat >= CHAT_MIN_WIDTH);
+  assert.equal(narrow.files, FILES_EXPANDED_WIDTH);
+  assert.ok(narrow.panel < medium.panel);
+  assert.equal(narrow.chat + narrow.panel + narrow.files, 1024 - SIDEBAR);
+});
+
+test("a diff file list hides instead of shrinking below its minimum", () => {
+  const widePanel = workspaceColumns({
+    rowWidth: 1280 - SIDEBAR,
+    panelOpen: true,
+    filesExpanded: false,
+    filesVisible: false,
+  });
+  const wideList = diffListWidth(widePanel.panel);
+  assert.ok(wideList !== null && wideList >= DIFF_LIST_MIN);
+
+  const narrowPanel = workspaceColumns({
+    rowWidth: 1024 - SIDEBAR,
+    panelOpen: true,
+    filesExpanded: false,
+    filesVisible: true,
+  });
+  assert.equal(diffListWidth(narrowPanel.panel), null);
+  assert.equal(diffListWidth(0), null);
+  assert.equal(diffListWidth(DIFF_LIST_MIN + 219), null);
+});
+
+test("closing the preview gives the chat column the file rail's row", () => {
+  const row = workspaceColumns({
+    rowWidth: 900,
+    panelOpen: false,
+    filesExpanded: true,
+    filesVisible: true,
+  });
+  assert.equal(row.panel, 0);
+  assert.equal(row.files, FILES_EXPANDED_WIDTH);
+  assert.equal(row.chat, 900 - FILES_EXPANDED_WIDTH);
+});

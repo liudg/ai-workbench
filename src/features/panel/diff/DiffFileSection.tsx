@@ -45,7 +45,7 @@ export function DiffFileSection({
           <MarkdownBody text={source && source.length > 0 ? source : previewTextFromDiff(file.diff)} />
         </div>
       ) : unified ? (
-        <pre className="whitespace-pre-wrap break-words px-3 pb-3 font-mono text-xs leading-5 text-zinc-300">
+        <pre className="max-w-full overflow-x-hidden whitespace-pre-wrap break-all px-3 pb-3 font-mono text-xs leading-5 text-zinc-300">
           {file.diff}
         </pre>
       ) : (wordDiff ? rows : plain)?.length === 0 ? (
@@ -87,7 +87,7 @@ function DiffRowView({ row }: { row: DiffDisplayRow }) {
       )}
     >
       <span className="w-10 shrink-0 select-none px-2 text-right text-zinc-500">{row.lineNo ?? ""}</span>
-      <span className="min-w-0 flex-1 whitespace-pre px-2">
+      <span className="min-w-0 flex-1 overflow-hidden whitespace-pre-wrap break-all px-2">
         {row.parts && row.parts.length > 0
           ? row.parts.map((part, index) => (
               <span key={index} className={part.changed ? "rounded-sm bg-white/10" : undefined}>

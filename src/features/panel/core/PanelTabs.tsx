@@ -18,7 +18,7 @@ export function PanelTabs() {
   return (
     <section
       data-preview-panel
-      className="flex h-full min-w-[300px] w-[min(560px,44%)] shrink-0 flex-col border-l border-zinc-800 bg-zinc-950"
+      className="flex h-full w-full min-w-0 flex-col overflow-hidden border-l border-zinc-800 bg-zinc-950"
     >
       <div className="flex h-9 shrink-0 items-stretch gap-0.5 overflow-x-auto border-b border-zinc-800 px-1">
         {tabs.map((tab) => {

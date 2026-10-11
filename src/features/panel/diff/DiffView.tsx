@@ -1,5 +1,9 @@
+import { useRef } from "react";
+
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
+import { useElementWidth } from "@/shared/dom/useElementWidth";
 import type { FileChange } from "@/features/changes-model/diff-parse";
+import { diffListWidth } from "../core/layout";
 import { FileList } from "@/features/panel/files/FileList";
 import { DiffFileSection } from "./DiffFileSection";
 import { DiffToolbar } from "./DiffToolbar";
@@ -7,10 +11,17 @@ import { useDiffDocument } from "./useDiffDocument";
 
 export function DiffView({ files }: { files: FileChange[] }) {
   const doc = useDiffDocument(files);
+  const frameRef = useRef<HTMLDivElement>(null);
+  const listWidth = diffListWidth(useElementWidth(frameRef));
   const sourceFor = (path: string) => (doc.loadFull ? (doc.sources[path] ?? null) : null);
   return (
-    <div className="@container/diff flex h-full min-h-0 min-w-0" data-diff-view>
-      <div className="flex min-w-0 flex-1 flex-col">
+    <div
+      ref={frameRef}
+      className="flex h-full min-h-0 min-w-0 overflow-hidden"
+      data-diff-view
+      data-diff-list={listWidth === null ? "hidden" : "visible"}
+    >
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <DiffToolbar
           scope={doc.scope}
           scopes={doc.scopes}
@@ -32,7 +43,7 @@ export function DiffView({ files }: { files: FileChange[] }) {
           hideWs={doc.hideWs}
           onToggleHideWs={() => doc.setHideWs((value) => !value)}
         />
-        <div className="min-h-0 min-w-0 flex-1 overflow-auto">
+        <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
           {doc.loading ? <p className="px-4 py-6 text-sm text-zinc-500">正在读取…</p> : null}
           {doc.gitError ? <p className="px-4 py-6 text-sm text-red-300">{doc.gitError}</p> : null}
           {!doc.loading && !doc.gitError && doc.shown.length === 0 ? (
@@ -53,16 +64,22 @@ export function DiffView({ files }: { files: FileChange[] }) {
           ))}
         </div>
       </div>
-      <aside className="flex w-[4.75rem] shrink-0 flex-col border-l border-zinc-800 @[26rem]/diff:w-52">
-        <FileList
-          files={doc.shown}
-          activePath={doc.active?.path ?? ""}
-          rowAttr="data-diff-file"
-          filterAttr="data-diff-filter"
-          onSelect={doc.selectFile}
-          empty={null}
-        />
-      </aside>
+      {listWidth !== null ? (
+        <aside
+          data-diff-files
+          style={{ width: listWidth, minWidth: listWidth }}
+          className="flex shrink-0 flex-col overflow-hidden border-l border-zinc-800"
+        >
+          <FileList
+            files={doc.shown}
+            activePath={doc.active?.path ?? ""}
+            rowAttr="data-diff-file"
+            filterAttr="data-diff-filter"
+            onSelect={doc.selectFile}
+            empty={null}
+          />
+        </aside>
+      ) : null}
     </div>
   );
 }

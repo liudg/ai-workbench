@@ -1,5 +1,11 @@
 import type { FileChange } from "../../features/changes-model/diff-parse.ts";
 import type { BrowserHistory } from "../../features/panel/browser/browser.ts";
+import {
+  CLOSED_FILES_RAIL,
+  noteFilesRail,
+  toggleFilesRail,
+  withPreviewRail,
+} from "../../features/panel/core/layout.ts";
 import { baseName } from "../../features/panel/files/path.ts";
 import {
   errorPayload,
@@ -24,6 +30,9 @@ export interface SessionPanel {
   tabs: PanelTab[];
   activeId: string;
   histories: Record<string, BrowserHistory>;
+  filesExpanded: boolean;
+  filesBeforePreview: boolean | null;
+  filesTouched: boolean;
 }
 
 export interface PanelSlice {
@@ -36,6 +45,8 @@ export interface PanelSlice {
   panelOpenBlank(sessionId: string): void;
   panelOpenTarget(sessionId: string, target: OpenTarget, ctx: ViewerContext): Promise<void>;
   panelRememberHistory(sessionId: string, tabId: string, history: BrowserHistory): void;
+  panelToggleFiles(sessionId: string): void;
+  panelNoteFiles(sessionId: string, hasFiles: boolean): void;
 }
 
 type PanelSet = (
@@ -51,7 +62,7 @@ function loadKey(sessionId: string, tabId: string) {
 }
 
 function blankSession(): SessionPanel {
-  return { tabs: [], activeId: "", histories: {} };
+  return { tabs: [], activeId: "", histories: {}, ...CLOSED_FILES_RAIL };
 }
 
 function errorText(error: unknown): string {
@@ -78,7 +89,8 @@ export function createPanelSlice(set: PanelSet, get: PanelGet): PanelSlice {
       const current = state.panelBySession[sessionId] ?? blankSession();
       const next = recipe(current);
       if (!next || next === current) return state;
-      return { panelBySession: { ...state.panelBySession, [sessionId]: next } };
+      const synced = withPreviewRail(next, next.tabs.length > 0);
+      return { panelBySession: { ...state.panelBySession, [sessionId]: synced } };
     });
   };
 
@@ -259,13 +271,20 @@ export function createPanelSlice(set: PanelSet, get: PanelGet): PanelSlice {
         return {
           panelBySession: {
             ...state.panelBySession,
-            [sessionId]: {
-              tabs: session.tabs,
-              activeId: session.activeId,
-              histories: { ...session.histories, [tabId]: history },
-            },
+            [sessionId]: { ...session, histories: { ...session.histories, [tabId]: history } },
           },
         };
+      });
+    },
+
+    panelToggleFiles(sessionId) {
+      mutate(sessionId, (session) => ({ ...session, ...toggleFilesRail(session) }));
+    },
+
+    panelNoteFiles(sessionId, hasFiles) {
+      mutate(sessionId, (session) => {
+        const noted = noteFilesRail(session, hasFiles);
+        return noted ? { ...session, ...noted } : null;
       });
     },
   };

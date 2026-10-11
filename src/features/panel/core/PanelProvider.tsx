@@ -30,6 +30,8 @@ interface PanelApi {
   openHref: (href: string, line?: number) => void;
   openBlank: () => void;
   setTabTitle: (id: string, title: string) => void;
+  filesExpanded: boolean;
+  toggleFiles: () => void;
 }
 
 const PreviewContext = createContext<PanelApi | null>(null);
@@ -63,6 +65,8 @@ export function PanelProvider({
 }) {
   const tabs = useWorkbench((s) => s.panelBySession[sessionId]?.tabs ?? EMPTY_TABS);
   const activeId = useWorkbench((s) => s.panelBySession[sessionId]?.activeId ?? "");
+  const hasRail = useWorkbench((s) => s.panelBySession[sessionId] !== undefined);
+  const storedExpanded = useWorkbench((s) => s.panelBySession[sessionId]?.filesExpanded ?? false);
   const changes = useWorkbench((s) => s.profiles[agent]?.capabilities.changes);
   const sessionFiles = useMemo(
     () => (showsFileChanges(changes) ? sessionChanges(events) : []),
@@ -105,6 +109,14 @@ export function PanelProvider({
     (id: string, title: string) => useWorkbench.getState().panelSetTitle(sessionId, id, title),
     [sessionId],
   );
+  const toggleFiles = useCallback(() => {
+    useWorkbench.getState().panelToggleFiles(sessionId);
+  }, [sessionId]);
+  const hasFiles = sessionFiles.length > 0;
+  const filesExpanded = hasRail ? storedExpanded : hasFiles;
+  useEffect(() => {
+    useWorkbench.getState().panelNoteFiles(sessionId, hasFiles);
+  }, [sessionId, hasFiles]);
 
   useEffect(() => {
     return () => {
@@ -126,6 +138,8 @@ export function PanelProvider({
       openHref,
       openBlank,
       setTabTitle,
+      filesExpanded,
+      toggleFiles,
     }),
     [
       tabs,
@@ -140,6 +154,8 @@ export function PanelProvider({
       openHref,
       openBlank,
       setTabTitle,
+      filesExpanded,
+      toggleFiles,
     ],
   );
 

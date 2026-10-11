@@ -1,9 +1,11 @@
-import type { RefObject } from "react";
-import { ArrowUp, ChevronDown, Plus, Shield } from "lucide-react";
+import { useRef, type RefObject } from "react";
+import { ArrowUp, ChevronDown, Cpu, Plus, Shield } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useElementWidth } from "@/shared/dom/useElementWidth";
 import type { PermissionProfileOption, SessionSandbox } from "@/types";
 import { buttonLabel } from "./access";
+import { composerDensity } from "./composer-density";
 import { PlanToggle } from "./PlanToggle";
 
 export function ComposerBar({
@@ -53,9 +55,17 @@ export function ComposerBar({
   onCancelEdit: () => void;
   onSend: () => void;
 }) {
+  const barRef = useRef<HTMLDivElement>(null);
+  const density = composerDensity(useElementWidth(barRef));
+  const icons = density === "icons";
+  const accessLabel = buttonLabel(sandbox, profiles);
   return (
-    <div className="mt-1 flex min-w-0 items-center justify-between gap-2">
-      <div className="flex min-w-0 items-center gap-1">
+    <div
+      ref={barRef}
+      data-composer-density={density}
+      className="mt-1 flex min-w-0 flex-nowrap items-center gap-1 overflow-hidden"
+    >
+      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
         <button
           ref={plusRef}
           type="button"
@@ -79,8 +89,10 @@ export function ComposerBar({
         <button
           ref={accessRef}
           type="button"
+          title={accessLabel}
           className={cn(
-            "inline-flex h-8 min-w-0 max-w-full items-center gap-1 rounded-full px-2 text-sm hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40",
+            "inline-flex h-8 min-w-0 items-center justify-center gap-1 overflow-hidden rounded-full text-sm hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40",
+            icons ? "w-8 shrink-0 px-0" : density === "compact" ? "max-w-[7.5rem] px-2" : "max-w-[11rem] px-2",
             sandbox.mode === "full" && !sandbox.profileId ? "text-orange-400" : "text-zinc-300",
           )}
           aria-label="权限"
@@ -93,17 +105,23 @@ export function ComposerBar({
           }}
         >
           <Shield className="h-3.5 w-3.5 shrink-0" />
-          <span className="min-w-0 truncate">{buttonLabel(sandbox, profiles)}</span>
-          <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />
+          {icons ? null : <span className="min-w-0 truncate">{accessLabel}</span>}
+          {icons ? null : <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />}
         </button>
       </div>
-      <div className="flex min-w-0 items-center gap-1.5">
-        {showPlan && <PlanToggle pressed={planOn} disabled={menusLocked} onToggle={onTogglePlan} />}
+      <div className="flex shrink-0 items-center gap-1">
+        {showPlan && (
+          <PlanToggle pressed={planOn} disabled={menusLocked} iconOnly={icons} onToggle={onTogglePlan} />
+        )}
         {showModel && (
           <button
             ref={modelRef}
             type="button"
-            className="inline-flex h-8 min-w-0 max-w-52 items-center gap-1 rounded-full px-2 text-sm text-zinc-200 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+            title={modelButton}
+            className={cn(
+              "inline-flex h-8 min-w-0 items-center justify-center gap-1 overflow-hidden rounded-full text-sm text-zinc-200 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40",
+              icons ? "w-8 px-0" : density === "compact" ? "max-w-[6.5rem] px-2" : "max-w-52 px-2",
+            )}
             aria-label="模型"
             aria-haspopup="menu"
             aria-expanded={menu === "model"}
@@ -113,8 +131,8 @@ export function ComposerBar({
               onToggleMenu("model");
             }}
           >
-            <span className="min-w-0 truncate">{modelButton}</span>
-            <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />
+            {icons ? <Cpu className="h-3.5 w-3.5 shrink-0" /> : <span className="min-w-0 truncate">{modelButton}</span>}
+            {icons ? null : <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />}
           </button>
         )}
         {editing && (

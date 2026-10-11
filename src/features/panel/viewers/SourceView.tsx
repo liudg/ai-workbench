@@ -12,7 +12,7 @@ export function SourceView({ text, line }: { text: string; line: number }) {
       ?.scrollIntoView({ block: "center" });
   }, [line, text]);
   return (
-    <div ref={scroller} className="h-full overflow-auto font-mono text-xs leading-5">
+    <div ref={scroller} className="h-full min-w-0 overflow-x-hidden overflow-y-auto font-mono text-xs leading-5">
       {lines.map((content, index) => {
         const number = index + 1;
         const hit = number === line;
