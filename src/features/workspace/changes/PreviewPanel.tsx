@@ -1,20 +1,21 @@
-import { X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { AssistantAnswer } from "../timeline/AssistantAnswer";
 import { CODEX_DESKTOP } from "../codex-desktop";
+import { BrowserView } from "./BrowserView";
 import { usePreview, type PreviewTab } from "./preview-context";
 import type { FileChange } from "./model";
 
 export function PreviewPanel() {
-  const { tabs, activeId, selectTab, closeTab } = usePreview();
+  const { tabs, activeId, selectTab, closeTab, openBlank, setTabTitle, projectId } = usePreview();
   const active = tabs.find((tab) => tab.id === activeId) ?? tabs[tabs.length - 1];
   if (!active) return null;
 
   return (
     <section
       data-preview-panel
-      className="flex h-full min-w-[260px] w-[min(480px,40%)] shrink-0 flex-col border-l border-zinc-800 bg-zinc-950"
+      className="flex h-full min-w-[300px] w-[min(560px,44%)] shrink-0 flex-col border-l border-zinc-800 bg-zinc-950"
     >
       <div className="flex h-9 shrink-0 items-stretch gap-0.5 overflow-x-auto border-b border-zinc-800 px-1">
         {tabs.map((tab) => {
@@ -46,23 +47,54 @@ export function PreviewPanel() {
             </div>
           );
         })}
+        <button
+          type="button"
+          data-browser-new-tab
+          aria-label={CODEX_DESKTOP.browserNewTab}
+          title={CODEX_DESKTOP.browserNewTab}
+          className="my-1 shrink-0 rounded px-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+          onClick={openBlank}
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </button>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
-        <TabBody tab={active} />
+        <TabBody tab={active} projectId={projectId} onTitle={setTabTitle} />
       </div>
     </section>
   );
 }
 
-function TabBody({ tab }: { tab: PreviewTab }) {
+function TabBody({
+  tab,
+  projectId,
+  onTitle,
+}: {
+  tab: PreviewTab;
+  projectId: string;
+  onTitle: (id: string, title: string) => void;
+}) {
   if (tab.kind === "diff") return <DiffBody files={tab.files} />;
+  if (tab.kind === "html") {
+    if (tab.status === "error") {
+      return <p className="px-4 py-6 text-sm text-red-300">{tab.error}</p>;
+    }
+    return (
+      <BrowserView
+        tabId={tab.id}
+        projectId={projectId}
+        path={tab.path}
+        text={tab.text}
+        onTitle={(title) => onTitle(tab.id, title)}
+      />
+    );
+  }
   if (tab.status === "loading") {
     return <p className="px-4 py-6 text-sm text-zinc-500">正在读取…</p>;
   }
   if (tab.status === "error") {
     return <p className="px-4 py-6 text-sm text-red-300">{tab.error}</p>;
   }
-  if (tab.kind === "html") return <HtmlCard title={tab.title} text={tab.text} truncated={tab.truncated} />;
   if (tab.kind === "markdown") {
     return (
       <div className="h-full overflow-auto px-4 py-3">
@@ -77,34 +109,6 @@ function TabBody({ tab }: { tab: PreviewTab }) {
       <pre className="whitespace-pre-wrap break-words px-4 py-3 font-mono text-xs leading-5 text-zinc-200">
         {tab.text}
       </pre>
-    </div>
-  );
-}
-
-function HtmlCard({
-  title,
-  text,
-  truncated,
-}: {
-  title: string;
-  text: string;
-  truncated: boolean;
-}) {
-  return (
-    <div className="flex h-full min-h-0 flex-col p-3" data-html-preview>
-      {truncated ? <Truncated /> : null}
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-zinc-700 bg-zinc-900 shadow-lg shadow-black/30">
-        <div className="flex items-center gap-2 border-b border-zinc-700 bg-zinc-800/90 px-3 py-1.5">
-          <span className="h-2 w-2 shrink-0 rounded-full bg-zinc-500" />
-          <span className="min-w-0 truncate text-xs text-zinc-300">{title}</span>
-        </div>
-        <iframe
-          title={title}
-          sandbox=""
-          srcDoc={htmlDocument(text)}
-          className="min-h-0 w-full flex-1 bg-white"
-        />
-      </div>
     </div>
   );
 }
@@ -161,7 +165,3 @@ function Truncated() {
   return <p className="px-4 pt-3 text-xs text-zinc-500">只显示了文件的开头部分。</p>;
 }
 
-function htmlDocument(text: string): string {
-  if (/<html[\s>]/i.test(text) || /<!doctype/i.test(text)) return text;
-  return `<!doctype html><html><head><meta charset="utf-8"></head><body>${text}</body></html>`;
-}

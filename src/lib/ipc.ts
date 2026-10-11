@@ -52,6 +52,16 @@ export interface PreviewDocument {
   truncated: boolean;
 }
 
+export interface BrowserFile {
+  display: string;
+  url: string;
+}
+
+export interface BrowserNotice {
+  kind: string;
+  value: string;
+}
+
 export interface Backend {
   listProjects(): Promise<Project[]>;
   createProject(input: CreateProjectInput): Promise<CreateProjectResult>;
@@ -113,6 +123,16 @@ export interface Backend {
   loadOlderHistory(sessionId: string): Promise<OlderHistory>;
   /** 读取项目目录内的文本，供 HTML / Markdown / 纯文本预览。 */
   readPreviewFile(projectId: string, path: string): Promise<PreviewDocument>;
+  /** 把项目内文件放进内置浏览器可加载的地址。 */
+  prepareBrowserFile(projectId: string, path: string): Promise<BrowserFile>;
+  browserShow(url: string, x: number, y: number, width: number, height: number): Promise<void>;
+  browserBounds(x: number, y: number, width: number, height: number): Promise<void>;
+  browserHide(): Promise<void>;
+  browserReload(): Promise<void>;
+  browserAnnotate(on: boolean): Promise<void>;
+  browserOpenExternal(target: string): Promise<void>;
+  browserClose(): Promise<void>;
+  onBrowserNotice(cb: (notice: BrowserNotice) => void): () => void;
 
   /** 打开系统目录选择器；返回 null 表示取消 */
   pickDirectory(title: string): Promise<string | null>;
@@ -226,6 +246,18 @@ const tauriBackend: Backend = {
     invoke<OlderHistory>("load_older_history", { sessionId }),
   readPreviewFile: (projectId, path) =>
     invoke<PreviewDocument>("read_preview_file", { projectId, path }),
+  prepareBrowserFile: (projectId, path) =>
+    invoke<BrowserFile>("prepare_browser_file", { projectId, path }),
+  browserShow: (url, x, y, width, height) =>
+    invoke("browser_show", { url, x, y, width, height }),
+  browserBounds: (x, y, width, height) =>
+    invoke("browser_bounds", { x, y, width, height }),
+  browserHide: () => invoke("browser_hide"),
+  browserReload: () => invoke("browser_reload"),
+  browserAnnotate: (on) => invoke("browser_annotate", { on }),
+  browserOpenExternal: (target) => invoke("browser_open_external", { target }),
+  browserClose: () => invoke("browser_close"),
+  onBrowserNotice: (cb) => subscribe<BrowserNotice>("preview-browser", cb),
 
   pickDirectory: async (title) => {
     const selected = await open({ directory: true, multiple: false, title });

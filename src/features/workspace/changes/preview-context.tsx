@@ -2,6 +2,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -10,6 +11,8 @@ import {
 
 import { backend } from "@/lib/ipc";
 import type { SessionEvent } from "@/types";
+import { clearBrowserHistories, forgetHistory, pageTitleFromHtml } from "./browser";
+import { CODEX_DESKTOP } from "../codex-desktop";
 import {
   baseName,
   previewKindForPath,
@@ -36,11 +39,14 @@ export type PreviewTab =
 interface PreviewApi {
   tabs: PreviewTab[];
   activeId: string;
+  projectId: string;
   sessionFiles: FileChange[];
   selectTab: (id: string) => void;
   closeTab: (id: string) => void;
   openDiff: (id: string, title: string, files: FileChange[]) => void;
   openHref: (href: string) => void;
+  openBlank: () => void;
+  setTabTitle: (id: string, title: string) => void;
 }
 
 const PreviewContext = createContext<PreviewApi | null>(null);
@@ -97,6 +103,7 @@ export function PreviewProvider({
     setTabs([]);
     setActiveId("");
     tickets.current.clear();
+    clearBrowserHistories();
   }
 
   const sessionFiles = useMemo(() => sessionChanges(events), [events]);
@@ -139,12 +146,14 @@ export function PreviewProvider({
             doc.kind === "html" || doc.kind === "markdown" || doc.kind === "text"
               ? doc.kind
               : kind;
+          const htmlTitle = nextKind === "html" ? pageTitleFromHtml(doc.text) : "";
           setTabs((current) =>
             current.map((tab) =>
               tab.id === id && tab.kind !== "diff"
                 ? {
                     ...tab,
                     kind: nextKind,
+                    title: htmlTitle || tab.title,
                     status: "ready",
                     text: doc.text,
                     truncated: doc.truncated,
@@ -220,6 +229,7 @@ export function PreviewProvider({
 
   const closeTab = useCallback((id: string) => {
     tickets.current.delete(id);
+    forgetHistory(id);
     const next = tabsRef.current.filter((tab) => tab.id !== id);
     tabsRef.current = next;
     setTabs(next);
@@ -228,17 +238,53 @@ export function PreviewProvider({
 
   const selectTab = useCallback((id: string) => setActiveId(id), []);
 
+  const openBlank = useCallback(() => {
+    const id = `browser:${Date.now()}`;
+    setTabs((current) => [
+      ...current,
+      {
+        id,
+        kind: "html",
+        title: CODEX_DESKTOP.browserEmptyTitle,
+        path: "",
+        status: "ready",
+        text: "",
+        truncated: false,
+        error: "",
+      },
+    ]);
+    setActiveId(id);
+  }, []);
+
+  const setTabTitle = useCallback((id: string, title: string) => {
+    const next = title.trim();
+    if (!next) return;
+    setTabs((current) =>
+      current.map((tab) => (tab.id === id && tab.title !== next ? { ...tab, title: next } : tab)),
+    );
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      clearBrowserHistories();
+      void backend.browserClose();
+    };
+  }, []);
+
   const api = useMemo<PreviewApi>(
     () => ({
       tabs,
       activeId,
+      projectId,
       sessionFiles,
       selectTab,
       closeTab,
       openDiff,
       openHref,
+      openBlank,
+      setTabTitle,
     }),
-    [tabs, activeId, sessionFiles, selectTab, closeTab, openDiff, openHref],
+    [tabs, activeId, projectId, sessionFiles, selectTab, closeTab, openDiff, openHref, openBlank, setTabTitle],
   );
 
   return <PreviewContext.Provider value={api}>{children}</PreviewContext.Provider>;

@@ -80,6 +80,14 @@ pub fn run() {
             features::images::prepare_chat_image,
             features::images::stage_chat_image,
             features::preview::read_preview_file,
+            features::preview::browser::prepare_browser_file,
+            features::preview::browser::browser_show,
+            features::preview::browser::browser_bounds,
+            features::preview::browser::browser_hide,
+            features::preview::browser::browser_reload,
+            features::preview::browser::browser_annotate,
+            features::preview::browser::browser_open_external,
+            features::preview::browser::browser_close,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

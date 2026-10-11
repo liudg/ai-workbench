@@ -1104,6 +1104,21 @@ export const mockBackend: Backend = {
     return { path, name, kind: "text", truncated: false, text: `${name}\n浏览器里的文本预览。` };
   },
 
+  async prepareBrowserFile(_projectId, path) {
+    const display = path.replace(/^\\\\\?\\/, "").replace(/\\/g, "/");
+    return { display, url: `http://asset.localhost/${encodeURI(display)}` };
+  },
+  async browserShow() {},
+  async browserBounds() {},
+  async browserHide() {},
+  async browserReload() {},
+  async browserAnnotate() {},
+  async browserOpenExternal() {},
+  async browserClose() {},
+  onBrowserNotice() {
+    return () => {};
+  },
+
   async answerPrompt(sessionId, promptId, answer: PromptAnswer) {
     const s = sessions.get(sessionId);
     if (!s) throw new Error("会话不存在");

@@ -1,4 +1,7 @@
 //! 项目内文件预览。只读文本，路径必须落在该项目目录里。
+//! HTML 另走内置浏览器（`browser`），不经过某个 Agent。
+
+pub(crate) mod browser;
 
 use std::fs::File;
 use std::io::Read;
@@ -33,7 +36,7 @@ pub fn read_preview_file(
     read_preview_at(Path::new(&project.path), &path)
 }
 
-pub fn read_preview_at(project_root: &Path, requested: &str) -> Result<PreviewDocument, String> {
+pub fn resolve_preview_file(project_root: &Path, requested: &str) -> Result<PathBuf, String> {
     let candidate = candidate_path(project_root, requested)?;
     if !is_inside(project_root, &candidate) {
         return Err("只能预览当前项目里的文件".into());
@@ -54,6 +57,11 @@ pub fn read_preview_at(project_root: &Path, requested: &str) -> Result<PreviewDo
     if !full.is_file() {
         return Err("不是文件".into());
     }
+    Ok(full)
+}
+
+pub fn read_preview_at(project_root: &Path, requested: &str) -> Result<PreviewDocument, String> {
+    let full = resolve_preview_file(project_root, requested)?;
     let mut file = File::open(&full).map_err(|err| format!("无法读取文件: {err}"))?;
     let mut bytes = Vec::new();
     file.by_ref()
