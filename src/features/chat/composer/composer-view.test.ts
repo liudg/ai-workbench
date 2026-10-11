@@ -14,6 +14,7 @@ const caps = {
   supports_queue: true,
   supports_plan: true,
   supports_review: true,
+  changes: { turn_diff: false, per_file_patch: false, git_scopes: false },
 } satisfies AgentCapabilities;
 
 function view(patch: Partial<Parameters<typeof deriveComposerView>[0]> = {}) {
