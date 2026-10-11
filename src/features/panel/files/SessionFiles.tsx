@@ -2,33 +2,32 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, Files } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import type { FileChange, FileStatus } from "@/features/changes-model/diff-parse";
 import { usePanel } from "@/features/panel/core/PanelProvider";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
-import { FileDirectoryGroups } from "./FileDirectoryGroups";
-import { baseName, fileStatusTone } from "./path";
+import { FileList } from "./FileList";
+import { filterFiles, setFileFilter, useFileFilter } from "./file-filter";
+import { baseName } from "./path";
 
 export function SessionFiles({ sessionId }: { sessionId: string }) {
-  const { sessionFiles, openDiff } = usePanel();
+  const { tabs, activeId, sessionFiles, openDiff } = usePanel();
+  const [filter] = useFileFilter();
   const [expanded, setExpanded] = useState(false);
-  const [filter, setFilter] = useState("");
   const toggled = useRef(false);
   const filesRef = useRef(sessionFiles);
   filesRef.current = sessionFiles;
   useEffect(() => {
     toggled.current = false;
-    setFilter("");
+    setFileFilter("");
     setExpanded(filesRef.current.length > 0);
   }, [sessionId]);
   useEffect(() => {
     if (!toggled.current && sessionFiles.length > 0) setExpanded(true);
   }, [sessionFiles]);
 
-  const query = filter.trim().toLowerCase();
-  const shown = query
-    ? sessionFiles.filter((file) => file.path.toLowerCase().includes(query))
-    : sessionFiles;
+  const diffOpen = tabs.some((tab) => tab.id === activeId && tab.kind === "diff");
+  if (diffOpen) return null;
 
+  const shown = filterFiles(sessionFiles, filter);
   return (
     <aside
       data-session-files
@@ -60,77 +59,20 @@ export function SessionFiles({ sessionId }: { sessionId: string }) {
         <span className="pt-1 text-center text-[10px] tabular-nums text-zinc-500">{sessionFiles.length}</span>
       ) : null}
       {expanded ? (
-        <>
-          <div className="px-2 py-2">
-            <input
-              value={filter}
-              onChange={(event) => setFilter(event.target.value)}
-              placeholder={DESKTOP_ZH.filterFiles}
-              aria-label={DESKTOP_ZH.filterFiles}
-              className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1.5 text-xs text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-zinc-600"
-            />
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-2">
-            {sessionFiles.length === 0 ? (
-              <p className="px-2 py-6 text-center text-xs leading-5 text-zinc-500">
-                {DESKTOP_ZH.noFileChanges}
-              </p>
-            ) : shown.length === 0 ? (
-              <p className="px-2 py-6 text-center text-xs leading-5 text-zinc-500">
-                {DESKTOP_ZH.noFileMatch}
-              </p>
+        <FileList
+          files={shown}
+          activePath=""
+          rowAttr="data-session-file"
+          onSelect={(file) => openDiff(`session:${file.path}`, baseName(file.path), [file])}
+          empty={
+            sessionFiles.length === 0 ? (
+              <p className="px-2 py-6 text-center text-xs leading-5 text-zinc-500">{DESKTOP_ZH.noFileChanges}</p>
             ) : (
-              <ul>
-                <FileDirectoryGroups
-                  files={shown}
-                  render={(file) => (
-                    <li key={file.path}>
-                      <SessionFileRow
-                        file={file}
-                        onOpen={() => openDiff(`session:${file.path}`, baseName(file.path), [file])}
-                      />
-                    </li>
-                  )}
-                />
-              </ul>
-            )}
-          </div>
-        </>
+              <p className="px-2 py-6 text-center text-xs leading-5 text-zinc-500">{DESKTOP_ZH.noFileMatch}</p>
+            )
+          }
+        />
       ) : null}
     </aside>
-  );
-}
-
-function StatusMark({ status }: { status: FileStatus }) {
-  const tone = fileStatusTone(status);
-  return (
-    <span
-      data-file-status={status}
-      className={cn(
-        "w-4 shrink-0 font-mono text-[11px]",
-        tone === "add" && "text-emerald-400",
-        tone === "del" && "text-red-400",
-        tone === "neutral" && "text-zinc-400",
-      )}
-    >
-      {status}
-    </span>
-  );
-}
-
-function SessionFileRow({ file, onOpen }: { file: FileChange; onOpen: () => void }) {
-  return (
-    <button
-      type="button"
-      data-session-file={file.path}
-      title={file.path}
-      className="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-zinc-800/80"
-      onClick={onOpen}
-    >
-      <StatusMark status={file.status} />
-      <span className="min-w-0 flex-1 truncate font-mono text-xs text-zinc-200">{baseName(file.path)}</span>
-      <span className="shrink-0 font-mono text-[11px] tabular-nums text-emerald-400">+{file.added}</span>
-      <span className="shrink-0 font-mono text-[11px] tabular-nums text-red-400">-{file.removed}</span>
-    </button>
   );
 }
