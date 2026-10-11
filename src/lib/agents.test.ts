@@ -4,7 +4,7 @@ import { test } from "node:test";
 import type { AgentInstallation, AgentKind } from "../types.ts";
 import { installedAgents, keepPreferredAgent, persistedAgentKind } from "./agents.ts";
 
-function row(kind: AgentKind, installed: boolean, name = kind): AgentInstallation {
+function row(kind: AgentKind, installed: boolean, name: string = kind): AgentInstallation {
   return {
     kind,
     display_name: name,
