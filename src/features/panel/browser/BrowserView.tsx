@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { ArrowLeft, ArrowRight, ExternalLink, RotateCw } from "lucide-react";
 
+import { convertFileSrc } from "@tauri-apps/api/core";
+
 import { backend, isTauri } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
 import { useWorkbench } from "@/store";
@@ -13,6 +15,7 @@ import {
   currentEntry,
   displayFileAddress,
   emptyHistory,
+  entryToRestore,
   goBack,
   goForward,
   noteLoaded,
@@ -117,13 +120,18 @@ export function BrowserView({
     const address = displayFileAddress(path);
     const key = `${projectId}\n${address}`;
     if (openedFile.current === key) return;
+    const restored = entryToRestore(historyRef.current);
+    if (restored) {
+      openedFile.current = key;
+      void openTarget({ address: restored.address, target: restored.target }, "visit");
+      return;
+    }
     let cancel = false;
-    void backend
-      .prepareBrowserFile(projectId, path)
+    void preparedFile(projectId, path)
       .then((file) => {
         if (cancel) return;
         openedFile.current = key;
-        return openTarget({ address: file.display || address, target: file.url }, "visit");
+        return openTarget(file, "visit");
       })
       .catch((err: unknown) => {
         if (cancel) return;
@@ -255,9 +263,8 @@ export function BrowserView({
       void openTarget({ address: plan.address, target: plan.target }, "visit");
       return;
     }
-    void backend
-      .prepareBrowserFile(projectId, plan.path)
-      .then((file) => openTarget({ address: file.display, target: file.url }, "visit"))
+    void preparedFile(projectId, plan.path)
+      .then((file) => openTarget(file, "visit"))
       .catch((err: unknown) => setError(message(err, DESKTOP_ZH.browserOpenFailed)));
   };
 
@@ -396,6 +403,19 @@ export function BrowserView({
       </div>
     </div>
   );
+}
+
+async function preparedFile(projectId: string, path: string): Promise<{ address: string; target: string }> {
+  const address = displayFileAddress(path);
+  try {
+    const file = await backend.prepareBrowserFile(projectId, path);
+    return { address: file.display || address, target: file.url };
+  } catch (err) {
+    // 子 webview 挂上后，主窗口不再是 webview window，这条命令会报「没有主窗口」。
+    // 命令在报错前已经校验路径并放行目录，这里只补上同等的 asset 地址。
+    if (message(err, "") !== "没有主窗口") throw err;
+    return { address, target: convertFileSrc(path) };
+  }
 }
 
 function replaceCurrent(history: BrowserHistory, entry: { address: string; target: string }): BrowserHistory {

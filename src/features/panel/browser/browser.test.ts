@@ -7,6 +7,7 @@ import {
   currentEntry,
   displayFileAddress,
   emptyHistory,
+  entryToRestore,
   fileAddressFromAssetUrl,
   goBack,
   goForward,
@@ -40,6 +41,15 @@ test("address bar accepts https, hosts, files, and search", () => {
   assert.equal(parseAddressInput("老虎").kind, "navigate");
   assert.equal(parseAddressInput("javascript:alert(1)").kind, "invalid");
   assert.equal(parseAddressInput("file:///C:/secret.html").kind, "invalid");
+});
+
+test("a mounted browser restores its current page", () => {
+  assert.equal(entryToRestore(emptyHistory()), null);
+  const history = visit(emptyHistory(), {
+    address: "C:/demo/a.html",
+    target: "http://asset.localhost/a",
+  });
+  assert.equal(entryToRestore(history)?.target, "http://asset.localhost/a");
 });
 
 test("history back and forward stay on the visited pages", () => {

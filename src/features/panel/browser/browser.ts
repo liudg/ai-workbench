@@ -25,6 +25,12 @@ export function currentEntry(history: BrowserHistory): BrowserEntry | null {
   return history.entries[history.index] ?? null;
 }
 
+/** 标签重新挂载时沿用这一条。主窗口上已有子 webview 后，再向后端要文件地址会失败。 */
+export function entryToRestore(history: BrowserHistory): BrowserEntry | null {
+  const current = currentEntry(history);
+  return current?.target ? current : null;
+}
+
 export function canGoBack(history: BrowserHistory): boolean {
   return history.index > 0;
 }
