@@ -116,8 +116,8 @@
       ".dot{position:absolute;width:18px;height:18px;margin-left:-9px;margin-top:-9px;border-radius:999px;background:#2f6fed;color:#fff;font:12px/18px 'Segoe UI',sans-serif;text-align:center;pointer-events:none;display:none;z-index:4}",
       ".hint{position:absolute;left:12px;top:12px;max-width:300px;background:#111;color:#fff;border-radius:12px;padding:8px 10px;font:13px/1.45 'Segoe UI',sans-serif;pointer-events:none;box-shadow:0 8px 24px rgba(0,0,0,.28)}",
       ".hint kbd{display:inline-block;margin:0 2px;padding:0 5px;border-radius:5px;background:#2c2c2c;border:1px solid #444;font:12px/18px 'Segoe UI',sans-serif}",
-      ".editor{position:absolute;box-sizing:border-box;min-width:120px;height:28px;background:#fff;color:#111;border-radius:14px;box-shadow:0 6px 18px rgba(0,0,0,.16);pointer-events:auto;display:flex;align-items:center;gap:4px;padding:2px 4px 2px 10px;z-index:3;font:13px/1.4 'Segoe UI',sans-serif}",
-      ".editor textarea{flex:1;min-width:0;border:0;resize:none;outline:none;background:transparent;color:#111;font:inherit;height:22px;max-height:22px;padding:0;overflow:hidden}",
+      ".editor{position:absolute;box-sizing:border-box;min-width:120px;height:22px;background:#fff;color:#111;border-radius:11px;box-shadow:0 4px 14px rgba(0,0,0,.16);pointer-events:auto;display:flex;align-items:center;gap:4px;padding:0 4px 0 8px;z-index:3;font:13px/1.4 'Segoe UI',sans-serif}",
+      ".editor textarea{flex:1;min-width:0;border:0;resize:none;outline:none;background:transparent;color:#111;font:inherit;height:18px;max-height:18px;padding:0;overflow:hidden}",
       ".editor textarea::placeholder{color:#9aa0a6}",
       ".check{border:0;background:#111;color:#fff;width:22px;height:22px;border-radius:99px;display:none;align-items:center;justify-content:center;padding:0;cursor:pointer;flex:none}",
       ".fail{position:absolute;left:12px;bottom:12px;background:#7f1d1d;color:#fee2e2;border-radius:8px;padding:6px 8px;pointer-events:none;font:12px/1.4 sans-serif}",
@@ -240,9 +240,9 @@
       if (left + width > window.innerWidth - 8) left = Math.max(8, window.innerWidth - width - 8);
       if (left < rect.left) left = rect.left;
       if (left < 8) left = 8;
-      var top = rect.top + pad;
-      if (rect.height > 36) top = rect.top + (rect.height - 28) / 2;
-      if (top < rect.top) top = rect.top;
+      var editorH = 22;
+      var top = rect.top + Math.max(0, (rect.height - editorH) / 2);
+      if (top + editorH > rect.top + rect.height) top = rect.top;
       if (top < 8) top = 8;
       pop.style.left = left + "px";
       pop.style.top = top + "px";

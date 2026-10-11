@@ -260,9 +260,15 @@ export function PreviewProvider({
   const setTabTitle = useCallback((id: string, title: string) => {
     const next = title.trim();
     if (!next) return;
-    setTabs((current) =>
-      current.map((tab) => (tab.id === id && tab.title !== next ? { ...tab, title: next } : tab)),
-    );
+    setTabs((current) => {
+      let changed = false;
+      const tabs = current.map((tab) => {
+        if (tab.id !== id || tab.title === next) return tab;
+        changed = true;
+        return { ...tab, title: next };
+      });
+      return changed ? tabs : current;
+    });
   }, []);
 
   useEffect(() => {
