@@ -75,6 +75,13 @@ pub struct ChosenBin {
     pub can_update: bool,
 }
 
+/// Cursor 官方安装位置。PATH 上别的 `agent` 不能拿来更新。
+pub fn locate_cursor_agent() -> Option<PathBuf> {
+    let root = std::env::var_os("LOCALAPPDATA")?;
+    let path = PathBuf::from(root).join("cursor-agent").join("agent.cmd");
+    path.is_file().then_some(path)
+}
+
 pub fn locate_release(release: &CliRelease) -> Option<PathBuf> {
     if let Some(locate) = release.locate {
         if let Some(path) = locate() {
@@ -372,7 +379,7 @@ pub async fn upgrade_release(
         .map(|item| item.path.clone())
         .ok_or_else(|| format!("未找到 {display_name} 的命令"))?;
     let via = current.update_via.unwrap_or(UpdateVia::Npm);
-    let outcome = match via {
+    let (label, outcome) = match via {
         UpdateVia::Npm => {
             if release.npm_package.is_empty() {
                 return Err(format!("{display_name} 没有 npm 包，不能按 npm 升级。"));
@@ -380,35 +387,36 @@ pub async fn upgrade_release(
             let npm =
                 find_bin(&["npm"]).ok_or_else(|| "未找到 npm，无法按官方方式升级。".to_string())?;
             let spec = format!("{}@latest", release.npm_package);
-            run_captured(
-                &npm,
-                &["install", "-g", &spec, "--no-fund", "--no-audit"],
-                Duration::from_secs(180),
-                true,
+            let args = ["install", "-g", spec.as_str(), "--no-fund", "--no-audit"];
+            (
+                command_label(&npm, &args),
+                run_captured(&npm, &args, Duration::from_secs(180), true).await,
             )
-            .await
         }
         UpdateVia::Cli => {
             if chosen.update_args.is_empty() {
                 return Err(format!("{display_name} 没有官方更新入口"));
             }
-            run_captured(&bin, chosen.update_args, Duration::from_secs(180), false).await
+            (
+                command_label(&bin, chosen.update_args),
+                run_captured(&bin, chosen.update_args, Duration::from_secs(600), false).await,
+            )
         }
     };
 
     match outcome {
         Ok(captured) if captured.code == 0 => {
-            settle_cli_update(kind, display_name, release, &current, &captured).await
+            settle_cli_update(kind, display_name, release, &current, &captured, &label).await
         }
         Ok(captured) => Err(clip(
             &format!(
-                "升级失败（退出码 {}）：{}",
+                "{label} 失败（退出码 {}）：{}",
                 captured.code,
                 failure_text(&captured)
             ),
             400,
         )),
-        Err(err) => Err(err),
+        Err(err) => Err(format!("{label}：{err}")),
     }
 }
 
@@ -418,10 +426,14 @@ async fn settle_cli_update(
     release: &CliRelease,
     before: &AgentInstallation,
     captured: &Captured,
+    label: &str,
 ) -> Result<AgentInstallation, String> {
     let mut refreshed = inspect_release(kind, display_name, release).await;
     let output = format!("{} {}", captured.stdout.trim(), captured.stderr.trim());
     let output = output.trim();
+    if update_failed(output) {
+        return Err(clip(&format!("{label} 失败。{output}"), 400));
+    }
     let changed = refreshed.version.is_some() && refreshed.version != before.version;
     if changed || cli_reports_current(output) {
         refreshed.update_available = false;
@@ -431,19 +443,43 @@ async fn settle_cli_update(
         return Ok(refreshed);
     }
     let detail = if output.is_empty() {
-        "更新没有完成。命令没有返回结果。"
+        format!("{label} 没有返回结果。")
     } else {
-        output
+        format!("{label}：{output}")
     };
     Err(clip(&format!("更新没有完成。{detail}"), 400))
 }
 
+fn update_failed(output: &str) -> bool {
+    let lower = output.to_ascii_lowercase();
+    lower.contains("update failed")
+        || lower.contains("couldn't check for updates")
+        || lower.contains("could not check for updates")
+}
+
 fn cli_reports_current(output: &str) -> bool {
     let lower = output.to_ascii_lowercase();
+    if lower.contains("not up to date")
+        || lower.contains("update available")
+        || lower.contains("update failed")
+    {
+        return false;
+    }
     lower.contains("already up to date")
-        || lower.contains("up to date")
         || lower.contains("already current")
         || output.contains("已是最新")
+}
+
+fn command_label(bin: &Path, args: &[&str]) -> String {
+    let name = bin
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or("cli");
+    if args.is_empty() {
+        name.to_string()
+    } else {
+        format!("{name} {}", args.join(" "))
+    }
 }
 
 pub fn choose_update_via(path: &Path, npm_global: bool, has_self_update: bool) -> UpdateVia {
@@ -563,7 +599,35 @@ fn take_semver(chars: &[char], start: usize) -> Option<(String, usize)> {
 
 fn version_from_output(stdout: &str, stderr: &str) -> Option<String> {
     let line = first_line(stdout).or_else(|| first_line(stderr))?;
-    extract_version(&line).or(Some(line))
+    Some(version_token(&line))
+}
+
+/// `2026.10.01-e373342` 整段都是版本。普通 `2.1.292 (Claude Code)` 仍只取数字。
+fn version_token(line: &str) -> String {
+    let trimmed = line.trim();
+    let Some(version) = extract_version(trimmed) else {
+        return trimmed.to_string();
+    };
+    let Some(start) = trimmed.find(&version) else {
+        return version;
+    };
+    let rest = &trimmed[start..];
+    let after = &rest[version.len()..];
+    if !after.starts_with('-') {
+        return version;
+    }
+    let end = after
+        .find(|ch: char| ch.is_whitespace())
+        .unwrap_or(after.len());
+    let suffix = &after[..end];
+    if suffix.len() > 1
+        && suffix
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '.')
+    {
+        return format!("{version}{suffix}");
+    }
+    version
 }
 
 fn first_line(text: &str) -> Option<String> {
@@ -956,11 +1020,7 @@ mod tests {
 
     #[test]
     fn hidden_agents_are_not_discovered() {
-        for kind in [
-            AgentKind::CopilotCli,
-            AgentKind::Goose,
-            AgentKind::KiroCli,
-        ] {
+        for kind in [AgentKind::CopilotCli, AgentKind::Goose, AgentKind::KiroCli] {
             assert!(kind.hidden());
             assert!(!AgentKind::all().contains(&kind));
         }
@@ -978,10 +1038,31 @@ mod tests {
 
     #[test]
     fn cli_update_output_marks_current() {
-        assert!(cli_reports_current("Checking for updates...\nAlready up to date"));
+        assert!(cli_reports_current(
+            "Checking for updates...\nAlready up to date"
+        ));
         assert!(cli_reports_current("已是最新版本"));
         assert!(!cli_reports_current(""));
         assert!(!cli_reports_current("Latest version available: 2026.10.12"));
+        assert!(!cli_reports_current("not up to date"));
+        assert!(!cli_reports_current("Update failed: network"));
+        assert!(update_failed("Update failed: Couldn't check for updates"));
+    }
+
+    #[test]
+    fn cursor_version_keeps_the_build_suffix() {
+        assert_eq!(
+            version_from_output("2026.10.01-e373342\n", ""),
+            Some("2026.10.01-e373342".into())
+        );
+        assert_eq!(
+            version_from_output("2.1.292 (Claude Code)\n", ""),
+            Some("2.1.292".into())
+        );
+        assert_eq!(
+            command_label(Path::new(r"C:\agent\agent.cmd"), &["update"]),
+            "agent update"
+        );
     }
 
     #[test]

@@ -762,6 +762,9 @@ export const mockBackend: Backend = {
     if (!item?.installed || !item.update_available) {
       throw new Error("没有可安装的更新");
     }
+    if (kind === "cursor-agent") {
+      throw new Error("更新没有完成。预览环境不能执行 agent update。");
+    }
     if (item.latest_version) item.version = item.latest_version;
     item.update_available = false;
     const row = PREVIEW_ROWS.find((item) => item.kind === kind);

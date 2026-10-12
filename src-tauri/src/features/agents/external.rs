@@ -40,7 +40,9 @@ impl ExternalCliAdapter {
 pub fn release_for(kind: AgentKind) -> CliRelease {
     match kind {
         AgentKind::CursorAgent => {
-            release(&["agent", "cursor-agent"], "", &["update"], &[], &[], "")
+            let mut item = release(&["agent", "cursor-agent"], "", &["update"], &[], &[], "");
+            item.locate = Some(super::install::locate_cursor_agent);
+            item
         }
         AgentKind::CopilotCli => release(
             &["copilot"],
@@ -239,6 +241,34 @@ impl AgentAdapter for ExternalCliAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_cursor_update_runs_agent_update() {
+        let adapter = ExternalCliAdapter::new(AgentKind::CursorAgent);
+        let before = adapter.installation().await;
+        assert!(before.installed, "{:?}", before);
+        let after = adapter.upgrade().await.expect("agent update");
+        eprintln!(
+            "cursor update before={:?} after={:?} available={} detail={:?}",
+            before.version, after.version, after.update_available, after.detail
+        );
+        assert!(after.installed);
+        assert!(!after.update_available, "{:?}", after.detail);
+    }
+
+    #[test]
+    fn cursor_update_is_the_official_subcommand() {
+        let release = release_for(AgentKind::CursorAgent);
+        assert_eq!(release.bins, ["agent", "cursor-agent"].as_slice());
+        assert_eq!(release.self_update, ["update"].as_slice());
+        assert!(release.npm_package.is_empty());
+        assert!(release.locate.is_some());
+        let found = (release.locate.unwrap())();
+        if let Some(path) = found {
+            assert!(path.ends_with("agent.cmd"));
+        }
+    }
 
     #[test]
     fn updates_are_cli_subcommands() {

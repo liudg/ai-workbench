@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ArrowUpRight,
   ChevronDown,
@@ -47,12 +47,22 @@ export function ChangesSidebar({
   const [filter, setFilter] = useFileFilter();
   const [filterOpen, setFilterOpen] = useState(false);
   const [menu, setMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [error, setError] = useState("");
   const shown = useMemo(() => filterFiles(files, filter), [files, filter]);
   const tree = useMemo(() => buildFileTree(shown), [shown]);
   const dirs = useMemo(() => directoryIds(tree), [tree]);
   const foldersCollapsed = dirs.length > 0 && dirs.every((id) => collapsed.has(id));
+
+  useEffect(() => {
+    if (!menu) return;
+    const close = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setMenu(false);
+    };
+    window.addEventListener("pointerdown", close);
+    return () => window.removeEventListener("pointerdown", close);
+  }, [menu]);
 
   const toggleDir = (id: string) => {
     setCollapsed((current) => {
@@ -73,8 +83,9 @@ export function ChangesSidebar({
       className="flex h-full min-h-0 min-w-0 shrink-0 flex-col overflow-hidden border-l border-zinc-800 bg-zinc-950"
     >
       <div className="flex h-8 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-zinc-800 px-1">
-        <div className="relative">
+        <div className="relative" ref={menuRef}>
           <IconButton
+            action="more"
             label={DESKTOP_ZH.filesMore}
             pressed={menu}
             onClick={() => setMenu((value) => !value)}
@@ -113,6 +124,7 @@ export function ChangesSidebar({
           ) : null}
         </div>
         <IconButton
+          action="collapse"
           label={foldersCollapsed ? DESKTOP_ZH.filesExpandFolders : DESKTOP_ZH.filesCollapse}
           onClick={() => setCollapsed(foldersCollapsed ? new Set() : new Set(dirs))}
         >
@@ -122,13 +134,14 @@ export function ChangesSidebar({
             <ChevronsDownUp className="h-3.5 w-3.5" />
           )}
         </IconButton>
-        <IconButton label={DESKTOP_ZH.filesRefresh} onClick={onRefresh}>
+        <IconButton action="refresh" label={DESKTOP_ZH.filesRefresh} onClick={onRefresh}>
           <RefreshCw className="h-3.5 w-3.5" />
         </IconButton>
-        <IconButton label={DESKTOP_ZH.diffJump} onClick={onJump}>
+        <IconButton action="jump" label={DESKTOP_ZH.diffJump} onClick={onJump}>
           <ArrowUpRight className="h-3.5 w-3.5" />
         </IconButton>
         <IconButton
+          action="filter"
           label={DESKTOP_ZH.filterFiles}
           pressed={filterOpen}
           onClick={() => setFilterOpen((value) => !value)}
@@ -136,6 +149,7 @@ export function ChangesSidebar({
           <ListFilter className="h-3.5 w-3.5" />
         </IconButton>
         <IconButton
+          action="external"
           label={DESKTOP_ZH.filesOpenExternal}
           onClick={() => {
             setError("");
@@ -146,7 +160,7 @@ export function ChangesSidebar({
         >
           <ExternalLink className="h-3.5 w-3.5" />
         </IconButton>
-        <IconButton label={DESKTOP_ZH.filesHideSidebar} attr="data-files-toggle" onClick={onHide}>
+        <IconButton action="hide" label={DESKTOP_ZH.filesHideSidebar} attr="data-files-toggle" onClick={onHide}>
           <PanelRightClose className="h-3.5 w-3.5" />
         </IconButton>
       </div>
@@ -226,8 +240,14 @@ function TreeRows({
           ) : (
             <ChevronRight className="h-3 w-3 shrink-0" />
           )}
-          <span className="min-w-0 flex-1 truncate font-mono text-xs">{node.name}</span>
-          <span className="shrink-0 px-1 font-mono text-[11px] tabular-nums text-zinc-500">{node.count}</span>
+          <span data-dir-path={node.path} className="min-w-0 flex-1 truncate font-mono text-xs">
+            {node.name}
+          </span>
+          <span data-dir-count={node.count} className="shrink-0 font-mono text-[11px] tabular-nums text-zinc-500">
+            {node.count}
+          </span>
+          <span className="shrink-0 font-mono text-[11px] tabular-nums text-emerald-400">+{node.added}</span>
+          <span className="shrink-0 font-mono text-[11px] tabular-nums text-red-400">-{node.removed}</span>
         </button>
         {open
           ? node.children.map((child) => (
@@ -283,12 +303,14 @@ function TreeRows({
 }
 
 function IconButton({
+  action,
   label,
   pressed,
   attr,
   onClick,
   children,
 }: {
+  action: string;
   label: string;
   pressed?: boolean;
   attr?: "data-files-toggle";
@@ -301,6 +323,7 @@ function IconButton({
       title={label}
       aria-label={label}
       aria-pressed={pressed}
+      data-files-action={action}
       {...(attr ? { [attr]: "" } : {})}
       className={cn(
         "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-zinc-300 hover:bg-zinc-800 hover:text-zinc-50",

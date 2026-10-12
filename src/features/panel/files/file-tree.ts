@@ -45,7 +45,23 @@ export function buildFileTree<T extends FileTreeFile>(files: readonly T[]): File
     }
     cursor.files.push({ ...file, path: normalized });
   }
-  return finish(root);
+  return compress(finish(root));
+}
+
+/** 只有一个子目录的层级合成一条路径，文件夹行才能同时看到路径和数量。 */
+function compress<T extends FileTreeFile>(nodes: FileTreeNode<T>[]): FileTreeNode<T>[] {
+  return nodes.map((node) => {
+    if (node.kind !== "dir") return node;
+    let current: FileTreeNode<T> = { ...node, children: compress(node.children) };
+    while (current.children.length === 1 && current.children[0]?.kind === "dir") {
+      const child = current.children[0];
+      current = {
+        ...child,
+        name: `${current.name}/${child.name}`,
+      };
+    }
+    return current;
+  });
 }
 
 export function directoryIds<T extends FileTreeFile>(nodes: readonly FileTreeNode<T>[]): string[] {

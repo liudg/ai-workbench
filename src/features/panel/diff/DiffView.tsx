@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 
 import { backend } from "@/lib/ipc";
+import { useWorkbench } from "@/store";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { useElementWidth } from "@/shared/dom/useElementWidth";
 import type { FileChange } from "@/features/changes-model/diff-parse";
@@ -17,17 +18,17 @@ const SPLITTER_WIDTH = 6;
 
 export function DiffView({ files }: { files: FileChange[] }) {
   const doc = useDiffDocument(files);
-  const { filesSidebarOpen, toggleFilesSidebar, projectId } = usePanel();
+  const { filesSidebarOpen, toggleFilesSidebar, projectId, sessionId, diffFilesWidth, setDiffFilesWidth } =
+    usePanel();
   const frameRef = useRef<HTMLDivElement>(null);
   const paneWidth = useElementWidth(frameRef);
-  const [listOverride, setListOverride] = useState<number | null>(null);
   const [epoch, setEpoch] = useState(0);
   const inner = filesSidebarOpen ? Math.max(0, paneWidth - SPLITTER_WIDTH) : paneWidth;
   const auto = filesSidebarOpen ? diffListWidth(inner) : null;
   const listWidth =
-    auto === null ? null : listOverride === null ? auto : diffListWidthAfterDrag(inner, listOverride);
+    auto === null ? null : diffFilesWidth === null ? auto : diffListWidthAfterDrag(inner, diffFilesWidth);
   const metrics = useRef({ pane: 0, list: 0 });
-  metrics.current = { pane: inner, list: auto ?? 0 };
+  metrics.current = { pane: inner, list: listWidth ?? auto ?? 0 };
   const sourceFor = (path: string) => (doc.loadFull ? (doc.sources[path] ?? null) : null);
 
   return (
@@ -36,6 +37,7 @@ export function DiffView({ files }: { files: FileChange[] }) {
       className="flex h-full min-h-0 min-w-0 overflow-hidden"
       data-diff-view
       data-diff-list={listWidth === null ? "hidden" : "visible"}
+      data-diff-files-width={listWidth ?? undefined}
     >
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <DiffToolbar
@@ -84,10 +86,11 @@ export function DiffView({ files }: { files: FileChange[] }) {
         <ColumnSplitter
           name="diff-files"
           onDelta={(dx) => {
-            setListOverride((prev) => {
-              const current = prev ?? metrics.current.list;
-              return diffListWidthAfterDrag(metrics.current.pane, current - dx) ?? prev ?? current;
-            });
+            const pane = metrics.current.pane;
+            const stored = useWorkbench.getState().diffFilesWidthBySession[sessionId];
+            const current = diffListWidthAfterDrag(pane, stored ?? metrics.current.list) ?? metrics.current.list;
+            const next = diffListWidthAfterDrag(pane, current - dx);
+            if (next !== null) setDiffFilesWidth(next);
           }}
         />
       ) : null}

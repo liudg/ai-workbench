@@ -29,3 +29,21 @@ test("nests files the way an assets folder does and sums change counts", () => {
   );
   assert.deepEqual(directoryIds(tree), ["Assets", "Assets/Scripts"]);
 });
+
+test("a single-child directory chain becomes one path with the file count", () => {
+  const tree = buildFileTree([
+    { path: "src/features/panel/files/A.ts", added: 2, removed: 1 },
+    { path: "src/features/panel/files/B.ts", added: 4, removed: 0 },
+  ]);
+  assert.equal(tree.length, 1);
+  assert.equal(tree[0].kind, "dir");
+  assert.equal(tree[0].name, "src/features/panel/files");
+  assert.equal(tree[0].path, "src/features/panel/files");
+  assert.equal(tree[0].count, 2);
+  assert.equal(tree[0].added, 6);
+  assert.equal(tree[0].removed, 1);
+  assert.deepEqual(
+    tree[0].children.map((node) => node.name),
+    ["A.ts", "B.ts"],
+  );
+});

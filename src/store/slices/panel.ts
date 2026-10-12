@@ -50,6 +50,12 @@ export interface PanelSlice {
   panelToggleFiles(sessionId: string): void;
   panelToggleFilesSidebar(sessionId: string): void;
   panelNoteFiles(sessionId: string, hasFiles: boolean): void;
+  /** 聊天和预览之间拖出来的预览列宽度。不写入会话面板，避免把文件栏状态提前创建出来。 */
+  previewWidthBySession: Record<string, number>;
+  /** 差异正文和文件列之间拖出来的文件列宽度。 */
+  diffFilesWidthBySession: Record<string, number>;
+  panelSetPreviewWidth(sessionId: string, width: number): void;
+  panelSetDiffFilesWidth(sessionId: string, width: number): void;
 }
 
 type PanelSet = (
@@ -222,8 +228,23 @@ export function createPanelSlice(set: PanelSet, get: PanelGet): PanelSlice {
     }
   }
 
+  const rememberWidth = (
+    key: "previewWidthBySession" | "diffFilesWidthBySession",
+    sessionId: string,
+    width: number,
+  ) => {
+    const next = Math.round(width);
+    if (!Number.isFinite(next) || next < 0) return;
+    set((state) => {
+      if (state[key][sessionId] === next) return state;
+      return { [key]: { ...state[key], [sessionId]: next } };
+    });
+  };
+
   return {
     panelBySession: {},
+    previewWidthBySession: {},
+    diffFilesWidthBySession: {},
 
     panelSelectTab(sessionId, id) {
       mutate(sessionId, (session) => (session.activeId === id ? null : { ...session, activeId: id }));
@@ -293,6 +314,14 @@ export function createPanelSlice(set: PanelSet, get: PanelGet): PanelSlice {
         const noted = noteFilesRail(session, hasFiles);
         return noted ? { ...session, ...noted } : null;
       });
+    },
+
+    panelSetPreviewWidth(sessionId, width) {
+      rememberWidth("previewWidthBySession", sessionId, width);
+    },
+
+    panelSetDiffFilesWidth(sessionId, width) {
+      rememberWidth("diffFilesWidthBySession", sessionId, width);
     },
   };
 }

@@ -1,5 +1,6 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 
+import { useWorkbench } from "@/store";
 import { useElementWidth } from "@/shared/dom/useElementWidth";
 import { FilesToggle } from "../files/FilesToggle";
 import { SessionFiles } from "../files/SessionFiles";
@@ -17,10 +18,18 @@ import { usePanel } from "./PanelProvider";
 const SPLITTER_WIDTH = 6;
 
 export function SessionSplit({ children }: { children: ReactNode }) {
-  const { tabs, activeId, filesExpanded, filesSidebarOpen, toggleFilesSidebar } = usePanel();
+  const {
+    sessionId,
+    tabs,
+    activeId,
+    filesExpanded,
+    filesSidebarOpen,
+    toggleFilesSidebar,
+    previewWidth,
+    setPreviewWidth,
+  } = usePanel();
   const rowRef = useRef<HTMLDivElement>(null);
   const rowWidth = useElementWidth(rowRef);
-  const [panelOverride, setPanelOverride] = useState<number | null>(null);
   const active = tabs.find((tab) => tab.id === activeId) ?? tabs[tabs.length - 1];
   const panelOpen = Boolean(active);
   const filesVisible = !active || active.viewerId !== "diff";
@@ -35,7 +44,9 @@ export function SessionSplit({ children }: { children: ReactNode }) {
   });
   const filesWidth = measured ? columns.files : filesColumnWidth(filesExpanded, showFiles);
   const panelWidth =
-    panelOverride === null ? columns.panel : panelWidthAfterDrag(layoutWidth, filesWidth, panelOverride);
+    !measured || previewWidth === null
+      ? columns.panel
+      : panelWidthAfterDrag(layoutWidth, filesWidth, previewWidth);
   const metrics = useRef({ row: 0, files: 0, panel: 0 });
   metrics.current = { row: layoutWidth, files: filesWidth, panel: columns.panel };
 
@@ -52,18 +63,20 @@ export function SessionSplit({ children }: { children: ReactNode }) {
         <ColumnSplitter
           name="chat-preview"
           onDelta={(dx) => {
-            setPanelOverride((prev) => {
-              const current = prev ?? metrics.current.panel;
-              return panelWidthAfterDrag(metrics.current.row, metrics.current.files, current - dx);
-            });
+            const row = metrics.current.row;
+            const files = metrics.current.files;
+            const stored = useWorkbench.getState().previewWidthBySession[sessionId];
+            const current = panelWidthAfterDrag(row, files, stored ?? metrics.current.panel);
+            setPreviewWidth(panelWidthAfterDrag(row, files, current - dx));
           }}
         />
       ) : null}
       {panelOpen ? (
         <div
           className="flex h-full min-w-0 overflow-hidden"
+          data-preview-width={measured ? panelWidth : undefined}
           style={
-            panelOverride !== null || measured
+            measured
               ? { width: panelWidth, maxWidth: panelWidth, flex: "0 0 auto", minWidth: 0 }
               : { flex: "0 1 auto", width: PANEL_PREFERRED_WIDTH, maxWidth: "44%", minWidth: 0 }
           }

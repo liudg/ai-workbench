@@ -139,6 +139,17 @@ describe("panel viewers", { concurrency: 1 }, () => {
     }
   });
 
+  test("dragged column widths stay in the panel store and do not create a session panel", () => {
+    const store = testStore();
+    store.getState().panelSetPreviewWidth("session-a", 640.4);
+    store.getState().panelSetDiffFilesWidth("session-a", 280);
+    assert.equal(store.getState().previewWidthBySession["session-a"], 640);
+    assert.equal(store.getState().diffFilesWidthBySession["session-a"], 280);
+    assert.equal(store.getState().panelBySession["session-a"], undefined);
+    store.getState().panelSetPreviewWidth("session-a", 640);
+    assert.equal(store.getState().previewWidthBySession["session-a"], 640);
+  });
+
   test("hrefs become urls, project files, or blocked targets", () => {
     assert.deepEqual(targetFromHref("C:/work/demo", "https://example.com/a"), {
       kind: "url",

@@ -35,6 +35,10 @@ interface PanelApi {
   /** 只收起文件列，预览标签保持打开。 */
   filesSidebarOpen: boolean;
   toggleFilesSidebar: () => void;
+  previewWidth: number | null;
+  diffFilesWidth: number | null;
+  setPreviewWidth: (width: number) => void;
+  setDiffFilesWidth: (width: number) => void;
 }
 
 const PreviewContext = createContext<PanelApi | null>(null);
@@ -71,6 +75,8 @@ export function PanelProvider({
   const hasRail = useWorkbench((s) => s.panelBySession[sessionId] !== undefined);
   const storedExpanded = useWorkbench((s) => s.panelBySession[sessionId]?.filesExpanded ?? false);
   const storedSidebar = useWorkbench((s) => s.panelBySession[sessionId]?.filesSidebarOpen ?? true);
+  const previewWidth = useWorkbench((s) => s.previewWidthBySession[sessionId] ?? null);
+  const diffFilesWidth = useWorkbench((s) => s.diffFilesWidthBySession[sessionId] ?? null);
   const changes = useWorkbench((s) => s.profiles[agent]?.capabilities.changes);
   const sessionFiles = useMemo(
     () => (showsFileChanges(changes) ? sessionChanges(events) : []),
@@ -119,6 +125,12 @@ export function PanelProvider({
   const toggleFilesSidebar = useCallback(() => {
     useWorkbench.getState().panelToggleFilesSidebar(sessionId);
   }, [sessionId]);
+  const setPreviewWidth = useCallback((width: number) => {
+    useWorkbench.getState().panelSetPreviewWidth(sessionId, width);
+  }, [sessionId]);
+  const setDiffFilesWidth = useCallback((width: number) => {
+    useWorkbench.getState().panelSetDiffFilesWidth(sessionId, width);
+  }, [sessionId]);
   const hasFiles = sessionFiles.length > 0;
   const filesExpanded = hasRail ? storedExpanded : hasFiles;
   const filesSidebarOpen = hasRail ? storedSidebar : true;
@@ -150,6 +162,10 @@ export function PanelProvider({
       toggleFiles,
       filesSidebarOpen,
       toggleFilesSidebar,
+      previewWidth,
+      diffFilesWidth,
+      setPreviewWidth,
+      setDiffFilesWidth,
     }),
     [
       tabs,
@@ -168,6 +184,10 @@ export function PanelProvider({
       toggleFiles,
       filesSidebarOpen,
       toggleFilesSidebar,
+      previewWidth,
+      diffFilesWidth,
+      setPreviewWidth,
+      setDiffFilesWidth,
     ],
   );
 
