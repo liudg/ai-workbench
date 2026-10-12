@@ -18,7 +18,8 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::broadcast;
 
-const CHANNELS: [&str; 4] = [
+const CHANNELS: [&str; 5] = [
+    "session-request",
     "session-event",
     "sessions-changed",
     "session-queue",

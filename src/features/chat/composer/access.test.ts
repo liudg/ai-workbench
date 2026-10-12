@@ -6,8 +6,6 @@ import {
   addWritableRoot,
   buttonLabel,
   NETWORK_LABEL,
-  PERMISSION_DETAILS,
-  PERMISSION_HEADING,
   sandboxAllowsExtras,
   sandboxForAgent,
   selectPreset,
@@ -15,13 +13,26 @@ import {
   WRITABLE_DETAIL,
 } from "./access.ts";
 
-test("desktop menu copy keeps the official order of ideas", () => {
-  assert.equal(PERMISSION_HEADING, "操作应如何获得批准？");
-  assert.match(PERMISSION_DETAILS.ask, /互联网/);
-  assert.match(PERMISSION_DETAILS["approve-for-me"], /不安全/);
-  assert.match(PERMISSION_DETAILS.full, /任何文件/);
+test("workbench extras keep their own labels", () => {
   assert.equal(NETWORK_LABEL, "允许网络访问");
   assert.match(WRITABLE_DETAIL, /主工作区/);
+});
+
+test("button label comes from the adapter menu once it is loaded", () => {
+  const menu = {
+    network_access: true,
+    writable_roots: true,
+    permission_profiles: true,
+    approve_for_me: true,
+    title: "Update Model Permissions",
+    notice: null,
+    presets: [{ id: "approve-for-me", label: "Approve for me", description: "" }],
+    profiles: [{ id: "project-edit", label: "project-edit", description: "" }],
+  };
+  const sandbox = selectPreset(emptySandbox(), "approve-for-me");
+  assert.equal(buttonLabel(sandbox, null), "替我批准");
+  assert.equal(buttonLabel(sandbox, menu), "Approve for me");
+  assert.equal(buttonLabel(selectProfile(sandbox, "project-edit"), menu), "project-edit");
 });
 
 test("network and extra dirs apply to ask, read-only, and approve-for-me", () => {
@@ -42,7 +53,7 @@ test("switching back from full access keeps the network choice", () => {
   assert.equal(sandboxAllowsExtras(full), false);
   const back = selectPreset(full, "approve-for-me");
   assert.equal(back.networkAccess, true);
-  assert.equal(buttonLabel(back), "替我批准");
+  assert.equal(buttonLabel(back, null), "替我批准");
 });
 
 test("agents without sandbox extensions keep the three basic modes", () => {

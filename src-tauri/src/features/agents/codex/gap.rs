@@ -10,16 +10,60 @@ use crate::encoding::decode_child_bytes;
 use crate::features::agents::AgentError;
 use crate::models::{
     PlanStep, PromptKind, PromptOption, ReviewFinding, ReviewStart, ReviewTargets,
-    SessionEventBody, SessionStatus,
+    SessionEventBody,
 };
 
 use super::process::hide_console;
-use super::state::{emit, emit_status, Collaboration, Pending, Shared};
+use super::state::{emit, Collaboration, Pending, Shared};
 
 pub(super) const REVIEW_DESCRIPTION: &str = "审查未提交的更改，或与某个分支进行比较";
-pub(super) const IMPLEMENT_PROMPT: &str = "实施此计划？";
-pub(super) const IMPLEMENT_OPTION: &str = "是，实施此计划";
-pub(super) const IMPLEMENT_ID: &str = "implement";
+/// TUI `chatwidget/plan_implementation.rs` 的标题、选项和消息。
+pub(super) const PLAN_IMPLEMENTATION_TITLE: &str = "Implement this plan?";
+const PLAN_IMPLEMENTATION_YES: &str = "Yes, implement this plan";
+const PLAN_IMPLEMENTATION_CLEAR_CONTEXT: &str = "Yes, clear context and implement";
+const PLAN_IMPLEMENTATION_NO: &str = "No, stay in Plan mode";
+pub(super) const PLAN_IMPLEMENTATION_CODING_MESSAGE: &str = "Implement the plan.";
+pub(super) const PLAN_IMPLEMENTATION_CLEAR_CONTEXT_PREFIX: &str = concat!(
+    "A previous agent produced the plan below to accomplish the user's task. ",
+    "Implement the plan in a fresh context. Treat the plan as the source of ",
+    "user intent, re-read files as needed, and carry the work through ",
+    "implementation and verification."
+);
+const PLAN_IMPLEMENTATION_NO_APPROVED_PLAN: &str = "No approved plan available";
+const IMPLEMENT_ID: &str = "implement";
+const CLEAR_CONTEXT_ID: &str = "clear-context";
+const STAY_ID: &str = "stay";
+
+/// 三个选项。清空上下文那项在没有计划正文时不可选。
+pub(super) fn plan_implementation_options(
+    plan_markdown: Option<&str>,
+    usage_label: Option<&str>,
+) -> Vec<PromptOption> {
+    let has_plan = plan_markdown.is_some_and(|plan| !plan.trim().is_empty());
+    vec![
+        PromptOption {
+            id: IMPLEMENT_ID.into(),
+            label: PLAN_IMPLEMENTATION_YES.into(),
+            description: "Switch to Default and start coding".into(),
+            ..Default::default()
+        },
+        PromptOption {
+            id: CLEAR_CONTEXT_ID.into(),
+            label: PLAN_IMPLEMENTATION_CLEAR_CONTEXT.into(),
+            description: usage_label.map_or_else(
+                || "Fresh thread with this plan".to_string(),
+                |label| format!("Start a fresh thread (current context: {label})"),
+            ),
+            disabled_reason: (!has_plan).then(|| PLAN_IMPLEMENTATION_NO_APPROVED_PLAN.into()),
+        },
+        PromptOption {
+            id: STAY_ID.into(),
+            label: PLAN_IMPLEMENTATION_NO.into(),
+            description: "Continue planning with the model".into(),
+            ..Default::default()
+        },
+    ]
+}
 
 pub(super) fn review_protocol(target: &ReviewStart) -> Value {
     match target {
@@ -343,7 +387,6 @@ impl Shared {
         if self.turn_open.load(std::sync::atomic::Ordering::SeqCst) {
             return Err(AgentError::Busy);
         }
-        emit_status(&self.events, SessionStatus::Running);
         self.ensure_thread().await?;
         let thread_id = self
             .thread_id
@@ -397,13 +440,25 @@ impl Shared {
         }
     }
 
+    /// `turn_runtime.rs::maybe_prompt_plan_implementation`：计划模式、本回合出现过 plan item、
+    /// 没有排队的后续消息、也没有别的待答卡片时才问。
     pub(super) fn maybe_offer_implement_plan(&self) -> bool {
-        let ready = self
+        let saw_plan = self
             .plan_ready
             .swap(false, std::sync::atomic::Ordering::SeqCst);
-        if !ready || !self.collaboration_is_plan() || !self.pending.lock().unwrap().is_empty() {
+        if !saw_plan
+            || !self.collaboration_is_plan()
+            || !self.queued.lock().unwrap().is_empty()
+            || !self.pending.lock().unwrap().is_empty()
+        {
             return false;
         }
+        let plan = self.latest_plan.lock().unwrap().clone();
+        let usage = self
+            .token_info
+            .lock()
+            .unwrap()
+            .and_then(|info| info.plan_usage_label());
         let prompt_id = format!(
             "implement-plan-{}",
             self.next_id
@@ -418,16 +473,11 @@ impl Shared {
             SessionEventBody::Prompt {
                 prompt_id,
                 prompt_kind: PromptKind::Choice,
-                question: IMPLEMENT_PROMPT.to_string(),
-                options: vec![PromptOption {
-                    id: IMPLEMENT_ID.into(),
-                    label: IMPLEMENT_OPTION.into(),
-                    description: String::new(),
-                }],
+                question: PLAN_IMPLEMENTATION_TITLE.to_string(),
+                options: plan_implementation_options(plan.as_deref(), usage.as_deref()),
                 questions: Vec::new(),
             },
         );
-        emit_status(&self.events, SessionStatus::NeedsInput);
         true
     }
 
@@ -437,31 +487,46 @@ impl Shared {
         answer: &crate::models::PromptAnswer,
     ) -> Result<(), AgentError> {
         let crate::models::PromptAnswer::Single { value } = answer else {
-            return Err(AgentError::Runtime("请选择实现计划，或输入其他回复".into()));
+            return Err(AgentError::Runtime("请选择一个选项".into()));
         };
-        let value = value.trim();
-        if value.is_empty() {
-            return Err(AgentError::Runtime("回复不能为空".into()));
-        }
-        let implement = value == IMPLEMENT_ID || value == IMPLEMENT_OPTION;
-        let shown = if implement {
-            IMPLEMENT_OPTION.to_string()
-        } else {
-            value.to_string()
-        };
-        self.resolve_prompt(prompt_id, shown.clone());
-        if implement {
-            self.set_collaboration_mode("default")?;
-        }
-        emit(
-            &self.events,
-            SessionEventBody::UserMessage {
-                text: shown.clone(),
-                images: Vec::new(),
-                annotations: 0,
-            },
+        let options = plan_implementation_options(
+            self.latest_plan.lock().unwrap().as_deref(),
+            None,
         );
-        self.begin_turn(shown).await
+        let Some(choice) = options.iter().find(|option| option.id == value.trim()) else {
+            self.pending
+                .lock()
+                .unwrap()
+                .insert(prompt_id.to_string(), Pending::ImplementPlan);
+            return Err(AgentError::Runtime("请选择一个选项".into()));
+        };
+        if let Some(reason) = &choice.disabled_reason {
+            self.pending
+                .lock()
+                .unwrap()
+                .insert(prompt_id.to_string(), Pending::ImplementPlan);
+            return Err(AgentError::Runtime(reason.clone()));
+        }
+        self.resolve_prompt(prompt_id, choice.label.clone());
+        match choice.id.as_str() {
+            IMPLEMENT_ID => {
+                self.set_collaboration_mode("default")?;
+                self.submit_user_text(PLAN_IMPLEMENTATION_CODING_MESSAGE.to_string())
+                    .await
+            }
+            CLEAR_CONTEXT_ID => {
+                let plan = self.latest_plan.lock().unwrap().clone().unwrap_or_default();
+                emit(
+                    &self.events,
+                    SessionEventBody::NewThread {
+                        name: None,
+                        text: Some(format!("{PLAN_IMPLEMENTATION_CLEAR_CONTEXT_PREFIX}\n\n{plan}")),
+                    },
+                );
+                Ok(())
+            }
+            _ => Ok(()),
+        }
     }
 }
 
@@ -495,6 +560,35 @@ mod tests {
         assert_eq!(review_protocol(&commit)["sha"], json!("abcdef1"));
         assert_eq!(review_protocol(&commit)["title"], json!("Fix the parser"));
         assert!(parse_review_slash("please look").is_err());
+    }
+
+    #[test]
+    fn plan_card_matches_the_tui_copy() {
+        let options = plan_implementation_options(Some("1. Do it"), Some("42% used"));
+        let labels: Vec<_> = options.iter().map(|o| o.label.as_str()).collect();
+        assert_eq!(
+            labels,
+            [
+                "Yes, implement this plan",
+                "Yes, clear context and implement",
+                "No, stay in Plan mode"
+            ]
+        );
+        assert_eq!(options[0].description, "Switch to Default and start coding");
+        assert_eq!(
+            options[1].description,
+            "Start a fresh thread (current context: 42% used)"
+        );
+        assert!(options[1].disabled_reason.is_none());
+        assert_eq!(options[2].description, "Continue planning with the model");
+        let none = plan_implementation_options(None, None);
+        assert_eq!(none[1].description, "Fresh thread with this plan");
+        assert_eq!(
+            none[1].disabled_reason.as_deref(),
+            Some("No approved plan available")
+        );
+        assert_eq!(PLAN_IMPLEMENTATION_TITLE, "Implement this plan?");
+        assert_eq!(PLAN_IMPLEMENTATION_CODING_MESSAGE, "Implement the plan.");
     }
 
     #[test]

@@ -1,7 +1,7 @@
 import { HelpCircle } from "lucide-react";
 
 import { useWorkbench } from "@/store";
-import { optionResolvedLabel } from "./prompt-values";
+import { optionResolvedLabel, promptInteractive } from "./prompt-values";
 import { ApprovalCard, ChoiceCard } from "./ApprovalCard";
 import { ElicitationCard } from "./ElicitationCard";
 import { FreeTextPrompt } from "./FreeTextPrompt";
@@ -14,7 +14,7 @@ function PromptBody(props: PromptBodyProps) {
   if (event.prompt_kind === "elicitation") return <ElicitationCard {...props} />;
   if (event.prompt_kind === "questions") return <QuestionCard {...props} />;
 
-  const interactive = resolvedAnswer === null && session.status === "needs-input";
+  const interactive = promptInteractive(resolvedAnswer, session.status);
   const resolvedLabel = optionResolvedLabel(event.options, resolvedAnswer);
   return (
     <div className="min-w-0 rounded-lg border border-amber-500/25 bg-amber-500/[0.06] p-3">

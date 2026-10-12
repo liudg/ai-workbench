@@ -120,14 +120,7 @@ export function deriveComposerView(input: ComposerViewInput) {
     sendDisabled,
     showPlan: Boolean(caps?.supports_plan),
     showModel: Boolean(caps?.supports_tuning),
-    extendedAccess: Boolean(
-      caps?.supports_network_access ||
-        caps?.supports_writable_roots ||
-        menu?.approve_for_me ||
-        menu?.permission_profiles,
-    ),
-    approveForMe: Boolean(menu?.approve_for_me),
-    profiles: menu?.permission_profiles ? menu.profiles : [],
+    permissionMenu: menu,
     showNetwork:
       Boolean(caps?.supports_network_access) &&
       (menu ? menu.network_access : true) &&

@@ -91,6 +91,8 @@ pub(super) enum Pending {
     Access,
     /// 计划完成后的 “实施此计划？”。
     ImplementPlan,
+    /// `/approve` 的最近拒绝列表。选中一项提交 `thread/approveGuardianDeniedAction`。
+    ApproveDenial,
     /// MCP elicitation。答案写回 JSON-RPC，action 为 accept / decline / cancel。
     Elicitation {
         rpc_id: u64,
@@ -167,6 +169,14 @@ pub(super) struct Shared {
     pub(super) history_cursor: Mutex<Option<String>>,
     /// 流式命令输出和补丁正文。键是 item id。
     pub(super) activity: Mutex<HashMap<String, ActivityBuf>>,
+    /// 本线程最近的自动审查拒绝，`/approve` 从这里选。
+    pub(super) denials: Mutex<super::guardian::RecentDenials>,
+    /// 已经从 app-server 拿到过线程状态。
+    pub(super) status_known: AtomicBool,
+    /// 最近一次 `thread/tokenUsage/updated`。
+    pub(super) token_info: Mutex<Option<super::tokens::TokenUsageInfo>>,
+    /// 最近一份计划正文（`plan` item），「清空上下文后实施」要带上它。
+    pub(super) latest_plan: Mutex<Option<String>>,
 }
 
 /// `thread/resume` 撞上 active writer 之后的打开状态。

@@ -39,6 +39,8 @@ struct SessionEntry {
 pub const EVT_SESSION_EVENT: &str = "session-event";
 pub const EVT_SESSIONS_CHANGED: &str = "sessions-changed";
 pub const EVT_SESSION_QUEUE: &str = "session-queue";
+/// 适配器请求宿主新开会话（`SessionEventBody::NewThread`）。不进时间线。
+pub const EVT_SESSION_REQUEST: &str = "session-request";
 
 /// 把事件推给前端。桌面版是 Tauri `emit`，网页预览的 dev bridge 是 SSE。
 pub type EventEmitter = Arc<dyn Fn(&str, serde_json::Value) + Send + Sync>;
@@ -457,15 +459,8 @@ impl SessionManager {
         if display.trim().is_empty() && recorded_images.is_empty() && annotations.is_empty() {
             return Err("消息不能为空".into());
         }
+        // 斜杠命令不写成用户气泡（与 Codex TUI 一致）；命令自己要发出的提示由适配器写。
         if slash {
-            self.record_local(
-                session_id,
-                SessionEventBody::UserMessage {
-                    text: display.clone(),
-                    images: Vec::new(),
-                    annotations: 0,
-                },
-            )?;
             return handle
                 .send_message(display)
                 .await
@@ -911,6 +906,26 @@ fn apply_body(
     body: SessionEventBody,
     record_activity: bool,
 ) {
+    if let SessionEventBody::NewThread { name, text } = body {
+        let (project_id, agent) = {
+            let entries = entries.lock().unwrap();
+            let Some(entry) = entries.get(session_id) else {
+                return;
+            };
+            (entry.meta.project_id.clone(), entry.meta.agent)
+        };
+        emit(
+            EVT_SESSION_REQUEST,
+            serde_json::json!({
+                "session_id": session_id,
+                "project_id": project_id,
+                "agent": agent,
+                "name": name,
+                "text": text,
+            }),
+        );
+        return;
+    }
     if let SessionEventBody::QueueChanged { items } = body {
         {
             let mut entries = entries.lock().unwrap();

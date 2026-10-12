@@ -97,7 +97,7 @@ export function Composer({ session, events }: { session: Session; events: Sessio
             composerLocked={view.composerLocked}
             menusLocked={view.menusLocked}
             sandbox={c.sandbox}
-            profiles={view.profiles}
+            permissionMenu={view.permissionMenu}
             showPlan={view.showPlan}
             planOn={view.planOn}
             showModel={view.showModel}
@@ -122,9 +122,7 @@ export function Composer({ session, events }: { session: Session; events: Sessio
         <AccessMenu
           menuRef={c.accessMenuRef}
           sandbox={c.sandbox}
-          extended={view.extendedAccess}
-          approveForMe={view.approveForMe}
-          profiles={view.profiles}
+          menu={view.permissionMenu}
           showNetwork={view.showNetwork}
           showWritable={view.showWritable}
           onPreset={c.selectPreset}

@@ -1,33 +1,18 @@
 import type { RefObject } from "react";
-import { Check, Shield } from "lucide-react";
+import { Check } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import {
-  ACCESS_LABELS,
-  ACCESS_OPTIONS,
-  type AccessMode,
-  type PermissionProfileOption,
-  type SessionSandbox,
-} from "@/types";
-import {
-  ADD_DIR_LABEL,
-  CUSTOM_DETAIL,
-  CUSTOM_HEADING,
-  NETWORK_LABEL,
-  PERMISSION_DETAILS,
-  PERMISSION_HEADING,
-  WRITABLE_DETAIL,
-  WRITABLE_HEADING,
-} from "./access";
+import type { PermissionMenu, PermissionProfileOption, SessionSandbox } from "@/types";
+import { ADD_DIR_LABEL, NETWORK_LABEL, WRITABLE_DETAIL, WRITABLE_HEADING } from "./access";
 
-const PRESETS: AccessMode[] = ["ask", "read-only", "approve-for-me", "full"];
-
+/**
+ * 作曲栏权限菜单。标题、档位和配置档的文案都由适配器给出
+ * （Codex 取自 TUI `/permissions` 与 `permissionProfile/list`）；网络和额外目录是工作台扩展。
+ */
 export function AccessMenu({
   menuRef,
   sandbox,
-  extended,
-  approveForMe,
-  profiles,
+  menu,
   showNetwork,
   showWritable,
   onPreset,
@@ -38,48 +23,15 @@ export function AccessMenu({
 }: {
   menuRef: RefObject<HTMLDivElement>;
   sandbox: SessionSandbox;
-  extended: boolean;
-  approveForMe: boolean;
-  profiles: PermissionProfileOption[];
+  menu: PermissionMenu | null;
   showNetwork: boolean;
   showWritable: boolean;
-  onPreset: (mode: AccessMode) => void;
+  onPreset: (mode: SessionSandbox["mode"]) => void;
   onProfile: (id: string) => void;
   onNetwork: (enabled: boolean) => void;
   onAddDir: () => void;
   onRemoveDir: (path: string) => void;
 }) {
-  if (!extended) {
-    return (
-      <div
-        ref={menuRef}
-        role="menu"
-        aria-label="权限"
-        className="fixed z-50 w-44 overflow-hidden rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
-        style={{ top: -9999, left: 8 }}
-      >
-        {ACCESS_OPTIONS.map((option) => (
-          <button
-            key={option}
-            type="button"
-            role="menuitemradio"
-            aria-checked={sandbox.mode === option && !sandbox.profileId}
-            className={cn(
-              "flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-zinc-800",
-              option === "full" ? "text-orange-400" : "text-zinc-200",
-              sandbox.mode === option && !sandbox.profileId && "bg-zinc-800/70",
-            )}
-            onClick={() => onPreset(option)}
-          >
-            <Shield className="h-3.5 w-3.5" />
-            {ACCESS_LABELS[option]}
-          </button>
-        ))}
-      </div>
-    );
-  }
-
-  const presets = PRESETS.filter((mode) => mode !== "approve-for-me" || approveForMe);
   return (
     <div
       ref={menuRef}
@@ -88,44 +40,31 @@ export function AccessMenu({
       className="fixed z-50 w-80 overflow-hidden rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
       style={{ top: -9999, left: 8 }}
     >
-      <p className="px-3 pb-1 pt-2 text-xs text-zinc-400">{PERMISSION_HEADING}</p>
-      {presets.map((mode) => (
-        <PresetRow
-          key={mode}
-          mode={mode}
-          checked={!sandbox.profileId && sandbox.mode === mode}
-          onPick={() => onPreset(mode)}
-        />
-      ))}
-      {profiles.length > 0 && (
+      {menu === null ? (
+        <p className="px-3 py-2 text-sm text-zinc-500">正在读取权限…</p>
+      ) : (
         <>
-          <div className="mx-3 my-1 border-t border-zinc-800" />
-          <p className="px-3 pb-0.5 pt-1 text-[11px] text-zinc-500">{CUSTOM_HEADING}</p>
-          <p className="px-3 pb-1 text-[11px] leading-4 text-zinc-500">{CUSTOM_DETAIL}</p>
-          {profiles.map((profile) => (
-            <button
+          <p className="px-3 pb-1 pt-2 text-xs font-medium text-zinc-300">{menu.title}</p>
+          {menu.notice && (
+            <p className="px-3 pb-1 text-xs leading-4 text-zinc-500">{menu.notice}</p>
+          )}
+          {menu.presets.map((preset) => (
+            <MenuRow
+              key={preset.id}
+              item={preset}
+              warning={preset.id === "full"}
+              checked={!sandbox.profileId && sandbox.mode === preset.id}
+              onPick={() => onPreset(preset.id as SessionSandbox["mode"])}
+            />
+          ))}
+          {menu.profiles.map((profile) => (
+            <MenuRow
               key={profile.id}
-              type="button"
-              role="menuitemradio"
-              aria-checked={sandbox.profileId === profile.id}
-              className={cn(
-                "flex w-full items-start gap-2 px-3 py-2 text-left hover:bg-zinc-800",
-                sandbox.profileId === profile.id && "bg-zinc-800/70",
-              )}
-              onClick={() => onProfile(profile.id)}
-            >
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm text-zinc-100">{profile.label}</span>
-                {profile.description && (
-                  <span className="mt-0.5 block text-xs leading-4 text-zinc-500">
-                    {profile.description}
-                  </span>
-                )}
-              </span>
-              {sandbox.profileId === profile.id && (
-                <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-200" />
-              )}
-            </button>
+              item={profile}
+              warning={false}
+              checked={sandbox.profileId === profile.id}
+              onPick={() => onProfile(profile.id)}
+            />
           ))}
         </>
       )}
@@ -193,33 +132,38 @@ export function AccessMenu({
   );
 }
 
-function PresetRow({
-  mode,
+function MenuRow({
+  item,
+  warning,
   checked,
   onPick,
 }: {
-  mode: "ask" | "read-only" | "approve-for-me" | "full";
+  item: PermissionProfileOption;
+  warning: boolean;
   checked: boolean;
   onPick: () => void;
 }) {
-  const warning = mode === "full";
+  const disabled = Boolean(item.disabled_reason);
   return (
     <button
       type="button"
       role="menuitemradio"
       aria-checked={checked}
+      aria-disabled={disabled}
+      disabled={disabled}
       className={cn(
-        "flex w-full items-start gap-2 px-3 py-2 text-left hover:bg-zinc-800",
+        "flex w-full items-start gap-2 px-3 py-2 text-left",
+        disabled ? "cursor-not-allowed opacity-50" : "hover:bg-zinc-800",
         checked && "bg-zinc-800/70",
       )}
       onClick={onPick}
     >
       <span className="min-w-0 flex-1">
         <span className={cn("block text-sm", warning ? "text-orange-400" : "text-zinc-100")}>
-          {ACCESS_LABELS[mode]}
+          {item.label}
         </span>
         <span className="mt-0.5 block text-xs leading-4 text-zinc-500">
-          {PERMISSION_DETAILS[mode]}
+          {item.disabled_reason ?? item.description}
         </span>
       </span>
       {checked && <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-200" />}

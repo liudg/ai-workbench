@@ -41,6 +41,14 @@ export function createShellSlice(set: WorkbenchSet, get: WorkbenchGet): ShellSli
           set((s) => ({ sessions: { ...s.sessions, [pid]: list } })),
         );
       });
+      backend.onSessionRequest((request) => {
+        void (async () => {
+          const created = await get().createSession(request.project_id, request.agent);
+          if (!created) return;
+          if (request.name) await get().renameSession(created, request.name);
+          if (request.text) await get().sendMessage(created, request.text);
+        })();
+      });
       backend.onProjectsChanged(() => {
         void loadWorkspaceLists().then(({ projects, pairs }) =>
           set((s) => {

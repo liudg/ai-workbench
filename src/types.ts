@@ -82,6 +82,8 @@ export interface PromptOption {
   label: string;
   /** 选项说明，可空 */
   description?: string;
+  /** 有值时不可选，值是原因。 */
+  disabled_reason?: string | null;
 }
 
 /** 事件体（对应 Rust 的 SessionEventBody；适配器只产生这一层） */
@@ -234,9 +236,6 @@ export const ACCESS_LABELS: Record<AccessMode, string> = {
   "approve-for-me": "替我批准",
 };
 
-/** 没有沙箱扩展能力时的三项。Codex 桌面菜单另见 access.ts。 */
-export const ACCESS_OPTIONS: AccessMode[] = ["full", "ask", "read-only"];
-
 /** 一次权限选择：档位、网络、额外可写目录、具名配置档。 */
 export interface SessionSandbox {
   mode: AccessMode;
@@ -258,14 +257,19 @@ export interface PermissionProfileOption {
   id: string;
   label: string;
   description: string;
+  /** 有值时不可选，值是原因。 */
+  disabled_reason?: string | null;
 }
 
-/** app-server 探测结果。键不存在时对应开关为 false。 */
+/** 适配器给出的权限菜单：标题、内置档位、具名配置档和读取失败的说明。 */
 export interface PermissionMenu {
   network_access: boolean;
   writable_roots: boolean;
   permission_profiles: boolean;
   approve_for_me: boolean;
+  title: string;
+  notice: string | null;
+  presets: PermissionProfileOption[];
   profiles: PermissionProfileOption[];
 }
 

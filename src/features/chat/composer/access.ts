@@ -2,33 +2,9 @@ import {
   ACCESS_LABELS,
   emptySandbox,
   type AccessMode,
-  type PermissionProfileOption,
+  type PermissionMenu,
   type SessionSandbox,
 } from "../../../types.ts";
-
-/**
- * 桌面端作曲栏权限菜单文案。
- * 英文原文来自 ChatGPT desktop「How should ChatGPT actions be approved?」。
- */
-export const PERMISSION_HEADING = "操作应如何获得批准？";
-
-export const PERMISSION_DETAILS: Record<
-  "ask" | "read-only" | "approve-for-me" | "full",
-  string
-> = {
-  // Always ask to edit external files and use the internet
-  ask: "编辑工作区外的文件或使用互联网时始终询问",
-  // read-only sandbox: inspect files; edits and writes need approval
-  "read-only": "可以阅读文件。编辑或运行会写入的命令前需要批准",
-  // Only ask for actions detected as potentially unsafe
-  "approve-for-me": "仅询问被判定为可能不安全的操作",
-  // Unrestricted access to the internet and any file on your computer
-  full: "可不受限制地访问互联网和计算机上的任何文件",
-};
-
-// Custom (config.toml) / Uses permissions defined in config.toml
-export const CUSTOM_HEADING = "自定义 (config.toml)";
-export const CUSTOM_DETAIL = "使用 config.toml 中定义的权限";
 
 // Allow network access
 export const NETWORK_LABEL = "允许网络访问";
@@ -62,17 +38,12 @@ export function sandboxForAgent(
   return emptySandbox(mode);
 }
 
-export function buttonLabel(
-  sandbox: SessionSandbox,
-  profiles: PermissionProfileOption[] = [],
-): string {
+/** 作曲栏按钮上的档位名。菜单读到之前用工作台自己的简称。 */
+export function buttonLabel(sandbox: SessionSandbox, menu: PermissionMenu | null): string {
   if (sandbox.profileId) {
-    return (
-      profiles.find((profile) => profile.id === sandbox.profileId)?.label ??
-      sandbox.profileId
-    );
+    return menu?.profiles.find((profile) => profile.id === sandbox.profileId)?.label ?? sandbox.profileId;
   }
-  return ACCESS_LABELS[sandbox.mode];
+  return menu?.presets.find((preset) => preset.id === sandbox.mode)?.label ?? ACCESS_LABELS[sandbox.mode];
 }
 
 /** 网络开关和额外目录只给 ask / 只读 / workspace-write（替我批准）。 */

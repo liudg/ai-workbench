@@ -143,13 +143,16 @@ pub enum PromptKind {
     Elicitation,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PromptOption {
     pub id: String,
     pub label: String,
     /// 选项的说明文字（Codex requestUserInput 的 description）
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub description: String,
+    /// 有值时这一项不可选，值是原因。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disabled_reason: Option<String>,
 }
 
 /// 问题卡片中的一道题（对应 Codex requestUserInput 的单个 question，
@@ -479,6 +482,14 @@ pub enum SessionEventBody {
     CollaborationMode {
         mode: String,
     },
+    /// 适配器请求宿主在同一项目里开一个新会话（`/new`、`/clear`、计划的「清空上下文后实施」）。
+    /// 会话管理器不把它写进时间线，而是转给前端去新建、命名并发出首条消息。
+    NewThread {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        text: Option<String>,
+    },
 }
 
 /// 打开已被其他进程持有写锁的 Codex 线程时，给时间线和发送拒绝用的同一句说明。
@@ -674,20 +685,31 @@ impl AgentCapabilities {
     }
 }
 
-/// 作曲栏权限菜单要不要画出替我批准和自定义配置档。
+/// 权限菜单里的一项：内置档位或具名配置档。文案由适配器给出。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PermissionProfileOption {
     pub id: String,
     pub label: String,
     pub description: String,
+    /// 有值时这一项不可选，值是原因。
+    #[serde(default)]
+    pub disabled_reason: Option<String>,
 }
 
+/// 作曲栏权限菜单。`presets` 的 id 是工作台档位（ask / approve-for-me / full / read-only）。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PermissionMenu {
     pub network_access: bool,
     pub writable_roots: bool,
     pub permission_profiles: bool,
     pub approve_for_me: bool,
+    #[serde(default)]
+    pub title: String,
+    /// 菜单副标题：读取失败的原因，或服务端没有返回任何配置档。
+    #[serde(default)]
+    pub notice: Option<String>,
+    #[serde(default)]
+    pub presets: Vec<PermissionProfileOption>,
     pub profiles: Vec<PermissionProfileOption>,
 }
 
@@ -698,6 +720,9 @@ impl PermissionMenu {
             writable_roots: false,
             permission_profiles: false,
             approve_for_me: false,
+            title: String::new(),
+            notice: None,
+            presets: Vec::new(),
             profiles: Vec::new(),
         }
     }

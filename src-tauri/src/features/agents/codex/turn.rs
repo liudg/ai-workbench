@@ -8,7 +8,7 @@ use tokio::process::Command;
 use crate::encoding::{apply_utf8_env, decode_child_bytes};
 use crate::features::agents::AgentError;
 use crate::models::{
-    PageAnnotation, PromptKind, PromptOption, SessionEventBody, SessionStatus,
+    PageAnnotation, PromptKind, PromptOption, SessionEventBody,
     OCCUPIED_SESSION_NOTICE,
 };
 
@@ -16,7 +16,16 @@ use super::catalog::{build_turn_input, slash_help, split_command};
 use super::process::{hide_console, truncate};
 use super::resume::{bodies_from_turns, chronological_turns, HISTORY_TURN_LIMIT};
 use super::sandbox::merge_json;
-use super::state::{emit, emit_status, Pending, Shared};
+use super::state::{emit, Pending, Shared};
+
+/// `/init` 的提示原文，逐字取自 openai/codex rust-v0.162.1
+/// `codex-rs/tui/assets/prompt_for_init_command.md`（tag 提交 092d3acd，文件 sha256 70dfe903…）。
+/// 提示本身要求 AGENTS.md 已存在时不覆盖、不修改。
+pub(super) const INIT_PROMPT: &str = include_str!("assets/prompt_for_init_command.md");
+pub(super) const INIT_PROMPT_SOURCE: &str =
+    "openai/codex rust-v0.162.1 codex-rs/tui/assets/prompt_for_init_command.md";
+
+const WORKTREE_NOT_WIRED: &str = "/worktree 在 Codex TUI 里是托管工作树（codex_worktree + thread/attachment/add）。工作台还没有接入这套接口，这里不创建工作树。";
 
 struct HistoryPage {
     data: Vec<Value>,
@@ -34,13 +43,25 @@ impl Shared {
 
     pub(super) fn note_access(&self) {
         let access = self.access.lock().unwrap().clone();
-        let wire = *self.wire.lock().unwrap();
         emit(
             &self.events,
             SessionEventBody::System {
-                text: access.summary(wire),
+                text: access.summary(),
             },
         );
+    }
+
+    /// 先在时间线写用户气泡，再发出回合。斜杠命令触发的提示走这里，和用户亲手输入一样显示。
+    pub(super) async fn submit_user_text(&self, text: String) -> Result<(), AgentError> {
+        emit(
+            &self.events,
+            SessionEventBody::UserMessage {
+                text: text.clone(),
+                images: Vec::new(),
+                annotations: 0,
+            },
+        );
+        self.begin_turn(text).await
     }
 
     pub(super) async fn begin_turn(&self, text: String) -> Result<(), AgentError> {
@@ -70,7 +91,6 @@ impl Shared {
             *self.wire.lock().unwrap(),
             true,
         )?;
-        emit_status(&self.events, SessionStatus::Running);
         self.ensure_thread().await?;
         let thread_id = self
             .thread_id
@@ -124,10 +144,7 @@ impl Shared {
         if let Some(effort) = self.effort.lock().unwrap().clone() {
             params["effort"] = json!(effort);
         }
-        if let Err(err) = self.attach_plan_mode(&mut params) {
-            emit_status(&self.events, SessionStatus::Failed);
-            return Err(err);
-        }
+        self.attach_plan_mode(&mut params)?;
         self.turn_open.store(true, Ordering::SeqCst);
         if !self.write_method("turn/start", params) {
             self.turn_open.store(false, Ordering::SeqCst);
@@ -153,6 +170,7 @@ impl Shared {
                 if let Some(model) = result.get("model").and_then(Value::as_str) {
                     *self.model.lock().unwrap() = model.to_string();
                 }
+                self.apply_thread_snapshot(&result);
             }
             Err(err) => {
                 let raw = err.to_string();
@@ -311,6 +329,7 @@ impl Shared {
             *self.model.lock().unwrap() = model.to_string();
         }
         *self.thread_id.lock().unwrap() = Some(thread_id.clone());
+        self.apply_thread_snapshot(&result);
         // `thread/start` 只在内存里建线程。Codex 要等线程名写入后才把 rollout
         // 落到 `~/.codex/sessions`，`codex resume <id>` 才能找到它。
         // 还没有任何回合时，`thread/list`（即 `codex resume` 选择器）不会列出它；
@@ -344,7 +363,7 @@ impl Shared {
             }
             "permissions" | "approvals" => {
                 if rest.is_empty() {
-                    self.ask_access();
+                    self.ask_access().await;
                 } else {
                     let mut access = self.access.lock().unwrap();
                     if !access.apply_preset(&rest) {
@@ -401,7 +420,7 @@ impl Shared {
                     self.set_collaboration_mode(next)?;
                 } else {
                     self.set_collaboration_mode("plan")?;
-                    self.begin_turn(rest).await?;
+                    self.submit_user_text(rest).await?;
                 }
             }
             "compact" => {
@@ -415,34 +434,25 @@ impl Shared {
                     },
                 );
             }
-            "approve" => {
-                emit(
-                    &self.events,
-                    SessionEventBody::System {
-                        text: "重试自动审查拒绝需要 Codex 附带的审查事件。工作台没有保存到这样的事件，请在时间线上点「允许」或「拒绝」。".into(),
-                    },
-                );
-            }
+            "approve" => self.open_denials(),
+            // TUI：`/new [name]` 在没有托管工作树时直接 `NewSession { name }`；
+            // `/clear [name]` 是 `ClearUi { name }`，同样开一个新会话。工作台交给宿主新建会话。
             "new" | "clear" => {
-                *self.thread_id.lock().unwrap() = None;
-                emit(
-                    &self.events,
-                    SessionEventBody::System {
-                        text: "已放下当前 Codex 线程。下一条消息会开一个新线程。".into(),
-                    },
-                );
+                let name = (!rest.trim().is_empty()).then(|| rest.trim().to_string());
+                emit(&self.events, SessionEventBody::NewThread { name, text: None });
             }
             "quit" | "exit" | "stop" => self.stop(),
             "mcp" => self.emit_mcp(rest.trim()).await?,
             "goal" => self.emit_goal(&rest).await?,
             "hooks" => self.emit_hooks().await?,
-            "worktree" => self.emit_worktree(&rest).await?,
-            "init" => {
-                self.begin_turn(
-                    "Create an AGENTS.md scaffold for this repository if one does not already exist. Keep it short and specific to the code you can see.".into(),
-                )
-                .await?;
-            }
+            "worktree" => emit(
+                &self.events,
+                SessionEventBody::System {
+                    text: WORKTREE_NOT_WIRED.into(),
+                },
+            ),
+            // `slash_dispatch.rs`：把官方 init 提示原文当作普通用户消息发出。
+            "init" => self.submit_user_text(INIT_PROMPT.to_string()).await?,
             _ => {
                 emit(
                     &self.events,
@@ -457,29 +467,48 @@ impl Shared {
         Ok(())
     }
 
-    pub(super) fn ask_access(&self) {
+    /// `/permissions`：与作曲栏同一份菜单（`permissionProfile/list`）。
+    pub(super) async fn ask_access(&self) {
+        let menu = match self.refresh_sandbox_features().await {
+            Ok(menu) => menu,
+            Err(err) => {
+                emit(&self.events, SessionEventBody::Error { message: err.to_string() });
+                return;
+            }
+        };
+        let mut options: Vec<PromptOption> = menu
+            .presets
+            .iter()
+            .chain(menu.profiles.iter())
+            .filter(|item| item.disabled_reason.is_none())
+            .map(|item| PromptOption {
+                id: item.id.clone(),
+                label: item.label.clone(),
+                description: item.description.clone(),
+                ..Default::default()
+            })
+            .collect();
+        if options.is_empty() {
+            let text = menu.notice.unwrap_or_else(|| menu.title.clone());
+            emit(&self.events, SessionEventBody::System { text });
+            return;
+        }
+        options.dedup_by(|a, b| a.id == b.id);
         let prompt_id = "local-access".to_string();
-        let reviewer = self.wire.lock().unwrap().reviewer;
         self.pending
             .lock()
             .unwrap()
             .insert(prompt_id.clone(), Pending::Access);
-        let question = if reviewer {
-            "选择 Codex 权限。询问批准对应 workspace-write + on-request；替我批准使用同一沙箱，reviewer 为 auto_review；只读对应 read-only；完全访问对应 danger-full-access。"
-        } else {
-            "选择 Codex 权限。完全访问对应 danger-full-access；询问批准对应 workspace-write + on-request；只读对应 read-only。"
-        };
         emit(
             &self.events,
             SessionEventBody::Prompt {
                 prompt_id,
                 prompt_kind: PromptKind::Choice,
-                question: question.into(),
-                options: access_prompt_options(reviewer),
+                question: menu.title,
+                options,
                 questions: Vec::new(),
             },
         );
-        emit_status(&self.events, SessionStatus::NeedsInput);
     }
 
     pub(super) fn emit_status_card(&self) {
@@ -623,24 +652,6 @@ impl Shared {
         Ok(())
     }
 
-    pub(super) async fn emit_worktree(&self, rest: &str) -> Result<(), AgentError> {
-        let text = match rest.trim() {
-            "" | "status" => super::worktree::render_worktrees(&self.cwd).await?,
-            "new" | "create" => {
-                let created = super::worktree::create_worktree(&self.cwd).await?;
-                format!(
-                    "已新建工作树（detached HEAD）：\n{}\n桌面端会在新对话里选择 Worktree；这里的目录可以单独打开。",
-                    created.path
-                )
-            }
-            _ => {
-                "用法：/worktree 查看，/worktree new 在工作树根目录新建一个 detached HEAD。".into()
-            }
-        };
-        emit(&self.events, SessionEventBody::System { text });
-        Ok(())
-    }
-
     pub(super) async fn emit_diff(&self) {
         let mut git = Command::new("git");
         git.arg("-c")
@@ -677,37 +688,6 @@ impl Shared {
         };
         emit(&self.events, SessionEventBody::System { text });
     }
-}
-
-fn access_prompt_options(approve_for_me: bool) -> Vec<PromptOption> {
-    let mut options = vec![
-        PromptOption {
-            id: "full".into(),
-            label: "完全访问".into(),
-            description: String::new(),
-        },
-        PromptOption {
-            id: "ask".into(),
-            label: "询问批准".into(),
-            description: String::new(),
-        },
-        PromptOption {
-            id: "read-only".into(),
-            label: "只读".into(),
-            description: String::new(),
-        },
-    ];
-    if approve_for_me {
-        options.insert(
-            2,
-            PromptOption {
-                id: "approve-for-me".into(),
-                label: "替我批准".into(),
-                description: String::new(),
-            },
-        );
-    }
-    options
 }
 
 #[derive(Debug)]
@@ -799,6 +779,18 @@ fn goal_status_label(status: &str) -> &'static str {
 #[cfg(test)]
 mod goal_tests {
     use super::*;
+
+    #[test]
+    fn init_prompt_is_the_official_asset() {
+        assert!(INIT_PROMPT.starts_with(
+            "Generate a file named AGENTS.md that serves as a contributor guide for this repository.\n"
+        ));
+        assert!(INIT_PROMPT.contains(
+            "Before writing, check whether AGENTS.md already exists in the current working directory. If it does, do not overwrite or modify it."
+        ));
+        assert_eq!(INIT_PROMPT.len(), 1836);
+        assert!(INIT_PROMPT_SOURCE.contains("rust-v0.162.1"));
+    }
 
     #[test]
     fn goal_commands_match_desktop_slash() {

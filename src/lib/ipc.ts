@@ -71,6 +71,14 @@ export interface DiffScope {
   source: string;
 }
 
+export interface SessionRequest {
+  session_id: string;
+  project_id: string;
+  agent: AgentKind;
+  name: string | null;
+  text: string | null;
+}
+
 export interface BrowserNotice {
   kind: string;
   value: string;
@@ -175,6 +183,8 @@ export interface Backend {
     cb: (payload: { session_id: string; items: QueuedTurn[] }) => void,
   ): () => void;
   onSessionsChanged(cb: (projectId: string) => void): () => void;
+  /** 适配器请求在同一项目新开会话（/new、/clear、计划「清空上下文后实施」）。 */
+  onSessionRequest(cb: (request: SessionRequest) => void): () => void;
   onProjectsChanged(cb: () => void): () => void;
 }
 
@@ -326,5 +336,6 @@ export const backend: Backend = {
       cb(p.project_id),
     ),
   onProjectsChanged: (cb) => subscribe("projects-changed", () => cb()),
+  onSessionRequest: (cb) => subscribe<SessionRequest>("session-request", cb),
 };
 

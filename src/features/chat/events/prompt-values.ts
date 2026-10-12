@@ -1,4 +1,12 @@
-import type { PromptQuestion } from "../../../types.ts";
+import type { PromptQuestion, SessionStatus } from "../../../types.ts";
+
+/**
+ * 提问卡能不能操作只看它有没有被回答、会话是否还活着。
+ * 运行状态来自 Codex `thread/status/changed`，工作台自己的选择卡不改它。
+ */
+export function promptInteractive(resolvedAnswer: string | null, status: SessionStatus): boolean {
+  return resolvedAnswer === null && status !== "stopped" && status !== "failed";
+}
 
 export function filledQuestionAnswers(answers: Record<string, string>): Record<string, string> {
   return Object.fromEntries(

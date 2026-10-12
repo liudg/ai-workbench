@@ -51,7 +51,8 @@ export interface SidebarSlice {
   createProject(input: CreateProjectInput): Promise<string | null>;
   importProject(input: ImportProjectInput): Promise<void>;
   removeProject(id: string): Promise<void>;
-  createSession(projectId: string, agent: AgentKind): Promise<void>;
+  /** 返回新会话 id；失败时写 lastError 并返回 null。 */
+  createSession(projectId: string, agent: AgentKind): Promise<string | null>;
   selectSession(projectId: string, sessionId: string): Promise<void>;
   releaseMissingSession(sessionId: string): void;
   renameSession(sessionId: string, name: string): Promise<boolean>;

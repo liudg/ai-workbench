@@ -3,7 +3,7 @@ import { ArrowUp, ChevronDown, Cpu, Plus, Shield } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useElementWidth } from "@/shared/dom/useElementWidth";
-import type { PermissionProfileOption, SessionSandbox } from "@/types";
+import type { PermissionMenu, SessionSandbox } from "@/types";
 import { buttonLabel } from "./access";
 import { composerDensity } from "./composer-density";
 import { PlanToggle } from "./PlanToggle";
@@ -17,7 +17,7 @@ export function ComposerBar({
   composerLocked,
   menusLocked,
   sandbox,
-  profiles,
+  permissionMenu,
   showPlan,
   planOn,
   showModel,
@@ -40,7 +40,7 @@ export function ComposerBar({
   composerLocked: boolean;
   menusLocked: boolean;
   sandbox: SessionSandbox;
-  profiles: PermissionProfileOption[];
+  permissionMenu: PermissionMenu | null;
   showPlan: boolean;
   planOn: boolean;
   showModel: boolean;
@@ -58,7 +58,7 @@ export function ComposerBar({
   const barRef = useRef<HTMLDivElement>(null);
   const density = composerDensity(useElementWidth(barRef));
   const icons = density === "icons";
-  const accessLabel = buttonLabel(sandbox, profiles);
+  const accessLabel = buttonLabel(sandbox, permissionMenu);
   return (
     <div
       ref={barRef}

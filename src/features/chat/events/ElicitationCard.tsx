@@ -3,13 +3,13 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
-import { elicitationContent } from "./prompt-values";
+import { elicitationContent, promptInteractive } from "./prompt-values";
 import type { PromptBodyProps } from "./prompt-props";
 
 export function ElicitationCard({ event, session, resolvedAnswer, answerPrompt }: PromptBodyProps) {
   const [values, setValues] = useState<Record<string, string>>({});
   const [flags, setFlags] = useState<Record<string, boolean>>({});
-  const interactive = resolvedAnswer === null && session.status === "needs-input";
+  const interactive = promptInteractive(resolvedAnswer, session.status);
 
   const submit = (action: "accept" | "decline" | "cancel") => {
     if (action !== "accept") {

@@ -57,22 +57,33 @@ impl Shared {
     }
 
     pub(super) async fn request(&self, method: &str, params: Value) -> Result<Value, AgentError> {
+        self.request_raw(method, params)
+            .await
+            .map_err(|(_, message)| AgentError::Runtime(message))
+    }
+
+    /// 同 `request`，失败时保留 JSON-RPC 错误码。
+    pub(super) async fn request_raw(
+        &self,
+        method: &str,
+        params: Value,
+    ) -> Result<Value, (Option<i64>, String)> {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let (tx, rx) = oneshot::channel();
         self.waiters.lock().unwrap().insert(id, tx);
         if !self.write_rpc(id, method, params) {
             self.waiters.lock().unwrap().remove(&id);
-            return Err(AgentError::Runtime("无法向 Codex CLI 写入消息".into()));
+            return Err((None, "无法向 Codex CLI 写入消息".into()));
         }
         match timeout(RPC_TIMEOUT, rx).await {
             Ok(Ok(message)) => {
                 if let Some(err) = message.get("error") {
-                    Err(AgentError::Runtime(rpc_error_text(err)))
+                    Err((err.get("code").and_then(Value::as_i64), rpc_error_text(err)))
                 } else {
                     Ok(message.get("result").cloned().unwrap_or(Value::Null))
                 }
             }
-            _ => Err(AgentError::Runtime(format!("等待 Codex {method} 超时"))),
+            _ => Err((None, format!("等待 Codex {method} 超时"))),
         }
     }
 
@@ -143,7 +154,6 @@ impl Shared {
                     } else if opens_turn(method.as_deref()) {
                         self.turn_open.store(false, Ordering::SeqCst);
                         emit(&self.events, SessionEventBody::Error { message: text });
-                        emit_status(&self.events, SessionStatus::Failed);
                     } else {
                         let label = method.unwrap_or_else(|| "请求".into());
                         emit(
@@ -217,17 +227,18 @@ impl Shared {
                                 id: "approve".into(),
                                 label: "允许".into(),
                                 description: String::new(),
+                                ..Default::default()
                             },
                             PromptOption {
                                 id: "reject".into(),
                                 label: "拒绝".into(),
                                 description: String::new(),
+                                ..Default::default()
                             },
                         ],
                         questions: Vec::new(),
                     },
                 );
-                emit_status(&self.events, SessionStatus::NeedsInput);
             }
             "elicitation/request" | "mcpServer/elicitation/request" => {
                 let (question, questions) = parse_elicitation(&params);
@@ -248,7 +259,6 @@ impl Shared {
                         questions,
                     },
                 );
-                emit_status(&self.events, SessionStatus::NeedsInput);
             }
             "item/tool/requestUserInput" => {
                 let questions = parse_tool_questions(&params);
@@ -275,7 +285,6 @@ impl Shared {
                         questions,
                     },
                 );
-                emit_status(&self.events, SessionStatus::NeedsInput);
             }
             _ => {
                 self.respond_error(id, "ai-workbench 未处理该 Codex 请求");
@@ -293,6 +302,7 @@ impl Shared {
         match method {
             "turn/started" => {
                 self.turn_open.store(true, Ordering::SeqCst);
+                self.plan_ready.store(false, Ordering::SeqCst);
                 if let Some(id) = params.pointer("/turn/id").and_then(Value::as_str) {
                     let id = id.to_string();
                     *self.turn_id.lock().unwrap() = Some(id.clone());
@@ -304,24 +314,23 @@ impl Shared {
                         },
                     );
                 }
-                emit_status(&self.events, SessionStatus::Running);
             }
             "turn/completed" => {
                 self.turn_open.store(false, Ordering::SeqCst);
                 *self.turn_id.lock().unwrap() = None;
+                self.drop_async_questions();
                 if let Some(message) = params.pointer("/turn/error").and_then(error_text) {
                     self.plan_ready.store(false, Ordering::SeqCst);
                     if !self.reject_writer_conflict(&message) {
                         emit(&self.events, SessionEventBody::Error { message });
-                        emit_status(&self.events, SessionStatus::Failed);
                     }
-                } else if !self.maybe_offer_implement_plan()
-                    && self.pending.lock().unwrap().is_empty()
-                {
-                    emit_status(&self.events, SessionStatus::Completed);
+                } else {
+                    self.maybe_offer_implement_plan();
                 }
                 self.poke_queue();
             }
+            "thread/status/changed" => self.on_thread_status(params),
+            "item/autoApprovalReview/completed" => self.on_auto_review_completed(params),
             "turn/diff/updated" => {
                 let turn_id = params.get("turnId").and_then(Value::as_str).unwrap_or("");
                 let diff = params.get("diff").and_then(Value::as_str).unwrap_or("");
@@ -354,8 +363,13 @@ impl Shared {
             }
             "turn/plan/updated" => {
                 if let Some(body) = super::gap::plan_steps_event(params) {
-                    self.plan_ready.store(true, Ordering::SeqCst);
                     emit(&self.events, body);
+                }
+            }
+            "thread/tokenUsage/updated" => {
+                let ours = self.thread_id.lock().unwrap().clone();
+                if ours.as_deref() == params.get("threadId").and_then(Value::as_str) {
+                    *self.token_info.lock().unwrap() = super::tokens::parse_token_usage(params);
                 }
             }
             "item/reasoning/summaryTextDelta" | "item/reasoning/textDelta" => {
@@ -397,7 +411,6 @@ impl Shared {
                                 message: message.to_string(),
                             },
                         );
-                        emit_status(&self.events, SessionStatus::Failed);
                     }
                 }
             }
@@ -518,11 +531,11 @@ impl Shared {
                         },
                     );
                 }
-                // 当前 Codex 计划模式产出 item type=plan，并禁止 update_plan。
-                // 实施卡片原先只认 turn/plan/updated，所以计划写出来也不会出现「实施此计划？」。
-                if self.collaboration_is_plan() && !text.trim().is_empty() {
-                    self.plan_ready.store(true, Ordering::SeqCst);
+                // TUI `on_plan_item_completed`：记下计划正文，并标记本回合出现过 plan item。
+                if !text.trim().is_empty() {
+                    *self.latest_plan.lock().unwrap() = Some(text.to_string());
                 }
+                self.plan_ready.store(true, Ordering::SeqCst);
             }
             "enteredReviewMode" => {
                 let text = item.get("review").and_then(Value::as_str).unwrap_or("");

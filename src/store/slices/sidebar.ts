@@ -161,8 +161,10 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
           lastSandbox: sandbox,
           lastAccessMode: sandbox.profileId ? "ask" : sandbox.mode,
         }));
+        return session.id;
       } catch (e) {
         set({ lastError: String(e) });
+        return null;
       }
     },
 

@@ -206,37 +206,25 @@ impl SandboxChoice {
         }
     }
 
-    pub(super) fn summary(&self, wire: SandboxWire) -> String {
-        if self.profile_active(wire) {
-            return format!(
-                "权限已设为自定义配置档 {}（permissions / reviewer {}）。下一条消息起生效。",
-                self.profile_id,
-                self.reviewer()
-            );
+    /// TUI `approval_preset_actions` 的提示：`Permissions updated to {label}`。
+    pub(super) fn summary(&self) -> String {
+        format!("Permissions updated to {}", self.official_label())
+    }
+
+    pub(super) fn official_label(&self) -> String {
+        if !self.profile_id.is_empty() {
+            return self.profile_id.clone();
         }
-        let network = if self.uses_sandbox_network() {
-            if self.network_access {
-                "开"
-            } else {
-                "关"
+        let mode = if self.approve_for_me {
+            "approve-for-me"
+        } else {
+            match self.mode {
+                Access::Full => "full",
+                Access::Ask => "ask",
+                Access::ReadOnly => "read-only",
             }
-        } else {
-            "不适用"
         };
-        let roots = if self.writable_roots.is_empty() || !self.uses_sandbox_network() {
-            "无".to_string()
-        } else {
-            self.writable_roots.join("、")
-        };
-        format!(
-            "权限已设为{}（sandbox {} / approval {} / reviewer {} / 网络{} / 其他可写目录：{}）。下一条消息起生效。",
-            self.label(),
-            self.mode.sandbox_mode(),
-            self.mode.approval_policy(),
-            self.reviewer(),
-            network,
-            roots,
-        )
+        preset_label(mode).unwrap_or(mode).to_string()
     }
 }
 
@@ -274,34 +262,220 @@ fn path_key(path: &str) -> String {
         .to_ascii_lowercase()
 }
 
-/// `config/read` 的结果。键存在即表示这版 app-server 认得该能力；值为 null 表示用户没配。
-pub(super) fn parse_permission_menu(value: &Value) -> PermissionMenu {
-    let config = value.get("config").unwrap_or(value);
-    let permission_profiles = config.get("permissions").is_some();
-    let approve_for_me = config.get("approvals_reviewer").is_some();
-    let network_access = config.get("sandbox_workspace_write").is_some();
-    let profiles = match config.get("permissions") {
-        Some(Value::Object(map)) => map
-            .iter()
-            .filter(|(id, _)| !id.starts_with(':'))
-            .map(|(id, body)| PermissionProfileOption {
-                id: id.clone(),
-                label: id.clone(),
-                description: body
-                    .get("description")
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_string(),
+/// TUI `/permissions` 菜单（`permissions_menu.rs::open_permission_profiles_popup`）。
+pub(super) const MENU_TITLE: &str = "Update Model Permissions";
+const NO_PROFILES: &str = "No permission profiles returned by the server.";
+const NOT_AVAILABLE: &str = "Not available on this server";
+const DISABLED_BY_REQUIREMENTS: &str = "Disabled by requirements";
+const CONFIGURED_PROFILE: &str = "Configured permission profile";
+const UNSUPPORTED_DISCOVERY: &str =
+    "This server does not support permission discovery. Upgrade the Codex server to use this menu.";
+const PAGINATION_LIMIT: &str =
+    "Permission discovery exceeded its pagination limit. Try /permissions again.";
+const DUPLICATE_PROFILES: &str = "The server returned duplicate permission profiles.";
+
+/// 四个内置档位。标签与说明取自 `chatwidget.rs` 常量和 `permission_preset_description`，
+/// 档位对应 `utils/approval-presets::builtin_approval_presets` 的 approval 与内置配置档。
+struct PresetSpec {
+    mode: &'static str,
+    profile: &'static str,
+    label: &'static str,
+    description: &'static str,
+    approval: &'static str,
+    reviewer: &'static str,
+}
+
+const PRESETS: [PresetSpec; 4] = [
+    PresetSpec {
+        mode: "ask",
+        profile: ":workspace",
+        label: "Ask for approval",
+        description: "Read and edit workspace files and run commands, with approval required for internet access or edits outside the workspace",
+        approval: "on-request",
+        reviewer: "user",
+    },
+    PresetSpec {
+        mode: "approve-for-me",
+        profile: ":workspace",
+        label: "Approve for me",
+        description: "Only ask for actions detected as potentially unsafe",
+        approval: "on-request",
+        reviewer: "auto_review",
+    },
+    PresetSpec {
+        mode: "full",
+        profile: ":danger-full-access",
+        label: "Full Access",
+        description: "Use with caution: Codex can edit files outside this workspace and access the internet without approval",
+        approval: "never",
+        reviewer: "user",
+    },
+    PresetSpec {
+        mode: "read-only",
+        profile: ":read-only",
+        label: "Read Only",
+        description: "Read workspace files, with approval required for edits or internet access",
+        approval: "on-request",
+        reviewer: "user",
+    },
+];
+
+/// 按档位 id 取官方标签。权限摘要和 /permissions 选择卡也用它。
+pub(super) fn preset_label(mode: &str) -> Option<&'static str> {
+    PRESETS.iter().find(|spec| spec.mode == mode).map(|spec| spec.label)
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct ProfileSummary {
+    pub id: String,
+    pub description: Option<String>,
+    pub allowed: bool,
+}
+
+/// `permissionProfile/list` 与 `configRequirements/read` 的结果。
+#[derive(Debug, Clone)]
+pub(super) struct Discovery {
+    pub profiles: Vec<ProfileSummary>,
+    pub requirements: Value,
+}
+
+impl Discovery {
+    /// `permission_discovery.rs::PermissionDiscovery::disabled_reason`。
+    fn disabled_reason(&self, id: &str, approval: Option<&str>, reviewer: Option<&str>) -> Option<String> {
+        let Some(profile) = self.profiles.iter().find(|profile| profile.id == id) else {
+            return Some(NOT_AVAILABLE.into());
+        };
+        let req = &self.requirements;
+        let profile_blocked = req
+            .get("allowedPermissionProfiles")
+            .and_then(Value::as_object)
+            .is_some_and(|allowed| allowed.get(id).and_then(Value::as_bool) != Some(true));
+        let listed_blocked = |key: &str, value: Option<&str>| {
+            req.get(key).and_then(Value::as_array).is_some_and(|allowed| {
+                value.is_some_and(|value| !allowed.iter().any(|item| item.as_str() == Some(value)))
             })
-            .collect(),
-        _ => Vec::new(),
+        };
+        if !profile.allowed
+            || profile_blocked
+            || listed_blocked("allowedApprovalPolicies", approval)
+            || listed_blocked("allowedApprovalsReviewers", reviewer)
+        {
+            return Some(DISABLED_BY_REQUIREMENTS.into());
+        }
+        None
+    }
+}
+
+pub(super) fn parse_profile_page(value: &Value) -> (Vec<ProfileSummary>, Option<String>) {
+    let profiles = value
+        .get("data")
+        .and_then(Value::as_array)
+        .map(|list| {
+            list.iter()
+                .filter_map(|item| {
+                    Some(ProfileSummary {
+                        id: item.get("id").and_then(Value::as_str)?.to_string(),
+                        description: item
+                            .get("description")
+                            .and_then(Value::as_str)
+                            .map(str::to_string),
+                        allowed: item.get("allowed").and_then(Value::as_bool).unwrap_or(false),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let next = value
+        .get("nextCursor")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    (profiles, next)
+}
+
+/// `permission_discovery.rs::discovery_error`。
+pub(super) fn discovery_error(code: Option<i64>, message: &str) -> String {
+    let unsupported = code == Some(-32601)
+        || (code == Some(-32600)
+            && (message.contains("permissionProfile/list")
+                || message.contains("configRequirements/read")
+                || message.contains("config/read")));
+    if unsupported {
+        UNSUPPORTED_DISCOVERY.into()
+    } else {
+        format!("Failed to load permissions: {message}")
+    }
+}
+
+/// `experimentalFeature/list` 里 `guardian_approval` 是否启用（TUI 用同一开关决定显示替我批准）。
+pub(super) fn feature_enabled(pages: &[Value], name: &str) -> bool {
+    pages.iter().any(|page| {
+        page.get("data").and_then(Value::as_array).is_some_and(|list| {
+            list.iter().any(|item| {
+                item.get("name").and_then(Value::as_str) == Some(name)
+                    && item.get("enabled").and_then(Value::as_bool) == Some(true)
+            })
+        })
+    })
+}
+
+pub(super) fn build_menu(
+    discovery: Result<Discovery, String>,
+    approve_for_me: bool,
+    network_access: bool,
+) -> PermissionMenu {
+    let discovery = match discovery {
+        Ok(discovery) => discovery,
+        Err(notice) => {
+            return PermissionMenu {
+                network_access,
+                writable_roots: network_access,
+                permission_profiles: false,
+                approve_for_me: false,
+                title: MENU_TITLE.into(),
+                notice: Some(notice),
+                presets: Vec::new(),
+                profiles: Vec::new(),
+            }
+        }
     };
+    let presets = PRESETS
+        .iter()
+        .filter(|spec| spec.mode != "approve-for-me" || approve_for_me)
+        .map(|spec| PermissionProfileOption {
+            id: spec.mode.into(),
+            label: spec.label.into(),
+            description: spec.description.into(),
+            disabled_reason: discovery.disabled_reason(
+                spec.profile,
+                Some(spec.approval),
+                Some(spec.reviewer),
+            ),
+        })
+        .collect();
+    let profiles = discovery
+        .profiles
+        .iter()
+        .filter(|profile| !profile.id.starts_with(':'))
+        .map(|profile| PermissionProfileOption {
+            id: profile.id.clone(),
+            label: profile.id.clone(),
+            description: profile
+                .description
+                .clone()
+                .unwrap_or_else(|| CONFIGURED_PROFILE.into()),
+            disabled_reason: discovery.disabled_reason(&profile.id, None, None),
+        })
+        .collect();
+    let empty = discovery.profiles.is_empty();
     PermissionMenu {
         network_access,
         writable_roots: network_access,
-        permission_profiles,
+        permission_profiles: true,
         approve_for_me,
-        profiles,
+        title: MENU_TITLE.into(),
+        notice: empty.then(|| NO_PROFILES.into()),
+        presets: if empty { Vec::new() } else { presets },
+        profiles: if empty { Vec::new() } else { profiles },
     }
 }
 
@@ -327,15 +501,92 @@ impl Shared {
         }
     }
 
+    /// 权限配置档来自 `permissionProfile/list`，替我批准看 `guardian_approval` 功能开关。
+    /// 网络与额外可写目录是工作台对 `sandbox_workspace_write` 的扩展，仍看 `config/read` 有没有这个键。
     pub(super) async fn refresh_sandbox_features(&self) -> Result<PermissionMenu, AgentError> {
-        let value = self.request("config/read", json!({})).await?;
-        let menu = parse_permission_menu(&value);
+        let discovery = self.discover_permissions().await;
+        let features = self.feature_pages().await;
+        let approve_for_me = feature_enabled(&features, "guardian_approval");
+        let network_access = match self.request("config/read", json!({})).await {
+            Ok(value) => value
+                .get("config")
+                .unwrap_or(&value)
+                .get("sandbox_workspace_write")
+                .is_some(),
+            Err(_) => false,
+        };
+        let menu = build_menu(discovery, approve_for_me, network_access);
         *self.wire.lock().unwrap() = SandboxWire {
             reviewer: menu.approve_for_me,
             profiles: menu.permission_profiles,
         };
         self.wire_ready.store(true, Ordering::SeqCst);
         Ok(menu)
+    }
+
+    async fn discover_permissions(&self) -> Result<Discovery, String> {
+        let requirements = self
+            .request_raw("configRequirements/read", Value::Null)
+            .await
+            .map_err(|(code, message)| discovery_error(code, &message))?;
+        let mut profiles: Vec<ProfileSummary> = Vec::new();
+        let mut cursor: Option<String> = None;
+        let mut cursors = HashSet::new();
+        for _ in 0..10 {
+            let page = self
+                .request_raw(
+                    "permissionProfile/list",
+                    json!({ "cursor": cursor, "limit": 100, "cwd": self.cwd }),
+                )
+                .await
+                .map_err(|(code, message)| discovery_error(code, &message))?;
+            let (data, next) = parse_profile_page(&page);
+            if data.len() > 100 {
+                break;
+            }
+            profiles.extend(data);
+            cursor = next;
+            let Some(next) = cursor.clone() else {
+                let mut ids = HashSet::new();
+                if !profiles.iter().all(|profile| ids.insert(profile.id.clone())) {
+                    return Err(DUPLICATE_PROFILES.into());
+                }
+                return Ok(Discovery {
+                    profiles,
+                    requirements: requirements
+                        .get("requirements")
+                        .cloned()
+                        .unwrap_or(Value::Null),
+                });
+            };
+            if !cursors.insert(next) {
+                break;
+            }
+        }
+        Err(PAGINATION_LIMIT.into())
+    }
+
+    async fn feature_pages(&self) -> Vec<Value> {
+        let mut pages = Vec::new();
+        let mut cursor: Option<String> = None;
+        for _ in 0..10 {
+            let mut params = json!({ "cursor": cursor, "limit": 200 });
+            if let Some(thread_id) = self.thread_id.lock().unwrap().clone() {
+                params["threadId"] = json!(thread_id);
+            }
+            let Ok(page) = self.request("experimentalFeature/list", params).await else {
+                break;
+            };
+            cursor = page
+                .get("nextCursor")
+                .and_then(Value::as_str)
+                .map(str::to_string);
+            pages.push(page);
+            if cursor.is_none() {
+                break;
+            }
+        }
+        pages
     }
 }
 
@@ -484,44 +735,108 @@ mod tests {
         assert!(require_supported(&choice, SandboxWire::default(), false).is_ok());
     }
 
-    #[test]
-    fn config_read_nulls_mean_supported_but_no_custom_profiles() {
-        let menu = parse_permission_menu(&json!({
-            "config": {
-                "permissions": null,
-                "approvals_reviewer": null,
-                "sandbox_workspace_write": null
-            }
-        }));
-        assert!(menu.permission_profiles);
-        assert!(menu.approve_for_me);
-        assert!(menu.network_access);
-        assert!(menu.writable_roots);
-        assert!(menu.profiles.is_empty());
+    fn discovery(profiles: &[(&str, bool)], requirements: Value) -> Discovery {
+        Discovery {
+            profiles: profiles
+                .iter()
+                .map(|(id, allowed)| ProfileSummary {
+                    id: id.to_string(),
+                    description: None,
+                    allowed: *allowed,
+                })
+                .collect(),
+            requirements,
+        }
     }
 
     #[test]
-    fn config_read_lists_named_profiles_and_hides_builtins() {
-        let menu = parse_permission_menu(&json!({
-            "permissions": {
-                ":workspace": { "description": "built-in" },
-                "project-edit": { "description": "Uses permissions defined in config.toml" }
-            },
-            "approvals_reviewer": "user"
-        }));
-        assert_eq!(menu.profiles.len(), 1);
-        assert_eq!(menu.profiles[0].id, "project-edit");
-        assert_eq!(
-            menu.profiles[0].description,
-            "Uses permissions defined in config.toml"
+    fn menu_lists_official_presets_then_named_profiles() {
+        let page = json!({
+            "data": [
+                { "id": ":read-only", "description": null, "allowed": true },
+                { "id": ":workspace", "description": null, "allowed": true },
+                { "id": ":danger-full-access", "description": null, "allowed": true },
+                { "id": "project-edit", "description": "Edit only this project", "allowed": true },
+                { "id": "locked", "description": null, "allowed": false }
+            ],
+            "nextCursor": null
+        });
+        let (profiles, next) = parse_profile_page(&page);
+        assert!(next.is_none());
+        let menu = build_menu(
+            Ok(Discovery {
+                profiles,
+                requirements: Value::Null,
+            }),
+            true,
+            true,
         );
+        assert_eq!(menu.title, "Update Model Permissions");
+        let labels: Vec<_> = menu.presets.iter().map(|item| item.label.as_str()).collect();
+        assert_eq!(
+            labels,
+            ["Ask for approval", "Approve for me", "Full Access", "Read Only"]
+        );
+        assert!(menu.presets.iter().all(|item| item.disabled_reason.is_none()));
+        assert_eq!(menu.profiles.len(), 2);
+        assert_eq!(menu.profiles[0].description, "Edit only this project");
+        assert_eq!(menu.profiles[1].description, "Configured permission profile");
+        assert_eq!(
+            menu.profiles[1].disabled_reason.as_deref(),
+            Some("Disabled by requirements")
+        );
+        assert!(menu.permission_profiles && menu.approve_for_me);
     }
 
     #[test]
-    fn old_config_without_keys_hides_optional_modes() {
-        let menu = parse_permission_menu(&json!({ "config": { "model": "gpt" } }));
-        assert!(!menu.permission_profiles);
-        assert!(!menu.approve_for_me);
-        assert!(!menu.network_access);
+    fn approve_for_me_follows_the_guardian_feature() {
+        let pages = vec![json!({ "data": [{ "name": "guardian_approval", "enabled": false }] })];
+        assert!(!feature_enabled(&pages, "guardian_approval"));
+        let menu = build_menu(Ok(discovery(&[(":workspace", true)], Value::Null)), false, false);
+        assert!(menu.presets.iter().all(|item| item.id != "approve-for-me"));
+        let missing = menu.presets.iter().find(|item| item.id == "full").unwrap();
+        assert_eq!(missing.disabled_reason.as_deref(), Some("Not available on this server"));
+    }
+
+    #[test]
+    fn requirements_disable_presets() {
+        let menu = build_menu(
+            Ok(discovery(
+                &[(":workspace", true), (":danger-full-access", true), (":read-only", true)],
+                json!({ "allowedApprovalPolicies": ["on-request"], "allowedApprovalsReviewers": ["user"] }),
+            )),
+            true,
+            false,
+        );
+        let reason = |id: &str| {
+            menu.presets
+                .iter()
+                .find(|item| item.id == id)
+                .and_then(|item| item.disabled_reason.clone())
+        };
+        assert_eq!(reason("full").as_deref(), Some("Disabled by requirements"));
+        assert_eq!(reason("approve-for-me").as_deref(), Some("Disabled by requirements"));
+        assert!(reason("ask").is_none());
+    }
+
+    #[test]
+    fn empty_or_failed_discovery_shows_the_official_notice() {
+        let empty = build_menu(Ok(discovery(&[], Value::Null)), true, true);
+        assert!(empty.presets.is_empty());
+        assert_eq!(
+            empty.notice.as_deref(),
+            Some("No permission profiles returned by the server.")
+        );
+        assert_eq!(
+            discovery_error(Some(-32601), "method not found"),
+            "This server does not support permission discovery. Upgrade the Codex server to use this menu."
+        );
+        assert_eq!(
+            discovery_error(Some(-32603), "boom"),
+            "Failed to load permissions: boom"
+        );
+        let failed = build_menu(Err("Failed to load permissions: boom".into()), true, true);
+        assert!(!failed.permission_profiles);
+        assert_eq!(failed.notice.as_deref(), Some("Failed to load permissions: boom"));
     }
 }

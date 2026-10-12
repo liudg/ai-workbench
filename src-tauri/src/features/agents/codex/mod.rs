@@ -13,6 +13,7 @@
 
 mod catalog;
 mod gap;
+mod guardian;
 mod host;
 mod process;
 mod prompts;
@@ -21,8 +22,9 @@ mod resume;
 mod rpc;
 mod sandbox;
 mod state;
+mod thread_status;
+mod tokens;
 mod turn;
-mod worktree;
 
 pub use resume::CodexDirectory;
 
@@ -55,7 +57,7 @@ use process::{
     remember_agent_stderr, resolve_codex_bin, trim_newline, StderrClass,
 };
 use prompts::{
-    async_answer_text, blocking_answer_payload, elicitation_action_label, elicitation_result,
+    async_replies, blocking_answer_payload, elicitation_action_label, elicitation_result,
     is_accept, questions_summary,
 };
 use sandbox::SandboxChoice;
@@ -233,6 +235,10 @@ impl AgentAdapter for CodexCliAdapter {
             review_output: Mutex::new(None),
             history_cursor: Mutex::new(None),
             activity: Mutex::new(HashMap::new()),
+            denials: Mutex::new(guardian::RecentDenials::default()),
+            status_known: AtomicBool::new(false),
+            token_info: Mutex::new(None),
+            latest_plan: Mutex::new(None),
         });
         {
             let refresher = Arc::clone(&shared);
@@ -321,12 +327,10 @@ impl AgentAdapter for CodexCliAdapter {
 
         // 写锁冲突只发一条只读通知，放在历史载入之后。打开本身仍然成功。
         shared.finish_open();
-        emit(
-            &events,
-            SessionEventBody::StatusChanged {
-                status: SessionStatus::Completed,
-            },
-        );
+        // 还没有线程（或 resume 没拿到线程状态）时没有回合在跑。
+        if !shared.status_known.load(Ordering::SeqCst) {
+            emit_status(&events, SessionStatus::Completed);
+        }
         Ok(Arc::new(CodexCliSession { shared }))
     }
 }
@@ -430,21 +434,17 @@ impl AgentSession for CodexCliSession {
         match pending {
             Pending::Access => {
                 let PromptAnswer::Single { value } = &answer else {
-                    return Err(AgentError::Runtime("请选择完全访问、询问批准或只读".into()));
+                    return Err(AgentError::Runtime("请选择一个权限档位".into()));
                 };
                 let mut access = self.shared.access.lock().unwrap();
                 if !access.apply_preset(value) {
-                    return Err(AgentError::Runtime(
-                        "请选择完全访问、询问批准、替我批准或只读".into(),
-                    ));
+                    access.profile_id = value.trim().to_string();
+                    access.mode = state::Access::Ask;
+                    access.approve_for_me = false;
                 }
                 drop(access);
                 self.shared.resolve_prompt(prompt_id, value.clone());
-                if self.shared.turn_open.load(Ordering::SeqCst) {
-                    emit_status(&self.shared.events, SessionStatus::Running);
-                } else {
-                    emit_status(&self.shared.events, SessionStatus::Completed);
-                }
+                self.shared.note_access();
             }
             Pending::Approval { rpc_id } => {
                 let PromptAnswer::Single { value } = &answer else {
@@ -457,18 +457,12 @@ impl AgentSession for CodexCliSession {
                 };
                 self.shared.respond(rpc_id, json!({ "decision": decision }));
                 self.shared.resolve_prompt(prompt_id, value.clone());
-                if self.shared.turn_open.load(Ordering::SeqCst) {
-                    emit_status(&self.shared.events, SessionStatus::Running);
-                }
             }
             Pending::UserInput { rpc_id, questions } => {
                 let payload = blocking_answer_payload(&questions, &answer);
                 self.shared.respond(rpc_id, payload);
                 self.shared
                     .resolve_prompt(prompt_id, questions_summary(&questions, &answer));
-                if self.shared.turn_open.load(Ordering::SeqCst) {
-                    emit_status(&self.shared.events, SessionStatus::Running);
-                }
             }
             Pending::ImplementPlan => {
                 self.shared
@@ -492,30 +486,44 @@ impl AgentSession for CodexCliSession {
                 };
                 self.shared.respond(rpc_id, result);
                 self.shared.resolve_prompt(prompt_id, summary);
-                if self.shared.turn_open.load(Ordering::SeqCst) {
-                    emit_status(&self.shared.events, SessionStatus::Running);
-                }
+            }
+            Pending::ApproveDenial => {
+                self.shared.approve_denial(prompt_id, &answer).await?;
             }
             Pending::AsyncQuestions { questions } => {
-                let text = async_answer_text(&questions, &answer);
-                let summary = questions_summary(&questions, &answer);
-                if self.shared.turn_open.load(Ordering::SeqCst) {
-                    if let Err(err) = self.shared.steer_turn(&text).await {
-                        // 写回失败：恢复待答状态，卡片仍可操作
-                        self.shared
-                            .pending
-                            .lock()
-                            .unwrap()
-                            .insert(prompt_id.to_string(), Pending::AsyncQuestions { questions });
+                // 官方没有「跳过」消息：不回答就只是本地收起，回合结束时也会收起。
+                if matches!(answer, PromptAnswer::Questions { skipped: true, .. }) {
+                    self.shared.resolve_prompt(prompt_id, "已跳过".into());
+                    return Ok(());
+                }
+                let replies = async_replies(&questions, &answer);
+                if replies.is_empty() {
+                    self.shared
+                        .pending
+                        .lock()
+                        .unwrap()
+                        .insert(prompt_id.to_string(), Pending::AsyncQuestions { questions });
+                    return Err(AgentError::Runtime("先回答至少一个问题".into()));
+                }
+                // 只有真正送达的回答才消耗对应问题（`chatwidget/questions.rs`）。
+                let mut sent = Vec::new();
+                for (question_id, reply) in &replies {
+                    if let Err(err) = self.shared.steer_turn(reply).await {
+                        let left: Vec<_> = questions
+                            .iter()
+                            .filter(|q| !sent.contains(&q.id))
+                            .cloned()
+                            .collect();
+                        self.shared.pending.lock().unwrap().insert(
+                            prompt_id.to_string(),
+                            Pending::AsyncQuestions { questions: left },
+                        );
                         return Err(err);
                     }
-                    self.shared.resolve_prompt(prompt_id, summary);
-                    emit_status(&self.shared.events, SessionStatus::Running);
-                } else {
-                    // 回合已结束（被打断或超时）：答案作为新回合发出去
-                    self.shared.begin_turn(text).await?;
-                    self.shared.resolve_prompt(prompt_id, summary);
+                    sent.push(question_id.clone());
                 }
+                self.shared
+                    .resolve_prompt(prompt_id, questions_summary(&questions, &answer));
             }
         }
         Ok(())

@@ -5,14 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { PromptQuestion } from "@/types";
-import { filledQuestionAnswers } from "./prompt-values";
+import { filledQuestionAnswers, promptInteractive } from "./prompt-values";
 import type { PromptBodyProps } from "./prompt-props";
 
 /** 问题卡片：适配器发出 prompt_kind=questions。点选项只填入回答框，「发送」一次提交整卡。 */
 export function QuestionCard({ event, session, resolvedAnswer, answerPrompt }: PromptBodyProps) {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
-  const interactive = resolvedAnswer === null && session.status === "needs-input";
+  const interactive = promptInteractive(resolvedAnswer, session.status);
 
   const skip = () =>
     answerPrompt(session.id, event.prompt_id, {

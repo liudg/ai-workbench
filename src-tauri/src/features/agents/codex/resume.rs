@@ -461,6 +461,7 @@ fn push_history_item(
     match item.get("type").and_then(Value::as_str).unwrap_or("") {
         "userMessage" => {
             let text = user_item_text(item);
+            let text = super::prompts::async_reply_display(&text).unwrap_or(text);
             let images = user_item_images(item)
                 .into_iter()
                 .map(|image| take_chars(&image, 20_000))

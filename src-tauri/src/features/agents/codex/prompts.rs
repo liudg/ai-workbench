@@ -4,10 +4,10 @@ use serde_json::{json, Value};
 
 use crate::features::agents::AgentError;
 use crate::models::{
-    PromptAnswer, PromptKind, PromptOption, PromptQuestion, SessionEventBody, SessionStatus,
+    PromptAnswer, PromptKind, PromptOption, PromptQuestion, SessionEventBody,
 };
 
-use super::state::{emit, emit_status, Pending, Shared};
+use super::state::{emit, Pending, Shared};
 
 impl Shared {
     pub(super) fn maybe_emit_async_questions(&self, id: &str, item: &Value) -> bool {
@@ -20,7 +20,7 @@ impl Shared {
                 return true;
             }
         }
-        let questions = parse_async_questions(item);
+        let questions = parse_async_questions(item, id);
         if questions.is_empty() {
             return false;
         }
@@ -43,11 +43,29 @@ impl Shared {
                 questions,
             },
         );
-        emit_status(&self.events, SessionStatus::NeedsInput);
         true
     }
 
-    /// 把回答写回正在睡眠等待的回合。对齐终端里「在提问后直接输入回答」。
+    /// 回合结束时，官方 TUI 收起所有还没回答的 async 提问（`take_question_drafts`）。
+    pub(super) fn drop_async_questions(&self) {
+        let dropped: Vec<String> = {
+            let mut pending = self.pending.lock().unwrap();
+            let ids: Vec<String> = pending
+                .iter()
+                .filter(|(_, item)| matches!(item, Pending::AsyncQuestions { .. }))
+                .map(|(id, _)| id.clone())
+                .collect();
+            for id in &ids {
+                pending.remove(id);
+            }
+            ids
+        };
+        for id in dropped {
+            self.resolve_prompt(&id, ASYNC_TURN_ENDED.into());
+        }
+    }
+
+    /// 把回答作为普通用户输入写进正在进行的回合（运行中的回合里发消息即 steer）。
     pub(super) async fn steer_turn(&self, text: &str) -> Result<(), AgentError> {
         let thread_id = self
             .thread_id
@@ -149,6 +167,7 @@ pub(super) fn parse_tool_questions(params: &Value) -> Vec<PromptQuestion> {
                                             .and_then(Value::as_str)
                                             .unwrap_or("")
                                             .to_string(),
+                                        ..Default::default()
                                     })
                                 })
                                 .collect::<Vec<_>>()
@@ -173,9 +192,13 @@ pub(super) fn parse_tool_questions(params: &Value) -> Vec<PromptQuestion> {
         .unwrap_or_default()
 }
 
-/// async 提问消息（agentMessage `questions` 字段）：
-/// `[{ title, options: string[] | null }]`；协议没有题目 id，按序合成 q1/q2…
-pub(super) fn parse_async_questions(item: &Value) -> Vec<PromptQuestion> {
+/// 回合结束、提问被收起时卡片上的说明。
+pub(super) const ASYNC_TURN_ENDED: &str = "回合已结束，未回答";
+
+/// async 提问消息（agentMessage `questions` 字段）：`[{ title, options: string[] | null }]`。
+/// 题目 id 与桌面端、TUI 相同：`JSON.stringify(["request_user_input_async", item id, 序号])`。
+/// 选项最多 32 个，超过 512 字节的选项丢弃（`async_questions/state.rs::append`）。
+pub(super) fn parse_async_questions(item: &Value, message_id: &str) -> Vec<PromptQuestion> {
     item.get("questions")
         .and_then(Value::as_array)
         .map(|list| {
@@ -191,17 +214,20 @@ pub(super) fn parse_async_questions(item: &Value) -> Vec<PromptQuestion> {
                         .and_then(Value::as_array)
                         .map(|opts| {
                             opts.iter()
+                                .take(32)
                                 .filter_map(Value::as_str)
+                                .filter(|label| label.len() <= 512)
                                 .map(|label| PromptOption {
                                     id: label.to_string(),
                                     label: label.to_string(),
                                     description: String::new(),
+                                    ..Default::default()
                                 })
                                 .collect::<Vec<_>>()
                         })
                         .unwrap_or_default();
                     Some(PromptQuestion {
-                        id: format!("q{}", index + 1),
+                        id: json!(["request_user_input_async", message_id, index]).to_string(),
                         header: String::new(),
                         question: title,
                         is_secret: false,
@@ -245,20 +271,83 @@ pub(super) fn blocking_answer_payload(
     json!({ "answers": map })
 }
 
-/// async 提问没有结构化回答通道：答案编成编号文本 steer 回回合（与终端输入一致）。
-pub(super) fn async_answer_text(questions: &[PromptQuestion], answer: &PromptAnswer) -> String {
-    match answer {
-        PromptAnswer::Single { value } => value.clone(),
-        PromptAnswer::Questions { answers, skipped } => {
-            let lines = numbered_answer_lines(questions, answers, *skipped);
-            if lines.is_empty() {
-                skip_text()
-            } else {
-                lines.join("\n")
-            }
-        }
-        PromptAnswer::Elicitation { action, .. } => action.clone(),
+/// 每道已作答的 async 提问各成一条用户消息，正文是 `AnsweredQuestion::render`
+/// （`codex-rs/context-fragments/src/answered_question.rs`）。
+pub(super) fn async_replies(
+    questions: &[PromptQuestion],
+    answer: &PromptAnswer,
+) -> Vec<(String, String)> {
+    let PromptAnswer::Questions { answers, skipped } = answer else {
+        return Vec::new();
+    };
+    if *skipped {
+        return Vec::new();
     }
+    questions
+        .iter()
+        .filter_map(|q| {
+            let text = answers.get(&q.id)?.trim();
+            (!text.is_empty()).then(|| (q.id.clone(), answered_question(&q.id, &q.question, text)))
+        })
+        .collect()
+}
+
+pub(super) fn answered_question(question_id: &str, question: &str, answer: &str) -> String {
+    let mut end = question.len().min(512);
+    while !question.is_char_boundary(end) {
+        end -= 1;
+    }
+    let question = question[..end].replace(['\n', '\r'], " ");
+    if question_id.len() > 512 {
+        return format!("> {question}\n\n{answer}");
+    }
+    let replies = json!([{
+        "answer": answer,
+        "question": question,
+        "questionItemId": question_id,
+    }]);
+    format!("<send_user_message_question_reply>\n{replies}\n</send_user_message_question_reply>")
+}
+
+/// 历史里的回答信封按 TUI `async_question_reply::display_text` 显示。
+pub(super) fn async_reply_display(text: &str) -> Option<String> {
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Reply {
+        #[allow(dead_code)]
+        question_item_id: String,
+        question: String,
+        answer: String,
+    }
+    #[derive(serde::Deserialize)]
+    #[serde(untagged)]
+    enum Replies {
+        Many(Vec<Reply>),
+        One(Reply),
+    }
+    let text = text.trim();
+    let text = if text.starts_with("# Context from my IDE setup:\n") {
+        text.rsplit_once("\n## My request for Codex:\n")?.1.trim()
+    } else {
+        text
+    };
+    let body = text
+        .strip_prefix("<send_user_message_question_reply>")?
+        .strip_suffix("</send_user_message_question_reply>")?;
+    let replies = match serde_json::from_str::<Replies>(body).ok()? {
+        Replies::Many(list) => list,
+        Replies::One(reply) => vec![reply],
+    };
+    if replies.is_empty() {
+        return None;
+    }
+    Some(
+        replies
+            .iter()
+            .map(|reply| format!("> {}\n\n{}", reply.question, reply.answer))
+            .collect::<Vec<_>>()
+            .join("\n\n"),
+    )
 }
 
 /// 卡片上的「已回答」摘要。
@@ -296,10 +385,6 @@ pub(super) fn numbered_answer_lines(
                 .map(|text| format!("{}. {}", index + 1, text))
         })
         .collect()
-}
-
-pub(super) fn skip_text() -> String {
-    "（用户跳过了这些问题，请按你的判断继续）".into()
 }
 
 pub(super) fn error_text(value: &Value) -> Option<String> {
@@ -414,6 +499,7 @@ fn schema_fields(schema: &Value) -> Vec<PromptQuestion> {
                             id: label.to_string(),
                             label: label.to_string(),
                             description: String::new(),
+                            ..Default::default()
                         })
                         .collect::<Vec<_>>()
                 })
@@ -561,15 +647,15 @@ mod tests {
                 { "title": "还有约束吗？", "options": null }
             ]
         });
-        let questions = parse_async_questions(&item);
+        let questions = parse_async_questions(&item, "msg_1");
         assert_eq!(questions.len(), 2);
-        assert_eq!(questions[0].id, "q1");
+        assert_eq!(questions[0].id, r#"["request_user_input_async","msg_1",0]"#);
         assert_eq!(questions[0].options.len(), 3);
-        assert_eq!(questions[1].id, "q2");
+        assert_eq!(questions[1].id, r#"["request_user_input_async","msg_1",1]"#);
         assert!(questions[1].options.is_empty());
         // 普通消息没有 questions 字段
         assert!(
-            parse_async_questions(&json!({ "type": "agentMessage", "id": "m", "text": "hi" }))
+            parse_async_questions(&json!({ "type": "agentMessage", "id": "m", "text": "hi" }), "m")
                 .is_empty()
         );
     }
@@ -601,35 +687,52 @@ mod tests {
     }
 
     #[test]
-    fn async_answer_numbers_lines_and_skips() {
-        let questions = parse_tool_questions(&question_fixture());
+    fn async_answers_use_the_official_reply_envelope() {
+        let item = json!({
+            "questions": [
+                { "title": "Which framework?\nPick one", "options": ["Vite", "Astro"] },
+                { "title": "Constraints?", "options": null }
+            ]
+        });
+        let questions = parse_async_questions(&item, "msg_9");
         let mut answers = std::collections::HashMap::new();
-        answers.insert("framework".to_string(), "Vite".to_string());
-        let text = async_answer_text(
+        answers.insert(questions[0].id.clone(), " Vite ".to_string());
+        answers.insert(questions[1].id.clone(), "  ".to_string());
+        let replies = async_replies(
             &questions,
             &PromptAnswer::Questions {
                 answers,
                 skipped: false,
             },
         );
-        assert_eq!(text, "1. Vite");
-
-        let skipped = async_answer_text(
+        assert_eq!(replies.len(), 1);
+        assert_eq!(
+            replies[0].1,
+            "<send_user_message_question_reply>\n[{\"answer\":\"Vite\",\"question\":\"Which framework? Pick one\",\"questionItemId\":\"[\\\"request_user_input_async\\\",\\\"msg_9\\\",0]\"}]\n</send_user_message_question_reply>"
+        );
+        assert_eq!(
+            async_reply_display(&replies[0].1).as_deref(),
+            Some("> Which framework? Pick one\n\nVite")
+        );
+        assert!(async_replies(
             &questions,
             &PromptAnswer::Questions {
                 answers: std::collections::HashMap::new(),
                 skipped: true,
             },
-        );
-        assert!(skipped.contains("跳过"));
+        )
+        .is_empty());
+        let long_id = "x".repeat(513);
+        assert_eq!(answered_question(&long_id, "Q", "A"), "> Q\n\nA");
+    }
 
-        let raw = async_answer_text(
-            &questions,
-            &PromptAnswer::Single {
-                value: "随便".into(),
-            },
-        );
-        assert_eq!(raw, "随便");
+    #[test]
+    fn async_options_are_bounded_like_the_tui() {
+        let options: Vec<String> = (0..40).map(|i| format!("o{i}")).collect();
+        let mut item = json!({ "questions": [{ "title": "t", "options": options }] });
+        item["questions"][0]["options"][1] = json!("y".repeat(513));
+        let parsed = parse_async_questions(&item, "m");
+        assert_eq!(parsed[0].options.len(), 31);
     }
 
     #[test]
