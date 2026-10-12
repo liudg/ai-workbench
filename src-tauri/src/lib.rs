@@ -82,6 +82,7 @@ pub fn run() {
             features::images::prepare_chat_image,
             features::images::stage_chat_image,
             features::preview::read_preview_file,
+            features::preview::list_project_tree,
             features::preview::open_project_file,
             features::preview::browser::prepare_browser_file,
             features::preview::browser::browser_show,

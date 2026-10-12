@@ -31,6 +31,7 @@ export function Workspace() {
         sessionId={session.id}
         projectId={project.id}
         projectPath={project.path}
+        sessionTitle={session.title}
         agent={session.agent}
         events={events}
       >

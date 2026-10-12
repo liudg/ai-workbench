@@ -30,16 +30,14 @@ interface PanelApi {
   openDiff: (id: string, title: string, files: FileChange[]) => void;
   openHref: (href: string, line?: number) => void;
   openBlank: () => void;
+  openFiles: () => void;
+  projectPath: string;
+  sessionTitle: string;
   layout: PanelLayoutMode;
   hidePanel: () => void;
   showPanel: () => void;
   toggleFull: () => void;
   setTabTitle: (id: string, title: string) => void;
-  filesExpanded: boolean;
-  toggleFiles: () => void;
-  /** 只收起文件列，预览标签保持打开。 */
-  filesSidebarOpen: boolean;
-  toggleFilesSidebar: () => void;
   previewWidth: number | null;
   diffFilesWidth: number | null;
   setPreviewWidth: (width: number) => void;
@@ -64,6 +62,7 @@ export function PanelProvider({
   sessionId,
   projectId,
   projectPath,
+  sessionTitle,
   agent,
   events,
   children,
@@ -71,6 +70,7 @@ export function PanelProvider({
   sessionId: string;
   projectId: string;
   projectPath: string;
+  sessionTitle: string;
   agent: AgentKind;
   events: readonly SessionEvent[];
   children: ReactNode;
@@ -78,9 +78,6 @@ export function PanelProvider({
   const tabs = useWorkbench((s) => s.panelBySession[sessionId]?.tabs ?? EMPTY_TABS);
   const activeId = useWorkbench((s) => s.panelBySession[sessionId]?.activeId ?? "");
   const layout = useWorkbench((s) => s.panelBySession[sessionId]?.layout ?? "chat");
-  const hasRail = useWorkbench((s) => s.panelBySession[sessionId] !== undefined);
-  const storedExpanded = useWorkbench((s) => s.panelBySession[sessionId]?.filesExpanded ?? false);
-  const storedSidebar = useWorkbench((s) => s.panelBySession[sessionId]?.filesSidebarOpen ?? true);
   const previewWidth = useWorkbench((s) => s.previewWidthBySession[sessionId] ?? null);
   const diffFilesWidth = useWorkbench((s) => s.diffFilesWidthBySession[sessionId] ?? null);
   const changes = useWorkbench((s) => s.profiles[agent]?.capabilities.changes);
@@ -121,6 +118,9 @@ export function PanelProvider({
   const openBlank = useCallback(() => {
     useWorkbench.getState().panelOpenBlank(sessionId);
   }, [sessionId]);
+  const openFiles = useCallback(() => {
+    useWorkbench.getState().panelOpenFiles(sessionId);
+  }, [sessionId]);
   const hidePanel = useCallback(() => {
     useWorkbench.getState().panelHide(sessionId);
   }, [sessionId]);
@@ -134,25 +134,12 @@ export function PanelProvider({
     (id: string, title: string) => useWorkbench.getState().panelSetTitle(sessionId, id, title),
     [sessionId],
   );
-  const toggleFiles = useCallback(() => {
-    useWorkbench.getState().panelToggleFiles(sessionId);
-  }, [sessionId]);
-  const toggleFilesSidebar = useCallback(() => {
-    useWorkbench.getState().panelToggleFilesSidebar(sessionId);
-  }, [sessionId]);
   const setPreviewWidth = useCallback((width: number) => {
     useWorkbench.getState().panelSetPreviewWidth(sessionId, width);
   }, [sessionId]);
   const setDiffFilesWidth = useCallback((width: number) => {
     useWorkbench.getState().panelSetDiffFilesWidth(sessionId, width);
   }, [sessionId]);
-  const hasFiles = sessionFiles.length > 0;
-  const filesExpanded = hasRail ? storedExpanded : hasFiles;
-  const filesSidebarOpen = hasRail ? storedSidebar : true;
-  useEffect(() => {
-    useWorkbench.getState().panelNoteFiles(sessionId, hasFiles);
-  }, [sessionId, hasFiles]);
-
   useEffect(() => {
     return () => {
       void backend.browserClose();
@@ -172,15 +159,14 @@ export function PanelProvider({
       openDiff,
       openHref,
       openBlank,
+      openFiles,
+      projectPath,
+      sessionTitle,
       layout,
       hidePanel,
       showPanel,
       toggleFull,
       setTabTitle,
-      filesExpanded,
-      toggleFiles,
-      filesSidebarOpen,
-      toggleFilesSidebar,
       previewWidth,
       diffFilesWidth,
       setPreviewWidth,
@@ -198,15 +184,14 @@ export function PanelProvider({
       openDiff,
       openHref,
       openBlank,
+      openFiles,
+      projectPath,
+      sessionTitle,
       layout,
       hidePanel,
       showPanel,
       toggleFull,
       setTabTitle,
-      filesExpanded,
-      toggleFiles,
-      filesSidebarOpen,
-      toggleFilesSidebar,
       previewWidth,
       diffFilesWidth,
       setPreviewWidth,

@@ -2,14 +2,14 @@ export function ColumnSplitter({
   name,
   onDelta,
 }: {
-  name: "chat-preview" | "diff-files";
+  name: "chat-preview" | "diff-files" | "open-files";
   onDelta: (dx: number) => void;
 }) {
   return (
     <div
       role="separator"
       aria-orientation="vertical"
-      aria-label={name === "chat-preview" ? "调整预览宽度" : "调整文件列表宽度"}
+      aria-label={name === "chat-preview" ? "调整预览宽度" : "调整文件列宽度"}
       data-resize={name}
       className="relative z-20 w-1.5 shrink-0 cursor-col-resize bg-zinc-900 hover:bg-zinc-600"
       onPointerDown={(event) => {

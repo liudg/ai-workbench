@@ -1,19 +1,9 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import {
-  ArrowUpRight,
-  Check,
-  ChevronDown,
-  ChevronRight,
-  Ellipsis,
-  Folder,
-  RefreshCw,
-  Rows3,
-  UnfoldVertical,
-  WrapText,
-} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Check, ChevronDown, ChevronRight, Ellipsis } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
+import { diffMenuEntries } from "./diff-menu";
 import type { DiffScopeItem } from "./scope";
 
 export function DiffToolbar({
@@ -28,10 +18,7 @@ export function DiffToolbar({
   onToggleUnified,
   wrap,
   onToggleWrap,
-  onJump,
   onRefresh,
-  filesOpen,
-  onHide,
   loadFull,
   onToggleLoadFull,
   renderPreview,
@@ -40,6 +27,8 @@ export function DiffToolbar({
   onToggleWordDiff,
   hideWs,
   onToggleHideWs,
+  hideImports,
+  onToggleHideImports,
 }: {
   scope: string;
   scopes: DiffScopeItem[];
@@ -52,10 +41,7 @@ export function DiffToolbar({
   onToggleUnified: () => void;
   wrap: boolean;
   onToggleWrap: () => void;
-  onJump: () => void;
   onRefresh: () => void;
-  filesOpen: boolean;
-  onHide: () => void;
   loadFull: boolean;
   onToggleLoadFull: () => void;
   renderPreview: boolean;
@@ -64,10 +50,33 @@ export function DiffToolbar({
   onToggleWordDiff: () => void;
   hideWs: boolean;
   onToggleHideWs: () => void;
+  hideImports: boolean;
+  onToggleHideImports: () => void;
 }) {
   const [menu, setMenu] = useState<"scope" | "options" | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const current = scopes.find((item) => item.id === scope) ?? scopes[0];
+  const checked: Record<string, boolean> = {
+    "load-full": loadFull,
+    render: renderPreview,
+    word: wordDiff,
+    wrap,
+    unified,
+    expand: expanded,
+    "hide-space": hideWs,
+    "hide-imports": hideImports,
+  };
+  const run = (id: string) => {
+    if (id === "refresh") onRefresh();
+    if (id === "wrap") onToggleWrap();
+    if (id === "unified") onToggleUnified();
+    if (id === "expand") onToggleExpanded();
+    if (id === "load-full") onToggleLoadFull();
+    if (id === "render") onToggleRenderPreview();
+    if (id === "word") onToggleWordDiff();
+    if (id === "hide-space") onToggleHideWs();
+    if (id === "hide-imports") onToggleHideImports();
+  };
   useEffect(() => {
     if (!menu) return;
     const onKey = (event: KeyboardEvent) => {
@@ -137,125 +146,55 @@ export function DiffToolbar({
       </div>
       <span className="shrink-0 whitespace-nowrap font-mono text-[11px] text-emerald-400">+{added}</span>
       <span className="shrink-0 whitespace-nowrap font-mono text-[11px] text-red-400">-{removed}</span>
-      <div className="relative ml-auto flex shrink-0 flex-nowrap items-center rounded-full border border-zinc-800 px-0.5">
-        <div>
-          <button
-            type="button"
-            data-diff-options
-            title={`${DESKTOP_ZH.changesTab}选项`}
-            aria-label={`${DESKTOP_ZH.changesTab}选项`}
-            aria-expanded={menu === "options"}
-            aria-haspopup="menu"
-            className="inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded text-zinc-300 hover:bg-zinc-800 hover:text-white"
-            onClick={() => setMenu((value) => (value === "options" ? null : "options"))}
+      <div className="relative ml-auto shrink-0">
+        <button
+          type="button"
+          data-diff-options
+          title={DESKTOP_ZH.diffOptions}
+          aria-label={DESKTOP_ZH.diffOptions}
+          aria-expanded={menu === "options"}
+          aria-haspopup="menu"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-300 hover:bg-zinc-800 hover:text-white"
+          onClick={() => setMenu((value) => (value === "options" ? null : "options"))}
+        >
+          <Ellipsis className="h-3.5 w-3.5" />
+        </button>
+        {menu === "options" ? (
+          <div
+            role="menu"
+            data-diff-options-menu
+            className="absolute right-0 top-full z-20 mt-1 w-max min-w-56 rounded-xl border border-zinc-700 bg-zinc-900 py-1 shadow-lg"
           >
-            <Ellipsis className="h-3.5 w-3.5" />
-          </button>
-          {menu === "options" ? (
-            <div
-              role="menu"
-              data-diff-options-menu
-              className="absolute right-0 top-full z-20 mt-1 w-52 rounded-xl border border-zinc-700 bg-zinc-900 py-1 shadow-lg"
-            >
-              <OptionRow label={DESKTOP_ZH.diffLoadFull} checked={loadFull} onClick={onToggleLoadFull} />
-              <OptionRow label={DESKTOP_ZH.diffRender} checked={renderPreview} onClick={onToggleRenderPreview} />
-              <OptionRow label={DESKTOP_ZH.diffWord} checked={wordDiff} onClick={onToggleWordDiff} />
-              <OptionRow label={DESKTOP_ZH.diffHideSpace} checked={hideWs} onClick={onToggleHideWs} />
-              <button
-                type="button"
-                role="menuitem"
-                disabled
-                aria-disabled="true"
-                data-diff-copy-apply
-                className="flex w-full cursor-default whitespace-nowrap px-3 py-1.5 text-left text-xs text-zinc-500"
-              >
-                {DESKTOP_ZH.diffCopyApply}
-              </button>
-            </div>
-          ) : null}
-        </div>
-        <ToolIcon label={DESKTOP_ZH.diffJump} attr="data-diff-jump" onClick={onJump}>
-          <ArrowUpRight className="h-3.5 w-3.5" />
-        </ToolIcon>
-        <ToolIcon label={DESKTOP_ZH.diffRefresh} attr="data-diff-refresh" onClick={onRefresh}>
-          <RefreshCw className="h-3.5 w-3.5" />
-        </ToolIcon>
-        <ToolIcon label={DESKTOP_ZH.diffWrap} attr="data-diff-wrap" pressed={wrap} onClick={onToggleWrap}>
-          <WrapText className="h-3.5 w-3.5" />
-        </ToolIcon>
-        <ToolIcon
-          label={DESKTOP_ZH.diffExpand}
-          attr="data-diff-expand"
-          pressed={expanded}
-          onClick={onToggleExpanded}
-        >
-          <UnfoldVertical className="h-3.5 w-3.5" />
-        </ToolIcon>
-        <ToolIcon
-          label={DESKTOP_ZH.diffUnified}
-          attr="data-diff-unified"
-          pressed={unified}
-          onClick={onToggleUnified}
-        >
-          <Rows3 className="h-3.5 w-3.5" />
-        </ToolIcon>
-        <ToolIcon label={DESKTOP_ZH.diffHideFile} attr="data-diff-hide" pressed={filesOpen} onClick={onHide}>
-          <Folder className="h-3.5 w-3.5" />
-        </ToolIcon>
+            {diffMenuEntries().map((entry) =>
+              entry.kind === "separator" ? (
+                <div key={entry.id} role="separator" className="my-1 h-px bg-zinc-700" />
+              ) : (
+                <button
+                  key={entry.id}
+                  type="button"
+                  role={entry.kind === "check" ? "menuitemcheckbox" : "menuitem"}
+                  aria-checked={entry.kind === "check" ? checked[entry.id] : undefined}
+                  disabled={entry.kind === "disabled"}
+                  aria-disabled={entry.kind === "disabled" || undefined}
+                  data-diff-option={entry.label}
+                  data-diff-copy-apply={entry.id === "copy-apply" ? "" : undefined}
+                  className={cn(
+                    "flex w-full items-center gap-2 whitespace-nowrap px-3 py-1.5 text-left text-xs",
+                    entry.kind === "disabled" ? "cursor-default text-zinc-500" : "text-zinc-100 hover:bg-zinc-800",
+                  )}
+                  onClick={() => {
+                    if (entry.kind === "disabled") return;
+                    run(entry.id);
+                  }}
+                >
+                  <span className="min-w-0 flex-1">{entry.label}</span>
+                  {entry.kind === "check" && checked[entry.id] ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
+                </button>
+              ),
+            )}
+          </div>
+        ) : null}
       </div>
     </div>
-  );
-}
-
-function ToolIcon({
-  label,
-  attr,
-  pressed,
-  onClick,
-  children,
-}: {
-  label: string;
-  attr:
-    | "data-diff-jump"
-    | "data-diff-refresh"
-    | "data-diff-wrap"
-    | "data-diff-expand"
-    | "data-diff-unified"
-    | "data-diff-hide";
-  pressed?: boolean;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      {...{ [attr]: "" }}
-      title={label}
-      aria-label={label}
-      aria-pressed={pressed}
-      className={cn(
-        "inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded text-zinc-300 hover:bg-zinc-800 hover:text-white",
-        pressed && "bg-zinc-800 text-zinc-50",
-      )}
-      onClick={onClick}
-    >
-      {children}
-    </button>
-  );
-}
-
-function OptionRow({ label, checked, onClick }: { label: string; checked: boolean; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      role="menuitemcheckbox"
-      aria-checked={checked}
-      data-diff-option={label}
-      className="flex w-full items-center gap-2 whitespace-nowrap px-3 py-1.5 text-left text-xs text-zinc-100 hover:bg-zinc-800"
-      onClick={onClick}
-    >
-      <span className="min-w-0 flex-1">{label}</span>
-      {checked ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
-    </button>
   );
 }

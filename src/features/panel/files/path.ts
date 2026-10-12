@@ -17,6 +17,12 @@ export function fileStatusTone(status: FileStatus): "add" | "del" | "neutral" {
   return "neutral";
 }
 
+/** 预览区左上角的盘符，例如 `F:`。没有盘符就不显示。 */
+export function workspaceRootLabel(projectPath: string): string {
+  const match = /^[A-Za-z]:/.exec(projectPath.trim());
+  return match ? match[0] : "";
+}
+
 export function normalizePath(path: string): string {
   const unix = path.replace(/\\/g, "/");
   const drive = /^[A-Za-z]:/.exec(unix)?.[0] ?? "";

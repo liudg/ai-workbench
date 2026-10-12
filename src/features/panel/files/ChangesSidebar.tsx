@@ -1,11 +1,11 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { ChevronDown, ChevronRight, File, PanelRightClose } from "lucide-react";
+import { PanelRightClose } from "lucide-react";
 
-import { cn } from "@/lib/utils";
 import type { FileChange } from "@/features/changes-model/diff-parse";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
+import { FileTreeList } from "./FileTreeList";
 import { filterFiles, useFileFilter } from "./file-filter";
-import { buildFileTree, treePathLabel, type FileTreeNode } from "./file-tree";
+import { buildFileTree } from "./file-tree";
 
 export function ChangesSidebar({
   files,
@@ -78,111 +78,17 @@ export function ChangesSidebar({
         ) : shown.length === 0 ? (
           <p className="px-2 py-6 text-center text-xs leading-5 text-zinc-500">{DESKTOP_ZH.noFileMatch}</p>
         ) : (
-          <ul>
-            {tree.map((node) => (
-              <TreeRows
-                key={node.id}
-                node={node}
-                depth={0}
-                collapsed={collapsed}
-                activePath={activePath}
-                rowAttr={rowAttr}
-                onToggle={toggleDir}
-                onSelect={onSelect}
-              />
-            ))}
-          </ul>
+          <FileTreeList
+            nodes={tree}
+            collapsed={collapsed}
+            activePath={activePath}
+            rowAttr={rowAttr}
+            showStats
+            onToggle={toggleDir}
+            onSelect={onSelect}
+          />
         )}
       </div>
     </aside>
-  );
-}
-
-function TreeRows({
-  node,
-  depth,
-  collapsed,
-  activePath,
-  rowAttr,
-  onToggle,
-  onSelect,
-}: {
-  node: FileTreeNode<FileChange>;
-  depth: number;
-  collapsed: ReadonlySet<string>;
-  activePath: string;
-  rowAttr: "data-diff-file" | "data-session-file";
-  onToggle: (id: string) => void;
-  onSelect: (file: FileChange) => void;
-}) {
-  const pad = { paddingLeft: 4 + depth * 12 };
-  if (node.kind === "dir") {
-    const open = !collapsed.has(node.id);
-    return (
-      <li>
-        <button
-          type="button"
-          data-file-dir={node.path}
-          title={node.path}
-          aria-expanded={open}
-          style={pad}
-          className="flex w-full min-w-0 items-center gap-1 rounded-md py-1 text-left text-zinc-300 hover:bg-zinc-800/80"
-          onClick={() => onToggle(node.id)}
-        >
-          {open ? (
-            <ChevronDown className="h-3 w-3 shrink-0" />
-          ) : (
-            <ChevronRight className="h-3 w-3 shrink-0" />
-          )}
-          <span data-dir-path={node.path} className="min-w-0 flex-1 truncate text-xs">
-            {treePathLabel(node.name)}
-          </span>
-        </button>
-        {open ? (
-          <ul>
-            {node.children.map((child) => (
-              <TreeRows
-                key={child.id}
-                node={child}
-                depth={depth + 1}
-                collapsed={collapsed}
-                activePath={activePath}
-                rowAttr={rowAttr}
-                onToggle={onToggle}
-                onSelect={onSelect}
-              />
-            ))}
-          </ul>
-        ) : null}
-      </li>
-    );
-  }
-  const file = node.file;
-  if (!file) return null;
-  const active = file.path === activePath;
-  return (
-    <li>
-      <button
-        type="button"
-        {...{ [rowAttr]: file.path }}
-        data-file-status={file.status}
-        title={file.path}
-        style={pad}
-        className={cn(
-          "flex w-full min-w-0 items-center gap-1 rounded-md py-1 text-left",
-          active ? "bg-zinc-800" : "hover:bg-zinc-800/80",
-        )}
-        onClick={() => onSelect(file)}
-      >
-        <File className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
-        <span className="min-w-0 flex-1 truncate font-mono text-xs text-zinc-200">{node.name}</span>
-        {file.added > 0 ? (
-          <span className="shrink-0 font-mono text-[11px] tabular-nums text-emerald-400">+{file.added}</span>
-        ) : null}
-        {file.removed > 0 ? (
-          <span className="shrink-0 font-mono text-[11px] tabular-nums text-red-400">-{file.removed}</span>
-        ) : null}
-      </button>
-    </li>
   );
 }

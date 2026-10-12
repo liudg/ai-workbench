@@ -74,6 +74,7 @@ export function initialPayload(target: OpenTarget): unknown {
     case "diff":
       return { title: target.title, files: target.files };
     case "custom":
+      if (target.type === "open-files") return { title: DESKTOP_ZH.openFiles, type: target.type };
       return target.data && typeof target.data === "object" ? { ...(target.data as object) } : { type: target.type };
     default:
       return {};

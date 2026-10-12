@@ -45,6 +45,11 @@ export interface ImportProjectInput {
   defaultAgent: AgentKind;
 }
 
+export interface ProjectTree {
+  root: string;
+  paths: string[];
+}
+
 export interface PreviewDocument {
   path: string;
   name: string;
@@ -144,6 +149,8 @@ export interface Backend {
   loadOlderHistory(sessionId: string): Promise<OlderHistory>;
   /** 读取项目目录内的文本，供 HTML / Markdown / 纯文本预览。 */
   readPreviewFile(projectId: string, path: string): Promise<PreviewDocument>;
+  /** 工作区文件路径，供打开文件页的目录树。 */
+  listProjectTree(projectId: string): Promise<ProjectTree>;
   /** 用系统默认程序打开项目内的文件。 */
   openProjectFile(projectId: string, path: string): Promise<void>;
   /** 把项目内文件放进内置浏览器可加载的地址。 */
@@ -285,6 +292,7 @@ const tauriBackend: Backend = {
     invoke<OlderHistory>("load_older_history", { sessionId }),
   readPreviewFile: (projectId, path) =>
     invoke<PreviewDocument>("read_preview_file", { projectId, path }),
+  listProjectTree: (projectId) => invoke<ProjectTree>("list_project_tree", { projectId }),
   openProjectFile: (projectId, path) =>
     invoke("open_project_file", { projectId, path }),
   prepareBrowserFile: (projectId, path) =>

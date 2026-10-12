@@ -8,7 +8,7 @@ import { withoutWhitespaceChanges } from "./fold";
 import { diffScopeMenu, filesForScope } from "./scope";
 
 export function useDiffDocument(turnFiles: FileChange[]) {
-  const { projectId, sessionId, openHref, changes } = usePanel();
+  const { projectId, sessionId, changes } = usePanel();
   const [filter] = useFileFilter();
   const [scope, setScope] = useState("turn");
   const [hideWs, setHideWs] = useState(false);
@@ -16,14 +16,14 @@ export function useDiffDocument(turnFiles: FileChange[]) {
   const [gitFiles, setGitFiles] = useState<FileChange[] | null>(null);
   const [gitError, setGitError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [hidden, setHidden] = useState<string[]>([]);
   const [activePath, setActivePath] = useState("");
   const [expanded, setExpanded] = useState(false);
   const [unified, setUnified] = useState(false);
   const [loadFull, setLoadFull] = useState(true);
-  const [renderPreview, setRenderPreview] = useState(false);
+  const [renderPreview, setRenderPreview] = useState(true);
   const [wordDiff, setWordDiff] = useState(true);
   const [wrap, setWrap] = useState(true);
+  const [hideImports, setHideImports] = useState(false);
   const [sources, setSources] = useState<Record<string, string>>({});
   const [reloadToken, setReloadToken] = useState(0);
 
@@ -51,7 +51,6 @@ export function useDiffDocument(turnFiles: FileChange[]) {
   }, [scope, selected]);
 
   useEffect(() => {
-    setHidden([]);
     setActivePath("");
   }, [scope]);
 
@@ -86,7 +85,7 @@ export function useDiffDocument(turnFiles: FileChange[]) {
   }, [hideWs, remote, reloadToken, selected, sessionId]);
 
   const listed = useMemo(() => {
-    const source = filesForScope(selected, turnFiles, gitFiles).filter((file) => !hidden.includes(file.path));
+    const source = filesForScope(selected, turnFiles, gitFiles);
     if (!selected || selected.source !== "turn" || !hideWs) return source;
     return source.flatMap((file) => {
       const parsed = parseUnifiedDiff(withoutWhitespaceChanges(file.diff)).filter(
@@ -94,7 +93,7 @@ export function useDiffDocument(turnFiles: FileChange[]) {
       );
       return parsed.map((item) => ({ ...item, status: file.status }));
     });
-  }, [gitFiles, hidden, hideWs, selected, turnFiles]);
+  }, [gitFiles, hideWs, selected, turnFiles]);
 
   const shown = useMemo(() => filterFiles(listed, filter), [filter, listed]);
   const active = shown.find((file) => file.path === activePath) ?? shown[0];
@@ -125,11 +124,6 @@ export function useDiffDocument(turnFiles: FileChange[]) {
     document.querySelector(`[data-diff-file-body="${cssEscape(file.path)}"]`)?.scrollIntoView({ block: "nearest" });
   };
 
-  const hideActive = () => {
-    if (!active) return;
-    setHidden((current) => (current.includes(active.path) ? current : [...current, active.path]));
-  };
-
   return {
     scope: selected?.id ?? scope,
     scopes,
@@ -155,13 +149,10 @@ export function useDiffDocument(turnFiles: FileChange[]) {
     setWordDiff,
     wrap,
     setWrap,
+    hideImports,
+    setHideImports,
     sources,
     selectFile,
-    hideActive,
-    jump: () => {
-      if (!active) return;
-      openHref(active.path);
-    },
     reload: () => {
       triedSource.current.clear();
       setSources({});

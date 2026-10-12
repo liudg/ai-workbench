@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
-import { ArrowLeft, ArrowRight, ExternalLink, RotateCw } from "lucide-react";
+import { ArrowLeft, ArrowRight, Download, Ellipsis, RotateCw } from "lucide-react";
 
 import { convertFileSrc } from "@tauri-apps/api/core";
 
@@ -343,7 +343,7 @@ export function BrowserView({
             data-browser-address
             aria-label={DESKTOP_ZH.browserAddressPlaceholder}
             placeholder={DESKTOP_ZH.browserAddressPlaceholder}
-            className="h-7 w-full rounded-full border border-zinc-700 bg-zinc-950 px-2 pr-7 text-xs text-zinc-100 outline-none focus:border-zinc-500"
+            className="h-7 w-full rounded-full border border-zinc-700 bg-zinc-950 px-3 text-xs text-zinc-100 outline-none focus:border-zinc-500"
             value={shown}
             spellCheck={false}
             onFocus={() => setDraft(currentEntry(history)?.address ?? shown)}
@@ -356,23 +356,13 @@ export function BrowserView({
               }
             }}
           />
-          <button
-            type="button"
-            aria-label={DESKTOP_ZH.browserOpenExternal}
-            title={DESKTOP_ZH.browserOpenExternal}
-            disabled={!shown}
-            data-browser-external
-            className="absolute right-1 top-1/2 -translate-y-1/2 rounded-full p-1 text-zinc-400 hover:text-zinc-100 disabled:text-zinc-600"
-            onClick={() => {
-              const target = currentEntry(history)?.address || shown;
-              void backend.browserOpenExternal(target).catch((err: unknown) => {
-                setError(message(err, DESKTOP_ZH.browserExternalFailed));
-              });
-            }}
-          >
-            <ExternalLink className="h-3.5 w-3.5" />
-          </button>
         </div>
+        <ChromeButton label={DESKTOP_ZH.browserDownload} data-browser-download>
+          <Download className="h-3.5 w-3.5" />
+        </ChromeButton>
+        <ChromeButton label={DESKTOP_ZH.browserMore} data-browser-more>
+          <Ellipsis className="h-3.5 w-3.5" />
+        </ChromeButton>
       </div>
       {error ? <p className="shrink-0 px-3 py-1 text-xs text-red-300">{error}</p> : null}
       {snapshotFailed ? (
@@ -432,7 +422,7 @@ function ChromeButton({
 }: {
   label: string;
   disabled?: boolean;
-  onClick: () => void;
+  onClick?: () => void;
   children: ReactNode;
 } & ButtonHTMLAttributes<HTMLButtonElement>) {
   return (

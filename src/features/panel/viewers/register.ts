@@ -1,5 +1,6 @@
 import { registerViewer } from "../core/registry";
 import { diffViewer } from "./diff";
+import { filesViewer } from "./files";
 import { htmlViewer } from "./html";
 import { markdownViewer } from "./markdown";
 import { textViewer } from "./text";
@@ -13,4 +14,5 @@ export function registerBuiltinViewers() {
   registerViewer(markdownViewer);
   registerViewer(textViewer);
   registerViewer(diffViewer);
+  registerViewer(filesViewer);
 }

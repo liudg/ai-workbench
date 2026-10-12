@@ -110,6 +110,76 @@ pub fn read_preview_at(project_root: &Path, requested: &str) -> Result<PreviewDo
     })
 }
 
+const MAX_TREE_FILES: usize = 1500;
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ProjectTree {
+    pub root: String,
+    pub paths: Vec<String>,
+}
+
+#[tauri::command]
+pub fn list_project_tree(
+    store: State<'_, ProjectStore>,
+    project_id: String,
+) -> Result<ProjectTree, String> {
+    let project = store
+        .get(&project_id)
+        .ok_or_else(|| "项目不存在".to_string())?;
+    Ok(list_tree_at(Path::new(&project.path)))
+}
+
+pub fn list_tree_at(root: &Path) -> ProjectTree {
+    let mut paths = Vec::new();
+    if root.is_dir() {
+        let mut stack = vec![root.to_path_buf()];
+        while let Some(dir) = stack.pop() {
+            let Ok(read) = std::fs::read_dir(&dir) else {
+                continue;
+            };
+            let mut entries: Vec<_> = read.filter_map(|item| item.ok()).collect();
+            entries.sort_by_key(|item| item.file_name());
+            for entry in entries {
+                let path = entry.path();
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                if path.is_dir() {
+                    if skip_tree_dir(&name) {
+                        continue;
+                    }
+                    stack.push(path);
+                    continue;
+                }
+                if !path.is_file() {
+                    continue;
+                }
+                let Ok(rel) = path.strip_prefix(root) else {
+                    continue;
+                };
+                paths.push(rel.to_string_lossy().replace('\\', "/"));
+                if paths.len() >= MAX_TREE_FILES {
+                    break;
+                }
+            }
+            if paths.len() >= MAX_TREE_FILES {
+                break;
+            }
+        }
+    }
+    paths.sort();
+    ProjectTree {
+        root: strip_verbatim_prefix(&root.to_string_lossy()).to_string(),
+        paths,
+    }
+}
+
+fn skip_tree_dir(name: &str) -> bool {
+    matches!(
+        name,
+        ".git" | "node_modules" | "target" | "dist" | "Library" | "Temp"
+    )
+}
+
 fn candidate_path(project_root: &Path, requested: &str) -> Result<PathBuf, String> {
     let trimmed = requested.trim().trim_matches('"');
     if trimmed.is_empty() {
@@ -243,6 +313,19 @@ mod tests {
         assert!(read_preview_at(&root, "ok.txt").is_ok());
         let _ = fs::remove_dir_all(&root);
         let _ = fs::remove_dir_all(&outside);
+    }
+
+    #[test]
+    fn lists_workspace_files_and_skips_vendor_dirs() {
+        let root = scratch("tree");
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::write(root.join("src").join("app.ts"), "export {}\n").unwrap();
+        fs::create_dir_all(root.join("node_modules").join("pkg")).unwrap();
+        fs::write(root.join("node_modules").join("pkg").join("index.js"), "nope").unwrap();
+        let tree = list_tree_at(&root);
+        assert!(tree.paths.iter().any(|path| path == "src/app.ts"));
+        assert!(tree.paths.iter().all(|path| !path.contains("node_modules")));
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

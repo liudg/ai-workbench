@@ -52,6 +52,8 @@ export interface PanelSlice {
   panelOpenHref(sessionId: string, href: string, line: number | undefined, ctx: ViewerContext): Promise<void>;
   panelOpenDiff(sessionId: string, id: string, title: string, files: FileChange[]): void;
   panelOpenBlank(sessionId: string): void;
+  /** 打开或聚焦「打开文件」标签。 */
+  panelOpenFiles(sessionId: string): void;
   /** 收起侧栏。标签还在，标记改成打开的标签数。 */
   panelHide(sessionId: string): void;
   /** 没有标签时打开内置浏览器新标签页，否则只把侧栏展开。 */
@@ -295,6 +297,10 @@ export function createPanelSlice(set: PanelSet, get: PanelGet): PanelSlice {
 
     panelOpenBlank(sessionId) {
       void open(sessionId, { kind: "blank" }, emptyCtx(), 0);
+    },
+
+    panelOpenFiles(sessionId) {
+      void open(sessionId, { kind: "custom", type: "open-files" }, emptyCtx(), 0);
     },
 
     panelHide(sessionId) {

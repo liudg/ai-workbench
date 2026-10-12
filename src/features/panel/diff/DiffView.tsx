@@ -1,7 +1,6 @@
 import { useRef, useState } from "react";
 
 import { cn } from "@/lib/utils";
-import { useWorkbench } from "@/store";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { useElementWidth } from "@/shared/dom/useElementWidth";
 import type { FileChange } from "@/features/changes-model/diff-parse";
@@ -18,17 +17,18 @@ const SPLITTER_WIDTH = 6;
 
 export function DiffView({ files }: { files: FileChange[] }) {
   const doc = useDiffDocument(files);
-  const { filesSidebarOpen, toggleFilesSidebar, sessionId, diffFilesWidth, setDiffFilesWidth } =
-    usePanel();
+  const { diffFilesWidth, setDiffFilesWidth } = usePanel();
   const frameRef = useRef<HTMLDivElement>(null);
   const paneWidth = useElementWidth(frameRef);
   const [epoch, setEpoch] = useState(0);
-  const inner = filesSidebarOpen ? Math.max(0, paneWidth - SPLITTER_WIDTH) : paneWidth;
-  const auto = filesSidebarOpen ? diffListWidth(inner) : null;
+  const inner = Math.max(0, paneWidth - SPLITTER_WIDTH);
+  const auto = diffListWidth(inner);
   const listWidth =
     auto === null ? null : diffFilesWidth === null ? auto : diffListWidthAfterDrag(inner, diffFilesWidth);
   const metrics = useRef({ pane: 0, list: 0 });
+  const widthRef = useRef(diffFilesWidth);
   metrics.current = { pane: inner, list: listWidth ?? auto ?? 0 };
+  widthRef.current = diffFilesWidth;
   const sourceFor = (path: string) => (doc.loadFull ? (doc.sources[path] ?? null) : null);
 
   return (
@@ -52,14 +52,11 @@ export function DiffView({ files }: { files: FileChange[] }) {
           onToggleUnified={() => doc.setUnified((value) => !value)}
           wrap={doc.wrap}
           onToggleWrap={() => doc.setWrap((value) => !value)}
-          onJump={doc.jump}
           onRefresh={() => {
             setFileFilter("");
             setEpoch((value) => value + 1);
             doc.reload();
           }}
-          filesOpen={filesSidebarOpen}
-          onHide={toggleFilesSidebar}
           loadFull={doc.loadFull}
           onToggleLoadFull={() => doc.setLoadFull((value) => !value)}
           renderPreview={doc.renderPreview}
@@ -68,6 +65,8 @@ export function DiffView({ files }: { files: FileChange[] }) {
           onToggleWordDiff={() => doc.setWordDiff((value) => !value)}
           hideWs={doc.hideWs}
           onToggleHideWs={() => doc.setHideWs((value) => !value)}
+          hideImports={doc.hideImports}
+          onToggleHideImports={() => doc.setHideImports((value) => !value)}
         />
         <div
           className={cn(
@@ -91,6 +90,7 @@ export function DiffView({ files }: { files: FileChange[] }) {
               wordDiff={doc.wordDiff}
               renderPreview={doc.renderPreview}
               source={sourceFor(file.path)}
+              hideImports={doc.hideImports}
               active={file.path === doc.active?.path}
               onSelect={() => doc.selectFile(file)}
             />
@@ -102,8 +102,7 @@ export function DiffView({ files }: { files: FileChange[] }) {
           name="diff-files"
           onDelta={(dx) => {
             const pane = metrics.current.pane;
-            const stored = useWorkbench.getState().diffFilesWidthBySession[sessionId];
-            const current = diffListWidthAfterDrag(pane, stored ?? metrics.current.list) ?? metrics.current.list;
+            const current = diffListWidthAfterDrag(pane, widthRef.current ?? metrics.current.list) ?? metrics.current.list;
             const next = diffListWidthAfterDrag(pane, current - dx);
             if (next !== null) setDiffFilesWidth(next);
           }}

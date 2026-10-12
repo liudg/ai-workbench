@@ -1183,6 +1183,13 @@ export const mockBackend: Backend = {
 
   async openProjectFile() {},
 
+  async listProjectTree() {
+    return {
+      root: "F:\\sample\\mercury_dev",
+      paths: ["src/app.ts", "src/panel/tabs.ts", "docs/readme.md"],
+    };
+  },
+
   async readPreviewFile(_projectId, path) {
     const name = path.split(/[\\/]/).filter(Boolean).pop() ?? path;
     const lower = name.toLowerCase();

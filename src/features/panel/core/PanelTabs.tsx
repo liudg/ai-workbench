@@ -5,13 +5,15 @@ import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { cn } from "@/lib/utils";
 import { registerBuiltinViewers } from "../viewers/register";
 import { viewerById, type PanelTab } from "./registry";
+import { Hint } from "./Hint";
 import { PanelLayoutControls } from "./PanelChrome";
 import { usePanel } from "./PanelProvider";
 
 registerBuiltinViewers();
 
 export function PanelTabs() {
-  const { tabs, activeId, selectTab, closeTab, openBlank, setTabTitle, projectId, sessionId } = usePanel();
+  const { tabs, activeId, selectTab, closeTab, openBlank, setTabTitle, projectId, sessionId, layout, sessionTitle } =
+    usePanel();
   const active = tabs.find((tab) => tab.id === activeId) ?? tabs[tabs.length - 1];
   if (!active) return null;
   const menu = viewerById(active.viewerId)?.menu;
@@ -19,9 +21,14 @@ export function PanelTabs() {
   return (
     <section
       data-preview-panel
-      className="flex h-full w-full min-w-0 flex-col overflow-hidden border-l border-zinc-800 bg-zinc-950"
+      className="flex h-full w-full min-w-0 flex-col border-l border-zinc-800 bg-zinc-950"
     >
-      <div className="flex h-9 shrink-0 items-stretch border-b border-zinc-800">
+      <div className="relative z-20 flex h-9 shrink-0 items-stretch border-b border-zinc-800">
+        {layout === "full" ? (
+          <span data-session-title className="flex max-w-[34%] shrink-0 items-center truncate px-3 text-xs text-zinc-300">
+            {sessionTitle}
+          </span>
+        ) : null}
         <div className="flex min-w-0 flex-1 items-stretch gap-0.5 overflow-x-auto px-1">
           {tabs.map((tab) => {
             const selected = tab.id === active.id;
@@ -60,16 +67,17 @@ export function PanelTabs() {
               </div>
             );
           })}
-          <button
-            type="button"
-            data-browser-new-tab
-            aria-label={DESKTOP_ZH.browserNewTab}
-            title={DESKTOP_ZH.browserNewTab}
-            className="my-1 shrink-0 rounded px-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
-            onClick={openBlank}
-          >
-            <Plus className="h-3.5 w-3.5" />
-          </button>
+          <Hint label={DESKTOP_ZH.panelOpenSideTab}>
+            <button
+              type="button"
+              data-browser-new-tab
+              aria-label={DESKTOP_ZH.panelOpenSideTab}
+              className="my-1 shrink-0 rounded px-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+              onClick={openBlank}
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+          </Hint>
         </div>
         <PanelLayoutControls />
       </div>

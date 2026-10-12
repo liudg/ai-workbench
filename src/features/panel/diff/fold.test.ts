@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { expandDiffLines, foldDiffLines, withoutWhitespaceChanges } from "./fold.ts";
+import { expandDiffLines, foldDiffLines, withoutImportLines, withoutWhitespaceChanges } from "./fold.ts";
 import { applyWordDiff } from "./word-diff.ts";
 
 test("unchanged lines between hunks collapse into unmodified bars", () => {
@@ -53,4 +53,13 @@ test("whitespace-only edits drop out and expand fills the new file", () => {
   const words = applyWordDiff(rows).filter((row) => row.kind === "line" && row.parts);
   const add = words.find((row) => row.kind === "line" && row.tone === "add");
   assert.equal(add?.kind === "line" && add.parts?.some((part) => part.changed && part.text === "TWO"), true);
+});
+
+test("hiding imports drops import lines and keeps the rest of the diff", () => {
+  const diff = ["@@ -1,3 +1,3 @@", "-import a", "+import b", " keep", "+added"].join("\n");
+  const next = withoutImportLines(diff);
+  assert.equal(next.includes("import"), false);
+  assert.equal(next.includes("keep"), true);
+  assert.equal(next.includes("+added"), true);
+  assert.equal(next.includes("@@"), true);
 });

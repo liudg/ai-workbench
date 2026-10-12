@@ -2,7 +2,7 @@ import { cn } from "@/lib/utils";
 import type { FileChange } from "@/features/changes-model/diff-parse";
 import { previewKindForPath } from "@/features/panel/core/preview-kind";
 import { MarkdownBody } from "@/shared/markdown/MarkdownBody";
-import { expandDiffLines, foldDiffLines, previewTextFromDiff, unmodifiedLinesLabel } from "./fold";
+import { expandDiffLines, foldDiffLines, previewTextFromDiff, unmodifiedLinesLabel, withoutImportLines } from "./fold";
 import { applyWordDiff, type DiffDisplayRow } from "./word-diff";
 
 export function DiffFileSection({
@@ -13,6 +13,7 @@ export function DiffFileSection({
   wordDiff,
   renderPreview,
   source,
+  hideImports,
   active,
   onSelect,
 }: {
@@ -23,13 +24,15 @@ export function DiffFileSection({
   wordDiff: boolean;
   renderPreview: boolean;
   source: string | null;
+  hideImports: boolean;
   active: boolean;
   onSelect: () => void;
 }) {
   const markdown = previewKindForPath(file.path) === "markdown";
-  const folded = foldDiffLines(file.diff);
-  const rows = wordDiff ? applyWordDiff(expanded ? expandDiffLines(file.diff, source) : folded) : null;
-  const plain = expanded ? expandDiffLines(file.diff, source) : folded;
+  const body = hideImports ? withoutImportLines(file.diff) : file.diff;
+  const folded = foldDiffLines(body);
+  const rows = wordDiff ? applyWordDiff(expanded ? expandDiffLines(body, source) : folded) : null;
+  const plain = expanded ? expandDiffLines(body, source) : folded;
   return (
     <section
       className={cn("min-w-0 border-b border-zinc-800", active && "bg-zinc-950")}
@@ -54,7 +57,7 @@ export function DiffFileSection({
             wrap ? "overflow-x-hidden whitespace-pre-wrap break-all" : "overflow-x-auto whitespace-pre",
           )}
         >
-          {file.diff}
+          {body}
         </pre>
       ) : (wordDiff ? rows : plain)?.length === 0 ? (
         <p className="px-3 py-2 text-xs text-zinc-500">没有可显示的差异文本。</p>

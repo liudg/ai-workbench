@@ -206,6 +206,32 @@ function filterWhitespaceHunk(body: string[]): string[] {
   return out;
 }
 
+const IMPORT_LINE = /^(?:import\s|using\s|from\s+\S+\s+import\b|#include\s)/;
+
+/** 「隐藏导入内容」只拿掉 import / using 行，文件头和其余差异留着。 */
+export function withoutImportLines(diff: string): string {
+  return diff
+    .split(/\r?\n/)
+    .filter((line) => {
+      if (
+        !line ||
+        line.startsWith("diff ") ||
+        line.startsWith("index ") ||
+        line.startsWith("--- ") ||
+        line.startsWith("+++ ") ||
+        line.startsWith("@@") ||
+        line.startsWith("new file") ||
+        line.startsWith("deleted file") ||
+        line.startsWith("\\")
+      ) {
+        return true;
+      }
+      const body = line.startsWith("+") || line.startsWith("-") || line.startsWith(" ") ? line.slice(1).trim() : line.trim();
+      return !IMPORT_LINE.test(body);
+    })
+    .join("\n");
+}
+
 function collapseSpace(text: string): string {
   return text.replace(/\s+/g, "");
 }
