@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
 
-import { backend } from "@/lib/ipc";
-import { cn } from "@/lib/utils";
 import type { ReviewStart, ReviewTargets } from "@/types";
-import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
+import { fetchReviewTargets } from "./composer-backend";
 
+type Step = "presets" | "branch" | "commit" | "custom";
+
+/**
+ * 审查菜单。层级和文案跟着适配器给的 `labels`（Codex 取自 TUI `review_popups.rs`）：
+ * 预设 → 选基础分支 / 选提交 / 自定义说明。
+ */
 export function ReviewMenu({
   sessionId,
   onStart,
@@ -13,141 +17,131 @@ export function ReviewMenu({
   onStart: (target: ReviewStart) => void;
 }) {
   const [targets, setTargets] = useState<ReviewTargets | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [step, setStep] = useState<Step>("presets");
   const [query, setQuery] = useState("");
 
-  const load = () => {
-    setLoading(true);
-    void backend
-      .reviewTargets(sessionId)
-      .then((next) => setTargets(next))
-      .catch(() => {
-        setTargets({
-          branches: [],
-          commits: [],
-          error: DESKTOP_ZH.reviewBranchesError,
-        });
-      })
-      .finally(() => setLoading(false));
-  };
-
   useEffect(() => {
-    load();
-    // 打开菜单时拉一次分支和提交，和桌面端保持打开加载一致。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    let cancelled = false;
+    void fetchReviewTargets(sessionId)
+      .then((next) => !cancelled && setTargets(next))
+      .catch((err) => !cancelled && setError(String(err)));
+    return () => {
+      cancelled = true;
+    };
   }, [sessionId]);
 
-  const typed = query.trim();
-  const branches = targets?.branches ?? [];
-  const visible = branches.filter((branch) =>
-    branch.toLowerCase().includes(typed.toLowerCase()),
-  );
-  const exact = branches.some((branch) => branch === typed);
-  const showUse = typed.length > 0 && !exact;
-  const failed = !loading && Boolean(targets?.error);
-
-  const startBranch = (branch: string) => onStart({ kind: "base", branch });
+  const labels = targets?.labels;
+  const open = (next: Step) => {
+    setQuery("");
+    setStep(next);
+  };
+  const needle = query.trim().toLowerCase();
 
   return (
     <div
       role="menu"
-      aria-label={DESKTOP_ZH.reviewTitle}
+      aria-label={labels?.title ?? "review"}
       className="absolute bottom-full left-0 right-0 z-20 mb-2 max-h-80 min-w-0 overflow-x-hidden overflow-y-auto rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
     >
-      <button
-        type="button"
-        role="menuitem"
-        className="flex w-full min-w-0 px-3 py-2 text-left text-sm text-zinc-100 hover:bg-zinc-800"
-        onMouseDown={(event) => {
-          event.preventDefault();
-          onStart({ kind: "uncommitted" });
-        }}
-      >
-        {DESKTOP_ZH.reviewUncommitted}
-      </button>
-      <p className="px-3 pb-1 pt-2 text-[11px] text-zinc-500">{DESKTOP_ZH.reviewBase}</p>
-      <div className="px-3 pb-1">
-        <input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder={DESKTOP_ZH.reviewSearchBranches}
-          aria-label={DESKTOP_ZH.reviewSearchBranches}
-          className="h-8 w-full min-w-0 rounded-md border border-zinc-700 bg-zinc-950 px-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-500"
-        />
-      </div>
-      {showUse && (
-        <button
-          type="button"
-          role="menuitem"
-          className="flex w-full min-w-0 px-3 py-1.5 text-left text-sm text-zinc-100 hover:bg-zinc-800"
-          onMouseDown={(event) => {
+      {error && <p className="px-3 py-2 text-xs text-red-300">{error}</p>}
+      {!labels && !error && <p className="px-3 py-2 text-xs text-zinc-500">…</p>}
+      {labels && step === "presets" && (
+        <>
+          <p className="px-3 pb-1 pt-2 text-xs font-medium text-zinc-300">{labels.title}</p>
+          <Row label={labels.base_branch} hint={labels.base_branch_hint} onPick={() => open("branch")} />
+          <Row label={labels.uncommitted} onPick={() => onStart({ kind: "uncommitted" })} />
+          <Row label={labels.commit} onPick={() => open("commit")} />
+          <Row label={labels.custom} onPick={() => open("custom")} />
+        </>
+      )}
+      {labels && step === "branch" && (
+        <>
+          <p className="px-3 pt-2 text-xs font-medium text-zinc-300">{labels.branch_title}</p>
+          <p className="px-3 pb-1 text-[11px] text-zinc-500">{labels.branch_subtitle}</p>
+          <Search value={query} placeholder={labels.branch_search} onChange={setQuery} />
+          {targets.branches
+            .filter((branch) => branch.toLowerCase().includes(needle))
+            .map((branch) => (
+              <Row key={branch} label={branch} onPick={() => onStart({ kind: "base", branch })} />
+            ))}
+        </>
+      )}
+      {labels && step === "commit" && (
+        <>
+          <p className="px-3 pb-1 pt-2 text-xs font-medium text-zinc-300">{labels.commit_title}</p>
+          <Search value={query} placeholder={labels.commit_search} onChange={setQuery} />
+          {targets.commits
+            .filter((commit) => `${commit.title} ${commit.sha}`.toLowerCase().includes(needle))
+            .map((commit) => (
+              <Row
+                key={commit.sha}
+                label={commit.title}
+                onPick={() => onStart({ kind: "commit", sha: commit.sha, title: commit.title })}
+              />
+            ))}
+        </>
+      )}
+      {labels && step === "custom" && (
+        <form
+          className="px-3 py-2"
+          onSubmit={(event) => {
             event.preventDefault();
-            startBranch(typed);
+            const instructions = query.trim();
+            if (instructions) onStart({ kind: "custom", instructions });
           }}
         >
-          <span className="min-w-0 break-all">
-            {DESKTOP_ZH.reviewUseBranch.replace("{branch}", typed)}
-          </span>
-        </button>
+          <p className="pb-1 text-xs font-medium text-zinc-300">{labels.custom}</p>
+          <input
+            autoFocus
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={labels.custom_placeholder}
+            aria-label={labels.custom}
+            className="h-8 w-full min-w-0 rounded-md border border-zinc-700 bg-zinc-950 px-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-500"
+          />
+        </form>
       )}
-      {loading && (
-        <p className="px-3 py-1.5 text-xs text-zinc-500">{DESKTOP_ZH.reviewLoadingBranches}</p>
-      )}
-      {failed && (
-        <div className="flex flex-col gap-1 px-3 py-1.5">
-          <p className="text-xs text-zinc-400">{DESKTOP_ZH.reviewBranchesError}</p>
-          <button
-            type="button"
-            className="w-fit text-xs font-medium text-sky-400 hover:text-sky-300"
-            onMouseDown={(event) => {
-              event.preventDefault();
-              load();
-            }}
-          >
-            {DESKTOP_ZH.reviewRetry}
-          </button>
-        </div>
-      )}
-      {!loading && !failed && visible.length === 0 && !showUse && (
-        <p className="px-3 py-1.5 text-xs text-zinc-500">{DESKTOP_ZH.reviewNoBranches}</p>
-      )}
-      {!loading &&
-        !failed &&
-        visible.map((branch) => (
-          <button
-            key={branch}
-            type="button"
-            role="menuitem"
-            className="flex w-full min-w-0 px-3 py-1.5 text-left text-sm text-zinc-200 hover:bg-zinc-800"
-            onMouseDown={(event) => {
-              event.preventDefault();
-              startBranch(branch);
-            }}
-          >
-            <span className="min-w-0 break-all">{branch}</span>
-          </button>
-        ))}
-      <p className="px-3 pb-1 pt-2 text-[11px] text-zinc-500">{DESKTOP_ZH.reviewCommit}</p>
-      {!loading &&
-        targets?.commits.map((commit) => (
-          <button
-            key={commit.sha}
-            type="button"
-            role="menuitem"
-            className={cn(
-              "flex w-full min-w-0 items-baseline gap-2 px-3 py-1.5 text-left hover:bg-zinc-800",
-            )}
-            onMouseDown={(event) => {
-              event.preventDefault();
-              onStart({ kind: "commit", sha: commit.sha, title: commit.title });
-            }}
-          >
-            <span className="shrink-0 font-mono text-xs text-zinc-400">
-              {commit.sha.slice(0, 7)}
-            </span>
-            <span className="min-w-0 break-words text-sm text-zinc-200">{commit.title}</span>
-          </button>
-        ))}
+    </div>
+  );
+}
+
+function Row({ label, hint, onPick }: { label: string; hint?: string; onPick: () => void }) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      className="flex w-full min-w-0 items-baseline gap-2 px-3 py-1.5 text-left text-sm text-zinc-100 hover:bg-zinc-800"
+      onMouseDown={(event) => {
+        event.preventDefault();
+        onPick();
+      }}
+    >
+      <span className="min-w-0 break-words">{label}</span>
+      {hint && <span className="shrink-0 text-xs text-zinc-500">{hint}</span>}
+    </button>
+  );
+}
+
+function Search({
+  value,
+  placeholder,
+  onChange,
+}: {
+  value: string;
+  placeholder: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="px-3 pb-1">
+      <input
+        autoFocus
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        aria-label={placeholder}
+        className="h-8 w-full min-w-0 rounded-md border border-zinc-700 bg-zinc-950 px-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-500"
+      />
     </div>
   );
 }

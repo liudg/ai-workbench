@@ -211,6 +211,32 @@ impl SandboxChoice {
         format!("Permissions updated to {}", self.official_label())
     }
 
+    /// `status/card.rs::status_permissions_label` + `status_approval_label`。
+    /// 自定义配置档的沙箱摘要要靠核心 `summarize_permission_profile`，这里拿不到，只显示 id 和审批。
+    pub(super) fn status_label(&self) -> String {
+        let approval = match (self.mode, self.approve_for_me) {
+            (Access::Full, _) => "never",
+            (_, true) => "Approve for me",
+            _ => "Ask for approval",
+        };
+        if !self.profile_id.is_empty() {
+            return format!("Profile {} ({approval})", self.profile_id);
+        }
+        let network = self.network_access;
+        let suffix = if self.writable_roots.is_empty() {
+            String::new()
+        } else {
+            format!(" [{}]", self.writable_roots.join(", "))
+        };
+        match self.mode {
+            Access::Full => "Full Access".to_string(),
+            Access::ReadOnly if network => format!("Read Only with network access ({approval})"),
+            Access::ReadOnly => format!("Read Only ({approval})"),
+            Access::Ask if network => format!("Workspace with network access{suffix} ({approval})"),
+            Access::Ask => format!("Workspace{suffix} ({approval})"),
+        }
+    }
+
     pub(super) fn official_label(&self) -> String {
         if !self.profile_id.is_empty() {
             return self.profile_id.clone();

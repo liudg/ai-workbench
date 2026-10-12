@@ -58,6 +58,19 @@ impl Shared {
 
     /// `thread/start` / `thread/resume` 回包里的 `thread.status`。
     pub(super) fn apply_thread_snapshot(&self, result: &Value) {
+        if let Some(sources) = result.get("instructionSources").and_then(Value::as_array) {
+            *self.instruction_sources.lock().unwrap() = sources
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect();
+        }
+        if let Some(effort) = result.get("reasoningEffort").and_then(Value::as_str) {
+            *self.thread_effort.lock().unwrap() = Some(effort.to_string());
+        }
+        if let Some(name) = result.pointer("/thread/name").and_then(Value::as_str) {
+            *self.thread_name.lock().unwrap() = Some(name.to_string());
+        }
         if let Some(status) = result.pointer("/thread/status").and_then(session_status) {
             self.status_known.store(true, Ordering::SeqCst);
             emit_status(&self.events, status);

@@ -13,6 +13,7 @@
 
 mod catalog;
 mod gap;
+mod git_diff;
 mod guardian;
 mod host;
 mod process;
@@ -22,6 +23,7 @@ mod resume;
 mod rpc;
 mod sandbox;
 mod state;
+mod status;
 mod thread_status;
 mod tokens;
 mod turn;
@@ -239,6 +241,9 @@ impl AgentAdapter for CodexCliAdapter {
             status_known: AtomicBool::new(false),
             token_info: Mutex::new(None),
             latest_plan: Mutex::new(None),
+            instruction_sources: Mutex::new(Vec::new()),
+            thread_effort: Mutex::new(None),
+            thread_name: Mutex::new(None),
         });
         {
             let refresher = Arc::clone(&shared);

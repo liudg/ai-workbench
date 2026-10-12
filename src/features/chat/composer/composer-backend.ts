@@ -1,7 +1,7 @@
 import { backend } from "@/lib/ipc";
 import { useWorkbench } from "@/store";
 import { isMissingSessionError } from "@/store/sync";
-import type { Attachment, PermissionMenu, QueuedTurn } from "@/types";
+import type { Attachment, PermissionMenu, QueuedTurn, ReviewTargets } from "@/types";
 import { fileToBase64 } from "./media";
 
 export function reportComposerError(sessionId: string, error: unknown) {
@@ -21,6 +21,10 @@ export function storeQueue(sessionId: string, items: QueuedTurn[]) {
 
 export function fetchPermissionMenu(sessionId: string): Promise<PermissionMenu> {
   return backend.permissionMenu(sessionId);
+}
+
+export function fetchReviewTargets(sessionId: string): Promise<ReviewTargets> {
+  return backend.reviewTargets(sessionId);
 }
 
 export async function stageChatImage(file: File): Promise<Attachment> {

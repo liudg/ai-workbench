@@ -178,17 +178,36 @@ export interface ReviewFinding {
 export type ReviewStart =
   | { kind: "uncommitted" }
   | { kind: "base"; branch: string }
-  | { kind: "commit"; sha: string; title?: string };
+  | { kind: "commit"; sha: string; title?: string }
+  | { kind: "custom"; instructions: string };
 
 export interface ReviewCommit {
   sha: string;
   title: string;
 }
 
+/** 审查菜单各层文案，由适配器给出。 */
+export interface ReviewLabels {
+  title: string;
+  base_branch: string;
+  base_branch_hint: string;
+  uncommitted: string;
+  commit: string;
+  custom: string;
+  branch_title: string;
+  branch_subtitle: string;
+  branch_search: string;
+  commit_title: string;
+  commit_search: string;
+  custom_placeholder: string;
+}
+
 export interface ReviewTargets {
   branches: string[];
   commits: ReviewCommit[];
   error?: string | null;
+  current_branch?: string | null;
+  labels: ReviewLabels;
 }
 
 /** 完整事件 = 事件体 + 信封（id / seq / ts 由 SessionManager 统一赋值） */

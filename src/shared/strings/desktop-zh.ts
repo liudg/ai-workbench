@@ -4,15 +4,6 @@
  */
 export const DESKTOP_ZH = {
   reviewTitle: "代码审查",
-  reviewUncommitted: "审查未提交的更改",
-  reviewBase: "对照基础分支审查",
-  reviewCommit: "提交",
-  reviewSearchBranches: "搜索分支",
-  reviewUseBranch: "使用 {branch}",
-  reviewLoadingBranches: "正在加载分支…",
-  reviewBranchesError: "无法加载分支",
-  reviewRetry: "重试",
-  reviewNoBranches: "找不到分支",
   planTitle: "计划模式",
   planOn: "开启计划模式",
   planOff: "关闭计划模式",

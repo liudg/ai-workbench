@@ -250,24 +250,10 @@ pub enum ReviewStart {
         #[serde(default)]
         title: String,
     },
-}
-
-impl ReviewStart {
-    /// 桌面端菜单文案。分支和提交把所选目标接在小节标题后面。
-    pub fn label(&self) -> String {
-        match self {
-            Self::Uncommitted => "审查未提交的更改".into(),
-            Self::Base { branch } => format!("对照基础分支审查: {branch}"),
-            Self::Commit { sha, title } => {
-                let short: String = sha.chars().take(7).collect();
-                if title.trim().is_empty() {
-                    format!("提交: {short}")
-                } else {
-                    format!("提交: {short} {}", title.trim())
-                }
-            }
-        }
-    }
+    /// `/review <说明>` 和菜单里的 Custom review instructions。
+    Custom {
+        instructions: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -282,6 +268,29 @@ pub struct ReviewTargets {
     pub commits: Vec<ReviewCommit>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// 当前分支；分离 HEAD 时为 None。
+    #[serde(default)]
+    pub current_branch: Option<String>,
+    /// 审查菜单文案，由适配器给出。
+    #[serde(default)]
+    pub labels: ReviewLabels,
+}
+
+/// 审查菜单各层的文案。Codex 取自 TUI `review_popups.rs`。
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ReviewLabels {
+    pub title: String,
+    pub base_branch: String,
+    pub base_branch_hint: String,
+    pub uncommitted: String,
+    pub commit: String,
+    pub custom: String,
+    pub branch_title: String,
+    pub branch_subtitle: String,
+    pub branch_search: String,
+    pub commit_title: String,
+    pub commit_search: String,
+    pub custom_placeholder: String,
 }
 
 /// 内置浏览器批注。适配层把它折进用户回合，具体 Agent 不再单独解析。

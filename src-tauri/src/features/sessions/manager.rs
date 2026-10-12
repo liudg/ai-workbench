@@ -387,15 +387,6 @@ impl SessionManager {
         if handle.read_only() {
             return Err(OCCUPIED_SESSION_NOTICE.to_string());
         }
-        let label = target.label();
-        self.record_local(
-            session_id,
-            SessionEventBody::UserMessage {
-                text: label,
-                images: Vec::new(),
-                annotations: 0,
-            },
-        )?;
         handle
             .start_review(target)
             .await

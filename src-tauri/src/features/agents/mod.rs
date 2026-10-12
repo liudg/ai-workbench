@@ -280,6 +280,8 @@ pub trait AgentSession: DiffScopeProvider + AnnotationSink + Send + Sync {
             branches: Vec::new(),
             commits: Vec::new(),
             error: None,
+            current_branch: None,
+            labels: Default::default(),
         })
     }
 

@@ -89,25 +89,14 @@ impl Shared {
     }
 }
 
+/// 工作台自己的 `/help`（TUI 没有这条命令）：列出这里能执行的斜杠命令。
 pub(super) fn slash_help() -> String {
-    "可用斜杠命令：\n\
-     /permissions [完全访问|询问批准|替我批准|只读]  切换沙箱和审批\n\
-     /status  查看模型、线程、目录和权限\n\
-     /diff  查看 git diff --stat\n\
-     /review  代码审查。审查未提交的更改，或与某个分支进行比较\n\
-     /plan  计划模式。开启计划模式；再发一次则关闭计划模式。/plan 后的文字会作为请求发出\n\
-     /model [模型 id]  指定下一轮模型\n\
-     /compact  压缩上下文\n\
-     /approve  说明如何处理自动审查拒绝（时间线上点允许或拒绝）\n\
-     /init  生成 AGENTS.md\n\
-     /new  下一条消息开新线程\n\
-     /stop  停止会话\n\
-     /mcp [verbose]  查看 MCP 服务器和工具\n\
-     /goal [目标|edit|pause|resume|clear]  设置或查看任务目标\n\
-     /hooks  列出当前目录的钩子\n\
-     /worktree [new]  查看或新建 Git 工作树\n\
-     其余 /vim、/theme 等终端命令不会发给模型。"
-        .into()
+    let mut lines = vec!["可用斜杠命令（说明取自 Codex TUI）：".to_string()];
+    for command in slash_commands() {
+        lines.push(format!("{}  {}", command.name, command.hint));
+    }
+    lines.push("其余 TUI 命令（/vim、/theme 等）工作台不执行，也不会发给模型。".into());
+    lines.join("\n")
 }
 
 pub(super) fn parse_models(value: &Value) -> Vec<AgentModelOption> {
@@ -364,87 +353,93 @@ pub(super) fn split_command(text: &str) -> (String, String) {
     (name, rest)
 }
 
+/// 斜杠命令表。说明逐字取自 Codex TUI `slash_command.rs::description`；`/help` 是工作台自己的。
 pub(super) fn slash_commands() -> Vec<SlashCommand> {
     vec![
         SlashCommand {
             name: "/permissions".into(),
-            hint: "切换完全访问、询问批准、替我批准或只读".into(),
+            hint: "choose what Codex is allowed to do".into(),
             takes_args: true,
         },
         SlashCommand {
             name: "/status".into(),
-            hint: "查看模型、线程、目录和权限".into(),
+            hint: "show current session configuration and token usage".into(),
             takes_args: false,
         },
         SlashCommand {
             name: "/diff".into(),
-            hint: "查看 git diff --stat".into(),
+            hint: "show git diff (including untracked files)".into(),
             takes_args: false,
         },
         SlashCommand {
             name: "/review".into(),
-            hint: "审查未提交的更改，或与某个分支进行比较".into(),
+            hint: "review my current changes and find issues".into(),
             takes_args: true,
         },
         SlashCommand {
             name: "/plan".into(),
-            hint: "开启计划模式".into(),
+            hint: "switch to Plan mode".into(),
             takes_args: true,
         },
         SlashCommand {
             name: "/model".into(),
-            hint: "指定下一轮使用的模型".into(),
+            hint: "choose what model and reasoning effort to use".into(),
             takes_args: true,
         },
         SlashCommand {
             name: "/compact".into(),
-            hint: "压缩当前线程的上下文".into(),
+            hint: "summarize conversation to prevent hitting the context limit".into(),
             takes_args: false,
         },
         SlashCommand {
             name: "/approve".into(),
-            hint: "说明如何处理自动审查拒绝".into(),
+            hint: "approve one retry of a recent auto-review denial".into(),
             takes_args: false,
         },
         SlashCommand {
             name: "/init".into(),
-            hint: "生成 AGENTS.md".into(),
+            hint: "create an AGENTS.md file with instructions for Codex".into(),
             takes_args: false,
         },
         SlashCommand {
             name: "/new".into(),
-            hint: "下一条消息开启新线程".into(),
-            takes_args: false,
+            hint: "start a new chat during a conversation".into(),
+            takes_args: true,
         },
         SlashCommand {
             name: "/clear".into(),
-            hint: "放下当前线程，同 /new".into(),
-            takes_args: false,
+            hint: "clear the terminal and start a new chat".into(),
+            takes_args: true,
         },
         SlashCommand {
             name: "/stop".into(),
-            hint: "停止当前会话".into(),
+            hint: "stop all background terminals".into(),
+            takes_args: false,
+        },
+        SlashCommand {
+            name: "/quit".into(),
+            hint: "exit Codex".into(),
             takes_args: false,
         },
         SlashCommand {
             name: "/mcp".into(),
-            hint: "查看已连接的 MCP 服务器和工具".into(),
+            hint: "list MCP tools; use /mcp verbose or /mcp login <name>".into(),
             takes_args: true,
         },
         SlashCommand {
             name: "/goal".into(),
-            hint: "设置、查看、暂停或清除任务目标".into(),
+            hint: "set or view the goal for a long-running task".into(),
             takes_args: true,
         },
         SlashCommand {
             name: "/hooks".into(),
-            hint: "列出当前目录发现的钩子".into(),
+            hint: "view and manage lifecycle hooks".into(),
             takes_args: false,
         },
         SlashCommand {
             name: "/worktree".into(),
-            hint: "查看或新建一个独立 Git 工作树".into(),
-            takes_args: true,
+            hint: "start or continue a conversation in a new worktree".into(),
+            takes_args: false,
         },
         SlashCommand {
             name: "/help".into(),

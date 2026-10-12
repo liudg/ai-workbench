@@ -9,14 +9,13 @@ use tokio::process::Command;
 use crate::encoding::decode_child_bytes;
 use crate::features::agents::AgentError;
 use crate::models::{
-    PlanStep, PromptKind, PromptOption, ReviewFinding, ReviewStart, ReviewTargets,
+    PlanStep, PromptKind, PromptOption, ReviewFinding, ReviewLabels, ReviewStart, ReviewTargets,
     SessionEventBody,
 };
 
 use super::process::hide_console;
 use super::state::{emit, Collaboration, Pending, Shared};
 
-pub(super) const REVIEW_DESCRIPTION: &str = "审查未提交的更改，或与某个分支进行比较";
 /// TUI `chatwidget/plan_implementation.rs` 的标题、选项和消息。
 pub(super) const PLAN_IMPLEMENTATION_TITLE: &str = "Implement this plan?";
 const PLAN_IMPLEMENTATION_YES: &str = "Yes, implement this plan";
@@ -76,45 +75,9 @@ pub(super) fn review_protocol(target: &ReviewStart) -> Value {
             }
             value
         }
-    }
-}
-
-/// 空参数表示打开桌面端的目标菜单，不发回合。
-pub(super) fn parse_review_slash(rest: &str) -> Result<Option<ReviewStart>, AgentError> {
-    let rest = rest.trim();
-    if rest.is_empty() {
-        return Ok(None);
-    }
-    let mut parts = rest.splitn(2, char::is_whitespace);
-    let head = parts.next().unwrap_or("").to_ascii_lowercase();
-    let tail = parts.next().unwrap_or("").trim();
-    match head.as_str() {
-        "uncommitted" | "unstaged" => Ok(Some(ReviewStart::Uncommitted)),
-        "base" | "branch" => {
-            if tail.is_empty() {
-                Err(AgentError::Runtime("用法：/review base <branch>".into()))
-            } else {
-                Ok(Some(ReviewStart::Base {
-                    branch: tail.to_string(),
-                }))
-            }
+        ReviewStart::Custom { instructions } => {
+            json!({ "type": "custom", "instructions": instructions })
         }
-        "commit" => {
-            let mut bits = tail.splitn(2, char::is_whitespace);
-            let sha = bits.next().unwrap_or("").trim();
-            if sha.is_empty() {
-                Err(AgentError::Runtime("用法：/review commit <sha>".into()))
-            } else {
-                Ok(Some(ReviewStart::Commit {
-                    sha: sha.to_string(),
-                    title: bits.next().unwrap_or("").trim().to_string(),
-                }))
-            }
-        }
-        _ => Err(AgentError::Runtime(
-            "用法：/review、/review uncommitted、/review base <branch>、/review commit <sha>"
-                .into(),
-        )),
     }
 }
 
@@ -251,70 +214,110 @@ pub(super) fn plan_steps_event(params: &Value) -> Option<SessionEventBody> {
     })
 }
 
-pub(super) async fn git_review_targets(cwd: &str) -> ReviewTargets {
-    let branches = git(cwd, ["branch", "--format=%(refname:short)"]).await;
-    let commits = git(cwd, ["log", "-15", "--format=%H%x09%s"]).await;
-    let mut error = None;
-    let branch_names = match branches {
-        Ok(text) => text
-            .lines()
-            .map(str::trim)
-            .filter(|line| !line.is_empty())
-            .map(str::to_string)
-            .collect(),
-        Err(err) => {
-            error = Some(err);
-            Vec::new()
-        }
-    };
-    let commit_rows = match commits {
-        Ok(text) => text
-            .lines()
-            .filter_map(|line| {
-                let (sha, title) = line.split_once('\t')?;
-                let sha = sha.trim();
-                if sha.is_empty() {
-                    return None;
-                }
-                Some(crate::models::ReviewCommit {
-                    sha: sha.to_string(),
-                    title: title.trim().to_string(),
-                })
-            })
-            .collect(),
-        Err(err) => {
-            if error.is_none() {
-                error = Some(err);
-            }
-            Vec::new()
-        }
-    };
-    ReviewTargets {
-        branches: branch_names,
-        commits: commit_rows,
-        error,
+/// `review_popups.rs` 的标题和选项。
+pub(super) fn review_labels(current_branch: Option<&str>) -> ReviewLabels {
+    ReviewLabels {
+        title: "Select a review preset".into(),
+        base_branch: "Review against a base branch".into(),
+        base_branch_hint: "(PR Style)".into(),
+        uncommitted: "Review uncommitted changes".into(),
+        commit: "Review a commit".into(),
+        custom: "Custom review instructions".into(),
+        branch_title: "Select a base branch".into(),
+        branch_subtitle: format!(
+            "Current branch: {}",
+            current_branch.unwrap_or("(detached HEAD)")
+        ),
+        branch_search: "Type to search branches".into(),
+        commit_title: "Select a commit to review".into(),
+        commit_search: "Type to search commits".into(),
+        custom_placeholder: "Type instructions and press Enter".into(),
     }
 }
 
-async fn git<const N: usize>(cwd: &str, args: [&str; N]) -> Result<String, String> {
+/// `git-utils/src/info.rs` 的 `local_git_branches`、`current_branch_name`、`recent_commits(100)`。
+/// 官方在出错时返回空列表，不报错。
+pub(super) async fn git_review_targets(cwd: &str) -> ReviewTargets {
+    let mut branches: Vec<String> = git(cwd, &["for-each-ref", "--format=%(refname:short)", "refs/heads"])
+        .await
+        .map(|text| {
+            text.lines()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
+    branches.sort_unstable();
+    for candidate in ["main", "master"] {
+        let refname = format!("refs/heads/{candidate}");
+        if git(cwd, &["rev-parse", "--verify", "--quiet", &refname]).await.is_ok() {
+            if let Some(pos) = branches.iter().position(|name| name == candidate) {
+                let base = branches.remove(pos);
+                branches.insert(0, base);
+            }
+            break;
+        }
+    }
+    let current_branch = git(cwd, &["branch", "--show-current"])
+        .await
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|name| !name.is_empty());
+    let commits = if git(cwd, &["rev-parse", "--git-dir"]).await.is_ok() {
+        git(cwd, &["log", "-n", "100", "--pretty=format:%H%x1f%ct%x1f%s"])
+            .await
+            .map(|text| parse_commit_log(&text))
+            .unwrap_or_default()
+        } else {
+        Vec::new()
+    };
+    ReviewTargets {
+        branches,
+        commits,
+        error: None,
+        labels: review_labels(current_branch.as_deref()),
+        current_branch,
+    }
+}
+
+fn parse_commit_log(text: &str) -> Vec<crate::models::ReviewCommit> {
+    text.lines()
+        .filter_map(|line| {
+            let mut parts = line.split('\u{001f}');
+            let sha = parts.next().unwrap_or("").trim();
+            let ts = parts.next().unwrap_or("").trim();
+            let subject = parts.next().unwrap_or("").trim();
+            if sha.is_empty() || ts.is_empty() {
+                return None;
+            }
+            Some(crate::models::ReviewCommit {
+                sha: sha.to_string(),
+                title: subject.to_string(),
+            })
+        })
+        .collect()
+}
+
+async fn git(cwd: &str, args: &[&str]) -> Result<String, String> {
     let mut command = Command::new("git");
     command
+        .arg("-c")
+        .arg("core.hooksPath=".to_string() + if cfg!(windows) { "NUL" } else { "/dev/null" })
         .args(args)
         .current_dir(cwd)
+        .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
     hide_console(&mut command);
-    let output = command.output().await.map_err(|err| err.to_string())?;
+    let output = tokio::time::timeout(std::time::Duration::from_secs(5), command.output())
+        .await
+        .map_err(|_| "git timed out".to_string())?
+        .map_err(|err| err.to_string())?;
     if output.status.success() {
         return Ok(decode_child_bytes(&output.stdout).into_owned());
     }
-    let stderr = decode_child_bytes(&output.stderr);
-    let stderr = stderr.trim();
-    if stderr.is_empty() {
-        Err("git failed".into())
-    } else {
-        Err(stderr.to_string())
-    }
+    Err(decode_child_bytes(&output.stderr).trim().to_string())
 }
 
 impl Shared {
@@ -535,31 +538,31 @@ mod tests {
     use super::*;
 
     #[test]
-    fn review_slash_keeps_the_three_official_targets() {
-        assert!(parse_review_slash("").unwrap().is_none());
-        assert_eq!(
-            parse_review_slash("uncommitted").unwrap(),
-            Some(ReviewStart::Uncommitted)
-        );
+    fn review_targets_map_to_the_protocol() {
         assert_eq!(
             review_protocol(&ReviewStart::Uncommitted),
             json!({ "type": "uncommittedChanges" })
         );
-        let base = parse_review_slash("base main").unwrap().unwrap();
         assert_eq!(
-            review_protocol(&base),
+            review_protocol(&ReviewStart::Base { branch: "main".into() }),
             json!({ "type": "baseBranch", "branch": "main" })
         );
-        assert_eq!(ReviewStart::Uncommitted.label(), "审查未提交的更改");
-        assert_eq!(base.label(), "对照基础分支审查: main");
-        let commit = parse_review_slash("commit abcdef1 Fix the parser")
-            .unwrap()
-            .unwrap();
-        assert!(commit.label().starts_with("提交"));
-        assert_eq!(review_protocol(&commit)["type"], json!("commit"));
-        assert_eq!(review_protocol(&commit)["sha"], json!("abcdef1"));
-        assert_eq!(review_protocol(&commit)["title"], json!("Fix the parser"));
-        assert!(parse_review_slash("please look").is_err());
+        let commit = review_protocol(&ReviewStart::Commit {
+            sha: "abcdef1".into(),
+            title: "Fix the parser".into(),
+        });
+        assert_eq!(commit["title"], json!("Fix the parser"));
+        assert_eq!(
+            review_protocol(&ReviewStart::Custom { instructions: "check auth".into() }),
+            json!({ "type": "custom", "instructions": "check auth" })
+        );
+        let labels = review_labels(None);
+        assert_eq!(labels.title, "Select a review preset");
+        assert_eq!(labels.branch_subtitle, "Current branch: (detached HEAD)");
+        assert_eq!(
+            parse_commit_log("abc\u{1f}10\u{1f}seed\n\u{1f}\u{1f}bad").len(),
+            1
+        );
     }
 
     #[test]
@@ -666,30 +669,31 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn review_targets_come_from_the_gap_project() {
-        let cwd = r"C:\Users\admin\Desktop\temp\ai-workbench-project\_gap-review-plan";
-        // 夹具只在本机准备过时才核对；没有仓库就跳过，不另建项目。
-        if !std::path::Path::new(cwd).join(".git").exists() {
-            eprintln!("skip review targets: {cwd} is not a git repo");
-            return;
-        }
-        let targets = git_review_targets(cwd).await;
-        assert!(targets.error.is_none(), "{:?}", targets.error);
-        assert!(
-            targets
-                .branches
-                .iter()
-                .any(|branch| branch == "main" || branch == "master"),
-            "{:?}",
-            targets.branches
-        );
-        assert!(
-            targets
-                .commits
-                .iter()
-                .any(|commit| commit.title.contains("seed")),
-            "{:?}",
-            targets.commits
-        );
+    async fn review_targets_put_the_default_branch_first() {
+        let root = std::env::temp_dir().join(format!("aiw-review-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let run = |args: &[&str]| {
+            assert!(std::process::Command::new("git")
+                .args(args)
+                .current_dir(&root)
+                .status()
+                .unwrap()
+                .success());
+        };
+        run(&["init", "-q", "-b", "main"]);
+        run(&["config", "user.email", "t@example.com"]);
+        run(&["config", "user.name", "t"]);
+        std::fs::write(root.join("a"), "1").unwrap();
+        run(&["add", "a"]);
+        run(&["commit", "-qm", "seed"]);
+        run(&["branch", "aaa"]);
+        run(&["checkout", "-q", "-b", "topic"]);
+        let targets = git_review_targets(&root.to_string_lossy()).await;
+        assert_eq!(targets.branches, ["main", "aaa", "topic"]);
+        assert_eq!(targets.current_branch.as_deref(), Some("topic"));
+        assert_eq!(targets.labels.branch_subtitle, "Current branch: topic");
+        assert_eq!(targets.commits[0].title, "seed");
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

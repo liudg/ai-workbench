@@ -177,6 +177,11 @@ pub(super) struct Shared {
     pub(super) token_info: Mutex<Option<super::tokens::TokenUsageInfo>>,
     /// 最近一份计划正文（`plan` item），「清空上下文后实施」要带上它。
     pub(super) latest_plan: Mutex<Option<String>>,
+    /// 线程回包里的 `instructionSources`（`/status` 的 Agents.md）。
+    pub(super) instruction_sources: Mutex<Vec<String>>,
+    /// 线程回包里的 `reasoningEffort`；作曲栏改了推理强度时以 `effort` 为准。
+    pub(super) thread_effort: Mutex<Option<String>>,
+    pub(super) thread_name: Mutex<Option<String>>,
 }
 
 /// `thread/resume` 撞上 active writer 之后的打开状态。

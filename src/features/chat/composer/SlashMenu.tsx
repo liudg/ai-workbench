@@ -41,11 +41,7 @@ export function SlashMenu({
           }}
         >
           <span className="shrink-0 text-sm text-zinc-100">
-            {command.name === "/review"
-              ? DESKTOP_ZH.reviewTitle
-              : command.name === "/plan"
-                ? DESKTOP_ZH.planTitle
-                : command.name}
+            {command.name}
           </span>
           <span className="min-w-0 truncate text-xs text-zinc-500">
             {command.name === "/plan" ? (planOn ? DESKTOP_ZH.planOff : DESKTOP_ZH.planOn) : command.hint}

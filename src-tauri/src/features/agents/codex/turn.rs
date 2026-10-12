@@ -3,17 +3,15 @@
 use std::sync::atomic::Ordering;
 
 use serde_json::{json, Value};
-use tokio::process::Command;
 
-use crate::encoding::{apply_utf8_env, decode_child_bytes};
 use crate::features::agents::AgentError;
 use crate::models::{
-    PageAnnotation, PromptKind, PromptOption, SessionEventBody,
+    PageAnnotation, PromptKind, PromptOption, ReviewStart, SessionEventBody,
     OCCUPIED_SESSION_NOTICE,
 };
 
 use super::catalog::{build_turn_input, slash_help, split_command};
-use super::process::{hide_console, truncate};
+use super::process::truncate;
 use super::resume::{bodies_from_turns, chronological_turns, HISTORY_TURN_LIMIT};
 use super::sandbox::merge_json;
 use super::state::{emit, Pending, Shared};
@@ -122,6 +120,7 @@ impl Shared {
             };
             let name = truncate(label.lines().next().unwrap_or("").trim(), 48);
             if !name.is_empty() {
+                *self.thread_name.lock().unwrap() = Some(name.clone());
                 let _ = self
                     .request(
                         "thread/name/set",
@@ -375,7 +374,7 @@ impl Shared {
                     self.note_access();
                 }
             }
-            "status" => self.emit_status_card(),
+            "status" => self.emit_status_card().await,
             "diff" => self.emit_diff().await,
             "model" => {
                 if rest.is_empty() {
@@ -401,15 +400,13 @@ impl Shared {
                     );
                 }
             }
-            "review" => match super::gap::parse_review_slash(&rest)? {
-                None => emit(
-                    &self.events,
-                    SessionEventBody::System {
-                        text: super::gap::REVIEW_DESCRIPTION.into(),
-                    },
-                ),
-                Some(target) => self.start_review(&target).await?,
-            },
+            // TUI：`/review <说明>` 直接按自定义说明审查；空参数由作曲栏打开审查菜单。
+            "review" if !rest.trim().is_empty() => {
+                self.start_review(&ReviewStart::Custom {
+                    instructions: rest.clone(),
+                })
+                .await?
+            }
             "plan" => {
                 if rest.is_empty() {
                     let next = if self.collaboration_is_plan() {
@@ -441,7 +438,24 @@ impl Shared {
                 let name = (!rest.trim().is_empty()).then(|| rest.trim().to_string());
                 emit(&self.events, SessionEventBody::NewThread { name, text: None });
             }
-            "quit" | "exit" | "stop" => self.stop(),
+            "quit" | "exit" => self.stop(),
+            // TUI `/stop`：`thread/backgroundTerminals/clean`，不结束会话。
+            "stop" => {
+                let thread_id = self.thread_id.lock().unwrap().clone();
+                if let Some(thread_id) = thread_id {
+                    self.request(
+                        "thread/backgroundTerminals/clean",
+                        json!({ "threadId": thread_id }),
+                    )
+                    .await?;
+                }
+                emit(
+                    &self.events,
+                    SessionEventBody::System {
+                        text: "Stopping all background terminals.".into(),
+                    },
+                );
+            }
             "mcp" => self.emit_mcp(rest.trim()).await?,
             "goal" => self.emit_goal(&rest).await?,
             "hooks" => self.emit_hooks().await?,
@@ -511,53 +525,57 @@ impl Shared {
         );
     }
 
-    pub(super) fn emit_status_card(&self) {
+    /// `/status`（`status/card.rs`）。账户和额度每次现读。
+    pub(super) async fn emit_status_card(&self) {
+        let account = self
+            .request("account/read", json!({ "refreshToken": false }))
+            .await
+            .ok()
+            .and_then(|value| value.get("account").cloned())
+            .filter(|value| !value.is_null());
+        let rate_limits = if account.is_some() {
+            self.request("account/rateLimits/read", Value::Null).await.ok()
+        } else {
+            None
+        };
         let access = self.access.lock().unwrap().clone();
         let model = self.model.lock().unwrap().clone();
-        let thread = self
-            .thread_id
+        let effort = self
+            .effort
             .lock()
             .unwrap()
             .clone()
-            .unwrap_or_else(|| "（尚未开始）".into());
-        let version = self.version.lock().unwrap().clone();
-        let network = if access.uses_sandbox_network() {
-            if access.network_access {
-                "开"
+            .or_else(|| self.thread_effort.lock().unwrap().clone());
+        let input = super::status::StatusInput {
+            version: self.version.lock().unwrap().clone(),
+            model: if model.is_empty() {
+                self.model_override.lock().unwrap().clone().unwrap_or_default()
             } else {
-                "关"
-            }
-        } else {
-            "不适用"
-        };
-        let permission = if access.profile_id.is_empty() {
-            format!(
-                "{}（sandbox {} / approval {} / reviewer {} / 网络{}）",
-                access.label(),
-                access.mode.sandbox_mode(),
-                access.mode.approval_policy(),
-                access.reviewer(),
-                network,
-            )
-        } else {
-            format!(
-                "自定义配置档 {}（permissions / reviewer {}）",
-                access.profile_id,
-                access.reviewer()
-            )
+                model
+            },
+            reasoning_effort: effort,
+            directory: super::status::directory_display(&self.cwd),
+            permissions: access.status_label(),
+            agents_summary: super::status::agents_summary(
+                &self.cwd,
+                &self.instruction_sources.lock().unwrap(),
+            ),
+            account,
+            thread_name: self.thread_name.lock().unwrap().clone(),
+            collaboration_mode: Some(if self.collaboration_is_plan() {
+                "Plan"
+            } else {
+                "Default"
+            }),
+            session_id: self.thread_id.lock().unwrap().clone(),
+            token_info: *self.token_info.lock().unwrap(),
+            rate_limits,
+            now: chrono::Local::now(),
         };
         emit(
             &self.events,
             SessionEventBody::System {
-                text: format!(
-                    "Codex {version}\n模型：{}\n线程：{thread}\n目录：{}\n权限：{permission}",
-                    if model.is_empty() {
-                        "（尚未开始）"
-                    } else {
-                        &model
-                    },
-                    self.cwd,
-                ),
+                text: super::status::render(&input),
             },
         );
     }
@@ -653,39 +671,7 @@ impl Shared {
     }
 
     pub(super) async fn emit_diff(&self) {
-        let mut git = Command::new("git");
-        git.arg("-c")
-            .arg("core.quotepath=false")
-            .arg("-C")
-            .arg(&self.cwd)
-            // 中文文件名按 UTF-8 原样输出，而不是八进制转义。
-            .arg("-c")
-            .arg("core.quotepath=false")
-            .arg("diff")
-            .arg("--stat")
-            .arg("HEAD");
-        apply_utf8_env(&mut git);
-        hide_console(&mut git);
-        apply_utf8_env(&mut git);
-        let output = git.output().await;
-        let text = match output {
-            Ok(output) if output.status.success() => {
-                let mut body = decode_child_bytes(&output.stdout).trim().to_string();
-                if body.is_empty() {
-                    body = "工作区相对 HEAD 没有差异。".into();
-                }
-                if body.chars().count() > 4000 {
-                    body = body.chars().take(4000).collect();
-                    body.push_str("\n…");
-                }
-                body
-            }
-            Ok(output) => {
-                let err = decode_child_bytes(&output.stderr);
-                format!("无法读取 git diff：{}", err.trim())
-            }
-            Err(err) => format!("无法运行 git：{err}"),
-        };
+        let text = super::git_diff::diff_text(std::path::Path::new(&self.cwd)).await;
         emit(&self.events, SessionEventBody::System { text });
     }
 }
