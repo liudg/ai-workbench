@@ -1014,11 +1014,25 @@ export const mockBackend: Backend = {
           if (!profile.capabilities.changes.per_file_patch && !profile.capabilities.changes.turn_diff) return;
           pushFileTurn(sessionId, turnId, [
             {
-              path: "src/demo.ts",
+              path: "src/features/panel/files/A.ts",
+              status: "M",
+              added: 2,
+              removed: 1,
+              diff: "@@ -1 +1,2 @@\n-export const keep = \"before\";\n+export const keep = \"after\";\n+export const added = true;",
+            },
+            {
+              path: "src/features/panel/files/B.ts",
+              status: "M",
+              added: 1,
+              removed: 0,
+              diff: "@@ -1 +1,2 @@\n export const other = 1;\n+export const extra = \"line\";",
+            },
+            {
+              path: "src/features/panel/core/layout-note.ts",
               status: "M",
               added: 1,
               removed: 1,
-              diff: "@@ -1 +1 @@\n-old\n+new",
+              diff: "@@ -1 +1,2 @@\n-export const fresh = 0;\n+export const fresh = 1;\n+export const note = \"resized\";",
             },
           ]);
         },
