@@ -324,13 +324,16 @@ pub trait AgentAdapter: Send + Sync {
     }
 
     /// 探测安装版本，并对照官方来源看有没有更新。
+    /// 走这个默认实现的适配器会话已接入，设置页展示版本和更新。
     async fn installation(&self) -> AgentInstallation {
-        match self.cli_release() {
+        let mut item = match self.cli_release() {
             Some(release) => {
                 install::inspect_release(self.kind(), self.display_name(), &release).await
             }
             None => AgentInstallation::absent(self.kind(), self.display_name()),
-        }
+        };
+        item.session_linked = true;
+        item
     }
 
     /// 按适配器声明的官方渠道升级，然后重新探测。
@@ -343,6 +346,10 @@ pub trait AgentAdapter: Send + Sync {
         };
         install::upgrade_release(self.kind(), self.display_name(), &release)
             .await
+            .map(|mut item| {
+                item.session_linked = true;
+                item
+            })
             .map_err(AgentError::Runtime)
     }
 

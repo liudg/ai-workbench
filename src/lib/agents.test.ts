@@ -14,6 +14,7 @@ function row(kind: AgentKind, installed: boolean, name: string = kind): AgentIns
     update_available: false,
     update_via: null,
     detail: null,
+    session_linked: installed,
   };
 }
 

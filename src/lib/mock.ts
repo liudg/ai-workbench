@@ -113,28 +113,22 @@ function previewAgents(): PreviewAgents {
   return "one";
 }
 
-const STUB_DETAIL = "会话协议尚未接入，目前仅支持检测和更新。工作空间代为安装。";
-
 const GEMINI_NOTE =
   "Gemini CLI（gemini）已于 2026-06-18 停更，官方后继是 Antigravity CLI。优先识别 agy，其次 antigravity，最后才是仍留在 PATH 上的 gemini。只找到 gemini 时不在应用内更新。";
-
-function previewDetail(row: (typeof PREVIEW_ROWS)[number]): string | null {
-  if (row.kind === "codex-cli" || row.kind === "claude-code") return null;
-  return row.note ? `${row.note} ${STUB_DETAIL}` : STUB_DETAIL;
-}
 
 const PREVIEW_ROWS: Array<{
   kind: AgentKind;
   display_name: string;
   note: string | null;
+  session_linked: boolean;
 }> = [
-  { kind: "codex-cli", display_name: "Codex CLI", note: null },
-  { kind: "claude-code", display_name: "Claude Code", note: null },
-  { kind: "cursor-agent", display_name: "Cursor Agent", note: null },
-  { kind: "kimi-code", display_name: "Kimi Code", note: null },
-  { kind: "qwen-code", display_name: "Qwen Code", note: null },
-  { kind: "opencode", display_name: "OpenCode", note: null },
-  { kind: "antigravity", display_name: "Antigravity", note: GEMINI_NOTE },
+  { kind: "codex-cli", display_name: "Codex CLI", note: null, session_linked: true },
+  { kind: "claude-code", display_name: "Claude Code", note: null, session_linked: true },
+  { kind: "cursor-agent", display_name: "Cursor Agent", note: null, session_linked: false },
+  { kind: "kimi-code", display_name: "Kimi Code", note: null, session_linked: false },
+  { kind: "qwen-code", display_name: "Qwen Code", note: null, session_linked: false },
+  { kind: "opencode", display_name: "OpenCode", note: null, session_linked: false },
+  { kind: "antigravity", display_name: "Antigravity", note: GEMINI_NOTE, session_linked: false },
 ];
 
 function absentRow(row: (typeof PREVIEW_ROWS)[number]): AgentInstallation {
@@ -146,7 +140,8 @@ function absentRow(row: (typeof PREVIEW_ROWS)[number]): AgentInstallation {
     latest_version: null,
     update_available: false,
     update_via: null,
-    detail: previewDetail(row),
+    detail: row.note,
+    session_linked: row.session_linked,
   };
 }
 
@@ -183,7 +178,7 @@ function previewInstallations(mode: PreviewAgents): AgentInstallation[] {
         latest_version: null,
         update_available: true,
         update_via: "cli",
-        detail: previewDetail(row),
+        detail: row.note,
       };
     }
     return absentRow(row);
@@ -768,7 +763,7 @@ export const mockBackend: Backend = {
     if (item.latest_version) item.version = item.latest_version;
     item.update_available = false;
     const row = PREVIEW_ROWS.find((item) => item.kind === kind);
-    item.detail = row ? previewDetail(row) : null;
+    item.detail = row?.note ?? null;
     return { ...item };
   },
 

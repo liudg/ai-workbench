@@ -2,28 +2,62 @@ import { ArrowLeft, RefreshCw } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useWorkbench } from "@/store";
-import type { AgentInstallation, UpdateVia } from "@/types";
+import type { AgentInstallation } from "@/types";
 import { Button } from "@/components/ui/button";
+import { agentCardFace, statusLabel, type AgentCardFace } from "./agent-card";
 
-function viaLabel(via: UpdateVia | null): string | null {
-  if (via === "npm") return "npm";
-  if (via === "cli") return "官方 CLI";
-  return null;
+function StatusLine({ face }: { face: AgentCardFace }) {
+  if (face.kind === "unwired") {
+    return (
+      <p className="mt-1 text-xs text-zinc-500">
+        {face.lead}
+        {" · "}
+        <span className="text-red-400">未接入</span>
+      </p>
+    );
+  }
+  return <p className="mt-1 text-xs text-zinc-500">{statusLabel(face)}</p>;
 }
 
-function statusLine(item: AgentInstallation): string {
-  if (!item.installed) return "未安装";
-  const version = item.version ?? "已安装";
-  if (item.update_available && item.latest_version) {
-    const via = viaLabel(item.update_via);
-    return via
-      ? `${version} · 可更新到 ${item.latest_version} · ${via}`
-      : `${version} · 可更新到 ${item.latest_version}`;
-  }
-  if (item.latest_version && item.version === item.latest_version) {
-    return `${version} · 已是最新`;
-  }
-  return version;
+function AgentCard({
+  item,
+  updating,
+  updateLocked,
+  onUpdate,
+}: {
+  item: AgentInstallation;
+  updating: boolean;
+  updateLocked: boolean;
+  onUpdate: (kind: AgentInstallation["kind"]) => void;
+}) {
+  const face = agentCardFace(item);
+  return (
+    <li
+      data-agent={item.kind}
+      data-installed={item.installed ? "true" : "false"}
+      data-card={face.kind}
+      className="flex items-start gap-4 rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3"
+    >
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium text-zinc-100">{item.display_name}</div>
+        <StatusLine face={face} />
+        {face.kind === "ready" && face.detail && (
+          <div className="mt-1 text-xs leading-5 text-amber-200/90">{face.detail}</div>
+        )}
+      </div>
+      {face.kind === "ready" && face.canUpdate && (
+        <Button
+          type="button"
+          size="sm"
+          disabled={updateLocked}
+          aria-label={`更新 ${item.display_name}`}
+          onClick={() => onUpdate(item.kind)}
+        >
+          {updating ? "更新中" : "更新"}
+        </Button>
+      )}
+    </li>
+  );
 }
 
 function AgentsPanel() {
@@ -40,7 +74,7 @@ function AgentsPanel() {
         <div>
           <h2 className="text-base font-medium text-zinc-100">本地 Agent</h2>
           <p className="mt-1 max-w-lg text-sm leading-6 text-zinc-500">
-            列出全部已注册的 Agent CLI。只有本机已经安装的会出现在新建会话里。工作台不代为安装；已安装的可以按各自的官方方式更新。
+            列出全部已注册的 Agent CLI。只有本机已经安装的会出现在新建会话里。工作台不代为安装；会话已接入的可以按官方方式更新。
           </p>
         </div>
         <Button
@@ -67,36 +101,15 @@ function AgentsPanel() {
         <p className="mt-8 text-sm text-zinc-500">没有可管理的本地 Agent。</p>
       ) : (
         <ul className="mt-6 space-y-2">
-          {installations.map((item) => {
-            const updating = updatingKind === item.kind;
-            return (
-              <li
-                key={item.kind}
-                data-agent={item.kind}
-                data-installed={item.installed ? "true" : "false"}
-                className="flex items-start gap-4 rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium text-zinc-100">{item.display_name}</div>
-                  <div className="mt-1 text-xs text-zinc-500">{statusLine(item)}</div>
-                  {item.detail && (
-                    <div className="mt-1 text-xs leading-5 text-amber-200/90">{item.detail}</div>
-                  )}
-                </div>
-                {item.update_available && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={updatingKind !== null}
-                    aria-label={`更新 ${item.display_name}`}
-                    onClick={() => void updateInstallation(item.kind)}
-                  >
-                    {updating ? "更新中" : "更新"}
-                  </Button>
-                )}
-              </li>
-            );
-          })}
+          {installations.map((item) => (
+            <AgentCard
+              key={item.kind}
+              item={item}
+              updating={updatingKind === item.kind}
+              updateLocked={updatingKind !== null}
+              onUpdate={updateInstallation}
+            />
+          ))}
         </ul>
       )}
     </section>

@@ -220,6 +220,8 @@ export interface AgentInstallation {
   update_available: boolean;
   update_via: UpdateVia | null;
   detail: string | null;
+  /** 会话协议已接入。未接入时设置页只显示「未安装」或「未接入」。 */
+  session_linked: boolean;
 }
 
 /** 作曲栏权限档位。适配器自行映射到各自的沙箱 / 审批。 */

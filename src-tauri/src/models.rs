@@ -778,6 +778,8 @@ pub struct AgentInstallation {
     pub update_available: bool,
     pub update_via: Option<UpdateVia>,
     pub detail: Option<String>,
+    /// 会话协议已接入。未接入时设置页不展示版本、更新和说明。
+    pub session_linked: bool,
 }
 
 impl AgentInstallation {
@@ -791,6 +793,7 @@ impl AgentInstallation {
             update_available: false,
             update_via: None,
             detail: None,
+            session_linked: false,
         }
     }
 }

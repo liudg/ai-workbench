@@ -1,5 +1,6 @@
 //! 协议还没接上的 Agent。只做本机探测和官方更新，会话仍是桩。
 //!
+//! 设置页用 `session_linked = false` 表示未接入，不再附一长段说明。
 //! 更新参数都是已安装 CLI 自己的子命令，不跑安装脚本。
 
 use std::sync::Arc;
@@ -11,8 +12,6 @@ use crate::features::agents::install::{AliasCheck, AliasRule, CliRelease};
 use crate::features::agents::stub::{StubAgentSession, StubPersona};
 use crate::features::agents::{AgentAdapter, AgentError, AgentSession, EventSink, SessionContext};
 use crate::models::{AgentCapabilities, AgentInstallation, AgentKind, ChangeCapabilities};
-
-const STUB_DETAIL: &str = "会话协议尚未接入，目前仅支持检测和更新。工作空间代为安装。";
 
 const GEMINI_NOTE: &str = "\
 Gemini CLI（gemini）已于 2026-06-18 停更，官方后继是 Antigravity CLI。\
@@ -123,11 +122,8 @@ fn release(
     }
 }
 
-fn with_stub_note(mut item: AgentInstallation) -> AgentInstallation {
-    item.detail = Some(match item.detail.take() {
-        Some(text) if !text.is_empty() => format!("{text} {STUB_DETAIL}"),
-        _ => STUB_DETAIL.to_string(),
-    });
+fn unlink(mut item: AgentInstallation) -> AgentInstallation {
+    item.session_linked = false;
     item
 }
 
@@ -197,7 +193,7 @@ impl AgentAdapter for ExternalCliAdapter {
         };
         super::install::upgrade_release(self.kind, self.display_name(), &release)
             .await
-            .map(with_stub_note)
+            .map(unlink)
             .map_err(AgentError::Runtime)
     }
 
@@ -216,7 +212,7 @@ impl AgentAdapter for ExternalCliAdapter {
     async fn installation(&self) -> AgentInstallation {
         let release = release_for(self.kind);
         let found = super::install::inspect_release(self.kind, self.display_name(), &release).await;
-        with_stub_note(found)
+        unlink(found)
     }
 
     async fn start_session(
@@ -267,6 +263,23 @@ mod tests {
         let found = (release.locate.unwrap())();
         if let Some(path) = found {
             assert!(path.ends_with("agent.cmd"));
+        }
+    }
+
+    #[test]
+    fn external_cards_are_not_session_linked() {
+        let item = unlink(AgentInstallation::absent(AgentKind::KimiCode, "Kimi Code"));
+        assert!(!item.session_linked);
+        assert!(item.detail.as_deref().unwrap_or("").is_empty());
+        for kind in AgentKind::all() {
+            if matches!(kind, AgentKind::CodexCli | AgentKind::ClaudeCode) {
+                continue;
+            }
+            assert!(
+                !release_for(kind).note.contains("会话协议尚未接入"),
+                "{}",
+                kind.as_str()
+            );
         }
     }
 

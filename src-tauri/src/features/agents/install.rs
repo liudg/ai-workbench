@@ -347,6 +347,7 @@ pub async fn inspect_release(
         update_available,
         update_via,
         detail: detail_lines(release.note, &chosen.also, &chosen.version, npm_note),
+        session_linked: false,
     }
 }
 
