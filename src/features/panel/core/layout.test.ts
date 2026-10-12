@@ -15,6 +15,10 @@ import {
   toggleFilesRail,
   toggleFilesSidebar,
   withPreviewRail,
+  layoutAfterFullToggle,
+  layoutAfterHide,
+  layoutAfterOpen,
+  layoutAfterShow,
   workspaceColumns,
   type FilesRailState,
 } from "./layout.ts";
@@ -150,6 +154,29 @@ test("the files sidebar toggle does not touch the preview rail", () => {
   assert.equal(hidden.filesExpanded, true);
   assert.equal(hidden.filesBeforePreview, true);
   assert.equal(toggleFilesSidebar(hidden).filesSidebarOpen, true);
+});
+
+test("full view gives the preview the whole row and chat nothing", () => {
+  const row = workspaceColumns({
+    rowWidth: 1400,
+    panelOpen: true,
+    panelMode: "full",
+    filesExpanded: false,
+    filesVisible: false,
+  });
+  assert.equal(row.chat, 0);
+  assert.equal(row.panel, 1400);
+  assert.equal(row.files, 0);
+});
+
+test("layout mode follows open, hide, show, and full view", () => {
+  assert.equal(layoutAfterOpen("chat"), "split");
+  assert.equal(layoutAfterOpen("full"), "full");
+  assert.equal(layoutAfterHide(), "chat");
+  assert.equal(layoutAfterShow("chat"), "split");
+  assert.equal(layoutAfterShow("full"), "full");
+  assert.equal(layoutAfterFullToggle("split"), "full");
+  assert.equal(layoutAfterFullToggle("full"), "split");
 });
 
 test("closing the preview gives the chat column the file rail's row", () => {

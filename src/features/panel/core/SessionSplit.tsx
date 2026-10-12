@@ -12,6 +12,7 @@ import {
   workspaceColumns,
 } from "./layout";
 import { ColumnSplitter } from "./ColumnSplitter";
+import { PanelMarker } from "./PanelChrome";
 import { PanelTabs } from "./PanelTabs";
 import { usePanel } from "./PanelProvider";
 
@@ -27,18 +28,21 @@ export function SessionSplit({ children }: { children: ReactNode }) {
     toggleFilesSidebar,
     previewWidth,
     setPreviewWidth,
+    layout,
   } = usePanel();
   const rowRef = useRef<HTMLDivElement>(null);
   const rowWidth = useElementWidth(rowRef);
   const active = tabs.find((tab) => tab.id === activeId) ?? tabs[tabs.length - 1];
-  const panelOpen = Boolean(active);
+  const panelOpen = layout !== "chat" && Boolean(active);
+  const full = panelOpen && layout === "full";
   const filesVisible = !active || active.viewerId !== "diff";
   const showFiles = filesVisible && filesSidebarOpen;
   const measured = rowWidth > 0;
-  const layoutWidth = panelOpen ? Math.max(0, rowWidth - SPLITTER_WIDTH) : rowWidth;
+  const layoutWidth = panelOpen && !full ? Math.max(0, rowWidth - SPLITTER_WIDTH) : rowWidth;
   const columns = workspaceColumns({
     rowWidth: layoutWidth,
     panelOpen,
+    panelMode: full ? "full" : panelOpen ? "split" : "chat",
     filesExpanded,
     filesVisible: showFiles,
   });
@@ -51,15 +55,28 @@ export function SessionSplit({ children }: { children: ReactNode }) {
   metrics.current = { row: layoutWidth, files: filesWidth, panel: columns.panel };
 
   return (
-    <div ref={rowRef} data-workspace-row className="relative flex h-full min-w-0 flex-1 overflow-hidden">
+    <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
+      {panelOpen ? null : (
+        <div className="flex h-9 shrink-0 items-center justify-end px-2">
+          <PanelMarker />
+        </div>
+      )}
       <div
-        data-chat-column
-        className="relative flex h-full min-w-0 flex-col overflow-hidden"
-        style={{ flex: "1 1 0px", minWidth: CHAT_MIN_WIDTH }}
+        ref={rowRef}
+        data-workspace-row
+        data-panel-layout={full ? "full" : panelOpen ? "split" : "chat"}
+        className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden"
       >
-        {children}
-      </div>
-      {panelOpen ? (
+      {full ? null : (
+        <div
+          data-chat-column
+          className="relative flex h-full min-w-0 flex-col overflow-hidden"
+          style={{ flex: "1 1 0px", minWidth: CHAT_MIN_WIDTH }}
+        >
+          {children}
+        </div>
+      )}
+      {panelOpen && !full ? (
         <ColumnSplitter
           name="chat-preview"
           onDelta={(dx) => {
@@ -74,11 +91,13 @@ export function SessionSplit({ children }: { children: ReactNode }) {
       {panelOpen ? (
         <div
           className="flex h-full min-w-0 overflow-hidden"
-          data-preview-width={measured ? panelWidth : undefined}
+          data-preview-width={full ? undefined : measured ? panelWidth : undefined}
           style={
-            measured
-              ? { width: panelWidth, maxWidth: panelWidth, flex: "0 0 auto", minWidth: 0 }
-              : { flex: "0 1 auto", width: PANEL_PREFERRED_WIDTH, maxWidth: "44%", minWidth: 0 }
+            full
+              ? { flex: "1 1 auto", minWidth: 0 }
+              : measured
+                ? { width: panelWidth, maxWidth: panelWidth, flex: "0 0 auto", minWidth: 0 }
+                : { flex: "0 1 auto", width: PANEL_PREFERRED_WIDTH, maxWidth: "44%", minWidth: 0 }
           }
         >
           <PanelTabs />
@@ -86,6 +105,7 @@ export function SessionSplit({ children }: { children: ReactNode }) {
       ) : null}
       {showFiles && filesWidth > 0 ? <SessionFiles width={filesWidth} /> : null}
       {filesSidebarOpen ? null : <FilesToggle onShow={toggleFilesSidebar} />}
+      </div>
     </div>
   );
 }

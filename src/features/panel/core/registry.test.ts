@@ -139,6 +139,38 @@ describe("panel viewers", { concurrency: 1 }, () => {
     }
   });
 
+  test("the side panel stays closed until the marker opens a new tab", async () => {
+    const undo = registerViewer(stub("html", (target) => (target.kind === "blank" ? 100 : 0)));
+    try {
+      const store = testStore();
+      assert.equal(store.getState().panelBySession.s, undefined);
+      store.getState().panelShow("s");
+      const opened = store.getState().panelBySession.s;
+      assert.equal(opened?.layout, "split");
+      assert.equal(opened?.tabs.length, 1);
+      assert.equal(opened?.tabs[0]?.viewerId, "html");
+      store.getState().panelOpenTarget("s", { kind: "blank" }, ctx);
+      assert.equal(store.getState().panelBySession.s?.tabs.length, 2);
+      store.getState().panelHide("s");
+      assert.equal(store.getState().panelBySession.s?.layout, "chat");
+      assert.equal(store.getState().panelBySession.s?.tabs.length, 2);
+      store.getState().panelShow("s");
+      assert.equal(store.getState().panelBySession.s?.layout, "split");
+      assert.equal(store.getState().panelBySession.s?.tabs.length, 2);
+      store.getState().panelToggleFull("s");
+      assert.equal(store.getState().panelBySession.s?.layout, "full");
+      store.getState().panelToggleFull("s");
+      assert.equal(store.getState().panelBySession.s?.layout, "split");
+      for (const tab of store.getState().panelBySession.s?.tabs ?? []) {
+        store.getState().panelCloseTab("s", tab.id);
+      }
+      assert.equal(store.getState().panelBySession.s?.layout, "chat");
+      assert.equal(store.getState().panelBySession.s?.tabs.length, 0);
+    } finally {
+      undo();
+    }
+  });
+
   test("dragged column widths stay in the panel store and do not create a session panel", () => {
     const store = testStore();
     store.getState().panelSetPreviewWidth("session-a", 640.4);

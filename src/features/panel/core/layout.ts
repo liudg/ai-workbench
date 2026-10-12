@@ -28,10 +28,31 @@ export const CLOSED_FILES_RAIL: FilesRailState = {
   filesSidebarOpen: true,
 };
 
+export type PanelLayoutMode = "chat" | "split" | "full";
+
 export interface WorkspaceColumns {
   chat: number;
   panel: number;
   files: number;
+}
+
+/** 打开内容时从纯聊天回到分屏；完整视图保持铺满。 */
+export function layoutAfterOpen(mode: PanelLayoutMode): PanelLayoutMode {
+  return mode === "chat" ? "split" : mode;
+}
+
+export function layoutAfterHide(): PanelLayoutMode {
+  return "chat";
+}
+
+/** 收起后点标记：有标签就回到分屏。完整视图不从这里进入。 */
+export function layoutAfterShow(mode: PanelLayoutMode): PanelLayoutMode {
+  return mode === "full" ? "full" : "split";
+}
+
+export function layoutAfterFullToggle(mode: PanelLayoutMode): PanelLayoutMode {
+  if (mode === "chat") return "full";
+  return mode === "full" ? "split" : "full";
 }
 
 export function filesColumnWidth(expanded: boolean, visible: boolean): number {
@@ -45,11 +66,14 @@ export function workspaceColumns(input: {
   panelOpen: boolean;
   filesExpanded: boolean;
   filesVisible: boolean;
+  panelMode?: PanelLayoutMode;
 }): WorkspaceColumns {
   const files = filesColumnWidth(input.filesExpanded, input.filesVisible);
+  const mode = input.panelMode ?? (input.panelOpen ? "split" : "chat");
   if (input.rowWidth <= 0) return { chat: 0, panel: 0, files };
   const room = Math.max(0, input.rowWidth - files);
-  if (!input.panelOpen) return { chat: room, panel: 0, files };
+  if (mode === "chat") return { chat: room, panel: 0, files };
+  if (mode === "full") return { chat: 0, panel: room, files };
   const preferred = Math.min(
     PANEL_PREFERRED_WIDTH,
     Math.round(input.rowWidth * PANEL_MAX_RATIO),

@@ -9,6 +9,7 @@ import { useWorkbench } from "@/store";
 import type { PageAnnotation } from "@/types";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { tabTitleFromDocument } from "./annotate";
+import { NewTabPage } from "./NewTabPage";
 import {
   canGoBack,
   canGoForward,
@@ -378,15 +379,10 @@ export function BrowserView({
         <p className="shrink-0 px-3 py-1 text-[11px] text-amber-200/90">{DESKTOP_ZH.browserSnapshotFailed}</p>
       ) : null}
       <div ref={viewport} className="relative min-h-0 min-w-0 flex-1 bg-zinc-950" data-browser-viewport>
-        {!frameTarget ? (
-          <div className="flex h-full flex-col items-center justify-center gap-1 bg-zinc-950 px-6 text-center">
-            <p className="text-sm text-zinc-200">{DESKTOP_ZH.browserEmptyTitle}</p>
-            <p className="text-xs text-zinc-500">{DESKTOP_ZH.browserEmptyDescription}</p>
-          </div>
-        ) : null}
+        {!frameTarget ? <NewTabPage /> : null}
         {!native && frameTarget ? (
           <iframe
-            title={shown || DESKTOP_ZH.browserEmptyTitle}
+            title={shown || DESKTOP_ZH.browserNewTab}
             sandbox="allow-scripts allow-forms allow-popups allow-modals"
             src={localFrame ? undefined : frameTarget}
             srcDoc={localFrame ? text || undefined : undefined}

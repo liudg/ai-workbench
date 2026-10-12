@@ -11,6 +11,7 @@ import {
 import { backend } from "@/lib/ipc";
 import type { AgentKind, ChangeCapabilities, SessionEvent } from "@/types";
 import { showsFileChanges } from "@/features/changes-model/capabilities";
+import type { PanelLayoutMode } from "./layout";
 import { sessionChanges, type FileChange } from "@/features/changes-model/diff-parse";
 import { useWorkbench } from "@/store";
 import type { PanelTab } from "./registry";
@@ -29,6 +30,10 @@ interface PanelApi {
   openDiff: (id: string, title: string, files: FileChange[]) => void;
   openHref: (href: string, line?: number) => void;
   openBlank: () => void;
+  layout: PanelLayoutMode;
+  hidePanel: () => void;
+  showPanel: () => void;
+  toggleFull: () => void;
   setTabTitle: (id: string, title: string) => void;
   filesExpanded: boolean;
   toggleFiles: () => void;
@@ -72,6 +77,7 @@ export function PanelProvider({
 }) {
   const tabs = useWorkbench((s) => s.panelBySession[sessionId]?.tabs ?? EMPTY_TABS);
   const activeId = useWorkbench((s) => s.panelBySession[sessionId]?.activeId ?? "");
+  const layout = useWorkbench((s) => s.panelBySession[sessionId]?.layout ?? "chat");
   const hasRail = useWorkbench((s) => s.panelBySession[sessionId] !== undefined);
   const storedExpanded = useWorkbench((s) => s.panelBySession[sessionId]?.filesExpanded ?? false);
   const storedSidebar = useWorkbench((s) => s.panelBySession[sessionId]?.filesSidebarOpen ?? true);
@@ -115,6 +121,15 @@ export function PanelProvider({
   const openBlank = useCallback(() => {
     useWorkbench.getState().panelOpenBlank(sessionId);
   }, [sessionId]);
+  const hidePanel = useCallback(() => {
+    useWorkbench.getState().panelHide(sessionId);
+  }, [sessionId]);
+  const showPanel = useCallback(() => {
+    useWorkbench.getState().panelShow(sessionId);
+  }, [sessionId]);
+  const toggleFull = useCallback(() => {
+    useWorkbench.getState().panelToggleFull(sessionId);
+  }, [sessionId]);
   const setTabTitle = useCallback(
     (id: string, title: string) => useWorkbench.getState().panelSetTitle(sessionId, id, title),
     [sessionId],
@@ -157,6 +172,10 @@ export function PanelProvider({
       openDiff,
       openHref,
       openBlank,
+      layout,
+      hidePanel,
+      showPanel,
+      toggleFull,
       setTabTitle,
       filesExpanded,
       toggleFiles,
@@ -179,6 +198,10 @@ export function PanelProvider({
       openDiff,
       openHref,
       openBlank,
+      layout,
+      hidePanel,
+      showPanel,
+      toggleFull,
       setTabTitle,
       filesExpanded,
       toggleFiles,

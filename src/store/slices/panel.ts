@@ -2,10 +2,15 @@ import type { FileChange } from "../../features/changes-model/diff-parse.ts";
 import type { BrowserHistory } from "../../features/panel/browser/browser.ts";
 import {
   CLOSED_FILES_RAIL,
+  layoutAfterFullToggle,
+  layoutAfterHide,
+  layoutAfterOpen,
+  layoutAfterShow,
   noteFilesRail,
   toggleFilesRail,
   toggleFilesSidebar,
   withPreviewRail,
+  type PanelLayoutMode,
 } from "../../features/panel/core/layout.ts";
 import { baseName } from "../../features/panel/files/path.ts";
 import {
@@ -31,6 +36,8 @@ export interface SessionPanel {
   tabs: PanelTab[];
   activeId: string;
   histories: Record<string, BrowserHistory>;
+  /** chat 收起侧栏但保留标签；split 并排；full 内容铺满、聊天让开。 */
+  layout: PanelLayoutMode;
   filesExpanded: boolean;
   filesBeforePreview: boolean | null;
   filesTouched: boolean;
@@ -45,6 +52,11 @@ export interface PanelSlice {
   panelOpenHref(sessionId: string, href: string, line: number | undefined, ctx: ViewerContext): Promise<void>;
   panelOpenDiff(sessionId: string, id: string, title: string, files: FileChange[]): void;
   panelOpenBlank(sessionId: string): void;
+  /** 收起侧栏。标签还在，标记改成打开的标签数。 */
+  panelHide(sessionId: string): void;
+  /** 没有标签时打开内置浏览器新标签页，否则只把侧栏展开。 */
+  panelShow(sessionId: string): void;
+  panelToggleFull(sessionId: string): void;
   panelOpenTarget(sessionId: string, target: OpenTarget, ctx: ViewerContext): Promise<void>;
   panelRememberHistory(sessionId: string, tabId: string, history: BrowserHistory): void;
   panelToggleFiles(sessionId: string): void;
@@ -71,7 +83,7 @@ function loadKey(sessionId: string, tabId: string) {
 }
 
 function blankSession(): SessionPanel {
-  return { tabs: [], activeId: "", histories: {}, ...CLOSED_FILES_RAIL };
+  return { tabs: [], activeId: "", histories: {}, layout: "chat", ...CLOSED_FILES_RAIL };
 }
 
 function errorText(error: unknown): string {
@@ -89,7 +101,8 @@ function placeTab(session: SessionPanel, tab: PanelTab, moveToEnd: boolean, acti
     tabs = session.tabs.slice();
     tabs[index] = tab;
   }
-  return { ...session, tabs, activeId: activate ? tab.id : session.activeId };
+  const layout = activate ? layoutAfterOpen(session.layout) : session.layout;
+  return { ...session, tabs, activeId: activate ? tab.id : session.activeId, layout };
 }
 
 export function createPanelSlice(set: PanelSet, get: PanelGet): PanelSlice {
@@ -98,7 +111,7 @@ export function createPanelSlice(set: PanelSet, get: PanelGet): PanelSlice {
       const current = state.panelBySession[sessionId] ?? blankSession();
       const next = recipe(current);
       if (!next || next === current) return state;
-      const synced = withPreviewRail(next, next.tabs.length > 0);
+      const synced = withPreviewRail(next, next.layout !== "chat" && next.tabs.length > 0);
       return { panelBySession: { ...state.panelBySession, [sessionId]: synced } };
     });
   };
@@ -284,6 +297,36 @@ export function createPanelSlice(set: PanelSet, get: PanelGet): PanelSlice {
       void open(sessionId, { kind: "blank" }, emptyCtx(), 0);
     },
 
+    panelHide(sessionId) {
+      mutate(sessionId, (session) =>
+        session.layout === "chat" ? null : { ...session, layout: layoutAfterHide() },
+      );
+    },
+
+    panelShow(sessionId) {
+      const session = read(sessionId);
+      if (session.tabs.length === 0) {
+        void open(sessionId, { kind: "blank" }, emptyCtx(), 0);
+        return;
+      }
+      mutate(sessionId, (current) => {
+        const layout = layoutAfterShow(current.layout);
+        return layout === current.layout ? null : { ...current, layout };
+      });
+    },
+
+    panelToggleFull(sessionId) {
+      const session = read(sessionId);
+      if (session.tabs.length === 0) {
+        void open(sessionId, { kind: "blank" }, emptyCtx(), 0);
+        mutate(sessionId, (current) =>
+          current.layout === "full" ? null : { ...current, layout: "full" },
+        );
+        return;
+      }
+      mutate(sessionId, (current) => ({ ...current, layout: layoutAfterFullToggle(current.layout) }));
+    },
+
     async panelOpenTarget(sessionId, target, ctx) {
       await open(sessionId, target, ctx, 0);
     },
@@ -330,10 +373,11 @@ function dropTab(session: SessionPanel, id: string): SessionPanel {
   if (!session.tabs.some((tab) => tab.id === id) && !(id in session.histories)) return session;
   const tabs = session.tabs.filter((tab) => tab.id !== id);
   const activeId = session.activeId === id ? (tabs[tabs.length - 1]?.id ?? "") : session.activeId;
-  if (!(id in session.histories)) return { ...session, tabs, activeId };
+  const layout = tabs.length === 0 ? layoutAfterHide() : session.layout;
+  if (!(id in session.histories)) return { ...session, tabs, activeId, layout };
   const histories = { ...session.histories };
   delete histories[id];
-  return { ...session, tabs, activeId, histories };
+  return { ...session, tabs, activeId, histories, layout };
 }
 
 function readTitle(payload: unknown): string {

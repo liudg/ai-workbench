@@ -5,6 +5,7 @@ import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { cn } from "@/lib/utils";
 import { registerBuiltinViewers } from "../viewers/register";
 import { viewerById, type PanelTab } from "./registry";
+import { PanelLayoutControls } from "./PanelChrome";
 import { usePanel } from "./PanelProvider";
 
 registerBuiltinViewers();
@@ -20,54 +21,57 @@ export function PanelTabs() {
       data-preview-panel
       className="flex h-full w-full min-w-0 flex-col overflow-hidden border-l border-zinc-800 bg-zinc-950"
     >
-      <div className="flex h-9 shrink-0 items-stretch gap-0.5 overflow-x-auto border-b border-zinc-800 px-1">
-        {tabs.map((tab) => {
-          const selected = tab.id === active.id;
-          const viewer = viewerById(tab.viewerId);
-          const Icon = viewer?.icon;
-          const title = viewer ? viewer.title(tab.payload) : "";
-          return (
-            <div
-              key={tab.id}
-              className={cn(
-                "flex min-w-0 max-w-[180px] items-center rounded-t-md",
-                selected ? "bg-zinc-800 text-zinc-100" : "text-zinc-400",
-              )}
-            >
-              <button
-                type="button"
-                data-preview-tab={tab.viewerId}
-                className="flex min-w-0 flex-1 items-center gap-1 px-2 py-1.5 text-left text-xs"
-                onClick={() => selectTab(tab.id)}
+      <div className="flex h-9 shrink-0 items-stretch border-b border-zinc-800">
+        <div className="flex min-w-0 flex-1 items-stretch gap-0.5 overflow-x-auto px-1">
+          {tabs.map((tab) => {
+            const selected = tab.id === active.id;
+            const viewer = viewerById(tab.viewerId);
+            const Icon = viewer?.icon;
+            const title = viewer ? viewer.title(tab.payload) : "";
+            return (
+              <div
+                key={tab.id}
+                className={cn(
+                  "flex min-w-0 max-w-[180px] items-center rounded-t-md",
+                  selected ? "bg-zinc-800 text-zinc-100" : "text-zinc-400",
+                )}
               >
-                {Icon ? (
-                  <span className="inline-flex shrink-0" data-tab-icon={tab.viewerId}>
-                    <Icon className="h-3 w-3" />
-                  </span>
-                ) : null}
-                <span className="truncate">{title}</span>
-              </button>
-              <button
-                type="button"
-                aria-label={DESKTOP_ZH.closeTab}
-                className="mr-1 rounded p-0.5 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-100"
-                onClick={() => closeTab(tab.id)}
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </div>
-          );
-        })}
-        <button
-          type="button"
-          data-browser-new-tab
-          aria-label={DESKTOP_ZH.browserNewTab}
-          title={DESKTOP_ZH.browserNewTab}
-          className="my-1 shrink-0 rounded px-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
-          onClick={openBlank}
-        >
-          <Plus className="h-3.5 w-3.5" />
-        </button>
+                <button
+                  type="button"
+                  data-preview-tab={tab.viewerId}
+                  className="flex min-w-0 flex-1 items-center gap-1 px-2 py-1.5 text-left text-xs"
+                  onClick={() => selectTab(tab.id)}
+                >
+                  {Icon ? (
+                    <span className="inline-flex shrink-0" data-tab-icon={tab.viewerId}>
+                      <Icon className="h-3 w-3" />
+                    </span>
+                  ) : null}
+                  <span className="truncate">{title}</span>
+                </button>
+                <button
+                  type="button"
+                  aria-label={DESKTOP_ZH.closeTab}
+                  className="mr-1 rounded p-0.5 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-100"
+                  onClick={() => closeTab(tab.id)}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            );
+          })}
+          <button
+            type="button"
+            data-browser-new-tab
+            aria-label={DESKTOP_ZH.browserNewTab}
+            title={DESKTOP_ZH.browserNewTab}
+            className="my-1 shrink-0 rounded px-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+            onClick={openBlank}
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        <PanelLayoutControls />
       </div>
       {menu && menu.length > 0 ? (
         <div
