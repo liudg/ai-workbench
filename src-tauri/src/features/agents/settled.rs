@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 
 use crate::models::AgentKind;
@@ -107,6 +107,7 @@ fn data_dir() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
     #[test]
     fn self_update_stays_hidden_for_the_settled_version() {
