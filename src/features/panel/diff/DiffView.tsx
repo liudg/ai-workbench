@@ -21,8 +21,9 @@ export function DiffView({ files }: { files: FileChange[] }) {
   const frameRef = useRef<HTMLDivElement>(null);
   const paneWidth = useElementWidth(frameRef);
   const [epoch, setEpoch] = useState(0);
+  const [filesWanted, setFilesWanted] = useState(true);
   const inner = Math.max(0, paneWidth - SPLITTER_WIDTH);
-  const auto = diffListWidth(inner);
+  const auto = filesWanted ? diffListWidth(inner) : null;
   const listWidth =
     auto === null ? null : diffFilesWidth === null ? auto : diffListWidthAfterDrag(inner, diffFilesWidth);
   const metrics = useRef({ pane: 0, list: 0 });
@@ -34,94 +35,98 @@ export function DiffView({ files }: { files: FileChange[] }) {
   return (
     <div
       ref={frameRef}
-      className="flex h-full min-h-0 min-w-0 overflow-hidden"
+      className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden"
       data-diff-view
       data-diff-list={listWidth === null ? "hidden" : "visible"}
       data-diff-files-width={listWidth ?? undefined}
     >
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <DiffToolbar
-          scope={doc.scope}
-          scopes={doc.scopes}
-          onScope={doc.setScope}
-          added={doc.added}
-          removed={doc.removed}
-          expanded={doc.expanded}
-          onToggleExpanded={() => doc.setExpanded((value) => !value)}
-          unified={doc.unified}
-          onToggleUnified={() => doc.setUnified((value) => !value)}
-          wrap={doc.wrap}
-          onToggleWrap={() => doc.setWrap((value) => !value)}
-          onRefresh={() => {
-            setFileFilter("");
-            setEpoch((value) => value + 1);
-            doc.reload();
-          }}
-          loadFull={doc.loadFull}
-          onToggleLoadFull={() => doc.setLoadFull((value) => !value)}
-          renderPreview={doc.renderPreview}
-          onToggleRenderPreview={() => doc.setRenderPreview((value) => !value)}
-          wordDiff={doc.wordDiff}
-          onToggleWordDiff={() => doc.setWordDiff((value) => !value)}
-          hideWs={doc.hideWs}
-          onToggleHideWs={() => doc.setHideWs((value) => !value)}
-          hideImports={doc.hideImports}
-          onToggleHideImports={() => doc.setHideImports((value) => !value)}
-        />
-        <div
-          className={cn(
-            "min-h-0 min-w-0 flex-1 overflow-y-auto",
-            doc.wrap ? "overflow-x-hidden" : "overflow-x-auto",
-          )}
-          data-diff-wrap={doc.wrap ? "on" : "off"}
-        >
-          {doc.loading ? <p className="px-4 py-6 text-sm text-zinc-500">正在读取…</p> : null}
-          {doc.gitError ? <p className="px-4 py-6 text-sm text-red-300">{doc.gitError}</p> : null}
-          {!doc.loading && !doc.gitError && doc.shown.length === 0 ? (
-            <p className="px-4 py-6 text-sm text-zinc-500">{DESKTOP_ZH.noFileChanges}</p>
-          ) : null}
-          {doc.shown.map((file) => (
-            <DiffFileSection
-              key={file.path}
-              file={file}
-              expanded={doc.expanded}
-              unified={doc.unified}
-              wrap={doc.wrap}
-              wordDiff={doc.wordDiff}
-              renderPreview={doc.renderPreview}
-              source={sourceFor(file.path)}
-              hideImports={doc.hideImports}
-              active={file.path === doc.active?.path}
-              onSelect={() => doc.selectFile(file)}
-            />
-          ))}
+      <DiffToolbar
+        scope={doc.scope}
+        scopes={doc.scopes}
+        onScope={doc.setScope}
+        added={doc.added}
+        removed={doc.removed}
+        expanded={doc.expanded}
+        onToggleExpanded={() => doc.setExpanded((value) => !value)}
+        unified={doc.unified}
+        onToggleUnified={() => doc.setUnified((value) => !value)}
+        wrap={doc.wrap}
+        onToggleWrap={() => doc.setWrap((value) => !value)}
+        onRefresh={() => {
+          setFileFilter("");
+          setEpoch((value) => value + 1);
+          doc.reload();
+        }}
+        loadFull={doc.loadFull}
+        onToggleLoadFull={() => doc.setLoadFull((value) => !value)}
+        renderPreview={doc.renderPreview}
+        onToggleRenderPreview={() => doc.setRenderPreview((value) => !value)}
+        wordDiff={doc.wordDiff}
+        onToggleWordDiff={() => doc.setWordDiff((value) => !value)}
+        hideWs={doc.hideWs}
+        onToggleHideWs={() => doc.setHideWs((value) => !value)}
+        hideImports={doc.hideImports}
+        onToggleHideImports={() => doc.setHideImports((value) => !value)}
+        filesOpen={listWidth !== null}
+        onToggleFiles={() => setFilesWanted((value) => !value)}
+      />
+      <div data-diff-split className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <div
+            className={cn(
+              "min-h-0 min-w-0 flex-1 overflow-y-auto",
+              doc.wrap ? "overflow-x-hidden" : "overflow-x-auto",
+            )}
+            data-diff-wrap={doc.wrap ? "on" : "off"}
+          >
+            {doc.loading ? <p className="px-4 py-6 text-sm text-zinc-500">正在读取…</p> : null}
+            {doc.gitError ? <p className="px-4 py-6 text-sm text-red-300">{doc.gitError}</p> : null}
+            {!doc.loading && !doc.gitError && doc.shown.length === 0 ? (
+              <p className="px-4 py-6 text-sm text-zinc-500">{DESKTOP_ZH.noFileChanges}</p>
+            ) : null}
+            {doc.shown.map((file) => (
+              <DiffFileSection
+                key={file.path}
+                file={file}
+                expanded={doc.expanded}
+                unified={doc.unified}
+                wrap={doc.wrap}
+                wordDiff={doc.wordDiff}
+                renderPreview={doc.renderPreview}
+                source={sourceFor(file.path)}
+                hideImports={doc.hideImports}
+                active={file.path === doc.active?.path}
+                onSelect={() => doc.selectFile(file)}
+              />
+            ))}
+          </div>
         </div>
+        {listWidth !== null ? (
+          <ColumnSplitter
+            name="diff-files"
+            onDelta={(dx) => {
+              const pane = metrics.current.pane;
+              const current = diffListWidthAfterDrag(pane, widthRef.current ?? metrics.current.list) ?? metrics.current.list;
+              const next = diffListWidthAfterDrag(pane, current - dx);
+              if (next !== null) setDiffFilesWidth(next);
+            }}
+          />
+        ) : null}
+        {listWidth !== null ? (
+          <ChangesSidebar
+            key={epoch}
+            files={doc.listed}
+            activePath={doc.active?.path ?? ""}
+            rowAttr="data-diff-file"
+            mark="diff"
+            width={listWidth}
+            onSelect={doc.selectFile}
+            empty={
+              <p className="px-2 py-6 text-center text-xs leading-5 text-zinc-500">{DESKTOP_ZH.noFileChanges}</p>
+            }
+          />
+        ) : null}
       </div>
-      {listWidth !== null ? (
-        <ColumnSplitter
-          name="diff-files"
-          onDelta={(dx) => {
-            const pane = metrics.current.pane;
-            const current = diffListWidthAfterDrag(pane, widthRef.current ?? metrics.current.list) ?? metrics.current.list;
-            const next = diffListWidthAfterDrag(pane, current - dx);
-            if (next !== null) setDiffFilesWidth(next);
-          }}
-        />
-      ) : null}
-      {listWidth !== null ? (
-        <ChangesSidebar
-          key={epoch}
-          files={doc.listed}
-          activePath={doc.active?.path ?? ""}
-          rowAttr="data-diff-file"
-          mark="diff"
-          width={listWidth}
-          onSelect={doc.selectFile}
-          empty={
-            <p className="px-2 py-6 text-center text-xs leading-5 text-zinc-500">{DESKTOP_ZH.noFileChanges}</p>
-          }
-        />
-      ) : null}
     </div>
   );
 }

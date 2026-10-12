@@ -6,14 +6,14 @@ import { cn } from "@/lib/utils";
 import { registerBuiltinViewers } from "../viewers/register";
 import { viewerById } from "./registry";
 import { Hint } from "./Hint";
-import { FullViewIcon, SliderListIcon } from "./panel-icons";
+import { SliderListIcon } from "./panel-icons";
 import { usePanel } from "./PanelProvider";
 
 registerBuiltinViewers();
 
 /** 侧栏收起时的顶栏：标题在左，右侧是标记。聊天占满其余宽度。 */
 export function ClosedChrome() {
-  const { tabs, sessionTitle, showPanel, toggleFull } = usePanel();
+  const { tabs, sessionTitle, showPanel, selectTab } = usePanel();
   const count = tabs.length;
   const [menu, setMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -51,20 +51,6 @@ export function ClosedChrome() {
       </button>
       <span aria-hidden className="mx-0.5 h-4 w-px bg-zinc-700" />
       {count > 0 ? (
-        <Hint label={DESKTOP_ZH.panelEnterFull} shortcut={DESKTOP_ZH.panelShortcutF} align="end">
-          <button
-            type="button"
-            data-panel-full
-            aria-pressed={false}
-            aria-label={`${DESKTOP_ZH.panelEnterFull} ${DESKTOP_ZH.panelShortcutF}`}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-300 hover:bg-zinc-800 hover:text-zinc-50"
-            onClick={toggleFull}
-          >
-            <FullViewIcon />
-          </button>
-        </Hint>
-      ) : null}
-      {count > 0 ? (
         <div
           ref={menuRef}
           className="relative"
@@ -79,11 +65,22 @@ export function ClosedChrome() {
             aria-expanded={menu}
             aria-label={DESKTOP_ZH.panelOpenTabsMenu}
             className="inline-flex h-7 min-w-7 items-center justify-center rounded-lg border border-zinc-500/80 bg-zinc-950 px-1.5 text-[13px] font-medium tabular-nums text-zinc-100 hover:bg-zinc-800"
-            onClick={() => setMenu(true)}
+            onClick={() => {
+              showPanel();
+              setMenu(false);
+            }}
           >
             {count}
           </button>
-          {menu ? <OpenTabsMenu /> : null}
+          {menu ? (
+            <OpenTabsMenu
+              onPick={(id) => {
+                selectTab(id);
+                showPanel();
+                setMenu(false);
+              }}
+            />
+          ) : null}
         </div>
       ) : (
         <Hint label={DESKTOP_ZH.panelNewTab} shortcut={DESKTOP_ZH.panelShortcutB} align="end">
@@ -103,7 +100,7 @@ export function ClosedChrome() {
   );
 }
 
-function OpenTabsMenu() {
+function OpenTabsMenu({ onPick }: { onPick: (id: string) => void }) {
   const { tabs } = usePanel();
   return (
     <div
@@ -117,16 +114,18 @@ function OpenTabsMenu() {
         const Icon = viewer?.icon;
         const title = viewer ? viewer.title(tab.payload) : "";
         return (
-          <div
+          <button
             key={tab.id}
+            type="button"
             role="menuitem"
             data-open-tab={tab.id}
             data-open-tab-viewer={tab.viewerId}
-            className={cn("flex items-center gap-2 px-3 py-1.5 text-xs text-zinc-100")}
+            className={cn("flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-zinc-100 hover:bg-zinc-800")}
+            onClick={() => onPick(tab.id)}
           >
             {Icon ? <Icon className="h-3.5 w-3.5 shrink-0 text-zinc-400" /> : null}
             <span className="min-w-0 flex-1 truncate">{title}</span>
-          </div>
+          </button>
         );
       })}
     </div>

@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import { DESKTOP_ZH } from "../../../shared/strings/desktop-zh.ts";
 import { diffMenuEntries } from "./diff-menu.ts";
+import { DIFF_TOOLBAR_ICON_IDS } from "./toolbar-actions.ts";
 
 test("diff menu lists the filmed actions and disables git apply", () => {
   const entries = diffMenuEntries();
@@ -29,4 +30,11 @@ test("diff menu lists the filmed actions and disables git apply", () => {
   assert.equal(entries.find((entry) => entry.id === "copy-apply")?.kind, "disabled");
   assert.equal(entries.find((entry) => entry.id === "hide-imports")?.label, DESKTOP_ZH.diffHideImports);
   assert.equal(entries.find((entry) => entry.id === "sep")?.kind, "separator");
+});
+
+test("diff toolbar icons stay in the recorded order", () => {
+  assert.deepEqual(
+    [...DIFF_TOOLBAR_ICON_IDS],
+    ["options", "load-full", "refresh", "wrap", "expand", "unified", "files"],
+  );
 });

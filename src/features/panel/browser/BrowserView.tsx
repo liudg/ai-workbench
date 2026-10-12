@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
-import { ArrowLeft, ArrowRight, Download, Ellipsis, RotateCw } from "lucide-react";
+import { ArrowLeft, ArrowRight, RotateCw } from "lucide-react";
 
 import { convertFileSrc } from "@tauri-apps/api/core";
 
@@ -357,12 +357,6 @@ export function BrowserView({
             }}
           />
         </div>
-        <ChromeButton label={DESKTOP_ZH.browserDownload} data-browser-download>
-          <Download className="h-3.5 w-3.5" />
-        </ChromeButton>
-        <ChromeButton label={DESKTOP_ZH.browserMore} data-browser-more>
-          <Ellipsis className="h-3.5 w-3.5" />
-        </ChromeButton>
       </div>
       {error ? <p className="shrink-0 px-3 py-1 text-xs text-red-300">{error}</p> : null}
       {snapshotFailed ? (
