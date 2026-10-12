@@ -6,6 +6,8 @@ import {
   collapsedTurnSummary,
   formatElapsed,
   isSuppressedMessage,
+  pickAnswer,
+  runningTurnSummary,
   type TimelineNode,
 } from "./timeline.ts";
 import type { SessionEvent, SessionEventBody } from "../../../types.ts";
@@ -32,6 +34,11 @@ test("collapsed turn summary is the agent label, a middot, then elapsed time", (
   assert.equal(collapsedTurnSummary("Agent CLI", 3_000), "Agent CLI · 用时 3s");
   assert.equal(collapsedTurnSummary("Other CLI", 88_000), "Other CLI · 用时 1m 28s");
   assert.equal(collapsedTurnSummary("Sample CLI", 0), "Sample CLI · 用时 0s");
+});
+
+test("running turn summary keeps the agent label and the in-progress phrase", () => {
+  assert.equal(runningTurnSummary("Codex CLI"), "Codex CLI · 正在处理…");
+  assert.equal(runningTurnSummary("Cursor Agent"), "Cursor Agent · 正在处理…");
 });
 
 test("review duplicates use dedupe_of and plan duplicates use mode", () => {
@@ -92,7 +99,7 @@ test("folds commentary, thinking, and tools into one settled turn", () => {
     turn.events.map((item) => item.id),
     ["c1", "t1", "k1", "a1"],
   );
-  assert.equal(nodes.some((node) => node.type === "work"), false);
+  assert.equal(nodes.some((node) => node.type === "live"), false);
 });
 
 test("keeps an unknown-phase preamble folded and the last message as the answer", () => {
@@ -109,7 +116,7 @@ test("keeps an unknown-phase preamble folded and the last message as the answer"
   assert.equal(formatElapsed(turn.durationMs), "4s");
 });
 
-test("leaves the live turn expanded", () => {
+test("puts a running turn in the transcript with each tool call kept", () => {
   const nodes = buildTimeline(
     [
       event("u1", 0, { kind: "user-message", text: "你好" }),
@@ -118,18 +125,56 @@ test("leaves the live turn expanded", () => {
         text: "我会查看…",
         phase: "commentary",
       }),
-      event("k1", 2_000, { kind: "tool-call", name: "command", summary: "rg" }),
-      event("s1", 2_100, { kind: "status-changed", status: "running" }),
+      event("k1", 2_000, { kind: "tool-call", name: "command", summary: "rg --files" }),
+      event("k2", 3_000, {
+        kind: "tool-call",
+        name: "command",
+        summary: "npm uninstall gemini-cli",
+      }),
+      event("s1", 3_100, { kind: "status-changed", status: "running" }),
     ],
     "running",
   );
   assert.equal(nodes.some((node) => node.type === "turn"), false);
-  assert.equal(nodes.some((node) => node.type === "work"), true);
-  const commentary = nodes.find(
-    (node) => node.type === "event" && node.event.id === "c1",
+  const live = nodes.find((node) => node.type === "live");
+  assert.ok(live && live.type === "live");
+  assert.equal(live.id, "live-u1");
+  assert.deepEqual(
+    live.events.map((item) => item.id),
+    ["c1", "k1", "k2"],
   );
-  assert.ok(commentary && commentary.type === "event");
-  assert.equal(commentary.showAgentLabel, false);
+  assert.equal(
+    nodes.some((node) => node.type === "event" && node.event.id === "c1"),
+    false,
+  );
+});
+
+test("leaves a needs-input turn expanded as separate events", () => {
+  const nodes = buildTimeline(
+    [
+      event("u1", 0, { kind: "user-message", text: "你好" }),
+      event("k1", 1_000, { kind: "tool-call", name: "command", summary: "rg" }),
+      event("p1", 2_000, {
+        kind: "prompt",
+        prompt_id: "ask",
+        prompt_kind: "approval",
+        question: "允许？",
+        options: [],
+        questions: [],
+      }),
+      event("s1", 2_100, { kind: "status-changed", status: "needs-input" }),
+    ],
+    "needs-input",
+  );
+  assert.equal(nodes.some((node) => node.type === "live"), false);
+  assert.equal(
+    nodes.some((node) => node.type === "event" && node.event.kind === "tool-call"),
+    true,
+  );
+  assert.equal(
+    nodes.some((node) => node.type === "event" && node.event.kind === "prompt"),
+    true,
+  );
 });
 
 test("labels only the final answer once an earlier turn has settled", () => {
@@ -157,9 +202,11 @@ test("labels only the final answer once an earlier turn has settled", () => {
   );
   const settled = nodes.filter((node) => node.type === "turn");
   assert.equal(settled.length, 1);
-  const liveAnswer = nodes.find(
-    (node) => node.type === "event" && node.event.id === "a2",
+  const live = nodes.find((node) => node.type === "live");
+  assert.ok(live && live.type === "live");
+  assert.equal(pickAnswer(live.events, false)?.id, "a2");
+  assert.equal(
+    live.events.some((item) => item.id === "a1"),
+    false,
   );
-  assert.ok(liveAnswer && liveAnswer.type === "event");
-  assert.equal(liveAnswer.showAgentLabel, true);
 });

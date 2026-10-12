@@ -3,15 +3,16 @@ import { MessageSquareDashed } from "lucide-react";
 
 import { pendingPrompt } from "@/lib/utils";
 import { useWorkbench } from "@/store";
-import type { Session, SessionEvent } from "@/types";
+import { AGENT_LABELS, type Session, type SessionEvent } from "@/types";
 import { showsFileChanges } from "@/features/changes-model/capabilities";
 import { lastSlice, turnChanges } from "@/features/changes-model/diff-parse";
 import { ChangeCard } from "../cards/ChangeCard";
 import { Composer } from "../composer/Composer";
 import { EventItem } from "../events/EventItem";
-import { buildTimeline, timelineStatus, turnDetailsOpen } from "./timeline";
+import { buildTimeline, runningTurnSummary, timelineStatus } from "./timeline";
+import { LiveTurn } from "./LiveTurn";
+import { TurnFoldLine } from "./TurnFoldLine";
 import { TurnProcess } from "./TurnProcess";
-import { WorkDetailsGroup } from "./WorkDetailsGroup";
 
 const NEAR_BOTTOM_PX = 80;
 
@@ -94,11 +95,6 @@ export function ChatView({
     [events, session.status],
   );
   const blocks = useMemo(() => buildTimeline(events, status), [events, status]);
-  const indexById = useMemo(() => {
-    const map = new Map<string, number>();
-    events.forEach((event, index) => map.set(event.id, index));
-    return map;
-  }, [events]);
   const layoutKey = useMemo(
     () => `${events.length}:${contentChars(events)}:${status}`,
     [events, status],
@@ -114,7 +110,7 @@ export function ChatView({
     return turnChanges(lastSlice(events));
   }, [changeFlags, events, status]);
 
-  const [workOverrides, setWorkOverrides] = useState<ReadonlyMap<string, boolean>>(
+  const [liveOverrides, setLiveOverrides] = useState<ReadonlyMap<string, boolean>>(
     new Map(),
   );
   const [foldOverrides, setFoldOverrides] = useState<ReadonlyMap<string, boolean>>(
@@ -124,7 +120,7 @@ export function ChatView({
     ReadonlyMap<string, boolean>
   >(new Map());
   useEffect(() => {
-    setWorkOverrides(new Map());
+    setLiveOverrides(new Map());
     setFoldOverrides(new Map());
     setThinkingOverrides(new Map());
     historyExhausted.current = false;
@@ -260,7 +256,7 @@ export function ChatView({
               <p className="text-sm">发送第一条消息，开始这轮会话</p>
             </div>
           ) : (
-            blocks.map((block, index) => {
+            blocks.map((block) => {
               if (block.type === "turn") {
                 const expanded = foldOverrides.get(block.id) ?? false;
                 return (
@@ -279,32 +275,21 @@ export function ChatView({
                   />
                 );
               }
-              if (block.type === "work") {
-                const eventIndex = indexById.get(block.events[0].id) ?? -1;
-                const live = index === blocks.length - 1 && status === "running";
-                const expanded =
-                  workOverrides.get(block.id) ??
-                  turnDetailsOpen(events, status, eventIndex);
+              if (block.type === "live") {
+                const expanded = liveOverrides.get(block.id) ?? true;
                 return (
-                  <WorkDetailsGroup
+                  <LiveTurn
                     key={block.id}
                     events={block.events}
                     session={session}
-                    live={live}
+                    resolvedAnswers={resolvedAnswers}
                     expanded={expanded}
-                    onToggle={() => {
-                      pausePinForToggle();
-                      setWorkOverrides((prev) => new Map(prev).set(block.id, !expanded));
-                    }}
                   />
                 );
               }
               const event = block.event;
               const thinkingOpen =
-                event.kind === "thinking"
-                  ? (thinkingOverrides.get(event.id) ??
-                    turnDetailsOpen(events, status, indexById.get(event.id) ?? -1))
-                  : undefined;
+                event.kind === "thinking" ? (thinkingOverrides.get(event.id) ?? false) : undefined;
               return (
                 <EventItem
                   key={event.id}
@@ -332,18 +317,23 @@ export function ChatView({
             })
           )}
           {liveChanges ? <ChangeCard changes={liveChanges} /> : null}
-          {status === "running" && (
-            <div className="min-w-0 px-6 py-2">
-              <div className="mx-auto flex min-w-0 max-w-3xl items-center gap-2 pl-6 text-xs text-zinc-500">
-                <span className="flex gap-1">
-                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-500 [animation-delay:0ms]" />
-                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-500 [animation-delay:150ms]" />
-                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-500 [animation-delay:300ms]" />
-                </span>
-                正在处理…
-              </div>
-            </div>
-          )}
+          {blocks.map((block) => {
+            if (block.type !== "live") return null;
+            const expanded = liveOverrides.get(block.id) ?? true;
+            return (
+              <TurnFoldLine
+                key={`${block.id}-status`}
+                summary={runningTurnSummary(AGENT_LABELS[session.agent])}
+                expanded={expanded}
+                showAgentIcon
+                pulse
+                onToggle={() => {
+                  pausePinForToggle();
+                  setLiveOverrides((prev) => new Map(prev).set(block.id, !expanded));
+                }}
+              />
+            );
+          })}
         </div>
       </div>
       <Composer key={session.id} session={session} events={events} />

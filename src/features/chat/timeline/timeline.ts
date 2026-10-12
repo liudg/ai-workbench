@@ -2,7 +2,7 @@ import type { SessionEvent, SessionStatus } from "../../../types";
 
 /**
  * 时间线以事件日志里最后一次状态为准。
- * 会话列表刷新可能晚一拍，折叠和「正在处理」要跟这一轮结束对齐。
+ * 会话列表刷新可能晚一拍，对话里的「正在处理」要跟这一轮结束对齐。
  */
 export function timelineStatus(
   events: readonly SessionEvent[],
@@ -13,27 +13,6 @@ export function timelineStatus(
     if (event.kind === "status-changed") return event.status;
   }
   return fallback;
-}
-
-/**
- * 思考和工具详情在本轮还在回答、或停在提问时展开。
- * 整轮结束（完成 / 失败 / 停止）后默认折叠。
- * 不按「这一组工具刚结束」折叠，否则回答还在继续时详情会提前收起。
- */
-export function turnDetailsOpen(
-  events: readonly SessionEvent[],
-  status: SessionStatus,
-  eventIndex: number,
-): boolean {
-  if (status !== "running" && status !== "needs-input") return false;
-  let start = 0;
-  for (let i = events.length - 1; i >= 0; i--) {
-    if (events[i].kind === "user-message") {
-      start = i;
-      break;
-    }
-  }
-  return eventIndex >= start;
 }
 
 /** `用时 1m 28s` 里的时长。零段省略，至少留下秒。 */
@@ -57,9 +36,14 @@ export function collapsedTurnSummary(agentLabel: string, durationMs: number): st
   return `${agentLabel} · 用时 ${formatElapsed(durationMs)}`;
 }
 
+/** 进行中的折叠行：`Agent · 正在处理…`。名称由调用方传入。 */
+export function runningTurnSummary(agentLabel: string): string {
+  return `${agentLabel} · 正在处理…`;
+}
+
 export type TimelineNode =
   | { type: "event"; event: SessionEvent; showAgentLabel: boolean }
-  | { type: "work"; id: string; events: SessionEvent[] }
+  | { type: "live"; id: string; events: SessionEvent[] }
   | {
       type: "turn";
       id: string;
@@ -156,19 +140,14 @@ function elapsedMs(events: readonly SessionEvent[]): number {
   return Math.max(0, timed[timed.length - 1].ts - timed[0].ts);
 }
 
+function visibleEvents(events: readonly SessionEvent[]): SessionEvent[] {
+  return events.filter((_, index) => !hiddenInTimeline(events, index));
+}
+
 function pushLive(blocks: TimelineNode[], events: readonly SessionEvent[]) {
-  const visible = events.filter((_, index) => !hiddenInTimeline(events, index));
+  const visible = visibleEvents(events);
   const answer = pickAnswer(visible, false);
   for (const event of visible) {
-    if (event.kind === "tool-call") {
-      const last = blocks[blocks.length - 1];
-      if (last && last.type === "work") {
-        last.events.push(event);
-      } else {
-        blocks.push({ type: "work", id: event.id, events: [event] });
-      }
-      continue;
-    }
     blocks.push({
       type: "event",
       event,
@@ -203,7 +182,8 @@ function pushSettled(blocks: TimelineNode[], events: readonly SessionEvent[]) {
 
 /**
  * 把事件日志分成可渲染的块。
- * 进行中的一轮保持展开（工具组、思考、旁白都在外面）。
+ * 正在跑的一轮收成一块，对话里用折叠行标「正在处理」；工具调用各自留在块里。
+ * 停在提问时保持展开，方便回答。
  * 已结束的一轮把旁白、思考和工具调用收成一块，答复单独留在下面。
  * 阶段来自任意适配器写入的 `phase`，这里不看 AgentKind。
  */
@@ -242,9 +222,16 @@ export function buildTimeline(
     const user = turn[0];
     blocks.push({ type: "event", event: user, showAgentLabel: false });
     const rest = turn.slice(1);
-    const live = liveStatus && turnIndex === turns.length - 1;
-    if (live) pushLive(blocks, rest);
+    const last = turnIndex === turns.length - 1;
+    if (status === "running" && last) {
+      blocks.push({ type: "live", id: `live-${user.id}`, events: visibleEvents(rest) });
+      return;
+    }
+    if (liveStatus && last) pushLive(blocks, rest);
     else pushSettled(blocks, rest);
   });
+  if (status === "running" && !blocks.some((block) => block.type === "live")) {
+    blocks.push({ type: "live", id: "live-current", events: [] });
+  }
   return blocks;
 }
