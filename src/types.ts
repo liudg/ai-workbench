@@ -5,13 +5,10 @@ export type AgentKind =
   | "codex-cli"
   | "claude-code"
   | "cursor-agent"
-  | "copilot-cli"
   | "kimi-code"
   | "qwen-code"
   | "opencode"
-  | "goose"
-  | "antigravity"
-  | "kiro-cli";
+  | "antigravity";
 
 export type SessionStatus =
   | "running"
@@ -204,13 +201,10 @@ export const AGENT_LABELS: Record<AgentKind, string> = {
   "codex-cli": "Codex CLI",
   "claude-code": "Claude Code",
   "cursor-agent": "Cursor Agent",
-  "copilot-cli": "GitHub Copilot CLI",
   "kimi-code": "Kimi Code",
   "qwen-code": "Qwen Code",
   opencode: "OpenCode",
-  goose: "Goose",
   antigravity: "Antigravity",
-  "kiro-cli": "Kiro CLI",
 };
 
 /** 官方升级渠道。前端只展示，真正的命令留在适配器里。 */
@@ -339,7 +333,6 @@ export interface AgentCapabilities {
   /** 回合进行中仍可发送，消息进入排队。 */
   supports_queue?: boolean;
   supports_fork?: boolean;
-  supports_archive?: boolean;
   supports_delete?: boolean;
   supports_rename?: boolean;
   supports_plan?: boolean;

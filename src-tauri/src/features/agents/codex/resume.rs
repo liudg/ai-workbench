@@ -46,7 +46,6 @@ pub struct CodexDirectory {
 struct DirectoryState {
     client: Option<RpcClient>,
     active: Option<Cache>,
-    archived: Option<Cache>,
     generation: u64,
 }
 
@@ -61,7 +60,6 @@ impl CodexDirectory {
             inner: tokio::sync::Mutex::new(DirectoryState {
                 client: None,
                 active: None,
-                archived: None,
                 generation: 0,
             }),
         }
@@ -76,40 +74,21 @@ impl CodexDirectory {
     pub async fn invalidate(&self) {
         let mut state = self.inner.lock().await;
         state.active = None;
-        state.archived = None;
         state.generation = state.generation.wrapping_add(1);
     }
 
     /// 交互、未归档的全部线程。短时间内复用上一次结果，避免每个项目都拉起进程。
     pub async fn list_threads(&self) -> Result<Vec<DirectoryEntry>, String> {
-        self.list_cached(false).await
-    }
-
-    pub async fn list_archived_threads(&self) -> Result<Vec<DirectoryEntry>, String> {
-        self.list_cached(true).await
-    }
-
-    async fn list_cached(&self, archived: bool) -> Result<Vec<DirectoryEntry>, String> {
         let mut state = self.inner.lock().await;
-        let cache = if archived {
-            &state.archived
-        } else {
-            &state.active
-        };
-        if let Some(cache) = cache {
+        if let Some(cache) = &state.active {
             if cache.at.elapsed() < CACHE_TTL {
                 return cache.result.clone();
             }
         }
         let generation = state.generation;
-        let result = fetch_threads(&mut state.client, archived).await;
+        let result = fetch_threads(&mut state.client, false).await;
         if state.generation == generation {
-            let slot = if archived {
-                &mut state.archived
-            } else {
-                &mut state.active
-            };
-            *slot = Some(Cache {
+            state.active = Some(Cache {
                 at: Instant::now(),
                 result: result.clone(),
             });
@@ -123,17 +102,6 @@ impl CodexDirectory {
             json!({ "threadId": native_id, "name": name }),
         )
         .await?;
-        self.invalidate().await;
-        Ok(())
-    }
-
-    pub async fn set_archived(&self, native_id: &str, archived: bool) -> Result<(), String> {
-        let method = if archived {
-            "thread/archive"
-        } else {
-            "thread/unarchive"
-        };
-        self.rpc(method, json!({ "threadId": native_id })).await?;
         self.invalidate().await;
         Ok(())
     }
@@ -202,10 +170,6 @@ impl SessionDirectory for CodexDirectory {
 
     async fn list(&self) -> Result<Vec<DirectoryEntry>, String> {
         self.list_threads().await
-    }
-
-    async fn list_archived(&self) -> Result<Vec<DirectoryEntry>, String> {
-        self.list_archived_threads().await
     }
 
     async fn invalidate(&self) {
@@ -1789,9 +1753,6 @@ mod tests {
         if let Ok(active) = directory.list_threads().await {
             push_gap_prefixed(&mut ids, &active);
         }
-        if let Ok(archived) = directory.list_archived_threads().await {
-            push_gap_prefixed(&mut ids, &archived);
-        }
         ids.sort();
         ids.dedup();
         for id in ids {
@@ -1873,31 +1834,13 @@ mod tests {
             "fork left the gap project: {fork_cwd}"
         );
 
-        adapter
-            .set_thread_archived(&id, true)
-            .await
-            .expect("thread/archive");
         directory.invalidate().await;
         let active = directory.list_threads().await.expect("active list");
-        assert!(
-            active.iter().all(|thread| thread.native_id != id),
-            "archived thread still in the active list"
-        );
-        let archived = directory
-            .list_archived_threads()
-            .await
-            .expect("archived list");
-        let row = archived
+        let row = active
             .iter()
             .find(|thread| thread.native_id == id)
-            .expect("archived thread missing");
-        assert_eq!(row.cwd_key, gap_key());
+            .expect("renamed thread missing");
         assert_eq!(row.title, name);
-
-        adapter
-            .set_thread_archived(&id, false)
-            .await
-            .expect("thread/unarchive");
 
         for native in [id, forked.native_id] {
             let cwd = directory

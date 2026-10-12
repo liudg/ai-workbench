@@ -1,6 +1,6 @@
 import { backend } from "@/lib/ipc";
 import type { AgentCatalog, AgentKind } from "@/types";
-import { clearMissingSessionBanner, loadArchivedSessions, loadSessions, loadWorkspaceLists } from "../sync";
+import { clearMissingSessionBanner, loadSessions, loadWorkspaceLists } from "../sync";
 import type { ShellSlice, WorkbenchGet, WorkbenchSet } from "../types";
 
 let initStarted = false;
@@ -41,11 +41,6 @@ export function createShellSlice(set: WorkbenchSet, get: WorkbenchGet): ShellSli
         loadSessions(projectId, overrides).then(([pid, list]) =>
           set((s) => ({ sessions: { ...s.sessions, [pid]: list } })),
         );
-        if (get().showArchived[projectId]) {
-          loadArchivedSessions(projectId, overrides).then(([pid, list]) =>
-            set((s) => ({ archivedSessions: { ...s.archivedSessions, [pid]: list } })),
-          );
-        }
       });
       backend.onProjectsChanged(() => {
         void loadWorkspaceLists(overrides).then(({ projects, pairs }) =>
@@ -91,10 +86,6 @@ export function createShellSlice(set: WorkbenchSet, get: WorkbenchGet): ShellSli
 
     async refreshAll() {
       const { projects, pairs } = await loadWorkspaceLists(overrides);
-      const openArchived = projects.filter((project) => get().showArchived[project.id]);
-      const archivedPairs = await Promise.all(
-        openArchived.map((project) => loadArchivedSessions(project.id, overrides)),
-      );
       set((s) => {
         const sessions = { ...s.sessions };
         const ids = new Set(projects.map((project) => project.id));
@@ -102,16 +93,11 @@ export function createShellSlice(set: WorkbenchSet, get: WorkbenchGet): ShellSli
           if (!ids.has(key)) delete sessions[key];
         }
         for (const [pid, list] of pairs) sessions[pid] = list;
-        const archivedSessions = { ...s.archivedSessions };
-        for (const key of Object.keys(archivedSessions)) {
-          if (!ids.has(key)) delete archivedSessions[key];
-        }
-        for (const [pid, list] of archivedPairs) archivedSessions[pid] = list;
         const selectedProjectId =
           s.selectedProjectId && ids.has(s.selectedProjectId)
             ? s.selectedProjectId
             : (projects[0]?.id ?? null);
-        return { projects, sessions, archivedSessions, selectedProjectId, ready: true };
+        return { projects, sessions, selectedProjectId, ready: true };
       });
     },
 

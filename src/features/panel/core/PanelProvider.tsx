@@ -32,6 +32,9 @@ interface PanelApi {
   setTabTitle: (id: string, title: string) => void;
   filesExpanded: boolean;
   toggleFiles: () => void;
+  /** 只收起文件列，预览标签保持打开。 */
+  filesSidebarOpen: boolean;
+  toggleFilesSidebar: () => void;
 }
 
 const PreviewContext = createContext<PanelApi | null>(null);
@@ -67,6 +70,7 @@ export function PanelProvider({
   const activeId = useWorkbench((s) => s.panelBySession[sessionId]?.activeId ?? "");
   const hasRail = useWorkbench((s) => s.panelBySession[sessionId] !== undefined);
   const storedExpanded = useWorkbench((s) => s.panelBySession[sessionId]?.filesExpanded ?? false);
+  const storedSidebar = useWorkbench((s) => s.panelBySession[sessionId]?.filesSidebarOpen ?? true);
   const changes = useWorkbench((s) => s.profiles[agent]?.capabilities.changes);
   const sessionFiles = useMemo(
     () => (showsFileChanges(changes) ? sessionChanges(events) : []),
@@ -112,8 +116,12 @@ export function PanelProvider({
   const toggleFiles = useCallback(() => {
     useWorkbench.getState().panelToggleFiles(sessionId);
   }, [sessionId]);
+  const toggleFilesSidebar = useCallback(() => {
+    useWorkbench.getState().panelToggleFilesSidebar(sessionId);
+  }, [sessionId]);
   const hasFiles = sessionFiles.length > 0;
   const filesExpanded = hasRail ? storedExpanded : hasFiles;
+  const filesSidebarOpen = hasRail ? storedSidebar : true;
   useEffect(() => {
     useWorkbench.getState().panelNoteFiles(sessionId, hasFiles);
   }, [sessionId, hasFiles]);
@@ -140,6 +148,8 @@ export function PanelProvider({
       setTabTitle,
       filesExpanded,
       toggleFiles,
+      filesSidebarOpen,
+      toggleFilesSidebar,
     }),
     [
       tabs,
@@ -156,6 +166,8 @@ export function PanelProvider({
       setTabTitle,
       filesExpanded,
       toggleFiles,
+      filesSidebarOpen,
+      toggleFilesSidebar,
     ],
   );
 

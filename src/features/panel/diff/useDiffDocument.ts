@@ -24,6 +24,7 @@ export function useDiffDocument(turnFiles: FileChange[]) {
   const [renderPreview, setRenderPreview] = useState(false);
   const [wordDiff, setWordDiff] = useState(true);
   const [sources, setSources] = useState<Record<string, string>>({});
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     let cancel = false;
@@ -81,7 +82,7 @@ export function useDiffDocument(turnFiles: FileChange[]) {
     return () => {
       cancel = true;
     };
-  }, [hideWs, remote, selected, sessionId]);
+  }, [hideWs, remote, reloadToken, selected, sessionId]);
 
   const listed = useMemo(() => {
     const source = filesForScope(selected, turnFiles, gitFiles).filter((file) => !hidden.includes(file.path));
@@ -116,7 +117,7 @@ export function useDiffDocument(turnFiles: FileChange[]) {
         })
         .catch(() => {});
     }
-  }, [expanded, loadFull, projectId, renderPreview, sourceKey]);
+  }, [expanded, loadFull, projectId, reloadToken, renderPreview, sourceKey]);
 
   const selectFile = (file: FileChange) => {
     setActivePath(file.path);
@@ -137,6 +138,7 @@ export function useDiffDocument(turnFiles: FileChange[]) {
     loading,
     gitError,
     shown,
+    listed,
     active,
     added,
     removed,
@@ -156,6 +158,11 @@ export function useDiffDocument(turnFiles: FileChange[]) {
     jump: () => {
       if (!active) return;
       openHref(active.path);
+    },
+    reload: () => {
+      triedSource.current.clear();
+      setSources({});
+      setReloadToken((value) => value + 1);
     },
   };
 }

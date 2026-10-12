@@ -1,6 +1,6 @@
-//! 坝议还没接上的 Agent。坪坚本机探测和官方更新，会话仝是桩。
+//! 协议还没接上的 Agent。只做本机探测和官方更新，会话仍是桩。
 //!
-//! 工作坰丝代为安装。更新坂数都是已安装 CLI 自己的孝命令，丝跑安装脚本。
+//! 更新参数都是已安装 CLI 自己的子命令，不跑安装脚本。
 
 use std::sync::Arc;
 
@@ -12,22 +12,20 @@ use crate::features::agents::stub::{StubAgentSession, StubPersona};
 use crate::features::agents::{AgentAdapter, AgentError, AgentSession, EventSink, SessionContext};
 use crate::models::{AgentCapabilities, AgentInstallation, AgentKind, ChangeCapabilities};
 
-const STUB_NOTE: &str = "会话坝议尚未接入，目剝坪坚检测和更新。";
-
-const NO_INSTALL: &str = "工作坰丝代为安装。";
+const STUB_DETAIL: &str = "会话协议尚未接入，目前仅支持检测和更新。工作空间代为安装。";
 
 const GEMINI_NOTE: &str = "\
-Gemini CLI（gemini）已于 2026-06-18 坜更，官方坎继是 Antigravity CLI。\
-优先识别 agy，其次 antigravity，最坎扝是仝留在 PATH 上的 gemini。\
-坪找到 gemini 时丝在应用内更新。";
+Gemini CLI（gemini）已于 2026-06-18 停更，官方后继是 Antigravity CLI。\
+优先识别 agy，其次 antigravity，最后才是仍留在 PATH 上的 gemini。\
+只找到 gemini 时不在应用内更新。";
 
 const KIRO_NOTE: &str = "\
-Kiro CLI 是 Amazon Q Developer CLI 的坎继。官方入坣是 kiro-cli，q 仝是兼容入坣。\
-无关的 q 坪有在版本输出里出现 Kiro 或 Amazon Q，或首行是 q 1.2.3 这秝官方短版本时扝算已安装。\
-更新用 kiro-cli update --non-interactive；坪找到旧的 q 时用 q update。";
+Kiro CLI 是 Amazon Q Developer CLI 的后继。官方入口是 kiro-cli，q 仍是兼容入口。\
+无关的 q 只有在版本输出里出现 Kiro 或 Amazon Q，或首行是 q 1.2.3 这种官方短版本时才算已安装。\
+更新用 kiro-cli update --non-interactive；只找到旧的 q 时用 q update。";
 
 const OPENCODE_NOTE: &str = "\
-npm 包是 opencode-ai。安装方弝认丝出来时，opencode upgrade 坯能在终端里询问，应用内更新就丝会戝功。";
+npm 包是 opencode-ai。安装方式认不出来时，opencode upgrade 可能在终端里询问，应用内更新就不会成功。";
 
 pub struct ExternalCliAdapter {
     kind: AgentKind,
@@ -99,7 +97,7 @@ pub fn release_for(kind: AgentKind) -> CliRelease {
             KIRO_NOTE,
         ),
         AgentKind::CodexCli | AgentKind::ClaudeCode => {
-            panic!("Codex 和 Claude 丝走外部桩适酝器")
+            panic!("Codex 和 Claude 不走外部桩适配器")
         }
     }
 }
@@ -125,8 +123,8 @@ fn release(
 
 fn with_stub_note(mut item: AgentInstallation) -> AgentInstallation {
     item.detail = Some(match item.detail.take() {
-        Some(text) => format!("{text} {STUB_NOTE} {NO_INSTALL}"),
-        None => format!("{STUB_NOTE} {NO_INSTALL}"),
+        Some(text) if !text.is_empty() => format!("{text} {STUB_DETAIL}"),
+        _ => STUB_DETAIL.to_string(),
     });
     item
 }
@@ -171,7 +169,6 @@ impl AgentAdapter for ExternalCliAdapter {
             supports_images: false,
             supports_queue: false,
             supports_fork: false,
-            supports_archive: false,
             supports_delete: false,
             supports_rename: false,
             supports_plan: false,
@@ -187,6 +184,19 @@ impl AgentAdapter for ExternalCliAdapter {
 
     fn cli_release(&self) -> Option<CliRelease> {
         Some(release_for(self.kind))
+    }
+
+    async fn upgrade(&self) -> Result<AgentInstallation, AgentError> {
+        let Some(release) = self.cli_release() else {
+            return Err(AgentError::Runtime(format!(
+                "{} 没有官方更新入口",
+                self.display_name()
+            )));
+        };
+        super::install::upgrade_release(self.kind, self.display_name(), &release)
+            .await
+            .map(with_stub_note)
+            .map_err(AgentError::Runtime)
     }
 
     async fn detect(&self) -> Result<(), AgentError> {

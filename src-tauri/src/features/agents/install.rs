@@ -398,7 +398,7 @@ pub async fn upgrade_release(
 
     match outcome {
         Ok(captured) if captured.code == 0 => {
-            Ok(inspect_release(kind, display_name, release).await)
+            settle_cli_update(kind, display_name, release, &current, &captured).await
         }
         Ok(captured) => Err(clip(
             &format!(
@@ -410,6 +410,40 @@ pub async fn upgrade_release(
         )),
         Err(err) => Err(err),
     }
+}
+
+async fn settle_cli_update(
+    kind: AgentKind,
+    display_name: &str,
+    release: &CliRelease,
+    before: &AgentInstallation,
+    captured: &Captured,
+) -> Result<AgentInstallation, String> {
+    let mut refreshed = inspect_release(kind, display_name, release).await;
+    let output = format!("{} {}", captured.stdout.trim(), captured.stderr.trim());
+    let output = output.trim();
+    let changed = refreshed.version.is_some() && refreshed.version != before.version;
+    if changed || cli_reports_current(output) {
+        refreshed.update_available = false;
+        if refreshed.latest_version.is_none() {
+            refreshed.latest_version = refreshed.version.clone();
+        }
+        return Ok(refreshed);
+    }
+    let detail = if output.is_empty() {
+        "更新没有完成。命令没有返回结果。"
+    } else {
+        output
+    };
+    Err(clip(&format!("更新没有完成。{detail}"), 400))
+}
+
+fn cli_reports_current(output: &str) -> bool {
+    let lower = output.to_ascii_lowercase();
+    lower.contains("already up to date")
+        || lower.contains("up to date")
+        || lower.contains("already current")
+        || output.contains("已是最新")
 }
 
 pub fn choose_update_via(path: &Path, npm_global: bool, has_self_update: bool) -> UpdateVia {
@@ -921,6 +955,18 @@ mod tests {
     }
 
     #[test]
+    fn hidden_agents_are_not_discovered() {
+        for kind in [
+            AgentKind::CopilotCli,
+            AgentKind::Goose,
+            AgentKind::KiroCli,
+        ] {
+            assert!(kind.hidden());
+            assert!(!AgentKind::all().contains(&kind));
+        }
+    }
+
+    #[test]
     fn agent_kind_names_roundtrip() {
         for kind in AgentKind::all() {
             let json = serde_json::to_string(&kind).unwrap();
@@ -928,6 +974,14 @@ mod tests {
             let back: AgentKind = serde_json::from_str(&json).unwrap();
             assert_eq!(back, kind);
         }
+    }
+
+    #[test]
+    fn cli_update_output_marks_current() {
+        assert!(cli_reports_current("Checking for updates...\nAlready up to date"));
+        assert!(cli_reports_current("已是最新版本"));
+        assert!(!cli_reports_current(""));
+        assert!(!cli_reports_current("Latest version available: 2026.10.12"));
     }
 
     #[test]

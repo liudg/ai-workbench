@@ -34,15 +34,11 @@ export interface ShellSlice {
   closeSettings(): void;
 }
 
-export type SidebarNotice =
-  | { kind: "archived"; projectId: string; sessionId: string }
-  | { kind: "info"; text: string; token: number };
+export type SidebarNotice = { kind: "info"; text: string; token: number };
 
 export interface SidebarSlice {
   projects: Project[];
   sessions: Record<string, Session[]>;
-  archivedSessions: Record<string, Session[]>;
-  showArchived: Record<string, boolean>;
   sidebarNotice: SidebarNotice | null;
   lifecycleBusy: string | null;
   selectedProjectId: string | null;
@@ -60,14 +56,9 @@ export interface SidebarSlice {
   setSessionAgent(sessionId: string, agent: AgentKind): void;
   selectSession(projectId: string, sessionId: string): Promise<void>;
   releaseMissingSession(sessionId: string): void;
-  toggleArchived(projectId: string): Promise<void>;
-  viewArchived(projectId: string): Promise<void>;
   renameSession(sessionId: string, name: string): Promise<boolean>;
   forkSession(projectId: string, sessionId: string): Promise<void>;
-  archiveSession(projectId: string, sessionId: string): Promise<void>;
-  unarchiveSession(projectId: string, sessionId: string): Promise<void>;
-  undoArchive(): Promise<void>;
-  deleteSession(projectId: string, sessionId: string, archived: boolean): Promise<boolean>;
+  deleteSession(projectId: string, sessionId: string): Promise<boolean>;
 }
 
 export interface WorkspaceSlice {

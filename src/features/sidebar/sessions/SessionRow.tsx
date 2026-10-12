@@ -34,8 +34,6 @@ export function SessionRow({
   const busy = useWorkbench((s) => s.lifecycleBusy === session.id);
   const renameSession = useWorkbench((s) => s.renameSession);
   const forkSession = useWorkbench((s) => s.forkSession);
-  const archiveSession = useWorkbench((s) => s.archiveSession);
-  const unarchiveSession = useWorkbench((s) => s.unarchiveSession);
   const deleteSession = useWorkbench((s) => s.deleteSession);
 
   const [menuOpen, setMenuOpen] = useState(false);
@@ -53,13 +51,10 @@ export function SessionRow({
   }, []);
   useFixedMenu(menuOpen, anchorRef, menuRef, closeMenu, "below");
 
-  const archived = Boolean(session.archived);
-  const canRename = !archived && Boolean(caps?.supports_rename);
-  const canFork = !archived && Boolean(caps?.supports_fork);
-  const canArchive = !archived && Boolean(caps?.supports_archive);
-  const canUnarchive = archived && Boolean(caps?.supports_archive);
+  const canRename = Boolean(caps?.supports_rename);
+  const canFork = Boolean(caps?.supports_fork);
   const canDelete = Boolean(caps?.supports_delete);
-  const hasMenu = canRename || canFork || canArchive || canUnarchive || canDelete;
+  const hasMenu = canRename || canFork || canDelete;
 
   const groups: Array<Array<{ key: string; node: ReactNode }>> = [];
   if (canRename) {
@@ -117,40 +112,12 @@ export function SessionRow({
     ]);
   }
   const lifecycle: Array<{ key: string; node: ReactNode }> = [];
-  if (canArchive) {
-    lifecycle.push({
-      key: "archive",
-      node: (
-        <MenuItem
-          label="归档聊天"
-          onSelect={() => {
-            closeMenu();
-            void archiveSession(projectId, session.id);
-          }}
-        />
-      ),
-    });
-  }
-  if (canUnarchive) {
-    lifecycle.push({
-      key: "unarchive",
-      node: (
-        <MenuItem
-          label="取消归档"
-          onSelect={() => {
-            closeMenu();
-            void unarchiveSession(projectId, session.id);
-          }}
-        />
-      ),
-    });
-  }
   if (canDelete) {
     lifecycle.push({
       key: "delete",
       node: (
         <MenuItem
-          label={archived ? "删除" : "永久删除"}
+          label="永久删除"
           danger
           onSelect={() => {
             closeMenu();
@@ -268,11 +235,9 @@ export function SessionRow({
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{archived ? "删除已归档的聊天？" : "要删除任务？"}</DialogTitle>
+            <DialogTitle>要删除任务？</DialogTitle>
             <DialogDescription>
-              {archived
-                ? "这将永久删除已归档的聊天"
-                : "这将永久删除该任务及其子智能体任务。此操作无法撤销。"}
+              这将永久删除该任务及其子智能体任务。此操作无法撤销。
             </DialogDescription>
           </DialogHeader>
           {deleteError && <p className="text-sm text-red-300">{deleteError}</p>}
@@ -283,9 +248,9 @@ export function SessionRow({
             <Button
               variant="destructive"
               onClick={() => {
-                void deleteSession(projectId, session.id, archived).then((ok) => {
+                void deleteSession(projectId, session.id).then((ok) => {
                   if (ok) setDeleteOpen(false);
-                  else setDeleteError(archived ? "无法删除已归档的聊天" : "无法删除任务。请重试。");
+                  else setDeleteError("无法删除任务。请重试。");
                 });
               }}
             >

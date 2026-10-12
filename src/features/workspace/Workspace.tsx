@@ -15,15 +15,10 @@ export function Workspace() {
   const sessions = useWorkbench((s) =>
     selectedProjectId ? s.sessions[selectedProjectId] : undefined,
   );
-  const archivedSessions = useWorkbench((s) =>
-    selectedProjectId ? s.archivedSessions[selectedProjectId] : undefined,
-  );
   const activeSessionId = useWorkbench((s) =>
     selectedProjectId ? s.activeSessionId[selectedProjectId] : undefined,
   );
-  const session =
-    sessions?.find((s) => s.id === activeSessionId) ??
-    archivedSessions?.find((s) => s.id === activeSessionId);
+  const session = sessions?.find((s) => s.id === activeSessionId);
   const events =
     useWorkbench((s) => (session ? s.events[session.id] : undefined)) ??
     EMPTY_EVENTS;

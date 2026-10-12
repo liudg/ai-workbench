@@ -12,11 +12,8 @@ pub async fn list_sessions(
     store: State<'_, ProjectStore>,
     manager: State<'_, SessionManager>,
     project_id: String,
-    archived: Option<bool>,
 ) -> Result<Vec<Session>, String> {
-    Ok(manager
-        .sessions_for_sidebar(&store, &project_id, archived.unwrap_or(false))
-        .await)
+    Ok(manager.sessions_for_sidebar(&store, &project_id).await)
 }
 
 #[tauri::command]
@@ -36,18 +33,6 @@ pub async fn rename_session(
     name: String,
 ) -> Result<(), String> {
     manager.rename_session(&store, &session_id, &name).await
-}
-
-#[tauri::command]
-pub async fn set_session_archived(
-    store: State<'_, ProjectStore>,
-    manager: State<'_, SessionManager>,
-    session_id: String,
-    archived: bool,
-) -> Result<(), String> {
-    manager
-        .set_session_archived(&store, &session_id, archived)
-        .await
 }
 
 #[tauri::command]

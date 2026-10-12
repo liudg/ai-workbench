@@ -21,13 +21,13 @@ const registry = [
   row("codex-cli", false, "Codex CLI"),
   row("claude-code", true, "Claude Code"),
   row("cursor-agent", false, "Cursor Agent"),
-  row("copilot-cli", true, "GitHub Copilot CLI"),
+  row("kimi-code", true, "Kimi Code"),
 ];
 
 test("new session choices are only agents the detection list marks installed", () => {
   assert.deepEqual(
     installedAgents(registry).map((item) => item.kind),
-    ["claude-code", "copilot-cli"],
+    ["claude-code", "kimi-code"],
   );
 });
 
@@ -48,7 +48,7 @@ test("empty detection does not invent a default agent", () => {
 });
 
 test("preferred agent is kept only when that install was detected", () => {
-  assert.equal(persistedAgentKind(registry, "copilot-cli"), "copilot-cli");
+  assert.equal(persistedAgentKind(registry, "kimi-code"), "kimi-code");
   assert.equal(persistedAgentKind(registry, "codex-cli"), "claude-code");
   assert.equal(keepPreferredAgent("cursor-agent", registry), null);
   assert.equal(keepPreferredAgent("claude-code", registry), "claude-code");

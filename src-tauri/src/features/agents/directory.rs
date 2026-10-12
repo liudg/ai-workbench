@@ -32,11 +32,6 @@ pub trait SessionDirectory: Send + Sync {
 
     async fn list(&self) -> Result<Vec<DirectoryEntry>, String>;
 
-    /// 已归档的聊天。没有归档能力的目录返回空列表。
-    async fn list_archived(&self) -> Result<Vec<DirectoryEntry>, String> {
-        Ok(Vec::new())
-    }
-
     async fn invalidate(&self);
 }
 

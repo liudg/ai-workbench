@@ -88,17 +88,12 @@ impl SessionManager {
         &self,
         store: &ProjectStore,
         project_id: &str,
-        archived: bool,
     ) -> Vec<Session> {
         let project = match self.resolve_project(store, project_id) {
             Ok(project) => project,
             Err(_) => return Vec::new(),
         };
-        let (listed, _) = if archived {
-            self.listed_archived().await
-        } else {
-            self.listed().await
-        };
+        let (listed, _) = self.listed().await;
         let mut sessions = sessions_for_project(&project, &listed);
         let live = self.entries.lock().unwrap();
         for session in &mut sessions {
@@ -112,12 +107,12 @@ impl SessionManager {
                 session.updated_at = sidebar_updated_at(session.updated_at, entry.activity_at);
             }
         }
-        sessions.retain(|session| session.archived == archived);
+        sessions.retain(|session| !session.archived);
         let mut extras: Vec<Session> = live
             .values()
             .filter(|entry| {
                 entry.meta.project_id == project.id
-                    && entry.meta.archived == archived
+                    && !entry.meta.archived
                     && !sessions.iter().any(|session| {
                         session.agent == entry.meta.agent
                             && session.native_id == entry.meta.native_id
@@ -756,23 +751,6 @@ impl SessionManager {
         );
     }
 
-    async fn listed_archived(&self) -> (Vec<SourcedEntry>, Vec<String>) {
-        let mut listed = Vec::new();
-        let mut errors = Vec::new();
-        for directory in &self.directories {
-            let agent = directory.kind();
-            match directory.list_archived().await {
-                Ok(entries) => {
-                    for entry in entries {
-                        listed.push(SourcedEntry { agent, entry });
-                    }
-                }
-                Err(err) => errors.push(err),
-            }
-        }
-        (listed, errors)
-    }
-
     async fn invalidate_kind(&self, agent: AgentKind) {
         for directory in &self.directories {
             if directory.kind() == agent {
@@ -791,20 +769,18 @@ impl SessionManager {
         }
     }
 
-    /// 在未归档和已归档目录里找这条会话。目录自己失败且一份都没列出时，把那个错误交回去。
+    /// 在活动目录里找这条会话。目录自己失败且一份都没列出时，把那个错误交回去。
     async fn find_sourced(&self, session_id: &str) -> Result<Option<SourcedEntry>, String> {
         let (listed, errors) = self.listed().await;
-        let (archived, archived_errors) = self.listed_archived().await;
         let found = listed
             .iter()
-            .chain(archived.iter())
             .find(|item| session_key(item.agent, &item.entry.native_id) == session_id)
             .cloned();
         if found.is_some() {
             return Ok(found);
         }
-        if listed.is_empty() && archived.is_empty() {
-            if let Some(err) = errors.into_iter().chain(archived_errors).next() {
+        if listed.is_empty() {
+            if let Some(err) = errors.into_iter().next() {
                 return Err(err);
             }
         }
@@ -831,10 +807,8 @@ impl SessionManager {
         let (agent, native) =
             parse_session_key(session_id).ok_or_else(|| "会话不存在".to_string())?;
         let (active, _) = self.listed().await;
-        let (archived, _) = self.listed_archived().await;
         let found = active
             .iter()
-            .chain(archived.iter())
             .find(|item| item.agent == agent && item.entry.native_id == native);
         let Some(found) = found else {
             return Err("会话不存在".into());
@@ -868,29 +842,6 @@ impl SessionManager {
             .map_err(|err| err.to_string())?;
         if let Some(entry) = self.entries.lock().unwrap().get_mut(session_id) {
             entry.meta.title = name.to_string();
-        }
-        self.invalidate_kind(agent).await;
-        self.emit_changed(&project.id);
-        Ok(())
-    }
-
-    pub async fn set_session_archived(
-        &self,
-        store: &ProjectStore,
-        session_id: &str,
-        archived: bool,
-    ) -> Result<(), String> {
-        let (agent, native, project) = self.locate_session(store, session_id).await?;
-        let adapter = adapter_for(agent);
-        if !adapter.capabilities().supports_archive {
-            return Err(format!("{} 不支持归档聊天", adapter.display_name()));
-        }
-        adapter
-            .set_thread_archived(&native, archived)
-            .await
-            .map_err(|err| err.to_string())?;
-        if let Some(entry) = self.entries.lock().unwrap().get_mut(session_id) {
-            entry.meta.archived = archived;
         }
         self.invalidate_kind(agent).await;
         self.emit_changed(&project.id);

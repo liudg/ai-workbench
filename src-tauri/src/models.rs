@@ -42,19 +42,25 @@ impl AgentKind {
         }
     }
 
-    pub fn all() -> [AgentKind; 10] {
+    /// 设置页和新建会话会列出的种类。Goose、GitHub Copilot CLI、Kiro CLI 不参与探测。
+    pub fn all() -> [AgentKind; 7] {
         [
             AgentKind::CodexCli,
             AgentKind::ClaudeCode,
             AgentKind::CursorAgent,
-            AgentKind::CopilotCli,
             AgentKind::KimiCode,
             AgentKind::QwenCode,
             AgentKind::OpenCode,
-            AgentKind::Goose,
             AgentKind::Antigravity,
-            AgentKind::KiroCli,
         ]
+    }
+
+    #[cfg(test)]
+    pub fn hidden(self) -> bool {
+        matches!(
+            self,
+            AgentKind::CopilotCli | AgentKind::Goose | AgentKind::KiroCli
+        )
     }
 
     pub fn display_name(&self) -> &'static str {
@@ -586,9 +592,6 @@ pub struct AgentCapabilities {
     /// 侧边栏 `thread/fork`。
     #[serde(default)]
     pub supports_fork: bool,
-    /// 侧边栏归档和取消归档。
-    #[serde(default)]
-    pub supports_archive: bool,
     /// 侧边栏 `thread/delete`。
     #[serde(default)]
     pub supports_delete: bool,
@@ -633,7 +636,6 @@ impl AgentCapabilities {
             supports_images: false,
             supports_queue: false,
             supports_fork: false,
-            supports_archive: false,
             supports_delete: false,
             supports_rename: false,
             supports_plan: false,
@@ -658,7 +660,6 @@ impl AgentCapabilities {
             supports_images: true,
             supports_queue: true,
             supports_fork: true,
-            supports_archive: true,
             supports_delete: true,
             supports_rename: true,
             supports_plan: true,

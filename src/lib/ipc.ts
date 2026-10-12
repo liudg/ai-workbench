@@ -76,10 +76,9 @@ export interface Backend {
   importProject(input: ImportProjectInput): Promise<Project>;
   removeProject(id: string): Promise<void>;
 
-  listSessions(projectId: string, archived?: boolean): Promise<Session[]>;
+  listSessions(projectId: string): Promise<Session[]>;
   forkSession(sessionId: string): Promise<Session>;
   renameSession(sessionId: string, name: string): Promise<void>;
-  setSessionArchived(sessionId: string, archived: boolean): Promise<void>;
   deleteSession(sessionId: string): Promise<void>;
   createSession(
     projectId: string,
@@ -145,6 +144,8 @@ export interface Backend {
   loadOlderHistory(sessionId: string): Promise<OlderHistory>;
   /** 读取项目目录内的文本，供 HTML / Markdown / 纯文本预览。 */
   readPreviewFile(projectId: string, path: string): Promise<PreviewDocument>;
+  /** 用系统默认程序打开项目内的文件。 */
+  openProjectFile(projectId: string, path: string): Promise<void>;
   /** 把项目内文件放进内置浏览器可加载的地址。 */
   prepareBrowserFile(projectId: string, path: string): Promise<BrowserFile>;
   browserShow(url: string, x: number, y: number, width: number, height: number): Promise<void>;
@@ -210,13 +211,10 @@ const tauriBackend: Backend = {
     }),
   removeProject: (id) => invoke("remove_project", { id }),
 
-  listSessions: (projectId, archived) =>
-    invoke<Session[]>("list_sessions", { projectId, archived: archived ?? false }),
+  listSessions: (projectId) => invoke<Session[]>("list_sessions", { projectId }),
   forkSession: (sessionId) => invoke<Session>("fork_session", { sessionId }),
   renameSession: (sessionId, name) =>
     invoke("rename_session", { sessionId, name }),
-  setSessionArchived: (sessionId, archived) =>
-    invoke("set_session_archived", { sessionId, archived }),
   deleteSession: (sessionId) => invoke("delete_session", { sessionId }),
   createSession: (projectId, agent, accessMode) =>
     invoke<Session>("create_session", {
@@ -287,6 +285,8 @@ const tauriBackend: Backend = {
     invoke<OlderHistory>("load_older_history", { sessionId }),
   readPreviewFile: (projectId, path) =>
     invoke<PreviewDocument>("read_preview_file", { projectId, path }),
+  openProjectFile: (projectId, path) =>
+    invoke("open_project_file", { projectId, path }),
   prepareBrowserFile: (projectId, path) =>
     invoke<BrowserFile>("prepare_browser_file", { projectId, path }),
   browserShow: (url, x, y, width, height) =>

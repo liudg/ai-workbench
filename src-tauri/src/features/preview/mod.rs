@@ -36,6 +36,20 @@ pub fn read_preview_file(
     read_preview_at(Path::new(&project.path), &path)
 }
 
+#[tauri::command]
+pub fn open_project_file(
+    store: State<'_, ProjectStore>,
+    project_id: String,
+    path: String,
+) -> Result<(), String> {
+    let project = store
+        .get(&project_id)
+        .ok_or_else(|| "项目不存在".to_string())?;
+    let full = resolve_preview_file(Path::new(&project.path), &path)?;
+    let shown = strip_verbatim_prefix(&full.to_string_lossy());
+    browser::open_in_shell(&shown)
+}
+
 pub fn resolve_preview_file(project_root: &Path, requested: &str) -> Result<PathBuf, String> {
     let candidate = candidate_path(project_root, requested)?;
     if !is_inside(project_root, &candidate) {

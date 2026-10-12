@@ -9,8 +9,11 @@ import {
   FILES_RAIL_WIDTH,
   PANEL_PREFERRED_WIDTH,
   diffListWidth,
+  diffListWidthAfterDrag,
   noteFilesRail,
+  panelWidthAfterDrag,
   toggleFilesRail,
+  toggleFilesSidebar,
   withPreviewRail,
   workspaceColumns,
   type FilesRailState,
@@ -125,6 +128,28 @@ test("a diff file list hides instead of shrinking below its minimum", () => {
   assert.equal(diffListWidth(narrowPanel.panel), null);
   assert.equal(diffListWidth(0), null);
   assert.equal(diffListWidth(DIFF_LIST_MIN + 219), null);
+});
+
+test("dragging the preview keeps the chat at its minimum", () => {
+  assert.equal(panelWidthAfterDrag(1600, FILES_RAIL_WIDTH, 900), 900);
+  assert.equal(panelWidthAfterDrag(1600, FILES_RAIL_WIDTH, 2000), 1600 - FILES_RAIL_WIDTH - CHAT_MIN_WIDTH);
+  assert.equal(panelWidthAfterDrag(500, 0, 400), 100);
+});
+
+test("dragging the diff file list stays inside the pane", () => {
+  assert.equal(diffListWidthAfterDrag(800, 320), 320);
+  assert.equal(diffListWidthAfterDrag(800, 20), DIFF_LIST_MIN);
+  assert.equal(diffListWidthAfterDrag(800, 900), 800 - 220);
+  assert.equal(diffListWidthAfterDrag(300, 200), null);
+});
+
+test("the files sidebar toggle does not touch the preview rail", () => {
+  const open = { ...CLOSED_FILES_RAIL, filesExpanded: true, filesBeforePreview: true };
+  const hidden = toggleFilesSidebar(open);
+  assert.equal(hidden.filesSidebarOpen, false);
+  assert.equal(hidden.filesExpanded, true);
+  assert.equal(hidden.filesBeforePreview, true);
+  assert.equal(toggleFilesSidebar(hidden).filesSidebarOpen, true);
 });
 
 test("closing the preview gives the chat column the file rail's row", () => {

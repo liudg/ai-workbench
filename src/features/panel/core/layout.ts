@@ -17,12 +17,15 @@ export interface FilesRailState {
   /** 预览打开前的展开状态。null 表示预览没有接管。 */
   filesBeforePreview: boolean | null;
   filesTouched: boolean;
+  /** 关掉后文件列消失，预览标签还在。 */
+  filesSidebarOpen: boolean;
 }
 
 export const CLOSED_FILES_RAIL: FilesRailState = {
   filesExpanded: false,
   filesBeforePreview: null,
   filesTouched: false,
+  filesSidebarOpen: true,
 };
 
 export interface WorkspaceColumns {
@@ -88,6 +91,25 @@ export function withPreviewRail<T extends FilesRailState>(session: T, previewOpe
 
 export function toggleFilesRail(state: FilesRailState): FilesRailState {
   return { ...state, filesExpanded: !state.filesExpanded, filesTouched: true };
+}
+
+export function toggleFilesSidebar(state: FilesRailState): FilesRailState {
+  return { ...state, filesSidebarOpen: !state.filesSidebarOpen };
+}
+
+/** 拖聊天和预览之间的分隔条。返回预览列宽度。 */
+export function panelWidthAfterDrag(rowWidth: number, filesWidth: number, requested: number): number {
+  const room = Math.max(0, rowWidth - filesWidth);
+  const chatFloor = Math.min(CHAT_MIN_WIDTH, room);
+  const maxPanel = Math.max(0, room - chatFloor);
+  return Math.max(0, Math.min(Math.round(requested), maxPanel));
+}
+
+/** 拖差异和文件列表之间的分隔条。放不下就收起文件列表。 */
+export function diffListWidthAfterDrag(paneWidth: number, requested: number): number | null {
+  if (paneWidth < DIFF_LIST_MIN + DIFF_BODY_MIN) return null;
+  const max = paneWidth - DIFF_BODY_MIN;
+  return Math.max(DIFF_LIST_MIN, Math.min(Math.round(requested), max));
 }
 
 /** 有文件且用户没手动收起过时展开。预览开着时只记住还原值，不把栏重新撑开。 */

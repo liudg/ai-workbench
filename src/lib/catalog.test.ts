@@ -37,7 +37,6 @@ function catalog(id: string, skills: string[] = []): AgentCatalog {
       supports_skills: true,
       supports_goals: true,
       supports_fork: true,
-      supports_archive: true,
       supports_delete: true,
       supports_rename: true,
       supports_images: true,

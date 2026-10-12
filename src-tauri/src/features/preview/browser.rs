@@ -803,6 +803,10 @@ fn shell_open(_target: &str) -> Result<(), String> {
     Err("无法在外部浏览器中打开".into())
 }
 
+pub(crate) fn open_in_shell(target: &str) -> Result<(), String> {
+    shell_open(target).map_err(|_| "无法在外部打开".to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

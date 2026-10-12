@@ -127,13 +127,6 @@ impl AgentAdapter for CodexCliAdapter {
             .map_err(AgentError::Runtime)
     }
 
-    async fn set_thread_archived(&self, native_id: &str, archived: bool) -> Result<(), AgentError> {
-        CodexDirectory::shared()
-            .set_archived(native_id, archived)
-            .await
-            .map_err(AgentError::Runtime)
-    }
-
     async fn delete_thread(&self, native_id: &str) -> Result<(), AgentError> {
         CodexDirectory::shared()
             .delete_thread(native_id)

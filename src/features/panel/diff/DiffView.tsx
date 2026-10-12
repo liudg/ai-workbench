@@ -1,19 +1,35 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 
+import { backend } from "@/lib/ipc";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { useElementWidth } from "@/shared/dom/useElementWidth";
 import type { FileChange } from "@/features/changes-model/diff-parse";
-import { diffListWidth } from "../core/layout";
-import { FileList } from "@/features/panel/files/FileList";
+import { diffListWidth, diffListWidthAfterDrag } from "../core/layout";
+import { ColumnSplitter } from "../core/ColumnSplitter";
+import { usePanel } from "../core/PanelProvider";
+import { ChangesSidebar } from "../files/ChangesSidebar";
+import { setFileFilter } from "../files/file-filter";
 import { DiffFileSection } from "./DiffFileSection";
 import { DiffToolbar } from "./DiffToolbar";
 import { useDiffDocument } from "./useDiffDocument";
 
+const SPLITTER_WIDTH = 6;
+
 export function DiffView({ files }: { files: FileChange[] }) {
   const doc = useDiffDocument(files);
+  const { filesSidebarOpen, toggleFilesSidebar, projectId } = usePanel();
   const frameRef = useRef<HTMLDivElement>(null);
-  const listWidth = diffListWidth(useElementWidth(frameRef));
+  const paneWidth = useElementWidth(frameRef);
+  const [listOverride, setListOverride] = useState<number | null>(null);
+  const [epoch, setEpoch] = useState(0);
+  const inner = filesSidebarOpen ? Math.max(0, paneWidth - SPLITTER_WIDTH) : paneWidth;
+  const auto = filesSidebarOpen ? diffListWidth(inner) : null;
+  const listWidth =
+    auto === null ? null : listOverride === null ? auto : diffListWidthAfterDrag(inner, listOverride);
+  const metrics = useRef({ pane: 0, list: 0 });
+  metrics.current = { pane: inner, list: auto ?? 0 };
   const sourceFor = (path: string) => (doc.loadFull ? (doc.sources[path] ?? null) : null);
+
   return (
     <div
       ref={frameRef}
@@ -65,20 +81,42 @@ export function DiffView({ files }: { files: FileChange[] }) {
         </div>
       </div>
       {listWidth !== null ? (
-        <aside
-          data-diff-files
-          style={{ width: listWidth, minWidth: listWidth }}
-          className="flex shrink-0 flex-col overflow-hidden border-l border-zinc-800"
-        >
-          <FileList
-            files={doc.shown}
-            activePath={doc.active?.path ?? ""}
-            rowAttr="data-diff-file"
-            filterAttr="data-diff-filter"
-            onSelect={doc.selectFile}
-            empty={null}
-          />
-        </aside>
+        <ColumnSplitter
+          name="diff-files"
+          onDelta={(dx) => {
+            setListOverride((prev) => {
+              const current = prev ?? metrics.current.list;
+              return diffListWidthAfterDrag(metrics.current.pane, current - dx) ?? prev ?? current;
+            });
+          }}
+        />
+      ) : null}
+      {listWidth !== null ? (
+        <ChangesSidebar
+          key={epoch}
+          files={doc.listed}
+          activePath={doc.active?.path ?? ""}
+          rowAttr="data-diff-file"
+          mark="diff"
+          width={listWidth}
+          onSelect={doc.selectFile}
+          onJump={() => {
+            if (doc.active) doc.selectFile(doc.active);
+          }}
+          onRefresh={() => {
+            setFileFilter("");
+            setEpoch((value) => value + 1);
+            doc.reload();
+          }}
+          onOpenExternal={() => {
+            if (!doc.active) return;
+            return backend.openProjectFile(projectId, doc.active.path);
+          }}
+          onHide={toggleFilesSidebar}
+          empty={
+            <p className="px-2 py-6 text-center text-xs leading-5 text-zinc-500">{DESKTOP_ZH.noFileChanges}</p>
+          }
+        />
       ) : null}
     </div>
   );

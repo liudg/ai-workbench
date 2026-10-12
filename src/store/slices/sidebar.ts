@@ -5,7 +5,6 @@ import {
   clearMissingSessionBanner,
   deselectSession,
   isMissingSessionError,
-  loadArchivedSessions,
   loadSessions,
   mergeEvents,
   withoutSession,
@@ -47,8 +46,6 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
   return {
     projects: [],
     sessions: {},
-    archivedSessions: {},
-    showArchived: {},
     sidebarNotice: null,
     lifecycleBusy: null,
     selectedProjectId: null,
@@ -60,7 +57,6 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
     releaseMissingSession(sessionId) {
       set((s) => ({
         sessions: withoutSession(s.sessions, sessionId),
-        archivedSessions: withoutSession(s.archivedSessions, sessionId),
         activeSessionId: deselectSession(s.activeSessionId, sessionId),
         lifecycleBusy: s.lifecycleBusy === sessionId ? null : s.lifecycleBusy,
         lastError: null,
@@ -216,33 +212,12 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
       }
     },
 
-    async toggleArchived(projectId) {
-      if (get().showArchived[projectId]) {
-        set((s) => ({ showArchived: { ...s.showArchived, [projectId]: false } }));
-        return;
-      }
-      await get().viewArchived(projectId);
-    },
-
-    async viewArchived(projectId) {
-      try {
-        const [, list] = await loadArchivedSessions(projectId, overrides);
-        set((s) => ({
-          showArchived: { ...s.showArchived, [projectId]: true },
-          archivedSessions: { ...s.archivedSessions, [projectId]: list },
-        }));
-      } catch (e) {
-        set({ lastError: String(e) });
-      }
-    },
-
     async renameSession(sessionId, name) {
       try {
         await backend.renameSession(sessionId, name);
         const title = name.trim();
         set((s) => ({
           sessions: retitle(s.sessions, sessionId, title),
-          archivedSessions: retitle(s.archivedSessions, sessionId, title),
         }));
         return true;
       } catch {
@@ -270,57 +245,7 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
       }
     },
 
-    async archiveSession(projectId, sessionId) {
-      try {
-        await backend.setSessionArchived(sessionId, true);
-        const [, list] = await loadSessions(projectId, overrides);
-        const archived = get().showArchived[projectId]
-          ? (await loadArchivedSessions(projectId, overrides))[1]
-          : get().archivedSessions[projectId];
-        set((s) => {
-          const activeSessionId = { ...s.activeSessionId };
-          if (activeSessionId[projectId] === sessionId) delete activeSessionId[projectId];
-          return {
-            sessions: { ...s.sessions, [projectId]: list },
-            archivedSessions:
-              archived !== undefined
-                ? { ...s.archivedSessions, [projectId]: archived }
-                : s.archivedSessions,
-            activeSessionId,
-            sidebarNotice: { kind: "archived", projectId, sessionId },
-            lastError: null,
-          };
-        });
-      } catch {
-        set({ lastError: "无法归档对话" });
-      }
-    },
-
-    async unarchiveSession(projectId, sessionId) {
-      try {
-        await backend.setSessionArchived(sessionId, false);
-        const [, list] = await loadSessions(projectId, overrides);
-        const [, archived] = await loadArchivedSessions(projectId, overrides);
-        set((s) => ({
-          sessions: { ...s.sessions, [projectId]: list },
-          archivedSessions: { ...s.archivedSessions, [projectId]: archived },
-          sidebarNotice: null,
-          lastError: null,
-        }));
-        showInfo(set, "聊天已取消归档");
-        await get().selectSession(projectId, sessionId);
-      } catch {
-        set({ lastError: "取消归档对话失败" });
-      }
-    },
-
-    async undoArchive() {
-      const notice = get().sidebarNotice;
-      if (notice?.kind !== "archived") return;
-      await get().unarchiveSession(notice.projectId, notice.sessionId);
-    },
-
-    async deleteSession(projectId, sessionId, archived) {
+    async deleteSession(projectId, sessionId) {
       try {
         await backend.deleteSession(sessionId);
         set((s) => {
@@ -330,15 +255,11 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
             (list ?? []).filter((item) => item.id !== sessionId);
           return {
             sessions: { ...s.sessions, [projectId]: drop(s.sessions[projectId]) },
-            archivedSessions: {
-              ...s.archivedSessions,
-              [projectId]: drop(s.archivedSessions[projectId]),
-            },
             activeSessionId,
             lastError: null,
           };
         });
-        showInfo(set, archived ? "已删除已归档的聊天" : "任务已删除");
+        showInfo(set, "任务已删除");
         return true;
       } catch {
         return false;

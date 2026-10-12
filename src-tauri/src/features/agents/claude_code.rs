@@ -85,7 +85,6 @@ impl AgentAdapter for ClaudeCodeAdapter {
             supports_images: false,
             supports_queue: false,
             supports_fork: false,
-            supports_archive: false,
             supports_delete: false,
             supports_rename: false,
             supports_plan: false,

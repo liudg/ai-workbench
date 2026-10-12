@@ -369,18 +369,6 @@ pub trait AgentAdapter: Send + Sync {
         )))
     }
 
-    /// `thread/archive` 或 `thread/unarchive`。
-    async fn set_thread_archived(
-        &self,
-        _native_id: &str,
-        _archived: bool,
-    ) -> Result<(), AgentError> {
-        Err(AgentError::Runtime(format!(
-            "{} 不支持归档聊天",
-            self.display_name()
-        )))
-    }
-
     /// `thread/delete`。这是 Codex 的会话删除，不是删除工作区文件。
     async fn delete_thread(&self, _native_id: &str) -> Result<(), AgentError> {
         Err(AgentError::Runtime(format!(

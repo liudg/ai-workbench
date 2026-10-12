@@ -33,15 +33,7 @@ export async function loadSessions(
   projectId: string,
   overrides: () => Record<string, AgentKind>,
 ): Promise<[string, Session[]]> {
-  const list = await backend.listSessions(projectId, false);
-  return [projectId, stampAgents(list, overrides())];
-}
-
-export async function loadArchivedSessions(
-  projectId: string,
-  overrides: () => Record<string, AgentKind>,
-): Promise<[string, Session[]]> {
-  const list = await backend.listSessions(projectId, true);
+  const list = await backend.listSessions(projectId);
   return [projectId, stampAgents(list, overrides())];
 }
 

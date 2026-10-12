@@ -4,6 +4,7 @@ import {
   CLOSED_FILES_RAIL,
   noteFilesRail,
   toggleFilesRail,
+  toggleFilesSidebar,
   withPreviewRail,
 } from "../../features/panel/core/layout.ts";
 import { baseName } from "../../features/panel/files/path.ts";
@@ -33,6 +34,7 @@ export interface SessionPanel {
   filesExpanded: boolean;
   filesBeforePreview: boolean | null;
   filesTouched: boolean;
+  filesSidebarOpen: boolean;
 }
 
 export interface PanelSlice {
@@ -46,6 +48,7 @@ export interface PanelSlice {
   panelOpenTarget(sessionId: string, target: OpenTarget, ctx: ViewerContext): Promise<void>;
   panelRememberHistory(sessionId: string, tabId: string, history: BrowserHistory): void;
   panelToggleFiles(sessionId: string): void;
+  panelToggleFilesSidebar(sessionId: string): void;
   panelNoteFiles(sessionId: string, hasFiles: boolean): void;
 }
 
@@ -279,6 +282,10 @@ export function createPanelSlice(set: PanelSet, get: PanelGet): PanelSlice {
 
     panelToggleFiles(sessionId) {
       mutate(sessionId, (session) => ({ ...session, ...toggleFilesRail(session) }));
+    },
+
+    panelToggleFilesSidebar(sessionId) {
+      mutate(sessionId, (session) => ({ ...session, ...toggleFilesSidebar(session) }));
     },
 
     panelNoteFiles(sessionId, hasFiles) {

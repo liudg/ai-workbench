@@ -70,7 +70,6 @@ const CODEX_CAPABILITIES: AgentCapabilities = {
   supports_skills: true,
   supports_goals: true,
   supports_fork: true,
-  supports_archive: true,
   supports_delete: true,
   supports_rename: true,
   supports_images: true,
@@ -90,7 +89,6 @@ const CLAUDE_CAPABILITIES: AgentCapabilities = {
   supports_tuning: false,
   supports_skills: false,
   supports_fork: false,
-  supports_archive: false,
   supports_delete: false,
   supports_rename: false,
   supports_images: false,
@@ -115,13 +113,10 @@ function previewAgents(): PreviewAgents {
   return "one";
 }
 
-const STUB_DETAIL = "会话协议尚未接入，目前只做检测和更新。工作台不代为安装。";
+const STUB_DETAIL = "会话协议尚未接入，目前仅支持检测和更新。工作空间代为安装。";
 
 const GEMINI_NOTE =
   "Gemini CLI（gemini）已于 2026-06-18 停更，官方后继是 Antigravity CLI。优先识别 agy，其次 antigravity，最后才是仍留在 PATH 上的 gemini。只找到 gemini 时不在应用内更新。";
-
-const KIRO_NOTE =
-  "Kiro CLI 是 Amazon Q Developer CLI 的后继。官方入口是 kiro-cli，q 仍是兼容入口。无关的 q 只有在版本输出里出现 Kiro 或 Amazon Q，或首行是 q 1.2.3 这种官方短版本时才算已安装。更新用 kiro-cli update --non-interactive；只找到旧的 q 时用 q update。";
 
 function previewDetail(row: (typeof PREVIEW_ROWS)[number]): string | null {
   if (row.kind === "codex-cli" || row.kind === "claude-code") return null;
@@ -136,13 +131,10 @@ const PREVIEW_ROWS: Array<{
   { kind: "codex-cli", display_name: "Codex CLI", note: null },
   { kind: "claude-code", display_name: "Claude Code", note: null },
   { kind: "cursor-agent", display_name: "Cursor Agent", note: null },
-  { kind: "copilot-cli", display_name: "GitHub Copilot CLI", note: null },
   { kind: "kimi-code", display_name: "Kimi Code", note: null },
   { kind: "qwen-code", display_name: "Qwen Code", note: null },
   { kind: "opencode", display_name: "OpenCode", note: null },
-  { kind: "goose", display_name: "Goose", note: null },
   { kind: "antigravity", display_name: "Antigravity", note: GEMINI_NOTE },
-  { kind: "kiro-cli", display_name: "Kiro CLI", note: KIRO_NOTE },
 ];
 
 function absentRow(row: (typeof PREVIEW_ROWS)[number]): AgentInstallation {
@@ -183,7 +175,7 @@ function previewInstallations(mode: PreviewAgents): AgentInstallation[] {
         update_via: "cli",
       };
     }
-    if (many && (row.kind === "cursor-agent" || row.kind === "copilot-cli" || row.kind === "kiro-cli")) {
+    if (many && row.kind === "cursor-agent") {
       return {
         ...absentRow(row),
         installed: true,
@@ -209,7 +201,6 @@ const MOCK_PROFILES: Record<AgentKind, AgentProfile> = {
   },
   "claude-code": stubProfile("claude-code"),
   "cursor-agent": stubProfile("cursor-agent"),
-  "copilot-cli": stubProfile("copilot-cli"),
   "kimi-code": stubProfile("kimi-code"),
   "qwen-code": stubProfile("qwen-code"),
   opencode: {
@@ -217,9 +208,7 @@ const MOCK_PROFILES: Record<AgentKind, AgentProfile> = {
     capabilities: { ...STUB_CAPABILITIES, changes: FAKE_CAPABILITIES },
     commands: [],
   },
-  goose: stubProfile("goose"),
   antigravity: stubProfile("antigravity"),
-  "kiro-cli": stubProfile("kiro-cli"),
 };
 
 function previewCatalog(agent: AgentKind): AgentCatalog {
@@ -651,12 +640,12 @@ export const mockBackend: Backend = {
     projectsChangedListeners.forEach((cb) => cb());
   },
 
-  async listSessions(projectId, archived = false) {
+  async listSessions(projectId) {
     const project = projects.find((p) => p.id === projectId);
     if (!project) return [];
     const key = cwdKey(project.path);
     return [...sessions.values()]
-      .filter((s) => cwdKey(s.cwd) === key && Boolean(s.meta.archived) === archived)
+      .filter((s) => cwdKey(s.cwd) === key && !s.meta.archived)
       .map((s) => ({ ...s.meta, project_id: project.id }))
       .sort((a, b) => b.updated_at - a.updated_at);
   },
@@ -701,16 +690,6 @@ export const mockBackend: Backend = {
       throw new Error("不支持重命名聊天");
     }
     s.meta.title = title;
-    sessionsChangedListeners.forEach((cb) => cb(s.meta.project_id));
-  },
-
-  async setSessionArchived(sessionId, archived) {
-    const s = sessions.get(sessionId);
-    if (!s) throw new Error("会话不存在");
-    if (!MOCK_PROFILES[s.meta.agent].capabilities.supports_archive) {
-      throw new Error("不支持归档聊天");
-    }
-    s.meta.archived = archived;
     sessionsChangedListeners.forEach((cb) => cb(s.meta.project_id));
   },
 
@@ -1165,6 +1144,8 @@ export const mockBackend: Backend = {
     const s = sessions.get(sessionId);
     return { events: s ? [...s.events] : [], added: 0, exhausted: true };
   },
+
+  async openProjectFile() {},
 
   async readPreviewFile(_projectId, path) {
     const name = path.split(/[\\/]/).filter(Boolean).pop() ?? path;
