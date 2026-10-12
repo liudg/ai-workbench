@@ -31,8 +31,14 @@ pub fn file_change_from_value(change: &Value) -> Option<FileChange> {
         .map(str::trim)
         .filter(|path| !path.is_empty())?;
     let kind = change_kind(change);
-    let diff = change_diff(change);
-    let (added, removed) = diff_counts(&diff);
+    let mut diff = change_diff(change);
+    if !kind.move_path.is_empty() {
+        let suffix = format!("\n\nMoved to: {}", kind.move_path);
+        if let Some(stripped) = diff.strip_suffix(&suffix) {
+            diff.truncate(stripped.len());
+        }
+    }
+    let (added, removed) = line_counts(&kind.name, &diff);
     let mut path = display_path(path);
     let mut status = file_status(&kind.name);
     if !kind.move_path.is_empty() {
@@ -287,18 +293,33 @@ fn change_diff(change: &Value) -> String {
     empty
 }
 
-fn diff_counts(diff: &str) -> (u32, u32) {
-    let mut added = 0;
-    let mut removed = 0;
-    for line in diff.split('\n') {
-        let line = line.trim_end_matches('\r');
-        if line.starts_with('+') && !line.starts_with("+++") {
-            added += 1;
-        } else if line.starts_with('-') && !line.starts_with("---") {
-            removed += 1;
+/// TUI `diff_render.rs::line_counts`：新增文件按内容行数算 +，删除文件按内容行数算 -，
+/// 其余用 `calculate_add_remove_from_diff`（diffy 解析 hunk，解析不了就是 0/0）。
+fn line_counts(kind: &str, diff: &str) -> (u32, u32) {
+    let count = |n: usize| u32::try_from(n).unwrap_or(u32::MAX);
+    match kind {
+        "add" | "added" => (count(diff.lines().count()), 0),
+        "delete" | "deleted" => (0, count(diff.lines().count())),
+        _ => {
+            let (added, removed) = calculate_add_remove_from_diff(diff);
+            (count(added), count(removed))
         }
     }
-    (added, removed)
+}
+
+pub fn calculate_add_remove_from_diff(diff: &str) -> (usize, usize) {
+    match diffy::Patch::from_str(diff) {
+        Ok(patch) => patch
+            .hunks()
+            .iter()
+            .flat_map(diffy::Hunk::lines)
+            .fold((0, 0), |(a, d), line| match line {
+                diffy::Line::Insert(_) => (a + 1, d),
+                diffy::Line::Delete(_) => (a, d + 1),
+                diffy::Line::Context(_) => (a, d),
+            }),
+        Err(_) => (0, 0),
+    }
 }
 
 #[derive(Default)]
@@ -432,17 +453,17 @@ mod tests {
             {
                 "path": "src/new.ts",
                 "kind": "add",
-                "diff": "@@ -0,0 +1,2 @@\n+one\n+two"
+                "diff": "one\ntwo\n"
             },
             {
                 "path": "src/old.ts",
                 "kind": "delete",
-                "diff": "@@ -1 +0,0 @@\n-gone"
+                "diff": "gone\n"
             },
             {
                 "path": "src/app.ts",
                 "kind": "update",
-                "diff": "@@ -1,2 +1,2 @@\n-a\n+b"
+                "diff": "@@ -1 +1 @@\n-a\n+b\n"
             },
             {
                 "path": "src/next.ts",
@@ -530,8 +551,21 @@ rename to new-name.txt
     }
 
     #[test]
+    fn line_counts_follow_diff_render() {
+        assert_eq!(line_counts("add", "a\nb\nc\n"), (3, 0));
+        assert_eq!(line_counts("delete", "a\nb\n"), (0, 2));
+        assert_eq!(line_counts("update", "@@ -1,2 +1,2 @@\n keep\n-a\n+b\n"), (1, 1));
+        assert_eq!(
+            line_counts("update", "--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n+b\n"),
+            (1, 1)
+        );
+        // 行数和 hunk 头对不上时 diffy 解析失败，官方显示 0/0。
+        assert_eq!(line_counts("update", "@@ -1,3 +1,4 @@\n-a\n+b\n"), (0, 0));
+    }
+
+    #[test]
     fn codex_object_kind_and_patch_body_count_lines() {
-        let hunk = "@@ -1,3 +1,4 @@\n line\n-old\n+new-a\n+new-b\n";
+        let hunk = "@@ -1,2 +1,3 @@\n line\n-old\n+new-a\n+new-b\n";
         let files = file_changes_from_codex(&json!([{
             "path": "notes.md",
             "kind": { "type": "update", "move_path": null },
@@ -540,24 +574,6 @@ rename to new-name.txt
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].status, FileStatus::Modified);
         assert_eq!((files[0].added, files[0].removed), (2, 1));
-
-        let patch = "\
-*** Begin Patch
-*** Update File: notes.md
-@@
- context
--old
-+new-a
-+new-b
-*** End Patch
-";
-        let from_patch = file_changes_from_codex(&json!([{
-            "path": "notes.md",
-            "kind": { "type": "add" },
-            "patch": patch
-        }]));
-        assert_eq!(from_patch[0].status, FileStatus::Added);
-        assert_eq!((from_patch[0].added, from_patch[0].removed), (2, 1));
 
         let renamed = file_changes_from_codex(&json!([{
             "path": "src/prev.ts",
@@ -574,7 +590,7 @@ rename to new-name.txt
         let first = file_changes_from_codex(&json!([{
             "path": "C:\\proj\\notes.md",
             "kind": { "type": "update", "move_path": null },
-            "diff": "@@ -1 +1,3 @@\n-old\n+new-a\n+new-b\n"
+            "diff": "@@ -1 +1,2 @@\n-old\n+new-a\n+new-b\n"
         }]));
         let blank = file_changes_from_codex(&json!([{
             "path": "C:\\proj\\notes.md",
@@ -620,7 +636,7 @@ diff --git a/notes.md b/notes.md
         let rollout = file_changes_from_codex(&json!({
             "notes.md": {
                 "type": "update",
-                "unified_diff": "@@ -1 +1,3 @@\n-old\n+new-a\n+new-b\n",
+                "unified_diff": "@@ -1 +1,2 @@\n-old\n+new-a\n+new-b\n",
                 "move_path": null
             }
         }));
