@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 
-import { backend } from "@/lib/ipc";
+import { cn } from "@/lib/utils";
 import { useWorkbench } from "@/store";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { useElementWidth } from "@/shared/dom/useElementWidth";
@@ -18,7 +18,7 @@ const SPLITTER_WIDTH = 6;
 
 export function DiffView({ files }: { files: FileChange[] }) {
   const doc = useDiffDocument(files);
-  const { filesSidebarOpen, toggleFilesSidebar, projectId, sessionId, diffFilesWidth, setDiffFilesWidth } =
+  const { filesSidebarOpen, toggleFilesSidebar, sessionId, diffFilesWidth, setDiffFilesWidth } =
     usePanel();
   const frameRef = useRef<HTMLDivElement>(null);
   const paneWidth = useElementWidth(frameRef);
@@ -50,8 +50,16 @@ export function DiffView({ files }: { files: FileChange[] }) {
           onToggleExpanded={() => doc.setExpanded((value) => !value)}
           unified={doc.unified}
           onToggleUnified={() => doc.setUnified((value) => !value)}
+          wrap={doc.wrap}
+          onToggleWrap={() => doc.setWrap((value) => !value)}
           onJump={doc.jump}
-          onHide={doc.hideActive}
+          onRefresh={() => {
+            setFileFilter("");
+            setEpoch((value) => value + 1);
+            doc.reload();
+          }}
+          filesOpen={filesSidebarOpen}
+          onHide={toggleFilesSidebar}
           loadFull={doc.loadFull}
           onToggleLoadFull={() => doc.setLoadFull((value) => !value)}
           renderPreview={doc.renderPreview}
@@ -61,7 +69,13 @@ export function DiffView({ files }: { files: FileChange[] }) {
           hideWs={doc.hideWs}
           onToggleHideWs={() => doc.setHideWs((value) => !value)}
         />
-        <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
+        <div
+          className={cn(
+            "min-h-0 min-w-0 flex-1 overflow-y-auto",
+            doc.wrap ? "overflow-x-hidden" : "overflow-x-auto",
+          )}
+          data-diff-wrap={doc.wrap ? "on" : "off"}
+        >
           {doc.loading ? <p className="px-4 py-6 text-sm text-zinc-500">正在读取…</p> : null}
           {doc.gitError ? <p className="px-4 py-6 text-sm text-red-300">{doc.gitError}</p> : null}
           {!doc.loading && !doc.gitError && doc.shown.length === 0 ? (
@@ -73,6 +87,7 @@ export function DiffView({ files }: { files: FileChange[] }) {
               file={file}
               expanded={doc.expanded}
               unified={doc.unified}
+              wrap={doc.wrap}
               wordDiff={doc.wordDiff}
               renderPreview={doc.renderPreview}
               source={sourceFor(file.path)}
@@ -103,19 +118,6 @@ export function DiffView({ files }: { files: FileChange[] }) {
           mark="diff"
           width={listWidth}
           onSelect={doc.selectFile}
-          onJump={() => {
-            if (doc.active) doc.selectFile(doc.active);
-          }}
-          onRefresh={() => {
-            setFileFilter("");
-            setEpoch((value) => value + 1);
-            doc.reload();
-          }}
-          onOpenExternal={() => {
-            if (!doc.active) return;
-            return backend.openProjectFile(projectId, doc.active.path);
-          }}
-          onHide={toggleFilesSidebar}
           empty={
             <p className="px-2 py-6 text-center text-xs leading-5 text-zinc-500">{DESKTOP_ZH.noFileChanges}</p>
           }

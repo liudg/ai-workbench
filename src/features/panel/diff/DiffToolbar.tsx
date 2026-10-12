@@ -5,9 +5,11 @@ import {
   ChevronDown,
   ChevronRight,
   Ellipsis,
-  EyeOff,
+  Folder,
+  RefreshCw,
   Rows3,
   UnfoldVertical,
+  WrapText,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -24,7 +26,11 @@ export function DiffToolbar({
   onToggleExpanded,
   unified,
   onToggleUnified,
+  wrap,
+  onToggleWrap,
   onJump,
+  onRefresh,
+  filesOpen,
   onHide,
   loadFull,
   onToggleLoadFull,
@@ -44,7 +50,11 @@ export function DiffToolbar({
   onToggleExpanded: () => void;
   unified: boolean;
   onToggleUnified: () => void;
+  wrap: boolean;
+  onToggleWrap: () => void;
   onJump: () => void;
+  onRefresh: () => void;
+  filesOpen: boolean;
   onHide: () => void;
   loadFull: boolean;
   onToggleLoadFull: () => void;
@@ -167,6 +177,12 @@ export function DiffToolbar({
         <ToolIcon label={DESKTOP_ZH.diffJump} attr="data-diff-jump" onClick={onJump}>
           <ArrowUpRight className="h-3.5 w-3.5" />
         </ToolIcon>
+        <ToolIcon label={DESKTOP_ZH.diffRefresh} attr="data-diff-refresh" onClick={onRefresh}>
+          <RefreshCw className="h-3.5 w-3.5" />
+        </ToolIcon>
+        <ToolIcon label={DESKTOP_ZH.diffWrap} attr="data-diff-wrap" pressed={wrap} onClick={onToggleWrap}>
+          <WrapText className="h-3.5 w-3.5" />
+        </ToolIcon>
         <ToolIcon
           label={DESKTOP_ZH.diffExpand}
           attr="data-diff-expand"
@@ -183,8 +199,8 @@ export function DiffToolbar({
         >
           <Rows3 className="h-3.5 w-3.5" />
         </ToolIcon>
-        <ToolIcon label={DESKTOP_ZH.diffHideFile} attr="data-diff-hide" onClick={onHide}>
-          <EyeOff className="h-3.5 w-3.5" />
+        <ToolIcon label={DESKTOP_ZH.diffHideFile} attr="data-diff-hide" pressed={filesOpen} onClick={onHide}>
+          <Folder className="h-3.5 w-3.5" />
         </ToolIcon>
       </div>
     </div>
@@ -199,7 +215,13 @@ function ToolIcon({
   children,
 }: {
   label: string;
-  attr: "data-diff-jump" | "data-diff-expand" | "data-diff-unified" | "data-diff-hide";
+  attr:
+    | "data-diff-jump"
+    | "data-diff-refresh"
+    | "data-diff-wrap"
+    | "data-diff-expand"
+    | "data-diff-unified"
+    | "data-diff-hide";
   pressed?: boolean;
   onClick: () => void;
   children: ReactNode;

@@ -10,6 +10,7 @@ export function DiffFileSection({
   file,
   expanded,
   unified,
+  wrap,
   wordDiff,
   renderPreview,
   source,
@@ -19,6 +20,7 @@ export function DiffFileSection({
   file: FileChange;
   expanded: boolean;
   unified: boolean;
+  wrap: boolean;
   wordDiff: boolean;
   renderPreview: boolean;
   source: string | null;
@@ -45,7 +47,12 @@ export function DiffFileSection({
           <MarkdownBody text={source && source.length > 0 ? source : previewTextFromDiff(file.diff)} />
         </div>
       ) : unified ? (
-        <pre className="max-w-full overflow-x-hidden whitespace-pre-wrap break-all px-3 pb-3 font-mono text-xs leading-5 text-zinc-300">
+        <pre
+          className={cn(
+            "max-w-full px-3 pb-3 font-mono text-xs leading-5 text-zinc-300",
+            wrap ? "overflow-x-hidden whitespace-pre-wrap break-all" : "overflow-x-auto whitespace-pre",
+          )}
+        >
           {file.diff}
         </pre>
       ) : (wordDiff ? rows : plain)?.length === 0 ? (
@@ -54,7 +61,7 @@ export function DiffFileSection({
         <div className="min-w-0 pb-2 font-mono text-xs leading-5">
           {(wordDiff ? rows : plain.map((row) => (row.kind === "collapse" ? row : { ...row, parts: null })))?.map(
             (row, index) => (
-              <DiffRowView key={index} row={row} />
+              <DiffRowView key={index} row={row} wrap={wrap} />
             ),
           )}
         </div>
@@ -63,7 +70,7 @@ export function DiffFileSection({
   );
 }
 
-function DiffRowView({ row }: { row: DiffDisplayRow }) {
+function DiffRowView({ row, wrap }: { row: DiffDisplayRow; wrap: boolean }) {
   if (row.kind === "collapse") {
     const label = unmodifiedLinesLabel(row.count);
     return (
@@ -87,7 +94,12 @@ function DiffRowView({ row }: { row: DiffDisplayRow }) {
       )}
     >
       <span className="w-10 shrink-0 select-none px-2 text-right text-zinc-500">{row.lineNo ?? ""}</span>
-      <span className="min-w-0 flex-1 overflow-hidden whitespace-pre-wrap break-all px-2">
+      <span
+        className={cn(
+          "min-w-0 flex-1 px-2",
+          wrap ? "overflow-hidden whitespace-pre-wrap break-all" : "overflow-x-auto whitespace-pre",
+        )}
+      >
         {row.parts && row.parts.length > 0
           ? row.parts.map((part, index) => (
               <span key={index} className={part.changed ? "rounded-sm bg-white/10" : undefined}>

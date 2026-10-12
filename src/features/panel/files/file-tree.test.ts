@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { buildFileTree, directoryIds } from "./file-tree.ts";
+import { buildFileTree, directoryIds, treePathLabel } from "./file-tree.ts";
 
 test("nests files the way an assets folder does and sums change counts", () => {
   const tree = buildFileTree([
@@ -38,6 +38,7 @@ test("a single-child directory chain becomes one path with the file count", () =
   assert.equal(tree.length, 1);
   assert.equal(tree[0].kind, "dir");
   assert.equal(tree[0].name, "src/features/panel/files");
+  assert.equal(treePathLabel(tree[0].name), "src / features / panel / files");
   assert.equal(tree[0].path, "src/features/panel/files");
   assert.equal(tree[0].count, 2);
   assert.equal(tree[0].added, 6);

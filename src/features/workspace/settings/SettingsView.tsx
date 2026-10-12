@@ -45,7 +45,7 @@ function AgentCard({
           <div className="mt-1 text-xs leading-5 text-amber-200/90">{face.detail}</div>
         )}
       </div>
-      {face.kind === "ready" && face.canUpdate && (
+      {(face.kind === "ready" || face.kind === "unwired") && face.canUpdate && (
         <Button
           type="button"
           size="sm"
@@ -74,7 +74,7 @@ function AgentsPanel() {
         <div>
           <h2 className="text-base font-medium text-zinc-100">本地 Agent</h2>
           <p className="mt-1 max-w-lg text-sm leading-6 text-zinc-500">
-            列出全部已注册的 Agent CLI。只有本机已经安装的会出现在新建会话里。工作台不代为安装；会话已接入的可以按官方方式更新。
+            列出全部已注册的 Agent CLI。只有本机已经安装的会出现在新建会话里。工作台不代为安装；已安装的可以按官方方式更新。
           </p>
         </div>
         <Button

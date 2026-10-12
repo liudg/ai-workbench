@@ -3,7 +3,7 @@ import type { AgentInstallation, UpdateVia } from "@/types";
 /** 设置卡片在状态行上的样子。未接入时前缀和「未接入」写在同一行。 */
 export type AgentCardFace =
   | { kind: "absent" }
-  | { kind: "unwired"; lead: string }
+  | { kind: "unwired"; lead: string; canUpdate: boolean }
   | { kind: "ready"; text: string; canUpdate: boolean; detail: string | null };
 
 function viaLabel(via: UpdateVia | null): string | null {
@@ -27,12 +27,16 @@ function readyText(item: AgentInstallation): string {
 }
 
 /**
- * 协议未接入时，状态行只有「未安装 · 未接入」或「版本 · 未接入」。
- * 已接入才保留版本、最新和更新按钮。不看 Agent 种类。
+ * 协议未接入时，状态行是「未安装 · 未接入」或「版本 · 未接入」。
+ * 已经装上、并且官方更新还可用时，未接入的卡片也保留「更新」。点完且已是最新后按钮收起。
  */
 export function agentCardFace(item: AgentInstallation): AgentCardFace {
   if (!item.session_linked) {
-    return { kind: "unwired", lead: item.installed ? (item.version ?? "已安装") : "未安装" };
+    return {
+      kind: "unwired",
+      lead: item.installed ? (item.version ?? "已安装") : "未安装",
+      canUpdate: item.installed && item.update_available,
+    };
   }
   if (!item.installed) return { kind: "absent" };
   return {

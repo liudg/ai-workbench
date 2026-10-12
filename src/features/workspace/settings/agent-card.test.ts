@@ -24,6 +24,7 @@ test("an unwired agent that is missing says 未安装 · 未接入", () => {
   assert.equal(face.kind, "unwired");
   if (face.kind !== "unwired") return;
   assert.equal(face.lead, "未安装");
+  assert.equal(face.canUpdate, false);
   assert.equal(statusLabel(face), "未安装 · 未接入");
 });
 
@@ -43,7 +44,25 @@ test("an installed unwired agent puts the version and 未接入 on one line", ()
   assert.equal(face.kind, "unwired");
   if (face.kind !== "unwired") return;
   assert.equal(face.lead, "2026.10.01");
+  assert.equal(face.canUpdate, true);
   assert.equal(statusLabel(face), "2026.10.01 · 未接入");
+
+  const current = agentCardFace(
+    item({
+      kind: "cursor-agent",
+      display_name: "Cursor Agent",
+      installed: true,
+      version: "2026.10.09",
+      latest_version: "2026.10.09",
+      update_available: false,
+      update_via: "cli",
+      session_linked: false,
+    }),
+  );
+  assert.equal(current.kind, "unwired");
+  if (current.kind !== "unwired") return;
+  assert.equal(current.canUpdate, false);
+  assert.equal(statusLabel(current), "2026.10.09 · 未接入");
 });
 
 test("an installed linked agent keeps version, latest, and the update action", () => {

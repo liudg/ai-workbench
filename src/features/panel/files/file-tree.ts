@@ -64,6 +64,11 @@ function compress<T extends FileTreeFile>(nodes: FileTreeNode<T>[]): FileTreeNod
   });
 }
 
+/** 目录行把压缩后的路径写成 Codex 那样的「Assets / Scripts」。 */
+export function treePathLabel(name: string): string {
+  return name.replaceAll("/", " / ");
+}
+
 export function directoryIds<T extends FileTreeFile>(nodes: readonly FileTreeNode<T>[]): string[] {
   const ids: string[] = [];
   const walk = (list: readonly FileTreeNode<T>[]) => {

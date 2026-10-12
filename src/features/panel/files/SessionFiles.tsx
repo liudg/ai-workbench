@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Files } from "lucide-react";
 
-import { backend } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
 import { usePanel } from "@/features/panel/core/PanelProvider";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
@@ -12,16 +11,13 @@ import { baseName } from "./path";
 export function SessionFiles({ width }: { width: number }) {
   const {
     sessionId,
-    projectId,
     sessionFiles,
     openDiff,
-    openHref,
     filesExpanded,
     toggleFiles,
     toggleFilesSidebar,
   } = usePanel();
   const [activePath, setActivePath] = useState("");
-  const [epoch, setEpoch] = useState(0);
   useEffect(() => {
     setFileFilter("");
     setActivePath("");
@@ -54,10 +50,9 @@ export function SessionFiles({ width }: { width: number }) {
     );
   }
 
-  const active = sessionFiles.find((file) => file.path === activePath) ?? sessionFiles[0];
   return (
     <ChangesSidebar
-      key={`${sessionId}:${epoch}`}
+      key={sessionId}
       files={sessionFiles}
       activePath={activePath}
       rowAttr="data-session-file"
@@ -66,17 +61,6 @@ export function SessionFiles({ width }: { width: number }) {
       onSelect={(file) => {
         setActivePath(file.path);
         openDiff(`session:${file.path}`, baseName(file.path), [file]);
-      }}
-      onJump={() => {
-        if (active) openHref(active.path);
-      }}
-      onRefresh={() => {
-        setFileFilter("");
-        setEpoch((value) => value + 1);
-      }}
-      onOpenExternal={() => {
-        if (!active) return;
-        return backend.openProjectFile(projectId, active.path);
       }}
       onHide={toggleFilesSidebar}
       empty={

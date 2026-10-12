@@ -23,6 +23,7 @@ export function useDiffDocument(turnFiles: FileChange[]) {
   const [loadFull, setLoadFull] = useState(true);
   const [renderPreview, setRenderPreview] = useState(false);
   const [wordDiff, setWordDiff] = useState(true);
+  const [wrap, setWrap] = useState(true);
   const [sources, setSources] = useState<Record<string, string>>({});
   const [reloadToken, setReloadToken] = useState(0);
 
@@ -152,6 +153,8 @@ export function useDiffDocument(turnFiles: FileChange[]) {
     setRenderPreview,
     wordDiff,
     setWordDiff,
+    wrap,
+    setWrap,
     sources,
     selectFile,
     hideActive,

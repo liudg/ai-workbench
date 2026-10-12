@@ -174,9 +174,20 @@ function previewInstallations(mode: PreviewAgents): AgentInstallation[] {
       return {
         ...absentRow(row),
         installed: true,
-        version: row.kind === "cursor-agent" ? "2026.10.01" : "1.0.82",
+        version: "2026.10.01",
         latest_version: null,
         update_available: true,
+        update_via: "cli",
+        detail: row.note,
+      };
+    }
+    if (mode === "current" && row.kind === "cursor-agent") {
+      return {
+        ...absentRow(row),
+        installed: true,
+        version: "2026.10.09",
+        latest_version: "2026.10.09",
+        update_available: false,
         update_via: "cli",
         detail: row.note,
       };
@@ -507,6 +518,13 @@ function seedRegisteredProject() {
             "-export {}",
             "+export {}",
             "+export const n = 1",
+            "diff --git a/Assets/Scripts/GameUI/Module/Gem.cs b/Assets/Scripts/GameUI/Module/Gem.cs",
+            "new file mode 100644",
+            "--- /dev/null",
+            "+++ b/Assets/Scripts/GameUI/Module/Gem.cs",
+            "@@ -0,0 +1,2 @@",
+            "+public class Gem {}",
+            "+// preview",
           ].join("\n"),
         ),
       );
@@ -758,7 +776,10 @@ export const mockBackend: Backend = {
       throw new Error("没有可安装的更新");
     }
     if (kind === "cursor-agent") {
-      throw new Error("更新没有完成。预览环境不能执行 agent update。");
+      // 浏览器预览不能执行本机 `agent update`。这里只演示：官方命令回报已是最新后，按钮收起。
+      item.update_available = false;
+      if (!item.latest_version) item.latest_version = item.version;
+      return { ...item };
     }
     if (item.latest_version) item.version = item.latest_version;
     item.update_available = false;
