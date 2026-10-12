@@ -1,6 +1,6 @@
 # AI 工作台（AI Workbench）
 
-一个**本地多项目 AI 编程工作台**：左侧管理多个本地项目，每个项目可并行开启多个 Agent 会话。Codex CLI 走本机 `codex app-server`；Claude Code 仍是桩，但和 Codex 一样挂在同一套适配器与会话目录接口上。右侧以时间线查看输出，并用同一套提问卡片处理审批、选择和问题。关闭窗口不会中断任何会话——应用驻留系统托盘，后台继续运行。
+一个**本地多项目 AI 编程工作台**：左侧管理多个本地项目，每个项目可并行开启多个 Agent 会话。Codex CLI 走本机 `codex app-server`；其余 Agent 只做本机检测和官方更新，会话协议未接入，不能新建会话。右侧以时间线查看输出，并用同一套提问卡片处理审批、选择和问题。关闭窗口不会中断任何会话——应用驻留系统托盘，后台继续运行。
 
 ## 技术栈
 
@@ -35,13 +35,16 @@ pnpm tauri:dev      # 开发模式（前端热更新 + Rust 增量编译）
 pnpm tauri:build    # 产出 NSIS 安装包，并复制到 release/（只保留当前版本）
 ```
 
-### 免 Rust 的浏览器预览
+### 网页预览（连真实后端）
 
-没有 Rust 环境也可以预览 UI（浏览器 mock 按 Agent 能力表模拟斜杠、技能和提问卡）：
+网页预览不带任何模拟数据。浏览器经 Vite 代理 `/__bridge` 连本机 dev bridge，命令和事件都由同一套 Rust 后端处理，Codex 会话是真实的 `codex app-server`：
 
 ```powershell
-pnpm dev            # 打开 http://localhost:4573
+cd src-tauri; cargo run --features dev-bridge --bin dev-bridge   # 监听 127.0.0.1:4574
+pnpm dev                                                       # 打开 http://localhost:4573
 ```
+
+没启动 dev bridge 时，界面会提示没有连上后端。内置浏览器、本机图片缩略图和系统文件对话框只在桌面版可用；网页预览里选目录改为手动输入路径。数据目录可用 `AI_WORKBENCH_DATA_DIR` 指定。
 
 ## 发布与自动更新
 
@@ -64,7 +67,7 @@ pnpm dev            # 打开 http://localhost:4573
 │ features/chat        时间线、事件、作曲栏                            │
 │ features/panel       差异、会话文件、内置浏览器、预览                 │
 │ store/               zustand；项目列表以重拉为唯一数据源              │
-│ lib/ipc.ts           Backend 接口：Tauri 实现 / 浏览器 mock           │
+│ lib/ipc.ts           Backend 接口；lib/transport.ts：Tauri / dev bridge │
 │ types.ts             与 Rust models.rs 对应的 IPC 协议类型            │
 └────────────────────────────────┬───────────────────────────────────┘
                                  │ invoke / listen
@@ -112,7 +115,7 @@ pnpm dev            # 打开 http://localhost:4573
 
 ## 多 Agent 边界
 
-会话管理器不持有 `CodexDirectory`。每种 Agent 注册一个 `SessionDirectory`：Codex 用 `thread/list`（与 `codex resume --all` 同一份交互、未归档列表），其余种类在协议接上之前返回空列表。侧边栏项目只来自工作台 `projects.json`。某个已注册项目下的会话，是这些目录里 cwd 对上该项目路径的并集，再加内存里已打开的会话，键是 `{agent}:{native_id}`。导入或移除项目只改工作台列表，不删除 Agent 的 rollout，也不改写 Agent 自己的项目列表。
+会话管理器不持有 `CodexDirectory`。每种 Agent 注册一个 `SessionDirectory`：Codex 用 `thread/list`（与 `codex resume --all` 同一份交互、未归档列表）。会话协议未接入的种类不注册目录。侧边栏项目只来自工作台 `projects.json`。某个已注册项目下的会话，是这些目录里 cwd 对上该项目路径的并集，再加内存里已打开的会话，键是 `{agent}:{native_id}`。导入或移除项目只改工作台列表，不删除 Agent 的 rollout，也不改写 Agent 自己的项目列表。
 
 `SessionContext` 只保留通用字段：工作目录、权限档位、要恢复的 native id，以及 `options`。Codex 从 `options.persist` 决定新线程是否写入官方 resume 列表；行协议留在 `agents/codex/`。
 
@@ -120,7 +123,7 @@ pnpm dev            # 打开 http://localhost:4573
 
 Codex 实现拆在 `agents/codex/`：`mod.rs` 只编排，`rpc` / `prompts` / `catalog` / `process` / `resume` 各管一块。
 
-设置页从侧栏左下角头像菜单进入，列出 `AgentKind::all` 里的每一种。新建会话只列出 `installed == true` 的 Agent。只装了一个就直接用它开会话；一个都没有时选择器是空状态。工作台不代为安装。
+设置页从侧栏左下角头像菜单进入，列出 `AgentKind::all` 里的每一种。新建会话只能选 `installed && session_linked` 的 Agent。只装了一个就直接用它开会话；一个都没有时选择器是空状态。工作台不代为安装。
 
 探测和更新都写在适配器的 `cli_release` 里。Codex 仍用自己的二进制查找，官方包是 npm 全局 `@openai/codex`，否则 `codex update`。Claude Code 若是 npm 全局安装则升级 `@anthropic-ai/claude-code`，否则执行 `claude update`。后加的种类在 `agents/external.rs`：
 
@@ -137,12 +140,12 @@ Codex 实现拆在 `agents/codex/`：`mod.rs` 只编排，`rpc` / `prompts` / `c
 
 Gemini CLI 与 Antigravity、Amazon Q 与 Kiro 各登记成一项，不做成两套会话。`q` 太容易和无关命令重名，版本输出里要出现 Kiro / Amazon Q，或者首行是 `q 1.2.3` 这种官方短版本，才算已安装。
 
-**除 Codex 以外，会话仍是桩**（`stub.rs` / `external.rs`）。安装探测和升级已经走真实 CLI；`start_session()` 还没有挂上真实进程。接入时实现 `AgentAdapter` + `SessionDirectory`，工作目录用 `ctx.project_path`。认证交给 CLI 自身，应用不保存密钥。
+**除 Codex 以外，会话协议未接入。** 这些适配器只做安装探测和官方升级，`start_session()` 走 trait 默认实现，直接返回「未接入」错误；新建会话菜单把它们列成「版本 · 未接入」且不可选（前端同时看 `installed` 和 `session_linked`）。接入时实现 `AgentSession`，在适配器里覆盖 `start_session` 和 `session_linked`，再注册 `SessionDirectory`；工作目录用 `ctx.project_path`。认证交给 CLI 自身，应用不保存密钥。
 
 ## 常用命令
 
 ```powershell
-pnpm dev             # 仅前端（浏览器 mock 预览）
+pnpm dev             # 网页预览（需先启动 dev bridge）
 pnpm build           # 前端类型检查 + 构建
 pnpm tauri:dev       # 桌面开发模式
 pnpm tauri:build     # 打包

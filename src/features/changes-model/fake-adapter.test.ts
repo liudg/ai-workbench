@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import { showsFileChanges, showsGitScopes, showsTurnScope } from "./capabilities.ts";
 import { sessionChanges, turnChanges } from "./diff-parse.ts";
-import { FAKE_CAPABILITIES, FAKE_FILE, FAKE_TURN_ID, fakeAdapterEvents } from "./fake-adapter.ts";
+import { FAKE_CAPABILITIES, FAKE_FILE, FAKE_TURN_ID, fakeAdapterEvents } from "./fake-adapter.fixture.ts";
 import { diffScopeMenu, filesForScope } from "../panel/diff/scope.ts";
 
 test("a non-native adapter's normalized events fill the change card, session files, and previous turn", () => {

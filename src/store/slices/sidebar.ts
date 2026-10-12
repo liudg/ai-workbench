@@ -37,7 +37,6 @@ function retitle(groups: Record<string, Session[]>, sessionId: string, title: st
 }
 
 export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): SidebarSlice {
-  const overrides = () => get().agentOverride;
   const showProject = async (id: string) => {
     const projects = await backend.listProjects();
     set({ projects, dialog: null });
@@ -52,7 +51,6 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
     activeSessionId: {},
     dialog: null,
     preferredAgent: null,
-    agentOverride: {},
 
     releaseMissingSession(sessionId) {
       set((s) => ({
@@ -68,7 +66,7 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
 
     async selectProject(id) {
       set({ selectedProjectId: id });
-      const [pid, list] = await loadSessions(id, overrides);
+      const [pid, list] = await loadSessions(id);
       set((s) => ({ sessions: { ...s.sessions, [pid]: list } }));
       const activeId = get().activeSessionId[id];
       if (activeId && !get().events[activeId]) {
@@ -145,7 +143,7 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
             else set({ lastError: String(error) });
           }
         }
-        const [, list] = await loadSessions(projectId, overrides);
+        const [, list] = await loadSessions(projectId);
         set((s) => ({
           selectedProjectId: projectId,
           preferredAgent: agent,
@@ -168,30 +166,13 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
       }
     },
 
-    setSessionAgent(sessionId, agent) {
-      set((s) => {
-        const sessions: SidebarSlice["sessions"] = {};
-        for (const [projectId, list] of Object.entries(s.sessions)) {
-          sessions[projectId] = list.map((session) =>
-            session.id === sessionId ? { ...session, agent } : session,
-          );
-        }
-        return {
-          preferredAgent: agent,
-          agentOverride: { ...s.agentOverride, [sessionId]: agent },
-          sessions,
-        };
-      });
-      void backend.setSessionAgent(sessionId, agent);
-    },
-
     async selectSession(projectId, sessionId) {
       set((s) => ({
         selectedProjectId: projectId,
         activeSessionId: { ...s.activeSessionId, [projectId]: sessionId },
       }));
       if (!get().sessions[projectId]) {
-        const [pid, list] = await loadSessions(projectId, overrides);
+        const [pid, list] = await loadSessions(projectId);
         set((s) => ({ sessions: { ...s.sessions, [pid]: list } }));
       }
       try {

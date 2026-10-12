@@ -89,6 +89,10 @@ impl AgentAdapter for CodexCliAdapter {
         AgentCapabilities::codex()
     }
 
+    fn session_linked(&self) -> bool {
+        true
+    }
+
     fn cli_release(&self) -> Option<CliRelease> {
         Some(CliRelease {
             bins: &["codex"],

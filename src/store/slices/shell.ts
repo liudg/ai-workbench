@@ -6,7 +6,6 @@ import type { ShellSlice, WorkbenchGet, WorkbenchSet } from "../types";
 let initStarted = false;
 
 export function createShellSlice(set: WorkbenchSet, get: WorkbenchGet): ShellSlice {
-  const overrides = () => get().agentOverride;
   return {
     ready: false,
     lastError: null,
@@ -38,12 +37,12 @@ export function createShellSlice(set: WorkbenchSet, get: WorkbenchGet): ShellSli
         });
       });
       backend.onSessionsChanged((projectId) => {
-        loadSessions(projectId, overrides).then(([pid, list]) =>
+        loadSessions(projectId).then(([pid, list]) =>
           set((s) => ({ sessions: { ...s.sessions, [pid]: list } })),
         );
       });
       backend.onProjectsChanged(() => {
-        void loadWorkspaceLists(overrides).then(({ projects, pairs }) =>
+        void loadWorkspaceLists().then(({ projects, pairs }) =>
           set((s) => {
             const sessions = { ...s.sessions };
             for (const [pid, list] of pairs) sessions[pid] = list;
@@ -85,7 +84,7 @@ export function createShellSlice(set: WorkbenchSet, get: WorkbenchGet): ShellSli
     },
 
     async refreshAll() {
-      const { projects, pairs } = await loadWorkspaceLists(overrides);
+      const { projects, pairs } = await loadWorkspaceLists();
       set((s) => {
         const sessions = { ...s.sessions };
         const ids = new Set(projects.map((project) => project.id));

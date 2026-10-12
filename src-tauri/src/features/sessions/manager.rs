@@ -8,7 +8,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use tauri::{AppHandle, Emitter};
 use tokio::sync::mpsc;
 
 use crate::features::agents::{
@@ -41,19 +40,22 @@ pub const EVT_SESSION_EVENT: &str = "session-event";
 pub const EVT_SESSIONS_CHANGED: &str = "sessions-changed";
 pub const EVT_SESSION_QUEUE: &str = "session-queue";
 
+/// 把事件推给前端。桌面版是 Tauri `emit`，网页预览的 dev bridge 是 SSE。
+pub type EventEmitter = Arc<dyn Fn(&str, serde_json::Value) + Send + Sync>;
+
 pub struct SessionManager {
     entries: Arc<Mutex<HashMap<SessionId, SessionEntry>>>,
-    app: AppHandle,
+    emit: EventEmitter,
     directories: Vec<Arc<dyn SessionDirectory>>,
     opening: tokio::sync::Mutex<()>,
     catalog_cache: CatalogCache,
 }
 
 impl SessionManager {
-    pub fn new(app: AppHandle, data_dir: &std::path::Path) -> Self {
+    pub fn new(emit: EventEmitter, data_dir: &std::path::Path) -> Self {
         Self {
             entries: Arc::new(Mutex::new(HashMap::new())),
-            app,
+            emit,
             directories: session_directories(),
             opening: tokio::sync::Mutex::new(()),
             catalog_cache: CatalogCache::load(data_dir),
@@ -107,7 +109,6 @@ impl SessionManager {
                 session.updated_at = sidebar_updated_at(session.updated_at, entry.activity_at);
             }
         }
-        sessions.retain(|session| !session.archived);
         let mut extras: Vec<Session> = live
             .values()
             .filter(|entry| {
@@ -305,14 +306,14 @@ impl SessionManager {
         // start_session 返回前已经把历史、连接说明和状态放进通道。
         // 这些是打开/附着，不能改侧边栏排序时间。
         while let Ok(body) = rx.try_recv() {
-            apply_body(&self.entries, &self.app, &session_id, body, false);
+            apply_body(&self.entries, &self.emit, &session_id, body, false);
         }
         let entries = Arc::clone(&self.entries);
-        let app = self.app.clone();
+        let emit = Arc::clone(&self.emit);
         let sid = session_id;
         tauri::async_runtime::spawn(async move {
             while let Some(body) = rx.recv().await {
-                apply_body(&entries, &app, &sid, body, true);
+                apply_body(&entries, &emit, &sid, body, true);
             }
         });
     }
@@ -322,7 +323,7 @@ impl SessionManager {
         if !self.entries.lock().unwrap().contains_key(session_id) {
             return Err("会话不存在".to_string());
         }
-        apply_body(&self.entries, &self.app, session_id, body, true);
+        apply_body(&self.entries, &self.emit, session_id, body, true);
         Ok(())
     }
 
@@ -703,26 +704,6 @@ impl SessionManager {
             .map_err(|err| err.to_string())
     }
 
-    pub fn set_session_agent(&self, session_id: &str, agent: AgentKind) -> Result<(), String> {
-        let (handle, project_id) = {
-            let mut entries = self.entries.lock().unwrap();
-            let entry = entries
-                .get_mut(session_id)
-                .ok_or_else(|| "会话不存在".to_string())?;
-            entry.meta.agent = agent;
-            entry.meta.updated_at = now_millis();
-            (entry.agent.clone(), entry.meta.project_id.clone())
-        };
-        if let Some(handle) = handle {
-            handle.retarget(agent);
-        }
-        let _ = self.app.emit(
-            EVT_SESSIONS_CHANGED,
-            serde_json::json!({ "project_id": project_id }),
-        );
-        Ok(())
-    }
-
     pub async fn stop_session(&self, session_id: &str) -> Result<(), String> {
         let handle = self.agent_handle_ready(session_id).await?;
         handle.stop().await.map_err(|err| err.to_string())
@@ -745,7 +726,7 @@ impl SessionManager {
             }
             self.entries.lock().unwrap().remove(&id);
         }
-        let _ = self.app.emit(
+        (self.emit)(
             EVT_SESSIONS_CHANGED,
             serde_json::json!({ "project_id": project_id }),
         );
@@ -788,7 +769,7 @@ impl SessionManager {
     }
 
     fn emit_changed(&self, project_id: &str) {
-        let _ = self.app.emit(
+        (self.emit)(
             EVT_SESSIONS_CHANGED,
             serde_json::json!({ "project_id": project_id }),
         );
@@ -925,7 +906,7 @@ fn parse_session_key(session_id: &str) -> Option<(AgentKind, String)> {
 
 fn apply_body(
     entries: &Mutex<HashMap<SessionId, SessionEntry>>,
-    app: &AppHandle,
+    emit: &EventEmitter,
     session_id: &str,
     body: SessionEventBody,
     record_activity: bool,
@@ -937,7 +918,7 @@ fn apply_body(
                 entry.queue = items.clone();
             }
         }
-        let _ = app.emit(
+        emit(
             EVT_SESSION_QUEUE,
             serde_json::json!({ "session_id": session_id, "items": items }),
         );
@@ -951,7 +932,7 @@ fn apply_body(
         replace_stream(entry, &body, record_activity)
     };
     if let Some(event) = replaced {
-        let _ = app.emit(EVT_SESSION_EVENT, &event);
+        emit(EVT_SESSION_EVENT, event_value(&event));
         return;
     }
 
@@ -963,9 +944,9 @@ fn apply_body(
         let outcome = mutate_entry(entry, session_id, body, record_activity);
         (outcome.event, outcome.project_id, outcome.notify)
     };
-    let _ = app.emit(EVT_SESSION_EVENT, &event);
+    emit(EVT_SESSION_EVENT, event_value(&event));
     if notify {
-        let _ = app.emit(
+        emit(
             EVT_SESSIONS_CHANGED,
             serde_json::json!({ "project_id": project_id }),
         );
@@ -1544,4 +1525,8 @@ mod tests {
         ));
         assert_eq!(session.activity_at, None);
     }
+}
+
+fn event_value(event: &SessionEvent) -> serde_json::Value {
+    serde_json::to_value(event).unwrap_or(serde_json::Value::Null)
 }

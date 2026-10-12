@@ -122,15 +122,6 @@ pub async fn session_permission_menu(
 }
 
 #[tauri::command]
-pub fn set_session_agent(
-    manager: State<'_, SessionManager>,
-    session_id: String,
-    agent: AgentKind,
-) -> Result<(), String> {
-    manager.set_session_agent(&session_id, agent)
-}
-
-#[tauri::command]
 pub async fn set_collaboration_mode(
     store: State<'_, ProjectStore>,
     manager: State<'_, SessionManager>,

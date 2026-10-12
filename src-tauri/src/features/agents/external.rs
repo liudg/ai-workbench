@@ -1,17 +1,13 @@
-//! 协议还没接上的 Agent。只做本机探测和官方更新，会话仍是桩。
+//! 会话协议还没接上的 Agent。只做本机探测和官方更新，不能新建会话。
 //!
 //! 设置页用 `session_linked = false` 表示未接入，不再附一长段说明。
 //! 更新参数都是已安装 CLI 自己的子命令，不跑安装脚本。
 
-use std::sync::Arc;
-
 use async_trait::async_trait;
 
-use crate::features::agents::directory::{DirectoryEntry, SessionDirectory};
 use crate::features::agents::install::{AliasCheck, AliasRule, CliRelease};
-use crate::features::agents::stub::{StubAgentSession, StubPersona};
-use crate::features::agents::{AgentAdapter, AgentError, AgentSession, EventSink, SessionContext};
-use crate::models::{AgentCapabilities, AgentInstallation, AgentKind, ChangeCapabilities};
+use crate::features::agents::{AgentAdapter, AgentError};
+use crate::models::{AgentCapabilities, AgentKind};
 
 const GEMINI_NOTE: &str = "\
 Gemini CLI（gemini）已于 2026-06-18 停更，官方后继是 Antigravity CLI。\
@@ -122,34 +118,6 @@ fn release(
     }
 }
 
-fn unlink(mut item: AgentInstallation) -> AgentInstallation {
-    item.session_linked = false;
-    item
-}
-
-pub struct EmptyDirectory {
-    kind: AgentKind,
-}
-
-impl EmptyDirectory {
-    pub fn new(kind: AgentKind) -> Self {
-        Self { kind }
-    }
-}
-
-#[async_trait]
-impl SessionDirectory for EmptyDirectory {
-    fn kind(&self) -> AgentKind {
-        self.kind
-    }
-
-    async fn list(&self) -> Result<Vec<DirectoryEntry>, String> {
-        Ok(Vec::new())
-    }
-
-    async fn invalidate(&self) {}
-}
-
 #[async_trait]
 impl AgentAdapter for ExternalCliAdapter {
     fn kind(&self) -> AgentKind {
@@ -157,44 +125,11 @@ impl AgentAdapter for ExternalCliAdapter {
     }
 
     fn capabilities(&self) -> AgentCapabilities {
-        AgentCapabilities {
-            supports_slash: false,
-            supports_resume: false,
-            supports_questions: true,
-            supports_tuning: false,
-            supports_skills: false,
-            supports_goals: false,
-            supports_images: false,
-            supports_queue: false,
-            supports_fork: false,
-            supports_delete: false,
-            supports_rename: false,
-            supports_plan: false,
-            changes: ChangeCapabilities::git_only(),
-            supports_review: false,
-            supports_network_access: false,
-            supports_writable_roots: false,
-            supports_permission_profiles: false,
-            supports_approve_for_me: false,
-            supports_paged_history: false,
-        }
+        AgentCapabilities::none()
     }
 
     fn cli_release(&self) -> Option<CliRelease> {
         Some(release_for(self.kind))
-    }
-
-    async fn upgrade(&self) -> Result<AgentInstallation, AgentError> {
-        let Some(release) = self.cli_release() else {
-            return Err(AgentError::Runtime(format!(
-                "{} 没有官方更新入口",
-                self.display_name()
-            )));
-        };
-        super::install::upgrade_release(self.kind, self.display_name(), &release)
-            .await
-            .map(unlink)
-            .map_err(AgentError::Runtime)
     }
 
     async fn detect(&self) -> Result<(), AgentError> {
@@ -207,30 +142,6 @@ impl AgentAdapter for ExternalCliAdapter {
                 self.display_name()
             )))
         }
-    }
-
-    async fn installation(&self) -> AgentInstallation {
-        let release = release_for(self.kind);
-        let found = super::install::inspect_release(self.kind, self.display_name(), &release).await;
-        unlink(found)
-    }
-
-    async fn start_session(
-        &self,
-        _ctx: SessionContext,
-        events: EventSink,
-    ) -> Result<Arc<dyn AgentSession>, AgentError> {
-        let session = StubAgentSession::new(
-            StubPersona {
-                cli_label: self.kind.display_name(),
-            },
-            events.clone(),
-            self.capabilities(),
-        );
-        let _ = events.send(crate::models::SessionEventBody::StatusChanged {
-            status: crate::models::SessionStatus::Completed,
-        });
-        Ok(Arc::new(session))
     }
 }
 
@@ -266,11 +177,25 @@ mod tests {
         }
     }
 
-    #[test]
-    fn external_cards_are_not_session_linked() {
-        let item = unlink(AgentInstallation::absent(AgentKind::KimiCode, "Kimi Code"));
-        assert!(!item.session_linked);
-        assert!(item.detail.as_deref().unwrap_or("").is_empty());
+    #[tokio::test]
+    async fn external_agents_cannot_open_sessions() {
+        let adapter = ExternalCliAdapter::new(AgentKind::KimiCode);
+        assert!(!adapter.session_linked());
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let err = adapter
+            .start_session(
+                crate::features::agents::SessionContext {
+                    project_path: std::env::temp_dir().to_string_lossy().to_string(),
+                    access_mode: None,
+                    resume_native_id: None,
+                    options: serde_json::Value::Null,
+                },
+                tx,
+            )
+            .await
+            .err()
+            .expect("no session for an unlinked agent");
+        assert!(err.to_string().contains("未接入"), "{err}");
         for kind in AgentKind::all() {
             if matches!(kind, AgentKind::CodexCli | AgentKind::ClaudeCode) {
                 continue;

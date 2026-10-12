@@ -1,6 +1,8 @@
 //! Agent 适配层：对外只暴露契约和注册表。
 //!
 //! 具体 CLI（Codex、Claude、其它外部 CLI）是本模块的私有实现。
+//! 只有实现了 `AgentSession` 并覆盖 `start_session` 的适配器才能开会话；
+//! 其余只做本机探测和官方更新，设置页显示「未接入」。
 //! 提问卡、审批、模型目录等共享能力走 `AgentSession` / `AgentAdapter`，
 //! 会话管理和命令层不要解析某一种 CLI 的协议。
 
@@ -9,11 +11,9 @@ mod claude_code;
 mod codex;
 mod directory;
 mod external;
-mod fake;
 mod install;
 mod providers;
 mod settled;
-mod stub;
 
 pub use providers::{
     submit_annotation_as_attachment, AnnotationSink, DiffScope, DiffScopeProvider,
@@ -45,6 +45,8 @@ pub enum AgentError {
     UnknownPrompt(String),
     #[error("会话已关闭")]
     Closed,
+    #[error("{0} 的会话协议未接入工作台，不能新建会话")]
+    NotLinked(&'static str),
     /// 留给真实 CLI 适配器（进程 / PTY / 解析失败）使用
     #[allow(dead_code)]
     #[error("agent 运行时错误: {0}")]
@@ -217,15 +219,12 @@ pub trait AgentSession: DiffScopeProvider + AnnotationSink + Send + Sync {
     /// 终止会话（杀掉进程 / 关闭 PTY）。调用后本句柄不可再使用。
     async fn stop(&self) -> Result<(), AgentError>;
 
-    /// 切换本会话后续输出使用的 Agent。桩实现只改文案；真实 CLI 接入后在此重绑进程。
-    fn retarget(&self, _kind: AgentKind) {}
-
-    /// 更新后续回合的权限档位。Codex 映射到 sandbox / approval；桩实现忽略。
+    /// 更新后续回合的权限档位。Codex 映射到 sandbox / approval。
     fn set_access_mode(&self, _mode: &str) -> Result<(), AgentError> {
         Ok(())
     }
 
-    /// 权限档位加上网络、额外可写目录和具名配置档。桩实现只保留档位。
+    /// 权限档位加上网络、额外可写目录和具名配置档。
     fn set_sandbox(
         &self,
         mode: &str,
@@ -241,7 +240,7 @@ pub trait AgentSession: DiffScopeProvider + AnnotationSink + Send + Sync {
         Ok(PermissionMenu::unsupported())
     }
 
-    /// 当前 Agent 报告的模型和技能。桩实现返回空列表。
+    /// 当前 Agent 报告的模型和技能。
     async fn catalog(&self) -> Result<AgentCatalog, AgentError> {
         Ok(AgentCatalog::empty())
     }
@@ -318,14 +317,15 @@ pub trait AgentAdapter: Send + Sync {
         None
     }
 
-    /// 检测本机环境是否可用（CLI 是否安装）。
-    /// 没有声明 `cli_release` 的适配器保持可用，避免挡住仍是桩的会话。
-    async fn detect(&self) -> Result<(), AgentError> {
-        Ok(())
+    /// 检测本机 CLI 是否安装。
+    async fn detect(&self) -> Result<(), AgentError>;
+
+    /// 会话协议是否已接入。只有接入的适配器覆盖 `start_session`。
+    fn session_linked(&self) -> bool {
+        false
     }
 
     /// 探测安装版本，并对照官方来源看有没有更新。
-    /// 走这个默认实现的适配器会话已接入，设置页展示版本和更新。
     async fn installation(&self) -> AgentInstallation {
         let mut item = match self.cli_release() {
             Some(release) => {
@@ -333,7 +333,7 @@ pub trait AgentAdapter: Send + Sync {
             }
             None => AgentInstallation::absent(self.kind(), self.display_name()),
         };
-        item.session_linked = true;
+        item.session_linked = self.session_linked();
         item
     }
 
@@ -348,18 +348,20 @@ pub trait AgentAdapter: Send + Sync {
         install::upgrade_release(self.kind(), self.display_name(), &release)
             .await
             .map(|mut item| {
-                item.session_linked = true;
+                item.session_linked = self.session_linked();
                 item
             })
             .map_err(AgentError::Runtime)
     }
 
-    /// 在指定项目目录中启动一个新会话。
+    /// 在指定项目目录中启动一个新会话。未接入的适配器直接拒绝。
     async fn start_session(
         &self,
-        ctx: SessionContext,
-        events: EventSink,
-    ) -> Result<Arc<dyn AgentSession>, AgentError>;
+        _ctx: SessionContext,
+        _events: EventSink,
+    ) -> Result<Arc<dyn AgentSession>, AgentError> {
+        Err(AgentError::NotLinked(self.kind().display_name()))
+    }
 
     /// `thread/fork`。历史由 Codex 复制；`excludeTurns` 只影响回包体积。
     async fn fork_thread(&self, _native_id: &str) -> Result<DirectoryEntry, AgentError> {
@@ -424,19 +426,9 @@ pub async fn upgrade(kind: AgentKind) -> Result<AgentInstallation, AgentError> {
     adapter_for(kind).upgrade().await
 }
 
-/// 已注册的会话目录。SessionManager 只保存 trait 对象。
+/// 已注册的会话目录。只有会话协议已接入的 Agent 才有目录。
 pub fn session_directories() -> Vec<Arc<dyn SessionDirectory>> {
-    let mut dirs: Vec<Arc<dyn SessionDirectory>> = vec![
-        codex::CodexDirectory::shared(),
-        Arc::new(claude_code::ClaudeDirectory::new()),
-    ];
-    for kind in AgentKind::all() {
-        if matches!(kind, AgentKind::CodexCli | AgentKind::ClaudeCode) {
-            continue;
-        }
-        dirs.push(Arc::new(external::EmptyDirectory::new(kind)));
-    }
-    dirs
+    vec![codex::CodexDirectory::shared()]
 }
 
 #[cfg(test)]
@@ -488,6 +480,19 @@ mod tests {
         let text = fold_page_annotations("", &mut images, &[region]);
         assert_eq!(text, "页面批注 1\n区域：1,2 3×4");
         assert!(images.is_empty());
+    }
+
+    #[test]
+    fn only_codex_is_session_linked() {
+        for kind in AgentKind::all() {
+            assert_eq!(
+                adapter_for(kind).session_linked(),
+                kind == AgentKind::CodexCli,
+                "{}",
+                kind.as_str()
+            );
+        }
+        assert_eq!(session_directories().len(), 1);
     }
 
     #[tokio::test]

@@ -1,9 +1,5 @@
-// 后端接口抽象：Tauri 环境走 invoke/listen，浏览器预览走内存 mock。
-// UI 层只依赖本文件导出的 `backend`，不关心运行环境。
-
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-import { open } from "@tauri-apps/plugin-dialog";
+// 后端接口。UI 层只依赖本文件导出的 `backend`；命令走 `transport`
+// （桌面版是 Tauri IPC，网页预览是连着同一套 Rust 后端的 dev bridge）。
 
 import type {
   AgentInstallation,
@@ -25,7 +21,12 @@ import type {
   Session,
   SessionEvent,
 } from "@/types";
-import { mockBackend } from "./mock";
+import { isTauri, transport } from "./transport";
+
+export { isTauri };
+
+const invoke = <T = void>(cmd: string, args?: Record<string, unknown>) =>
+  transport.call<T>(cmd, args);
 
 export interface CreateProjectInput {
   name: string;
@@ -91,7 +92,6 @@ export interface Backend {
     accessMode?: AccessMode,
   ): Promise<Session>;
   /** 切换会话后续使用的 Agent。 */
-  setSessionAgent(sessionId: string, agent: AgentKind): Promise<void>;
   /** 更新权限档位、网络、额外可写目录和配置档。各适配器自行映射。 */
   setSandbox(sessionId: string, sandbox: SessionSandbox): Promise<void>;
   /** 当前 app-server 是否提供网络档、配置档和替我批准。 */
@@ -178,30 +178,18 @@ export interface Backend {
   onProjectsChanged(cb: () => void): () => void;
 }
 
-export const isTauri =
-  typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-
-function subscribe<T>(
-  channel: string,
-  cb: (payload: T) => void,
-): () => void {
-  let unlisten: (() => void) | undefined;
-  let stopped = false;
-  listen<T>(channel, (e) => cb(e.payload)).then((u) => {
-    if (stopped) {
-      u();
-      return;
-    }
-    unlisten = u;
-  });
-  return () => {
-    stopped = true;
-    unlisten?.();
-    unlisten = undefined;
-  };
+function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
+  return transport.listen<T>(channel, cb);
 }
 
-const tauriBackend: Backend = {
+function attachments(paths: string[]): Attachment[] {
+  return paths.map((path) => ({
+    name: path.split(/[\\/]/).filter(Boolean).pop() ?? path,
+    path,
+  }));
+}
+
+export const backend: Backend = {
   listProjects: () => invoke<Project[]>("list_projects"),
   createProject: (input) =>
     invoke<CreateProjectResult>("create_project", {
@@ -229,8 +217,6 @@ const tauriBackend: Backend = {
       agent: agent ?? null,
       accessMode: accessMode ?? null,
     }),
-  setSessionAgent: (sessionId, agent) =>
-    invoke("set_session_agent", { sessionId, agent }),
   setSandbox: (sessionId, sandbox) =>
     invoke("set_session_access", {
       sessionId,
@@ -309,41 +295,25 @@ const tauriBackend: Backend = {
   onBrowserNotice: (cb) => subscribe<BrowserNotice>("preview-browser", cb),
 
   pickDirectory: async (title) => {
-    const selected = await open({ directory: true, multiple: false, title });
-    return typeof selected === "string" ? selected : null;
+    const [selected] = await transport.pick({ directory: true, multiple: false, title });
+    return selected ?? null;
   },
-  pickImageFiles: async () => {
-    const selected = await open({
-      directory: false,
-      multiple: true,
-      title: "添加照片和文件",
-      filters: [
-        {
-          name: "图片",
-          extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "avif"],
-        },
-      ],
-    });
-    if (!selected) return [];
-    const paths = Array.isArray(selected) ? selected : [selected];
-    return paths.map((path) => ({
-      name: path.split(/[\\/]/).filter(Boolean).pop() ?? path,
-      path,
-    }));
-  },
-  pickFiles: async () => {
-    const selected = await open({
-      directory: false,
-      multiple: true,
-      title: "添加附件",
-    });
-    if (!selected) return [];
-    const paths = Array.isArray(selected) ? selected : [selected];
-    return paths.map((path) => ({
-      name: path.split(/[\\/]/).filter(Boolean).pop() ?? path,
-      path,
-    }));
-  },
+  pickImageFiles: async () =>
+    attachments(
+      await transport.pick({
+        directory: false,
+        multiple: true,
+        title: "添加照片和文件",
+        filters: [
+          {
+            name: "图片",
+            extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "avif"],
+          },
+        ],
+      }),
+    ),
+  pickFiles: async () =>
+    attachments(await transport.pick({ directory: false, multiple: true, title: "添加附件" })),
 
   onSessionEvent: (cb) => subscribe<SessionEvent>("session-event", cb),
   onSessionQueue: (cb) =>
@@ -358,4 +328,3 @@ const tauriBackend: Backend = {
   onProjectsChanged: (cb) => subscribe("projects-changed", () => cb()),
 };
 
-export const backend: Backend = isTauri ? tauriBackend : mockBackend;

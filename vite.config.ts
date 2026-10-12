@@ -16,6 +16,10 @@ export default defineConfig({
     port: 4573,
     strictPort: true,
     host: "127.0.0.1",
+    // 网页预览经 dev bridge 连真实后端：cargo run --features dev-bridge --bin dev-bridge
+    proxy: {
+      "/__bridge": { target: "http://127.0.0.1:4574", changeOrigin: false },
+    },
   },
   build: {
     // Tauri 在 Windows 上使用 Chromium，在 macOS/Linux 上使用 WebKit

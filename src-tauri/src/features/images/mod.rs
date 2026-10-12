@@ -4,7 +4,7 @@ use std::fs::File;
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, Runtime};
 
 use crate::models::strip_verbatim_prefix;
 
@@ -13,7 +13,7 @@ const MAX_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
 /// 确认路径是一张本机图片，并把它加入 asset 协议白名单。
 /// 返回值可直接交给前端 `convertFileSrc`。
 #[tauri::command]
-pub fn prepare_chat_image(app: AppHandle, path: String) -> Result<String, String> {
+pub fn prepare_chat_image<R: Runtime>(app: AppHandle<R>, path: String) -> Result<String, String> {
     let canonical = validate_chat_image(&path)?;
     app.asset_protocol_scope()
         .allow_file(&canonical)
@@ -23,8 +23,8 @@ pub fn prepare_chat_image(app: AppHandle, path: String) -> Result<String, String
 
 /// 粘贴或拖入的图片先落到应用目录，避免剪贴板临时路径失效。
 #[tauri::command]
-pub fn stage_chat_image(
-    app: AppHandle,
+pub fn stage_chat_image<R: Runtime>(
+    app: AppHandle<R>,
     data_base64: String,
     name: String,
 ) -> Result<StagedImage, String> {

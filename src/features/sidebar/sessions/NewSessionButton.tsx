@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { Plus, SquarePen } from "lucide-react";
 
-import { installedAgents } from "@/lib/agents";
+import { sessionAgents, unlinkedAgents } from "@/lib/agents";
 import { cn } from "@/lib/utils";
 import { useWorkbench } from "@/store";
 import type { AgentKind } from "@/types";
@@ -22,7 +22,8 @@ export function NewSessionButton({
   const createSession = useWorkbench((s) => s.createSession);
   const openSettings = useWorkbench((s) => s.openSettings);
   const installations = useWorkbench((s) => s.installations);
-  const installed = installedAgents(installations);
+  const installed = sessionAgents(installations);
+  const unlinked = unlinkedAgents(installations);
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -36,7 +37,7 @@ export function NewSessionButton({
 
   const onPress = (event: ReactMouseEvent) => {
     event.stopPropagation();
-    if (installed.length === 1) {
+    if (installed.length === 1 && unlinked.length === 0) {
       choose(installed[0].kind);
       return;
     }
@@ -77,7 +78,7 @@ export function NewSessionButton({
         >
           {installations === null ? (
             <div className="px-3 py-3 text-sm text-zinc-500">正在检测本地 Agent…</div>
-          ) : installed.length === 0 ? (
+          ) : installed.length === 0 && unlinked.length === 0 ? (
             <div className="px-3 py-3">
               <p className="text-sm leading-5 text-zinc-300">未检测到已安装的 Agent CLI。</p>
               <button
@@ -109,6 +110,19 @@ export function NewSessionButton({
                 >
                   {agent.display_name}
                 </button>
+              ))}
+              {unlinked.map((agent) => (
+                <div
+                  key={agent.kind}
+                  role="menuitem"
+                  aria-disabled="true"
+                  data-agent={agent.kind}
+                  className="flex w-full cursor-not-allowed items-baseline justify-between gap-2 px-3 py-2 text-sm text-zinc-500"
+                  title="会话协议未接入，不能新建会话"
+                >
+                  <span>{agent.display_name}</span>
+                  <span className="text-[11px]">{agent.version ?? "已安装"} · 未接入</span>
+                </div>
               ))}
             </>
           )}

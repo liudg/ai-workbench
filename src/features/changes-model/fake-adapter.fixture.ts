@@ -1,6 +1,7 @@
+// 测试夹具：只给 fake-adapter.test.ts 用，产品代码不得引用。
 import type { ChangeCapabilities, FileChange, SessionEvent, SessionEventBody } from "../../types.ts";
 
-/** 测试和非 Codex 预览用的归一化变更。不进入正式适配器列表。 */
+/** 非 Codex 适配器的归一化变更样例。 */
 export const FAKE_CAPABILITIES: ChangeCapabilities = {
   turn_diff: true,
   per_file_patch: true,

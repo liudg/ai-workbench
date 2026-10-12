@@ -45,7 +45,6 @@ export interface SidebarSlice {
   activeSessionId: Record<string, string>;
   dialog: DialogMode | null;
   preferredAgent: AgentKind | null;
-  agentOverride: Record<string, AgentKind>;
   openDialog(mode: DialogMode): void;
   closeDialog(): void;
   selectProject(id: string): Promise<void>;
@@ -53,7 +52,6 @@ export interface SidebarSlice {
   importProject(input: ImportProjectInput): Promise<void>;
   removeProject(id: string): Promise<void>;
   createSession(projectId: string, agent: AgentKind): Promise<void>;
-  setSessionAgent(sessionId: string, agent: AgentKind): void;
   selectSession(projectId: string, sessionId: string): Promise<void>;
   releaseMissingSession(sessionId: string): void;
   renameSession(sessionId: string, name: string): Promise<boolean>;

@@ -8,16 +8,87 @@
 //! - `features::images`        时间线本机图片
 //! - `features::ipc`           前端 invoke 入口
 //! - `tray`                    系统托盘与常驻后台
+//! - `dev_bridge`              网页预览用的本机 HTTP 入口（`dev-bridge` feature）
 
 mod encoding;
 mod features;
 mod models;
 mod tray;
 
-use tauri::Manager;
+#[cfg(feature = "dev-bridge")]
+pub mod dev_bridge;
+
+use std::sync::Arc;
+
+use tauri::{AppHandle, Emitter, Manager, Runtime};
 
 use features::projects::ProjectStore;
-use features::sessions::SessionManager;
+use features::sessions::{EventEmitter, SessionManager};
+
+/// 与窗口无关的命令。桌面版和网页预览的 dev bridge 共用这一份。
+macro_rules! workbench_handler {
+    ($($extra:path),* $(,)?) => {
+        tauri::generate_handler![
+            $crate::features::ipc::projects::list_projects,
+            $crate::features::ipc::projects::create_project,
+            $crate::features::ipc::projects::import_project,
+            $crate::features::ipc::projects::remove_project,
+            $crate::features::ipc::sessions::list_sessions,
+            $crate::features::ipc::sessions::fork_session,
+            $crate::features::ipc::sessions::rename_session,
+            $crate::features::ipc::sessions::delete_session,
+            $crate::features::ipc::sessions::create_session,
+            $crate::features::ipc::sessions::set_session_access,
+            $crate::features::ipc::sessions::session_permission_menu,
+            $crate::features::ipc::agents::list_agent_installations,
+            $crate::features::ipc::agents::update_agent,
+            $crate::features::ipc::agents::agent_profiles,
+            $crate::features::ipc::sessions::cached_agent_catalogs,
+            $crate::features::ipc::sessions::agent_catalog,
+            $crate::features::ipc::sessions::set_session_tuning,
+            $crate::features::ipc::sessions::set_collaboration_mode,
+            $crate::features::ipc::sessions::review_targets,
+            $crate::features::ipc::sessions::start_review,
+            $crate::features::ipc::sessions::send_message,
+            $crate::features::ipc::sessions::submit_annotation,
+            $crate::features::ipc::sessions::diff_scopes,
+            $crate::features::ipc::sessions::diff_for_scope,
+            $crate::features::ipc::sessions::update_queued_turn,
+            $crate::features::ipc::sessions::remove_queued_turn,
+            $crate::features::ipc::sessions::session_queue,
+            $crate::features::ipc::sessions::interrupt_turn,
+            $crate::features::ipc::sessions::answer_prompt,
+            $crate::features::ipc::sessions::stop_session,
+            $crate::features::ipc::sessions::get_session_events,
+            $crate::features::ipc::sessions::load_older_history,
+            $crate::features::images::prepare_chat_image,
+            $crate::features::images::stage_chat_image,
+            $crate::features::preview::read_preview_file,
+            $crate::features::preview::list_project_tree,
+            $crate::features::preview::open_project_file,
+            $($extra),*
+        ]
+    };
+}
+#[cfg(feature = "dev-bridge")]
+pub(crate) use workbench_handler;
+
+/// 会话管理器经由 Tauri 事件推送。
+pub(crate) fn app_emitter<R: Runtime>(app: AppHandle<R>) -> EventEmitter {
+    Arc::new(move |channel, payload| {
+        let _ = app.emit(channel, payload);
+    })
+}
+
+pub(crate) fn manage_state<R: Runtime>(
+    app: &AppHandle<R>,
+    data_dir: &std::path::Path,
+) -> Result<(), String> {
+    let store = ProjectStore::load(data_dir).map_err(|e| format!("加载项目列表失败: {e}"))?;
+    app.manage(store);
+    app.manage(SessionManager::new(app_emitter(app.clone()), data_dir));
+    Ok(())
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -30,10 +101,7 @@ pub fn run() {
                 .path()
                 .app_data_dir()
                 .map_err(|e| format!("无法定位应用数据目录: {e}"))?;
-            let store =
-                ProjectStore::load(&data_dir).map_err(|e| format!("加载项目列表失败: {e}"))?;
-            app.manage(store);
-            app.manage(SessionManager::new(app.handle().clone(), &data_dir));
+            manage_state(app.handle(), &data_dir)?;
             tray::setup(app.handle())?;
             Ok(())
         })
@@ -45,45 +113,7 @@ pub fn run() {
                 api.prevent_close();
             }
         })
-        .invoke_handler(tauri::generate_handler![
-            features::ipc::projects::list_projects,
-            features::ipc::projects::create_project,
-            features::ipc::projects::import_project,
-            features::ipc::projects::remove_project,
-            features::ipc::sessions::list_sessions,
-            features::ipc::sessions::fork_session,
-            features::ipc::sessions::rename_session,
-            features::ipc::sessions::delete_session,
-            features::ipc::sessions::create_session,
-            features::ipc::sessions::set_session_agent,
-            features::ipc::sessions::set_session_access,
-            features::ipc::sessions::session_permission_menu,
-            features::ipc::agents::list_agent_installations,
-            features::ipc::agents::update_agent,
-            features::ipc::agents::agent_profiles,
-            features::ipc::sessions::cached_agent_catalogs,
-            features::ipc::sessions::agent_catalog,
-            features::ipc::sessions::set_session_tuning,
-            features::ipc::sessions::set_collaboration_mode,
-            features::ipc::sessions::review_targets,
-            features::ipc::sessions::start_review,
-            features::ipc::sessions::send_message,
-            features::ipc::sessions::submit_annotation,
-            features::ipc::sessions::diff_scopes,
-            features::ipc::sessions::diff_for_scope,
-            features::ipc::sessions::update_queued_turn,
-            features::ipc::sessions::remove_queued_turn,
-            features::ipc::sessions::session_queue,
-            features::ipc::sessions::interrupt_turn,
-            features::ipc::sessions::answer_prompt,
-            features::ipc::sessions::stop_session,
-            features::ipc::sessions::get_session_events,
-            features::ipc::sessions::load_older_history,
-            features::images::prepare_chat_image,
-            features::images::stage_chat_image,
-            features::preview::read_preview_file,
-            features::preview::list_project_tree,
-            features::preview::open_project_file,
+        .invoke_handler(workbench_handler![
             features::preview::browser::prepare_browser_file,
             features::preview::browser::browser_show,
             features::preview::browser::browser_bounds,

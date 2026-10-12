@@ -1,7 +1,7 @@
 //! 项目命令。移除项目时先停掉该项目下已打开的会话。
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Runtime, State};
 
 use crate::features::agents::group_projects;
 use crate::features::projects::{self, ProjectStore};
@@ -18,7 +18,7 @@ pub struct CreateProjectResult {
     pub warning: Option<String>,
 }
 
-fn notify_projects_changed(app: &AppHandle) {
+fn notify_projects_changed<R: Runtime>(app: &AppHandle<R>) {
     let _ = app.emit(EVT_PROJECTS_CHANGED, ());
 }
 
@@ -30,7 +30,7 @@ fn ensure_unlisted(store: &ProjectStore, dir: &str) -> Result<(), String> {
     }
 }
 
-fn publish(app: &AppHandle, store: &ProjectStore, project: Project) -> Result<Project, String> {
+fn publish<R: Runtime>(app: &AppHandle<R>, store: &ProjectStore, project: Project) -> Result<Project, String> {
     store.add(project.clone())?;
     notify_projects_changed(app);
     Ok(project)
@@ -44,8 +44,8 @@ pub fn list_projects(store: State<'_, ProjectStore>) -> Result<Vec<Project>, Str
 
 /// 新建项目：在 parent_dir 下创建目录 + 可选 git init。
 #[tauri::command]
-pub fn create_project(
-    app: AppHandle,
+pub fn create_project<R: Runtime>(
+    app: AppHandle<R>,
     store: State<'_, ProjectStore>,
     name: String,
     parent_dir: String,
@@ -73,8 +73,8 @@ pub fn create_project(
 
 /// 导入已有目录作为工作台项目。只写入 projects.json，不改 Agent 的会话存储。
 #[tauri::command]
-pub fn import_project(
-    app: AppHandle,
+pub fn import_project<R: Runtime>(
+    app: AppHandle<R>,
     store: State<'_, ProjectStore>,
     path: String,
     name: Option<String>,
@@ -103,8 +103,8 @@ pub fn import_project(
 
 /// 从工作台列表移除项目（不删除磁盘目录，也不删除 Agent 的会话记录）。
 #[tauri::command]
-pub async fn remove_project(
-    app: AppHandle,
+pub async fn remove_project<R: Runtime>(
+    app: AppHandle<R>,
     store: State<'_, ProjectStore>,
     manager: State<'_, SessionManager>,
     id: String,
