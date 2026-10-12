@@ -103,6 +103,8 @@ export interface SettingsSlice {
   installations: AgentInstallation[] | null;
   installationsLoading: boolean;
   installationError: string | null;
+  /** 某张 Agent 卡片上的更新失败。和分区顶部的 `installationError` 分开。 */
+  updateErrors: Partial<Record<AgentKind, string>>;
   updatingKind: AgentKind | null;
   profiles: Partial<Record<AgentKind, AgentProfile>>;
   refreshInstallations(): Promise<void>;

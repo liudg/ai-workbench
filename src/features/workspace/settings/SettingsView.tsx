@@ -23,11 +23,13 @@ function AgentCard({
   item,
   updating,
   updateLocked,
+  error,
   onUpdate,
 }: {
   item: AgentInstallation;
   updating: boolean;
   updateLocked: boolean;
+  error: string | null;
   onUpdate: (kind: AgentInstallation["kind"]) => void;
 }) {
   const face = agentCardFace(item);
@@ -41,8 +43,16 @@ function AgentCard({
       <div className="min-w-0 flex-1">
         <div className="text-sm font-medium text-zinc-100">{item.display_name}</div>
         <StatusLine face={face} />
+        {face.kind === "unwired" && face.settled && (
+          <p className="mt-1 text-xs text-emerald-300/90">{face.settled}</p>
+        )}
         {face.kind === "ready" && face.detail && (
           <div className="mt-1 text-xs leading-5 text-amber-200/90">{face.detail}</div>
+        )}
+        {error && (
+          <p className="mt-1 text-xs leading-5 text-red-300" role="alert">
+            {error}
+          </p>
         )}
       </div>
       {(face.kind === "ready" || face.kind === "unwired") && face.canUpdate && (
@@ -64,6 +74,7 @@ function AgentsPanel() {
   const installations = useWorkbench((s) => s.installations);
   const loading = useWorkbench((s) => s.installationsLoading);
   const error = useWorkbench((s) => s.installationError);
+  const updateErrors = useWorkbench((s) => s.updateErrors);
   const updatingKind = useWorkbench((s) => s.updatingKind);
   const refresh = useWorkbench((s) => s.refreshInstallations);
   const updateInstallation = useWorkbench((s) => s.updateInstallation);
@@ -107,6 +118,7 @@ function AgentsPanel() {
               item={item}
               updating={updatingKind === item.kind}
               updateLocked={updatingKind !== null}
+              error={updateErrors[item.kind] ?? null}
               onUpdate={updateInstallation}
             />
           ))}

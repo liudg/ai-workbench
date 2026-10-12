@@ -13,6 +13,7 @@ export function createSettingsSlice(set: WorkbenchSet, get: WorkbenchGet): Setti
     installations: null,
     installationsLoading: false,
     installationError: null,
+    updateErrors: {},
     updatingKind: null,
     profiles: {},
 
@@ -36,7 +37,11 @@ export function createSettingsSlice(set: WorkbenchSet, get: WorkbenchGet): Setti
     },
 
     async updateInstallation(kind) {
-      set({ updatingKind: kind, installationError: null });
+      set((s) => {
+        const updateErrors = { ...s.updateErrors };
+        delete updateErrors[kind];
+        return { updatingKind: kind, installationError: null, updateErrors };
+      });
       try {
         const next = await backend.updateAgent(kind);
         set((s) => {
@@ -51,7 +56,12 @@ export function createSettingsSlice(set: WorkbenchSet, get: WorkbenchGet): Setti
           };
         });
       } catch (e) {
-        set({ updatingKind: null, installationError: errorText(e) });
+        const message = errorText(e);
+        set((s) => ({
+          updatingKind: null,
+          installationError: message,
+          updateErrors: { ...s.updateErrors, [kind]: message },
+        }));
       }
     },
   };

@@ -3,8 +3,17 @@ import type { AgentInstallation, UpdateVia } from "@/types";
 /** 设置卡片在状态行上的样子。未接入时前缀和「未接入」写在同一行。 */
 export type AgentCardFace =
   | { kind: "absent" }
-  | { kind: "unwired"; lead: string; canUpdate: boolean }
+  | { kind: "unwired"; lead: string; canUpdate: boolean; settled: string | null }
   | { kind: "ready"; text: string; canUpdate: boolean; detail: string | null };
+
+/** 官方更新已经确认这个版本就是最新。未接入的状态行不改，这条说明单独放。 */
+export function settledNote(item: AgentInstallation): string | null {
+  if (!item.installed || item.update_available) return null;
+  if (item.version && item.latest_version && item.version === item.latest_version) {
+    return "已是最新";
+  }
+  return null;
+}
 
 function viaLabel(via: UpdateVia | null): string | null {
   if (via === "npm") return "npm";
@@ -36,6 +45,7 @@ export function agentCardFace(item: AgentInstallation): AgentCardFace {
       kind: "unwired",
       lead: item.installed ? (item.version ?? "已安装") : "未安装",
       canUpdate: item.installed && item.update_available,
+      settled: settledNote(item),
     };
   }
   if (!item.installed) return { kind: "absent" };

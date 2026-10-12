@@ -771,6 +771,9 @@ export const mockBackend: Backend = {
 
   async updateAgent(kind) {
     await new Promise((resolve) => setTimeout(resolve, 250));
+    if (new URLSearchParams(window.location.search).get("update") === "fail") {
+      throw new Error("agent update 失败（退出码 1）：network down");
+    }
     const item = mockInstallations.find((row) => row.kind === kind);
     if (!item?.installed || !item.update_available) {
       throw new Error("没有可安装的更新");

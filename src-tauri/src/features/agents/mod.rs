@@ -12,6 +12,7 @@ mod external;
 mod fake;
 mod install;
 mod providers;
+mod settled;
 mod stub;
 
 pub use providers::{

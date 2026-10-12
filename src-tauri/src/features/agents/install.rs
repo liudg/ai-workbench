@@ -5,7 +5,8 @@
 //!
 //! 有 npm 包时，版本对照走 `npm view <pkg> version`。升级按安装方式分流：
 //! 全局 npm 安装执行 `npm install -g <pkg>@latest`；否则执行该二进制声明的
-//! 官方自更新参数。没有 npm 包时，已安装且声明了自更新就提供更新，不查询 registry。
+//! 官方自更新参数。没有 npm 包时不查询 registry。声明了自更新就先提供一次更新；
+//! 官方命令确认这个版本已是最新后，同版本的后续探测不再显示更新。
 //! 工作台不代为安装缺失的 CLI。
 
 use std::path::{Path, PathBuf};
@@ -309,13 +310,27 @@ pub async fn inspect_release(
         }
     };
 
+    let settled = if tracks_npm {
+        None
+    } else {
+        super::settled::current_version(kind)
+    };
     let update_available = if tracks_npm {
         match (&latest_version, &chosen.version) {
             (Some(latest), Some(current)) => is_newer(latest, current),
             _ => false,
         }
     } else {
-        chosen.can_update
+        super::settled::offer_self_update(
+            chosen.can_update,
+            chosen.version.as_deref(),
+            settled.as_deref(),
+        )
+    };
+    let latest_version = if tracks_npm {
+        latest_version
+    } else {
+        super::settled::settled_latest(chosen.version.as_deref(), settled.as_deref())
     };
     let update_via = if tracks_npm {
         Some(choose_update_via(
@@ -437,6 +452,11 @@ async fn settle_cli_update(
     }
     let changed = refreshed.version.is_some() && refreshed.version != before.version;
     if changed || cli_reports_current(output) {
+        if release.npm_package.is_empty() {
+            if let Some(version) = refreshed.version.as_deref() {
+                super::settled::remember_current(kind, version);
+            }
+        }
         refreshed.update_available = false;
         if refreshed.latest_version.is_none() {
             refreshed.latest_version = refreshed.version.clone();
