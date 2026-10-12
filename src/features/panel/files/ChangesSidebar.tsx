@@ -138,8 +138,9 @@ function TreeRows({
             {treePathLabel(node.name)}
           </span>
         </button>
-        {open
-          ? node.children.map((child) => (
+        {open ? (
+          <ul>
+            {node.children.map((child) => (
               <TreeRows
                 key={child.id}
                 node={child}
@@ -150,8 +151,9 @@ function TreeRows({
                 onToggle={onToggle}
                 onSelect={onSelect}
               />
-            ))
-          : null}
+            ))}
+          </ul>
+        ) : null}
       </li>
     );
   }
