@@ -56,6 +56,13 @@ export interface PreviewDocument {
   truncated: boolean;
 }
 
+export interface PreviewImage {
+  path: string;
+  name: string;
+  mime: string;
+  data_base64: string;
+}
+
 export interface BrowserFile {
   display: string;
   url: string;

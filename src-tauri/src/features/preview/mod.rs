@@ -22,6 +22,7 @@ use crate::features::projects::ProjectStore;
 use crate::models::strip_verbatim_prefix;
 
 const MAX_PREVIEW_BYTES: usize = 512 * 1024;
+const MAX_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct PreviewDocument {
@@ -30,6 +31,14 @@ pub struct PreviewDocument {
     pub kind: String,
     pub text: String,
     pub truncated: bool,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct PreviewImage {
+    pub path: String,
+    pub name: String,
+    pub mime: String,
+    pub data_base64: String,
 }
 
 #[tauri::command]
@@ -45,6 +54,21 @@ pub async fn read_preview_file(
     tokio::task::spawn_blocking(move || read_preview_at(&root, &path))
         .await
         .map_err(|err| format!("无法读取文件: {err}"))?
+}
+
+#[tauri::command]
+pub async fn read_preview_image(
+    store: State<'_, ProjectStore>,
+    project_id: String,
+    path: String,
+) -> Result<PreviewImage, String> {
+    let project = store
+        .get(&project_id)
+        .ok_or_else(|| "项目不存在".to_string())?;
+    let root = PathBuf::from(&project.path);
+    tokio::task::spawn_blocking(move || read_image_at(&root, &path))
+        .await
+        .map_err(|err| format!("无法读取图片: {err}"))?
 }
 
 #[tauri::command]
@@ -94,6 +118,17 @@ fn read_error(path: &Path, err: &std::io::Error) -> String {
 
 pub fn read_preview_at(project_root: &Path, requested: &str) -> Result<PreviewDocument, String> {
     let full = resolve_preview_file(project_root, requested)?;
+    let shown = strip_verbatim_prefix(&full.to_string_lossy());
+    let name = file_name(&full);
+    if preview_kind(&full) == "image" {
+        return Ok(PreviewDocument {
+            path: shown,
+            name,
+            kind: "image".into(),
+            text: String::new(),
+            truncated: false,
+        });
+    }
     let mut file = File::open(&full).map_err(|err| format!("无法读取文件: {err}"))?;
     let mut bytes = Vec::new();
     file.by_ref()
@@ -104,12 +139,6 @@ pub fn read_preview_at(project_root: &Path, requested: &str) -> Result<PreviewDo
     if truncated {
         bytes.truncate(MAX_PREVIEW_BYTES);
     }
-    let shown = strip_verbatim_prefix(&full.to_string_lossy());
-    let name = full
-        .file_name()
-        .and_then(|item| item.to_str())
-        .unwrap_or("文件")
-        .to_string();
     if bytes.contains(&0) {
         return Ok(PreviewDocument {
             path: shown,
@@ -185,6 +214,34 @@ fn lexical_normalize(path: &Path) -> PathBuf {
     out
 }
 
+pub fn read_image_at(project_root: &Path, requested: &str) -> Result<PreviewImage, String> {
+    let full = resolve_preview_file(project_root, requested)?;
+    let ext = full
+        .extension()
+        .and_then(|item| item.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let meta = std::fs::metadata(&full).map_err(|err| format!("无法读取图片: {err}"))?;
+    if meta.len() > MAX_IMAGE_BYTES {
+        return Err("图片超过 20MB".into());
+    }
+    let bytes = std::fs::read(&full).map_err(|err| format!("无法读取图片: {err}"))?;
+    let mime = crate::features::images::classify_preview_image(&ext, &bytes)?;
+    Ok(PreviewImage {
+        path: strip_verbatim_prefix(&full.to_string_lossy()),
+        name: file_name(&full),
+        mime: mime.to_string(),
+        data_base64: crate::features::images::encode_base64(&bytes),
+    })
+}
+
+fn file_name(path: &Path) -> String {
+    path.file_name()
+        .and_then(|item| item.to_str())
+        .unwrap_or("文件")
+        .to_string()
+}
+
 fn preview_kind(path: &Path) -> &'static str {
     match path
         .extension()
@@ -195,6 +252,7 @@ fn preview_kind(path: &Path) -> &'static str {
     {
         "html" | "htm" => "html",
         "md" | "markdown" | "mdx" => "markdown",
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "svg" | "bmp" | "ico" | "avif" => "image",
         _ => "text",
     }
 }
@@ -285,6 +343,33 @@ mod tests {
         assert!(doc.text.contains("linked-marker"), "{}", doc.text);
         let _ = fs::remove_dir_all(&root);
         let _ = fs::remove_dir_all(&outside);
+    }
+
+    #[test]
+    fn reads_a_png_as_image_bytes_and_not_as_text() {
+        let root = scratch("image");
+        let png: &[u8] = &[
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44,
+            0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x02, 0x00, 0x00, 0x00, 0x90,
+            0x77, 0x53, 0xDE, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41, 0x54, 0x08, 0xD7, 0x63, 0xF8,
+            0xCF, 0xC0, 0x00, 0x00, 0x00, 0x03, 0x00, 0x01, 0x00, 0x05, 0xFE, 0x02, 0xFE, 0xDC, 0xCC,
+            0x59, 0xE7, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+        ];
+        fs::write(root.join("available-live.png"), png).unwrap();
+        fs::write(root.join("mark.svg"), "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>\n").unwrap();
+        fs::write(root.join("notes.txt"), "not an image").unwrap();
+        let listed = read_preview_at(&root, "available-live.png").unwrap();
+        assert_eq!(listed.kind, "image");
+        assert!(listed.text.is_empty());
+        let image = read_image_at(&root, "available-live.png").unwrap();
+        assert_eq!(image.mime, "image/png");
+        assert_eq!(image.name, "available-live.png");
+        assert!(!image.data_base64.is_empty());
+        let svg = read_image_at(&root, "mark.svg").unwrap();
+        assert_eq!(svg.mime, "image/svg+xml");
+        let rejected = read_image_at(&root, "notes.txt").unwrap_err();
+        assert!(rejected.contains("不能以图片预览") || rejected.contains("不一致"), "{rejected}");
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

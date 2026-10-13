@@ -68,6 +68,7 @@ macro_rules! workbench_handler {
             $crate::features::images::prepare_chat_image,
             $crate::features::images::stage_chat_image,
             $crate::features::preview::read_preview_file,
+            $crate::features::preview::read_preview_image,
             $crate::features::preview::tree::list_project_dir,
             $crate::features::preview::tree::filter_project_paths,
             $crate::features::preview::search::search_project_files,

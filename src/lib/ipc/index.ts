@@ -21,6 +21,7 @@ export type {
   ImportProjectInput,
   PathFilter,
   PreviewDocument,
+  PreviewImage,
   SessionRequest,
   TreeEntry,
 } from "./dto";
