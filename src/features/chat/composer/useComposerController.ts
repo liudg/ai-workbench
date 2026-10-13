@@ -36,6 +36,7 @@ import { deriveComposerView } from "./composer-view";
 import { useComposerMenu } from "./useComposerMenu";
 import { useComposerFeeds } from "./useComposerFeeds";
 import { useComposerActions, useComposerSession } from "./useComposerStore";
+import { collaborationMode } from "./collaboration-mode";
 import { useGoalDraft } from "./useGoalDraft";
 import { useMentionMenu } from "./useMentionMenu";
 import { useReviewDismiss } from "./useReviewDismiss";
@@ -84,7 +85,9 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     caret,
     editingId,
     fileCount: data.files.length,
-    goalDraft: goal.goalDraft,
+    goalDraft: goal.localGoal,
+    goalLive: goal.live,
+    goal: goal.snapshot,
   });
   const goalSupport = goal.publishError ? "unsupported" : view.goalSupport;
   const mentions = useMentionMenu({
@@ -99,9 +102,19 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     mentionQuery: view.mentionQuery,
     goalSupport,
     planSupport: view.planSupport,
-    onGoal: goal.toggleDraft,
+    onGoal: () => {
+      if (collaborationMode(events) === "plan") {
+        void actions.setCollaborationMode(session.id, "default");
+      }
+      goal.enter();
+    },
     onPlan: () => {
-      void actions.setCollaborationMode(session.id, view.planOn ? "default" : "plan");
+      if (view.planOn) {
+        void actions.setCollaborationMode(session.id, "default");
+        return;
+      }
+      goal.dismiss();
+      void actions.setCollaborationMode(session.id, "plan");
     },
   });
   const activeSlash = view.slashMatches[Math.min(slashIndex, view.slashMatches.length - 1)];
@@ -129,6 +142,11 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     if (goal.publishError) setNotice(goal.publishError);
   }, [goal.publishError]);
 
+  const planEvent = collaborationMode(events) === "plan";
+  useEffect(() => {
+    if (view.goalOn && planEvent) void actions.setCollaborationMode(session.id, "default");
+  }, [actions.setCollaborationMode, planEvent, session.id, view.goalOn]);
+
   const run: ComposerRun = {
     sessionId: session.id,
     text,
@@ -146,7 +164,8 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     actions,
     caps,
     view,
-    goalDraft: goal.goalDraft,
+    goalDraft: goal.localGoal,
+    exitGoal: goal.dismiss,
     supportsGoals,
     submitGoal: goal.submit,
     mentions,
@@ -207,7 +226,8 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     mentions,
     goalSupport,
     goalNotice: goal.publishError,
-    goalChip: goal.chip,
+    goalChip: view.goalOn,
+    goalStatus: view.goalStatus,
     dismissGoal: goal.dismiss,
     startReview: (target: ReviewStart) => {
       setReviewOpen(false);

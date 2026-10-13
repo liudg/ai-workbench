@@ -18,5 +18,27 @@ test("the goal chip follows the latest goal event", () => {
   assert.deepEqual(activeGoal(events.slice(0, 1)), {
     objective: "把测试补上",
     status: "active",
+    tokenBudget: null,
+    tokensUsed: null,
+    timeUsedSeconds: null,
   });
+  assert.deepEqual(
+    activeGoal([
+      event("3", 3, {
+        kind: "goal",
+        objective: "把测试补上",
+        status: "active",
+        token_budget: 50000,
+        tokens_used: 12500,
+        time_used_seconds: 120,
+      }),
+    ]),
+    {
+      objective: "把测试补上",
+      status: "active",
+      tokenBudget: 50000,
+      tokensUsed: 12500,
+      timeUsedSeconds: 120,
+    },
+  );
 });

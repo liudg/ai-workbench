@@ -5,7 +5,6 @@ import { parseUnifiedDiff, type FileChange } from "@/features/changes-model/diff
 import { usePanel } from "@/features/panel/core/PanelProvider";
 import { filterFiles, useFileFilter } from "../core/file-filter";
 import { patchFromFiles } from "./git-apply";
-import { withoutWhitespaceChanges } from "./fold";
 import { diffScopeMenu, filesForScope } from "./scope";
 
 export function useDiffDocument(turnFiles: FileChange[]) {
@@ -18,8 +17,8 @@ export function useDiffDocument(turnFiles: FileChange[]) {
   const [gitError, setGitError] = useState("");
   const [loading, setLoading] = useState(false);
   const [activePath, setActivePath] = useState("");
-  const [expanded, setExpanded] = useState(false);
-  const [loadFull, setLoadFull] = useState(true);
+  const [openPaths, setOpenPaths] = useState<string[]>([]);
+  const [loadFull, setLoadFull] = useState(false);
   const [renderPreview, setRenderPreview] = useState(true);
   const [wordDiff, setWordDiff] = useState(true);
   const [wrap, setWrap] = useState(true);
@@ -52,6 +51,7 @@ export function useDiffDocument(turnFiles: FileChange[]) {
 
   useEffect(() => {
     setActivePath("");
+    setOpenPaths([]);
   }, [scope]);
 
   const remote = Boolean(selected && selected.source !== "turn" && !selected.submenu);
@@ -67,7 +67,7 @@ export function useDiffDocument(turnFiles: FileChange[]) {
     setGitError("");
     setGitFiles(null);
     void backend
-      .diffForScope(sessionId, selected.id, hideWs)
+      .diffForScope(sessionId, selected.id, false)
       .then((diff) => {
         if (cancel) return;
         setGitFiles(parseUnifiedDiff(diff));
@@ -82,22 +82,13 @@ export function useDiffDocument(turnFiles: FileChange[]) {
     return () => {
       cancel = true;
     };
-  }, [hideWs, remote, reloadToken, selected, sessionId]);
+  }, [remote, reloadToken, selected, sessionId]);
 
   const base = useMemo(
     () => filesForScope(selected, turnFiles, gitFiles),
     [gitFiles, selected, turnFiles],
   );
-  const listed = useMemo(() => {
-    const turn = !selected || selected.source === "turn";
-    if (!turn || !hideWs) return base;
-    return base.flatMap((file) => {
-      const parsed = parseUnifiedDiff(withoutWhitespaceChanges(file.diff)).filter(
-        (item) => item.added + item.removed > 0,
-      );
-      return parsed.map((item) => ({ ...item, status: file.status }));
-    });
-  }, [base, hideWs, selected]);
+  const listed = base;
   const patch = useMemo(() => patchFromFiles(base), [base]);
 
   const shown = useMemo(() => filterFiles(listed, filter), [filter, listed]);
@@ -105,10 +96,12 @@ export function useDiffDocument(turnFiles: FileChange[]) {
   const added = shown.reduce((sum, file) => sum + file.added, 0);
   const removed = shown.reduce((sum, file) => sum + file.removed, 0);
 
+  const openSet = useMemo(() => new Set(openPaths), [openPaths]);
+  const allExpanded = shown.length > 0 && shown.every((file) => openSet.has(file.path));
   const sourceKey = shown.map((file) => file.path).join("\n");
   const triedSource = useRef(new Set<string>());
   useEffect(() => {
-    if (!loadFull || (!expanded && !renderPreview)) return;
+    if (!loadFull || (openPaths.length === 0 && !renderPreview)) return;
     for (const path of sourceKey.split("\n")) {
       if (!path || triedSource.current.has(path)) continue;
       triedSource.current.add(path);
@@ -122,7 +115,7 @@ export function useDiffDocument(turnFiles: FileChange[]) {
         })
         .catch(() => {});
     }
-  }, [expanded, loadFull, projectId, reloadToken, renderPreview, sourceKey]);
+  }, [loadFull, openPaths.length, projectId, reloadToken, renderPreview, sourceKey]);
 
   const selectFile = useCallback((file: FileChange) => {
     setActivePath(file.path);
@@ -144,8 +137,14 @@ export function useDiffDocument(turnFiles: FileChange[]) {
     active,
     added,
     removed,
-    expanded,
-    setExpanded,
+    expanded: allExpanded,
+    expandAll: (paths: string[]) => setOpenPaths(paths),
+    collapseAll: () => setOpenPaths([]),
+    toggleFile: (path: string) =>
+      setOpenPaths((current) =>
+        current.includes(path) ? current.filter((item) => item !== path) : [...current, path],
+      ),
+    isOpen: (path: string) => openSet.has(path),
     loadFull,
     setLoadFull,
     renderPreview,

@@ -56,6 +56,21 @@ const SPACING = [
   "+a  b",
 ].join("\n");
 
+const ADDED = [
+  "using UnityEngine;",
+  "",
+  "public class AdjustPrefab",
+  "{",
+  "    public int level;",
+  "    void Apply()",
+  "    {",
+  "        level += 1;",
+  "    }",
+  "}",
+].join("\n");
+
+const REMOVED = ["public class OldPrefab", "{", "    void Gone() {}", "}"].join("\n");
+
 const NOTE = [
   "diff --git a/Library/GemFeedback/note.md b/Library/GemFeedback/note.md",
   "--- a/Library/GemFeedback/note.md",
@@ -67,6 +82,8 @@ const NOTE = [
 ].join("\n");
 
 const FILES: FileChange[] = [
+  { path: "Temp/HomeBuildingUpgrade/AdjustPrefab.cs", status: "A", added: 10, removed: 0, diff: ADDED },
+  { path: "Temp/HomeBuildingUpgrade/OldPrefab.cs", status: "D", added: 0, removed: 4, diff: REMOVED },
   { path: "Library/GemFeedback/inspect_prefab.cs", status: "M", added: 2, removed: 1, diff: INSPECT },
   { path: "Library/GemFeedback/invoke.ps1", status: "M", added: 1, removed: 1, diff: INVOKE },
   { path: "Scripts/GameUI/Module/PlayerEquipmentBaoshi.cs", status: "M", added: 1, removed: 0, diff: BAOSHI },

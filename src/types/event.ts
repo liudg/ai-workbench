@@ -113,8 +113,15 @@ export type SessionEventBody =
       raw: string;
     }
   | { kind: "collaboration-mode"; mode: string }
-  /** 线程目标。objective 为空表示已清除。 */
-  | { kind: "goal"; objective?: string | null; status?: string | null };
+  /** 线程目标。objective 为空表示已清除。用量字段来自 `thread/goal`，没有就不编。 */
+  | {
+      kind: "goal";
+      objective?: string | null;
+      status?: string | null;
+      token_budget?: number | null;
+      tokens_used?: number | null;
+      time_used_seconds?: number | null;
+    };
 
 export type FileStatus = "A" | "M" | "D" | "R";
 

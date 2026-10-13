@@ -765,10 +765,54 @@ pub(super) fn goal_snapshot_event(goal: Option<&Value>) -> SessionEventBody {
         .map(str::trim)
         .filter(|text| !text.is_empty())
         .map(str::to_string);
+    let usage = goal.map(goal_usage);
     SessionEventBody::Goal {
         objective: objective.clone(),
-        status: objective.and(status),
+        status: objective.and(status.map(|value| normalize_goal_status(&value))),
+        token_budget: usage.and_then(|item| item.0),
+        tokens_used: usage.and_then(|item| item.1),
+        time_used_seconds: usage.and_then(|item| item.2),
     }
+}
+
+fn normalize_goal_status(status: &str) -> String {
+    match status {
+        "usage_limited" => "usageLimited".to_string(),
+        "budget_limited" => "budgetLimited".to_string(),
+        other => other.to_string(),
+    }
+}
+
+/// 协议字段是 camelCase（`tokenBudget`）。兼容 snake_case。0 是有效用量，不能丢掉。
+fn goal_usage(goal: &Value) -> (Option<i64>, Option<i64>, Option<i64>) {
+    (
+        goal_number(goal, &["tokenBudget", "token_budget"]),
+        goal_number(goal, &["tokensUsed", "tokens_used"]),
+        goal_number(goal, &["timeUsedSeconds", "time_used_seconds"]),
+    )
+}
+
+fn goal_number(goal: &Value, keys: &[&str]) -> Option<i64> {
+    for key in keys {
+        let Some(value) = goal.get(*key) else {
+            continue;
+        };
+        if value.is_null() {
+            continue;
+        }
+        if let Some(number) = value.as_i64() {
+            return Some(number);
+        }
+        if let Some(number) = value.as_u64() {
+            return i64::try_from(number).ok();
+        }
+        if let Some(number) = value.as_f64() {
+            if number.is_finite() {
+                return Some(number as i64);
+            }
+        }
+    }
+    None
 }
 
 #[derive(Debug)]
@@ -902,18 +946,54 @@ mod goal_tests {
             "status": "active",
         })));
         match event {
-            SessionEventBody::Goal { objective, status } => {
+            SessionEventBody::Goal {
+                objective, status, ..
+            } => {
                 assert_eq!(objective.as_deref(), Some("把测试补上"));
                 assert_eq!(status.as_deref(), Some("active"));
             }
             _ => panic!("goal event"),
         }
         match goal_snapshot_event(Some(&Value::Null)) {
-            SessionEventBody::Goal { objective, status } => {
+            SessionEventBody::Goal {
+                objective,
+                status,
+                token_budget,
+                tokens_used,
+                time_used_seconds,
+            } => {
                 assert!(objective.is_none());
                 assert!(status.is_none());
+                assert!(token_budget.is_none());
+                assert!(tokens_used.is_none());
+                assert!(time_used_seconds.is_none());
             }
             _ => panic!("cleared goal"),
+        }
+    }
+
+    #[test]
+    fn goal_snapshot_keeps_usage_from_either_key_style() {
+        match goal_snapshot_event(Some(&json!({
+            "objective": "把测试补上",
+            "status": "budget_limited",
+            "tokenBudget": 50000,
+            "tokens_used": 63876,
+            "timeUsedSeconds": 120,
+        }))) {
+            SessionEventBody::Goal {
+                status,
+                token_budget,
+                tokens_used,
+                time_used_seconds,
+                ..
+            } => {
+                assert_eq!(status.as_deref(), Some("budgetLimited"));
+                assert_eq!(token_budget, Some(50000));
+                assert_eq!(tokens_used, Some(63876));
+                assert_eq!(time_used_seconds, Some(120));
+            }
+            _ => panic!("goal usage"),
         }
     }
 }

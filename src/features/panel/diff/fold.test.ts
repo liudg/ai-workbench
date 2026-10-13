@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { expandDiffLines, foldDiffLines, withoutImportLines, withoutWhitespaceChanges } from "./fold.ts";
+import { diffBodyRows, expandDiffLines, foldDiffLines, withoutImportLines, withoutWhitespaceChanges } from "./fold.ts";
 import { applyWordDiff } from "./word-diff.ts";
 
 test("unchanged lines between hunks collapse into unmodified bars", () => {
@@ -62,4 +62,77 @@ test("hiding imports drops import lines and keeps the rest of the diff", () => {
   assert.equal(next.includes("keep"), true);
   assert.equal(next.includes("+added"), true);
   assert.equal(next.includes("@@"), true);
+});
+
+test("add-only and delete-only file bodies render as inserts and deletions", () => {
+  const added = diffBodyRows({
+    diff: "public class AdjustPrefab\n{\n    void Apply() {}\n}",
+    status: "A",
+    added: 4,
+    removed: 0,
+    source: "should not replace the added body",
+    loadFull: true,
+    hideWhitespace: true,
+    hideImports: false,
+  });
+  assert.equal(added.whitespaceHidden, false);
+  assert.deepEqual(
+    added.rows.map((row) => (row.kind === "line" ? `${row.tone}:${row.text}` : "hide")),
+    ["add:public class AdjustPrefab", "add:{", "add:    void Apply() {}", "add:}"],
+  );
+  const removed = diffBodyRows({
+    diff: "gone\nstill gone",
+    status: "D",
+    added: 0,
+    removed: 2,
+    source: null,
+    loadFull: false,
+    hideWhitespace: false,
+    hideImports: false,
+  });
+  assert.deepEqual(
+    removed.rows.map((row) => (row.kind === "line" ? row.tone : "hide")),
+    ["del", "del"],
+  );
+  const unified = diffBodyRows({
+    diff: ["@@ -0,0 +1,2 @@", "+one", "+two"].join("\n"),
+    status: "A",
+    added: 2,
+    removed: 0,
+    source: null,
+    loadFull: false,
+    hideWhitespace: false,
+    hideImports: false,
+  });
+  assert.deepEqual(
+    unified.rows.filter((row) => row.kind === "line").map((row) => (row.kind === "line" ? row.text : "")),
+    ["one", "two"],
+  );
+});
+
+test("hiding whitespace keeps a whitespace-only diff marked instead of empty of files", () => {
+  const body = diffBodyRows({
+    diff: ["@@ -1 +1 @@", "-a b", "+a  b"].join("\n"),
+    status: "M",
+    added: 1,
+    removed: 1,
+    source: "a  b",
+    loadFull: true,
+    hideWhitespace: true,
+    hideImports: false,
+  });
+  assert.equal(body.whitespaceHidden, true);
+  assert.equal(body.rows.length, 0);
+  const kept = diffBodyRows({
+    diff: ["@@ -1 +1 @@", "-old", "+new"].join("\n"),
+    status: "M",
+    added: 1,
+    removed: 1,
+    source: null,
+    loadFull: false,
+    hideWhitespace: true,
+    hideImports: false,
+  });
+  assert.equal(kept.whitespaceHidden, false);
+  assert.equal(kept.rows.some((row) => row.kind === "line" && row.tone === "add" && row.text === "new"), true);
 });

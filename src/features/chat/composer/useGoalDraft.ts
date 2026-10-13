@@ -8,6 +8,7 @@ import { activeGoal } from "./goal";
 export function useGoalDraft(sessionId: string, supportsGoals: boolean, events: readonly SessionEvent[]) {
   const [goalDraft, setGoalDraft] = useState(false);
   const [goalPinned, setGoalPinned] = useState(false);
+  const [suppressed, setSuppressed] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
   const goal = activeGoal(events);
   const objective = goal?.objective ?? "";
@@ -15,6 +16,7 @@ export function useGoalDraft(sessionId: string, supportsGoals: boolean, events: 
   useEffect(() => {
     setGoalDraft(false);
     setGoalPinned(false);
+    setSuppressed(false);
     setPublishError(null);
   }, [sessionId]);
 
@@ -30,19 +32,24 @@ export function useGoalDraft(sessionId: string, supportsGoals: boolean, events: 
   }, [sessionId, supportsGoals]);
 
   useEffect(() => {
-    if (objective) setGoalPinned(false);
+    if (!objective) return;
+    setGoalPinned(false);
+    setSuppressed(false);
   }, [objective]);
 
-  const toggleDraft = useCallback(() => {
-    setGoalDraft((current) => !current);
+  const enter = useCallback(() => {
+    setSuppressed(false);
+    setGoalDraft(true);
   }, []);
 
   const dismiss = useCallback(() => {
     const shouldClear = Boolean(objective) || goalPinned;
     setGoalDraft(false);
     setGoalPinned(false);
+    setSuppressed(true);
     if (!shouldClear) return;
     void clearThreadGoal(sessionId).catch((error: unknown) => {
+      setSuppressed(false);
       reportComposerError(sessionId, error);
     });
   }, [goalPinned, objective, sessionId]);
@@ -64,9 +71,11 @@ export function useGoalDraft(sessionId: string, supportsGoals: boolean, events: 
 
   return {
     goalDraft,
-    chip: goalDraft || goalPinned || Boolean(objective),
+    localGoal: goalDraft || goalPinned,
+    live: !suppressed && Boolean(objective),
+    snapshot: goal,
     publishError,
-    toggleDraft,
+    enter,
     dismiss,
     submit,
   };

@@ -42,6 +42,11 @@ pub(super) fn assemble_catalog(
         commands: slash_commands(),
         capabilities: AgentCapabilities::codex(),
         skills_error,
+        configured_model: None,
+        configured_effort: None,
+        thread_model: None,
+        thread_effort: None,
+        cli_config_read: None,
     })
 }
 
@@ -92,8 +97,10 @@ impl Shared {
             Ok(()) => Ok(skill_options(&self.skills.lock().unwrap())),
             Err(err) => Err(err.to_string()),
         };
-        assemble_catalog(models, skills, previous_skills)
-            .map_err(|()| AgentError::Runtime("读取技能失败，且没有可用模型".into()))
+        let mut catalog = assemble_catalog(models, skills, previous_skills)
+            .map_err(|()| AgentError::Runtime("读取技能失败，且没有可用模型".into()))?;
+        apply_cli_defaults(self, &mut catalog).await;
+        Ok(catalog)
     }
 
     pub(super) async fn refresh_skills(&self) -> Result<(), AgentError> {
@@ -113,6 +120,65 @@ pub(super) fn slash_help() -> String {
     }
     lines.push("其余 TUI 命令（/vim、/theme 等）工作台不执行，也不会发给模型。".into());
     lines.join("\n")
+}
+
+/// `config/read` 的有效配置。外层可能是 `{ config: {...} }`，字段是 snake_case。
+pub(super) struct CliModelConfig {
+    pub model: Option<String>,
+    pub effort: Option<String>,
+}
+
+pub(super) fn parse_cli_model_config(value: &Value) -> CliModelConfig {
+    let config = value.get("config").unwrap_or(value);
+    CliModelConfig {
+        model: config_text(config, &["model"]),
+        effort: config_text(config, &["model_reasoning_effort", "modelReasoningEffort"]),
+    }
+}
+
+fn config_text(config: &Value, keys: &[&str]) -> Option<String> {
+    for key in keys {
+        let Some(value) = config.get(*key) else {
+            continue;
+        };
+        if value.is_null() {
+            continue;
+        }
+        let Some(text) = value.as_str() else {
+            continue;
+        };
+        let text = text.trim();
+        if text.is_empty() {
+            return None;
+        }
+        return Some(text.to_string());
+    }
+    None
+}
+
+async fn apply_cli_defaults(shared: &Shared, catalog: &mut AgentCatalog) {
+    match shared.request("config/read", json!({})).await {
+        Ok(value) => {
+            let parsed = parse_cli_model_config(&value);
+            catalog.configured_model = parsed.model;
+            catalog.configured_effort = parsed.effort;
+            catalog.cli_config_read = Some(true);
+        }
+        Err(_) => {
+            catalog.cli_config_read = Some(false);
+        }
+    }
+    let thread_model = shared.model.lock().unwrap().clone();
+    let thread_model = thread_model.trim();
+    if !thread_model.is_empty() {
+        catalog.thread_model = Some(thread_model.to_string());
+    }
+    catalog.thread_effort = shared
+        .thread_effort
+        .lock()
+        .unwrap()
+        .clone()
+        .filter(|effort| !effort.trim().is_empty());
 }
 
 pub(super) fn parse_models(value: &Value) -> Vec<AgentModelOption> {
@@ -173,10 +239,10 @@ pub(super) fn parse_models(value: &Value) -> Vec<AgentModelOption> {
         let default_effort = item
             .get("defaultReasoningEffort")
             .and_then(Value::as_str)
+            .map(str::trim)
             .filter(|text| !text.is_empty())
-            .map(str::to_string)
-            .or_else(|| efforts.first().map(|effort| effort.id.clone()))
-            .unwrap_or_default();
+            .unwrap_or("")
+            .to_string();
         models.push(AgentModelOption {
             id,
             label,
@@ -664,6 +730,41 @@ mod tests {
             input[0]["text_elements"][0]["placeholder"],
             json!("Documents")
         );
+    }
+
+    #[test]
+    fn cli_config_model_ignores_the_catalog_default() {
+        let wrapped = parse_cli_model_config(&json!({
+            "config": {
+                "model": "gpt-5.4",
+                "modelReasoningEffort": null,
+                "model_reasoning_effort": "high",
+            }
+        }));
+        assert_eq!(wrapped.model.as_deref(), Some("gpt-5.4"));
+        assert_eq!(wrapped.effort.as_deref(), Some("high"));
+        let bare = parse_cli_model_config(&json!({ "model": "gpt-5.4" }));
+        assert_eq!(bare.model.as_deref(), Some("gpt-5.4"));
+        assert!(bare.effort.is_none());
+        let unset = parse_cli_model_config(&json!({
+            "config": { "model": "  ", "model_reasoning_effort": "" }
+        }));
+        assert!(unset.model.is_none());
+        assert!(unset.effort.is_none());
+    }
+
+    #[test]
+    fn missing_default_effort_is_not_the_first_supported_effort() {
+        let models = parse_models(&json!({
+            "data": [{
+                "model": "gpt-test",
+                "displayName": "GPT Test",
+                "supportedReasoningEfforts": [
+                    { "reasoningEffort": "low", "description": "fast" }
+                ]
+            }]
+        }));
+        assert_eq!(models[0].default_effort, "");
     }
 
     #[test]

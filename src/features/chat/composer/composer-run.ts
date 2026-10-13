@@ -37,6 +37,7 @@ export interface ComposerRun {
   caps: AgentCapabilities | undefined;
   view: View;
   goalDraft: boolean;
+  exitGoal: () => void;
   supportsGoals: boolean;
   submitGoal: (text: string) => Promise<boolean>;
   mentions: {
@@ -87,6 +88,7 @@ export function applyComposerSlash(run: ComposerRun, command: SlashCommand) {
   }
   if (decision.type === "toggle-plan") {
     run.setText("");
+    if (decision.mode === "plan") run.exitGoal();
     void run.actions.setCollaborationMode(run.sessionId, decision.mode);
     return;
   }
@@ -131,11 +133,13 @@ export function runComposerSubmit(run: ComposerRun) {
   }
   if (decision.type === "toggle-plan") {
     run.setText("");
+    if (decision.mode === "plan") run.exitGoal();
     void run.actions.setCollaborationMode(run.sessionId, decision.mode);
     return;
   }
   if (decision.type === "plan-message") {
     run.setText("");
+    run.exitGoal();
     void run.actions.setCollaborationMode(run.sessionId, "plan").then(() => {
       void run.actions.sendMessage(run.sessionId, decision.text);
     });

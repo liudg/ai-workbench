@@ -1,6 +1,6 @@
 import { agentForSession, reduceCatalogResult, type CatalogOutcome } from "@/lib/catalog";
 import { backend } from "@/lib/ipc";
-import { emptySandbox, type AgentCatalog } from "@/types";
+import { emptySandbox } from "@/types";
 import { isMissingSessionError } from "../sync";
 import type { WorkspaceSlice, WorkbenchGet, WorkbenchSet } from "../types";
 
@@ -13,13 +13,6 @@ function reportSessionError(get: WorkbenchGet, set: WorkbenchSet, sessionId: str
 }
 
 const catalogEpoch = new Map<string, number>();
-
-function applyDefaultTuning(get: WorkbenchGet, sessionId: string, catalog: AgentCatalog) {
-  if (get().tuning[sessionId] || catalog.models.length === 0) return;
-  const model = catalog.models.find((item) => item.is_default) ?? catalog.models[0];
-  const effort = model.default_effort || model.efforts[0]?.id || "";
-  get().setTuning(sessionId, model.id, effort);
-}
 
 export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): WorkspaceSlice {
   return {
@@ -83,7 +76,6 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
             : s.catalogCache,
         catalogNotice: reduced.notice,
       }));
-      if (outcome.ok && reduced.live) applyDefaultTuning(get, sessionId, reduced.live);
     },
 
     setTuning(sessionId, model, effort) {

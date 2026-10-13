@@ -151,6 +151,15 @@ export interface AgentCatalog {
   capabilities: AgentCapabilities;
   /** `skills/list` 失败且没有可保留技能时的原因。成功的空列表没有这个字段。 */
   skills_error?: string | null;
+  /** CLI `config/read` 的 `model`。空表示配置里没写，不是猜的。 */
+  configured_model?: string | null;
+  /** CLI `config/read` 的 `model_reasoning_effort`。 */
+  configured_effort?: string | null;
+  /** 已经打开的线程自己的模型。新会话还没有。 */
+  thread_model?: string | null;
+  thread_effort?: string | null;
+  /** `false` 表示 `config/read` 失败，不能把目录 isDefault 当成用户的 CLI 默认。 */
+  cli_config_read?: boolean | null;
 }
 
 /** `agent_catalog` 的返回。notice 有值时 catalog 仍是上次成功的目录。 */

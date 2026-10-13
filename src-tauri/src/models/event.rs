@@ -374,6 +374,13 @@ pub enum SessionEventBody {
         objective: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         status: Option<String>,
+        /// `thread/goal` 的 `tokenBudget`。没有预算时不写。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        token_budget: Option<i64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tokens_used: Option<i64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        time_used_seconds: Option<i64>,
     },
     /// 适配器请求宿主在同一项目里开一个新会话（`/new`、`/clear`、计划的「清空上下文后实施」）。
     /// 会话管理器不把它写进时间线，而是转给前端去新建、命名并发出首条消息。

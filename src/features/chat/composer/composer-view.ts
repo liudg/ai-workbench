@@ -15,7 +15,9 @@ import {
   type SlashCommand,
 } from "../../../types/index.ts";
 import { sandboxAllowsExtras } from "./access.ts";
-import { collaborationMode } from "./collaboration-mode.ts";
+import { exclusiveComposerMode } from "./collaboration-mode.ts";
+import { type GoalSnapshot } from "./goal.ts";
+import { goalStatusLine } from "./goal-status.ts";
 import { atToken, mentionSupport, type MentionSupport } from "./mentions.ts";
 import { filterSkills, skillToken } from "./skills.ts";
 
@@ -35,23 +37,62 @@ export interface ComposerViewInput {
   editingId: string | null;
   fileCount: number;
   goalDraft: boolean;
+  /** 服务端还有未清除的目标，而且用户没有刚关掉芯片。 */
+  goalLive?: boolean;
+  goal?: GoalSnapshot | null;
 }
 
-export function pickModel(catalog: AgentCatalog | undefined, tuning: { model: string; effort: string } | undefined) {
+function modelById(catalog: AgentCatalog | undefined, id: string | null | undefined): AgentModelOption | undefined {
+  const trimmed = id?.trim();
+  if (!trimmed) return undefined;
   return (
-    catalog?.models.find((item) => item.id === tuning?.model) ??
-    catalog?.models.find((item) => item.is_default) ??
-    catalog?.models[0]
+    catalog?.models.find((item) => item.id === trimmed) ?? {
+      id: trimmed,
+      label: trimmed,
+      description: "",
+      is_default: false,
+      default_effort: "",
+      efforts: [],
+    }
   );
 }
 
+/**
+ * 用户没选过模型时，显示顺序是：已打开线程的模型、CLI `config/read` 的 model、
+ * 目录里标了 isDefault 的模型（仅当配置里没写 model）。不拿列表第一项充数。
+ */
+export function pickModel(catalog: AgentCatalog | undefined, tuning: { model: string; effort: string } | undefined) {
+  if (tuning?.model) return modelById(catalog, tuning.model);
+  const thread = modelById(catalog, catalog?.thread_model);
+  if (thread) return thread;
+  const configured = modelById(catalog, catalog?.configured_model);
+  if (configured) return configured;
+  if (catalog?.cli_config_read === false) return undefined;
+  return catalog?.models.find((item) => item.is_default);
+}
+
+function effortAllowed(model: AgentModelOption | undefined, effort: string | null | undefined) {
+  const id = effort?.trim();
+  if (!id) return undefined;
+  if (!model || model.efforts.length === 0 || model.efforts.some((item) => item.id === id)) return id;
+  return undefined;
+}
+
+/** 强度跟 CLI：配置里的 `model_reasoning_effort`，否则该模型自己的 defaultReasoningEffort。 */
 export function pickEffort(
   tuning: { model: string; effort: string } | undefined,
   model: AgentModelOption | undefined,
+  catalog?: AgentCatalog,
 ) {
-  return tuning?.effort && model?.efforts.some((item) => item.id === tuning.effort)
-    ? tuning.effort
-    : model?.default_effort;
+  const chosen = effortAllowed(model, tuning?.effort);
+  if (tuning?.model && chosen) return chosen;
+  if (!tuning?.model) {
+    const thread = catalog?.thread_effort?.trim();
+    if (catalog?.thread_model && thread) return thread;
+    const configured = catalog?.configured_effort?.trim();
+    if (!catalog?.thread_model && configured) return configured;
+  }
+  return model?.default_effort || undefined;
 }
 
 export function deriveComposerView(input: ComposerViewInput) {
@@ -80,13 +121,23 @@ export function deriveComposerView(input: ComposerViewInput) {
   const goalSupport: MentionSupport = mentionSupport(capsKnown, Boolean(caps?.supports_goals));
   const planSupport: MentionSupport = mentionSupport(capsKnown, Boolean(caps?.supports_plan));
   const selectedModel = pickModel(input.catalog, input.tuning);
-  const selectedEffort = pickEffort(input.tuning, selectedModel);
+  const selectedEffort = pickEffort(input.tuning, selectedModel, input.catalog);
+  const unreadConfig = input.catalog?.cli_config_read === false && !selectedModel;
   const modelButton = modelButtonLabel(
-    selectedModel ? `${selectedModel.label} · ${effortLabel(selectedEffort)}` : undefined,
+    selectedModel
+      ? `${selectedModel.label} · ${effortLabel(selectedEffort)}`
+      : unreadConfig
+        ? DESKTOP_ZH.modelConfigUnread
+        : undefined,
     input.catalog,
     input.catalogNotice,
   );
-  const planOn = collaborationMode(input.events) === "plan";
+  const mode = exclusiveComposerMode(input.events, {
+    draft: input.goalDraft,
+    live: Boolean(input.goalLive),
+  });
+  const planOn = mode === "plan";
+  const goalOn = mode === "goal";
   const placeholder = occupied
     ? "此会话正被其他进程占用，只能查看"
     : dead
@@ -134,6 +185,8 @@ export function deriveComposerView(input: ComposerViewInput) {
     modelButton,
     placeholder,
     planOn,
+    goalOn,
+    goalStatus: goalOn ? goalStatusLine(input.goal ?? null, !input.goal?.objective) : null,
     stopMode,
     sendDisabled,
     showPlan: Boolean(caps?.supports_plan),
