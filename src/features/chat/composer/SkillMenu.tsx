@@ -1,17 +1,24 @@
 import { cn } from "@/lib/utils";
 import type { AgentSkillOption } from "@/types";
+import { skillEmptyCopy } from "./skills";
 
 export function SkillMenu({
   matches,
   active,
   hasCatalog,
+  skillsError,
+  listedCount,
   onPick,
 }: {
   matches: AgentSkillOption[];
   active: AgentSkillOption | undefined;
   hasCatalog: boolean;
+  skillsError?: string | null;
+  listedCount: number;
   onPick: (skill: AgentSkillOption) => void;
 }) {
+  const empty = skillEmptyCopy({ hasCatalog, skillsError, listed: listedCount });
+  const emptyKind = !hasCatalog ? "loading" : skillsError && listedCount === 0 ? "error" : listedCount === 0 ? "none" : "no-match";
   return (
     <div
       role="listbox"
@@ -19,7 +26,9 @@ export function SkillMenu({
       className="absolute bottom-full left-0 right-0 z-20 mb-2 max-h-64 min-w-0 overflow-x-hidden overflow-y-auto rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
     >
       {matches.length === 0 ? (
-        <p className="px-3 py-2 text-xs text-zinc-500">{hasCatalog ? "没有匹配的技能" : "正在读取技能…"}</p>
+        <p className="px-3 py-2 text-xs text-zinc-500" data-skill-empty={emptyKind}>
+          {empty}
+        </p>
       ) : (
         matches.map((skill) => (
           <button

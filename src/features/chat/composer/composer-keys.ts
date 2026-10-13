@@ -6,6 +6,10 @@ export function stepIndex(current: number, count: number, key: string) {
 
 export type ComposerKeyIntent =
   | { type: "cancel-edit" }
+  | { type: "dismiss-mention" }
+  | { type: "mention-move"; key: "ArrowDown" | "ArrowUp" }
+  | { type: "apply-mention" }
+  | { type: "mention-noop" }
   | { type: "skill-move"; key: "ArrowDown" | "ArrowUp" }
   | { type: "apply-skill" }
   | { type: "slash-move"; key: "ArrowDown" | "ArrowUp" }
@@ -26,9 +30,21 @@ export function composerKeyIntent(input: {
   text: string;
   skillQuery: string | null;
   activeSkillMention?: string;
+  mentionOpen: boolean;
+  hasActiveMention: boolean;
 }): ComposerKeyIntent | null {
   const { key } = input;
   if (key === "Escape" && input.editing) return { type: "cancel-edit" };
+  if (input.mentionOpen && key === "Escape") return { type: "dismiss-mention" };
+  if (input.mentionOpen && (key === "ArrowDown" || key === "ArrowUp")) {
+    return { type: "mention-move", key };
+  }
+  if (input.mentionOpen && key === "Tab" && !input.composing) {
+    return input.hasActiveMention ? { type: "apply-mention" } : { type: "mention-noop" };
+  }
+  if (input.mentionOpen && key === "Enter" && !input.shiftKey && !input.composing) {
+    return input.hasActiveMention ? { type: "apply-mention" } : { type: "mention-noop" };
+  }
   if (input.skillOpen && (key === "ArrowDown" || key === "ArrowUp")) {
     return { type: "skill-move", key };
   }

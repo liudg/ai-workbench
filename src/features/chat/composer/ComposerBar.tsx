@@ -1,12 +1,13 @@
 import { useRef, type RefObject } from "react";
-import { ArrowUp, ChevronDown, Cpu, Plus, Shield } from "lucide-react";
+import { ArrowUp, ChevronDown, Cpu, Lightbulb, Plus, Shield, Target } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useElementWidth } from "@/shared/dom/useElementWidth";
+import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import type { PermissionMenu, SessionSandbox } from "@/types";
 import { buttonLabel } from "./access";
 import { composerDensity } from "./composer-density";
-import { PlanToggle } from "./PlanToggle";
+import { ModeChip } from "./ModeChip";
 
 export function ComposerBar({
   plusRef,
@@ -15,11 +16,10 @@ export function ComposerBar({
   menu,
   imagesOn,
   composerLocked,
-  menusLocked,
   sandbox,
   permissionMenu,
-  showPlan,
-  planOn,
+  planChip,
+  goalChip,
   showModel,
   hasCatalog,
   modelButton,
@@ -28,7 +28,8 @@ export function ComposerBar({
   sendDisabled,
   onToggleMenu,
   onPickFiles,
-  onTogglePlan,
+  onDismissPlan,
+  onDismissGoal,
   onCancelEdit,
   onSend,
 }: {
@@ -38,11 +39,10 @@ export function ComposerBar({
   menu: null | "access" | "model" | "attach";
   imagesOn: boolean;
   composerLocked: boolean;
-  menusLocked: boolean;
   sandbox: SessionSandbox;
   permissionMenu: PermissionMenu | null;
-  showPlan: boolean;
-  planOn: boolean;
+  planChip: boolean;
+  goalChip: boolean;
   showModel: boolean;
   hasCatalog: boolean;
   modelButton: string;
@@ -51,7 +51,8 @@ export function ComposerBar({
   sendDisabled: boolean;
   onToggleMenu: (name: "access" | "model" | "attach") => void;
   onPickFiles: () => void;
-  onTogglePlan: () => void;
+  onDismissPlan: () => void;
+  onDismissGoal: () => void;
   onCancelEdit: () => void;
   onSend: () => void;
 }) {
@@ -63,9 +64,9 @@ export function ComposerBar({
     <div
       ref={barRef}
       data-composer-density={density}
-      className="mt-1 flex min-w-0 flex-nowrap items-center gap-1 overflow-hidden"
+      className="mt-1 flex min-w-0 flex-nowrap items-center gap-1"
     >
-      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
+      <div className="flex min-w-0 flex-1 items-center gap-1">
         <button
           ref={plusRef}
           type="button"
@@ -108,11 +109,33 @@ export function ComposerBar({
           {icons ? null : <span className="min-w-0 truncate">{accessLabel}</span>}
           {icons ? null : <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />}
         </button>
+        {(planChip || goalChip) && <span aria-hidden className="mx-0.5 h-4 w-px shrink-0 bg-zinc-700" data-mode-divider />}
+        {planChip && (
+          <ModeChip
+            id="plan"
+            label={DESKTOP_ZH.planLabel}
+            tooltip={DESKTOP_ZH.planTooltip}
+            dismissLabel={DESKTOP_ZH.closePlan}
+            icon={<Lightbulb className="h-3.5 w-3.5 shrink-0" />}
+            iconOnly={icons}
+            disabled={composerLocked}
+            onDismiss={onDismissPlan}
+          />
+        )}
+        {goalChip && (
+          <ModeChip
+            id="goal"
+            label={DESKTOP_ZH.goalLabel}
+            tooltip={DESKTOP_ZH.goalTooltip}
+            dismissLabel={DESKTOP_ZH.closeGoal}
+            icon={<Target className="h-3.5 w-3.5 shrink-0" />}
+            iconOnly={icons}
+            disabled={composerLocked}
+            onDismiss={onDismissGoal}
+          />
+        )}
       </div>
       <div className="flex shrink-0 items-center gap-1">
-        {showPlan && (
-          <PlanToggle pressed={planOn} disabled={menusLocked} iconOnly={icons} onToggle={onTogglePlan} />
-        )}
         {showModel && (
           <button
             ref={modelRef}

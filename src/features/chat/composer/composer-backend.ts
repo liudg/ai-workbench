@@ -57,3 +57,23 @@ export function interruptTurn(sessionId: string) {
     reportComposerError(sessionId, error);
   });
 }
+
+export function searchMentionPaths(projectId: string, query: string) {
+  return backend.filterProjectPaths(projectId, query);
+}
+
+export function pickMentionFiles() {
+  return backend.pickMentionFiles();
+}
+
+export function setThreadGoal(sessionId: string, objective: string) {
+  return backend.setThreadGoal(sessionId, objective);
+}
+
+export function clearThreadGoal(sessionId: string) {
+  return backend.clearThreadGoal(sessionId);
+}
+
+export function publishThreadGoal(sessionId: string) {
+  return backend.publishThreadGoal(sessionId);
+}

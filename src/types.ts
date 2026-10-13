@@ -152,7 +152,9 @@ export type SessionEventBody =
       findings: ReviewFinding[];
       raw: string;
     }
-  | { kind: "collaboration-mode"; mode: string };
+  | { kind: "collaboration-mode"; mode: string }
+  /** 线程目标。objective 为空表示已清除。 */
+  | { kind: "goal"; objective?: string | null; status?: string | null };
 
 export type FileStatus = "A" | "M" | "D" | "R";
 
@@ -407,6 +409,8 @@ export interface AgentCatalog {
   skills: AgentSkillOption[];
   commands: SlashCommand[];
   capabilities: AgentCapabilities;
+  /** `skills/list` 失败且没有可保留技能时的原因。成功的空列表没有这个字段。 */
+  skills_error?: string | null;
 }
 
 /** `agent_catalog` 的返回。notice 有值时 catalog 仍是上次成功的目录。 */

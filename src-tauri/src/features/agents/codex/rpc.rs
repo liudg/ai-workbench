@@ -16,10 +16,10 @@ fn opens_turn(method: Option<&str>) -> bool {
     matches!(method, Some("turn/start" | "review/start"))
 }
 
+use super::history::{reasoning_text, take_chars, tool_event, tool_view, tool_visible, ToolView};
 use super::prompts::{
     approval_question, error_text, parse_elicitation, parse_tool_questions, rpc_error_text,
 };
-use super::history::{reasoning_text, take_chars, tool_event, tool_view, tool_visible, ToolView};
 use super::state::{emit, emit_status, ActivityBuf, Pending, Shared, StreamBuf};
 
 impl Shared {
@@ -423,8 +423,29 @@ impl Shared {
                     },
                 );
             }
+            "thread/goal/updated" => {
+                if self.thread_matches(params) {
+                    emit(
+                        &self.events,
+                        super::turn::goal_snapshot_event(params.get("goal")),
+                    );
+                }
+            }
+            "thread/goal/cleared" => {
+                if self.thread_matches(params) {
+                    emit(&self.events, super::turn::goal_snapshot_event(None));
+                }
+            }
             _ => {}
         }
+    }
+
+    fn thread_matches(&self, params: &Value) -> bool {
+        let ours = self.thread_id.lock().unwrap().clone().unwrap_or_default();
+        if ours.is_empty() {
+            return false;
+        }
+        params.get("threadId").and_then(Value::as_str) == Some(ours.as_str())
     }
 
     pub(super) fn handle_item(&self, completed: bool, item: &Value) {

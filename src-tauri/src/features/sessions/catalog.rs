@@ -186,6 +186,7 @@ mod tests {
             skills: Vec::new(),
             commands: Vec::new(),
             capabilities: adapter_for(AgentKind::CodexCli).capabilities(),
+            skills_error: None,
         }
     }
 

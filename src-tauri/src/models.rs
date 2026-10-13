@@ -491,6 +491,13 @@ pub enum SessionEventBody {
     CollaborationMode {
         mode: String,
     },
+    /// 线程目标。`objective` 为空表示已清除。不进时间线，作曲栏用它画目标芯片。
+    Goal {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        objective: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        status: Option<String>,
+    },
     /// 适配器请求宿主在同一项目里开一个新会话（`/new`、`/clear`、计划的「清空上下文后实施」）。
     /// 会话管理器不把它写进时间线，而是转给前端去新建、命名并发出首条消息。
     NewThread {
@@ -618,7 +625,7 @@ pub struct AgentCapabilities {
     /// 侧边栏 `thread/name/set`。
     #[serde(default)]
     pub supports_rename: bool,
-    /// `/plan` 和作曲栏 Plan 开关，走 `turn/start.collaborationMode`。
+    /// `/plan` 和作曲栏计划芯片，走 `turn/start.collaborationMode`。
     #[serde(default)]
     pub supports_plan: bool,
     /// 回合 diff、逐文件补丁、git 范围。
@@ -778,6 +785,9 @@ pub struct AgentCatalog {
     pub skills: Vec<AgentSkillOption>,
     pub commands: Vec<SlashCommand>,
     pub capabilities: AgentCapabilities,
+    /// `skills/list` 失败且没有可保留的技能时的原因。成功拉到空列表时为 None。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skills_error: Option<String>,
 }
 
 impl AgentCatalog {
@@ -787,6 +797,7 @@ impl AgentCatalog {
             skills: Vec::new(),
             commands: Vec::new(),
             capabilities: AgentCapabilities::none(),
+            skills_error: None,
         }
     }
 }

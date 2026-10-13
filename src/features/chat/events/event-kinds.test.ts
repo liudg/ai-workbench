@@ -24,6 +24,7 @@ const ALL: SessionEvent["kind"][] = [
   "review-note",
   "review-findings",
   "collaboration-mode",
+  "goal",
 ];
 
 test("every event kind is either rendered or silent", () => {

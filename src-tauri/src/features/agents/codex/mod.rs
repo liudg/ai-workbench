@@ -52,8 +52,8 @@ use crate::features::agents::{
     DiffScopeProvider, DirectoryEntry, EventSink, SessionContext, TurnDelivery, UserTurn,
 };
 use crate::models::{
-    strip_verbatim_prefix, AgentCapabilities, AgentCatalog, AgentKind, AgentProfile, PageAnnotation,
-    PromptAnswer, SessionEventBody, SessionStatus, OCCUPIED_SESSION_NOTICE,
+    strip_verbatim_prefix, AgentCapabilities, AgentCatalog, AgentKind, AgentProfile,
+    PageAnnotation, PromptAnswer, SessionEventBody, SessionStatus, OCCUPIED_SESSION_NOTICE,
 };
 
 use process::{
@@ -590,6 +590,18 @@ impl AgentSession for CodexCliSession {
 
     fn set_collaboration_mode(&self, mode: &str) -> Result<(), AgentError> {
         self.shared.set_collaboration_mode(mode)
+    }
+
+    async fn set_goal(&self, objective: &str) -> Result<(), AgentError> {
+        self.shared.set_goal_objective(objective).await
+    }
+
+    async fn clear_goal(&self) -> Result<(), AgentError> {
+        self.shared.emit_goal("clear").await
+    }
+
+    async fn publish_goal(&self) -> Result<(), AgentError> {
+        self.shared.publish_goal().await
     }
 
     async fn start_review(&self, target: crate::models::ReviewStart) -> Result<(), AgentError> {

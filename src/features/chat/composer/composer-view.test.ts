@@ -33,6 +33,7 @@ function view(patch: Partial<Parameters<typeof deriveComposerView>[0]> = {}) {
     caret: 0,
     editingId: null,
     fileCount: 0,
+    goalDraft: false,
     ...patch,
   });
 }
@@ -71,4 +72,33 @@ test("slash stays closed while a prompt is waiting or the turn is busy", () => {
   assert.equal(view({ text: "/review" }).slashOpen, true);
   assert.equal(view({ text: "  ", fileCount: 0 }).sendDisabled, true);
   assert.equal(view({ text: "", fileCount: 1 }).sendDisabled, false);
+});
+
+test("an empty @ opens the add menu and a query stays a file search", () => {
+  const empty = view({ text: "@", caret: 1 });
+  assert.equal(empty.mentionOpen, true);
+  assert.equal(empty.mentionAdd, true);
+  assert.equal(empty.skillOpen, false);
+  const files = view({ text: "@composer", caret: "@composer".length });
+  assert.equal(files.mentionAdd, false);
+  assert.equal(files.mentionQuery, "composer");
+  assert.equal(view({ text: "$docs", caret: 5 }).skillOpen, true);
+  assert.equal(view({ text: "$docs", caret: 5 }).mentionOpen, false);
+});
+
+test("goal draft and plan mode change the placeholder only when the composer is free", () => {
+  assert.equal(view({ goalDraft: true }).placeholder, "描述你的目标，定义可衡量的成功标准");
+  const plan: SessionEvent = {
+    id: "plan",
+    session_id: "s",
+    seq: 1,
+    ts: 1,
+    kind: "collaboration-mode",
+    mode: "plan",
+  };
+  assert.equal(view({ events: [plan] }).placeholder, "描述你的任务以生成计划");
+  assert.equal(view({ events: [plan], goalDraft: true }).placeholder, "描述你的目标，定义可衡量的成功标准");
+  assert.equal(view({ status: "running", goalDraft: true }).placeholder, "添加后续消息");
+  assert.equal(view({ caps: undefined }).goalSupport, "loading");
+  assert.equal(view({ caps: { ...caps, supports_goals: false } }).goalSupport, "unsupported");
 });

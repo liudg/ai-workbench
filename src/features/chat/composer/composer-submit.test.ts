@@ -13,6 +13,8 @@ const base = {
   editingId: null as string | null,
   pendingId: null as string | null,
   composerLocked: false,
+  goalDraft: false,
+  supportsGoals: true,
 };
 
 test("plan and review commands never become a chat message", () => {
@@ -30,6 +32,20 @@ test("plan and review commands never become a chat message", () => {
   });
   assert.deepEqual(decideSubmit({ ...base, text: "/review" }), { type: "open-review" });
   assert.deepEqual(decideSubmit({ ...base, text: "/plan", supportsPlan: false }).type, "send-images");
+  assert.deepEqual(decideSubmit({ ...base, text: "补齐回归", goalDraft: true }), {
+    type: "set-goal",
+    text: "补齐回归",
+  });
+  assert.deepEqual(decideSubmit({ ...base, text: "/plan", goalDraft: true }).type, "toggle-plan");
+  assert.equal(decideSubmit({ ...base, text: "补齐回归", goalDraft: true, supportsGoals: false }).type, "send-images");
+  assert.equal(
+    decideSubmit({ ...base, text: "改一下", goalDraft: true, editingId: "q1" }).type,
+    "update-queue",
+  );
+  assert.equal(
+    decideSubmit({ ...base, text: "补齐回归", goalDraft: true, composerLocked: true }).type,
+    "noop",
+  );
 });
 
 test("queue edit, pending answer, and image send stay distinct", () => {

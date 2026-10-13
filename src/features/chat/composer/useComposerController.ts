@@ -37,6 +37,8 @@ import { deriveComposerView } from "./composer-view";
 import { useComposerMenu } from "./useComposerMenu";
 import { useComposerActions, useComposerSession } from "./useComposerStore";
 import { addWritableRoot, removeWritableRoot, selectPreset, selectProfile, setNetwork } from "./access";
+import { useGoalDraft } from "./useGoalDraft";
+import { useMentionMenu } from "./useMentionMenu";
 
 export function useComposerController(session: Session, events: SessionEvent[]) {
   const actions = useComposerActions();
@@ -83,6 +85,8 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
   }, [reviewOpen, closeReview]);
 
   const caps = data.profile?.capabilities ?? data.catalog?.capabilities;
+  const supportsGoals = Boolean(caps?.supports_goals);
+  const goal = useGoalDraft(session.id, supportsGoals, events);
   const view = deriveComposerView({
     status: session.status,
     events,
@@ -98,6 +102,25 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     caret,
     editingId,
     fileCount: data.files.length,
+    goalDraft: goal.goalDraft,
+  });
+  const goalSupport = goal.publishError ? "unsupported" : view.goalSupport;
+  const mentions = useMentionMenu({
+    projectId: session.project_id,
+    text,
+    setText,
+    caret,
+    setCaret,
+    textareaRef,
+    mentionOpen: view.mentionOpen,
+    mentionAdd: view.mentionAdd,
+    mentionQuery: view.mentionQuery,
+    goalSupport,
+    planSupport: view.planSupport,
+    onGoal: goal.toggleDraft,
+    onPlan: () => {
+      void actions.setCollaborationMode(session.id, view.planOn ? "default" : "plan");
+    },
   });
   const activeSlash = view.slashMatches[Math.min(slashIndex, view.slashMatches.length - 1)];
   const activeSkill = view.skillMatches[Math.min(skillIndex, Math.max(view.skillMatches.length - 1, 0))];
@@ -148,6 +171,10 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
   useEffect(() => {
     setSkillIndex(0);
   }, [view.skillQuery]);
+
+  useEffect(() => {
+    if (goal.publishError) setNotice(goal.publishError);
+  }, [goal.publishError]);
 
   const rememberCaret = (element: HTMLTextAreaElement) => {
     setCaret(element.selectionStart ?? element.value.length);
@@ -211,8 +238,19 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
       editingId,
       pendingId: view.pendingId,
       composerLocked: view.composerLocked,
+      goalDraft: goal.goalDraft,
+      supportsGoals,
     });
     if (decision.type === "noop") return;
+    if (decision.type === "set-goal") {
+      void goal.submit(decision.text).then((ok) => {
+        if (!ok) return;
+        setText("");
+        setCaret(0);
+      });
+      textareaRef.current?.focus();
+      return;
+    }
     if (decision.type === "toggle-plan") {
       setText("");
       void actions.setCollaborationMode(session.id, decision.mode);
@@ -327,11 +365,18 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     interrupt: () => {
       void interruptTurn(session.id);
     },
-    togglePlan: () => {
-      void actions.setCollaborationMode(session.id, view.planOn ? "default" : "plan");
+    dismissPlan: () => {
+      void actions.setCollaborationMode(session.id, "default");
     },
     models: data.catalog?.models ?? [],
     hasCatalog: Boolean(data.catalog),
+    skillsError: data.catalog?.skills_error ?? null,
+    skillCount: data.catalog?.skills.length ?? 0,
+    mentions,
+    goalSupport,
+    goalNotice: goal.publishError,
+    goalChip: goal.chip,
+    dismissGoal: goal.dismiss,
     startReview: (target: ReviewStart) => {
       setReviewOpen(false);
       void actions.startReview(session.id, target);
@@ -371,10 +416,16 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
         text,
         skillQuery: view.skillQuery,
         activeSkillMention: activeSkill?.mention,
+        mentionOpen: mentions.show,
+        hasActiveMention: mentions.hasActive,
       });
       if (!intent) return;
       event.preventDefault();
       if (intent.type === "cancel-edit") cancelEdit();
+      else if (intent.type === "dismiss-mention") mentions.dismiss();
+      else if (intent.type === "mention-move") mentions.move(intent.key);
+      else if (intent.type === "apply-mention") mentions.apply();
+      else if (intent.type === "mention-noop") return;
       else if (intent.type === "skill-move") {
         setSkillIndex((current) => stepIndex(current, view.skillMatches.length, intent.key));
       } else if (intent.type === "slash-move") {

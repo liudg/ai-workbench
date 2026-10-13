@@ -8,12 +8,23 @@ import { visibleBanner } from "@/store/sync";
 const DiffPreview = import.meta.env.DEV
   ? lazy(() => import("@/features/panel/diff/DiffPreview"))
   : null;
+const ComposerPreview = import.meta.env.DEV
+  ? lazy(() => import("@/features/chat/composer/ComposerPreview"))
+  : null;
 
 export default function App() {
-  if (DiffPreview && new URLSearchParams(window.location.search).get("preview") === "diff") {
+  const preview = new URLSearchParams(window.location.search).get("preview");
+  if (DiffPreview && preview === "diff") {
     return (
       <Suspense fallback={null}>
         <DiffPreview />
+      </Suspense>
+    );
+  }
+  if (ComposerPreview && preview === "composer") {
+    return (
+      <Suspense fallback={null}>
+        <ComposerPreview />
       </Suspense>
     );
   }

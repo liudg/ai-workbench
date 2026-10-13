@@ -24,21 +24,37 @@ fn skill_options(skills: &[KnownSkill]) -> Vec<AgentSkillOption> {
 }
 
 /// 技能请求失败时保留已有技能，但只要模型列表非空就仍然返回模型。
+/// 没有可保留的技能时带上失败原因，避免作曲栏把失败说成「没有技能」。
 pub(super) fn assemble_catalog(
     models: Vec<AgentModelOption>,
-    skills: Result<Vec<AgentSkillOption>, ()>,
+    skills: Result<Vec<AgentSkillOption>, String>,
     previous_skills: Vec<AgentSkillOption>,
 ) -> Result<AgentCatalog, ()> {
-    let skills = match skills {
-        Ok(skills) => skills,
-        Err(()) if !models.is_empty() => previous_skills,
-        Err(()) => return Err(()),
+    let (skills, skills_error) = match skills {
+        Ok(skills) => (skills, None),
+        Err(_) if !models.is_empty() && !previous_skills.is_empty() => (previous_skills, None),
+        Err(message) if !models.is_empty() => (previous_skills, Some(message)),
+        Err(_) => return Err(()),
     };
     Ok(AgentCatalog {
         models,
         skills,
         commands: slash_commands(),
         capabilities: AgentCapabilities::codex(),
+        skills_error,
+    })
+}
+
+/// `skills/list` 的官方参数。`cwds` 为空时服务端用会话工作目录；这里显式带上项目目录。
+/// `forceReload` 跳过按目录缓存的结果，避免刚装上的技能被说成没有。
+pub(super) fn skills_list_params(cwd: &str) -> Value {
+    let cwd = cwd.trim();
+    if cwd.is_empty() {
+        return json!({ "forceReload": true });
+    }
+    json!({
+        "cwds": [cwd],
+        "forceReload": true,
     })
 }
 
@@ -74,7 +90,7 @@ impl Shared {
         let previous_skills = skill_options(&self.skills.lock().unwrap());
         let skills = match self.refresh_skills().await {
             Ok(()) => Ok(skill_options(&self.skills.lock().unwrap())),
-            Err(_) => Err(()),
+            Err(err) => Err(err.to_string()),
         };
         assemble_catalog(models, skills, previous_skills)
             .map_err(|()| AgentError::Runtime("读取技能失败，且没有可用模型".into()))
@@ -82,7 +98,7 @@ impl Shared {
 
     pub(super) async fn refresh_skills(&self) -> Result<(), AgentError> {
         let listed = self
-            .request("skills/list", json!({ "cwd": self.cwd }))
+            .request("skills/list", skills_list_params(&self.cwd))
             .await?;
         *self.skills.lock().unwrap() = parse_skills(&listed);
         Ok(())
@@ -194,47 +210,88 @@ pub(super) fn collect_skills(value: &Value, out: &mut Vec<KnownSkill>) {
         }
         return;
     }
-    let Some(list) = value.get("skills").and_then(Value::as_array) else {
-        return;
-    };
-    for skill in list {
-        if skill.get("enabled").and_then(Value::as_bool) == Some(false) {
-            continue;
+    // 官方响应是 `{ "data": [{ "cwd", "skills": [...] }] }`，不是顶层 `skills`。
+    if let Some(entries) = value.get("data").and_then(Value::as_array) {
+        for entry in entries {
+            collect_skills(entry, out);
         }
-        let name = skill
-            .get("name")
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .trim()
-            .to_string();
-        let path = skill
-            .get("path")
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .trim()
-            .to_string();
-        if name.is_empty() || path.is_empty() || out.iter().any(|item| item.path == path) {
-            continue;
-        }
-        let mention = name.rsplit(':').next().unwrap_or(&name).to_string();
-        let label = skill
-            .pointer("/interface/displayName")
-            .and_then(Value::as_str)
-            .filter(|text| !text.is_empty())
-            .unwrap_or(&mention)
-            .to_string();
-        out.push(KnownSkill {
-            description: skill
-                .get("description")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string(),
-            name,
-            mention,
-            label,
-            path,
-        });
     }
+    if let Some(list) = value.get("skills").and_then(Value::as_array) {
+        for skill in list {
+            push_skill(skill, out);
+        }
+        return;
+    }
+    push_skill(value, out);
+}
+
+fn push_skill(skill: &Value, out: &mut Vec<KnownSkill>) {
+    if skill.get("enabled").and_then(Value::as_bool) == Some(false) {
+        return;
+    }
+    let name = skill
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if name.is_empty() {
+        return;
+    }
+    let path = skill_path(skill);
+    let identity = if path.is_empty() {
+        format!("name:{name}")
+    } else {
+        path.clone()
+    };
+    if out.iter().any(|item| item.path == identity) {
+        return;
+    }
+    let mention = name.rsplit(':').next().unwrap_or(&name).to_string();
+    let label = skill
+        .pointer("/interface/displayName")
+        .and_then(Value::as_str)
+        .filter(|text| !text.is_empty())
+        .or_else(|| {
+            skill
+                .get("displayName")
+                .and_then(Value::as_str)
+                .filter(|text| !text.is_empty())
+        })
+        .unwrap_or(&mention)
+        .to_string();
+    out.push(KnownSkill {
+        description: skill
+            .get("description")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string(),
+        name,
+        mention,
+        label,
+        path: identity,
+    });
+}
+
+/// 协议字段是 `path`。没有路径时仍保留技能，提交时只写 `$name`，不编造文件路径。
+fn skill_path(skill: &Value) -> String {
+    for key in ["path", "pathToSkillsMd", "skillPath"] {
+        if let Some(path) = skill.get(key).and_then(Value::as_str) {
+            let path = path.trim();
+            if !path.is_empty() {
+                return path.to_string();
+            }
+        }
+    }
+    String::new()
+}
+
+pub(super) fn attachable_skill_path(path: &str) -> bool {
+    let path = path.trim();
+    if path.is_empty() || path.starts_with("name:") {
+        return false;
+    }
+    path.contains('/') || path.contains('\\') || path.to_ascii_lowercase().ends_with(".md")
 }
 
 pub(super) fn is_skill_token(byte: u8) -> bool {
@@ -268,7 +325,9 @@ pub(super) fn build_turn_input(
                         "byteRange": { "start": start, "end": end },
                         "placeholder": skill.label,
                     }));
-                    if !attached.iter().any(|item| item.path == skill.path) {
+                    if attachable_skill_path(&skill.path)
+                        && !attached.iter().any(|item| item.path == skill.path)
+                    {
                         attached.push(skill);
                     }
                 }
@@ -509,14 +568,102 @@ mod tests {
             description: String::new(),
             path: "C:/skills/documents/SKILL.md".into(),
         }];
-        let catalog = assemble_catalog(models, Err(()), previous).expect("models stay");
+        let catalog =
+            assemble_catalog(models, Err("读取技能失败".into()), previous).expect("models stay");
         assert_eq!(catalog.models[0].id, "gpt-cached");
         assert_eq!(catalog.skills[0].mention, "documents");
+        assert!(catalog.skills_error.is_none());
+    }
+
+    #[test]
+    fn skills_failure_without_a_previous_list_is_reported() {
+        let models = vec![AgentModelOption {
+            id: "gpt-cached".into(),
+            label: "GPT Cached".into(),
+            description: String::new(),
+            is_default: true,
+            default_effort: "medium".into(),
+            efforts: Vec::new(),
+        }];
+        let catalog = assemble_catalog(
+            models,
+            Err("等待 Codex skills/list 超时".into()),
+            Vec::new(),
+        )
+        .expect("models stay");
+        assert!(catalog.skills.is_empty());
+        assert_eq!(
+            catalog.skills_error.as_deref(),
+            Some("等待 Codex skills/list 超时")
+        );
     }
 
     #[test]
     fn skills_failure_without_models_is_an_error() {
-        assert!(assemble_catalog(Vec::new(), Err(()), Vec::new()).is_err());
+        assert!(assemble_catalog(Vec::new(), Err("读取技能失败".into()), Vec::new()).is_err());
+    }
+
+    #[test]
+    fn skills_list_params_use_cwds_and_force_reload() {
+        let params = skills_list_params("/work/app");
+        assert_eq!(params["cwds"][0], json!("/work/app"));
+        assert_eq!(params["forceReload"], json!(true));
+        assert!(params.get("cwd").is_none());
+        assert_eq!(skills_list_params("  ")["forceReload"], json!(true));
+    }
+
+    #[test]
+    fn parses_official_skills_list_data_wrapper() {
+        let listed = json!({
+            "data": [{
+                "cwd": "/work/app",
+                "skills": [
+                    {
+                        "name": "skill-creator",
+                        "description": "Create or update a Codex skill",
+                        "enabled": true,
+                        "interface": { "displayName": "Skill Creator" },
+                        "path": "/Users/me/.codex/skills/skill-creator/SKILL.md"
+                    },
+                    {
+                        "name": "hidden-skill",
+                        "description": "off",
+                        "enabled": false,
+                        "path": "/Users/me/.codex/skills/hidden/SKILL.md"
+                    }
+                ],
+                "errors": []
+            }]
+        });
+        let skills = parse_skills(&listed);
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].mention, "skill-creator");
+        assert_eq!(skills[0].label, "Skill Creator");
+        assert!(attachable_skill_path(&skills[0].path));
+    }
+
+    #[test]
+    fn skill_without_path_stays_listed_but_is_not_attached_as_a_file() {
+        let listed = json!({
+            "data": [{
+                "skills": [{
+                    "name": "documents:documents",
+                    "description": "Docs",
+                    "interface": { "displayName": "Documents" }
+                }]
+            }]
+        });
+        let skills = parse_skills(&listed);
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].mention, "documents");
+        assert_eq!(skills[0].label, "Documents");
+        assert!(!attachable_skill_path(&skills[0].path));
+        let input = build_turn_input("用 $documents", &skills, &[], &[]);
+        assert_eq!(input.as_array().unwrap().len(), 1);
+        assert_eq!(
+            input[0]["text_elements"][0]["placeholder"],
+            json!("Documents")
+        );
     }
 
     #[test]
@@ -557,9 +704,9 @@ mod tests {
         };
         let input = build_turn_input("", &[], &[], &[note]);
         let items = input.as_array().expect("input items");
-        assert!(items.iter().any(|item| {
-            item["type"] == json!("text") && item["text"] == json!("看这里")
-        }));
+        assert!(items
+            .iter()
+            .any(|item| { item["type"] == json!("text") && item["text"] == json!("看这里") }));
         assert!(items.iter().any(|item| {
             item["type"] == json!("localImage") && item["path"] == json!("C:/shot.png")
         }));

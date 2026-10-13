@@ -160,7 +160,9 @@ impl SessionManager {
                 // 刚创建的线程，或还停在打开前那份 8 秒缓存里时，列表里暂时没有它。
                 self.invalidate_session_kind(session_id).await;
                 match self.find_sourced(session_id).await {
-                    Ok(refreshed) => after_list_refresh(None, refreshed).map_err(str::to_string).ok(),
+                    Ok(refreshed) => after_list_refresh(None, refreshed)
+                        .map_err(str::to_string)
+                        .ok(),
                     Err(err) => return Err(err),
                 }
             }
@@ -382,6 +384,37 @@ impl SessionManager {
             .map_err(|err| err.to_string())
     }
 
+    pub async fn set_thread_goal(
+        &self,
+        store: &ProjectStore,
+        session_id: &str,
+        objective: &str,
+    ) -> Result<(), String> {
+        let handle = self.open_agent(store, session_id).await?;
+        handle
+            .set_goal(objective)
+            .await
+            .map_err(|err| err.to_string())
+    }
+
+    pub async fn clear_thread_goal(
+        &self,
+        store: &ProjectStore,
+        session_id: &str,
+    ) -> Result<(), String> {
+        let handle = self.open_agent(store, session_id).await?;
+        handle.clear_goal().await.map_err(|err| err.to_string())
+    }
+
+    pub async fn publish_thread_goal(
+        &self,
+        store: &ProjectStore,
+        session_id: &str,
+    ) -> Result<(), String> {
+        let handle = self.open_agent(store, session_id).await?;
+        handle.publish_goal().await.map_err(|err| err.to_string())
+    }
+
     pub async fn start_review(&self, session_id: &str, target: ReviewStart) -> Result<(), String> {
         let handle = self.agent_handle_ready(session_id).await?;
         if handle.read_only() {
@@ -519,10 +552,7 @@ impl SessionManager {
 
     pub async fn diff_scopes(&self, session_id: &str) -> Result<Vec<DiffScope>, String> {
         let handle = self.agent_handle_ready(session_id).await?;
-        handle
-            .diff_scopes()
-            .await
-            .map_err(|err| err.to_string())
+        handle.diff_scopes().await.map_err(|err| err.to_string())
     }
 
     pub async fn diff_for_scope(

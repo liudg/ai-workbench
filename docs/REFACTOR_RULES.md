@@ -78,13 +78,14 @@
 - **内置浏览器。** 地址栏、前进后退、原生 webview / iframe、本地文件页。Codex 桌面没有这套浏览器。
 - **页面标注。** 标注模式、注释提交到当前会话。随浏览器保留。
 - **多 Agent 安装探测。** 设置页列出已注册 CLI，未接入会话协议的种类保持「未接入」，不能新建会话。这不是 Codex 功能，也没有假接通。
+- **`@` 文件候选。** 官方实验性 `fuzzyFileSearch` 是流式会话。作曲栏 `@` 查询沿用已有的 `filter_project_paths`（只返回文件，按相对路径匹配）。插入时的引号规则跟 Codex TUI：路径含空白且本身没有 `"` 才加引号。
 
 ## 6. 还没做，以及原因
 
 | 债务 | 原因 |
 | --- | --- |
 | `shared/markdown/answer-markdown.ts`（约 25KB） | 一份 Markdown 解析器，拆开会把块解析和行内解析的状态机切开，没有第二个调用方需要单独演进 |
-| `features/chat/composer/useComposerController.ts`（约 13KB） | 作曲栏提交、菜单和快捷键还是一条控制器。拆分会动已经验收过的输入行为，这一轮没有独立的第二个接缝 |
+| `features/chat/composer/useComposerController.ts`（约 15KB） | 提交和快捷键还在这条控制器。`@` 搜索在 `useMentionMenu`，目标草稿在 `useGoalDraft`。再拆发送路径会动已经验收过的输入行为 |
 | `store/slices/panel.ts`、`lib/ipc.ts`、`types.ts` | 分别是面板状态、IPC 门面、与 Rust `models.rs` 对齐的协议类型。继续按字段拆会制造两份协议 |
 | `src-tauri` 里 `sessions/manager.rs`、`models.rs`、`agents/install.rs`、`agents/codex/mod.rs` | 会话状态机、协议模型和安装探测各自仍是一块。`mod.rs` 后半是要本机 Codex 的集成测试。没有在不改行为的前提下拆出第二个所有者 |
 | 侧栏行（`SessionRow`、`ProjectItem` 等）仍直接 `useWorkbench` | 它们是功能容器，不是这一轮最大的 IPC 耦合。改成逐个 hook 不会减少跨功能依赖 |

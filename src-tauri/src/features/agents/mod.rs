@@ -129,7 +129,12 @@ pub fn fold_page_annotations(
             "区域：{},{} {}×{}",
             note.x, note.y, note.width, note.height
         ));
-        if let Some(path) = note.screenshot.as_ref().map(|item| item.trim()).filter(|item| !item.is_empty()) {
+        if let Some(path) = note
+            .screenshot
+            .as_ref()
+            .map(|item| item.trim())
+            .filter(|item| !item.is_empty())
+        {
             lines.push("附图为该区域所在页面的截图。".into());
             if !images.iter().any(|item| item == path) {
                 images.push(path.to_string());
@@ -269,6 +274,21 @@ pub trait AgentSession: DiffScopeProvider + AnnotationSink + Send + Sync {
         Err(AgentError::Runtime("这个 Agent 没有计划模式".into()))
     }
 
+    /// `thread/goal/set`。目标不能为空。
+    async fn set_goal(&self, _objective: &str) -> Result<(), AgentError> {
+        Err(AgentError::Runtime("这个 Agent 没有目标".into()))
+    }
+
+    /// `thread/goal/clear`。
+    async fn clear_goal(&self) -> Result<(), AgentError> {
+        Err(AgentError::Runtime("这个 Agent 没有目标".into()))
+    }
+
+    /// `thread/goal/get`。没有线程时直接成功，不编造目标。
+    async fn publish_goal(&self) -> Result<(), AgentError> {
+        Ok(())
+    }
+
     /// `review/start`。调用方已经把菜单文案记成用户消息。
     async fn start_review(&self, _target: ReviewStart) -> Result<(), AgentError> {
         Err(AgentError::Runtime("这个 Agent 不能发起代码审查".into()))
@@ -388,7 +408,6 @@ pub trait AgentAdapter: Send + Sync {
             self.display_name()
         )))
     }
-
 }
 
 /// 按类型取得适配器实例。

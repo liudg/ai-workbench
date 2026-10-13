@@ -1,0 +1,73 @@
+import { useCallback, useEffect, useState } from "react";
+
+import type { SessionEvent } from "@/types";
+import { clearThreadGoal, publishThreadGoal, reportComposerError, setThreadGoal } from "./composer-backend";
+import { activeGoal } from "./goal";
+
+/** 目标芯片：提交前是本地草稿，提交后跟 `thread/goal` 事件。 */
+export function useGoalDraft(sessionId: string, supportsGoals: boolean, events: readonly SessionEvent[]) {
+  const [goalDraft, setGoalDraft] = useState(false);
+  const [goalPinned, setGoalPinned] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
+  const goal = activeGoal(events);
+  const objective = goal?.objective ?? "";
+
+  useEffect(() => {
+    setGoalDraft(false);
+    setGoalPinned(false);
+    setPublishError(null);
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (!supportsGoals) return;
+    let cancel = false;
+    void publishThreadGoal(sessionId).catch((error: unknown) => {
+      if (!cancel) setPublishError(error instanceof Error ? error.message : String(error));
+    });
+    return () => {
+      cancel = true;
+    };
+  }, [sessionId, supportsGoals]);
+
+  useEffect(() => {
+    if (objective) setGoalPinned(false);
+  }, [objective]);
+
+  const toggleDraft = useCallback(() => {
+    setGoalDraft((current) => !current);
+  }, []);
+
+  const dismiss = useCallback(() => {
+    const shouldClear = Boolean(objective) || goalPinned;
+    setGoalDraft(false);
+    setGoalPinned(false);
+    if (!shouldClear) return;
+    void clearThreadGoal(sessionId).catch((error: unknown) => {
+      reportComposerError(sessionId, error);
+    });
+  }, [goalPinned, objective, sessionId]);
+
+  const submit = useCallback(
+    async (text: string) => {
+      try {
+        await setThreadGoal(sessionId, text);
+        setGoalDraft(false);
+        setGoalPinned(true);
+        return true;
+      } catch (error) {
+        reportComposerError(sessionId, error);
+        return false;
+      }
+    },
+    [sessionId],
+  );
+
+  return {
+    goalDraft,
+    chip: goalDraft || goalPinned || Boolean(objective),
+    publishError,
+    toggleDraft,
+    dismiss,
+    submit,
+  };
+}

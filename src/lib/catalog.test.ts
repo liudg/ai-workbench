@@ -71,6 +71,25 @@ test("empty refresh does not replace a previous catalog", () => {
   assert.equal(next.notice, CATALOG_STALE_NOTICE);
 });
 
+test("a failed skill refresh does not wipe skills that already arrived", () => {
+  const cached = catalog("gpt-cached", ["documents"]);
+  const incoming = catalog("gpt-cached");
+  incoming.skills = [];
+  incoming.skills_error = "等待 Codex skills/list 超时";
+  const next = reduceCatalogResult({ cached, notice: null }, { ok: true, catalog: incoming });
+  assert.equal(next.live?.skills[0]?.mention, "documents");
+  assert.equal(next.live?.skills_error ?? null, null);
+});
+
+test("a failed skill refresh with no previous list stays empty and keeps the error", () => {
+  const incoming = catalog("gpt-new");
+  incoming.skills = [];
+  incoming.skills_error = "等待 Codex skills/list 超时";
+  const next = reduceCatalogResult({ notice: null }, { ok: true, catalog: incoming });
+  assert.equal(next.live?.skills.length, 0);
+  assert.equal(next.live?.skills_error, "等待 Codex skills/list 超时");
+});
+
 test("skills-only success still keeps the models that arrived with it", () => {
   const next = reduceCatalogResult(
     { notice: null },

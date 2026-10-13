@@ -15,6 +15,8 @@ const idle = {
   token: null as string | null,
   text: "你好",
   skillQuery: null as string | null,
+  mentionOpen: false,
+  hasActiveMention: false,
 };
 
 test("composer keys complete a slash or skill before sending", () => {
@@ -57,4 +59,19 @@ test("composer keys complete a slash or skill before sending", () => {
   );
   assert.equal(composerKeyIntent({ ...idle, key: "Enter", shiftKey: true }), null);
   assert.equal(composerKeyIntent({ ...idle, composing: true }), null);
+  assert.deepEqual(composerKeyIntent({ ...idle, key: "Escape", mentionOpen: true }), {
+    type: "dismiss-mention",
+  });
+  assert.deepEqual(
+    composerKeyIntent({ ...idle, mentionOpen: true, hasActiveMention: true, text: "@" }),
+    { type: "apply-mention" },
+  );
+  assert.deepEqual(
+    composerKeyIntent({ ...idle, mentionOpen: true, hasActiveMention: false, text: "@" }),
+    { type: "mention-noop" },
+  );
+  assert.deepEqual(composerKeyIntent({ ...idle, key: "ArrowDown", mentionOpen: true }), {
+    type: "mention-move",
+    key: "ArrowDown",
+  });
 });

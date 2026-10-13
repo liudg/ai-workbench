@@ -134,6 +134,36 @@ pub async fn set_collaboration_mode(
 }
 
 #[tauri::command]
+pub async fn set_thread_goal(
+    store: State<'_, ProjectStore>,
+    manager: State<'_, SessionManager>,
+    session_id: String,
+    objective: String,
+) -> Result<(), String> {
+    manager
+        .set_thread_goal(&store, &session_id, &objective)
+        .await
+}
+
+#[tauri::command]
+pub async fn clear_thread_goal(
+    store: State<'_, ProjectStore>,
+    manager: State<'_, SessionManager>,
+    session_id: String,
+) -> Result<(), String> {
+    manager.clear_thread_goal(&store, &session_id).await
+}
+
+#[tauri::command]
+pub async fn publish_thread_goal(
+    store: State<'_, ProjectStore>,
+    manager: State<'_, SessionManager>,
+    session_id: String,
+) -> Result<(), String> {
+    manager.publish_thread_goal(&store, &session_id).await
+}
+
+#[tauri::command]
 pub async fn review_targets(
     manager: State<'_, SessionManager>,
     session_id: String,

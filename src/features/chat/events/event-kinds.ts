@@ -25,6 +25,7 @@ export const SILENT_EVENT_KINDS = [
   "file-change",
   "turn-changes",
   "collaboration-mode",
+  "goal",
 ] as const satisfies readonly SessionEvent["kind"][];
 
 export type RenderedEventKind = (typeof RENDERED_EVENT_KINDS)[number];

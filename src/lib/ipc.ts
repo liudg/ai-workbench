@@ -171,6 +171,12 @@ export interface Backend {
   interruptTurn(sessionId: string): Promise<void>;
   stageChatImage(dataBase64: string, name: string): Promise<Attachment>;
   setCollaborationMode(sessionId: string, mode: "plan" | "default"): Promise<void>;
+  /** `thread/goal/set`。 */
+  setThreadGoal(sessionId: string, objective: string): Promise<void>;
+  /** `thread/goal/clear`。 */
+  clearThreadGoal(sessionId: string): Promise<void>;
+  /** `thread/goal/get`。没有线程时成功且不产生目标事件。 */
+  publishThreadGoal(sessionId: string): Promise<void>;
   reviewTargets(sessionId: string): Promise<ReviewTargets>;
   startReview(sessionId: string, target: ReviewStart): Promise<void>;
   answerPrompt(
@@ -211,6 +217,8 @@ export interface Backend {
   pickDirectory(title: string): Promise<string | null>;
   /** 选择要附加的文件；取消时返回空数组 */
   pickFiles(): Promise<Attachment[]>;
+  /** `@` 菜单「文件和文件夹」。选中的路径由作曲栏写成文件提及。 */
+  pickMentionFiles(): Promise<Attachment[]>;
   pickImageFiles(): Promise<Attachment[]>;
 
   onSessionEvent(cb: (event: SessionEvent) => void): () => void;
@@ -311,6 +319,10 @@ export const backend: Backend = {
     invoke("stage_chat_image", { dataBase64, name }),
   setCollaborationMode: (sessionId, mode) =>
     invoke("set_collaboration_mode", { sessionId, mode }),
+  setThreadGoal: (sessionId, objective) =>
+    invoke("set_thread_goal", { sessionId, objective }),
+  clearThreadGoal: (sessionId) => invoke("clear_thread_goal", { sessionId }),
+  publishThreadGoal: (sessionId) => invoke("publish_thread_goal", { sessionId }),
   reviewTargets: (sessionId) =>
     invoke<ReviewTargets>("review_targets", { sessionId }),
   startReview: (sessionId, target) =>
@@ -365,6 +377,10 @@ export const backend: Backend = {
     ),
   pickFiles: async () =>
     attachments(await transport.pick({ directory: false, multiple: true, title: "添加附件" })),
+  pickMentionFiles: async () =>
+    attachments(
+      await transport.pick({ directory: false, multiple: true, title: "文件和文件夹" }),
+    ),
 
   onSessionEvent: (cb) => subscribe<SessionEvent>("session-event", cb),
   onSessionQueue: (cb) =>

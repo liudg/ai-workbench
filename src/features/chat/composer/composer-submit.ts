@@ -4,6 +4,7 @@ import { isImagePath } from "./media.ts";
 export type ComposerSubmit =
   | { type: "toggle-plan"; mode: "plan" | "default" }
   | { type: "plan-message"; text: string }
+  | { type: "set-goal"; text: string }
   | { type: "open-review" }
   | { type: "noop" }
   | { type: "update-queue"; id: string; text: string; images: string[] }
@@ -21,6 +22,8 @@ export function decideSubmit(input: {
   editingId: string | null;
   pendingId: string | null;
   composerLocked: boolean;
+  goalDraft: boolean;
+  supportsGoals: boolean;
 }): ComposerSubmit {
   const value = input.text.trim();
   if (input.supportsPlan && value === "/plan") {
@@ -43,6 +46,15 @@ export function decideSubmit(input: {
   if (input.pendingId) {
     if (!value || input.composerLocked) return { type: "noop" };
     return { type: "answer", promptId: input.pendingId, text: value };
+  }
+  if (
+    input.goalDraft &&
+    input.supportsGoals &&
+    value &&
+    !value.startsWith("/") &&
+    !input.composerLocked
+  ) {
+    return { type: "set-goal", text: value };
   }
   const canSend = Boolean(body || imagePaths.length);
   if (!canSend || input.composerLocked) return { type: "noop" };

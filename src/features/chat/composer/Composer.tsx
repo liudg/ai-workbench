@@ -8,6 +8,7 @@ import { ComposerInput } from "./ComposerInput";
 import { ModelMenu } from "./ModelMenu";
 import { Queue } from "./Queue";
 import { ReviewMenu } from "./ReviewMenu";
+import { MentionMenu } from "./MentionMenu";
 import { SkillMenu } from "./SkillMenu";
 import { SlashMenu } from "./SlashMenu";
 import { useComposerController } from "./useComposerController";
@@ -37,11 +38,27 @@ export function Composer({ session, events }: { session: Session; events: Sessio
         {view.queueOn && (
           <Queue items={c.queue} editingId={c.editingId} onEdit={c.beginEdit} onRemove={c.removeQueued} />
         )}
+        {c.mentions.show && (
+          <MentionMenu
+            mode={view.mentionAdd ? "add" : "files"}
+            active={c.mentions.index}
+            goalSupport={c.goalSupport}
+            planSupport={view.planSupport}
+            goalNotice={c.goalNotice}
+            files={c.mentions.hits}
+            pending={c.mentions.pending}
+            error={c.mentions.error}
+            query={view.mentionQuery ?? ""}
+            onPick={c.mentions.pick}
+          />
+        )}
         {view.skillOpen && (
           <SkillMenu
             matches={view.skillMatches}
             active={c.activeSkill}
             hasCatalog={c.hasCatalog}
+            skillsError={c.skillsError}
+            listedCount={c.skillCount}
             onPick={c.applySkill}
           />
         )}
@@ -57,7 +74,7 @@ export function Composer({ session, events }: { session: Session; events: Sessio
         )}
         <div
           className={cn(
-            "min-w-0 overflow-hidden rounded-[28px] border border-zinc-700/90 bg-zinc-900 px-3 pb-2.5 pt-3 shadow-lg shadow-black/20 transition-colors focus-within:border-zinc-500",
+            "min-w-0 rounded-[28px] border border-zinc-700/90 bg-zinc-900 shadow-lg shadow-black/20 transition-colors focus-within:border-zinc-500",
             c.dragOver && view.imagesOn && "border-indigo-400/80",
           )}
           onClick={() => c.textareaRef.current?.focus()}
@@ -74,6 +91,7 @@ export function Composer({ session, events }: { session: Session; events: Sessio
             void c.stageBlobs(Array.from(event.dataTransfer.files));
           }}
         >
+          <div className="min-w-0 overflow-hidden px-3 pt-3">
           <Attachments files={c.files} imagesOn={view.imagesOn} onRemove={c.removeFile} />
           <ComposerInput
             text={c.text}
@@ -88,6 +106,8 @@ export function Composer({ session, events }: { session: Session; events: Sessio
             onPaste={c.onPaste}
             onKeyDown={c.onKeyDown}
           />
+          </div>
+          <div className="px-3 pb-2.5">
           <ComposerBar
             plusRef={c.plusRef}
             accessRef={c.accessRef}
@@ -95,11 +115,10 @@ export function Composer({ session, events }: { session: Session; events: Sessio
             menu={c.menu}
             imagesOn={view.imagesOn}
             composerLocked={view.composerLocked}
-            menusLocked={view.menusLocked}
             sandbox={c.sandbox}
             permissionMenu={view.permissionMenu}
-            showPlan={view.showPlan}
-            planOn={view.planOn}
+            planChip={view.planOn}
+            goalChip={c.goalChip}
             showModel={view.showModel}
             hasCatalog={c.hasCatalog}
             modelButton={view.modelButton}
@@ -108,13 +127,15 @@ export function Composer({ session, events }: { session: Session; events: Sessio
             sendDisabled={view.sendDisabled}
             onToggleMenu={(name) => c.setMenu((current) => (current === name ? null : name))}
             onPickFiles={() => void c.pickFiles()}
-            onTogglePlan={c.togglePlan}
+            onDismissPlan={c.dismissPlan}
+            onDismissGoal={c.dismissGoal}
             onCancelEdit={c.cancelEdit}
             onSend={() => {
               if (view.stopMode) c.interrupt();
               else c.submit();
             }}
           />
+          </div>
         </div>
       </div>
       {c.menu === "attach" && view.imagesOn && <AttachMenu menuRef={c.attachMenuRef} onPick={() => void c.pickFiles()} />}

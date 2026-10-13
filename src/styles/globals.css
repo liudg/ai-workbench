@@ -296,3 +296,9 @@ button.answer-file {
 .answer-body > .answer-section {
   margin-top: 1.55rem;
 }
+
+/* Tailwind 的 hover 变体包在 @media (hover: hover) 里，触控环境里悬停不生效。芯片提示直接跟 :hover。 */
+[data-mode-chip]:hover [data-mode-tooltip],
+[data-mode-chip]:focus-visible [data-mode-tooltip] {
+  opacity: 1;
+}

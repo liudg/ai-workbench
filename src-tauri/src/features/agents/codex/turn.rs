@@ -11,8 +11,8 @@ use crate::models::{
 };
 
 use super::catalog::{build_turn_input, slash_help, split_command};
-use super::process::truncate;
 use super::history::{bodies_from_turns, chronological_turns, HISTORY_TURN_LIMIT};
+use super::process::truncate;
 use super::sandbox::merge_json;
 use super::state::{emit, Pending, Shared};
 
@@ -436,7 +436,10 @@ impl Shared {
             // `/clear [name]` 是 `ClearUi { name }`，同样开一个新会话。工作台交给宿主新建会话。
             "new" | "clear" => {
                 let name = (!rest.trim().is_empty()).then(|| rest.trim().to_string());
-                emit(&self.events, SessionEventBody::NewThread { name, text: None });
+                emit(
+                    &self.events,
+                    SessionEventBody::NewThread { name, text: None },
+                );
             }
             "quit" | "exit" => self.stop(),
             // TUI `/stop`：`thread/backgroundTerminals/clean`，不结束会话。
@@ -486,7 +489,12 @@ impl Shared {
         let menu = match self.refresh_sandbox_features().await {
             Ok(menu) => menu,
             Err(err) => {
-                emit(&self.events, SessionEventBody::Error { message: err.to_string() });
+                emit(
+                    &self.events,
+                    SessionEventBody::Error {
+                        message: err.to_string(),
+                    },
+                );
                 return;
             }
         };
@@ -534,7 +542,9 @@ impl Shared {
             .and_then(|value| value.get("account").cloned())
             .filter(|value| !value.is_null());
         let rate_limits = if account.is_some() {
-            self.request("account/rateLimits/read", Value::Null).await.ok()
+            self.request("account/rateLimits/read", Value::Null)
+                .await
+                .ok()
         } else {
             None
         };
@@ -549,7 +559,11 @@ impl Shared {
         let input = super::status::StatusInput {
             version: self.version.lock().unwrap().clone(),
             model: if model.is_empty() {
-                self.model_override.lock().unwrap().clone().unwrap_or_default()
+                self.model_override
+                    .lock()
+                    .unwrap()
+                    .clone()
+                    .unwrap_or_default()
             } else {
                 model
             },
@@ -610,6 +624,7 @@ impl Shared {
                 let value = self
                     .request("thread/goal/get", json!({ "threadId": thread_id }))
                     .await?;
+                emit(&self.events, goal_snapshot_event(value.get("goal")));
                 render_goal(value.get("goal"))
             }
             GoalAction::Clear => {
@@ -618,6 +633,7 @@ impl Shared {
                     json!({ "threadId": thread_id, "origin": "user" }),
                 )
                 .await?;
+                emit(&self.events, goal_snapshot_event(None));
                 "已清除任务目标。".into()
             }
             GoalAction::Set { objective, status } => {
@@ -639,16 +655,7 @@ impl Shared {
                         "当前没有任务目标。用法：/goal <目标>".into(),
                     ));
                 }
-                self.request(
-                    "thread/goal/set",
-                    json!({
-                        "threadId": thread_id,
-                        "objective": objective,
-                        "status": status,
-                        "origin": "user",
-                    }),
-                )
-                .await?;
+                self.write_goal(&thread_id, &objective, status).await?;
                 format!("任务目标：{objective}（{}）", goal_status_label(status))
             }
         };
@@ -673,6 +680,94 @@ impl Shared {
     pub(super) async fn emit_diff(&self) {
         let text = super::git_diff::diff_text(std::path::Path::new(&self.cwd)).await;
         emit(&self.events, SessionEventBody::System { text });
+    }
+
+    /// 作曲栏目标芯片提交的原文。不走 `/goal` 的 clear/pause 解析，避免目标正文被当成子命令。
+    pub(super) async fn set_goal_objective(&self, objective: &str) -> Result<(), AgentError> {
+        let objective = objective.trim();
+        if objective.is_empty() {
+            return Err(AgentError::Runtime("目标不能为空。".into()));
+        }
+        if objective.chars().count() > 4000 {
+            return Err(AgentError::Runtime(
+                "目标最长 4000 个字符。更长的说明写进文件，让目标指向那个文件。".into(),
+            ));
+        }
+        self.ensure_thread().await?;
+        let thread_id = self.thread_id.lock().unwrap().clone().unwrap_or_default();
+        self.write_goal(&thread_id, objective, "active").await?;
+        emit(
+            &self.events,
+            SessionEventBody::System {
+                text: format!("任务目标：{objective}（{}）", goal_status_label("active")),
+            },
+        );
+        Ok(())
+    }
+
+    async fn write_goal(
+        &self,
+        thread_id: &str,
+        objective: &str,
+        status: &str,
+    ) -> Result<(), AgentError> {
+        let recorded = self
+            .request(
+                "thread/goal/set",
+                json!({
+                    "threadId": thread_id,
+                    "objective": objective,
+                    "status": status,
+                    "origin": "user",
+                }),
+            )
+            .await?;
+        let fallback = json!({ "objective": objective, "status": status });
+        let goal = match recorded.get("goal") {
+            Some(value) if value.is_object() => value,
+            _ => &fallback,
+        };
+        emit(&self.events, goal_snapshot_event(Some(goal)));
+        Ok(())
+    }
+
+    /// 读当前线程目标并写成事件。还没有线程时不算失败，也不编造「没有目标」。
+    pub(super) async fn publish_goal(&self) -> Result<(), AgentError> {
+        let thread_id = self
+            .thread_id
+            .lock()
+            .unwrap()
+            .clone()
+            .filter(|id| !id.is_empty());
+        let Some(thread_id) = thread_id else {
+            return Ok(());
+        };
+        let value = self
+            .request("thread/goal/get", json!({ "threadId": thread_id }))
+            .await?;
+        emit(&self.events, goal_snapshot_event(value.get("goal")));
+        Ok(())
+    }
+}
+
+/// `thread/goal/get`、`thread/goal/set` 和 `thread/goal/updated` 共用这一份快照。
+pub(super) fn goal_snapshot_event(goal: Option<&Value>) -> SessionEventBody {
+    let goal = goal.filter(|value| value.is_object());
+    let objective = goal
+        .and_then(|value| value.get("objective"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(str::to_string);
+    let status = goal
+        .and_then(|value| value.get("status"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(str::to_string);
+    SessionEventBody::Goal {
+        objective: objective.clone(),
+        status: objective.and(status),
     }
 }
 
@@ -798,5 +893,27 @@ mod goal_tests {
             _ => panic!("pause"),
         }
         assert!(goal_action(&"字".repeat(4001)).is_err());
+    }
+
+    #[test]
+    fn goal_snapshot_keeps_the_objective_and_clears_when_missing() {
+        let event = goal_snapshot_event(Some(&json!({
+            "objective": " 把测试补上 ",
+            "status": "active",
+        })));
+        match event {
+            SessionEventBody::Goal { objective, status } => {
+                assert_eq!(objective.as_deref(), Some("把测试补上"));
+                assert_eq!(status.as_deref(), Some("active"));
+            }
+            _ => panic!("goal event"),
+        }
+        match goal_snapshot_event(Some(&Value::Null)) {
+            SessionEventBody::Goal { objective, status } => {
+                assert!(objective.is_none());
+                assert!(status.is_none());
+            }
+            _ => panic!("cleared goal"),
+        }
     }
 }

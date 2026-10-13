@@ -51,7 +51,8 @@ export function reduceCatalogResult(state: CatalogMemory, outcome: CatalogOutcom
   const trimmed = outcome.notice?.trim() ?? "";
   const notice = trimmed ? trimmed : null;
   if (incoming.models.length > 0) {
-    return { live: incoming, cached: incoming, notice };
+    const live = keepKnownSkills(incoming, kept);
+    return { live, cached: live, notice };
   }
   if (kept && kept.models.length > 0) {
     return {
@@ -61,6 +62,12 @@ export function reduceCatalogResult(state: CatalogMemory, outcome: CatalogOutcom
     };
   }
   return { live: incoming, cached: state.cached, notice };
+}
+
+/** 这次没读到技能、但上次有，就留着上次的。失败不能把已有技能显示成空。 */
+function keepKnownSkills(incoming: AgentCatalog, kept: AgentCatalog | undefined): AgentCatalog {
+  if (incoming.skills.length > 0 || !incoming.skills_error || !kept?.skills.length) return incoming;
+  return { ...incoming, skills: kept.skills, skills_error: null };
 }
 
 /** 有模型就显示模型名。只有确认没有目录时才显示「暂无模型」，加载中不显示。 */
