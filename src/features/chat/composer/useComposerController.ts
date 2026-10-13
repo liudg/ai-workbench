@@ -68,6 +68,9 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
       if (event.key === "Escape") closeReview();
     };
     const onPointer = (event: MouseEvent) => {
+      // 选项的 mousedown 会立刻换掉菜单内容。旧节点已脱离文档时，
+      // contains 判断会把这次点击当成菜单外。选项自己 preventDefault。
+      if (event.defaultPrevented) return;
       if (reviewRootRef.current?.contains(event.target as Node)) return;
       closeReview();
     };
