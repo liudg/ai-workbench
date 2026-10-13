@@ -270,6 +270,78 @@ fn hex_value(byte: u8) -> Result<u8, String> {
     }
 }
 
+/// 预览用的图片类型。扩展名和文件头对得上才返回 MIME。SVG 没有魔数，要求正文里有 `<svg`。
+pub fn classify_preview_image(ext: &str, bytes: &[u8]) -> Result<&'static str, String> {
+    if bytes.is_empty() {
+        return Err("图片文件是空的".into());
+    }
+    if bytes.len() as u64 > MAX_IMAGE_BYTES {
+        return Err("图片超过 20MB".into());
+    }
+    let ext = ext.to_ascii_lowercase();
+    let mime = match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "bmp" => "image/bmp",
+        "svg" => "image/svg+xml",
+        "ico" => "image/x-icon",
+        "avif" => "image/avif",
+        _ => return Err("这个文件不能以图片预览。".into()),
+    };
+    let matches = if ext == "svg" {
+        looks_like_svg(bytes)
+    } else {
+        sniff_image(&ext, bytes)
+    };
+    if !matches {
+        return Err("文件内容和图片扩展名不一致".into());
+    }
+    Ok(mime)
+}
+
+pub fn encode_base64(bytes: &[u8]) -> String {
+    const TABLE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::new();
+    let mut index = 0;
+    while index + 3 <= bytes.len() {
+        let n = ((bytes[index] as u32) << 16)
+            | ((bytes[index + 1] as u32) << 8)
+            | bytes[index + 2] as u32;
+        out.push(TABLE[((n >> 18) & 63) as usize] as char);
+        out.push(TABLE[((n >> 12) & 63) as usize] as char);
+        out.push(TABLE[((n >> 6) & 63) as usize] as char);
+        out.push(TABLE[(n & 63) as usize] as char);
+        index += 3;
+    }
+    if index < bytes.len() {
+        let remain = bytes.len() - index;
+        let b0 = bytes[index] as u32;
+        let b1 = if remain > 1 { bytes[index + 1] as u32 } else { 0 };
+        let n = (b0 << 16) | (b1 << 8);
+        out.push(TABLE[((n >> 18) & 63) as usize] as char);
+        out.push(TABLE[((n >> 12) & 63) as usize] as char);
+        if remain > 1 {
+            out.push(TABLE[((n >> 6) & 63) as usize] as char);
+            out.push('=');
+        } else {
+            out.push('=');
+            out.push('=');
+        }
+    }
+    out
+}
+
+fn looks_like_svg(bytes: &[u8]) -> bool {
+    if bytes.contains(&0) {
+        return false;
+    }
+    let text = String::from_utf8_lossy(bytes);
+    let head: String = text.chars().take(4096).collect();
+    head.to_ascii_lowercase().contains("<svg")
+}
+
 fn image_extension(path: &Path) -> Option<String> {
     let ext = path.extension()?.to_str()?.to_ascii_lowercase();
     if matches!(
@@ -372,7 +444,7 @@ mod tests {
     #[test]
     fn stages_pasted_png_bytes() {
         let dir = temp_dir("stage");
-        let encoded = encode_base64(MINI_PNG);
+        let encoded = super::encode_base64(MINI_PNG);
         let bytes = decode_base64(&format!("data:image/png;base64,{encoded}")).unwrap();
         let (name, path) = stage_image_bytes(&dir, "clip board.png", &bytes).unwrap();
         assert!(name.ends_with(".png"));
@@ -381,35 +453,4 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    fn encode_base64(bytes: &[u8]) -> String {
-        const TABLE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-        let mut out = String::new();
-        let mut index = 0;
-        while index + 3 <= bytes.len() {
-            let n = ((bytes[index] as u32) << 16)
-                | ((bytes[index + 1] as u32) << 8)
-                | bytes[index + 2] as u32;
-            out.push(TABLE[((n >> 18) & 63) as usize] as char);
-            out.push(TABLE[((n >> 12) & 63) as usize] as char);
-            out.push(TABLE[((n >> 6) & 63) as usize] as char);
-            out.push(TABLE[(n & 63) as usize] as char);
-            index += 3;
-        }
-        if index < bytes.len() {
-            let remain = bytes.len() - index;
-            let b0 = bytes[index] as u32;
-            let b1 = if remain > 1 { bytes[index + 1] as u32 } else { 0 };
-            let n = (b0 << 16) | (b1 << 8);
-            out.push(TABLE[((n >> 18) & 63) as usize] as char);
-            out.push(TABLE[((n >> 12) & 63) as usize] as char);
-            if remain > 1 {
-                out.push(TABLE[((n >> 6) & 63) as usize] as char);
-                out.push('=');
-            } else {
-                out.push('=');
-                out.push('=');
-            }
-        }
-        out
-    }
 }

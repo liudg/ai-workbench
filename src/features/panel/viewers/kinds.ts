@@ -18,6 +18,13 @@ export function matchMarkdown(target: OpenTarget): number {
   return 0;
 }
 
+export function matchImage(target: OpenTarget): number {
+  const pinned = pinnedScore(target, "image");
+  if (pinned != null) return pinned;
+  if (target.kind === "file" && previewKindForPath(target.path) === "image") return 95;
+  return 0;
+}
+
 export function matchText(target: OpenTarget): number {
   const pinned = pinnedScore(target, "text");
   if (pinned != null) return pinned;

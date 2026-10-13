@@ -4,7 +4,7 @@ import { create } from "zustand";
 
 import { createPanelSlice, type PanelSlice } from "../state/slice.ts";
 import * as browser from "../browser/browser.ts";
-import { matchDiff, matchHtml, matchMarkdown, matchText } from "../viewers/kinds.ts";
+import { matchDiff, matchHtml, matchImage, matchMarkdown, matchText } from "../viewers/kinds.ts";
 import { targetFromHref } from "./open-target.ts";
 import {
   registerViewer,
@@ -71,6 +71,7 @@ describe("panel viewers", { concurrency: 1 }, () => {
     const undo = [
       registerViewer(stub("html", matchHtml)),
       registerViewer(stub("markdown", matchMarkdown)),
+      registerViewer(stub("image", matchImage)),
       registerViewer(stub("text", matchText)),
       registerViewer(stub("diff", matchDiff)),
     ];
@@ -80,6 +81,8 @@ describe("panel viewers", { concurrency: 1 }, () => {
       assert.equal(resolveViewer({ kind: "file", path: "C:/work/demo/notes.md", line: null })?.id, "markdown");
       assert.equal(resolveViewer({ kind: "file", path: "C:/work/demo/src/app.ts", line: 2 })?.id, "text");
       assert.equal(resolveViewer({ kind: "file", path: "C:/work/demo/src/app.ts", line: null })?.id, "text");
+      assert.equal(resolveViewer({ kind: "file", path: "C:/work/demo/available-live.png", line: null })?.id, "image");
+      assert.equal(resolveViewer({ kind: "file", path: "C:/work/demo/available-live.png", line: 3 })?.id, "image");
       assert.equal(resolveViewer({ kind: "url", url: "https://example.com" })?.id, "html");
       assert.equal(resolveViewer({ kind: "blank" })?.id, "html");
       assert.equal(resolveViewer({ kind: "blocked", href: "../x", line: null, message: "no" })?.id, "text");

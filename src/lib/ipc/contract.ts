@@ -28,6 +28,7 @@ import type {
   ImportProjectInput,
   PathFilter,
   PreviewDocument,
+  PreviewImage,
   SessionRequest,
   TreeEntry,
 } from "./dto";
@@ -116,6 +117,8 @@ export interface Backend {
   loadOlderHistory(sessionId: string): Promise<OlderHistory>;
   /** 读取项目目录内的文本，供 HTML / Markdown / 纯文本预览。 */
   readPreviewFile(projectId: string, path: string): Promise<PreviewDocument>;
+  /** 读取 png / jpg / gif / webp / svg / bmp 等图片的真实字节。 */
+  readPreviewImage(projectId: string, path: string): Promise<PreviewImage>;
   /** 工作区某一层目录。展开后再读下一层，不把整棵树截断。 */
   listProjectDir(projectId: string, path: string): Promise<TreeEntry[]>;
   /** 按相对路径筛选工作区文件。未接入的查询会带 cancelled。 */

@@ -11,6 +11,7 @@ export function usePreviewFile(projectId: string, path: string): PreviewFileStat
   const [state, setState] = useState<PreviewFileState>({ status: "loading" });
 
   useEffect(() => {
+    if (!path) return;
     let cancel = false;
     setState({ status: "loading" });
     void readProjectText(projectId, path).then(

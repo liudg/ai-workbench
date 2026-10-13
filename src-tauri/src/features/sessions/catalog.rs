@@ -187,6 +187,11 @@ mod tests {
             commands: Vec::new(),
             capabilities: adapter_for(AgentKind::CodexCli).capabilities(),
             skills_error: None,
+            configured_model: None,
+            configured_effort: None,
+            thread_model: None,
+            thread_effort: None,
+            cli_config_read: None,
         }
     }
 

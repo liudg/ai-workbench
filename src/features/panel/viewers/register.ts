@@ -2,6 +2,7 @@ import { registerViewer } from "../core/registry";
 import { diffViewer } from "./diff";
 import { filesViewer } from "./files";
 import { htmlViewer } from "./html";
+import { imageViewer } from "./image";
 import { markdownViewer } from "./markdown";
 import { textViewer } from "./text";
 
@@ -12,6 +13,7 @@ export function registerBuiltinViewers() {
   registered = true;
   registerViewer(htmlViewer);
   registerViewer(markdownViewer);
+  registerViewer(imageViewer);
   registerViewer(textViewer);
   registerViewer(diffViewer);
   registerViewer(filesViewer);

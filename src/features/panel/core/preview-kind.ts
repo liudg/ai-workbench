@@ -3,13 +3,16 @@ import { normalizePath } from "../files/path.ts";
 
 export { fileLineRef, isFileHref, isHtmlHref, lineFromHref };
 
-export type PreviewKind = "html" | "markdown" | "text";
+export type PreviewKind = "html" | "markdown" | "text" | "image";
+
+const IMAGE_EXT = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico", "avif"]);
 
 export function previewKindForPath(path: string): PreviewKind {
   const name = path.split(/[\\/]/).pop() ?? path;
   const ext = name.includes(".") ? name.split(".").pop()?.toLowerCase() ?? "" : "";
   if (ext === "html" || ext === "htm") return "html";
   if (ext === "md" || ext === "markdown" || ext === "mdx") return "markdown";
+  if (IMAGE_EXT.has(ext)) return "image";
   return "text";
 }
 

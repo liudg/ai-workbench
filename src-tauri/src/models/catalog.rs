@@ -257,6 +257,20 @@ pub struct AgentCatalog {
     /// `skills/list` 失败且没有可保留的技能时的原因。成功拉到空列表时为 None。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub skills_error: Option<String>,
+    /// CLI `config/read` 的 `model`。空表示配置里没写，不是目录里的 isDefault。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub configured_model: Option<String>,
+    /// CLI `config/read` 的 `model_reasoning_effort`。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub configured_effort: Option<String>,
+    /// 已打开线程回包里的模型。新会话还没有。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thread_model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thread_effort: Option<String>,
+    /// `Some(false)` 表示 `config/read` 失败。缺省是旧缓存，不能当成失败。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cli_config_read: Option<bool>,
 }
 
 impl AgentCatalog {
@@ -267,6 +281,11 @@ impl AgentCatalog {
             commands: Vec::new(),
             capabilities: AgentCapabilities::none(),
             skills_error: None,
+            configured_model: None,
+            configured_effort: None,
+            thread_model: None,
+            thread_effort: None,
+            cli_config_read: None,
         }
     }
 }

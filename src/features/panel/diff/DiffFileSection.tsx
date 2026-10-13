@@ -1,39 +1,55 @@
+import { ChevronDown, ChevronRight } from "lucide-react";
+
 import { cn } from "@/lib/utils";
 import type { FileChange } from "@/features/changes-model/diff-parse";
 import { previewKindForPath } from "@/features/panel/core/preview-kind";
+import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { MarkdownBody } from "@/shared/markdown/MarkdownBody";
-import { expandDiffLines, foldDiffLines, previewTextFromDiff, unmodifiedLinesLabel, withoutImportLines } from "./fold";
+import { diffBodyRows, foldDiffLines, previewTextFromDiff, unmodifiedLinesLabel } from "./fold";
 import { toSplitRows, type DiffPresentation, type SplitCell } from "./split-rows";
 import { applyWordDiff, type DiffDisplayRow, type WordPart } from "./word-diff";
 
 export function DiffFileSection({
   file,
-  expanded,
+  open,
+  onToggle,
   presentation,
   wrap,
   wordDiff,
   renderPreview,
   source,
   hideImports,
+  hideWhitespace,
+  loadFull,
   active,
   onSelect,
 }: {
   file: FileChange;
-  expanded: boolean;
+  open: boolean;
+  onToggle: () => void;
   presentation: DiffPresentation;
   wrap: boolean;
   wordDiff: boolean;
   renderPreview: boolean;
   source: string | null;
   hideImports: boolean;
+  hideWhitespace: boolean;
+  loadFull: boolean;
   active: boolean;
   onSelect: () => void;
 }) {
   const markdown = previewKindForPath(file.path) === "markdown";
-  const body = hideImports ? withoutImportLines(file.diff) : file.diff;
-  const folded = foldDiffLines(body);
-  const plain = expanded ? expandDiffLines(body, source) : folded;
-  const rows = wordDiff ? applyWordDiff(plain) : plain.map(withEmptyParts);
+  const display = diffBodyRows({
+    diff: file.diff,
+    status: file.status,
+    added: file.added,
+    removed: file.removed,
+    source,
+    loadFull,
+    hideWhitespace,
+    hideImports,
+  });
+  const rows = wordDiff ? applyWordDiff(display.rows) : display.rows.map(withEmptyParts);
   return (
     <section
       className={cn(
@@ -41,32 +57,52 @@ export function DiffFileSection({
         active && "bg-zinc-900 ring-1 ring-inset ring-sky-500/50",
       )}
       data-diff-file-body={file.path}
+      data-diff-open={open ? "true" : "false"}
       data-diff-active={active ? "true" : "false"}
       data-diff-presentation={presentation}
       onClick={onSelect}
     >
-      <header className="flex min-w-0 flex-nowrap items-center gap-2 px-3 py-2 text-xs">
+      <header className="flex min-w-0 flex-nowrap items-center gap-2 px-3 py-2 text-xs" data-diff-summary={file.path}>
+        <button
+          type="button"
+          data-diff-toggle={file.path}
+          aria-expanded={open}
+          aria-label={open ? "收起差异" : "展开差异"}
+          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggle();
+          }}
+        >
+          {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+        </button>
         <span className="min-w-0 flex-1 truncate font-mono text-zinc-300" title={file.path}>
           {file.path}
         </span>
         <span className="shrink-0 whitespace-nowrap font-mono text-emerald-400">+{file.added}</span>
         <span className="shrink-0 whitespace-nowrap font-mono text-red-400">-{file.removed}</span>
       </header>
-      {renderPreview && markdown ? (
-        <div className="px-4 py-3">
-          <MarkdownBody text={source && source.length > 0 ? source : previewTextFromDiff(file.diff)} />
-        </div>
-      ) : rows.length === 0 ? (
-        <p className="px-3 py-2 text-xs text-zinc-500">没有可显示的差异文本。</p>
-      ) : presentation === "split" ? (
-        <SplitBody rows={rows} wrap={wrap} />
-      ) : (
-        <div className="min-w-0 pb-2 font-mono text-xs leading-5">
-          {rows.map((row, index) => (
-            <DiffRowView key={index} row={row} wrap={wrap} />
-          ))}
-        </div>
-      )}
+      {open ? (
+        renderPreview && markdown ? (
+          <div className="px-4 py-3">
+            <MarkdownBody text={source && source.length > 0 ? source : previewTextFromDiff(file.diff)} />
+          </div>
+        ) : display.whitespaceHidden ? (
+          <p className="px-3 py-2 text-xs text-zinc-500" data-diff-whitespace-hidden>
+            {DESKTOP_ZH.diffWhitespaceHidden}
+          </p>
+        ) : rows.length === 0 ? (
+          <p className="px-3 py-2 text-xs text-zinc-500">没有可显示的差异文本。</p>
+        ) : presentation === "split" ? (
+          <SplitBody rows={rows} wrap={wrap} />
+        ) : (
+          <div className="min-w-0 pb-2 font-mono text-xs leading-5">
+            {rows.map((row, index) => (
+              <DiffRowView key={index} row={row} wrap={wrap} />
+            ))}
+          </div>
+        )
+      ) : null}
     </section>
   );
 }
@@ -118,6 +154,7 @@ function DiffRowView({ row, wrap }: { row: DiffDisplayRow; wrap: boolean }) {
   if (row.kind === "collapse") return <CollapseBar count={row.count} />;
   return (
     <div
+      data-diff-tone={row.tone}
       className={cn(
         "flex min-w-0 flex-nowrap",
         row.tone === "add" && "bg-emerald-500/15 text-emerald-200",

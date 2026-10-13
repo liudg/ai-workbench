@@ -86,7 +86,10 @@ export function DiffView({ files }: { files: FileChange[] }) {
         added={doc.added}
         removed={doc.removed}
         expanded={doc.expanded}
-        onToggleExpanded={() => doc.setExpanded((value) => !value)}
+        onToggleExpanded={() => {
+          if (doc.expanded) doc.collapseAll();
+          else doc.expandAll(doc.shown.map((file) => file.path));
+        }}
         layoutSplit={layout === "split"}
         onToggleLayout={() => setLayout((value) => (value === "split" ? "auto" : "split"))}
         wrap={doc.wrap}
@@ -133,13 +136,16 @@ export function DiffView({ files }: { files: FileChange[] }) {
               <DiffFileSection
                 key={file.path}
                 file={file}
-                expanded={doc.expanded}
+                open={doc.isOpen(file.path)}
+                onToggle={() => doc.toggleFile(file.path)}
                 presentation={presentation}
                 wrap={doc.wrap}
                 wordDiff={doc.wordDiff}
                 renderPreview={doc.renderPreview}
                 source={sourceFor(file.path)}
                 hideImports={doc.hideImports}
+                hideWhitespace={doc.hideWs}
+                loadFull={doc.loadFull}
                 active={file.path === doc.active?.path}
                 onSelect={() => doc.selectFile(file)}
               />

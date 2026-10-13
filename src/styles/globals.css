@@ -89,6 +89,21 @@ textarea {
   background: rgb(99 102 241 / 0.45);
 }
 
+/* 打开的文件要能拖选、复制。浮动菜单本身不可选。 */
+[data-open-files-preview] {
+  -webkit-user-select: text;
+  user-select: text;
+  cursor: text;
+}
+[data-open-files-preview] button,
+[data-selection-menu] {
+  -webkit-user-select: none;
+  user-select: none;
+}
+[data-selection-menu] button {
+  cursor: pointer;
+}
+
 /* 助手回答：接近 Codex 桌面的阅读栏，而不是一整块等宽预格式文本。 */
 .answer-body {
   max-width: 42rem;

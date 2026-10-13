@@ -79,7 +79,7 @@ export function foldDiffLines(diff: string): DiffFoldRow[] {
   return rows;
 }
 
-/** 去掉只改空白的增删行。git 范围另由 `git diff -w` 处理。 */
+/** 去掉只改空白的增删行。文件仍留在列表里，统计也不改。 */
 export function withoutWhitespaceChanges(diff: string): string {
   const lines = diff.split(/\r?\n/);
   const out: string[] = [];
@@ -230,6 +230,92 @@ export function withoutImportLines(diff: string): string {
 
 function collapseSpace(text: string): string {
   return text.replace(/\s+/g, "");
+}
+
+export interface DiffBody {
+  rows: DiffFoldRow[];
+  /** 这份 diff 只剩空白改动，文件仍应留在列表里。 */
+  whitespaceHidden: boolean;
+}
+
+/**
+ * 展开后的差异正文。统一 diff 走 hunk；新增/删除文件的正文按 Codex
+ * `diff_render` 整段画成绿行或红行。隐藏空白只改渲染，不决定文件在不在。
+ */
+export function diffBodyRows(input: {
+  diff: string;
+  status: string;
+  added: number;
+  removed: number;
+  source: string | null;
+  loadFull: boolean;
+  hideWhitespace: boolean;
+  hideImports: boolean;
+}): DiffBody {
+  const original = input.hideImports ? withoutImportLines(input.diff) : input.diff;
+  const filtered = input.hideWhitespace ? withoutWhitespaceChanges(original) : original;
+  const folded = foldDiffLines(filtered);
+  const originalChanges = hasEdits(foldDiffLines(original));
+  if (folded.some((row) => row.kind === "line")) {
+    if (!hasEdits(folded) && originalChanges && input.hideWhitespace) {
+      return { rows: [], whitespaceHidden: true };
+    }
+    if (input.loadFull && input.source != null && isUnifiedDiff(filtered)) {
+      return { rows: expandDiffLines(filtered, input.source), whitespaceHidden: false };
+    }
+    return { rows: folded, whitespaceHidden: false };
+  }
+  if (input.hideWhitespace && originalChanges) {
+    return { rows: [], whitespaceHidden: true };
+  }
+  if (!isUnifiedDiff(original)) {
+    const tone = rawTone(input.status, input.added, input.removed);
+    if (tone) {
+      return {
+        rows: contentLines(original).map((text, index) => ({
+          kind: "line",
+          tone,
+          text,
+          lineNo: index + 1,
+        })),
+        whitespaceHidden: false,
+      };
+    }
+  }
+  return { rows: [], whitespaceHidden: false };
+}
+
+function hasEdits(rows: DiffFoldRow[]): boolean {
+  return rows.some((row) => row.kind === "line" && (row.tone === "add" || row.tone === "del"));
+}
+
+function isUnifiedDiff(diff: string): boolean {
+  return diff.split(/\r?\n/).some((line) => line.startsWith("@@") || line.startsWith("diff --git "));
+}
+
+/** 跟 Rust `str::lines`：末尾换行不再多算一行。 */
+function contentLines(text: string): string[] {
+  if (!text) return [];
+  const lines = text.split(/\r?\n/);
+  if (lines[lines.length - 1] === "") lines.pop();
+  return lines;
+}
+
+function rawTone(status: string, added: number, removed: number): "add" | "del" | null {
+  switch (status.trim().toLowerCase()) {
+    case "a":
+    case "add":
+    case "added":
+      return "add";
+    case "d":
+    case "delete":
+    case "deleted":
+      return "del";
+    default:
+      if (added > 0 && removed === 0) return "add";
+      if (removed > 0 && added === 0) return "del";
+      return null;
+  }
 }
 
 interface ParsedHunkLine {

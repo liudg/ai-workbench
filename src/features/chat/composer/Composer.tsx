@@ -92,6 +92,15 @@ export function Composer({ session, events }: { session: Session; events: Sessio
           }}
         >
           <div className="min-w-0 overflow-hidden px-3 pt-3">
+          {view.goalStatus ? (
+            <p
+              data-goal-status
+              title={view.goalStatus}
+              className="mb-1 truncate px-1 text-xs leading-5 text-fuchsia-300"
+            >
+              {view.goalStatus}
+            </p>
+          ) : null}
           <Attachments files={c.files} imagesOn={view.imagesOn} onRemove={c.removeFile} />
           <ComposerInput
             text={c.text}
@@ -118,7 +127,7 @@ export function Composer({ session, events }: { session: Session; events: Sessio
             sandbox={c.sandbox}
             permissionMenu={view.permissionMenu}
             planChip={view.planOn}
-            goalChip={c.goalChip}
+            goalChip={view.goalOn}
             showModel={view.showModel}
             hasCatalog={c.hasCatalog}
             modelButton={view.modelButton}

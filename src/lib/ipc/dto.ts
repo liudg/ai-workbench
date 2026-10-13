@@ -30,6 +30,8 @@ export interface PathFilter {
   paths: string[];
   truncated: boolean;
   cancelled: boolean;
+  /** 索引还在建时为 false。缺省当成已经完成，避免旧后端把轮询卡住。 */
+  ready?: boolean;
 }
 
 export interface FileSearchHit {
@@ -52,6 +54,13 @@ export interface PreviewDocument {
   kind: string;
   text: string;
   truncated: boolean;
+}
+
+export interface PreviewImage {
+  path: string;
+  name: string;
+  mime: string;
+  data_base64: string;
 }
 
 export interface BrowserFile {

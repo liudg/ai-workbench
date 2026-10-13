@@ -16,6 +16,12 @@ test("preview resolves project files and files outside the project", () => {
   assert.equal(previewKindForPath("C:/work/demo/index.html"), "html");
   assert.equal(previewKindForPath("notes.md"), "markdown");
   assert.equal(previewKindForPath("src/app.ts"), "text");
+  assert.equal(previewKindForPath("available-live.png"), "image");
+  assert.equal(previewKindForPath("Assets/shot.JPEG"), "image");
+  assert.equal(previewKindForPath("icon.svg"), "image");
+  assert.equal(previewKindForPath("photo.webp"), "image");
+  assert.equal(previewKindForPath("scan.bmp"), "image");
+  assert.equal(previewKindForPath("anim.gif"), "image");
 });
 
 test("line references and html links parse without inventing a scheme", () => {

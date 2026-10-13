@@ -1,23 +1,20 @@
 //! 在打开的工作区目录里搜索文件名和文件内容。
 //! 工作台没有接入 Codex 的全文搜索 RPC，这里直接读项目目录。
-//! 每次只扫一小段并记下位置，调用方接着要下一段。这样桌面端不会把整次扫描堵在界面线程上，
+//! 目录和正文进 `FileIndex` 后，下一次查询不再重走磁盘。索引没建完时按时间片推进。
 //! 新的查询会让旧查询直接作废。
 
-use std::collections::HashSet;
-use std::fs::File;
-use std::io::Read;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use serde::Serialize;
 use tauri::State;
 
-use super::skip_tree_dir;
+use super::index::FileIndex;
 use crate::features::projects::ProjectStore;
 
 const SEARCH_LIMIT: usize = 100;
-const MAX_FILE_BYTES: u64 = 1024 * 1024;
 const SEARCH_SLICE: Duration = Duration::from_millis(80);
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -36,80 +33,119 @@ pub struct SearchOutput {
     pub cancelled: bool,
 }
 
-#[derive(Clone)]
-struct Node {
-    path: PathBuf,
-    rel: String,
-    name: String,
-    is_dir: bool,
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct IndexedPaths {
+    pub paths: Vec<String>,
+    pub truncated: bool,
+    pub cancelled: bool,
+    pub ready: bool,
 }
 
-struct Frame {
-    nodes: Vec<Node>,
-    index: usize,
-}
-
-struct SearchJob {
+struct SearchCursor {
     id: u64,
-    root: PathBuf,
     query_lower: String,
     mask: String,
     hits: Vec<SearchHit>,
     truncated: bool,
     done: bool,
-    stack: Vec<Frame>,
-    seen: HashSet<PathBuf>,
     limit: usize,
-    opened_root: bool,
+    cursor: usize,
 }
 
-struct SearchSlot {
+struct ProjectEntry {
+    index: FileIndex,
     latest: u64,
-    job: Option<SearchJob>,
+    cursor: Option<SearchCursor>,
 }
 
-pub struct SearchHub {
-    slot: Arc<Mutex<SearchSlot>>,
+pub struct IndexHub {
+    inner: Arc<Mutex<HashMap<String, ProjectEntry>>>,
 }
 
-impl Default for SearchHub {
+impl Default for IndexHub {
     fn default() -> Self {
         Self {
-            slot: Arc::new(Mutex::new(SearchSlot {
-                latest: 0,
-                job: None,
-            })),
+            inner: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 }
 
-impl SearchJob {
-    fn new(id: u64, root: PathBuf, query: &str, mask: &str, limit: usize) -> Self {
+impl IndexHub {
+    pub(crate) fn fork(&self) -> Self {
+        Self {
+            inner: Arc::clone(&self.inner),
+        }
+    }
+}
+
+impl ProjectEntry {
+    fn new(root: PathBuf) -> Self {
+        Self {
+            index: FileIndex::new(root),
+            latest: 0,
+            cursor: None,
+        }
+    }
+
+    fn search_busy(&self) -> bool {
+        self.cursor.as_ref().is_some_and(|cursor| !cursor.done)
+    }
+
+    fn prepare_index(&mut self, budget: Duration) {
+        if !self.search_busy() {
+            self.index.refresh(budget);
+        }
+        self.index.pump_budget(budget);
+    }
+
+    fn advance(&mut self, id: u64, query: &str, mask: &str, budget: Duration) -> SearchOutput {
+        if id < self.latest {
+            return SearchOutput {
+                hits: Vec::new(),
+                truncated: false,
+                done: true,
+                cancelled: true,
+            };
+        }
+        self.latest = id;
+        let same = self.cursor.as_ref().is_some_and(|cursor| cursor.id == id);
+        if !same {
+            self.index.refresh(budget);
+            self.cursor = Some(SearchCursor::new(id, query, mask, SEARCH_LIMIT));
+        }
+        let cursor = self.cursor.as_mut().expect("cursor");
+        cursor.pump(budget, &mut self.index);
+        let output = cursor.snapshot(false);
+        if output.done {
+            self.cursor = None;
+        }
+        output
+    }
+}
+
+impl SearchCursor {
+    fn new(id: u64, query: &str, mask: &str, limit: usize) -> Self {
         let query_lower = query.trim().to_lowercase();
         let done = query_lower.is_empty() || limit == 0;
         Self {
             id,
-            root,
             query_lower,
             mask: mask.to_string(),
             hits: Vec::new(),
             truncated: false,
             done,
-            stack: Vec::new(),
-            seen: HashSet::new(),
             limit,
-            opened_root: done,
+            cursor: 0,
         }
     }
 
-    fn pump(&mut self, budget: Duration) {
+    fn pump(&mut self, budget: Duration, index: &mut FileIndex) {
         if self.done {
             return;
         }
-        let start = Instant::now();
-        self.ensure_root();
-        while !self.done && !self.truncated && start.elapsed() < budget {
-            if !self.step() {
+        let start = std::time::Instant::now();
+        while !self.done && start.elapsed() < budget {
+            if !self.advance_one(index) {
                 self.done = true;
                 break;
             }
@@ -119,177 +155,82 @@ impl SearchJob {
         }
     }
 
-    #[cfg(test)]
-    fn pump_steps(&mut self, steps: usize) {
-        if self.done || steps == 0 {
-            return;
-        }
-        self.ensure_root();
-        for _ in 0..steps {
-            if self.done || self.truncated {
-                self.done = true;
-                return;
-            }
-            if !self.step() {
-                self.done = true;
-                return;
-            }
-        }
-        if self.truncated {
+    fn advance_one(&mut self, index: &mut FileIndex) -> bool {
+        if self.done || self.truncated {
             self.done = true;
-        }
-    }
-
-    fn ensure_root(&mut self) {
-        if self.opened_root || self.done {
-            return;
-        }
-        self.opened_root = true;
-        if !self.root.is_dir() {
-            self.done = true;
-            return;
-        }
-        let root = self.root.clone();
-        self.push_dir(&root, "");
-    }
-
-    fn push_dir(&mut self, dir: &Path, rel: &str) {
-        let canon = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
-        if !self.seen.insert(canon) {
-            return;
-        }
-        let Ok(read) = std::fs::read_dir(dir) else {
-            return;
-        };
-        let mut nodes = Vec::new();
-        for entry in read.filter_map(|item| item.ok()) {
-            let name = entry.file_name();
-            let name = name.to_string_lossy();
-            if name.is_empty() || name == "." || name == ".." {
-                continue;
-            }
-            let path = entry.path();
-            let is_dir = path.is_dir();
-            if is_dir && skip_tree_dir(&name) {
-                continue;
-            }
-            if !is_dir && !path.is_file() {
-                continue;
-            }
-            let child_rel = if rel.is_empty() {
-                name.to_string()
-            } else {
-                format!("{rel}/{name}")
-            };
-            nodes.push(Node {
-                path,
-                rel: child_rel,
-                name: name.to_string(),
-                is_dir,
-            });
-        }
-        nodes.sort_by(|a, b| {
-            a.name
-                .to_lowercase()
-                .cmp(&b.name.to_lowercase())
-                .then_with(|| a.name.cmp(&b.name))
-        });
-        if nodes.is_empty() {
-            return;
-        }
-        self.stack.push(Frame { nodes, index: 0 });
-    }
-
-    fn next_node(&mut self) -> Option<Node> {
-        loop {
-            let exhausted = match self.stack.last() {
-                None => return None,
-                Some(frame) => frame.index >= frame.nodes.len(),
-            };
-            if exhausted {
-                self.stack.pop();
-                continue;
-            }
-            let frame = self.stack.last_mut().expect("frame");
-            let node = frame.nodes[frame.index].clone();
-            frame.index += 1;
-            return Some(node);
-        }
-    }
-
-    fn step(&mut self) -> bool {
-        if self.truncated {
             return false;
         }
-        let Some(node) = self.next_node() else {
-            return false;
-        };
-        if node.is_dir {
-            self.push_dir(&node.path, &node.rel);
-        } else {
-            self.consider_file(&node);
+        if self.cursor < index.file_count() {
+            self.consume(index, self.cursor);
+            self.cursor += 1;
+            if self.truncated {
+                self.done = true;
+                return false;
+            }
+            return true;
         }
+        if index.complete() {
+            self.done = true;
+            return false;
+        }
+        index.pump_steps(1);
         true
     }
 
-    fn consider_file(&mut self, node: &Node) {
-        if self.truncated || !mask_matches(&self.mask, &node.rel) {
-            return;
-        }
-        if contains_ignore_case(&node.name, &self.query_lower) {
-            self.push_hit(SearchHit {
-                path: node.rel.clone(),
-                line: None,
-                text: node.name.clone(),
-                kind: "name".into(),
-            });
-        }
-        if !self.truncated {
-            self.scan_file(&node.path, &node.rel);
-        }
-    }
-
-    fn scan_file(&mut self, path: &Path, rel: &str) {
+    fn consume(&mut self, index: &mut FileIndex, file_index: usize) {
         if self.truncated {
             return;
         }
-        let Ok(meta) = std::fs::metadata(path) else {
-            return;
-        };
-        if meta.len() > MAX_FILE_BYTES {
+        let rel = index.file_rel(file_index).to_string();
+        if !mask_matches(&self.mask, &rel) {
             return;
         }
-        let mut file = match File::open(path) {
-            Ok(file) => file,
-            Err(_) => return,
-        };
-        let mut bytes = Vec::new();
-        if file
-            .by_ref()
-            .take(MAX_FILE_BYTES + 1)
-            .read_to_end(&mut bytes)
-            .is_err()
+        let name_hit = index.name_matches(file_index, &self.query_lower);
+        let query = self.query_lower.clone();
+        let mut found = Vec::new();
         {
-            return;
-        }
-        if bytes.len() as u64 > MAX_FILE_BYTES || bytes.contains(&0) {
-            return;
-        }
-        let Ok(text) = String::from_utf8(bytes) else {
-            return;
-        };
-        for (index, line) in text.split('\n').enumerate() {
-            let line = line.trim_end_matches('\r');
-            if !contains_ignore_case(line, &self.query_lower) {
-                continue;
+            let (path, name, text) = index.load_text(file_index);
+            if name_hit {
+                found.push(SearchHit {
+                    path: path.to_string(),
+                    line: None,
+                    text: name.to_string(),
+                    kind: "name".into(),
+                });
             }
-            let line_no = u32::try_from(index + 1).unwrap_or(u32::MAX);
-            if !self.push_hit(SearchHit {
-                path: rel.to_string(),
-                line: Some(line_no),
-                text: snippet(line, &self.query_lower),
-                kind: "content".into(),
-            }) {
+            if let Some(text) = text {
+                let path = path.to_string();
+                let room = self.limit.saturating_sub(self.hits.len());
+                for (line_index, line) in text.split('\n').enumerate() {
+                    let line = line.trim_end_matches('\r');
+                    if !contains_ignore_case(line, &query) {
+                        continue;
+                    }
+                    if found.len() >= room {
+                        found.push(SearchHit {
+                            path: path.clone(),
+                            line: None,
+                            text: String::new(),
+                            kind: "overflow".into(),
+                        });
+                        break;
+                    }
+                    let line_no = u32::try_from(line_index + 1).unwrap_or(u32::MAX);
+                    found.push(SearchHit {
+                        path: path.clone(),
+                        line: Some(line_no),
+                        text: snippet(line, &query),
+                        kind: "content".into(),
+                    });
+                }
+            }
+        }
+        for hit in found {
+            if hit.kind == "overflow" {
+                self.truncated = true;
+                return;
+            }
+            if !self.push_hit(hit) {
                 return;
             }
         }
@@ -314,45 +255,89 @@ impl SearchJob {
     }
 }
 
-fn advance_search(
-    slot: &Mutex<SearchSlot>,
-    search_id: u64,
-    root: PathBuf,
-    query: String,
-    mask: String,
-) -> SearchOutput {
-    let mut guard = slot.lock().unwrap_or_else(|err| err.into_inner());
-    if search_id < guard.latest {
-        return SearchOutput {
-            hits: Vec::new(),
-            truncated: false,
-            done: true,
-            cancelled: true,
-        };
-    }
-    guard.latest = search_id;
-    if guard.job.as_ref().map(|job| job.id) == Some(search_id) {
-        let output = {
-            let job = guard.job.as_mut().expect("job");
-            job.pump(SEARCH_SLICE);
-            job.snapshot(false)
-        };
-        if output.done {
-            guard.job = None;
+struct SearchJob {
+    index: FileIndex,
+    cursor: SearchCursor,
+}
+
+impl SearchJob {
+    fn new(id: u64, root: PathBuf, query: &str, mask: &str, limit: usize) -> Self {
+        Self {
+            index: FileIndex::new(root),
+            cursor: SearchCursor::new(id, query, mask, limit),
         }
-        return output;
     }
-    let mut job = SearchJob::new(search_id, root, &query, &mask, SEARCH_LIMIT);
-    job.pump(SEARCH_SLICE);
-    let output = job.snapshot(false);
-    guard.job = if job.done { None } else { Some(job) };
-    output
+
+    fn pump(&mut self, budget: Duration) {
+        self.cursor.pump(budget, &mut self.index);
+    }
+
+    #[cfg(test)]
+    fn pump_steps(&mut self, steps: usize) {
+        for _ in 0..steps {
+            if self.cursor.done {
+                return;
+            }
+            if !self.cursor.advance_one(&mut self.index) {
+                self.cursor.done = true;
+                return;
+            }
+        }
+    }
+
+    fn snapshot(&self) -> SearchOutput {
+        self.cursor.snapshot(false)
+    }
+}
+
+fn index_key(root: &Path) -> String {
+    root.canonicalize()
+        .unwrap_or_else(|_| root.to_path_buf())
+        .to_string_lossy()
+        .into_owned()
+}
+
+pub(crate) fn query_indexed_paths(
+    hub: &IndexHub,
+    root: PathBuf,
+    query: &str,
+    limit: usize,
+    alive: impl Fn() -> bool,
+) -> IndexedPaths {
+    if !alive() {
+        return IndexedPaths {
+            paths: Vec::new(),
+            truncated: false,
+            cancelled: true,
+            ready: true,
+        };
+    }
+    let key = index_key(&root);
+    let mut guard = hub.inner.lock().unwrap_or_else(|err| err.into_inner());
+    let entry = guard.entry(key).or_insert_with(|| ProjectEntry::new(root));
+    entry.prepare_index(SEARCH_SLICE);
+    if !alive() {
+        return IndexedPaths {
+            paths: Vec::new(),
+            truncated: false,
+            cancelled: true,
+            ready: true,
+        };
+    }
+    let ready = entry.index.complete();
+    let (paths, truncated) = entry.index.matching_paths(query, limit);
+    IndexedPaths {
+        paths,
+        truncated,
+        cancelled: false,
+        ready,
+    }
 }
 
 #[tauri::command]
 pub async fn search_project_files(
     store: State<'_, ProjectStore>,
-    hub: State<'_, SearchHub>,
+    hub: State<'_, IndexHub>,
     project_id: String,
     query: String,
     mask: String,
@@ -362,27 +347,30 @@ pub async fn search_project_files(
         .get(&project_id)
         .ok_or_else(|| "项目不存在".to_string())?;
     let root = PathBuf::from(&project.path);
-    let slot = hub.slot.clone();
-    Ok(
-        tokio::task::spawn_blocking(move || advance_search(&slot, search_id, root, query, mask))
-            .await
-            .map_err(|err| format!("搜索失败: {err}"))?,
-    )
+    let inner = hub.inner.clone();
+    Ok(tokio::task::spawn_blocking(move || {
+        let mut guard = inner.lock().unwrap_or_else(|err| err.into_inner());
+        let key = index_key(&root);
+        let entry = guard.entry(key).or_insert_with(|| ProjectEntry::new(root));
+        entry.advance(search_id, &query, &mask, SEARCH_SLICE)
+    })
+    .await
+    .map_err(|err| format!("搜索失败: {err}"))?)
 }
 
 #[cfg(test)]
 fn search_workspace(root: &Path, query: &str, mask: &str, limit: usize) -> SearchOutput {
     let mut job = SearchJob::new(0, root.to_path_buf(), query, mask, limit);
     let mut guard = 0;
-    while !job.done {
+    while !job.cursor.done {
         job.pump(Duration::from_secs(30));
         guard += 1;
         if guard > 100_000 {
-            job.done = true;
+            job.cursor.done = true;
             break;
         }
     }
-    job.snapshot(false)
+    job.snapshot()
 }
 
 pub(crate) fn contains_ignore_case(text: &str, query: &str) -> bool {
@@ -550,6 +538,7 @@ fn glob_rec(pat: &[char], text: &[char]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
     use std::fs;
 
     fn scratch(name: &str) -> PathBuf {
@@ -643,16 +632,16 @@ mod tests {
         }
         let mut job = SearchJob::new(1, root.clone(), "open", "*.ts", 100);
         job.pump_steps(2);
-        assert!(!job.done, "two steps should not finish this tree");
+        assert!(!job.cursor.done, "two steps should not finish this tree");
         let mut guard = 0;
-        while !job.done {
+        while !job.cursor.done {
             job.pump_steps(3);
             guard += 1;
             assert!(guard < 10_000, "search did not finish");
         }
-        assert!(job.hits.iter().any(|hit| hit.path == "z-late/hit.ts"));
+        assert!(job.cursor.hits.iter().any(|hit| hit.path == "z-late/hit.ts"));
         let mut seen = HashSet::new();
-        for hit in &job.hits {
+        for hit in &job.cursor.hits {
             let key = format!("{}:{}:{}", hit.kind, hit.path, hit.line.unwrap_or(0));
             assert!(seen.insert(key), "duplicate hit {}", hit.path);
         }
@@ -663,14 +652,11 @@ mod tests {
     fn an_older_search_does_not_replace_a_newer_one() {
         let root = scratch("cancel");
         fs::write(root.join("a.ts"), "log\n").unwrap();
-        let slot = Mutex::new(SearchSlot {
-            latest: 0,
-            job: None,
-        });
-        let first = advance_search(&slot, 2, root.clone(), "log".into(), "*.ts".into());
+        let mut entry = ProjectEntry::new(root.clone());
+        let first = entry.advance(2, "log", "*.ts", Duration::from_secs(30));
         assert!(!first.cancelled);
         assert!(first.hits.iter().any(|hit| hit.path == "a.ts"));
-        let stale = advance_search(&slot, 1, root.clone(), "missing".into(), "*.ts".into());
+        let stale = entry.advance(1, "missing", "*.ts", Duration::from_secs(30));
         assert!(stale.cancelled);
         assert!(stale.done);
         assert!(stale.hits.is_empty());

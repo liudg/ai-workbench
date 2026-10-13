@@ -2,7 +2,6 @@
 //! 深度优先走到上限后，还没走到的顶层目录就从侧栏消失了。
 //! 这里每次只返回一个目录的直接子项，展开哪个目录再读哪一层。
 
-use std::collections::{HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -10,7 +9,8 @@ use std::sync::Arc;
 use serde::Serialize;
 use tauri::State;
 
-use super::search::contains_ignore_case;
+use super::index::FileIndex;
+use super::search::{query_indexed_paths, IndexHub};
 use super::skip_tree_dir;
 use crate::features::projects::ProjectStore;
 
@@ -28,6 +28,8 @@ pub struct PathFilter {
     pub paths: Vec<String>,
     pub truncated: bool,
     pub cancelled: bool,
+    /// 索引已经覆盖整棵树。还在建索引时为 false，调用方可以接着要下一段。
+    pub ready: bool,
 }
 
 pub struct FilterHub {
@@ -61,19 +63,42 @@ pub async fn list_project_dir(
 pub async fn filter_project_paths(
     store: State<'_, ProjectStore>,
     hub: State<'_, FilterHub>,
+    indexes: State<'_, IndexHub>,
     project_id: String,
     query: String,
 ) -> Result<PathFilter, String> {
+    if query.trim().is_empty() {
+        return Ok(PathFilter {
+            paths: Vec::new(),
+            truncated: false,
+            cancelled: false,
+            ready: true,
+        });
+    }
     let project = store
         .get(&project_id)
         .ok_or_else(|| "项目不存在".to_string())?;
     let root = PathBuf::from(&project.path);
     let generation = hub.generation.clone();
     let ticket = generation.fetch_add(1, Ordering::SeqCst) + 1;
+    let indexes = indexes.fork();
     Ok(tokio::task::spawn_blocking(move || {
-        filter_paths(&root, &query, FILTER_LIMIT, || {
-            generation.load(Ordering::SeqCst) == ticket
-        })
+        let alive = || generation.load(Ordering::SeqCst) == ticket;
+        if !alive() {
+            return PathFilter {
+                paths: Vec::new(),
+                truncated: false,
+                cancelled: true,
+                ready: true,
+            };
+        }
+        let found = query_indexed_paths(&indexes, root, &query, FILTER_LIMIT, alive);
+        PathFilter {
+            paths: found.paths,
+            truncated: found.truncated,
+            cancelled: found.cancelled,
+            ready: found.ready,
+        }
     })
     .await
     .map_err(|err| format!("无法筛选文件: {err}"))?)
@@ -125,70 +150,35 @@ pub fn filter_paths(
             paths: Vec::new(),
             truncated: false,
             cancelled: false,
+            ready: true,
         };
     }
-    let mut paths = Vec::new();
-    let mut truncated = false;
-    let mut queue = VecDeque::new();
-    let mut seen = HashSet::new();
-    queue.push_back((root.to_path_buf(), String::new()));
-    while let Some((dir, rel)) = queue.pop_front() {
+    if !alive() {
+        return PathFilter {
+            paths: Vec::new(),
+            truncated: false,
+            cancelled: true,
+            ready: true,
+        };
+    }
+    let mut index = FileIndex::new(root.to_path_buf());
+    while !index.complete() {
         if !alive() {
             return PathFilter {
                 paths: Vec::new(),
                 truncated: false,
                 cancelled: true,
+                ready: true,
             };
         }
-        let canon = dir.canonicalize().unwrap_or_else(|_| dir.clone());
-        if !seen.insert(canon) {
-            continue;
-        }
-        let Ok(read) = std::fs::read_dir(&dir) else {
-            continue;
-        };
-        let mut entries: Vec<_> = read.filter_map(|item| item.ok()).collect();
-        entries.sort_by_key(|item| item.file_name());
-        for entry in entries {
-            let name = entry.file_name();
-            let name = name.to_string_lossy();
-            if name.is_empty() || name == "." || name == ".." {
-                continue;
-            }
-            let path = entry.path();
-            let child_rel = if rel.is_empty() {
-                name.to_string()
-            } else {
-                format!("{rel}/{name}")
-            };
-            if path.is_dir() {
-                if skip_tree_dir(&name) {
-                    continue;
-                }
-                queue.push_back((path, child_rel));
-                continue;
-            }
-            if !path.is_file() {
-                continue;
-            }
-            if !contains_ignore_case(&child_rel, query) {
-                continue;
-            }
-            if paths.len() >= limit {
-                truncated = true;
-                return PathFilter {
-                    paths,
-                    truncated,
-                    cancelled: false,
-                };
-            }
-            paths.push(child_rel);
-        }
+        index.pump_steps(1);
     }
+    let (paths, truncated) = index.matching_paths(query, limit);
     PathFilter {
         paths,
         truncated,
         cancelled: false,
+        ready: true,
     }
 }
 

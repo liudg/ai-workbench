@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { emptySandbox, type AgentCapabilities, type SessionEvent } from "../../../types/index.ts";
+import {
+  emptySandbox,
+  type AgentCapabilities,
+  type AgentCatalog,
+  type SessionEvent,
+} from "../../../types/index.ts";
 import { deriveComposerView } from "./composer-view.ts";
 
 const caps = {
@@ -101,4 +106,105 @@ test("goal draft and plan mode change the placeholder only when the composer is 
   assert.equal(view({ status: "running", goalDraft: true }).placeholder, "添加后续消息");
   assert.equal(view({ caps: undefined }).goalSupport, "loading");
   assert.equal(view({ caps: { ...caps, supports_goals: false } }).goalSupport, "unsupported");
+});
+
+const catalog: AgentCatalog = {
+  models: [
+    {
+      id: "gpt-6.1-sol",
+      label: "GPT-6.1-Sol",
+      description: "",
+      is_default: true,
+      default_effort: "low",
+      efforts: [
+        { id: "low", description: "" },
+        { id: "high", description: "" },
+      ],
+    },
+    {
+      id: "gpt-5.4",
+      label: "GPT-5.4",
+      description: "",
+      is_default: false,
+      default_effort: "medium",
+      efforts: [
+        { id: "low", description: "" },
+        { id: "medium", description: "" },
+        { id: "high", description: "" },
+      ],
+    },
+  ],
+  skills: [],
+  commands: [],
+  capabilities: caps,
+  configured_model: "gpt-5.4",
+  configured_effort: "high",
+  cli_config_read: true,
+};
+
+test("the model button follows CLI config before the catalog default", () => {
+  assert.equal(view({ catalog }).modelButton, "GPT-5.4 · 高");
+  assert.equal(view({ catalog }).selectedEffort, "high");
+  assert.equal(
+    view({
+      catalog: {
+        ...catalog,
+        thread_model: "gpt-6.1-sol",
+        thread_effort: "medium",
+      },
+    }).modelButton,
+    "GPT-6.1-Sol · 中",
+  );
+  assert.equal(
+    view({
+      catalog: { ...catalog, configured_model: null, configured_effort: null },
+    }).modelButton,
+    "GPT-6.1-Sol · 低",
+  );
+  assert.equal(
+    view({
+      catalog: {
+        ...catalog,
+        configured_model: null,
+        configured_effort: null,
+        cli_config_read: false,
+      },
+    }).modelButton,
+    "未读到 CLI 默认模型",
+  );
+  assert.equal(
+    view({ catalog, tuning: { model: "gpt-6.1-sol", effort: "high" } }).modelButton,
+    "GPT-6.1-Sol · 高",
+  );
+});
+
+test("plan and goal chips are exclusive and the goal bar follows the goal", () => {
+  const plan: SessionEvent = {
+    id: "plan",
+    session_id: "s",
+    seq: 1,
+    ts: 1,
+    kind: "collaboration-mode",
+    mode: "plan",
+  };
+  const drafted = view({ events: [plan], goalDraft: true });
+  assert.equal(drafted.planOn, false);
+  assert.equal(drafted.goalOn, true);
+  assert.equal(drafted.goalStatus, "设置要持续追求的目标");
+  const planning = view({ events: [plan] });
+  assert.equal(planning.planOn, true);
+  assert.equal(planning.goalOn, false);
+  assert.equal(planning.goalStatus, null);
+  const live = view({
+    goalLive: true,
+    goal: {
+      objective: "把测试补上",
+      status: "active",
+      tokenBudget: 50000,
+      tokensUsed: 12500,
+      timeUsedSeconds: 90,
+    },
+  });
+  assert.equal(live.goalOn, true);
+  assert.equal(live.goalStatus, "正在追求目标 (12.5K / 50K)");
 });

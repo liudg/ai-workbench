@@ -1,10 +1,11 @@
 import { invoke } from "./call";
 import type { Backend } from "./contract";
-import type { FileSearchResult, PathFilter, PreviewDocument, TreeEntry } from "./dto";
+import type { FileSearchResult, PathFilter, PreviewDocument, PreviewImage, TreeEntry } from "./dto";
 
 export const previewCommands: Pick<
   Backend,
   | "readPreviewFile"
+  | "readPreviewImage"
   | "listProjectDir"
   | "filterProjectPaths"
   | "searchProjectFiles"
@@ -12,6 +13,8 @@ export const previewCommands: Pick<
 > = {
   readPreviewFile: (projectId, path) =>
     invoke<PreviewDocument>("read_preview_file", { projectId, path }),
+  readPreviewImage: (projectId, path) =>
+    invoke<PreviewImage>("read_preview_image", { projectId, path }),
   listProjectDir: (projectId, path) =>
     invoke<TreeEntry[]>("list_project_dir", { projectId, path }),
   filterProjectPaths: (projectId, query) =>

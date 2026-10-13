@@ -1,11 +1,12 @@
 import { useMemo, useRef, useState } from "react";
 
-import { emptySandbox, type SessionEvent } from "@/types";
+import { emptySandbox, type AgentCatalog, type SessionEvent } from "@/types";
 import { ComposerBar } from "./ComposerBar";
 import { ComposerInput } from "./ComposerInput";
 import { MentionMenu } from "./MentionMenu";
-import { atToken, clearAtToken, insertMention, mentionFiles } from "./mentions";
 import { deriveComposerView } from "./composer-view";
+import { activeGoal } from "./goal";
+import { atToken, clearAtToken, insertMention, mentionFiles } from "./mentions";
 
 const workspaceFiles = Object.keys(
   import.meta.glob(["/src/**/*.{ts,tsx,css,md,json}", "/docs/**/*.md", "/index.html"], {
@@ -30,34 +31,88 @@ const caps = {
 };
 
 /**
+ * 目录里的 isDefault 是产品默认（GPT-6.1-Sol · 低）。
+ * 首次进入应显示 CLI `config/read` 的 model / model_reasoning_effort，这里用 gpt-5.4 · 高代替那份配置。
+ * 预览不调用 app-server。`?goal=live` 只是一条已经记录的 thread/goal 快照，用来核对状态栏文案。
+ */
+const catalog: AgentCatalog = {
+  models: [
+    {
+      id: "gpt-6.1-sol",
+      label: "GPT-6.1-Sol",
+      description: "",
+      is_default: true,
+      default_effort: "low",
+      efforts: [
+        { id: "low", description: "" },
+        { id: "high", description: "" },
+      ],
+    },
+    {
+      id: "gpt-5.4",
+      label: "GPT-5.4",
+      description: "",
+      is_default: false,
+      default_effort: "medium",
+      efforts: [
+        { id: "low", description: "" },
+        { id: "medium", description: "" },
+        { id: "high", description: "" },
+      ],
+    },
+  ],
+  skills: [],
+  commands: [],
+  capabilities: caps,
+  configured_model: "gpt-5.4",
+  configured_effort: "high",
+  cli_config_read: true,
+};
+
+const liveGoal: SessionEvent = {
+  id: "goal",
+  session_id: "preview",
+  seq: 1,
+  ts: 1,
+  kind: "goal",
+  objective: "把预制体升级做完",
+  status: "active",
+  token_budget: 50000,
+  tokens_used: 12500,
+  time_used_seconds: 90,
+};
+
+/**
  * 开发预览：真实菜单和芯片，文件来自本仓库的模块图。
  * 不接 app-server，所以这里没有技能目录，也不调用 thread/goal。
  */
 export default function ComposerPreview() {
+  const params = new URLSearchParams(window.location.search);
   const [text, setText] = useState("");
   const [caret, setCaret] = useState(0);
   const [planOn, setPlanOn] = useState(false);
   const [goalDraft, setGoalDraft] = useState(false);
+  const [goalLive, setGoalLive] = useState(params.get("goal") === "live");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const plusRef = useRef<HTMLButtonElement>(null);
   const accessRef = useRef<HTMLButtonElement>(null);
   const modelRef = useRef<HTMLButtonElement>(null);
-  const events = useMemo<SessionEvent[]>(
-    () =>
-      planOn
-        ? [
-            {
-              id: "plan",
-              session_id: "preview",
-              seq: 1,
-              ts: 1,
-              kind: "collaboration-mode",
-              mode: "plan",
-            },
-          ]
-        : [],
-    [planOn],
-  );
+  const events = useMemo<SessionEvent[]>(() => {
+    const rows: SessionEvent[] = [];
+    if (planOn) {
+      rows.push({
+        id: "plan",
+        session_id: "preview",
+        seq: 2,
+        ts: 2,
+        kind: "collaboration-mode",
+        mode: "plan",
+      });
+    }
+    if (goalLive) rows.push(liveGoal);
+    return rows;
+  }, [goalLive, planOn]);
+  const goal = activeGoal(events);
   const view = deriveComposerView({
     status: "completed",
     events,
@@ -66,7 +121,7 @@ export default function ComposerPreview() {
     sandbox: emptySandbox(),
     commands: [],
     skills: [],
-    catalog: undefined,
+    catalog,
     tuning: undefined,
     catalogNotice: null,
     text,
@@ -74,6 +129,8 @@ export default function ComposerPreview() {
     editingId: null,
     fileCount: 0,
     goalDraft,
+    goalLive,
+    goal,
   });
   const files = useMemo(
     () => (view.mentionQuery ? mentionFiles(workspaceFiles, view.mentionQuery) : []),
@@ -96,8 +153,24 @@ export default function ComposerPreview() {
     const cleared = clearAtToken(text, caret);
     setText(cleared.text);
     setCaret(cleared.caret);
-    if (target === "goal") setGoalDraft((current) => !current);
-    if (target === "plan") setPlanOn((current) => !current);
+    if (target === "goal") {
+      if (view.goalOn) {
+        setGoalDraft(false);
+        setGoalLive(false);
+        return;
+      }
+      setPlanOn(false);
+      setGoalDraft(true);
+    }
+    if (target === "plan") {
+      if (view.planOn) {
+        setPlanOn(false);
+        return;
+      }
+      setGoalDraft(false);
+      setGoalLive(false);
+      setPlanOn(true);
+    }
   };
 
   return (
@@ -118,6 +191,15 @@ export default function ComposerPreview() {
         )}
         <div className="min-w-0 rounded-[28px] border border-zinc-700/90 bg-zinc-900 shadow-lg shadow-black/20">
           <div className="min-w-0 overflow-hidden px-3 pt-3">
+            {view.goalStatus ? (
+              <p
+                data-goal-status
+                title={view.goalStatus}
+                className="mb-1 truncate px-1 text-xs leading-5 text-fuchsia-300"
+              >
+                {view.goalStatus}
+              </p>
+            ) : null}
             <ComposerInput
               text={text}
               placeholder={view.placeholder}
@@ -139,18 +221,21 @@ export default function ComposerPreview() {
               composerLocked={false}
               sandbox={emptySandbox()}
               permissionMenu={null}
-              planChip={planOn}
-              goalChip={goalDraft}
-              showModel={false}
-              hasCatalog={false}
-              modelButton=""
+              planChip={view.planOn}
+              goalChip={view.goalOn}
+              showModel
+              hasCatalog
+              modelButton={view.modelButton}
               editing={false}
               stopMode={false}
               sendDisabled={view.sendDisabled}
               onToggleMenu={() => {}}
               onPickFiles={() => {}}
               onDismissPlan={() => setPlanOn(false)}
-              onDismissGoal={() => setGoalDraft(false)}
+              onDismissGoal={() => {
+                setGoalDraft(false);
+                setGoalLive(false);
+              }}
               onCancelEdit={() => {}}
               onSend={() => {}}
             />
