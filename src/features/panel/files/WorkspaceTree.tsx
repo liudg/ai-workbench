@@ -40,7 +40,7 @@ export function WorkspaceTree({
     }
     const files: FileTreeFile[] = tree.filtered.paths.map((path) => ({ path, added: 0, removed: 0 }));
     return (
-      <div data-files-filter-results>
+      <div data-files-filter-results data-files-filter-ready={tree.filtering ? "false" : "true"}>
         <FileTreeList
           nodes={buildFileTree(files)}
           collapsed={tree.filterCollapsed}

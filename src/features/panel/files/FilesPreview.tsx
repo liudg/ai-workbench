@@ -1,0 +1,161 @@
+import { useEffect, useState } from "react";
+
+import { backend } from "@/lib/ipc";
+import { appendSnippet, insertComposerText, subscribeComposerInsert } from "@/shared/composer-insert";
+import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
+import { FilePreview } from "./FilePreview";
+import { FileSearchDialog } from "./FileSearchDialog";
+import { WorkspaceTree } from "./WorkspaceTree";
+
+const SESSION = "preview";
+
+/** 开发预览：文件树和选区菜单走真实后端，不造搜索结果。 */
+export default function FilesPreview() {
+  const root = new URLSearchParams(window.location.search).get("root") ?? "";
+  const [projectId, setProjectId] = useState("");
+  const [error, setError] = useState("");
+  const [filter, setFilter] = useState("");
+  const [path, setPath] = useState("");
+  const [line, setLine] = useState<number | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [draft, setDraft] = useState("");
+
+  useEffect(
+    () =>
+      subscribeComposerInsert(SESSION, (snippet) => {
+        setDraft((current) => appendSnippet(current, snippet));
+      }),
+    [],
+  );
+
+  useEffect(() => {
+    if (!root) {
+      setError("没有项目目录");
+      return;
+    }
+    let cancel = false;
+    void (async () => {
+      try {
+        const id = await projectForRoot(root);
+        if (!cancel) setProjectId(id);
+      } catch (err: unknown) {
+        if (!cancel) setError(err instanceof Error ? err.message : String(err));
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, [root]);
+
+  return (
+    <div className="flex h-screen min-h-0 bg-zinc-950 text-zinc-200">
+      <div className="flex min-w-0 flex-1 flex-col">
+        {path && projectId ? (
+          <div className="min-h-0 flex-1">
+            <FilePreview
+              projectId={projectId}
+              path={path}
+              line={line}
+              quotePath={joinRoot(root, path)}
+              onQuote={(quote) => insertComposerText(SESSION, quote)}
+            />
+          </div>
+        ) : (
+          <p className="p-6 text-sm text-zinc-500" data-files-preview-status>
+            {error || "从右侧打开一个文件"}
+          </p>
+        )}
+        <label className="shrink-0 border-t border-zinc-800 p-3">
+          <span className="mb-1 block text-xs text-zinc-500">对话</span>
+          <textarea
+            data-preview-composer
+            readOnly
+            value={draft}
+            className="h-28 w-full resize-none rounded-lg border border-zinc-700 bg-zinc-900 p-2 font-mono text-xs text-zinc-100"
+          />
+        </label>
+      </div>
+      <aside data-workspace-tree className="flex w-80 shrink-0 flex-col border-l border-zinc-800">
+        <div className="flex gap-1 border-b border-zinc-800 p-1.5">
+          <input
+            data-files-filter
+            value={filter}
+            aria-label={DESKTOP_ZH.filterFiles}
+            placeholder={DESKTOP_ZH.filterFiles}
+            onChange={(event) => setFilter(event.target.value)}
+            className="w-full min-w-0 rounded-md border border-zinc-800 bg-zinc-900 px-1.5 py-1 text-xs text-zinc-100 outline-none"
+          />
+          <button
+            type="button"
+            data-file-search-open
+            aria-label={DESKTOP_ZH.openFilesSearch}
+            className="inline-flex h-7 shrink-0 items-center rounded-full border border-zinc-700 px-2 text-[11px] text-zinc-300"
+            onClick={() => setSearchOpen(true)}
+          >
+            搜索
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-auto px-1 py-1">
+          {projectId ? (
+            <WorkspaceTree
+              projectId={projectId}
+              filter={filter}
+              activePath={path}
+              onSelect={(next) => {
+                setPath(next);
+                setLine(null);
+              }}
+              onContextMenu={() => {}}
+            />
+          ) : (
+            <p className="px-2 py-6 text-center text-xs text-zinc-500">{error || DESKTOP_ZH.filesReading}</p>
+          )}
+        </div>
+      </aside>
+      {searchOpen && projectId ? (
+        <FileSearchDialog
+          projectId={projectId}
+          onClose={() => setSearchOpen(false)}
+          onOpen={(next, nextLine) => {
+            setPath(next);
+            setLine(nextLine);
+            setSearchOpen(false);
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+async function projectForRoot(root: string): Promise<string> {
+  const existing = await findProject(root);
+  if (existing) return existing;
+  try {
+    const project = await backend.importProject({
+      path: root,
+      defaultAgent: "codex-cli",
+      name: "search-fixture",
+    });
+    return project.id;
+  } catch (err: unknown) {
+    const again = await findProject(root);
+    if (again) return again;
+    throw err;
+  }
+}
+
+async function findProject(root: string): Promise<string> {
+  const projects = await backend.listProjects();
+  return projects.find((item) => samePath(item.path, root))?.id ?? "";
+}
+
+function samePath(left: string, right: string): boolean {
+  const normalize = (value: string) => value.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+  return normalize(left) === normalize(right);
+}
+
+function joinRoot(root: string, path: string): string {
+  const base = root.replace(/[\\/]+$/, "");
+  const slash = root.includes("\\") ? "\\" : "/";
+  return `${base}${slash}${path.replace(/^[\\/]+/, "")}`;
+}

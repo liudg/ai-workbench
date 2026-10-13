@@ -2,9 +2,10 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { FileSearch, Folder } from "lucide-react";
 
-import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
-import { useElementWidth } from "@/shared/dom/useElementWidth";
 import { cn } from "@/lib/utils";
+import { useElementWidth } from "@/shared/dom/useElementWidth";
+import { insertComposerText } from "@/shared/composer-insert";
+import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { ColumnSplitter } from "../core/ColumnSplitter";
 import { FILES_EXPANDED_WIDTH, diffListWidth, diffListWidthAfterDrag } from "../core/layout";
 import { resolvePreviewPath } from "../core/preview-kind";
@@ -77,6 +78,8 @@ export function OpenFilesView() {
               projectId={projectId}
               path={previewPath}
               line={previewLine}
+              quotePath={resolvePreviewPath(projectPath, previewPath) || previewPath}
+              onQuote={(quote) => insertComposerText(sessionId, quote)}
             />
           </div>
         ) : (

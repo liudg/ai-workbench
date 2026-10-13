@@ -50,21 +50,30 @@ export function useWorkspaceTree(projectId: string, filter: string) {
     setFiltering(true);
     setFilterError("");
     const timer = window.setTimeout(() => {
-      void backend.filterProjectPaths(projectId, query).then(
-        (result) => {
-          if (cancel) return;
-          if (result.cancelled) return;
-          setFiltered({ query, paths: result.paths, truncated: result.truncated });
-          setFiltering(false);
-        },
-        (err: unknown) => {
+      void (async () => {
+        try {
+          for (let hop = 0; hop < 20000; hop += 1) {
+            if (cancel) return;
+            const result = await backend.filterProjectPaths(projectId, query);
+            if (cancel || result.cancelled) return;
+            setFiltered({ query, paths: result.paths, truncated: result.truncated });
+            if (result.ready !== false) {
+              setFiltering(false);
+              return;
+            }
+          }
+          if (!cancel) {
+            setFilterError("筛选没有完成");
+            setFiltering(false);
+          }
+        } catch (err: unknown) {
           if (cancel) return;
           setFiltered(null);
           setFilterError(errorText(err, "无法筛选文件"));
           setFiltering(false);
-        },
-      );
-    }, 200);
+        }
+      })();
+    }, 80);
     return () => {
       cancel = true;
       window.clearTimeout(timer);

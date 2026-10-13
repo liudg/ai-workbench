@@ -5,6 +5,7 @@
 //! 工作区目录按一层一层列，不设全局文件上限。`.git`、`node_modules`、`target`、
 //! `dist`、`Library`、`Temp` 不进目录树，也不进全文搜索；其余目录和文件都列出来。
 
+mod index;
 pub mod search;
 pub mod tree;
 

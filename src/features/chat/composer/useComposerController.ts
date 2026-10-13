@@ -37,6 +37,7 @@ import { useComposerMenu } from "./useComposerMenu";
 import { useComposerFeeds } from "./useComposerFeeds";
 import { useComposerActions, useComposerSession } from "./useComposerStore";
 import { collaborationMode } from "./collaboration-mode";
+import { appendSnippet, subscribeComposerInsert } from "@/shared/composer-insert";
 import { useGoalDraft } from "./useGoalDraft";
 import { useMentionMenu } from "./useMentionMenu";
 import { useReviewDismiss } from "./useReviewDismiss";
@@ -141,6 +142,13 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
   useEffect(() => {
     if (goal.publishError) setNotice(goal.publishError);
   }, [goal.publishError]);
+
+  useEffect(() => {
+    return subscribeComposerInsert(session.id, (snippet) => {
+      setText((current) => appendSnippet(current, snippet));
+      requestAnimationFrame(() => textareaRef.current?.focus());
+    });
+  }, [session.id, textareaRef]);
 
   const planEvent = collaborationMode(events) === "plan";
   useEffect(() => {

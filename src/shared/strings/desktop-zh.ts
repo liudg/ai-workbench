@@ -112,6 +112,7 @@ export const DESKTOP_ZH = {
   filesFilterPending: "正在筛选…",
   filesFilterCap: "匹配太多，请缩小筛选",
   addToChat: "添加到聊天",
+  addSelectionToChat: "添加到对话",
   diffOptions: "“变更”选项",
   diffHideImports: "隐藏导入内容",
   filesHideSidebar: "隐藏边栏",

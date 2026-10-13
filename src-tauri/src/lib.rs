@@ -94,7 +94,7 @@ pub(crate) fn manage_state<R: Runtime>(
     let store = ProjectStore::load(data_dir).map_err(|e| format!("加载项目列表失败: {e}"))?;
     app.manage(store);
     app.manage(SessionManager::new(app_emitter(app.clone()), data_dir));
-    app.manage(features::preview::search::SearchHub::default());
+    app.manage(features::preview::search::IndexHub::default());
     app.manage(features::preview::tree::FilterHub::default());
     Ok(())
 }

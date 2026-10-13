@@ -1,7 +1,10 @@
+import { useRef } from "react";
+
 import { MarkdownPreview } from "../viewers/MarkdownPreview";
 import { SourceView } from "../viewers/SourceView";
 import { TextPreview } from "../viewers/TextPreview";
 import { PreviewFailed, PreviewPending } from "../viewers/frame";
+import { SelectionMenu } from "./SelectionMenu";
 import { usePreviewFile } from "./usePreviewFile";
 
 /** 在当前「打开文件」页里预览。不新开标签。 */
@@ -9,15 +12,22 @@ export function FilePreview({
   projectId,
   path,
   line,
+  quotePath,
+  onQuote,
 }: {
   projectId: string;
   path: string;
   line: number | null;
+  /** 写进对话的路径。缺省用预览里的相对路径。 */
+  quotePath?: string;
+  onQuote: (quote: string) => void;
 }) {
   const state = usePreviewFile(projectId, path);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   return (
     <div
+      ref={rootRef}
       data-open-files-preview
       data-preview-path={path}
       data-preview-line={line ?? ""}
@@ -34,6 +44,9 @@ export function FilePreview({
           <PreviewBody text={state.text} kind={state.kind} truncated={state.truncated} line={line} />
         ) : null}
       </div>
+      {state.status === "ready" ? (
+        <SelectionMenu rootRef={rootRef} path={quotePath || path} onAdd={onQuote} />
+      ) : null}
     </div>
   );
 }

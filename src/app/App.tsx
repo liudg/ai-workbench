@@ -11,6 +11,9 @@ const DiffPreview = import.meta.env.DEV
 const ComposerPreview = import.meta.env.DEV
   ? lazy(() => import("@/features/chat/composer/ComposerPreview"))
   : null;
+const FilesPreview = import.meta.env.DEV
+  ? lazy(() => import("@/features/panel/files/FilesPreview"))
+  : null;
 
 export default function App() {
   const preview = new URLSearchParams(window.location.search).get("preview");
@@ -25,6 +28,13 @@ export default function App() {
     return (
       <Suspense fallback={null}>
         <ComposerPreview />
+      </Suspense>
+    );
+  }
+  if (FilesPreview && preview === "files") {
+    return (
+      <Suspense fallback={null}>
+        <FilesPreview />
       </Suspense>
     );
   }
