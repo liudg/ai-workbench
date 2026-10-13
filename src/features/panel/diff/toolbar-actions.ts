@@ -1,11 +1,11 @@
-/** 差异工具栏右侧图标，从左到右跟录屏一致。 */
+/** 差异工具栏右侧图标，从左到右跟 Codex 桌面截图一致。 */
 export const DIFF_TOOLBAR_ICON_IDS = [
   "options",
-  "load-full",
+  "jump",
   "refresh",
   "wrap",
   "expand",
-  "unified",
+  "layout",
   "files",
 ] as const;
 

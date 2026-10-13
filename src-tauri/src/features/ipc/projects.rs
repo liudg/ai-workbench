@@ -1,5 +1,7 @@
 //! 项目命令。移除项目时先停掉该项目下已打开的会话。
 
+use std::path::PathBuf;
+
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Runtime, State};
 
@@ -30,7 +32,11 @@ fn ensure_unlisted(store: &ProjectStore, dir: &str) -> Result<(), String> {
     }
 }
 
-fn publish<R: Runtime>(app: &AppHandle<R>, store: &ProjectStore, project: Project) -> Result<Project, String> {
+fn publish<R: Runtime>(
+    app: &AppHandle<R>,
+    store: &ProjectStore,
+    project: Project,
+) -> Result<Project, String> {
     store.add(project.clone())?;
     notify_projects_changed(app);
     Ok(project)
@@ -99,6 +105,21 @@ pub fn import_project<R: Runtime>(
             external: false,
         },
     )
+}
+
+/// 项目目录是否为 git 工作区。探测失败时返回 git 的原文，而不是当成仓库。
+#[tauri::command]
+pub async fn project_is_git(
+    store: State<'_, ProjectStore>,
+    project_id: String,
+) -> Result<bool, String> {
+    let project = store
+        .get(&project_id)
+        .ok_or_else(|| "项目不存在".to_string())?;
+    let root = PathBuf::from(project.path);
+    tokio::task::spawn_blocking(move || crate::features::git::inside_work_tree(&root))
+        .await
+        .map_err(|err| format!("无法确认是否为 git 仓库: {err}"))?
 }
 
 /// 从工作台列表移除项目（不删除磁盘目录，也不删除 Agent 的会话记录）。

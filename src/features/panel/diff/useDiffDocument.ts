@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { backend, type DiffScope } from "@/lib/ipc";
 import { parseUnifiedDiff, type FileChange } from "@/features/changes-model/diff-parse";
 import { usePanel } from "@/features/panel/core/PanelProvider";
 import { filterFiles, useFileFilter } from "@/features/panel/files/file-filter";
+import { patchFromFiles } from "./git-apply";
 import { withoutWhitespaceChanges } from "./fold";
 import { diffScopeMenu, filesForScope } from "./scope";
 
@@ -18,7 +19,6 @@ export function useDiffDocument(turnFiles: FileChange[]) {
   const [loading, setLoading] = useState(false);
   const [activePath, setActivePath] = useState("");
   const [expanded, setExpanded] = useState(false);
-  const [unified, setUnified] = useState(false);
   const [loadFull, setLoadFull] = useState(true);
   const [renderPreview, setRenderPreview] = useState(true);
   const [wordDiff, setWordDiff] = useState(true);
@@ -84,16 +84,21 @@ export function useDiffDocument(turnFiles: FileChange[]) {
     };
   }, [hideWs, remote, reloadToken, selected, sessionId]);
 
+  const base = useMemo(
+    () => filesForScope(selected, turnFiles, gitFiles),
+    [gitFiles, selected, turnFiles],
+  );
   const listed = useMemo(() => {
-    const source = filesForScope(selected, turnFiles, gitFiles);
-    if (!selected || selected.source !== "turn" || !hideWs) return source;
-    return source.flatMap((file) => {
+    const turn = !selected || selected.source === "turn";
+    if (!turn || !hideWs) return base;
+    return base.flatMap((file) => {
       const parsed = parseUnifiedDiff(withoutWhitespaceChanges(file.diff)).filter(
         (item) => item.added + item.removed > 0,
       );
       return parsed.map((item) => ({ ...item, status: file.status }));
     });
-  }, [gitFiles, hideWs, selected, turnFiles]);
+  }, [base, hideWs, selected]);
+  const patch = useMemo(() => patchFromFiles(base), [base]);
 
   const shown = useMemo(() => filterFiles(listed, filter), [filter, listed]);
   const active = shown.find((file) => file.path === activePath) ?? shown[0];
@@ -119,10 +124,12 @@ export function useDiffDocument(turnFiles: FileChange[]) {
     }
   }, [expanded, loadFull, projectId, reloadToken, renderPreview, sourceKey]);
 
-  const selectFile = (file: FileChange) => {
+  const selectFile = useCallback((file: FileChange) => {
     setActivePath(file.path);
-    document.querySelector(`[data-diff-file-body="${cssEscape(file.path)}"]`)?.scrollIntoView({ block: "nearest" });
-  };
+    const escaped = cssEscape(file.path);
+    document.querySelector(`[data-diff-file-body="${escaped}"]`)?.scrollIntoView({ block: "center" });
+    document.querySelector(`[data-diff-file="${escaped}"]`)?.scrollIntoView({ block: "nearest" });
+  }, []);
 
   return {
     scope: selected?.id ?? scope,
@@ -139,8 +146,6 @@ export function useDiffDocument(turnFiles: FileChange[]) {
     removed,
     expanded,
     setExpanded,
-    unified,
-    setUnified,
     loadFull,
     setLoadFull,
     renderPreview,
@@ -152,6 +157,7 @@ export function useDiffDocument(turnFiles: FileChange[]) {
     hideImports,
     setHideImports,
     sources,
+    patch,
     selectFile,
     reload: () => {
       triedSource.current.clear();

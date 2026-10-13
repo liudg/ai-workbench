@@ -1,11 +1,26 @@
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 
 import { NewProjectDialog, Sidebar } from "@/features/sidebar";
 import { RightPane, UpdateDialog } from "@/features/workspace";
 import { useWorkbench } from "@/store";
 import { visibleBanner } from "@/store/sync";
 
+const DiffPreview = import.meta.env.DEV
+  ? lazy(() => import("@/features/panel/diff/DiffPreview"))
+  : null;
+
 export default function App() {
+  if (DiffPreview && new URLSearchParams(window.location.search).get("preview") === "diff") {
+    return (
+      <Suspense fallback={null}>
+        <DiffPreview />
+      </Suspense>
+    );
+  }
+  return <WorkbenchApp />;
+}
+
+function WorkbenchApp() {
   const ready = useWorkbench((s) => s.ready);
   const init = useWorkbench((s) => s.init);
   const lastError = useWorkbench((s) => visibleBanner(s.lastError));

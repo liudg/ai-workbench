@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/utils";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
@@ -11,17 +11,30 @@ import { ChangesSidebar } from "../files/ChangesSidebar";
 import { setFileFilter } from "../files/file-filter";
 import { DiffFileSection } from "./DiffFileSection";
 import { DiffToolbar } from "./DiffToolbar";
+import { copyApplyState } from "./git-apply";
+import { diffPresentation, type DiffLayoutMode } from "./split-rows";
 import { useDiffDocument } from "./useDiffDocument";
+import { useGitWorkTree } from "./useGitWorkTree";
 
 const SPLITTER_WIDTH = 6;
 
 export function DiffView({ files }: { files: FileChange[] }) {
-  const doc = useDiffDocument(files);
-  const { diffFilesWidth, setDiffFilesWidth } = usePanel();
+  const { diffFilesWidth, setDiffFilesWidth, projectId, sessionFiles } = usePanel();
+  const threadFiles = sessionFiles.length > 0 ? sessionFiles : files;
+  const [followThread, setFollowThread] = useState(false);
+  const doc = useDiffDocument(followThread ? threadFiles : files);
   const frameRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const paneWidth = useElementWidth(frameRef);
+  const contentWidth = useElementWidth(contentRef);
   const [epoch, setEpoch] = useState(0);
+  const [gitEpoch, setGitEpoch] = useState(0);
   const [filesWanted, setFilesWanted] = useState(true);
+  const [layout, setLayout] = useState<DiffLayoutMode>("auto");
+  const [pendingJump, setPendingJump] = useState<string | null>(null);
+  const git = useGitWorkTree(projectId, gitEpoch);
+  const copy = copyApplyState({ git: git.status, gitReason: git.reason, patch: doc.patch });
+  const presentation = diffPresentation(layout, contentWidth);
   const inner = Math.max(0, paneWidth - SPLITTER_WIDTH);
   const auto = filesWanted ? diffListWidth(inner) : null;
   const listWidth =
@@ -32,6 +45,27 @@ export function DiffView({ files }: { files: FileChange[] }) {
   widthRef.current = diffFilesWidth;
   const sourceFor = (path: string) => (doc.loadFull ? (doc.sources[path] ?? null) : null);
 
+  useEffect(() => {
+    if (!pendingJump) return;
+    const file = doc.shown.find((item) => item.path === pendingJump);
+    if (!file) return;
+    setPendingJump(null);
+    doc.selectFile(file);
+  }, [doc.selectFile, doc.shown, pendingJump]);
+
+  const jumpTo = (path: string) => {
+    const known = threadFiles.some((file) => file.path === path) || files.some((file) => file.path === path);
+    if (!known) return;
+    setFileFilter("");
+    const inListed = doc.listed.some((file) => file.path === path);
+    if (!inListed) {
+      const turn = doc.scopes.find((item) => item.source === "turn" && !item.submenu);
+      if (turn && doc.scope !== turn.id) doc.setScope(turn.id);
+      if (!followThread) setFollowThread(true);
+    }
+    setPendingJump(path);
+  };
+
   return (
     <div
       ref={frameRef}
@@ -39,6 +73,11 @@ export function DiffView({ files }: { files: FileChange[] }) {
       data-diff-view
       data-diff-list={listWidth === null ? "hidden" : "visible"}
       data-diff-files-width={listWidth ?? undefined}
+      data-diff-layout={layout}
+      data-diff-presentation={presentation}
+      data-diff-expanded={doc.expanded ? "on" : "off"}
+      data-diff-git={git.status}
+      data-diff-content-width={contentWidth || undefined}
     >
       <DiffToolbar
         scope={doc.scope}
@@ -48,13 +87,14 @@ export function DiffView({ files }: { files: FileChange[] }) {
         removed={doc.removed}
         expanded={doc.expanded}
         onToggleExpanded={() => doc.setExpanded((value) => !value)}
-        unified={doc.unified}
-        onToggleUnified={() => doc.setUnified((value) => !value)}
+        layoutSplit={layout === "split"}
+        onToggleLayout={() => setLayout((value) => (value === "split" ? "auto" : "split"))}
         wrap={doc.wrap}
         onToggleWrap={() => doc.setWrap((value) => !value)}
         onRefresh={() => {
           setFileFilter("");
           setEpoch((value) => value + 1);
+          setGitEpoch((value) => value + 1);
           doc.reload();
         }}
         loadFull={doc.loadFull}
@@ -69,9 +109,14 @@ export function DiffView({ files }: { files: FileChange[] }) {
         onToggleHideImports={() => doc.setHideImports((value) => !value)}
         filesOpen={listWidth !== null}
         onToggleFiles={() => setFilesWanted((value) => !value)}
+        jumpFiles={threadFiles}
+        activePath={doc.active?.path ?? ""}
+        onJump={jumpTo}
+        copyCommand={copy.command}
+        copyReason={copy.reason}
       />
       <div data-diff-split className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <div ref={contentRef} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <div
             className={cn(
               "min-h-0 min-w-0 flex-1 overflow-y-auto",
@@ -89,7 +134,7 @@ export function DiffView({ files }: { files: FileChange[] }) {
                 key={file.path}
                 file={file}
                 expanded={doc.expanded}
-                unified={doc.unified}
+                presentation={presentation}
                 wrap={doc.wrap}
                 wordDiff={doc.wordDiff}
                 renderPreview={doc.renderPreview}

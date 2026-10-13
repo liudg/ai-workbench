@@ -155,6 +155,11 @@ export interface Backend {
     scope: string,
     ignoreWhitespace: boolean,
   ): Promise<string>;
+  /**
+   * 项目目录是不是 git 工作区。
+   * 后端用 Codex 同一条探测：`git rev-parse --is-inside-work-tree`。
+   */
+  projectIsGit(projectId: string): Promise<boolean>;
   updateQueuedTurn(
     sessionId: string,
     queuedId: string,
@@ -289,6 +294,7 @@ export const backend: Backend = {
   diffScopes: (sessionId) => invoke<DiffScope[]>("diff_scopes", { sessionId }),
   diffForScope: (sessionId, scope, ignoreWhitespace) =>
     invoke<string>("diff_for_scope", { sessionId, scope, ignoreWhitespace }),
+  projectIsGit: (projectId) => invoke<boolean>("project_is_git", { projectId }),
   updateQueuedTurn: (sessionId, queuedId, text, images) =>
     invoke("update_queued_turn", {
       sessionId,

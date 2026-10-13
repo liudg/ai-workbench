@@ -3,12 +3,13 @@ import type { FileChange } from "@/features/changes-model/diff-parse";
 import { previewKindForPath } from "@/features/panel/core/preview-kind";
 import { MarkdownBody } from "@/shared/markdown/MarkdownBody";
 import { expandDiffLines, foldDiffLines, previewTextFromDiff, unmodifiedLinesLabel, withoutImportLines } from "./fold";
-import { applyWordDiff, type DiffDisplayRow } from "./word-diff";
+import { toSplitRows, type DiffPresentation, type SplitCell } from "./split-rows";
+import { applyWordDiff, type DiffDisplayRow, type WordPart } from "./word-diff";
 
 export function DiffFileSection({
   file,
   expanded,
-  unified,
+  presentation,
   wrap,
   wordDiff,
   renderPreview,
@@ -19,7 +20,7 @@ export function DiffFileSection({
 }: {
   file: FileChange;
   expanded: boolean;
-  unified: boolean;
+  presentation: DiffPresentation;
   wrap: boolean;
   wordDiff: boolean;
   renderPreview: boolean;
@@ -31,12 +32,17 @@ export function DiffFileSection({
   const markdown = previewKindForPath(file.path) === "markdown";
   const body = hideImports ? withoutImportLines(file.diff) : file.diff;
   const folded = foldDiffLines(body);
-  const rows = wordDiff ? applyWordDiff(expanded ? expandDiffLines(body, source) : folded) : null;
   const plain = expanded ? expandDiffLines(body, source) : folded;
+  const rows = wordDiff ? applyWordDiff(plain) : plain.map(withEmptyParts);
   return (
     <section
-      className={cn("min-w-0 border-b border-zinc-800", active && "bg-zinc-950")}
+      className={cn(
+        "min-w-0 scroll-mt-2 border-b border-zinc-800",
+        active && "bg-zinc-900 ring-1 ring-inset ring-sky-500/50",
+      )}
       data-diff-file-body={file.path}
+      data-diff-active={active ? "true" : "false"}
+      data-diff-presentation={presentation}
       onClick={onSelect}
     >
       <header className="flex min-w-0 flex-nowrap items-center gap-2 px-3 py-2 text-xs">
@@ -50,43 +56,66 @@ export function DiffFileSection({
         <div className="px-4 py-3">
           <MarkdownBody text={source && source.length > 0 ? source : previewTextFromDiff(file.diff)} />
         </div>
-      ) : unified ? (
-        <pre
-          className={cn(
-            "max-w-full px-3 pb-3 font-mono text-xs leading-5 text-zinc-300",
-            wrap ? "overflow-x-hidden whitespace-pre-wrap break-all" : "overflow-x-auto whitespace-pre",
-          )}
-        >
-          {body}
-        </pre>
-      ) : (wordDiff ? rows : plain)?.length === 0 ? (
+      ) : rows.length === 0 ? (
         <p className="px-3 py-2 text-xs text-zinc-500">没有可显示的差异文本。</p>
+      ) : presentation === "split" ? (
+        <SplitBody rows={rows} wrap={wrap} />
       ) : (
         <div className="min-w-0 pb-2 font-mono text-xs leading-5">
-          {(wordDiff ? rows : plain.map((row) => (row.kind === "collapse" ? row : { ...row, parts: null })))?.map(
-            (row, index) => (
-              <DiffRowView key={index} row={row} wrap={wrap} />
-            ),
-          )}
+          {rows.map((row, index) => (
+            <DiffRowView key={index} row={row} wrap={wrap} />
+          ))}
         </div>
       )}
     </section>
   );
 }
 
+function withEmptyParts(row: ReturnType<typeof foldDiffLines>[number]): DiffDisplayRow {
+  if (row.kind === "collapse") return row;
+  return { ...row, parts: null };
+}
+
+function SplitBody({ rows, wrap }: { rows: DiffDisplayRow[]; wrap: boolean }) {
+  return (
+    <div className="min-w-0 pb-2 font-mono text-xs leading-5" data-diff-split-body>
+      {toSplitRows(rows).map((row, index) =>
+        row.kind === "collapse" ? (
+          <CollapseBar key={index} count={row.count} />
+        ) : (
+          <div key={index} className={cn("grid grid-cols-2", wrap ? "min-w-0" : "min-w-max")}>
+            <SplitCellView cell={row.left} wrap={wrap} edge="left" />
+            <SplitCellView cell={row.right} wrap={wrap} edge="right" />
+          </div>
+        ),
+      )}
+    </div>
+  );
+}
+
+function SplitCellView({ cell, wrap, edge }: { cell: SplitCell; wrap: boolean; edge: "left" | "right" }) {
+  return (
+    <div
+      data-diff-split-cell={edge}
+      data-diff-tone={cell.tone}
+      className={cn(
+        "flex min-w-0",
+        edge === "left" && "border-r border-zinc-800",
+        cell.tone === "add" && "bg-emerald-500/15 text-emerald-200",
+        cell.tone === "del" && "bg-red-500/15 text-red-200",
+        cell.tone === "context" && "text-zinc-300",
+        cell.tone === "meta" && "text-zinc-500",
+        cell.tone === "pad" && "bg-zinc-950/30",
+      )}
+    >
+      <span className="w-10 shrink-0 select-none px-2 text-right text-zinc-500">{cell.lineNo ?? ""}</span>
+      <LineText text={cell.text} parts={cell.parts} wrap={wrap} />
+    </div>
+  );
+}
+
 function DiffRowView({ row, wrap }: { row: DiffDisplayRow; wrap: boolean }) {
-  if (row.kind === "collapse") {
-    const label = unmodifiedLinesLabel(row.count);
-    return (
-      <div
-        data-unmodified-lines={row.count}
-        title={label}
-        className="mx-3 my-1 truncate rounded bg-zinc-800 px-3 py-1 text-zinc-400"
-      >
-        {label}
-      </div>
-    );
-  }
+  if (row.kind === "collapse") return <CollapseBar count={row.count} />;
   return (
     <div
       className={cn(
@@ -98,22 +127,41 @@ function DiffRowView({ row, wrap }: { row: DiffDisplayRow; wrap: boolean }) {
       )}
     >
       <span className="w-10 shrink-0 select-none px-2 text-right text-zinc-500">{row.lineNo ?? ""}</span>
-      <span
-        className={cn(
-          "min-w-0 flex-1 px-2",
-          wrap ? "overflow-hidden whitespace-pre-wrap break-all" : "overflow-x-auto whitespace-pre",
-        )}
-      >
-        {row.parts && row.parts.length > 0
-          ? row.parts.map((part, index) => (
-              <span key={index} className={part.changed ? "rounded-sm bg-white/10" : undefined}>
-                {part.text.length > 0 ? part.text : " "}
-              </span>
-            ))
-          : row.text.length > 0
-            ? row.text
-            : " "}
-      </span>
+      <LineText text={row.text} parts={row.parts} wrap={wrap} />
     </div>
+  );
+}
+
+function CollapseBar({ count }: { count: number }) {
+  const label = unmodifiedLinesLabel(count);
+  return (
+    <div
+      data-unmodified-lines={count}
+      title={label}
+      className="mx-3 my-1 truncate rounded bg-zinc-800 px-3 py-1 text-zinc-400"
+    >
+      {label}
+    </div>
+  );
+}
+
+function LineText({ text, parts, wrap }: { text: string; parts: WordPart[] | null; wrap: boolean }) {
+  return (
+    <span
+      className={cn(
+        "min-w-0 flex-1 px-2",
+        wrap ? "overflow-hidden whitespace-pre-wrap break-all" : "overflow-x-auto whitespace-pre",
+      )}
+    >
+      {parts && parts.length > 0
+        ? parts.map((part, index) => (
+            <span key={index} className={part.changed ? "rounded-sm bg-white/10" : undefined}>
+              {part.text.length > 0 ? part.text : " "}
+            </span>
+          ))
+        : text.length > 0
+          ? text
+          : " "}
+    </span>
   );
 }
