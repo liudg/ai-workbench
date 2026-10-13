@@ -23,7 +23,8 @@ pub(crate) fn offer_self_update(
     !matches!((version, settled), (Some(version), Some(settled)) if version == settled)
 }
 
-/// 已确认的版本填进 `latest_version`，设置卡片才能写出「已是最新」。
+/// 已确认的版本填进 `latest_version`，供安装记录对照。
+/// 更新按钮是否出现由 `update_available` 决定。
 pub(crate) fn settled_latest(version: Option<&str>, settled: Option<&str>) -> Option<String> {
     match (version, settled) {
         (Some(version), Some(settled)) if version == settled => Some(version.to_string()),

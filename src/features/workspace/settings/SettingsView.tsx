@@ -43,9 +43,6 @@ function AgentCard({
       <div className="min-w-0 flex-1">
         <div className="text-sm font-medium text-zinc-100">{item.display_name}</div>
         <StatusLine face={face} />
-        {face.kind === "unwired" && face.settled && (
-          <p className="mt-1 text-xs text-emerald-300/90">{face.settled}</p>
-        )}
         {face.kind === "ready" && face.detail && (
           <div className="mt-1 text-xs leading-5 text-amber-200/90">{face.detail}</div>
         )}
