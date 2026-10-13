@@ -19,7 +19,8 @@ export function useDiffDocument(turnFiles: FileChange[]) {
   const [activePath, setActivePath] = useState("");
   const [openPaths, setOpenPaths] = useState<string[]>([]);
   const [loadFull, setLoadFull] = useState(false);
-  const [renderPreview, setRenderPreview] = useState(true);
+  // 展开默认是差异 hunk。渲染预览会把 Markdown 换成渲染结果，不能当默认。
+  const [renderPreview, setRenderPreview] = useState(false);
   const [wordDiff, setWordDiff] = useState(true);
   const [wrap, setWrap] = useState(true);
   const [hideImports, setHideImports] = useState(false);
