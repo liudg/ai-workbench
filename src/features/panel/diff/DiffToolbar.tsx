@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, ChevronRight, Ellipsis } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Check, ChevronDown, ChevronRight, Ellipsis, Expand, FileSearch, PanelRight, RotateCw, WrapText } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { diffMenuEntries } from "./diff-menu";
 import type { DiffScopeItem } from "./scope";
+import { DIFF_TOOLBAR_ICON_IDS, type DiffToolbarIconId } from "./toolbar-actions";
+import { SplitDiffIcon } from "./toolbar-icons";
 
 export function DiffToolbar({
   scope,
@@ -29,6 +31,8 @@ export function DiffToolbar({
   onToggleHideWs,
   hideImports,
   onToggleHideImports,
+  filesOpen,
+  onToggleFiles,
 }: {
   scope: string;
   scopes: DiffScopeItem[];
@@ -52,6 +56,8 @@ export function DiffToolbar({
   onToggleHideWs: () => void;
   hideImports: boolean;
   onToggleHideImports: () => void;
+  filesOpen: boolean;
+  onToggleFiles: () => void;
 }) {
   const [menu, setMenu] = useState<"scope" | "options" | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -146,55 +152,146 @@ export function DiffToolbar({
       </div>
       <span className="shrink-0 whitespace-nowrap font-mono text-[11px] text-emerald-400">+{added}</span>
       <span className="shrink-0 whitespace-nowrap font-mono text-[11px] text-red-400">-{removed}</span>
-      <div className="relative ml-auto shrink-0">
-        <button
-          type="button"
-          data-diff-options
-          title={DESKTOP_ZH.diffOptions}
-          aria-label={DESKTOP_ZH.diffOptions}
-          aria-expanded={menu === "options"}
-          aria-haspopup="menu"
-          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-300 hover:bg-zinc-800 hover:text-white"
-          onClick={() => setMenu((value) => (value === "options" ? null : "options"))}
-        >
-          <Ellipsis className="h-3.5 w-3.5" />
-        </button>
-        {menu === "options" ? (
-          <div
-            role="menu"
-            data-diff-options-menu
-            className="absolute right-0 top-full z-20 mt-1 w-max min-w-56 rounded-xl border border-zinc-700 bg-zinc-900 py-1 shadow-lg"
-          >
-            {diffMenuEntries().map((entry) =>
-              entry.kind === "separator" ? (
-                <div key={entry.id} role="separator" className="my-1 h-px bg-zinc-700" />
-              ) : (
-                <button
-                  key={entry.id}
-                  type="button"
-                  role={entry.kind === "check" ? "menuitemcheckbox" : "menuitem"}
-                  aria-checked={entry.kind === "check" ? checked[entry.id] : undefined}
-                  disabled={entry.kind === "disabled"}
-                  aria-disabled={entry.kind === "disabled" || undefined}
-                  data-diff-option={entry.label}
-                  data-diff-copy-apply={entry.id === "copy-apply" ? "" : undefined}
-                  className={cn(
-                    "flex w-full items-center gap-2 whitespace-nowrap px-3 py-1.5 text-left text-xs",
-                    entry.kind === "disabled" ? "cursor-default text-zinc-500" : "text-zinc-100 hover:bg-zinc-800",
-                  )}
-                  onClick={() => {
-                    if (entry.kind === "disabled") return;
-                    run(entry.id);
-                  }}
-                >
-                  <span className="min-w-0 flex-1">{entry.label}</span>
-                  {entry.kind === "check" && checked[entry.id] ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
-                </button>
-              ),
-            )}
-          </div>
-        ) : null}
+      <div className="ml-auto flex shrink-0 items-center">
+        {DIFF_TOOLBAR_ICON_IDS.map((id) =>
+          id === "options" ? (
+            <div key={id} className="relative">
+              <IconButton
+                id={id}
+                label={DESKTOP_ZH.diffOptions}
+                expanded={menu === "options"}
+                menu
+                onClick={() => setMenu((value) => (value === "options" ? null : "options"))}
+              >
+                <Ellipsis className="h-3.5 w-3.5" />
+              </IconButton>
+              {menu === "options" ? <OptionsMenu checked={checked} onRun={run} /> : null}
+            </div>
+          ) : (
+            <IconButton
+              key={id}
+              id={id}
+              label={iconLabel(id)}
+              pressed={iconPressed(id, { loadFull, wrap, expanded, unified, filesOpen })}
+              onClick={() => {
+                if (id === "files") onToggleFiles();
+                else run(id);
+              }}
+            >
+              <ToolbarGlyph id={id} />
+            </IconButton>
+          ),
+        )}
       </div>
+    </div>
+  );
+}
+
+function iconLabel(id: Exclude<DiffToolbarIconId, "options">): string {
+  if (id === "load-full") return DESKTOP_ZH.diffLoadFull;
+  if (id === "refresh") return DESKTOP_ZH.diffRefresh;
+  if (id === "wrap") return DESKTOP_ZH.diffWrap;
+  if (id === "expand") return DESKTOP_ZH.diffExpand;
+  if (id === "unified") return DESKTOP_ZH.diffUnified;
+  return DESKTOP_ZH.filesHideSidebar;
+}
+
+function iconPressed(
+  id: Exclude<DiffToolbarIconId, "options">,
+  state: { loadFull: boolean; wrap: boolean; expanded: boolean; unified: boolean; filesOpen: boolean },
+): boolean {
+  if (id === "load-full") return state.loadFull;
+  if (id === "wrap") return state.wrap;
+  if (id === "expand") return state.expanded;
+  if (id === "unified") return !state.unified;
+  if (id === "files") return state.filesOpen;
+  return false;
+}
+
+function ToolbarGlyph({ id }: { id: Exclude<DiffToolbarIconId, "options"> }) {
+  if (id === "load-full") return <FileSearch className="h-3.5 w-3.5" />;
+  if (id === "refresh") return <RotateCw className="h-3.5 w-3.5" />;
+  if (id === "wrap") return <WrapText className="h-3.5 w-3.5" />;
+  if (id === "expand") return <Expand className="h-3.5 w-3.5" />;
+  if (id === "unified") return <SplitDiffIcon />;
+  return <PanelRight className="h-3.5 w-3.5" />;
+}
+
+function IconButton({
+  id,
+  label,
+  pressed,
+  expanded,
+  menu,
+  onClick,
+  children,
+}: {
+  id: DiffToolbarIconId;
+  label: string;
+  pressed?: boolean;
+  expanded?: boolean;
+  menu?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      data-diff-action={id}
+      data-diff-options={menu ? "" : undefined}
+      title={label}
+      aria-label={label}
+      aria-pressed={pressed}
+      aria-expanded={expanded}
+      aria-haspopup={menu ? "menu" : undefined}
+      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-zinc-300 hover:bg-zinc-800 hover:text-white"
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  );
+}
+
+function OptionsMenu({
+  checked,
+  onRun,
+}: {
+  checked: Record<string, boolean>;
+  onRun: (id: string) => void;
+}) {
+  return (
+    <div
+      role="menu"
+      data-diff-options-menu
+      className="absolute right-0 top-full z-20 mt-1 w-max min-w-56 rounded-xl border border-zinc-700 bg-zinc-900 py-1 shadow-lg"
+    >
+      {diffMenuEntries().map((entry) =>
+        entry.kind === "separator" ? (
+          <div key={entry.id} role="separator" className="my-1 h-px bg-zinc-700" />
+        ) : (
+          <button
+            key={entry.id}
+            type="button"
+            role={entry.kind === "check" ? "menuitemcheckbox" : "menuitem"}
+            aria-checked={entry.kind === "check" ? checked[entry.id] : undefined}
+            disabled={entry.kind === "disabled"}
+            aria-disabled={entry.kind === "disabled" || undefined}
+            data-diff-option={entry.label}
+            data-diff-copy-apply={entry.id === "copy-apply" ? "" : undefined}
+            className={cn(
+              "flex w-full items-center gap-2 whitespace-nowrap px-3 py-1.5 text-left text-xs",
+              entry.kind === "disabled" ? "cursor-default text-zinc-500" : "text-zinc-100 hover:bg-zinc-800",
+            )}
+            onClick={() => {
+              if (entry.kind === "disabled") return;
+              onRun(entry.id);
+            }}
+          >
+            <span className="min-w-0 flex-1">{entry.label}</span>
+            {entry.kind === "check" && checked[entry.id] ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
+          </button>
+        ),
+      )}
     </div>
   );
 }
