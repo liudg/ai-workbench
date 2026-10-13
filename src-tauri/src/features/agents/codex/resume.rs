@@ -13,16 +13,21 @@
 //! 会话 id 就是 Codex thread id。本模块只负责列出线程；真正恢复用
 //! `thread/resume`，历史用 `thread/turns/list`。
 
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, OnceLock};
+#[cfg(test)]
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
+#[cfg(test)]
 use tokio::time::timeout;
 
 use async_trait::async_trait;
 
 use crate::features::agents::directory::{cwd_key, DirectoryEntry, SessionDirectory};
-use crate::models::{strip_verbatim_prefix, SessionEventBody, SessionStatus};
+use crate::models::{strip_verbatim_prefix, SessionStatus};
+#[cfg(test)]
+use crate::models::SessionEventBody;
 
 use super::directory_client::RpcClient;
 

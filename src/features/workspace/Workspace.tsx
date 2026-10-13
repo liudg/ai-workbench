@@ -1,28 +1,12 @@
-import { useWorkbench } from "@/store";
-import { type SessionEvent } from "@/types";
 import { AnswerMarkdownHost } from "./AnswerMarkdownHost";
 import { ChatView } from "@/features/chat/timeline/ChatView";
 import { PanelProvider } from "@/features/panel/core/PanelProvider";
 import { SessionSplit } from "@/features/panel/core/SessionSplit";
 import { NoProjectSelected, NoSession } from "./empty/EmptyState";
-
-const EMPTY_EVENTS: SessionEvent[] = [];
+import { useWorkspace } from "./use-workspace";
 
 export function Workspace() {
-  const selectedProjectId = useWorkbench((s) => s.selectedProjectId);
-  const project = useWorkbench((s) =>
-    s.projects.find((p) => p.id === s.selectedProjectId),
-  );
-  const sessions = useWorkbench((s) =>
-    selectedProjectId ? s.sessions[selectedProjectId] : undefined,
-  );
-  const activeSessionId = useWorkbench((s) =>
-    selectedProjectId ? s.activeSessionId[selectedProjectId] : undefined,
-  );
-  const session = sessions?.find((s) => s.id === activeSessionId);
-  const events =
-    useWorkbench((s) => (session ? s.events[session.id] : undefined)) ??
-    EMPTY_EVENTS;
+  const { project, sessions, session, events } = useWorkspace();
 
   if (!project) return <NoProjectSelected />;
 

@@ -20,6 +20,7 @@ use super::state::{emit, Pending, Shared};
 /// `codex-rs/tui/assets/prompt_for_init_command.md`（tag 提交 092d3acd，文件 sha256 70dfe903…）。
 /// 提示本身要求 AGENTS.md 已存在时不覆盖、不修改。
 pub(super) const INIT_PROMPT: &str = include_str!("assets/prompt_for_init_command.md");
+#[cfg(test)]
 pub(super) const INIT_PROMPT_SOURCE: &str =
     "openai/codex rust-v0.162.1 codex-rs/tui/assets/prompt_for_init_command.md";
 

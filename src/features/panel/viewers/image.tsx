@@ -1,9 +1,9 @@
 import { Image } from "lucide-react";
 
-import { backend } from "@/lib/ipc";
 import { baseName } from "../files/path";
 import { payloadTitle, type PanelViewer, type ViewerViewProps } from "../core/registry";
 import { PreviewFailed, PreviewPending } from "./frame";
+import { imageDataUrl, readProjectImage } from "./image-file";
 import { matchImage } from "./kinds";
 
 interface ImagePayload {
@@ -11,10 +11,6 @@ interface ImagePayload {
   path?: string;
   src?: string;
   error?: string;
-}
-
-export function imageDataUrl(mime: string, dataBase64: string): string {
-  return `data:${mime};base64,${dataBase64}`;
 }
 
 /** 真实图片。src 来自本机文件字节，不是占位图。 */
@@ -40,7 +36,7 @@ export const imageViewer: PanelViewer<ImagePayload> = {
   title: (payload) => payloadTitle(payload) || baseName(payload.path || "") || "图片",
   async load(target, ctx) {
     if (target.kind !== "file") return { title: "图片", path: "", src: "" };
-    const image = await backend.readPreviewImage(ctx.projectId, target.path);
+    const image = await readProjectImage(ctx.projectId, target.path);
     return {
       title: image.name || baseName(target.path),
       path: image.path,

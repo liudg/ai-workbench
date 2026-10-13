@@ -8,6 +8,13 @@ use tauri::{AppHandle, Manager, Runtime};
 
 use crate::models::strip_verbatim_prefix;
 
+mod preview_codec;
+
+#[cfg(test)]
+mod tests;
+
+pub use preview_codec::{classify_preview_image, encode_base64};
+
 const MAX_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
 
 /// 确认路径是一张本机图片，并把它加入 asset 协议白名单。
@@ -51,7 +58,11 @@ pub struct StagedImage {
     pub path: String,
 }
 
-pub fn stage_image_bytes(dir: &Path, name: &str, bytes: &[u8]) -> Result<(String, PathBuf), String> {
+pub fn stage_image_bytes(
+    dir: &Path,
+    name: &str,
+    bytes: &[u8],
+) -> Result<(String, PathBuf), String> {
     if bytes.is_empty() {
         return Err("只能附加图片".into());
     }
@@ -60,29 +71,26 @@ pub fn stage_image_bytes(dir: &Path, name: &str, bytes: &[u8]) -> Result<(String
     }
     let ext = sniff_kind(bytes).ok_or_else(|| "只能附加图片".to_string())?;
     let stem = safe_stem(name);
-    let file_name = format!(
-        "{}-{stem}.{ext}",
-        uuid::Uuid::new_v4().simple()
-    );
+    let file_name = format!("{}-{stem}.{ext}", uuid::Uuid::new_v4().simple());
     let path = dir.join(&file_name);
     std::fs::write(&path, bytes).map_err(|err| format!("无法保存图片: {err}"))?;
     Ok((file_name, path))
 }
 
 fn sniff_kind(header: &[u8]) -> Option<&'static str> {
-    if sniff_image("png", header) {
+    if preview_codec::sniff_image("png", header) {
         Some("png")
-    } else if sniff_image("jpg", header) {
+    } else if preview_codec::sniff_image("jpg", header) {
         Some("jpg")
-    } else if sniff_image("gif", header) {
+    } else if preview_codec::sniff_image("gif", header) {
         Some("gif")
-    } else if sniff_image("webp", header) {
+    } else if preview_codec::sniff_image("webp", header) {
         Some("webp")
-    } else if sniff_image("bmp", header) {
+    } else if preview_codec::sniff_image("bmp", header) {
         Some("bmp")
-    } else if sniff_image("ico", header) {
+    } else if preview_codec::sniff_image("ico", header) {
         Some("ico")
-    } else if sniff_image("avif", header) {
+    } else if preview_codec::sniff_image("avif", header) {
         Some("avif")
     } else {
         None
@@ -158,8 +166,12 @@ fn b64_value(byte: u8) -> Result<u8, String> {
 
 pub fn validate_chat_image(raw: &str) -> Result<PathBuf, String> {
     let path = local_path_from_input(raw)?;
-    let ext = image_extension(&path).ok_or("只接受 png、jpg、gif、webp、bmp、ico、avif 图片")?;
-    if path.components().any(|component| matches!(component, Component::ParentDir)) {
+    let ext = preview_codec::image_extension(&path)
+        .ok_or("只接受 png、jpg、gif、webp、bmp、ico、avif 图片")?;
+    if path
+        .components()
+        .any(|component| matches!(component, Component::ParentDir))
+    {
         return Err("路径不能包含 ..".into());
     }
 
@@ -180,7 +192,7 @@ pub fn validate_chat_image(raw: &str) -> Result<PathBuf, String> {
     let read = file
         .read(&mut header)
         .map_err(|_| "无法读取图片内容".to_string())?;
-    if !sniff_image(&ext, &header[..read]) {
+    if !preview_codec::sniff_image(&ext, &header[..read]) {
         return Err("文件内容和图片扩展名不一致".into());
     }
     Ok(canonical)
@@ -270,187 +282,6 @@ fn hex_value(byte: u8) -> Result<u8, String> {
     }
 }
 
-/// 预览用的图片类型。扩展名和文件头对得上才返回 MIME。SVG 没有魔数，要求正文里有 `<svg`。
-pub fn classify_preview_image(ext: &str, bytes: &[u8]) -> Result<&'static str, String> {
-    if bytes.is_empty() {
-        return Err("图片文件是空的".into());
-    }
-    if bytes.len() as u64 > MAX_IMAGE_BYTES {
-        return Err("图片超过 20MB".into());
-    }
-    let ext = ext.to_ascii_lowercase();
-    let mime = match ext.as_str() {
-        "png" => "image/png",
-        "jpg" | "jpeg" => "image/jpeg",
-        "gif" => "image/gif",
-        "webp" => "image/webp",
-        "bmp" => "image/bmp",
-        "svg" => "image/svg+xml",
-        "ico" => "image/x-icon",
-        "avif" => "image/avif",
-        _ => return Err("这个文件不能以图片预览。".into()),
-    };
-    let matches = if ext == "svg" {
-        looks_like_svg(bytes)
-    } else {
-        sniff_image(&ext, bytes)
-    };
-    if !matches {
-        return Err("文件内容和图片扩展名不一致".into());
-    }
-    Ok(mime)
-}
-
-pub fn encode_base64(bytes: &[u8]) -> String {
-    const TABLE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::new();
-    let mut index = 0;
-    while index + 3 <= bytes.len() {
-        let n = ((bytes[index] as u32) << 16)
-            | ((bytes[index + 1] as u32) << 8)
-            | bytes[index + 2] as u32;
-        out.push(TABLE[((n >> 18) & 63) as usize] as char);
-        out.push(TABLE[((n >> 12) & 63) as usize] as char);
-        out.push(TABLE[((n >> 6) & 63) as usize] as char);
-        out.push(TABLE[(n & 63) as usize] as char);
-        index += 3;
-    }
-    if index < bytes.len() {
-        let remain = bytes.len() - index;
-        let b0 = bytes[index] as u32;
-        let b1 = if remain > 1 { bytes[index + 1] as u32 } else { 0 };
-        let n = (b0 << 16) | (b1 << 8);
-        out.push(TABLE[((n >> 18) & 63) as usize] as char);
-        out.push(TABLE[((n >> 12) & 63) as usize] as char);
-        if remain > 1 {
-            out.push(TABLE[((n >> 6) & 63) as usize] as char);
-            out.push('=');
-        } else {
-            out.push('=');
-            out.push('=');
-        }
-    }
-    out
-}
-
-fn looks_like_svg(bytes: &[u8]) -> bool {
-    if bytes.contains(&0) {
-        return false;
-    }
-    let text = String::from_utf8_lossy(bytes);
-    let head: String = text.chars().take(4096).collect();
-    head.to_ascii_lowercase().contains("<svg")
-}
-
-fn image_extension(path: &Path) -> Option<String> {
-    let ext = path.extension()?.to_str()?.to_ascii_lowercase();
-    if matches!(
-        ext.as_str(),
-        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "ico" | "avif"
-    ) {
-        Some(ext)
-    } else {
-        None
-    }
-}
-
-fn sniff_image(ext: &str, header: &[u8]) -> bool {
-    match ext {
-        "png" => header.starts_with(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]),
-        "jpg" | "jpeg" => header.starts_with(&[0xFF, 0xD8, 0xFF]),
-        "gif" => header.starts_with(b"GIF87a") || header.starts_with(b"GIF89a"),
-        "webp" => header.len() >= 12 && header.starts_with(b"RIFF") && &header[8..12] == b"WEBP",
-        "bmp" => header.starts_with(b"BM"),
-        "ico" => header.len() >= 4 && header[..4] == [0, 0, 1, 0],
-        "avif" => is_isobmff_brand(header, &["avif", "avis"]),
-        _ => false,
-    }
-}
-
-fn is_isobmff_brand(header: &[u8], brands: &[&str]) -> bool {
-    if header.len() < 12 || &header[4..8] != b"ftyp" {
-        return false;
-    }
-    let brand = &header[8..12];
-    brands.iter().any(|item| brand == item.as_bytes())
-}
-
 fn display_path(path: &Path) -> String {
     strip_verbatim_prefix(&path.to_string_lossy())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    const MINI_PNG: &[u8] = &[
-        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44,
-        0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x02, 0x00, 0x00, 0x00, 0x90,
-        0x77, 0x53, 0xDE, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41, 0x54, 0x08, 0xD7, 0x63, 0xF8,
-        0xCF, 0xC0, 0x00, 0x00, 0x00, 0x03, 0x00, 0x01, 0x00, 0x05, 0xFE, 0x02, 0xFE, 0xDC, 0xCC,
-        0x59, 0xE7, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
-    ];
-
-    fn temp_dir(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "ai-workbench-chat-images-{}-{name}",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
-    }
-
-    #[test]
-    fn accepts_forward_slash_windows_png() {
-        let dir = temp_dir("ok");
-        let file = dir.join("header-opened-preview.png");
-        std::fs::write(&file, MINI_PNG).unwrap();
-        let forward = file.to_string_lossy().replace('\\', "/");
-        let canonical = validate_chat_image(&forward).unwrap();
-        let shown = display_path(&canonical);
-        assert!(shown.to_ascii_lowercase().ends_with("header-opened-preview.png"));
-        assert!(!shown.starts_with(r"\\?\"));
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn accepts_file_url() {
-        let dir = temp_dir("file-url");
-        let file = dir.join("shot.png");
-        std::fs::write(&file, MINI_PNG).unwrap();
-        let url = format!("file:///{}", file.to_string_lossy().replace('\\', "/"));
-        assert!(validate_chat_image(&url).is_ok());
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn rejects_non_images_and_traversal() {
-        let dir = temp_dir("reject");
-        let text = dir.join("notes.txt");
-        std::fs::write(&text, MINI_PNG).unwrap();
-        assert!(validate_chat_image(&text.to_string_lossy()).is_err());
-
-        let fake = dir.join("fake.png");
-        std::fs::write(&fake, b"not a png").unwrap();
-        assert!(validate_chat_image(&fake.to_string_lossy()).is_err());
-
-        assert!(validate_chat_image(r"F:\temp\..\Windows\system.png").is_err());
-        assert!(validate_chat_image(r"relative\shot.png").is_err());
-        assert!(validate_chat_image("https://cdn.example.com/a.png").is_err());
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn stages_pasted_png_bytes() {
-        let dir = temp_dir("stage");
-        let encoded = super::encode_base64(MINI_PNG);
-        let bytes = decode_base64(&format!("data:image/png;base64,{encoded}")).unwrap();
-        let (name, path) = stage_image_bytes(&dir, "clip board.png", &bytes).unwrap();
-        assert!(name.ends_with(".png"));
-        assert_eq!(std::fs::read(path).unwrap(), MINI_PNG);
-        assert!(stage_image_bytes(&dir, "note.txt", b"hello").is_err());
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
 }

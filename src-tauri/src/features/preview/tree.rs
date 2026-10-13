@@ -9,7 +9,6 @@ use std::sync::Arc;
 use serde::Serialize;
 use tauri::State;
 
-use super::index::FileIndex;
 use super::search::{query_indexed_paths, IndexHub};
 use super::skip_tree_dir;
 use crate::features::projects::ProjectStore;
@@ -82,7 +81,7 @@ pub async fn filter_project_paths(
     let generation = hub.generation.clone();
     let ticket = generation.fetch_add(1, Ordering::SeqCst) + 1;
     let indexes = indexes.fork();
-    Ok(tokio::task::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         let alive = || generation.load(Ordering::SeqCst) == ticket;
         if !alive() {
             return PathFilter {
@@ -101,7 +100,7 @@ pub async fn filter_project_paths(
         }
     })
     .await
-    .map_err(|err| format!("无法筛选文件: {err}"))?)
+    .map_err(|err| format!("无法筛选文件: {err}"))
 }
 
 pub fn list_dir_at(root: &Path, relative: &str) -> Result<Vec<TreeEntry>, String> {
@@ -136,50 +135,6 @@ pub fn list_dir_at(root: &Path, relative: &str) -> Result<Vec<TreeEntry>, String
     }
     entries.sort_by(entry_order);
     Ok(entries)
-}
-
-pub fn filter_paths(
-    root: &Path,
-    query: &str,
-    limit: usize,
-    alive: impl Fn() -> bool,
-) -> PathFilter {
-    let query = query.trim();
-    if query.is_empty() || limit == 0 || !root.is_dir() {
-        return PathFilter {
-            paths: Vec::new(),
-            truncated: false,
-            cancelled: false,
-            ready: true,
-        };
-    }
-    if !alive() {
-        return PathFilter {
-            paths: Vec::new(),
-            truncated: false,
-            cancelled: true,
-            ready: true,
-        };
-    }
-    let mut index = FileIndex::new(root.to_path_buf());
-    while !index.complete() {
-        if !alive() {
-            return PathFilter {
-                paths: Vec::new(),
-                truncated: false,
-                cancelled: true,
-                ready: true,
-            };
-        }
-        index.pump_steps(1);
-    }
-    let (paths, truncated) = index.matching_paths(query, limit);
-    PathFilter {
-        paths,
-        truncated,
-        cancelled: false,
-        ready: true,
-    }
 }
 
 fn resolve_dir(root: &Path, relative: &str) -> Result<PathBuf, String> {
@@ -296,7 +251,14 @@ mod tests {
         fs::write(root.join("node_modules/pkg/keep.ts"), "x").unwrap();
         fs::create_dir_all(root.join("Library")).unwrap();
         fs::write(root.join("Library/keep.ts"), "x").unwrap();
-        let found = filter_paths(&root, "keep.ts", 100, || true);
+        let hub = IndexHub::default();
+        let mut found = query_indexed_paths(&hub, root.clone(), "keep.ts", 100, || true);
+        let mut guard = 0;
+        while !found.ready && !found.cancelled {
+            found = query_indexed_paths(&hub, root.clone(), "keep.ts", 100, || true);
+            guard += 1;
+            assert!(guard < 100_000, "index did not finish");
+        }
         assert!(!found.cancelled);
         assert!(!found.truncated);
         assert!(
@@ -314,7 +276,8 @@ mod tests {
             .iter()
             .all(|path| !path.contains("node_modules")));
         assert!(found.paths.iter().all(|path| !path.starts_with("Library")));
-        let cancelled = filter_paths(&root, "keep.ts", 100, || false);
+        let cancelled =
+            query_indexed_paths(&IndexHub::default(), root.clone(), "keep.ts", 100, || false);
         assert!(cancelled.cancelled);
         assert!(cancelled.paths.is_empty());
         let _ = fs::remove_dir_all(root);

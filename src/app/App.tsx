@@ -1,9 +1,8 @@
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense } from "react";
 
 import { NewProjectDialog, Sidebar } from "@/features/sidebar";
 import { RightPane, UpdateDialog } from "@/features/workspace";
-import { useWorkbench } from "@/store";
-import { visibleBanner } from "@/store/sync";
+import { useAppShell } from "./use-app-shell";
 
 const DiffPreview = import.meta.env.DEV
   ? lazy(() => import("@/features/panel/diff/DiffPreview"))
@@ -52,15 +51,7 @@ export default function App() {
 }
 
 function WorkbenchApp() {
-  const ready = useWorkbench((s) => s.ready);
-  const init = useWorkbench((s) => s.init);
-  const lastError = useWorkbench((s) => visibleBanner(s.lastError));
-  const dialogOpen = useWorkbench((s) => s.dialog !== null);
-  const clearError = useWorkbench((s) => s.clearError);
-
-  useEffect(() => {
-    init();
-  }, [init]);
+  const { ready, lastError, dialogOpen, clearError } = useAppShell();
 
   if (!ready) {
     return (

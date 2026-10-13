@@ -2,14 +2,13 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useRef,
   type ReactNode,
 } from "react";
 
-import { backend } from "@/lib/ipc";
 import type { AgentKind, ChangeCapabilities, SessionEvent } from "@/types";
+import { useCloseBrowserOnUnmount } from "../browser/use-browser-host";
 import { showsFileChanges } from "@/features/changes-model/capabilities";
 import type { PanelLayoutMode } from "./layout";
 import { sessionChanges, type FileChange } from "@/features/changes-model/diff-parse";
@@ -140,11 +139,7 @@ export function PanelProvider({
   const setDiffFilesWidth = useCallback((width: number) => {
     useWorkbench.getState().panelSetDiffFilesWidth(sessionId, width);
   }, [sessionId]);
-  useEffect(() => {
-    return () => {
-      void backend.browserClose();
-    };
-  }, []);
+  useCloseBrowserOnUnmount();
 
   const api = useMemo<PanelApi>(
     () => ({

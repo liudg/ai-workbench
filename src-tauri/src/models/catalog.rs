@@ -51,14 +51,6 @@ impl ChangeCapabilities {
         }
     }
 
-    pub fn git_only() -> Self {
-        Self {
-            turn_diff: false,
-            per_file_patch: false,
-            git_scopes: true,
-        }
-    }
-
     pub fn codex() -> Self {
         Self {
             turn_diff: true,
