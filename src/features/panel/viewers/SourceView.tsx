@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 
-import { sourceLines } from "@/features/panel/diff/fold";
+import { sourceLines } from "../core/source-lines";
 import { cn } from "@/lib/utils";
 
 export function SourceView({ text, line }: { text: string; line: number }) {

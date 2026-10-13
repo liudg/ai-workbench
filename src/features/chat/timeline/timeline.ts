@@ -235,3 +235,47 @@ export function buildTimeline(
   }
   return blocks;
 }
+
+/** 内容变长时用来判断要不要继续贴底。状态事件不计入。 */
+export function contentChars(events: readonly SessionEvent[]): number {
+  let chars = 0;
+  for (const event of events) {
+    switch (event.kind) {
+      case "user-message":
+      case "agent-message":
+      case "thinking":
+      case "system":
+      case "read-only":
+        chars += event.text.length;
+        break;
+      case "tool-call":
+        chars += event.summary.length + (event.detail?.length ?? 0);
+        break;
+      case "error":
+        chars += event.message.length;
+        break;
+      case "prompt":
+        chars += event.question.length;
+        break;
+      case "file-change":
+        chars += event.diff.length;
+        break;
+      case "turn-changes":
+        chars += event.files.reduce((sum, file) => sum + file.diff.length, 0);
+        break;
+      case "plan-steps":
+        chars += (event.explanation?.length ?? 0) + event.steps.reduce((sum, step) => sum + step.step.length, 0);
+        break;
+      case "plan-text":
+      case "review-note":
+        chars += event.text.length;
+        break;
+      case "review-findings":
+        chars += event.summary.length + event.findings.reduce((sum, finding) => sum + finding.body.length, 0);
+        break;
+      default:
+        break;
+    }
+  }
+  return chars;
+}

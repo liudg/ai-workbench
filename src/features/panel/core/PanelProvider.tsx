@@ -71,7 +71,7 @@ export function PanelProvider({
   projectId: string;
   projectPath: string;
   sessionTitle: string;
-  agent: AgentKind;
+  agent: AgentKind | null;
   events: readonly SessionEvent[];
   children: ReactNode;
 }) {
@@ -80,7 +80,7 @@ export function PanelProvider({
   const layout = useWorkbench((s) => s.panelBySession[sessionId]?.layout ?? "chat");
   const previewWidth = useWorkbench((s) => s.previewWidthBySession[sessionId] ?? null);
   const diffFilesWidth = useWorkbench((s) => s.diffFilesWidthBySession[sessionId] ?? null);
-  const changes = useWorkbench((s) => s.profiles[agent]?.capabilities.changes);
+  const changes = useWorkbench((s) => (agent ? s.profiles[agent]?.capabilities.changes : undefined));
   const sessionFiles = useMemo(
     () => (showsFileChanges(changes) ? sessionChanges(events) : []),
     [changes, events],

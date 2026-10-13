@@ -1,4 +1,34 @@
-import type { AgentInstallation, AgentKind } from "../types.ts";
+import {
+  emptySandbox,
+  type AccessMode,
+  type AgentInstallation,
+  type AgentKind,
+  type SessionSandbox,
+} from "../types.ts";
+
+/** 没有沙箱扩展能力的 agent 只保留完全访问 / 询问批准 / 只读。 */
+export function sandboxForAgent(
+  sandbox: SessionSandbox,
+  caps?: {
+    supports_network_access?: boolean;
+    supports_writable_roots?: boolean;
+    supports_permission_profiles?: boolean;
+    supports_approve_for_me?: boolean;
+  },
+): SessionSandbox {
+  const extended = Boolean(
+    caps?.supports_network_access ||
+      caps?.supports_writable_roots ||
+      caps?.supports_permission_profiles ||
+      caps?.supports_approve_for_me,
+  );
+  if (extended) return sandbox;
+  const mode: AccessMode =
+    sandbox.mode === "full" || sandbox.mode === "ask" || sandbox.mode === "read-only"
+      ? sandbox.mode
+      : "ask";
+  return emptySandbox(mode);
+}
 
 /** 本机探测到已安装的 Agent。探测为空或都未安装时返回空数组，不补种类默认值。 */
 export function installedAgents(

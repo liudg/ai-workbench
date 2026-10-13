@@ -1,8 +1,8 @@
 import { ArrowLeft, RefreshCw } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { useWorkbench } from "@/store";
 import type { AgentInstallation } from "@/types";
+import { useAgentSettings } from "./useAgentSettings";
 import { Button } from "@/components/ui/button";
 import { agentCardFace, statusLabel, type AgentCardFace } from "./agent-card";
 
@@ -68,13 +68,8 @@ function AgentCard({
 }
 
 function AgentsPanel() {
-  const installations = useWorkbench((s) => s.installations);
-  const loading = useWorkbench((s) => s.installationsLoading);
-  const error = useWorkbench((s) => s.installationError);
-  const updateErrors = useWorkbench((s) => s.updateErrors);
-  const updatingKind = useWorkbench((s) => s.updatingKind);
-  const refresh = useWorkbench((s) => s.refreshInstallations);
-  const updateInstallation = useWorkbench((s) => s.updateInstallation);
+  const { installations, loading, error, updateErrors, updatingKind, refresh, updateInstallation } =
+    useAgentSettings();
 
   return (
     <section>
@@ -126,7 +121,7 @@ function AgentsPanel() {
 }
 
 export function SettingsView() {
-  const closeSettings = useWorkbench((s) => s.closeSettings);
+  const { closeSettings } = useAgentSettings();
 
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col">

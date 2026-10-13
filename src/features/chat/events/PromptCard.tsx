@@ -1,6 +1,6 @@
 import { HelpCircle } from "lucide-react";
 
-import { useWorkbench } from "@/store";
+import { useAnswerPrompt } from "./useAnswerPrompt";
 import { optionResolvedLabel, promptInteractive } from "./prompt-values";
 import { ApprovalCard, ChoiceCard } from "./ApprovalCard";
 import { ElicitationCard } from "./ElicitationCard";
@@ -41,7 +41,7 @@ function PromptBody(props: PromptBodyProps) {
 
 /** 整条提问只在这里订阅一次 answerPrompt，卡片本身不再读 store。 */
 export function PromptEvent({ event, session, resolvedAnswer }: EventViewProps) {
-  const answerPrompt = useWorkbench((s) => s.answerPrompt);
+  const answerPrompt = useAnswerPrompt();
   if (event.kind !== "prompt") return null;
   return (
     <div className="event-in min-w-0 px-6 py-2">

@@ -4,7 +4,7 @@ import { PanelRightClose } from "lucide-react";
 import type { FileChange } from "@/features/changes-model/diff-parse";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { FileTreeList } from "./FileTreeList";
-import { filterFiles, useFileFilter } from "./file-filter";
+import { filterFiles, useFileFilter } from "../core/file-filter";
 import { buildFileTree } from "./file-tree";
 
 export function ChangesSidebar({

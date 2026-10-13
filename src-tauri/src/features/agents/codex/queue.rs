@@ -8,7 +8,7 @@ use crate::features::agents::AgentError;
 use crate::models::{PageAnnotation, QueuedTurn, SessionEventBody};
 
 use super::catalog::build_turn_input;
-use super::resume::{image_from_part, user_item_images, user_item_text};
+use super::history::{image_from_part, user_item_images, user_item_text};
 use super::state::{emit, Shared};
 
 pub(super) const QUEUE_GONE: &str = "这条排队消息已经不在队列里";

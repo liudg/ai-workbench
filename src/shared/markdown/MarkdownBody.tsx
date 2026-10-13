@@ -1,11 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
 
-import { WebsiteCard } from "@/features/chat/cards/WebsiteCard";
-import { usePanelOptional } from "@/features/panel/core/PanelProvider";
-import { fileLineRef, isFileHref, isHtmlHref, lineFromHref } from "@/features/panel/core/preview-kind";
-import { baseName } from "@/features/panel/files/path";
-import { MessageImage } from "@/features/chat/answer/MessageContent";
 import { cn } from "@/lib/utils";
 import {
   codeDisplayLines,
@@ -16,6 +11,9 @@ import {
   type CollapseMeta,
   type Inline,
 } from "./answer-markdown";
+import { fileLineRef, isFileHref, isHtmlHref, lineFromHref } from "./file-href";
+import { useMarkdownHost } from "./host";
+import type { ImageSource } from "./markdown-images";
 
 export function MarkdownBody({ text }: { text: string }) {
   const blocks = useMemo(() => parseAnswer(text), [text]);
@@ -30,6 +28,7 @@ export function MarkdownBody({ text }: { text: string }) {
 }
 
 function BlockView({ block }: { block: AnswerBlock }) {
+  const host = useMarkdownHost();
   switch (block.type) {
     case "heading":
       return (
@@ -39,7 +38,7 @@ function BlockView({ block }: { block: AnswerBlock }) {
       );
     case "paragraph": {
       const site = loneHtmlLink(block.inlines);
-      if (site) return <WebsiteCard href={site.href} label={site.label} />;
+      if (site && host) return <>{host.renderWebsite(site.href, site.label)}</>;
       return (
         <div className="answer-p" data-answer-block="paragraph">
           <Inlines nodes={block.inlines} />
@@ -73,7 +72,7 @@ function BlockView({ block }: { block: AnswerBlock }) {
     case "rule":
       return <hr className="answer-rule" data-answer-block="rule" />;
     case "image":
-      return <MessageImage alt={block.alt} source={block.source} />;
+      return <HostImage alt={block.alt} source={block.source} />;
     case "section":
       return <SectionView title={block.title} meta={block.meta} body={block.body} />;
     default:
@@ -250,23 +249,32 @@ function InlineView({ node }: { node: Inline }) {
     case "link":
       return <LinkView node={node} />;
     case "image":
-      return <MessageImage alt={node.alt} source={node.source} />;
+      return <HostImage alt={node.alt} source={node.source} />;
     default:
       return null;
   }
 }
 
+function HostImage({ alt, source }: { alt: string; source: ImageSource }) {
+  const host = useMarkdownHost();
+  if (host) return host.renderImage(alt, source);
+  if (source.type === "https") {
+    return <img src={source.url} alt={alt} className="my-2 block max-h-96 max-w-full" />;
+  }
+  return <span className="answer-path">{source.path}</span>;
+}
+
 function CodeSpan({ node }: { node: Extract<Inline, { type: "code" }> }) {
-  const preview = usePanelOptional();
+  const host = useMarkdownHost();
   const ref = fileLineRef(node.text);
-  if (ref && preview && isFileHref(ref.path)) {
+  if (ref && host?.canOpen && isFileHref(ref.path)) {
     return (
       <button
         type="button"
         className="answer-inline-code"
         data-line-ref={ref.line}
         title={node.title ?? ref.path}
-        onClick={() => preview.openHref(ref.path, ref.line)}
+        onClick={() => host.openHref(ref.path, ref.line)}
       >
         {node.display ?? node.text}
       </button>
@@ -280,7 +288,7 @@ function CodeSpan({ node }: { node: Extract<Inline, { type: "code" }> }) {
 }
 
 function LinkView({ node }: { node: Extract<Inline, { type: "link" }> }) {
-  const preview = usePanelOptional();
+  const host = useMarkdownHost();
   const plain = inlinePlain(node.inlines);
   const ref = fileLineRef(plain);
   const line = ref?.line ?? lineFromHref(node.href) ?? undefined;
@@ -292,7 +300,7 @@ function LinkView({ node }: { node: Extract<Inline, { type: "link" }> }) {
       </a>
     );
   }
-  if ((!isFileHref(target) && !isHtmlHref(node.href)) || !preview) {
+  if ((!isFileHref(target) && !isHtmlHref(node.href)) || !host?.canOpen) {
     if (!isFileHref(target) && !isHtmlHref(node.href)) return <Inlines nodes={node.inlines} />;
     return (
       <span className="answer-file" title={node.title ?? node.href}>
@@ -306,7 +314,7 @@ function LinkView({ node }: { node: Extract<Inline, { type: "link" }> }) {
       className="answer-file"
       data-line-ref={line}
       title={node.title ?? node.href}
-      onClick={() => preview.openHref(target, line)}
+      onClick={() => host.openHref(target, line)}
     >
       <Inlines nodes={node.inlines} />
     </button>
@@ -320,5 +328,11 @@ function loneHtmlLink(inlines: Inline[]): { href: string; label: string } | null
   if (content.length !== 1 || content[0].type !== "link") return null;
   const link = content[0];
   if (!isHtmlHref(link.href)) return null;
-  return { href: link.href, label: inlinePlain(link.inlines) || baseName(link.href) };
+  return { href: link.href, label: inlinePlain(link.inlines) || hrefLabel(link.href) };
+}
+
+function hrefLabel(href: string): string {
+  const bare = href.split(/[?#]/)[0] ?? href;
+  const parts = bare.split(/[\\/]/).filter(Boolean);
+  return parts[parts.length - 1] ?? href;
 }

@@ -19,7 +19,7 @@ fn opens_turn(method: Option<&str>) -> bool {
 use super::prompts::{
     approval_question, error_text, parse_elicitation, parse_tool_questions, rpc_error_text,
 };
-use super::resume::{reasoning_text, tool_event, tool_view, tool_visible};
+use super::history::{reasoning_text, take_chars, tool_event, tool_view, tool_visible, ToolView};
 use super::state::{emit, emit_status, ActivityBuf, Pending, Shared, StreamBuf};
 
 impl Shared {
@@ -763,7 +763,7 @@ impl Shared {
             });
         buf.detail.push_str(delta);
         if buf.detail.chars().count() > 20_000 {
-            let capped = super::resume::take_chars(&buf.detail, 20_000);
+            let capped = take_chars(&buf.detail, 20_000);
             buf.detail = capped;
         }
         let due = buf.last_emit.elapsed() >= Duration::from_millis(80);
@@ -792,7 +792,7 @@ impl Shared {
 
 fn activity_event(item_id: &str, buf: &ActivityBuf) -> SessionEventBody {
     tool_event(
-        super::resume::ToolView {
+        ToolView {
             name: if buf.name.is_empty() {
                 "command".into()
             } else {

@@ -1,5 +1,6 @@
 import { useWorkbench } from "@/store";
 import { type SessionEvent } from "@/types";
+import { AnswerMarkdownHost } from "./AnswerMarkdownHost";
 import { ChatView } from "@/features/chat/timeline/ChatView";
 import { PanelProvider } from "@/features/panel/core/PanelProvider";
 import { SessionSplit } from "@/features/panel/core/SessionSplit";
@@ -35,9 +36,11 @@ export function Workspace() {
         agent={session.agent}
         events={events}
       >
-        <SessionSplit>
-          <ChatView session={session} events={events} />
-        </SessionSplit>
+        <AnswerMarkdownHost>
+          <SessionSplit>
+            <ChatView session={session} events={events} />
+          </SessionSplit>
+        </AnswerMarkdownHost>
       </PanelProvider>
     );
   }

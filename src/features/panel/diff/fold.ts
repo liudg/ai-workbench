@@ -1,3 +1,5 @@
+import { sourceLines } from "../core/source-lines.ts";
+
 export function unmodifiedLinesLabel(count: number): string {
   return `${count} unmodified lines`;
 }
@@ -75,12 +77,6 @@ export function foldDiffLines(diff: string): DiffFoldRow[] {
     newLine += 1;
   }
   return rows;
-}
-
-export function sourceLines(text: string): string[] {
-  const lines = text.split(/\r?\n/);
-  if (text.endsWith("\n") && lines[lines.length - 1] === "") lines.pop();
-  return lines;
 }
 
 /** 去掉只改空白的增删行。git 范围另由 `git diff -w` 处理。 */

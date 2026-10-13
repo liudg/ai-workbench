@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 
+import { AnswerMarkdownHost } from "@/features/workspace/AnswerMarkdownHost";
 import type { FileChange } from "@/features/changes-model/diff-parse";
 import type { SessionEvent } from "@/types";
 import { PanelProvider } from "../core/PanelProvider";
@@ -98,10 +99,12 @@ export default function DiffPreview() {
         projectId={projectId}
         projectPath={params.get("path") ?? ""}
         sessionTitle="变更"
-        agent="codex-cli"
+        agent={null}
         events={events}
       >
-        <DiffView files={FILES} />
+        <AnswerMarkdownHost>
+          <DiffView files={FILES} />
+        </AnswerMarkdownHost>
       </PanelProvider>
     </div>
   );

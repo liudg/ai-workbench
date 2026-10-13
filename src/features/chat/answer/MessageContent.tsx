@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { ImageOff } from "lucide-react";
 
-import { isTauri } from "@/lib/ipc";
-import { resolveLocalChatImage } from "./local-image";
 import { parseMessageContent, type ImageSource } from "@/shared/markdown/markdown-images";
 import { cn } from "@/lib/utils";
+import { useChatImage } from "./useChatImage";
 
 export function MessageContent({
   text,
@@ -36,47 +35,15 @@ export function MessageContent({
   );
 }
 
-function reasonText(error: unknown): string {
-  if (typeof error === "string" && error.trim()) return error;
-  if (error instanceof Error && error.message.trim()) return error.message;
-  return "无法加载本地图片";
-}
-
 export function MessageImage({ alt, source }: { alt: string; source: ImageSource }) {
-  const remote = source.type === "https";
-  const [src, setSrc] = useState<string | null>(remote ? source.url : null);
-  const [failed, setFailed] = useState(source.type === "local" && !isTauri);
-  const [reason, setReason] = useState<string | null>(
-    source.type === "local" && !isTauri ? "在桌面版中预览" : null,
-  );
+  const { state, fail } = useChatImage(source);
   const label = alt.trim() || "图片";
   const detail = source.type === "local" ? source.path : source.url;
 
-  useEffect(() => {
-    if (source.type !== "local" || !isTauri) return;
-    let cancelled = false;
-    setFailed(false);
-    setReason(null);
-    setSrc(null);
-    resolveLocalChatImage(source.path).then(
-      (url) => {
-        if (!cancelled) setSrc(url);
-      },
-      (error: unknown) => {
-        if (cancelled) return;
-        setFailed(true);
-        setReason(reasonText(error));
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [source]);
-
-  if (failed) {
-    return <ImageFallback alt={label} detail={detail} reason={reason} />;
+  if (state.status === "fallback") {
+    return <ImageFallback alt={label} detail={detail} reason={state.reason} />;
   }
-  if (!src) {
+  if (state.status === "loading") {
     return (
       <span
         data-chat-image={source.type}
@@ -88,17 +55,14 @@ export function MessageImage({ alt, source }: { alt: string; source: ImageSource
 
   return (
     <img
-      src={src}
+      src={state.src}
       alt={label}
       title={label}
       data-chat-image={source.type}
       data-chat-image-state="ready"
       referrerPolicy="no-referrer"
       className="my-2 block max-h-96 max-w-full rounded-md border border-white/10 bg-zinc-950/40 object-contain"
-      onError={() => {
-        setFailed(true);
-        setReason("图片加载失败");
-      }}
+      onError={() => fail("图片加载失败")}
     />
   );
 }

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { backend, type DiffScope } from "@/lib/ipc";
 import { parseUnifiedDiff, type FileChange } from "@/features/changes-model/diff-parse";
 import { usePanel } from "@/features/panel/core/PanelProvider";
-import { filterFiles, useFileFilter } from "@/features/panel/files/file-filter";
+import { filterFiles, useFileFilter } from "../core/file-filter";
 import { patchFromFiles } from "./git-apply";
 import { withoutWhitespaceChanges } from "./fold";
 import { diffScopeMenu, filesForScope } from "./scope";

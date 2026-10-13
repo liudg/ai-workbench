@@ -12,7 +12,7 @@ use crate::models::{
 
 use super::catalog::{build_turn_input, slash_help, split_command};
 use super::process::truncate;
-use super::resume::{bodies_from_turns, chronological_turns, HISTORY_TURN_LIMIT};
+use super::history::{bodies_from_turns, chronological_turns, HISTORY_TURN_LIMIT};
 use super::sandbox::merge_json;
 use super::state::{emit, Pending, Shared};
 

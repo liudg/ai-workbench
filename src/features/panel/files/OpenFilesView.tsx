@@ -4,7 +4,6 @@ import { FileSearch, Folder } from "lucide-react";
 
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { useElementWidth } from "@/shared/dom/useElementWidth";
-import { useWorkbench } from "@/store";
 import { cn } from "@/lib/utils";
 import { ColumnSplitter } from "../core/ColumnSplitter";
 import { FILES_EXPANDED_WIDTH, diffListWidth, diffListWidthAfterDrag } from "../core/layout";
@@ -16,12 +15,14 @@ import { FilePreview } from "./FilePreview";
 import { FileSearchDialog } from "./FileSearchDialog";
 import { WorkspaceTree } from "./WorkspaceTree";
 import { baseName, workspaceRootLabel } from "./path";
+import { useAttachFile } from "./useAttachFile";
 
 const SPLITTER_WIDTH = 6;
 
 /** 打开文件：右侧是工作区树。点文件在当前页预览，不新开标签。 */
 export function OpenFilesView() {
   const { projectId, projectPath, sessionId, diffFilesWidth, setDiffFilesWidth } = usePanel();
+  const attachFile = useAttachFile(sessionId);
   const [filter, setFilter] = useState("");
   const [treeOpen, setTreeOpen] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -57,7 +58,7 @@ export function OpenFilesView() {
   const addToChat = (path: string) => {
     const absolute = resolvePreviewPath(projectPath, path);
     if (!absolute) return;
-    useWorkbench.getState().addAttachments(sessionId, [{ name: baseName(absolute), path: absolute }]);
+    attachFile(absolute, baseName(absolute));
     setContextMenu(null);
   };
 

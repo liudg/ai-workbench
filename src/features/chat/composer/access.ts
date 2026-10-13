@@ -1,6 +1,5 @@
 import {
   ACCESS_LABELS,
-  emptySandbox,
   type AccessMode,
   type PermissionMenu,
   type SessionSandbox,
@@ -13,30 +12,6 @@ export const NETWORK_LABEL = "允许网络访问";
 export const WRITABLE_HEADING = "其他可写目录";
 export const WRITABLE_DETAIL = "与主工作区一起可写的其他目录";
 export const ADD_DIR_LABEL = "添加目录";
-
-/** 没有沙箱扩展能力的 agent 只保留完全访问 / 询问批准 / 只读。 */
-export function sandboxForAgent(
-  sandbox: SessionSandbox,
-  caps?: {
-    supports_network_access?: boolean;
-    supports_writable_roots?: boolean;
-    supports_permission_profiles?: boolean;
-    supports_approve_for_me?: boolean;
-  },
-): SessionSandbox {
-  const extended = Boolean(
-    caps?.supports_network_access ||
-      caps?.supports_writable_roots ||
-      caps?.supports_permission_profiles ||
-      caps?.supports_approve_for_me,
-  );
-  if (extended) return sandbox;
-  const mode: AccessMode =
-    sandbox.mode === "full" || sandbox.mode === "ask" || sandbox.mode === "read-only"
-      ? sandbox.mode
-      : "ask";
-  return emptySandbox(mode);
-}
 
 /** 作曲栏按钮上的档位名。菜单读到之前用工作台自己的简称。 */
 export function buttonLabel(sandbox: SessionSandbox, menu: PermissionMenu | null): string {

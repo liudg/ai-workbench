@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { sandboxForAgent } from "../../../lib/agents.ts";
 import { emptySandbox } from "../../../types.ts";
 import {
   addWritableRoot,
   buttonLabel,
   NETWORK_LABEL,
   sandboxAllowsExtras,
-  sandboxForAgent,
   selectPreset,
   selectProfile,
   WRITABLE_DETAIL,

@@ -12,9 +12,11 @@
 //! `resume_native_id` 走 `thread/resume`。
 
 mod catalog;
+mod directory_client;
 mod gap;
 mod git_diff;
 mod guardian;
+mod history;
 mod host;
 mod process;
 mod prompts;

@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 
-import { backend, type FileSearchHit } from "@/lib/ipc";
+import type { FileSearchHit } from "@/lib/ipc";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { cn } from "@/lib/utils";
 import { highlightParts, moveSearchCursor } from "./file-search";
-
-let fileSearchSerial = 0;
+import { useProjectFileSearch } from "./useProjectFileSearch";
 
 /** 在工作区里搜索文件名和文件内容。结果来自本机目录，不是占位列表。 */
 export function FileSearchDialog({
@@ -20,14 +19,10 @@ export function FileSearchDialog({
 }) {
   const [query, setQuery] = useState("");
   const [mask, setMask] = useState<string>(DESKTOP_ZH.openFilesMaskDefault);
-  const [hits, setHits] = useState<FileSearchHit[]>([]);
-  const [truncated, setTruncated] = useState(false);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
   const [active, setActive] = useState(0);
   const queryRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const [done, setDone] = useState(true);
+  const { hits, truncated, error, loading, done } = useProjectFileSearch(projectId, query, mask);
 
   useEffect(() => {
     queryRef.current?.focus();
@@ -42,60 +37,8 @@ export function FileSearchDialog({
   }, [onClose]);
 
   useEffect(() => {
-    const q = query.trim();
-    if (!q) {
-      setHits([]);
-      setTruncated(false);
-      setError("");
-      setLoading(false);
-      setDone(true);
-      setActive(0);
-      return;
-    }
-    let stopped = false;
-    const searchId = ++fileSearchSerial;
-    const timer = window.setTimeout(() => {
-      void (async () => {
-        setHits([]);
-        setTruncated(false);
-        setError("");
-        setLoading(true);
-        setDone(false);
-        setActive(0);
-        try {
-          for (let hop = 0; hop < 20000; hop += 1) {
-            if (stopped) return;
-            const page = await backend.searchProjectFiles(projectId, q, mask, searchId);
-            if (stopped || page.cancelled) return;
-            setHits((current) => (sameHits(current, page.hits) ? current : page.hits));
-            setTruncated(page.truncated);
-            setError("");
-            if (page.done) {
-              setDone(true);
-              setLoading(false);
-              return;
-            }
-          }
-          if (!stopped) {
-            setError("搜索没有完成");
-            setDone(true);
-            setLoading(false);
-          }
-        } catch (err: unknown) {
-          if (stopped) return;
-          setHits([]);
-          setTruncated(false);
-          setDone(true);
-          setError(typeof err === "string" && err.trim() ? err : "搜索失败");
-          setLoading(false);
-        }
-      })();
-    }, 200);
-    return () => {
-      stopped = true;
-      window.clearTimeout(timer);
-    };
-  }, [mask, projectId, query]);
+    setActive(0);
+  }, [query, mask]);
 
   useEffect(() => {
     listRef.current
@@ -235,19 +178,6 @@ export function FileSearchDialog({
     </div>,
     document.body,
   );
-}
-
-function sameHits(current: FileSearchHit[], next: FileSearchHit[]): boolean {
-  if (current.length !== next.length) return false;
-  return current.every((hit, index) => {
-    const other = next[index];
-    return (
-      hit.path === other.path &&
-      hit.line === other.line &&
-      hit.kind === other.kind &&
-      hit.text === other.text
-    );
-  });
 }
 
 function Highlight({ text, query }: { text: string; query: string }) {
