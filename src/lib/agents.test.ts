@@ -3,8 +3,10 @@ import { test } from "node:test";
 
 import type { AgentInstallation, AgentKind } from "../types.ts";
 import {
+  immediateSessionAgent,
   installedAgents,
   keepPreferredAgent,
+  newSessionMenu,
   persistedAgentKind,
   sessionAgents,
   unlinkedAgents,
@@ -60,6 +62,41 @@ test("empty detection does not invent a default agent", () => {
   assert.equal(
     persistedAgentKind([row("claude-code", true, false)], "claude-code"),
     null,
+  );
+});
+
+test("the new-session menu hides agents that are installed but not linked", () => {
+  assert.deepEqual(newSessionMenu(null), { status: "loading" });
+  assert.deepEqual(newSessionMenu(undefined), { status: "loading" });
+  assert.deepEqual(newSessionMenu([]), { status: "empty", reason: "none" });
+  assert.deepEqual(newSessionMenu([row("claude-code", true, false, "Claude Code")]), {
+    status: "empty",
+    reason: "unwired",
+  });
+  assert.deepEqual(newSessionMenu([row("cursor-agent", false, false)]), {
+    status: "empty",
+    reason: "none",
+  });
+  const ready = newSessionMenu(registry);
+  assert.equal(ready.status, "ready");
+  if (ready.status === "ready") {
+    assert.deepEqual(
+      ready.agents.map((item) => item.kind),
+      ["codex-cli"],
+    );
+    assert.equal(
+      ready.agents.some((item) => item.session_linked !== true),
+      false,
+    );
+  }
+  assert.equal(immediateSessionAgent(registry), "codex-cli");
+  assert.equal(immediateSessionAgent([row("codex-cli", true, true)]), "codex-cli");
+  assert.equal(
+    immediateSessionAgent([
+      row("codex-cli", true, true),
+      row("claude-code", true, false),
+    ]),
+    "codex-cli",
   );
 });
 

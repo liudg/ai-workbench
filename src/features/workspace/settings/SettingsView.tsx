@@ -85,7 +85,7 @@ function AgentsPanel() {
         <div>
           <h2 className="text-base font-medium text-zinc-100">本地 Agent</h2>
           <p className="mt-1 max-w-lg text-sm leading-6 text-zinc-500">
-            列出全部已注册的 Agent CLI。只有本机已经安装的会出现在新建会话里。工作台不代为安装；已安装的可以按官方方式更新。
+            列出全部已注册的 Agent CLI。新建会话只列出已经接入、可以开会话的。工作台不代为安装；已安装的可以按官方方式更新。
           </p>
         </div>
         <Button

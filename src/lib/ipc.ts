@@ -46,9 +46,16 @@ export interface ImportProjectInput {
   defaultAgent: AgentKind;
 }
 
-export interface ProjectTree {
-  root: string;
+export interface TreeEntry {
+  name: string;
+  path: string;
+  kind: "dir" | "file" | string;
+}
+
+export interface PathFilter {
   paths: string[];
+  truncated: boolean;
+  cancelled: boolean;
 }
 
 export interface FileSearchHit {
@@ -61,6 +68,8 @@ export interface FileSearchHit {
 export interface FileSearchResult {
   hits: FileSearchHit[];
   truncated: boolean;
+  done: boolean;
+  cancelled: boolean;
 }
 
 export interface PreviewDocument {
@@ -169,10 +178,17 @@ export interface Backend {
   loadOlderHistory(sessionId: string): Promise<OlderHistory>;
   /** 读取项目目录内的文本，供 HTML / Markdown / 纯文本预览。 */
   readPreviewFile(projectId: string, path: string): Promise<PreviewDocument>;
-  /** 工作区文件路径，供打开文件页的目录树。 */
-  listProjectTree(projectId: string): Promise<ProjectTree>;
-  /** 在项目目录里搜索文件名和文本。没有 Codex 全文搜索 RPC，走本机目录。 */
-  searchProjectFiles(projectId: string, query: string, mask: string): Promise<FileSearchResult>;
+  /** 工作区某一层目录。展开后再读下一层，不把整棵树截断。 */
+  listProjectDir(projectId: string, path: string): Promise<TreeEntry[]>;
+  /** 按相对路径筛选工作区文件。未接入的查询会带 cancelled。 */
+  filterProjectPaths(projectId: string, query: string): Promise<PathFilter>;
+  /** 在项目目录里搜索文件名和文本。分段返回，searchId 用来取消上一段。 */
+  searchProjectFiles(
+    projectId: string,
+    query: string,
+    mask: string,
+    searchId: number,
+  ): Promise<FileSearchResult>;
   /** 用系统默认程序打开项目内的文件。 */
   openProjectFile(projectId: string, path: string): Promise<void>;
   /** 把项目内文件放进内置浏览器可加载的地址。 */
@@ -302,9 +318,12 @@ export const backend: Backend = {
     invoke<OlderHistory>("load_older_history", { sessionId }),
   readPreviewFile: (projectId, path) =>
     invoke<PreviewDocument>("read_preview_file", { projectId, path }),
-  listProjectTree: (projectId) => invoke<ProjectTree>("list_project_tree", { projectId }),
-  searchProjectFiles: (projectId, query, mask) =>
-    invoke<FileSearchResult>("search_project_files", { projectId, query, mask }),
+  listProjectDir: (projectId, path) =>
+    invoke<TreeEntry[]>("list_project_dir", { projectId, path }),
+  filterProjectPaths: (projectId, query) =>
+    invoke<PathFilter>("filter_project_paths", { projectId, query }),
+  searchProjectFiles: (projectId, query, mask, searchId) =>
+    invoke<FileSearchResult>("search_project_files", { projectId, query, mask, searchId }),
   openProjectFile: (projectId, path) =>
     invoke("open_project_file", { projectId, path }),
   prepareBrowserFile: (projectId, path) =>

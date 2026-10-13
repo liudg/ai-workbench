@@ -123,7 +123,7 @@ pnpm dev                                                       # 打开 http://l
 
 Codex 实现拆在 `agents/codex/`：`mod.rs` 只编排，`rpc` / `prompts` / `catalog` / `process` / `resume` 各管一块。
 
-设置页从侧栏左下角头像菜单进入，列出 `AgentKind::all` 里的每一种。新建会话只能选 `installed && session_linked` 的 Agent。只装了一个就直接用它开会话；一个都没有时选择器是空状态。工作台不代为安装。
+设置页从侧栏左下角头像菜单进入，列出 `AgentKind::all` 里的每一种。新建会话只能选 `installed && session_linked` 的 Agent。项目行上只装了一个能开会话的就直接用它；「新建会话」主按钮始终打开选择菜单，菜单里不出现未接入的项。一个都没有时选择器说明原因。工作台不代为安装。
 
 探测和更新都写在适配器的 `cli_release` 里。Codex 仍用自己的二进制查找，官方包是 npm 全局 `@openai/codex`，否则 `codex update`。Claude Code 若是 npm 全局安装则升级 `@anthropic-ai/claude-code`，否则执行 `claude update`。后加的种类在 `agents/external.rs`：
 
@@ -140,7 +140,9 @@ Codex 实现拆在 `agents/codex/`：`mod.rs` 只编排，`rpc` / `prompts` / `c
 
 Gemini CLI 与 Antigravity、Amazon Q 与 Kiro 各登记成一项，不做成两套会话。`q` 太容易和无关命令重名，版本输出里要出现 Kiro / Amazon Q，或者首行是 `q 1.2.3` 这种官方短版本，才算已安装。
 
-**除 Codex 以外，会话协议未接入。** 这些适配器只做安装探测和官方升级，`start_session()` 走 trait 默认实现，直接返回「未接入」错误；新建会话菜单把它们列成「版本 · 未接入」且不可选（前端同时看 `installed` 和 `session_linked`）。接入时实现 `AgentSession`，在适配器里覆盖 `start_session` 和 `session_linked`，再注册 `SessionDirectory`；工作目录用 `ctx.project_path`。认证交给 CLI 自身，应用不保存密钥。
+**除 Codex 以外，会话协议未接入。** 这些适配器只做安装探测和官方升级，`start_session()` 走 trait 默认实现，直接返回「未接入」错误。设置页仍显示「未安装」或「版本 · 未接入」；新建会话菜单不列出它们。接入时实现 `AgentSession`，在适配器里覆盖 `start_session` 和 `session_linked`，再注册 `SessionDirectory`；工作目录用 `ctx.project_path`。认证交给 CLI 自身，应用不保存密钥。
+
+右侧「打开文件」按目录逐层列出当前项目根下的文件，没有全局数量上限。点文件在当前这一页里预览，不会为每次点击新开标签。全文搜索直接读本机目录，分段返回。目录名正好是 `.git`、`node_modules`、`target`、`dist`、`Library`、`Temp` 的文件夹不进入目录树，也不进入全文搜索；其余文件和文件夹都会列出。
 
 ## 常用命令
 

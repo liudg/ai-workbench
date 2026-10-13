@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { FileSearch, Folder } from "lucide-react";
 
@@ -12,31 +12,25 @@ import { resolvePreviewPath } from "../core/preview-kind";
 import { usePanel } from "../core/PanelProvider";
 import { Hint } from "../core/Hint";
 import { FolderStackIcon } from "../core/panel-icons";
+import { FilePreview } from "./FilePreview";
 import { FileSearchDialog } from "./FileSearchDialog";
-import { FileTreeList } from "./FileTreeList";
-import { filterFiles } from "./file-filter";
-import { buildFileTree, type FileTreeFile } from "./file-tree";
+import { WorkspaceTree } from "./WorkspaceTree";
 import { baseName, workspaceRootLabel } from "./path";
-import { useWorkspaceTree } from "./useWorkspaceTree";
 
 const SPLITTER_WIDTH = 6;
 
-/** 打开文件：中间停在空态，右侧是工作区树。点文件打开预览。 */
+/** 打开文件：右侧是工作区树。点文件在当前页预览，不新开标签。 */
 export function OpenFilesView() {
-  const { projectId, projectPath, sessionId, diffFilesWidth, setDiffFilesWidth, openHref } = usePanel();
-  const paths = useWorkspaceTree(projectId);
+  const { projectId, projectPath, sessionId, diffFilesWidth, setDiffFilesWidth } = usePanel();
   const [filter, setFilter] = useState("");
   const [treeOpen, setTreeOpen] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [activePath, setActivePath] = useState("");
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  const [previewPath, setPreviewPath] = useState("");
+  const [previewLine, setPreviewLine] = useState<number | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string } | null>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const paneWidth = useElementWidth(frameRef);
   const root = workspaceRootLabel(projectPath);
-  const files = useMemo<FileTreeFile[]>(() => paths.map((path) => ({ path, added: 0, removed: 0 })), [paths]);
-  const shown = useMemo(() => filterFiles(files, filter), [files, filter]);
-  const tree = useMemo(() => buildFileTree(shown), [shown]);
   const inner = treeOpen ? Math.max(0, paneWidth - SPLITTER_WIDTH) : paneWidth;
   const auto = treeOpen ? diffListWidth(inner) : null;
   const dragged = treeOpen && diffFilesWidth !== null ? diffListWidthAfterDrag(inner, diffFilesWidth) : null;
@@ -51,24 +45,20 @@ export function OpenFilesView() {
   widthRef.current = diffFilesWidth;
 
   const openFile = (path: string, line?: number | null) => {
-    setActivePath(path);
-    openHref(path, line ?? undefined);
+    setPreviewPath(path);
+    setPreviewLine(line ?? null);
   };
+
+  useEffect(() => {
+    setPreviewPath("");
+    setPreviewLine(null);
+  }, [projectId]);
 
   const addToChat = (path: string) => {
     const absolute = resolvePreviewPath(projectPath, path);
     if (!absolute) return;
     useWorkbench.getState().addAttachments(sessionId, [{ name: baseName(absolute), path: absolute }]);
     setContextMenu(null);
-  };
-
-  const toggleDir = (id: string) => {
-    setCollapsed((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
   };
 
   return (
@@ -79,11 +69,22 @@ export function OpenFilesView() {
             {root}
           </div>
         ) : null}
-        <div data-open-files-empty className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
-          <Folder className="h-12 w-12 text-zinc-500" strokeWidth={1.25} />
-          <p className="text-sm text-zinc-100">{DESKTOP_ZH.openFiles}</p>
-          <p className="text-xs text-zinc-500">{DESKTOP_ZH.openFilesHint}</p>
-        </div>
+        {previewPath ? (
+          <div className="min-h-0 flex-1">
+            <FilePreview
+              key={`${previewPath}:${previewLine ?? ""}`}
+              projectId={projectId}
+              path={previewPath}
+              line={previewLine}
+            />
+          </div>
+        ) : (
+          <div data-open-files-empty className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
+            <Folder className="h-12 w-12 text-zinc-500" strokeWidth={1.25} />
+            <p className="text-sm text-zinc-100">{DESKTOP_ZH.openFiles}</p>
+            <p className="text-xs text-zinc-500">{DESKTOP_ZH.openFilesHint}</p>
+          </div>
+        )}
       </div>
       {listWidth !== null ? (
         <ColumnSplitter
@@ -118,20 +119,13 @@ export function OpenFilesView() {
             />
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-1 py-1">
-            {shown.length === 0 ? (
-              <p className="px-2 py-6 text-center text-xs leading-5 text-zinc-500">{DESKTOP_ZH.noFileMatch}</p>
-            ) : (
-              <FileTreeList
-                nodes={tree}
-                collapsed={collapsed}
-                activePath={activePath}
-                rowAttr="data-workspace-file"
-                showStats={false}
-                onToggle={toggleDir}
-                onSelect={(file) => openFile(file.path)}
-                onContextMenu={(file, event) => setContextMenu({ x: event.clientX, y: event.clientY, path: file.path })}
-              />
-            )}
+            <WorkspaceTree
+              projectId={projectId}
+              filter={filter}
+              activePath={previewPath}
+              onSelect={(path) => openFile(path)}
+              onContextMenu={(path, event) => setContextMenu({ x: event.clientX, y: event.clientY, path })}
+            />
           </div>
         </aside>
       ) : (

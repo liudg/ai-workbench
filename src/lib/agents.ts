@@ -18,11 +18,38 @@ export function sessionAgents(
   return installedAgents(list).filter((item) => item.session_linked === true);
 }
 
-/** 已安装但会话协议未接入的 Agent。新建会话菜单只把它们列成不可选。 */
+/** 已安装但会话协议未接入的 Agent。设置页显示「未接入」；新建会话菜单不列出它们。 */
 export function unlinkedAgents(
   list: AgentInstallation[] | null | undefined,
 ): AgentInstallation[] {
   return installedAgents(list).filter((item) => item.session_linked !== true);
+}
+
+export type SessionMenu =
+  | { status: "loading" }
+  | { status: "empty"; reason: "none" | "unwired" }
+  | { status: "ready"; agents: AgentInstallation[] };
+
+/** 新建会话菜单。只包含能开会话的 Agent，不给未接入的留灰色占位。 */
+export function newSessionMenu(list: AgentInstallation[] | null | undefined): SessionMenu {
+  if (list == null) return { status: "loading" };
+  const agents = sessionAgents(list);
+  if (agents.length > 0) return { status: "ready", agents };
+  if (unlinkedAgents(list).length > 0) return { status: "empty", reason: "unwired" };
+  return { status: "empty", reason: "none" };
+}
+
+/**
+ * 项目行上的新建按钮：只有一个能开会话的 Agent 时直接用它。
+ * 主按钮始终打开菜单，方便确认当前接的是谁。
+ */
+export function immediateSessionAgent(
+  list: AgentInstallation[] | null | undefined,
+): AgentKind | null {
+  if (!list) return null;
+  const usable = sessionAgents(list);
+  if (usable.length !== 1) return null;
+  return usable[0].kind;
 }
 
 /**

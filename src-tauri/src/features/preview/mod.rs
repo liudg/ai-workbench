@@ -1,8 +1,12 @@
 //! 文件预览。只读文本。相对路径相对项目目录，绝对路径按用户打开的位置读取。
 //! 打不开时返回找不到、没有权限或不是文件，不再用「只能预览当前项目」拦住项目外的文件。
 //! HTML 另走内置浏览器（`browser`），不经过某个 Agent。
+//!
+//! 工作区目录按一层一层列，不设全局文件上限。`.git`、`node_modules`、`target`、
+//! `dist`、`Library`、`Temp` 不进目录树，也不进全文搜索；其余目录和文件都列出来。
 
 pub mod search;
+pub mod tree;
 
 pub(crate) mod browser;
 
@@ -28,7 +32,7 @@ pub struct PreviewDocument {
 }
 
 #[tauri::command]
-pub fn read_preview_file(
+pub async fn read_preview_file(
     store: State<'_, ProjectStore>,
     project_id: String,
     path: String,
@@ -36,7 +40,10 @@ pub fn read_preview_file(
     let project = store
         .get(&project_id)
         .ok_or_else(|| "项目不存在".to_string())?;
-    read_preview_at(Path::new(&project.path), &path)
+    let root = PathBuf::from(&project.path);
+    tokio::task::spawn_blocking(move || read_preview_at(&root, &path))
+        .await
+        .map_err(|err| format!("无法读取文件: {err}"))?
 }
 
 #[tauri::command]
@@ -120,69 +127,9 @@ pub fn read_preview_at(project_root: &Path, requested: &str) -> Result<PreviewDo
     })
 }
 
-const MAX_TREE_FILES: usize = 1500;
-
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-pub struct ProjectTree {
-    pub root: String,
-    pub paths: Vec<String>,
-}
-
-#[tauri::command]
-pub fn list_project_tree(
-    store: State<'_, ProjectStore>,
-    project_id: String,
-) -> Result<ProjectTree, String> {
-    let project = store
-        .get(&project_id)
-        .ok_or_else(|| "项目不存在".to_string())?;
-    Ok(list_tree_at(Path::new(&project.path)))
-}
-
-pub fn list_tree_at(root: &Path) -> ProjectTree {
-    let mut paths = Vec::new();
-    if root.is_dir() {
-        let mut stack = vec![root.to_path_buf()];
-        while let Some(dir) = stack.pop() {
-            let Ok(read) = std::fs::read_dir(&dir) else {
-                continue;
-            };
-            let mut entries: Vec<_> = read.filter_map(|item| item.ok()).collect();
-            entries.sort_by_key(|item| item.file_name());
-            for entry in entries {
-                let path = entry.path();
-                let name = entry.file_name();
-                let name = name.to_string_lossy();
-                if path.is_dir() {
-                    if skip_tree_dir(&name) {
-                        continue;
-                    }
-                    stack.push(path);
-                    continue;
-                }
-                if !path.is_file() {
-                    continue;
-                }
-                let Ok(rel) = path.strip_prefix(root) else {
-                    continue;
-                };
-                paths.push(rel.to_string_lossy().replace('\\', "/"));
-                if paths.len() >= MAX_TREE_FILES {
-                    break;
-                }
-            }
-            if paths.len() >= MAX_TREE_FILES {
-                break;
-            }
-        }
-    }
-    paths.sort();
-    ProjectTree {
-        root: strip_verbatim_prefix(&root.to_string_lossy()).to_string(),
-        paths,
-    }
-}
-
+/// 目录树和全文搜索都跳过这些目录，避免把依赖和生成物当成工作区内容。
+/// 名字按字面匹配：`.git`、`node_modules`、`target`、`dist`、`Library`、`Temp`。
+/// 同名目录不会出现，里面的文件也不会被搜到。其它目录，包括点开头的 `.github`，都会列出。
 pub(crate) fn skip_tree_dir(name: &str) -> bool {
     matches!(
         name,
@@ -302,11 +249,21 @@ mod tests {
 
         let sibling = outside.join("secret.txt");
         let absolute = read_preview_at(&root, sibling.to_str().unwrap()).unwrap();
-        assert!(absolute.text.contains("outside-marker"), "{}", absolute.text);
-        let relative = format!("../{}/secret.txt", outside.file_name().unwrap().to_string_lossy());
+        assert!(
+            absolute.text.contains("outside-marker"),
+            "{}",
+            absolute.text
+        );
+        let relative = format!(
+            "../{}/secret.txt",
+            outside.file_name().unwrap().to_string_lossy()
+        );
         let escaped = read_preview_at(&root, &relative).unwrap();
         assert!(escaped.text.contains("outside-marker"), "{}", escaped.text);
-        assert!(read_preview_at(&root, "ok.txt").unwrap().text.contains("yes"));
+        assert!(read_preview_at(&root, "ok.txt")
+            .unwrap()
+            .text
+            .contains("yes"));
         let missing = read_preview_at(&root, "missing.txt").unwrap_err();
         assert!(missing.contains("找不到"), "{missing}");
         assert!(!missing.contains("只能预览"), "{missing}");
@@ -327,19 +284,6 @@ mod tests {
         assert!(doc.text.contains("linked-marker"), "{}", doc.text);
         let _ = fs::remove_dir_all(&root);
         let _ = fs::remove_dir_all(&outside);
-    }
-
-    #[test]
-    fn lists_workspace_files_and_skips_vendor_dirs() {
-        let root = scratch("tree");
-        fs::create_dir_all(root.join("src")).unwrap();
-        fs::write(root.join("src").join("app.ts"), "export {}\n").unwrap();
-        fs::create_dir_all(root.join("node_modules").join("pkg")).unwrap();
-        fs::write(root.join("node_modules").join("pkg").join("index.js"), "nope").unwrap();
-        let tree = list_tree_at(&root);
-        assert!(tree.paths.iter().any(|path| path == "src/app.ts"));
-        assert!(tree.paths.iter().all(|path| !path.contains("node_modules")));
-        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

@@ -6,6 +6,8 @@ import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { cn } from "@/lib/utils";
 import { highlightParts, moveSearchCursor } from "./file-search";
 
+let fileSearchSerial = 0;
+
 /** 在工作区里搜索文件名和文件内容。结果来自本机目录，不是占位列表。 */
 export function FileSearchDialog({
   projectId,
@@ -25,6 +27,7 @@ export function FileSearchDialog({
   const [active, setActive] = useState(0);
   const queryRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const [done, setDone] = useState(true);
 
   useEffect(() => {
     queryRef.current?.focus();
@@ -45,32 +48,51 @@ export function FileSearchDialog({
       setTruncated(false);
       setError("");
       setLoading(false);
+      setDone(true);
       setActive(0);
       return;
     }
-    let cancel = false;
-    setLoading(true);
+    let stopped = false;
+    const searchId = ++fileSearchSerial;
     const timer = window.setTimeout(() => {
-      void backend.searchProjectFiles(projectId, q, mask).then(
-        (result) => {
-          if (cancel) return;
-          setHits(result.hits);
-          setTruncated(result.truncated);
-          setError("");
-          setLoading(false);
-          setActive(0);
-        },
-        (err: unknown) => {
-          if (cancel) return;
+      void (async () => {
+        setHits([]);
+        setTruncated(false);
+        setError("");
+        setLoading(true);
+        setDone(false);
+        setActive(0);
+        try {
+          for (let hop = 0; hop < 20000; hop += 1) {
+            if (stopped) return;
+            const page = await backend.searchProjectFiles(projectId, q, mask, searchId);
+            if (stopped || page.cancelled) return;
+            setHits((current) => (sameHits(current, page.hits) ? current : page.hits));
+            setTruncated(page.truncated);
+            setError("");
+            if (page.done) {
+              setDone(true);
+              setLoading(false);
+              return;
+            }
+          }
+          if (!stopped) {
+            setError("搜索没有完成");
+            setDone(true);
+            setLoading(false);
+          }
+        } catch (err: unknown) {
+          if (stopped) return;
           setHits([]);
           setTruncated(false);
+          setDone(true);
           setError(typeof err === "string" && err.trim() ? err : "搜索失败");
           setLoading(false);
-        },
-      );
-    }, 150);
+        }
+      })();
+    }, 200);
     return () => {
-      cancel = true;
+      stopped = true;
       window.clearTimeout(timer);
     };
   }, [mask, projectId, query]);
@@ -198,7 +220,9 @@ export function FileSearchDialog({
                 className="flex items-center justify-between gap-3 border-t border-zinc-800 px-3 py-2 text-[11px] text-zinc-500"
                 data-file-search-footer
               >
-                <span data-file-search-cap>{truncated ? DESKTOP_ZH.openFilesSearchCap : ""}</span>
+                <span data-file-search-cap>
+                  {loading && !done ? DESKTOP_ZH.openFilesSearchPending : truncated ? DESKTOP_ZH.openFilesSearchCap : ""}
+                </span>
                 <span className="flex shrink-0 items-center gap-3">
                   <span>↑↓ {DESKTOP_ZH.openFilesSearchSwitch}</span>
                   <span>Enter {DESKTOP_ZH.openFilesSearchEnter}</span>
@@ -211,6 +235,19 @@ export function FileSearchDialog({
     </div>,
     document.body,
   );
+}
+
+function sameHits(current: FileSearchHit[], next: FileSearchHit[]): boolean {
+  if (current.length !== next.length) return false;
+  return current.every((hit, index) => {
+    const other = next[index];
+    return (
+      hit.path === other.path &&
+      hit.line === other.line &&
+      hit.kind === other.kind &&
+      hit.text === other.text
+    );
+  });
 }
 
 function Highlight({ text, query }: { text: string; query: string }) {

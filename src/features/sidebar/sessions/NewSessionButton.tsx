@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { Plus, SquarePen } from "lucide-react";
 
-import { sessionAgents, unlinkedAgents } from "@/lib/agents";
+import { immediateSessionAgent, newSessionMenu } from "@/lib/agents";
 import { cn } from "@/lib/utils";
 import { useWorkbench } from "@/store";
 import type { AgentKind } from "@/types";
@@ -22,8 +22,8 @@ export function NewSessionButton({
   const createSession = useWorkbench((s) => s.createSession);
   const openSettings = useWorkbench((s) => s.openSettings);
   const installations = useWorkbench((s) => s.installations);
-  const installed = sessionAgents(installations);
-  const unlinked = unlinkedAgents(installations);
+  const menu = newSessionMenu(installations);
+  const immediate = appearance === "primary" ? null : immediateSessionAgent(installations);
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -37,8 +37,8 @@ export function NewSessionButton({
 
   const onPress = (event: ReactMouseEvent) => {
     event.stopPropagation();
-    if (installed.length === 1 && unlinked.length === 0) {
-      choose(installed[0].kind);
+    if (immediate) {
+      choose(immediate);
       return;
     }
     setOpen((value) => !value);
@@ -76,11 +76,15 @@ export function NewSessionButton({
           className="fixed z-50 w-60 overflow-hidden rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
           style={{ top: -9999, left: 8 }}
         >
-          {installations === null ? (
+          {menu.status === "loading" ? (
             <div className="px-3 py-3 text-sm text-zinc-500">正在检测本地 Agent…</div>
-          ) : installed.length === 0 && unlinked.length === 0 ? (
-            <div className="px-3 py-3">
-              <p className="text-sm leading-5 text-zinc-300">未检测到已安装的 Agent CLI。</p>
+          ) : menu.status === "empty" ? (
+            <div className="px-3 py-3" data-session-menu="empty" data-session-menu-reason={menu.reason}>
+              <p className="text-sm leading-5 text-zinc-300">
+                {menu.reason === "unwired"
+                  ? "已安装的 Agent 还不能新建会话。"
+                  : "未检测到已安装的 Agent CLI。"}
+              </p>
               <button
                 type="button"
                 className="mt-2 text-sm text-indigo-300 hover:text-indigo-200"
@@ -94,9 +98,9 @@ export function NewSessionButton({
               </button>
             </div>
           ) : (
-            <>
+            <div data-session-menu="ready">
               <div className="px-3 pb-1 pt-1.5 text-[11px] text-zinc-500">选择 Agent</div>
-              {installed.map((agent) => (
+              {menu.agents.map((agent) => (
                 <button
                   key={agent.kind}
                   type="button"
@@ -111,20 +115,7 @@ export function NewSessionButton({
                   {agent.display_name}
                 </button>
               ))}
-              {unlinked.map((agent) => (
-                <div
-                  key={agent.kind}
-                  role="menuitem"
-                  aria-disabled="true"
-                  data-agent={agent.kind}
-                  className="flex w-full cursor-not-allowed items-baseline justify-between gap-2 px-3 py-2 text-sm text-zinc-500"
-                  title="会话协议未接入，不能新建会话"
-                >
-                  <span>{agent.display_name}</span>
-                  <span className="text-[11px]">{agent.version ?? "已安装"} · 未接入</span>
-                </div>
-              ))}
-            </>
+            </div>
           )}
         </div>
       )}
