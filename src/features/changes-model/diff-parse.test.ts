@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { SessionEvent, SessionEventBody } from "../../types.ts";
+import type { SessionEvent, SessionEventBody } from "../../types/index.ts";
 import { parseUnifiedDiff, sessionChanges, turnChanges } from "./diff-parse.ts";
 
 function event(id: string, body: SessionEventBody): SessionEvent {

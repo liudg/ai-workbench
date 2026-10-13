@@ -3,7 +3,7 @@ import {
   type AccessMode,
   type PermissionMenu,
   type SessionSandbox,
-} from "../../../types.ts";
+} from "../../../types/index.ts";
 
 // Allow network access
 export const NETWORK_LABEL = "允许网络访问";

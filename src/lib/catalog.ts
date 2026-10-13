@@ -1,4 +1,4 @@
-import type { AgentCatalog, AgentKind, Session } from "../types.ts";
+import type { AgentCatalog, AgentKind, Session } from "../types/index.ts";
 
 /** 与后端 `CATALOG_STALE_NOTICE` 同一句。有缓存时刷新失败只显示这一条。 */
 export const CATALOG_STALE_NOTICE = "模型列表刷新失败，仍显示上次的模型。";

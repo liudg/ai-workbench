@@ -1,4 +1,4 @@
-import type { PromptQuestion, SessionStatus } from "../../../types.ts";
+import type { PromptQuestion, SessionStatus } from "../../../types/index.ts";
 
 /**
  * 提问卡能不能操作只看它有没有被回答、会话是否还活着。

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { AgentCatalog } from "../types.ts";
+import type { AgentCatalog } from "../types/index.ts";
 import {
   CATALOG_STALE_NOTICE,
   modelButtonLabel,

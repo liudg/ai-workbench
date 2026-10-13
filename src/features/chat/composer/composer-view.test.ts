@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { emptySandbox, type AgentCapabilities, type SessionEvent } from "../../../types.ts";
+import { emptySandbox, type AgentCapabilities, type SessionEvent } from "../../../types/index.ts";
 import { deriveComposerView } from "./composer-view.ts";
 
 const caps = {

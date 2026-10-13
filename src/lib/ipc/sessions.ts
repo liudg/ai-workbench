@@ -1,0 +1,125 @@
+import type {
+  AgentCatalogRefresh,
+  AgentInstallation,
+  AgentProfile,
+  CachedAgentCatalog,
+  OlderHistory,
+  PermissionMenu,
+  ReviewTargets,
+  Session,
+  SessionEvent,
+} from "@/types";
+import { invoke } from "./call";
+import type { Backend } from "./contract";
+import type { DiffScope } from "./dto";
+
+export const sessionCommands: Pick<
+  Backend,
+  | "listSessions"
+  | "forkSession"
+  | "renameSession"
+  | "deleteSession"
+  | "createSession"
+  | "setSandbox"
+  | "permissionMenu"
+  | "agentProfiles"
+  | "listAgentInstallations"
+  | "updateAgent"
+  | "cachedAgentCatalogs"
+  | "agentCatalog"
+  | "setSessionTuning"
+  | "sendMessage"
+  | "submitAnnotation"
+  | "diffScopes"
+  | "diffForScope"
+  | "updateQueuedTurn"
+  | "removeQueuedTurn"
+  | "sessionQueue"
+  | "interruptTurn"
+  | "stageChatImage"
+  | "setCollaborationMode"
+  | "setThreadGoal"
+  | "clearThreadGoal"
+  | "publishThreadGoal"
+  | "reviewTargets"
+  | "startReview"
+  | "answerPrompt"
+  | "stopSession"
+  | "getSessionEvents"
+  | "loadOlderHistory"
+> = {
+  listSessions: (projectId) => invoke<Session[]>("list_sessions", { projectId }),
+  forkSession: (sessionId) => invoke<Session>("fork_session", { sessionId }),
+  renameSession: (sessionId, name) =>
+    invoke("rename_session", { sessionId, name }),
+  deleteSession: (sessionId) => invoke("delete_session", { sessionId }),
+  createSession: (projectId, agent, accessMode) =>
+    invoke<Session>("create_session", {
+      projectId,
+      agent: agent ?? null,
+      accessMode: accessMode ?? null,
+    }),
+  setSandbox: (sessionId, sandbox) =>
+    invoke("set_session_access", {
+      sessionId,
+      mode: sandbox.profileId ? "ask" : sandbox.mode,
+      networkAccess: sandbox.networkAccess,
+      writableRoots: sandbox.writableRoots,
+      profileId: sandbox.profileId,
+    }),
+  permissionMenu: (sessionId) =>
+    invoke<PermissionMenu>("session_permission_menu", { sessionId }),
+  agentProfiles: () => invoke<AgentProfile[]>("agent_profiles"),
+  listAgentInstallations: () =>
+    invoke<AgentInstallation[]>("list_agent_installations"),
+  updateAgent: (kind) => invoke<AgentInstallation>("update_agent", { kind }),
+  cachedAgentCatalogs: () =>
+    invoke<CachedAgentCatalog[]>("cached_agent_catalogs"),
+  agentCatalog: (sessionId) =>
+    invoke<AgentCatalogRefresh>("agent_catalog", { sessionId }),
+  setSessionTuning: (sessionId, model, effort) =>
+    invoke("set_session_tuning", { sessionId, model, effort }),
+  sendMessage: (sessionId, text, images, annotations) =>
+    invoke("send_message", {
+      sessionId,
+      text,
+      images: images ?? [],
+      annotations: annotations ?? [],
+    }),
+  submitAnnotation: (sessionId, note) =>
+    invoke("submit_annotation", { sessionId, note }),
+  diffScopes: (sessionId) => invoke<DiffScope[]>("diff_scopes", { sessionId }),
+  diffForScope: (sessionId, scope, ignoreWhitespace) =>
+    invoke<string>("diff_for_scope", { sessionId, scope, ignoreWhitespace }),
+  updateQueuedTurn: (sessionId, queuedId, text, images) =>
+    invoke("update_queued_turn", {
+      sessionId,
+      queuedId,
+      text,
+      images: images ?? [],
+    }),
+  removeQueuedTurn: (sessionId, queuedId) =>
+    invoke("remove_queued_turn", { sessionId, queuedId }),
+  sessionQueue: (sessionId) =>
+    invoke("session_queue", { sessionId }),
+  interruptTurn: (sessionId) => invoke("interrupt_turn", { sessionId }),
+  stageChatImage: (dataBase64, name) =>
+    invoke("stage_chat_image", { dataBase64, name }),
+  setCollaborationMode: (sessionId, mode) =>
+    invoke("set_collaboration_mode", { sessionId, mode }),
+  setThreadGoal: (sessionId, objective) =>
+    invoke("set_thread_goal", { sessionId, objective }),
+  clearThreadGoal: (sessionId) => invoke("clear_thread_goal", { sessionId }),
+  publishThreadGoal: (sessionId) => invoke("publish_thread_goal", { sessionId }),
+  reviewTargets: (sessionId) =>
+    invoke<ReviewTargets>("review_targets", { sessionId }),
+  startReview: (sessionId, target) =>
+    invoke("start_review", { sessionId, target }),
+  answerPrompt: (sessionId, promptId, answer) =>
+    invoke("answer_prompt", { sessionId, promptId, answer }),
+  stopSession: (sessionId) => invoke("stop_session", { sessionId }),
+  getSessionEvents: (sessionId) =>
+    invoke<SessionEvent[]>("get_session_events", { sessionId }),
+  loadOlderHistory: (sessionId) =>
+    invoke<OlderHistory>("load_older_history", { sessionId }),
+};

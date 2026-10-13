@@ -13,7 +13,7 @@ import {
   type SessionEvent,
   type SessionSandbox,
   type SlashCommand,
-} from "../../../types.ts";
+} from "../../../types/index.ts";
 import { sandboxAllowsExtras } from "./access.ts";
 import { collaborationMode } from "./collaboration-mode.ts";
 import { atToken, mentionSupport, type MentionSupport } from "./mentions.ts";

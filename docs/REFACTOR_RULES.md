@@ -36,42 +36,30 @@
 
 ## 4. 这一轮做了什么
 
-从 `main`（含 PR #68，`6cc8af3`）拉出。
+从 `main`（含 PR #70，`29b2965`）拉出。只搬代码，不改已经验收的交互。
 
-### 依赖方向
+### 协议按同一条边界拆开
 
-- `sandboxForAgent` 从作曲栏挪到 `src/lib/agents.ts`。建会话的 store 不再引用 `chat/composer`。
-- 回答 Markdown 不再 import 聊天卡片、面板和图片组件。文件链接判断在 `shared/markdown/file-href.ts`。交互（打开文件、网站卡片、聊天图片）由 `workspace/AnswerMarkdownHost` 在已有 `PanelProvider` 的会话里接上。没有宿主时，http 图片仍是图片，本机路径只显示路径，不假装已经打开预览。
-- 差异页和会话文件共用的筛选从 `panel/files` 挪到 `panel/core/file-filter.ts`。
-- 源码按行拆分从 `diff/fold.ts` 挪到 `panel/core/source-lines.ts`。文本预览不再为了这个去引用差异折叠。
-- 开发用差异预览不再写死 `agent="codex-cli"`。没有真实会话时 `agent` 为 `null`，不拿 Codex 能力表冒充。
+前端 `src/types` 和 Rust `src-tauri/src/models` 都分成 agent、session、event、catalog。字段和 serde 名字没变，对外仍是 `crate::models::*` 和 `@/types`。
 
-### 展示层改为 hook
+IPC 从 `lib/ipc.ts` 拆成契约（`contract.ts`）、DTO（`dto.ts`）和按领域分组的命令。`backend` 仍是这一组命令的合集。
 
-这些组件不再自己调 `backend` 或 `useWorkbench`：
+### 状态机
 
-- 浏览器：`useBrowserSession`，工具条在 `BrowserChrome`
-- 工作区树：`useWorkspaceTree`
-- 文件搜索：`useProjectFileSearch`
-- 文件预览：`usePreviewFile`，读文件走 `readProjectText`
-- 时间线滚动和翻页：`useTimelineFollow`；变更能力：`useChangeCapabilities`
-- 提问回答：`useAnswerPrompt`
-- 网站卡片标题：`useWebsiteTitle`
-- 聊天图片：`useChatImage`
-- 新建项目：`useNewProjectForm`
-- 设置页本地 Agent：`useAgentSettings`
-- 把文件附到会话：`useAttachFile`
+- 回答 Markdown：块解析、行内解析、收起规则分开。`answer-markdown.ts` 只保留 `parseAnswer` 和原来的公开类型。
+- 作曲栏：提交、按键、粘贴、斜杠和技能执行在 `composer-run.ts`；权限档位和模型选择在 `composer-access-run.ts`。目录和排队的加载在 `useComposerFeeds`，审查菜单的关闭在 `useReviewDismiss`。
+- 面板状态从 `store/slices/panel.ts` 挪到 `features/panel/state`。打开目标的加载在 `panel-load.ts`，标签布局在 `panel-session.ts`。store 的组合根（`store/index.ts`、`store/types.ts`）引用这个状态模块，不引用面板 UI。
+- 会话日志归并（`apply_body`、流式替换、更早历史、侧栏时间）在 `sessions/log.rs`。`manager.rs` 只留生命周期。
+- Codex 会话契约在 `codex/session.rs`。要本机 CLI 的集成测试在 `codex/tests.rs`，仍标记为 ignore。
+- 安装：版本比较在 `install/version.rs`，查找二进制和捕获输出在 `install/command.rs`。
 
-差异工具条拆成 `DiffToolbar`、`DiffToolbarIcons`、`DiffOptionsMenu`、`DiffJumpPopover`。
+### 展示层
 
-### Codex 适配器
+侧栏这些组件不再调用 `useWorkbench`，改走旁边的 hook：`SessionRow`、`SessionList`、`NewSessionButton`、`ProjectItem`、`ProjectHeader`、`AccountMenu`、`Sidebar`。
 
-`agents/codex/resume.rs` 原先同时做三件事：列线程、把 `thread/turns/list` 映射成事件、目录进程上的 JSON-RPC。文件头写的是「本模块只负责列出线程」。
+### 浏览器关闭
 
-- 回合映射挪到 `agents/codex/history.rs`。实时 RPC（`rpc.rs`）、排队（`queue.rs`）和翻页（`turn.rs`）改为引用这里。
-- 目录用的短命 app-server 客户端挪到 `agents/codex/directory_client.rs`。
-
-映射行为没有改，原有历史单测跟着挪到 `history.rs`。
+`browser_close` 改成任意 Tauri `Runtime` 都能调用，并登记在桌面版和 dev bridge 共用的命令表里。有 `preview-browser` 子 webview 时关掉它，然后清主机状态。dev bridge 没有这个子 webview，调用结果是清状态并成功返回，不是空实现。其它需要原生窗口的浏览器命令仍只在桌面版注册。
 
 ## 5. 没有 Codex 对应物、这一轮未改产品行为的功能
 
@@ -84,11 +72,11 @@
 
 | 债务 | 原因 |
 | --- | --- |
-| `shared/markdown/answer-markdown.ts`（约 25KB） | 一份 Markdown 解析器，拆开会把块解析和行内解析的状态机切开，没有第二个调用方需要单独演进 |
-| `features/chat/composer/useComposerController.ts`（约 15KB） | 提交和快捷键还在这条控制器。`@` 搜索在 `useMentionMenu`，目标草稿在 `useGoalDraft`。再拆发送路径会动已经验收过的输入行为 |
-| `store/slices/panel.ts`、`lib/ipc.ts`、`types.ts` | 分别是面板状态、IPC 门面、与 Rust `models.rs` 对齐的协议类型。继续按字段拆会制造两份协议 |
-| `src-tauri` 里 `sessions/manager.rs`、`models.rs`、`agents/install.rs`、`agents/codex/mod.rs` | 会话状态机、协议模型和安装探测各自仍是一块。`mod.rs` 后半是要本机 Codex 的集成测试。没有在不改行为的前提下拆出第二个所有者 |
-| 侧栏行（`SessionRow`、`ProjectItem` 等）仍直接 `useWorkbench` | 它们是功能容器，不是这一轮最大的 IPC 耦合。改成逐个 hook 不会减少跨功能依赖 |
-| `PanelProvider` 在卸载时调用 `backend.browserClose()` | 这是面板边界，不是展示组件。浏览器显隐仍由 `useBrowserSession` 负责 |
+| `sessions/manager.rs`（约 32KB） | 日志归并已经在 `log.rs`。剩下的打开、发送、排队、停止、改名共用同一把 `SessionEntry` 锁，仍是一个所有者 |
+| `agents/install/mod.rs`（约 25KB） | 版本比较和进程捕获已经拆出。探测、选定二进制、检查和升级共用 `ChosenBin`，仍是一条安装路径 |
+| Codex 的 `history.rs`、`turn.rs`、`rpc.rs`、`sandbox.rs`、`prompts.rs`、`resume.rs` | 各自是一条协议映射或进程状态。这一轮只把会话契约和本机集成测试从 `mod.rs` 拆出去 |
+| `preview/browser.rs`（约 28KB） | 原生 webview 的显隐、标注和截图是同一块浏览器主机。网页预览不走这些命令 |
+| `Workspace.tsx`、`RightPane.tsx`、`EmptyState.tsx`、`UpdateDialog.tsx` 仍调用 `useWorkbench` | 侧栏行已经改走 hook。这四个是工作区屏幕，不是侧栏行 |
+| `useBrowserSession.ts`（约 11KB） | 原生 webview 和 iframe 还在同一个浏览器会话 hook 里 |
 
 审计时如果上面某一条已经不再成立，删掉对应行，不要留过期借口。

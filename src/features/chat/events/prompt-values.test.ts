@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { PromptQuestion } from "../../../types.ts";
+import type { PromptQuestion } from "../../../types/index.ts";
 import { elicitationContent, filledQuestionAnswers, optionResolvedLabel } from "./prompt-values.ts";
 
 const question = (patch: Partial<PromptQuestion>): PromptQuestion => ({

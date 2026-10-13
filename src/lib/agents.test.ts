@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { AgentInstallation, AgentKind } from "../types.ts";
+import type { AgentInstallation, AgentKind } from "../types/index.ts";
 import {
   immediateSessionAgent,
   installedAgents,

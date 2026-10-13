@@ -11,10 +11,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { useWorkbench } from "@/store";
 import type { Session } from "@/types";
 import { useFixedMenu } from "../use-fixed-menu";
 import { relativeSessionTime } from "./relative-time";
+import { useSessionRow } from "./use-session-row";
 
 export function SessionRow({
   projectId,
@@ -29,12 +29,7 @@ export function SessionRow({
   readOnly: boolean;
   now: number;
 }) {
-  const selectSession = useWorkbench((s) => s.selectSession);
-  const caps = useWorkbench((s) => s.profiles[session.agent]?.capabilities);
-  const busy = useWorkbench((s) => s.lifecycleBusy === session.id);
-  const renameSession = useWorkbench((s) => s.renameSession);
-  const forkSession = useWorkbench((s) => s.forkSession);
-  const deleteSession = useWorkbench((s) => s.deleteSession);
+  const { selectSession, caps, busy, renameSession, forkSession, deleteSession } = useSessionRow(session);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [forkOpen, setForkOpen] = useState(false);

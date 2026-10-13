@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { create } from "zustand";
 
-import { createPanelSlice, type PanelSlice } from "../../../store/slices/panel.ts";
+import { createPanelSlice, type PanelSlice } from "../state/slice.ts";
 import * as browser from "../browser/browser.ts";
 import { matchDiff, matchHtml, matchMarkdown, matchText } from "../viewers/kinds.ts";
 import { targetFromHref } from "./open-target.ts";

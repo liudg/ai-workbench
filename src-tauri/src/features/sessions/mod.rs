@@ -2,6 +2,7 @@
 //! 只通过 Agent 适配器收发；提问卡等共享能力不在这里按 CLI 解析。
 
 mod catalog;
+mod log;
 mod manager;
 
 pub use catalog::{AgentCatalogRefresh, CachedAgentCatalog};

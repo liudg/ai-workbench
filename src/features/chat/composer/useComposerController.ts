@@ -7,38 +7,38 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 
-import { useWorkbench } from "@/store";
-import type {
-  AgentModelOption,
-  AgentSkillOption,
-  PermissionMenu,
-  ReviewStart,
-  Session,
-  SessionEvent,
-  SessionSandbox,
-  SlashCommand,
-} from "@/types";
-import { fileName, isImagePath } from "./media";
-import { insertSkill } from "./skills";
+import type { ReviewStart, Session, SessionEvent, SessionSandbox } from "@/types";
 import {
-  fetchPermissionMenu,
-  fetchQueue,
-  interruptTurn,
-  pickAttachments,
-  pickWritableDirectory,
-  removeQueuedTurn,
-  stageChatImage,
-  storeQueue,
-  updateQueuedTurn,
-} from "./composer-backend";
-import { composerKeyIntent, stepIndex } from "./composer-keys";
-import { decideSlash, decideSubmit, effortForModel } from "./composer-submit";
+  addComposerDir,
+  chooseComposerEffort,
+  chooseComposerModel,
+  removeComposerDir,
+  selectComposerPreset,
+  selectComposerProfile,
+  setComposerNetwork,
+} from "./composer-access-run";
+import {
+  applyComposerSkill,
+  applyComposerSlash,
+  beginComposerEdit,
+  cancelComposerEdit,
+  handleComposerKey,
+  interruptComposer,
+  pasteComposerImages,
+  pickComposerFiles,
+  rememberCaret,
+  removeComposerQueued,
+  runComposerSubmit,
+  stageComposerBlobs,
+  type ComposerRun,
+} from "./composer-run";
 import { deriveComposerView } from "./composer-view";
 import { useComposerMenu } from "./useComposerMenu";
+import { useComposerFeeds } from "./useComposerFeeds";
 import { useComposerActions, useComposerSession } from "./useComposerStore";
-import { addWritableRoot, removeWritableRoot, selectPreset, selectProfile, setNetwork } from "./access";
 import { useGoalDraft } from "./useGoalDraft";
 import { useMentionMenu } from "./useMentionMenu";
+import { useReviewDismiss } from "./useReviewDismiss";
 
 export function useComposerController(session: Session, events: SessionEvent[]) {
   const actions = useComposerActions();
@@ -47,7 +47,6 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
   const [caret, setCaret] = useState(0);
   const [menu, setMenu] = useState<null | "access" | "model" | "attach">(null);
   const [reviewOpen, setReviewOpen] = useState(false);
-  const [permissionMenu, setPermissionMenu] = useState<PermissionMenu | null>(null);
   const [slashIndex, setSlashIndex] = useState(0);
   const [skillIndex, setSkillIndex] = useState(0);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -64,27 +63,10 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
 
   const closeMenu = useCallback(() => setMenu(null), []);
   const closeReview = useCallback(() => setReviewOpen(false), []);
-  useEffect(() => {
-    if (!reviewOpen) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeReview();
-    };
-    const onPointer = (event: MouseEvent) => {
-      // 选项的 mousedown 会立刻换掉菜单内容。旧节点已脱离文档时，
-      // contains 判断会把这次点击当成菜单外。选项自己 preventDefault。
-      if (event.defaultPrevented) return;
-      if (reviewRootRef.current?.contains(event.target as Node)) return;
-      closeReview();
-    };
-    document.addEventListener("keydown", onKey);
-    document.addEventListener("mousedown", onPointer);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.removeEventListener("mousedown", onPointer);
-    };
-  }, [reviewOpen, closeReview]);
+  useReviewDismiss(reviewOpen, reviewRootRef, closeReview);
 
   const caps = data.profile?.capabilities ?? data.catalog?.capabilities;
+  const permissionMenu = useComposerFeeds(session.id, actions.loadCatalog, caps);
   const supportsGoals = Boolean(caps?.supports_goals);
   const goal = useGoalDraft(session.id, supportsGoals, events);
   const view = deriveComposerView({
@@ -136,35 +118,6 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
   useComposerMenu(menu === "attach", plusRef, attachMenuRef, closeMenu);
 
   useEffect(() => {
-    void actions.loadCatalog(session.id);
-  }, [actions.loadCatalog, session.id]);
-
-  useEffect(() => {
-    let cancelled = false;
-    void fetchQueue(session.id)
-      .then((items) => {
-        if (!cancelled) storeQueue(session.id, items);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [session.id]);
-
-  useEffect(() => {
-    if (!caps?.supports_network_access && !caps?.supports_writable_roots) return;
-    let cancelled = false;
-    void fetchPermissionMenu(session.id)
-      .then((next) => {
-        if (!cancelled) setPermissionMenu(next);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [caps?.supports_network_access, caps?.supports_writable_roots, session.id]);
-
-  useEffect(() => {
     setSlashIndex(0);
   }, [view.token]);
 
@@ -176,149 +129,33 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     if (goal.publishError) setNotice(goal.publishError);
   }, [goal.publishError]);
 
-  const rememberCaret = (element: HTMLTextAreaElement) => {
-    setCaret(element.selectionStart ?? element.value.length);
-  };
-
-  const cancelEdit = () => {
-    setEditingId(null);
-    setText("");
-    setCaret(0);
-    actions.clearAttachments(session.id);
-  };
-
-  const stageBlobs = async (blobs: File[]) => {
-    const images = blobs.filter((file) => file.type.startsWith("image/") || isImagePath(file.name));
-    const rejected = blobs.length > images.length;
-    if (rejected) setNotice("只能附加图片");
-    if (images.length === 0) return;
-    const staged = [];
-    for (const file of images) staged.push(await stageChatImage(file));
-    if (staged.length) {
-      if (!rejected) setNotice(null);
-      actions.addAttachments(session.id, staged);
-    }
-  };
-
-  const applySlash = (command: SlashCommand) => {
-    const decision = decideSlash(command, caps, view.planOn);
-    if (decision.type === "review") {
-      setText("");
-      setReviewOpen(true);
-      return;
-    }
-    if (decision.type === "toggle-plan") {
-      setText("");
-      void actions.setCollaborationMode(session.id, decision.mode);
-      return;
-    }
-    setText(decision.text);
-    textareaRef.current?.focus();
-  };
-
-  const applySkill = (skill: AgentSkillOption) => {
-    const next = insertSkill(text, caret, skill.mention);
-    setText(next);
-    setCaret(next.length);
-    requestAnimationFrame(() => {
-      textareaRef.current?.focus();
-      textareaRef.current?.setSelectionRange(next.length, next.length);
-    });
-  };
-
-  const submit = () => {
-    const attached = useWorkbench.getState().attachments[session.id] ?? [];
-    const decision = decideSubmit({
-      text,
-      supportsPlan: Boolean(caps?.supports_plan),
-      supportsReview: Boolean(caps?.supports_review),
-      planOn: view.planOn,
-      imagesOn: view.imagesOn,
-      attached,
-      editingId,
-      pendingId: view.pendingId,
-      composerLocked: view.composerLocked,
-      goalDraft: goal.goalDraft,
-      supportsGoals,
-    });
-    if (decision.type === "noop") return;
-    if (decision.type === "set-goal") {
-      void goal.submit(decision.text).then((ok) => {
-        if (!ok) return;
-        setText("");
-        setCaret(0);
-      });
-      textareaRef.current?.focus();
-      return;
-    }
-    if (decision.type === "toggle-plan") {
-      setText("");
-      void actions.setCollaborationMode(session.id, decision.mode);
-      return;
-    }
-    if (decision.type === "plan-message") {
-      setText("");
-      void actions.setCollaborationMode(session.id, "plan").then(() => {
-        void actions.sendMessage(session.id, decision.text);
-      });
-      return;
-    }
-    if (decision.type === "open-review") {
-      setText("");
-      setReviewOpen(true);
-      return;
-    }
-    if (decision.type === "update-queue") {
-      setEditingId(null);
-      setText("");
-      actions.clearAttachments(session.id);
-      void updateQueuedTurn(session.id, decision.id, decision.text, decision.images);
-      textareaRef.current?.focus();
-      return;
-    }
-    if (decision.type === "answer") {
-      setText("");
-      void actions.answerPrompt(session.id, decision.promptId, { type: "single", value: decision.text });
-      textareaRef.current?.focus();
-      return;
-    }
-    setText("");
-    if (decision.type === "send-images") {
-      void actions.sendMessage(session.id, decision.text, decision.images);
-      actions.clearAttachments(session.id);
-    } else {
-      void actions.sendMessage(session.id, decision.text, []);
-      if (decision.clearAttachments) actions.clearAttachments(session.id);
-    }
-    textareaRef.current?.focus();
-  };
-
-  const pickFiles = async () => {
-    if (view.composerLocked) return;
-    setMenu(null);
-    const picked = await pickAttachments(view.imagesOn);
-    if (!picked.length) return;
-    if (view.imagesOn) {
-      const images = picked.filter((file) => isImagePath(file.path));
-      if (images.length !== picked.length) setNotice("只能附加图片");
-      if (images.length) {
-        setNotice(images.length === picked.length ? null : "只能附加图片");
-        actions.addAttachments(session.id, images);
-      }
-      return;
-    }
-    actions.addAttachments(session.id, picked);
-  };
-
-  const beginEdit = (item: { id: string; text: string; images?: string[] }) => {
-    setEditingId(item.id);
-    setText(item.text);
-    setCaret(item.text.length);
-    actions.replaceAttachments(
-      session.id,
-      (item.images ?? []).map((path) => ({ path, name: fileName(path) })),
-    );
-    requestAnimationFrame(() => textareaRef.current?.focus());
+  const run: ComposerRun = {
+    sessionId: session.id,
+    text,
+    caret,
+    editingId,
+    setText,
+    setCaret,
+    setEditingId,
+    setNotice,
+    setMenu,
+    setReviewOpen,
+    setSlashIndex,
+    setSkillIndex,
+    textareaRef,
+    actions,
+    caps,
+    view,
+    goalDraft: goal.goalDraft,
+    supportsGoals,
+    submitGoal: goal.submit,
+    mentions,
+    activeSlash,
+    activeSkill,
+    sandbox: data.sandbox,
+    projectPath: data.projectPath,
+    skillMatches: view.skillMatches.length,
+    slashMatches: view.slashMatches.length,
   };
 
   return {
@@ -349,22 +186,17 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     activeSkill,
     slashIndex,
     caps,
-    rememberCaret,
-    cancelEdit,
-    stageBlobs,
-    applySlash,
-    applySkill,
-    submit,
-    pickFiles,
-    beginEdit,
+    rememberCaret: (element: HTMLTextAreaElement) => rememberCaret(setCaret, element),
+    cancelEdit: () => cancelComposerEdit(run),
+    stageBlobs: (blobs: File[]) => stageComposerBlobs(run, blobs),
+    applySlash: (command: Parameters<typeof applyComposerSlash>[1]) => applyComposerSlash(run, command),
+    applySkill: (skill: Parameters<typeof applyComposerSkill>[1]) => applyComposerSkill(run, skill),
+    submit: () => runComposerSubmit(run),
+    pickFiles: () => pickComposerFiles(run),
+    beginEdit: (item: { id: string; text: string; images?: string[] }) => beginComposerEdit(run, item),
     applySandbox,
-    removeQueued: (id: string) => {
-      if (editingId === id) cancelEdit();
-      void removeQueuedTurn(session.id, id);
-    },
-    interrupt: () => {
-      void interruptTurn(session.id);
-    },
+    removeQueued: (id: string) => removeComposerQueued(run, id),
+    interrupt: () => interruptComposer(run),
     dismissPlan: () => {
       void actions.setCollaborationMode(session.id, "default");
     },
@@ -381,65 +213,15 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
       setReviewOpen(false);
       void actions.startReview(session.id, target);
     },
-    addDir: () => {
-      void pickWritableDirectory().then((path) => {
-        if (!path) return;
-        applySandbox(addWritableRoot(data.sandbox, path, data.projectPath));
-      });
-    },
-    removeDir: (path: string) => applySandbox(removeWritableRoot(data.sandbox, path)),
-    selectPreset: (mode: Parameters<typeof selectPreset>[1]) => applySandbox(selectPreset(data.sandbox, mode)),
-    selectProfile: (id: string) => applySandbox(selectProfile(data.sandbox, id)),
-    setNetwork: (enabled: boolean) => applySandbox(setNetwork(data.sandbox, enabled)),
-    chooseModel: (model: AgentModelOption) => {
-      actions.setTuning(session.id, model.id, effortForModel(model, view.selectedEffort));
-      setMenu(null);
-    },
-    chooseEffort: (effort: string) => {
-      if (!view.selectedModel) return;
-      actions.setTuning(session.id, view.selectedModel.id, effort);
-      setMenu(null);
-    },
+    addDir: () => addComposerDir(run),
+    removeDir: (path: string) => removeComposerDir(run, path),
+    selectPreset: (mode: Parameters<typeof selectComposerPreset>[1]) => selectComposerPreset(run, mode),
+    selectProfile: (id: string) => selectComposerProfile(run, id),
+    setNetwork: (enabled: boolean) => setComposerNetwork(run, enabled),
+    chooseModel: (model: Parameters<typeof chooseComposerModel>[1]) => chooseComposerModel(run, model),
+    chooseEffort: (effort: string) => chooseComposerEffort(run, effort),
     removeFile: (path: string) => actions.removeAttachment(session.id, path),
-    onKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
-      const intent = composerKeyIntent({
-        key: event.key,
-        shiftKey: event.shiftKey,
-        composing: event.nativeEvent.isComposing,
-        editing: Boolean(editingId),
-        skillOpen: view.skillOpen,
-        hasActiveSkill: Boolean(activeSkill),
-        slashOpen: view.slashOpen,
-        hasActiveSlash: Boolean(activeSlash),
-        token: view.token,
-        activeSlashName: activeSlash?.name,
-        text,
-        skillQuery: view.skillQuery,
-        activeSkillMention: activeSkill?.mention,
-        mentionOpen: mentions.show,
-        hasActiveMention: mentions.hasActive,
-      });
-      if (!intent) return;
-      event.preventDefault();
-      if (intent.type === "cancel-edit") cancelEdit();
-      else if (intent.type === "dismiss-mention") mentions.dismiss();
-      else if (intent.type === "mention-move") mentions.move(intent.key);
-      else if (intent.type === "apply-mention") mentions.apply();
-      else if (intent.type === "mention-noop") return;
-      else if (intent.type === "skill-move") {
-        setSkillIndex((current) => stepIndex(current, view.skillMatches.length, intent.key));
-      } else if (intent.type === "slash-move") {
-        setSlashIndex((current) => stepIndex(current, view.slashMatches.length, intent.key));
-      } else if (intent.type === "apply-skill" && activeSkill) applySkill(activeSkill);
-      else if (intent.type === "apply-slash" && activeSlash) applySlash(activeSlash);
-      else if (intent.type === "submit") submit();
-    },
-    onPaste: (event: ClipboardEvent<HTMLTextAreaElement>) => {
-      if (!view.imagesOn || view.composerLocked) return;
-      const blobs = Array.from(event.clipboardData.files);
-      if (!blobs.length) return;
-      event.preventDefault();
-      void stageBlobs(blobs);
-    },
+    onKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => handleComposerKey(run, event),
+    onPaste: (event: ClipboardEvent<HTMLTextAreaElement>) => pasteComposerImages(run, event),
   };
 }

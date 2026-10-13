@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-import { createPanelSlice } from "./slices/panel";
+import { createPanelSlice } from "@/features/panel/state/slice";
 import { createSettingsSlice } from "./slices/settings";
 import { createShellSlice } from "./slices/shell";
 import { createSidebarSlice } from "./slices/sidebar";

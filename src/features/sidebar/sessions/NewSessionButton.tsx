@@ -3,8 +3,8 @@ import { Plus, SquarePen } from "lucide-react";
 
 import { immediateSessionAgent, newSessionMenu } from "@/lib/agents";
 import { cn } from "@/lib/utils";
-import { useWorkbench } from "@/store";
 import type { AgentKind } from "@/types";
+import { useNewSession } from "./use-new-session";
 import { buttonVariants } from "@/components/ui/button";
 import { useFixedMenu } from "../use-fixed-menu";
 
@@ -19,9 +19,7 @@ export function NewSessionButton({
   className?: string;
   title?: string;
 }) {
-  const createSession = useWorkbench((s) => s.createSession);
-  const openSettings = useWorkbench((s) => s.openSettings);
-  const installations = useWorkbench((s) => s.installations);
+  const { createSession, openSettings, installations } = useNewSession();
   const menu = newSessionMenu(installations);
   const immediate = appearance === "primary" ? null : immediateSessionAgent(installations);
   const [open, setOpen] = useState(false);

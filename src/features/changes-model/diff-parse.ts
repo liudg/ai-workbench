@@ -6,7 +6,7 @@
  *
  * 统一 diff 只用来拆 `diff_for_scope` 返回的 git 范围。
  */
-import type { FileChange as EventFile, SessionEvent } from "../../types.ts";
+import type { FileChange as EventFile, SessionEvent } from "../../types/index.ts";
 
 export type FileStatus = "A" | "M" | "D" | "R";
 

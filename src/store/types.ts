@@ -18,7 +18,7 @@ import type {
 } from "@/types";
 import type { CreateProjectInput, ImportProjectInput } from "@/lib/ipc";
 import type { UpdatePhase } from "@/lib/updater";
-import type { PanelSlice } from "./slices/panel";
+import type { PanelSlice } from "@/features/panel/state/slice";
 
 export type DialogMode = "create" | "import";
 export type AppScreen = "workspace" | "settings";

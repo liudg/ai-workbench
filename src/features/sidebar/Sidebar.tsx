@@ -1,13 +1,12 @@
 import { TerminalSquare } from "lucide-react";
 
-import { useWorkbench } from "@/store";
 import { AccountMenu } from "./account/AccountMenu";
+import { useSidebar } from "./use-sidebar";
 import { ProjectHeader } from "./projects/ProjectHeader";
 import { ProjectItem } from "./projects/ProjectItem";
 
 export function Sidebar() {
-  const projects = useWorkbench((s) => s.projects);
-  const notice = useWorkbench((s) => s.sidebarNotice);
+  const { projects, notice } = useSidebar();
 
   return (
     <aside className="flex w-72 shrink-0 flex-col border-r border-zinc-800/80 bg-zinc-900/30">

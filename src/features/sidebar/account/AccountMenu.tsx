@@ -3,13 +3,11 @@ import { RefreshCw, Settings } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { APP_VERSION } from "@/lib/version";
-import { useWorkbench } from "@/store";
 import { useDismiss } from "../use-dismiss";
+import { useAccountMenu } from "./use-account-menu";
 
 export function AccountMenu() {
-  const checkUpdates = useWorkbench((s) => s.checkUpdates);
-  const openSettings = useWorkbench((s) => s.openSettings);
-  const checking = useWorkbench((s) => s.update.kind === "checking");
+  const { checkUpdates, openSettings, checking } = useAccountMenu();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setOpen(false), []);

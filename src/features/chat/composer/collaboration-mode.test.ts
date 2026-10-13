@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { SessionEvent, SessionEventBody } from "../../../types.ts";
+import type { SessionEvent, SessionEventBody } from "../../../types/index.ts";
 import { collaborationMode } from "./collaboration-mode.ts";
 
 function event(id: string, seq: number, body: SessionEventBody): SessionEvent {

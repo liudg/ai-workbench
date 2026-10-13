@@ -1,4 +1,4 @@
-import type { Attachment } from "../../../types.ts";
+import type { Attachment } from "../../../types/index.ts";
 import { isImagePath } from "./media.ts";
 
 export type ComposerSubmit =

@@ -1,5 +1,5 @@
 import { DESKTOP_ZH } from "../../../shared/strings/desktop-zh.ts";
-import type { AgentSkillOption } from "../../../types.ts";
+import type { AgentSkillOption } from "../../../types/index.ts";
 
 /** `$` 菜单没有候选项时的文案。失败不能说成「没有匹配」。 */
 export function skillEmptyCopy(input: {

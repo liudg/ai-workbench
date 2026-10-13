@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
 
-import { isReadOnlyOpen } from "@/lib/utils";
-import { useWorkbench } from "@/store";
 import type { Session } from "@/types";
 import { SessionRow } from "./SessionRow";
+import { useReadOnlySessionKey } from "./use-session-list";
 
 const SESSION_PREVIEW_LIMIT = 8;
 
@@ -22,13 +21,7 @@ export function SessionList({
   showAll: boolean;
   onToggleShowAll: () => void;
 }) {
-  const readOnlyKey = useWorkbench((s) => {
-    let key = "";
-    for (const session of sessions) {
-      if (isReadOnlyOpen(s.events[session.id])) key += `${session.id}\n`;
-    }
-    return key;
-  });
+  const readOnlyKey = useReadOnlySessionKey(sessions);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 30_000);

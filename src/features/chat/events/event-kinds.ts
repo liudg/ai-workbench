@@ -1,4 +1,4 @@
-import type { SessionEvent } from "../../../types.ts";
+import type { SessionEvent } from "../../../types/index.ts";
 
 /** 时间线上要画出的事件。新增 kind 时这里和 registry 必须一起补。 */
 export const RENDERED_EVENT_KINDS = [

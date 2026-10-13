@@ -1,4 +1,4 @@
-import type { SessionEvent } from "../../../types.ts";
+import type { SessionEvent } from "../../../types/index.ts";
 
 export function collaborationMode(events: readonly SessionEvent[]): "plan" | "default" {
   for (let index = events.length - 1; index >= 0; index -= 1) {

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { SessionEvent } from "../../../types.ts";
+import type { SessionEvent } from "../../../types/index.ts";
 import { eventKindDisposition, RENDERED_EVENT_KINDS, SILENT_EVENT_KINDS } from "./event-kinds.ts";
 
 const ALL: SessionEvent["kind"][] = [

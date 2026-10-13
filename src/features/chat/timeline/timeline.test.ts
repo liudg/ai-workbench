@@ -10,7 +10,7 @@ import {
   runningTurnSummary,
   type TimelineNode,
 } from "./timeline.ts";
-import type { SessionEvent, SessionEventBody } from "../../../types.ts";
+import type { SessionEvent, SessionEventBody } from "../../../types/index.ts";
 
 function event(id: string, ts: number, body: SessionEventBody): SessionEvent {
   return { id, session_id: "s", seq: Number(id.replace(/\D/g, "")) || 1, ts, ...body };

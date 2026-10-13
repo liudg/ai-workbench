@@ -2,19 +2,15 @@ import { useCallback, useRef, useState } from "react";
 import { ChevronRight, Ellipsis } from "lucide-react";
 
 import { cn, displayPath } from "@/lib/utils";
-import { useWorkbench } from "@/store";
 import { aggregateStatus, type Project } from "@/types";
+import { useProjectItem } from "./use-project-item";
 import { useDismiss } from "../use-dismiss";
 import { NewSessionButton } from "../sessions/NewSessionButton";
 import { SessionList } from "../sessions/SessionList";
 import { StatusDot } from "./StatusDot";
 
 export function ProjectItem({ project }: { project: Project }) {
-  const sessions = useWorkbench((s) => s.sessions[project.id]);
-  const selected = useWorkbench((s) => s.selectedProjectId === project.id);
-  const activeSessionId = useWorkbench((s) => s.activeSessionId[project.id]);
-  const selectProject = useWorkbench((s) => s.selectProject);
-  const removeProject = useWorkbench((s) => s.removeProject);
+  const { sessions, selected, activeSessionId, selectProject, removeProject } = useProjectItem(project);
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [collapsed, setCollapsed] = useState(false);

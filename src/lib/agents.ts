@@ -4,7 +4,7 @@ import {
   type AgentInstallation,
   type AgentKind,
   type SessionSandbox,
-} from "../types.ts";
+} from "../types/index.ts";
 
 /** 没有沙箱扩展能力的 agent 只保留完全访问 / 询问批准 / 只读。 */
 export function sandboxForAgent(

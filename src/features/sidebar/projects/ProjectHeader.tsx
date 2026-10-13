@@ -1,11 +1,11 @@
 import { useCallback, useRef, useState } from "react";
 import { Ellipsis, Plus } from "lucide-react";
 
-import { useWorkbench } from "@/store";
 import { useDismiss } from "../use-dismiss";
+import { useProjectHeader } from "./use-project-header";
 
 export function ProjectHeader() {
-  const openDialog = useWorkbench((s) => s.openDialog);
+  const openDialog = useProjectHeader();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const closeMenu = useCallback(() => setMenuOpen(false), []);

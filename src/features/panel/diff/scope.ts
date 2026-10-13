@@ -1,4 +1,4 @@
-import type { ChangeCapabilities } from "../../../types.ts";
+import type { ChangeCapabilities } from "../../../types/index.ts";
 import { DESKTOP_ZH } from "../../../shared/strings/desktop-zh.ts";
 import type { FileChange } from "../../changes-model/diff-parse.ts";
 

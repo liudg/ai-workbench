@@ -1,5 +1,5 @@
 // 测试夹具：只给 fake-adapter.test.ts 用，产品代码不得引用。
-import type { ChangeCapabilities, FileChange, SessionEvent, SessionEventBody } from "../../types.ts";
+import type { ChangeCapabilities, FileChange, SessionEvent, SessionEventBody } from "../../types/index.ts";
 
 /** 非 Codex 适配器的归一化变更样例。 */
 export const FAKE_CAPABILITIES: ChangeCapabilities = {

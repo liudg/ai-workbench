@@ -1,4 +1,4 @@
-import type { Session } from "../types.ts";
+import type { Session } from "../types/index.ts";
 
 export const MISSING_SESSION = "会话不存在或已结束";
 

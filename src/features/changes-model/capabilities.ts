@@ -1,4 +1,4 @@
-import type { ChangeCapabilities } from "../../types.ts";
+import type { ChangeCapabilities } from "../../types/index.ts";
 
 /** 目录还没到时先按事件显示，避免变更卡在能力表加载前被藏掉。 */
 export function showsFileChanges(changes: ChangeCapabilities | undefined): boolean {

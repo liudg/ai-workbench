@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { sandboxForAgent } from "../../../lib/agents.ts";
-import { emptySandbox } from "../../../types.ts";
+import { emptySandbox } from "../../../types/index.ts";
 import {
   addWritableRoot,
   buttonLabel,

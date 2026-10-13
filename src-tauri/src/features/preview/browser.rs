@@ -4,10 +4,11 @@
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
+#[cfg(windows)]
 use std::time::Duration;
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Url, WebviewUrl};
+use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Runtime, Url, WebviewUrl};
 
 use super::resolve_preview_file;
 use crate::features::images::stage_image_bytes;
@@ -222,7 +223,7 @@ pub async fn browser_open_external(target: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn browser_close(app: AppHandle) -> Result<(), String> {
+pub async fn browser_close<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
     let _guard = host_lock().lock().map_err(|_| "浏览器正忙".to_string())?;
     if let Some(webview) = app.get_webview(LABEL) {
         webview

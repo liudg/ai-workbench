@@ -72,6 +72,7 @@ macro_rules! workbench_handler {
             $crate::features::preview::tree::filter_project_paths,
             $crate::features::preview::search::search_project_files,
             $crate::features::preview::open_project_file,
+            $crate::features::preview::browser::browser_close,
             $($extra),*
         ]
     };
@@ -132,7 +133,6 @@ pub fn run() {
             features::preview::browser::browser_annotate_state,
             features::preview::browser::browser_annotation_submit,
             features::preview::browser::browser_open_external,
-            features::preview::browser::browser_close,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

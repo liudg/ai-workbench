@@ -4,6 +4,7 @@
 //! `ProjectStore` 与 `SessionManager`，把 `POST /invoke/<命令>` 交给真实命令处理，
 //! 把 Tauri 事件转成 `GET /events` 的 SSE。Agent 会话、项目和目录都是真实的；
 //! 需要原生窗口的内置浏览器命令不在这里注册，调用时返回命令不存在。
+//! `browser_close` 例外：面板卸载总会调用它。没有子 webview 时只清主机状态。
 //!
 //! 只监听回环地址。数据目录用 `AI_WORKBENCH_DATA_DIR`，缺省与桌面版同一位置。
 
