@@ -45,7 +45,6 @@ test("an installed unwired agent puts the version and 未接入 on one line", ()
   if (face.kind !== "unwired") return;
   assert.equal(face.lead, "2026.10.01");
   assert.equal(face.canUpdate, true);
-  assert.equal(face.settled, null);
   assert.equal(statusLabel(face), "2026.10.01 · 未接入");
 
   const current = agentCardFace(
@@ -63,7 +62,7 @@ test("an installed unwired agent puts the version and 未接入 on one line", ()
   assert.equal(current.kind, "unwired");
   if (current.kind !== "unwired") return;
   assert.equal(current.canUpdate, false);
-  assert.equal(current.settled, "已是最新");
+  assert.equal(current.lead, "2026.10.09");
   assert.equal(statusLabel(current), "2026.10.09 · 未接入");
 });
 
@@ -83,7 +82,6 @@ test("an unwired agent that can still update does not say it is current", () => 
   assert.equal(face.kind, "unwired");
   if (face.kind !== "unwired") return;
   assert.equal(face.canUpdate, true);
-  assert.equal(face.settled, null);
   assert.equal(statusLabel(face), "2026.10.01-e373342 · 未接入");
 });
 
@@ -102,9 +100,9 @@ test("an installed linked agent keeps version, latest, and the update action", (
   );
   assert.equal(current.kind, "ready");
   if (current.kind !== "ready") return;
-  assert.equal(current.text, "0.162.0 · 已是最新");
+  assert.equal(current.text, "0.162.0");
   assert.equal(current.canUpdate, false);
-  assert.equal(statusLabel(current), "0.162.0 · 已是最新");
+  assert.equal(statusLabel(current), "0.162.0");
 
   const pending = agentCardFace(
     item({

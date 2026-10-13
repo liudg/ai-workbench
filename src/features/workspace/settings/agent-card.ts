@@ -3,17 +3,8 @@ import type { AgentInstallation, UpdateVia } from "@/types";
 /** 设置卡片在状态行上的样子。未接入时前缀和「未接入」写在同一行。 */
 export type AgentCardFace =
   | { kind: "absent" }
-  | { kind: "unwired"; lead: string; canUpdate: boolean; settled: string | null }
+  | { kind: "unwired"; lead: string; canUpdate: boolean }
   | { kind: "ready"; text: string; canUpdate: boolean; detail: string | null };
-
-/** 官方更新已经确认这个版本就是最新。未接入的状态行不改，这条说明单独放。 */
-export function settledNote(item: AgentInstallation): string | null {
-  if (!item.installed || item.update_available) return null;
-  if (item.version && item.latest_version && item.version === item.latest_version) {
-    return "已是最新";
-  }
-  return null;
-}
 
 function viaLabel(via: UpdateVia | null): string | null {
   if (via === "npm") return "npm";
@@ -29,15 +20,13 @@ function readyText(item: AgentInstallation): string {
       ? `${version} · 可更新到 ${item.latest_version} · ${via}`
       : `${version} · 可更新到 ${item.latest_version}`;
   }
-  if (item.latest_version && item.version === item.latest_version) {
-    return `${version} · 已是最新`;
-  }
   return version;
 }
 
 /**
  * 协议未接入时，状态行是「未安装 · 未接入」或「版本 · 未接入」。
- * 已经装上、并且官方更新还可用时，未接入的卡片也保留「更新」。点完且已是最新后按钮收起。
+ * 已经装上、并且官方更新还可用时，未接入的卡片也保留「更新」。
+ * 官方确认当前版本后只收起按钮，状态行不再另写说明。
  */
 export function agentCardFace(item: AgentInstallation): AgentCardFace {
   if (!item.session_linked) {
@@ -45,7 +34,6 @@ export function agentCardFace(item: AgentInstallation): AgentCardFace {
       kind: "unwired",
       lead: item.installed ? (item.version ?? "已安装") : "未安装",
       canUpdate: item.installed && item.update_available,
-      settled: settledNote(item),
     };
   }
   if (!item.installed) return { kind: "absent" };
