@@ -1343,7 +1343,7 @@ mod tests {
                 {"type": "fileChange", "changes": [{
                     "path": "C:\\proj\\notes.md",
                     "kind": { "type": "update", "move_path": null },
-                    "diff": "@@ -1 +1,3 @@\n-old\n+new-a\n+new-b\n"
+                    "diff": "@@ -1 +1,2 @@\n-old\n+new-a\n+new-b\n"
                 }]},
                 {"type": "fileChange", "changes": [{
                     "path": "C:\\proj\\notes.md",
@@ -1421,7 +1421,7 @@ mod tests {
                 {"type": "fileChange", "changes": [{
                     "path": "notes.md",
                     "kind": { "type": "update", "move_path": null },
-                    "diff": "@@ -1 +1,3 @@\n-old\n+new-a\n+new-b\n"
+                    "diff": "@@ -1 +1,2 @@\n-old\n+new-a\n+new-b\n"
                 }]},
                 {"type": "fileChange", "changes": [{
                     "path": "notes.md",
@@ -1470,7 +1470,7 @@ mod tests {
                 {"type": "fileChange", "changes": [{
                     "path": "kept.md",
                     "kind": { "type": "update", "move_path": null },
-                    "diff": "@@ -1 +1,3 @@\n-old\n+new-a\n+new-b\n"
+                    "diff": "@@ -1 +1,2 @@\n-old\n+new-a\n+new-b\n"
                 }]},
                 {"type": "fileChange", "changes": [{
                     "path": "C:/proj/blank.md",
@@ -1526,7 +1526,7 @@ mod tests {
                 {"type": "fileChange", "changes": [{
                     "path": "new.md",
                     "kind": "add",
-                    "unified_diff": "@@ -0,0 +1 @@\n+new-line\n"
+                    "content": "new-line\n"
                 }]}
             ]
         })];

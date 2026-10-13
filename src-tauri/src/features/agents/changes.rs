@@ -31,7 +31,7 @@ pub fn file_change_from_value(change: &Value) -> Option<FileChange> {
         .map(str::trim)
         .filter(|path| !path.is_empty())?;
     let kind = change_kind(change);
-    let mut diff = change_diff(change);
+    let mut diff = change_diff(change, &kind.name);
     if !kind.move_path.is_empty() {
         let suffix = format!("\n\nMoved to: {}", kind.move_path);
         if let Some(stripped) = diff.strip_suffix(&suffix) {
@@ -277,7 +277,17 @@ fn change_kind(change: &Value) -> ChangeKind {
     kind
 }
 
-fn change_diff(change: &Value) -> String {
+fn change_diff(change: &Value, kind: &str) -> String {
+    // 官方 FileChange::Add/Delete 带的是文件正文，不是 unified diff。
+    if matches!(
+        kind.trim().to_ascii_lowercase().as_str(),
+        "a" | "add" | "added" | "create" | "created" | "d" | "delete" | "deleted" | "remove"
+            | "removed"
+    ) {
+        if let Some(text) = change.get("content").and_then(Value::as_str) {
+            return text.to_string();
+        }
+    }
     let mut empty = String::new();
     for key in ["diff", "unifiedDiff", "unified_diff", "patch"] {
         let Some(text) = change.get(key).and_then(Value::as_str) else {

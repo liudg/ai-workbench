@@ -34,14 +34,6 @@ impl Access {
         }
     }
 
-    pub(super) fn label(self) -> &'static str {
-        match self {
-            Self::Full => "完全访问",
-            Self::Ask => "询问批准",
-            Self::ReadOnly => "只读",
-        }
-    }
-
     /// `thread/start` 的 sandbox 字符串。
     pub(super) fn sandbox_mode(self) -> &'static str {
         match self {

@@ -5,8 +5,8 @@ use std::sync::{Mutex, OnceLock};
 
 use tokio::process::Command;
 
-use crate::features::agents::AgentError;
 use crate::encoding::{apply_utf8_env, decode_child_bytes};
+use crate::features::agents::AgentError;
 
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum StderrClass {
@@ -236,12 +236,18 @@ pub(super) fn remember_agent_stderr(line: &str) {
     let Some(path) = stderr_log_path() else {
         return;
     };
-    let _guard = stderr_log_lock().lock().unwrap_or_else(|err| err.into_inner());
+    let _guard = stderr_log_lock()
+        .lock()
+        .unwrap_or_else(|err| err.into_inner());
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
     rotate_stderr_log(&path);
-    let mut file = match std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+    let mut file = match std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
         Ok(file) => file,
         Err(_) => return,
     };
@@ -253,7 +259,11 @@ fn stderr_log_path() -> Option<PathBuf> {
     let root = std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(PathBuf::from))?;
-    Some(root.join("ai-workbench").join("logs").join("agent-stderr.log"))
+    Some(
+        root.join("ai-workbench")
+            .join("logs")
+            .join("agent-stderr.log"),
+    )
 }
 
 fn rotate_stderr_log(path: &Path) {
@@ -291,6 +301,9 @@ pub(super) fn truncate(text: &str, max: usize) -> String {
 pub(super) fn resolve_codex_bin() -> Result<PathBuf, AgentError> {
     if let Some(path) = std::env::var_os("CODEX_BIN").map(PathBuf::from) {
         if path.is_file() {
+            if let Some(found) = vendor_exe_near(&path) {
+                return Ok(found);
+            }
             return Ok(path);
         }
     }
@@ -301,23 +314,35 @@ pub(super) fn resolve_codex_bin() -> Result<PathBuf, AgentError> {
             return Ok(exe);
         }
     }
+    #[cfg(not(windows))]
+    let mut launcher = None;
     for dir in std::env::split_paths(&path_var) {
         for name in ["codex.cmd", "codex.ps1", "codex"] {
             let shim = dir.join(name);
-            if shim.is_file() {
-                if let Some(found) = vendor_exe_near(&shim) {
-                    return Ok(found);
-                }
+            if !shim.is_file() {
+                continue;
+            }
+            if let Some(found) = vendor_exe_near(&shim) {
+                return Ok(found);
+            }
+            #[cfg(not(windows))]
+            if launcher.is_none() && name == "codex" {
+                launcher = Some(shim);
             }
         }
     }
     if let Some(appdata) = std::env::var_os("APPDATA") {
-        let candidate = PathBuf::from(appdata).join(
-            "npm/node_modules/@openai/codex/node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/bin/codex.exe",
-        );
+        let candidate = PathBuf::from(appdata)
+            .join("npm/node_modules/@openai/codex")
+            .join(platform_vendor_suffix().unwrap_or(""));
         if candidate.is_file() {
             return Ok(candidate);
         }
+    }
+    // 原生包缺失时，Unix 上的 npm 启动脚本会自己报错，不在这里假装找到了二进制。
+    #[cfg(not(windows))]
+    if let Some(launcher) = launcher {
+        return Ok(launcher);
     }
     Err(AgentError::Runtime(
         "未找到 Codex CLI。请先安装并确保 `codex` 在 PATH 中（例如 npm i -g @openai/codex）。"
@@ -325,11 +350,87 @@ pub(super) fn resolve_codex_bin() -> Result<PathBuf, AgentError> {
     ))
 }
 
+/// 当前平台的 Codex 原生包，相对 `@openai/codex` 包目录。
+/// 对照 `@openai/codex` 的 `bin/codex.js`（`PLATFORM_PACKAGE_BY_TARGET`）。
+fn platform_vendor_suffix() -> Option<&'static str> {
+    #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
+    {
+        Some("node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/bin/codex.exe")
+    }
+    #[cfg(all(target_os = "windows", target_arch = "aarch64"))]
+    {
+        Some("node_modules/@openai/codex-win32-arm64/vendor/aarch64-pc-windows-msvc/bin/codex.exe")
+    }
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    {
+        Some("node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex")
+    }
+    #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+    {
+        Some("node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/bin/codex")
+    }
+    #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+    {
+        Some("node_modules/@openai/codex-darwin-x64/vendor/x86_64-apple-darwin/bin/codex")
+    }
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    {
+        Some("node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex")
+    }
+    #[cfg(not(any(
+        all(
+            target_os = "windows",
+            any(target_arch = "x86_64", target_arch = "aarch64")
+        ),
+        all(
+            target_os = "linux",
+            any(target_arch = "x86_64", target_arch = "aarch64")
+        ),
+        all(
+            target_os = "macos",
+            any(target_arch = "x86_64", target_arch = "aarch64")
+        ),
+    )))]
+    {
+        None
+    }
+}
+
 pub(super) fn vendor_exe_near(shim: &Path) -> Option<PathBuf> {
-    let parent = shim.parent()?;
-    let rel = Path::new("node_modules/@openai/codex/node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/bin/codex.exe");
-    let candidates = [parent.join(rel), parent.join("..").join(rel)];
-    candidates.into_iter().find(|path| path.is_file())
+    let suffix = platform_vendor_suffix()?;
+    let mut roots = Vec::new();
+    if let Some(parent) = shim.parent() {
+        roots.push(parent.to_path_buf());
+    }
+    if let Ok(real) = std::fs::canonicalize(shim) {
+        if let Some(parent) = real.parent() {
+            if !roots.iter().any(|root| root == parent) {
+                roots.push(parent.to_path_buf());
+            }
+        }
+    }
+    for start in roots {
+        let mut dir = start;
+        for _ in 0..8 {
+            if let Some(found) = vendor_at(&dir, suffix) {
+                return Some(found);
+            }
+            if !dir.pop() {
+                break;
+            }
+        }
+    }
+    None
+}
+
+fn vendor_at(dir: &Path, suffix: &str) -> Option<PathBuf> {
+    [
+        dir.join("node_modules/@openai/codex").join(suffix),
+        dir.join("lib/node_modules/@openai/codex").join(suffix),
+        dir.join(suffix),
+    ]
+    .into_iter()
+    .find(|path| path.is_file())
 }
 
 pub(super) fn hide_console(command: &mut Command) {
@@ -371,7 +472,10 @@ mod tests {
     fn hides_thread_store_writer_conflict() {
         let persistence = "2026-10-10T09:25:25.276357Z ERROR codex_core::session::session failed to initialize thread persistence: thread-store conflict: thread 01a124c7-226b-7bb0-a774-c5fccdab7471 already has an active writer";
         let create = "2026-10-10T09:25:25.278837Z ERROR codex_core::session Failed to create session: thread-store conflict: thread 01a124c7-226b-7bb0-a774-c5fccdab7471 already has an active writer";
-        assert!(matches!(classify_codex_stderr(persistence), StderrClass::Log(_)));
+        assert!(matches!(
+            classify_codex_stderr(persistence),
+            StderrClass::Log(_)
+        ));
         assert!(matches!(classify_codex_stderr(create), StderrClass::Log(_)));
         assert!(is_thread_writer_conflict(
             "thread abc already has an active writer"
@@ -450,6 +554,48 @@ mod tests {
         assert!(merged.split(',').any(|item| item == ".taole.com"));
         assert!(!merged.split(',').any(|item| item == "*"));
         assert!(!merged.split(',').any(|item| item.contains("127.*")));
+    }
+
+    #[test]
+    fn vendor_exe_near_finds_npm_prefix_and_package_bin() {
+        let Some(suffix) = platform_vendor_suffix() else {
+            return;
+        };
+        let root = std::env::temp_dir().join(format!(
+            "ai-workbench-codex-vendor-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let prefix_bin = root
+            .join("prefix/lib/node_modules/@openai/codex")
+            .join(suffix);
+        std::fs::create_dir_all(prefix_bin.parent().unwrap()).unwrap();
+        std::fs::write(&prefix_bin, b"codex").unwrap();
+        let shim_dir = root.join("prefix/bin");
+        std::fs::create_dir_all(&shim_dir).unwrap();
+        let shim = shim_dir.join("codex");
+        std::fs::write(&shim, b"shim").unwrap();
+        assert_eq!(
+            vendor_exe_near(&shim).as_deref(),
+            Some(prefix_bin.as_path())
+        );
+
+        let package_bin = root.join("pkg/node_modules/@openai/codex").join(suffix);
+        std::fs::create_dir_all(package_bin.parent().unwrap()).unwrap();
+        std::fs::write(&package_bin, b"codex").unwrap();
+        let script_dir = root.join("pkg/node_modules/@openai/codex/bin");
+        std::fs::create_dir_all(&script_dir).unwrap();
+        let script = script_dir.join("codex.js");
+        std::fs::write(&script, b"script").unwrap();
+        assert_eq!(
+            vendor_exe_near(&script).as_deref(),
+            Some(package_bin.as_path())
+        );
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[cfg(windows)]

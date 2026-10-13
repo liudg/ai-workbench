@@ -50,10 +50,6 @@ pub(super) fn parse_token_usage(params: &Value) -> Option<TokenUsageInfo> {
 }
 
 impl TokenUsage {
-    pub(super) fn is_zero(&self) -> bool {
-        self.total_tokens == 0
-    }
-
     fn cached_input(&self) -> i64 {
         self.cached_input_tokens.max(0)
     }

@@ -66,10 +66,6 @@ impl RecentDenials {
         let index = self.entries.iter().position(|entry| entry.id == id)?;
         self.entries.remove(index)
     }
-
-    pub(super) fn clear(&mut self) {
-        self.entries.clear();
-    }
 }
 
 /// `item/autoApprovalReview/completed` 的参数。只有 denied 才返回。

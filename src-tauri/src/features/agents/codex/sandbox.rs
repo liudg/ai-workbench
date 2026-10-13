@@ -107,16 +107,6 @@ impl SandboxChoice {
         true
     }
 
-    pub(super) fn label(&self) -> String {
-        if !self.profile_id.is_empty() {
-            return self.profile_id.clone();
-        }
-        if self.approve_for_me {
-            return "替我批准".into();
-        }
-        self.mode.label().to_string()
-    }
-
     pub(super) fn reviewer(&self) -> &'static str {
         if self.approve_for_me {
             "auto_review"
