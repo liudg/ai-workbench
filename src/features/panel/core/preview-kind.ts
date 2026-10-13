@@ -23,18 +23,17 @@ export function isFileHref(href: string): boolean {
 }
 
 /**
- * 把结论里的文件链接解析到项目目录内。
- * 越界、外链返回 null。调用方据此打开预览，读文件仍由后端再拦一次。
+ * 把文件链接解析成绝对路径。相对路径相对当前项目目录。
+ * 项目外的绝对路径同样返回：树和搜索能打开的文件都应该能预览。
+ * 外链和空路径返回 null。没有项目目录时，相对路径也返回 null。
  */
 export function resolvePreviewPath(projectPath: string, href: string): string | null {
-  const root = projectPath.trim();
-  if (!root) return null;
   const spec = hrefToPath(href);
   if (!spec) return null;
-  const absolute = isAbsolutePath(spec) ? spec : joinPath(root, spec);
-  const normal = normalizePath(absolute);
-  if (!isInside(root, normal)) return null;
-  return normal;
+  if (isAbsolutePath(spec)) return normalizePath(spec);
+  const root = projectPath.trim();
+  if (!root) return null;
+  return normalizePath(joinPath(root, spec));
 }
 
 export function sameFile(projectPath: string, changePath: string, absolute: string): boolean {
@@ -103,10 +102,4 @@ function isAbsolutePath(path: string): boolean {
 function joinPath(root: string, rel: string): string {
   const slash = root.includes("\\") ? "\\" : "/";
   return `${root.replace(/[\\/]+$/, "")}${slash}${rel.replace(/^[\\/]+/, "")}`;
-}
-
-function isInside(root: string, candidate: string): boolean {
-  const base = normalizePath(root).replace(/\/$/, "").toLowerCase();
-  const next = normalizePath(candidate).toLowerCase();
-  return next === base || next.startsWith(`${base}/`);
 }

@@ -1,4 +1,5 @@
 import type { Attachment } from "../../../types.ts";
+import { isImagePath } from "./media.ts";
 
 export type ComposerSubmit =
   | { type: "toggle-plan"; mode: "plan" | "default" }
@@ -31,24 +32,44 @@ export function decideSubmit(input: {
   }
   if (input.supportsReview && value === "/review") return { type: "open-review" };
 
-  const imagePaths = input.imagesOn ? input.attached.map((file) => file.path) : [];
+  const imagePaths = imagePathsOf(input);
+  const referenced = referencedFiles(input);
+  const slash = value.startsWith("/");
+  const body = attachmentBody(value, referenced, input.imagesOn, slash);
   if (input.editingId) {
-    if (!value && imagePaths.length === 0) return { type: "noop" };
-    return { type: "update-queue", id: input.editingId, text: value, images: imagePaths };
+    if (!body && imagePaths.length === 0) return { type: "noop" };
+    return { type: "update-queue", id: input.editingId, text: body, images: imagePaths };
   }
   if (input.pendingId) {
     if (!value || input.composerLocked) return { type: "noop" };
     return { type: "answer", promptId: input.pendingId, text: value };
   }
-  const canSend = Boolean(value || imagePaths.length);
+  const canSend = Boolean(body || imagePaths.length);
   if (!canSend || input.composerLocked) return { type: "noop" };
-  if (input.imagesOn) return { type: "send-images", text: value, images: imagePaths };
-  const slash = value.startsWith("/");
-  const body =
-    !slash && input.attached.length > 0
-      ? `${value}\n\n附件：${input.attached.map((file) => file.name).join("、")}`
-      : value;
+  if (input.imagesOn) return { type: "send-images", text: body, images: imagePaths };
   return { type: "send-text", text: body, clearAttachments: !slash };
+}
+
+function imagePathsOf(input: { imagesOn: boolean; attached: readonly Attachment[] }): string[] {
+  if (!input.imagesOn) return [];
+  return input.attached.filter((file) => isImagePath(file.path)).map((file) => file.path);
+}
+
+function referencedFiles(input: { imagesOn: boolean; attached: readonly Attachment[] }): Attachment[] {
+  if (!input.imagesOn) return [...input.attached];
+  return input.attached.filter((file) => !isImagePath(file.path));
+}
+
+/** 图片仍走图像通道。其它文件把真实路径写进消息，避免被当成图片丢掉。 */
+function attachmentBody(
+  value: string,
+  files: readonly Attachment[],
+  imagesOn: boolean,
+  slash: boolean,
+): string {
+  if (slash || files.length === 0 || !value) return value;
+  const label = files.map((file) => (imagesOn ? file.path : file.name)).join("、");
+  return `${value}\n\n附件：${label}`;
 }
 
 export function decideSlash(

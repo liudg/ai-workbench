@@ -1,5 +1,8 @@
-//! 项目内文件预览。只读文本，路径必须落在该项目目录里。
+//! 文件预览。只读文本。相对路径相对项目目录，绝对路径按用户打开的位置读取。
+//! 打不开时返回找不到、没有权限或不是文件，不再用「只能预览当前项目」拦住项目外的文件。
 //! HTML 另走内置浏览器（`browser`），不经过某个 Agent。
+
+pub mod search;
 
 pub(crate) mod browser;
 
@@ -52,26 +55,33 @@ pub fn open_project_file(
 
 pub fn resolve_preview_file(project_root: &Path, requested: &str) -> Result<PathBuf, String> {
     let candidate = candidate_path(project_root, requested)?;
-    if !is_inside(project_root, &candidate) {
-        return Err("只能预览当前项目里的文件".into());
-    }
-    let full = match candidate.canonicalize() {
-        Ok(real) => {
-            let root_real = project_root
-                .canonicalize()
-                .unwrap_or_else(|_| project_root.to_path_buf());
-            if !is_inside(&root_real, &real) {
-                return Err("只能预览当前项目里的文件".into());
-            }
-            real
-        }
-        Err(_) if candidate.is_file() => candidate,
-        Err(_) => return Err("找不到文件".into()),
-    };
-    if !full.is_file() {
+    if candidate.is_dir() {
         return Err("不是文件".into());
     }
+    let full = match candidate.canonicalize() {
+        Ok(real) => real,
+        Err(_) if candidate.is_file() => candidate,
+        Err(err) => return Err(read_error(&candidate, &err)),
+    };
+    if full.is_dir() {
+        return Err("不是文件".into());
+    }
+    if !full.is_file() {
+        return Err("找不到文件".into());
+    }
     Ok(full)
+}
+
+fn read_error(path: &Path, err: &std::io::Error) -> String {
+    if path.is_dir() {
+        return "不是文件".into();
+    }
+    match err.kind() {
+        std::io::ErrorKind::NotFound => "找不到文件".into(),
+        std::io::ErrorKind::PermissionDenied => format!("无法读取文件: {err}"),
+        _ if !path.exists() => "找不到文件".into(),
+        _ => format!("无法读取文件: {err}"),
+    }
 }
 
 pub fn read_preview_at(project_root: &Path, requested: &str) -> Result<PreviewDocument, String> {
@@ -173,7 +183,7 @@ pub fn list_tree_at(root: &Path) -> ProjectTree {
     }
 }
 
-fn skip_tree_dir(name: &str) -> bool {
+pub(crate) fn skip_tree_dir(name: &str) -> bool {
     matches!(
         name,
         ".git" | "node_modules" | "target" | "dist" | "Library" | "Temp"
@@ -225,22 +235,6 @@ fn lexical_normalize(path: &Path) -> PathBuf {
         }
     }
     out
-}
-
-fn is_inside(root: &Path, candidate: &Path) -> bool {
-    let root = lexical_normalize(root);
-    let candidate = lexical_normalize(candidate);
-    let root_key = path_key(&root);
-    let candidate_key = path_key(&candidate);
-    candidate_key == root_key || candidate_key.starts_with(&format!("{root_key}\\"))
-}
-
-fn path_key(path: &Path) -> String {
-    let mut text = strip_verbatim_prefix(&path.to_string_lossy()).replace('/', "\\");
-    if text.ends_with('\\') && text.len() > 3 {
-        text.pop();
-    }
-    text.to_lowercase()
 }
 
 fn preview_kind(path: &Path) -> &'static str {
@@ -295,22 +289,42 @@ mod tests {
     }
 
     #[test]
-    fn rejects_paths_that_leave_the_project() {
-        let root = scratch("jail");
+    fn reads_files_outside_the_project_when_the_os_allows_it() {
+        let root = scratch("outside");
         let outside = root.with_file_name(format!(
-            "{}-evil",
+            "{}-out",
             root.file_name().unwrap().to_string_lossy()
         ));
         fs::create_dir_all(&outside).unwrap();
-        fs::write(outside.join("secret.txt"), "nope").unwrap();
+        fs::write(outside.join("secret.txt"), "outside-marker").unwrap();
         fs::write(root.join("ok.txt"), "yes").unwrap();
+        fs::create_dir(root.join("subdir")).unwrap();
 
-        let escaped = read_preview_at(&root, r"..\secret.txt").unwrap_err();
-        assert!(escaped.contains("只能预览"), "{escaped}");
         let sibling = outside.join("secret.txt");
-        let absolute = read_preview_at(&root, sibling.to_str().unwrap()).unwrap_err();
-        assert!(absolute.contains("只能预览"), "{absolute}");
-        assert!(read_preview_at(&root, "ok.txt").is_ok());
+        let absolute = read_preview_at(&root, sibling.to_str().unwrap()).unwrap();
+        assert!(absolute.text.contains("outside-marker"), "{}", absolute.text);
+        let relative = format!("../{}/secret.txt", outside.file_name().unwrap().to_string_lossy());
+        let escaped = read_preview_at(&root, &relative).unwrap();
+        assert!(escaped.text.contains("outside-marker"), "{}", escaped.text);
+        assert!(read_preview_at(&root, "ok.txt").unwrap().text.contains("yes"));
+        let missing = read_preview_at(&root, "missing.txt").unwrap_err();
+        assert!(missing.contains("找不到"), "{missing}");
+        assert!(!missing.contains("只能预览"), "{missing}");
+        let directory = read_preview_at(&root, "subdir").unwrap_err();
+        assert!(directory.contains("不是文件"), "{directory}");
+        let _ = fs::remove_dir_all(&root);
+        let _ = fs::remove_dir_all(&outside);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn reads_a_symlink_that_points_outside_the_project() {
+        let root = scratch("link");
+        let outside = scratch("link-out");
+        fs::write(outside.join("secret.txt"), "linked-marker").unwrap();
+        std::os::unix::fs::symlink(outside.join("secret.txt"), root.join("linked.txt")).unwrap();
+        let doc = read_preview_at(&root, "linked.txt").unwrap();
+        assert!(doc.text.contains("linked-marker"), "{}", doc.text);
         let _ = fs::remove_dir_all(&root);
         let _ = fs::remove_dir_all(&outside);
     }
@@ -339,7 +353,15 @@ mod tests {
         assert!(html.text.contains("preview-marker"), "{}", html.text);
         assert_eq!(read_preview_at(&root, "notes.md").unwrap().kind, "markdown");
         assert_eq!(read_preview_at(&root, "readme.txt").unwrap().kind, "text");
-        let escaped = read_preview_at(&root, r"..\secret.txt").unwrap_err();
-        assert!(escaped.contains("只能预览"), "{escaped}");
+        match read_preview_at(&root, r"..\secret.txt") {
+            Ok(_) => {}
+            Err(err) => {
+                assert!(!err.contains("只能预览"), "{err}");
+                assert!(
+                    err.contains("找不到") || err.contains("无法读取") || err.contains("不是文件"),
+                    "{err}"
+                );
+            }
+        }
     }
 }

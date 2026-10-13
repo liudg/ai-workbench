@@ -58,6 +58,24 @@ test("queue edit, pending answer, and image send stay distinct", () => {
   );
 });
 
+test("image agents keep real paths for non-image files added to chat", () => {
+  assert.deepEqual(
+    decideSubmit({
+      ...base,
+      text: "看这个",
+      attached: [
+        { name: "a.png", path: "C:/a.png" },
+        { name: "notes.txt", path: "C:/work/notes.txt" },
+      ],
+    }),
+    {
+      type: "send-images",
+      text: "看这个\n\n附件：C:/work/notes.txt",
+      images: ["C:/a.png"],
+    },
+  );
+});
+
 test("agents without images append file names and keep slash attachments", () => {
   const attached = [{ name: "notes.txt", path: "C:/notes.txt" }];
   assert.deepEqual(decideSubmit({ ...base, imagesOn: false, text: "看这个", attached }), {

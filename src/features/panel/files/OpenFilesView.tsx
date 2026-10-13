@@ -1,11 +1,14 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { FileSearch, Folder } from "lucide-react";
 
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { useElementWidth } from "@/shared/dom/useElementWidth";
+import { useWorkbench } from "@/store";
 import { cn } from "@/lib/utils";
 import { ColumnSplitter } from "../core/ColumnSplitter";
 import { FILES_EXPANDED_WIDTH, diffListWidth, diffListWidthAfterDrag } from "../core/layout";
+import { resolvePreviewPath } from "../core/preview-kind";
 import { usePanel } from "../core/PanelProvider";
 import { Hint } from "../core/Hint";
 import { FolderStackIcon } from "../core/panel-icons";
@@ -13,20 +16,21 @@ import { FileSearchDialog } from "./FileSearchDialog";
 import { FileTreeList } from "./FileTreeList";
 import { filterFiles } from "./file-filter";
 import { buildFileTree, type FileTreeFile } from "./file-tree";
-import { workspaceRootLabel } from "./path";
+import { baseName, workspaceRootLabel } from "./path";
 import { useWorkspaceTree } from "./useWorkspaceTree";
 
 const SPLITTER_WIDTH = 6;
 
-/** 打开文件：中间停在空态，右侧是工作区树。点文件不打开预览。 */
+/** 打开文件：中间停在空态，右侧是工作区树。点文件打开预览。 */
 export function OpenFilesView() {
-  const { projectId, projectPath, diffFilesWidth, setDiffFilesWidth } = usePanel();
+  const { projectId, projectPath, sessionId, diffFilesWidth, setDiffFilesWidth, openHref } = usePanel();
   const paths = useWorkspaceTree(projectId);
   const [filter, setFilter] = useState("");
   const [treeOpen, setTreeOpen] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
   const [activePath, setActivePath] = useState("");
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string } | null>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const paneWidth = useElementWidth(frameRef);
   const root = workspaceRootLabel(projectPath);
@@ -45,6 +49,18 @@ export function OpenFilesView() {
   const widthRef = useRef(diffFilesWidth);
   metrics.current = { pane: inner, list: listWidth ?? auto ?? 0 };
   widthRef.current = diffFilesWidth;
+
+  const openFile = (path: string, line?: number | null) => {
+    setActivePath(path);
+    openHref(path, line ?? undefined);
+  };
+
+  const addToChat = (path: string) => {
+    const absolute = resolvePreviewPath(projectPath, path);
+    if (!absolute) return;
+    useWorkbench.getState().addAttachments(sessionId, [{ name: baseName(absolute), path: absolute }]);
+    setContextMenu(null);
+  };
 
   const toggleDir = (id: string) => {
     setCollapsed((current) => {
@@ -112,7 +128,8 @@ export function OpenFilesView() {
                 rowAttr="data-workspace-file"
                 showStats={false}
                 onToggle={toggleDir}
-                onSelect={(file) => setActivePath(file.path)}
+                onSelect={(file) => openFile(file.path)}
+                onContextMenu={(file, event) => setContextMenu({ x: event.clientX, y: event.clientY, path: file.path })}
               />
             )}
           </div>
@@ -126,8 +143,83 @@ export function OpenFilesView() {
           />
         </div>
       )}
-      {searchOpen ? <FileSearchDialog onClose={() => setSearchOpen(false)} /> : null}
+      {searchOpen ? (
+        <FileSearchDialog
+          projectId={projectId}
+          onClose={() => setSearchOpen(false)}
+          onOpen={(path, line) => openFile(path, line)}
+        />
+      ) : null}
+      {contextMenu ? (
+        <FileContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onAdd={() => addToChat(contextMenu.path)}
+          onClose={() => setContextMenu(null)}
+        />
+      ) : null}
     </div>
+  );
+}
+
+function FileContextMenu({
+  x,
+  y,
+  onAdd,
+  onClose,
+}: {
+  x: number;
+  y: number;
+  onAdd: () => void;
+  onClose: () => void;
+}) {
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    const onPointer = (event: MouseEvent) => {
+      if (menuRef.current?.contains(event.target as Node)) return;
+      onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("mousedown", onPointer);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("mousedown", onPointer);
+    };
+  }, [onClose]);
+  useLayoutEffect(() => {
+    const menu = menuRef.current;
+    if (!menu) return;
+    const width = menu.offsetWidth;
+    const height = menu.offsetHeight;
+    const left = Math.min(Math.max(8, x), window.innerWidth - width - 8);
+    let top = y;
+    if (top + height > window.innerHeight - 8) top = Math.max(8, y - height);
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+  }, [x, y]);
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div
+      ref={menuRef}
+      role="menu"
+      data-file-context-menu
+      className="fixed z-[80] w-40 rounded-xl border border-zinc-700 bg-zinc-900 py-1 shadow-lg"
+      style={{ top: -9999, left: 8 }}
+    >
+      <button
+        type="button"
+        role="menuitem"
+        data-add-to-chat
+        className="flex w-full items-center px-3 py-1.5 text-left text-xs text-zinc-100 hover:bg-zinc-800"
+        onClick={onAdd}
+      >
+        {DESKTOP_ZH.addToChat}
+      </button>
+    </div>,
+    document.body,
   );
 }
 

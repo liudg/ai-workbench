@@ -182,7 +182,7 @@ describe("panel viewers", { concurrency: 1 }, () => {
     assert.equal(store.getState().previewWidthBySession["session-a"], 640);
   });
 
-  test("hrefs become urls, project files, or blocked targets", () => {
+  test("hrefs become urls, files inside or outside the project, or unreadable targets", () => {
     assert.deepEqual(targetFromHref("C:/work/demo", "https://example.com/a"), {
       kind: "url",
       url: "https://example.com/a",
@@ -192,8 +192,21 @@ describe("panel viewers", { concurrency: 1 }, () => {
       path: "C:/work/demo/src/app.ts",
       line: 4,
     });
-    const blocked = targetFromHref("C:/work/demo", "../secret.txt");
+    assert.deepEqual(targetFromHref("C:/work/demo", "../secret.txt"), {
+      kind: "file",
+      path: "C:/work/secret.txt",
+      line: null,
+    });
+    assert.deepEqual(targetFromHref("C:/work/demo", "D:/other/notes.md"), {
+      kind: "file",
+      path: "D:/other/notes.md",
+      line: null,
+    });
+    const blocked = targetFromHref("", "src/app.ts");
     assert.equal(blocked.kind, "blocked");
-    if (blocked.kind === "blocked") assert.equal(blocked.message, "只能预览当前项目里的文件");
+    if (blocked.kind === "blocked") {
+      assert.equal(blocked.message, "没有项目目录，无法解析相对路径");
+      assert.equal(blocked.message.includes("只能预览当前项目"), false);
+    }
   });
 });
