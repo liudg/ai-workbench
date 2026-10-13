@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import { backend } from "@/lib/ipc";
 
-/** 工作区目录树。打开文件页只用路径，不打开预览。 */
+/** 工作区目录树。点文件由打开文件页去预览。 */
 export function useWorkspaceTree(projectId: string): string[] {
   const [paths, setPaths] = useState<string[]>([]);
   useEffect(() => {

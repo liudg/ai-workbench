@@ -11,11 +11,12 @@ export function targetFromHref(projectPath: string, href: string, line?: number)
   const lineNo = line ?? lineFromHref(trimmed);
   const resolved = resolvePreviewPath(projectPath, trimmed);
   if (!resolved) {
+    const relative = Boolean(trimmed) && !/^(mailto:|data:|javascript:|#)/i.test(trimmed) && !projectPath.trim();
     return {
       kind: "blocked",
       href: trimmed,
       line: lineNo,
-      message: "只能预览当前项目里的文件",
+      message: relative ? "没有项目目录，无法解析相对路径" : "这不是可以预览的文件路径",
     };
   }
   return { kind: "file", path: resolved, line: lineNo };

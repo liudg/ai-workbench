@@ -19,18 +19,6 @@ export function PanelSquareIcon() {
   );
 }
 
-/** 关闭态顶栏里的横线加点，视频没有点开。 */
-export function SliderListIcon() {
-  return (
-    <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true">
-      <path d="M2.2 4.2h11.6M2.2 8h11.6M2.2 11.8h11.6" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-      <circle cx="6" cy="4.2" r="1.15" fill="currentColor" />
-      <circle cx="10.2" cy="8" r="1.15" fill="currentColor" />
-      <circle cx="7.2" cy="11.8" r="1.15" fill="currentColor" />
-    </svg>
-  );
-}
-
 export function FolderStackIcon() {
   return (
     <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true">

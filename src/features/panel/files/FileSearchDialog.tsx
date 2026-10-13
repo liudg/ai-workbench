@@ -1,11 +1,35 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { createPortal } from "react-dom";
 
+import { backend, type FileSearchHit } from "@/lib/ipc";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
+import { cn } from "@/lib/utils";
+import { highlightParts, moveSearchCursor } from "./file-search";
 
-/** 全文搜索浮层。视频没有输入后的结果列表，所以这里不列出结果。 */
-export function FileSearchDialog({ onClose }: { onClose: () => void }) {
+/** 在工作区里搜索文件名和文件内容。结果来自本机目录，不是占位列表。 */
+export function FileSearchDialog({
+  projectId,
+  onClose,
+  onOpen,
+}: {
+  projectId: string;
+  onClose: () => void;
+  onOpen: (path: string, line: number | null) => void;
+}) {
   const [query, setQuery] = useState("");
   const [mask, setMask] = useState<string>(DESKTOP_ZH.openFilesMaskDefault);
+  const [hits, setHits] = useState<FileSearchHit[]>([]);
+  const [truncated, setTruncated] = useState(false);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [active, setActive] = useState(0);
+  const queryRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    queryRef.current?.focus();
+  }, []);
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -14,12 +38,77 @@ export function FileSearchDialog({ onClose }: { onClose: () => void }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  return (
-    <div className="absolute inset-0 z-30 flex items-start justify-center bg-black/45 pt-14" data-file-search>
+  useEffect(() => {
+    const q = query.trim();
+    if (!q) {
+      setHits([]);
+      setTruncated(false);
+      setError("");
+      setLoading(false);
+      setActive(0);
+      return;
+    }
+    let cancel = false;
+    setLoading(true);
+    const timer = window.setTimeout(() => {
+      void backend.searchProjectFiles(projectId, q, mask).then(
+        (result) => {
+          if (cancel) return;
+          setHits(result.hits);
+          setTruncated(result.truncated);
+          setError("");
+          setLoading(false);
+          setActive(0);
+        },
+        (err: unknown) => {
+          if (cancel) return;
+          setHits([]);
+          setTruncated(false);
+          setError(typeof err === "string" && err.trim() ? err : "搜索失败");
+          setLoading(false);
+        },
+      );
+    }, 150);
+    return () => {
+      cancel = true;
+      window.clearTimeout(timer);
+    };
+  }, [mask, projectId, query]);
+
+  useEffect(() => {
+    listRef.current
+      ?.querySelector("[data-file-search-active='true']")
+      ?.scrollIntoView({ block: "nearest" });
+  }, [active, hits]);
+
+  const openHit = (hit: FileSearchHit | undefined) => {
+    if (!hit) return;
+    onOpen(hit.path, hit.line);
+    onClose();
+  };
+
+  const onKeyDown = (event: ReactKeyboardEvent) => {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const key = event.key;
+      setActive((current) => moveSearchCursor(current, hits.length, key));
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      openHit(hits[active]);
+    }
+  };
+
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/45 pt-16" data-file-search>
       <div
         role="dialog"
         aria-label={DESKTOP_ZH.openFilesSearchTitle}
-        className="w-[min(440px,92%)] rounded-xl border border-zinc-700 bg-zinc-900 p-4 shadow-xl"
+        onKeyDown={onKeyDown}
+        className="w-[min(720px,94vw)] rounded-xl border border-zinc-700 bg-zinc-900 p-4 shadow-xl"
       >
         <div className="mb-3 flex items-center justify-between gap-3">
           <h2 className="text-sm text-zinc-100">{DESKTOP_ZH.openFilesSearchTitle}</h2>
@@ -33,6 +122,7 @@ export function FileSearchDialog({ onClose }: { onClose: () => void }) {
           </button>
         </div>
         <input
+          ref={queryRef}
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder={DESKTOP_ZH.openFilesSearchPlaceholder}
@@ -41,7 +131,7 @@ export function FileSearchDialog({ onClose }: { onClose: () => void }) {
           className="h-9 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-zinc-500"
         />
         <label className="mt-3 flex items-center gap-2 text-xs text-zinc-400">
-          <span>{DESKTOP_ZH.openFilesMask}</span>
+          <span className="shrink-0">{DESKTOP_ZH.openFilesMask}</span>
           <input
             value={mask}
             onChange={(event) => setMask(event.target.value)}
@@ -50,7 +140,91 @@ export function FileSearchDialog({ onClose }: { onClose: () => void }) {
             className="h-7 min-w-0 flex-1 rounded-md border border-zinc-700 bg-zinc-950 px-2 text-xs text-zinc-100 outline-none focus:border-zinc-500"
           />
         </label>
+        {query.trim() ? (
+          <div className="mt-3 overflow-hidden rounded-lg border border-zinc-800">
+            {loading && hits.length === 0 ? (
+              <p className="px-3 py-4 text-xs text-zinc-500" data-file-search-pending>
+                {DESKTOP_ZH.openFilesSearchPending}
+              </p>
+            ) : null}
+            {error ? (
+              <p className="px-3 py-4 text-xs text-red-300" data-file-search-error>
+                {error}
+              </p>
+            ) : null}
+            {!loading && !error && hits.length === 0 ? (
+              <p className="px-3 py-4 text-xs text-zinc-500" data-file-search-empty>
+                {DESKTOP_ZH.openFilesSearchEmpty}
+              </p>
+            ) : null}
+            {hits.length > 0 ? (
+              <div
+                ref={listRef}
+                role="listbox"
+                aria-label={DESKTOP_ZH.openFilesSearchTitle}
+                className="max-h-[min(360px,50vh)] overflow-y-auto"
+              >
+                {hits.map((hit, index) => {
+                  const where = hit.line ? `${hit.path}:${hit.line}` : hit.path;
+                  const selected = index === active;
+                  return (
+                    <button
+                      key={`${hit.kind}:${hit.path}:${hit.line ?? ""}:${index}`}
+                      type="button"
+                      role="option"
+                      aria-selected={selected}
+                      data-file-search-active={selected ? "true" : "false"}
+                      data-file-search-hit={hit.path}
+                      data-file-search-line={hit.line ?? ""}
+                      data-file-search-kind={hit.kind}
+                      className={cn(
+                        "flex w-full min-w-0 items-center gap-3 px-3 py-1.5 text-left",
+                        selected ? "bg-zinc-800" : "hover:bg-zinc-800/70",
+                      )}
+                      onMouseEnter={() => setActive(index)}
+                      onClick={() => openHit(hit)}
+                    >
+                      <span className="min-w-0 flex-1 truncate font-mono text-xs text-zinc-200">
+                        <Highlight text={hit.text} query={query} />
+                      </span>
+                      <span className="shrink-0 font-mono text-[11px] text-zinc-500">{where}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+            {hits.length > 0 ? (
+              <div
+                className="flex items-center justify-between gap-3 border-t border-zinc-800 px-3 py-2 text-[11px] text-zinc-500"
+                data-file-search-footer
+              >
+                <span data-file-search-cap>{truncated ? DESKTOP_ZH.openFilesSearchCap : ""}</span>
+                <span className="flex shrink-0 items-center gap-3">
+                  <span>↑↓ {DESKTOP_ZH.openFilesSearchSwitch}</span>
+                  <span>Enter {DESKTOP_ZH.openFilesSearchEnter}</span>
+                </span>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
-    </div>
+    </div>,
+    document.body,
+  );
+}
+
+function Highlight({ text, query }: { text: string; query: string }) {
+  return (
+    <>
+      {highlightParts(text, query).map((part, index) =>
+        part.hit ? (
+          <mark key={index} data-file-search-mark className="rounded-sm bg-amber-300/35 text-amber-50">
+            {part.text}
+          </mark>
+        ) : (
+          <span key={index}>{part.text}</span>
+        ),
+      )}
+    </>
   );
 }

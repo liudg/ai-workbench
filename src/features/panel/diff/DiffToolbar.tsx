@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import { Check, ChevronDown, ChevronRight, Ellipsis, Expand, FileSearch, PanelRight, RotateCw, WrapText } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -61,6 +62,7 @@ export function DiffToolbar({
 }) {
   const [menu, setMenu] = useState<"scope" | "options" | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const optionsAnchorRef = useRef<HTMLSpanElement>(null);
   const current = scopes.find((item) => item.id === scope) ?? scopes[0];
   const checked: Record<string, boolean> = {
     "load-full": loadFull,
@@ -89,7 +91,11 @@ export function DiffToolbar({
       if (event.key === "Escape") setMenu(null);
     };
     const onPointer = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setMenu(null);
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (rootRef.current?.contains(target)) return;
+      if (target instanceof Element && target.closest("[data-diff-options-menu]")) return;
+      setMenu(null);
     };
     window.addEventListener("keydown", onKey);
     window.addEventListener("mousedown", onPointer);
@@ -155,7 +161,7 @@ export function DiffToolbar({
       <div className="ml-auto flex shrink-0 items-center">
         {DIFF_TOOLBAR_ICON_IDS.map((id) =>
           id === "options" ? (
-            <div key={id} className="relative">
+            <span key={id} ref={optionsAnchorRef} className="inline-flex">
               <IconButton
                 id={id}
                 label={DESKTOP_ZH.diffOptions}
@@ -165,8 +171,10 @@ export function DiffToolbar({
               >
                 <Ellipsis className="h-3.5 w-3.5" />
               </IconButton>
-              {menu === "options" ? <OptionsMenu checked={checked} onRun={run} /> : null}
-            </div>
+              {menu === "options" ? (
+                <OptionsMenu anchorRef={optionsAnchorRef} checked={checked} onRun={run} />
+              ) : null}
+            </span>
           ) : (
             <IconButton
               key={id}
@@ -253,17 +261,48 @@ function IconButton({
 }
 
 function OptionsMenu({
+  anchorRef,
   checked,
   onRun,
 }: {
+  anchorRef: RefObject<HTMLElement | null>;
   checked: Record<string, boolean>;
   onRun: (id: string) => void;
 }) {
-  return (
+  const menuRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const place = () => {
+      const anchor = anchorRef.current;
+      const menu = menuRef.current;
+      if (!anchor || !menu) return;
+      const rect = anchor.getBoundingClientRect();
+      const width = menu.offsetWidth;
+      const height = menu.offsetHeight;
+      let left = rect.right - width;
+      left = Math.min(Math.max(8, left), window.innerWidth - width - 8);
+      let top = rect.bottom + 4;
+      if (top + height > window.innerHeight - 8) top = Math.max(8, rect.top - height - 4);
+      menu.style.top = `${top}px`;
+      menu.style.left = `${left}px`;
+    };
+    place();
+    const frame = requestAnimationFrame(place);
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [anchorRef]);
+  if (typeof document === "undefined") return null;
+  return createPortal(
     <div
+      ref={menuRef}
       role="menu"
       data-diff-options-menu
-      className="absolute right-0 top-full z-20 mt-1 w-max min-w-56 rounded-xl border border-zinc-700 bg-zinc-900 py-1 shadow-lg"
+      className="fixed z-[80] w-max min-w-56 rounded-xl border border-zinc-700 bg-zinc-900 py-1 shadow-lg"
+      style={{ top: -9999, left: 8 }}
     >
       {diffMenuEntries().map((entry) =>
         entry.kind === "separator" ? (
@@ -292,6 +331,7 @@ function OptionsMenu({
           </button>
         ),
       )}
-    </div>
+    </div>,
+    document.body,
   );
 }

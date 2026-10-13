@@ -51,6 +51,18 @@ export interface ProjectTree {
   paths: string[];
 }
 
+export interface FileSearchHit {
+  path: string;
+  line: number | null;
+  text: string;
+  kind: "content" | "name" | string;
+}
+
+export interface FileSearchResult {
+  hits: FileSearchHit[];
+  truncated: boolean;
+}
+
 export interface PreviewDocument {
   path: string;
   name: string;
@@ -159,6 +171,8 @@ export interface Backend {
   readPreviewFile(projectId: string, path: string): Promise<PreviewDocument>;
   /** 工作区文件路径，供打开文件页的目录树。 */
   listProjectTree(projectId: string): Promise<ProjectTree>;
+  /** 在项目目录里搜索文件名和文本。没有 Codex 全文搜索 RPC，走本机目录。 */
+  searchProjectFiles(projectId: string, query: string, mask: string): Promise<FileSearchResult>;
   /** 用系统默认程序打开项目内的文件。 */
   openProjectFile(projectId: string, path: string): Promise<void>;
   /** 把项目内文件放进内置浏览器可加载的地址。 */
@@ -289,6 +303,8 @@ export const backend: Backend = {
   readPreviewFile: (projectId, path) =>
     invoke<PreviewDocument>("read_preview_file", { projectId, path }),
   listProjectTree: (projectId) => invoke<ProjectTree>("list_project_tree", { projectId }),
+  searchProjectFiles: (projectId, query, mask) =>
+    invoke<FileSearchResult>("search_project_files", { projectId, query, mask }),
   openProjectFile: (projectId, path) =>
     invoke("open_project_file", { projectId, path }),
   prepareBrowserFile: (projectId, path) =>

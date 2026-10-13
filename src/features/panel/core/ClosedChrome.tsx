@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { Ellipsis, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { cn } from "@/lib/utils";
 import { registerBuiltinViewers } from "../viewers/register";
 import { viewerById } from "./registry";
 import { Hint } from "./Hint";
-import { SliderListIcon } from "./panel-icons";
 import { usePanel } from "./PanelProvider";
 
 registerBuiltinViewers();
@@ -34,21 +33,6 @@ export function ClosedChrome() {
       <span data-session-title className="min-w-0 flex-1 truncate text-sm text-zinc-100">
         {sessionTitle}
       </span>
-      <button
-        type="button"
-        data-panel-more
-        aria-label={DESKTOP_ZH.browserMore}
-        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-300 hover:bg-zinc-800"
-      >
-        <Ellipsis className="h-4 w-4" />
-      </button>
-      <button
-        type="button"
-        data-panel-slider
-        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-300 hover:bg-zinc-800"
-      >
-        <SliderListIcon />
-      </button>
       <span aria-hidden className="mx-0.5 h-4 w-px bg-zinc-700" />
       {count > 0 ? (
         <div

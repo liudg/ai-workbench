@@ -1,3 +1,4 @@
+import type React from "react";
 import { ChevronDown, ChevronRight, File } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -11,6 +12,7 @@ export function FileTreeList<T extends FileTreeFile>({
   showStats,
   onToggle,
   onSelect,
+  onContextMenu,
 }: {
   nodes: readonly FileTreeNode<T>[];
   collapsed: ReadonlySet<string>;
@@ -19,6 +21,7 @@ export function FileTreeList<T extends FileTreeFile>({
   showStats: boolean;
   onToggle: (id: string) => void;
   onSelect: (file: T) => void;
+  onContextMenu?: (file: T, event: React.MouseEvent) => void;
 }) {
   return (
     <ul>
@@ -33,6 +36,7 @@ export function FileTreeList<T extends FileTreeFile>({
           showStats={showStats}
           onToggle={onToggle}
           onSelect={onSelect}
+          onContextMenu={onContextMenu}
         />
       ))}
     </ul>
@@ -54,6 +58,7 @@ function TreeRows<T extends FileTreeFile>({
   showStats,
   onToggle,
   onSelect,
+  onContextMenu,
 }: {
   node: FileTreeNode<T>;
   depth: number;
@@ -63,6 +68,7 @@ function TreeRows<T extends FileTreeFile>({
   showStats: boolean;
   onToggle: (id: string) => void;
   onSelect: (file: T) => void;
+  onContextMenu?: (file: T, event: React.MouseEvent) => void;
 }) {
   const pad = { paddingLeft: 4 + depth * 12 };
   if (node.kind === "dir") {
@@ -96,6 +102,7 @@ function TreeRows<T extends FileTreeFile>({
                 showStats={showStats}
                 onToggle={onToggle}
                 onSelect={onSelect}
+                onContextMenu={onContextMenu}
               />
             ))}
           </ul>
@@ -119,6 +126,14 @@ function TreeRows<T extends FileTreeFile>({
           active ? "bg-zinc-800" : "hover:bg-zinc-800/80",
         )}
         onClick={() => onSelect(file)}
+        onContextMenu={
+          onContextMenu
+            ? (event) => {
+                event.preventDefault();
+                onContextMenu(file, event);
+              }
+            : undefined
+        }
       >
         <File className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
         <span className="min-w-0 flex-1 truncate font-mono text-xs text-zinc-200">{node.name}</span>
