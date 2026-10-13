@@ -451,13 +451,28 @@ pub(super) async fn codex_version(bin: &Path) -> String {
     let Ok(output) = command.output().await else {
         return "未知版本".into();
     };
-    let text = decode_child_bytes(&output.stdout);
-    text.lines().next().unwrap_or("codex").trim().to_string()
+    version_label(&decode_child_bytes(&output.stdout))
+}
+
+/// 状态卡标题用的是 CLI 包版本（`v0.162.1`），`--version` 整行是 `codex-cli 0.162.1`。
+pub(super) fn version_label(stdout: &str) -> String {
+    let line = stdout.lines().next().unwrap_or("").trim();
+    if line.is_empty() {
+        return "未知版本".into();
+    }
+    crate::features::agents::install::extract_version(line).unwrap_or_else(|| line.to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn version_label_keeps_the_package_semver() {
+        assert_eq!(version_label("codex-cli 0.162.1\n"), "0.162.1");
+        assert_eq!(version_label("0.162.1"), "0.162.1");
+        assert_eq!(version_label(""), "未知版本");
+    }
 
     #[test]
     fn ignores_optional_mcp_transport_noise() {
