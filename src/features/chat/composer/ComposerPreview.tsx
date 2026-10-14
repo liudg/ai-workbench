@@ -1,11 +1,17 @@
 import { useMemo, useRef, useState } from "react";
 
-import { emptySandbox, type AgentCatalog, type AgentSkillOption, type SessionEvent } from "@/types";
+import { useMemo, useRef, useState } from "react";
+
+import { emptySandbox, type AgentCatalog, type AgentSkillOption, type SessionEvent, type SessionTuning } from "@/types";
 import { ComposerBar } from "./ComposerBar";
 import { ComposerInput } from "./ComposerInput";
 import { MentionMenu } from "./MentionMenu";
+import { ModelMenu } from "./ModelMenu";
 import { SkillMenu } from "./SkillMenu";
 import { deriveComposerView } from "./composer-view";
+import { effortForModel } from "./composer-submit";
+import { FAST_TIER_ID, tuningForModel } from "./model-picker";
+import { useComposerMenu } from "./useComposerMenu";
 import { activeGoal } from "./goal";
 import { atToken, clearAtToken, insertMention, mentionFiles } from "./mentions";
 
@@ -32,34 +38,39 @@ const caps = {
 };
 
 /**
- * 目录里的 isDefault 是产品默认（GPT-6.1-Sol · 低）。
- * 首次进入应显示 CLI `config/read` 的 model / model_reasoning_effort，这里用 gpt-5.4 · 高代替那份配置。
- * 预览不调用 app-server。`?goal=live` 只是一条已经记录的 thread/goal 快照，用来核对状态栏文案。
+ * 鐩綍閲岀殑 isDefault 鏄骇鍝侀粯璁わ紙GPT-6.1-Sol 浣庯級銆?
+ * 棣栨杩涘叆搴旀樉绀?CLI `config/read` 鐨?model / model_reasoning_effort锛岃繖閲岀敤 gpt-5.4 楂樹唬鏇块偅浠介厤缃€?
+ * 鎺ㄧ悊妗ｅ拰 Fast 妗ｆ槸 `model/list` 鐨勫瓧娈靛舰鐘讹紝棰勮涓嶈皟鐢?app-server銆?
+ * `?goal=live` 鍙槸涓€鏉″凡缁忚褰曠殑 thread/goal 蹇収锛岀敤鏉ユ牳瀵圭姸鎬佹爮鏂囨銆?
  */
 const catalog: AgentCatalog = {
   models: [
     {
       id: "gpt-6.1-sol",
       label: "GPT-6.1-Sol",
-      description: "",
+      description: "鏃ュ父缂栫爜",
       is_default: true,
       default_effort: "low",
       efforts: [
         { id: "low", description: "" },
+        { id: "medium", description: "" },
         { id: "high", description: "" },
       ],
     },
     {
       id: "gpt-5.4",
       label: "GPT-5.4",
-      description: "",
+      description: "閰嶇疆閲岀殑妯″瀷",
       is_default: false,
       default_effort: "medium",
       efforts: [
+        { id: "minimal", description: "" },
         { id: "low", description: "" },
         { id: "medium", description: "" },
         { id: "high", description: "" },
+        { id: "xhigh", description: "" },
       ],
+      service_tiers: [{ id: "fast", name: "Fast", description: "" }],
     },
   ],
   skills: [],
@@ -76,34 +87,34 @@ const liveGoal: SessionEvent = {
   seq: 1,
   ts: 1,
   kind: "goal",
-  objective: "把预制体升级做完",
+  objective: "鎶婇鍒朵綋鍗囩骇鍋氬畬",
   status: "active",
   token_budget: 50000,
   tokens_used: 12500,
   time_used_seconds: 90,
 };
 
-/** 预览用的技能目录。不接 app-server，只给 `$` 菜单核对换行。 */
+/** 棰勮鐢ㄧ殑鎶€鑳界洰褰曘€備笉鎺?app-server锛屽彧缁?`$` 鑿滃崟鏍稿鎹㈣銆?*/
 const previewSkills: AgentSkillOption[] = [
   {
     name: "documents",
     mention: "documents",
-    label: "文档",
-    description: "在仓库里查找并引用长文档。说明可以换行，技能名必须留在同一行，不能从单词中间断开。",
+    label: "鏂囨。",
+    description: "鍦ㄤ粨搴撻噷鏌ユ壘骞跺紩鐢ㄩ暱鏂囨。銆傝鏄庡彲浠ユ崲琛岋紝鎶€鑳藉悕蹇呴』鐣欏湪鍚屼竴琛岋紝涓嶈兘浠庡崟璇嶄腑闂存柇寮€銆?,
     path: "documents",
   },
   {
     name: "review",
     mention: "review",
-    label: "审查",
-    description: "检查当前改动",
+    label: "瀹℃煡",
+    description: "妫€鏌ュ綋鍓嶆敼鍔?,
     path: "review",
   },
 ];
 
 /**
- * 开发预览：真实菜单和芯片，文件来自本仓库的模块图。
- * 不接 app-server，也不调用 thread/goal。
+ * 寮€鍙戦瑙堬細鐪熷疄鑿滃崟鍜岃姱鐗囷紝鏂囦欢鏉ヨ嚜鏈粨搴撶殑妯″潡鍥俱€?
+ * 涓嶆帴 app-server锛屼篃涓嶈皟鐢?thread/goal銆?
  */
 export default function ComposerPreview() {
   const params = new URLSearchParams(window.location.search);
@@ -112,10 +123,13 @@ export default function ComposerPreview() {
   const [planOn, setPlanOn] = useState(false);
   const [goalDraft, setGoalDraft] = useState(false);
   const [goalLive, setGoalLive] = useState(params.get("goal") === "live");
+  const [tuning, setTuning] = useState<SessionTuning | undefined>();
+  const [menu, setMenu] = useState<null | "model">(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const plusRef = useRef<HTMLButtonElement>(null);
   const accessRef = useRef<HTMLButtonElement>(null);
   const modelRef = useRef<HTMLButtonElement>(null);
+  const modelMenuRef = useRef<HTMLDivElement>(null);
   const events = useMemo<SessionEvent[]>(() => {
     const rows: SessionEvent[] = [];
     if (planOn) {
@@ -141,7 +155,7 @@ export default function ComposerPreview() {
     commands: [],
     skills: previewSkills,
     catalog,
-    tuning: undefined,
+    tuning,
     catalogNotice: null,
     text,
     caret,
@@ -151,6 +165,15 @@ export default function ComposerPreview() {
     goalLive,
     goal,
   });
+  useComposerMenu(menu === "model", modelRef, modelMenuRef, () => setMenu(null));
+  const rememberTuning = (next: SessionTuning) => {
+    setTuning((current) => ({
+      model: next.model,
+      effort: next.effort,
+      serviceTier: next.serviceTier === undefined ? current?.serviceTier : next.serviceTier,
+    }));
+  };
+
   const files = useMemo(
     () => (view.mentionQuery ? mentionFiles(workspaceFiles, view.mentionQuery) : []),
     [view.mentionQuery],
@@ -245,7 +268,7 @@ export default function ComposerPreview() {
               plusRef={plusRef}
               accessRef={accessRef}
               modelRef={modelRef}
-              menu={null}
+              menu={menu}
               imagesOn={false}
               composerLocked={false}
               sandbox={emptySandbox()}
@@ -258,7 +281,9 @@ export default function ComposerPreview() {
               editing={false}
               stopMode={false}
               sendDisabled={view.sendDisabled}
-              onToggleMenu={() => {}}
+              onToggleMenu={(name) => {
+                if (name === "model") setMenu((current) => (current === "model" ? null : "model"));
+              }}
               onPickFiles={() => {}}
               onDismissPlan={() => setPlanOn(false)}
               onDismissGoal={() => {
@@ -271,6 +296,39 @@ export default function ComposerPreview() {
           </div>
         </div>
       </div>
+      {menu === "model" && (
+        <ModelMenu
+          menuRef={modelMenuRef}
+          models={catalog.models}
+          modelId={view.selectedModel?.id}
+          modelLabel={view.selectedModel?.label}
+          effortId={view.selectedEffort}
+          fastOn={view.fastOn}
+          fastAvailable={view.fastAvailable}
+          canReset={Boolean(view.baselineModelId)}
+          onModel={(model) => rememberTuning(tuningForModel(model, view.selectedEffort, view.storedServiceTier))}
+          onEffort={(effort) => {
+            if (!view.selectedModel) return;
+            rememberTuning({ model: view.selectedModel.id, effort });
+          }}
+          onFast={(enabled) => {
+            if (!view.selectedModel) return;
+            rememberTuning({
+              model: view.selectedModel.id,
+              effort: view.selectedEffort ?? effortForModel(view.selectedModel, view.selectedEffort),
+              serviceTier: enabled ? FAST_TIER_ID : null,
+            });
+          }}
+          onReset={() => {
+            if (!view.baselineModelId) return;
+            rememberTuning({
+              model: view.baselineModelId,
+              effort: view.baselineEffort ?? "",
+              serviceTier: view.baselineServiceTier,
+            });
+          }}
+        />
+      )}
     </div>
   );
 }

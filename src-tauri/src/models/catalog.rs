@@ -9,6 +9,18 @@ pub struct ReasoningEffortOption {
     pub description: String,
 }
 
+/// `model/list` 的一个 service tier。速度开关只在目录真有 Fast 档时出现。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ModelServiceTier {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+}
+
+fn default_show_in_picker() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentModelOption {
     pub id: String,
@@ -17,6 +29,13 @@ pub struct AgentModelOption {
     pub is_default: bool,
     pub default_effort: String,
     pub efforts: Vec<ReasoningEffortOption>,
+    /// 缺省为 true，旧缓存没有这个字段时模型仍然出现在选择器里。
+    #[serde(default = "default_show_in_picker")]
+    pub show_in_picker: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub service_tiers: Vec<ModelServiceTier>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_service_tier: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -255,6 +274,9 @@ pub struct AgentCatalog {
     /// CLI `config/read` 的 `model_reasoning_effort`。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub configured_effort: Option<String>,
+    /// CLI `config/read` 的 `service_tier`。`default` 在解析时丢掉。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub configured_service_tier: Option<String>,
     /// 已打开线程回包里的模型。新会话还没有。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thread_model: Option<String>,
@@ -275,6 +297,7 @@ impl AgentCatalog {
             skills_error: None,
             configured_model: None,
             configured_effort: None,
+            configured_service_tier: None,
             thread_model: None,
             thread_effort: None,
             cli_config_read: None,

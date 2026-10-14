@@ -50,6 +50,9 @@ fn skills_failure_keeps_models_and_previous_skills() {
         is_default: true,
         default_effort: "medium".into(),
         efforts: Vec::new(),
+        show_in_picker: true,
+        service_tiers: Vec::new(),
+        default_service_tier: None,
     }];
     let previous = vec![AgentSkillOption {
         name: "documents:documents".into(),
@@ -74,6 +77,9 @@ fn skills_failure_without_a_previous_list_is_reported() {
         is_default: true,
         default_effort: "medium".into(),
         efforts: Vec::new(),
+        show_in_picker: true,
+        service_tiers: Vec::new(),
+        default_service_tier: None,
     }];
     let catalog = assemble_catalog(
         models,
@@ -167,6 +173,13 @@ fn cli_config_model_ignores_the_catalog_default() {
     }));
     assert_eq!(wrapped.model.as_deref(), Some("gpt-5.4"));
     assert_eq!(wrapped.effort.as_deref(), Some("high"));
+    assert!(wrapped.service_tier.is_none());
+    let fast = parse_cli_model_config(&json!({
+        "config": { "service_tier": "fast", "serviceTier": "default" }
+    }));
+    assert_eq!(fast.service_tier.as_deref(), Some("fast"));
+    let cleared = parse_cli_model_config(&json!({ "service_tier": "default" }));
+    assert!(cleared.service_tier.is_none());
     let bare = parse_cli_model_config(&json!({ "model": "gpt-5.4" }));
     assert_eq!(bare.model.as_deref(), Some("gpt-5.4"));
     assert!(bare.effort.is_none());
@@ -209,6 +222,39 @@ fn reads_model_efforts() {
     assert_eq!(models[0].id, "gpt-test");
     assert_eq!(models[0].efforts.len(), 2);
     assert_eq!(models[0].default_effort, "medium");
+    assert!(models[0].show_in_picker);
+    assert!(models[0].service_tiers.is_empty());
+}
+
+#[test]
+fn reads_service_tiers_and_hides_non_picker_models() {
+    let models = parse_models(&json!({
+        "data": [{
+            "model": "gpt-fast",
+            "displayName": "GPT Fast",
+            "visibility": "list",
+            "defaultServiceTier": "default",
+            "serviceTiers": [{ "id": "fast", "name": "Fast", "description": "1.5x" }],
+            "supportedReasoningEfforts": []
+        }, {
+            "id": "gpt-legacy",
+            "displayName": "Legacy",
+            "additionalSpeedTiers": ["fast"],
+            "showInPicker": false
+        }, {
+            "model": "gpt-hidden",
+            "hidden": true,
+            "visibility": "hide"
+        }]
+    }));
+    assert_eq!(models.len(), 2);
+    assert_eq!(models[0].service_tiers[0].id, "fast");
+    assert_eq!(models[0].service_tiers[0].description, "1.5x");
+    assert!(models[0].default_service_tier.is_none());
+    assert!(models[0].show_in_picker);
+    assert_eq!(models[1].id, "gpt-legacy");
+    assert_eq!(models[1].service_tiers[0].id, "fast");
+    assert!(!models[1].show_in_picker);
 }
 
 #[test]

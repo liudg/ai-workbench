@@ -673,6 +673,18 @@ impl SessionManager {
             .map_err(|err| err.to_string())
     }
 
+    pub async fn set_session_service_tier(
+        &self,
+        store: &ProjectStore,
+        session_id: &str,
+        service_tier: Option<String>,
+    ) -> Result<(), String> {
+        let handle = self.open_agent(store, session_id).await?;
+        handle
+            .set_service_tier(service_tier)
+            .map_err(|err| err.to_string())
+    }
+
     pub async fn set_session_access(
         &self,
         store: &ProjectStore,

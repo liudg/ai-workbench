@@ -182,6 +182,13 @@ impl Shared {
         if let Some(effort) = self.effort.lock().unwrap().clone() {
             params["effort"] = json!(effort);
         }
+        if let Some(tier) = self.service_tier.lock().unwrap().clone() {
+            params["serviceTier"] = if tier.is_empty() {
+                Value::Null
+            } else {
+                json!(tier)
+            };
+        }
         self.attach_plan_mode(&mut params)?;
         self.turn_open.store(true, Ordering::SeqCst);
         if !self.write_method("turn/start", params) {

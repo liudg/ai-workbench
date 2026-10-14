@@ -29,7 +29,18 @@ export function useComposerMenu(
       if (anchor && menu) placeMenu(anchor, menu);
     };
     place();
-    const frame = requestAnimationFrame(place);
+    let observer: ResizeObserver | null = null;
+    const watch = () => {
+      const menu = menuRef.current;
+      if (!menu || observer) return;
+      observer = new ResizeObserver(place);
+      observer.observe(menu);
+    };
+    watch();
+    const frame = requestAnimationFrame(() => {
+      place();
+      watch();
+    });
     const onPointer = (event: MouseEvent) => {
       const target = event.target as Node;
       if (anchorRef.current?.contains(target) || menuRef.current?.contains(target)) return;
@@ -42,6 +53,7 @@ export function useComposerMenu(
     document.addEventListener("keydown", onKey);
     window.addEventListener("resize", place);
     return () => {
+      observer?.disconnect();
       cancelAnimationFrame(frame);
       document.removeEventListener("mousedown", onPointer);
       document.removeEventListener("keydown", onKey);

@@ -54,6 +54,7 @@ pub(super) fn assemble_catalog(
         skills_error,
         configured_model: None,
         configured_effort: None,
+        configured_service_tier: None,
         thread_model: None,
         thread_effort: None,
         cli_config_read: None,
@@ -91,6 +92,23 @@ impl Shared {
                 Some(trimmed.to_string())
             };
         }
+    }
+
+    /// `None` 或空字符串都是显式关掉速度档，下一回合会带 `serviceTier: null`。
+    /// 还没调过这个方法时不写字段，让 CLI 自己的配置生效。
+    pub(super) fn set_service_tier(&self, tier: Option<String>) {
+        let stored = match tier {
+            Some(value) => {
+                let trimmed = value.trim();
+                if trimmed.is_empty() || trimmed == "default" {
+                    Some(String::new())
+                } else {
+                    Some(trimmed.to_string())
+                }
+            }
+            None => Some(String::new()),
+        };
+        *self.service_tier.lock().unwrap() = stored;
     }
 
     pub(super) async fn catalog(&self) -> Result<AgentCatalog, AgentError> {
@@ -138,6 +156,7 @@ async fn apply_cli_defaults(shared: &Shared, catalog: &mut AgentCatalog) {
             let parsed = parse_cli_model_config(&value);
             catalog.configured_model = parsed.model;
             catalog.configured_effort = parsed.effort;
+            catalog.configured_service_tier = parsed.service_tier;
             catalog.cli_config_read = Some(true);
         }
         Err(_) => {

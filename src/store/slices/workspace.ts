@@ -78,13 +78,25 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
       }));
     },
 
-    setTuning(sessionId, model, effort) {
-      set((s) => ({
-        tuning: { ...s.tuning, [sessionId]: { model, effort } },
-      }));
+    setTuning(sessionId, model, effort, serviceTier) {
+      set((s) => {
+        const previous = s.tuning[sessionId];
+        const nextTier = serviceTier === undefined ? previous?.serviceTier : serviceTier;
+        return {
+          tuning: {
+            ...s.tuning,
+            [sessionId]: { model, effort, ...(nextTier !== undefined ? { serviceTier: nextTier } : {}) },
+          },
+        };
+      });
       void backend.setSessionTuning(sessionId, model, effort).catch((e) => {
         reportSessionError(get, set, sessionId, e);
       });
+      if (serviceTier !== undefined) {
+        void backend.setSessionServiceTier(sessionId, serviceTier).catch((e) => {
+          reportSessionError(get, set, sessionId, e);
+        });
+      }
     },
 
     addAttachments(sessionId, files) {

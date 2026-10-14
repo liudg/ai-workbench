@@ -1,13 +1,20 @@
 import { modelButtonLabel } from "../../../lib/catalog.ts";
 import { filterSlash, slashToken } from "../../../lib/slash.ts";
 import { DESKTOP_ZH } from "../../../shared/strings/desktop-zh.ts";
+import {
+  baselineServiceTier,
+  effectiveServiceTier,
+  FAST_TIER_ID,
+  modelChipText,
+  supportsFast,
+} from "./model-picker.ts";
 import { isReadOnlyOpen, pendingPrompt } from "../../../lib/utils.ts";
 import {
-  effortLabel,
   type AgentCapabilities,
   type AgentCatalog,
   type AgentModelOption,
   type AgentSkillOption,
+  type SessionTuning,
   type PermissionMenu,
   type Session,
   type SessionEvent,
@@ -30,7 +37,7 @@ export interface ComposerViewInput {
   commands: readonly SlashCommand[];
   skills: readonly AgentSkillOption[];
   catalog: AgentCatalog | undefined;
-  tuning: { model: string; effort: string } | undefined;
+  tuning: SessionTuning | undefined;
   catalogNotice: string | null;
   text: string;
   caret: number;
@@ -61,7 +68,7 @@ function modelById(catalog: AgentCatalog | undefined, id: string | null | undefi
  * 用户没选过模型时，显示顺序是：已打开线程的模型、CLI `config/read` 的 model、
  * 目录里标了 isDefault 的模型（仅当配置里没写 model）。不拿列表第一项充数。
  */
-export function pickModel(catalog: AgentCatalog | undefined, tuning: { model: string; effort: string } | undefined) {
+export function pickModel(catalog: AgentCatalog | undefined, tuning: SessionTuning | undefined) {
   if (tuning?.model) return modelById(catalog, tuning.model);
   const thread = modelById(catalog, catalog?.thread_model);
   if (thread) return thread;
@@ -80,7 +87,7 @@ function effortAllowed(model: AgentModelOption | undefined, effort: string | nul
 
 /** 强度跟 CLI：配置里的 `model_reasoning_effort`，否则该模型自己的 defaultReasoningEffort。 */
 export function pickEffort(
-  tuning: { model: string; effort: string } | undefined,
+  tuning: SessionTuning | undefined,
   model: AgentModelOption | undefined,
   catalog?: AgentCatalog,
 ) {
@@ -122,13 +129,19 @@ export function deriveComposerView(input: ComposerViewInput) {
   const planSupport: MentionSupport = mentionSupport(capsKnown, Boolean(caps?.supports_plan));
   const selectedModel = pickModel(input.catalog, input.tuning);
   const selectedEffort = pickEffort(input.tuning, selectedModel, input.catalog);
+  const baselineModel = pickModel(input.catalog, undefined);
+  const baselineEffort = pickEffort(undefined, baselineModel, input.catalog);
+  const storedServiceTier = input.tuning?.serviceTier;
+  const selectedServiceTier = effectiveServiceTier(selectedModel, input.tuning, input.catalog);
   const unreadConfig = input.catalog?.cli_config_read === false && !selectedModel;
   const modelButton = modelButtonLabel(
     selectedModel
-      ? `${selectedModel.label} · ${effortLabel(selectedEffort)}`
+      ? modelChipText(selectedModel.label, selectedEffort)
       : unreadConfig
         ? DESKTOP_ZH.modelConfigUnread
-        : undefined,
+        : input.catalog && input.catalog.models.length > 0
+          ? DESKTOP_ZH.selectEffort
+          : undefined,
     input.catalog,
     input.catalogNotice,
   );
@@ -183,6 +196,12 @@ export function deriveComposerView(input: ComposerViewInput) {
     selectedModel,
     selectedEffort,
     modelButton,
+    fastOn: selectedServiceTier === FAST_TIER_ID,
+    fastAvailable: supportsFast(selectedModel),
+    storedServiceTier,
+    baselineModelId: baselineModel?.id,
+    baselineEffort,
+    baselineServiceTier: baselineServiceTier(baselineModel, input.catalog),
     placeholder,
     planOn,
     goalOn,

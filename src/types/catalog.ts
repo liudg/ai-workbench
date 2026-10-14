@@ -60,6 +60,13 @@ export interface ReasoningEffortOption {
   description: string;
 }
 
+/** `model/list` 的 `serviceTiers`。速度开关只认目录里真正有的档。 */
+export interface ModelServiceTier {
+  id: string;
+  name: string;
+  description: string;
+}
+
 export interface AgentModelOption {
   id: string;
   label: string;
@@ -67,6 +74,18 @@ export interface AgentModelOption {
   is_default: boolean;
   default_effort: string;
   efforts: ReasoningEffortOption[];
+  /** 缺省表示出现在选择器里。`false` 对应 Codex `show_in_picker == false`。 */
+  show_in_picker?: boolean;
+  service_tiers?: ModelServiceTier[];
+  default_service_tier?: string | null;
+}
+
+/** 作曲栏这次会话改过的模型、推理强度和速度档。 */
+export interface SessionTuning {
+  model: string;
+  effort: string;
+  /** `null` 表示用户关掉速度档。缺省表示还没改，沿用 CLI 配置。 */
+  serviceTier?: string | null;
 }
 
 export interface AgentSkillOption {
@@ -155,6 +174,8 @@ export interface AgentCatalog {
   configured_model?: string | null;
   /** CLI `config/read` 的 `model_reasoning_effort`。 */
   configured_effort?: string | null;
+  /** CLI `config/read` 的 `service_tier`。`default` 不算覆盖。 */
+  configured_service_tier?: string | null;
   /** 已经打开的线程自己的模型。新会话还没有。 */
   thread_model?: string | null;
   thread_effort?: string | null;
@@ -181,6 +202,8 @@ export const EFFORT_LABELS: Record<string, string> = {
   medium: "中",
   high: "高",
   xhigh: "极高",
+  max: "Max",
+  ultra: "Ultra",
 };
 
 export function effortLabel(id: string | undefined): string {

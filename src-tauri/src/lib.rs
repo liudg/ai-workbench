@@ -47,6 +47,7 @@ macro_rules! workbench_handler {
             $crate::features::ipc::sessions::cached_agent_catalogs,
             $crate::features::ipc::sessions::agent_catalog,
             $crate::features::ipc::sessions::set_session_tuning,
+            $crate::features::ipc::sessions::set_session_service_tier,
             $crate::features::ipc::sessions::set_collaboration_mode,
             $crate::features::ipc::sessions::set_thread_goal,
             $crate::features::ipc::sessions::clear_thread_goal,

@@ -28,6 +28,7 @@ export const sessionCommands: Pick<
   | "cachedAgentCatalogs"
   | "agentCatalog"
   | "setSessionTuning"
+  | "setSessionServiceTier"
   | "sendMessage"
   | "submitAnnotation"
   | "diffScopes"
@@ -79,6 +80,8 @@ export const sessionCommands: Pick<
     invoke<AgentCatalogRefresh>("agent_catalog", { sessionId }),
   setSessionTuning: (sessionId, model, effort) =>
     invoke("set_session_tuning", { sessionId, model, effort }),
+  setSessionServiceTier: (sessionId, serviceTier) =>
+    invoke("set_session_service_tier", { sessionId, serviceTier }),
   sendMessage: (sessionId, text, images, annotations) =>
     invoke("send_message", {
       sessionId,

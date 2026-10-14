@@ -145,6 +145,7 @@ export function ComposerBar({
               "inline-flex h-8 min-w-0 items-center justify-center gap-1 overflow-hidden rounded-full text-sm text-zinc-200 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40",
               icons ? "w-8 px-0" : density === "compact" ? "max-w-[6.5rem] px-2" : "max-w-52 px-2",
             )}
+            data-model-chip
             aria-label="模型"
             aria-haspopup="menu"
             aria-expanded={menu === "model"}

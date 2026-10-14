@@ -259,6 +259,11 @@ pub trait AgentSession: DiffScopeProvider + AnnotationSink + Send + Sync {
         Ok(())
     }
 
+    /// 后续回合的 service tier。`None` 表示显式关掉。默认什么都不做，避免没接目录的 Agent 假装支持快速档。
+    fn set_service_tier(&self, _tier: Option<String>) -> Result<(), AgentError> {
+        Ok(())
+    }
+
     /// 该 Agent 的原生会话 id。没有时返回 None，由会话管理器另造 id。
     fn native_id(&self) -> Option<String> {
         None

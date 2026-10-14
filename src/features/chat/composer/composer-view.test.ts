@@ -143,7 +143,7 @@ const catalog: AgentCatalog = {
 };
 
 test("the model button follows CLI config before the catalog default", () => {
-  assert.equal(view({ catalog }).modelButton, "GPT-5.4 · 高");
+  assert.equal(view({ catalog }).modelButton, "GPT-5.4 高");
   assert.equal(view({ catalog }).selectedEffort, "high");
   assert.equal(
     view({
@@ -153,13 +153,13 @@ test("the model button follows CLI config before the catalog default", () => {
         thread_effort: "medium",
       },
     }).modelButton,
-    "GPT-6.1-Sol · 中",
+    "GPT-6.1-Sol 中",
   );
   assert.equal(
     view({
       catalog: { ...catalog, configured_model: null, configured_effort: null },
     }).modelButton,
-    "GPT-6.1-Sol · 低",
+    "GPT-6.1-Sol 低",
   );
   assert.equal(
     view({
@@ -174,8 +174,38 @@ test("the model button follows CLI config before the catalog default", () => {
   );
   assert.equal(
     view({ catalog, tuning: { model: "gpt-6.1-sol", effort: "high" } }).modelButton,
-    "GPT-6.1-Sol · 高",
+    "GPT-6.1-Sol 高",
   );
+  const bare = {
+    ...catalog,
+    models: catalog.models.map((item) => ({ ...item, is_default: false })),
+    configured_model: null,
+    configured_effort: null,
+  };
+  assert.equal(view({ catalog: bare }).modelButton, "选择强度");
+});
+
+test("fast mode is on only when this model advertises the fast tier", () => {
+  assert.equal(view({ catalog }).fastAvailable, false);
+  assert.equal(view({ catalog }).fastOn, false);
+  const withFast = {
+    ...catalog,
+    configured_service_tier: "fast",
+    models: catalog.models.map((item) =>
+      item.id === "gpt-5.4"
+        ? { ...item, service_tiers: [{ id: "fast", name: "Fast", description: "" }] }
+        : item,
+    ),
+  };
+  assert.equal(view({ catalog: withFast }).fastOn, true);
+  assert.equal(view({ catalog: withFast }).fastAvailable, true);
+  assert.equal(
+    view({ catalog: withFast, tuning: { model: "gpt-5.4", effort: "high", serviceTier: null } }).fastOn,
+    false,
+  );
+  assert.equal(view({ catalog: withFast }).baselineModelId, "gpt-5.4");
+  assert.equal(view({ catalog: withFast }).baselineEffort, "high");
+  assert.equal(view({ catalog: withFast }).baselineServiceTier, "fast");
 });
 
 test("plan and goal chips are exclusive and the goal bar follows the goal", () => {

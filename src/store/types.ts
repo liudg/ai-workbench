@@ -15,6 +15,7 @@ import type {
   ReviewStart,
   Session,
   SessionEvent,
+  SessionTuning,
 } from "@/types";
 import type { CreateProjectInput, ImportProjectInput } from "@/lib/ipc";
 import type { UpdatePhase } from "@/lib/updater";
@@ -74,10 +75,10 @@ export interface WorkspaceSlice {
   catalogCache: Partial<Record<AgentKind, AgentCatalog>>;
   /** 目录刷新失败时的一条弱提示。不占用全局红色错误条。 */
   catalogNotice: string | null;
-  tuning: Record<string, { model: string; effort: string }>;
+  tuning: Record<string, SessionTuning>;
   setSandbox(sessionId: string, sandbox: SessionSandbox): void;
   loadCatalog(sessionId: string): Promise<void>;
-  setTuning(sessionId: string, model: string, effort: string): void;
+  setTuning(sessionId: string, model: string, effort: string, serviceTier?: string | null): void;
   addAttachments(sessionId: string, files: Attachment[]): void;
   removeAttachment(sessionId: string, path: string): void;
   clearAttachments(sessionId: string): void;
