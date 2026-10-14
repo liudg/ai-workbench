@@ -10,7 +10,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "tauri:dev": "tauri dev",
+    "tauri:dev": "tauri dev -- --bin ai-workbench",
     "tauri:build": "tauri build && node scripts/copy-installer.mjs",
     "icons:gen": "node scripts/gen-icons.mjs"
   },
