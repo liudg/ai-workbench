@@ -14,7 +14,7 @@ fn model(id: &str) -> AgentModelOption {
         show_in_picker: true,
         service_tiers: Vec::new(),
         default_service_tier: None,
-    resolved_model: String::new(),
+        resolved_model: String::new(),
     }
 }
 

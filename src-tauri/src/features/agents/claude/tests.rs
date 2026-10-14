@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use serde_json::json;
 
-use super::catalog::{self, permission_menu};
+use super::catalog;
 use super::command::{self, Launch};
 use super::control::{self, PermissionKind};
 use super::diff;
@@ -13,6 +13,7 @@ use super::history::{self, conversation_chain};
 use super::images;
 use super::messages::{self, ingest_line, MapState};
 use super::mutate;
+use super::permission::permission_menu;
 use super::process;
 use crate::models::{AgentKind, MessagePhase, PromptAnswer, SessionEventBody, SessionStatus};
 
@@ -426,8 +427,6 @@ fn catalog_uses_reported_fields_and_permission_menu_is_honest() {
 }
 
 #[test]
-
-#[test]
 fn settings_resolved_model_maps_to_alias_keeping_efforts() {
     let mut catalog = catalog::empty_catalog();
     catalog::apply_model_list(
@@ -488,6 +487,38 @@ fn bracketed_resolved_model_still_maps_without_placeholder() {
     assert_eq!(catalog.thread_model.as_deref(), Some("default"));
     assert_eq!(catalog.models.len(), 1);
     assert_eq!(catalog.models[0].efforts.len(), 3);
+}
+
+#[test]
+fn bracketed_name_does_not_steal_the_unbracketed_alias() {
+    let mut catalog = catalog::empty_catalog();
+    catalog::apply_model_list(
+        &mut catalog,
+        &json!({
+            "models": [
+                {
+                    "value": "default",
+                    "resolvedModel": "gpt-6.1-sol[1m]",
+                    "displayName": "Default (recommended)",
+                    "supportedEffortLevels": ["low", "high"]
+                },
+                {
+                    "value": "opus",
+                    "resolvedModel": "gpt-6.1-sol",
+                    "displayName": "gpt-6.1-sol",
+                    "supportedEffortLevels": ["low", "medium", "high", "xhigh", "max"]
+                }
+            ]
+        }),
+    );
+    catalog::apply_settings(
+        &mut catalog,
+        &json!({"applied": {"model": "gpt-6.1-sol[1m]"}}),
+    );
+    assert_eq!(catalog.thread_model.as_deref(), Some("default"));
+    assert_eq!(catalog.models.len(), 2);
+    assert!(catalog.models.iter().find(|model| model.id == "default").unwrap().is_default);
+    assert!(!catalog.models.iter().find(|model| model.id == "opus").unwrap().is_default);
 }
 
 #[test]

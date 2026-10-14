@@ -1,4 +1,6 @@
 import { DESKTOP_ZH } from "../../../shared/strings/desktop-zh.ts";
+import type { AgentModelOption } from "../../../types/index.ts";
+import { shortHanLabel } from "./choice-text.ts";
 
 /**
  * 目录档位 id → 中文短标签。
@@ -35,16 +37,17 @@ export function effortChromeLabel(id: string): string {
   return CHROME[key] ?? CHROME[key.replace(/-/g, "")] ?? "";
 }
 
-/** 不认识的 id：只用适配器已经给出的短中文名，否则显示 id。长英文说明丢掉。 */
-function shortHanLabel(label: string | null | undefined): string {
-  const text = label?.trim() ?? "";
-  if (!text || text.length > 8 || /\s/.test(text)) return "";
-  return /[\u3400-\u9fff]/.test(text) ? text : "";
-}
-
 export function effortChoiceLabel(
   option: { id: string; label?: string | null } | undefined,
 ): string {
   if (!option) return "";
   return effortChromeLabel(option.id) || shortHanLabel(option.label) || option.id.trim();
+}
+
+/** 当前模型目录里这个档位的短标签。档不在目录里就不显示。 */
+export function effortDisplay(model: AgentModelOption | undefined, effortId: string | undefined): string {
+  const id = effortId?.trim();
+  if (!id) return "";
+  const option = model?.efforts.find((item) => item.id === id);
+  return option ? effortChoiceLabel(option) : "";
 }

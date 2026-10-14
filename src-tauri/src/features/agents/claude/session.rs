@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use super::catalog;
 use super::images;
+use super::permission;
 use super::runtime::Shared;
 use super::super::protocol::{
     default_git_scopes, fold_page_annotations, submit_annotation_as_attachment, turn_scope,
@@ -70,7 +70,7 @@ impl AgentSession for ClaudeSession {
     }
 
     async fn permission_menu(&self) -> Result<PermissionMenu, AgentError> {
-        Ok(catalog::permission_menu(&self.shared.current_access()))
+        Ok(permission::permission_menu(&self.shared.current_access()))
     }
 
     async fn catalog(&self) -> Result<AgentCatalog, AgentError> {

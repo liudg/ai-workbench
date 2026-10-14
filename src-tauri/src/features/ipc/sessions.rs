@@ -4,7 +4,7 @@ use tauri::State;
 
 use crate::features::agents::DiffScope;
 use crate::features::projects::ProjectStore;
-use crate::features::sessions::{AgentCatalogRefresh, CachedAgentCatalog, SessionManager};
+use crate::features::sessions::{AgentCatalogRefresh, SessionManager};
 use crate::models::*;
 
 #[tauri::command]
@@ -61,11 +61,6 @@ pub async fn create_session(
             access_mode,
         )
         .await
-}
-
-#[tauri::command]
-pub fn cached_agent_catalogs(manager: State<'_, SessionManager>) -> Vec<CachedAgentCatalog> {
-    manager.cached_catalogs()
 }
 
 #[tauri::command]

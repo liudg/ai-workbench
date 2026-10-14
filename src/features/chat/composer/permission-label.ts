@@ -1,5 +1,6 @@
 import { DESKTOP_ZH } from "../../../shared/strings/desktop-zh.ts";
 import type { PermissionProfileOption } from "../../../types/index.ts";
+import { hasHan } from "./choice-text.ts";
 
 /**
  * 内置档位 id → 中文标题。
@@ -12,10 +13,6 @@ const PRESET_CHROME: Record<string, string> = {
   full: DESKTOP_ZH.permissionFull,
   "read-only": DESKTOP_ZH.permissionReadOnly,
 };
-
-function hasHan(text: string): boolean {
-  return /[\u3400-\u9fff]/.test(text);
-}
 
 export function permissionChoiceLabel(item: Pick<PermissionProfileOption, "id" | "label">): string {
   const label = item.label.trim();

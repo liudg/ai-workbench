@@ -17,6 +17,7 @@ mod history;
 mod images;
 mod messages;
 mod mutate;
+mod permission;
 mod process;
 mod runtime;
 mod session;

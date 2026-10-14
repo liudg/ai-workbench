@@ -36,34 +36,23 @@
 
 ## 4. 这一轮做了什么
 
-从 PR #72 的头（`cursor/fix-composer-diff-ux-dc0f`）接着搬。只拆模块、去掉没有调用点的代码，并把展示层的 store / IPC 收到 hook。不改已经验收的交互，不造数据。
+从 `43fdf1c`（Claude 模型别名对齐）接着收。只搬近期目录、标签和会话目录接线留下的职责，不改作曲栏交互，不造数据。更早的预览、协议和 Codex 目录拆分还在，这里不重复。
 
-更早一轮（PR #70）已经把协议类型、IPC、作曲栏、面板状态、会话日志和安装探测拆开。那些边界还在，这里不重复。
+### Claude 目录
 
-### 预览
+- `agents/claude/catalog.rs` 拆成 `catalog/mod.rs`（initialize / list_models / get_settings 怎么写入一份目录）和 `catalog/models.rs`（模型行解析，以及 id → resolvedModel → label 的对齐）。`is_default` 只在对齐时写一次。
+- 权限菜单挪到 `agents/claude/permission.rs`。它跟模型目录不是一件事。
+- 线程模型的写入收成 `adopt_thread_model`。运行时不再自己改 `cli_config_read` 再调用对齐。
 
-- `preview/index.rs` 拆成 `index/mod.rs`（路径和正文缓存）、`index/scan.rs`（遍历）、`index/refresh.rs`（按修改时间作废缓存）。
-- `preview/search.rs` 拆成 `search/mod.rs`（索引枢纽和命令）、`search/cursor.rs`（步进）、`search/mask.rs`（glob）。测试在 `search/tests.rs`。
-- `preview/mod.rs` 只留命令。路径在 `path.rs`，文本在 `read.rs`，图片在 `image.rs`。
-- `tree.rs` 删掉只被测试走到的 `filter_paths`。筛选测试改走生产的 `query_indexed_paths`。
+### 作曲栏
+
+- 报告名对上哪一行模型、以及没手动选过时先看线程还是配置，在 `composer/model-selection.ts`。`composer-view.ts` 只拼这一屏的状态。
+- 推理档短标签在 `effort-label.ts`（含「这个模型的当前档显示什么」）。滑杆几何和速度档留在 `model-picker.ts`。
+- 汉字判断在 `choice-text.ts`，权限档和推理档共用。两张 id → 中文表仍各管各的。
 
 ### 死代码
 
-- `ChangeCapabilities::git_only` 没有调用点，已删。`none` 和 `codex` 还在。
-- `preview/browser.rs` 里只在 Windows 上收页面消息的函数标了 `cfg(windows)`。`parse_drained_messages` 测试也要用，所以是 `cfg(any(windows, test))`。标题、标注和截图命令在各平台都会进，没有删。非 Windows 的截图仍返回「截图不可用」。
-
-### 展示层
-
-这些文件不再自己调 `useWorkbench` 或 `backend`：`Workspace`、`RightPane`、`EmptyState`、`UpdateDialog`、`App` 外壳、图片查看器、文件预览壳、图片预览壳。数据走旁边的 hook 或 `preview-project.ts` / `image-file.ts`。`PanelProvider` 仍是面板边界，可以碰 store。关预览浏览器改走 `useCloseBrowserOnUnmount`。
-
-### 其它按同一条边界拆开的模块
-
-- 图片魔数和 base64 在 `images/preview_codec.rs`。聊天附件的路径校验留在 `images/mod.rs`。
-- diff 的折叠在 `fold.ts`，正文过滤在 `diff-body.ts`。
-- Codex 进程启动拆成 `process/proxy.rs`、`process/stderr.rs`、`process/bin.rs`。
-- 模型目录拆成装配（`catalog/mod.rs`）、`models.rs`、`skills.rs`、回合输入和斜杠表（`input.rs`）。
-- review / plan 的协议文本留在 `gap/mod.rs`，git 审查目标在 `gap/git.rs`，线程上的动作在 `gap/modes.rs`。
-- `sessions/catalog`、`codex/host`、`codex/state` 的测试挪到同目录的 `*_tests.rs`。实现没动。
+- `cached_agent_catalogs` 没有调用点。它一次返回每个 Agent 的目录，界面不该拿来画。按会话取目录的 `agent_catalog` 还在，失败时仍只用这一 Agent 自己的缓存。
 
 ## 5. 没有 Codex 对应物、这一轮未改产品行为的功能
 

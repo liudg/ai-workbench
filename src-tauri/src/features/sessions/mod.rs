@@ -5,5 +5,5 @@ mod catalog;
 mod log;
 mod manager;
 
-pub use catalog::{AgentCatalogRefresh, CachedAgentCatalog};
+pub use catalog::AgentCatalogRefresh;
 pub use manager::{EventEmitter, SessionManager};
