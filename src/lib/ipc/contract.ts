@@ -6,7 +6,6 @@ import type {
   SessionSandbox,
   AgentCatalogRefresh,
   AgentProfile,
-  CachedAgentCatalog,
   Attachment,
   PageAnnotation,
   Project,
@@ -59,8 +58,6 @@ export interface Backend {
   listAgentInstallations(): Promise<AgentInstallation[]>;
   /** 按该 Agent 的官方渠道升级，并返回刷新后的状态。 */
   updateAgent(kind: AgentKind): Promise<AgentInstallation>;
-  /** 启动时读取各 Agent 上次成功的模型目录。 */
-  cachedAgentCatalogs(): Promise<CachedAgentCatalog[]>;
   /** 当前会话 Agent 报告的模型、推理强度和技能。失败时可能带回缓存和一条提示。 */
   agentCatalog(sessionId: string): Promise<AgentCatalogRefresh>;
   setSessionTuning(

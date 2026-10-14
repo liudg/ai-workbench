@@ -6,19 +6,6 @@ import {
   type SessionTuning,
 } from "../../../types/index.ts";
 import { effortForModel } from "./composer-submit.ts";
-import { effortChoiceLabel } from "./effort-label.ts";
-
-/** 档位短标签。已知 id 用中文；不读 description。 */
-export function effortText(option: Pick<ReasoningEffortOption, "id"> & { label?: string | null } | undefined): string {
-  return effortChoiceLabel(option);
-}
-
-export function effortDisplay(model: AgentModelOption | undefined, effortId: string | undefined): string {
-  const id = effortId?.trim();
-  if (!id) return "";
-  const option = model?.efforts.find((item) => item.id === id);
-  return option ? effortText(option) : "";
-}
 
 /** 滑杆刻度就是该模型目录里的档位，顺序和数量都不改。 */
 export function sliderEfforts(model: AgentModelOption | undefined): ReasoningEffortOption[] {

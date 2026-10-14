@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import type { AgentCatalog, AgentModelOption } from "../../../types/index.ts";
+import { effortDisplay } from "./effort-label.ts";
 import {
   baselineServiceTier,
   effectiveServiceTier,
-  effortDisplay,
   modelChipText,
   modelSections,
   sliderEfforts,

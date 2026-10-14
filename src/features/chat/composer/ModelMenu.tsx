@@ -4,7 +4,8 @@ import { Check, ChevronRight, RotateCcw, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import type { AgentModelOption, ReasoningEffortOption } from "@/types";
-import { effortDisplay, effortText, modelSections, sliderEfforts, snapEffortIndex } from "./model-picker";
+import { effortChoiceLabel, effortDisplay } from "./effort-label";
+import { modelSections, sliderEfforts, snapEffortIndex } from "./model-picker";
 
 export function ModelMenu({
   menuRef,
@@ -188,7 +189,7 @@ function EffortSlider({
   if (!dragging.current) committed.current = effortId;
   if (efforts.length === 0) return null;
   const selected = efforts.findIndex((effort) => effort.id === effortId);
-  const valueText = effortText(efforts.find((effort) => effort.id === effortId)) || effortId;
+  const valueText = effortChoiceLabel(efforts.find((effort) => effort.id === effortId)) || effortId;
   const count = efforts.length;
   const percent = selected < 0 || count <= 1 ? 0 : (selected / (count - 1)) * 100;
 

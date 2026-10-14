@@ -2,7 +2,6 @@ import type {
   AgentCatalogRefresh,
   AgentInstallation,
   AgentProfile,
-  CachedAgentCatalog,
   OlderHistory,
   PermissionMenu,
   ReviewTargets,
@@ -25,7 +24,6 @@ export const sessionCommands: Pick<
   | "agentProfiles"
   | "listAgentInstallations"
   | "updateAgent"
-  | "cachedAgentCatalogs"
   | "agentCatalog"
   | "setSessionTuning"
   | "setSessionServiceTier"
@@ -74,8 +72,6 @@ export const sessionCommands: Pick<
   listAgentInstallations: () =>
     invoke<AgentInstallation[]>("list_agent_installations"),
   updateAgent: (kind) => invoke<AgentInstallation>("update_agent", { kind }),
-  cachedAgentCatalogs: () =>
-    invoke<CachedAgentCatalog[]>("cached_agent_catalogs"),
   agentCatalog: (sessionId) =>
     invoke<AgentCatalogRefresh>("agent_catalog", { sessionId }),
   setSessionTuning: (sessionId, model, effort) =>

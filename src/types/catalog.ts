@@ -199,9 +199,3 @@ export interface AgentCatalogRefresh {
   catalog: AgentCatalog;
   notice?: string | null;
 }
-
-/** 按 Agent 持久化的上次成功目录，启动时一次取回。 */
-export interface CachedAgentCatalog {
-  kind: AgentKind;
-  catalog: AgentCatalog;
-}

@@ -21,7 +21,7 @@ use crate::models::*;
 
 use super::catalog::{
     after_list_refresh, catalog_with_ready_retry, command_when_ready, soften_catalog,
-    AgentCatalogRefresh, CachedAgentCatalog, CatalogCache,
+    AgentCatalogRefresh, CatalogCache,
 };
 pub use super::log::EventEmitter;
 use super::log::{
@@ -622,10 +622,6 @@ impl SessionManager {
             .answer_prompt(prompt_id, answer)
             .await
             .map_err(|err| err.to_string())
-    }
-
-    pub fn cached_catalogs(&self) -> Vec<CachedAgentCatalog> {
-        self.catalog_cache.list()
     }
 
     /// 向当前会话的适配器要目录。失败或空模型时保留该 Agent 上一次成功的结果。

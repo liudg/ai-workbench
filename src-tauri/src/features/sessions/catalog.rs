@@ -21,12 +21,6 @@ pub struct AgentCatalogRefresh {
     pub notice: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CachedAgentCatalog {
-    pub kind: AgentKind,
-    pub catalog: AgentCatalog,
-}
-
 /// `agent_catalog` 赶在 `ensure_events` 之前时，句柄还不在。
 pub fn session_not_ready(err: &str) -> bool {
     err == "会话不存在或已结束" || err == "会话不存在"
@@ -112,7 +106,8 @@ where
     }
 }
 
-/// 每个 Agent 最近一次成功的目录。文件在应用数据目录，重启后作曲栏可以立刻显示。
+/// 每个 Agent 最近一次成功的目录。文件在应用数据目录。
+/// 只有当前会话的 `agent_catalog` 会读这一格；失败或空列表时才退回它。
 pub struct CatalogCache {
     file: PathBuf,
     catalogs: Mutex<HashMap<AgentKind, AgentCatalog>>,
@@ -134,19 +129,6 @@ impl CatalogCache {
 
     pub fn get(&self, kind: AgentKind) -> Option<AgentCatalog> {
         self.catalogs.lock().unwrap().get(&kind).cloned()
-    }
-
-    pub fn list(&self) -> Vec<CachedAgentCatalog> {
-        self.catalogs
-            .lock()
-            .unwrap()
-            .iter()
-            .filter(|(_, catalog)| !catalog.models.is_empty())
-            .map(|(kind, catalog)| CachedAgentCatalog {
-                kind: *kind,
-                catalog: catalog.clone(),
-            })
-            .collect()
     }
 
     /// 空模型不是一次成功的刷新，不能把已有目录写掉。
