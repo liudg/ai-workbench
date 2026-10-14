@@ -11,7 +11,9 @@ import type { ReviewStart, Session, SessionEvent, SessionSandbox } from "@/types
 import {
   addComposerDir,
   chooseComposerEffort,
+  chooseComposerFast,
   chooseComposerModel,
+  resetComposerTuning,
   removeComposerDir,
   selectComposerPreset,
   selectComposerProfile,
@@ -248,6 +250,8 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     setNetwork: (enabled: boolean) => setComposerNetwork(run, enabled),
     chooseModel: (model: Parameters<typeof chooseComposerModel>[1]) => chooseComposerModel(run, model),
     chooseEffort: (effort: string) => chooseComposerEffort(run, effort),
+    chooseFast: (enabled: boolean) => chooseComposerFast(run, enabled),
+    resetTuning: () => resetComposerTuning(run),
     removeFile: (path: string) => actions.removeAttachment(session.id, path),
     onKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => handleComposerKey(run, event),
     onPaste: (event: ClipboardEvent<HTMLTextAreaElement>) => pasteComposerImages(run, event),

@@ -1,7 +1,7 @@
 import type { AgentModelOption } from "@/types";
+import { FAST_TIER_ID, tuningForModel } from "./model-picker";
 import { addWritableRoot, removeWritableRoot, selectPreset, selectProfile, setNetwork } from "./access";
 import { pickWritableDirectory } from "./composer-backend";
-import { effortForModel } from "./composer-submit";
 import type { ComposerRun } from "./composer-run";
 
 export function addComposerDir(run: ComposerRun) {
@@ -28,12 +28,28 @@ export function setComposerNetwork(run: ComposerRun, enabled: boolean) {
 }
 
 export function chooseComposerModel(run: ComposerRun, model: AgentModelOption) {
-  run.actions.setTuning(run.sessionId, model.id, effortForModel(model, run.view.selectedEffort));
-  run.setMenu(null);
+  const next = tuningForModel(model, run.view.selectedEffort, run.view.storedServiceTier);
+  run.actions.setTuning(run.sessionId, next.model, next.effort, next.serviceTier);
 }
 
 export function chooseComposerEffort(run: ComposerRun, effort: string) {
   if (!run.view.selectedModel) return;
   run.actions.setTuning(run.sessionId, run.view.selectedModel.id, effort);
-  run.setMenu(null);
+}
+
+export function chooseComposerFast(run: ComposerRun, enabled: boolean) {
+  const model = run.view.selectedModel;
+  if (!model || !run.view.fastAvailable) return;
+  run.actions.setTuning(
+    run.sessionId,
+    model.id,
+    run.view.selectedEffort ?? model.default_effort,
+    enabled ? FAST_TIER_ID : null,
+  );
+}
+
+export function resetComposerTuning(run: ComposerRun) {
+  const modelId = run.view.baselineModelId;
+  if (!modelId) return;
+  run.actions.setTuning(run.sessionId, modelId, run.view.baselineEffort ?? "", run.view.baselineServiceTier);
 }

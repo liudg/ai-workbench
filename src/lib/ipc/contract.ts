@@ -68,6 +68,8 @@ export interface Backend {
     model: string,
     effort: string,
   ): Promise<void>;
+  /** `null` 关掉速度档。只有目录里有对应 service tier 时作曲栏才会调用。 */
+  setSessionServiceTier(sessionId: string, serviceTier: string | null): Promise<void>;
   sendMessage(
     sessionId: string,
     text: string,

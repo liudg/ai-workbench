@@ -1,10 +1,14 @@
 import { useMemo, useRef, useState } from "react";
 
-import { emptySandbox, type AgentCatalog, type SessionEvent } from "@/types";
+import { emptySandbox, type AgentCatalog, type SessionEvent, type SessionTuning } from "@/types";
 import { ComposerBar } from "./ComposerBar";
 import { ComposerInput } from "./ComposerInput";
 import { MentionMenu } from "./MentionMenu";
+import { ModelMenu } from "./ModelMenu";
 import { deriveComposerView } from "./composer-view";
+import { effortForModel } from "./composer-submit";
+import { FAST_TIER_ID, tuningForModel } from "./model-picker";
+import { useComposerMenu } from "./useComposerMenu";
 import { activeGoal } from "./goal";
 import { atToken, clearAtToken, insertMention, mentionFiles } from "./mentions";
 
@@ -31,34 +35,39 @@ const caps = {
 };
 
 /**
- * 目录里的 isDefault 是产品默认（GPT-6.1-Sol · 低）。
- * 首次进入应显示 CLI `config/read` 的 model / model_reasoning_effort，这里用 gpt-5.4 · 高代替那份配置。
- * 预览不调用 app-server。`?goal=live` 只是一条已经记录的 thread/goal 快照，用来核对状态栏文案。
+ * 目录里的 isDefault 是产品默认（GPT-6.1-Sol 低）。
+ * 首次进入应显示 CLI `config/read` 的 model / model_reasoning_effort，这里用 gpt-5.4 高代替那份配置。
+ * 推理档和 Fast 档是 `model/list` 的字段形状，预览不调用 app-server。
+ * `?goal=live` 只是一条已经记录的 thread/goal 快照，用来核对状态栏文案。
  */
 const catalog: AgentCatalog = {
   models: [
     {
       id: "gpt-6.1-sol",
       label: "GPT-6.1-Sol",
-      description: "",
+      description: "日常编码",
       is_default: true,
       default_effort: "low",
       efforts: [
         { id: "low", description: "" },
+        { id: "medium", description: "" },
         { id: "high", description: "" },
       ],
     },
     {
       id: "gpt-5.4",
       label: "GPT-5.4",
-      description: "",
+      description: "配置里的模型",
       is_default: false,
       default_effort: "medium",
       efforts: [
+        { id: "minimal", description: "" },
         { id: "low", description: "" },
         { id: "medium", description: "" },
         { id: "high", description: "" },
+        { id: "xhigh", description: "" },
       ],
+      service_tiers: [{ id: "fast", name: "Fast", description: "" }],
     },
   ],
   skills: [],
@@ -93,10 +102,13 @@ export default function ComposerPreview() {
   const [planOn, setPlanOn] = useState(false);
   const [goalDraft, setGoalDraft] = useState(false);
   const [goalLive, setGoalLive] = useState(params.get("goal") === "live");
+  const [tuning, setTuning] = useState<SessionTuning | undefined>();
+  const [menu, setMenu] = useState<null | "model">(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const plusRef = useRef<HTMLButtonElement>(null);
   const accessRef = useRef<HTMLButtonElement>(null);
   const modelRef = useRef<HTMLButtonElement>(null);
+  const modelMenuRef = useRef<HTMLDivElement>(null);
   const events = useMemo<SessionEvent[]>(() => {
     const rows: SessionEvent[] = [];
     if (planOn) {
@@ -122,7 +134,7 @@ export default function ComposerPreview() {
     commands: [],
     skills: [],
     catalog,
-    tuning: undefined,
+    tuning,
     catalogNotice: null,
     text,
     caret,
@@ -132,6 +144,15 @@ export default function ComposerPreview() {
     goalLive,
     goal,
   });
+  useComposerMenu(menu === "model", modelRef, modelMenuRef, () => setMenu(null));
+  const rememberTuning = (next: SessionTuning) => {
+    setTuning((current) => ({
+      model: next.model,
+      effort: next.effort,
+      serviceTier: next.serviceTier === undefined ? current?.serviceTier : next.serviceTier,
+    }));
+  };
+
   const files = useMemo(
     () => (view.mentionQuery ? mentionFiles(workspaceFiles, view.mentionQuery) : []),
     [view.mentionQuery],
@@ -216,7 +237,7 @@ export default function ComposerPreview() {
               plusRef={plusRef}
               accessRef={accessRef}
               modelRef={modelRef}
-              menu={null}
+              menu={menu}
               imagesOn={false}
               composerLocked={false}
               sandbox={emptySandbox()}
@@ -229,7 +250,9 @@ export default function ComposerPreview() {
               editing={false}
               stopMode={false}
               sendDisabled={view.sendDisabled}
-              onToggleMenu={() => {}}
+              onToggleMenu={(name) => {
+                if (name === "model") setMenu((current) => (current === "model" ? null : "model"));
+              }}
               onPickFiles={() => {}}
               onDismissPlan={() => setPlanOn(false)}
               onDismissGoal={() => {
@@ -242,6 +265,39 @@ export default function ComposerPreview() {
           </div>
         </div>
       </div>
+      {menu === "model" && (
+        <ModelMenu
+          menuRef={modelMenuRef}
+          models={catalog.models}
+          modelId={view.selectedModel?.id}
+          modelLabel={view.selectedModel?.label}
+          effortId={view.selectedEffort}
+          fastOn={view.fastOn}
+          fastAvailable={view.fastAvailable}
+          canReset={Boolean(view.baselineModelId)}
+          onModel={(model) => rememberTuning(tuningForModel(model, view.selectedEffort, view.storedServiceTier))}
+          onEffort={(effort) => {
+            if (!view.selectedModel) return;
+            rememberTuning({ model: view.selectedModel.id, effort });
+          }}
+          onFast={(enabled) => {
+            if (!view.selectedModel) return;
+            rememberTuning({
+              model: view.selectedModel.id,
+              effort: view.selectedEffort ?? effortForModel(view.selectedModel, view.selectedEffort),
+              serviceTier: enabled ? FAST_TIER_ID : null,
+            });
+          }}
+          onReset={() => {
+            if (!view.baselineModelId) return;
+            rememberTuning({
+              model: view.baselineModelId,
+              effort: view.baselineEffort ?? "",
+              serviceTier: view.baselineServiceTier,
+            });
+          }}
+        />
+      )}
     </div>
   );
 }

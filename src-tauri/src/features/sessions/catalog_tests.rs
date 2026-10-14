@@ -11,6 +11,9 @@ fn model(id: &str) -> AgentModelOption {
         is_default: true,
         default_effort: "medium".into(),
         efforts: Vec::new(),
+        show_in_picker: true,
+        service_tiers: Vec::new(),
+        default_service_tier: None,
     }
 }
 
@@ -23,6 +26,7 @@ fn catalog(id: &str) -> AgentCatalog {
         skills_error: None,
         configured_model: None,
         configured_effort: None,
+        configured_service_tier: None,
         thread_model: None,
         thread_effort: None,
         cli_config_read: None,

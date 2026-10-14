@@ -260,6 +260,11 @@ impl AgentSession for CodexCliSession {
         Ok(())
     }
 
+    fn set_service_tier(&self, tier: Option<String>) -> Result<(), AgentError> {
+        self.shared.set_service_tier(tier);
+        Ok(())
+    }
+
     fn native_id(&self) -> Option<String> {
         self.shared.thread_id.lock().unwrap().clone()
     }

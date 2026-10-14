@@ -23,6 +23,15 @@ export const DESKTOP_ZH = {
   goalStatusAbandoned: "目标已放弃",
   goalStatusComplete: "目标已达成",
   modelConfigUnread: "未读到 CLI 默认模型",
+  /** 作曲栏还没有选中模型时的芯片。 */
+  selectEffort: "选择强度",
+  /** 强度弹层把模型和推理强度收回 CLI 配置。 */
+  resetDefault: "重置为默认",
+  selectModel: "选择模型",
+  modelSectionDefault: "默认",
+  modelSectionRecommended: "推荐模型集",
+  /** Codex Fast 档。桌面端这条提示是「1.5 倍速度 / 用量更多」。 */
+  fastModeTip: "1.5 倍速度 / 用量更多",
   diffWhitespaceHidden: "空白改动已隐藏",
   addSection: "添加",
   addFiles: "文件和文件夹",

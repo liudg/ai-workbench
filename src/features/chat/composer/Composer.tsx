@@ -167,9 +167,15 @@ export function Composer({ session, events }: { session: Session; events: Sessio
           menuRef={c.modelMenuRef}
           models={c.models}
           modelId={view.selectedModel?.id}
+          modelLabel={view.selectedModel?.label}
           effortId={view.selectedEffort}
+          fastOn={view.fastOn}
+          fastAvailable={view.fastAvailable}
+          canReset={Boolean(view.baselineModelId)}
           onModel={c.chooseModel}
           onEffort={c.chooseEffort}
+          onFast={c.chooseFast}
+          onReset={c.resetTuning}
         />
       )}
     </div>

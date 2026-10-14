@@ -119,6 +119,8 @@ pub(super) struct Shared {
     pub(super) wire_ready: AtomicBool,
     pub(super) model_override: Mutex<Option<String>>,
     pub(super) effort: Mutex<Option<String>>,
+    /// `None` 还没改过速度档。`Some("")` 显式关掉。其它值是 service tier id。
+    pub(super) service_tier: Mutex<Option<String>>,
     pub(super) skills: Mutex<Vec<KnownSkill>>,
     pub(super) thread_id: Mutex<Option<String>>,
     /// 新线程写入 Codex resume 列表，而不是 ephemeral。

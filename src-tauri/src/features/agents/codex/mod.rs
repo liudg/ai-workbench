@@ -208,6 +208,7 @@ impl AgentAdapter for CodexCliAdapter {
             wire_ready: AtomicBool::new(false),
             model_override: Mutex::new(None),
             effort: Mutex::new(None),
+            service_tier: Mutex::new(None),
             skills: Mutex::new(Vec::new()),
             thread_id: Mutex::new(None),
             persist: ctx.flag("persist"),

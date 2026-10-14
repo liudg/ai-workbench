@@ -91,6 +91,18 @@ pub async fn set_session_tuning(
 }
 
 #[tauri::command]
+pub async fn set_session_service_tier(
+    store: State<'_, ProjectStore>,
+    manager: State<'_, SessionManager>,
+    session_id: String,
+    service_tier: Option<String>,
+) -> Result<(), String> {
+    manager
+        .set_session_service_tier(&store, &session_id, service_tier)
+        .await
+}
+
+#[tauri::command]
 pub async fn set_session_access(
     store: State<'_, ProjectStore>,
     manager: State<'_, SessionManager>,
