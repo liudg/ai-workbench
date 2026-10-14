@@ -12,18 +12,9 @@ use crate::models::{
 };
 
 pub fn empty_catalog() -> AgentCatalog {
-    AgentCatalog {
-        models: Vec::new(),
-        skills: Vec::new(),
-        commands: Vec::new(),
-        capabilities: AgentCapabilities::claude(),
-        skills_error: None,
-        configured_model: None,
-        configured_effort: None,
-        thread_model: None,
-        thread_effort: None,
-        cli_config_read: None,
-    }
+    let mut catalog = AgentCatalog::empty();
+    catalog.capabilities = AgentCapabilities::claude();
+    catalog
 }
 
 /// `SDKControlInitializeResponse`（sdk.d.ts 约 L4588）：commands / models。
@@ -137,8 +128,11 @@ fn model_from_value(value: &Value, current: Option<&str>) -> Option<AgentModelOp
         label: label.to_string(),
         description,
         is_default: current == Some(id),
+        show_in_picker: true,
         default_effort: String::new(),
         efforts,
+        service_tiers: Vec::new(),
+        default_service_tier: None,
     })
 }
 
@@ -148,8 +142,11 @@ fn placeholder_model(id: &str, is_default: bool) -> AgentModelOption {
         label: id.to_string(),
         description: String::new(),
         is_default,
+        show_in_picker: true,
         default_effort: String::new(),
         efforts: Vec::new(),
+        service_tiers: Vec::new(),
+        default_service_tier: None,
     }
 }
 
