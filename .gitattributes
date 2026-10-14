@@ -1,0 +1,3 @@
+# Codex `/init` prompt is protocol text. Keep LF so a Windows checkout
+# (core.autocrlf) still matches the official asset byte-for-byte.
+src-tauri/src/features/agents/codex/assets/*.md text eol=lf

@@ -75,7 +75,11 @@ pub(super) async fn get_git_diff(cwd: &Path) -> Result<(bool, String), String> {
     let untracked = untracked?;
     let null_path = if cfg!(windows) { "NUL" } else { "/dev/null" };
     let mut untracked_diff = String::new();
-    for file in untracked.split('\n').map(str::trim).filter(|s| !s.is_empty()) {
+    for file in untracked.split('\n') {
+        let file = file.trim_end_matches('\r');
+        if file.is_empty() {
+            continue;
+        }
         let mut args = DIFF_ARGS.to_vec();
         args.extend(["--no-index", "--", null_path, file]);
         untracked_diff.push_str(&capture_diff(cwd, fsmonitor, &overrides, &args).await?);

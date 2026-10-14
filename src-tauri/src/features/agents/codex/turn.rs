@@ -19,7 +19,45 @@ use super::state::{emit, Pending, Shared};
 /// `/init` 的提示原文，逐字取自 openai/codex rust-v0.162.1
 /// `codex-rs/tui/assets/prompt_for_init_command.md`（tag 提交 092d3acd，文件 sha256 70dfe903…）。
 /// 提示本身要求 AGENTS.md 已存在时不覆盖、不修改。
-pub(super) const INIT_PROMPT: &str = include_str!("assets/prompt_for_init_command.md");
+///
+/// 工作区如果被检出成 CRLF，`include_bytes!` 会带上 `\r`。发出去之前去掉，
+/// 让字节和官方 LF 资产一致。`.gitattributes` 里这条资产也固定 `eol=lf`。
+const RAW_INIT_PROMPT: &[u8] = include_bytes!("assets/prompt_for_init_command.md");
+
+const fn count_without_cr(input: &[u8]) -> usize {
+    let mut count = 0;
+    let mut index = 0;
+    while index < input.len() {
+        if input[index] != b'\r' {
+            count += 1;
+        }
+        index += 1;
+    }
+    count
+}
+
+const INIT_PROMPT_LEN: usize = count_without_cr(RAW_INIT_PROMPT);
+
+const fn strip_cr<const N: usize>(input: &[u8]) -> [u8; N] {
+    let mut out = [0u8; N];
+    let mut index = 0;
+    let mut written = 0;
+    while index < input.len() {
+        if input[index] != b'\r' {
+            out[written] = input[index];
+            written += 1;
+        }
+        index += 1;
+    }
+    out
+}
+
+const INIT_PROMPT_BYTES: [u8; INIT_PROMPT_LEN] = strip_cr(RAW_INIT_PROMPT);
+
+pub(super) const INIT_PROMPT: &str = match std::str::from_utf8(&INIT_PROMPT_BYTES) {
+    Ok(text) => text,
+    Err(_) => panic!("init prompt is not utf-8"),
+};
 #[cfg(test)]
 pub(super) const INIT_PROMPT_SOURCE: &str =
     "openai/codex rust-v0.162.1 codex-rs/tui/assets/prompt_for_init_command.md";
@@ -915,7 +953,14 @@ mod goal_tests {
             "Before writing, check whether AGENTS.md already exists in the current working directory. If it does, do not overwrite or modify it."
         ));
         assert_eq!(INIT_PROMPT.len(), 1836);
+        assert!(!INIT_PROMPT.contains('\r'));
         assert!(INIT_PROMPT_SOURCE.contains("rust-v0.162.1"));
+        const CRLF: &[u8] = b"Generate a file named AGENTS.md that serves as a contributor guide for this repository.\r\nBefore";
+        let normalized = strip_cr::<{ CRLF.len() - 1 }>(CRLF);
+        assert_eq!(
+            std::str::from_utf8(&normalized).unwrap(),
+            "Generate a file named AGENTS.md that serves as a contributor guide for this repository.\nBefore"
+        );
     }
 
     #[test]

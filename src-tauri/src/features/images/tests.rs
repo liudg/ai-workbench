@@ -34,6 +34,22 @@ fn accepts_forward_slash_windows_png() {
 }
 
 #[test]
+fn file_url_keeps_windows_drive_and_unc() {
+    assert_eq!(
+        file_url_to_path("file:///C:/Users/a/shot.png").unwrap(),
+        "C:/Users/a/shot.png"
+    );
+    assert_eq!(
+        file_url_to_path("file://localhost/C:/Users/a/shot.png").unwrap(),
+        "C:/Users/a/shot.png"
+    );
+    assert_eq!(
+        file_url_to_path("file://server/share/shot.png").unwrap(),
+        r"\\server\share\shot.png"
+    );
+}
+
+#[test]
 fn accepts_file_url() {
     let dir = temp_dir("file-url");
     let file = dir.join("shot.png");
