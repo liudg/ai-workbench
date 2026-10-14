@@ -21,6 +21,20 @@ pub(in crate::features::agents::codex) fn parse_cli_model_config(value: &Value) 
     }
 }
 
+/// `supportedReasoningEfforts` 上可选的短名。官方字段是 description；有 displayName 时用它。
+fn effort_label(effort: &Value) -> Option<String> {
+    for key in ["displayName", "display_name", "label", "name"] {
+        let Some(text) = effort.get(key).and_then(Value::as_str).map(str::trim) else {
+            continue;
+        };
+        if text.is_empty() {
+            continue;
+        }
+        return Some(text.to_string());
+    }
+    None
+}
+
 fn config_text(config: &Value, keys: &[&str]) -> Option<String> {
     for key in keys {
         let Some(value) = config.get(*key) else {
@@ -90,6 +104,7 @@ pub(in crate::features::agents::codex) fn parse_models(value: &Value) -> Vec<Age
                                 .and_then(Value::as_str)
                                 .unwrap_or("")
                                 .to_string(),
+                            label: effort_label(effort),
                             id,
                         })
                     })

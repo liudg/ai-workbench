@@ -7,13 +7,14 @@
 use serde_json::Value;
 
 use crate::models::{
-    AgentCapabilities, AgentCatalog, AgentModelOption, AgentSkillOption, PermissionMenu,
+    AgentCapabilities, AgentCatalog, AgentKind, AgentModelOption, AgentSkillOption, PermissionMenu,
     PermissionProfileOption, ReasoningEffortOption, SlashCommand,
 };
 
 pub fn empty_catalog() -> AgentCatalog {
     let mut catalog = AgentCatalog::empty();
     catalog.capabilities = AgentCapabilities::claude();
+    catalog.agent = Some(AgentKind::ClaudeCode);
     catalog
 }
 
@@ -100,8 +101,14 @@ pub fn ensure_listed(catalog: &mut AgentCatalog, model_id: &str) {
 }
 
 fn model_from_value(value: &Value, current: Option<&str>) -> Option<AgentModelOption> {
-    let id = nonempty(value.get("value").and_then(Value::as_str))?;
-    let label = nonempty(value.get("displayName").and_then(Value::as_str)).unwrap_or(id);
+    let id = nonempty(value.get("value").and_then(Value::as_str))
+        .or_else(|| nonempty(value.get("id").and_then(Value::as_str)))
+        .or_else(|| nonempty(value.get("model").and_then(Value::as_str)))
+        .or_else(|| nonempty(value.get("name").and_then(Value::as_str)))?;
+    let label = nonempty(value.get("displayName").and_then(Value::as_str))
+        .or_else(|| nonempty(value.get("display_name").and_then(Value::as_str)))
+        .or_else(|| nonempty(value.get("label").and_then(Value::as_str)))
+        .unwrap_or(id);
     let description = value
         .get("description")
         .and_then(Value::as_str)
@@ -110,18 +117,7 @@ fn model_from_value(value: &Value, current: Option<&str>) -> Option<AgentModelOp
     let efforts = value
         .get("supportedEffortLevels")
         .and_then(Value::as_array)
-        .map(|levels| {
-            levels
-                .iter()
-                .filter_map(Value::as_str)
-                .map(str::trim)
-                .filter(|level| !level.is_empty())
-                .map(|level| ReasoningEffortOption {
-                    id: level.to_string(),
-                    description: String::new(),
-                })
-                .collect()
-        })
+        .map(|levels| levels.iter().filter_map(effort_from_value).collect())
         .unwrap_or_default();
     Some(AgentModelOption {
         id: id.to_string(),
@@ -133,6 +129,31 @@ fn model_from_value(value: &Value, current: Option<&str>) -> Option<AgentModelOp
         efforts,
         service_tiers: Vec::new(),
         default_service_tier: None,
+    })
+}
+
+fn effort_from_value(value: &Value) -> Option<ReasoningEffortOption> {
+    if let Some(id) = value.as_str().map(str::trim).filter(|level| !level.is_empty()) {
+        return Some(ReasoningEffortOption {
+            id: id.to_string(),
+            description: String::new(),
+            label: None,
+        });
+    }
+    let id = nonempty(value.get("id").and_then(Value::as_str))
+        .or_else(|| nonempty(value.get("value").and_then(Value::as_str)))
+        .or_else(|| nonempty(value.get("level").and_then(Value::as_str)))?;
+    Some(ReasoningEffortOption {
+        id: id.to_string(),
+        description: value
+            .get("description")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string(),
+        label: nonempty(value.get("displayName").and_then(Value::as_str))
+            .or_else(|| nonempty(value.get("display_name").and_then(Value::as_str)))
+            .or_else(|| nonempty(value.get("label").and_then(Value::as_str)))
+            .map(str::to_string),
     })
 }
 
@@ -193,7 +214,7 @@ fn nonempty(value: Option<&str>) -> Option<&str> {
     value.map(str::trim).filter(|item| !item.is_empty())
 }
 
-/// 权限菜单。没有网络、额外可写目录、具名配置档和替我批准。
+/// 权限菜单。只列出这一会话能选的档位。
 pub fn permission_menu() -> PermissionMenu {
     PermissionMenu {
         network_access: false,
@@ -201,10 +222,7 @@ pub fn permission_menu() -> PermissionMenu {
         permission_profiles: false,
         approve_for_me: false,
         title: "权限".into(),
-        notice: Some(
-            "Claude Code 没有 Codex 的沙箱档、网络开关、额外可写目录、具名配置档和替我批准。"
-                .into(),
-        ),
+        notice: None,
         presets: vec![
             PermissionProfileOption {
                 id: "full".into(),

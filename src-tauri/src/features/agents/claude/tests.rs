@@ -14,7 +14,7 @@ use super::images;
 use super::messages::{self, ingest_line, MapState};
 use super::mutate;
 use super::process;
-use crate::models::{MessagePhase, PromptAnswer, SessionEventBody, SessionStatus};
+use crate::models::{AgentKind, MessagePhase, PromptAnswer, SessionEventBody, SessionStatus};
 
 fn temp_dir(name: &str) -> PathBuf {
     let path = std::env::temp_dir().join(format!("claude-{name}-{}", std::process::id()));
@@ -71,9 +71,9 @@ fn cli_args_follow_the_sdk_and_require_print() {
 
 #[test]
 fn read_only_and_approve_for_me_are_not_sandbox_modes() {
-    let (mode, notice) = command::permission_mode_for_access(Some("read-only"));
-    assert_eq!(mode, "default");
-    assert!(notice.unwrap().contains("只读"));
+    assert_eq!(command::permission_mode_for_access(Some("read-only")), "default");
+    assert_eq!(command::permission_mode_for_access(Some("approve-for-me")), "default");
+    assert_eq!(command::permission_mode_for_access(Some("full")), "bypassPermissions");
     assert!(command::access_to_permission_mode("read-only").is_err());
     assert!(command::access_to_permission_mode("approve-for-me").is_err());
     assert_eq!(command::access_to_permission_mode("full").unwrap(), "bypassPermissions");
@@ -417,7 +417,31 @@ fn catalog_uses_reported_fields_and_permission_menu_is_honest() {
     assert!(!menu.permission_profiles);
     assert!(!menu.approve_for_me);
     assert_eq!(menu.presets.iter().map(|item| item.id.as_str()).collect::<Vec<_>>(), vec!["full", "ask"]);
-    assert!(menu.notice.unwrap().contains("替我批准"));
+    assert!(menu.notice.is_none());
+    assert_eq!(catalog.agent, Some(AgentKind::ClaudeCode));
+}
+
+#[test]
+fn model_list_reads_id_aliases_and_effort_objects() {
+    let mut catalog = catalog::empty_catalog();
+    catalog::apply_model_list(
+        &mut catalog,
+        &json!([{
+            "model": "claude-haiku",
+            "label": "Haiku",
+            "supportedEffortLevels": [
+                "medium",
+                {"id": "high", "description": "更深", "displayName": "高"}
+            ]
+        }]),
+    );
+    assert_eq!(catalog.models[0].id, "claude-haiku");
+    assert_eq!(catalog.models[0].label, "Haiku");
+    assert_eq!(catalog.models[0].efforts[0].id, "medium");
+    assert!(catalog.models[0].efforts[0].label.is_none());
+    assert_eq!(catalog.models[0].efforts[1].description, "更深");
+    assert_eq!(catalog.models[0].efforts[1].label.as_deref(), Some("高"));
+    assert_eq!(catalog.agent, Some(AgentKind::ClaudeCode));
 }
 
 #[test]

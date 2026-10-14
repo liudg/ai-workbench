@@ -1,5 +1,4 @@
 import { backend } from "@/lib/ipc";
-import type { AgentCatalog, AgentKind } from "@/types";
 import { clearMissingSessionBanner, loadSessions, loadWorkspaceLists } from "../sync";
 import type { ShellSlice, WorkbenchGet, WorkbenchSet } from "../types";
 
@@ -58,17 +57,6 @@ export function createShellSlice(set: WorkbenchSet, get: WorkbenchGet): ShellSli
           }),
         );
       });
-
-      try {
-        const cached = await backend.cachedAgentCatalogs();
-        const catalogCache: Partial<Record<AgentKind, AgentCatalog>> = {};
-        for (const row of cached) {
-          if (row.catalog.models.length > 0) catalogCache[row.kind] = row.catalog;
-        }
-        set({ catalogCache });
-      } catch {
-        // 没有缓存时等会话里的刷新。
-      }
 
       try {
         const profiles = await backend.agentProfiles();

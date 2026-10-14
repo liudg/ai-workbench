@@ -117,8 +117,9 @@ const catalog: AgentCatalog = {
       is_default: true,
       default_effort: "low",
       efforts: [
-        { id: "low", description: "" },
-        { id: "high", description: "" },
+        { id: "low", description: "low-cli" },
+        { id: "medium", description: "medium-cli" },
+        { id: "high", description: "high-cli" },
       ],
     },
     {
@@ -128,9 +129,9 @@ const catalog: AgentCatalog = {
       is_default: false,
       default_effort: "medium",
       efforts: [
-        { id: "low", description: "" },
-        { id: "medium", description: "" },
-        { id: "high", description: "" },
+        { id: "low", description: "low-cli" },
+        { id: "medium", description: "medium-cli" },
+        { id: "high", description: "high-cli" },
       ],
     },
   ],
@@ -143,7 +144,7 @@ const catalog: AgentCatalog = {
 };
 
 test("the model button follows CLI config before the catalog default", () => {
-  assert.equal(view({ catalog }).modelButton, "GPT-5.4 高");
+  assert.equal(view({ catalog }).modelButton, "GPT-5.4 high-cli");
   assert.equal(view({ catalog }).selectedEffort, "high");
   assert.equal(
     view({
@@ -153,13 +154,13 @@ test("the model button follows CLI config before the catalog default", () => {
         thread_effort: "medium",
       },
     }).modelButton,
-    "GPT-6.1-Sol 中",
+    "GPT-6.1-Sol medium-cli",
   );
   assert.equal(
     view({
       catalog: { ...catalog, configured_model: null, configured_effort: null },
     }).modelButton,
-    "GPT-6.1-Sol 低",
+    "GPT-6.1-Sol low-cli",
   );
   assert.equal(
     view({
@@ -174,7 +175,7 @@ test("the model button follows CLI config before the catalog default", () => {
   );
   assert.equal(
     view({ catalog, tuning: { model: "gpt-6.1-sol", effort: "high" } }).modelButton,
-    "GPT-6.1-Sol 高",
+    "GPT-6.1-Sol high-cli",
   );
   const bare = {
     ...catalog,
@@ -183,6 +184,44 @@ test("the model button follows CLI config before the catalog default", () => {
     configured_effort: null,
   };
   assert.equal(view({ catalog: bare }).modelButton, "选择强度");
+});
+
+test("an effort with no catalog text stays the raw id", () => {
+  const bareEffort = {
+    ...catalog,
+    models: catalog.models.map((item) =>
+      item.id === "gpt-5.4" ? { ...item, efforts: [{ id: "high", description: "" }] } : item,
+    ),
+  };
+  assert.equal(view({ catalog: bareEffort }).modelButton, "GPT-5.4 high");
+});
+
+test("a claude catalog ignores a gpt id that is not in its model list", () => {
+  const claude: AgentCatalog = {
+    agent: "claude-code",
+    models: [
+      {
+        id: "claude-sonnet",
+        label: "Sonnet",
+        description: "",
+        is_default: true,
+        default_effort: "medium",
+        efforts: [{ id: "medium", description: "", label: "平衡" }],
+      },
+    ],
+    skills: [],
+    commands: [],
+    capabilities: caps,
+    configured_model: "gpt-6.1-sol",
+    configured_effort: "high",
+    thread_model: "gpt-6.1-sol",
+    thread_effort: "high",
+    cli_config_read: true,
+  };
+  const shown = view({ catalog: claude, tuning: { model: "gpt-6.1-sol", effort: "high" } });
+  assert.equal(shown.selectedModel?.id, "claude-sonnet");
+  assert.equal(shown.modelButton, "Sonnet 平衡");
+  assert.equal(shown.modelButton.includes("gpt"), false);
 });
 
 test("fast mode is on only when this model advertises the fast tier", () => {

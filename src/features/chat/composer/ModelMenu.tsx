@@ -3,8 +3,8 @@ import { Check, ChevronRight, RotateCcw, Zap } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
-import { effortLabel, type AgentModelOption } from "@/types";
-import { modelSections, sliderEfforts, snapEffortIndex } from "./model-picker";
+import type { AgentModelOption, ReasoningEffortOption } from "@/types";
+import { effortDisplay, effortText, modelSections, sliderEfforts, snapEffortIndex } from "./model-picker";
 
 export function ModelMenu({
   menuRef,
@@ -58,7 +58,7 @@ export function ModelMenu({
           }}
         />
       ) : (
-        <div className="px-3 pb-4 pt-3">
+        <div className="px-2.5 pb-2 pt-2">
           <div className="flex items-start gap-1">
             {fastAvailable ? (
               <Tip text={DESKTOP_ZH.fastModeTip} align="start">
@@ -82,13 +82,13 @@ export function ModelMenu({
             <button
               type="button"
               data-model-trigger
-              className="flex min-h-[4.5rem] min-w-0 flex-1 flex-col items-center justify-center rounded-xl px-2 py-1 hover:bg-zinc-800/70"
+              className="flex min-w-0 flex-1 flex-col items-center justify-center rounded-xl px-2 py-0.5 hover:bg-zinc-800/70"
               aria-label={DESKTOP_ZH.selectModel}
               aria-haspopup="listbox"
               onClick={() => setPanel("models")}
             >
-              <span data-effort-label className="text-[1.75rem] font-semibold leading-none text-blue-400">
-                {shownEffort ? effortLabel(shownEffort) : DESKTOP_ZH.selectEffort}
+              <span data-effort-label className="block max-w-full truncate text-lg font-semibold leading-none text-blue-400">
+                {shownEffort ? effortDisplay(current, shownEffort) : DESKTOP_ZH.selectEffort}
               </span>
               <span className="mt-1.5 inline-flex max-w-full items-center gap-0.5 text-[13px] text-zinc-400">
                 <span className="truncate">{modelLabel || current?.label || DESKTOP_ZH.selectModel}</span>
@@ -163,7 +163,7 @@ function EffortSlider({
   onLive,
   onEffort,
 }: {
-  efforts: { id: string; description: string }[];
+  efforts: ReasoningEffortOption[];
   effortId?: string;
   onLive: (effort: string | null) => void;
   onEffort: (effort: string) => void;
@@ -174,6 +174,7 @@ function EffortSlider({
   if (!dragging.current) committed.current = effortId;
   if (efforts.length === 0) return null;
   const selected = efforts.findIndex((effort) => effort.id === effortId);
+  const valueText = effortText(efforts.find((effort) => effort.id === effortId)) || effortId;
   const count = efforts.length;
   const percent = selected < 0 || count <= 1 ? 0 : (selected / (count - 1)) * 100;
 
@@ -200,8 +201,8 @@ function EffortSlider({
       aria-valuemin={0}
       aria-valuemax={Math.max(count - 1, 0)}
       aria-valuenow={Math.max(selected, 0)}
-      aria-valuetext={effortId ? effortLabel(effortId) : undefined}
-      className="relative mx-1 mt-5 h-8 cursor-pointer touch-none"
+      aria-valuetext={valueText}
+      className="relative mx-1 mt-2 h-6 cursor-pointer touch-none"
       onPointerDown={(event) => {
         dragging.current = true;
         event.currentTarget.setPointerCapture(event.pointerId);

@@ -5,6 +5,7 @@ import {
   baselineServiceTier,
   effectiveServiceTier,
   FAST_TIER_ID,
+  effortDisplay,
   modelChipText,
   supportsFast,
 } from "./model-picker.ts";
@@ -50,19 +51,10 @@ export interface ComposerViewInput {
   goal?: GoalSnapshot | null;
 }
 
-function modelById(catalog: AgentCatalog | undefined, id: string | null | undefined): AgentModelOption | undefined {
+function modelInCatalog(catalog: AgentCatalog | undefined, id: string | null | undefined): AgentModelOption | undefined {
   const trimmed = id?.trim();
   if (!trimmed) return undefined;
-  return (
-    catalog?.models.find((item) => item.id === trimmed) ?? {
-      id: trimmed,
-      label: trimmed,
-      description: "",
-      is_default: false,
-      default_effort: "",
-      efforts: [],
-    }
-  );
+  return catalog?.models.find((item) => item.id === trimmed);
 }
 
 /**
@@ -70,10 +62,11 @@ function modelById(catalog: AgentCatalog | undefined, id: string | null | undefi
  * 目录里标了 isDefault 的模型（仅当配置里没写 model）。不拿列表第一项充数。
  */
 export function pickModel(catalog: AgentCatalog | undefined, tuning: SessionTuning | undefined) {
-  if (tuning?.model) return modelById(catalog, tuning.model);
-  const thread = modelById(catalog, catalog?.thread_model);
+  const tuned = modelInCatalog(catalog, tuning?.model);
+  if (tuned) return tuned;
+  const thread = modelInCatalog(catalog, catalog?.thread_model);
   if (thread) return thread;
-  const configured = modelById(catalog, catalog?.configured_model);
+  const configured = modelInCatalog(catalog, catalog?.configured_model);
   if (configured) return configured;
   if (catalog?.cli_config_read === false) return undefined;
   return catalog?.models.find((item) => item.is_default);
@@ -137,7 +130,7 @@ export function deriveComposerView(input: ComposerViewInput) {
   const unreadConfig = input.catalog?.cli_config_read === false && !selectedModel;
   const modelButton = modelButtonLabel(
     selectedModel
-      ? modelChipText(selectedModel.label, selectedEffort)
+      ? modelChipText(selectedModel.label, effortDisplay(selectedModel, selectedEffort))
       : unreadConfig
         ? DESKTOP_ZH.modelConfigUnread
         : input.catalog && input.catalog.models.length > 0

@@ -1,4 +1,4 @@
-import { agentForSession, reduceCatalogResult, type CatalogOutcome } from "@/lib/catalog";
+import { reduceCatalogResult, type CatalogOutcome } from "@/lib/catalog";
 import { backend } from "@/lib/ipc";
 import { emptySandbox } from "@/types";
 import { isMissingSessionError } from "../sync";
@@ -25,7 +25,6 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
     pageAnnotations: {},
     queues: {},
     catalogs: {},
-    catalogCache: {},
     catalogNotice: null,
     tuning: {},
 
@@ -46,8 +45,6 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
       const epoch = (catalogEpoch.get(sessionId) ?? 0) + 1;
       catalogEpoch.set(sessionId, epoch);
       const current = () => catalogEpoch.get(sessionId) === epoch;
-      const agent = agentForSession(get().sessions, sessionId);
-
       let outcome: CatalogOutcome;
       try {
         const refresh = await backend.agentCatalog(sessionId);
@@ -57,25 +54,19 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
       }
       if (!current()) return;
 
-      const kind = agentForSession(get().sessions, sessionId) ?? agent;
       const reduced = reduceCatalogResult(
         {
           live: get().catalogs[sessionId],
-          cached: kind ? get().catalogCache[kind] : undefined,
           notice: get().catalogNotice,
         },
         outcome,
       );
-      set((s) => ({
-        catalogs: reduced.live
-          ? { ...s.catalogs, [sessionId]: reduced.live }
-          : s.catalogs,
-        catalogCache:
-          kind && reduced.cached
-            ? { ...s.catalogCache, [kind]: reduced.cached }
-            : s.catalogCache,
-        catalogNotice: reduced.notice,
-      }));
+      set((s) => {
+        const catalogs = { ...s.catalogs };
+        if (reduced.live) catalogs[sessionId] = reduced.live;
+        else delete catalogs[sessionId];
+        return { catalogs, catalogNotice: reduced.notice };
+      });
     },
 
     setTuning(sessionId, model, effort, serviceTier) {

@@ -3,7 +3,7 @@
 use serde_json::{json, Value};
 
 use crate::features::agents::AgentError;
-use crate::models::{AgentCapabilities, AgentCatalog, AgentModelOption, AgentSkillOption};
+use crate::models::{AgentCapabilities, AgentCatalog, AgentKind, AgentModelOption, AgentSkillOption};
 
 use super::state::{KnownSkill, Shared};
 
@@ -58,6 +58,7 @@ pub(super) fn assemble_catalog(
         thread_model: None,
         thread_effort: None,
         cli_config_read: None,
+        agent: Some(AgentKind::CodexCli),
     })
 }
 

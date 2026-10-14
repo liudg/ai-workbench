@@ -1,6 +1,14 @@
 import { useMemo, useRef, useState } from "react";
 
-import { emptySandbox, type AgentCatalog, type AgentSkillOption, type SessionEvent, type SessionTuning } from "@/types";
+import {
+  emptySandbox,
+  type AgentCatalog,
+  type AgentSkillOption,
+  type PermissionMenu,
+  type SessionEvent,
+  type SessionTuning,
+} from "@/types";
+import { AccessMenu } from "./AccessMenu";
 import { ComposerBar } from "./ComposerBar";
 import { ComposerInput } from "./ComposerInput";
 import { MentionMenu } from "./MentionMenu";
@@ -36,12 +44,11 @@ const caps = {
 };
 
 /**
- * 目录里的 isDefault 是产品默认（GPT-6.1-Sol 低）。
- * 首次进入应显示 CLI `config/read` 的 model / model_reasoning_effort，这里用 gpt-5.4 高代替那份配置。
- * 推理档和 Fast 档是 `model/list` 的字段形状，预览不调用 app-server。
- * `?goal=live` 只是一条已经记录的 thread/goal 快照，用来核对状态栏文案。
+ * Codex 预览目录。推理档文案来自 `supportedReasoningEfforts` 的 description，不写死中文档位。
+ * 首次进入显示 CLI `config/read` 的 model / model_reasoning_effort。
  */
-const catalog: AgentCatalog = {
+const codexCatalog: AgentCatalog = {
+  agent: "codex-cli",
   models: [
     {
       id: "gpt-6.1-sol",
@@ -50,9 +57,9 @@ const catalog: AgentCatalog = {
       is_default: true,
       default_effort: "low",
       efforts: [
-        { id: "low", description: "" },
-        { id: "medium", description: "" },
-        { id: "high", description: "" },
+        { id: "low", description: "Lower latency" },
+        { id: "medium", description: "Balances speed and quality" },
+        { id: "high", description: "Deeper reasoning" },
       ],
     },
     {
@@ -62,11 +69,11 @@ const catalog: AgentCatalog = {
       is_default: false,
       default_effort: "medium",
       efforts: [
-        { id: "minimal", description: "" },
-        { id: "low", description: "" },
-        { id: "medium", description: "" },
-        { id: "high", description: "" },
-        { id: "xhigh", description: "" },
+        { id: "minimal", description: "Minimal" },
+        { id: "low", description: "Lower latency" },
+        { id: "medium", description: "Balances speed and quality" },
+        { id: "high", description: "Deeper reasoning" },
+        { id: "xhigh", description: "Extra high" },
       ],
       service_tiers: [{ id: "fast", name: "Fast", description: "" }],
     },
@@ -77,6 +84,58 @@ const catalog: AgentCatalog = {
   configured_model: "gpt-5.4",
   configured_effort: "high",
   cli_config_read: true,
+};
+
+/** Claude 预览目录。模型来自 `list_models` 的形状，不含 Codex / GPT id。 */
+const claudeCatalog: AgentCatalog = {
+  agent: "claude-code",
+  models: [
+    {
+      id: "claude-sonnet-4-5",
+      label: "Sonnet 4.5",
+      description: "平衡",
+      is_default: true,
+      default_effort: "medium",
+      efforts: [
+        { id: "low", description: "更快" },
+        { id: "medium", description: "平衡" },
+        { id: "high", description: "更深" },
+      ],
+    },
+    {
+      id: "claude-opus-4-5",
+      label: "Opus 4.5",
+      description: "复杂任务",
+      is_default: false,
+      default_effort: "high",
+      efforts: [
+        { id: "high", description: "深" },
+        { id: "max", description: "最高" },
+      ],
+    },
+  ],
+  skills: [],
+  commands: [],
+  capabilities: caps,
+  configured_model: "claude-sonnet-4-5",
+  configured_effort: "medium",
+  thread_model: "claude-sonnet-4-5",
+  thread_effort: "medium",
+  cli_config_read: true,
+};
+
+const claudePermissionMenu: PermissionMenu = {
+  network_access: false,
+  writable_roots: false,
+  permission_profiles: false,
+  approve_for_me: false,
+  title: "权限",
+  notice: null,
+  presets: [
+    { id: "full", label: "跳过权限检查", description: "" },
+    { id: "ask", label: "询问批准", description: "" },
+  ],
+  profiles: [],
 };
 
 const liveGoal: SessionEvent = {
@@ -92,17 +151,14 @@ const liveGoal: SessionEvent = {
   time_used_seconds: 90,
 };
 
-/**
- * 开发预览：真实菜单和芯片，文件来自本仓库的模块图。
- * 不接 app-server，所以这里没有技能目录，也不调用 thread/goal。
- */
-/** 预览用的技能目录。不接 app-server，只给 `$` 菜单核对换行。 */
+/** 预览用的技能目录。不接 app-server，只给 `$` 菜单核对单行省略。 */
 const previewSkills: AgentSkillOption[] = [
   {
     name: "documents",
     mention: "documents",
     label: "文档",
-    description: "在仓库里查找并引用长文档。说明可以换行，技能名必须留在同一行，不能从单词中间断开。",
+    description:
+      "在仓库里查找并引用长文档。说明再长也只占一行，超出部分以省略号截断，行高不能被说明撑开。",
     path: "documents",
   },
   {
@@ -114,21 +170,31 @@ const previewSkills: AgentSkillOption[] = [
   },
 ];
 
+type PreviewMenu = null | "model" | "access" | "attach";
+
 export default function ComposerPreview() {
   const params = new URLSearchParams(window.location.search);
-  const [text, setText] = useState("");
-  const [caret, setCaret] = useState(0);
+  const claude = params.get("agent") === "claude";
+  const catalog = claude ? claudeCatalog : codexCatalog;
+  const initialMenu = params.get("menu");
+  const skillsOpen = params.get("skills") === "1";
+  const [text, setText] = useState(skillsOpen ? "$" : "");
+  const [caret, setCaret] = useState(skillsOpen ? 1 : 0);
   const [planOn, setPlanOn] = useState(false);
   const [goalDraft, setGoalDraft] = useState(false);
   const [goalLive, setGoalLive] = useState(params.get("goal") === "live");
   const showUsage = params.get("usage") === "1";
   const [tuning, setTuning] = useState<SessionTuning | undefined>();
-  const [menu, setMenu] = useState<null | "model">(null);
+  const [menu, setMenu] = useState<PreviewMenu>(
+    initialMenu === "model" || initialMenu === "access" ? initialMenu : null,
+  );
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const plusRef = useRef<HTMLButtonElement>(null);
   const accessRef = useRef<HTMLButtonElement>(null);
   const modelRef = useRef<HTMLButtonElement>(null);
   const modelMenuRef = useRef<HTMLDivElement>(null);
+  const accessMenuRef = useRef<HTMLDivElement>(null);
+  const permissionMenu = claude ? claudePermissionMenu : null;
   const events = useMemo<SessionEvent[]>(() => {
     const rows: SessionEvent[] = [];
     if (planOn) {
@@ -175,8 +241,8 @@ export default function ComposerPreview() {
     status: "completed",
     events,
     caps,
-    permissionMenu: null,
-    sandbox: emptySandbox(),
+    permissionMenu,
+    sandbox: emptySandbox(claude ? "ask" : "full"),
     commands: [],
     skills: previewSkills,
     catalog,
@@ -191,6 +257,7 @@ export default function ComposerPreview() {
     goal,
   });
   useComposerMenu(menu === "model", modelRef, modelMenuRef, () => setMenu(null));
+  useComposerMenu(menu === "access", accessRef, accessMenuRef, () => setMenu(null));
   const rememberTuning = (next: SessionTuning) => {
     setTuning((current) => ({
       model: next.model,
@@ -241,7 +308,11 @@ export default function ComposerPreview() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col justify-end bg-zinc-950 px-6 pb-10 text-zinc-200" data-composer-preview>
+    <div
+      className="flex min-h-screen flex-col justify-end bg-zinc-950 px-6 pb-10 text-zinc-200"
+      data-composer-preview
+      data-preview-agent={claude ? "claude-code" : "codex-cli"}
+    >
       <div className="relative mx-auto w-full max-w-3xl">
         {view.skillOpen && (
           <SkillMenu
@@ -296,8 +367,8 @@ export default function ComposerPreview() {
               menu={menu}
               imagesOn={false}
               composerLocked={false}
-              sandbox={emptySandbox()}
-              permissionMenu={null}
+              sandbox={emptySandbox(claude ? "ask" : "full")}
+              permissionMenu={permissionMenu}
               planChip={view.planOn}
               goalChip={view.goalOn}
               showModel
@@ -307,7 +378,9 @@ export default function ComposerPreview() {
               stopMode={false}
               sendDisabled={view.sendDisabled}
               onToggleMenu={(name) => {
-                if (name === "model") setMenu((current) => (current === "model" ? null : "model"));
+                if (name === "model" || name === "access" || name === "attach") {
+                  setMenu((current) => (current === name ? null : name));
+                }
               }}
               onPickFiles={() => {}}
               onDismissPlan={() => setPlanOn(false)}
@@ -321,6 +394,20 @@ export default function ComposerPreview() {
           </div>
         </div>
       </div>
+      {menu === "access" && (
+        <AccessMenu
+          menuRef={accessMenuRef}
+          sandbox={emptySandbox(claude ? "ask" : "full")}
+          menu={permissionMenu}
+          showNetwork={view.showNetwork}
+          showWritable={view.showWritable}
+          onPreset={() => {}}
+          onProfile={() => {}}
+          onNetwork={() => {}}
+          onAddDir={() => {}}
+          onRemoveDir={() => {}}
+        />
+      )}
       {menu === "model" && (
         <ModelMenu
           menuRef={modelMenuRef}

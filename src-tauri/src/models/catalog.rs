@@ -7,6 +7,9 @@ use super::event::SessionEvent;
 pub struct ReasoningEffortOption {
     pub id: String,
     pub description: String,
+    /// CLI 给的短名（`displayName` / `label`）。没有时界面用 description，再没有用 id。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
 }
 
 /// `model/list` 的一个 service tier。速度开关只在目录真有 Fast 档时出现。
@@ -315,6 +318,9 @@ pub struct AgentCatalog {
     /// `Some(false)` 表示 `config/read` 失败。缺省是旧缓存，不能当成失败。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cli_config_read: Option<bool>,
+    /// 这份目录属于哪个 Agent。对不上当前会话时不能拿来显示，也不能写入另一个 Agent 的缓存。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<AgentKind>,
 }
 
 impl AgentCatalog {
@@ -331,6 +337,7 @@ impl AgentCatalog {
             thread_model: None,
             thread_effort: None,
             cli_config_read: None,
+            agent: None,
         }
     }
 }

@@ -7,6 +7,7 @@ import {
   modelButtonLabel,
   preferCatalog,
   reduceCatalogResult,
+  sessionCatalog,
 } from "./catalog.ts";
 
 function catalog(id: string, skills: string[] = []): AgentCatalog {
@@ -114,7 +115,21 @@ test("loading has neither a catalog nor a notice", () => {
   assert.equal(modelButtonLabel(undefined, undefined, null), "读取模型…");
 });
 
-test("composer prefers the cached list before the live refresh arrives", () => {
-  const cached = catalog("gpt-cached");
-  assert.equal(preferCatalog(undefined, cached)?.models[0]?.id, "gpt-cached");
+test("a refresh keeps this session's previous models until a new list arrives", () => {
+  const previous = catalog("claude-sonnet");
+  assert.equal(preferCatalog(undefined, previous)?.models[0]?.id, "claude-sonnet");
+});
+
+test("the composer reads only the catalog stored for this session", () => {
+  const catalogs = {
+    "codex-cli:1": catalog("gpt-6.1-sol"),
+    "claude-code:1": catalog("claude-sonnet"),
+  };
+  const shown = sessionCatalog(catalogs, "claude-code:1");
+  assert.equal(shown?.models[0]?.id, "claude-sonnet");
+  assert.equal(
+    shown?.models.some((model) => model.id.includes("gpt")),
+    false,
+  );
+  assert.equal(sessionCatalog(catalogs, "missing"), undefined);
 });

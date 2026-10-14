@@ -1,4 +1,4 @@
-import type { AgentCatalog, AgentKind, Session } from "../types/index.ts";
+import type { AgentCatalog } from "../types/index.ts";
 
 /** 与后端 `CATALOG_STALE_NOTICE` 同一句。有缓存时刷新失败只显示这一条。 */
 export const CATALOG_STALE_NOTICE = "模型列表刷新失败，仍显示上次的模型。";
@@ -13,18 +13,15 @@ export type CatalogOutcome =
   | { ok: true; catalog: AgentCatalog; notice?: string | null }
   | { ok: false; message: string };
 
-export function agentForSession(
-  sessions: Record<string, Session[]>,
+/** 作曲栏只读这一会话自己的目录。别的会话的 payload 不参与显示。 */
+export function sessionCatalog(
+  catalogs: Record<string, AgentCatalog>,
   sessionId: string,
-): AgentKind | undefined {
-  for (const list of Object.values(sessions)) {
-    const found = list.find((session) => session.id === sessionId);
-    if (found) return found.agent;
-  }
-  return undefined;
+): AgentCatalog | undefined {
+  return catalogs[sessionId];
 }
 
-/** 本次刷新还没有结果时，先用该 Agent 上次成功的目录。空模型不能盖住已有模型。 */
+/** 同一会话里，空的新结果不能盖住这次会话已经拿到的模型。 */
 export function preferCatalog(
   live: AgentCatalog | undefined,
   cached: AgentCatalog | undefined,

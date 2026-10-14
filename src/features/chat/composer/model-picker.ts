@@ -1,6 +1,5 @@
 import { DESKTOP_ZH } from "../../../shared/strings/desktop-zh.ts";
 import {
-  effortLabel,
   type AgentCatalog,
   type AgentModelOption,
   type ReasoningEffortOption,
@@ -8,34 +7,28 @@ import {
 } from "../../../types/index.ts";
 import { effortForModel } from "./composer-submit.ts";
 
-/**
- * Codex TUI 把 Max / Ultra 从普通推理档里拆出去，避免在正常刻度上误选。
- * 见 `codex-rs/tui/src/chatwidget/model_popups.rs` 的 `is_advanced_reasoning_effort`。
- */
-const ADVANCED_EFFORTS = new Set(["max", "ultra"]);
-
 /** 与 Codex `ServiceTier::Fast` / `SPEED_TIER_FAST` 相同的 id。 */
 export const FAST_TIER_ID = "fast";
 
 /** 请求里的这个值表示不覆盖，TUI 不会把它写进 turn。 */
 const SERVICE_TIER_DEFAULT = "default";
 
-export function isAdvancedEffort(id: string | undefined): boolean {
-  return ADVANCED_EFFORTS.has(id?.trim() ?? "");
+/** 档位文案来自目录：短名，否则 description，否则 id。 */
+export function effortText(option: Pick<ReasoningEffortOption, "id" | "description"> & { label?: string | null } | undefined): string {
+  if (!option) return "";
+  return option.label?.trim() || option.description.trim() || option.id;
 }
 
-/**
- * 滑杆刻度是该模型 `supportedReasoningEfforts` 里的普通档，顺序跟目录一致。
- * 只有 Max / Ultra 时才把它们放上滑杆，否则强度没有可选项。
- */
+export function effortDisplay(model: AgentModelOption | undefined, effortId: string | undefined): string {
+  const id = effortId?.trim();
+  if (!id) return "";
+  const option = model?.efforts.find((item) => item.id === id);
+  return option ? effortText(option) : id;
+}
+
+/** 滑杆刻度就是该模型目录里的档位，顺序和数量都不改。 */
 export function sliderEfforts(model: AgentModelOption | undefined): ReasoningEffortOption[] {
-  if (!model) return [];
-  const standard = model.efforts.filter((effort) => !isAdvancedEffort(effort.id));
-  if (standard.length > 0) return standard;
-  if (model.efforts.length > 0) return model.efforts;
-  const fallback = model.default_effort.trim();
-  if (!fallback) return [];
-  return [{ id: fallback, description: "" }];
+  return model?.efforts ?? [];
 }
 
 /** 指针位置吸附到最近的刻度。 */
@@ -45,10 +38,11 @@ export function snapEffortIndex(clientX: number, left: number, width: number, co
   return Math.round(ratio * (count - 1));
 }
 
-/** 芯片是「模型名 强度」，中间没有间隔号。 */
+/** 芯片是「模型名 强度」。强度已经是目录文案，这里不再翻译。 */
 export function modelChipText(label: string, effort: string | undefined): string {
-  if (!effort?.trim()) return label;
-  return `${label} ${effortLabel(effort)}`;
+  const text = effort?.trim();
+  if (!text) return label;
+  return `${label} ${text}`;
 }
 
 export interface ModelSection {

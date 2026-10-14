@@ -83,7 +83,7 @@ pub async fn open(
         Some(id) => return Err(AgentError::Runtime(format!("无效的会话 id：{id}"))),
         None => (uuid::Uuid::new_v4().to_string(), false),
     };
-    let (permission_mode, notice) = command::permission_mode_for_access(access_mode.as_deref());
+    let permission_mode = command::permission_mode_for_access(access_mode.as_deref());
     let access = match access_mode.as_deref().unwrap_or("full") {
         "full" => "full",
         _ => "ask",
@@ -136,7 +136,7 @@ pub async fn open(
     });
     start_io(&shared, stdin, stdout, stderr);
 
-    if let Err(err) = shared.startup(notice).await {
+    if let Err(err) = shared.startup().await {
         shared.shutdown();
         return Err(err);
     }
@@ -145,7 +145,7 @@ pub async fn open(
 }
 
 impl Shared {
-    async fn startup(&self, notice: Option<&str>) -> Result<(), AgentError> {
+    async fn startup(&self) -> Result<(), AgentError> {
         let init = self
             .request(control::initialize_request(), Duration::from_secs(60))
             .await?;
@@ -178,9 +178,6 @@ impl Shared {
             Err(_) => {}
         }
         self.install_history();
-        if let Some(notice) = notice {
-            let _ = self.events.send(SessionEventBody::System { text: notice.to_string() });
-        }
         let _ = self.events.send(SessionEventBody::StatusChanged {
             status: SessionStatus::Completed,
         });
@@ -397,13 +394,13 @@ impl Shared {
         profile: &str,
     ) -> Result<(), AgentError> {
         if network {
-            return Err(AgentError::Runtime("Claude Code 没有网络访问开关".into()));
+            return Err(AgentError::Runtime("不支持网络访问开关".into()));
         }
         if !roots.is_empty() {
-            return Err(AgentError::Runtime("Claude Code 没有额外可写目录".into()));
+            return Err(AgentError::Runtime("不支持额外可写目录".into()));
         }
         if !profile.trim().is_empty() {
-            return Err(AgentError::Runtime("Claude Code 没有具名权限配置档".into()));
+            return Err(AgentError::Runtime("不支持具名权限配置档".into()));
         }
         let cli = command::access_to_permission_mode(mode)?;
         self.enqueue(

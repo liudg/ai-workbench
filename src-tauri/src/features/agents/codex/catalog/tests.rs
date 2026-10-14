@@ -214,13 +214,16 @@ fn reads_model_efforts() {
             "isDefault": true,
             "defaultReasoningEffort": "medium",
             "supportedReasoningEfforts": [
-                { "reasoningEffort": "low", "description": "fast" },
+                { "reasoningEffort": "low", "description": "fast", "displayName": "Light" },
                 { "reasoningEffort": "medium", "description": "balanced" }
             ]
         }]
     }));
     assert_eq!(models[0].id, "gpt-test");
     assert_eq!(models[0].efforts.len(), 2);
+    assert_eq!(models[0].efforts[0].label.as_deref(), Some("Light"));
+    assert!(models[0].efforts[1].label.is_none());
+    assert_eq!(models[0].efforts[0].description, "fast");
     assert_eq!(models[0].default_effort, "medium");
     assert!(models[0].show_in_picker);
     assert!(models[0].service_tiers.is_empty());

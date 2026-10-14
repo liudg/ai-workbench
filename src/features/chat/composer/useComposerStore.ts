@@ -1,6 +1,6 @@
 import { useShallow } from "zustand/react/shallow";
 
-import { preferCatalog } from "@/lib/catalog";
+import { sessionCatalog } from "@/lib/catalog";
 import { useWorkbench } from "@/store";
 import { emptySandbox, type AgentKind, type Attachment, type QueuedTurn } from "@/types";
 
@@ -29,7 +29,7 @@ export function useComposerActions() {
 export function useComposerSession(session: { id: string; agent: AgentKind; project_id: string }) {
   return useWorkbench(
     useShallow((state) => ({
-      catalog: preferCatalog(state.catalogs[session.id], state.catalogCache[session.agent]),
+      catalog: sessionCatalog(state.catalogs, session.id),
       catalogNotice: state.catalogNotice,
       profile: state.profiles[session.agent],
       tuning: state.tuning[session.id],

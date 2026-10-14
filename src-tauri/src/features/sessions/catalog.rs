@@ -150,12 +150,18 @@ impl CatalogCache {
     }
 
     /// 空模型不是一次成功的刷新，不能把已有目录写掉。
+    /// 标了别的 Agent 的目录也不能写进这一格。
     pub fn remember(&self, kind: AgentKind, catalog: &AgentCatalog) {
         if catalog.models.is_empty() {
             return;
         }
+        if catalog.agent.is_some_and(|agent| agent != kind) {
+            return;
+        }
+        let mut stored = catalog.clone();
+        stored.agent = Some(kind);
         let mut catalogs = self.catalogs.lock().unwrap();
-        catalogs.insert(kind, catalog.clone());
+        catalogs.insert(kind, stored);
         if let Ok(raw) = serde_json::to_string_pretty(&*catalogs) {
             let _ = fs::write(&self.file, raw);
         }

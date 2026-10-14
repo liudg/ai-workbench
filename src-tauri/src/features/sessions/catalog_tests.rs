@@ -30,6 +30,7 @@ fn catalog(id: &str) -> AgentCatalog {
         thread_model: None,
         thread_effort: None,
         cli_config_read: None,
+        agent: None,
     }
 }
 
@@ -73,6 +74,16 @@ fn empty_file_is_not_written_over_a_saved_catalog() {
     let reloaded = CatalogCache::load(&dir);
     let saved = reloaded.get(AgentKind::CodexCli).expect("persisted");
     assert_eq!(saved.models[0].id, "gpt-cached");
+    assert_eq!(saved.agent, Some(AgentKind::CodexCli));
+    let foreign = catalog("claude-sonnet");
+    let mut foreign = foreign;
+    foreign.agent = Some(AgentKind::ClaudeCode);
+    cache.remember(AgentKind::CodexCli, &foreign);
+    let kept = CatalogCache::load(&dir);
+    assert_eq!(
+        kept.get(AgentKind::CodexCli).expect("unchanged").models[0].id,
+        "gpt-cached"
+    );
     let _ = fs::remove_dir_all(&dir);
 }
 

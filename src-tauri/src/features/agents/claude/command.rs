@@ -74,24 +74,12 @@ fn nonempty(value: Option<&str>) -> Option<&str> {
 
 /// 工作台档位 → CLI `PermissionMode`。
 /// `full` → `bypassPermissions`，`ask` → `default`。
-/// 只读和替我批准没有对应档，启动时退回 `default`，并带回一句说明。
-pub fn permission_mode_for_access(mode: Option<&str>) -> (&'static str, Option<&'static str>) {
+/// 只读和替我批准启动时用 `default`。
+pub fn permission_mode_for_access(mode: Option<&str>) -> &'static str {
     match mode.unwrap_or("full") {
-        "full" => ("bypassPermissions", None),
-        "ask" | "default" => ("default", None),
-        "plan" => ("plan", None),
-        "read-only" => (
-            "default",
-            Some("Claude Code 没有只读沙箱。这一会话按「询问批准」启动。"),
-        ),
-        "approve-for-me" => (
-            "default",
-            Some("Claude Code 没有「替我批准」。这一会话按「询问批准」启动。"),
-        ),
-        _ => (
-            "default",
-            Some("不认识的权限档位。这一会话按「询问批准」启动。"),
-        ),
+        "full" => "bypassPermissions",
+        "plan" => "plan",
+        _ => "default",
     }
 }
 
@@ -99,11 +87,9 @@ pub fn access_to_permission_mode(mode: &str) -> Result<&'static str, crate::feat
     match mode {
         "full" => Ok("bypassPermissions"),
         "ask" | "default" => Ok("default"),
-        "read-only" => Err(crate::features::agents::AgentError::Runtime(
-            "Claude Code 没有只读沙箱".into(),
-        )),
-        "approve-for-me" => Err(crate::features::agents::AgentError::Runtime(
-            "Claude Code 没有「替我批准」".into(),
+        "plan" => Ok("plan"),
+        "read-only" | "approve-for-me" => Err(crate::features::agents::AgentError::Runtime(
+            "不支持这个权限档位".into(),
         )),
         _ => Err(crate::features::agents::AgentError::Runtime(format!(
             "不认识的权限档位 {mode}"

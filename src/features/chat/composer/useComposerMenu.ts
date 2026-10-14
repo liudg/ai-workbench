@@ -4,7 +4,7 @@ function placeMenu(anchor: HTMLElement, menu: HTMLElement) {
   const rect = anchor.getBoundingClientRect();
   const width = menu.offsetWidth;
   const height = menu.offsetHeight;
-  let left = rect.left;
+  let left = rect.left + rect.width / 2 - width / 2;
   if (left + width > window.innerWidth - 8) {
     left = window.innerWidth - width - 8;
   }

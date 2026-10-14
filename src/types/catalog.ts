@@ -58,6 +58,8 @@ export interface Attachment {
 export interface ReasoningEffortOption {
   id: string;
   description: string;
+  /** CLI 给的短名。没有时用 description，再没有用 id。 */
+  label?: string | null;
 }
 
 /** `model/list` 的 `serviceTiers`。速度开关只认目录里真正有的档。 */
@@ -181,6 +183,8 @@ export interface AgentCatalog {
   thread_effort?: string | null;
   /** `false` 表示 `config/read` 失败，不能把目录 isDefault 当成用户的 CLI 默认。 */
   cli_config_read?: boolean | null;
+  /** 适配器在目录上标的 Agent。会话管理用来避免把另一边的目录写进缓存。界面不拿它挑模型。 */
+  agent?: AgentKind | null;
 }
 
 /** `agent_catalog` 的返回。notice 有值时 catalog 仍是上次成功的目录。 */
@@ -193,20 +197,4 @@ export interface AgentCatalogRefresh {
 export interface CachedAgentCatalog {
   kind: AgentKind;
   catalog: AgentCatalog;
-}
-
-export const EFFORT_LABELS: Record<string, string> = {
-  none: "关闭",
-  minimal: "极简",
-  low: "低",
-  medium: "中",
-  high: "高",
-  xhigh: "极高",
-  max: "Max",
-  ultra: "Ultra",
-};
-
-export function effortLabel(id: string | undefined): string {
-  if (!id) return "默认";
-  return EFFORT_LABELS[id] ?? id;
 }

@@ -71,8 +71,6 @@ export interface WorkspaceSlice {
   pageAnnotations: Record<string, PageAnnotation[]>;
   queues: Record<string, QueuedTurn[]>;
   catalogs: Record<string, AgentCatalog>;
-  /** 按 Agent 记住的上次成功目录。作曲栏先显示它，再后台刷新。 */
-  catalogCache: Partial<Record<AgentKind, AgentCatalog>>;
   /** 目录刷新失败时的一条弱提示。不占用全局红色错误条。 */
   catalogNotice: string | null;
   tuning: Record<string, SessionTuning>;

@@ -32,6 +32,7 @@ export function AccessMenu({
   onAddDir: () => void;
   onRemoveDir: (path: string) => void;
 }) {
+  const notice = menu?.notice?.trim() || null;
   return (
     <div
       ref={menuRef}
@@ -45,9 +46,7 @@ export function AccessMenu({
       ) : (
         <>
           <p className="px-3 pb-1 pt-2 text-xs font-medium text-zinc-300">{menu.title}</p>
-          {menu.notice && (
-            <p className="px-3 pb-1 text-xs leading-4 text-zinc-500">{menu.notice}</p>
-          )}
+          {notice ? <p className="px-3 pb-1 text-xs leading-4 text-zinc-500">{notice}</p> : null}
           {menu.presets.map((preset) => (
             <MenuRow
               key={preset.id}
@@ -144,6 +143,7 @@ function MenuRow({
   onPick: () => void;
 }) {
   const disabled = Boolean(item.disabled_reason);
+  const detail = item.disabled_reason ?? item.description;
   return (
     <button
       type="button"
@@ -152,21 +152,19 @@ function MenuRow({
       aria-disabled={disabled}
       disabled={disabled}
       className={cn(
-        "flex w-full items-start gap-2 px-3 py-2 text-left",
+        "flex w-full items-center gap-2 px-3 py-1.5 text-left",
         disabled ? "cursor-not-allowed opacity-50" : "hover:bg-zinc-800",
         checked && "bg-zinc-800/70",
       )}
       onClick={onPick}
     >
       <span className="min-w-0 flex-1">
-        <span className={cn("block text-sm", warning ? "text-orange-400" : "text-zinc-100")}>
+        <span className={cn("block truncate text-sm", warning ? "text-orange-400" : "text-zinc-100")}>
           {item.label}
         </span>
-        <span className="mt-0.5 block text-xs leading-4 text-zinc-500">
-          {item.disabled_reason ?? item.description}
-        </span>
+        {detail ? <span className="mt-0.5 block truncate text-xs leading-4 text-zinc-500">{detail}</span> : null}
       </span>
-      {checked && <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-200" />}
+      {checked && <Check className="h-3.5 w-3.5 shrink-0 text-zinc-200" />}
     </button>
   );
 }

@@ -638,8 +638,17 @@ impl SessionManager {
             .get(session_id)
             .map(|entry| entry.meta.agent)
             .ok_or_else(|| "会话不存在或已结束".to_string())?;
-        let previous = self.catalog_cache.get(kind);
-        let incoming = handle.catalog().await.map_err(|err| err.to_string());
+        let previous = self
+            .catalog_cache
+            .get(kind)
+            .filter(|catalog| catalog.agent.is_none_or(|agent| agent == kind));
+        let incoming = handle.catalog().await.map_err(|err| err.to_string()).and_then(|mut catalog| {
+            if catalog.agent.is_some_and(|agent| agent != kind) {
+                return Err("模型列表与当前会话不符".into());
+            }
+            catalog.agent = Some(kind);
+            Ok(catalog)
+        });
         let refresh = soften_catalog(previous.as_ref(), incoming)?;
         if refresh.notice.is_none() && !refresh.catalog.models.is_empty() {
             self.catalog_cache.remember(kind, &refresh.catalog);

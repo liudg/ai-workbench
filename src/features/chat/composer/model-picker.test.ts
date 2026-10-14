@@ -5,6 +5,7 @@ import type { AgentCatalog, AgentModelOption } from "../../../types/index.ts";
 import {
   baselineServiceTier,
   effectiveServiceTier,
+  effortDisplay,
   modelChipText,
   modelSections,
   sliderEfforts,
@@ -38,13 +39,13 @@ const catalog = {
   configured_service_tier: "fast",
 } satisfies AgentCatalog;
 
-test("the slider keeps catalog order and leaves max and ultra off the normal scale", () => {
+test("the slider keeps every catalog effort in order", () => {
   const current = model({
     id: "gpt",
     label: "GPT",
     default_effort: "medium",
     efforts: [
-      { id: "low", description: "" },
+      { id: "low", description: "Lower latency" },
       { id: "medium", description: "" },
       { id: "high", description: "" },
       { id: "xhigh", description: "" },
@@ -54,17 +55,24 @@ test("the slider keeps catalog order and leaves max and ultra off the normal sca
   });
   assert.deepEqual(
     sliderEfforts(current).map((effort) => effort.id),
-    ["low", "medium", "high", "xhigh"],
+    ["low", "medium", "high", "xhigh", "max", "ultra"],
   );
+  const short = model({
+    id: "two",
+    label: "Two",
+    efforts: [
+      { id: "low", description: "快" },
+      { id: "high", description: "深" },
+    ],
+  });
   assert.deepEqual(
-    sliderEfforts(model({ id: "only", label: "Only", efforts: [{ id: "max", description: "" }] })).map(
-      (effort) => effort.id,
-    ),
-    ["max"],
+    sliderEfforts(short).map((effort) => effort.id),
+    ["low", "high"],
   );
-  assert.deepEqual(sliderEfforts(model({ id: "empty", label: "Empty", default_effort: "high" })).map((e) => e.id), [
-    "high",
-  ]);
+  assert.deepEqual(sliderEfforts(model({ id: "empty", label: "Empty", default_effort: "high" })), []);
+  assert.equal(effortDisplay(current, "low"), "Lower latency");
+  assert.equal(effortDisplay(model({ id: "named", label: "Named", efforts: [{ id: "high", description: "long", label: "高" }] }), "high"), "高");
+  assert.equal(effortDisplay(current, "missing"), "missing");
 });
 
 test("the handle snaps to the nearest of five stops", () => {
@@ -75,9 +83,9 @@ test("the handle snaps to the nearest of five stops", () => {
   assert.equal(snapEffortIndex(10, 0, 0, 5), 0);
 });
 
-test("the chip is the model name and the effort word", () => {
-  assert.equal(modelChipText("GPT-6 Astra", "xhigh"), "GPT-6 Astra 极高");
-  assert.equal(modelChipText("GPT-6 Astra", "high"), "GPT-6 Astra 高");
+test("the chip is the model name and the effort text already resolved", () => {
+  assert.equal(modelChipText("Sonnet", "更深"), "Sonnet 更深");
+  assert.equal(modelChipText("GPT-6 Astra", "high"), "GPT-6 Astra high");
   assert.equal(modelChipText("GPT-6 Astra", undefined), "GPT-6 Astra");
 });
 
