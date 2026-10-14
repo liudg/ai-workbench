@@ -1,17 +1,22 @@
-//! Claude Code 会话 token。
+//! Claude Code 会话 token。实时 stdout 和重开 jsonl 用同一条规则：
+//! 每个 `message.id` 是一次 API 调用，不跨调用累计；同一次调用里流式 usage 是累计值，只留最后一条。
 //!
-//! 工作台用 `--input-format stream-json`。官方用量说明
-//! （https://code.claude.com/docs/en/agent-sdk/cost-tracking）：
-//! - 同一步的多条 assistant 消息共用 `message.id`，usage 相同，按 id 只计一次。
-//! - assistant 上的 `output_tokens` 是占位，不计入。
-//! - 流式输入时，每条 `result.usage` 只覆盖这一回合的主循环（不含子代理）。
-//!   各回合相加。不要再把同一回合的 assistant usage 加进去。
-//! - `result.modelUsage` / `total_cost_usd` 是整次调用的累计（恢复会话时含此前花费），
-//!   并且带价格。这里不读这些字段。
+//! 泄漏源码 `services/api/claude.ts`：
+//! - `updateUsage`（L2914–2946）：一次响应里的 usage 是累计值，不是增量。
+//!   `input_tokens` / `cache_*` 在 `message_start` 定下来；`message_delta` 里的 0 不覆盖。
+//!   `output_tokens`（L2946）用最新一次的数。每次开流先 `usage = EMPTY_USAGE`（L1864）。
+//! - `content_block_stop`（L2171–2210）按内容块各产出一条 assistant，此时 `output_tokens`
+//!   还是 `message_start` 的占位。`message_delta`（L2213–2247）把最终 usage 写回最后一条。
+//! - `accumulateUsage`（L2989–3004）把各次 API 调用相加。`QueryEngine.ts` 在每次
+//!   `message_start` 把 `currentMessageUsage` 清零（L789–795），`message_stop` 再累加进
+//!   `totalUsage`（L810–815）。`result.usage` 就是这个 `totalUsage`（L1146）。
+//!   再加 assistant 会把同一次调用算两次。
 //!
-//! 重新打开时扫本会话 jsonl（`~/.claude/projects/*.jsonl`）。
-//! 主循环的输入和缓存来自去重后的 assistant；输出只来自文件里的 `result`
-//! （jsonl 通常没有 result，没有就不编输出）。子代理消息用各自的 `message.id`。
+//! jsonl 懒写入会带上这次改写（`QueryEngine.ts` L718–728，`sessionStorage.ts` L567 的 100ms）。
+//! stdout 在 `content_block_stop` 就序列化（`cli/print.ts` L884–885，`cli/structuredIO.ts` `write` L465–466），
+//! 最终 output 在随后的 `stream_event` / `message_delta`。工作台开了 `--include-partial-messages`。
+//!
+//! 不读 `total_cost_usd` / `modelUsage`。没有 assistant 记录时才用 `result.usage`。
 
 use std::collections::HashMap;
 
@@ -19,7 +24,7 @@ use serde_json::Value;
 
 use crate::models::SessionEventBody;
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
 struct Parts {
     input: Option<i64>,
     output: Option<i64>,
@@ -29,7 +34,10 @@ struct Parts {
 
 impl Parts {
     fn is_empty(self) -> bool {
-        self.input.is_none() && self.output.is_none() && self.cache_read.is_none() && self.cache_write.is_none()
+        self.input.is_none()
+            && self.output.is_none()
+            && self.cache_read.is_none()
+            && self.cache_write.is_none()
     }
 
     fn add(&mut self, other: Self) {
@@ -47,7 +55,16 @@ fn add_field(slot: &mut Option<i64>, value: Option<i64>) {
     *slot = Some(slot.unwrap_or(0).saturating_add(value.max(0)));
 }
 
-/// 历史 jsonl → 一条快照。没有 usage 就不发。
+/// 一次 API 调用进行中的用量。`message_delta` 之后不再用占位 assistant 盖掉。
+#[derive(Default)]
+pub(super) struct LiveCursor {
+    id: String,
+    parts: Parts,
+    finalized: bool,
+}
+
+/// 历史 jsonl → 一条快照。同一 `message.id` 只留文件里的最后一条。
+/// 有 assistant 记录就不加 `result`。没有 assistant 时才用 `result.usage`。
 pub(super) fn snapshot_from_transcript(content: &str) -> Option<SessionEventBody> {
     let mut assistants: HashMap<String, Parts> = HashMap::new();
     let mut results: HashMap<String, Parts> = HashMap::new();
@@ -67,10 +84,9 @@ pub(super) fn snapshot_from_transcript(content: &str) -> Option<SessionEventBody
                 let Some(id) = message_id(&value) else {
                     continue;
                 };
-                let Some(mut parts) = parts_from_usage(value.get("message").and_then(|message| message.get("usage"))) else {
+                let Some(parts) = assistant_parts(&value) else {
                     continue;
                 };
-                parts.output = None;
                 assistants.insert(id, parts);
             }
             "result" => {
@@ -91,29 +107,84 @@ pub(super) fn snapshot_from_transcript(content: &str) -> Option<SessionEventBody
         for parts in assistants.values() {
             total.add(*parts);
         }
-        for parts in results.values() {
-            add_field(&mut total.output, parts.output);
-        }
     }
     usage_event("snapshot", None, total)
 }
 
-/// 实时 `result`。调用方只在 live 流上用它，历史快照另算。
-pub(super) fn live_result(value: &Value) -> Option<SessionEventBody> {
-    let parts = parts_from_usage(value.get("usage"))?;
-    usage_event("delta", Some(result_key(value)), parts)
+/// `stream_event` 里的 `message_start` / `message_delta`。
+pub(super) fn apply_stream(cursor: &mut LiveCursor, event: &Value) -> Option<SessionEventBody> {
+    match event.get("type").and_then(Value::as_str).unwrap_or("") {
+        "message_start" => {
+            let id = event
+                .get("message")
+                .and_then(|message| message.get("id"))
+                .and_then(Value::as_str)
+                .filter(|id| !id.is_empty())?;
+            let parts = parts_from_usage(
+                event
+                    .get("message")
+                    .and_then(|message| message.get("usage")),
+            )?;
+            cursor.id = id.to_string();
+            cursor.parts = parts;
+            cursor.finalized = false;
+            usage_event("delta", Some(format!("assistant:{id}")), cursor.parts)
+        }
+        "message_delta" => {
+            if cursor.id.is_empty() {
+                return None;
+            }
+            let usage = event.get("usage")?;
+            merge_stream_delta(&mut cursor.parts, usage);
+            if cursor.parts.is_empty() {
+                return None;
+            }
+            cursor.finalized = true;
+            usage_event(
+                "delta",
+                Some(format!("assistant:{}", cursor.id)),
+                cursor.parts,
+            )
+        }
+        _ => None,
+    }
 }
 
-/// 子代理的 assistant。主循环的输入已经在 `result.usage` 里，这里不再计。
-/// `output_tokens` 仍是占位，丢掉。
-pub(super) fn live_subagent(value: &Value) -> Option<SessionEventBody> {
-    if !is_subagent(value) {
+/// 一条 assistant。同一 id 在 `message_delta` 之后不再用占位 output 覆盖。
+pub(super) fn apply_assistant(cursor: &mut LiveCursor, value: &Value) -> Option<SessionEventBody> {
+    let id = message_id(value)?;
+    let parts = assistant_parts(value)?;
+    if cursor.finalized && cursor.id == id {
         return None;
     }
-    let id = message_id(value)?;
-    let mut parts = parts_from_usage(value.get("message").and_then(|message| message.get("usage")))?;
-    parts.output = None;
-    usage_event("delta", Some(format!("assistant:{id}")), parts)
+    cursor.id = id.clone();
+    cursor.parts = parts;
+    cursor.finalized = false;
+    usage_event("delta", Some(format!("assistant:{id}")), cursor.parts)
+}
+
+fn assistant_parts(value: &Value) -> Option<Parts> {
+    parts_from_usage(
+        value
+            .get("message")
+            .and_then(|message| message.get("usage")),
+    )
+}
+
+/// 对齐 `updateUsage`：输入和缓存只在大于 0 时覆盖，output 用本次给出的累计值。
+fn merge_stream_delta(parts: &mut Parts, usage: &Value) {
+    if let Some(number) = field(usage, "input_tokens").filter(|number| *number > 0) {
+        parts.input = Some(number);
+    }
+    if let Some(number) = field(usage, "cache_read_input_tokens").filter(|number| *number > 0) {
+        parts.cache_read = Some(number);
+    }
+    if let Some(number) = cache_write(usage).filter(|number| *number > 0) {
+        parts.cache_write = Some(number);
+    }
+    if let Some(number) = field(usage, "output_tokens") {
+        parts.output = Some(number.max(0));
+    }
 }
 
 fn usage_event(scope: &str, key: Option<String>, parts: Parts) -> Option<SessionEventBody> {
@@ -128,14 +199,6 @@ fn usage_event(scope: &str, key: Option<String>, parts: Parts) -> Option<Session
         cache_read_tokens: parts.cache_read,
         cache_write_tokens: parts.cache_write,
     })
-}
-
-fn is_subagent(value: &Value) -> bool {
-    flag(value, "isSidechain")
-        || value
-            .get("parent_tool_use_id")
-            .and_then(Value::as_str)
-            .is_some_and(|id| !id.is_empty())
 }
 
 fn message_id(value: &Value) -> Option<String> {
@@ -155,7 +218,11 @@ fn message_id(value: &Value) -> Option<String> {
 }
 
 fn result_key(value: &Value) -> String {
-    if let Some(uuid) = value.get("uuid").and_then(Value::as_str).filter(|id| !id.is_empty()) {
+    if let Some(uuid) = value
+        .get("uuid")
+        .and_then(Value::as_str)
+        .filter(|id| !id.is_empty())
+    {
         return format!("result:{uuid}");
     }
     if let Some(turn) = value.get("num_turns").and_then(as_i64) {
@@ -241,7 +308,7 @@ mod tests {
     }
 
     #[test]
-    fn transcript_dedupes_message_id_and_ignores_assistant_output() {
+    fn transcript_keeps_the_last_record_per_message_id() {
         let text = r#"
 {"type":"assistant","uuid":"u1","message":{"id":"msg_1","usage":{"input_tokens":10,"output_tokens":1,"cache_read_input_tokens":4,"cache_creation_input_tokens":2}}}
 {"type":"assistant","uuid":"u2","message":{"id":"msg_1","usage":{"input_tokens":10,"output_tokens":99,"cache_read_input_tokens":4,"cache_creation_input_tokens":2}}}
@@ -257,7 +324,7 @@ mod tests {
         assert_eq!(parts.input, Some(13));
         assert_eq!(parts.cache_read, Some(4));
         assert_eq!(parts.cache_write, Some(2));
-        assert_eq!(parts.output, Some(47));
+        assert_eq!(parts.output, Some(100));
     }
 
     #[test]
@@ -273,44 +340,143 @@ mod tests {
     #[test]
     fn empty_transcript_reports_nothing() {
         assert!(snapshot_from_transcript("").is_none());
-        assert!(snapshot_from_transcript(r#"{"type":"assistant","message":{"id":"m","content":[]}}"#).is_none());
+        assert!(snapshot_from_transcript(
+            r#"{"type":"assistant","message":{"id":"m","content":[]}}"#
+        )
+        .is_none());
     }
 
     #[test]
-    fn live_result_is_one_delta_and_subagent_drops_placeholder_output() {
-        let result = json!({
-            "type": "result",
-            "uuid": "r-live",
-            "usage": {"input_tokens": 3, "output_tokens": 4, "cache_read_input_tokens": 1, "cache_creation_input_tokens": 2},
-            "total_cost_usd": 1.25,
-            "modelUsage": {"claude": {"inputTokens": 100, "outputTokens": 100, "costUSD": 9}}
+    fn message_delta_finalizes_output_and_a_later_chunk_cannot_downgrade_it() {
+        let mut cursor = LiveCursor::default();
+        let start = json!({
+            "type": "message_start",
+            "message": {
+                "id": "msg_main",
+                "usage": {"input_tokens": 8, "output_tokens": 1, "cache_read_input_tokens": 2, "cache_creation_input_tokens": 4}
+            }
         });
-        let (scope, key, parts) = usage_of(live_result(&result));
-        assert_eq!(scope, "delta");
-        assert_eq!(key.as_deref(), Some("result:r-live"));
-        assert_eq!(parts.input, Some(3));
-        assert_eq!(parts.output, Some(4));
-        assert_eq!(parts.cache_read, Some(1));
-        assert_eq!(parts.cache_write, Some(2));
+        let (_, key, parts) = usage_of(apply_stream(&mut cursor, &start));
+        assert_eq!(key.as_deref(), Some("assistant:msg_main"));
+        assert_eq!(parts.output, Some(1));
 
-        let main = json!({
+        let chunk = json!({
             "type": "assistant",
             "uuid": "a",
+            "message": {"id": "msg_main", "usage": {"input_tokens": 8, "output_tokens": 1, "cache_read_input_tokens": 2, "cache_creation_input_tokens": 4}}
+        });
+        let (_, _, parts) = usage_of(apply_assistant(&mut cursor, &chunk));
+        assert_eq!(parts.output, Some(1));
+
+        let delta = json!({
+            "type": "message_delta",
+            "delta": {"stop_reason": "end_turn"},
+            "usage": {"input_tokens": 0, "output_tokens": 40, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}
+        });
+        let (scope, key, parts) = usage_of(apply_stream(&mut cursor, &delta));
+        assert_eq!(scope, "delta");
+        assert_eq!(key.as_deref(), Some("assistant:msg_main"));
+        assert_eq!(parts.input, Some(8));
+        assert_eq!(parts.output, Some(40));
+        assert_eq!(parts.cache_read, Some(2));
+        assert_eq!(parts.cache_write, Some(4));
+
+        let late = json!({
+            "type": "assistant",
+            "uuid": "b",
             "message": {"id": "msg_main", "usage": {"input_tokens": 8, "output_tokens": 1}}
         });
-        assert!(live_subagent(&main).is_none());
+        assert!(apply_assistant(&mut cursor, &late).is_none());
 
         let side = json!({
             "type": "assistant",
-            "uuid": "b",
+            "uuid": "c",
             "isSidechain": true,
-            "message": {"id": "msg_side", "usage": {"input_tokens": 8, "output_tokens": 1, "cache_read_input_tokens": 2}}
+            "message": {"id": "msg_side", "usage": {"input_tokens": 8, "output_tokens": 6, "cache_read_input_tokens": 2}}
         });
-        let (scope, key, parts) = usage_of(live_subagent(&side));
-        assert_eq!(scope, "delta");
+        let (_, key, parts) = usage_of(apply_assistant(&mut cursor, &side));
         assert_eq!(key.as_deref(), Some("assistant:msg_side"));
-        assert_eq!(parts.input, Some(8));
-        assert_eq!(parts.output, None);
-        assert_eq!(parts.cache_read, Some(2));
+        assert_eq!(parts.output, Some(6));
+    }
+
+    #[test]
+    fn recorded_jsonl_without_result_matches_the_live_stream() {
+        let (_, _, resumed) = usage_of(snapshot_from_transcript(RECORDED_CLAUDE_JSONL));
+        assert_eq!(
+            resumed,
+            Parts {
+                input: Some(15),
+                output: Some(126),
+                cache_read: Some(17_400),
+                cache_write: Some(1_200),
+            }
+        );
+
+        let mut cursor = LiveCursor::default();
+        let mut events = Vec::new();
+        for line in RECORDED_CLAUDE_LIVE.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            let value: serde_json::Value = serde_json::from_str(line).unwrap();
+            let kind = value.get("type").and_then(Value::as_str).unwrap_or("");
+            let body = match kind {
+                "stream_event" => {
+                    apply_stream(&mut cursor, value.get("event").unwrap_or(&Value::Null))
+                }
+                "assistant" => apply_assistant(&mut cursor, &value),
+                "result" => None,
+                _ => None,
+            };
+            if let Some(body) = body {
+                events.push(body);
+            }
+        }
+        assert_eq!(fold_deltas(&events), resumed);
+    }
+
+    fn fold_deltas(events: &[SessionEventBody]) -> Parts {
+        let mut deltas = std::collections::HashMap::<String, Parts>::new();
+        for event in events {
+            let (_, key, parts) = usage_of(Some(event.clone()));
+            deltas.insert(key.expect("delta key"), parts);
+        }
+        let mut total = Parts::default();
+        for parts in deltas.values() {
+            total.add(*parts);
+        }
+        total
     }
 }
+
+/// 形状对齐 `~/.claude/projects/*.jsonl`。同一 `message.id` 有多块，最后一块才是改写后的完整 usage。没有 `result`。
+#[cfg(test)]
+pub(super) const RECORDED_CLAUDE_JSONL: &str = r#"
+{"parentUuid":null,"isSidechain":false,"type":"user","uuid":"11111111-1111-4111-8111-111111111111","timestamp":"2026-04-21T02:14:01.100Z","sessionId":"6b9c0e2a-4f31-4a77-9c2e-0a1b2c3d4e5f","cwd":"/workspace/app","version":"2.1.88","message":{"role":"user","content":[{"type":"text","text":"列出 src 里的测试"}]}}
+{"parentUuid":"11111111-1111-4111-8111-111111111111","isSidechain":false,"type":"assistant","uuid":"22222222-2222-4222-8222-222222222221","timestamp":"2026-04-21T02:14:03.100Z","sessionId":"6b9c0e2a-4f31-4a77-9c2e-0a1b2c3d4e5f","cwd":"/workspace/app","version":"2.1.88","requestId":"req_01A","message":{"model":"claude-sonnet-4-5","id":"msg_01ABC","type":"message","role":"assistant","content":[{"type":"thinking","thinking":"先看目录"}],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":3,"cache_creation_input_tokens":1200,"cache_read_input_tokens":8000,"output_tokens":1,"cache_creation":{"ephemeral_5m_input_tokens":1200,"ephemeral_1h_input_tokens":0},"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0}}}}
+{"parentUuid":"22222222-2222-4222-8222-222222222221","isSidechain":false,"type":"assistant","uuid":"22222222-2222-4222-8222-222222222222","timestamp":"2026-04-21T02:14:03.400Z","sessionId":"6b9c0e2a-4f31-4a77-9c2e-0a1b2c3d4e5f","cwd":"/workspace/app","version":"2.1.88","requestId":"req_01A","message":{"model":"claude-sonnet-4-5","id":"msg_01ABC","type":"message","role":"assistant","content":[{"type":"text","text":"我先列一下。"}],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":3,"cache_creation_input_tokens":1200,"cache_read_input_tokens":8000,"output_tokens":2,"cache_creation":{"ephemeral_5m_input_tokens":1200,"ephemeral_1h_input_tokens":0},"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0}}}}
+{"parentUuid":"22222222-2222-4222-8222-222222222222","isSidechain":false,"type":"assistant","uuid":"22222222-2222-4222-8222-222222222223","timestamp":"2026-04-21T02:14:03.800Z","sessionId":"6b9c0e2a-4f31-4a77-9c2e-0a1b2c3d4e5f","cwd":"/workspace/app","version":"2.1.88","requestId":"req_01A","message":{"model":"claude-sonnet-4-5","id":"msg_01ABC","type":"message","role":"assistant","content":[{"type":"tool_use","id":"toolu_01","name":"Bash","input":{"command":"ls src"}}],"stop_reason":"tool_use","stop_sequence":null,"usage":{"input_tokens":3,"cache_creation_input_tokens":1200,"cache_read_input_tokens":8000,"output_tokens":86,"cache_creation":{"ephemeral_5m_input_tokens":1200,"ephemeral_1h_input_tokens":0},"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0}}}}
+{"parentUuid":"22222222-2222-4222-8222-222222222223","isSidechain":false,"type":"user","uuid":"33333333-3333-4333-8333-333333333333","timestamp":"2026-04-21T02:14:04.200Z","sessionId":"6b9c0e2a-4f31-4a77-9c2e-0a1b2c3d4e5f","cwd":"/workspace/app","version":"2.1.88","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01","content":"a.rs\nb.rs"}]}}
+{"parentUuid":"33333333-3333-4333-8333-333333333333","isSidechain":false,"type":"assistant","uuid":"44444444-4444-4444-8444-444444444441","timestamp":"2026-04-21T02:14:06.100Z","sessionId":"6b9c0e2a-4f31-4a77-9c2e-0a1b2c3d4e5f","cwd":"/workspace/app","version":"2.1.88","requestId":"req_01B","message":{"model":"claude-sonnet-4-5","id":"msg_02DEF","type":"message","role":"assistant","content":[{"type":"text","text":"目录里有"}],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":12,"cache_creation_input_tokens":0,"cache_read_input_tokens":9400,"output_tokens":1,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0}}}}
+{"parentUuid":"44444444-4444-4444-8444-444444444441","isSidechain":false,"type":"assistant","uuid":"44444444-4444-4444-8444-444444444442","timestamp":"2026-04-21T02:14:06.500Z","sessionId":"6b9c0e2a-4f31-4a77-9c2e-0a1b2c3d4e5f","cwd":"/workspace/app","version":"2.1.88","requestId":"req_01B","message":{"model":"claude-sonnet-4-5","id":"msg_02DEF","type":"message","role":"assistant","content":[{"type":"text","text":" a.rs 和 b.rs。"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":12,"cache_creation_input_tokens":0,"cache_read_input_tokens":9400,"output_tokens":40,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0}}}}
+"#;
+
+/// 同一会话的 stdout。assistant 在 `content_block_stop` 写出，output 仍是占位；完整 output 在后面的 `message_delta`。
+/// 末尾多一条同 id 的占位 assistant，以及一条更大的 `result`，两者都不能改总数。
+#[cfg(test)]
+pub(super) const RECORDED_CLAUDE_LIVE: &str = r#"
+{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg_01ABC","type":"message","role":"assistant","model":"claude-sonnet-4-5","usage":{"input_tokens":3,"output_tokens":1,"cache_creation_input_tokens":1200,"cache_read_input_tokens":8000}}}}
+{"type":"assistant","uuid":"22222222-2222-4222-8222-222222222221","message":{"id":"msg_01ABC","role":"assistant","content":[{"type":"thinking","thinking":"先看目录"}],"stop_reason":null,"usage":{"input_tokens":3,"output_tokens":1,"cache_creation_input_tokens":1200,"cache_read_input_tokens":8000}}}
+{"type":"assistant","uuid":"22222222-2222-4222-8222-222222222222","message":{"id":"msg_01ABC","role":"assistant","content":[{"type":"text","text":"我先列一下。"}],"stop_reason":null,"usage":{"input_tokens":3,"output_tokens":2,"cache_creation_input_tokens":1200,"cache_read_input_tokens":8000}}}
+{"type":"assistant","uuid":"22222222-2222-4222-8222-222222222223","message":{"id":"msg_01ABC","role":"assistant","content":[{"type":"tool_use","id":"toolu_01","name":"Bash","input":{"command":"ls src"}}],"stop_reason":null,"usage":{"input_tokens":3,"output_tokens":1,"cache_creation_input_tokens":1200,"cache_read_input_tokens":8000}}}
+{"type":"stream_event","event":{"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"input_tokens":0,"output_tokens":86,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}
+{"type":"stream_event","event":{"type":"message_stop"}}
+{"type":"user","uuid":"33333333-3333-4333-8333-333333333333","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01","content":"a.rs\nb.rs"}]}}
+{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg_02DEF","type":"message","role":"assistant","model":"claude-sonnet-4-5","usage":{"input_tokens":12,"output_tokens":1,"cache_creation_input_tokens":0,"cache_read_input_tokens":9400}}}}
+{"type":"assistant","uuid":"44444444-4444-4444-8444-444444444441","message":{"id":"msg_02DEF","role":"assistant","content":[{"type":"text","text":"目录里有"}],"stop_reason":null,"usage":{"input_tokens":12,"output_tokens":1,"cache_creation_input_tokens":0,"cache_read_input_tokens":9400}}}
+{"type":"assistant","uuid":"44444444-4444-4444-8444-444444444442","message":{"id":"msg_02DEF","role":"assistant","content":[{"type":"text","text":" a.rs 和 b.rs。"}],"stop_reason":null,"usage":{"input_tokens":12,"output_tokens":1,"cache_creation_input_tokens":0,"cache_read_input_tokens":9400}}}
+{"type":"stream_event","event":{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":0,"output_tokens":40,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}
+{"type":"assistant","uuid":"44444444-4444-4444-8444-444444444443","message":{"id":"msg_02DEF","role":"assistant","content":[{"type":"text","text":" a.rs 和 b.rs。"}],"stop_reason":null,"usage":{"input_tokens":12,"output_tokens":1,"cache_creation_input_tokens":0,"cache_read_input_tokens":9400}}}
+{"type":"result","subtype":"success","is_error":false,"uuid":"55555555-5555-4555-8555-555555555555","num_turns":2,"total_cost_usd":1.25,"usage":{"input_tokens":9999,"output_tokens":9999,"cache_creation_input_tokens":9999,"cache_read_input_tokens":9999},"modelUsage":{"claude-sonnet-4-5":{"inputTokens":9999,"outputTokens":9999,"costUSD":9}}}
+"#;

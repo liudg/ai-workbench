@@ -248,6 +248,29 @@ mod tests {
     }
 
     #[test]
+    fn recorded_rollout_with_several_token_counts_keeps_only_the_last_total() {
+        let text = r#"
+{"timestamp":"2026-04-21T10:00:00.000Z","type":"session_meta","payload":{"id":"019ab891-4c55-7790-9670-6c3b48c33281","cwd":"/workspace","cli_version":"0.98.0","originator":"codex_cli_rs"}}
+{"timestamp":"2026-04-21T10:00:01.000Z","type":"event_msg","payload":{"type":"user_message","message":"看一下用量"}}
+{"timestamp":"2026-04-21T10:00:02.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"先看会话"}]}}
+{"timestamp":"2026-04-21T10:00:02.100Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":40,"output_tokens":10,"reasoning_output_tokens":2,"total_tokens":110},"last_token_usage":{"input_tokens":100,"cached_input_tokens":40,"output_tokens":10,"reasoning_output_tokens":2,"total_tokens":110},"model_context_window":258400}}}
+{"timestamp":"2026-04-21T10:00:03.000Z","type":"event_msg","payload":{"type":"token_count","info":null}}
+{"timestamp":"2026-04-21T10:00:04.000Z","type":"response_item","payload":{"type":"function_call","name":"shell","arguments":"{}"}}
+{"timestamp":"2026-04-21T10:00:05.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":250,"cached_input_tokens":80,"output_tokens":30,"reasoning_output_tokens":5,"total_tokens":280},"last_token_usage":{"input_tokens":150,"cached_input_tokens":40,"output_tokens":20,"reasoning_output_tokens":3,"total_tokens":170},"model_context_window":258400}}}
+{"timestamp":"2026-04-21T10:00:06.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":400,"cached_input_tokens":120,"output_tokens":55,"reasoning_output_tokens":8,"total_tokens":455},"last_token_usage":{"input_tokens":150,"cached_input_tokens":40,"output_tokens":25,"reasoning_output_tokens":3,"total_tokens":175},"model_context_window":258400}}}
+"#;
+        let info = usage_from_rollout_text(text).unwrap();
+        let (input, output, cache_read, cache_write) = parts(&snapshot_from_info(&info));
+        assert_eq!(
+            (input, output, cache_read, cache_write),
+            (280, 55, 120, None)
+        );
+        assert_eq!(input + output + cache_read, 455);
+        assert_ne!(input + cache_read + output, 110 + 280 + 455);
+        assert_ne!(output, 55 + 25);
+    }
+
+    #[test]
     fn rollout_file_is_the_newest_name_match() {
         let root = std::env::temp_dir().join(format!(
             "codex-usage-{}-{}",
