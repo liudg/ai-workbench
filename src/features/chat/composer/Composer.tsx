@@ -92,14 +92,19 @@ export function Composer({ session, events }: { session: Session; events: Sessio
           }}
         >
           <div className="min-w-0 overflow-hidden px-3 pt-3">
-          {view.goalStatus ? (
-            <p
-              data-goal-status
-              title={view.goalStatus}
-              className="mb-1 truncate px-1 text-xs leading-5 text-fuchsia-300"
-            >
-              {view.goalStatus}
-            </p>
+          {view.goalStatus || view.contextUsage ? (
+            <div className="mb-1 flex min-w-0 items-center gap-3 px-1">
+              {view.goalStatus ? (
+                <p data-goal-status title={view.goalStatus} className="min-w-0 truncate text-xs leading-5 text-fuchsia-300">
+                  {view.goalStatus}
+                </p>
+              ) : null}
+              {view.contextUsage ? (
+                <p data-context-usage title={view.contextUsage} className="min-w-0 truncate text-xs leading-5 text-zinc-400">
+                  {view.contextUsage}
+                </p>
+              ) : null}
+            </div>
           ) : null}
           <Attachments files={c.files} imagesOn={view.imagesOn} onRemove={c.removeFile} />
           <ComposerInput

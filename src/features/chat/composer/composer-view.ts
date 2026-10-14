@@ -16,6 +16,7 @@ import {
 } from "../../../types/index.ts";
 import { sandboxAllowsExtras } from "./access.ts";
 import { exclusiveComposerMode } from "./collaboration-mode.ts";
+import { contextUsageLine } from "./context-usage.ts";
 import { type GoalSnapshot } from "./goal.ts";
 import { goalStatusLine } from "./goal-status.ts";
 import { atToken, mentionSupport, type MentionSupport } from "./mentions.ts";
@@ -187,6 +188,7 @@ export function deriveComposerView(input: ComposerViewInput) {
     planOn,
     goalOn,
     goalStatus: goalOn ? goalStatusLine(input.goal ?? null, !input.goal?.objective) : null,
+    contextUsage: contextUsageLine(input.events),
     stopMode,
     sendDisabled,
     showPlan: Boolean(caps?.supports_plan),

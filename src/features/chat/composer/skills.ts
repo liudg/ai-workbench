@@ -39,7 +39,7 @@ export function insertSkill(
 ): string {
   const upto = text.slice(0, caret);
   const match = upto.match(/(^|[\s\n])\$([A-Za-z0-9_.:-]*)$/);
-  const insertion = `$${mention} `;
+  const insertion = mention.startsWith("/") || mention.startsWith("$") ? `${mention} ` : `$${mention} `;
   if (!match || match.index == null) return `${text}${insertion}`;
   const start = match.index + match[1].length;
   return text.slice(0, start) + insertion + text.slice(caret);

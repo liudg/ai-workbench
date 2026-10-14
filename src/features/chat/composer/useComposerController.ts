@@ -68,7 +68,7 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
   useReviewDismiss(reviewOpen, reviewRootRef, closeReview);
 
   const caps = data.profile?.capabilities ?? data.catalog?.capabilities;
-  const permissionMenu = useComposerFeeds(session.id, actions.loadCatalog, caps);
+  const permissionMenu = useComposerFeeds(session.id, actions.loadCatalog);
   const supportsGoals = Boolean(caps?.supports_goals);
   const goal = useGoalDraft(session.id, supportsGoals, events);
   const view = deriveComposerView({
@@ -77,7 +77,7 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     caps,
     permissionMenu,
     sandbox: data.sandbox,
-    commands: data.profile?.commands ?? data.catalog?.commands ?? [],
+    commands: data.catalog?.commands ?? data.profile?.commands ?? [],
     skills: data.catalog?.skills ?? [],
     catalog: data.catalog,
     tuning: data.tuning,

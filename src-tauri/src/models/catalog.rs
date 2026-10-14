@@ -168,6 +168,36 @@ impl AgentCapabilities {
             supports_paged_history: true,
         }
     }
+
+    /// Claude Code 会话能力。没有对应物的开关保持关闭，界面不要显示成已接通。
+    /// 回合 diff 不是 CLI 事件，由 Edit/Write 的工具输入或结果拼出来。
+    pub fn claude() -> Self {
+        Self {
+            supports_slash: true,
+            supports_resume: true,
+            supports_questions: true,
+            supports_tuning: true,
+            supports_skills: true,
+            supports_goals: true,
+            supports_images: true,
+            supports_queue: false,
+            supports_fork: false,
+            supports_delete: false,
+            supports_rename: true,
+            supports_plan: true,
+            changes: ChangeCapabilities {
+                turn_diff: true,
+                per_file_patch: true,
+                git_scopes: true,
+            },
+            supports_review: false,
+            supports_network_access: false,
+            supports_writable_roots: false,
+            supports_permission_profiles: false,
+            supports_approve_for_me: false,
+            supports_paged_history: true,
+        }
+    }
 }
 
 /// 权限菜单里的一项：内置档位或具名配置档。文案由适配器给出。

@@ -121,6 +121,18 @@ export type SessionEventBody =
       token_budget?: number | null;
       tokens_used?: number | null;
       time_used_seconds?: number | null;
+    }
+  /** 上下文窗口或本回合 token。不进时间线。缺的数字不写，界面不补 0。 */
+  | {
+      kind: "context-usage";
+      /** `get_context_usage` 是窗口，`partial-usage` 是本回合。 */
+      source: string;
+      used_tokens?: number | null;
+      max_tokens?: number | null;
+      percentage?: number | null;
+      input_tokens?: number | null;
+      output_tokens?: number | null;
+      model?: string | null;
     };
 
 export type FileStatus = "A" | "M" | "D" | "R";

@@ -6,7 +6,6 @@ import { fetchPermissionMenu, fetchQueue, storeQueue } from "./composer-backend"
 export function useComposerFeeds(
   sessionId: string,
   loadCatalog: (sessionId: string) => void,
-  caps: { supports_network_access?: boolean; supports_writable_roots?: boolean } | undefined,
 ) {
   const [permissionMenu, setPermissionMenu] = useState<PermissionMenu | null>(null);
 
@@ -27,7 +26,6 @@ export function useComposerFeeds(
   }, [sessionId]);
 
   useEffect(() => {
-    if (!caps?.supports_network_access && !caps?.supports_writable_roots) return;
     let cancelled = false;
     void fetchPermissionMenu(sessionId)
       .then((next) => {
@@ -37,7 +35,7 @@ export function useComposerFeeds(
     return () => {
       cancelled = true;
     };
-  }, [caps?.supports_network_access, caps?.supports_writable_roots, sessionId]);
+  }, [sessionId]);
 
   return permissionMenu;
 }
