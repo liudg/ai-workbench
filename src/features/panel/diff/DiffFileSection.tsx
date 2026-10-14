@@ -5,7 +5,8 @@ import type { FileChange } from "@/features/changes-model/diff-parse";
 import { previewKindForPath } from "@/features/panel/core/preview-kind";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { MarkdownBody } from "@/shared/markdown/MarkdownBody";
-import { diffBodyRows, foldDiffLines, previewTextFromDiff, unmodifiedLinesLabel } from "./fold";
+import { diffBodyRows } from "./diff-body";
+import { foldDiffLines, previewTextFromDiff, unmodifiedLinesLabel } from "./fold";
 import { toSplitRows, type DiffPresentation, type SplitCell } from "./split-rows";
 import { applyWordDiff, type DiffDisplayRow, type WordPart } from "./word-diff";
 

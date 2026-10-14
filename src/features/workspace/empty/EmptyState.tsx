@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
 import { FolderOpen, MessagesSquare } from "lucide-react";
 
-import { useWorkbench } from "@/store";
 import { Button } from "@/components/ui/button";
 import { NewSessionButton } from "@/features/sidebar";
+import { useEmptyProject } from "./use-empty-project";
 
 function EmptyPane({
   icon,
@@ -31,7 +31,7 @@ function EmptyPane({
 }
 
 export function NoProjectSelected() {
-  const openDialog = useWorkbench((s) => s.openDialog);
+  const openDialog = useEmptyProject();
   return (
     <EmptyPane
       icon={<FolderOpen className="h-6 w-6 text-zinc-400" />}

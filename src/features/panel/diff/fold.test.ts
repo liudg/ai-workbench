@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { diffBodyRows, expandDiffLines, foldDiffLines, withoutImportLines, withoutWhitespaceChanges } from "./fold.ts";
+import { diffBodyRows, withoutImportLines, withoutWhitespaceChanges } from "./diff-body.ts";
+import { expandDiffLines, foldDiffLines } from "./fold.ts";
 import { applyWordDiff } from "./word-diff.ts";
 
 test("unchanged lines between hunks collapse into unmodified bars", () => {

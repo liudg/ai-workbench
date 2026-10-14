@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 
-import { backend } from "@/lib/ipc";
 import { appendSnippet, insertComposerText, subscribeComposerInsert } from "@/shared/composer-insert";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { FilePreview } from "./FilePreview";
+import { projectIdForRoot } from "./preview-project";
 import { FileSearchDialog } from "./FileSearchDialog";
 import { WorkspaceTree } from "./WorkspaceTree";
 
@@ -36,7 +36,7 @@ export default function FilesPreview() {
     let cancel = false;
     void (async () => {
       try {
-        const id = await projectForRoot(root);
+        const id = await projectIdForRoot(root, "search-fixture");
         if (!cancel) setProjectId(id);
       } catch (err: unknown) {
         if (!cancel) setError(err instanceof Error ? err.message : String(err));
@@ -125,33 +125,6 @@ export default function FilesPreview() {
       ) : null}
     </div>
   );
-}
-
-async function projectForRoot(root: string): Promise<string> {
-  const existing = await findProject(root);
-  if (existing) return existing;
-  try {
-    const project = await backend.importProject({
-      path: root,
-      defaultAgent: "codex-cli",
-      name: "search-fixture",
-    });
-    return project.id;
-  } catch (err: unknown) {
-    const again = await findProject(root);
-    if (again) return again;
-    throw err;
-  }
-}
-
-async function findProject(root: string): Promise<string> {
-  const projects = await backend.listProjects();
-  return projects.find((item) => samePath(item.path, root))?.id ?? "";
-}
-
-function samePath(left: string, right: string): boolean {
-  const normalize = (value: string) => value.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
-  return normalize(left) === normalize(right);
 }
 
 function joinRoot(root: string, path: string): string {

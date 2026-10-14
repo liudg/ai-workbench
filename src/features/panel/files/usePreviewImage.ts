@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { backend } from "@/lib/ipc";
-import { imageDataUrl } from "../viewers/image";
+import { imageDataUrl, readProjectImage } from "../viewers/image-file";
 
 export type PreviewImageState =
   | { status: "loading" }
@@ -16,7 +15,7 @@ export function usePreviewImage(projectId: string, path: string): PreviewImageSt
     if (!path) return;
     let cancel = false;
     setState({ status: "loading" });
-    void backend.readPreviewImage(projectId, path).then(
+    void readProjectImage(projectId, path).then(
       (image) => {
         if (cancel) return;
         setState({

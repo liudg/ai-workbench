@@ -8,7 +8,6 @@ import {
 } from "lucide-react";
 
 import { APP_VERSION } from "@/lib/version";
-import { useWorkbench } from "@/store";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -18,6 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useUpdateDialog } from "./use-update-dialog";
 
 function formatSize(bytes: number) {
   if (bytes > 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
@@ -25,10 +25,7 @@ function formatSize(bytes: number) {
 }
 
 export function UpdateDialog() {
-  const open = useWorkbench((s) => s.updateDialogOpen);
-  const update = useWorkbench((s) => s.update);
-  const close = useWorkbench((s) => s.closeUpdateDialog);
-  const startInstall = useWorkbench((s) => s.startInstall);
+  const { open, update, close, startInstall } = useUpdateDialog();
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && close()}>

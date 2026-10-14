@@ -58,7 +58,9 @@ fn host_state() -> &'static Mutex<BrowserState> {
 }
 
 static CHANNEL_HOOKED: AtomicBool = AtomicBool::new(false);
+#[cfg(windows)]
 static PULLING: AtomicBool = AtomicBool::new(false);
+#[cfg(windows)]
 static PULL_AT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 pub fn display_file_address(path: &Path) -> String {
@@ -157,7 +159,13 @@ pub async fn browser_show(
 }
 
 #[tauri::command]
-pub async fn browser_bounds(app: AppHandle, x: f64, y: f64, width: f64, height: f64) -> Result<(), String> {
+pub async fn browser_bounds(
+    app: AppHandle,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> Result<(), String> {
     let _guard = host_lock().lock().map_err(|_| "浏览器正忙".to_string())?;
     let Some(webview) = app.get_webview(LABEL) else {
         return Ok(());
@@ -169,7 +177,9 @@ pub async fn browser_bounds(app: AppHandle, x: f64, y: f64, width: f64, height: 
 pub async fn browser_hide(app: AppHandle) -> Result<(), String> {
     let _guard = host_lock().lock().map_err(|_| "浏览器正忙".to_string())?;
     if let Some(webview) = app.get_webview(LABEL) {
-        webview.hide().map_err(|err| format!("无法隐藏浏览器: {err}"))?;
+        webview
+            .hide()
+            .map_err(|err| format!("无法隐藏浏览器: {err}"))?;
         if let Ok(mut state) = host_state().lock() {
             state.hidden = true;
         }
@@ -235,7 +245,14 @@ pub async fn browser_close<R: Runtime>(app: AppHandle<R>) -> Result<(), String> 
     Ok(())
 }
 
-fn show_browser(app: AppHandle, url: Url, x: f64, y: f64, width: f64, height: f64) -> Result<(), String> {
+fn show_browser(
+    app: AppHandle,
+    url: Url,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> Result<(), String> {
     if width < 8.0 || height < 8.0 {
         return Ok(());
     }
@@ -258,7 +275,9 @@ fn show_browser(app: AppHandle, url: Url, x: f64, y: f64, width: f64, height: f6
             state.url = requested;
             state.hidden = false;
         }
-        webview.show().map_err(|err| format!("无法显示浏览器: {err}"))?;
+        webview
+            .show()
+            .map_err(|err| format!("无法显示浏览器: {err}"))?;
         raise_surface(&webview);
         return Ok(());
     }
@@ -319,9 +338,7 @@ fn place(
         height.round() as i32,
     );
     let (moved, reveal) = {
-        let mut state = host_state()
-            .lock()
-            .unwrap_or_else(|err| err.into_inner());
+        let mut state = host_state().lock().unwrap_or_else(|err| err.into_inner());
         let moved = state.bounds != Some(key);
         let reveal = state.hidden;
         if !moved && !reveal && !always_raise {
@@ -340,7 +357,9 @@ fn place(
             .map_err(|err| format!("无法调整浏览器: {err}"))?;
     }
     if reveal {
-        webview.show().map_err(|err| format!("无法显示浏览器: {err}"))?;
+        webview
+            .show()
+            .map_err(|err| format!("无法显示浏览器: {err}"))?;
     }
     if moved || reveal || always_raise {
         raise_surface(webview);
@@ -432,11 +451,13 @@ fn stage_png(app: &AppHandle, bytes: &[u8]) -> Result<String, String> {
     Ok(strip_verbatim_prefix(&path.to_string_lossy()))
 }
 
+#[cfg(windows)]
 fn seen_messages() -> &'static Mutex<Vec<u64>> {
     static SEEN: OnceLock<Mutex<Vec<u64>>> = OnceLock::new();
     SEEN.get_or_init(|| Mutex::new(Vec::new()))
 }
 
+#[cfg(any(windows, test))]
 fn parse_drained_messages(raw: &str) -> Vec<serde_json::Value> {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(raw) else {
         return Vec::new();
@@ -453,6 +474,7 @@ fn parse_drained_messages(raw: &str) -> Vec<serde_json::Value> {
     }
 }
 
+#[cfg(windows)]
 fn claim_message(value: &serde_json::Value) -> bool {
     let Some(mid) = value.get("mid").and_then(|item| item.as_u64()) else {
         return true;
@@ -471,6 +493,7 @@ fn claim_message(value: &serde_json::Value) -> bool {
     true
 }
 
+#[cfg(windows)]
 fn handle_page_payload(app: &AppHandle, raw: &str) {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(raw) else {
         return;
@@ -478,12 +501,14 @@ fn handle_page_payload(app: &AppHandle, raw: &str) {
     dispatch_page_message(app, value);
 }
 
+#[cfg(windows)]
 fn apply_drained(app: &AppHandle, raw: &str) {
     for item in parse_drained_messages(raw) {
         dispatch_page_message(app, item);
     }
 }
 
+#[cfg(windows)]
 fn dispatch_page_message(app: &AppHandle, value: serde_json::Value) {
     if value.get("channel").and_then(|item| item.as_str()) != Some("aw-browser") {
         return;
@@ -491,14 +516,23 @@ fn dispatch_page_message(app: &AppHandle, value: serde_json::Value) {
     if !claim_message(&value) {
         return;
     }
-    let kind = value.get("kind").and_then(|item| item.as_str()).unwrap_or("");
+    let kind = value
+        .get("kind")
+        .and_then(|item| item.as_str())
+        .unwrap_or("");
     match kind {
         "title" => {
-            let title = value.get("title").and_then(|item| item.as_str()).unwrap_or("");
+            let title = value
+                .get("title")
+                .and_then(|item| item.as_str())
+                .unwrap_or("");
             emit_title(app, title);
         }
         "annotate" | "suspended" => {
-            let on = value.get("on").and_then(|item| item.as_bool()).unwrap_or(false);
+            let on = value
+                .get("on")
+                .and_then(|item| item.as_bool())
+                .unwrap_or(false);
             emit_flag(app, kind, on);
         }
         "annotation" => {
@@ -609,7 +643,7 @@ fn capture_png(app: &AppHandle) -> Result<Vec<u8>, String> {
     #[cfg(not(windows))]
     {
         let _ = app;
-        return Err("截图不可用".into());
+        Err("截图不可用".into())
     }
     #[cfg(windows)]
     {
@@ -656,11 +690,11 @@ fn raise_platform(platform: tauri::webview::PlatformWebview) {
     use webview2_com::Microsoft::Web::WebView2::Win32::{
         ICoreWebView2Controller2, COREWEBVIEW2_COLOR,
     };
+    use windows::core::Interface;
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::WindowsAndMessaging::{
         SetWindowPos, HWND_TOP, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW,
     };
-    use windows::core::Interface;
     let controller = platform.controller();
     if let Ok(controller2) = controller.cast::<ICoreWebView2Controller2>() {
         let _ = unsafe {
