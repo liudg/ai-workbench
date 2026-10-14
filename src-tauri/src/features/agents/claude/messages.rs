@@ -6,7 +6,9 @@
 //!
 //! 部分消息来自 `--include-partial-messages` 的 `stream_event`
 //! （`content_block_delta` 的 `text_delta` / `thinking_delta` / `input_json_delta`）。
-//! 同一 `stream_id` 覆盖上一行。
+//! 同一 `stream_id` 会在整段会话里覆盖上一行，所以助手正文和思考按消息分开：
+//! 有 Claude `uuid`（或 `message.id`）就用它；流式增量在 uuid 到达前用本回合 id 加序号，
+//! 这条消息收束前一直复用，下一回合或下一条消息再换新的。
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -28,6 +30,10 @@ pub struct MapState {
     pub tools: HashMap<String, ToolRow>,
     partials: HashMap<i64, PartialBlock>,
     pub turn_id: String,
+    /// 当前这条助手正文还在流。收束或 `begin_turn` 后清空，避免下一轮盖掉上一轮。
+    text_stream_id: String,
+    thinking_stream_id: String,
+    stream_nonce: u64,
     pub files: Vec<FileChange>,
     pub turn_diff: String,
     /// 上一轮非空 diff。`begin_turn` 会清掉当前轮，这里留下最近一次。
@@ -67,6 +73,8 @@ impl MapState {
         self.partials.clear();
         self.files.clear();
         self.turn_diff.clear();
+        self.text_stream_id.clear();
+        self.thinking_stream_id.clear();
         self.turn_id = turn_id.to_string();
     }
 
@@ -242,16 +250,22 @@ fn on_stream(state: &mut MapState, event: &Value, project: Option<&Path>) -> Vec
             match delta_type {
                 "text_delta" => {
                     let piece = delta.get("text").and_then(Value::as_str).unwrap_or("");
+                    if state.text_stream_id.is_empty() {
+                        state.text.clear();
+                    }
                     state.text.push_str(piece);
-                    text_event(&state.text, MessagePhase::PartialAnswer)
+                    text_event(state, MessagePhase::PartialAnswer, None)
                 }
                 "thinking_delta" => {
                     let piece = delta
                         .get("thinking")
                         .and_then(Value::as_str)
                         .unwrap_or("");
+                    if state.thinking_stream_id.is_empty() {
+                        state.thinking.clear();
+                    }
                     state.thinking.push_str(piece);
-                    thinking_event(&state.thinking)
+                    thinking_event(state, false, None)
                 }
                 "input_json_delta" => {
                     if let Some(PartialBlock::Tool { json, .. }) = state.partials.get_mut(&index) {
@@ -328,13 +342,14 @@ fn on_assistant(state: &mut MapState, value: &Value, project: Option<&Path>) -> 
     } else if let Some(plain) = content.as_str() {
         text.push_str(plain);
     }
+    let anchor = message_anchor(value);
     if !text.is_empty() {
         state.text = text;
-        events.extend(text_event(&state.text, MessagePhase::FinalAnswer));
+        events.extend(text_event(state, MessagePhase::FinalAnswer, anchor));
     }
     if !thinking.is_empty() {
         state.thinking = thinking;
-        events.extend(thinking_event(&state.thinking));
+        events.extend(thinking_event(state, true, anchor));
     }
     events
 }
@@ -389,7 +404,7 @@ fn on_result(state: &mut MapState, value: &Value, live: bool) -> Vec<SessionEven
         if let Some(result) = value.get("result").and_then(Value::as_str) {
             if !result.trim().is_empty() {
                 state.text = result.to_string();
-                events.extend(text_event(&state.text, MessagePhase::FinalAnswer));
+                events.extend(text_event(state, MessagePhase::FinalAnswer, None));
             }
         }
     }
@@ -547,27 +562,67 @@ fn upsert_file(files: &mut Vec<FileChange>, change: FileChange) {
     }
 }
 
-fn text_event(text: &str, phase: MessagePhase) -> Vec<SessionEventBody> {
-    if text.is_empty() {
+fn text_event(state: &mut MapState, phase: MessagePhase, message_id: Option<&str>) -> Vec<SessionEventBody> {
+    if state.text.is_empty() {
         return Vec::new();
     }
+    if state.text_stream_id.is_empty() {
+        state.text_stream_id = next_stream_id(state, "assistant", message_id);
+    }
+    let stream_id = state.text_stream_id.clone();
+    if phase == MessagePhase::FinalAnswer {
+        state.text_stream_id.clear();
+    }
     vec![SessionEventBody::AgentMessage {
-        text: text.to_string(),
-        stream_id: Some("assistant".into()),
+        text: state.text.clone(),
+        stream_id: Some(stream_id),
         phase: Some(phase),
         mode: None,
         dedupe_of: None,
     }]
 }
 
-fn thinking_event(text: &str) -> Vec<SessionEventBody> {
-    if text.is_empty() {
+fn thinking_event(state: &mut MapState, finalize: bool, message_id: Option<&str>) -> Vec<SessionEventBody> {
+    if state.thinking.is_empty() {
         return Vec::new();
     }
+    if state.thinking_stream_id.is_empty() {
+        state.thinking_stream_id = next_stream_id(state, "thinking", message_id);
+    }
+    let stream_id = state.thinking_stream_id.clone();
+    if finalize {
+        state.thinking_stream_id.clear();
+    }
     vec![SessionEventBody::Thinking {
-        text: text.to_string(),
-        stream_id: Some("assistant-thinking".into()),
+        text: state.thinking.clone(),
+        stream_id: Some(stream_id),
     }]
+}
+
+/// 会话日志用 `stream_id` 在整段会话里找旧气泡。固定的 `"assistant"` 会让后一轮盖掉前一轮。
+fn next_stream_id(state: &mut MapState, kind: &str, message_id: Option<&str>) -> String {
+    if let Some(id) = message_id.map(str::trim).filter(|id| !id.is_empty()) {
+        return format!("{kind}:{id}");
+    }
+    state.stream_nonce = state.stream_nonce.saturating_add(1);
+    if state.turn_id.is_empty() {
+        format!("{kind}:{}", state.stream_nonce)
+    } else {
+        format!("{kind}:{}:{}", state.turn_id, state.stream_nonce)
+    }
+}
+
+fn message_anchor(value: &Value) -> Option<&str> {
+    let uuid = value.get("uuid").and_then(Value::as_str).map(str::trim).filter(|id| !id.is_empty());
+    if uuid.is_some() {
+        return uuid;
+    }
+    value
+        .get("message")
+        .and_then(|message| message.get("id"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
 }
 
 fn user_event(text: String) -> SessionEventBody {

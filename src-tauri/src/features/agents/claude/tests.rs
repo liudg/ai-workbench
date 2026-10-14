@@ -313,10 +313,114 @@ fn partial_text_is_one_stream() {
             assert_eq!(text, "你");
             assert_eq!(next, "你好");
             assert_eq!(stream_id, next_id);
+            assert_ne!(stream_id.as_deref(), Some("assistant"));
             assert_eq!(*phase, Some(MessagePhase::PartialAnswer));
         }
         _ => panic!("partial text missing"),
     }
+}
+
+#[test]
+fn assistant_streams_stay_inside_one_message_and_do_not_cross_turns() {
+    let mut state = MapState::default();
+    state.begin_turn("turn-1");
+    let partial = ingest_line(
+        &mut state,
+        r#"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"你"}}}"#,
+        true,
+        None,
+    );
+    let thinking = ingest_line(
+        &mut state,
+        r#"{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"thinking_delta","thinking":"想"}}}"#,
+        true,
+        None,
+    );
+    let finished = ingest_line(
+        &mut state,
+        r#"{"type":"assistant","uuid":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","message":{"id":"msg_1","role":"assistant","content":[{"type":"thinking","thinking":"想完"},{"type":"text","text":"你好"}]}}"#,
+        true,
+        None,
+    );
+    let partial_id = agent_stream_id(&partial.events);
+    let final_id = agent_stream_id(&finished.events);
+    assert_eq!(partial_id, "assistant:turn-1:1");
+    assert_eq!(final_id, partial_id);
+    assert_eq!(thinking_stream_id(&thinking.events), "thinking:turn-1:2");
+    assert_eq!(thinking_stream_id(&finished.events), "thinking:turn-1:2");
+
+    let second = ingest_line(
+        &mut state,
+        r#"{"type":"assistant","uuid":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","message":{"role":"assistant","content":[{"type":"text","text":"接着说"}]}}"#,
+        true,
+        None,
+    );
+    assert_eq!(agent_stream_id(&second.events), "assistant:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
+
+    state.begin_turn("turn-2");
+    let next = ingest_line(
+        &mut state,
+        r#"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"新"}}}"#,
+        true,
+        None,
+    );
+    let next_thinking = ingest_line(
+        &mut state,
+        r#"{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"thinking_delta","thinking":"再想"}}}"#,
+        true,
+        None,
+    );
+    assert_ne!(agent_stream_id(&next.events), partial_id);
+    assert_eq!(agent_stream_id(&next.events), "assistant:turn-2:3");
+    assert_ne!(thinking_stream_id(&next_thinking.events), thinking_stream_id(&thinking.events));
+
+    let user_a = "11111111-1111-4111-8111-111111111111";
+    let assistant_a = "22222222-2222-4222-8222-222222222222";
+    let user_b = "33333333-3333-4333-8333-333333333333";
+    let assistant_b = "44444444-4444-4444-8444-444444444444";
+    let transcript = format!(
+        "{}\n{}\n{}\n{}\n",
+        json!({"type":"user","uuid":user_a,"parentUuid":null,"message":{"role":"user","content":"介绍一下自己"}}),
+        json!({"type":"assistant","uuid":assistant_a,"parentUuid":user_a,"message":{"role":"assistant","content":[{"type":"text","text":"我是上一轮"}]}}),
+        json!({"type":"user","uuid":user_b,"parentUuid":assistant_a,"message":{"role":"user","content":"再说一次"}}),
+        json!({"type":"assistant","uuid":assistant_b,"parentUuid":user_b,"message":{"role":"assistant","content":[{"type":"text","text":"我是这一轮"}]}}),
+    );
+    let mut history = MapState::default();
+    let events = messages::events_from_transcript(&mut history, &transcript, None);
+    let ids: Vec<_> = events
+        .iter()
+        .filter_map(|event| match event {
+            SessionEventBody::AgentMessage { stream_id, text, .. } => Some((text.as_str(), stream_id.clone())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        ids,
+        vec![
+            ("我是上一轮", Some(format!("assistant:{assistant_a}"))),
+            ("我是这一轮", Some(format!("assistant:{assistant_b}"))),
+        ]
+    );
+}
+
+fn agent_stream_id(events: &[SessionEventBody]) -> String {
+    events
+        .iter()
+        .find_map(|event| match event {
+            SessionEventBody::AgentMessage { stream_id, .. } => stream_id.clone(),
+            _ => None,
+        })
+        .expect("assistant stream")
+}
+
+fn thinking_stream_id(events: &[SessionEventBody]) -> String {
+    events
+        .iter()
+        .find_map(|event| match event {
+            SessionEventBody::Thinking { stream_id, .. } => stream_id.clone(),
+            _ => None,
+        })
+        .expect("thinking stream")
 }
 
 #[test]

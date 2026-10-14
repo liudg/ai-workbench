@@ -570,6 +570,77 @@ mod tests {
         }
     }
 
+    #[test]
+    fn a_later_turn_does_not_overwrite_the_earlier_assistant_bubble() {
+        let mut session = entry(1_000);
+        let apply = |session: &mut SessionEntry, body: SessionEventBody| {
+            if replace_stream(session, &body, false).is_none() {
+                mutate_entry(session, "codex-cli:thread", body, false);
+            }
+        };
+        apply(
+            &mut session,
+            SessionEventBody::UserMessage {
+                text: "介绍一下自己".into(),
+                images: Vec::new(),
+                annotations: 0,
+            },
+        );
+        apply(
+            &mut session,
+            SessionEventBody::AgentMessage {
+                text: "我".into(),
+                stream_id: Some("assistant:turn-1:1".into()),
+                phase: Some(crate::models::MessagePhase::PartialAnswer),
+                mode: None,
+                dedupe_of: None,
+            },
+        );
+        let bubble = session.events[1].id.clone();
+        apply(
+            &mut session,
+            SessionEventBody::AgentMessage {
+                text: "我是上一轮".into(),
+                stream_id: Some("assistant:turn-1:1".into()),
+                phase: Some(crate::models::MessagePhase::FinalAnswer),
+                mode: None,
+                dedupe_of: None,
+            },
+        );
+        apply(
+            &mut session,
+            SessionEventBody::UserMessage {
+                text: "再说一次".into(),
+                images: Vec::new(),
+                annotations: 0,
+            },
+        );
+        apply(
+            &mut session,
+            SessionEventBody::AgentMessage {
+                text: "我是这一轮".into(),
+                stream_id: Some("assistant:44444444-4444-4444-8444-444444444444".into()),
+                phase: Some(crate::models::MessagePhase::FinalAnswer),
+                mode: None,
+                dedupe_of: None,
+            },
+        );
+        assert_eq!(session.events[1].id, bubble);
+        let texts: Vec<_> = session
+            .events
+            .iter()
+            .filter_map(|event| match &event.body {
+                SessionEventBody::UserMessage { text, .. }
+                | SessionEventBody::AgentMessage { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            texts,
+            vec!["介绍一下自己", "我是上一轮", "再说一次", "我是这一轮"]
+        );
+    }
+
     fn stamped(seq: u64, body: SessionEventBody) -> SessionEvent {
         SessionEvent {
             id: seq.to_string(),

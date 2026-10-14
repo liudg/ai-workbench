@@ -581,6 +581,7 @@ impl Shared {
         }
     }
 
+    /// `stream_id` 用协议里的 item id。会话日志按这个 id 覆盖整段会话，固定值会把后一轮写进前一轮的气泡。
     pub(super) fn push_stream(
         &self,
         item_id: &str,
@@ -671,6 +672,7 @@ impl Shared {
         );
     }
 
+    /// 思考和正文一样，按 item id 分气泡，不共用一个固定 `stream_id`。
     pub(super) fn push_thinking(&self, item_id: &str, piece: &str, replace: bool) {
         let key = format!("think:{item_id}");
         let mut streams = self.streams.lock().unwrap();

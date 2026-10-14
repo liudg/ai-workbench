@@ -371,3 +371,37 @@ test("plan and goal chips are exclusive and the goal bar follows the goal", () =
   assert.equal(live.goalOn, true);
   assert.equal(live.goalStatus, "正在追求目标 (12.5K / 50K)");
 });
+
+test("context usage events do not become a composer strip", () => {
+  const shown = view({
+    events: [
+      {
+        id: "usage-window",
+        session_id: "s",
+        seq: 1,
+        ts: 1,
+        kind: "context-usage",
+        source: "get_context_usage",
+        percentage: 23,
+        used_tokens: 45137,
+        max_tokens: 200000,
+        model: "grok-4.7",
+      },
+      {
+        id: "usage-turn",
+        session_id: "s",
+        seq: 2,
+        ts: 2,
+        kind: "context-usage",
+        source: "partial-usage",
+        input_tokens: 12,
+        output_tokens: 4,
+      },
+    ],
+  });
+  assert.equal("contextUsage" in shown, false);
+  const rendered = JSON.stringify(shown);
+  assert.equal(rendered.includes("45137"), false);
+  assert.equal(rendered.includes("本回合"), false);
+  assert.equal(rendered.includes("grok-4.7"), false);
+});

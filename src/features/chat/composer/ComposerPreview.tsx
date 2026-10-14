@@ -225,7 +225,6 @@ export default function ComposerPreview() {
   const [planOn, setPlanOn] = useState(false);
   const [goalDraft, setGoalDraft] = useState(false);
   const [goalLive, setGoalLive] = useState(params.get("goal") === "live");
-  const showUsage = params.get("usage") === "1";
   const [tuning, setTuning] = useState<SessionTuning | undefined>();
   const [menu, setMenu] = useState<PreviewMenu>(
     initialMenu === "model" || initialMenu === "access" ? initialMenu : null,
@@ -251,34 +250,8 @@ export default function ComposerPreview() {
       });
     }
     if (goalLive) rows.push(liveGoal);
-    if (showUsage) {
-      rows.push(
-        {
-          id: "usage-window",
-          session_id: "preview",
-          seq: 3,
-          ts: 3,
-          kind: "context-usage",
-          source: "get_context_usage",
-          percentage: 12.5,
-          used_tokens: 1200,
-          max_tokens: 8000,
-          model: "claude-sonnet",
-        },
-        {
-          id: "usage-turn",
-          session_id: "preview",
-          seq: 4,
-          ts: 4,
-          kind: "context-usage",
-          source: "partial-usage",
-          input_tokens: 8,
-          output_tokens: 2,
-        },
-      );
-    }
     return rows;
-  }, [goalLive, planOn, showUsage]);
+  }, [goalLive, planOn]);
   const goal = activeGoal(events);
   const view = deriveComposerView({
     status: "completed",
