@@ -7,7 +7,7 @@ use super::event::SessionEvent;
 pub struct ReasoningEffortOption {
     pub id: String,
     pub description: String,
-    /// CLI 给的短名（`displayName` / `label`）。没有时界面用 description，再没有用 id。
+    /// CLI 给的短名（`displayName` / `label`）。界面按档位 id 显示中文短标签，不渲染 description。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
 }

@@ -93,7 +93,7 @@ export function ModelMenu({
               onClick={() => setPanel("models")}
             >
               {hasEfforts ? (
-                <span data-effort-label className="block max-w-full truncate text-lg font-semibold leading-none text-blue-400">
+                <span data-effort-label className="block max-w-full whitespace-nowrap text-lg font-semibold leading-none text-blue-400">
                   {effortLabel || DESKTOP_ZH.selectEffort}
                 </span>
               ) : null}
@@ -306,15 +306,11 @@ function ModelList({
                   type="button"
                   role="option"
                   aria-selected={selected}
-                  title={model.description || undefined}
                   className="flex w-full items-center gap-2 px-3 py-2 text-left [&:hover]:bg-zinc-800"
                   onClick={() => onPick(model)}
                 >
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm text-zinc-100">{model.label}</span>
-                    {model.description && (
-                      <span className="block truncate text-[11px] text-zinc-500">{model.description}</span>
-                    )}
                   </span>
                   {selected && <Check className="h-4 w-4 shrink-0 text-zinc-100" aria-hidden />}
                 </button>

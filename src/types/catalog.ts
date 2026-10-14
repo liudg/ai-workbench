@@ -26,6 +26,7 @@ export function emptySandbox(mode: AccessMode = "full"): SessionSandbox {
 export interface PermissionProfileOption {
   id: string;
   label: string;
+  /** 适配器说明。权限菜单不渲染。 */
   description: string;
   /** 有值时不可选，值是原因。 */
   disabled_reason?: string | null;
@@ -56,8 +57,9 @@ export interface Attachment {
 
 export interface ReasoningEffortOption {
   id: string;
+  /** 适配器说明。菜单和芯片不渲染，避免把英文实现说明截成半句。 */
   description: string;
-  /** CLI 给的短名。没有时用 description，再没有用 id。 */
+  /** 适配器短名。已知档位 id 的界面标签不看这个字段。 */
   label?: string | null;
 }
 

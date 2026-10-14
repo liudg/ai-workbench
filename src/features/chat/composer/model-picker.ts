@@ -6,11 +6,11 @@ import {
   type SessionTuning,
 } from "../../../types/index.ts";
 import { effortForModel } from "./composer-submit.ts";
+import { effortChoiceLabel } from "./effort-label.ts";
 
-/** 档位文案来自目录：短名，否则 description，否则 id。 */
-export function effortText(option: Pick<ReasoningEffortOption, "id" | "description"> & { label?: string | null } | undefined): string {
-  if (!option) return "";
-  return option.label?.trim() || option.description.trim() || option.id;
+/** 档位短标签。已知 id 用中文；不读 description。 */
+export function effortText(option: Pick<ReasoningEffortOption, "id"> & { label?: string | null } | undefined): string {
+  return effortChoiceLabel(option);
 }
 
 export function effortDisplay(model: AgentModelOption | undefined, effortId: string | undefined): string {
@@ -32,7 +32,7 @@ export function snapEffortIndex(clientX: number, left: number, width: number, co
   return Math.round(ratio * (count - 1));
 }
 
-/** 芯片是「模型名 强度」。强度已经是目录文案，这里不再翻译。 */
+/** 芯片是「模型名 强度」。强度已经是短标签。 */
 export function modelChipText(label: string, effort: string | undefined): string {
   const text = effort?.trim();
   if (!text) return label;

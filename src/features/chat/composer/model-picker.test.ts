@@ -70,9 +70,57 @@ test("the slider keeps every catalog effort in order", () => {
     ["low", "high"],
   );
   assert.deepEqual(sliderEfforts(model({ id: "empty", label: "Empty", default_effort: "high" })), []);
-  assert.equal(effortDisplay(current, "low"), "Lower latency");
+  assert.equal(effortDisplay(current, "low"), "低");
   assert.equal(effortDisplay(model({ id: "named", label: "Named", efforts: [{ id: "high", description: "long", label: "高" }] }), "high"), "高");
   assert.equal(effortDisplay(current, "missing"), "");
+  assert.equal(
+    effortDisplay(
+      model({
+        id: "top",
+        label: "Top",
+        efforts: [
+          {
+            id: "xhigh",
+            description: "Maximum reasoning effort for the hardest problems",
+            label: "Maximum reasoning",
+          },
+        ],
+      }),
+      "xhigh",
+    ),
+    "很高",
+  );
+  assert.equal(
+    effortDisplay(model({ id: "maxed", label: "Max", efforts: [{ id: "max", description: "Maximum reasoning" }] }), "max"),
+    "最高",
+  );
+  assert.equal(effortDisplay(model({ id: "ultra", label: "Ultra", efforts: [{ id: "ultra", description: "" }] }), "ultra"), "极高");
+  assert.equal(
+    effortDisplay(model({ id: "min", label: "Min", efforts: [{ id: "minimal", description: "Minimal reasoning" }] }), "minimal"),
+    "最低",
+  );
+  assert.equal(
+    effortDisplay(
+      model({
+        id: "custom",
+        label: "Custom",
+        efforts: [{ id: "research", description: "Maximum reasoning effort for research", label: "Maximum reasoning" }],
+      }),
+      "research",
+    ),
+    "research",
+  );
+  assert.equal(
+    effortDisplay(
+      model({
+        id: "custom-han",
+        label: "Custom",
+        efforts: [{ id: "research", description: "long english", label: "深研" }],
+      }),
+      "research",
+    ),
+    "深研",
+  );
 });
 
 test("the handle snaps to the nearest of five stops", () => {
