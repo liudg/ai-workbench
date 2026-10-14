@@ -212,6 +212,42 @@ test("an unknown effort id is not translated from its description", () => {
   assert.equal(view({ catalog: bareEffort }).effortLabel, "research");
 });
 
+test("claude resolved model label keeps the effort slider model", () => {
+  const claude: AgentCatalog = {
+    agent: "claude-code",
+    models: [
+      {
+        id: "opus",
+        label: "gpt-6.1-sol",
+        description: "Custom Opus model",
+        is_default: true,
+        default_effort: "high",
+        efforts: [
+          { id: "low", description: "" },
+          { id: "medium", description: "" },
+          { id: "high", description: "" },
+          { id: "xhigh", description: "" },
+          { id: "max", description: "" },
+        ],
+        resolved_model: "gpt-6.1-sol",
+      },
+    ],
+    skills: [],
+    commands: [],
+    capabilities: caps,
+    configured_model: null,
+    configured_effort: null,
+    thread_model: "gpt-6.1-sol",
+    thread_effort: "high",
+    cli_config_read: true,
+  };
+  const shown = view({ catalog: claude });
+  assert.equal(shown.selectedModel?.id, "opus");
+  assert.equal(shown.selectedEffort, "high");
+  assert.equal(shown.effortLabel, "高");
+  assert.equal(shown.modelButton, "gpt-6.1-sol 高");
+});
+
 test("a claude catalog ignores a gpt id that is not in its model list", () => {
   const claude: AgentCatalog = {
     agent: "claude-code",

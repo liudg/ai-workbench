@@ -46,6 +46,9 @@ pub struct AgentModelOption {
     pub service_tiers: Vec<ModelServiceTier>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_service_tier: Option<String>,
+    /// CLI `resolvedModel`（自定义映射后的真实模型名）。选模时用来对齐 applied.model。
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub resolved_model: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

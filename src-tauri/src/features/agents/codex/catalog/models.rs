@@ -136,6 +136,7 @@ pub(in crate::features::agents::codex) fn parse_models(value: &Value) -> Vec<Age
             service_tiers: parse_service_tiers(&item),
             default_service_tier: config_text(&item, &["defaultServiceTier", "default_service_tier"])
                 .filter(|tier| tier != "default"),
+            resolved_model: String::new(),
         });
     }
     models.sort_by(|a, b| b.is_default.cmp(&a.is_default).then(a.label.cmp(&b.label)));

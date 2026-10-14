@@ -426,6 +426,71 @@ fn catalog_uses_reported_fields_and_permission_menu_is_honest() {
 }
 
 #[test]
+
+#[test]
+fn settings_resolved_model_maps_to_alias_keeping_efforts() {
+    let mut catalog = catalog::empty_catalog();
+    catalog::apply_model_list(
+        &mut catalog,
+        &json!({
+            "models": [
+                {
+                    "value": "default",
+                    "resolvedModel": "gpt-6.1-sol[1m]",
+                    "displayName": "Default (recommended)",
+                    "supportedEffortLevels": ["low", "high"]
+                },
+                {
+                    "value": "opus",
+                    "resolvedModel": "gpt-6.1-sol",
+                    "displayName": "gpt-6.1-sol",
+                    "description": "Custom Opus model",
+                    "supportedEffortLevels": ["low", "medium", "high", "xhigh", "max"]
+                }
+            ]
+        }),
+    );
+    assert_eq!(catalog.models.len(), 2);
+    assert!(catalog.models.iter().all(|model| !model.is_default));
+
+    catalog::apply_settings(
+        &mut catalog,
+        &json!({
+            "effective": { "model": "sonnet", "effortLevel": "high" },
+            "applied": { "model": "gpt-6.1-sol", "effort": "high" }
+        }),
+    );
+    assert_eq!(catalog.thread_model.as_deref(), Some("opus"));
+    assert_eq!(catalog.thread_effort.as_deref(), Some("high"));
+    assert_eq!(catalog.models.len(), 2);
+    let opus = catalog.models.iter().find(|model| model.id == "opus").unwrap();
+    assert!(opus.is_default);
+    assert_eq!(opus.efforts.len(), 5);
+    assert_eq!(opus.resolved_model, "gpt-6.1-sol");
+    assert!(catalog.models.iter().all(|model| model.id != "gpt-6.1-sol"));
+}
+
+#[test]
+fn bracketed_resolved_model_still_maps_without_placeholder() {
+    let mut catalog = catalog::empty_catalog();
+    catalog::apply_initialize(
+        &mut catalog,
+        &json!({
+            "models": [{
+                "value": "default",
+                "resolvedModel": "gpt-6.1-sol[1m]",
+                "displayName": "Default (recommended)",
+                "supportedEffortLevels": ["low", "medium", "high"]
+            }]
+        }),
+        Some("gpt-6.1-sol[1m]"),
+    );
+    assert_eq!(catalog.thread_model.as_deref(), Some("default"));
+    assert_eq!(catalog.models.len(), 1);
+    assert_eq!(catalog.models[0].efforts.len(), 3);
+}
+
+#[test]
 fn model_list_reads_id_aliases_and_effort_objects() {
     let mut catalog = catalog::empty_catalog();
     catalog::apply_model_list(

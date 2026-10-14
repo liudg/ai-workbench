@@ -53,10 +53,33 @@ export interface ComposerViewInput {
   goal?: GoalSnapshot | null;
 }
 
+function stripModelBrackets(raw: string): string {
+  const trimmed = raw.trim();
+  const open = trimmed.lastIndexOf("[");
+  if (open > 0 && trimmed.endsWith("]")) return trimmed.slice(0, open).trim();
+  return trimmed;
+}
+
 function modelInCatalog(catalog: AgentCatalog | undefined, id: string | null | undefined): AgentModelOption | undefined {
   const trimmed = id?.trim();
   if (!trimmed) return undefined;
-  return catalog?.models.find((item) => item.id === trimmed);
+  const models = catalog?.models;
+  if (!models?.length) return undefined;
+  const byId = models.find((item) => item.id === trimmed);
+  if (byId) return byId;
+  const byResolved = models.find((item) => item.resolved_model && item.resolved_model === trimmed);
+  if (byResolved) return byResolved;
+  const byLabel = models.find((item) => item.label === trimmed);
+  if (byLabel) return byLabel;
+  const stripped = stripModelBrackets(trimmed);
+  if (stripped !== trimmed) {
+    return (
+      models.find((item) => item.resolved_model === stripped) ??
+      models.find((item) => item.label === stripped) ??
+      models.find((item) => item.id === stripped)
+    );
+  }
+  return undefined;
 }
 
 /**

@@ -83,6 +83,8 @@ export interface AgentModelOption {
   show_in_picker?: boolean;
   service_tiers?: ModelServiceTier[];
   default_service_tier?: string | null;
+  /** CLI `resolvedModel`。自定义映射后的真实名，选模时可对齐 thread_model。 */
+  resolved_model?: string | null;
 }
 
 /** 作曲栏这次会话改过的模型、推理强度和速度档。 */

@@ -53,6 +53,7 @@ fn skills_failure_keeps_models_and_previous_skills() {
         show_in_picker: true,
         service_tiers: Vec::new(),
         default_service_tier: None,
+    resolved_model: String::new(),
     }];
     let previous = vec![AgentSkillOption {
         name: "documents:documents".into(),
@@ -80,6 +81,7 @@ fn skills_failure_without_a_previous_list_is_reported() {
         show_in_picker: true,
         service_tiers: Vec::new(),
         default_service_tier: None,
+    resolved_model: String::new(),
     }];
     let catalog = assemble_catalog(
         models,

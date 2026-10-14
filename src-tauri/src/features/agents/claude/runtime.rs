@@ -571,9 +571,8 @@ impl Shared {
         };
         let mut catalog = self.catalog.lock().unwrap();
         if catalog.thread_model.is_none() {
-            catalog.thread_model = Some(model.clone());
             catalog.cli_config_read = Some(true);
-            catalog::ensure_listed(&mut catalog, &model);
+            catalog.thread_model = Some(catalog::ensure_listed(&mut catalog, &model));
         }
     }
 
@@ -704,9 +703,8 @@ impl Shared {
             }
             (Intent::SetModel(model), Ok(_)) => {
                 let mut catalog = self.catalog.lock().unwrap();
-                catalog.thread_model = Some(model.clone());
                 catalog.cli_config_read = Some(true);
-                catalog::ensure_listed(&mut catalog, &model);
+                catalog.thread_model = Some(catalog::ensure_listed(&mut catalog, &model));
             }
             (Intent::SetEffort(effort), Ok(_)) => {
                 self.catalog.lock().unwrap().thread_effort = Some(effort);
