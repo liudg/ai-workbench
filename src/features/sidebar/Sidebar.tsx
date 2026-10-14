@@ -1,6 +1,5 @@
-import { TerminalSquare } from "lucide-react";
-
 import { AccountMenu } from "./account/AccountMenu";
+import { BrandHeader } from "./brand/BrandHeader";
 import { useSidebar } from "./use-sidebar";
 import { ProjectHeader } from "./projects/ProjectHeader";
 import { ProjectItem } from "./projects/ProjectItem";
@@ -10,17 +9,7 @@ export function Sidebar() {
 
   return (
     <aside className="flex w-72 shrink-0 flex-col border-r border-zinc-800/80 bg-zinc-900/30">
-      <div className="flex items-center gap-2.5 px-4 pb-3 pt-4">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-cyan-400">
-          <TerminalSquare className="h-4.5 w-4.5 text-white" strokeWidth={2.2} />
-        </div>
-        <div>
-          <div className="text-sm font-semibold tracking-wide text-zinc-100">
-            AI 工作台
-          </div>
-          <div className="text-[11px] text-zinc-500">多项目 · 多会话</div>
-        </div>
-      </div>
+      <BrandHeader />
 
       <ProjectHeader />
 
