@@ -8,11 +8,11 @@ import {
   extrasAllowed,
   initialSandbox,
   NETWORK_LABEL,
+  WRITABLE_HEADING,
   PERMISSION_BUTTON,
   sandboxFromMenu,
   selectPreset,
   selectProfile,
-  WRITABLE_DETAIL,
 } from "./access.ts";
 import { permissionMenuTitle, permissionRowDetail } from "./permission-label.ts";
 
@@ -35,7 +35,7 @@ const menu = {
 
 test("workbench extras keep their own labels", () => {
   assert.equal(NETWORK_LABEL, "允许网络访问");
-  assert.match(WRITABLE_DETAIL, /主工作区/);
+  assert.equal(WRITABLE_HEADING, "其他可写目录");
 });
 
 test("button label comes from the menu, with English preset titles localized", () => {

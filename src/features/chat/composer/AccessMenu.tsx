@@ -3,7 +3,7 @@ import { Check } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import type { PermissionMenu, PermissionProfileOption, SessionSandbox } from "@/types";
-import { ADD_DIR_LABEL, NETWORK_LABEL, WRITABLE_DETAIL, WRITABLE_HEADING } from "./access";
+import { ADD_DIR_LABEL, NETWORK_LABEL, WRITABLE_HEADING } from "./access";
 import { permissionChoiceLabel, permissionMenuTitle, permissionRowDetail } from "./permission-label";
 
 /** 当前会话权限菜单。只显示选项标题，不显示能力说明。 */
@@ -93,7 +93,6 @@ export function AccessMenu({
       {showWritable && (
         <div className="px-3 py-2">
           <p className="text-sm text-zinc-100">{WRITABLE_HEADING}</p>
-          <p className="mt-0.5 text-xs leading-4 text-zinc-500">{WRITABLE_DETAIL}</p>
           {sandbox && sandbox.writableRoots.length > 0 && (
             <ul className="mt-2 space-y-1">
               {sandbox.writableRoots.map((path) => (

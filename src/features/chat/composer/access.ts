@@ -12,9 +12,8 @@ import { permissionChoiceLabel } from "./permission-label.ts";
 // Allow network access
 export const NETWORK_LABEL = "允许网络访问";
 
-// --add-dir: Additional directories that should be writable alongside the primary workspace
+// --add-dir extras: heading only, no explanatory blurb
 export const WRITABLE_HEADING = "其他可写目录";
-export const WRITABLE_DETAIL = "与主工作区一起可写的其他目录";
 export const ADD_DIR_LABEL = "添加目录";
 
 /** 菜单还没给出档位名时，按钮只显示这个入口，不编造档位。 */
