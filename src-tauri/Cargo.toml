@@ -1,6 +1,7 @@
 [package]
 name = "ai-workbench"
 version = "0.2.38"
+default-run = "ai-workbench"
 description = "AI 编程工作台：多项目、多会话的本地 Agent CLI 管理器"
 edition = "2021"
 rust-version = "1.77.2"
