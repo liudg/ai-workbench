@@ -86,7 +86,8 @@ function skippedInTimeline(event: SessionEvent): boolean {
     event.kind === "turn-anchor" ||
     event.kind === "collaboration-mode" ||
     event.kind === "goal" ||
-    event.kind === "context-usage"
+    event.kind === "context-usage" ||
+    event.kind === "session-usage"
   );
 }
 

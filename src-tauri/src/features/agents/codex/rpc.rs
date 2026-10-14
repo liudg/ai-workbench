@@ -369,7 +369,11 @@ impl Shared {
             "thread/tokenUsage/updated" => {
                 let ours = self.thread_id.lock().unwrap().clone();
                 if ours.as_deref() == params.get("threadId").and_then(Value::as_str) {
-                    *self.token_info.lock().unwrap() = super::tokens::parse_token_usage(params);
+                    if let Some(info) = super::tokens::parse_token_usage(params) {
+                        let body = super::usage::snapshot_from_info(&info);
+                        *self.token_info.lock().unwrap() = Some(info);
+                        emit(&self.events, body);
+                    }
                 }
             }
             "item/reasoning/summaryTextDelta" | "item/reasoning/textDelta" => {

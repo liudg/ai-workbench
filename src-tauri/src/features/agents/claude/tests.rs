@@ -252,6 +252,7 @@ fn stream_fixture_maps_bash_edit_usage_and_goal() {
         _ => None,
     }).expect("usage");
     assert_eq!(usage, ("partial-usage", None, None, None, Some(3), Some(4)));
+    assert!(result.events.iter().all(|event| !matches!(event, SessionEventBody::SessionUsage { .. })));
     assert!(result.events.iter().any(|event| matches!(
         event,
         SessionEventBody::StatusChanged { status: SessionStatus::Completed }
@@ -264,6 +265,54 @@ fn stream_fixture_maps_bash_edit_usage_and_goal() {
         None,
     );
     assert!(!replay.events.iter().any(|event| matches!(event, SessionEventBody::StatusChanged { .. })));
+    assert!(!replay.events.iter().any(|event| matches!(event, SessionEventBody::SessionUsage { .. })));
+
+    let mut side_state = MapState::default();
+    let main = ingest_line(
+        &mut side_state,
+        r#"{"type":"assistant","uuid":"dddddddd-dddd-4ddd-8ddd-dddddddddddd","message":{"id":"msg_main","role":"assistant","content":[{"type":"text","text":"主循环"}],"usage":{"input_tokens":8,"output_tokens":1}}}"#,
+        true,
+        None,
+    );
+    match main.events.iter().find(|event| matches!(event, SessionEventBody::SessionUsage { .. })) {
+        Some(SessionEventBody::SessionUsage { scope, key, input_tokens, output_tokens, .. }) => {
+            assert_eq!(scope, "delta");
+            assert_eq!(key.as_deref(), Some("assistant:msg_main"));
+            assert_eq!(*input_tokens, Some(8));
+            assert_eq!(*output_tokens, Some(1));
+        }
+        other => panic!("main usage missing: {other:?}"),
+    }
+    let side = ingest_line(
+        &mut side_state,
+        r#"{"type":"assistant","uuid":"eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee","isSidechain":true,"message":{"id":"msg_side","role":"assistant","content":[{"type":"text","text":"旁路"}],"usage":{"input_tokens":8,"output_tokens":1,"cache_read_input_tokens":2}}}"#,
+        true,
+        None,
+    );
+    match side.events.iter().find(|event| matches!(event, SessionEventBody::SessionUsage { .. })) {
+        Some(SessionEventBody::SessionUsage { scope, key, input_tokens, output_tokens, cache_read_tokens, .. }) => {
+            assert_eq!(scope, "delta");
+            assert_eq!(key.as_deref(), Some("assistant:msg_side"));
+            assert_eq!(*input_tokens, Some(8));
+            assert_eq!(*output_tokens, Some(1));
+            assert_eq!(*cache_read_tokens, Some(2));
+        }
+        other => panic!("subagent usage missing: {other:?}"),
+    }
+    let repeated = ingest_line(
+        &mut side_state,
+        r#"{"type":"assistant","uuid":"eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee","isSidechain":true,"message":{"id":"msg_side","usage":{"input_tokens":8,"output_tokens":1}}}"#,
+        true,
+        None,
+    );
+    assert!(repeated.events.is_empty());
+
+    let mut resumed = MapState::default();
+    let side_line = r#"{"type":"assistant","uuid":"ffffffff-ffff-4fff-8fff-ffffffffffff","isSidechain":true,"message":{"id":"msg_old","content":[{"type":"text","text":"旧旁路"}],"usage":{"input_tokens":8,"output_tokens":1,"cache_read_input_tokens":2}}}"#;
+    let history = messages::events_from_transcript(&mut resumed, side_line, None);
+    assert!(history.iter().all(|event| !matches!(event, SessionEventBody::SessionUsage { .. })));
+    let echo = ingest_line(&mut resumed, side_line, true, None);
+    assert!(echo.events.is_empty());
 
     let cleared = ingest_line(&mut state, r#"{"type":"active_goal","value":null}"#, true, None);
     match &cleared.events[0] {
@@ -287,6 +336,73 @@ fn stream_fixture_maps_bash_edit_usage_and_goal() {
             assert!(tokens_used.is_none());
         }
         other => panic!("unexpected {other:?}"),
+    }
+}
+
+#[test]
+fn recorded_claude_jsonl_matches_live_and_does_not_add_result() {
+    let resumed = super::usage::snapshot_from_transcript(super::usage::RECORDED_CLAUDE_JSONL).expect("snapshot");
+    let mut state = MapState::default();
+    let mut usage = Vec::new();
+    for line in super::usage::RECORDED_CLAUDE_LIVE.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let value: serde_json::Value = serde_json::from_str(line).unwrap();
+        let is_result = value.get("type").and_then(|kind| kind.as_str()) == Some("result");
+        let ingested = ingest_line(&mut state, line, true, None);
+        if is_result {
+            assert!(ingested.events.iter().any(|event| matches!(
+                event,
+                SessionEventBody::ContextUsage { source, input_tokens, output_tokens, .. }
+                    if source == "partial-usage" && *input_tokens == Some(9999) && *output_tokens == Some(9999)
+            )));
+            assert!(ingested.events.iter().all(|event| !matches!(event, SessionEventBody::SessionUsage { .. })));
+            continue;
+        }
+        usage.extend(ingested.events.into_iter().filter(|event| matches!(event, SessionEventBody::SessionUsage { .. })));
+    }
+    assert_eq!(usage_parts(&resumed), fold_usage(&usage));
+    assert_eq!(usage_parts(&resumed), (Some(15), Some(126), Some(17_400), Some(1_200)));
+}
+
+fn usage_parts(body: &SessionEventBody) -> (Option<i64>, Option<i64>, Option<i64>, Option<i64>) {
+    match body {
+        SessionEventBody::SessionUsage { input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, .. } => {
+            (*input_tokens, *output_tokens, *cache_read_tokens, *cache_write_tokens)
+        }
+        other => panic!("expected session usage, got {other:?}"),
+    }
+}
+
+fn fold_usage(events: &[SessionEventBody]) -> (Option<i64>, Option<i64>, Option<i64>, Option<i64>) {
+    let mut baseline = None;
+    let mut deltas = HashMap::<String, (Option<i64>, Option<i64>, Option<i64>, Option<i64>)>::new();
+    for event in events {
+        let SessionEventBody::SessionUsage { scope, key, .. } = event else {
+            continue;
+        };
+        let parts = usage_parts(event);
+        if scope == "snapshot" {
+            baseline = Some(parts);
+            deltas.clear();
+            continue;
+        }
+        deltas.insert(key.clone().unwrap_or_default(), parts);
+    }
+    let mut total = baseline.unwrap_or((None, None, None, None));
+    for parts in deltas.values() {
+        total = (add_opt(total.0, parts.0), add_opt(total.1, parts.1), add_opt(total.2, parts.2), add_opt(total.3, parts.3));
+    }
+    total
+}
+
+fn add_opt(left: Option<i64>, right: Option<i64>) -> Option<i64> {
+    match (left, right) {
+        (None, None) => None,
+        (value, None) | (None, value) => value,
+        (Some(left), Some(right)) => Some(left.saturating_add(right.max(0))),
     }
 }
 

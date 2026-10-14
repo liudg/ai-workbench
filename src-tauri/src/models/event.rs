@@ -399,6 +399,22 @@ pub enum SessionEventBody {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         model: Option<String>,
     },
+    /// 当前会话的 token 累计。不进时间线，也不进作曲栏。缺的数字不写。
+    /// `scope = snapshot`：这一份就是会话累计，后到的快照替换前面的。
+    /// `scope = delta`：按 `key` 记一次；同一 key 后来的值替换这一条，再把各条相加。
+    SessionUsage {
+        scope: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        key: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        input_tokens: Option<i64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        output_tokens: Option<i64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_read_tokens: Option<i64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_write_tokens: Option<i64>,
+    },
     /// 适配器请求宿主在同一项目里开一个新会话（`/new`、`/clear`、计划的「清空上下文后实施」）。
     /// 会话管理器不把它写进时间线，而是转给前端去新建、命名并发出首条消息。
     NewThread {

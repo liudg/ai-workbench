@@ -118,6 +118,7 @@ export default function DiffPreview() {
         sessionTitle="变更"
         agent={null}
         events={events}
+        usage={null}
       >
         <AnswerMarkdownHost>
           <DiffView files={FILES} />

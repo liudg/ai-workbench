@@ -16,6 +16,9 @@ const FilesPreview = import.meta.env.DEV
 const ImagePanelPreview = import.meta.env.DEV
   ? lazy(() => import("@/features/panel/files/ImagePanelPreview"))
   : null;
+const UsagePreview = import.meta.env.DEV
+  ? lazy(() => import("@/features/workspace/UsagePreview"))
+  : null;
 
 export default function App() {
   const preview = new URLSearchParams(window.location.search).get("preview");
@@ -44,6 +47,13 @@ export default function App() {
     return (
       <Suspense fallback={null}>
         <ImagePanelPreview />
+      </Suspense>
+    );
+  }
+  if (UsagePreview && preview === "usage") {
+    return (
+      <Suspense fallback={null}>
+        <UsagePreview />
       </Suspense>
     );
   }

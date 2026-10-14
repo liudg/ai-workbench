@@ -21,6 +21,7 @@ mod permission;
 mod process;
 mod runtime;
 mod session;
+mod usage;
 
 #[cfg(test)]
 mod tests;

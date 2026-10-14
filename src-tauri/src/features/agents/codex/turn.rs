@@ -230,6 +230,21 @@ impl Shared {
                 }
             }
         }
+        self.publish_rollout_usage(thread_id);
+    }
+
+    /// rollout 是打开时的累计。实时 `thread/tokenUsage/updated` 如果已经到了，就以它为准。
+    fn publish_rollout_usage(&self, thread_id: &str) {
+        let Some(info) = super::usage::latest_rollout_info(thread_id) else {
+            return;
+        };
+        let mut slot = self.token_info.lock().unwrap();
+        if slot.is_some() {
+            return;
+        }
+        let body = super::usage::snapshot_from_info(&info);
+        *slot = Some(info);
+        emit(&self.events, body);
     }
 
     pub(super) async fn load_history(&self, thread_id: &str) {

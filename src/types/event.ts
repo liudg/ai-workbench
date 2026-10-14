@@ -133,6 +133,16 @@ export type SessionEventBody =
       input_tokens?: number | null;
       output_tokens?: number | null;
       model?: string | null;
+    }
+  /** 当前会话 token 累计。不进时间线。`snapshot` 替换累计，`delta` 按 key 相加。 */
+  | {
+      kind: "session-usage";
+      scope: string;
+      key?: string | null;
+      input_tokens?: number | null;
+      output_tokens?: number | null;
+      cache_read_tokens?: number | null;
+      cache_write_tokens?: number | null;
     };
 
 export type FileStatus = "A" | "M" | "D" | "R";

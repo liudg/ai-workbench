@@ -45,6 +45,7 @@ export default function ImagePanelPreview() {
       sessionTitle="preview"
       agent={null}
       events={[]}
+      usage={null}
     >
       <ImagePanelBoot />
     </PanelProvider>

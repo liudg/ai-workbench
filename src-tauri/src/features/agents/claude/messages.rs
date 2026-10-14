@@ -39,6 +39,7 @@ pub struct MapState {
     /// 上一轮非空 diff。`begin_turn` 会清掉当前轮，这里留下最近一次。
     saved_diff: String,
     pub model: Option<String>,
+    usage: super::usage::LiveCursor,
 }
 
 struct ToolRow {
@@ -119,13 +120,19 @@ pub fn ingest_value(state: &mut MapState, value: &Value, live: bool, project: Op
                 control: Some(ControlIn::Cancel { request_id }),
             }
         }
-        "stream_event" => Ingest {
-            events: on_stream(state, value.get("event").unwrap_or(&Value::Null), project),
-            control: None,
-        },
+        "stream_event" => {
+            let event = value.get("event").unwrap_or(&Value::Null);
+            let mut events = on_stream(state, event, project);
+            if live {
+                if let Some(body) = super::usage::apply_stream(&mut state.usage, event) {
+                    events.push(body);
+                }
+            }
+            Ingest { events, control: None }
+        }
         "system" => Ingest { events: on_system(state, value, live), control: None },
         "assistant" => Ingest {
-            events: on_assistant(state, value, project),
+            events: on_assistant(state, value, project, live),
             control: None,
         },
         "user" => Ingest {
@@ -140,6 +147,12 @@ pub fn ingest_value(state: &mut MapState, value: &Value, live: bool, project: Op
 
 pub fn events_from_transcript(state: &mut MapState, content: &str, project: Option<&Path>) -> Vec<SessionEventBody> {
     let entries = transcript_entries(content);
+    // 旁路不进时间线，但 uuid 要记上，避免恢复后 stdout 回放再记一次用量。
+    for entry in &entries {
+        if flag(entry, "isSidechain") {
+            let _ = skip_seen(state, entry);
+        }
+    }
     let chain = conversation_chain(&entries);
     let mut events = Vec::new();
     // uuid 由 ingest 在发出之后记入 `seen`。这里先插入会让 skip_seen 把整段历史丢掉。
@@ -315,9 +328,16 @@ fn on_system(state: &mut MapState, value: &Value, live: bool) -> Vec<SessionEven
     Vec::new()
 }
 
-fn on_assistant(state: &mut MapState, value: &Value, project: Option<&Path>) -> Vec<SessionEventBody> {
-    if skip_seen(state, value) || flag(value, "isMeta") || flag(value, "isSidechain") {
+fn on_assistant(state: &mut MapState, value: &Value, project: Option<&Path>, live: bool) -> Vec<SessionEventBody> {
+    if skip_seen(state, value) || flag(value, "isMeta") {
         return Vec::new();
+    }
+    // 旁路不进时间线。实时用量仍按 message.id 记，历史由 jsonl 快照覆盖。
+    if flag(value, "isSidechain") {
+        if !live {
+            return Vec::new();
+        }
+        return super::usage::apply_assistant(&mut state.usage, value).into_iter().collect();
     }
     let message = value.get("message").unwrap_or(&Value::Null);
     let content = message.get("content").unwrap_or(&Value::Null);
@@ -350,6 +370,11 @@ fn on_assistant(state: &mut MapState, value: &Value, project: Option<&Path>) -> 
     if !thinking.is_empty() {
         state.thinking = thinking;
         events.extend(thinking_event(state, true, anchor));
+    }
+    if live {
+        if let Some(body) = super::usage::apply_assistant(&mut state.usage, value) {
+            events.push(body);
+        }
     }
     events
 }
@@ -423,6 +448,7 @@ fn on_result(state: &mut MapState, value: &Value, live: bool) -> Vec<SessionEven
             });
         }
     }
+    // result.usage 是本轮各次 API 调用的再加总，和 assistant 记录重复。不记入会话用量。
     // 打开会话时的状态由 runtime 在历史装完后写。历史 result 不改当前状态。
     if live {
         events.push(SessionEventBody::StatusChanged { status: result_status(value) });

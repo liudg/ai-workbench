@@ -397,11 +397,26 @@ test("context usage events do not become a composer strip", () => {
         input_tokens: 12,
         output_tokens: 4,
       },
+      {
+        id: "session-usage",
+        session_id: "s",
+        seq: 3,
+        ts: 3,
+        kind: "session-usage",
+        scope: "snapshot",
+        input_tokens: 8000,
+        output_tokens: 2300,
+        cache_read_tokens: 1500,
+        cache_write_tokens: 500,
+      },
     ],
   });
   assert.equal("contextUsage" in shown, false);
+  assert.equal("sessionUsage" in shown, false);
   const rendered = JSON.stringify(shown);
   assert.equal(rendered.includes("45137"), false);
+  assert.equal(rendered.includes("8000"), false);
+  assert.equal(rendered.includes("12.3K"), false);
   assert.equal(rendered.includes("本回合"), false);
   assert.equal(rendered.includes("grok-4.7"), false);
 });
