@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 
 import type { Session } from "@/types";
 import { SessionRow } from "./SessionRow";
+import { sidebarSessionWindow } from "./session-order";
 import { useReadOnlySessionKey } from "./use-session-list";
-
-const SESSION_PREVIEW_LIMIT = 8;
+import { useVirtualRows } from "./use-virtual-rows";
+import { SESSION_ROW_HEIGHT } from "./virtual-window";
 
 export function SessionList({
   projectId,
@@ -27,30 +28,44 @@ export function SessionList({
     const timer = window.setInterval(() => setNow(Date.now()), 30_000);
     return () => window.clearInterval(timer);
   }, []);
-  const visible = showAll ? sessions : sessions.slice(0, SESSION_PREVIEW_LIMIT);
-  const overflow = sessions.length > SESSION_PREVIEW_LIMIT;
+  const { visible, overflow } = sidebarSessionWindow(sessions, showAll);
+  const { ref, start, end } = useVirtualRows(visible.length, SESSION_ROW_HEIGHT);
+  const rows = visible.slice(start, end);
   const readOnlyIds = new Set(readOnlyKey ? readOnlyKey.slice(0, -1).split("\n") : []);
 
   return (
-    <div className="mt-0.5 space-y-0.5">
-      {visible.map((session) => (
-        <SessionRow
-          key={session.id}
-          projectId={projectId}
-          session={session}
-          active={selected && session.id === activeSessionId}
-          readOnly={readOnlyIds.has(session.id)}
-          now={now}
-        />
-      ))}
+    <div className="mt-0.5">
+      <div ref={ref}>
+        {start > 0 ? <div style={{ height: start * SESSION_ROW_HEIGHT }} /> : null}
+        {rows.map((session) => (
+          <div
+            key={session.id}
+            style={{ height: SESSION_ROW_HEIGHT }}
+            className="flex min-w-0 items-center"
+          >
+            <SessionRow
+              projectId={projectId}
+              session={session}
+              active={selected && session.id === activeSessionId}
+              readOnly={readOnlyIds.has(session.id)}
+              now={now}
+            />
+          </div>
+        ))}
+        {end < visible.length ? (
+          <div style={{ height: (visible.length - end) * SESSION_ROW_HEIGHT }} />
+        ) : null}
+      </div>
       {overflow && (
-        <button
-          type="button"
-          className="w-full rounded-md py-1 pl-7 pr-2 text-left text-[13px] text-zinc-500 hover:bg-zinc-800/40 hover:text-zinc-200"
-          onClick={onToggleShowAll}
-        >
-          {showAll ? "收起" : "展开显示"}
-        </button>
+        <div className="pt-0.5">
+          <button
+            type="button"
+            className="w-full rounded-md py-1 pl-7 pr-2 text-left text-[13px] text-zinc-500 hover:bg-zinc-800/40 hover:text-zinc-200"
+            onClick={onToggleShowAll}
+          >
+            {showAll ? "收起" : "展开显示"}
+          </button>
+        </div>
       )}
     </div>
   );

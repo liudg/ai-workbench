@@ -7,6 +7,7 @@ import { useProjectItem } from "./use-project-item";
 import { useDismiss } from "../use-dismiss";
 import { NewSessionButton } from "../sessions/NewSessionButton";
 import { SessionList } from "../sessions/SessionList";
+import { isPinnedSession } from "../sessions/session-status";
 import { StatusDot } from "./StatusDot";
 
 export function ProjectItem({ project }: { project: Project }) {
@@ -23,9 +24,7 @@ export function ProjectItem({ project }: { project: Project }) {
   useDismiss(menuOpen, menuRef, closeMenu);
 
   const status = sessions ? aggregateStatus(sessions) : null;
-  const runningCount = sessions?.filter(
-    (s) => s.status === "running" || s.status === "needs-input",
-  ).length;
+  const runningCount = sessions?.filter((s) => isPinnedSession(s.status)).length;
   const items = sessions ?? [];
 
   const onHeaderClick = () => {

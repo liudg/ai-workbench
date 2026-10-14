@@ -8,12 +8,12 @@ export function Sidebar() {
   const { projects, notice } = useSidebar();
 
   return (
-    <aside className="flex w-72 shrink-0 flex-col border-r border-zinc-800/80 bg-zinc-900/30">
+    <aside className="flex h-full min-h-0 w-72 shrink-0 flex-col overflow-hidden border-r border-zinc-800/80 bg-zinc-900/30">
       <BrandHeader />
 
       <ProjectHeader />
 
-      <div className="flex-1 space-y-0.5 overflow-y-auto px-2 pb-2">
+      <div data-sidebar-scroll className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
         {projects.length === 0 ? (
           <div className="mx-2 mt-4 rounded-lg border border-dashed border-zinc-800 px-3 py-6 text-center">
             <p className="text-xs leading-5 text-zinc-500">
@@ -23,7 +23,11 @@ export function Sidebar() {
             </p>
           </div>
         ) : (
-          projects.map((p) => <ProjectItem key={p.id} project={p} />)
+          <div className="space-y-0.5">
+            {projects.map((p) => (
+              <ProjectItem key={p.id} project={p} />
+            ))}
+          </div>
         )}
       </div>
 
