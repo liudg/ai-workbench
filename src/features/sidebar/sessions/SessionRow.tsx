@@ -13,6 +13,8 @@ import {
 import { cn } from "@/lib/utils";
 import type { Session } from "@/types";
 import { useFixedMenu } from "../use-fixed-menu";
+import { SessionAgentIcon } from "./SessionAgentIcon";
+import { SessionStatusDot } from "./SessionStatusDot";
 import { relativeSessionTime } from "./relative-time";
 import { useSessionRow } from "./use-session-row";
 
@@ -29,7 +31,8 @@ export function SessionRow({
   readOnly: boolean;
   now: number;
 }) {
-  const { selectSession, caps, busy, renameSession, forkSession, deleteSession } = useSessionRow(session);
+  const { selectSession, caps, identity, busy, renameSession, forkSession, deleteSession } =
+    useSessionRow(session);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [forkOpen, setForkOpen] = useState(false);
@@ -130,8 +133,12 @@ export function SessionRow({
       <div
         role="button"
         tabIndex={0}
+        data-session-row=""
+        data-session-id={session.id}
+        data-agent={session.agent}
+        data-active={active ? "true" : "false"}
         className={cn(
-          "group flex w-full items-center rounded-md py-1 pl-7 pr-2 text-left text-[13px] leading-5",
+          "group flex h-7 w-full items-center gap-1.5 rounded-md pl-7 pr-2 text-left text-[13px] leading-5",
           active
             ? "text-zinc-100"
             : "text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-200",
@@ -145,13 +152,15 @@ export function SessionRow({
           }
         }}
       >
+        <SessionAgentIcon identity={identity} />
         <span className="min-w-0 flex-1 truncate">{session.title}</span>
         {readOnly && (
           <span className="ml-1 shrink-0 rounded bg-amber-400/15 px-1.5 py-0.5 text-[10px] leading-4 text-amber-200">
             只读
           </span>
         )}
-        <span className="relative ml-2 w-16 shrink-0 text-right text-[11px] tabular-nums text-zinc-500">
+        <SessionStatusDot status={session.status} />
+        <span className="relative w-16 shrink-0 text-right text-[11px] tabular-nums text-zinc-500">
           <span className={cn("group-hover:invisible group-focus-within:invisible", menuOpen && "invisible")}>
             {relativeSessionTime(session.updated_at, now)}
           </span>

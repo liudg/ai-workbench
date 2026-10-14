@@ -16,6 +16,9 @@ const FilesPreview = import.meta.env.DEV
 const ImagePanelPreview = import.meta.env.DEV
   ? lazy(() => import("@/features/panel/files/ImagePanelPreview"))
   : null;
+const SidebarPreview = import.meta.env.DEV
+  ? lazy(() => import("@/features/sidebar/SidebarPreview"))
+  : null;
 
 export default function App() {
   const preview = new URLSearchParams(window.location.search).get("preview");
@@ -44,6 +47,13 @@ export default function App() {
     return (
       <Suspense fallback={null}>
         <ImagePanelPreview />
+      </Suspense>
+    );
+  }
+  if (SidebarPreview && preview === "sidebar") {
+    return (
+      <Suspense fallback={null}>
+        <SidebarPreview />
       </Suspense>
     );
   }

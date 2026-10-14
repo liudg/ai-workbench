@@ -170,6 +170,10 @@ export interface AgentProfile {
   commands: SlashCommand[];
   /** 新建会话的权限档。空表示不要拿另一个 Agent 的上次选择来填。 */
   default_access?: string | null;
+  /** 适配器显示名。没有这条资料时侧栏不编名字。 */
+  display_name?: string | null;
+  /** 适配器图标资源。没有资源时侧栏用中性图标。 */
+  icon?: string | null;
 }
 
 export interface AgentCatalog {

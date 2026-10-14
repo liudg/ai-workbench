@@ -21,6 +21,11 @@ pub trait AgentAdapter: Send + Sync {
         self.kind().display_name()
     }
 
+    /// 侧栏图标。没有资源时返回 None，调用方不要补一张别的 Agent 的图。
+    fn icon_href(&self) -> Option<&'static str> {
+        None
+    }
+
     fn capabilities(&self) -> AgentCapabilities;
 
     /// 斜杠命令等不需要已打开会话就能给出的目录。模型/技能仍走 `AgentSession::catalog`。
@@ -30,6 +35,8 @@ pub trait AgentAdapter: Send + Sync {
             capabilities: self.capabilities(),
             commands: Vec::new(),
             default_access: None,
+            display_name: None,
+            icon: None,
         }
     }
 

@@ -160,4 +160,35 @@ mod tests {
         assert!(caps.changes.turn_diff);
         assert!(caps.changes.git_scopes);
     }
+
+    #[test]
+    fn sidebar_identity_stays_on_the_owning_adapter() {
+        use std::path::PathBuf;
+
+        let profiles = crate::features::ipc::agents::agent_profiles();
+        let profile = |kind: AgentKind| {
+            profiles
+                .iter()
+                .find(|item| item.kind == kind)
+                .unwrap_or_else(|| panic!("missing {}", kind.as_str()))
+        };
+        let codex = profile(AgentKind::CodexCli);
+        let claude = profile(AgentKind::ClaudeCode);
+        let cursor = profile(AgentKind::CursorAgent);
+        assert_eq!(codex.display_name.as_deref(), Some("Codex CLI"));
+        assert_eq!(claude.display_name.as_deref(), Some("Claude Code"));
+        assert_eq!(cursor.display_name.as_deref(), Some("Cursor Agent"));
+        assert_ne!(codex.icon, claude.icon);
+        assert!(cursor.icon.is_none());
+        for icon in [codex.icon.as_deref(), claude.icon.as_deref()]
+            .into_iter()
+            .flatten()
+        {
+            let relative = icon.trim_start_matches('/');
+            let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../public")
+                .join(relative);
+            assert!(path.is_file(), "{}", path.display());
+        }
+    }
 }

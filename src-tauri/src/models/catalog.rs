@@ -313,6 +313,12 @@ pub struct AgentProfile {
     /// 新建会话的权限档。空表示适配器自己决定，界面不要拿另一个 Agent 的上次选择。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_access: Option<String>,
+    /// 适配器显示名。侧栏只读这一份，不另做名字表，也不借用别的 Agent。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    /// 侧栏图标资源。没有文件时为 None，界面用中性图标。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -61,12 +61,18 @@ impl AgentAdapter for ClaudeCodeAdapter {
         AgentCapabilities::claude()
     }
 
+    fn icon_href(&self) -> Option<&'static str> {
+        Some("/agent-icons/claude.svg")
+    }
+
     fn profile(&self) -> AgentProfile {
         AgentProfile {
             kind: self.kind(),
             capabilities: self.capabilities(),
             commands: Vec::new(),
             default_access: Some("full".into()),
+            display_name: None,
+            icon: None,
         }
     }
 

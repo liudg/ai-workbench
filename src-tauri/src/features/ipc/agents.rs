@@ -19,6 +19,12 @@ pub async fn update_agent(kind: AgentKind) -> Result<AgentInstallation, String> 
 pub fn agent_profiles() -> Vec<AgentProfile> {
     AgentKind::all()
         .into_iter()
-        .map(|kind| agents::adapter_for(kind).profile())
+        .map(|kind| {
+            let adapter = agents::adapter_for(kind);
+            let mut profile = adapter.profile();
+            profile.display_name = Some(adapter.display_name().to_string());
+            profile.icon = adapter.icon_href().map(str::to_string);
+            profile
+        })
         .collect()
 }

@@ -92,6 +92,10 @@ impl AgentAdapter for CodexCliAdapter {
         AgentCapabilities::codex()
     }
 
+    fn icon_href(&self) -> Option<&'static str> {
+        Some("/agent-icons/codex.svg")
+    }
+
     fn session_linked(&self) -> bool {
         true
     }
@@ -114,6 +118,8 @@ impl AgentAdapter for CodexCliAdapter {
             capabilities: self.capabilities(),
             commands: catalog::slash_commands(),
             default_access: Some("full".into()),
+            display_name: None,
+            icon: None,
         }
     }
 
