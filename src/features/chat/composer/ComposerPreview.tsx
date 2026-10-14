@@ -1,7 +1,5 @@
 import { useMemo, useRef, useState } from "react";
 
-import { useMemo, useRef, useState } from "react";
-
 import { emptySandbox, type AgentCatalog, type AgentSkillOption, type SessionEvent, type SessionTuning } from "@/types";
 import { ComposerBar } from "./ComposerBar";
 import { ComposerInput } from "./ComposerInput";
@@ -38,17 +36,17 @@ const caps = {
 };
 
 /**
- * 目录里的 isDefault 是产品默认（GPT-6.1-Sol · 低）。
- * 首次进入应显示 CLI `config/read` 的 model / model_reasoning_effort，这里用 gpt-5.4 · 高代替那份配置。
- * 预览不调用 app-server。`?goal=live` 只是一条已经记录的 thread/goal 快照，用来核对状态栏文案。
- * `?usage=1` 同样只放两条 context-usage 快照，核对窗口和本回合那一行。
+ * 目录里的 isDefault 是产品默认（GPT-6.1-Sol 低）。
+ * 首次进入应显示 CLI `config/read` 的 model / model_reasoning_effort，这里用 gpt-5.4 高代替那份配置。
+ * 推理档和 Fast 档是 `model/list` 的字段形状，预览不调用 app-server。
+ * `?goal=live` 只是一条已经记录的 thread/goal 快照，用来核对状态栏文案。
  */
 const catalog: AgentCatalog = {
   models: [
     {
       id: "gpt-6.1-sol",
       label: "GPT-6.1-Sol",
-      description: "鏃ュ父缂栫爜",
+      description: "日常编码",
       is_default: true,
       default_effort: "low",
       efforts: [
@@ -60,7 +58,7 @@ const catalog: AgentCatalog = {
     {
       id: "gpt-5.4",
       label: "GPT-5.4",
-      description: "閰嶇疆閲岀殑妯″瀷",
+      description: "配置里的模型",
       is_default: false,
       default_effort: "medium",
       efforts: [
@@ -87,35 +85,35 @@ const liveGoal: SessionEvent = {
   seq: 1,
   ts: 1,
   kind: "goal",
-  objective: "鎶婇鍒朵綋鍗囩骇鍋氬畬",
+  objective: "把预制体升级做完",
   status: "active",
   token_budget: 50000,
   tokens_used: 12500,
   time_used_seconds: 90,
 };
 
-/** 棰勮鐢ㄧ殑鎶€鑳界洰褰曘€備笉鎺?app-server锛屽彧缁?`$` 鑿滃崟鏍稿鎹㈣銆?*/
+/**
+ * 开发预览：真实菜单和芯片，文件来自本仓库的模块图。
+ * 不接 app-server，所以这里没有技能目录，也不调用 thread/goal。
+ */
+/** 预览用的技能目录。不接 app-server，只给 `$` 菜单核对换行。 */
 const previewSkills: AgentSkillOption[] = [
   {
     name: "documents",
     mention: "documents",
-    label: "鏂囨。",
-    description: "鍦ㄤ粨搴撻噷鏌ユ壘骞跺紩鐢ㄩ暱鏂囨。銆傝鏄庡彲浠ユ崲琛岋紝鎶€鑳藉悕蹇呴』鐣欏湪鍚屼竴琛岋紝涓嶈兘浠庡崟璇嶄腑闂存柇寮€銆?,
+    label: "文档",
+    description: "在仓库里查找并引用长文档。说明可以换行，技能名必须留在同一行，不能从单词中间断开。",
     path: "documents",
   },
   {
     name: "review",
     mention: "review",
-    label: "瀹℃煡",
-    description: "妫€鏌ュ綋鍓嶆敼鍔?,
+    label: "审查",
+    description: "检查当前改动",
     path: "review",
   },
 ];
 
-/**
- * 寮€鍙戦瑙堬細鐪熷疄鑿滃崟鍜岃姱鐗囷紝鏂囦欢鏉ヨ嚜鏈粨搴撶殑妯″潡鍥俱€?
- * 涓嶆帴 app-server锛屼篃涓嶈皟鐢?thread/goal銆?
- */
 export default function ComposerPreview() {
   const params = new URLSearchParams(window.location.search);
   const [text, setText] = useState("");
@@ -123,9 +121,9 @@ export default function ComposerPreview() {
   const [planOn, setPlanOn] = useState(false);
   const [goalDraft, setGoalDraft] = useState(false);
   const [goalLive, setGoalLive] = useState(params.get("goal") === "live");
+  const showUsage = params.get("usage") === "1";
   const [tuning, setTuning] = useState<SessionTuning | undefined>();
   const [menu, setMenu] = useState<null | "model">(null);
-  const showUsage = params.get("usage") === "1";
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const plusRef = useRef<HTMLButtonElement>(null);
   const accessRef = useRef<HTMLButtonElement>(null);
@@ -270,19 +268,14 @@ export default function ComposerPreview() {
         )}
         <div className="min-w-0 rounded-[28px] border border-zinc-700/90 bg-zinc-900 shadow-lg shadow-black/20">
           <div className="min-w-0 overflow-hidden px-3 pt-3">
-            {view.goalStatus || view.contextUsage ? (
-              <div className="mb-1 flex min-w-0 items-center gap-3 px-1">
-                {view.goalStatus ? (
-                  <p data-goal-status title={view.goalStatus} className="min-w-0 truncate text-xs leading-5 text-fuchsia-300">
-                    {view.goalStatus}
-                  </p>
-                ) : null}
-                {view.contextUsage ? (
-                  <p data-context-usage title={view.contextUsage} className="min-w-0 truncate text-xs leading-5 text-zinc-400">
-                    {view.contextUsage}
-                  </p>
-                ) : null}
-              </div>
+            {view.goalStatus ? (
+              <p
+                data-goal-status
+                title={view.goalStatus}
+                className="mb-1 truncate px-1 text-xs leading-5 text-fuchsia-300"
+              >
+                {view.goalStatus}
+              </p>
             ) : null}
             <ComposerInput
               text={text}
