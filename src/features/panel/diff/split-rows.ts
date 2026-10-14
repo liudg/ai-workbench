@@ -3,13 +3,22 @@ import type { DiffDisplayRow, WordPart } from "./word-diff.ts";
 /** 宽于这个宽度时，自动布局改用并排。再窄就保持单列。 */
 export const DIFF_AUTO_SPLIT_MIN_PX = 1080;
 
-export type DiffLayoutMode = "auto" | "split";
+export type DiffLayoutMode = "auto" | "split" | "inline";
 export type DiffPresentation = "inline" | "split";
 
 export function diffPresentation(layout: DiffLayoutMode, contentWidth: number): DiffPresentation {
+  if (layout === "inline") return "inline";
   if (layout === "split") return "split";
   if (contentWidth >= DIFF_AUTO_SPLIT_MIN_PX) return "split";
   return "inline";
+}
+
+/**
+ * 工具栏只在当前看到的并排和统一之间切换。
+ * 宽屏自动布局已经是并排时，再点必须落到统一，不能退回仍是并排的 auto。
+ */
+export function nextDiffLayout(layout: DiffLayoutMode, contentWidth: number): Exclude<DiffLayoutMode, "auto"> {
+  return diffPresentation(layout, contentWidth) === "split" ? "inline" : "split";
 }
 
 export interface SplitCell {

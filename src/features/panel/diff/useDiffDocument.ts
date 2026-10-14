@@ -1,29 +1,28 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { backend, type DiffScope } from "@/lib/ipc";
 import { parseUnifiedDiff, type FileChange } from "@/features/changes-model/diff-parse";
 import { usePanel } from "@/features/panel/core/PanelProvider";
 import { filterFiles, useFileFilter } from "../core/file-filter";
+import { browserDiffMenuStorage, readDiffMenuOptions, writeDiffMenuOptions, type DiffMenuOptions } from "./diff-menu-options";
 import { patchFromFiles } from "./git-apply";
+import { pathsWithFileOpen, scrollDiffFileIntoView } from "./reveal-file";
 import { diffScopeMenu, filesForScope } from "./scope";
 
 export function useDiffDocument(turnFiles: FileChange[]) {
   const { projectId, sessionId, changes } = usePanel();
   const [filter] = useFileFilter();
   const [scope, setScope] = useState("turn");
-  const [hideWs, setHideWs] = useState(false);
+  const [menuOptions, setMenuOptions] = useState(() => readDiffMenuOptions(browserDiffMenuStorage()));
   const [provided, setProvided] = useState<DiffScope[]>([]);
   const [gitFiles, setGitFiles] = useState<FileChange[] | null>(null);
   const [gitError, setGitError] = useState("");
   const [loading, setLoading] = useState(false);
   const [activePath, setActivePath] = useState("");
   const [openPaths, setOpenPaths] = useState<string[]>([]);
-  const [loadFull, setLoadFull] = useState(false);
-  // 展开默认是差异 hunk。渲染预览会把 Markdown 换成渲染结果，不能当默认。
-  const [renderPreview, setRenderPreview] = useState(false);
-  const [wordDiff, setWordDiff] = useState(true);
   const [wrap, setWrap] = useState(true);
-  const [hideImports, setHideImports] = useState(false);
+  const scrollPath = useRef<string | null>(null);
+  const [scrollTick, setScrollTick] = useState(0);
   const [sources, setSources] = useState<Record<string, string>>({});
   const [reloadToken, setReloadToken] = useState(0);
 
@@ -41,6 +40,18 @@ export function useDiffDocument(turnFiles: FileChange[]) {
       cancel = true;
     };
   }, [sessionId]);
+
+  useEffect(() => {
+    writeDiffMenuOptions(menuOptions, browserDiffMenuStorage());
+  }, [menuOptions]);
+
+  const setMenuFlag = useCallback((key: keyof DiffMenuOptions, value: boolean | ((current: boolean) => boolean)) => {
+    setMenuOptions((current) => {
+      const next = typeof value === "function" ? value(current[key]) : value;
+      return next === current[key] ? current : { ...current, [key]: next };
+    });
+  }, []);
+  const { loadFull, renderPreview, wordDiff, hideWhitespace: hideWs, hideImports } = menuOptions;
 
   const scopes = useMemo(() => diffScopeMenu(provided, changes), [changes, provided]);
   const selected = scopes.find((item) => item.id === scope && !item.submenu) ?? scopes.find((item) => !item.submenu);
@@ -118,19 +129,38 @@ export function useDiffDocument(turnFiles: FileChange[]) {
     }
   }, [loadFull, openPaths.length, projectId, reloadToken, renderPreview, sourceKey]);
 
+  const queueScroll = useCallback((path: string) => {
+    scrollPath.current = path;
+    setScrollTick((value) => value + 1);
+  }, []);
+
+  useLayoutEffect(() => {
+    const path = scrollPath.current;
+    if (!path) return;
+    scrollPath.current = null;
+    scrollDiffFileIntoView(path);
+  }, [scrollTick]);
+
   const selectFile = useCallback((file: FileChange) => {
     setActivePath(file.path);
-    const escaped = cssEscape(file.path);
-    document.querySelector(`[data-diff-file-body="${escaped}"]`)?.scrollIntoView({ block: "center" });
-    document.querySelector(`[data-diff-file="${escaped}"]`)?.scrollIntoView({ block: "nearest" });
-  }, []);
+    queueScroll(file.path);
+  }, [queueScroll]);
+
+  const revealFile = useCallback((file: FileChange) => {
+    setActivePath(file.path);
+    setOpenPaths((current) => {
+      const next = pathsWithFileOpen(current, file.path);
+      return next === current ? current : [...next];
+    });
+    queueScroll(file.path);
+  }, [queueScroll]);
 
   return {
     scope: selected?.id ?? scope,
     scopes,
     setScope,
     hideWs,
-    setHideWs,
+    setHideWs: (value: boolean | ((current: boolean) => boolean)) => setMenuFlag("hideWhitespace", value),
     loading,
     gitError,
     shown,
@@ -147,18 +177,19 @@ export function useDiffDocument(turnFiles: FileChange[]) {
       ),
     isOpen: (path: string) => openSet.has(path),
     loadFull,
-    setLoadFull,
+    setLoadFull: (value: boolean | ((current: boolean) => boolean)) => setMenuFlag("loadFull", value),
     renderPreview,
-    setRenderPreview,
+    setRenderPreview: (value: boolean | ((current: boolean) => boolean)) => setMenuFlag("renderPreview", value),
     wordDiff,
-    setWordDiff,
+    setWordDiff: (value: boolean | ((current: boolean) => boolean)) => setMenuFlag("wordDiff", value),
     wrap,
     setWrap,
     hideImports,
-    setHideImports,
+    setHideImports: (value: boolean | ((current: boolean) => boolean)) => setMenuFlag("hideImports", value),
     sources,
     patch,
     selectFile,
+    revealFile,
     reload: () => {
       triedSource.current.clear();
       setSources({});
@@ -171,9 +202,4 @@ function errorText(error: unknown): string {
   if (typeof error === "string" && error.trim()) return error;
   if (error instanceof Error && error.message.trim()) return error.message;
   return "无法读取差异";
-}
-
-function cssEscape(value: string): string {
-  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") return CSS.escape(value);
-  return value.replace(/["\\]/g, "\\$&");
 }

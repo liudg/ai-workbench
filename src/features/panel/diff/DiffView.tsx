@@ -12,7 +12,7 @@ import { setFileFilter } from "../core/file-filter";
 import { DiffFileSection } from "./DiffFileSection";
 import { DiffToolbar } from "./DiffToolbar";
 import { copyApplyState } from "./git-apply";
-import { diffPresentation, type DiffLayoutMode } from "./split-rows";
+import { diffPresentation, nextDiffLayout, type DiffLayoutMode } from "./split-rows";
 import { useDiffDocument } from "./useDiffDocument";
 import { useGitWorkTree } from "./useGitWorkTree";
 
@@ -50,8 +50,8 @@ export function DiffView({ files }: { files: FileChange[] }) {
     const file = doc.shown.find((item) => item.path === pendingJump);
     if (!file) return;
     setPendingJump(null);
-    doc.selectFile(file);
-  }, [doc.selectFile, doc.shown, pendingJump]);
+    doc.revealFile(file);
+  }, [doc.revealFile, doc.shown, pendingJump]);
 
   const jumpTo = (path: string) => {
     const known = threadFiles.some((file) => file.path === path) || files.some((file) => file.path === path);
@@ -90,8 +90,8 @@ export function DiffView({ files }: { files: FileChange[] }) {
           if (doc.expanded) doc.collapseAll();
           else doc.expandAll(doc.shown.map((file) => file.path));
         }}
-        layoutSplit={layout === "split"}
-        onToggleLayout={() => setLayout((value) => (value === "split" ? "auto" : "split"))}
+        layoutSplit={presentation === "split"}
+        onToggleLayout={() => setLayout((value) => nextDiffLayout(value, contentWidth))}
         wrap={doc.wrap}
         onToggleWrap={() => doc.setWrap((value) => !value)}
         onRefresh={() => {
@@ -171,7 +171,7 @@ export function DiffView({ files }: { files: FileChange[] }) {
             rowAttr="data-diff-file"
             mark="diff"
             width={listWidth}
-            onSelect={doc.selectFile}
+            onSelect={doc.revealFile}
             empty={
               <p className="px-2 py-6 text-center text-xs leading-5 text-zinc-500">{DESKTOP_ZH.noFileChanges}</p>
             }

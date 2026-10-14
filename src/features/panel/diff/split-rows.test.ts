@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { foldDiffLines } from "./fold.ts";
-import { DIFF_AUTO_SPLIT_MIN_PX, diffPresentation, toSplitRows } from "./split-rows.ts";
+import { DIFF_AUTO_SPLIT_MIN_PX, diffPresentation, nextDiffLayout, toSplitRows } from "./split-rows.ts";
 import { applyWordDiff } from "./word-diff.ts";
 
 test("auto layout stays inline until the diff column is wide enough", () => {
@@ -10,6 +10,14 @@ test("auto layout stays inline until the diff column is wide enough", () => {
   assert.equal(diffPresentation("auto", DIFF_AUTO_SPLIT_MIN_PX - 1), "inline");
   assert.equal(diffPresentation("auto", DIFF_AUTO_SPLIT_MIN_PX), "split");
   assert.equal(diffPresentation("split", 200), "split");
+  assert.equal(diffPresentation("inline", DIFF_AUTO_SPLIT_MIN_PX), "inline");
+});
+
+test("the side-by-side toolbar toggle flips the view the user is looking at", () => {
+  assert.equal(nextDiffLayout("auto", DIFF_AUTO_SPLIT_MIN_PX), "inline");
+  assert.equal(nextDiffLayout("inline", DIFF_AUTO_SPLIT_MIN_PX), "split");
+  assert.equal(nextDiffLayout("split", 200), "inline");
+  assert.equal(nextDiffLayout("auto", DIFF_AUTO_SPLIT_MIN_PX - 1), "split");
 });
 
 test("side-by-side pairs deletions with additions and keeps word highlights", () => {
