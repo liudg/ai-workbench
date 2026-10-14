@@ -4,6 +4,7 @@
   "version": "0.2.35",
   "type": "module",
   "scripts": {
+    "test": "node --experimental-strip-types --test $(find src -name '*.test.ts' -print)",
     "dev": "vite",
     "test": "node --experimental-strip-types --test \"src/**/*.test.ts\" \"src/**/*.test.tsx\"",
     "build": "tsc -b && vite build",

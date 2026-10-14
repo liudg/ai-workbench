@@ -1,6 +1,6 @@
 # AI 工作台（AI Workbench）
 
-一个**本地多项目 AI 编程工作台**：左侧管理多个本地项目，每个项目可并行开启多个 Agent 会话。Codex CLI 走本机 `codex app-server`；其余 Agent 只做本机检测和官方更新，会话协议未接入，不能新建会话。右侧以时间线查看输出，并用同一套提问卡片处理审批、选择和问题。关闭窗口不会中断任何会话——应用驻留系统托盘，后台继续运行。
+一个**本地多项目 AI 编程工作台**：左侧管理多个本地项目，每个项目可并行开启多个 Agent 会话。Codex CLI 走本机 `codex app-server`，Claude Code 走本机 `claude` 的 stream-json 控制协议；其余 Agent 只做本机检测和官方更新，会话协议未接入，不能新建会话。右侧以时间线查看输出，并用同一套提问卡片处理审批、选择和问题。关闭窗口不会中断任何会话——应用驻留系统托盘，后台继续运行。
 
 ## 技术栈
 
@@ -140,7 +140,7 @@ Codex 实现拆在 `agents/codex/`：`mod.rs` 只编排，`rpc` / `prompts` / `c
 
 Gemini CLI 与 Antigravity、Amazon Q 与 Kiro 各登记成一项，不做成两套会话。`q` 太容易和无关命令重名，版本输出里要出现 Kiro / Amazon Q，或者首行是 `q 1.2.3` 这种官方短版本，才算已安装。
 
-**除 Codex 以外，会话协议未接入。** 这些适配器只做安装探测和官方升级，`start_session()` 走 trait 默认实现，直接返回「未接入」错误。设置页仍显示「未安装」或「版本 · 未接入」；新建会话菜单不列出它们。接入时实现 `AgentSession`，在适配器里覆盖 `start_session` 和 `session_linked`，再注册 `SessionDirectory`；工作目录用 `ctx.project_path`。认证交给 CLI 自身，应用不保存密钥。
+**Codex 和 Claude Code 的会话协议已接入。** 其余适配器只做安装探测和官方升级，`start_session()` 走 trait 默认实现，直接返回「未接入」错误。设置页仍显示「未安装」或「版本 · 未接入」；新建会话菜单不列出它们。接入时实现 `AgentSession`，在适配器里覆盖 `start_session` 和 `session_linked`，再注册 `SessionDirectory`；工作目录用 `ctx.project_path`。认证交给 CLI 自身，应用不保存密钥。Claude Code 的目录读 `~/.claude/projects` 里的 jsonl。
 
 右侧「打开文件」按目录逐层列出当前项目根下的文件，没有全局数量上限。点文件在当前这一页里预览，不会为每次点击新开标签。全文搜索直接读本机目录，分段返回。目录名正好是 `.git`、`node_modules`、`target`、`dist`、`Library`、`Temp` 的文件夹不进入目录树，也不进入全文搜索；其余文件和文件夹都会列出。
 

@@ -38,10 +38,10 @@ const caps = {
 };
 
 /**
- * 鐩綍閲岀殑 isDefault 鏄骇鍝侀粯璁わ紙GPT-6.1-Sol 浣庯級銆?
- * 棣栨杩涘叆搴旀樉绀?CLI `config/read` 鐨?model / model_reasoning_effort锛岃繖閲岀敤 gpt-5.4 楂樹唬鏇块偅浠介厤缃€?
- * 鎺ㄧ悊妗ｅ拰 Fast 妗ｆ槸 `model/list` 鐨勫瓧娈靛舰鐘讹紝棰勮涓嶈皟鐢?app-server銆?
- * `?goal=live` 鍙槸涓€鏉″凡缁忚褰曠殑 thread/goal 蹇収锛岀敤鏉ユ牳瀵圭姸鎬佹爮鏂囨銆?
+ * 目录里的 isDefault 是产品默认（GPT-6.1-Sol · 低）。
+ * 首次进入应显示 CLI `config/read` 的 model / model_reasoning_effort，这里用 gpt-5.4 · 高代替那份配置。
+ * 预览不调用 app-server。`?goal=live` 只是一条已经记录的 thread/goal 快照，用来核对状态栏文案。
+ * `?usage=1` 同样只放两条 context-usage 快照，核对窗口和本回合那一行。
  */
 const catalog: AgentCatalog = {
   models: [
@@ -125,6 +125,7 @@ export default function ComposerPreview() {
   const [goalLive, setGoalLive] = useState(params.get("goal") === "live");
   const [tuning, setTuning] = useState<SessionTuning | undefined>();
   const [menu, setMenu] = useState<null | "model">(null);
+  const showUsage = params.get("usage") === "1";
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const plusRef = useRef<HTMLButtonElement>(null);
   const accessRef = useRef<HTMLButtonElement>(null);
@@ -143,8 +144,34 @@ export default function ComposerPreview() {
       });
     }
     if (goalLive) rows.push(liveGoal);
+    if (showUsage) {
+      rows.push(
+        {
+          id: "usage-window",
+          session_id: "preview",
+          seq: 3,
+          ts: 3,
+          kind: "context-usage",
+          source: "get_context_usage",
+          percentage: 12.5,
+          used_tokens: 1200,
+          max_tokens: 8000,
+          model: "claude-sonnet",
+        },
+        {
+          id: "usage-turn",
+          session_id: "preview",
+          seq: 4,
+          ts: 4,
+          kind: "context-usage",
+          source: "partial-usage",
+          input_tokens: 8,
+          output_tokens: 2,
+        },
+      );
+    }
     return rows;
-  }, [goalLive, planOn]);
+  }, [goalLive, planOn, showUsage]);
   const goal = activeGoal(events);
   const view = deriveComposerView({
     status: "completed",
@@ -243,14 +270,19 @@ export default function ComposerPreview() {
         )}
         <div className="min-w-0 rounded-[28px] border border-zinc-700/90 bg-zinc-900 shadow-lg shadow-black/20">
           <div className="min-w-0 overflow-hidden px-3 pt-3">
-            {view.goalStatus ? (
-              <p
-                data-goal-status
-                title={view.goalStatus}
-                className="mb-1 truncate px-1 text-xs leading-5 text-fuchsia-300"
-              >
-                {view.goalStatus}
-              </p>
+            {view.goalStatus || view.contextUsage ? (
+              <div className="mb-1 flex min-w-0 items-center gap-3 px-1">
+                {view.goalStatus ? (
+                  <p data-goal-status title={view.goalStatus} className="min-w-0 truncate text-xs leading-5 text-fuchsia-300">
+                    {view.goalStatus}
+                  </p>
+                ) : null}
+                {view.contextUsage ? (
+                  <p data-context-usage title={view.contextUsage} className="min-w-0 truncate text-xs leading-5 text-zinc-400">
+                    {view.contextUsage}
+                  </p>
+                ) : null}
+              </div>
             ) : null}
             <ComposerInput
               text={text}
