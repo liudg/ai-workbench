@@ -1,12 +1,11 @@
 {
   "name": "ai-workbench",
   "private": true,
-  "version": "0.2.38",
+  "version": "0.2.39",
   "type": "module",
   "scripts": {
-    "test": "node --experimental-strip-types --test $(find src -name '*.test.ts' -print)",
-    "dev": "vite",
     "test": "node --experimental-strip-types --test \"src/**/*.test.ts\" \"src/**/*.test.tsx\"",
+    "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
