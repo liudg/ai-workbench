@@ -210,3 +210,21 @@ test("labels only the final answer once an earlier turn has settled", () => {
     false,
   );
 });
+
+test("session usage stays out of the timeline", () => {
+  const nodes = buildTimeline(
+    [
+      event("usage", 1, {
+        kind: "session-usage",
+        scope: "snapshot",
+        input_tokens: 8000,
+        output_tokens: 2300,
+      }),
+      event("u", 2, { kind: "user-message", text: "问" }),
+    ],
+    "completed",
+  );
+  const rendered = JSON.stringify(nodes);
+  assert.equal(rendered.includes("session-usage"), false);
+  assert.equal(rendered.includes("8000"), false);
+});

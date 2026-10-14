@@ -252,6 +252,19 @@ fn stream_fixture_maps_bash_edit_usage_and_goal() {
         _ => None,
     }).expect("usage");
     assert_eq!(usage, ("partial-usage", None, None, None, Some(3), Some(4)));
+    match result.events.iter().find(|event| matches!(event, SessionEventBody::SessionUsage { .. })) {
+        Some(SessionEventBody::SessionUsage {
+            scope,
+            input_tokens,
+            output_tokens,
+            ..
+        }) => {
+            assert_eq!(scope, "delta");
+            assert_eq!(*input_tokens, Some(3));
+            assert_eq!(*output_tokens, Some(4));
+        }
+        other => panic!("session usage missing: {other:?}"),
+    }
     assert!(result.events.iter().any(|event| matches!(
         event,
         SessionEventBody::StatusChanged { status: SessionStatus::Completed }
@@ -264,6 +277,46 @@ fn stream_fixture_maps_bash_edit_usage_and_goal() {
         None,
     );
     assert!(!replay.events.iter().any(|event| matches!(event, SessionEventBody::StatusChanged { .. })));
+    assert!(!replay.events.iter().any(|event| matches!(event, SessionEventBody::SessionUsage { .. })));
+
+    let mut side_state = MapState::default();
+    let main = ingest_line(
+        &mut side_state,
+        r#"{"type":"assistant","uuid":"dddddddd-dddd-4ddd-8ddd-dddddddddddd","message":{"id":"msg_main","role":"assistant","content":[{"type":"text","text":"主循环"}],"usage":{"input_tokens":8,"output_tokens":1}}}"#,
+        true,
+        None,
+    );
+    assert!(main.events.iter().all(|event| !matches!(event, SessionEventBody::SessionUsage { .. })));
+    let side = ingest_line(
+        &mut side_state,
+        r#"{"type":"assistant","uuid":"eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee","isSidechain":true,"message":{"id":"msg_side","role":"assistant","content":[{"type":"text","text":"旁路"}],"usage":{"input_tokens":8,"output_tokens":1,"cache_read_input_tokens":2}}}"#,
+        true,
+        None,
+    );
+    match side.events.iter().find(|event| matches!(event, SessionEventBody::SessionUsage { .. })) {
+        Some(SessionEventBody::SessionUsage { scope, key, input_tokens, output_tokens, cache_read_tokens, .. }) => {
+            assert_eq!(scope, "delta");
+            assert_eq!(key.as_deref(), Some("assistant:msg_side"));
+            assert_eq!(*input_tokens, Some(8));
+            assert_eq!(*output_tokens, None);
+            assert_eq!(*cache_read_tokens, Some(2));
+        }
+        other => panic!("subagent usage missing: {other:?}"),
+    }
+    let repeated = ingest_line(
+        &mut side_state,
+        r#"{"type":"assistant","uuid":"eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee","isSidechain":true,"message":{"id":"msg_side","usage":{"input_tokens":8,"output_tokens":1}}}"#,
+        true,
+        None,
+    );
+    assert!(repeated.events.is_empty());
+
+    let mut resumed = MapState::default();
+    let side_line = r#"{"type":"assistant","uuid":"ffffffff-ffff-4fff-8fff-ffffffffffff","isSidechain":true,"message":{"id":"msg_old","content":[{"type":"text","text":"旧旁路"}],"usage":{"input_tokens":8,"output_tokens":1,"cache_read_input_tokens":2}}}"#;
+    let history = messages::events_from_transcript(&mut resumed, side_line, None);
+    assert!(history.iter().all(|event| !matches!(event, SessionEventBody::SessionUsage { .. })));
+    let echo = ingest_line(&mut resumed, side_line, true, None);
+    assert!(echo.events.is_empty());
 
     let cleared = ingest_line(&mut state, r#"{"type":"active_goal","value":null}"#, true, None);
     match &cleared.events[0] {

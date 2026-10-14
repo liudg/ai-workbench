@@ -188,6 +188,7 @@ impl Shared {
         let model_before = self.map.lock().unwrap().model.clone();
         if let Some(path) = history::find_session_file(&self.session_id) {
             if let Some(text) = history::read_session_text(&path) {
+                let usage = super::usage::snapshot_from_transcript(&text);
                 let (events, diff) = {
                     let mut map = self.map.lock().unwrap();
                     let events = messages::events_from_transcript(&mut map, &text, Some(&self.project_path));
@@ -207,6 +208,9 @@ impl Shared {
                         *self.goal.lock().unwrap() = Some(event.clone());
                     }
                     let _ = self.events.send(event);
+                }
+                if let Some(usage) = usage {
+                    let _ = self.events.send(usage);
                 }
             }
         }

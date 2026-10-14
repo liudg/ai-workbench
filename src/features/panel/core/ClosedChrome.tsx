@@ -7,12 +7,13 @@ import { registerBuiltinViewers } from "../viewers/register";
 import { viewerById } from "./registry";
 import { Hint } from "./Hint";
 import { usePanel } from "./PanelProvider";
+import { SessionUsageMeter } from "./SessionUsageMeter";
 
 registerBuiltinViewers();
 
-/** 侧栏收起时的顶栏：标题在左，右侧是标记。聊天占满其余宽度。 */
+/** 侧栏收起时的顶栏：标题在左，用量和标记在右。聊天占满其余宽度。 */
 export function ClosedChrome() {
-  const { tabs, sessionTitle, showPanel, selectTab } = usePanel();
+  const { tabs, sessionTitle, usage, showPanel, selectTab } = usePanel();
   const count = tabs.length;
   const [menu, setMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -28,11 +29,12 @@ export function ClosedChrome() {
   return (
     <div
       data-panel-closed
-      className="flex h-10 shrink-0 items-center gap-2 border-b border-zinc-800 bg-zinc-950 px-3"
+      className="relative z-20 flex h-10 shrink-0 items-center gap-2 border-b border-zinc-800 bg-zinc-950 px-3"
     >
       <span data-session-title className="min-w-0 flex-1 truncate text-sm text-zinc-100">
         {sessionTitle}
       </span>
+      <SessionUsageMeter usage={usage} />
       <span aria-hidden className="mx-0.5 h-4 w-px bg-zinc-700" />
       {count > 0 ? (
         <div

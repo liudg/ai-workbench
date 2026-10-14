@@ -27,6 +27,7 @@ export const SILENT_EVENT_KINDS = [
   "collaboration-mode",
   "goal",
   "context-usage",
+  "session-usage",
 ] as const satisfies readonly SessionEvent["kind"][];
 
 export type RenderedEventKind = (typeof RENDERED_EVENT_KINDS)[number];

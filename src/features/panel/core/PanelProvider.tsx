@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 
+import type { SessionUsageView } from "@/store/session-usage";
 import type { AgentKind, ChangeCapabilities, SessionEvent } from "@/types";
 import { useCloseBrowserOnUnmount } from "../browser/use-browser-host";
 import { showsFileChanges } from "@/features/changes-model/capabilities";
@@ -32,6 +33,7 @@ interface PanelApi {
   openFiles: () => void;
   projectPath: string;
   sessionTitle: string;
+  usage: SessionUsageView | null;
   layout: PanelLayoutMode;
   hidePanel: () => void;
   showPanel: () => void;
@@ -64,6 +66,7 @@ export function PanelProvider({
   sessionTitle,
   agent,
   events,
+  usage,
   children,
 }: {
   sessionId: string;
@@ -72,6 +75,7 @@ export function PanelProvider({
   sessionTitle: string;
   agent: AgentKind | null;
   events: readonly SessionEvent[];
+  usage: SessionUsageView | null;
   children: ReactNode;
 }) {
   const tabs = useWorkbench((s) => s.panelBySession[sessionId]?.tabs ?? EMPTY_TABS);
@@ -157,6 +161,7 @@ export function PanelProvider({
       openFiles,
       projectPath,
       sessionTitle,
+      usage,
       layout,
       hidePanel,
       showPanel,
@@ -182,6 +187,7 @@ export function PanelProvider({
       openFiles,
       projectPath,
       sessionTitle,
+      usage,
       layout,
       hidePanel,
       showPanel,

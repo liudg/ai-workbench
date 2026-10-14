@@ -26,6 +26,7 @@ const ALL: SessionEvent["kind"][] = [
   "collaboration-mode",
   "goal",
   "context-usage",
+  "session-usage",
 ];
 
 test("every event kind is either rendered or silent", () => {

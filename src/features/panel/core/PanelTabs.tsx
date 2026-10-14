@@ -8,11 +8,12 @@ import { viewerById, type PanelTab } from "./registry";
 import { Hint } from "./Hint";
 import { PanelLayoutControls } from "./PanelChrome";
 import { usePanel } from "./PanelProvider";
+import { SessionUsageMeter } from "./SessionUsageMeter";
 
 registerBuiltinViewers();
 
 export function PanelTabs() {
-  const { tabs, activeId, selectTab, closeTab, openBlank, setTabTitle, projectId, sessionId, layout, sessionTitle } =
+  const { tabs, activeId, selectTab, closeTab, openBlank, setTabTitle, projectId, sessionId, layout, sessionTitle, usage } =
     usePanel();
   const active = tabs.find((tab) => tab.id === activeId) ?? tabs[tabs.length - 1];
   if (!active) return null;
@@ -79,6 +80,7 @@ export function PanelTabs() {
             </button>
           </Hint>
         </div>
+        {layout === "full" ? <SessionUsageMeter usage={usage} /> : null}
         <PanelLayoutControls />
       </div>
       {menu && menu.length > 0 ? (
