@@ -23,7 +23,8 @@ export function SkillMenu({
     <div
       role="listbox"
       aria-label="技能"
-      className="absolute bottom-full left-0 right-0 z-20 mb-2 max-h-64 min-w-0 overflow-x-hidden overflow-y-auto rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
+      data-skill-menu
+      className="absolute bottom-full left-0 right-0 z-20 mb-2 max-h-64 min-w-0 overflow-x-auto overflow-y-auto rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
     >
       {matches.length === 0 ? (
         <p className="px-3 py-2 text-xs text-zinc-500" data-skill-empty={emptyKind}>
@@ -37,7 +38,7 @@ export function SkillMenu({
             role="option"
             aria-selected={skill === active}
             className={cn(
-              "flex w-full min-w-0 items-baseline gap-3 px-3 py-2 text-left hover:bg-zinc-800",
+              "grid w-full grid-cols-[max-content_minmax(0,1fr)] items-start gap-3 px-3 py-2 text-left hover:bg-zinc-800",
               skill === active && "bg-zinc-800",
             )}
             onMouseDown={(event) => {
@@ -46,8 +47,11 @@ export function SkillMenu({
               onPick(skill);
             }}
           >
-            <span className="min-w-0 shrink break-all font-mono text-sm text-zinc-100">{`$${skill.mention}`}</span>
-            <span className="min-w-0 truncate text-xs text-zinc-500">
+            <span
+              data-skill-mention={skill.mention}
+              className="min-w-max whitespace-nowrap font-mono text-sm text-zinc-100"
+            >{`$${skill.mention}`}</span>
+            <span className="min-w-0 whitespace-normal break-words text-xs leading-5 text-zinc-500">
               {skill.label}
               {skill.description ? ` · ${skill.description}` : ""}
             </span>

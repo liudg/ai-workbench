@@ -1,9 +1,10 @@
 import { useMemo, useRef, useState } from "react";
 
-import { emptySandbox, type AgentCatalog, type SessionEvent } from "@/types";
+import { emptySandbox, type AgentCatalog, type AgentSkillOption, type SessionEvent } from "@/types";
 import { ComposerBar } from "./ComposerBar";
 import { ComposerInput } from "./ComposerInput";
 import { MentionMenu } from "./MentionMenu";
+import { SkillMenu } from "./SkillMenu";
 import { deriveComposerView } from "./composer-view";
 import { activeGoal } from "./goal";
 import { atToken, clearAtToken, insertMention, mentionFiles } from "./mentions";
@@ -82,9 +83,27 @@ const liveGoal: SessionEvent = {
   time_used_seconds: 90,
 };
 
+/** 预览用的技能目录。不接 app-server，只给 `$` 菜单核对换行。 */
+const previewSkills: AgentSkillOption[] = [
+  {
+    name: "documents",
+    mention: "documents",
+    label: "文档",
+    description: "在仓库里查找并引用长文档。说明可以换行，技能名必须留在同一行，不能从单词中间断开。",
+    path: "documents",
+  },
+  {
+    name: "review",
+    mention: "review",
+    label: "审查",
+    description: "检查当前改动",
+    path: "review",
+  },
+];
+
 /**
  * 开发预览：真实菜单和芯片，文件来自本仓库的模块图。
- * 不接 app-server，所以这里没有技能目录，也不调用 thread/goal。
+ * 不接 app-server，也不调用 thread/goal。
  */
 export default function ComposerPreview() {
   const params = new URLSearchParams(window.location.search);
@@ -120,7 +139,7 @@ export default function ComposerPreview() {
     permissionMenu: null,
     sandbox: emptySandbox(),
     commands: [],
-    skills: [],
+    skills: previewSkills,
     catalog,
     tuning: undefined,
     catalogNotice: null,
@@ -176,6 +195,16 @@ export default function ComposerPreview() {
   return (
     <div className="flex min-h-screen flex-col justify-end bg-zinc-950 px-6 pb-10 text-zinc-200" data-composer-preview>
       <div className="relative mx-auto w-full max-w-3xl">
+        {view.skillOpen && (
+          <SkillMenu
+            matches={view.skillMatches}
+            active={view.skillMatches[0]}
+            hasCatalog
+            skillsError={null}
+            listedCount={previewSkills.length}
+            onPick={() => {}}
+          />
+        )}
         {view.mentionOpen && (
           <MentionMenu
             mode={query ? "files" : "add"}
