@@ -44,7 +44,7 @@ const caps = {
 };
 
 /**
- * Codex 预览目录。推理档文案来自 `supportedReasoningEfforts` 的 description，不写死中文档位。
+ * Codex 预览目录。description 模拟 CLI 英文说明，界面不应画出来。
  * 首次进入显示 CLI `config/read` 的 model / model_reasoning_effort。
  */
 const codexCatalog: AgentCatalog = {
@@ -53,7 +53,7 @@ const codexCatalog: AgentCatalog = {
     {
       id: "gpt-6.1-sol",
       label: "GPT-6.1-Sol",
-      description: "日常编码",
+      description: "Latest workhorse model for coding and agent workflows",
       is_default: true,
       default_effort: "low",
       efforts: [
@@ -65,7 +65,7 @@ const codexCatalog: AgentCatalog = {
     {
       id: "gpt-5.4",
       label: "GPT-5.4",
-      description: "配置里的模型",
+      description: "Older fast and efficient model.",
       is_default: false,
       default_effort: "medium",
       efforts: [
@@ -73,7 +73,11 @@ const codexCatalog: AgentCatalog = {
         { id: "low", description: "Lower latency" },
         { id: "medium", description: "Balances speed and quality" },
         { id: "high", description: "Deeper reasoning" },
-        { id: "xhigh", description: "Extra high" },
+        {
+          id: "xhigh",
+          description: "Maximum reasoning effort for the hardest problems",
+          label: "Maximum reasoning",
+        },
       ],
       service_tiers: [{ id: "fast", name: "Fast", description: "1.5 倍速度 / 用量更多", fast: true }],
     },
@@ -82,7 +86,7 @@ const codexCatalog: AgentCatalog = {
   commands: [],
   capabilities: caps,
   configured_model: "gpt-5.4",
-  configured_effort: "high",
+  configured_effort: "xhigh",
   cli_config_read: true,
 };
 
@@ -413,6 +417,8 @@ export default function ComposerPreview() {
               showModel
               hasCatalog
               modelButton={view.modelButton}
+              modelName={view.modelName}
+              effortLabel={view.effortLabel}
               editing={false}
               stopMode={false}
               sendDisabled={view.sendDisabled}

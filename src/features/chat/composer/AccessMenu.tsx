@@ -4,11 +4,9 @@ import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PermissionMenu, PermissionProfileOption, SessionSandbox } from "@/types";
 import { ADD_DIR_LABEL, NETWORK_LABEL, WRITABLE_DETAIL, WRITABLE_HEADING } from "./access";
+import { permissionChoiceLabel, permissionMenuTitle, permissionRowDetail } from "./permission-label";
 
-/**
- * 作曲栏权限菜单。标题、档位和配置档的文案都由适配器给出
- * （Codex 取自 TUI `/permissions` 与 `permissionProfile/list`）；网络和额外目录是工作台扩展。
- */
+/** 当前会话权限菜单。只显示选项标题，不显示能力说明。 */
 export function AccessMenu({
   menuRef,
   sandbox,
@@ -45,7 +43,7 @@ export function AccessMenu({
         <p className="px-3 py-2 text-sm text-zinc-500">正在读取权限…</p>
       ) : (
         <>
-          <p className="px-3 pb-1 pt-2 text-xs font-medium text-zinc-300">{menu.title}</p>
+          <p className="px-3 pb-1 pt-2 text-xs font-medium text-zinc-300">{permissionMenuTitle(menu.title)}</p>
           {notice ? <p className="px-3 pb-1 text-xs leading-4 text-zinc-500">{notice}</p> : null}
           {menu.presets.map((preset) => (
             <MenuRow
@@ -143,7 +141,7 @@ function MenuRow({
   onPick: () => void;
 }) {
   const disabled = Boolean(item.disabled_reason);
-  const detail = item.disabled_reason ?? item.description;
+  const detail = permissionRowDetail(item);
   return (
     <button
       type="button"
@@ -160,7 +158,7 @@ function MenuRow({
     >
       <span className="min-w-0 flex-1">
         <span className={cn("block truncate text-sm", warning ? "text-orange-400" : "text-zinc-100")}>
-          {item.label}
+          {permissionChoiceLabel(item)}
         </span>
         {detail ? <span className="mt-0.5 block truncate text-xs leading-4 text-zinc-500">{detail}</span> : null}
       </span>

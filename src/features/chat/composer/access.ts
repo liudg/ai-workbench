@@ -1,4 +1,5 @@
 import { accessModeFromId } from "../../../lib/sandbox.ts";
+import { DESKTOP_ZH } from "../../../shared/strings/desktop-zh.ts";
 import {
   emptySandbox,
   type AccessMode,
@@ -6,6 +7,7 @@ import {
   type PermissionProfileOption,
   type SessionSandbox,
 } from "../../../types/index.ts";
+import { permissionChoiceLabel } from "./permission-label.ts";
 
 // Allow network access
 export const NETWORK_LABEL = "允许网络访问";
@@ -16,7 +18,7 @@ export const WRITABLE_DETAIL = "与主工作区一起可写的其他目录";
 export const ADD_DIR_LABEL = "添加目录";
 
 /** 菜单还没给出档位名时，按钮只显示这个入口，不编造档位。 */
-export const PERMISSION_BUTTON = "权限";
+export const PERMISSION_BUTTON = DESKTOP_ZH.permissionMenu;
 
 export { initialSandbox } from "../../../lib/sandbox.ts";
 
@@ -41,9 +43,11 @@ export function sandboxFromMenu(menu: PermissionMenu | null): SessionSandbox | n
   return null;
 }
 
-/** 作曲栏按钮上的档位名。只显示菜单里的 label。 */
+/** 作曲栏按钮上的档位名。选项来自菜单；英文内置档换成中文短标题。 */
 export function buttonLabel(sandbox: SessionSandbox | null, menu: PermissionMenu | null): string {
-  return selectedPermission(menu, sandbox)?.label || PERMISSION_BUTTON;
+  const selected = selectedPermission(menu, sandbox);
+  if (!selected) return PERMISSION_BUTTON;
+  return permissionChoiceLabel(selected);
 }
 
 /** 网络开关和额外目录只在当前档声明了 `allows_extras` 时出现。 */

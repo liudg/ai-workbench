@@ -28,6 +28,21 @@ export const DESKTOP_ZH = {
   /** 强度弹层把模型和推理强度收回 CLI 配置。 */
   resetDefault: "重置为默认",
   selectModel: "选择模型",
+  /** 权限菜单标题。Claude 菜单已是这句；英文 TUI 标题也显示成这句。 */
+  permissionMenu: "权限",
+  permissionAsk: "询问批准",
+  permissionApprove: "替我批准",
+  permissionFull: "完全访问",
+  permissionReadOnly: "只读",
+  /** 推理档位 id 的短标签。只换显示，不增减目录档位。 */
+  effortNone: "无",
+  effortMinimal: "最低",
+  effortLow: "低",
+  effortMedium: "中",
+  effortHigh: "高",
+  effortVeryHigh: "很高",
+  effortMax: "最高",
+  effortUltra: "极高",
   modelSectionDefault: "默认",
   modelSectionRecommended: "推荐模型集",
   diffWhitespaceHidden: "空白改动已隐藏",

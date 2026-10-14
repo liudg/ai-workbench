@@ -144,7 +144,9 @@ const catalog: AgentCatalog = {
 };
 
 test("the model button follows CLI config before the catalog default", () => {
-  assert.equal(view({ catalog }).modelButton, "GPT-5.4 high-cli");
+  assert.equal(view({ catalog }).modelButton, "GPT-5.4 高");
+  assert.equal(view({ catalog }).modelName, "GPT-5.4");
+  assert.equal(view({ catalog }).effortLabel, "高");
   assert.equal(view({ catalog }).selectedEffort, "high");
   assert.equal(
     view({
@@ -154,13 +156,13 @@ test("the model button follows CLI config before the catalog default", () => {
         thread_effort: "medium",
       },
     }).modelButton,
-    "GPT-6.1-Sol medium-cli",
+    "GPT-6.1-Sol 中",
   );
   assert.equal(
     view({
       catalog: { ...catalog, configured_model: null, configured_effort: null },
     }).modelButton,
-    "GPT-6.1-Sol low-cli",
+    "GPT-6.1-Sol 低",
   );
   assert.equal(
     view({
@@ -175,7 +177,7 @@ test("the model button follows CLI config before the catalog default", () => {
   );
   assert.equal(
     view({ catalog, tuning: { model: "gpt-6.1-sol", effort: "high" } }).modelButton,
-    "GPT-6.1-Sol high-cli",
+    "GPT-6.1-Sol 高",
   );
   const bare = {
     ...catalog,
@@ -186,14 +188,28 @@ test("the model button follows CLI config before the catalog default", () => {
   assert.equal(view({ catalog: bare }).modelButton, "选择强度");
 });
 
-test("an effort with no catalog text stays the raw id", () => {
+test("a known effort id uses the short Chinese label", () => {
   const bareEffort = {
     ...catalog,
     models: catalog.models.map((item) =>
       item.id === "gpt-5.4" ? { ...item, efforts: [{ id: "high", description: "" }] } : item,
     ),
   };
-  assert.equal(view({ catalog: bareEffort }).modelButton, "GPT-5.4 high");
+  assert.equal(view({ catalog: bareEffort }).modelButton, "GPT-5.4 高");
+});
+
+test("an unknown effort id is not translated from its description", () => {
+  const bareEffort = {
+    ...catalog,
+    models: catalog.models.map((item) =>
+      item.id === "gpt-5.4"
+        ? { ...item, efforts: [{ id: "research", description: "Maximum reasoning effort" }] }
+        : item,
+    ),
+    configured_effort: "research",
+  };
+  assert.equal(view({ catalog: bareEffort }).modelButton, "GPT-5.4 research");
+  assert.equal(view({ catalog: bareEffort }).effortLabel, "research");
 });
 
 test("a claude catalog ignores a gpt id that is not in its model list", () => {
@@ -220,7 +236,7 @@ test("a claude catalog ignores a gpt id that is not in its model list", () => {
   };
   const shown = view({ catalog: claude, tuning: { model: "gpt-6.1-sol", effort: "high" } });
   assert.equal(shown.selectedModel?.id, "claude-sonnet");
-  assert.equal(shown.modelButton, "Sonnet 平衡");
+  assert.equal(shown.modelButton, "Sonnet 中");
   assert.equal(shown.modelButton.includes("gpt"), false);
 });
 

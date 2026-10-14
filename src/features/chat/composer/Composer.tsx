@@ -136,6 +136,8 @@ export function Composer({ session, events }: { session: Session; events: Sessio
             showModel={view.showModel}
             hasCatalog={c.hasCatalog}
             modelButton={view.modelButton}
+            modelName={view.modelName}
+            effortLabel={view.effortLabel}
             editing={Boolean(c.editingId)}
             stopMode={view.stopMode}
             sendDisabled={view.sendDisabled}

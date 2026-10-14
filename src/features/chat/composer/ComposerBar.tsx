@@ -23,6 +23,8 @@ export function ComposerBar({
   showModel,
   hasCatalog,
   modelButton,
+  modelName,
+  effortLabel,
   editing,
   stopMode,
   sendDisabled,
@@ -46,6 +48,9 @@ export function ComposerBar({
   showModel: boolean;
   hasCatalog: boolean;
   modelButton: string;
+  /** 选中模型的名字。和强度分开画，避免把强度截成半句。 */
+  modelName?: string;
+  effortLabel?: string;
   editing: boolean;
   stopMode: boolean;
   sendDisabled: boolean;
@@ -156,7 +161,20 @@ export function ComposerBar({
               onToggleMenu("model");
             }}
           >
-            {icons ? <Cpu className="h-3.5 w-3.5 shrink-0" /> : <span className="min-w-0 truncate">{modelButton}</span>}
+            {icons ? (
+              <Cpu className="h-3.5 w-3.5 shrink-0" />
+            ) : modelName ? (
+              <span className="inline-flex min-w-0 items-center gap-1">
+                <span className="min-w-0 truncate">{modelName}</span>
+                {effortLabel ? (
+                  <span data-model-effort className="shrink-0 whitespace-nowrap">
+                    {effortLabel}
+                  </span>
+                ) : null}
+              </span>
+            ) : (
+              <span className="min-w-0 truncate">{modelButton}</span>
+            )}
             {icons ? null : <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />}
           </button>
         )}

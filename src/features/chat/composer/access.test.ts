@@ -14,6 +14,7 @@ import {
   selectProfile,
   WRITABLE_DETAIL,
 } from "./access.ts";
+import { permissionMenuTitle, permissionRowDetail } from "./permission-label.ts";
 
 const menu = {
   network_access: true,
@@ -37,13 +38,36 @@ test("workbench extras keep their own labels", () => {
   assert.match(WRITABLE_DETAIL, /主工作区/);
 });
 
-test("button label comes from the adapter menu and nowhere else", () => {
+test("button label comes from the menu, with English preset titles localized", () => {
   const sandbox = selectPreset(emptySandbox(), "approve-for-me");
   assert.equal(buttonLabel(sandbox, null), PERMISSION_BUTTON);
   assert.equal(buttonLabel(null, menu), PERMISSION_BUTTON);
-  assert.equal(buttonLabel(sandbox, menu), "Approve for me");
+  assert.equal(buttonLabel(sandbox, menu), "替我批准");
   assert.equal(buttonLabel(selectProfile(sandbox, "project-edit"), menu), "project-edit");
-  assert.equal(buttonLabel(selectPreset(emptySandbox(), "full"), menu), "Full Access");
+  assert.equal(buttonLabel(selectPreset(emptySandbox(), "full"), menu), "完全访问");
+  assert.equal(buttonLabel(selectPreset(emptySandbox(), "ask"), menu), "询问批准");
+  assert.equal(buttonLabel(selectPreset(emptySandbox(), "read-only"), menu), "只读");
+  assert.equal(permissionMenuTitle(menu.title), "权限");
+  assert.equal(permissionMenuTitle("权限"), "权限");
+  assert.equal(permissionRowDetail({ ...menu.presets[0], description: "Read and edit workspace files" }), null);
+  assert.equal(
+    permissionRowDetail({
+      ...menu.presets[2],
+      description: "Use with caution: Codex can edit files outside this workspace",
+      disabled_reason: "Disabled by requirements",
+    }),
+    "Disabled by requirements",
+  );
+  const claude = {
+    ...menu,
+    title: "权限",
+    presets: [
+      { id: "full", label: "跳过权限检查", description: "bypass", caution: true },
+      { id: "ask", label: "询问批准", description: "ask each time" },
+    ],
+  };
+  assert.equal(buttonLabel(selectPreset(emptySandbox(), "full"), claude), "跳过权限检查");
+  assert.equal(buttonLabel(selectPreset(emptySandbox(), "ask"), claude), "询问批准");
 });
 
 test("extras follow the selected preset flag", () => {

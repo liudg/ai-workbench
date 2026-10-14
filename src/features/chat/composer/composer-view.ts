@@ -148,9 +148,11 @@ export function deriveComposerView(input: ComposerViewInput) {
   const selectedServiceTier = effectiveServiceTier(selectedModel, input.tuning, input.catalog);
   const fast = fastTier(selectedModel);
   const unreadConfig = input.catalog?.cli_config_read === false && !selectedModel;
+  const effortLabel = selectedModel ? effortDisplay(selectedModel, selectedEffort) : "";
+  const modelName = selectedModel?.label || undefined;
   const modelButton = modelButtonLabel(
     selectedModel
-      ? modelChipText(selectedModel.label, effortDisplay(selectedModel, selectedEffort))
+      ? modelChipText(selectedModel.label, effortLabel)
       : unreadConfig
         ? DESKTOP_ZH.modelConfigUnread
         : input.catalog && input.catalog.models.length > 0
@@ -209,6 +211,8 @@ export function deriveComposerView(input: ComposerViewInput) {
     planSupport,
     selectedModel,
     selectedEffort,
+    modelName,
+    effortLabel: effortLabel || undefined,
     modelButton,
     fastOn: Boolean(fast && selectedServiceTier === fast.id),
     fastAvailable: supportsFast(selectedModel),
