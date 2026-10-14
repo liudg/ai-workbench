@@ -500,10 +500,13 @@ fn cli_reports_current(output: &str) -> bool {
 }
 
 fn command_label(bin: &Path, args: &[&str]) -> String {
-    let name = bin
-        .file_stem()
-        .and_then(|stem| stem.to_str())
-        .unwrap_or("cli");
+    let text = bin.to_string_lossy();
+    let file = text.rsplit(['/', '\\']).next().unwrap_or("cli");
+    let name = match file.rsplit_once('.') {
+        Some((stem, ext)) if !stem.is_empty() && !ext.is_empty() => stem,
+        _ => file,
+    };
+    let name = if name.is_empty() { "cli" } else { name };
     if args.is_empty() {
         name.to_string()
     } else {

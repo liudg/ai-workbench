@@ -325,31 +325,43 @@ fn capitalize_first(input: &str) -> String {
 }
 
 /// `helpers.rs::format_directory_display`：家目录下显示成 `~`。
+///
+/// TUI 运行时用 `MAIN_SEPARATOR`，快照再把 `\` 换成 `/`（`~/...`、`../AGENTS.md`）。
+/// 这里直接显示 `/`，Windows 和快照是同一串字。
 pub(super) fn directory_display(cwd: &str) -> String {
+    let cleaned = crate::models::strip_verbatim_prefix(cwd);
+    let cwd_path = std::path::Path::new(&cleaned);
     let home = std::env::var("HOME")
         .or_else(|_| std::env::var("USERPROFILE"))
         .unwrap_or_default();
     if !home.is_empty() {
         let home = home.trim_end_matches(['/', '\\']);
-        if cwd == home {
-            return "~".into();
-        }
-        for sep in ['/', '\\'] {
-            if let Some(rest) = cwd.strip_prefix(&format!("{home}{sep}")) {
-                return format!("~{sep}{rest}");
+        if !home.is_empty() {
+            let home_path = std::path::Path::new(home);
+            if cwd_path == home_path {
+                return "~".into();
+            }
+            if let Ok(rest) = cwd_path.strip_prefix(home_path) {
+                let rest = display_slashes(&rest.to_string_lossy());
+                if rest.is_empty() {
+                    return "~".into();
+                }
+                return format!("~/{rest}");
             }
         }
     }
-    cwd.to_string()
+    display_slashes(&cleaned)
 }
 
 /// `helpers.rs::compose_agents_summary`（只处理本机路径）。
 pub(super) fn agents_summary(cwd: &str, sources: &[String]) -> String {
-    let cwd_path = std::path::Path::new(cwd);
+    let cwd_clean = crate::models::strip_verbatim_prefix(cwd);
+    let cwd_path = std::path::Path::new(&cwd_clean);
     let rels: Vec<String> = sources
         .iter()
         .map(|source| {
-            let path = std::path::Path::new(source);
+            let source_clean = crate::models::strip_verbatim_prefix(source);
+            let path = std::path::Path::new(&source_clean);
             let name = path
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
@@ -374,14 +386,14 @@ pub(super) fn agents_summary(cwd: &str, sources: &[String]) -> String {
                         }
                     }
                     if reached {
-                        format!("{}{name}", format!("..{}", std::path::MAIN_SEPARATOR).repeat(ups))
+                        format!("{}{name}", "../".repeat(ups))
                     } else if let Ok(stripped) = path.strip_prefix(cwd_path) {
-                        stripped.to_string_lossy().to_string()
+                        display_slashes(&stripped.to_string_lossy())
                     } else {
-                        source.clone()
+                        directory_display(&source_clean)
                     }
                 }
-                None => source.clone(),
+                None => directory_display(&source_clean),
             }
         })
         .collect();
@@ -390,6 +402,10 @@ pub(super) fn agents_summary(cwd: &str, sources: &[String]) -> String {
     } else {
         rels.join(", ")
     }
+}
+
+fn display_slashes(path: &str) -> String {
+    path.replace('\\', "/")
 }
 
 #[cfg(test)]
@@ -455,7 +471,28 @@ mod tests {
         assert_eq!(limit_label_for_window(Some(1440), false), "daily");
         assert_eq!(limit_label_for_window(None, true), "secondary usage");
         assert_eq!(agents_summary("/r", &[]), "<none>");
-        assert_eq!(agents_summary("/r/a", &["/r/a/AGENTS.md".into(), "/r/AGENTS.md".into()]), "AGENTS.md, ../AGENTS.md");
+        assert_eq!(
+            agents_summary(
+                "/r/a",
+                &[
+                    "/r/a/AGENTS.md".into(),
+                    "/r/AGENTS.md".into(),
+                    "/r/a/nested/dir/AGENTS.md".into(),
+                ],
+            ),
+            "AGENTS.md, ../AGENTS.md, nested/dir/AGENTS.md",
+        );
+        let shown = directory_display(r"D:\work\repo");
+        assert!(!shown.contains('\\'), "{shown}");
+        assert!(shown == "D:/work/repo" || shown.starts_with("~/"), "{shown}");
+        assert_eq!(directory_display(r"\\?\D:\work\repo"), shown);
+        if let Ok(home) = std::env::var("HOME") {
+            let home = home.trim_end_matches(['/', '\\']);
+            if !home.is_empty() {
+                assert_eq!(directory_display(home), "~");
+                assert_eq!(directory_display(&format!("{home}/repo/app")), "~/repo/app");
+            }
+        }
         let api = account_value(Some(&json!({ "type": "apiKey" })));
         assert_eq!(api.as_deref(), Some("API key configured (run codex login to use ChatGPT)"));
     }

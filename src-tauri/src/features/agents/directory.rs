@@ -82,14 +82,19 @@ pub fn sessions_for_project(project: &Project, listed: &[SourcedEntry]) -> Vec<S
 pub fn cwd_key(path: &str) -> String {
     let stripped = strip_verbatim_prefix(path.trim());
     let trimmed = stripped.trim_end_matches(['\\', '/']);
-    #[cfg(windows)]
-    {
+    // Windows 路径不区分大小写。带盘符或 UNC 的字符串在任何宿主上都按这个规则折叠，
+    // 避免同一目录因为 `F:\App` / `f:\app` 对不上。POSIX 路径保持原样。
+    if cfg!(windows) || looks_like_windows_path(trimmed) {
         trimmed.to_lowercase()
-    }
-    #[cfg(not(windows))]
-    {
+    } else {
         trimmed.to_string()
     }
+}
+
+fn looks_like_windows_path(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    (bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':')
+        || path.starts_with(r"\\")
 }
 
 #[cfg(test)]

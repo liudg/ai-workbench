@@ -258,7 +258,7 @@ pub(super) fn normalize_writable_roots(cwd: &str, roots: &[String]) -> Vec<Strin
     let mut out = Vec::new();
     for root in roots {
         let trimmed = root.trim();
-        if trimmed.is_empty() || !Path::new(trimmed).is_absolute() {
+        if trimmed.is_empty() || !is_absolute_input(trimmed) {
             continue;
         }
         let display = strip_verbatim_prefix(trimmed);
@@ -276,6 +276,20 @@ fn path_key(path: &str) -> String {
         .replace('/', "\\")
         .trim_end_matches('\\')
         .to_ascii_lowercase()
+}
+
+/// 盘符和 UNC 在非 Windows 宿主上也是绝对路径。`std::path` 只认当前系统的写法。
+fn is_absolute_input(path: &str) -> bool {
+    let path = strip_verbatim_prefix(path.trim());
+    if Path::new(&path).is_absolute() {
+        return true;
+    }
+    let bytes = path.as_bytes();
+    (bytes.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && (bytes[2] == b'/' || bytes[2] == b'\\'))
+        || path.starts_with(r"\\")
 }
 
 /// TUI `/permissions` 菜单（`permissions_menu.rs::open_permission_profiles_popup`）。

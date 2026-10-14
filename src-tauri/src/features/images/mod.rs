@@ -225,23 +225,31 @@ fn file_url_to_path(raw: &str) -> Result<String, String> {
     let rest = raw.get(5..).ok_or("无效的 file 地址")?;
     let rest = rest.trim_start_matches(':');
     let rest = rest.strip_prefix("//").unwrap_or(rest);
-    let decoded = percent_decode(rest.trim_start_matches('/'))?;
-    const LOCALHOST: &str = "localhost/";
-    if decoded.len() >= LOCALHOST.len()
-        && decoded.as_bytes()[..LOCALHOST.len()].eq_ignore_ascii_case(LOCALHOST.as_bytes())
-    {
-        let path = &decoded[LOCALHOST.len()..];
-        if is_drive_path(path) {
-            return Ok(path.to_string());
-        }
-    }
-    if is_drive_path(&decoded) {
-        return Ok(decoded);
-    }
+    let decoded = percent_decode(rest)?;
     if decoded.is_empty() {
         return Err("无效的 file 地址".into());
     }
-    Ok(format!(r"\\{}", decoded.replace('/', "\\")))
+    let (host, path) = if let Some(path) = decoded.strip_prefix('/') {
+        ("", path)
+    } else if let Some((host, path)) = decoded.split_once('/') {
+        (host, path)
+    } else {
+        (decoded.as_str(), "")
+    };
+    let host_is_local = host.is_empty() || host.eq_ignore_ascii_case("localhost");
+    if host_is_local {
+        if is_drive_path(path) {
+            return Ok(path.to_string());
+        }
+        if path.is_empty() {
+            return Err("无效的 file 地址".into());
+        }
+        return Ok(format!("/{path}"));
+    }
+    if path.is_empty() {
+        return Err("无效的 file 地址".into());
+    }
+    Ok(format!(r"\\{host}\{}", path.replace('/', "\\")))
 }
 
 fn is_drive_path(path: &str) -> bool {
