@@ -1,8 +1,16 @@
 import { reduceCatalogResult, type CatalogOutcome } from "@/lib/catalog";
 import { backend } from "@/lib/ipc";
-import { emptySandbox } from "@/types";
+import type { AgentKind } from "@/types";
 import { isMissingSessionError } from "../sync";
 import type { WorkspaceSlice, WorkbenchGet, WorkbenchSet } from "../types";
+
+function agentForSession(get: WorkbenchGet, sessionId: string): AgentKind | undefined {
+  for (const list of Object.values(get().sessions)) {
+    const found = list.find((session) => session.id === sessionId);
+    if (found) return found.agent;
+  }
+  return undefined;
+}
 
 function reportSessionError(get: WorkbenchGet, set: WorkbenchSet, sessionId: string, error: unknown) {
   if (isMissingSessionError(error)) {
@@ -17,24 +25,25 @@ const catalogEpoch = new Map<string, number>();
 export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): WorkspaceSlice {
   return {
     events: {},
-    lastAccessMode: "full",
     accessMode: {},
-    lastSandbox: emptySandbox(),
+    lastSandboxByAgent: {},
     sandboxes: {},
     attachments: {},
     pageAnnotations: {},
     queues: {},
     catalogs: {},
-    catalogNotice: null,
+    catalogNotices: {},
     tuning: {},
 
     setSandbox(sessionId, sandbox) {
       const mode = sandbox.profileId ? "ask" : sandbox.mode;
+      const agent = agentForSession(get, sessionId);
       set((s) => ({
-        lastAccessMode: mode,
-        lastSandbox: sandbox,
         accessMode: { ...s.accessMode, [sessionId]: mode },
         sandboxes: { ...s.sandboxes, [sessionId]: sandbox },
+        lastSandboxByAgent: agent
+          ? { ...s.lastSandboxByAgent, [agent]: sandbox }
+          : s.lastSandboxByAgent,
       }));
       void backend.setSandbox(sessionId, sandbox).catch((e) => {
         reportSessionError(get, set, sessionId, e);
@@ -57,15 +66,18 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
       const reduced = reduceCatalogResult(
         {
           live: get().catalogs[sessionId],
-          notice: get().catalogNotice,
+          notice: get().catalogNotices[sessionId] ?? null,
         },
         outcome,
       );
       set((s) => {
         const catalogs = { ...s.catalogs };
+        const catalogNotices = { ...s.catalogNotices };
         if (reduced.live) catalogs[sessionId] = reduced.live;
         else delete catalogs[sessionId];
-        return { catalogs, catalogNotice: reduced.notice };
+        if (reduced.notice) catalogNotices[sessionId] = reduced.notice;
+        else delete catalogNotices[sessionId];
+        return { catalogs, catalogNotices };
       });
     },
 

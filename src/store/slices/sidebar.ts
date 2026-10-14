@@ -1,4 +1,4 @@
-import { sandboxForAgent } from "@/lib/agents";
+import { initialSandbox } from "@/lib/sandbox";
 import { backend } from "@/lib/ipc";
 import type { Session } from "@/types";
 import {
@@ -121,20 +121,21 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
 
     async createSession(projectId, agent) {
       try {
-        const sandbox = sandboxForAgent(
-          get().lastSandbox,
-          get().profiles[agent]?.capabilities,
+        const sandbox = initialSandbox(
+          get().lastSandboxByAgent[agent],
+          get().profiles[agent]?.default_access,
         );
         const session = await backend.createSession(
           projectId,
           agent,
-          sandbox.profileId ? "ask" : sandbox.mode,
+          sandbox ? (sandbox.profileId ? "ask" : sandbox.mode) : undefined,
         );
         if (
-          sandbox.networkAccess ||
-          sandbox.writableRoots.length > 0 ||
-          sandbox.profileId ||
-          sandbox.mode === "approve-for-me"
+          sandbox &&
+          (sandbox.networkAccess ||
+            sandbox.writableRoots.length > 0 ||
+            sandbox.profileId ||
+            sandbox.mode === "approve-for-me")
         ) {
           try {
             await backend.setSandbox(session.id, sandbox);
@@ -150,16 +151,21 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
           sessions: { ...s.sessions, [projectId]: list },
           activeSessionId: { ...s.activeSessionId, [projectId]: session.id },
           events: { ...s.events, [session.id]: s.events[session.id] ?? [] },
-          accessMode: {
-            ...s.accessMode,
-            [session.id]: sandbox.profileId ? "ask" : sandbox.mode,
-          },
-          sandboxes: {
-            ...s.sandboxes,
-            [session.id]: sandbox,
-          },
-          lastSandbox: sandbox,
-          lastAccessMode: sandbox.profileId ? "ask" : sandbox.mode,
+          accessMode: sandbox
+            ? {
+                ...s.accessMode,
+                [session.id]: sandbox.profileId ? "ask" : sandbox.mode,
+              }
+            : s.accessMode,
+          sandboxes: sandbox
+            ? {
+                ...s.sandboxes,
+                [session.id]: sandbox,
+              }
+            : s.sandboxes,
+          lastSandboxByAgent: sandbox
+            ? { ...s.lastSandboxByAgent, [agent]: sandbox }
+            : s.lastSandboxByAgent,
         }));
         return session.id;
       } catch (e) {

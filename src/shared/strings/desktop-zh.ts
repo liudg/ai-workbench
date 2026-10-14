@@ -30,8 +30,6 @@ export const DESKTOP_ZH = {
   selectModel: "选择模型",
   modelSectionDefault: "默认",
   modelSectionRecommended: "推荐模型集",
-  /** Codex Fast 档。桌面端这条提示是「1.5 倍速度 / 用量更多」。 */
-  fastModeTip: "1.5 倍速度 / 用量更多",
   diffWhitespaceHidden: "空白改动已隐藏",
   addSection: "添加",
   addFiles: "文件和文件夹",

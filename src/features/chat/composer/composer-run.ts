@@ -49,7 +49,7 @@ export interface ComposerRun {
   };
   activeSlash: SlashCommand | undefined;
   activeSkill: AgentSkillOption | undefined;
-  sandbox: SessionSandbox;
+  sandbox: SessionSandbox | null;
   projectPath: string;
   skillMatches: number;
   slashMatches: number;

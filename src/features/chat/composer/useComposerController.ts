@@ -34,7 +34,8 @@ import {
   stageComposerBlobs,
   type ComposerRun,
 } from "./composer-run";
-import { deriveComposerView } from "./composer-view";
+import { sandboxFromMenu } from "./access";
+import { composerCaps, composerCommands, deriveComposerView } from "./composer-view";
 import { useComposerMenu } from "./useComposerMenu";
 import { useComposerFeeds } from "./useComposerFeeds";
 import { useComposerActions, useComposerSession } from "./useComposerStore";
@@ -69,8 +70,9 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
   const closeReview = useCallback(() => setReviewOpen(false), []);
   useReviewDismiss(reviewOpen, reviewRootRef, closeReview);
 
-  const caps = data.profile?.capabilities ?? data.catalog?.capabilities;
+  const caps = composerCaps(data.catalog, data.profile);
   const permissionMenu = useComposerFeeds(session.id, actions.loadCatalog);
+  const sandbox = data.sandbox ?? sandboxFromMenu(permissionMenu);
   const supportsGoals = Boolean(caps?.supports_goals);
   const goal = useGoalDraft(session.id, supportsGoals, events);
   const view = deriveComposerView({
@@ -78,8 +80,8 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     events,
     caps,
     permissionMenu,
-    sandbox: data.sandbox,
-    commands: data.catalog?.commands ?? data.profile?.commands ?? [],
+    sandbox,
+    commands: composerCommands(data.catalog, data.profile),
     skills: data.catalog?.skills ?? [],
     catalog: data.catalog,
     tuning: data.tuning,
@@ -181,7 +183,7 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     mentions,
     activeSlash,
     activeSkill,
-    sandbox: data.sandbox,
+    sandbox,
     projectPath: data.projectPath,
     skillMatches: view.skillMatches.length,
     slashMatches: view.slashMatches.length,
@@ -208,7 +210,7 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     attachMenuRef,
     files: data.files,
     queue: data.queue,
-    sandbox: data.sandbox,
+    sandbox,
     catalogNotice: data.catalogNotice,
     view,
     activeSlash,

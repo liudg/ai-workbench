@@ -1,29 +1,44 @@
-import type { AgentModelOption } from "@/types";
-import { FAST_TIER_ID, tuningForModel } from "./model-picker";
+import type { AgentModelOption, SessionSandbox } from "@/types";
+import { fastTier, tuningForModel } from "./model-picker";
 import { addWritableRoot, removeWritableRoot, selectPreset, selectProfile, setNetwork } from "./access";
 import { pickWritableDirectory } from "./composer-backend";
 import type { ComposerRun } from "./composer-run";
 
+function sandboxOrBlank(run: ComposerRun, mode: SessionSandbox["mode"] = "ask"): SessionSandbox {
+  return (
+    run.sandbox ?? {
+      mode,
+      networkAccess: false,
+      writableRoots: [],
+      profileId: "",
+    }
+  );
+}
+
 export function addComposerDir(run: ComposerRun) {
+  const sandbox = run.sandbox;
+  if (!sandbox) return;
   void pickWritableDirectory().then((path) => {
     if (!path) return;
-    run.actions.setSandbox(run.sessionId, addWritableRoot(run.sandbox, path, run.projectPath));
+    run.actions.setSandbox(run.sessionId, addWritableRoot(sandbox, path, run.projectPath));
   });
 }
 
 export function removeComposerDir(run: ComposerRun, path: string) {
+  if (!run.sandbox) return;
   run.actions.setSandbox(run.sessionId, removeWritableRoot(run.sandbox, path));
 }
 
 export function selectComposerPreset(run: ComposerRun, mode: Parameters<typeof selectPreset>[1]) {
-  run.actions.setSandbox(run.sessionId, selectPreset(run.sandbox, mode));
+  run.actions.setSandbox(run.sessionId, selectPreset(sandboxOrBlank(run, mode), mode));
 }
 
 export function selectComposerProfile(run: ComposerRun, id: string) {
-  run.actions.setSandbox(run.sessionId, selectProfile(run.sandbox, id));
+  run.actions.setSandbox(run.sessionId, selectProfile(sandboxOrBlank(run), id));
 }
 
 export function setComposerNetwork(run: ComposerRun, enabled: boolean) {
+  if (!run.sandbox) return;
   run.actions.setSandbox(run.sessionId, setNetwork(run.sandbox, enabled));
 }
 
@@ -39,12 +54,13 @@ export function chooseComposerEffort(run: ComposerRun, effort: string) {
 
 export function chooseComposerFast(run: ComposerRun, enabled: boolean) {
   const model = run.view.selectedModel;
-  if (!model || !run.view.fastAvailable) return;
+  const tier = fastTier(model);
+  if (!model || !tier) return;
   run.actions.setTuning(
     run.sessionId,
     model.id,
     run.view.selectedEffort ?? model.default_effort,
-    enabled ? FAST_TIER_ID : null,
+    enabled ? tier.id : null,
   );
 }
 

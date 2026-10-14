@@ -14,6 +14,7 @@ export function ModelMenu({
   effortId,
   fastOn,
   fastAvailable,
+  fastTip,
   canReset,
   onModel,
   onEffort,
@@ -27,6 +28,7 @@ export function ModelMenu({
   effortId?: string;
   fastOn: boolean;
   fastAvailable: boolean;
+  fastTip: string;
   canReset: boolean;
   onModel: (model: AgentModelOption) => void;
   onEffort: (effort: string) => void;
@@ -37,6 +39,8 @@ export function ModelMenu({
   const [liveEffort, setLiveEffort] = useState<string | null>(null);
   const shownEffort = liveEffort ?? effortId;
   const current = models.find((item) => item.id === modelId);
+  const effortLabel = effortDisplay(current, shownEffort);
+  const hasEfforts = sliderEfforts(current).length > 0;
   return (
     <div
       ref={menuRef}
@@ -61,12 +65,13 @@ export function ModelMenu({
         <div className="px-2.5 pb-2 pt-2">
           <div className="flex items-start gap-1">
             {fastAvailable ? (
-              <Tip text={DESKTOP_ZH.fastModeTip} align="start">
+              <Tip text={fastTip} align="start">
                 <button
                   type="button"
                   data-fast-toggle
+                  data-fast-tip={fastTip || undefined}
                   aria-pressed={fastOn}
-                  aria-label={DESKTOP_ZH.fastModeTip}
+                  aria-label={fastTip || "快速"}
                   className={cn(
                     "flex h-8 w-8 items-center justify-center rounded-lg hover:bg-zinc-800",
                     fastOn ? "text-blue-400" : "text-zinc-400",
@@ -87,10 +92,18 @@ export function ModelMenu({
               aria-haspopup="listbox"
               onClick={() => setPanel("models")}
             >
-              <span data-effort-label className="block max-w-full truncate text-lg font-semibold leading-none text-blue-400">
-                {shownEffort ? effortDisplay(current, shownEffort) : DESKTOP_ZH.selectEffort}
-              </span>
-              <span className="mt-1.5 inline-flex max-w-full items-center gap-0.5 text-[13px] text-zinc-400">
+              {hasEfforts ? (
+                <span data-effort-label className="block max-w-full truncate text-lg font-semibold leading-none text-blue-400">
+                  {effortLabel || DESKTOP_ZH.selectEffort}
+                </span>
+              ) : null}
+              <span
+                className={
+                  hasEfforts
+                    ? "mt-1.5 inline-flex max-w-full items-center gap-0.5 text-[13px] text-zinc-400"
+                    : "inline-flex max-w-full items-center gap-0.5 text-lg font-semibold leading-none text-blue-400"
+                }
+              >
                 <span className="truncate">{modelLabel || current?.label || DESKTOP_ZH.selectModel}</span>
                 <ChevronRight className="h-3.5 w-3.5 shrink-0" />
               </span>
@@ -133,6 +146,7 @@ function Tip({
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  if (!text.trim()) return children;
   return (
     <span
       className="relative inline-flex shrink-0"

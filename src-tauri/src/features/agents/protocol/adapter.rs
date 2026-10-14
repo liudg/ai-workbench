@@ -29,6 +29,7 @@ pub trait AgentAdapter: Send + Sync {
             kind: self.kind(),
             capabilities: self.capabilities(),
             commands: Vec::new(),
+            default_access: None,
         }
     }
 

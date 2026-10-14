@@ -7,7 +7,7 @@ import {
   type AgentCatalog,
   type SessionEvent,
 } from "../../../types/index.ts";
-import { deriveComposerView } from "./composer-view.ts";
+import { composerCaps, composerCommands, deriveComposerView } from "./composer-view.ts";
 
 const caps = {
   supports_slash: true,
@@ -227,12 +227,23 @@ test("a claude catalog ignores a gpt id that is not in its model list", () => {
 test("fast mode is on only when this model advertises the fast tier", () => {
   assert.equal(view({ catalog }).fastAvailable, false);
   assert.equal(view({ catalog }).fastOn, false);
+  const unmarked = {
+    ...catalog,
+    configured_service_tier: "fast",
+    models: catalog.models.map((item) =>
+      item.id === "gpt-5.4"
+        ? { ...item, service_tiers: [{ id: "fast", name: "Fast", description: "1.5x" }] }
+        : item,
+    ),
+  };
+  assert.equal(view({ catalog: unmarked }).fastAvailable, false);
+  assert.equal(view({ catalog: unmarked }).fastOn, false);
   const withFast = {
     ...catalog,
     configured_service_tier: "fast",
     models: catalog.models.map((item) =>
       item.id === "gpt-5.4"
-        ? { ...item, service_tiers: [{ id: "fast", name: "Fast", description: "" }] }
+        ? { ...item, service_tiers: [{ id: "fast", name: "Fast", description: "1.5x", fast: true }] }
         : item,
     ),
   };
@@ -245,6 +256,37 @@ test("fast mode is on only when this model advertises the fast tier", () => {
   assert.equal(view({ catalog: withFast }).baselineModelId, "gpt-5.4");
   assert.equal(view({ catalog: withFast }).baselineEffort, "high");
   assert.equal(view({ catalog: withFast }).baselineServiceTier, "fast");
+  assert.equal(view({ catalog: withFast }).fastTip, "1.5x");
+});
+
+test("network and commands come from this session payload", () => {
+  const menu = {
+    network_access: true,
+    writable_roots: false,
+    permission_profiles: false,
+    approve_for_me: false,
+    title: "权限",
+    notice: null,
+    presets: [{ id: "ask", label: "询问批准", description: "", allows_extras: true }],
+    profiles: [],
+  };
+  const shown = view({
+    caps: { ...caps, supports_network_access: true, supports_writable_roots: true },
+    permissionMenu: menu,
+    sandbox: emptySandbox("ask"),
+  });
+  assert.equal(shown.showNetwork, true);
+  assert.equal(shown.showWritable, false);
+  assert.equal(view({ permissionMenu: menu, sandbox: emptySandbox("full") }).showNetwork, false);
+  assert.equal(view({ caps: { ...caps, supports_network_access: true } }).showNetwork, false);
+  const profile = {
+    kind: "codex-cli" as const,
+    capabilities: { ...caps, supports_tuning: false },
+    commands: [{ name: "/review", hint: "审查" }],
+  };
+  assert.equal(composerCaps(catalog, profile)?.supports_tuning, true);
+  assert.deepEqual(composerCommands(catalog, profile), []);
+  assert.equal(composerCommands(undefined, profile)[0]?.name, "/review");
 });
 
 test("plan and goal chips are exclusive and the goal bar follows the goal", () => {

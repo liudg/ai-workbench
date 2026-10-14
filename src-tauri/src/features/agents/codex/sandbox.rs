@@ -107,6 +107,21 @@ impl SandboxChoice {
         true
     }
 
+    /// 权限菜单里的当前档。具名配置档用它的 id，否则是工作台档位。
+    pub(super) fn menu_id(&self) -> String {
+        if !self.profile_id.is_empty() {
+            return self.profile_id.clone();
+        }
+        if self.approve_for_me {
+            return "approve-for-me".into();
+        }
+        match self.mode {
+            Access::Full => "full".into(),
+            Access::Ask => "ask".into(),
+            Access::ReadOnly => "read-only".into(),
+        }
+    }
+
     pub(super) fn reviewer(&self) -> &'static str {
         if self.approve_for_me {
             "auto_review"
@@ -313,6 +328,8 @@ struct PresetSpec {
     description: &'static str,
     approval: &'static str,
     reviewer: &'static str,
+    caution: bool,
+    allows_extras: bool,
 }
 
 const PRESETS: [PresetSpec; 4] = [
@@ -323,6 +340,8 @@ const PRESETS: [PresetSpec; 4] = [
         description: "Read and edit workspace files and run commands, with approval required for internet access or edits outside the workspace",
         approval: "on-request",
         reviewer: "user",
+        caution: false,
+        allows_extras: true,
     },
     PresetSpec {
         mode: "approve-for-me",
@@ -331,6 +350,8 @@ const PRESETS: [PresetSpec; 4] = [
         description: "Only ask for actions detected as potentially unsafe",
         approval: "on-request",
         reviewer: "auto_review",
+        caution: false,
+        allows_extras: true,
     },
     PresetSpec {
         mode: "full",
@@ -339,6 +360,8 @@ const PRESETS: [PresetSpec; 4] = [
         description: "Use with caution: Codex can edit files outside this workspace and access the internet without approval",
         approval: "never",
         reviewer: "user",
+        caution: true,
+        allows_extras: false,
     },
     PresetSpec {
         mode: "read-only",
@@ -347,6 +370,8 @@ const PRESETS: [PresetSpec; 4] = [
         description: "Read workspace files, with approval required for edits or internet access",
         approval: "on-request",
         reviewer: "user",
+        caution: false,
+        allows_extras: true,
     },
 ];
 
@@ -465,6 +490,7 @@ pub(super) fn build_menu(
                 notice: Some(notice),
                 presets: Vec::new(),
                 profiles: Vec::new(),
+                active: None,
             }
         }
     };
@@ -480,6 +506,8 @@ pub(super) fn build_menu(
                 Some(spec.approval),
                 Some(spec.reviewer),
             ),
+            caution: spec.caution,
+            allows_extras: spec.allows_extras,
         })
         .collect();
     let profiles = discovery
@@ -494,6 +522,8 @@ pub(super) fn build_menu(
                 .clone()
                 .unwrap_or_else(|| CONFIGURED_PROFILE.into()),
             disabled_reason: discovery.disabled_reason(&profile.id, None, None),
+            caution: false,
+            allows_extras: false,
         })
         .collect();
     let empty = discovery.profiles.is_empty();
@@ -506,6 +536,7 @@ pub(super) fn build_menu(
         notice: empty.then(|| NO_PROFILES.into()),
         presets: if empty { Vec::new() } else { presets },
         profiles: if empty { Vec::new() } else { profiles },
+        active: None,
     }
 }
 
@@ -545,7 +576,8 @@ impl Shared {
                 .is_some(),
             Err(_) => false,
         };
-        let menu = build_menu(discovery, approve_for_me, network_access);
+        let mut menu = build_menu(discovery, approve_for_me, network_access);
+        menu.active = Some(self.access.lock().unwrap().menu_id());
         *self.wire.lock().unwrap() = SandboxWire {
             reviewer: menu.approve_for_me,
             profiles: menu.permission_profiles,
@@ -808,6 +840,11 @@ mod tests {
             ["Ask for approval", "Approve for me", "Full Access", "Read Only"]
         );
         assert!(menu.presets.iter().all(|item| item.disabled_reason.is_none()));
+        let full = menu.presets.iter().find(|item| item.id == "full").unwrap();
+        assert!(full.caution);
+        assert!(!full.allows_extras);
+        assert!(menu.presets.iter().find(|item| item.id == "ask").unwrap().allows_extras);
+        assert!(menu.profiles.iter().all(|item| !item.allows_extras && !item.caution));
         assert_eq!(menu.profiles.len(), 2);
         assert_eq!(menu.profiles[0].description, "Edit only this project");
         assert_eq!(menu.profiles[1].description, "Configured permission profile");

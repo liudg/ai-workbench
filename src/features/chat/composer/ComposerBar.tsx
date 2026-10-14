@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { useElementWidth } from "@/shared/dom/useElementWidth";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import type { PermissionMenu, SessionSandbox } from "@/types";
-import { buttonLabel } from "./access";
+import { buttonLabel, selectedPermission } from "./access";
 import { composerDensity } from "./composer-density";
 import { ModeChip } from "./ModeChip";
 
@@ -39,7 +39,7 @@ export function ComposerBar({
   menu: null | "access" | "model" | "attach";
   imagesOn: boolean;
   composerLocked: boolean;
-  sandbox: SessionSandbox;
+  sandbox: SessionSandbox | null;
   permissionMenu: PermissionMenu | null;
   planChip: boolean;
   goalChip: boolean;
@@ -60,6 +60,7 @@ export function ComposerBar({
   const density = composerDensity(useElementWidth(barRef));
   const icons = density === "icons";
   const accessLabel = buttonLabel(sandbox, permissionMenu);
+  const accessCaution = Boolean(selectedPermission(permissionMenu, sandbox)?.caution);
   return (
     <div
       ref={barRef}
@@ -94,7 +95,7 @@ export function ComposerBar({
           className={cn(
             "inline-flex h-8 min-w-0 items-center justify-center gap-1 overflow-hidden rounded-full text-sm hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40",
             icons ? "w-8 shrink-0 px-0" : density === "compact" ? "max-w-[7.5rem] px-2" : "max-w-[11rem] px-2",
-            sandbox.mode === "full" && !sandbox.profileId ? "text-orange-400" : "text-zinc-300",
+            accessCaution ? "text-orange-400" : "text-zinc-300",
           )}
           aria-label="权限"
           aria-haspopup="menu"

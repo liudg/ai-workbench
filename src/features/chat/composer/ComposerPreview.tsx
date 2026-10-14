@@ -16,7 +16,7 @@ import { ModelMenu } from "./ModelMenu";
 import { SkillMenu } from "./SkillMenu";
 import { deriveComposerView } from "./composer-view";
 import { effortForModel } from "./composer-submit";
-import { FAST_TIER_ID, tuningForModel } from "./model-picker";
+import { fastTier, tuningForModel } from "./model-picker";
 import { useComposerMenu } from "./useComposerMenu";
 import { activeGoal } from "./goal";
 import { atToken, clearAtToken, insertMention, mentionFiles } from "./mentions";
@@ -75,7 +75,7 @@ const codexCatalog: AgentCatalog = {
         { id: "high", description: "Deeper reasoning" },
         { id: "xhigh", description: "Extra high" },
       ],
-      service_tiers: [{ id: "fast", name: "Fast", description: "" }],
+      service_tiers: [{ id: "fast", name: "Fast", description: "1.5 倍速度 / 用量更多", fast: true }],
     },
   ],
   skills: [],
@@ -124,6 +124,43 @@ const claudeCatalog: AgentCatalog = {
   cli_config_read: true,
 };
 
+const codexPermissionMenu: PermissionMenu = {
+  network_access: true,
+  writable_roots: true,
+  permission_profiles: true,
+  approve_for_me: true,
+  title: "Update Model Permissions",
+  notice: null,
+  active: "ask",
+  presets: [
+    {
+      id: "ask",
+      label: "Ask for approval",
+      description: "Read and edit workspace files and run commands, with approval required for internet access or edits outside the workspace",
+      allows_extras: true,
+    },
+    {
+      id: "approve-for-me",
+      label: "Approve for me",
+      description: "Only ask for actions detected as potentially unsafe",
+      allows_extras: true,
+    },
+    {
+      id: "full",
+      label: "Full Access",
+      description: "Use with caution: Codex can edit files outside this workspace and access the internet without approval",
+      caution: true,
+    },
+    {
+      id: "read-only",
+      label: "Read Only",
+      description: "Read workspace files, with approval required for edits or internet access",
+      allows_extras: true,
+    },
+  ],
+  profiles: [],
+};
+
 const claudePermissionMenu: PermissionMenu = {
   network_access: false,
   writable_roots: false,
@@ -131,8 +168,9 @@ const claudePermissionMenu: PermissionMenu = {
   approve_for_me: false,
   title: "权限",
   notice: null,
+  active: "ask",
   presets: [
-    { id: "full", label: "跳过权限检查", description: "" },
+    { id: "full", label: "跳过权限检查", description: "", caution: true },
     { id: "ask", label: "询问批准", description: "" },
   ],
   profiles: [],
@@ -194,7 +232,8 @@ export default function ComposerPreview() {
   const modelRef = useRef<HTMLButtonElement>(null);
   const modelMenuRef = useRef<HTMLDivElement>(null);
   const accessMenuRef = useRef<HTMLDivElement>(null);
-  const permissionMenu = claude ? claudePermissionMenu : null;
+  const permissionMenu = claude ? claudePermissionMenu : codexPermissionMenu;
+  const sandbox = emptySandbox("ask");
   const events = useMemo<SessionEvent[]>(() => {
     const rows: SessionEvent[] = [];
     if (planOn) {
@@ -242,7 +281,7 @@ export default function ComposerPreview() {
     events,
     caps,
     permissionMenu,
-    sandbox: emptySandbox(claude ? "ask" : "full"),
+    sandbox,
     commands: [],
     skills: previewSkills,
     catalog,
@@ -367,7 +406,7 @@ export default function ComposerPreview() {
               menu={menu}
               imagesOn={false}
               composerLocked={false}
-              sandbox={emptySandbox(claude ? "ask" : "full")}
+              sandbox={sandbox}
               permissionMenu={permissionMenu}
               planChip={view.planOn}
               goalChip={view.goalOn}
@@ -397,7 +436,7 @@ export default function ComposerPreview() {
       {menu === "access" && (
         <AccessMenu
           menuRef={accessMenuRef}
-          sandbox={emptySandbox(claude ? "ask" : "full")}
+          sandbox={sandbox}
           menu={permissionMenu}
           showNetwork={view.showNetwork}
           showWritable={view.showWritable}
@@ -417,6 +456,7 @@ export default function ComposerPreview() {
           effortId={view.selectedEffort}
           fastOn={view.fastOn}
           fastAvailable={view.fastAvailable}
+          fastTip={view.fastTip}
           canReset={Boolean(view.baselineModelId)}
           onModel={(model) => rememberTuning(tuningForModel(model, view.selectedEffort, view.storedServiceTier))}
           onEffort={(effort) => {
@@ -428,7 +468,7 @@ export default function ComposerPreview() {
             rememberTuning({
               model: view.selectedModel.id,
               effort: view.selectedEffort ?? effortForModel(view.selectedModel, view.selectedEffort),
-              serviceTier: enabled ? FAST_TIER_ID : null,
+              serviceTier: enabled ? fastTier(view.selectedModel)?.id ?? null : null,
             });
           }}
           onReset={() => {

@@ -2,11 +2,10 @@ import { useShallow } from "zustand/react/shallow";
 
 import { sessionCatalog } from "@/lib/catalog";
 import { useWorkbench } from "@/store";
-import { emptySandbox, type AgentKind, type Attachment, type QueuedTurn } from "@/types";
+import type { AgentKind, Attachment, QueuedTurn } from "@/types";
 
 const EMPTY_FILES: Attachment[] = [];
 const EMPTY_QUEUE: QueuedTurn[] = [];
-const FALLBACK_SANDBOX = emptySandbox();
 
 export function useComposerActions() {
   return useWorkbench(
@@ -30,10 +29,10 @@ export function useComposerSession(session: { id: string; agent: AgentKind; proj
   return useWorkbench(
     useShallow((state) => ({
       catalog: sessionCatalog(state.catalogs, session.id),
-      catalogNotice: state.catalogNotice,
+      catalogNotice: state.catalogNotices[session.id] ?? null,
       profile: state.profiles[session.agent],
       tuning: state.tuning[session.id],
-      sandbox: state.sandboxes[session.id] ?? state.lastSandbox ?? FALLBACK_SANDBOX,
+      sandbox: state.sandboxes[session.id] ?? null,
       projectPath: state.projects.find((project) => project.id === session.project_id)?.path ?? "",
       files: state.attachments[session.id] ?? EMPTY_FILES,
       queue: state.queues[session.id] ?? EMPTY_QUEUE,

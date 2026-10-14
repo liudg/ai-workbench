@@ -22,7 +22,7 @@ export function AccessMenu({
   onRemoveDir,
 }: {
   menuRef: RefObject<HTMLDivElement>;
-  sandbox: SessionSandbox;
+  sandbox: SessionSandbox | null;
   menu: PermissionMenu | null;
   showNetwork: boolean;
   showWritable: boolean;
@@ -51,8 +51,8 @@ export function AccessMenu({
             <MenuRow
               key={preset.id}
               item={preset}
-              warning={preset.id === "full"}
-              checked={!sandbox.profileId && sandbox.mode === preset.id}
+              warning={Boolean(preset.caution)}
+              checked={Boolean(sandbox && !sandbox.profileId && sandbox.mode === preset.id)}
               onPick={() => onPreset(preset.id as SessionSandbox["mode"])}
             />
           ))}
@@ -61,7 +61,7 @@ export function AccessMenu({
               key={profile.id}
               item={profile}
               warning={false}
-              checked={sandbox.profileId === profile.id}
+              checked={sandbox?.profileId === profile.id}
               onPick={() => onProfile(profile.id)}
             />
           ))}
@@ -72,21 +72,21 @@ export function AccessMenu({
         <button
           type="button"
           role="menuitemcheckbox"
-          aria-checked={sandbox.networkAccess}
+          aria-checked={Boolean(sandbox?.networkAccess)}
           className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm text-zinc-100 hover:bg-zinc-800"
-          onClick={() => onNetwork(!sandbox.networkAccess)}
+          onClick={() => onNetwork(!sandbox?.networkAccess)}
         >
           <span>{NETWORK_LABEL}</span>
           <span
             className={cn(
               "relative h-4 w-7 shrink-0 rounded-full transition-colors",
-              sandbox.networkAccess ? "bg-zinc-100" : "bg-zinc-700",
+              sandbox?.networkAccess ? "bg-zinc-100" : "bg-zinc-700",
             )}
           >
             <span
               className={cn(
                 "absolute top-0.5 h-3 w-3 rounded-full transition-transform",
-                sandbox.networkAccess ? "translate-x-3.5 bg-zinc-900" : "translate-x-0.5 bg-zinc-300",
+                sandbox?.networkAccess ? "translate-x-3.5 bg-zinc-900" : "translate-x-0.5 bg-zinc-300",
               )}
             />
           </span>
@@ -96,7 +96,7 @@ export function AccessMenu({
         <div className="px-3 py-2">
           <p className="text-sm text-zinc-100">{WRITABLE_HEADING}</p>
           <p className="mt-0.5 text-xs leading-4 text-zinc-500">{WRITABLE_DETAIL}</p>
-          {sandbox.writableRoots.length > 0 && (
+          {sandbox && sandbox.writableRoots.length > 0 && (
             <ul className="mt-2 space-y-1">
               {sandbox.writableRoots.map((path) => (
                 <li

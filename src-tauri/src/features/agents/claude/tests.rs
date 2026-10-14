@@ -411,13 +411,17 @@ fn catalog_uses_reported_fields_and_permission_menu_is_honest() {
     catalog::apply_settings(&mut catalog, &json!({"applied": {"effort": "high"}}));
     assert_eq!(catalog.thread_effort.as_deref(), Some("high"));
 
-    let menu = permission_menu();
+    let menu = permission_menu("ask");
     assert!(!menu.network_access);
     assert!(!menu.writable_roots);
     assert!(!menu.permission_profiles);
     assert!(!menu.approve_for_me);
     assert_eq!(menu.presets.iter().map(|item| item.id.as_str()).collect::<Vec<_>>(), vec!["full", "ask"]);
+    assert!(menu.presets.iter().all(|item| !item.allows_extras));
+    assert!(menu.presets.iter().find(|item| item.id == "full").unwrap().caution);
+    assert_eq!(menu.active.as_deref(), Some("ask"));
     assert!(menu.notice.is_none());
+    assert!(catalog.models.iter().all(|model| model.service_tiers.is_empty()));
     assert_eq!(catalog.agent, Some(AgentKind::ClaudeCode));
 }
 

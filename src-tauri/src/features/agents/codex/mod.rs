@@ -113,6 +113,7 @@ impl AgentAdapter for CodexCliAdapter {
             kind: self.kind(),
             capabilities: self.capabilities(),
             commands: catalog::slash_commands(),
+            default_access: Some("full".into()),
         }
     }
 

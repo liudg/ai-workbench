@@ -1,11 +1,13 @@
 import { modelButtonLabel } from "../../../lib/catalog.ts";
 import { filterSlash, slashToken } from "../../../lib/slash.ts";
 import { DESKTOP_ZH } from "../../../shared/strings/desktop-zh.ts";
+import { extrasAllowed } from "./access.ts";
 import {
   baselineServiceTier,
   effectiveServiceTier,
-  FAST_TIER_ID,
   effortDisplay,
+  fastTier,
+  fastTierTip,
   modelChipText,
   supportsFast,
 } from "./model-picker.ts";
@@ -14,6 +16,7 @@ import {
   type AgentCapabilities,
   type AgentCatalog,
   type AgentModelOption,
+  type AgentProfile,
   type AgentSkillOption,
   type SessionTuning,
   type PermissionMenu,
@@ -22,7 +25,6 @@ import {
   type SessionSandbox,
   type SlashCommand,
 } from "../../../types/index.ts";
-import { sandboxAllowsExtras } from "./access.ts";
 import { exclusiveComposerMode } from "./collaboration-mode.ts";
 import { contextUsageLine } from "./context-usage.ts";
 import { type GoalSnapshot } from "./goal.ts";
@@ -35,7 +37,7 @@ export interface ComposerViewInput {
   events: readonly SessionEvent[];
   caps: AgentCapabilities | undefined;
   permissionMenu: PermissionMenu | null;
-  sandbox: SessionSandbox;
+  sandbox: SessionSandbox | null;
   commands: readonly SlashCommand[];
   skills: readonly AgentSkillOption[];
   catalog: AgentCatalog | undefined;
@@ -96,6 +98,23 @@ export function pickEffort(
   return model?.default_effort || undefined;
 }
 
+/** 会话目录优先。静态 profile 只在目录还没回来时顶上，而且必须是这一个 Agent 的。 */
+export function composerCaps(
+  catalog: AgentCatalog | undefined,
+  profile: AgentProfile | undefined,
+): AgentCapabilities | undefined {
+  return catalog?.capabilities ?? profile?.capabilities;
+}
+
+/** 目录一到，斜杠命令只认这份目录，哪怕它是空的。 */
+export function composerCommands(
+  catalog: AgentCatalog | undefined,
+  profile: AgentProfile | undefined,
+): SlashCommand[] {
+  if (catalog) return [...catalog.commands];
+  return profile?.commands ? [...profile.commands] : [];
+}
+
 export function deriveComposerView(input: ComposerViewInput) {
   const pendingId = pendingPrompt([...input.events]);
   const occupied = isReadOnlyOpen([...input.events]);
@@ -127,6 +146,7 @@ export function deriveComposerView(input: ComposerViewInput) {
   const baselineEffort = pickEffort(undefined, baselineModel, input.catalog);
   const storedServiceTier = input.tuning?.serviceTier;
   const selectedServiceTier = effectiveServiceTier(selectedModel, input.tuning, input.catalog);
+  const fast = fastTier(selectedModel);
   const unreadConfig = input.catalog?.cli_config_read === false && !selectedModel;
   const modelButton = modelButtonLabel(
     selectedModel
@@ -190,8 +210,9 @@ export function deriveComposerView(input: ComposerViewInput) {
     selectedModel,
     selectedEffort,
     modelButton,
-    fastOn: selectedServiceTier === FAST_TIER_ID,
+    fastOn: Boolean(fast && selectedServiceTier === fast.id),
     fastAvailable: supportsFast(selectedModel),
+    fastTip: fastTierTip(selectedModel),
     storedServiceTier,
     baselineModelId: baselineModel?.id,
     baselineEffort,
@@ -206,13 +227,7 @@ export function deriveComposerView(input: ComposerViewInput) {
     showPlan: Boolean(caps?.supports_plan),
     showModel: Boolean(caps?.supports_tuning),
     permissionMenu: menu,
-    showNetwork:
-      Boolean(caps?.supports_network_access) &&
-      (menu ? menu.network_access : true) &&
-      sandboxAllowsExtras(input.sandbox),
-    showWritable:
-      Boolean(caps?.supports_writable_roots) &&
-      (menu ? menu.writable_roots : true) &&
-      sandboxAllowsExtras(input.sandbox),
+    showNetwork: Boolean(menu?.network_access) && extrasAllowed(menu, input.sandbox),
+    showWritable: Boolean(menu?.writable_roots) && extrasAllowed(menu, input.sandbox),
   };
 }

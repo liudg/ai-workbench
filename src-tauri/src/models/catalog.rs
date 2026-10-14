@@ -12,12 +12,19 @@ pub struct ReasoningEffortOption {
     pub label: Option<String>,
 }
 
-/// `model/list` 的一个 service tier。速度开关只在目录真有 Fast 档时出现。
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
+/// `model/list` 的一个 service tier。`fast` 由适配器按 CLI 的快速档标上，界面不认 id。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ModelServiceTier {
     pub id: String,
     pub name: String,
     pub description: String,
+    /// 作曲栏闪电开关要写入的档。没有标记就不显示开关。
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub fast: bool,
 }
 
 fn default_show_in_picker() -> bool {
@@ -223,6 +230,12 @@ pub struct PermissionProfileOption {
     /// 有值时这一项不可选，值是原因。
     #[serde(default)]
     pub disabled_reason: Option<String>,
+    /// 选中时按钮用警示色。适配器标，界面不按 id 猜。
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub caution: bool,
+    /// 选中这一档时可以显示网络开关和额外目录。
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub allows_extras: bool,
 }
 
 /// 作曲栏权限菜单。`presets` 的 id 是工作台档位（ask / approve-for-me / full / read-only）。
@@ -240,6 +253,9 @@ pub struct PermissionMenu {
     #[serde(default)]
     pub presets: Vec<PermissionProfileOption>,
     pub profiles: Vec<PermissionProfileOption>,
+    /// 这一会话当前档位 id。界面不另猜。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active: Option<String>,
 }
 
 impl PermissionMenu {
@@ -253,6 +269,7 @@ impl PermissionMenu {
             notice: None,
             presets: Vec::new(),
             profiles: Vec::new(),
+            active: None,
         }
     }
 }
@@ -290,6 +307,9 @@ pub struct AgentProfile {
     pub kind: AgentKind,
     pub capabilities: AgentCapabilities,
     pub commands: Vec<SlashCommand>,
+    /// 新建会话的权限档。空表示适配器自己决定，界面不要拿另一个 Agent 的上次选择。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_access: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

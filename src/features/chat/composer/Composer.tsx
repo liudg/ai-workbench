@@ -176,6 +176,7 @@ export function Composer({ session, events }: { session: Session; events: Sessio
           effortId={view.selectedEffort}
           fastOn={view.fastOn}
           fastAvailable={view.fastAvailable}
+          fastTip={view.fastTip}
           canReset={Boolean(view.baselineModelId)}
           onModel={c.chooseModel}
           onEffort={c.chooseEffort}

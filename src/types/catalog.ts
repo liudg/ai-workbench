@@ -3,15 +3,8 @@
 import type { AgentKind } from "./agent.ts";
 import type { SessionEvent } from "./event.ts";
 
-/** 作曲栏权限档位。适配器自行映射到各自的沙箱 / 审批。 */
+/** 作曲栏权限档位。适配器自行映射到各自的沙箱 / 审批。文案只来自权限菜单。 */
 export type AccessMode = "full" | "ask" | "read-only" | "approve-for-me";
-
-export const ACCESS_LABELS: Record<AccessMode, string> = {
-  full: "完全访问",
-  ask: "询问批准",
-  "read-only": "只读",
-  "approve-for-me": "替我批准",
-};
 
 /** 一次权限选择：档位、网络、额外可写目录、具名配置档。 */
 export interface SessionSandbox {
@@ -36,6 +29,10 @@ export interface PermissionProfileOption {
   description: string;
   /** 有值时不可选，值是原因。 */
   disabled_reason?: string | null;
+  /** 选中时按钮用警示色。适配器标，界面不按 id 猜。 */
+  caution?: boolean;
+  /** 选中这一档时可以显示网络开关和额外目录。 */
+  allows_extras?: boolean;
 }
 
 /** 适配器给出的权限菜单：标题、内置档位、具名配置档和读取失败的说明。 */
@@ -48,6 +45,8 @@ export interface PermissionMenu {
   notice: string | null;
   presets: PermissionProfileOption[];
   profiles: PermissionProfileOption[];
+  /** 这一会话当前档位。界面不另猜。 */
+  active?: string | null;
 }
 
 export interface Attachment {
@@ -67,6 +66,8 @@ export interface ModelServiceTier {
   id: string;
   name: string;
   description: string;
+  /** 适配器从 CLI 标成快速档。没有这个标记就不显示闪电。 */
+  fast?: boolean;
 }
 
 export interface AgentModelOption {
@@ -163,6 +164,8 @@ export interface AgentProfile {
   kind: AgentKind;
   capabilities: AgentCapabilities;
   commands: SlashCommand[];
+  /** 新建会话的权限档。空表示不要拿另一个 Agent 的上次选择来填。 */
+  default_access?: string | null;
 }
 
 export interface AgentCatalog {

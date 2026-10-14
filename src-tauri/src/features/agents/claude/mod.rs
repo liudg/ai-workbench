@@ -34,7 +34,7 @@ use session::ClaudeSession;
 
 use crate::features::agents::install::CliRelease;
 use crate::features::agents::{AgentAdapter, AgentError, AgentSession, EventSink, SessionContext};
-use crate::models::{AgentCapabilities, AgentKind};
+use crate::models::{AgentCapabilities, AgentKind, AgentProfile};
 
 pub struct ClaudeCodeAdapter;
 
@@ -58,6 +58,15 @@ impl AgentAdapter for ClaudeCodeAdapter {
 
     fn capabilities(&self) -> AgentCapabilities {
         AgentCapabilities::claude()
+    }
+
+    fn profile(&self) -> AgentProfile {
+        AgentProfile {
+            kind: self.kind(),
+            capabilities: self.capabilities(),
+            commands: Vec::new(),
+            default_access: Some("full".into()),
+        }
     }
 
     fn session_linked(&self) -> bool {

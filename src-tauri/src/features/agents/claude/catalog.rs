@@ -214,8 +214,8 @@ fn nonempty(value: Option<&str>) -> Option<&str> {
     value.map(str::trim).filter(|item| !item.is_empty())
 }
 
-/// 权限菜单。只列出这一会话能选的档位。
-pub fn permission_menu() -> PermissionMenu {
+/// 权限菜单。只列出这一会话能选的档位。`active` 是当前 `permission_mode` 对应的档。
+pub fn permission_menu(active: &str) -> PermissionMenu {
     PermissionMenu {
         network_access: false,
         writable_roots: false,
@@ -229,14 +229,19 @@ pub fn permission_menu() -> PermissionMenu {
                 label: "跳过权限检查".into(),
                 description: String::new(),
                 disabled_reason: None,
+                caution: true,
+                allows_extras: false,
             },
             PermissionProfileOption {
                 id: "ask".into(),
                 label: "询问批准".into(),
                 description: String::new(),
                 disabled_reason: None,
+                caution: false,
+                allows_extras: false,
             },
         ],
         profiles: Vec::new(),
+        active: Some(active.to_string()),
     }
 }

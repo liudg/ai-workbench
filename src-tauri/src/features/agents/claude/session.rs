@@ -70,7 +70,7 @@ impl AgentSession for ClaudeSession {
     }
 
     async fn permission_menu(&self) -> Result<PermissionMenu, AgentError> {
-        Ok(catalog::permission_menu())
+        Ok(catalog::permission_menu(&self.shared.current_access()))
     }
 
     async fn catalog(&self) -> Result<AgentCatalog, AgentError> {

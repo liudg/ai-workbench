@@ -63,16 +63,16 @@ export interface SidebarSlice {
 
 export interface WorkspaceSlice {
   events: Record<string, SessionEvent[]>;
-  lastAccessMode: AccessMode;
   accessMode: Record<string, AccessMode>;
-  lastSandbox: SessionSandbox;
+  /** 只记住同一个 Agent 上一次的沙箱，不拿去填另一个 Agent。 */
+  lastSandboxByAgent: Partial<Record<AgentKind, SessionSandbox>>;
   sandboxes: Record<string, SessionSandbox>;
   attachments: Record<string, Attachment[]>;
   pageAnnotations: Record<string, PageAnnotation[]>;
   queues: Record<string, QueuedTurn[]>;
   catalogs: Record<string, AgentCatalog>;
-  /** 目录刷新失败时的一条弱提示。不占用全局红色错误条。 */
-  catalogNotice: string | null;
+  /** 目录刷新失败时的一条弱提示，按会话分开。 */
+  catalogNotices: Record<string, string>;
   tuning: Record<string, SessionTuning>;
   setSandbox(sessionId: string, sandbox: SessionSandbox): void;
   loadCatalog(sessionId: string): Promise<void>;

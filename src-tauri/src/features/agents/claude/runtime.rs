@@ -386,6 +386,10 @@ impl Shared {
         Ok(())
     }
 
+    pub fn current_access(&self) -> String {
+        self.access_mode.lock().unwrap().clone()
+    }
+
     pub fn set_sandbox(
         &self,
         mode: &str,

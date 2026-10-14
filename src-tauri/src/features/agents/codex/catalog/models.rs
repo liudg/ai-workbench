@@ -156,6 +156,19 @@ fn show_in_picker(item: &Value) -> bool {
     )
 }
 
+/// Codex app-server `ServiceTier::Fast` / `SPEED_TIER_FAST`。只有这个 id 是闪电开关。
+const FAST_TIER_ID: &str = "fast";
+
+fn service_tier(id: String, name: String, description: String) -> ModelServiceTier {
+    let fast = id == FAST_TIER_ID;
+    ModelServiceTier {
+        id,
+        name,
+        description,
+        fast,
+    }
+}
+
 /// `serviceTiers` 优先。只有旧的 `additionalSpeedTiers: ["fast"]` 时补一条空文案的 Fast 档，
 /// 跟 `ModelPreset::supports_fast_mode` 一样：两条路都算支持快速档。
 fn parse_service_tiers(item: &Value) -> Vec<ModelServiceTier> {
@@ -177,11 +190,7 @@ fn parse_service_tiers(item: &Value) -> Vec<ModelServiceTier> {
             if tiers.iter().any(|tier| tier.id == id) {
                 continue;
             }
-            tiers.push(ModelServiceTier {
-                id: id.to_string(),
-                name: String::new(),
-                description: String::new(),
-            });
+            tiers.push(service_tier(id.to_string(), String::new(), String::new()));
         }
     }
     tiers
@@ -193,23 +202,18 @@ fn parse_one_tier(tier: &Value) -> Option<ModelServiceTier> {
         if id.is_empty() {
             return None;
         }
-        return Some(ModelServiceTier {
-            id: id.to_string(),
-            name: String::new(),
-            description: String::new(),
-        });
+        return Some(service_tier(id.to_string(), String::new(), String::new()));
     }
     let id = tier.get("id").and_then(Value::as_str)?.trim();
     if id.is_empty() {
         return None;
     }
-    Some(ModelServiceTier {
-        id: id.to_string(),
-        name: tier.get("name").and_then(Value::as_str).unwrap_or("").to_string(),
-        description: tier
-            .get("description")
+    Some(service_tier(
+        id.to_string(),
+        tier.get("name").and_then(Value::as_str).unwrap_or("").to_string(),
+        tier.get("description")
             .and_then(Value::as_str)
             .unwrap_or("")
             .to_string(),
-    })
+    ))
 }

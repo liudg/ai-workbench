@@ -72,7 +72,7 @@ test("the slider keeps every catalog effort in order", () => {
   assert.deepEqual(sliderEfforts(model({ id: "empty", label: "Empty", default_effort: "high" })), []);
   assert.equal(effortDisplay(current, "low"), "Lower latency");
   assert.equal(effortDisplay(model({ id: "named", label: "Named", efforts: [{ id: "high", description: "long", label: "高" }] }), "high"), "高");
-  assert.equal(effortDisplay(current, "missing"), "missing");
+  assert.equal(effortDisplay(current, "missing"), "");
 });
 
 test("the handle snaps to the nearest of five stops", () => {
@@ -107,19 +107,26 @@ test("models split into the default and the recommended set", () => {
 
 test("fast mode follows the catalog tier and an explicit off switch", () => {
   const plain = model({ id: "plain", label: "Plain" });
+  const unmarked = model({
+    id: "named-fast",
+    label: "Named",
+    service_tiers: [{ id: "fast", name: "Fast", description: "1.5x" }],
+  });
   const fast = model({
     id: "gpt",
     label: "GPT",
-    service_tiers: [{ id: "fast", name: "Fast", description: "" }],
+    service_tiers: [{ id: "priority", name: "Priority", description: "优先", fast: true }],
     default_service_tier: null,
   });
   assert.equal(supportsFast(plain), false);
+  assert.equal(supportsFast(unmarked), false);
   assert.equal(supportsFast(fast), true);
-  assert.equal(baselineServiceTier(fast, catalog), "fast");
-  assert.equal(baselineServiceTier(plain, catalog), null);
-  assert.equal(effectiveServiceTier(fast, { model: "gpt", effort: "high", serviceTier: null }, catalog), null);
-  assert.equal(effectiveServiceTier(fast, { model: "gpt", effort: "high" }, catalog), "fast");
-  assert.equal(tuningForModel(plain, "high", "fast").serviceTier, null);
-  assert.equal(tuningForModel(fast, "low", "fast").serviceTier, "fast");
+  const fastCatalog = { ...catalog, configured_service_tier: "priority" };
+  assert.equal(baselineServiceTier(fast, fastCatalog), "priority");
+  assert.equal(baselineServiceTier(plain, fastCatalog), null);
+  assert.equal(effectiveServiceTier(fast, { model: "gpt", effort: "high", serviceTier: null }, fastCatalog), null);
+  assert.equal(effectiveServiceTier(fast, { model: "gpt", effort: "high" }, fastCatalog), "priority");
+  assert.equal(tuningForModel(plain, "high", "priority").serviceTier, null);
+  assert.equal(tuningForModel(fast, "low", "priority").serviceTier, "priority");
   assert.equal(tuningForModel(fast, "low", undefined).serviceTier, undefined);
 });

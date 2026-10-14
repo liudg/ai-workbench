@@ -237,7 +237,10 @@ fn reads_service_tiers_and_hides_non_picker_models() {
             "displayName": "GPT Fast",
             "visibility": "list",
             "defaultServiceTier": "default",
-            "serviceTiers": [{ "id": "fast", "name": "Fast", "description": "1.5x" }],
+            "serviceTiers": [
+                { "id": "fast", "name": "Fast", "description": "1.5x" },
+                { "id": "flex", "name": "Flex", "description": "" }
+            ],
             "supportedReasoningEfforts": []
         }, {
             "id": "gpt-legacy",
@@ -252,11 +255,15 @@ fn reads_service_tiers_and_hides_non_picker_models() {
     }));
     assert_eq!(models.len(), 2);
     assert_eq!(models[0].service_tiers[0].id, "fast");
+    assert!(models[0].service_tiers[0].fast);
     assert_eq!(models[0].service_tiers[0].description, "1.5x");
+    assert_eq!(models[0].service_tiers[1].id, "flex");
+    assert!(!models[0].service_tiers[1].fast);
     assert!(models[0].default_service_tier.is_none());
     assert!(models[0].show_in_picker);
     assert_eq!(models[1].id, "gpt-legacy");
     assert_eq!(models[1].service_tiers[0].id, "fast");
+    assert!(models[1].service_tiers[0].fast);
     assert!(!models[1].show_in_picker);
 }
 

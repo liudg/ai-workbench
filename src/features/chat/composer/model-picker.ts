@@ -7,12 +7,6 @@ import {
 } from "../../../types/index.ts";
 import { effortForModel } from "./composer-submit.ts";
 
-/** 与 Codex `ServiceTier::Fast` / `SPEED_TIER_FAST` 相同的 id。 */
-export const FAST_TIER_ID = "fast";
-
-/** 请求里的这个值表示不覆盖，TUI 不会把它写进 turn。 */
-const SERVICE_TIER_DEFAULT = "default";
-
 /** 档位文案来自目录：短名，否则 description，否则 id。 */
 export function effortText(option: Pick<ReasoningEffortOption, "id" | "description"> & { label?: string | null } | undefined): string {
   if (!option) return "";
@@ -23,7 +17,7 @@ export function effortDisplay(model: AgentModelOption | undefined, effortId: str
   const id = effortId?.trim();
   if (!id) return "";
   const option = model?.efforts.find((item) => item.id === id);
-  return option ? effortText(option) : id;
+  return option ? effortText(option) : "";
 }
 
 /** 滑杆刻度就是该模型目录里的档位，顺序和数量都不改。 */
@@ -70,18 +64,25 @@ export function modelSections(models: readonly AgentModelOption[]): ModelSection
   return sections;
 }
 
+/** 适配器标了 `fast` 的那一档。id 是什么由适配器决定。 */
 export function fastTier(model: AgentModelOption | undefined) {
-  return model?.service_tiers?.find((tier) => tier.id === FAST_TIER_ID);
+  return model?.service_tiers?.find((tier) => tier.fast);
 }
 
-/** 有 Fast 档才显示闪电。Claude 这类没有 service tier 的目录不会出现这个开关。 */
 export function supportsFast(model: AgentModelOption | undefined): boolean {
   return Boolean(fastTier(model));
 }
 
+/** 闪电按钮的提示。只用这一档自己的文案。 */
+export function fastTierTip(model: AgentModelOption | undefined): string {
+  const tier = fastTier(model);
+  if (!tier) return "";
+  return tier.description.trim() || tier.name.trim();
+}
+
 function usableTier(id: string | null | undefined, model: AgentModelOption | undefined): string | null {
   const trimmed = id?.trim() ?? "";
-  if (!trimmed || trimmed === SERVICE_TIER_DEFAULT) return null;
+  if (!trimmed) return null;
   if (!model?.service_tiers?.some((tier) => tier.id === trimmed)) return null;
   return trimmed;
 }
