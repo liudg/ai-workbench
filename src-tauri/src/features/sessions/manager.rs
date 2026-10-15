@@ -398,6 +398,19 @@ impl SessionManager {
         handle.publish_goal().await.map_err(|err| err.to_string())
     }
 
+    pub async fn set_thread_goal_status(
+        &self,
+        store: &ProjectStore,
+        session_id: &str,
+        status: &str,
+    ) -> Result<(), String> {
+        let handle = self.open_agent(store, session_id).await?;
+        handle
+            .set_goal_status(status)
+            .await
+            .map_err(|err| err.to_string())
+    }
+
     pub async fn start_review(&self, session_id: &str, target: ReviewStart) -> Result<(), String> {
         let handle = self.agent_handle_ready(session_id).await?;
         if handle.read_only() {

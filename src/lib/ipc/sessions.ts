@@ -39,6 +39,7 @@ export const sessionCommands: Pick<
   | "setCollaborationMode"
   | "setThreadGoal"
   | "clearThreadGoal"
+  | "setThreadGoalStatus"
   | "publishThreadGoal"
   | "reviewTargets"
   | "startReview"
@@ -109,6 +110,8 @@ export const sessionCommands: Pick<
   setThreadGoal: (sessionId, objective) =>
     invoke("set_thread_goal", { sessionId, objective }),
   clearThreadGoal: (sessionId) => invoke("clear_thread_goal", { sessionId }),
+  setThreadGoalStatus: (sessionId, status) =>
+    invoke("set_thread_goal_status", { sessionId, status }),
   publishThreadGoal: (sessionId) => invoke("publish_thread_goal", { sessionId }),
   reviewTargets: (sessionId) =>
     invoke<ReviewTargets>("review_targets", { sessionId }),

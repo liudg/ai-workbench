@@ -241,6 +241,32 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     goalChip: view.goalOn,
     goalStatus: view.goalStatus,
     dismissGoal: goal.dismiss,
+    deleteGoal: () => {
+      if (view.occupied || view.dead) return;
+      const objective = goal.snapshot?.objective ?? "";
+      goal.dismiss();
+      setText((current) => (objective && current === objective ? "" : current));
+      setCaret(0);
+    },
+    toggleGoalRun: () => {
+      if (view.occupied || view.dead) return;
+      if (view.goalStatus?.run === "pause") goal.setStatus("paused");
+      else if (view.goalStatus?.run === "resume") goal.setStatus("active");
+    },
+    editGoal: () => {
+      const objective = goal.snapshot?.objective;
+      if (!objective || view.occupied || view.dead) return;
+      setEditingId(null);
+      goal.enter();
+      setText(objective);
+      setCaret(objective.length);
+      requestAnimationFrame(() => {
+        const element = textareaRef.current;
+        if (!element) return;
+        element.focus();
+        element.setSelectionRange(0, objective.length);
+      });
+    },
     startReview: (target: ReviewStart) => {
       setReviewOpen(false);
       void actions.startReview(session.id, target);

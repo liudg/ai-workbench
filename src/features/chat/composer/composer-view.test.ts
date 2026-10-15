@@ -353,7 +353,8 @@ test("plan and goal chips are exclusive and the goal bar follows the goal", () =
   const drafted = view({ events: [plan], goalDraft: true });
   assert.equal(drafted.planOn, false);
   assert.equal(drafted.goalOn, true);
-  assert.equal(drafted.goalStatus, "设置要持续追求的目标");
+  assert.equal(drafted.goalStatus?.label, "设置要持续追求的目标");
+  assert.equal(drafted.goalStatus?.actionable, false);
   const planning = view({ events: [plan] });
   assert.equal(planning.planOn, true);
   assert.equal(planning.goalOn, false);
@@ -369,7 +370,10 @@ test("plan and goal chips are exclusive and the goal bar follows the goal", () =
     },
   });
   assert.equal(live.goalOn, true);
-  assert.equal(live.goalStatus, "正在追求目标 (12.5K / 50K)");
+  assert.equal(live.goalStatus?.label, "进行中的目标");
+  assert.equal(live.goalStatus?.objective, "把测试补上");
+  assert.equal(live.goalStatus?.usage, "12.5K / 50K");
+  assert.equal(live.goalStatus?.run, "pause");
 });
 
 test("context usage events do not become a composer strip", () => {

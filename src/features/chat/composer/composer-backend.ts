@@ -74,6 +74,10 @@ export function clearThreadGoal(sessionId: string) {
   return backend.clearThreadGoal(sessionId);
 }
 
+export function setThreadGoalStatus(sessionId: string, status: "paused" | "active") {
+  return backend.setThreadGoalStatus(sessionId, status);
+}
+
 export function publishThreadGoal(sessionId: string) {
   return backend.publishThreadGoal(sessionId);
 }

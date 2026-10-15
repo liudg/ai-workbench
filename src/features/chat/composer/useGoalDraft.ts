@@ -1,7 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { SessionEvent } from "@/types";
-import { clearThreadGoal, publishThreadGoal, reportComposerError, setThreadGoal } from "./composer-backend";
+import {
+  clearThreadGoal,
+  publishThreadGoal,
+  reportComposerError,
+  setThreadGoal,
+  setThreadGoalStatus,
+} from "./composer-backend";
 import { activeGoal } from "./goal";
 
 /** 目标芯片：提交前是本地草稿，提交后跟 `thread/goal` 事件。 */
@@ -12,6 +18,7 @@ export function useGoalDraft(sessionId: string, supportsGoals: boolean, events: 
   const [publishError, setPublishError] = useState<string | null>(null);
   const goal = activeGoal(events);
   const objective = goal?.objective ?? "";
+  const statusPending = useRef(false);
 
   useEffect(() => {
     setGoalDraft(false);
@@ -54,6 +61,23 @@ export function useGoalDraft(sessionId: string, supportsGoals: boolean, events: 
     });
   }, [goalPinned, objective, sessionId]);
 
+  const setStatus = useCallback(
+    (status: "paused" | "active") => {
+      if (statusPending.current) return;
+      statusPending.current = true;
+      void (async () => {
+        try {
+          await setThreadGoalStatus(sessionId, status);
+        } catch (error) {
+          reportComposerError(sessionId, error);
+        } finally {
+          statusPending.current = false;
+        }
+      })();
+    },
+    [sessionId],
+  );
+
   const submit = useCallback(
     async (text: string) => {
       try {
@@ -77,6 +101,7 @@ export function useGoalDraft(sessionId: string, supportsGoals: boolean, events: 
     publishError,
     enter,
     dismiss,
+    setStatus,
     submit,
   };
 }

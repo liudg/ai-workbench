@@ -27,7 +27,7 @@ import {
 } from "../../../types/index.ts";
 import { exclusiveComposerMode } from "./collaboration-mode.ts";
 import { type GoalSnapshot } from "./goal.ts";
-import { goalStatusLine } from "./goal-status.ts";
+import { goalStatusModel } from "./goal-status.ts";
 import { atToken, mentionSupport, type MentionSupport } from "./mentions.ts";
 import { filterSkills, skillToken } from "./skills.ts";
 
@@ -178,7 +178,7 @@ export function deriveComposerView(input: ComposerViewInput) {
     placeholder,
     planOn,
     goalOn,
-    goalStatus: goalOn ? goalStatusLine(input.goal ?? null, !input.goal?.objective) : null,
+    goalStatus: goalOn ? goalStatusModel(input.goal ?? null, !input.goal?.objective) : null,
     stopMode,
     sendDisabled,
     showPlan: Boolean(caps?.supports_plan),

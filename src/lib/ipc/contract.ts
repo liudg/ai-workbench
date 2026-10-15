@@ -107,6 +107,8 @@ export interface Backend {
   setThreadGoal(sessionId: string, objective: string): Promise<void>;
   /** `thread/goal/clear`。 */
   clearThreadGoal(sessionId: string): Promise<void>;
+  /** 暂停或继续当前目标。`paused` / `active`，不改目标正文。 */
+  setThreadGoalStatus(sessionId: string, status: "paused" | "active"): Promise<void>;
   /** `thread/goal/get`。没有线程时成功且不产生目标事件。 */
   publishThreadGoal(sessionId: string): Promise<void>;
   reviewTargets(sessionId: string): Promise<ReviewTargets>;

@@ -922,6 +922,14 @@ fn goal_action(rest: &str) -> Result<GoalAction, AgentError> {
     }
 }
 
+pub(super) fn goal_status_rest(status: &str) -> Result<&'static str, AgentError> {
+    match status {
+        "paused" => Ok("pause"),
+        "active" => Ok("resume"),
+        _ => Err(AgentError::Runtime("未知的目标状态".into())),
+    }
+}
+
 fn goal_set(objective: &str, status: &'static str, usage: &str) -> Result<GoalAction, AgentError> {
     let objective = objective.trim();
     if objective.is_empty() && status != "active" && status != "paused" {
@@ -1010,6 +1018,9 @@ mod goal_tests {
             _ => panic!("pause"),
         }
         assert!(goal_action(&"字".repeat(4001)).is_err());
+        assert_eq!(goal_status_rest("paused").unwrap(), "pause");
+        assert_eq!(goal_status_rest("active").unwrap(), "resume");
+        assert!(goal_status_rest("complete").is_err());
     }
 
     #[test]

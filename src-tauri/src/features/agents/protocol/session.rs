@@ -132,6 +132,11 @@ pub trait AgentSession: DiffScopeProvider + AnnotationSink + Send + Sync {
         Ok(())
     }
 
+    /// 暂停或继续当前目标，不改目标正文。`paused` 或 `active`。
+    async fn set_goal_status(&self, _status: &str) -> Result<(), AgentError> {
+        Err(AgentError::Runtime("这个 Agent 不能暂停目标".into()))
+    }
+
     /// 发起代码审查。调用方已经把菜单文案记成用户消息。
     async fn start_review(&self, _target: ReviewStart) -> Result<(), AgentError> {
         Err(AgentError::Runtime("这个 Agent 不能发起代码审查".into()))
