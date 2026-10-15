@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import type { Session } from "@/types";
-import { useFixedMenu } from "../use-fixed-menu";
+import { FixedMenu } from "../FixedMenu";
 import { SessionAgentIcon } from "./SessionAgentIcon";
 import { SessionStatusDot } from "./SessionStatusDot";
 import { relativeSessionTime } from "./relative-time";
@@ -42,12 +42,10 @@ export function SessionRow({
   const [renameError, setRenameError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const anchorRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
   const closeMenu = useCallback(() => {
     setMenuOpen(false);
     setForkOpen(false);
   }, []);
-  useFixedMenu(menuOpen, anchorRef, menuRef, closeMenu, "below");
 
   const canRename = Boolean(caps?.supports_rename);
   const canFork = Boolean(caps?.supports_fork);
@@ -190,14 +188,13 @@ export function SessionRow({
           )}
         </span>
       </div>
-      {menuOpen && hasMenu && (
-        <div
-          ref={menuRef}
-          role="menu"
-          aria-label="聊天操作"
-          className="fixed z-50 w-44 rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
-          style={{ top: -9999, left: 8 }}
-        >
+      <FixedMenu
+        open={menuOpen && hasMenu}
+        anchorRef={anchorRef}
+        onClose={closeMenu}
+        label="聊天操作"
+        className="w-44 rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
+      >
           {groups.map((group, index) => (
             <div key={group[0]?.key ?? index} className={cn(index > 0 && "mt-1 border-t border-zinc-800 pt-1")}>
               {group.map((item) => (
@@ -205,8 +202,7 @@ export function SessionRow({
               ))}
             </div>
           ))}
-        </div>
-      )}
+      </FixedMenu>
 
       <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
         <DialogContent>

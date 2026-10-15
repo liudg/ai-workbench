@@ -39,7 +39,6 @@ export function JumpPopover({
       aria-label={DESKTOP_ZH.diffJump}
       data-diff-jump-popover
       className="fixed z-[80] w-80 overflow-hidden rounded-xl border border-[#2a2a2a] bg-[#1b1b1b] text-[#e8e8e8] shadow-[0_12px_32px_rgba(0,0,0,0.45)]"
-      style={{ top: -9999, left: 8 }}
     >
       <div className="flex items-center gap-2 border-b border-[#2a2a2a] px-3">
         <Search className="h-3.5 w-3.5 shrink-0 text-zinc-400" />

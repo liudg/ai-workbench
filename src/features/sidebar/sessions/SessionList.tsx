@@ -35,13 +35,16 @@ export function SessionList({
 
   return (
     <div className="mt-0.5">
-      <div ref={ref}>
-        {start > 0 ? <div style={{ height: start * SESSION_ROW_HEIGHT }} /> : null}
-        {rows.map((session) => (
+      <div
+        ref={ref}
+        className="relative overflow-hidden bg-[#141414]"
+        style={{ height: visible.length * SESSION_ROW_HEIGHT }}
+      >
+        {rows.map((session, index) => (
           <div
             key={session.id}
-            style={{ height: SESSION_ROW_HEIGHT }}
-            className="flex min-w-0 items-center"
+            style={{ top: (start + index) * SESSION_ROW_HEIGHT, height: SESSION_ROW_HEIGHT }}
+            className="absolute inset-x-0 overflow-hidden"
           >
             <SessionRow
               projectId={projectId}
@@ -52,9 +55,6 @@ export function SessionList({
             />
           </div>
         ))}
-        {end < visible.length ? (
-          <div style={{ height: (visible.length - end) * SESSION_ROW_HEIGHT }} />
-        ) : null}
       </div>
       {overflow && (
         <div className="pt-0.5">

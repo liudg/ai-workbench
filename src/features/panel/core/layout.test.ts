@@ -9,6 +9,7 @@ import {
   FILES_EXPANDED_WIDTH,
   FILES_RAIL_WIDTH,
   PANEL_PREFERRED_WIDTH,
+  PREVIEW_MIN_WIDTH,
   diffListWidth,
   diffListWidthAfterDrag,
   noteFilesRail,
@@ -145,11 +146,19 @@ test("a diff file list hides instead of shrinking below its minimum", () => {
   assert.equal(diffListWidth(DIFF_LIST_MIN + 219), null);
 });
 
-test("dragging the preview keeps the chat between its minimum and maximum", () => {
+test("dragging the preview keeps the chat above its minimum and the preview above its floor", () => {
   assert.equal(panelWidthAfterDrag(1600, FILES_RAIL_WIDTH, 900), 900);
   assert.equal(panelWidthAfterDrag(1600, FILES_RAIL_WIDTH, 2000), 1600 - FILES_RAIL_WIDTH - CHAT_MIN_WIDTH);
-  assert.equal(panelWidthAfterDrag(1600, 0, 100), 1600 - CHAT_MAX_WIDTH);
+  assert.equal(panelWidthAfterDrag(1600, 0, 100), PREVIEW_MIN_WIDTH);
   assert.equal(panelWidthAfterDrag(500, 0, 400), 0);
+});
+
+test("a wide preview can move both directions from the default split", () => {
+  const room = 1600;
+  const atDefault = room - CHAT_MAX_WIDTH;
+  assert.ok(panelWidthAfterDrag(room, 0, atDefault - 120) < atDefault);
+  assert.ok(panelWidthAfterDrag(room, 0, atDefault + 120) > atDefault);
+  assert.ok(panelWidthAfterDrag(room, 0, atDefault + 120) <= room - CHAT_MIN_WIDTH);
 });
 
 test("dragging the diff file list stays inside the pane", () => {

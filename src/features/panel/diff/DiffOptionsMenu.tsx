@@ -38,7 +38,6 @@ export function OptionsMenu({
       role="menu"
       data-diff-options-menu
       className="fixed z-[80] w-max min-w-[232px] rounded-xl border border-[#2a2a2a] bg-[#1b1b1b] py-1 text-[#e8e8e8] shadow-[0_12px_32px_rgba(0,0,0,0.45)]"
-      style={{ top: -9999, left: 8 }}
     >
       {entries.map((entry) => (
         <span key={entry.id} className="block" title={entry.kind === "disabled" ? entry.reason : undefined}>

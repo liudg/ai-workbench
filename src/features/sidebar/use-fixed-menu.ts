@@ -1,20 +1,12 @@
-import { useEffect, type RefObject } from "react";
+import { useLayoutEffect, type RefObject } from "react";
 
-function placeFixedMenu(
-  anchor: HTMLElement,
-  menu: HTMLElement,
-  prefer: "below" | "above",
-) {
-  const rect = anchor.getBoundingClientRect();
-  const width = menu.offsetWidth;
-  const height = menu.offsetHeight;
-  let left = prefer === "below" ? rect.right - width : rect.left;
-  left = Math.min(Math.max(8, left), window.innerWidth - width - 8);
-  let top = prefer === "above" ? rect.top - height - 6 : rect.bottom + 6;
-  if (top + height > window.innerHeight - 8) top = rect.top - height - 6;
-  if (top < 8) top = rect.bottom + 6;
-  menu.style.top = `${top}px`;
-  menu.style.left = `${left}px`;
+import { fixedMenuPosition, type MenuSize } from "./fixed-menu-position";
+
+export interface FixedMenuBox {
+  top: number;
+  left: number;
+  maxWidth: number;
+  maxHeight: number;
 }
 
 export function useFixedMenu(
@@ -22,17 +14,25 @@ export function useFixedMenu(
   anchorRef: RefObject<HTMLElement | null>,
   menuRef: RefObject<HTMLElement | null>,
   onClose: () => void,
+  onPlace: (box: FixedMenuBox) => void,
   prefer: "below" | "above" = "below",
 ) {
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open) return;
     const place = () => {
       const anchor = anchorRef.current;
       const menu = menuRef.current;
-      if (anchor && menu) placeFixedMenu(anchor, menu, prefer);
+      if (!anchor || !menu) return;
+      const size: MenuSize = { width: menu.offsetWidth, height: menu.offsetHeight };
+      const next = fixedMenuPosition({
+        anchor: anchor.getBoundingClientRect(),
+        menu: size,
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+        prefer,
+      });
+      onPlace(next);
     };
     place();
-    const frame = requestAnimationFrame(place);
     const onPointer = (event: MouseEvent) => {
       const target = event.target as Node;
       if (anchorRef.current?.contains(target) || menuRef.current?.contains(target)) {
@@ -48,11 +48,10 @@ export function useFixedMenu(
     window.addEventListener("resize", place);
     window.addEventListener("scroll", place, true);
     return () => {
-      cancelAnimationFrame(frame);
       document.removeEventListener("mousedown", onPointer);
       document.removeEventListener("keydown", onKey);
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
     };
-  }, [open, anchorRef, menuRef, onClose, prefer]);
+  }, [open, anchorRef, menuRef, onClose, onPlace, prefer]);
 }

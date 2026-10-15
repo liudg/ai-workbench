@@ -1,4 +1,10 @@
 import type { FileChange } from "../../changes-model/diff-parse.ts";
+import {
+  defaultDiffViewPrefs,
+  diffViewPrefsEqual,
+  mergeDiffViewPrefs,
+  type DiffViewPrefs,
+} from "../diff/view-prefs.ts";
 import type { BrowserHistory } from "../browser/browser.ts";
 import {
   layoutAfterFullToggle,
@@ -47,8 +53,11 @@ export interface PanelSlice {
   previewWidthBySession: Record<string, number>;
   /** 差异正文和文件列之间拖出来的文件列宽度。 */
   diffFilesWidthBySession: Record<string, number>;
+  /** 差异工具栏的并排、换行、展开和 ··· 勾选。按会话记，切标签不丢。 */
+  diffViewBySession: Record<string, DiffViewPrefs>;
   panelSetPreviewWidth(sessionId: string, width: number): void;
   panelSetDiffFilesWidth(sessionId: string, width: number): void;
+  panelPatchDiffView(sessionId: string, patch: Partial<DiffViewPrefs>): void;
 }
 
 type PanelSet = (
@@ -108,6 +117,7 @@ export function createPanelSlice(set: PanelSet, get: PanelGet): PanelSlice {
     panelBySession: {},
     previewWidthBySession: {},
     diffFilesWidthBySession: {},
+    diffViewBySession: {},
 
     panelSelectTab(sessionId, id) {
       mutate(sessionId, (session) => (session.activeId === id ? null : { ...session, activeId: id }));
@@ -219,6 +229,16 @@ export function createPanelSlice(set: PanelSet, get: PanelGet): PanelSlice {
 
     panelSetDiffFilesWidth(sessionId, width) {
       rememberWidth("diffFilesWidthBySession", sessionId, width);
+    },
+
+    panelPatchDiffView(sessionId, patch) {
+      if (!sessionId) return;
+      set((state) => {
+        const current = state.diffViewBySession[sessionId] ?? defaultDiffViewPrefs();
+        const next = mergeDiffViewPrefs(current, patch);
+        if (state.diffViewBySession[sessionId] && diffViewPrefsEqual(current, next)) return state;
+        return { diffViewBySession: { ...state.diffViewBySession, [sessionId]: next } };
+      });
     },
   };
 }

@@ -13,7 +13,10 @@ export function Sidebar() {
 
       <ProjectHeader />
 
-      <div data-sidebar-scroll className="min-h-0 flex-1 overflow-y-auto pb-2">
+      <div
+        data-sidebar-scroll
+        className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto pb-2 [overflow-anchor:none]"
+      >
         {projects.length === 0 ? (
           <div className="mx-2 mt-4 rounded-lg border border-dashed border-[#2a2a2a] px-3 py-6 text-center">
             <p className="text-xs leading-5 text-zinc-500">

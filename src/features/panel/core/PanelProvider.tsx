@@ -12,6 +12,11 @@ import type { AgentKind, ChangeCapabilities, SessionEvent } from "@/types";
 import { useCloseBrowserOnUnmount } from "../browser/use-browser-host";
 import { showsFileChanges } from "@/features/changes-model/capabilities";
 import type { PanelLayoutMode } from "./layout";
+import {
+  browserDiffMenuStorage,
+  readDiffMenuOptions,
+} from "../diff/diff-menu-options";
+import { defaultDiffViewPrefs, type DiffViewPrefs } from "../diff/view-prefs";
 import { sessionChanges, type FileChange } from "@/features/changes-model/diff-parse";
 import { useWorkbench } from "@/store";
 import type { PanelTab } from "./registry";
@@ -41,8 +46,10 @@ interface PanelApi {
   setTabTitle: (id: string, title: string) => void;
   previewWidth: number | null;
   diffFilesWidth: number | null;
+  diffView: DiffViewPrefs;
   setPreviewWidth: (width: number) => void;
   setDiffFilesWidth: (width: number) => void;
+  patchDiffView: (patch: Partial<DiffViewPrefs>) => void;
 }
 
 const PreviewContext = createContext<PanelApi | null>(null);
@@ -83,6 +90,11 @@ export function PanelProvider({
   const layout = useWorkbench((s) => s.panelBySession[sessionId]?.layout ?? "chat");
   const previewWidth = useWorkbench((s) => s.previewWidthBySession[sessionId] ?? null);
   const diffFilesWidth = useWorkbench((s) => s.diffFilesWidthBySession[sessionId] ?? null);
+  const storedDiffView = useWorkbench((s) => s.diffViewBySession[sessionId]);
+  const diffView = useMemo(
+    () => storedDiffView ?? defaultDiffViewPrefs(readDiffMenuOptions(browserDiffMenuStorage())),
+    [storedDiffView],
+  );
   const changes = useWorkbench((s) => (agent ? s.profiles[agent]?.capabilities.changes : undefined));
   const sessionFiles = useMemo(
     () => (showsFileChanges(changes) ? sessionChanges(events) : []),
@@ -143,6 +155,9 @@ export function PanelProvider({
   const setDiffFilesWidth = useCallback((width: number) => {
     useWorkbench.getState().panelSetDiffFilesWidth(sessionId, width);
   }, [sessionId]);
+  const patchDiffView = useCallback((patch: Partial<DiffViewPrefs>) => {
+    useWorkbench.getState().panelPatchDiffView(sessionId, patch);
+  }, [sessionId]);
   useCloseBrowserOnUnmount();
 
   const api = useMemo<PanelApi>(
@@ -169,8 +184,10 @@ export function PanelProvider({
       setTabTitle,
       previewWidth,
       diffFilesWidth,
+      diffView,
       setPreviewWidth,
       setDiffFilesWidth,
+      patchDiffView,
     }),
     [
       tabs,
@@ -195,8 +212,10 @@ export function PanelProvider({
       setTabTitle,
       previewWidth,
       diffFilesWidth,
+      diffView,
       setPreviewWidth,
       setDiffFilesWidth,
+      patchDiffView,
     ],
   );
 

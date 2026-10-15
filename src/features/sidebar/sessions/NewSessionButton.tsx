@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import type { AgentKind } from "@/types";
 import { useNewSession } from "./use-new-session";
 import { buttonVariants } from "@/components/ui/button";
-import { useFixedMenu } from "../use-fixed-menu";
+import { FixedMenu } from "../FixedMenu";
 
 export function NewSessionButton({
   projectId,
@@ -24,9 +24,7 @@ export function NewSessionButton({
   const immediate = appearance === "primary" ? null : immediateSessionAgent(installations);
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setOpen(false), []);
-  useFixedMenu(open, anchorRef, menuRef, close, "below");
 
   const choose = (agent: AgentKind) => {
     setOpen(false);
@@ -66,14 +64,13 @@ export function NewSessionButton({
           <SquarePen className="h-3.5 w-3.5" />
         )}
       </button>
-      {open && (
-        <div
-          ref={menuRef}
-          role="menu"
-          aria-label="选择 Agent"
-          className="fixed z-50 w-60 overflow-hidden rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
-          style={{ top: -9999, left: 8 }}
-        >
+      <FixedMenu
+        open={open}
+        anchorRef={anchorRef}
+        onClose={close}
+        label="选择 Agent"
+        className="w-60 rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
+      >
           {menu.status === "loading" ? (
             <div className="px-3 py-3 text-sm text-zinc-500">正在检测本地 Agent…</div>
           ) : menu.status === "empty" ? (
@@ -115,8 +112,7 @@ export function NewSessionButton({
               ))}
             </div>
           )}
-        </div>
-      )}
+      </FixedMenu>
     </>
   );
 }

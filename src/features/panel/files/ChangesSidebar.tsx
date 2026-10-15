@@ -3,6 +3,7 @@ import { PanelRightClose } from "lucide-react";
 
 import type { FileChange } from "@/features/changes-model/diff-parse";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
+import { pinnedColumnStyle } from "../core/layout";
 import { resolvePreviewPath } from "../core/preview-kind";
 import { usePanel } from "../core/PanelProvider";
 import { filterFiles, useFileFilter } from "../core/file-filter";
@@ -54,8 +55,8 @@ export function ChangesSidebar({
       data-expanded="true"
       {...(mark === "session" ? { "data-session-files": "" } : {})}
       {...(mark === "diff" ? { "data-diff-files": "" } : {})}
-      style={width ? { width, minWidth: width } : undefined}
-      className="flex h-full min-h-0 min-w-0 shrink-0 flex-col overflow-hidden border-l border-[#222] bg-[#0f0f0f]"
+      style={width ? pinnedColumnStyle(width) : undefined}
+      className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-l border-[#222] bg-[#0f0f0f]"
     >
       <div className="flex shrink-0 items-center gap-1 border-b border-[#222] p-2">
         <input

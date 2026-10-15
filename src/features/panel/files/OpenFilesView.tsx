@@ -5,7 +5,7 @@ import { useElementWidth } from "@/shared/dom/useElementWidth";
 import { insertComposerText } from "@/shared/composer-insert";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { ColumnSplitter } from "../core/ColumnSplitter";
-import { FILES_EXPANDED_WIDTH, diffListWidth, diffListWidthAfterDrag } from "../core/layout";
+import { FILES_EXPANDED_WIDTH, diffListWidth, diffListWidthAfterDrag, pinnedColumnStyle } from "../core/layout";
 import { resolvePreviewPath } from "../core/preview-kind";
 import { usePanel } from "../core/PanelProvider";
 import { FileContextMenu } from "./FileContextMenu";
@@ -34,7 +34,7 @@ export function OpenFilesView() {
   const metrics = useRef({ pane: 0, list: 0 });
   const widthRef = useRef(diffFilesWidth);
   metrics.current = { pane: inner, list: listWidth ?? auto ?? 0 };
-  widthRef.current = diffFilesWidth;
+  if (diffFilesWidth !== null) widthRef.current = diffFilesWidth;
 
   const openFile = (path: string, line?: number | null) => {
     setPreviewPath(path);
@@ -55,7 +55,7 @@ export function OpenFilesView() {
 
   return (
     <div ref={frameRef} data-open-files className="relative flex h-full min-h-0 min-w-0 overflow-hidden" data-file-tree="visible">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className="flex min-h-0 w-0 min-w-0 flex-1 basis-0 flex-col overflow-hidden">
         {previewPath ? (
           <div className="min-h-0 flex-1">
             <FilePreview
@@ -81,17 +81,20 @@ export function OpenFilesView() {
           name="open-files"
           onDelta={(dx) => {
             const pane = metrics.current.pane;
-            const current = diffListWidthAfterDrag(pane, widthRef.current ?? metrics.current.list) ?? metrics.current.list;
+            const base = widthRef.current ?? metrics.current.list;
+            const current = diffListWidthAfterDrag(pane, base) ?? base;
             const next = diffListWidthAfterDrag(pane, current - dx);
-            if (next !== null) setDiffFilesWidth(next);
+            if (next === null) return;
+            widthRef.current = next;
+            setDiffFilesWidth(next);
           }}
         />
       ) : null}
       {listWidth !== null ? (
         <aside
           data-workspace-tree
-          style={{ width: listWidth, minWidth: listWidth }}
-          className="flex h-full min-h-0 shrink-0 flex-col overflow-hidden border-l border-[#222] bg-[#0f0f0f]"
+          style={pinnedColumnStyle(listWidth)}
+          className="flex h-full min-h-0 flex-col overflow-hidden border-l border-[#222] bg-[#0f0f0f]"
         >
           <div className="flex shrink-0 items-center gap-1 border-b border-[#222] p-2">
             <input

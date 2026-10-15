@@ -32,7 +32,8 @@ export function SessionSplit({ children }: { children: ReactNode }) {
   const metrics = useRef({ row: 0, panel: 0 });
   const widthRef = useRef(previewWidth);
   metrics.current = { row: layoutWidth, panel: columns.panel };
-  widthRef.current = previewWidth;
+  // 拖动中途的渲染可能还拿着旧宽度。有值才回写，避免把已经累加的位移清掉。
+  if (previewWidth !== null) widthRef.current = previewWidth;
 
   const chatWidth = measured && panelOpen && !full ? Math.max(0, layoutWidth - panelWidth) : undefined;
 
@@ -50,7 +51,7 @@ export function SessionSplit({ children }: { children: ReactNode }) {
             className="relative flex h-full min-w-0 flex-col overflow-hidden"
             style={
               chatWidth !== undefined
-                ? { width: chatWidth, flex: "0 0 auto", minWidth: 0 }
+                ? { width: chatWidth, flex: "0 0 auto", minWidth: 0, maxWidth: "none" }
                 : panelOpen
                   ? { flex: "1 1 auto", minWidth: 0, maxWidth: CHAT_MAX_WIDTH }
                   : { flex: "1 1 auto", minWidth: 0 }
@@ -65,8 +66,10 @@ export function SessionSplit({ children }: { children: ReactNode }) {
             name="chat-preview"
             onDelta={(dx) => {
               const row = metrics.current.row;
-              const current = panelWidthAfterDrag(row, 0, widthRef.current ?? metrics.current.panel);
-              setPreviewWidth(panelWidthAfterDrag(row, 0, current - dx));
+              const base = widthRef.current ?? metrics.current.panel;
+              const next = panelWidthAfterDrag(row, 0, base - dx);
+              widthRef.current = next;
+              setPreviewWidth(next);
             }}
           />
         ) : null}
@@ -76,7 +79,7 @@ export function SessionSplit({ children }: { children: ReactNode }) {
             data-preview-width={full ? undefined : measured ? panelWidth : undefined}
             style={
               full
-                ? { flex: "1 1 auto", minWidth: 0 }
+                ? { flex: "1 1 auto", width: "100%", maxWidth: "100%", minWidth: 0 }
                 : measured
                   ? { width: panelWidth, maxWidth: panelWidth, flex: "0 0 auto", minWidth: 0 }
                   : { flex: "1 1 auto", width: PANEL_PREFERRED_WIDTH, minWidth: 0 }

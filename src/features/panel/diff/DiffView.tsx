@@ -20,7 +20,7 @@ import { useGitWorkTree } from "./useGitWorkTree";
 const SPLITTER_WIDTH = 6;
 
 export function DiffView({ files }: { files: FileChange[] }) {
-  const { diffFilesWidth, setDiffFilesWidth, projectId, projectPath, sessionFiles } = usePanel();
+  const { diffFilesWidth, setDiffFilesWidth, projectId, projectPath, sessionFiles, diffView, patchDiffView } = usePanel();
   const displayFiles = useMemo(() => relativizeFiles(files, projectPath), [files, projectPath]);
   const threadFiles = useMemo(
     () => relativizeFiles(sessionFiles.length > 0 ? sessionFiles : files, projectPath),
@@ -34,8 +34,8 @@ export function DiffView({ files }: { files: FileChange[] }) {
   const contentWidth = useElementWidth(contentRef);
   const [epoch, setEpoch] = useState(0);
   const [gitEpoch, setGitEpoch] = useState(0);
-  const [filesWanted, setFilesWanted] = useState(true);
-  const [layout, setLayout] = useState<DiffLayoutMode>("auto");
+  const [filesWanted, setFilesWanted] = useState(diffView.filesOpen);
+  const [layout, setLayout] = useState<DiffLayoutMode>(diffView.layout);
   const [pendingJump, setPendingJump] = useState<string | null>(null);
   const git = useGitWorkTree(projectId, gitEpoch);
   const copy = copyApplyState({ git: git.status, gitReason: git.reason, patch: doc.patch });
@@ -47,7 +47,7 @@ export function DiffView({ files }: { files: FileChange[] }) {
   const metrics = useRef({ pane: 0, list: 0 });
   const widthRef = useRef(diffFilesWidth);
   metrics.current = { pane: inner, list: listWidth ?? auto ?? 0 };
-  widthRef.current = diffFilesWidth;
+  if (diffFilesWidth !== null) widthRef.current = diffFilesWidth;
   const sourceFor = (path: string) => (doc.loadFull ? (doc.sources[path] ?? null) : null);
 
   useEffect(() => {
@@ -96,7 +96,11 @@ export function DiffView({ files }: { files: FileChange[] }) {
           else doc.expandAll(doc.shown.map((file) => file.path));
         }}
         layoutSplit={presentation === "split"}
-        onToggleLayout={() => setLayout((value) => nextDiffLayout(value, contentWidth))}
+        onToggleLayout={() => {
+          const next = nextDiffLayout(layout, contentWidth);
+          setLayout(next);
+          patchDiffView({ layout: next });
+        }}
         wrap={doc.wrap}
         onToggleWrap={() => doc.setWrap((value) => !value)}
         onRefresh={() => {
@@ -116,7 +120,11 @@ export function DiffView({ files }: { files: FileChange[] }) {
         hideImports={doc.hideImports}
         onToggleHideImports={() => doc.setHideImports((value) => !value)}
         filesOpen={listWidth !== null}
-        onToggleFiles={() => setFilesWanted((value) => !value)}
+        onToggleFiles={() => {
+          const next = !filesWanted;
+          setFilesWanted(next);
+          patchDiffView({ filesOpen: next });
+        }}
         jumpFiles={threadFiles}
         activePath={doc.active?.path ?? ""}
         onJump={jumpTo}
@@ -124,7 +132,7 @@ export function DiffView({ files }: { files: FileChange[] }) {
         copyReason={copy.reason}
       />
       <div data-diff-split className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-        <div ref={contentRef} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <div ref={contentRef} className="flex min-h-0 w-0 min-w-0 flex-1 basis-0 flex-col overflow-hidden">
           <div
             className={cn(
               "min-h-0 min-w-0 flex-1 overflow-y-auto",
@@ -162,9 +170,12 @@ export function DiffView({ files }: { files: FileChange[] }) {
             name="diff-files"
             onDelta={(dx) => {
               const pane = metrics.current.pane;
-              const current = diffListWidthAfterDrag(pane, widthRef.current ?? metrics.current.list) ?? metrics.current.list;
+              const base = widthRef.current ?? metrics.current.list;
+              const current = diffListWidthAfterDrag(pane, base) ?? base;
               const next = diffListWidthAfterDrag(pane, current - dx);
-              if (next !== null) setDiffFilesWidth(next);
+              if (next === null) return;
+              widthRef.current = next;
+              setDiffFilesWidth(next);
             }}
           />
         ) : null}

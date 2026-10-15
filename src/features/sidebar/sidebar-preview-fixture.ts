@@ -218,6 +218,32 @@ export function seedSidebarPreview() {
         }),
       ],
     },
+    // 只给开发预览用，不进安装包。新建菜单需要两份可开会话的 Agent 才能对上位置。
+    installations: [
+      {
+        kind: "codex-cli",
+        display_name: "Codex CLI",
+        installed: true,
+        version: null,
+        latest_version: null,
+        update_available: false,
+        update_via: null,
+        detail: null,
+        session_linked: true,
+      },
+      {
+        kind: "claude-code",
+        display_name: "Claude Code",
+        installed: true,
+        version: null,
+        latest_version: null,
+        update_available: false,
+        update_via: null,
+        detail: null,
+        session_linked: true,
+      },
+    ],
+    installationsLoading: false,
     profiles: {
       "codex-cli": profile("codex-cli", "Codex CLI", "/agent-icons/codex.svg"),
       "claude-code": profile("claude-code", "Claude Code", "/agent-icons/claude.svg"),

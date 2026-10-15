@@ -11,7 +11,7 @@ export function ColumnSplitter({
       aria-orientation="vertical"
       aria-label={name === "chat-preview" ? "调整预览宽度" : "调整文件列宽度"}
       data-resize={name}
-      className="relative z-20 w-1.5 shrink-0 cursor-col-resize bg-zinc-900 hover:bg-zinc-600"
+      className="relative z-20 w-1.5 shrink-0 cursor-col-resize touch-none bg-zinc-900 hover:bg-zinc-600 before:absolute before:inset-y-0 before:-left-1.5 before:-right-1.5 before:content-['']"
       onPointerDown={(event) => {
         if (event.button !== 0) return;
         event.preventDefault();

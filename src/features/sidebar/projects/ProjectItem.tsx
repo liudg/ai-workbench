@@ -69,7 +69,7 @@ export function ProjectItem({ project }: { project: Project }) {
         ) : null}
         <span className="min-w-0 flex-1" />
         {/* 操作钮叠在行尾。短分支留在名字旁边；长分支用剩余宽度，悬停时不把下面的会话顶开。 */}
-        <div className="absolute right-1.5 top-1/2 z-10 flex h-6 w-12 -translate-y-1/2 items-center justify-end rounded-md group-hover:bg-[#1b1b1b] group-focus-within:bg-[#1b1b1b]">
+        <div className="absolute right-1.5 top-[calc(50%-12px)] z-10 flex h-6 w-12 items-center justify-end rounded-md group-hover:bg-[#1b1b1b] group-focus-within:bg-[#1b1b1b]">
           {!project.external && (
             <div ref={menuRef} className="relative">
               <button

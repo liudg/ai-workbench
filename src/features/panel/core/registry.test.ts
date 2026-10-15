@@ -185,6 +185,22 @@ describe("panel viewers", { concurrency: 1 }, () => {
     assert.equal(store.getState().previewWidthBySession["session-a"], 640);
   });
 
+  test("diff view toggles stay on the session and do not create a panel", () => {
+    const store = testStore();
+    store.getState().panelPatchDiffView("session-a", { layout: "split", wrap: false });
+    store.getState().panelPatchDiffView("session-a", {
+      menu: { ...store.getState().diffViewBySession["session-a"]!.menu, hideWhitespace: true },
+    });
+    const saved = store.getState().diffViewBySession["session-a"];
+    assert.equal(saved?.layout, "split");
+    assert.equal(saved?.wrap, false);
+    assert.equal(saved?.menu.hideWhitespace, true);
+    assert.equal(saved?.filesOpen, true);
+    assert.equal(store.getState().panelBySession["session-a"], undefined);
+    store.getState().panelPatchDiffView("", { layout: "inline" });
+    assert.equal(store.getState().diffViewBySession[""], undefined);
+  });
+
   test("hrefs become urls, files inside or outside the project, or unreadable targets", () => {
     assert.deepEqual(targetFromHref("C:/work/demo", "https://example.com/a"), {
       kind: "url",

@@ -7,6 +7,8 @@ export const SIDEBAR_WIDTH = 260;
 export const CHAT_MIN_WIDTH = 540;
 export const CHAT_MAX_WIDTH = 760;
 export const PANEL_PREFERRED_WIDTH = 540;
+/** 拖分隔条时预览可以收到这个宽度，这样默认布局下也能往右拖。 */
+export const PREVIEW_MIN_WIDTH = 400;
 export const FILES_EXPANDED_WIDTH = 240;
 export const FILES_RAIL_WIDTH = 44;
 export const DIFF_LIST_WIDTH = 208;
@@ -126,14 +128,39 @@ export function toggleFilesSidebar(state: FilesRailState): FilesRailState {
   return { ...state, filesSidebarOpen: !state.filesSidebarOpen };
 }
 
-/** 拖聊天和预览之间的分隔条。聊天留在 540–760，放不下时预览可以收到 0。 */
+/**
+ * 拖聊天和预览之间的分隔条。
+ * 默认布局仍把聊天留在 540–760，多出来的给预览。
+ * 拖的时候预览可以继续收到 PREVIEW_MIN_WIDTH，聊天因此可以宽过 760，
+ * 否则宽屏上预览已经贴着下限，分隔条只能往左。
+ * 行宽不够时预览下限让路，避免把聊天挤没。
+ */
 export function panelWidthAfterDrag(rowWidth: number, filesWidth: number, requested: number): number {
   const room = Math.max(0, rowWidth - filesWidth);
   const chatFloor = Math.min(CHAT_MIN_WIDTH, room);
-  const chatCap = Math.min(CHAT_MAX_WIDTH, room);
   const maxPanel = Math.max(0, room - chatFloor);
-  const minPanel = Math.max(0, room - chatCap);
-  return Math.max(minPanel, Math.min(Math.round(requested), maxPanel));
+  const previewFloor = Math.min(PREVIEW_MIN_WIDTH, maxPanel);
+  return Math.max(previewFloor, Math.min(Math.round(requested), maxPanel));
+}
+
+/** 文件列宽度由拖拽决定。minWidth 设成 0，内容的最小宽度才不会挡住往右收。 */
+export function pinnedColumnStyle(width: number): {
+  width: number;
+  maxWidth: number;
+  minWidth: number;
+  flexBasis: number;
+  flexGrow: number;
+  flexShrink: number;
+} {
+  const next = Math.max(0, Math.round(width));
+  return {
+    width: next,
+    maxWidth: next,
+    minWidth: 0,
+    flexBasis: next,
+    flexGrow: 0,
+    flexShrink: 0,
+  };
 }
 
 /** 拖差异和文件列表之间的分隔条。放不下就收起文件列表。 */
