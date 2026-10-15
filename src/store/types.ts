@@ -104,7 +104,7 @@ export interface WorkspaceSlice {
   ): Promise<void>;
   setCollaborationMode(sessionId: string, mode: "plan" | "default"): Promise<void>;
   startReview(sessionId: string, target: ReviewStart): Promise<void>;
-  answerPrompt(sessionId: string, promptId: string, answer: PromptAnswer): Promise<void>;
+  answerPrompt(sessionId: string, promptId: string, answer: PromptAnswer): Promise<boolean>;
   loadOlderHistory(sessionId: string): Promise<boolean>;
   stopSession(sessionId: string): Promise<void>;
 }

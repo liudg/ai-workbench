@@ -4,7 +4,7 @@ export type AnswerPrompt = (
   sessionId: string,
   promptId: string,
   answer: PromptAnswer,
-) => void | Promise<void>;
+) => void | Promise<void | boolean>;
 
 export interface PromptBodyProps {
   event: Extract<SessionEvent, { kind: "prompt" }>;

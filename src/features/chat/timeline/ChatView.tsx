@@ -11,6 +11,8 @@ import { agentTurnName, useAgentIdentity } from "../events/use-agent-identity";
 import { ChangeCard } from "../cards/ChangeCard";
 import { Composer } from "../composer/Composer";
 import { EventItem } from "../events/EventItem";
+import { pendingQuestionEvent } from "../events/pending-question";
+import { QuestionPopup } from "../events/QuestionPopup";
 import { ActivityStream } from "./ActivityStream";
 import { LiveTurn } from "./LiveTurn";
 import { TurnFoldLine } from "./TurnFoldLine";
@@ -32,6 +34,11 @@ export function ChatView({
   events: SessionEvent[];
 }) {
   const pendingId = useMemo(() => pendingPrompt(events), [events]);
+  const questionEvent = useMemo(
+    () => pendingQuestionEvent(events, session.status),
+    [events, session.status],
+  );
+  const [questionAnchor, setQuestionAnchor] = useState<HTMLDivElement | null>(null);
   const resolvedAnswers = useMemo(() => {
     const map = new Map<string, string>();
     for (const e of events) {
@@ -176,8 +183,21 @@ export function ChatView({
         </div>
       </div>
       <div data-composer-column className="mx-auto w-full max-w-[760px]">
-        <Composer key={session.id} session={session} events={events} />
+        <Composer
+          key={session.id}
+          session={session}
+          events={events}
+          anchorRef={setQuestionAnchor}
+        />
       </div>
+      {questionEvent ? (
+        <QuestionPopup
+          key={questionEvent.prompt_id}
+          event={questionEvent}
+          sessionId={session.id}
+          anchor={questionAnchor}
+        />
+      ) : null}
       {pendingId && (
         <div className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-transparent via-amber-400/60 to-transparent" />
       )}
