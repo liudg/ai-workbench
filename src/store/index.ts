@@ -7,6 +7,11 @@ import { createSidebarSlice } from "./slices/sidebar";
 import { createUpdatesSlice } from "./slices/updates";
 import { createWorkspaceSlice } from "./slices/workspace";
 import type { WorkbenchState } from "./types";
+import {
+  browserUnreadStorage,
+  syncUnreadFinished,
+  writeUnreadFinishedIds,
+} from "./unread-finished";
 
 export type { AppScreen, DialogMode } from "./types";
 
@@ -18,3 +23,19 @@ export const useWorkbench = create<WorkbenchState>()((set, get) => ({
   ...createUpdatesSlice(set),
   ...createPanelSlice(set, get),
 }));
+
+// 侧栏状态来自会话列表刷新。结束且当时没打开，就记一笔「新」。
+useWorkbench.subscribe((state, previous) => {
+  if (
+    state.sessions === previous.sessions &&
+    state.unreadFinishedIds === previous.unreadFinishedIds &&
+    state.selectedProjectId === previous.selectedProjectId &&
+    state.activeSessionId === previous.activeSessionId
+  ) {
+    return;
+  }
+  const ids = syncUnreadFinished(previous, state);
+  if (!ids) return;
+  useWorkbench.setState({ unreadFinishedIds: ids });
+  writeUnreadFinishedIds(browserUnreadStorage(), ids);
+});

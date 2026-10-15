@@ -40,6 +40,8 @@ export type SidebarNotice = { kind: "info"; text: string; token: number };
 export interface SidebarSlice {
   projects: Project[];
   sessions: Record<string, Session[]>;
+  /** 跑完后还没点开的会话。本地记住，和具体 Agent 无关。 */
+  unreadFinishedIds: string[];
   sidebarNotice: SidebarNotice | null;
   lifecycleBusy: string | null;
   /** 工作台本地置顶。和 Agent 能力无关，顺序是最近置顶在前。 */
