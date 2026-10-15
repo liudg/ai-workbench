@@ -221,8 +221,10 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
     async answerPrompt(sessionId, promptId, answer) {
       try {
         await backend.answerPrompt(sessionId, promptId, answer);
+        return true;
       } catch (e) {
         reportSessionError(get, set, sessionId, e);
+        return false;
       }
     },
 

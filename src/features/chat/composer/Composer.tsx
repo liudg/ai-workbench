@@ -1,3 +1,5 @@
+import type { Ref } from "react";
+
 import { cn } from "@/lib/utils";
 import type { Session, SessionEvent } from "@/types";
 import { AccessMenu } from "./AccessMenu";
@@ -14,7 +16,15 @@ import { SlashMenu } from "./SlashMenu";
 import { GoalStatusBar } from "./GoalStatusBar";
 import { useComposerController } from "./useComposerController";
 
-export function Composer({ session, events }: { session: Session; events: SessionEvent[] }) {
+export function Composer({
+  session,
+  events,
+  anchorRef,
+}: {
+  session: Session;
+  events: SessionEvent[];
+  anchorRef?: Ref<HTMLDivElement>;
+}) {
   const c = useComposerController(session, events);
   const view = c.view;
   const slashSelected = Math.min(c.slashIndex, Math.max(view.slashMatches.length - 1, 0));
@@ -83,6 +93,8 @@ export function Composer({ session, events }: { session: Session; events: Sessio
           />
         ) : null}
         <div
+          ref={anchorRef}
+          data-question-anchor
           className={cn(
             "min-w-0 rounded-[18px] border border-[#2a2a2a] bg-[#171717] transition-colors focus-within:border-[#3a3a3a]",
             c.dragOver && view.imagesOn && "border-indigo-400/80",
