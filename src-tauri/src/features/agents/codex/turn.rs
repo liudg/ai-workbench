@@ -611,12 +611,7 @@ impl Shared {
         };
         let access = self.access.lock().unwrap().clone();
         let model = self.model.lock().unwrap().clone();
-        let effort = self
-            .effort
-            .lock()
-            .unwrap()
-            .clone()
-            .or_else(|| self.thread_effort.lock().unwrap().clone());
+        let effort = self.effective_effort();
         let input = super::status::StatusInput {
             version: self.version.lock().unwrap().clone(),
             model: if model.is_empty() {

@@ -164,3 +164,23 @@ async fn review_targets_put_the_default_branch_first() {
     assert_eq!(targets.commits[0].title, "seed");
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+fn effort_falls_back_to_thread_effective_effort() {
+    assert_eq!(
+        pick_effort(None, Some("high".into())).as_deref(),
+        Some("high")
+    );
+    assert_eq!(
+        pick_effort(Some("low".into()), Some("high".into())).as_deref(),
+        Some("low")
+    );
+    assert_eq!(
+        pick_effort(Some(" ".into()), Some("high".into())).as_deref(),
+        Some("high")
+    );
+    assert!(pick_effort(None, None).is_none());
+    let effort = pick_effort(None, Some("high".into()));
+    let mode = collaboration_mode_value("default", "gpt-test", effort.as_deref());
+    assert_eq!(mode["settings"]["reasoning_effort"], json!("high"));
+}

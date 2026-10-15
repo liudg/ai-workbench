@@ -7,7 +7,7 @@ use crate::models::{PromptKind, ReviewStart, SessionEventBody};
 
 use super::super::state::{emit, Collaboration, Pending, Shared};
 use super::{
-    collaboration_mode_value, plan_collaboration_mode, plan_implementation_options,
+    collaboration_mode_value, pick_effort, plan_collaboration_mode, plan_implementation_options,
     review_protocol, CLEAR_CONTEXT_ID, IMPLEMENT_ID, PLAN_IMPLEMENTATION_CLEAR_CONTEXT_PREFIX,
     PLAN_IMPLEMENTATION_CODING_MESSAGE, PLAN_IMPLEMENTATION_TITLE,
 };
@@ -56,6 +56,14 @@ impl Shared {
         }
     }
 
+    /// 作曲栏选的强度；没选时为线程回包里的生效强度。
+    pub(in crate::features::agents::codex) fn effective_effort(&self) -> Option<String> {
+        pick_effort(
+            self.effort.lock().unwrap().clone(),
+            self.thread_effort.lock().unwrap().clone(),
+        )
+    }
+
     pub(in crate::features::agents::codex) fn attach_plan_mode(
         &self,
         params: &mut Value,
@@ -66,7 +74,9 @@ impl Shared {
             Err(err) if plan => return Err(err),
             Err(_) => return Ok(()),
         };
-        let effort = self.effort.lock().unwrap().clone();
+        // collaborationMode 覆盖整轮设置，null 会让服务端退回模型默认强度。
+        // 没选过时沿用线程回包的生效强度，与作曲栏显示一致。
+        let effort = self.effective_effort();
         params["collaborationMode"] = if plan {
             plan_collaboration_mode(&model, effort.as_deref())
         } else {
