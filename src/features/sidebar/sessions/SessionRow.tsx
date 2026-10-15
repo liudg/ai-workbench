@@ -31,8 +31,17 @@ export function SessionRow({
   readOnly: boolean;
   now: number;
 }) {
-  const { selectSession, caps, identity, busy, renameSession, forkSession, deleteSession } =
-    useSessionRow(session);
+  const {
+    selectSession,
+    caps,
+    identity,
+    busy,
+    renameSession,
+    forkSession,
+    deleteSession,
+    unreadFinished,
+  } = useSessionRow(session);
+  const showUnread = unreadFinished && !active;
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [forkOpen, setForkOpen] = useState(false);
@@ -150,7 +159,10 @@ export function SessionRow({
         }}
       >
         <SessionAgentIcon identity={identity} />
-        <span className="min-w-0 flex-1 truncate">{session.title}</span>
+        <span className="flex min-w-0 flex-1 items-center gap-1">
+          <span className="min-w-0 truncate">{session.title}</span>
+          {showUnread && <UnreadFinishedMark />}
+        </span>
         {readOnly && (
           <span className="ml-1 shrink-0 rounded bg-amber-400/15 px-1.5 py-0.5 text-[10px] leading-4 text-amber-200">
             只读
@@ -265,6 +277,17 @@ export function SessionRow({
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+function UnreadFinishedMark() {
+  return (
+    <span
+      data-unread-finished=""
+      className="inline-flex h-3.5 shrink-0 items-center rounded bg-[#4f8dff] px-1 text-[10px] font-medium leading-none text-white"
+    >
+      新
+    </span>
   );
 }
 

@@ -1,4 +1,5 @@
 import { useWorkbench } from "@/store";
+import { isFinishedStatus } from "@/store/unread-finished";
 import type { Session } from "@/types";
 import { agentIdentity } from "./agent-identity";
 
@@ -11,5 +12,17 @@ export function useSessionRow(session: Session) {
   const renameSession = useWorkbench((s) => s.renameSession);
   const forkSession = useWorkbench((s) => s.forkSession);
   const deleteSession = useWorkbench((s) => s.deleteSession);
-  return { selectSession, caps, identity, busy, renameSession, forkSession, deleteSession };
+  const unreadFinished = useWorkbench(
+    (s) => s.unreadFinishedIds.includes(session.id) && isFinishedStatus(session.status),
+  );
+  return {
+    selectSession,
+    caps,
+    identity,
+    busy,
+    renameSession,
+    forkSession,
+    deleteSession,
+    unreadFinished,
+  };
 }

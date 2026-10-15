@@ -1,6 +1,7 @@
 import { initialSandbox } from "@/lib/sandbox";
 import { backend } from "@/lib/ipc";
 import type { Session } from "@/types";
+import { browserUnreadStorage, readUnreadFinishedIds } from "../unread-finished";
 import {
   clearMissingSessionBanner,
   deselectSession,
@@ -45,6 +46,7 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
   return {
     projects: [],
     sessions: {},
+    unreadFinishedIds: readUnreadFinishedIds(browserUnreadStorage()),
     sidebarNotice: null,
     lifecycleBusy: null,
     selectedProjectId: null,
