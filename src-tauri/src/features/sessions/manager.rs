@@ -98,7 +98,6 @@ impl SessionManager {
             .values()
             .filter(|entry| {
                 entry.meta.project_id == project.id
-                    && !entry.meta.archived
                     && !sessions.iter().any(|session| {
                         session.agent == entry.meta.agent
                             && session.native_id == entry.meta.native_id
@@ -651,13 +650,17 @@ impl SessionManager {
             .catalog_cache
             .get(kind)
             .filter(|catalog| catalog.agent.is_none_or(|agent| agent == kind));
-        let incoming = handle.catalog().await.map_err(|err| err.to_string()).and_then(|mut catalog| {
-            if catalog.agent.is_some_and(|agent| agent != kind) {
-                return Err("模型列表与当前会话不符".into());
-            }
-            catalog.agent = Some(kind);
-            Ok(catalog)
-        });
+        let incoming = handle
+            .catalog()
+            .await
+            .map_err(|err| err.to_string())
+            .and_then(|mut catalog| {
+                if catalog.agent.is_some_and(|agent| agent != kind) {
+                    return Err("模型列表与当前会话不符".into());
+                }
+                catalog.agent = Some(kind);
+                Ok(catalog)
+            });
         let refresh = soften_catalog(previous.as_ref(), incoming)?;
         if refresh.notice.is_none() && !refresh.catalog.models.is_empty() {
             self.catalog_cache.remember(kind, &refresh.catalog);
@@ -884,6 +887,44 @@ impl SessionManager {
                 .map_err(|_| first.to_string())?;
         }
         self.entries.lock().unwrap().remove(session_id);
+        self.invalidate_kind(agent).await;
+        self.emit_changed(&project.id);
+        Ok(())
+    }
+
+    pub async fn set_session_archived(
+        &self,
+        store: &ProjectStore,
+        session_id: &str,
+        archived: bool,
+    ) -> Result<(), String> {
+        let (agent, native, project) = self.locate_session(store, session_id).await?;
+        let adapter = adapter_for(agent);
+        if !adapter.capabilities().supports_archive {
+            return Err(format!("{} 不支持归档", adapter.display_name()));
+        }
+        if let Err(first) = adapter.set_archived(&native, archived).await {
+            if !archived {
+                return Err(first.to_string());
+            }
+            // 已打开的线程占着写锁时，`thread/archive` 会拒绝。先停再试一次。
+            let handle = self
+                .entries
+                .lock()
+                .unwrap()
+                .get(session_id)
+                .and_then(|entry| entry.agent.clone());
+            if let Some(handle) = handle {
+                let _ = handle.stop().await;
+            }
+            adapter
+                .set_archived(&native, true)
+                .await
+                .map_err(|_| first.to_string())?;
+        }
+        if let Some(entry) = self.entries.lock().unwrap().get_mut(session_id) {
+            entry.meta.archived = archived;
+        }
         self.invalidate_kind(agent).await;
         self.emit_changed(&project.id);
         Ok(())

@@ -8,8 +8,20 @@ export function useSessionRow(session: Session) {
   const caps = profile?.kind === session.agent ? profile.capabilities : undefined;
   const identity = agentIdentity(session.agent, profile);
   const busy = useWorkbench((s) => s.lifecycleBusy === session.id);
+  const pinned = useWorkbench((s) => s.pinnedSessionIds.includes(session.id));
   const renameSession = useWorkbench((s) => s.renameSession);
-  const forkSession = useWorkbench((s) => s.forkSession);
+  const togglePinnedSession = useWorkbench((s) => s.togglePinnedSession);
+  const archiveSession = useWorkbench((s) => s.archiveSession);
   const deleteSession = useWorkbench((s) => s.deleteSession);
-  return { selectSession, caps, identity, busy, renameSession, forkSession, deleteSession };
+  return {
+    selectSession,
+    caps,
+    identity,
+    busy,
+    pinned,
+    renameSession,
+    togglePinnedSession,
+    archiveSession,
+    deleteSession,
+  };
 }

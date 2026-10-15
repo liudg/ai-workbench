@@ -1,5 +1,5 @@
-import { useCallback, useRef, useState, type ReactNode } from "react";
-import { ChevronRight, Ellipsis } from "lucide-react";
+import { useCallback, useRef, useState } from "react";
+import { Ellipsis, Pin } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -16,6 +16,7 @@ import { FixedMenu } from "../FixedMenu";
 import { SessionAgentIcon } from "./SessionAgentIcon";
 import { SessionStatusDot } from "./SessionStatusDot";
 import { relativeSessionTime } from "./relative-time";
+import { sessionMenuItems, type SessionMenuAction } from "./session-menu";
 import { useSessionRow } from "./use-session-row";
 
 export function SessionRow({
@@ -31,100 +32,48 @@ export function SessionRow({
   readOnly: boolean;
   now: number;
 }) {
-  const { selectSession, caps, identity, busy, renameSession, forkSession, deleteSession } =
-    useSessionRow(session);
+  const {
+    selectSession,
+    caps,
+    identity,
+    busy,
+    pinned,
+    renameSession,
+    togglePinnedSession,
+    archiveSession,
+    deleteSession,
+  } = useSessionRow(session);
 
   const [menuOpen, setMenuOpen] = useState(false);
-  const [forkOpen, setForkOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [title, setTitle] = useState(session.title);
   const [renameError, setRenameError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const anchorRef = useRef<HTMLButtonElement>(null);
-  const closeMenu = useCallback(() => {
-    setMenuOpen(false);
-    setForkOpen(false);
-  }, []);
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
+  const archived = Boolean(session.archived);
+  const items = sessionMenuItems({ caps, pinned, archived });
 
-  const canRename = Boolean(caps?.supports_rename);
-  const canFork = Boolean(caps?.supports_fork);
-  const canDelete = Boolean(caps?.supports_delete);
-  const hasMenu = canRename || canFork || canDelete;
-
-  const groups: Array<Array<{ key: string; node: ReactNode }>> = [];
-  if (canRename) {
-    groups.push([
-      {
-        key: "rename",
-        node: (
-          <MenuItem
-            label="重命名聊天"
-            onSelect={() => {
-              closeMenu();
-              setTitle(session.title);
-              setRenameError(null);
-              setRenameOpen(true);
-            }}
-          />
-        ),
-      },
-    ]);
-  }
-  if (canFork) {
-    groups.push([
-      {
-        key: "fork",
-        node: (
-          <div className="relative">
-            <button
-              type="button"
-              role="menuitem"
-              className="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-zinc-100 hover:bg-zinc-800"
-              aria-expanded={forkOpen}
-              onClick={(event) => {
-                event.stopPropagation();
-                setForkOpen((open) => !open);
-              }}
-            >
-              分叉
-              <ChevronRight className="h-3.5 w-3.5 text-zinc-500" />
-            </button>
-            {forkOpen && (
-              <div className="absolute left-full top-0 z-10 ml-1 w-44 overflow-hidden rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50">
-                <MenuItem
-                  label={busy ? "正在创建聊天分支…" : "创建聊天分支"}
-                  disabled={busy}
-                  onSelect={() => {
-                    closeMenu();
-                    void forkSession(projectId, session.id);
-                  }}
-                />
-              </div>
-            )}
-          </div>
-        ),
-      },
-    ]);
-  }
-  const lifecycle: Array<{ key: string; node: ReactNode }> = [];
-  if (canDelete) {
-    lifecycle.push({
-      key: "delete",
-      node: (
-        <MenuItem
-          label="永久删除"
-          danger
-          onSelect={() => {
-            closeMenu();
-            setDeleteError(null);
-            setDeleteOpen(true);
-          }}
-        />
-      ),
-    });
-  }
-  if (lifecycle.length > 0) groups.push(lifecycle);
+  const run = (action: SessionMenuAction) => {
+    closeMenu();
+    if (action === "rename") {
+      setTitle(session.title);
+      setRenameError(null);
+      setRenameOpen(true);
+      return;
+    }
+    if (action === "pin") {
+      togglePinnedSession(session.id);
+      return;
+    }
+    if (action === "archive") {
+      void archiveSession(projectId, session.id, !archived);
+      return;
+    }
+    setDeleteError(null);
+    setDeleteOpen(true);
+  };
 
   return (
     <>
@@ -135,6 +84,8 @@ export function SessionRow({
         data-session-id={session.id}
         data-agent={session.agent}
         data-active={active ? "true" : "false"}
+        data-pinned={pinned ? "true" : "false"}
+        data-archived={archived ? "true" : "false"}
         className={cn(
           "group flex h-full w-full items-center gap-1.5 rounded-md pl-9 pr-2 text-left text-[11.5px] leading-none",
           active
@@ -157,6 +108,7 @@ export function SessionRow({
           </span>
         )}
         <SessionStatusDot status={session.status} />
+        {pinned && <Pin className="h-3 w-3 shrink-0 text-[#8a8a8a]" aria-hidden="true" />}
         <span className="relative flex w-16 shrink-0 justify-end text-right tabular-nums">
           <span
             className={cn(
@@ -167,7 +119,7 @@ export function SessionRow({
           >
             {relativeSessionTime(session.updated_at, now)}
           </span>
-          {hasMenu && (
+          {items.length > 0 && (
             <button
               ref={anchorRef}
               type="button"
@@ -189,25 +141,28 @@ export function SessionRow({
         </span>
       </div>
       <FixedMenu
-        open={menuOpen && hasMenu}
+        open={menuOpen && items.length > 0}
         anchorRef={anchorRef}
         onClose={closeMenu}
         label="聊天操作"
         className="w-44 rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
       >
-          {groups.map((group, index) => (
-            <div key={group[0]?.key ?? index} className={cn(index > 0 && "mt-1 border-t border-zinc-800 pt-1")}>
-              {group.map((item) => (
-                <div key={item.key}>{item.node}</div>
-              ))}
-            </div>
-          ))}
+        {items.map((item) => (
+          <MenuItem
+            key={item.id}
+            action={item.id}
+            label={item.label}
+            danger={item.danger}
+            disabled={busy && item.id === "archive"}
+            onSelect={() => run(item.id)}
+          />
+        ))}
       </FixedMenu>
 
       <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>重命名聊天</DialogTitle>
+            <DialogTitle>重命名</DialogTitle>
             <DialogDescription>保持简短且易于识别</DialogDescription>
           </DialogHeader>
           <input
@@ -269,11 +224,13 @@ export function SessionRow({
 }
 
 function MenuItem({
+  action,
   label,
   onSelect,
   danger = false,
   disabled = false,
 }: {
+  action: SessionMenuAction;
   label: string;
   onSelect: () => void;
   danger?: boolean;
@@ -283,6 +240,7 @@ function MenuItem({
     <button
       type="button"
       role="menuitem"
+      data-session-action={action}
       disabled={disabled}
       className={cn(
         "block w-full px-3 py-2 text-left text-sm hover:bg-zinc-800 disabled:opacity-60",

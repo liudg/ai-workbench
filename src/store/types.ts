@@ -42,6 +42,8 @@ export interface SidebarSlice {
   sessions: Record<string, Session[]>;
   sidebarNotice: SidebarNotice | null;
   lifecycleBusy: string | null;
+  /** 工作台本地置顶。和 Agent 能力无关，顺序是最近置顶在前。 */
+  pinnedSessionIds: string[];
   selectedProjectId: string | null;
   activeSessionId: Record<string, string>;
   dialog: DialogMode | null;
@@ -58,6 +60,8 @@ export interface SidebarSlice {
   releaseMissingSession(sessionId: string): void;
   renameSession(sessionId: string, name: string): Promise<boolean>;
   forkSession(projectId: string, sessionId: string): Promise<void>;
+  togglePinnedSession(sessionId: string): void;
+  archiveSession(projectId: string, sessionId: string, archived: boolean): Promise<boolean>;
   deleteSession(projectId: string, sessionId: string): Promise<boolean>;
 }
 

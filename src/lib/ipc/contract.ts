@@ -41,6 +41,7 @@ export interface Backend {
   listSessions(projectId: string): Promise<Session[]>;
   forkSession(sessionId: string): Promise<Session>;
   renameSession(sessionId: string, name: string): Promise<void>;
+  setSessionArchived(sessionId: string, archived: boolean): Promise<void>;
   deleteSession(sessionId: string): Promise<void>;
   createSession(
     projectId: string,

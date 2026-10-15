@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { pinActiveSessions, SESSION_PREVIEW_LIMIT, sidebarSessionWindow } from "./session-order.ts";
+import {
+  orderSidebarSessions,
+  pinActiveSessions,
+  SESSION_PREVIEW_LIMIT,
+  sidebarSessionWindow,
+} from "./session-order.ts";
 import { visibleRange } from "./virtual-window.ts";
 
 test("active sessions pin above idle ones and keep their own order", () => {
@@ -18,6 +23,22 @@ test("active sessions pin above idle ones and keep their own order", () => {
   assert.deepEqual(
     pinActiveSessions(sessions).map((item) => item.id),
     ["b", "d", "h", "a", "c", "e", "f", "g"],
+  );
+});
+
+test("user pins sit above running sessions, newest pin first", () => {
+  const sessions = [
+    { id: "idle", status: "completed" },
+    { id: "run", status: "running" },
+    { id: "old", status: "completed" },
+  ];
+  assert.deepEqual(
+    orderSidebarSessions(sessions, ["old", "idle"]).map((item) => item.id),
+    ["old", "idle", "run"],
+  );
+  assert.deepEqual(
+    orderSidebarSessions(sessions, []).map((item) => item.id),
+    ["run", "idle", "old"],
   );
 });
 

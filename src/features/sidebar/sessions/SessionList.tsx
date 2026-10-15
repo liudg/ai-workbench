@@ -1,11 +1,7 @@
-import { useEffect, useState } from "react";
-
+import { useWorkbench } from "@/store";
 import type { Session } from "@/types";
-import { SessionRow } from "./SessionRow";
+import { SessionRows } from "./SessionRows";
 import { sidebarSessionWindow } from "./session-order";
-import { useReadOnlySessionKey } from "./use-session-list";
-import { useVirtualRows } from "./use-virtual-rows";
-import { SESSION_ROW_HEIGHT } from "./virtual-window";
 
 export function SessionList({
   projectId,
@@ -22,40 +18,17 @@ export function SessionList({
   showAll: boolean;
   onToggleShowAll: () => void;
 }) {
-  const readOnlyKey = useReadOnlySessionKey(sessions);
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
-    return () => window.clearInterval(timer);
-  }, []);
-  const { visible, overflow } = sidebarSessionWindow(sessions, showAll);
-  const { ref, start, end } = useVirtualRows(visible.length, SESSION_ROW_HEIGHT);
-  const rows = visible.slice(start, end);
-  const readOnlyIds = new Set(readOnlyKey ? readOnlyKey.slice(0, -1).split("\n") : []);
+  const pinnedIds = useWorkbench((s) => s.pinnedSessionIds);
+  const { visible, overflow } = sidebarSessionWindow(sessions, showAll, pinnedIds);
 
   return (
     <div className="mt-0.5">
-      <div
-        ref={ref}
-        className="relative overflow-hidden bg-[#141414]"
-        style={{ height: visible.length * SESSION_ROW_HEIGHT }}
-      >
-        {rows.map((session, index) => (
-          <div
-            key={session.id}
-            style={{ top: (start + index) * SESSION_ROW_HEIGHT, height: SESSION_ROW_HEIGHT }}
-            className="absolute inset-x-0 overflow-hidden"
-          >
-            <SessionRow
-              projectId={projectId}
-              session={session}
-              active={selected && session.id === activeSessionId}
-              readOnly={readOnlyIds.has(session.id)}
-              now={now}
-            />
-          </div>
-        ))}
-      </div>
+      <SessionRows
+        projectId={projectId}
+        sessions={visible}
+        selected={selected}
+        activeSessionId={activeSessionId}
+      />
       {overflow && (
         <div className="pt-0.5">
           <button

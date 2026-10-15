@@ -151,6 +151,7 @@ mod tests {
         assert!(caps.supports_resume);
         assert!(!caps.supports_queue);
         assert!(!caps.supports_fork);
+        assert!(!caps.supports_archive);
         assert!(!caps.supports_delete);
         assert!(!caps.supports_review);
         assert!(!caps.supports_network_access);
@@ -159,6 +160,14 @@ mod tests {
         assert!(!caps.supports_approve_for_me);
         assert!(caps.changes.turn_diff);
         assert!(caps.changes.git_scopes);
+    }
+
+    #[test]
+    fn codex_can_archive_because_the_cli_has_the_rpc() {
+        let caps = adapter_for(AgentKind::CodexCli).capabilities();
+        assert!(caps.supports_archive);
+        assert!(caps.supports_rename);
+        assert!(caps.supports_delete);
     }
 
     #[test]

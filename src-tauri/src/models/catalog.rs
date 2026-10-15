@@ -109,9 +109,12 @@ pub struct AgentCapabilities {
     /// 回合进行中仍可发送，消息进入适配器的排队接口。
     #[serde(default)]
     pub supports_queue: bool,
-    /// 侧边栏 `thread/fork`。
+    /// 侧边栏 `thread/fork`。菜单不再提供分叉。
     #[serde(default)]
     pub supports_fork: bool,
+    /// 侧边栏 `thread/archive` 与 `thread/unarchive`。没有这对 RPC 的适配器保持关闭。
+    #[serde(default)]
+    pub supports_archive: bool,
     /// 侧边栏 `thread/delete`。
     #[serde(default)]
     pub supports_delete: bool,
@@ -156,6 +159,7 @@ impl AgentCapabilities {
             supports_images: false,
             supports_queue: false,
             supports_fork: false,
+            supports_archive: false,
             supports_delete: false,
             supports_rename: false,
             supports_plan: false,
@@ -180,6 +184,7 @@ impl AgentCapabilities {
             supports_images: true,
             supports_queue: true,
             supports_fork: true,
+            supports_archive: true,
             supports_delete: true,
             supports_rename: true,
             supports_plan: true,
@@ -206,6 +211,7 @@ impl AgentCapabilities {
             supports_images: true,
             supports_queue: false,
             supports_fork: false,
+            supports_archive: false,
             supports_delete: false,
             supports_rename: true,
             supports_plan: true,
@@ -442,5 +448,8 @@ mod tests {
         assert!(!parsed.supports_permission_profiles);
         assert!(!parsed.supports_approve_for_me);
         assert!(!parsed.supports_paged_history);
+        assert!(!parsed.supports_archive);
+        assert!(!parsed.supports_delete);
+        assert!(!parsed.supports_rename);
     }
 }

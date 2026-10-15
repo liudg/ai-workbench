@@ -17,6 +17,7 @@ export const sessionCommands: Pick<
   | "listSessions"
   | "forkSession"
   | "renameSession"
+  | "setSessionArchived"
   | "deleteSession"
   | "createSession"
   | "setSandbox"
@@ -52,6 +53,8 @@ export const sessionCommands: Pick<
   forkSession: (sessionId) => invoke<Session>("fork_session", { sessionId }),
   renameSession: (sessionId, name) =>
     invoke("rename_session", { sessionId, name }),
+  setSessionArchived: (sessionId, archived) =>
+    invoke("set_session_archived", { sessionId, archived }),
   deleteSession: (sessionId) => invoke("delete_session", { sessionId }),
   createSession: (projectId, agent, accessMode) =>
     invoke<Session>("create_session", {

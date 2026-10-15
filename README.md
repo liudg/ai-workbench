@@ -107,6 +107,7 @@ pnpm dev                                                       # 打开 http://l
 | --- | --- |
 | `list_projects` / `create_project` / `import_project` / `remove_project` | 项目管理；create 支持选父目录建文件夹 + git init |
 | `list_sessions` / `create_session` / `stop_session` | 会话生命周期（create 缺省用项目默认 Agent） |
+| `rename_session` / `set_session_archived` / `delete_session` | 重命名、归档、删除。菜单按当前会话的能力开关显示 |
 | `send_message` / `answer_prompt` | 发消息 / 回答提问（审批、选择、自由文本、问题卡片） |
 | `get_session_events` | 打开会话：已连接则返回日志，否则按目录里的 native id resume |
 | `agent_profiles` / `agent_catalog` | 能力与斜杠命令（profile）；模型、推理强度和技能（catalog） |
@@ -115,11 +116,11 @@ pnpm dev                                                       # 打开 http://l
 
 ## 多 Agent 边界
 
-会话管理器不持有 `CodexDirectory`。每种 Agent 注册一个 `SessionDirectory`：Codex 用 `thread/list`（与 `codex resume --all` 同一份交互、未归档列表）。会话协议未接入的种类不注册目录。侧边栏项目只来自工作台 `projects.json`。某个已注册项目下的会话，是这些目录里 cwd 对上该项目路径的并集，再加内存里已打开的会话，键是 `{agent}:{native_id}`。导入或移除项目只改工作台列表，不删除 Agent 的 rollout，也不改写 Agent 自己的项目列表。
+会话管理器不持有 `CodexDirectory`。每种 Agent 注册一个 `SessionDirectory`：Codex 的 `list` 合并两份 `thread/list`，`archived: false` 与 `codex resume --all` 是同一份未归档列表，`archived: true` 只进入侧栏「已归档」。会话协议未接入的种类不注册目录。侧边栏项目只来自工作台 `projects.json`。某个已注册项目下的会话，是这些目录里 cwd 对上该项目路径的并集，再加内存里已打开的会话，键是 `{agent}:{native_id}`。导入或移除项目只改工作台列表，不删除 Agent 的 rollout，也不改写 Agent 自己的项目列表。
 
 `SessionContext` 只保留通用字段：工作目录、权限档位、要恢复的 native id，以及 `options`。Codex 从 `options.persist` 决定新线程是否写入官方 resume 列表；行协议留在 `agents/codex/`。
 
-适配器声明能力：`supports_slash`、`supports_resume`、`supports_questions`、`supports_tuning`、`supports_skills`、`supports_goals`、`supports_images`、`supports_queue`、`supports_fork`、`supports_archive`、`supports_delete`、`supports_rename`、`supports_plan`、`supports_review`、`supports_network_access`、`supports_writable_roots`、`supports_permission_profiles`、`supports_approve_for_me`、`supports_paged_history`。变更单独放在 `changes`：`turn_diff`（回合统一 diff）、`per_file_patch`（`file-change` / `turn-changes`）、`git_scopes`（未提交 / 未暂存 / 已暂存）。前端作曲栏、斜杠菜单和变更卡读 `agent_profiles`，不比较 `agent === "codex-cli"`。提问卡片仍由 `SessionEventBody::Prompt` 驱动。斜杠命令表在 Codex 的 profile 里，含 `/mcp`、`/hooks`、`/goal`、`/worktree`，不在前端放一张全局表。
+适配器声明能力：`supports_slash`、`supports_resume`、`supports_questions`、`supports_tuning`、`supports_skills`、`supports_goals`、`supports_images`、`supports_queue`、`supports_fork`、`supports_archive`、`supports_delete`、`supports_rename`、`supports_plan`、`supports_review`、`supports_network_access`、`supports_writable_roots`、`supports_permission_profiles`、`supports_approve_for_me`、`supports_paged_history`。变更单独放在 `changes`：`turn_diff`（回合统一 diff）、`per_file_patch`（`file-change` / `turn-changes`）、`git_scopes`（未提交 / 未暂存 / 已暂存）。前端作曲栏、斜杠菜单和变更卡读 `agent_profiles`，不比较 `agent === "codex-cli"`。会话菜单同样只读当前会话的 `supports_rename`、`supports_archive`、`supports_delete`。`supports_archive` 只在适配器真有归档 RPC 时打开：Codex 是 `thread/archive` / `thread/unarchive`，Claude Code CLI 没有，保持关闭。置顶不走 Agent，是工作台本地记住的会话 id。分叉 RPC 还在，菜单里不再出现。提问卡片仍由 `SessionEventBody::Prompt` 驱动。斜杠命令表在 Codex 的 profile 里，含 `/mcp`、`/hooks`、`/goal`、`/worktree`，不在前端放一张全局表。
 
 Codex 实现拆在 `agents/codex/`：`mod.rs` 只编排，`rpc` / `prompts` / `catalog` / `process` / `resume` 各管一块。
 

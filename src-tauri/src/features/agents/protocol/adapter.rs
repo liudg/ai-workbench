@@ -114,4 +114,12 @@ pub trait AgentAdapter: Send + Sync {
             self.display_name()
         )))
     }
+
+    /// 归档或取消归档。只有声明了 `supports_archive` 的适配器覆盖它。
+    async fn set_archived(&self, _native_id: &str, _archived: bool) -> Result<(), AgentError> {
+        Err(AgentError::Runtime(format!(
+            "{} 不支持归档",
+            self.display_name()
+        )))
+    }
 }

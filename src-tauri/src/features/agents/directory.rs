@@ -21,7 +21,7 @@ pub struct DirectoryEntry {
     pub updated_at: i64,
     pub status: SessionStatus,
     pub ephemeral: bool,
-    /// `thread/list` 的 `archived`。默认侧边栏只收未归档。
+    /// `thread/list` 的 `archived`。默认侧栏不展示，收在「已归档」里。
     pub archived: bool,
 }
 

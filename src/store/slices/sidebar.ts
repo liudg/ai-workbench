@@ -2,6 +2,12 @@ import { initialSandbox } from "@/lib/sandbox";
 import { backend } from "@/lib/ipc";
 import type { Session } from "@/types";
 import {
+  browserPinStorage,
+  readPinnedSessionIds,
+  togglePinnedSessionId,
+  writePinnedSessionIds,
+} from "@/features/sidebar/sessions/pinned-sessions";
+import {
   clearMissingSessionBanner,
   deselectSession,
   isMissingSessionError,
@@ -36,6 +42,16 @@ function retitle(groups: Record<string, Session[]>, sessionId: string, title: st
   return next;
 }
 
+function markArchived(groups: Record<string, Session[]>, sessionId: string, archived: boolean) {
+  const next: Record<string, Session[]> = {};
+  for (const [projectId, list] of Object.entries(groups)) {
+    next[projectId] = list.map((session) =>
+      session.id === sessionId ? { ...session, archived } : session,
+    );
+  }
+  return next;
+}
+
 export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): SidebarSlice {
   const showProject = async (id: string) => {
     const projects = await backend.listProjects();
@@ -47,6 +63,7 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
     sessions: {},
     sidebarNotice: null,
     lifecycleBusy: null,
+    pinnedSessionIds: readPinnedSessionIds(browserPinStorage()),
     selectedProjectId: null,
     activeSessionId: {},
     dialog: null,
@@ -212,6 +229,38 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
       } catch {
         return false;
       }
+    },
+
+    togglePinnedSession(sessionId) {
+      const pinnedSessionIds = togglePinnedSessionId(get().pinnedSessionIds, sessionId);
+      writePinnedSessionIds(pinnedSessionIds, browserPinStorage());
+      set({ pinnedSessionIds });
+    },
+
+    async archiveSession(projectId, sessionId, archived) {
+      set({ lifecycleBusy: sessionId, lastError: null });
+      try {
+        await backend.setSessionArchived(sessionId, archived);
+      } catch {
+        set({
+          lifecycleBusy: null,
+          lastError: archived ? "无法归档。请重试" : "无法取消归档。请重试",
+        });
+        return false;
+      }
+      try {
+        const [, list] = await loadSessions(projectId);
+        set((s) => ({
+          sessions: { ...s.sessions, [projectId]: list },
+          lifecycleBusy: null,
+        }));
+      } catch {
+        set((s) => ({
+          sessions: markArchived(s.sessions, sessionId, archived),
+          lifecycleBusy: null,
+        }));
+      }
+      return true;
     },
 
     async forkSession(projectId, sessionId) {

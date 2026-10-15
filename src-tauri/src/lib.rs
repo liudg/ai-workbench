@@ -38,6 +38,7 @@ macro_rules! workbench_handler {
             $crate::features::ipc::sessions::list_sessions,
             $crate::features::ipc::sessions::fork_session,
             $crate::features::ipc::sessions::rename_session,
+            $crate::features::ipc::sessions::set_session_archived,
             $crate::features::ipc::sessions::delete_session,
             $crate::features::ipc::sessions::create_session,
             $crate::features::ipc::sessions::set_session_access,

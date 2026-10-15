@@ -126,6 +126,8 @@ export interface AgentCapabilities {
   /** 回合进行中仍可发送，消息进入排队。 */
   supports_queue?: boolean;
   supports_fork?: boolean;
+  /** `thread/archive` 与 `thread/unarchive`。没有这对接口时为 false。 */
+  supports_archive?: boolean;
   supports_delete?: boolean;
   supports_rename?: boolean;
   supports_plan?: boolean;

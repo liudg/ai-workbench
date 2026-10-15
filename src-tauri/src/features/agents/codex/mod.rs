@@ -69,7 +69,8 @@ use crate::features::agents::{
     AgentAdapter, AgentError, AgentSession, DirectoryEntry, EventSink, SessionContext,
 };
 use crate::models::{
-    strip_verbatim_prefix, AgentCapabilities, AgentKind, AgentProfile, SessionEventBody, SessionStatus,
+    strip_verbatim_prefix, AgentCapabilities, AgentKind, AgentProfile, SessionEventBody,
+    SessionStatus,
 };
 
 use process::{
@@ -161,6 +162,16 @@ impl AgentAdapter for CodexCliAdapter {
             .delete_thread(native_id)
             .await
             .map_err(AgentError::Runtime)
+    }
+
+    async fn set_archived(&self, native_id: &str, archived: bool) -> Result<(), AgentError> {
+        let directory = CodexDirectory::shared();
+        let result = if archived {
+            directory.archive_thread(native_id).await
+        } else {
+            directory.unarchive_thread(native_id).await
+        };
+        result.map_err(AgentError::Runtime)
     }
 
     async fn start_session(

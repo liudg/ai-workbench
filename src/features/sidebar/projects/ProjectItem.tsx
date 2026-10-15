@@ -5,7 +5,9 @@ import { cn, displayPath } from "@/lib/utils";
 import { aggregateStatus, type Project } from "@/types";
 import { useProjectItem } from "./use-project-item";
 import { useDismiss } from "../use-dismiss";
+import { ArchivedSessions } from "../sessions/ArchivedSessions";
 import { NewSessionButton } from "../sessions/NewSessionButton";
+import { partitionSidebarSessions } from "../sessions/session-partition";
 import { SessionList } from "../sessions/SessionList";
 import { StatusDot } from "./StatusDot";
 import { useProjectBranch } from "./use-project-branch";
@@ -23,9 +25,10 @@ export function ProjectItem({ project }: { project: Project }) {
   }, []);
   useDismiss(menuOpen, menuRef, closeMenu);
 
-  const status = sessions ? aggregateStatus(sessions) : null;
-  const branch = useProjectBranch(project.id);
   const items = sessions ?? [];
+  const grouped = partitionSidebarSessions(items);
+  const status = sessions ? aggregateStatus(grouped.active) : null;
+  const branch = useProjectBranch(project.id);
 
   const onHeaderClick = () => {
     if (selected) {
@@ -121,15 +124,25 @@ export function ProjectItem({ project }: { project: Project }) {
           />
         </div>
       </div>
-      {!collapsed && items.length > 0 && (
-        <SessionList
-          projectId={project.id}
-          sessions={items}
-          selected={selected}
-          activeSessionId={activeSessionId}
-          showAll={showAll}
-          onToggleShowAll={() => setShowAll((value) => !value)}
-        />
+      {!collapsed && (grouped.active.length > 0 || grouped.archived.length > 0) && (
+        <>
+          {grouped.active.length > 0 && (
+            <SessionList
+              projectId={project.id}
+              sessions={grouped.active}
+              selected={selected}
+              activeSessionId={activeSessionId}
+              showAll={showAll}
+              onToggleShowAll={() => setShowAll((value) => !value)}
+            />
+          )}
+          <ArchivedSessions
+            projectId={project.id}
+            sessions={grouped.archived}
+            selected={selected}
+            activeSessionId={activeSessionId}
+          />
+        </>
       )}
     </div>
   );

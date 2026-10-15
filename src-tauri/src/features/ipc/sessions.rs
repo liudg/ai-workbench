@@ -36,6 +36,18 @@ pub async fn rename_session(
 }
 
 #[tauri::command]
+pub async fn set_session_archived(
+    store: State<'_, ProjectStore>,
+    manager: State<'_, SessionManager>,
+    session_id: String,
+    archived: bool,
+) -> Result<(), String> {
+    manager
+        .set_session_archived(&store, &session_id, archived)
+        .await
+}
+
+#[tauri::command]
 pub async fn delete_session(
     store: State<'_, ProjectStore>,
     manager: State<'_, SessionManager>,

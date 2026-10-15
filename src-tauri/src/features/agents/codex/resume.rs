@@ -13,9 +13,10 @@
 //! 会话 id 就是 Codex thread id。本模块只负责列出线程；真正恢复用
 //! `thread/resume`，历史用 `thread/turns/list`。
 
-use std::sync::{Arc, OnceLock};
+use std::collections::HashSet;
 #[cfg(test)]
 use std::sync::Mutex;
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
@@ -25,9 +26,9 @@ use tokio::time::timeout;
 use async_trait::async_trait;
 
 use crate::features::agents::directory::{cwd_key, DirectoryEntry, SessionDirectory};
-use crate::models::{strip_verbatim_prefix, SessionStatus};
 #[cfg(test)]
 use crate::models::SessionEventBody;
+use crate::models::{strip_verbatim_prefix, SessionStatus};
 
 use super::directory_client::RpcClient;
 
@@ -40,6 +41,7 @@ pub struct CodexDirectory {
 struct DirectoryState {
     client: Option<RpcClient>,
     active: Option<Cache>,
+    archived: Option<Cache>,
     generation: u64,
 }
 
@@ -54,6 +56,7 @@ impl CodexDirectory {
             inner: tokio::sync::Mutex::new(DirectoryState {
                 client: None,
                 active: None,
+                archived: None,
                 generation: 0,
             }),
         }
@@ -68,24 +71,44 @@ impl CodexDirectory {
     pub async fn invalidate(&self) {
         let mut state = self.inner.lock().await;
         state.active = None;
+        state.archived = None;
         state.generation = state.generation.wrapping_add(1);
     }
 
     /// 交互、未归档的全部线程。短时间内复用上一次结果，避免每个项目都拉起进程。
     pub async fn list_threads(&self) -> Result<Vec<DirectoryEntry>, String> {
+        self.cached_list(false).await
+    }
+
+    /// `thread/list` 且 `archived: true`。给侧栏「已归档」里的取消归档用。
+    pub async fn list_archived_threads(&self) -> Result<Vec<DirectoryEntry>, String> {
+        self.cached_list(true).await
+    }
+
+    async fn cached_list(&self, archived: bool) -> Result<Vec<DirectoryEntry>, String> {
         let mut state = self.inner.lock().await;
-        if let Some(cache) = &state.active {
+        let cached = if archived {
+            &state.archived
+        } else {
+            &state.active
+        };
+        if let Some(cache) = cached {
             if cache.at.elapsed() < CACHE_TTL {
                 return cache.result.clone();
             }
         }
         let generation = state.generation;
-        let result = fetch_threads(&mut state.client, false).await;
+        let result = fetch_threads(&mut state.client, archived).await;
         if state.generation == generation {
-            state.active = Some(Cache {
+            let cache = Some(Cache {
                 at: Instant::now(),
                 result: result.clone(),
             });
+            if archived {
+                state.archived = cache;
+            } else {
+                state.active = cache;
+            }
         }
         result
     }
@@ -102,6 +125,20 @@ impl CodexDirectory {
 
     pub async fn delete_thread(&self, native_id: &str) -> Result<(), String> {
         self.rpc("thread/delete", json!({ "threadId": native_id }))
+            .await?;
+        self.invalidate().await;
+        Ok(())
+    }
+
+    pub async fn archive_thread(&self, native_id: &str) -> Result<(), String> {
+        self.rpc("thread/archive", json!({ "threadId": native_id }))
+            .await?;
+        self.invalidate().await;
+        Ok(())
+    }
+
+    pub async fn unarchive_thread(&self, native_id: &str) -> Result<(), String> {
+        self.rpc("thread/unarchive", json!({ "threadId": native_id }))
             .await?;
         self.invalidate().await;
         Ok(())
@@ -163,7 +200,10 @@ impl SessionDirectory for CodexDirectory {
     }
 
     async fn list(&self) -> Result<Vec<DirectoryEntry>, String> {
-        self.list_threads().await
+        let active = self.list_threads().await?;
+        // 归档列表失败时仍返回未归档，避免侧栏整份消失。
+        let archived = self.list_archived_threads().await.unwrap_or_default();
+        Ok(merge_active_and_archived(active, archived))
     }
 
     async fn invalidate(&self) {
@@ -233,6 +273,27 @@ fn cwd_from_thread_payload(value: &Value) -> Option<String> {
     } else {
         Some(cwd)
     }
+}
+
+/// 未归档优先。同一 id 两边都有时留下未归档那条。归档查询没带 flag 时也标成已归档。
+pub(super) fn merge_active_and_archived(
+    active: Vec<DirectoryEntry>,
+    archived: Vec<DirectoryEntry>,
+) -> Vec<DirectoryEntry> {
+    let mut seen = HashSet::with_capacity(active.len() + archived.len());
+    let mut merged = Vec::with_capacity(active.len() + archived.len());
+    for entry in active {
+        if seen.insert(entry.native_id.clone()) {
+            merged.push(entry);
+        }
+    }
+    for mut entry in archived {
+        entry.archived = true;
+        if seen.insert(entry.native_id.clone()) {
+            merged.push(entry);
+        }
+    }
+    merged
 }
 
 pub fn thread_title(name: Option<&str>, preview: Option<&str>) -> String {
@@ -372,6 +433,35 @@ mod tests {
             status_from_thread(&json!({"type": "active", "activeFlags": []})),
             SessionStatus::Running
         );
+    }
+
+    fn entry(id: &str, archived: bool) -> DirectoryEntry {
+        DirectoryEntry {
+            native_id: id.into(),
+            cwd: "x".into(),
+            cwd_key: "x".into(),
+            title: id.into(),
+            created_at: 1,
+            updated_at: 2,
+            status: SessionStatus::Completed,
+            ephemeral: false,
+            archived,
+        }
+    }
+
+    #[test]
+    fn merge_keeps_active_when_ids_overlap_and_marks_the_rest_archived() {
+        let merged = merge_active_and_archived(
+            vec![entry("a", false), entry("b", false)],
+            vec![entry("b", false), entry("c", false)],
+        );
+        assert_eq!(merged.len(), 3);
+        assert_eq!(merged[0].native_id, "a");
+        assert!(!merged[0].archived);
+        assert_eq!(merged[1].native_id, "b");
+        assert!(!merged[1].archived);
+        assert_eq!(merged[2].native_id, "c");
+        assert!(merged[2].archived);
     }
 
     #[test]

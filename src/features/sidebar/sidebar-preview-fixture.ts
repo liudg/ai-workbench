@@ -18,6 +18,7 @@ const TASKS = [
 ];
 
 function profile(kind: AgentKind, name: string, icon: string | null): AgentProfile {
+  const linked = kind === "codex-cli" || kind === "claude-code";
   return {
     kind,
     display_name: name,
@@ -30,9 +31,10 @@ function profile(kind: AgentKind, name: string, icon: string | null): AgentProfi
       supports_questions: false,
       supports_tuning: false,
       supports_skills: false,
-      supports_rename: kind !== "cursor-agent",
-      supports_fork: kind !== "cursor-agent",
-      supports_delete: kind !== "cursor-agent",
+      supports_rename: linked,
+      supports_fork: kind === "codex-cli",
+      supports_archive: kind === "codex-cli",
+      supports_delete: kind === "codex-cli",
       changes: { turn_diff: false, per_file_patch: false, git_scopes: false },
     },
   };
@@ -45,6 +47,7 @@ function session(input: {
   title: string;
   status?: SessionStatus;
   updatedAt: number;
+  archived?: boolean;
 }): Session {
   const projectId = input.projectId ?? PROJECT_ID;
   return {
@@ -56,6 +59,7 @@ function session(input: {
     status: input.status as Session["status"],
     created_at: input.updatedAt - 60_000,
     updated_at: input.updatedAt,
+    archived: input.archived,
   };
 }
 
@@ -101,6 +105,7 @@ function previewSessions(now: number): Session[] {
       title: "部署预览失败",
       status: "failed",
       updatedAt: now - 40 * 60_000,
+      archived: true,
     }),
     session({
       native: "claude-stopped",
@@ -159,6 +164,22 @@ const projects: Project[] = [
     updated_at: 1,
   },
 ];
+
+function mapPreviewSession(
+  groups: Record<string, Session[]>,
+  sessionId: string,
+  update: (session: Session) => Session | null,
+): Record<string, Session[]> {
+  const next: Record<string, Session[]> = {};
+  for (const [projectId, list] of Object.entries(groups)) {
+    next[projectId] = list.flatMap((session) => {
+      if (session.id !== sessionId) return [session];
+      const updated = update(session);
+      return updated ? [updated] : [];
+    });
+  }
+  return next;
+}
 
 /** 开发预览。只从 DEV 入口加载，不进安装包。 */
 export function seedSidebarPreview() {
@@ -270,12 +291,37 @@ export function seedSidebarPreview() {
       return null;
     },
     async removeProject() {},
-    async renameSession() {
-      return false;
+    async renameSession(sessionId, name) {
+      const title = name.trim();
+      if (!title) return false;
+      useWorkbench.setState((state) => ({
+        sessions: mapPreviewSession(state.sessions, sessionId, (session) => ({
+          ...session,
+          title,
+        })),
+      }));
+      return true;
     },
     async forkSession() {},
-    async deleteSession() {
-      return false;
+    async archiveSession(_projectId, sessionId, archived) {
+      useWorkbench.setState((state) => ({
+        sessions: mapPreviewSession(state.sessions, sessionId, (session) => ({
+          ...session,
+          archived,
+        })),
+      }));
+      return true;
+    },
+    async deleteSession(projectId, sessionId) {
+      useWorkbench.setState((state) => {
+        const activeSessionId = { ...state.activeSessionId };
+        if (activeSessionId[projectId] === sessionId) delete activeSessionId[projectId];
+        return {
+          sessions: mapPreviewSession(state.sessions, sessionId, () => null),
+          activeSessionId,
+        };
+      });
+      return true;
     },
   });
 }
