@@ -18,7 +18,6 @@ export function ActivityStream({
   session,
   resolvedAnswers,
   showAgentLabel,
-  toolsOnly = false,
   thinking = false,
   settled = false,
   onInteract,
@@ -27,15 +26,11 @@ export function ActivityStream({
   session: Session;
   resolvedAnswers: ReadonlyMap<string, string>;
   showAgentLabel: (event: SessionEvent) => boolean;
-  toolsOnly?: boolean;
   thinking?: boolean;
   settled?: boolean;
   onInteract?: () => void;
 }) {
   const pieces = useMemo(() => foldActivity(events), [events]);
-  const visible = toolsOnly
-    ? pieces.filter((piece) => piece.type === "tools" || piece.type === "images")
-    : pieces;
   const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(() => new Set());
   const [seenSettled, setSeenSettled] = useState(settled);
   if (settled !== seenSettled) {
@@ -46,7 +41,7 @@ export function ActivityStream({
 
   return (
     <div className="min-w-0" data-activity-stream data-activity-settled={settled ? "true" : "false"}>
-      {visible.map((piece) => {
+      {pieces.map((piece) => {
         if (piece.type === "images") {
           return (
             <ViewedImages
@@ -87,7 +82,7 @@ export function ActivityStream({
           />
         );
       })}
-      {thinking && !toolsOnly ? <ThinkingStatus /> : null}
+      {thinking ? <ThinkingStatus /> : null}
     </div>
   );
 }

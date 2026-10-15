@@ -14,7 +14,8 @@ import { agentTurnName, useAgentIdentity } from "../events/use-agent-identity";
 
 /**
  * 一轮结束后的过程条。名称和用时在同一行。
- * 收起时只留活动摘要；展开后补上旁白。工具行默认收起，结束后的思考不留条目。最终答复留在下面。
+ * 收起时只留这一行。展开后补上旁白，工具、命令、集成和查看图像各收成一行，再点开才看到步骤。
+ * 结束后的思考不留条目。最终答复留在下面。
  */
 export function TurnProcess({
   events,
@@ -71,15 +72,16 @@ export function TurnProcess({
         onToggle={onToggle}
         icon={<SessionAgentIcon identity={identity} className="h-4 w-4" />}
       />
-      <ActivityStream
-        events={process}
-        session={session}
-        resolvedAnswers={resolvedAnswers}
-        showAgentLabel={() => false}
-        toolsOnly={!expanded}
-        settled
-        onInteract={onInteract}
-      />
+      {expanded ? (
+        <ActivityStream
+          events={process}
+          session={session}
+          resolvedAnswers={resolvedAnswers}
+          showAgentLabel={() => false}
+          settled
+          onInteract={onInteract}
+        />
+      ) : null}
       {answer ? renderEvent(answer, false) : null}
       {chromeAfter.map((event) => renderEvent(event, false))}
       {changes ? <ChangeCard changes={changes} /> : null}
