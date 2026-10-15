@@ -5,9 +5,10 @@ import { ActivityGroup } from "../events/ActivityGroup";
 import { foldActivity } from "../events/activity-fold";
 import { EventItem } from "../events/EventItem";
 import { ThinkingStatus } from "../events/ThinkingStatus";
+import { ViewedImages } from "../events/ViewedImages";
 
 /**
- * 一段会话过程。旁白按原顺序留下，相邻工具收成一行。
+ * 一段会话过程。旁白按原顺序留下，相邻工具收成一行，查看图像单独成行。
  * 思考正文不画。`thinking` 为真时，末行是进行中的「正在思考」。
  */
 export function ActivityStream({
@@ -28,12 +29,32 @@ export function ActivityStream({
   onInteract?: () => void;
 }) {
   const pieces = useMemo(() => foldActivity(events), [events]);
-  const visible = toolsOnly ? pieces.filter((piece) => piece.type === "tools") : pieces;
+  const visible = toolsOnly
+    ? pieces.filter((piece) => piece.type === "tools" || piece.type === "images")
+    : pieces;
   const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(() => new Set());
 
   return (
     <div className="min-w-0" data-activity-stream>
       {visible.map((piece) => {
+        if (piece.type === "images") {
+          return (
+            <ViewedImages
+              key={piece.id}
+              piece={piece}
+              open={openGroups.has(piece.id)}
+              onToggle={() => {
+                onInteract?.();
+                setOpenGroups((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(piece.id)) next.delete(piece.id);
+                  else next.add(piece.id);
+                  return next;
+                });
+              }}
+            />
+          );
+        }
         if (piece.type === "tools") {
           return (
             <ActivityGroup

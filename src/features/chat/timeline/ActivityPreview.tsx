@@ -45,6 +45,30 @@ const liveEvents: SessionEvent[] = [
   event("activity-live", "status", 6, 5_100, { kind: "status-changed", status: "running" }),
 ];
 
+const BEIGE =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAIAAABt+uBvAAABjklEQVR42u3bQU7DQBBE0cqcCiSOjwQHYYnEFViwIwqK7a4qo/xeRV5E1c9xYvdMLl+fH6Ju14IAIIAAAggggAACiAIIIIAAAggggACiAAIIIIAAAggggCiAAAIIIIAeB+j97bXe0myGNZ6sazSeYTnOW8vIkWGZPtV5I1OG5bvmk0a+DMuULGlkzbB8yTJG7gzLmsxtFMiwH+jp+aV7f7TpPTelHbvEikYZnYEv6YpRTGfmZz5slNQZu1GMGYV1Jh81AkZ5neGHVatRRWd+3GEyaunIMTAbNyrqyDRRHDTq6sg3ch0xquvIOpM+aHQGHbmH9ruNTqKjwKrGDqPz6Ei6ZP7Ua5p4uHUUWxdzdBLQUXLhcLafjI7CK6tTXcV0lF96Pt5bUkeVtfkjHYZ11Nq8sK/PvI6Kuzu2dlvRUXf7y/09t3RU3x903fk9Rx4I6Ff/P6+vjzw00B8udZ3cs9j/LfYoAgQQQAABBBBAAFEAAQQQQAABBBBAFEAAAQQQQAABBBAFEEAAAQTQmesb0pm39HD0bFAAAAAASUVORK5CYII=";
+const PURPLE =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAIAAABt+uBvAAABkElEQVR42u3asa3CQBCE4eX6ISJ/pdABbVAYORENEbwMBML2zsxJ/jdCDtDsBwf27R0u52tRn2tAABBAAAEEEEAAAUQBBBBAAAEEEEAAUQABBBBAAAEEEEAUQAABBBBA+wG6P27xlnozjPZkWaP2DEPxuaWMFBmG6FvtNxJlGLo17zTSZRiiZE4jaYahS+YxUmcY0mRqI0OG9UCn41/2/mjRey5K27bEgkYenYYf6YiRTafnb95s5NRpu1G0GZl1Oh81DEZ+neaHValRRKd/u0NklNIpxYZZu1FQp0Q7io1GWZ3Sbbm2GMV1SronvdFoBp1Sb9qvNppEpwxTjRVG8+iUZ+yjuz9S65RtLqboxKBTzsFhbz8enTJPVru6sumUf/S8vTenTkVm81s6NOtU6vDCuj79OhU83bG024hOZY+//N5zSqfi54PeO//lyo6AXvr/f/1+ZddAX1ziOjXPEbzZVtZ0QNMWQAABBBBAAAEEEEAUQAABBBBAAAEEEAUQQAABBBBAAAFEAQQQQABF6wlrzbMRJqciOgAAAABJRU5ErkJggg==";
+const SAND =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAIAAABt+uBvAAABjUlEQVR42u3bMVLDQBBE0fYeDzgucAZyIm5DQIbLlCVNd4vyn8ilwNXzZNnS7Pry9fkh6nYtCAACCCCAAAIIIIAogAACCCCAAAIIIAoggAACCCCAAAKIAggggAAC6HGAXt/e6y3NZljjybpG4xmW47y1jBwZlulTnTcyZVi+az5p5MuwTMmSRtYMy5csY+TOsKzJ3EaBDPuBXp6fuvdHm95zU9qxS6xolNEZ+JKuGMV0Zn7mw0ZJnbEbxZhRWGfyUSNglNcZfli1GlV05scdJqOWjhwDs3Gjoo5ME8VBo66OfCPXEaO6jqwz6YNGZ9CRe2i/2+gkOgqsauwwOo+OpEvmT72miYdbR7F1MUcnAR0lFw5n+8noKLyyOtVVTEf5pefjvSV1VFmbP9JhWEetzQv7+szrqLi7Y2u3FR11t7/c33NLR/X9Qded33PkgYB+9f/z+vrIQwP94VLXyT2L/d9ijyJAAAEEEEAAAQQQBRBAAAEEEEAAAUQBBBBAAAEEEEAAUQABBBBAAJ25vgGelrZ37KT2HAAAAABJRU5ErkJggg==";
+
+const imageEvents: SessionEvent[] = [
+  event("activity-images", "user", 1, 1_000, { kind: "user-message", text: "看一下这几张界面。" }),
+  event("activity-images", "view-2", 2, 2_000, {
+    kind: "tool-call",
+    name: "image",
+    summary: "界面.png",
+    images: [BEIGE, PURPLE],
+  }),
+  event("activity-images", "view-1", 3, 3_000, {
+    kind: "tool-call",
+    name: "image",
+    summary: "单张.png",
+    images: [SAND],
+  }),
+  event("activity-images", "status", 4, 3_100, { kind: "status-changed", status: "running" }),
+];
+
 const doneEvents: SessionEvent[] = [
   event("activity-done", "user", 1, 1_000, { kind: "user-message", text: "验收链接里标记已修复的缺陷。" }),
   event("activity-done", "narration", 2, 2_000, {
@@ -139,6 +163,7 @@ export default function ActivityPreview() {
     <div className="h-screen w-screen overflow-auto bg-[#0f0f0f] text-[#e8e8e8]">
       <Frame id="activity-live" title="正在思考" status="running" events={liveEvents} />
       <Frame id="activity-done" title="思考已结束" status="completed" events={doneEvents} />
+      <Frame id="activity-images" title="已查看图像" status="running" events={imageEvents} />
     </div>
   );
 }

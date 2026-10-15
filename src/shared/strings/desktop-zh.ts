@@ -154,6 +154,7 @@ export const DESKTOP_ZH = {
   activityRanCommands: "已运行 {count} 条命令",
   activitySearchedWeb: "已搜索网页",
   activityThinkingNow: "正在思考",
+  activityViewedImages: "已查看 {count} 张图像",
   activityCommandStep: "命令",
   other: "其他",
 } as const;

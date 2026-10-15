@@ -3,14 +3,21 @@ import { DESKTOP_ZH } from "../../../shared/strings/desktop-zh.ts";
 
 /**
  * 时间线展示层把相邻的工具调用收成一行。
- * 只读当前事件的 name / summary，不改协议，也不查 MCP 目录。
+ * 只读当前事件的 name / summary / images，不改协议，也不查 MCP 目录。
  * 旁白或思考一插进来就拆组。思考正文不画出来。
+ * 查看图像单独成行，不并进命令摘要。
  */
 
 export type ToolCallEvent = Extract<SessionEvent, { kind: "tool-call" }>;
 
 export type ActivityPiece =
   | { type: "event"; event: SessionEvent }
+  | {
+      type: "images";
+      id: string;
+      count: number;
+      paths: string[];
+    }
   | {
       type: "tools";
       id: string;
@@ -42,6 +49,11 @@ export function foldActivity(events: readonly SessionEvent[]): ActivityPiece[] {
   };
 
   for (const event of events) {
+    if (event.kind === "tool-call" && isViewedImages(event)) {
+      flushTools();
+      pieces.push(imagePiece(event));
+      continue;
+    }
     if (event.kind === "tool-call") {
       tools.push(event);
       continue;
@@ -94,6 +106,45 @@ export function activityStepTitle(name: string, summary: string): string {
   if (payload !== null) return titleFromShell(payload);
   if (looksLikeShellPath(stripped)) return DESKTOP_ZH.activityCommandStep;
   return clip(stripped);
+}
+
+const IMAGE_NAMES = new Set(["image", "imageview", "imagegeneration", "localimage"]);
+
+export function isViewedImages(event: ToolCallEvent): boolean {
+  return IMAGE_NAMES.has(event.name.replace(/[_-]/g, "").toLowerCase());
+}
+
+export function viewedImagesLabel(count: number): string {
+  return DESKTOP_ZH.activityViewedImages.replace("{count}", String(count));
+}
+
+function imagePiece(event: ToolCallEvent): ActivityPiece {
+  const paths = viewedPaths(event);
+  return {
+    type: "images",
+    id: event.id,
+    count: paths.length > 0 ? paths.length : 1,
+    paths,
+  };
+}
+
+function viewedPaths(event: ToolCallEvent): string[] {
+  const listed = unique((event.images ?? []).map((item) => item.trim()).filter((item) => item.length > 0));
+  if (listed.length > 0) return listed;
+  const summary = firstLine(event.summary) ?? "";
+  if (!summary || summary === "图片") return [];
+  return [summary];
+}
+
+function unique(values: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const value of values) {
+    if (seen.has(value)) continue;
+    seen.add(value);
+    out.push(value);
+  }
+  return out;
 }
 
 function toolPiece(calls: readonly ToolCallEvent[]): ActivityPiece {

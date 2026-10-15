@@ -1,15 +1,26 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { activityStepTitle, activitySummary, foldActivity, isLiveThinking } from "./activity-fold.ts";
+import {
+  activityStepTitle,
+  activitySummary,
+  foldActivity,
+  isLiveThinking,
+  viewedImagesLabel,
+} from "./activity-fold.ts";
 import type { SessionEvent, SessionEventBody } from "../../../types/index.ts";
 
 function event(id: string, body: SessionEventBody): SessionEvent {
   return { id, session_id: "s", seq: 1, ts: 1, ...body };
 }
 
-function tool(id: string, name: string, summary: string): Extract<SessionEvent, { kind: "tool-call" }> {
-  return { id, session_id: "s", seq: 1, ts: 1, kind: "tool-call", name, summary };
+function tool(
+  id: string,
+  name: string,
+  summary: string,
+  images?: string[],
+): Extract<SessionEvent, { kind: "tool-call" }> {
+  return { id, session_id: "s", seq: 1, ts: 1, kind: "tool-call", name, summary, images };
 }
 
 const POWERSHELL =
@@ -162,6 +173,42 @@ test("coded MCP names supply the server when the summary is a short title", () =
   assert.equal(activityStepTitle(call.name, call.summary), "检查了表格选中");
   assert.equal(activitySummary([call]).text, "已使用 Unitymcp 集成运行了命令");
   assert.equal(activityStepTitle("mcp__Chrome__browser_snapshot", ""), "browser_snapshot");
+});
+
+test("viewed images are their own rows and stay out of command groups", () => {
+  const pieces = foldActivity([
+    tool("k1", "command", "git status"),
+    tool("i1", "image", "a.png", ["a.png", "b.png", "a.png"]),
+    tool("i2", "imageView", "c.png", ["c.png"]),
+    tool("k2", "command", "git diff"),
+    tool("m1", "execute_code", "MCP Unitymcp execute_code"),
+  ]);
+  assert.deepEqual(
+    pieces.map((piece) => piece.type),
+    ["tools", "images", "images", "tools"],
+  );
+  const [commands, first, second, integrations] = pieces;
+  assert.ok(commands && commands.type === "tools");
+  assert.equal(commands.summary, "已运行 1 条命令");
+  assert.equal(commands.steps.length, 1);
+  assert.ok(first && first.type === "images");
+  assert.equal(first.count, 2);
+  assert.deepEqual(first.paths, ["a.png", "b.png"]);
+  assert.equal(viewedImagesLabel(first.count), "已查看 2 张图像");
+  assert.ok(second && second.type === "images");
+  assert.equal(second.count, 1);
+  assert.deepEqual(second.paths, ["c.png"]);
+  assert.equal(viewedImagesLabel(second.count), "已查看 1 张图像");
+  assert.ok(integrations && integrations.type === "tools");
+  assert.equal(integrations.summary, "已使用 Unitymcp 集成运行了命令");
+});
+
+test("an image summary path is the thumbnail when the images list is empty", () => {
+  const pieces = foldActivity([tool("i1", "local_image", "shot.png")]);
+  assert.equal(pieces[0]?.type, "images");
+  if (pieces[0]?.type !== "images") return;
+  assert.equal(pieces[0].count, 1);
+  assert.deepEqual(pieces[0].paths, ["shot.png"]);
 });
 
 test("empty thinking does not add a row", () => {
