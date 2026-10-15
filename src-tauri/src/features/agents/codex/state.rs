@@ -152,6 +152,8 @@ pub(super) struct Shared {
     pub(super) queue_refresh: AsyncMutex<()>,
     pub(super) queued: Mutex<Vec<QueuedTurn>>,
     pub(super) queue_removed: Mutex<HashSet<String>>,
+    /// 本回合不再 `thread/queue/add`。回合结束后恢复。
+    pub(super) queue_closed: AtomicBool,
     pub(super) shown_users: Mutex<HashSet<String>>,
     /// 桌面端 Plan 开关。`turn/start` 始终带当前 collaborationMode，退出计划时显式写 default。
     pub(super) collaboration: Mutex<Collaboration>,

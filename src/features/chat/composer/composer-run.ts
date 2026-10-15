@@ -3,10 +3,12 @@ import type { ClipboardEvent, KeyboardEvent as ReactKeyboardEvent, RefObject } f
 import { useWorkbench } from "@/store";
 import type { AgentCapabilities, AgentSkillOption, SessionSandbox, SlashCommand } from "@/types";
 import {
+  closeSessionQueue,
   interruptTurn,
   pickAttachments,
   removeQueuedTurn,
   stageChatImage,
+  steerQueuedTurn,
   updateQueuedTurn,
 } from "./composer-backend";
 import { composerKeyIntent, stepIndex } from "./composer-keys";
@@ -257,6 +259,16 @@ export function pasteComposerImages(run: ComposerRun, event: ClipboardEvent<HTML
 export function removeComposerQueued(run: ComposerRun, id: string) {
   if (run.editingId === id) cancelComposerEdit(run);
   void removeQueuedTurn(run.sessionId, id);
+}
+
+export function steerComposerQueued(run: ComposerRun, id: string) {
+  if (run.editingId === id) cancelComposerEdit(run);
+  void steerQueuedTurn(run.sessionId, id);
+}
+
+export function closeComposerQueue(run: ComposerRun) {
+  if (run.editingId) cancelComposerEdit(run);
+  void closeSessionQueue(run.sessionId);
 }
 
 export function interruptComposer(run: ComposerRun) {

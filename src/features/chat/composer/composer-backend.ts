@@ -52,6 +52,32 @@ export function removeQueuedTurn(sessionId: string, queuedId: string) {
   });
 }
 
+const queuedActions = new Set<string>();
+
+function runQueuedAction(key: string, work: () => Promise<void>) {
+  if (queuedActions.has(key)) return Promise.resolve();
+  queuedActions.add(key);
+  return work().finally(() => {
+    queuedActions.delete(key);
+  });
+}
+
+export function steerQueuedTurn(sessionId: string, queuedId: string) {
+  return runQueuedAction(`steer:${sessionId}:${queuedId}`, () =>
+    backend.steerQueuedTurn(sessionId, queuedId).catch((error: unknown) => {
+      reportComposerError(sessionId, error);
+    }),
+  );
+}
+
+export function closeSessionQueue(sessionId: string) {
+  return runQueuedAction(`close:${sessionId}`, () =>
+    backend.closeSessionQueue(sessionId).catch((error: unknown) => {
+      reportComposerError(sessionId, error);
+    }),
+  );
+}
+
 export function interruptTurn(sessionId: string) {
   return backend.interruptTurn(sessionId).catch((error: unknown) => {
     reportComposerError(sessionId, error);

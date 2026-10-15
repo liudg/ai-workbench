@@ -159,4 +159,9 @@ export const DESKTOP_ZH = {
   activityViewedImages: "已查看 {count} 张图像",
   activityCommandStep: "命令",
   other: "其他",
+  /** 回合进行中的排队条。侧边聊天只在真有该界面时出现。 */
+  queueSteer: "引导",
+  queueEdit: "编辑消息",
+  queueSideChat: "在侧边聊天中打开",
+  queueClose: "关闭排队",
 } as const;

@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use serde_json::json;
 
 use super::gap;
+use super::queue::{follow_up, FollowUp};
 use super::prompts::{
     async_replies, blocking_answer_payload, elicitation_action_label, elicitation_result,
     is_accept, questions_summary,
@@ -48,11 +49,23 @@ impl AgentSession for CodexCliSession {
             self.shared.handle_slash(turn.text.trim()).await?;
             return Ok(TurnDelivery::Started);
         }
-        if self.shared.turn_open.load(Ordering::SeqCst) {
-            self.shared
-                .enqueue(turn.text, turn.images, turn.client_id, turn.annotations)
-                .await?;
-            return Ok(TurnDelivery::Queued);
+        match follow_up(
+            self.shared.turn_open.load(Ordering::SeqCst),
+            self.shared.queue_closed.load(Ordering::SeqCst),
+        ) {
+            FollowUp::Enqueue => {
+                self.shared
+                    .enqueue(turn.text, turn.images, turn.client_id, turn.annotations)
+                    .await?;
+                return Ok(TurnDelivery::Queued);
+            }
+            FollowUp::Steer => {
+                self.shared
+                    .steer_user_turn(turn.text, turn.images, turn.annotations)
+                    .await?;
+                return Ok(TurnDelivery::Started);
+            }
+            FollowUp::StartTurn => {}
         }
         if !turn.client_id.is_empty() {
             self.shared
@@ -77,6 +90,16 @@ impl AgentSession for CodexCliSession {
     async fn remove_queued(&self, id: &str) -> Result<(), AgentError> {
         self.shared.ensure_open()?;
         self.shared.remove_queued(id).await
+    }
+
+    async fn steer_queued(&self, id: &str) -> Result<(), AgentError> {
+        self.shared.ensure_open()?;
+        self.shared.steer_queued(id).await
+    }
+
+    async fn close_queue(&self) -> Result<(), AgentError> {
+        self.shared.ensure_open()?;
+        self.shared.close_queue().await
     }
 
     async fn interrupt(&self) -> Result<(), AgentError> {

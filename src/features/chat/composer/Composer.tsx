@@ -9,7 +9,7 @@ import { ComposerBar } from "./ComposerBar";
 import { ComposerInput } from "./ComposerInput";
 import { TextSnippetChip, TextSnippetPreview } from "./TextSnippets";
 import { ModelMenu } from "./ModelMenu";
-import { Queue } from "./Queue";
+import { QueueStrip } from "./QueueStrip";
 import { ReviewMenu } from "./ReviewMenu";
 import { MentionMenu } from "./MentionMenu";
 import { SkillMenu } from "./SkillMenu";
@@ -47,9 +47,6 @@ export function Composer({
         </p>
       )}
       <div ref={c.reviewRootRef} className="relative min-w-0">
-        {view.queueOn && (
-          <Queue items={c.queue} editingId={c.editingId} onEdit={c.beginEdit} onRemove={c.removeQueued} />
-        )}
         {c.mentions.show && (
           <MentionMenu
             mode={view.mentionAdd ? "add" : "files"}
@@ -115,6 +112,18 @@ export function Composer({
             void c.stageBlobs(Array.from(event.dataTransfer.files));
           }}
         >
+          {c.queueStrip ? (
+            <QueueStrip
+              items={c.queue}
+              index={c.queueIndex}
+              editingId={c.editingId}
+              onCycle={c.cycleQueue}
+              onSteer={c.steerQueued}
+              onRemove={c.removeQueued}
+              onEdit={c.beginEdit}
+              onCloseQueue={c.closeQueue}
+            />
+          ) : null}
           <div className="min-w-0 overflow-hidden px-3 pt-3">
           <TextSnippetChip snippets={c.snippets} onClear={c.dismissSnippets} />
           <Attachments files={c.files} imagesOn={view.imagesOn} onRemove={c.removeFile} />

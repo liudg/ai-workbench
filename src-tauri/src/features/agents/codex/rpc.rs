@@ -29,6 +29,7 @@ impl Shared {
         }
         self.closed.store(true, Ordering::SeqCst);
         self.turn_open.store(false, Ordering::SeqCst);
+        self.reopen_queue();
         if let Some(thread_id) = self.thread_id.lock().unwrap().clone() {
             let _ = self.write_method("turn/interrupt", json!({ "threadId": thread_id }));
         }
@@ -43,6 +44,7 @@ impl Shared {
             return;
         }
         self.turn_open.store(false, Ordering::SeqCst);
+        self.reopen_queue();
         // 只读打开的进程如果随后退出，历史还在。不要改写成「会话失败」。
         if self.read_only() {
             return;
@@ -317,6 +319,7 @@ impl Shared {
             }
             "turn/completed" => {
                 self.turn_open.store(false, Ordering::SeqCst);
+                self.reopen_queue();
                 *self.turn_id.lock().unwrap() = None;
                 self.drop_async_questions();
                 if let Some(message) = params.pointer("/turn/error").and_then(error_text) {

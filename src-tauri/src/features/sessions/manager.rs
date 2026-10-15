@@ -606,6 +606,19 @@ impl SessionManager {
             .map_err(|err| err.to_string())
     }
 
+    pub async fn steer_queued_turn(&self, session_id: &str, queued_id: &str) -> Result<(), String> {
+        let handle = self.agent_handle_ready(session_id).await?;
+        handle
+            .steer_queued(queued_id)
+            .await
+            .map_err(|err| err.to_string())
+    }
+
+    pub async fn close_queue(&self, session_id: &str) -> Result<(), String> {
+        let handle = self.agent_handle_ready(session_id).await?;
+        handle.close_queue().await.map_err(|err| err.to_string())
+    }
+
     pub fn session_queue(&self, session_id: &str) -> Vec<QueuedTurn> {
         self.entries
             .lock()

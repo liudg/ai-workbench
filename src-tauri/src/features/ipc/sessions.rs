@@ -288,6 +288,23 @@ pub async fn remove_queued_turn(
 }
 
 #[tauri::command]
+pub async fn steer_queued_turn(
+    manager: State<'_, SessionManager>,
+    session_id: String,
+    queued_id: String,
+) -> Result<(), String> {
+    manager.steer_queued_turn(&session_id, &queued_id).await
+}
+
+#[tauri::command]
+pub async fn close_session_queue(
+    manager: State<'_, SessionManager>,
+    session_id: String,
+) -> Result<(), String> {
+    manager.close_queue(&session_id).await
+}
+
+#[tauri::command]
 pub fn session_queue(
     manager: State<'_, SessionManager>,
     session_id: String,

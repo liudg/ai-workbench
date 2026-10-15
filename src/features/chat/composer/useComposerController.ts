@@ -24,6 +24,7 @@ import {
   applyComposerSlash,
   beginComposerEdit,
   cancelComposerEdit,
+  closeComposerQueue,
   handleComposerKey,
   interruptComposer,
   pasteComposerImages,
@@ -32,10 +33,12 @@ import {
   removeComposerQueued,
   runComposerSubmit,
   stageComposerBlobs,
+  steerComposerQueued,
   type ComposerRun,
 } from "./composer-run";
 import { sandboxFromMenu } from "./access";
 import { composerCaps, composerCommands, deriveComposerView } from "./composer-view";
+import { clampQueueIndex, nextQueueIndex, queueStripVisible } from "./queue-strip";
 import { useComposerMenu } from "./useComposerMenu";
 import { useComposerFeeds } from "./useComposerFeeds";
 import { useComposerActions, useComposerSession } from "./useComposerStore";
@@ -54,6 +57,7 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
   const [slashIndex, setSlashIndex] = useState(0);
   const [skillIndex, setSkillIndex] = useState(0);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [queueIndex, setQueueIndex] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -230,6 +234,11 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     beginEdit: (item: { id: string; text: string; images?: string[] }) => beginComposerEdit(run, item),
     applySandbox,
     removeQueued: (id: string) => removeComposerQueued(run, id),
+    queueStrip: queueStripVisible({ supportsQueue: view.queueOn, count: data.queue.length }),
+    queueIndex: clampQueueIndex(data.queue.length, queueIndex),
+    cycleQueue: () => setQueueIndex((current) => nextQueueIndex(data.queue.length, current)),
+    steerQueued: (id: string) => steerComposerQueued(run, id),
+    closeQueue: () => closeComposerQueue(run),
     interrupt: () => interruptComposer(run),
     dismissPlan: () => {
       void actions.setCollaborationMode(session.id, "default");

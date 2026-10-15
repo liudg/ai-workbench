@@ -5,6 +5,7 @@ import {
   type AgentCatalog,
   type AgentSkillOption,
   type PermissionMenu,
+  type QueuedTurn,
   type SessionEvent,
   type SessionTuning,
 } from "@/types";
@@ -23,6 +24,8 @@ import { fastTier, tuningForModel } from "./model-picker";
 import { useComposerMenu } from "./useComposerMenu";
 import { activeGoal } from "./goal";
 import { atToken, clearAtToken, insertMention, mentionFiles } from "./mentions";
+import { QueueStrip } from "./QueueStrip";
+import { nextQueueIndex } from "./queue-strip";
 
 const workspaceFiles = Object.keys(
   import.meta.glob(["/src/**/*.{ts,tsx,md,json}", "/docs/**/*.md", "/index.html"], {
@@ -251,14 +254,25 @@ const previewSkills: AgentSkillOption[] = [
 
 type PreviewMenu = null | "model" | "access" | "attach";
 
+const previewQueued: QueuedTurn[] = [
+  { id: "q1", text: "把登录失败的提示改成中文" },
+  { id: "q2", text: "补上队列条的单元测试" },
+];
+
 export default function ComposerPreview() {
   const params = new URLSearchParams(window.location.search);
   const claude = params.get("agent") === "claude";
   const catalog = claude ? claudeCatalog : codexCatalog;
   const initialMenu = params.get("menu");
+  const queueMode = params.get("queue");
+  const showQueue = Boolean(queueMode) && !claude;
   const skillsOpen = params.get("skills") === "1";
   const showSnippets = params.get("snippets") === "1";
   const [snippets, setSnippets] = useState<TextSnippet[]>(() => (showSnippets ? [previewSnippet] : []));
+  const [queued, setQueued] = useState<QueuedTurn[]>(() =>
+    showQueue ? (queueMode === "2" ? previewQueued : previewQueued.slice(0, 1)) : [],
+  );
+  const [queueIndex, setQueueIndex] = useState(0);
   const [text, setText] = useState(skillsOpen ? "$" : "");
   const [caret, setCaret] = useState(skillsOpen ? 1 : 0);
   const [planOn, setPlanOn] = useState(false);
@@ -301,7 +315,7 @@ export default function ComposerPreview() {
   }, [goalLive, goalPreview, goalRun, planOn]);
   const goal = activeGoal(events);
   const view = deriveComposerView({
-    status: "completed",
+    status: showQueue ? "running" : "completed",
     events,
     caps,
     permissionMenu,
@@ -438,6 +452,23 @@ export default function ComposerPreview() {
         <div className="relative min-w-0">
         <TextSnippetPreview snippets={snippets} />
         <div className="min-w-0 rounded-[18px] border border-[#2a2a2a] bg-[#171717]">
+          {showQueue && queued.length > 0 ? (
+            <QueueStrip
+              items={queued}
+              index={queueIndex}
+              editingId={null}
+              defaultMenuOpen={queueMode === "menu"}
+              onCycle={() => setQueueIndex((current) => nextQueueIndex(queued.length, current))}
+              onSteer={(id) => setQueued((current) => current.filter((item) => item.id !== id))}
+              onRemove={(id) => setQueued((current) => current.filter((item) => item.id !== id))}
+              onEdit={(item) => {
+                setText(item.text);
+                setCaret(item.text.length);
+                requestAnimationFrame(() => textareaRef.current?.focus());
+              }}
+              onCloseQueue={() => setQueued([])}
+            />
+          ) : null}
           <div className="min-w-0 overflow-hidden px-3 pt-3">
             <TextSnippetChip snippets={snippets} onClear={() => setSnippets([])} />
             <ComposerInput
@@ -469,7 +500,7 @@ export default function ComposerPreview() {
               modelName={view.modelName}
               effortLabel={view.effortLabel}
               editing={false}
-              stopMode={false}
+              stopMode={view.stopMode}
               sendDisabled={view.sendDisabled}
               onToggleMenu={(name) => {
                 if (name === "model" || name === "access" || name === "attach") {

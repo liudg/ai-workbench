@@ -67,6 +67,10 @@ impl Shared {
 
     /// 把回答作为普通用户输入写进正在进行的回合（运行中的回合里发消息即 steer）。
     pub(super) async fn steer_turn(&self, text: &str) -> Result<(), AgentError> {
+        self.steer_input(json!([{ "type": "text", "text": text }])).await
+    }
+
+    pub(super) async fn steer_input(&self, input: Value) -> Result<(), AgentError> {
         let thread_id = self
             .thread_id
             .lock()
@@ -84,7 +88,7 @@ impl Shared {
             json!({
                 "threadId": thread_id,
                 "expectedTurnId": turn_id,
-                "input": [{ "type": "text", "text": text }],
+                "input": input,
             }),
         )
         .await?;

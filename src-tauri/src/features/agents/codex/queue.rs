@@ -1,6 +1,11 @@
 //! `thread/queue/*`。排队卡片不进时间线；消失且不是用户删除时，补一条用户气泡。
+//!
+//! 桌面队列条：引导在回合还在时走 `turn/steer`，成功后再 `thread/queue/delete`；
+//! 没有活跃回合时走 `thread/queue/start`。关闭排队会删掉尚未发出的提交，
+//! 并且本回合内后续输入改为 steer。下一次回合结束重新接受排队。
 
 use std::collections::HashSet;
+use std::sync::atomic::Ordering;
 
 use serde_json::{json, Value};
 
@@ -178,6 +183,129 @@ impl Shared {
         Ok(())
     }
 
+    pub(super) fn reopen_queue(&self) {
+        self.queue_closed.store(false, Ordering::SeqCst);
+    }
+
+    /// 引导：写进当前回合后从队列删掉。回合已经结束则马上开跑这条排队消息。
+    pub(super) async fn steer_queued(&self, id: &str) -> Result<(), AgentError> {
+        let Some(item) = self.queued_item(id).await else {
+            return Err(AgentError::Runtime(QUEUE_GONE.into()));
+        };
+        if queued_dispatch(self.turn_open.load(Ordering::SeqCst)) == QueuedDispatch::Steer {
+            let input = {
+                let skills = self.skills.lock().unwrap();
+                build_turn_input(&item.text, &skills, &item.images, &[])
+            };
+            match self.steer_input(input).await {
+                Ok(()) => {}
+                Err(err) if steer_no_turn(&err) => return self.start_queued(id).await,
+                Err(err) => return Err(err),
+            }
+            if !item.client_id.is_empty() {
+                self.shown_users.lock().unwrap().insert(item.client_id);
+            }
+            if !item.text.is_empty() || !item.images.is_empty() {
+                emit(
+                    &self.events,
+                    SessionEventBody::UserMessage {
+                        text: item.text,
+                        images: item.images,
+                        annotations: 0,
+                    },
+                );
+            }
+            if let Err(err) = self.remove_queued(id).await {
+                return Err(AgentError::Runtime(format!(
+                    "引导已提交，队列没能移除这条消息：{err}"
+                )));
+            }
+            return Ok(());
+        }
+        self.start_queued(id).await
+    }
+
+    /// 关掉这一回合的排队：丢掉待发消息，之后的输入改走 steer。
+    pub(super) async fn close_queue(&self) -> Result<(), AgentError> {
+        self.queue_closed.store(true, Ordering::SeqCst);
+        self.refresh_queue().await;
+        let ids: Vec<String> = self
+            .queued
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|item| item.id.clone())
+            .collect();
+        let mut error = None;
+        for id in ids {
+            if let Err(err) = self.remove_queued(&id).await {
+                if error.is_none() {
+                    error = Some(err);
+                }
+            }
+        }
+        if self.turn_open.load(Ordering::SeqCst) {
+            self.queue_closed.store(true, Ordering::SeqCst);
+        }
+        match error {
+            Some(err) => Err(err),
+            None => Ok(()),
+        }
+    }
+
+    pub(super) async fn steer_user_turn(
+        &self,
+        text: String,
+        images: Vec<String>,
+        annotations: Vec<PageAnnotation>,
+    ) -> Result<(), AgentError> {
+        let input = {
+            let skills = self.skills.lock().unwrap();
+            build_turn_input(&text, &skills, &images, &annotations)
+        };
+        self.steer_input(input).await
+    }
+
+    async fn queued_item(&self, id: &str) -> Option<QueuedTurn> {
+        let found = self
+            .queued
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|item| item.id == id)
+            .cloned();
+        if found.is_some() {
+            return found;
+        }
+        self.refresh_queue().await;
+        self.queued
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|item| item.id == id)
+            .cloned()
+    }
+
+    async fn start_queued(&self, id: &str) -> Result<(), AgentError> {
+        let thread_id = self
+            .thread_id
+            .lock()
+            .unwrap()
+            .clone()
+            .ok_or_else(|| AgentError::Runtime("Codex 线程未建立".into()))?;
+        self.request(
+            "thread/queue/start",
+            json!({
+                "threadId": thread_id,
+                "queuedSubmissionId": id,
+            }),
+        )
+        .await
+        .map_err(map_missing)?;
+        self.refresh_queue().await;
+        Ok(())
+    }
+
     /// 只认仍在队列里、且带 clientId 的 userMessage。直接发送和斜杠回显没有这个 id。
     pub(super) fn note_user_item(&self, item: &Value) {
         let client_id = item
@@ -343,6 +471,44 @@ fn queue_unsupported(err: &AgentError) -> bool {
         || msg.contains("unknown method")
 }
 
+/// 回合进行中的后续输入：默认排队；关掉排队之后写进当前回合。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum FollowUp {
+    StartTurn,
+    Steer,
+    Enqueue,
+}
+
+pub(super) fn follow_up(turn_open: bool, queue_closed: bool) -> FollowUp {
+    if !turn_open {
+        FollowUp::StartTurn
+    } else if queue_closed {
+        FollowUp::Steer
+    } else {
+        FollowUp::Enqueue
+    }
+}
+
+/// 引导按钮。回合还在就 steer，否则让这条排队消息自己开跑。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum QueuedDispatch {
+    Steer,
+    Start,
+}
+
+pub(super) fn queued_dispatch(turn_open: bool) -> QueuedDispatch {
+    if turn_open {
+        QueuedDispatch::Steer
+    } else {
+        QueuedDispatch::Start
+    }
+}
+
+fn steer_no_turn(err: &AgentError) -> bool {
+    let msg = err.to_string();
+    msg.contains("回合已结束") || msg.to_ascii_lowercase().contains("no active turn")
+}
+
 fn map_missing(err: AgentError) -> AgentError {
     let msg = err.to_string().to_ascii_lowercase();
     if msg.contains("no longer") || msg.contains("not found") || msg.contains("missing field") {
@@ -399,5 +565,26 @@ mod tests {
         removed.insert("q1".into());
         let (_, deleted) = diff_queue(&previous, Vec::new(), &removed, &HashSet::new());
         assert!(deleted.is_empty());
+    }
+
+    #[test]
+    fn follow_up_steers_only_after_the_queue_is_closed() {
+        assert_eq!(follow_up(true, false), FollowUp::Enqueue);
+        assert_eq!(follow_up(true, true), FollowUp::Steer);
+        assert_eq!(follow_up(false, true), FollowUp::StartTurn);
+        assert_eq!(follow_up(false, false), FollowUp::StartTurn);
+    }
+
+    #[test]
+    fn steer_button_starts_the_item_when_the_turn_is_idle() {
+        assert_eq!(queued_dispatch(true), QueuedDispatch::Steer);
+        assert_eq!(queued_dispatch(false), QueuedDispatch::Start);
+        assert!(steer_no_turn(&AgentError::Runtime("Codex 回合已结束".into())));
+        assert!(steer_no_turn(&AgentError::Runtime(
+            "no active turn to steer".into()
+        )));
+        assert!(!steer_no_turn(&AgentError::Runtime(
+            "cannot steer a review turn".into()
+        )));
     }
 }

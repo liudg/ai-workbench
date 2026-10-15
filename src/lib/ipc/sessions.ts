@@ -34,6 +34,8 @@ export const sessionCommands: Pick<
   | "diffForScope"
   | "updateQueuedTurn"
   | "removeQueuedTurn"
+  | "steerQueuedTurn"
+  | "closeSessionQueue"
   | "sessionQueue"
   | "interruptTurn"
   | "stageChatImage"
@@ -103,6 +105,9 @@ export const sessionCommands: Pick<
     }),
   removeQueuedTurn: (sessionId, queuedId) =>
     invoke("remove_queued_turn", { sessionId, queuedId }),
+  steerQueuedTurn: (sessionId, queuedId) =>
+    invoke("steer_queued_turn", { sessionId, queuedId }),
+  closeSessionQueue: (sessionId) => invoke("close_session_queue", { sessionId }),
   sessionQueue: (sessionId) =>
     invoke("session_queue", { sessionId }),
   interruptTurn: (sessionId) => invoke("interrupt_turn", { sessionId }),

@@ -265,6 +265,7 @@ impl AgentAdapter for CodexCliAdapter {
             queue_refresh: tokio::sync::Mutex::new(()),
             queued: Mutex::new(Vec::new()),
             queue_removed: Mutex::new(HashSet::new()),
+            queue_closed: AtomicBool::new(false),
             shown_users: Mutex::new(HashSet::new()),
             collaboration: Mutex::new(state::Collaboration::Default),
             plan_ready: AtomicBool::new(false),
