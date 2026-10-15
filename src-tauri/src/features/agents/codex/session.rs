@@ -289,6 +289,11 @@ impl AgentSession for CodexCliSession {
         self.shared.publish_goal().await
     }
 
+    async fn set_goal_status(&self, status: &str) -> Result<(), AgentError> {
+        let rest = super::turn::goal_status_rest(status)?;
+        self.shared.emit_goal(rest).await
+    }
+
     async fn start_review(&self, target: crate::models::ReviewStart) -> Result<(), AgentError> {
         self.shared.start_review(&target).await
     }

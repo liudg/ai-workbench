@@ -73,7 +73,15 @@ export function Composer({ session, events }: { session: Session; events: Sessio
             onPick={c.applySlash}
           />
         )}
-        {view.goalStatus ? <GoalStatusBar text={view.goalStatus} /> : null}
+        {view.goalStatus ? (
+          <GoalStatusBar
+            model={view.goalStatus}
+            disabled={view.occupied || view.dead}
+            onDelete={c.deleteGoal}
+            onToggleRun={c.toggleGoalRun}
+            onEdit={c.editGoal}
+          />
+        ) : null}
         <div
           className={cn(
             "min-w-0 rounded-[18px] border border-[#2a2a2a] bg-[#171717] transition-colors focus-within:border-[#3a3a3a]",

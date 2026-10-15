@@ -194,6 +194,17 @@ const liveGoal: SessionEvent = {
   time_used_seconds: 90,
 };
 
+const timeGoal: SessionEvent = {
+  id: "goal",
+  session_id: "preview",
+  seq: 1,
+  ts: 1,
+  kind: "goal",
+  objective: "开一个30秒的目标，什么都不干",
+  status: "active",
+  time_used_seconds: 3,
+};
+
 /** 预览用的技能目录。不接 app-server，只给 `$` 菜单核对单行省略。 */
 const previewSkills: AgentSkillOption[] = [
   {
@@ -224,8 +235,10 @@ export default function ComposerPreview() {
   const [text, setText] = useState(skillsOpen ? "$" : "");
   const [caret, setCaret] = useState(skillsOpen ? 1 : 0);
   const [planOn, setPlanOn] = useState(false);
+  const goalPreview = params.get("goal");
   const [goalDraft, setGoalDraft] = useState(false);
-  const [goalLive, setGoalLive] = useState(params.get("goal") === "live");
+  const [goalLive, setGoalLive] = useState(goalPreview === "live" || goalPreview === "time");
+  const [goalRun, setGoalRun] = useState<string | null>(null);
   const [tuning, setTuning] = useState<SessionTuning | undefined>();
   const [menu, setMenu] = useState<PreviewMenu>(
     initialMenu === "model" || initialMenu === "access" ? initialMenu : null,
@@ -253,9 +266,12 @@ export default function ComposerPreview() {
         mode: "plan",
       });
     }
-    if (goalLive) rows.push(liveGoal);
+    if (goalLive) {
+      const source = goalPreview === "time" ? timeGoal : liveGoal;
+      if (source.kind === "goal") rows.push({ ...source, status: goalRun ?? source.status });
+    }
     return rows;
-  }, [goalLive, planOn]);
+  }, [goalLive, goalPreview, goalRun, planOn]);
   const goal = activeGoal(events);
   const view = deriveComposerView({
     status: "completed",
@@ -311,6 +327,7 @@ export default function ComposerPreview() {
       if (view.goalOn) {
         setGoalDraft(false);
         setGoalLive(false);
+        setGoalRun(null);
         return;
       }
       setPlanOn(false);
@@ -357,7 +374,33 @@ export default function ComposerPreview() {
             onPick={choose}
           />
         )}
-        {view.goalStatus ? <GoalStatusBar text={view.goalStatus} /> : null}
+        {view.goalStatus ? (
+          <GoalStatusBar
+            model={view.goalStatus}
+            onDelete={() => {
+              const objective = goal?.objective ?? "";
+              setGoalDraft(false);
+              setGoalLive(false);
+              setGoalRun(null);
+              setText((current) => (objective && current === objective ? "" : current));
+            }}
+            onToggleRun={() => {
+              if (view.goalStatus?.run === "pause") setGoalRun("paused");
+              else if (view.goalStatus?.run === "resume") setGoalRun("active");
+            }}
+            onEdit={() => {
+              const objective = goal?.objective;
+              if (!objective) return;
+              setGoalDraft(true);
+              setText(objective);
+              setCaret(objective.length);
+              requestAnimationFrame(() => {
+                textareaRef.current?.focus();
+                textareaRef.current?.setSelectionRange(0, objective.length);
+              });
+            }}
+          />
+        ) : null}
         <div className="min-w-0 rounded-[18px] border border-[#2a2a2a] bg-[#171717]">
           <div className="min-w-0 overflow-hidden px-3 pt-3">
             <ComposerInput

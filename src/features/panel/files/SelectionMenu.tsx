@@ -2,6 +2,7 @@ import { useEffect, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
+import { selectionMenuUpdate, type SelectionGesture } from "./selection-menu";
 import { formatSelectionQuote } from "./selection-quote";
 
 interface MenuBox {
@@ -24,27 +25,66 @@ export function SelectionMenu({
   const [box, setBox] = useState<MenuBox | null>(null);
 
   useEffect(() => {
+    let dragging = false;
+    let frame = 0;
+
     const read = () => {
       const root = rootRef.current;
-      if (!root) {
+      setBox(root ? quoteFromSelection(root, path) : null);
+    };
+
+    const apply = (event: SelectionGesture, inside = true) => {
+      const next = selectionMenuUpdate(event, dragging, inside);
+      dragging = next.dragging;
+      if (next.update === "ignore") return;
+      if (next.update === "clear") {
+        cancelAnimationFrame(frame);
         setBox(null);
         return;
       }
-      const next = quoteFromSelection(root, path);
-      setBox(next);
+      read();
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        if (!dragging) read();
+      });
     };
-    const hide = () => setBox(null);
+
+    const onMouseDown = (event: MouseEvent) => {
+      if (event.button !== 0) return;
+      const target = event.target;
+      if (target instanceof Element && target.closest("[data-selection-menu]")) return;
+      const root = rootRef.current;
+      const inside = Boolean(root && target instanceof Node && root.contains(target));
+      apply("down", inside);
+    };
+    const onMouseUp = (event: MouseEvent) => {
+      if (event.button !== 0) return;
+      apply("up");
+    };
+    const onChange = () => apply("change");
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") hide();
+      if (event.key === "Escape") apply("cancel");
     };
-    document.addEventListener("selectionchange", read);
+    const onScroll = () => setBox(null);
+    const onBlur = () => {
+      if (dragging) apply("up");
+    };
+
+    document.addEventListener("selectionchange", onChange);
+    window.addEventListener("mousedown", onMouseDown, true);
+    window.addEventListener("mouseup", onMouseUp);
     window.addEventListener("keydown", onKey);
+    window.addEventListener("blur", onBlur);
     const root = rootRef.current;
-    root?.addEventListener("scroll", hide, true);
+    root?.addEventListener("scroll", onScroll, true);
     return () => {
-      document.removeEventListener("selectionchange", read);
+      cancelAnimationFrame(frame);
+      document.removeEventListener("selectionchange", onChange);
+      window.removeEventListener("mousedown", onMouseDown, true);
+      window.removeEventListener("mouseup", onMouseUp);
       window.removeEventListener("keydown", onKey);
-      root?.removeEventListener("scroll", hide, true);
+      window.removeEventListener("blur", onBlur);
+      root?.removeEventListener("scroll", onScroll, true);
     };
   }, [path, rootRef]);
 

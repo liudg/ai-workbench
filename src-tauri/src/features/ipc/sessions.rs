@@ -171,6 +171,18 @@ pub async fn publish_thread_goal(
 }
 
 #[tauri::command]
+pub async fn set_thread_goal_status(
+    store: State<'_, ProjectStore>,
+    manager: State<'_, SessionManager>,
+    session_id: String,
+    status: String,
+) -> Result<(), String> {
+    manager
+        .set_thread_goal_status(&store, &session_id, &status)
+        .await
+}
+
+#[tauri::command]
 pub async fn review_targets(
     manager: State<'_, SessionManager>,
     session_id: String,
