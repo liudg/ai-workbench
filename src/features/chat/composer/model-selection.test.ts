@@ -58,3 +58,18 @@ test("a resolved name maps to the alias, and a bracket suffix does not steal it"
   assert.equal(pickModel(catalog(aliased, "gpt-6.1-sol"), undefined)?.id, "opus");
   assert.equal(pickModel(catalog(aliased, "gpt-6.1-sol[1m]"), undefined)?.id, "default");
 });
+
+test("a configured model matches this catalog ignoring case and does not guess another default", () => {
+  const listed = catalog([
+    model({ id: "gpt-6.1-sol", label: "GPT-6.1-Sol", is_default: true }),
+    model({ id: "gpt-5.4", label: "GPT-5.4" }),
+  ]);
+  listed.configured_model = "GPT-5.4";
+  assert.equal(pickModel(listed, undefined)?.id, "gpt-5.4");
+  assert.equal(modelInCatalog(listed, "GPT-5.4")?.id, "gpt-5.4");
+  assert.equal(modelInCatalog(catalog(aliased), "GPT-6.1-SOL[1m]")?.id, "default");
+  assert.equal(modelInCatalog(listed, "claude-opus"), undefined);
+  const foreign = catalog([model({ id: "claude-sonnet", label: "Sonnet", is_default: true })]);
+  foreign.configured_model = "gpt-6.1-sol";
+  assert.equal(pickModel(foreign, { model: "gpt-6.1-sol", effort: "high" })?.id, "claude-sonnet");
+});

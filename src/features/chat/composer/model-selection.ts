@@ -27,13 +27,28 @@ export function modelInCatalog(
   if (byLabel) return byLabel;
   const stripped = stripModelBrackets(trimmed);
   if (stripped !== trimmed) {
-    return (
+    const exact =
       models.find((item) => item.resolved_model === stripped) ??
       models.find((item) => item.label === stripped) ??
-      models.find((item) => item.id === stripped)
-    );
+      models.find((item) => item.id === stripped);
+    if (exact) return exact;
   }
-  return undefined;
+  return findLoose(models, trimmed) ?? (stripped !== trimmed ? findLoose(models, stripped) : undefined);
+}
+
+function sameModelName(left: string | null | undefined, right: string): boolean {
+  const value = left?.trim();
+  if (!value) return false;
+  return value.localeCompare(right, "en", { sensitivity: "accent" }) === 0;
+}
+
+/** 精确名没命中时再忽略大小写。仍然只在这份目录里找，对不上就不返回。 */
+function findLoose(models: AgentModelOption[], name: string): AgentModelOption | undefined {
+  return (
+    models.find((item) => sameModelName(item.id, name)) ??
+    models.find((item) => sameModelName(item.resolved_model, name)) ??
+    models.find((item) => sameModelName(item.label, name))
+  );
 }
 
 /**

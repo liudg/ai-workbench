@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 
 import { AnswerMarkdownHost } from "@/features/workspace/AnswerMarkdownHost";
-import type { FileChange } from "@/features/changes-model/diff-parse";
+import { parseUnifiedDiff, type FileChange } from "@/features/changes-model/diff-parse";
 import type { SessionEvent } from "@/types";
 import { PanelProvider, usePanel } from "../core/PanelProvider";
 import { SessionSplit } from "../core/SessionSplit";
@@ -91,10 +91,22 @@ const FILES: FileChange[] = [
   { path: "Library/GemFeedback/note.md", status: "M", added: 2, removed: 1, diff: NOTE },
 ];
 
+const PREVIEW_DIFF_KEY = "ai-workbench.preview-diff";
+
+/** 开发预览可塞进一份真实 `git diff` 文本。没有就用上面的样例。 */
+function previewFiles(): FileChange[] {
+  const params = new URLSearchParams(window.location.search);
+  const raw = params.get("diff") || window.sessionStorage.getItem(PREVIEW_DIFF_KEY) || "";
+  if (!raw.trim()) return FILES;
+  const parsed = parseUnifiedDiff(raw);
+  return parsed.length > 0 ? parsed : FILES;
+}
+
 /** 开发预览：挂上真实差异视图，方便在没有会话事件时核对工具栏。 */
 export default function DiffPreview() {
   const params = new URLSearchParams(window.location.search);
   const projectId = params.get("project") ?? "";
+  const files = useMemo(() => previewFiles(), []);
   const events = useMemo<SessionEvent[]>(
     () => [
       {
@@ -104,10 +116,10 @@ export default function DiffPreview() {
         ts: 1,
         kind: "turn-changes",
         turn_id: "preview-turn",
-        files: FILES,
+        files,
       },
     ],
-    [],
+    [files],
   );
   return (
     <div className="h-screen w-screen overflow-hidden bg-[#0f0f0f] text-[#e8e8e8]">
@@ -122,7 +134,7 @@ export default function DiffPreview() {
       >
         <AnswerMarkdownHost>
           <SessionSplit>
-            <DiffSeed files={FILES} />
+            <DiffSeed files={files} />
           </SessionSplit>
         </AnswerMarkdownHost>
       </PanelProvider>

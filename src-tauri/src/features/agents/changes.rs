@@ -279,13 +279,17 @@ fn change_kind(change: &Value) -> ChangeKind {
 
 fn change_diff(change: &Value, kind: &str) -> String {
     // 官方 FileChange::Add/Delete 带的是文件正文，不是 unified diff。
-    if matches!(
-        kind.trim().to_ascii_lowercase().as_str(),
-        "a" | "add" | "added" | "create" | "created" | "d" | "delete" | "deleted" | "remove"
-            | "removed"
-    ) {
-        if let Some(text) = change.get("content").and_then(Value::as_str) {
-            return text.to_string();
+    if is_add_kind(kind) || is_delete_kind(kind) {
+        if let Some(text) = nonempty_text(change, &["content"]) {
+            return text;
+        }
+        if let Some(nested) = change.get("kind").filter(|value| value.is_object()) {
+            if let Some(text) = nonempty_text(
+                nested,
+                &["content", "diff", "unifiedDiff", "unified_diff", "patch"],
+            ) {
+                return text;
+            }
         }
     }
     let mut empty = String::new();
@@ -305,16 +309,42 @@ fn change_diff(change: &Value, kind: &str) -> String {
 
 /// TUI `diff_render.rs::line_counts`：新增文件按内容行数算 +，删除文件按内容行数算 -，
 /// 其余用 `calculate_add_remove_from_diff`（diffy 解析 hunk，解析不了就是 0/0）。
-fn line_counts(kind: &str, diff: &str) -> (u32, u32) {
-    let count = |n: usize| u32::try_from(n).unwrap_or(u32::MAX);
-    match kind {
-        "add" | "added" => (count(diff.lines().count()), 0),
-        "delete" | "deleted" => (0, count(diff.lines().count())),
-        _ => {
-            let (added, removed) = calculate_add_remove_from_diff(diff);
-            (count(added), count(removed))
+fn is_add_kind(kind: &str) -> bool {
+    matches!(
+        kind.trim().to_ascii_lowercase().as_str(),
+        "a" | "add" | "added" | "create" | "created"
+    )
+}
+
+fn is_delete_kind(kind: &str) -> bool {
+    matches!(
+        kind.trim().to_ascii_lowercase().as_str(),
+        "d" | "delete" | "deleted" | "remove" | "removed"
+    )
+}
+
+fn nonempty_text(value: &Value, keys: &[&str]) -> Option<String> {
+    for key in keys {
+        let Some(text) = value.get(*key).and_then(Value::as_str) else {
+            continue;
+        };
+        if !text.is_empty() {
+            return Some(text.to_string());
         }
     }
+    None
+}
+
+fn line_counts(kind: &str, diff: &str) -> (u32, u32) {
+    let count = |n: usize| u32::try_from(n).unwrap_or(u32::MAX);
+    if is_add_kind(kind) {
+        return (count(diff.lines().count()), 0);
+    }
+    if is_delete_kind(kind) {
+        return (0, count(diff.lines().count()));
+    }
+    let (added, removed) = calculate_add_remove_from_diff(diff);
+    (count(added), count(removed))
 }
 
 pub fn calculate_add_remove_from_diff(diff: &str) -> (usize, usize) {
@@ -571,6 +601,30 @@ rename to new-name.txt
         );
         // 行数和 hunk 头对不上时 diffy 解析失败，官方显示 0/0。
         assert_eq!(line_counts("update", "@@ -1,3 +1,4 @@\n-a\n+b\n"), (0, 0));
+        assert_eq!(line_counts("A", "one\ntwo\n"), (2, 0));
+        assert_eq!(line_counts("create", "one\n"), (1, 0));
+        assert_eq!(line_counts("remove", "gone\n"), (0, 1));
+    }
+
+    #[test]
+    fn nested_add_content_is_the_file_body() {
+        let files = file_changes_from_codex(&json!([{
+            "path": "src/new.ts",
+            "kind": { "type": "add", "content": "alpha\nbeta\n" }
+        }]));
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].status, FileStatus::Added);
+        assert_eq!(files[0].diff, "alpha\nbeta\n");
+        assert_eq!((files[0].added, files[0].removed), (2, 0));
+
+        let removed = file_changes_from_codex(&json!([{
+            "path": "src/old.ts",
+            "kind": { "type": "remove" },
+            "content": "gone\n"
+        }]));
+        assert_eq!(removed[0].status, FileStatus::Deleted);
+        assert_eq!(removed[0].diff, "gone\n");
+        assert_eq!((removed[0].added, removed[0].removed), (0, 1));
     }
 
     #[test]

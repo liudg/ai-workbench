@@ -11,6 +11,7 @@ import { ReviewMenu } from "./ReviewMenu";
 import { MentionMenu } from "./MentionMenu";
 import { SkillMenu } from "./SkillMenu";
 import { SlashMenu } from "./SlashMenu";
+import { GoalStatusBar } from "./GoalStatusBar";
 import { useComposerController } from "./useComposerController";
 
 export function Composer({ session, events }: { session: Session; events: SessionEvent[] }) {
@@ -72,6 +73,7 @@ export function Composer({ session, events }: { session: Session; events: Sessio
             onPick={c.applySlash}
           />
         )}
+        {view.goalStatus ? <GoalStatusBar text={view.goalStatus} /> : null}
         <div
           className={cn(
             "min-w-0 rounded-[18px] border border-[#2a2a2a] bg-[#171717] transition-colors focus-within:border-[#3a3a3a]",
@@ -92,11 +94,6 @@ export function Composer({ session, events }: { session: Session; events: Sessio
           }}
         >
           <div className="min-w-0 overflow-hidden px-3 pt-3">
-          {view.goalStatus ? (
-            <p data-goal-status title={view.goalStatus} className="mb-1 min-w-0 truncate px-1 text-xs leading-5 text-fuchsia-300">
-              {view.goalStatus}
-            </p>
-          ) : null}
           <Attachments files={c.files} imagesOn={view.imagesOn} onRemove={c.removeFile} />
           <ComposerInput
             text={c.text}

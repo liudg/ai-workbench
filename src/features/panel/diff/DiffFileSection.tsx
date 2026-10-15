@@ -63,17 +63,21 @@ export function DiffFileSection({
       data-diff-presentation={presentation}
       onClick={onSelect}
     >
-      <header className="flex min-w-0 flex-nowrap items-center gap-2 px-3 py-2 text-xs" data-diff-summary={file.path}>
+      <header
+        className="flex min-w-0 cursor-pointer flex-nowrap items-center gap-2 px-3 py-2 text-xs"
+        data-diff-summary={file.path}
+        onClick={(event) => {
+          event.stopPropagation();
+          onSelect();
+          onToggle();
+        }}
+      >
         <button
           type="button"
           data-diff-toggle={file.path}
           aria-expanded={open}
           aria-label={open ? "收起差异" : "展开差异"}
           className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-[#888] hover:bg-white/5 hover:text-[#e8e8e8]"
-          onClick={(event) => {
-            event.stopPropagation();
-            onToggle();
-          }}
         >
           {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
         </button>

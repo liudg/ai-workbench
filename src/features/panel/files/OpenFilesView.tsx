@@ -7,7 +7,7 @@ import { insertComposerText } from "@/shared/composer-insert";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { ColumnSplitter } from "../core/ColumnSplitter";
 import { FILES_EXPANDED_WIDTH, diffListWidth, diffListWidthAfterDrag } from "../core/layout";
-import { previewKindForPath, resolvePreviewPath } from "../core/preview-kind";
+import { resolvePreviewPath } from "../core/preview-kind";
 import { usePanel } from "../core/PanelProvider";
 import { FilePreview } from "./FilePreview";
 import { WorkspaceTree } from "./WorkspaceTree";
@@ -18,7 +18,7 @@ const SPLITTER_WIDTH = 6;
 
 /** 打开文件：右侧是工作区树。点文件在当前页预览，不新开标签。 */
 export function OpenFilesView() {
-  const { projectId, projectPath, sessionId, diffFilesWidth, setDiffFilesWidth, openHref } = usePanel();
+  const { projectId, projectPath, sessionId, diffFilesWidth, setDiffFilesWidth } = usePanel();
   const attachFile = useAttachFile(sessionId);
   const [filter, setFilter] = useState("");
   const [previewPath, setPreviewPath] = useState("");
@@ -37,10 +37,6 @@ export function OpenFilesView() {
   widthRef.current = diffFilesWidth;
 
   const openFile = (path: string, line?: number | null) => {
-    if (previewKindForPath(path) === "image") {
-      openHref(path);
-      return;
-    }
     setPreviewPath(path);
     setPreviewLine(line ?? null);
   };

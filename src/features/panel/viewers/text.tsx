@@ -1,6 +1,10 @@
+import { useRef } from "react";
 import { Code } from "lucide-react";
 
+import { insertComposerText } from "@/shared/composer-insert";
+import { usePanelOptional } from "../core/PanelProvider";
 import { baseName } from "../files/path";
+import { SelectionMenu } from "../files/SelectionMenu";
 import { payloadTitle, type PanelViewer, type ViewerViewProps } from "../core/registry";
 import { SourceView } from "./SourceView";
 import { TextPreview } from "./TextPreview";
@@ -18,10 +22,27 @@ interface TextPayload {
 }
 
 function TextViewerBody({ payload, status }: ViewerViewProps<TextPayload>) {
-  if (status === "loading") return <PreviewPending />;
-  if (status === "error") return <PreviewFailed message={payload.error ?? ""} />;
-  if (payload.line != null) return <SourceView text={payload.text ?? ""} line={payload.line} />;
-  return <TextPreview text={payload.text ?? ""} truncated={Boolean(payload.truncated)} />;
+  const rootRef = useRef<HTMLDivElement>(null);
+  const panel = usePanelOptional();
+  const path = payload.path ?? "";
+  let body = <TextPreview text={payload.text ?? ""} truncated={Boolean(payload.truncated)} />;
+  if (status === "loading") body = <PreviewPending />;
+  else if (status === "error") body = <PreviewFailed message={payload.error ?? ""} />;
+  else if (payload.line != null) body = <SourceView text={payload.text ?? ""} line={payload.line} />;
+  return (
+    <div ref={rootRef} data-open-files-preview className="h-full min-h-0">
+      {body}
+      {status === "ready" && path && panel ? (
+        <SelectionMenu
+          rootRef={rootRef}
+          path={path}
+          onAdd={(quote) => {
+            insertComposerText(panel.sessionId, quote);
+          }}
+        />
+      ) : null}
+    </div>
+  );
 }
 
 export const textViewer: PanelViewer<TextPayload> = {
