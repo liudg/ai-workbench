@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { ChevronRight, LayoutGrid, Search } from "lucide-react";
 
 import { relativizeDisplayText } from "@/features/panel/files/path";
@@ -13,20 +12,18 @@ import { EventImages } from "./EventImages";
 type ToolPiece = Extract<ActivityPiece, { type: "tools" }>;
 
 /**
- * 一组相邻工具的摘要行。点开后是短标题，完整命令和输出留在子步骤里。
+ * 一组相邻工具的摘要行。默认一行。点开后按时间顺序看到每一步的命令和输出。
  */
 export function ActivityGroup({
   piece,
   session,
   open,
   onToggle,
-  onInteract,
 }: {
   piece: ToolPiece;
   session: Session;
   open: boolean;
   onToggle: () => void;
-  onInteract?: () => void;
 }) {
   const projectPath = useWorkbench(
     (state) => state.projects.find((project) => project.id === session.project_id)?.path ?? "",
@@ -65,7 +62,6 @@ export function ActivityGroup({
                   title={relativizeDisplayText(step.title, projectPath)}
                   event={step.event}
                   projectPath={projectPath}
-                  onInteract={onInteract}
                 />
               ))}
             </ul>
@@ -80,14 +76,11 @@ function ActivityStep({
   title,
   event,
   projectPath,
-  onInteract,
 }: {
   title: string;
   event: ToolCallEvent;
   projectPath: string;
-  onInteract?: () => void;
 }) {
-  const [open, setOpen] = useState(false);
   const summary = relativizeDisplayText(event.summary, projectPath).trim();
   const detail = relativizeDisplayText(event.detail ?? "", projectPath).trim();
   const images = event.images ?? [];
@@ -96,30 +89,13 @@ function ActivityStep({
   const copyText = [event.name, summary, detail].filter((part) => part.trim()).join("\n");
 
   return (
-    <li className="border-t border-[#2a2a2a]">
+    <li className="border-t border-[#2a2a2a]" data-activity-step data-step-title={title}>
+      <div className="flex min-w-0 items-center gap-2.5 px-3 py-2 text-[13px] text-[#cfcfcf]">
+        <span className="h-1 w-1 shrink-0 rounded-full bg-[#8a8a8a]" />
+        <span className="min-w-0 flex-1 truncate">{title}</span>
+      </div>
       {hasBody ? (
-        <button
-          type="button"
-          data-activity-step
-          data-step-title={title}
-          aria-expanded={open}
-          onClick={() => {
-            onInteract?.();
-            setOpen((value) => !value);
-          }}
-          className="flex w-full min-w-0 items-center gap-2.5 px-3 py-2 text-left text-[13px] text-[#cfcfcf] hover:bg-[#202020]"
-        >
-          <span className="h-1 w-1 shrink-0 rounded-full bg-[#8a8a8a]" />
-          <span className="min-w-0 flex-1 truncate">{title}</span>
-        </button>
-      ) : (
-        <div data-activity-step data-step-title={title} className="flex min-w-0 items-center gap-2.5 px-3 py-2 text-[13px] text-[#cfcfcf]">
-          <span className="h-1 w-1 shrink-0 rounded-full bg-[#8a8a8a]" />
-          <span className="min-w-0 flex-1 truncate">{title}</span>
-        </div>
-      )}
-      {open && hasBody ? (
-        <div className="min-w-0 overflow-x-hidden px-3 pb-2 pl-7 font-mono text-xs">
+        <div data-activity-body className="min-w-0 overflow-x-hidden px-3 pb-2 pl-7 font-mono text-xs">
           {summaryShown ? <p className="break-all whitespace-pre-wrap text-zinc-300">{summary}</p> : null}
           {detail ? (
             <p className={cn("break-all whitespace-pre-wrap text-zinc-400", summaryShown && "mt-1")}>{detail}</p>

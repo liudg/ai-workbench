@@ -211,6 +211,39 @@ test("an image summary path is the thumbnail when the images list is empty", () 
   assert.deepEqual(pieces[0].paths, ["shot.png"]);
 });
 
+test("thinking between single calls leaves stacked summaries and no thinking text", () => {
+  const pieces = foldActivity([
+    event("t1", { kind: "thinking", text: "先看背包里的宝石。" }),
+    tool("m1", "execute_code", "MCP unityMCP execute_code"),
+    event("t2", { kind: "thinking", text: "再开详情。" }),
+    tool("m2", "execute_code", "MCP unityMCP execute_code"),
+    event("t3", { kind: "thinking", text: "查一条命令。" }),
+    tool("k1", "command", "检查了表格选中"),
+    event("t4", { kind: "thinking", text: "再调一次集成。" }),
+    tool("m3", "execute_code", "MCP unityMCP execute_code"),
+    event("t5", { kind: "thinking", text: "最后一条命令。" }),
+    tool("k2", "command", "git status"),
+  ]);
+  assert.deepEqual(
+    pieces.map((piece) => (piece.type === "tools" ? piece.summary : piece.type)),
+    [
+      "已使用 unityMCP 集成运行了命令",
+      "已使用 unityMCP 集成运行了命令",
+      "已运行 1 条命令",
+      "已使用 unityMCP 集成运行了命令",
+      "已运行 1 条命令",
+    ],
+  );
+  const text = JSON.stringify(pieces);
+  assert.equal(text.includes("先看背包里的宝石"), false);
+  assert.equal(text.includes("最后一条命令"), false);
+  const groups = pieces.filter((piece) => piece.type === "tools");
+  assert.deepEqual(
+    groups.map((piece) => (piece.type === "tools" ? piece.steps.map((step) => step.title) : [])),
+    [["execute_code"], ["execute_code"], ["检查了表格选中"], ["execute_code"], ["git status"]],
+  );
+});
+
 test("empty thinking does not add a row", () => {
   const pieces = foldActivity([
     event("t1", { kind: "thinking", text: "   " }),
