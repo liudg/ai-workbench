@@ -140,7 +140,8 @@ export function deriveComposerView(input: ComposerViewInput) {
   const hasText = Boolean(input.text.trim());
   const hasSnippets = input.snippetCount > 0;
   const stopMode =
-    queueOn && busy && !input.editingId && !pendingId && !hasText && !hasSnippets && input.fileCount === 0;
+    held ||
+    (queueOn && busy && !input.editingId && !pendingId && !hasText && !hasSnippets && input.fileCount === 0);
   const sendDisabled = stopMode
     ? false
     : composerLocked ||

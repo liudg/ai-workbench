@@ -5,19 +5,100 @@ import {
   claimDraft,
   draftId,
   applyDraftSend,
+  applyThreadSend,
   firstSendBody,
   forgetProjectDraft,
   openProjectDraft,
+  parkComposerText,
   projectOfDraft,
   runDraftSend,
   withCollaborationEvent,
   withGoalEvent,
   type DraftCarryState,
+  type DraftSendResult,
+  type FirstSendOutcome,
 } from "../draft-session";
 import { readDraftSnapshot } from "../draft-storage";
-import type { DraftSlice, SessionDraft, WorkbenchGet, WorkbenchSet, WorkbenchState } from "../types";
+import type { SessionSandbox } from "@/types";
+import type { DraftSlice, PendingStart, SessionDraft, WorkbenchGet, WorkbenchSet, WorkbenchState } from "../types";
 
 const catalogEpoch = new Map<string, number>();
+
+function dropPending(
+  pending: Record<string, PendingStart>,
+  projectId: string,
+): Record<string, PendingStart> {
+  if (!(projectId in pending)) return pending;
+  const next = { ...pending };
+  delete next[projectId];
+  return next;
+}
+
+async function discardQuiet(sessionId: string): Promise<boolean> {
+  try {
+    await backend.discardUnsentSession(sessionId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function settleDraftCreate(
+  set: WorkbenchSet,
+  get: WorkbenchGet,
+  projectId: string,
+  result: DraftSendResult<FirstSendOutcome>,
+  sentText: string,
+  kind: "draft" | "thread",
+  sandbox?: SessionSandbox | null,
+): Promise<boolean> {
+  if (!result.ok && result.skipped) return false;
+  let dismissed = Boolean(
+    get().drafts[projectId]?.cancelRequested || get().pendingStart[projectId]?.cancelRequested,
+  );
+  const missed = result.ok ? Boolean(result.value.messageError?.trim()) : false;
+  if (dismissed && result.ok && !missed) dismissed = false;
+  if (dismissed && result.ok && missed) {
+    const gone = await discardQuiet(result.value.session.id);
+    if (!gone) dismissed = false;
+  }
+  let list = get().sessions[projectId] ?? [];
+  if (result.ok && !dismissed) {
+    try {
+      [, list] = await loadSessions(projectId);
+    } catch {
+      list = get().sessions[projectId] ?? [];
+    }
+  }
+  const options = { dismissed, sentText };
+  const settled =
+    kind === "draft"
+      ? applyDraftSend(carry(get()), projectId, result, list, options)
+      : applyThreadSend(carry(get()), projectId, result, list, options);
+  if (settled.restore) parkComposerText(settled.restore.sessionId, settled.restore.text);
+  if (!settled.patch) return false;
+  const sessionId = result.ok ? result.value.session.id : null;
+  const keepSession = result.ok && !dismissed;
+  set((s) => {
+    const patch = settled.patch;
+    if (!patch) return {};
+    const pendingStart = dropPending(s.pendingStart, projectId);
+    if (!(keepSession && sandbox && sessionId)) {
+      return { ...patch, pendingStart, screen: "workspace" as const };
+    }
+    return {
+      ...patch,
+      pendingStart,
+      screen: "workspace" as const,
+      sandboxes: { ...patch.sandboxes, [sessionId]: sandbox },
+      accessMode: {
+        ...patch.accessMode,
+        [sessionId]: sandbox.profileId ? "ask" : sandbox.mode,
+      },
+    };
+  });
+  return settled.sent;
+}
 
 function carry(state: {
   drafts: DraftSlice["drafts"];
@@ -58,6 +139,27 @@ export function createDraftSlice(
   return {
     drafts: restored.drafts,
     draftFocused: restored.draftFocused,
+    pendingStart: {},
+
+    cancelDraftSend(projectId) {
+      set((s) => {
+        const draft = s.drafts[projectId];
+        const pending = s.pendingStart[projectId];
+        const creating = draft?.phase === "creating";
+        if (!creating && !pending) return {};
+        if (creating && draft?.cancelRequested && (!pending || pending.cancelRequested)) return {};
+        if (!creating && pending?.cancelRequested) return {};
+        return {
+          drafts:
+            creating && draft
+              ? { ...s.drafts, [projectId]: { ...draft, cancelRequested: true } }
+              : s.drafts,
+          pendingStart: pending
+            ? { ...s.pendingStart, [projectId]: { ...pending, cancelRequested: true } }
+            : s.pendingStart,
+        };
+      });
+    },
     attachments: restored.attachments,
     textSnippets: restored.textSnippets,
     sandboxes: restored.sandboxes,
@@ -267,30 +369,35 @@ export function createDraftSlice(
     async commitDraftMessage(sessionId, text, images, annotations) {
       const projectId = projectOfDraft(sessionId);
       if (!projectId) return false;
-      const claimed = claimDraft(get().drafts[projectId]);
+      const existing = get().drafts[projectId];
+      const claimed = claimDraft(existing);
       if (!claimed) return false;
       const body = firstSendBody(claimed, { text, images, annotations });
-      const result = await runDraftSend(projectId, async () => {
-        set((s) => ({
-          drafts: s.drafts[projectId]
-            ? { ...s.drafts, [projectId]: claimed }
-            : s.drafts,
-          lastError: null,
-        }));
+      const result = await runDraftSend(projectId, () => {
+        const at = Date.now();
+        set((s) => {
+          const current = s.drafts[projectId];
+          if (!current || current.phase === "creating") return {};
+          return {
+            drafts: {
+              ...s.drafts,
+              [projectId]: {
+                ...current,
+                phase: "creating",
+                creatingSince: at,
+                cancelRequested: false,
+              },
+            },
+            pendingStart: {
+              ...s.pendingStart,
+              [projectId]: { agent: current.agent, title: text, at },
+            },
+            lastError: null,
+          };
+        });
         return backend.createSessionAndSend(body);
       });
-      let list = get().sessions[projectId] ?? [];
-      if (result.ok) {
-        try {
-          [, list] = await loadSessions(projectId);
-        } catch {
-          list = get().sessions[projectId] ?? [];
-        }
-      }
-      const settled = applyDraftSend(carry(get()), projectId, result, list);
-      if (!settled.patch) return false;
-      set(settled.patch);
-      return settled.sent;
+      return settleDraftCreate(set, get, projectId, result, text, "draft");
     },
 
     async sendNewThread(projectId, agent, text) {
@@ -312,38 +419,35 @@ export function createDraftSlice(
         },
         { text },
       );
-      const result = await runDraftSend(projectId, () => backend.createSessionAndSend(body));
-      if (!result.ok) {
-        if (!result.skipped) set({ lastError: result.error });
-        return null;
-      }
-      const session = result.value;
-      let list = get().sessions[projectId] ?? [];
-      try {
-        [, list] = await loadSessions(projectId);
-      } catch {
-        list = get().sessions[projectId] ?? [];
-      }
-      set((s) => ({
-        selectedProjectId: projectId,
-        preferredAgent: agent,
-        screen: "workspace",
-        draftFocused: { ...s.draftFocused, [projectId]: false },
-        activeSessionId: { ...s.activeSessionId, [projectId]: session.id },
-        sessions: {
-          ...s.sessions,
-          [projectId]: list.some((item) => item.id === session.id) ? list : [session, ...list],
-        },
-        sandboxes: sandbox ? { ...s.sandboxes, [session.id]: sandbox } : s.sandboxes,
-        accessMode: sandbox
-          ? {
-              ...s.accessMode,
-              [session.id]: sandbox.profileId ? "ask" : sandbox.mode,
-            }
-          : s.accessMode,
-        lastError: null,
-      }));
-      return session.id;
+      const result = await runDraftSend(projectId, () => {
+        const at = Date.now();
+        set((s) => {
+          const current = s.drafts[projectId];
+          const drafts =
+            current && current.phase !== "creating"
+              ? {
+                  ...s.drafts,
+                  [projectId]: {
+                    ...current,
+                    phase: "creating" as const,
+                    creatingSince: at,
+                    cancelRequested: false,
+                  },
+                }
+              : s.drafts;
+          return {
+            drafts,
+            pendingStart: {
+              ...s.pendingStart,
+              [projectId]: { agent, title: text, at },
+            },
+            lastError: null,
+          };
+        });
+        return backend.createSessionAndSend(body);
+      });
+      const sent = await settleDraftCreate(set, get, projectId, result, text, "thread", sandbox);
+      return sent ? (get().activeSessionId[projectId] ?? null) : null;
     },
   };
 }

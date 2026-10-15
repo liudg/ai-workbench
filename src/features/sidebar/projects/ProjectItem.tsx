@@ -2,6 +2,8 @@ import { useCallback, useRef, useState } from "react";
 import { ChevronRight, Ellipsis } from "lucide-react";
 
 import { cn, displayPath } from "@/lib/utils";
+import { useWorkbench } from "@/store";
+import { pendingSidebarSession } from "@/store/draft-session";
 import { aggregateStatus, type Project } from "@/types";
 import { useProjectItem } from "./use-project-item";
 import { useDismiss } from "../use-dismiss";
@@ -14,6 +16,10 @@ import { useProjectBranch } from "./use-project-branch";
 
 export function ProjectItem({ project }: { project: Project }) {
   const { sessions, selected, activeSessionId, selectProject, removeProject } = useProjectItem(project);
+  const draft = useWorkbench((s) => s.drafts[project.id]);
+  const pendingStart = useWorkbench((s) => s.pendingStart[project.id]);
+  const draftFocused = useWorkbench((s) => Boolean(s.draftFocused[project.id]));
+  const pending = pendingSidebarSession(project.id, draft, pendingStart);
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
@@ -25,8 +31,9 @@ export function ProjectItem({ project }: { project: Project }) {
   }, []);
   useDismiss(menuOpen, menuRef, closeMenu);
 
-  const items = sessions ?? [];
+  const items = pending ? [pending, ...(sessions ?? [])] : (sessions ?? []);
   const grouped = partitionSidebarSessions(items);
+  const rowActiveId = draftFocused && pending ? pending.id : activeSessionId;
   const status = sessions ? aggregateStatus(grouped.active) : null;
   const branch = useProjectBranch(project.id);
 
@@ -131,7 +138,7 @@ export function ProjectItem({ project }: { project: Project }) {
               projectId={project.id}
               sessions={grouped.active}
               selected={selected}
-              activeSessionId={activeSessionId}
+              activeSessionId={rowActiveId}
               showAll={showAll}
               onToggleShowAll={() => setShowAll((value) => !value)}
             />
@@ -140,7 +147,7 @@ export function ProjectItem({ project }: { project: Project }) {
             projectId={project.id}
             sessions={grouped.archived}
             selected={selected}
-            activeSessionId={activeSessionId}
+            activeSessionId={rowActiveId}
           />
         </>
       )}

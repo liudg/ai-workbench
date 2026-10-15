@@ -42,6 +42,7 @@ macro_rules! workbench_handler {
             $crate::features::ipc::sessions::delete_session,
             $crate::features::ipc::sessions::create_session,
             $crate::features::ipc::sessions::create_session_and_send,
+            $crate::features::ipc::sessions::discard_unsent_session,
             $crate::features::ipc::sessions::cached_agent_catalog,
             $crate::features::ipc::sessions::agent_permission_menu,
             $crate::features::ipc::sessions::set_session_access,

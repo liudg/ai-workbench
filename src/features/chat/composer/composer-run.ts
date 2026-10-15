@@ -1,6 +1,7 @@
 import type { ClipboardEvent, KeyboardEvent as ReactKeyboardEvent, RefObject } from "react";
 
 import { useWorkbench } from "@/store";
+import { projectOfDraft } from "@/store/draft-session";
 import type { AgentCapabilities, AgentSkillOption, SessionSandbox, SlashCommand } from "@/types";
 import {
   interruptTurn,
@@ -297,5 +298,10 @@ export function steerComposerQueued(run: ComposerRun, id: string) {
 }
 
 export function interruptComposer(run: ComposerRun) {
+  const projectId = projectOfDraft(run.sessionId);
+  if (projectId) {
+    useWorkbench.getState().cancelDraftSend(projectId);
+    return;
+  }
   void interruptTurn(run.sessionId);
 }

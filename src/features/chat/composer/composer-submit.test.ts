@@ -72,6 +72,11 @@ test("queue edit, pending answer, and image send stay distinct", () => {
     decideSubmit({ ...base, text: "", attached: [{ name: "a.png", path: "C:/a.png" }] }),
     { type: "send-images", text: "", images: ["C:/a.png"] },
   );
+  assert.equal(decideSubmit({ ...base, text: "  \n\t" }).type, "noop");
+  assert.deepEqual(
+    decideSubmit({ ...base, text: "  \n", attached: [{ name: "a.png", path: "C:/a.png" }] }),
+    { type: "send-images", text: "", images: ["C:/a.png"] },
+  );
 });
 
 test("image agents keep real paths for non-image files added to chat", () => {

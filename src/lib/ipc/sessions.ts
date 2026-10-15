@@ -9,7 +9,7 @@ import type {
   SessionEvent,
 } from "@/types";
 import { invoke } from "./call";
-import type { Backend, CreateAndSendInput } from "./contract";
+import type { Backend, CreateAndSendInput, CreateAndSendResult } from "./contract";
 import type { DiffScope } from "./dto";
 
 export const sessionCommands: Pick<
@@ -21,6 +21,7 @@ export const sessionCommands: Pick<
   | "deleteSession"
   | "createSession"
   | "createSessionAndSend"
+  | "discardUnsentSession"
   | "cachedAgentCatalog"
   | "agentPermissionMenu"
   | "setSandbox"
@@ -68,7 +69,9 @@ export const sessionCommands: Pick<
       accessMode: accessMode ?? null,
     }),
   createSessionAndSend: (input: CreateAndSendInput) =>
-    invoke<Session>("create_session_and_send", { input }),
+    invoke<CreateAndSendResult>("create_session_and_send", { input }),
+  discardUnsentSession: (sessionId) =>
+    invoke("discard_unsent_session", { sessionId }),
   cachedAgentCatalog: (agent) =>
     invoke<AgentCatalogRefresh>("cached_agent_catalog", { agent }),
   agentPermissionMenu: (agent) =>

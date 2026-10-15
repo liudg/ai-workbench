@@ -1,6 +1,6 @@
 import { initialSandbox } from "@/lib/sandbox";
 import { backend } from "@/lib/ipc";
-import { draftId } from "../draft-session";
+import { draftId, isPendingId } from "../draft-session";
 import type { Session } from "@/types";
 import { browserUnreadStorage, readUnreadFinishedIds } from "../unread-finished";
 import {
@@ -140,6 +140,8 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
           delete next[key];
           return next;
         };
+        const pendingStart = { ...s.pendingStart };
+        delete pendingStart[id];
         const selectedProjectId =
           s.selectedProjectId === id
             ? (projects[0]?.id ?? null)
@@ -158,6 +160,7 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
           events: dropKey(s.events),
           catalogs: dropKey(s.catalogs),
           catalogNotices: dropKey(s.catalogNotices),
+          pendingStart,
         };
       });
       const next = get().selectedProjectId;
@@ -220,6 +223,11 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
     },
 
     async selectSession(projectId, sessionId) {
+      if (isPendingId(sessionId)) {
+        const draft = get().drafts[projectId];
+        if (draft) get().openDraft(projectId, draft.agent);
+        return;
+      }
       set((s) => ({
         selectedProjectId: projectId,
         activeSessionId: { ...s.activeSessionId, [projectId]: sessionId },

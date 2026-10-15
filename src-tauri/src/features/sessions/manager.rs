@@ -29,6 +29,23 @@ use super::log::{
     apply_body, prepend_bodies, sidebar_updated_at, SessionEntry, EVT_SESSIONS_CHANGED,
 };
 
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateAndSendResult {
+    pub session: Session,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_error: Option<String>,
+}
+
+pub(crate) fn created_without_first_message(err: &str) -> String {
+    let detail = err.trim();
+    if detail.is_empty() {
+        "会话已创建，第一条消息没有发出".to_string()
+    } else {
+        format!("会话已创建，第一条消息没有发出。{detail}")
+    }
+}
+
 pub struct FirstSendSpec {
     pub access_mode: Option<String>,
     pub apply_access: bool,
@@ -302,51 +319,83 @@ impl SessionManager {
     }
 
     /// 创建、写上草稿里的权限/模型/计划/目标，再发送第一条。
-    /// 发送没有落地就停掉进程并撤掉这次会话，侧栏不会留下空行。
+    /// 创建失败则没有会话。会话已在、第一条没发出时保留这条会话。
     pub async fn create_session_and_send(
         &self,
         store: &ProjectStore,
         project: &Project,
         agent: AgentKind,
         spec: FirstSendSpec,
-    ) -> Result<Session, String> {
+    ) -> Result<CreateAndSendResult, String> {
         let session = self
             .start_new_session(project, agent, spec.access_mode.clone(), true)
             .await?;
         let session_id = session.id.clone();
         if let Err(err) = self.apply_first_send(store, &session_id, &spec).await {
-            let landed = self
+            let (exists, landed) = {
+                let entries = self.entries.lock().unwrap();
+                match entries.get(&session_id) {
+                    Some(entry) => (true, !entry.withhold_sidebar),
+                    None => (false, false),
+                }
+            };
+            if !exists {
+                return Err(err);
+            }
+            self.release_sidebar(&session_id);
+            self.emit_changed(&project.id);
+            let session = self
                 .entries
                 .lock()
                 .unwrap()
                 .get(&session_id)
-                .is_some_and(|entry| !entry.withhold_sidebar);
-            if landed {
-                self.emit_changed(&project.id);
-                return self
-                    .entries
-                    .lock()
-                    .unwrap()
-                    .get(&session_id)
-                    .map(|entry| entry.meta.clone())
-                    .ok_or(err);
-            }
-            self.abandon_unsent(&session_id).await;
-            return Err(err);
+                .map(|entry| entry.meta.clone())
+                .ok_or_else(|| err.clone())?;
+            return Ok(CreateAndSendResult {
+                session,
+                message_error: if landed {
+                    None
+                } else {
+                    Some(created_without_first_message(&err))
+                },
+            });
         }
-        {
-            let mut entries = self.entries.lock().unwrap();
-            if let Some(entry) = entries.get_mut(&session_id) {
-                entry.withhold_sidebar = false;
-            }
-        }
+        self.release_sidebar(&session_id);
         self.emit_changed(&project.id);
         self.entries
             .lock()
             .unwrap()
             .get(&session_id)
-            .map(|entry| entry.meta.clone())
+            .map(|entry| CreateAndSendResult {
+                session: entry.meta.clone(),
+                message_error: None,
+            })
             .ok_or_else(|| "会话没有建立".to_string())
+    }
+
+    fn release_sidebar(&self, session_id: &str) {
+        let mut entries = self.entries.lock().unwrap();
+        if let Some(entry) = entries.get_mut(session_id) {
+            entry.withhold_sidebar = false;
+        }
+    }
+
+    /// 创建被取消，而且用户消息还没落地。已经发出的会话不会撤。
+    pub async fn discard_unsent_session(&self, session_id: &str) -> Result<(), String> {
+        let unsent = {
+            let entries = self.entries.lock().unwrap();
+            let Some(entry) = entries.get(session_id) else {
+                return Ok(());
+            };
+            !entry.events.iter().any(|event| {
+                matches!(event.body, SessionEventBody::UserMessage { .. })
+            })
+        };
+        if !unsent {
+            return Err("这条会话已经有消息".into());
+        }
+        self.abandon_unsent(session_id).await;
+        Ok(())
     }
 
     async fn apply_first_send(
@@ -1178,4 +1227,21 @@ fn parse_session_key(session_id: &str) -> Option<(AgentKind, String)> {
         .into_iter()
         .find(|agent| agent.as_str() == kind)?;
     Some((agent, native.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::created_without_first_message;
+
+    #[test]
+    fn partial_send_names_the_created_session_and_the_missed_message() {
+        assert_eq!(
+            created_without_first_message("连接中断"),
+            "会话已创建，第一条消息没有发出。连接中断"
+        );
+        assert_eq!(
+            created_without_first_message("  "),
+            "会话已创建，第一条消息没有发出"
+        );
+    }
 }

@@ -5,7 +5,9 @@ use tauri::State;
 
 use crate::features::agents::DiffScope;
 use crate::features::projects::ProjectStore;
-use crate::features::sessions::{AgentCatalogRefresh, FirstSendSpec, SessionManager};
+use crate::features::sessions::{
+    AgentCatalogRefresh, CreateAndSendResult, FirstSendSpec, SessionManager,
+};
 use crate::models::*;
 
 #[tauri::command]
@@ -57,7 +59,8 @@ pub async fn delete_session(
     manager.delete_session(&store, &session_id).await
 }
 
-/// 草稿首发：创建、写入权限/模型/计划/目标，再发送第一条。失败时后端撤掉空会话。
+/// 草稿首发：创建、写入权限/模型/计划/目标，再发送第一条。
+/// 创建失败没有会话；会话已在但第一条没发出时保留会话。
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateAndSendInput {
@@ -88,7 +91,7 @@ pub async fn create_session_and_send(
     store: State<'_, ProjectStore>,
     manager: State<'_, SessionManager>,
     input: CreateAndSendInput,
-) -> Result<Session, String> {
+) -> Result<CreateAndSendResult, String> {
     let project = manager.resolve_project(&store, &input.project_id)?;
     manager
         .create_session_and_send(
@@ -115,6 +118,14 @@ pub async fn create_session_and_send(
             },
         )
         .await
+}
+
+#[tauri::command]
+pub async fn discard_unsent_session(
+    manager: State<'_, SessionManager>,
+    session_id: String,
+) -> Result<(), String> {
+    manager.discard_unsent_session(&session_id).await
 }
 
 #[tauri::command]

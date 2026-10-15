@@ -38,7 +38,10 @@ export function createShellSlice(set: WorkbenchSet, get: WorkbenchGet): ShellSli
       });
       backend.onSessionsChanged((projectId) => {
         loadSessions(projectId).then(([pid, list]) =>
-          set((s) => ({ sessions: { ...s.sessions, [pid]: list } })),
+          set((s) => {
+            if (s.drafts[pid]?.phase === "creating" || s.pendingStart[pid]) return {};
+            return { sessions: { ...s.sessions, [pid]: list } };
+          }),
         );
       });
       backend.onSessionRequest((request) => {
@@ -91,7 +94,14 @@ export function createShellSlice(set: WorkbenchSet, get: WorkbenchGet): ShellSli
         for (const key of Object.keys(sessions)) {
           if (!ids.has(key)) delete sessions[key];
         }
-        for (const [pid, list] of pairs) sessions[pid] = list;
+        const pendingStart = { ...s.pendingStart };
+        for (const key of Object.keys(pendingStart)) {
+          if (!ids.has(key)) delete pendingStart[key];
+        }
+        for (const [pid, list] of pairs) {
+          if (s.drafts[pid]?.phase === "creating" || pendingStart[pid]) continue;
+          sessions[pid] = list;
+        }
         let carried: DraftCarryState = {
           drafts: s.drafts,
           draftFocused: s.draftFocused,
@@ -130,6 +140,7 @@ export function createShellSlice(set: WorkbenchSet, get: WorkbenchGet): ShellSli
           events: carried.events,
           catalogs: carried.catalogs,
           catalogNotices: carried.catalogNotices,
+          pendingStart,
           ready: true,
         };
       });

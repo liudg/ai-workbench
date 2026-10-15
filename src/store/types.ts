@@ -132,13 +132,28 @@ export interface SessionDraft {
   goal: string | null;
   goalStatus: "paused" | "active" | null;
   phase: "idle" | "creating";
+  /** 只在内存里。创建开始的时间，临时侧栏行用它，不写入本地存储。 */
+  creatingSince?: number;
+  /** 用户在创建完成前点了停止。结果回来之前仍然锁住发送。 */
+  cancelRequested?: boolean;
+}
+
+export interface PendingStart {
+  agent: AgentKind;
+  title: string;
+  at: number;
+  cancelRequested?: boolean;
 }
 
 export interface DraftSlice {
   drafts: Record<string, SessionDraft>;
   /** 这个项目的主区正在看草稿，而不是某条侧栏会话。 */
   draftFocused: Record<string, boolean>;
+  /** 创建进行中的占位。不进本地存储，空闲草稿不会有这一项。 */
+  pendingStart: Record<string, PendingStart>;
   openDraft(projectId: string, agent: AgentKind): void;
+  /** 创建还没出结果时停止。等这次创建结束再解锁，避免发出第二条。 */
+  cancelDraftSend(projectId: string): void;
   rememberDraftText(projectId: string, text: string): void;
   setDraftSandbox(sessionId: string, sandbox: SessionSandbox): void;
   setDraftTuning(

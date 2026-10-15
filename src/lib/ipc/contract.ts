@@ -53,6 +53,12 @@ export interface CreateAndSendInput {
   annotations: PageAnnotation[];
 }
 
+export interface CreateAndSendResult {
+  session: Session;
+  /** 会话已经在，但第一条消息没有发出。 */
+  messageError?: string | null;
+}
+
 export interface Backend {
   listProjects(): Promise<Project[]>;
   createProject(input: CreateProjectInput): Promise<CreateProjectResult>;
@@ -69,8 +75,10 @@ export interface Backend {
     agent?: AgentKind,
     accessMode?: AccessMode,
   ): Promise<Session>;
-  /** 创建会话、写上沙箱/模型和第一条消息。失败时后端撤掉这次会话。 */
-  createSessionAndSend(input: CreateAndSendInput): Promise<Session>;
+  /** 创建会话、写上沙箱/模型和第一条消息。创建失败则没有会话；消息失败时会话仍在。 */
+  createSessionAndSend(input: CreateAndSendInput): Promise<CreateAndSendResult>;
+  /** 撤掉还没有用户消息的会话。用于创建过程中取消。 */
+  discardUnsentSession(sessionId: string): Promise<void>;
   /** 这个 Agent 上一次成功的模型目录。没有缓存时拒绝，不启动 CLI。 */
   cachedAgentCatalog(agent: AgentKind): Promise<AgentCatalogRefresh>;
   /** 草稿权限菜单：有缓存用缓存，否则用该 Agent 的离线档位。 */

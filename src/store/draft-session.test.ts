@@ -9,7 +9,9 @@ import {
   draftId,
   finishDraft,
   firstSendBody,
+  isPendingId,
   openProjectDraft,
+  pendingSidebarSession,
   releaseDraft,
   reserveDraftSend,
   releaseDraftSend,
@@ -137,7 +139,7 @@ test("draft first send success removes the draft and selects the real session", 
   assert.ok(current);
   assert.equal(current.phase, "creating");
   const created = session({ project_id: projectId, updated_at: 50 });
-  const result = await runDraftSend(projectId, async () => created);
+  const result = await runDraftSend(projectId, async () => ({ session: created }));
   assert.equal(result.ok, true);
   const state = carry(current, {
     catalogs: {
@@ -146,7 +148,7 @@ test("draft first send success removes the draft and selects the real session", 
   });
   const settled = applyDraftSend(state, projectId, result, [
     session({ id: "older", updated_at: 1 }),
-  ]);
+  ], { dismissed: false, sentText: "first" });
   assert.equal(settled.sent, true);
   assert.ok(settled.patch);
   assert.equal(settled.patch.drafts[projectId], undefined);
@@ -180,7 +182,10 @@ test("draft first send failure keeps the draft text and unlocks it", async () =>
   if (result.ok) return;
   assert.equal(result.skipped, false);
   assert.match(result.error, /cli down/);
-  const settled = applyDraftSend(carry(current), projectId, result, []);
+  const settled = applyDraftSend(carry(current), projectId, result, [], {
+    dismissed: false,
+    sentText: "do not lose this",
+  });
   assert.equal(settled.sent, false);
   assert.ok(settled.patch);
   const kept = settled.patch.drafts[projectId];
@@ -199,10 +204,13 @@ test("draft first send failure keeps the draft text and unlocks it", async () =>
 test("a second first send while one is in flight does not touch the draft", async () => {
   const projectId = "inflight-project";
   assert.equal(reserveDraftSend(projectId), true);
-  const skipped = await runDraftSend(projectId, async () => session());
+  const skipped = await runDraftSend(projectId, async () => ({ session: session() }));
   assert.deepEqual(skipped, { ok: false, error: "", skipped: true });
   const creating = draft({ projectId, phase: "creating", text: "still here" });
-  const settled = applyDraftSend(carry(creating), projectId, skipped, []);
+  const settled = applyDraftSend(carry(creating), projectId, skipped, [], {
+    dismissed: false,
+    sentText: "still here",
+  });
   assert.equal(settled.patch, null);
   assert.equal(settled.sent, false);
   releaseDraftSend(projectId);
@@ -227,4 +235,86 @@ test("finish draft does not copy a catalog from a different agent", () => {
   );
   assert.equal(next.catalogs[created.id], undefined);
   assert.equal(next.drafts[projectId], undefined);
+});
+
+test("an idle draft has no sidebar row, and a creating draft is only a pending placeholder", () => {
+  const idle = draft({ projectId: "idle-project", text: "not yet" });
+  assert.equal(pendingSidebarSession("idle-project", idle, undefined), null);
+  const creating = draft({
+    projectId: "idle-project",
+    phase: "creating",
+    text: "  first line\nrest",
+    creatingSince: 40,
+  });
+  const row = pendingSidebarSession("idle-project", creating, undefined);
+  assert.ok(row);
+  assert.equal(isPendingId(row.id), true);
+  assert.equal(row.native_id, "");
+  assert.notEqual(row.id, draftId("idle-project"));
+  assert.equal(row.title, "first line");
+  assert.equal(row.status, "running");
+  assert.equal(claimDraft(creating), null);
+});
+
+test("a created session whose first message failed stays selected and restores the text", () => {
+  const projectId = "partial-project";
+  const current = draft({
+    projectId,
+    phase: "creating",
+    text: "keep the prompt",
+    tuning,
+  });
+  const created = session({ id: "codex-cli:real", project_id: projectId, agent: "codex-cli", native_id: "real" });
+  const settled = applyDraftSend(
+    carry(current),
+    projectId,
+    {
+      ok: true,
+      value: { session: created, messageError: "会话已创建，第一条消息没有发出。连接中断" },
+    },
+    [],
+    { dismissed: false, sentText: "keep the prompt" },
+  );
+  assert.equal(settled.sent, false);
+  assert.ok(settled.patch);
+  assert.equal(settled.patch.drafts[projectId], undefined);
+  assert.equal(settled.patch.activeSessionId[projectId], created.id);
+  assert.equal(settled.patch.sessions[projectId]?.[0]?.id, created.id);
+  assert.equal(settled.patch.lastError, "会话已创建，第一条消息没有发出。连接中断");
+  assert.equal(settled.patch.attachments[created.id]?.[0]?.name, "a.png");
+  assert.equal(settled.patch.attachments[draftId(projectId)], undefined);
+  assert.deepEqual(settled.restore, { sessionId: created.id, text: "keep the prompt" });
+});
+
+test("cancelling before the first message lands unlocks the draft and does not select a session", () => {
+  const projectId = "cancel-project";
+  const current = draft({
+    projectId,
+    phase: "creating",
+    text: "still drafting",
+    cancelRequested: true,
+  });
+  const created = session({ project_id: projectId });
+  const settled = applyDraftSend(
+    carry(current),
+    projectId,
+    { ok: true, value: { session: created, messageError: "会话已创建，第一条消息没有发出" } },
+    [],
+    { dismissed: true, sentText: "still drafting" },
+  );
+  assert.equal(settled.sent, false);
+  assert.equal(settled.restore, null);
+  assert.ok(settled.patch);
+  assert.equal(settled.patch.drafts[projectId]?.phase, "idle");
+  assert.equal(settled.patch.drafts[projectId]?.text, "still drafting");
+  assert.equal(settled.patch.drafts[projectId]?.cancelRequested, false);
+  assert.equal(settled.patch.lastError, null);
+  assert.equal(settled.patch.activeSessionId[projectId], undefined);
+  assert.deepEqual(settled.patch.sessions[projectId], []);
+});
+
+test("whitespace does not block an image-only first send", () => {
+  const body = firstSendBody(draft({ text: "  \n" }), { text: "  \n", images: ["shot.png"] });
+  assert.deepEqual(body.images, ["shot.png"]);
+  assert.equal(body.text, "  \n");
 });

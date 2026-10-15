@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { isPendingId } from "@/store/draft-session";
 import type { Session } from "@/types";
 import { FixedMenu } from "../FixedMenu";
 import { SessionAgentIcon } from "./SessionAgentIcon";
@@ -55,7 +56,8 @@ export function SessionRow({
   const anchorRef = useRef<HTMLButtonElement>(null);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
   const archived = Boolean(session.archived);
-  const items = sessionMenuItems({ caps, pinned, archived });
+  const pending = isPendingId(session.id);
+  const items = pending ? [] : sessionMenuItems({ caps, pinned, archived });
 
   const run = (action: SessionMenuAction) => {
     closeMenu();
@@ -84,6 +86,7 @@ export function SessionRow({
         tabIndex={0}
         data-session-row=""
         data-session-id={session.id}
+        data-session-pending={pending ? "true" : "false"}
         data-agent={session.agent}
         data-active={active ? "true" : "false"}
         data-pinned={pinned ? "true" : "false"}

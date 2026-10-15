@@ -7,4 +7,4 @@ mod manager;
 mod permission_cache;
 
 pub use catalog::AgentCatalogRefresh;
-pub use manager::{EventEmitter, FirstSendSpec, SessionManager};
+pub use manager::{CreateAndSendResult, EventEmitter, FirstSendSpec, SessionManager};

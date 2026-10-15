@@ -10,7 +10,7 @@ import type {
   SessionSandbox,
   SessionTuning,
 } from "@/types";
-import type { SessionDraft } from "./types";
+import type { PendingStart, SessionDraft } from "./types";
 
 export const DRAFT_PREFIX = "draft:";
 
@@ -20,6 +20,50 @@ export function draftId(projectId: string): string {
 
 export function isDraftId(sessionId: string): boolean {
   return sessionId.startsWith(DRAFT_PREFIX);
+}
+
+/** 创建进行中的侧栏占位。不是真实会话 id，成功后换成后端返回的那条。 */
+export const PENDING_PREFIX = "pending:";
+
+export function pendingId(projectId: string): string {
+  return `${PENDING_PREFIX}${projectId}`;
+}
+
+export function isPendingId(sessionId: string): boolean {
+  return sessionId.startsWith(PENDING_PREFIX);
+}
+
+export function pendingTitle(text: string): string {
+  const line = text
+    .split("\n")
+    .map((item) => item.trim())
+    .find((item) => item.length > 0);
+  return line || "新对话";
+}
+
+/** 空草稿不进侧栏。只有创建进行中才有一行，native id 为空。 */
+export function pendingSidebarSession(
+  projectId: string,
+  draft: SessionDraft | undefined,
+  pending: PendingStart | undefined,
+): Session | null {
+  const creating = draft?.phase === "creating";
+  if (!creating && !pending) return null;
+  const agent = pending?.agent ?? draft?.agent;
+  if (!agent) return null;
+  const at = draft?.creatingSince || pending?.at || 0;
+  const raw = creating ? pending?.title || draft?.text || "" : pending?.title || "";
+  return {
+    id: pendingId(projectId),
+    project_id: projectId,
+    agent,
+    native_id: "",
+    title: pendingTitle(raw),
+    status: "running",
+    created_at: at,
+    updated_at: at,
+    archived: false,
+  };
 }
 
 export function projectOfDraft(sessionId: string): string | null {
@@ -119,10 +163,12 @@ export function claimDraft(draft: SessionDraft | undefined): SessionDraft | null
   return { ...draft, phase: "creating" };
 }
 
-/** 失败后只解开发送锁。文字、附件意向、沙箱和模型都留着。 */
+/** 失败或取消后只解开发送锁。文字、附件、沙箱和模型都留着。 */
 export function releaseDraft(draft: SessionDraft): SessionDraft {
-  if (draft.phase === "idle") return draft;
-  return { ...draft, phase: "idle" };
+  if (draft.phase === "idle" && !draft.cancelRequested && draft.creatingSince === undefined) {
+    return draft;
+  }
+  return { ...draft, phase: "idle", cancelRequested: false, creatingSince: undefined };
 }
 
 export function firstSendBody(draft: SessionDraft, message: DraftMessage): FirstSendBody {
@@ -298,50 +344,170 @@ export type DraftSendResult<T> =
   | { ok: true; value: T }
   | { ok: false; error: string; skipped: boolean };
 
+/** 后端创建结果。messageError 有值表示会话在，但第一条消息没有发出。 */
+export interface FirstSendOutcome {
+  session: Session;
+  messageError?: string | null;
+}
+
+export interface DraftSendSettle {
+  sent: boolean;
+  patch: (DraftCarryState & { lastError: string | null }) | null;
+  /** 第一条没发出去时，把这段文字放进新会话的作曲栏。 */
+  restore: { sessionId: string; text: string } | null;
+}
+
+const composerSeed = new Map<string, string>();
+
+export function parkComposerText(sessionId: string, text: string): void {
+  composerSeed.set(sessionId, text);
+}
+
+export function takeComposerText(sessionId: string): string | null {
+  if (!composerSeed.has(sessionId)) return null;
+  const text = composerSeed.get(sessionId) ?? "";
+  composerSeed.delete(sessionId);
+  return text;
+}
+
+function messageMissed(outcome: FirstSendOutcome): string | null {
+  const text = outcome.messageError?.trim();
+  return text ? text : null;
+}
+
+function unlockDraft(state: DraftCarryState, projectId: string): DraftCarryState["drafts"] {
+  const current = state.drafts[projectId];
+  if (!current) return state.drafts;
+  return { ...state.drafts, [projectId]: releaseDraft(current) };
+}
+
 /**
- * 首发落定。失败只把草稿解锁并留下错误；跳过的并发发送不动草稿。
- * 成功则草稿消失，侧栏只选中这次发出的会话。
+ * 首发落定。
+ * 创建本身失败：草稿留着，侧栏没有行。
+ * 会话已建、第一条没发出：留下真实会话，草稿消失，作曲栏放回原文。
+ * 用户在结果出来前停止，且消息没发出：解锁草稿，调用方再撤掉空会话。
+ * 消息已经发出：停止来不及，按成功选中这条会话。
  */
 export function applyDraftSend(
   state: DraftCarryState,
   projectId: string,
-  result: DraftSendResult<Session>,
+  result: DraftSendResult<FirstSendOutcome>,
   list: readonly Session[],
-): { sent: boolean; patch: (DraftCarryState & { lastError: string | null }) | null } {
+  options: { dismissed: boolean; sentText: string },
+): DraftSendSettle {
   if (!result.ok) {
-    if (result.skipped) return { sent: false, patch: null };
-    const current = state.drafts[projectId];
+    if (result.skipped) return { sent: false, patch: null, restore: null };
     return {
       sent: false,
+      restore: null,
       patch: {
         ...state,
-        lastError: result.error,
-        drafts: current
-          ? { ...state.drafts, [projectId]: releaseDraft(current) }
-          : state.drafts,
+        lastError: options.dismissed ? null : result.error,
+        drafts: unlockDraft(state, projectId),
+      },
+    };
+  }
+  const missed = messageMissed(result.value);
+  if (options.dismissed && missed) {
+    return {
+      sent: false,
+      restore: null,
+      patch: {
+        ...state,
+        lastError: null,
+        drafts: unlockDraft(state, projectId),
+      },
+    };
+  }
+  if (missed) {
+    return {
+      sent: false,
+      restore: { sessionId: result.value.session.id, text: options.sentText },
+      patch: {
+        ...finishDraft(state, projectId, result.value.session, list, true),
+        lastError: missed,
       },
     };
   }
   return {
     sent: true,
-    patch: { ...finishDraft(state, projectId, result.value, list), lastError: null },
+    restore: null,
+    patch: { ...finishDraft(state, projectId, result.value.session, list, false), lastError: null },
   };
 }
 
-/** 首发成功：草稿消失，侧栏只出现这条已经发出的会话。 */
+/**
+ * `/new` 带正文。不删掉项目里还没发出的草稿，只在创建期间锁住它。
+ * 第一条没发出时，选中新建的会话并把这段正文放回作曲栏。
+ */
+export function applyThreadSend(
+  state: DraftCarryState,
+  projectId: string,
+  result: DraftSendResult<FirstSendOutcome>,
+  list: readonly Session[],
+  options: { dismissed: boolean; sentText: string },
+): DraftSendSettle {
+  if (!result.ok) {
+    if (result.skipped) return { sent: false, patch: null, restore: null };
+    return {
+      sent: false,
+      restore: null,
+      patch: {
+        ...state,
+        lastError: options.dismissed ? null : result.error,
+        drafts: unlockDraft(state, projectId),
+      },
+    };
+  }
+  const missed = messageMissed(result.value);
+  if (options.dismissed && missed) {
+    return {
+      sent: false,
+      restore: null,
+      patch: {
+        ...state,
+        lastError: null,
+        drafts: unlockDraft(state, projectId),
+      },
+    };
+  }
+  const session = result.value.session;
+  const released = unlockDraft(state, projectId);
+  return {
+    sent: !missed,
+    restore: missed ? { sessionId: session.id, text: options.sentText } : null,
+    patch: {
+      ...state,
+      drafts: released,
+      draftFocused: { ...state.draftFocused, [projectId]: false },
+      activeSessionId: { ...state.activeSessionId, [projectId]: session.id },
+      sessions: { ...state.sessions, [projectId]: mergeSession(list, session) },
+      lastError: missed,
+      selectedProjectId: projectId,
+      preferredAgent: session.agent,
+    },
+  };
+}
+
+/** 首发结束：草稿消失。消息没发出去时，附件留在新会话的作曲栏。 */
 export function finishDraft(
   state: DraftCarryState,
   projectId: string,
   session: Session,
   list: readonly Session[],
+  keepComposer = false,
 ): DraftCarryState {
   const id = draftId(projectId);
   const draft = state.drafts[projectId];
   const drafts = { ...state.drafts };
   delete drafts[projectId];
   const attachments = { ...state.attachments };
-  delete attachments[id];
   const textSnippets = { ...state.textSnippets };
+  if (keepComposer) {
+    if (attachments[id]) attachments[session.id] = attachments[id];
+    if (textSnippets[id]) textSnippets[session.id] = textSnippets[id];
+  }
+  delete attachments[id];
   delete textSnippets[id];
   const sandboxes = { ...state.sandboxes };
   const tuning = { ...state.tuning };

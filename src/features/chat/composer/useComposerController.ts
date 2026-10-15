@@ -9,7 +9,7 @@ import {
 } from "react";
 
 import { useWorkbench } from "@/store";
-import { isDraftId } from "@/store/draft-session";
+import { isDraftId, takeComposerText } from "@/store/draft-session";
 import type { ReviewStart, Session, SessionEvent, SessionSandbox } from "@/types";
 import {
   addComposerDir,
@@ -62,9 +62,10 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
   const actions = useComposerActions();
   const data = useComposerSession(session);
   const draftSession = isDraftId(session.id);
-  const [text, setText] = useState(() =>
-    draftSession ? (useWorkbench.getState().drafts[session.project_id]?.text ?? "") : "",
-  );
+  const [text, setText] = useState(() => {
+    if (draftSession) return useWorkbench.getState().drafts[session.project_id]?.text ?? "";
+    return takeComposerText(session.id) ?? "";
+  });
   const [caret, setCaret] = useState(0);
   const [menu, setMenu] = useState<null | "access" | "model" | "attach">(null);
   const [reviewOpen, setReviewOpen] = useState(false);
