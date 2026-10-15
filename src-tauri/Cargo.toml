@@ -1,7 +1,7 @@
 [package]
 name = "ai-workbench"
 version = "0.2.42"
-description = "AI 编程工作台：多项目、多会话的本�?Agent CLI 管理�?
+description = "AI 编程工作台：多项目、多会话的本地 Agent CLI 管理器"
 edition = "2021"
 rust-version = "1.77.2"
 
@@ -15,7 +15,10 @@ path = "src/bin/dev-bridge.rs"
 required-features = ["dev-bridge"]
 
 [features]
-# 网页预览的本机后端（cargo run --features dev-bridge --bin dev-bridge）�?# 非默�?feature：tauri build �?cargo build --bins，不会编译这个二进制，也不会打进安装包�?# 桌面开发由 pnpm tauri:dev �?--bin ai-workbench。不要加 package.default-run�?dev-bridge = ["tauri/test"]
+# 网页预览的本机后端（cargo run --features dev-bridge --bin dev-bridge）。
+# 非默认 feature：tauri build 走 cargo build --bins，不会编译这个二进制，也不会打进安装包。
+# 桌面开发由 pnpm tauri:dev 传 --bin ai-workbench。不要加 package.default-run。
+dev-bridge = ["tauri/test"]
 
 [build-dependencies]
 tauri-build = { version = "2.0.2", features = [] }
