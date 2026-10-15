@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import type { FileChange } from "@/features/changes-model/diff-parse";
@@ -9,6 +9,7 @@ import { diffBodyRows } from "./diff-body";
 import { foldDiffLines, previewTextFromDiff, unmodifiedLinesLabel } from "./fold";
 import { toSplitRows, type DiffPresentation, type SplitCell } from "./split-rows";
 import { applyWordDiff, type DiffDisplayRow, type WordPart } from "./word-diff";
+import { diffFileDisclosureClass } from "./diff-disclosure";
 
 export function DiffFileSection({
   file,
@@ -79,7 +80,13 @@ export function DiffFileSection({
           aria-label={open ? "收起差异" : "展开差异"}
           className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-[#888] hover:bg-white/5 hover:text-[#e8e8e8]"
         >
-          {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+          <ChevronRight
+            data-diff-disclosure={diffFileDisclosureClass(open)}
+            className={cn(
+              "h-3.5 w-3.5 transition-transform duration-150",
+              diffFileDisclosureClass(open),
+            )}
+          />
         </button>
         <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-[#cfcfcf]" title={file.path}>
           {file.path}

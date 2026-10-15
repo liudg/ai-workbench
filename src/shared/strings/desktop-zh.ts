@@ -1,5 +1,6 @@
 /**
  * 官方 Codex 桌面端简体中文（OpenAI.Codex 26.1007.2314.0，zh-CN）。
+ * 26.1007.9446 的 locale 经 rea 只留下 json 键，没有中文值，这一轮不改这些字符串。
  * 交互入口用这些字符串，不另起一套说法。
  */
 export const DESKTOP_ZH = {

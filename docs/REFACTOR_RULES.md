@@ -63,8 +63,8 @@
 
 ## 5. 没有 Codex 对应物、这一轮未改产品行为的功能
 
-- **内置浏览器。** 地址栏、前进后退、原生 webview / iframe、本地文件页。Codex 桌面没有这套浏览器。
-- **页面标注。** 标注模式、注释提交到当前会话。随浏览器保留。
+- **内置浏览器。** 地址栏、前进后退、原生 webview / iframe、本地文件页。`OpenAI.Codex_26.1007.9446.0` 的 `native-menu-locales/zh-CN.json` 经 rea 6.5.0 分析后，`json_top_level_keys`（`omitted_json_top_level_keys: 0`）含 `browserSidebar.*`、`codex.command.openBrowserTab`、`codex.command.focusBrowserAddressBar`、`codex.commandMenuTitle.reloadBrowserPage`、`codex.commandMenuTitle.hardReloadBrowserPage`。键名说明这版有浏览器侧栏命令；中文值没有进入 semantic_graph。浏览器组件 props 未分析，不按键名改交互，也不删工作台浏览器。
+- **页面标注。** 键 `browserSidebar.contextMenu.commentWithCodex` 存在。标注模式和注释提交的组件状态未观察，功能保留。
 - **多 Agent 安装探测。** 设置页列出已注册 CLI。Codex 和 Claude Code 的会话协议已接入；其余种类保持「未接入」，不能新建会话。没有把未接入的种类假接通。
 - **`@` 文件候选。** 官方实验性 `fuzzyFileSearch` 是流式会话。作曲栏 `@` 查询沿用已有的 `filter_project_paths`（只返回文件，按相对路径匹配）。插入时的引号规则跟 Codex TUI：路径含空白且本身没有 `"` 才加引号。
 
