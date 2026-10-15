@@ -58,6 +58,49 @@ pub fn git_diff_text(root: &Path, scope: &str, ignore_whitespace: bool) -> Resul
     Ok(crate::encoding::decode_child_bytes(&output.stdout).into_owned())
 }
 
+/// 当前分支名。不是仓库、分离头指针或空输出时返回 `None`。
+/// `git branch --show-current` 在分离头指针时成功但没有名字。
+pub fn current_branch(root: &Path) -> Result<Option<String>, String> {
+    if !root.is_dir() {
+        return Err("项目不存在".into());
+    }
+    let mut command = Command::new("git");
+    command
+        .args([
+            "-c",
+            "safe.bareRepository=explicit",
+            "branch",
+            "--show-current",
+        ])
+        .current_dir(root)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .env("GIT_TERMINAL_PROMPT", "0");
+    crate::encoding::apply_utf8_env_std(&mut command);
+    hide_console(&mut command);
+    let output = command
+        .output()
+        .map_err(|err| format!("无法运行 git: {err}"))?;
+    if output.status.success() {
+        let name = crate::encoding::decode_child_bytes(&output.stdout);
+        let name = name.trim();
+        if name.is_empty() || name == "HEAD" {
+            return Ok(None);
+        }
+        return Ok(Some(name.to_string()));
+    }
+    let stderr = crate::encoding::decode_child_bytes(&output.stderr);
+    let stderr = stderr.trim();
+    if stderr.contains("not a git repository") {
+        return Ok(None);
+    }
+    if stderr.is_empty() {
+        return Err("无法读取当前分支".into());
+    }
+    Err(stderr.to_string())
+}
+
 /// 项目目录是不是 git 工作区。
 /// 与 Codex `get_git_diff` 相同：`git rev-parse --is-inside-work-tree`。
 pub fn inside_work_tree(root: &Path) -> Result<bool, String> {
@@ -215,6 +258,11 @@ mod tests {
         assert_eq!(inside_work_tree(&root).unwrap(), false);
         assert!(run_git(&root, &["init"]));
         assert_eq!(inside_work_tree(&root).unwrap(), true);
+        let branch = current_branch(&root).unwrap();
+        assert!(branch.as_deref().is_some_and(|name| !name.is_empty()), "{branch:?}");
         let _ = fs::remove_dir_all(root);
+        let plain = scratch("not-git");
+        assert_eq!(current_branch(&plain).unwrap(), None);
+        let _ = fs::remove_dir_all(plain);
     }
 }

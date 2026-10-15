@@ -71,7 +71,7 @@ export function Row({
 }) {
   return (
     <div className="event-in group min-w-0 px-6 py-2">
-      <div className="mx-auto min-w-0 max-w-3xl">
+      <div className="min-w-0">
         <div className="mb-1 flex min-w-0 items-center gap-2">
           <span className="shrink-0 text-zinc-500">{icon}</span>
           <span

@@ -22,7 +22,7 @@ import { activeGoal } from "./goal";
 import { atToken, clearAtToken, insertMention, mentionFiles } from "./mentions";
 
 const workspaceFiles = Object.keys(
-  import.meta.glob(["/src/**/*.{ts,tsx,css,md,json}", "/docs/**/*.md", "/index.html"], {
+  import.meta.glob(["/src/**/*.{ts,tsx,md,json}", "/docs/**/*.md", "/index.html"], {
     query: "?url",
     import: "default",
     eager: true,
@@ -236,7 +236,10 @@ export default function ComposerPreview() {
   const modelMenuRef = useRef<HTMLDivElement>(null);
   const accessMenuRef = useRef<HTMLDivElement>(null);
   const permissionMenu = claude ? claudePermissionMenu : codexPermissionMenu;
-  const sandbox = emptySandbox("ask");
+  const access = params.get("access");
+  const sandbox = emptySandbox(
+    access === "full" || access === "read-only" || access === "approve-for-me" ? access : "ask",
+  );
   const events = useMemo<SessionEvent[]>(() => {
     const rows: SessionEvent[] = [];
     if (planOn) {
@@ -325,11 +328,11 @@ export default function ComposerPreview() {
 
   return (
     <div
-      className="flex min-h-screen flex-col justify-end bg-zinc-950 px-6 pb-10 text-zinc-200"
+      className="flex min-h-screen flex-col justify-end bg-[#0f0f0f] px-4 pb-4 text-[#e8e8e8]"
       data-composer-preview
       data-preview-agent={claude ? "claude-code" : "codex-cli"}
     >
-      <div className="relative mx-auto w-full max-w-3xl">
+      <div className="relative w-full">
         {view.skillOpen && (
           <SkillMenu
             matches={view.skillMatches}
@@ -353,7 +356,7 @@ export default function ComposerPreview() {
             onPick={choose}
           />
         )}
-        <div className="min-w-0 rounded-[28px] border border-zinc-700/90 bg-zinc-900 shadow-lg shadow-black/20">
+        <div className="min-w-0 rounded-[18px] border border-[#2a2a2a] bg-[#171717]">
           <div className="min-w-0 overflow-hidden px-3 pt-3">
             {view.goalStatus ? (
               <p

@@ -81,7 +81,7 @@ function TreeRows<T extends FileTreeFile>({
           title={node.path}
           aria-expanded={open}
           style={pad}
-          className="flex w-full min-w-0 items-center gap-1 rounded-md py-1 text-left text-zinc-300 hover:bg-zinc-800/80"
+          className="flex w-full min-w-0 items-center gap-1 rounded-md py-1 text-left text-[12px] text-[#bdbdbd] hover:bg-white/[0.04]"
           onClick={() => onToggle(node.id)}
         >
           {open ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
@@ -123,7 +123,7 @@ function TreeRows<T extends FileTreeFile>({
         style={pad}
         className={cn(
           "flex w-full min-w-0 items-center gap-1 rounded-md py-1 text-left",
-          active ? "bg-zinc-800" : "hover:bg-zinc-800/80",
+          active ? "bg-[#2a2a2a]" : "hover:bg-white/[0.04]",
         )}
         onClick={() => onSelect(file)}
         onContextMenu={
@@ -135,13 +135,13 @@ function TreeRows<T extends FileTreeFile>({
             : undefined
         }
       >
-        <File className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
-        <span className="min-w-0 flex-1 truncate font-mono text-xs text-zinc-200">{node.name}</span>
+        <File className="h-3.5 w-3.5 shrink-0 text-[#888]" />
+        <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-[#e8e8e8]">{node.name}</span>
         {showStats && file.added > 0 ? (
-          <span className="shrink-0 font-mono text-[11px] tabular-nums text-emerald-400">+{file.added}</span>
+          <span className="shrink-0 font-mono text-[11px] tabular-nums text-[#3fb950]">+{file.added}</span>
         ) : null}
         {showStats && file.removed > 0 ? (
-          <span className="shrink-0 font-mono text-[11px] tabular-nums text-red-400">-{file.removed}</span>
+          <span className="shrink-0 font-mono text-[11px] tabular-nums text-[#f85149]">-{file.removed}</span>
         ) : null}
       </button>
     </li>

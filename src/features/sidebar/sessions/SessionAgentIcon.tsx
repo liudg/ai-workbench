@@ -1,9 +1,16 @@
 import { useEffect, useState } from "react";
 import { Bot } from "lucide-react";
 
+import { cn } from "@/lib/utils";
 import type { AgentIdentity } from "./agent-identity";
 
-export function SessionAgentIcon({ identity }: { identity: AgentIdentity | null }) {
+export function SessionAgentIcon({
+  identity,
+  className,
+}: {
+  identity: AgentIdentity | null;
+  className?: string;
+}) {
   const src = identity?.icon ?? null;
   const name = identity?.name ?? "";
   const [failed, setFailed] = useState(false);
@@ -20,7 +27,7 @@ export function SessionAgentIcon({ identity }: { identity: AgentIdentity | null 
         title={label}
         data-agent-icon={src}
         draggable={false}
-        className="h-[18px] w-[18px] shrink-0"
+        className={cn("h-[18px] w-[18px] shrink-0", className)}
         onError={() => setFailed(true)}
       />
     );
@@ -31,7 +38,7 @@ export function SessionAgentIcon({ identity }: { identity: AgentIdentity | null 
       aria-label={label}
       aria-hidden={label ? undefined : true}
       data-agent-icon="generic"
-      className="flex h-[18px] w-[18px] shrink-0 items-center justify-center text-zinc-300"
+      className={cn("flex h-[18px] w-[18px] shrink-0 items-center justify-center text-[#888]", className)}
     >
       <Bot className="h-3.5 w-3.5" aria-hidden />
     </span>

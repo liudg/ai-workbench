@@ -128,6 +128,17 @@ impl AgentAdapter for ExternalCliAdapter {
         AgentCapabilities::none()
     }
 
+    fn icon_href(&self) -> Option<&'static str> {
+        match self.kind {
+            AgentKind::CursorAgent => Some("/agent-icons/cursor-agent.svg"),
+            AgentKind::KimiCode => Some("/agent-icons/kimi-code.svg"),
+            AgentKind::QwenCode => Some("/agent-icons/qwen-code.svg"),
+            AgentKind::OpenCode => Some("/agent-icons/opencode.svg"),
+            AgentKind::Antigravity => Some("/agent-icons/antigravity.svg"),
+            _ => None,
+        }
+    }
+
     fn cli_release(&self) -> Option<CliRelease> {
         Some(release_for(self.kind))
     }

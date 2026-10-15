@@ -1,7 +1,7 @@
 /** 作曲栏控件随可用宽度收拢，避免权限、计划和模型叠在一起。 */
 export type ComposerDensity = "full" | "compact" | "icons";
 
-const FULL_MIN = 520;
+const FULL_MIN = 420;
 const COMPACT_MIN = 360;
 
 export function composerDensity(barWidth: number): ComposerDensity {

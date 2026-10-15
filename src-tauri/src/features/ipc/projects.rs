@@ -122,6 +122,21 @@ pub async fn project_is_git(
         .map_err(|err| format!("无法确认是否为 git 仓库: {err}"))?
 }
 
+/// 当前 git 分支。不是仓库或分离头指针时返回空，不编造分支名。
+#[tauri::command]
+pub async fn project_branch(
+    store: State<'_, ProjectStore>,
+    project_id: String,
+) -> Result<Option<String>, String> {
+    let project = store
+        .get(&project_id)
+        .ok_or_else(|| "项目不存在".to_string())?;
+    let root = PathBuf::from(project.path);
+    tokio::task::spawn_blocking(move || crate::features::git::current_branch(&root))
+        .await
+        .map_err(|err| format!("无法读取当前分支: {err}"))?
+}
+
 /// 从工作台列表移除项目（不删除磁盘目录，也不删除 Agent 的会话记录）。
 #[tauri::command]
 pub async fn remove_project<R: Runtime>(

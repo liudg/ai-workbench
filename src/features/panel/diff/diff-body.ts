@@ -1,4 +1,4 @@
-import { expandDiffLines, foldDiffLines, type DiffFoldRow } from "./fold.ts";
+import { diffLine, expandDiffLines, foldDiffLines, type DiffFoldRow } from "./fold.ts";
 
 /** 去掉只改空白的增删行。文件仍留在列表里，统计也不改。 */
 export function withoutWhitespaceChanges(diff: string): string {
@@ -131,12 +131,9 @@ export function diffBodyRows(input: {
     const tone = rawTone(input.status, input.added, input.removed);
     if (tone) {
       return {
-        rows: contentLines(original).map((text, index) => ({
-          kind: "line",
-          tone,
-          text,
-          lineNo: index + 1,
-        })),
+        rows: contentLines(original).map((text, index) =>
+          diffLine(tone, text, tone === "del" ? index + 1 : null, tone === "add" ? index + 1 : null),
+        ),
         whitespaceHidden: false,
       };
     }

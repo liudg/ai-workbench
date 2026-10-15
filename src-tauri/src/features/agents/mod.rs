@@ -179,11 +179,28 @@ mod tests {
         assert_eq!(claude.display_name.as_deref(), Some("Claude Code"));
         assert_eq!(cursor.display_name.as_deref(), Some("Cursor Agent"));
         assert_ne!(codex.icon, claude.icon);
-        assert!(cursor.icon.is_none());
-        for icon in [codex.icon.as_deref(), claude.icon.as_deref()]
-            .into_iter()
-            .flatten()
-        {
+        let presets = [
+            AgentKind::CodexCli,
+            AgentKind::ClaudeCode,
+            AgentKind::CursorAgent,
+            AgentKind::KimiCode,
+            AgentKind::QwenCode,
+            AgentKind::OpenCode,
+            AgentKind::Antigravity,
+        ];
+        let icons: Vec<&str> = presets
+            .iter()
+            .map(|kind| {
+                profile(*kind)
+                    .icon
+                    .as_deref()
+                    .unwrap_or_else(|| panic!("no icon for {}", kind.as_str()))
+            })
+            .collect();
+        let unique: std::collections::HashSet<_> = icons.iter().collect();
+        assert_eq!(unique.len(), icons.len());
+        assert!(cursor.icon.is_some());
+        for icon in icons {
             let relative = icon.trim_start_matches('/');
             let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join("../public")

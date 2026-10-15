@@ -3,8 +3,8 @@ export interface VirtualRange {
   end: number;
 }
 
-/** 行槽高度：h-7 的 28px，加上原先列表 2px 的行距。 */
-export const SESSION_ROW_HEIGHT = 30;
+/** 行槽高度，对齐侧栏会话行的 25px 行距。 */
+export const SESSION_ROW_HEIGHT = 25;
 
 export const SESSION_ROW_OVERSCAN = 8;
 

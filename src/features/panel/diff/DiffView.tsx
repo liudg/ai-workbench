@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { cn } from "@/lib/utils";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
@@ -8,6 +8,7 @@ import { diffListWidth, diffListWidthAfterDrag } from "../core/layout";
 import { ColumnSplitter } from "../core/ColumnSplitter";
 import { usePanel } from "../core/PanelProvider";
 import { ChangesSidebar } from "../files/ChangesSidebar";
+import { relativizeFiles } from "../files/path";
 import { setFileFilter } from "../core/file-filter";
 import { DiffFileSection } from "./DiffFileSection";
 import { DiffToolbar } from "./DiffToolbar";
@@ -19,10 +20,14 @@ import { useGitWorkTree } from "./useGitWorkTree";
 const SPLITTER_WIDTH = 6;
 
 export function DiffView({ files }: { files: FileChange[] }) {
-  const { diffFilesWidth, setDiffFilesWidth, projectId, sessionFiles } = usePanel();
-  const threadFiles = sessionFiles.length > 0 ? sessionFiles : files;
+  const { diffFilesWidth, setDiffFilesWidth, projectId, projectPath, sessionFiles } = usePanel();
+  const displayFiles = useMemo(() => relativizeFiles(files, projectPath), [files, projectPath]);
+  const threadFiles = useMemo(
+    () => relativizeFiles(sessionFiles.length > 0 ? sessionFiles : files, projectPath),
+    [files, projectPath, sessionFiles],
+  );
   const [followThread, setFollowThread] = useState(false);
-  const doc = useDiffDocument(followThread ? threadFiles : files);
+  const doc = useDiffDocument(followThread ? threadFiles : displayFiles);
   const frameRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const paneWidth = useElementWidth(frameRef);
@@ -54,7 +59,7 @@ export function DiffView({ files }: { files: FileChange[] }) {
   }, [doc.revealFile, doc.shown, pendingJump]);
 
   const jumpTo = (path: string) => {
-    const known = threadFiles.some((file) => file.path === path) || files.some((file) => file.path === path);
+    const known = threadFiles.some((file) => file.path === path) || displayFiles.some((file) => file.path === path);
     if (!known) return;
     setFileFilter("");
     const inListed = doc.listed.some((file) => file.path === path);

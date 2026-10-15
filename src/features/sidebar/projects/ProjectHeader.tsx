@@ -12,13 +12,13 @@ export function ProjectHeader() {
   useDismiss(menuOpen, menuRef, closeMenu);
 
   return (
-    <div className="flex items-center justify-between px-3 pb-1 pt-2">
-      <span className="px-1 text-[13px] font-medium text-zinc-300">项目</span>
+    <div className="flex items-center justify-between px-3 pb-1.5 pt-2.5">
+      <span className="text-[12px] text-[#cfcfcf]">项目</span>
       <div className="flex items-center gap-1">
         <div ref={menuRef} className="relative">
           <button
             type="button"
-            className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-200 transition-colors hover:bg-zinc-800/70 hover:text-white"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-[#888] transition-colors hover:bg-white/5 hover:text-[#e8e8e8]"
             aria-label="更多"
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen((open) => !open)}
@@ -33,7 +33,7 @@ export function ProjectHeader() {
         </div>
         <button
           type="button"
-          className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-100 transition-colors hover:bg-zinc-800/70 hover:text-white"
+          className="flex h-7 w-7 items-center justify-center rounded-md text-[#888] transition-colors hover:bg-white/5 hover:text-[#e8e8e8]"
           aria-label="创建项目"
           title="创建项目"
           onClick={() => openDialog("create")}

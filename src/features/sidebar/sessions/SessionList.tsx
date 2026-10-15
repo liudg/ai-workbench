@@ -60,7 +60,7 @@ export function SessionList({
         <div className="pt-0.5">
           <button
             type="button"
-            className="w-full rounded-md py-1 pl-7 pr-2 text-left text-[13px] text-zinc-500 hover:bg-zinc-800/40 hover:text-zinc-200"
+            className="w-full rounded-md py-1 pl-[58px] pr-2 text-left text-[11.5px] text-[#666] hover:bg-white/[0.04] hover:text-[#bdbdbd]"
             onClick={onToggleShowAll}
           >
             {showAll ? "收起" : "展开显示"}

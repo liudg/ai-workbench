@@ -12,6 +12,8 @@ export type DiffDisplayRow =
       tone: "add" | "del" | "context" | "meta";
       text: string;
       lineNo: number | null;
+      oldNo: number | null;
+      newNo: number | null;
       parts: WordPart[] | null;
     };
 

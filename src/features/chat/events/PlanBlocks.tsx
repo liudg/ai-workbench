@@ -19,7 +19,7 @@ export function PlanSteps({ event }: EventViewProps) {
   const explanation = event.explanation ?? "";
   return (
     <div className="event-in min-w-0 px-6 py-2">
-      <div className="mx-auto min-w-0 max-w-3xl rounded-lg border border-zinc-800 bg-zinc-900/60 p-3">
+      <div className="min-w-0 rounded-lg border border-zinc-800 bg-zinc-900/60 p-3">
         <p className="text-xs font-medium text-zinc-300">{DESKTOP_ZH.planTitle}</p>
         {explanation ? (
           <p className="mt-1 break-words whitespace-pre-wrap text-sm leading-6 text-zinc-400">{explanation}</p>
@@ -41,7 +41,7 @@ export function PlanText({ event }: EventViewProps) {
   if (event.kind !== "plan-text") return null;
   return (
     <div className="event-in min-w-0 px-6 py-1">
-      <div className="mx-auto min-w-0 max-w-3xl pl-6">
+      <div className="min-w-0 pl-6">
         <AssistantAnswer text={event.text} />
       </div>
     </div>

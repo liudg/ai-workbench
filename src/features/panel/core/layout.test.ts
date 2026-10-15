@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  CHAT_MAX_WIDTH,
   CHAT_MIN_WIDTH,
   CLOSED_FILES_RAIL,
   DIFF_LIST_MIN,
@@ -23,7 +24,7 @@ import {
   type FilesRailState,
 } from "./layout.ts";
 
-const SIDEBAR = 288;
+const SIDEBAR = 260;
 
 function openPreview(state: FilesRailState): FilesRailState {
   return withPreviewRail(state, true);
@@ -79,16 +80,27 @@ test("files expand when they arrive, unless the user or an open preview already 
   assert.equal(closePreview(remembered ?? held).filesExpanded, true);
 });
 
-test("chat keeps its minimum and the preview shrinks instead", () => {
+test("chat stays within 540–760 and extra width goes to the preview", () => {
   const wide = workspaceColumns({
-    rowWidth: 1600,
+    rowWidth: 1800,
     panelOpen: true,
     filesExpanded: false,
     filesVisible: true,
   });
-  assert.equal(wide.panel, PANEL_PREFERRED_WIDTH);
-  assert.ok(wide.chat >= CHAT_MIN_WIDTH);
-  assert.equal(wide.chat + wide.panel + wide.files, 1600);
+  assert.equal(wide.chat, CHAT_MAX_WIDTH);
+  assert.equal(wide.files, FILES_RAIL_WIDTH);
+  assert.equal(wide.panel, 1800 - CHAT_MAX_WIDTH - FILES_RAIL_WIDTH);
+  assert.ok(wide.panel > PANEL_PREFERRED_WIDTH);
+  assert.equal(wide.chat + wide.panel + wide.files, 1800);
+
+  const fitted = workspaceColumns({
+    rowWidth: CHAT_MIN_WIDTH + PANEL_PREFERRED_WIDTH,
+    panelOpen: true,
+    filesExpanded: false,
+    filesVisible: false,
+  });
+  assert.equal(fitted.chat, CHAT_MIN_WIDTH);
+  assert.equal(fitted.panel, PANEL_PREFERRED_WIDTH);
 
   const medium = workspaceColumns({
     rowWidth: 1280 - SIDEBAR,
@@ -96,7 +108,7 @@ test("chat keeps its minimum and the preview shrinks instead", () => {
     filesExpanded: false,
     filesVisible: true,
   });
-  assert.ok(medium.chat >= CHAT_MIN_WIDTH);
+  assert.equal(medium.chat, Math.min(CHAT_MIN_WIDTH, 1280 - SIDEBAR - FILES_RAIL_WIDTH));
   assert.ok(medium.panel < PANEL_PREFERRED_WIDTH);
   assert.equal(medium.files, FILES_RAIL_WIDTH);
   assert.equal(medium.chat + medium.panel + medium.files, 1280 - SIDEBAR);
@@ -107,7 +119,6 @@ test("chat keeps its minimum and the preview shrinks instead", () => {
     filesExpanded: true,
     filesVisible: true,
   });
-  assert.ok(narrow.chat >= CHAT_MIN_WIDTH);
   assert.equal(narrow.files, FILES_EXPANDED_WIDTH);
   assert.ok(narrow.panel < medium.panel);
   assert.equal(narrow.chat + narrow.panel + narrow.files, 1024 - SIDEBAR);
@@ -134,10 +145,11 @@ test("a diff file list hides instead of shrinking below its minimum", () => {
   assert.equal(diffListWidth(DIFF_LIST_MIN + 219), null);
 });
 
-test("dragging the preview keeps the chat at its minimum", () => {
+test("dragging the preview keeps the chat between its minimum and maximum", () => {
   assert.equal(panelWidthAfterDrag(1600, FILES_RAIL_WIDTH, 900), 900);
   assert.equal(panelWidthAfterDrag(1600, FILES_RAIL_WIDTH, 2000), 1600 - FILES_RAIL_WIDTH - CHAT_MIN_WIDTH);
-  assert.equal(panelWidthAfterDrag(500, 0, 400), 100);
+  assert.equal(panelWidthAfterDrag(1600, 0, 100), 1600 - CHAT_MAX_WIDTH);
+  assert.equal(panelWidthAfterDrag(500, 0, 400), 0);
 });
 
 test("dragging the diff file list stays inside the pane", () => {

@@ -20,21 +20,21 @@ export function Composer({ session, events }: { session: Session; events: Sessio
   return (
     <div className="composer-root min-w-0 shrink-0 px-4 pb-4 pt-1">
       {view.occupied && (
-        <p className="mx-auto mb-2 max-w-3xl break-words px-2 text-center text-xs leading-5 text-amber-200/90">
+        <p className="mb-2 break-words px-2 text-center text-xs leading-5 text-amber-200/90">
           此会话正被其他进程占用，当前只读，不能发送。
         </p>
       )}
       {c.notice && (
-        <p role="status" className="mx-auto mb-2 max-w-3xl break-words px-2 text-center text-xs leading-5 text-amber-200/90">
+        <p role="status" className="mb-2 break-words px-2 text-center text-xs leading-5 text-amber-200/90">
           {c.notice}
         </p>
       )}
       {c.catalogNotice && (
-        <p role="status" className="mx-auto mb-2 max-w-3xl break-words px-2 text-center text-xs leading-5 text-zinc-500">
+        <p role="status" className="mb-2 break-words px-2 text-center text-xs leading-5 text-[#888]">
           {c.catalogNotice}
         </p>
       )}
-      <div ref={c.reviewRootRef} className="relative mx-auto min-w-0 max-w-3xl">
+      <div ref={c.reviewRootRef} className="relative min-w-0">
         {view.queueOn && (
           <Queue items={c.queue} editingId={c.editingId} onEdit={c.beginEdit} onRemove={c.removeQueued} />
         )}
@@ -74,7 +74,7 @@ export function Composer({ session, events }: { session: Session; events: Sessio
         )}
         <div
           className={cn(
-            "min-w-0 rounded-[28px] border border-zinc-700/90 bg-zinc-900 shadow-lg shadow-black/20 transition-colors focus-within:border-zinc-500",
+            "min-w-0 rounded-[18px] border border-[#2a2a2a] bg-[#171717] transition-colors focus-within:border-[#3a3a3a]",
             c.dragOver && view.imagesOn && "border-indigo-400/80",
           )}
           onClick={() => c.textareaRef.current?.focus()}

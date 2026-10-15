@@ -66,10 +66,10 @@ export function IconButton({
       className={cn(
         "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md",
         pressed
-          ? "bg-sky-200 text-sky-900"
+          ? "bg-white/10 text-[#e8e8e8]"
           : expanded
-            ? "bg-zinc-800 text-zinc-100"
-            : "text-zinc-300 hover:bg-zinc-800 hover:text-white",
+            ? "bg-[#2a2a2a] text-[#e8e8e8]"
+            : "text-[#8d8d8d] hover:bg-white/5 hover:text-[#e8e8e8]",
       )}
       onClick={onClick}
     >

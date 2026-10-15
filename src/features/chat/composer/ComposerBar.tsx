@@ -100,7 +100,7 @@ export function ComposerBar({
           className={cn(
             "inline-flex h-8 min-w-0 items-center justify-center gap-1 overflow-hidden rounded-full text-sm hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40",
             icons ? "w-8 shrink-0 px-0" : density === "compact" ? "max-w-[7.5rem] px-2" : "max-w-[11rem] px-2",
-            accessCaution ? "text-orange-400" : "text-zinc-300",
+            accessCaution ? "text-[#f0a04a]" : "text-[#cfcfcf]",
           )}
           aria-label="权限"
           aria-haspopup="menu"
@@ -111,7 +111,7 @@ export function ComposerBar({
             onToggleMenu("access");
           }}
         >
-          <Shield className="h-3.5 w-3.5 shrink-0" />
+          <Shield className="h-4 w-4 shrink-0" />
           {icons ? null : <span className="min-w-0 truncate">{accessLabel}</span>}
           {icons ? null : <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />}
         </button>
@@ -148,7 +148,7 @@ export function ComposerBar({
             type="button"
             title={modelButton}
             className={cn(
-              "inline-flex h-8 min-w-0 items-center justify-center gap-1 overflow-hidden rounded-full text-sm text-zinc-200 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40",
+              "inline-flex h-8 min-w-0 items-center justify-center gap-1 overflow-hidden rounded-full text-sm text-[#cfcfcf] hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40",
               icons ? "w-8 px-0" : density === "compact" ? "max-w-[6.5rem] px-2" : "max-w-52 px-2",
             )}
             data-model-chip
@@ -197,7 +197,7 @@ export function ComposerBar({
             onSend();
           }}
           disabled={sendDisabled}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-950 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#3a3a3a] bg-[#2c2c2c] text-[#e8e8e8] transition-colors hover:bg-[#3a3a3a] disabled:cursor-not-allowed disabled:border-[#2a2a2a] disabled:bg-[#242424] disabled:text-[#555]"
           title={stopMode ? "停止" : "发送"}
           aria-label={stopMode ? "停止" : "发送"}
         >

@@ -34,6 +34,7 @@ macro_rules! workbench_handler {
             $crate::features::ipc::projects::import_project,
             $crate::features::ipc::projects::remove_project,
             $crate::features::ipc::projects::project_is_git,
+            $crate::features::ipc::projects::project_branch,
             $crate::features::ipc::sessions::list_sessions,
             $crate::features::ipc::sessions::fork_session,
             $crate::features::ipc::sessions::rename_session,

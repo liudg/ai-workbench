@@ -13,7 +13,7 @@ registerBuiltinViewers();
 
 /** 侧栏收起时的顶栏：标题在左，用量和标记在右。聊天占满其余宽度。 */
 export function ClosedChrome() {
-  const { tabs, sessionTitle, usage, showPanel, selectTab } = usePanel();
+  const { tabs, sessionTitle, usage, showPanel, selectTab, openBlank, layout } = usePanel();
   const count = tabs.length;
   const [menu, setMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -28,15 +28,28 @@ export function ClosedChrome() {
 
   return (
     <div
-      data-panel-closed
-      className="relative z-20 flex h-10 shrink-0 items-center gap-2 border-b border-zinc-800 bg-zinc-950 px-3"
+      data-chat-header=""
+      data-panel-closed={layout === "chat" ? "" : undefined}
+      className="relative z-20 flex h-11 shrink-0 items-center gap-2 border-b border-[#222] bg-[#0f0f0f] px-4"
     >
-      <span data-session-title className="min-w-0 flex-1 truncate text-sm text-zinc-100">
+      <span data-session-title className="min-w-0 flex-1 truncate text-[14px] font-medium text-[#e8e8e8]">
         {sessionTitle}
       </span>
       <SessionUsageMeter usage={usage} />
-      <span aria-hidden className="mx-0.5 h-4 w-px bg-zinc-700" />
-      {count > 0 ? (
+      {layout !== "chat" ? (
+        <Hint label={DESKTOP_ZH.panelNewTab} shortcut={DESKTOP_ZH.panelShortcutB} align="end">
+          <button
+            type="button"
+            data-panel-marker
+            data-open-tabs={count}
+            aria-label={`${DESKTOP_ZH.panelNewTab} ${DESKTOP_ZH.panelShortcutB}`}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-[#333] text-[#cfcfcf] hover:bg-[#1c1c1c]"
+            onClick={openBlank}
+          >
+            <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
+          </button>
+        </Hint>
+      ) : count > 0 ? (
         <div
           ref={menuRef}
           className="relative"
@@ -50,7 +63,7 @@ export function ClosedChrome() {
             aria-haspopup="menu"
             aria-expanded={menu}
             aria-label={DESKTOP_ZH.panelOpenTabsMenu}
-            className="inline-flex h-7 min-w-7 items-center justify-center rounded-lg border border-zinc-500/80 bg-zinc-950 px-1.5 text-[13px] font-medium tabular-nums text-zinc-100 hover:bg-zinc-800"
+            className="inline-flex h-7 min-w-7 items-center justify-center rounded-md border border-[#333] bg-transparent px-1.5 text-[13px] font-medium tabular-nums text-[#e8e8e8] hover:bg-[#1c1c1c]"
             onClick={() => {
               showPanel();
               setMenu(false);
@@ -75,7 +88,7 @@ export function ClosedChrome() {
             data-panel-marker
             data-open-tabs={0}
             aria-label={`${DESKTOP_ZH.panelNewTab} ${DESKTOP_ZH.panelShortcutB}`}
-            className="inline-flex h-7 min-w-7 items-center justify-center rounded-lg border border-zinc-500/80 bg-zinc-950 px-1.5 text-zinc-100 hover:bg-zinc-800"
+            className="inline-flex h-7 min-w-7 items-center justify-center rounded-md border border-[#333] bg-transparent px-1.5 text-[#cfcfcf] hover:bg-[#1c1c1c]"
             onClick={showPanel}
           >
             <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />

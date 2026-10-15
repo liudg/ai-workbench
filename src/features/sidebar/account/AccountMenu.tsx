@@ -51,8 +51,8 @@ export function AccountMenu() {
       <button
         type="button"
         className={cn(
-          "flex h-8 w-8 items-center justify-center rounded-full border bg-zinc-800 text-xs font-semibold text-zinc-100 transition-colors hover:bg-zinc-700",
-          open ? "border-zinc-500" : "border-zinc-600",
+          "flex h-8 w-8 items-center justify-center rounded-full border bg-[#2a2a2a] text-xs font-semibold text-[#e8e8e8] transition-colors hover:bg-[#333]",
+          open ? "border-[#666]" : "border-[#3a3a3a]",
         )}
         aria-label="打开菜单"
         aria-expanded={open}

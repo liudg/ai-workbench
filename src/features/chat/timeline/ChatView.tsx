@@ -5,7 +5,9 @@ import { useChangeCapabilities } from "@/features/changes-model/use-changes";
 import { showsFileChanges } from "@/features/changes-model/capabilities";
 import { lastSlice, turnChanges } from "@/features/changes-model/diff-parse";
 import { pendingPrompt } from "@/lib/utils";
-import { AGENT_LABELS, type Session, type SessionEvent } from "@/types";
+import { SessionAgentIcon } from "@/features/sidebar/sessions/SessionAgentIcon";
+import { type Session, type SessionEvent } from "@/types";
+import { agentTurnName, useAgentIdentity } from "../events/use-agent-identity";
 import { ChangeCard } from "../cards/ChangeCard";
 import { Composer } from "../composer/Composer";
 import { EventItem } from "../events/EventItem";
@@ -44,6 +46,8 @@ export function ChatView({
     () => events.some((event) => event.kind !== "status-changed"),
     [events],
   );
+  const identity = useAgentIdentity(session.agent);
+  const agentName = agentTurnName(session.agent, identity);
   const changeFlags = useChangeCapabilities(session.agent);
   const liveChanges = useMemo(() => {
     if (!showsFileChanges(changeFlags)) return null;
@@ -78,7 +82,7 @@ export function ChatView({
         onPointerDown={onPointerDown}
         className="chat-log min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto py-4"
       >
-        <div ref={contentRef} className="min-h-full min-w-0">
+        <div ref={contentRef} data-message-column className="mx-auto min-h-full w-full min-w-0 max-w-[760px]">
           {!hasVisibleEvent ? (
             <div className="flex h-full flex-col items-center justify-center gap-3 text-zinc-600">
               <MessageSquareDashed className="h-8 w-8" strokeWidth={1.5} />
@@ -148,9 +152,9 @@ export function ChatView({
             return (
               <TurnFoldLine
                 key={`${block.id}-status`}
-                summary={runningTurnSummary(AGENT_LABELS[session.agent])}
+                summary={runningTurnSummary(agentName)}
                 expanded={expanded}
-                showAgentIcon
+                icon={<SessionAgentIcon identity={identity} className="h-4 w-4" />}
                 pulse
                 onToggle={() => {
                   pausePinForToggle();
@@ -161,7 +165,9 @@ export function ChatView({
           })}
         </div>
       </div>
-      <Composer key={session.id} session={session} events={events} />
+      <div data-composer-column className="mx-auto w-full max-w-[760px]">
+        <Composer key={session.id} session={session} events={events} />
+      </div>
       {pendingId && (
         <div className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-transparent via-amber-400/60 to-transparent" />
       )}

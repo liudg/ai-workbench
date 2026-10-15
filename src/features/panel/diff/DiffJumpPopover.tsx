@@ -38,10 +38,10 @@ export function JumpPopover({
       role="dialog"
       aria-label={DESKTOP_ZH.diffJump}
       data-diff-jump-popover
-      className="fixed z-[80] w-80 overflow-hidden rounded-xl border border-black/5 bg-white text-zinc-900 shadow-[0_12px_32px_rgba(0,0,0,0.16)]"
+      className="fixed z-[80] w-80 overflow-hidden rounded-xl border border-[#2a2a2a] bg-[#1b1b1b] text-[#e8e8e8] shadow-[0_12px_32px_rgba(0,0,0,0.45)]"
       style={{ top: -9999, left: 8 }}
     >
-      <div className="flex items-center gap-2 border-b border-zinc-200 px-3">
+      <div className="flex items-center gap-2 border-b border-[#2a2a2a] px-3">
         <Search className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
         <input
           ref={inputRef}
@@ -49,7 +49,7 @@ export function JumpPopover({
           placeholder={DESKTOP_ZH.diffJump}
           aria-label={DESKTOP_ZH.diffJump}
           data-diff-jump-input
-          className="h-9 w-full bg-transparent text-sm text-zinc-900 outline-none placeholder:text-zinc-400"
+          className="h-9 w-full bg-transparent text-sm text-[#e8e8e8] outline-none placeholder:text-[#666]"
           onChange={(event) => {
             setQuery(event.target.value);
             setCursor(0);
@@ -88,12 +88,12 @@ export function JumpPopover({
                 data-diff-jump-current={file.path === activePath ? "true" : "false"}
                 className={cn(
                   "flex w-full min-w-0 items-baseline gap-3 px-3 py-1.5 text-left",
-                  index === activeIndex ? "bg-zinc-100" : "hover:bg-zinc-100",
+                  index === activeIndex ? "bg-white/10" : "hover:bg-white/5",
                 )}
                 onMouseEnter={() => setCursor(index)}
                 onClick={() => onSelect(file.path)}
               >
-                <span className="shrink-0 text-sm font-medium text-zinc-900">{parts.name}</span>
+                <span className="shrink-0 text-sm font-medium text-[#e8e8e8]">{parts.name}</span>
                 {parts.dir ? <span className="min-w-0 flex-1 truncate text-xs text-zinc-400">{parts.dir}</span> : null}
               </button>
             );

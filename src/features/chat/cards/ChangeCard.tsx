@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import type { FileChange, FileStatus, TurnChanges } from "@/features/changes-model/diff-parse";
 import { usePanel } from "@/features/panel/core/PanelProvider";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
-import { baseName, fileStatusTone } from "@/features/panel/files/path";
+import { baseName, fileStatusTone, relativeToProject } from "@/features/panel/files/path";
 import { canShowMore, editedFilesLabel, visibleChangeFiles } from "./card-text";
 
 export function ChangeCard({ changes }: { changes: TurnChanges }) {
@@ -19,7 +19,7 @@ export function ChangeCard({ changes }: { changes: TurnChanges }) {
 
   return (
     <div className="event-in min-w-0 px-6 py-1.5" data-change-card>
-      <div className="change-card mx-auto min-w-0 max-w-3xl pl-6">
+      <div className="change-card min-w-0 pl-6">
         <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/50">
           <div className="flex min-w-0 items-center gap-2 px-2.5 py-1.5">
             {multiple ? (
@@ -68,6 +68,7 @@ export function ChangeCard({ changes }: { changes: TurnChanges }) {
                 <li key={file.path}>
                   <FileRow
                     file={file}
+                    root={preview.projectPath}
                     onOpen={() =>
                       preview.openDiff(`diff:${changes.id}:${file.path}`, baseName(file.path), [file])
                     }
@@ -94,17 +95,18 @@ export function ChangeCard({ changes }: { changes: TurnChanges }) {
   );
 }
 
-function FileRow({ file, onOpen }: { file: FileChange; onOpen: () => void }) {
+function FileRow({ file, onOpen, root }: { file: FileChange; onOpen: () => void; root: string }) {
+  const label = relativeToProject(file.path, root) || file.path;
   return (
     <button
       type="button"
       data-change-file={file.path}
-      title={file.path}
+      title={label}
       className="flex w-full min-w-0 items-center gap-2 px-2.5 py-1 text-left hover:bg-zinc-800/70"
       onClick={onOpen}
     >
       <StatusMark status={file.status} />
-      <span className="min-w-0 flex-1 truncate font-mono text-xs text-zinc-200">{file.path}</span>
+      <span className="min-w-0 flex-1 truncate font-mono text-xs text-zinc-200">{label}</span>
       <Stat added={file.added} removed={file.removed} />
     </button>
   );

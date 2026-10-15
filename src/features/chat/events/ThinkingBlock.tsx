@@ -9,7 +9,7 @@ export function ThinkingBlock({ event, time, thinkingOpen, onToggleThinking }: E
   const text = event.text;
   return (
     <div className="event-in group min-w-0 px-6 py-2">
-      <div className="mx-auto min-w-0 max-w-3xl">
+      <div className="min-w-0">
         <div className="mb-1 flex min-w-0 items-center gap-2">
           <button type="button" aria-expanded={thinkingOpen} onClick={onToggleThinking} className="flex items-center gap-2 text-left">
             <ChevronRight

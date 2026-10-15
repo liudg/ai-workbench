@@ -7,8 +7,8 @@ import { useProjectItem } from "./use-project-item";
 import { useDismiss } from "../use-dismiss";
 import { NewSessionButton } from "../sessions/NewSessionButton";
 import { SessionList } from "../sessions/SessionList";
-import { isPinnedSession } from "../sessions/session-status";
 import { StatusDot } from "./StatusDot";
+import { useProjectBranch } from "./use-project-branch";
 
 export function ProjectItem({ project }: { project: Project }) {
   const { sessions, selected, activeSessionId, selectProject, removeProject } = useProjectItem(project);
@@ -24,7 +24,7 @@ export function ProjectItem({ project }: { project: Project }) {
   useDismiss(menuOpen, menuRef, closeMenu);
 
   const status = sessions ? aggregateStatus(sessions) : null;
-  const runningCount = sessions?.filter((s) => isPinnedSession(s.status)).length;
+  const branch = useProjectBranch(project.id);
   const items = sessions ?? [];
 
   const onHeaderClick = () => {
@@ -36,8 +36,7 @@ export function ProjectItem({ project }: { project: Project }) {
     void selectProject(project.id);
   };
 
-  const actionsShown = selected || menuOpen;
-  const actionVisibility = actionsShown
+  const actionVisibility = menuOpen
     ? "pointer-events-auto opacity-100"
     : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100";
 
@@ -45,8 +44,7 @@ export function ProjectItem({ project }: { project: Project }) {
     <div className="py-0.5">
       <div
         className={cn(
-          "group flex w-full cursor-pointer flex-nowrap items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors",
-          selected ? "bg-zinc-800/80" : "hover:bg-zinc-800/40",
+          "group relative flex w-full cursor-pointer flex-nowrap items-center gap-1.5 rounded-md px-3 py-1.5 pr-2 text-left text-[12.5px] transition-colors hover:bg-white/[0.04]",
         )}
         title={displayPath(project.path)}
         aria-expanded={!collapsed}
@@ -54,33 +52,30 @@ export function ProjectItem({ project }: { project: Project }) {
       >
         <ChevronRight
           className={cn(
-            "h-3.5 w-3.5 shrink-0 text-zinc-500 transition-transform",
+            "h-3.5 w-3.5 shrink-0 text-[#777] transition-transform",
             !collapsed && "rotate-90",
           )}
         />
         <StatusDot status={status} />
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-200">
-          {project.name}
-        </span>
-        {/* 宽高始终留给 … 和新建会话。悬停只改透明度，不把会话列表顶开。 */}
-        <div className="relative flex h-6 w-12 shrink-0 items-center justify-end">
-          {runningCount ? (
-            <span
-              className={cn(
-                "pointer-events-none absolute right-0 whitespace-nowrap rounded-full bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-medium text-sky-400",
-                "group-hover:invisible group-focus-within:invisible",
-                (selected || menuOpen) && "invisible",
-              )}
-            >
-              {runningCount} 活跃
-            </span>
-          ) : null}
+        <span className="max-w-[9.5rem] shrink-0 truncate text-[12.5px] text-[#e8e8e8]">{project.name}</span>
+        {branch ? (
+          <span
+            data-project-branch={branch}
+            title={branch}
+            className="min-w-0 shrink truncate rounded-md bg-[#2a2a2a] px-1.5 text-[10px] leading-4 text-[#9a9a9a]"
+          >
+            {branch}
+          </span>
+        ) : null}
+        <span className="min-w-0 flex-1" />
+        {/* 操作钮叠在行尾。短分支留在名字旁边；长分支用剩余宽度，悬停时不把下面的会话顶开。 */}
+        <div className="absolute right-1.5 top-1/2 z-10 flex h-6 w-12 -translate-y-1/2 items-center justify-end rounded-md group-hover:bg-[#1b1b1b] group-focus-within:bg-[#1b1b1b]">
           {!project.external && (
             <div ref={menuRef} className="relative">
               <button
                 type="button"
                 className={cn(
-                  "flex h-6 w-6 items-center justify-center rounded text-zinc-300 hover:bg-zinc-700/80 hover:text-zinc-50",
+                  "flex h-6 w-6 items-center justify-center rounded text-[#888] hover:bg-white/10 hover:text-[#e8e8e8]",
                   actionVisibility,
                 )}
                 aria-label={`${project.name} 更多`}
@@ -119,7 +114,7 @@ export function ProjectItem({ project }: { project: Project }) {
           <NewSessionButton
             projectId={project.id}
             className={cn(
-              "flex h-6 w-6 items-center justify-center rounded text-zinc-200 hover:bg-zinc-700/80 hover:text-white",
+              "flex h-6 w-6 items-center justify-center rounded text-[#888] hover:bg-white/10 hover:text-[#e8e8e8]",
               actionVisibility,
             )}
             title={`在 ${project.name} 中新建会话`}
