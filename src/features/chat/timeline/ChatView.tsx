@@ -5,7 +5,7 @@ import { useChangeCapabilities } from "@/features/changes-model/use-changes";
 import { showsFileChanges } from "@/features/changes-model/capabilities";
 import { lastSlice, turnChanges } from "@/features/changes-model/diff-parse";
 import { pendingPrompt } from "@/lib/utils";
-import { SessionAgentIcon } from "@/features/sidebar/sessions/SessionAgentIcon";
+import { SessionAgentIcon } from "@/shared/agent/SessionAgentIcon";
 import { type Session, type SessionEvent } from "@/types";
 import { agentTurnName, useAgentIdentity } from "../events/use-agent-identity";
 import { ChangeCard } from "../cards/ChangeCard";

@@ -5,6 +5,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { backend, isTauri } from "@/lib/ipc";
 import { useWorkbench } from "@/store";
 import type { PageAnnotation } from "@/types";
+import { pageTitleFromHtml } from "@/shared/html-title";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { tabTitleFromDocument } from "./annotate";
 import {
@@ -17,7 +18,6 @@ import {
   goBack,
   goForward,
   noteLoaded,
-  pageTitleFromHtml,
   parseAddressInput,
   visit,
   type BrowserHistory,

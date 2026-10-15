@@ -1,11 +1,9 @@
-import { useEffect } from "react";
-
-import { useWorkbench } from "@/store";
-import { AnswerMarkdownHost } from "@/features/workspace/AnswerMarkdownHost";
+import { AnswerMarkdownHost } from "@/features/chat/answer/AnswerMarkdownHost";
+import { ChatView } from "@/features/chat/timeline/ChatView";
 import { PanelProvider } from "@/features/panel/core/PanelProvider";
 import { SessionSplit } from "@/features/panel/core/SessionSplit";
-import { ChatView } from "@/features/chat/timeline/ChatView";
 import type { Session, SessionEvent, SessionEventBody, SessionStatus } from "@/types";
+import { useActivityPreviewProfiles } from "./use-activity-preview";
 
 function session(id: string, title: string, status: SessionStatus): Session {
   return {
@@ -138,27 +136,7 @@ function Frame({
 
 /** 开发预览：进行中末行「正在思考」，结束后不留思考条目。`?preview=activity` */
 export default function ActivityPreview() {
-  useEffect(() => {
-    useWorkbench.setState({
-      profiles: {
-        "codex-cli": {
-          kind: "codex-cli",
-          display_name: "Codex",
-          icon: "",
-          commands: [],
-          default_access: null,
-          capabilities: {
-            supports_slash: false,
-            supports_resume: false,
-            supports_questions: false,
-            supports_tuning: false,
-            supports_skills: false,
-            changes: { turn_diff: false, per_file_patch: false, git_scopes: false },
-          },
-        },
-      },
-    });
-  }, []);
+  useActivityPreviewProfiles();
   return (
     <div className="h-screen w-screen overflow-auto bg-[#0f0f0f] text-[#e8e8e8]">
       <Frame id="activity-live" title="正在思考" status="running" events={liveEvents} />

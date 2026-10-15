@@ -1,5 +1,3 @@
-import type { FileStatus } from "../../changes-model/diff-parse.ts";
-
 export function baseName(path: string): string {
   const parts = path.split(/[\\/]/).filter(Boolean);
   return parts[parts.length - 1] ?? path;
@@ -9,12 +7,6 @@ export function directoryOf(path: string): string {
   const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "");
   const index = normalized.lastIndexOf("/");
   return index > 0 ? normalized.slice(0, index) : "";
-}
-
-export function fileStatusTone(status: FileStatus): "add" | "del" | "neutral" {
-  if (status === "A" || status === "M") return "add";
-  if (status === "D") return "del";
-  return "neutral";
 }
 
 /** 预览标题把路径写成「Scripts / GameUI / Module」。 */

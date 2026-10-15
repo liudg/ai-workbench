@@ -1,13 +1,12 @@
-import { useEffect, useMemo } from "react";
-
-import { useWorkbench } from "@/store";
+import { useMemo } from "react";
 
 import { ChatView } from "@/features/chat/timeline/ChatView";
-import { AnswerMarkdownHost } from "@/features/workspace/AnswerMarkdownHost";
+import { AnswerMarkdownHost } from "@/features/chat/answer/AnswerMarkdownHost";
 import { PanelProvider } from "@/features/panel/core/PanelProvider";
 import { SessionSplit } from "@/features/panel/core/SessionSplit";
 import { accumulateSessionUsage } from "@/store/session-usage";
 import type { Session, SessionEvent } from "@/types";
+import { useUsagePreviewProfiles } from "./use-usage-preview";
 
 function session(id: string, title: string, status: Session["status"] = "completed"): Session {
   return {
@@ -171,27 +170,7 @@ function Frame({
 
 /** 开发预览：顶栏总量、悬停分项，以及没有用量时不渲染。 */
 export default function UsagePreview() {
-  useEffect(() => {
-    useWorkbench.setState({
-      profiles: {
-        "claude-code": {
-          kind: "claude-code",
-          display_name: "Claude Code",
-          icon: "/agent-icons/claude.svg",
-          commands: [],
-          default_access: null,
-          capabilities: {
-            supports_slash: false,
-            supports_resume: false,
-            supports_questions: false,
-            supports_tuning: false,
-            supports_skills: false,
-            changes: { turn_diff: false, per_file_patch: false, git_scopes: false },
-          },
-        },
-      },
-    });
-  }, []);
+  useUsagePreviewProfiles();
   return (
     <div className="h-screen w-screen overflow-hidden bg-[#0f0f0f] text-[#e8e8e8]">
       <Frame id="usage-on" title="整理会话用量" events={supportedEvents} />

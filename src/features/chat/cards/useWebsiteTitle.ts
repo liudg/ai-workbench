@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { backend } from "@/lib/ipc";
-import { pageTitleFromHtml } from "./page-title";
+import { pageTitleFromHtml } from "@/shared/html-title";
 
 /** 本地 html 的标题。外链不读文件。 */
 export function useWebsiteTitle(projectId: string, href: string, label: string): string {

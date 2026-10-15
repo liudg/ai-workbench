@@ -12,7 +12,6 @@ import {
   goBack,
   goForward,
   noteLoaded,
-  pageTitleFromHtml,
   parseAddressInput,
   visit,
 } from "./browser.ts";
@@ -81,13 +80,4 @@ test("loaded file url keeps the disk path in the address bar", () => {
   history = noteLoaded(history, "https://example.com/moved");
   assert.equal(currentEntry(history)?.address, "https://example.com/moved");
   assert.equal(canGoBack(history), true);
-});
-
-test("page title comes from the title element", () => {
-  assert.equal(
-    pageTitleFromHtml("<html><head><title>虎豹自行车</title></head><body></body></html>"),
-    "虎豹自行车",
-  );
-  assert.equal(pageTitleFromHtml("<p>no title</p>"), "");
-  assert.equal(pageTitleFromHtml("<title>A &amp; B</title>"), "A & B");
 });

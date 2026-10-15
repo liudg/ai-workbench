@@ -1,7 +1,7 @@
 import { useWorkbench } from "@/store";
 import { isFinishedStatus } from "@/store/unread-finished";
 import type { Session } from "@/types";
-import { agentIdentity } from "./agent-identity";
+import { agentIdentity } from "@/shared/agent/identity";
 
 export function useSessionRow(session: Session) {
   const selectSession = useWorkbench((s) => s.selectSession);

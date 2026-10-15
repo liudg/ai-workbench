@@ -1,6 +1,6 @@
 import { useWorkbench } from "@/store";
 import { AGENT_LABELS, type AgentKind } from "@/types";
-import { agentIdentity, type AgentIdentity } from "@/features/sidebar/sessions/agent-identity";
+import { agentIdentity, type AgentIdentity } from "@/shared/agent/identity";
 
 /** 这一条会话自己的适配器图标和显示名。资料对不上就不编。 */
 export function useAgentIdentity(agent: AgentKind): AgentIdentity | null {

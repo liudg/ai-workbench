@@ -5,7 +5,7 @@ import { RightPane, UpdateDialog } from "@/features/workspace";
 import { useAppShell } from "./use-app-shell";
 
 const DiffPreview = import.meta.env.DEV
-  ? lazy(() => import("@/features/panel/diff/DiffPreview"))
+  ? lazy(() => import("@/app/preview/DiffPreview"))
   : null;
 const ComposerPreview = import.meta.env.DEV
   ? lazy(() => import("@/features/chat/composer/ComposerPreview"))
@@ -20,7 +20,7 @@ const UsagePreview = import.meta.env.DEV
   ? lazy(() => import("@/features/workspace/UsagePreview"))
   : null;
 const ActivityPreview = import.meta.env.DEV
-  ? lazy(() => import("@/features/chat/timeline/ActivityPreview"))
+  ? lazy(() => import("@/app/preview/ActivityPreview"))
   : null;
 const SidebarPreview = import.meta.env.DEV
   ? lazy(() => import("@/features/sidebar/SidebarPreview"))

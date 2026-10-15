@@ -1,7 +1,7 @@
 import { Globe } from "lucide-react";
 
 import { usePanelOptional } from "@/features/panel/core/PanelProvider";
-import { baseName } from "@/features/panel/files/path";
+import { baseName } from "@/shared/path";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { useWebsiteTitle } from "./useWebsiteTitle";
 

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { AgentKind, AgentProfile } from "../../../types/index.ts";
-import { agentIdentity, profileForSessionAgent } from "./agent-identity.ts";
+import type { AgentKind, AgentProfile } from "../../types/index.ts";
+import { agentIdentity, profileForSessionAgent } from "./identity.ts";
 
 function profile(kind: AgentKind, name: string, icon: string | null): AgentProfile {
   return {

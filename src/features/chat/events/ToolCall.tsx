@@ -2,13 +2,13 @@ import { useState } from "react";
 import { ChevronRight, Image as ImageIcon, Play, Terminal, Wrench } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { useWorkbench } from "@/store";
-import { relativizeDisplayText } from "@/features/panel/files/path";
+import { relativizeDisplayText } from "@/shared/path";
 import { CopyButton } from "./chrome";
 import { EventImages } from "./EventImages";
 import { activityStepTitle } from "./activity-fold";
 import { toolGlyph } from "./tool-line";
 import type { EventViewProps } from "./types";
+import { useSessionProjectPath } from "./use-session-project-path";
 
 const GLYPH = {
   command: Terminal,
@@ -21,9 +21,7 @@ const GLYPH = {
  */
 export function ToolCall({ event, session }: EventViewProps) {
   const [open, setOpen] = useState(false);
-  const projectPath = useWorkbench(
-    (state) => state.projects.find((project) => project.id === session.project_id)?.path ?? "",
-  );
+  const projectPath = useSessionProjectPath(session.project_id);
   if (event.kind !== "tool-call") return null;
   const summary = relativizeDisplayText(event.summary, projectPath);
   const detail = relativizeDisplayText(event.detail ?? "", projectPath);

@@ -1,7 +1,7 @@
+import { pageTitleFromHtml } from "@/shared/html-title";
+import { baseName } from "@/shared/path";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { NewTabIcon } from "./new-tab-icon";
-import { baseName } from "../files/path";
-import { pageTitleFromHtml } from "../browser/browser";
 import { BrowserView } from "../browser/BrowserView";
 import {
   payloadTitle,

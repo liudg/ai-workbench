@@ -1,9 +1,9 @@
 import { useState } from "react";
 
-import { useWorkbench } from "@/store";
 import type { Session } from "@/types";
 import { SessionRows } from "./SessionRows";
 import { sidebarSessionWindow } from "./session-order";
+import { usePinnedSessionIds } from "./use-pinned-session-ids";
 
 export function ArchivedSessions({
   projectId,
@@ -18,7 +18,7 @@ export function ArchivedSessions({
 }) {
   const [open, setOpen] = useState(false);
   const [showAll, setShowAll] = useState(false);
-  const pinnedIds = useWorkbench((s) => s.pinnedSessionIds);
+  const pinnedIds = usePinnedSessionIds();
   if (sessions.length === 0) return null;
   const { visible, overflow } = sidebarSessionWindow(sessions, showAll, pinnedIds);
 

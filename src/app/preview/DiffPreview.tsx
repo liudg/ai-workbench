@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef } from "react";
 
-import { AnswerMarkdownHost } from "@/features/workspace/AnswerMarkdownHost";
+import { AnswerMarkdownHost } from "@/features/chat/answer/AnswerMarkdownHost";
 import { parseUnifiedDiff, type FileChange } from "@/features/changes-model/diff-parse";
+import { PanelProvider, usePanel } from "@/features/panel/core/PanelProvider";
+import { SessionSplit } from "@/features/panel/core/SessionSplit";
 import type { SessionEvent } from "@/types";
-import { PanelProvider, usePanel } from "../core/PanelProvider";
-import { SessionSplit } from "../core/SessionSplit";
 
 const INSPECT = [
   "diff --git a/Library/GemFeedback/inspect_prefab.cs b/Library/GemFeedback/inspect_prefab.cs",

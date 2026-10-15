@@ -5,7 +5,8 @@ import { cn } from "@/lib/utils";
 import type { FileChange, FileStatus, TurnChanges } from "@/features/changes-model/diff-parse";
 import { usePanel } from "@/features/panel/core/PanelProvider";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
-import { baseName, fileStatusTone, relativeToProject } from "@/features/panel/files/path";
+import { fileStatusTone } from "@/features/changes-model/status-tone";
+import { baseName, relativeToProject } from "@/shared/path";
 import { canShowMore, editedFilesLabel, visibleChangeFiles } from "./card-text";
 
 export function ChangeCard({ changes }: { changes: TurnChanges }) {

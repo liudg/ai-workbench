@@ -1,4 +1,4 @@
-import { directoryOf, normalizePath } from "./path.ts";
+import { directoryOf, normalizePath } from "../../../shared/path.ts";
 
 export interface FileTreeFile {
   path: string;

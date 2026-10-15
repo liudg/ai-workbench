@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 import { isPendingId } from "@/store/draft-session";
 import type { Session } from "@/types";
 import { FixedMenu } from "../FixedMenu";
-import { SessionAgentIcon } from "./SessionAgentIcon";
+import { SessionAgentIcon } from "@/shared/agent/SessionAgentIcon";
 import { SessionStatusDot } from "./SessionStatusDot";
 import { relativeSessionTime } from "./relative-time";
 import { sessionMenuItems, type SessionMenuAction } from "./session-menu";

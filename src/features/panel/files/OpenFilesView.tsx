@@ -3,7 +3,7 @@ import { Folder } from "lucide-react";
 
 import { useElementWidth } from "@/shared/dom/useElementWidth";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
-import { addSessionTextSnippet } from "./useAddTextSnippet";
+import { addSessionTextSnippet } from "../core/useAddTextSnippet";
 import { ColumnSplitter } from "../core/ColumnSplitter";
 import { FILES_EXPANDED_WIDTH, diffListWidth, diffListWidthAfterDrag, pinnedColumnStyle } from "../core/layout";
 import { resolvePreviewPath } from "../core/preview-kind";
@@ -11,7 +11,7 @@ import { usePanel } from "../core/PanelProvider";
 import { FileContextMenu } from "./FileContextMenu";
 import { FilePreview } from "./FilePreview";
 import { WorkspaceTree } from "./WorkspaceTree";
-import { baseName } from "./path";
+import { baseName } from "@/shared/path";
 import { useAttachFile } from "./useAttachFile";
 
 const SPLITTER_WIDTH = 6;

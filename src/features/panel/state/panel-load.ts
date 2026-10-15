@@ -1,4 +1,4 @@
-import { baseName } from "../files/path.ts";
+import { baseName } from "../../../shared/path.ts";
 import {
   errorPayload,
   initialPayload,

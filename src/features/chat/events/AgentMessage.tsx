@@ -1,4 +1,4 @@
-import { SessionAgentIcon } from "@/features/sidebar/sessions/SessionAgentIcon";
+import { SessionAgentIcon } from "@/shared/agent/SessionAgentIcon";
 import { AssistantAnswer } from "../answer/AssistantAnswer";
 import { Row } from "./chrome";
 import type { EventViewProps } from "./types";
