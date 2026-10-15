@@ -38,6 +38,7 @@ function view(patch: Partial<Parameters<typeof deriveComposerView>[0]> = {}) {
     caret: 0,
     editingId: null,
     fileCount: 0,
+    snippetCount: 0,
     goalDraft: false,
     ...patch,
   });
@@ -73,10 +74,21 @@ test("slash stays closed while a prompt is waiting or the turn is busy", () => {
     questions: [],
   };
   assert.equal(view({ text: "/review", events: [prompt] }).slashOpen, false);
+  assert.equal(view({ text: "", snippetCount: 1, events: [prompt] }).sendDisabled, true);
   assert.equal(view({ text: "/review", status: "running" }).slashOpen, false);
   assert.equal(view({ text: "/review" }).slashOpen, true);
   assert.equal(view({ text: "  ", fileCount: 0 }).sendDisabled, true);
   assert.equal(view({ text: "", fileCount: 1 }).sendDisabled, false);
+  assert.equal(view({ text: "", snippetCount: 1 }).sendDisabled, false);
+  assert.equal(view({ text: "", snippetCount: 1, status: "running" }).stopMode, false);
+  assert.equal(
+    view({
+      text: "",
+      snippetCount: 1,
+      caps: { ...caps, supports_images: false },
+    }).sendDisabled,
+    false,
+  );
 });
 
 test("an empty @ opens the add menu and a query stays a file search", () => {

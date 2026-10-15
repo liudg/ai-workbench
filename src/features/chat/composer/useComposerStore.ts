@@ -2,9 +2,11 @@ import { useShallow } from "zustand/react/shallow";
 
 import { sessionCatalog } from "@/lib/catalog";
 import { useWorkbench } from "@/store";
+import type { TextSnippet } from "@/shared/text-snippet";
 import type { AgentKind, Attachment, QueuedTurn } from "@/types";
 
 const EMPTY_FILES: Attachment[] = [];
+const EMPTY_SNIPPETS: TextSnippet[] = [];
 const EMPTY_QUEUE: QueuedTurn[] = [];
 
 export function useComposerActions() {
@@ -21,6 +23,7 @@ export function useComposerActions() {
       removeAttachment: state.removeAttachment,
       clearAttachments: state.clearAttachments,
       replaceAttachments: state.replaceAttachments,
+      clearTextSnippets: state.clearTextSnippets,
     })),
   );
 }
@@ -35,6 +38,7 @@ export function useComposerSession(session: { id: string; agent: AgentKind; proj
       sandbox: state.sandboxes[session.id] ?? null,
       projectPath: state.projects.find((project) => project.id === session.project_id)?.path ?? "",
       files: state.attachments[session.id] ?? EMPTY_FILES,
+      snippets: state.textSnippets[session.id] ?? EMPTY_SNIPPETS,
       queue: state.queues[session.id] ?? EMPTY_QUEUE,
     })),
   );

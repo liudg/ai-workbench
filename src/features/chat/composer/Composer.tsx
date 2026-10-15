@@ -5,6 +5,7 @@ import { AttachMenu } from "./AttachMenu";
 import { Attachments } from "./Attachments";
 import { ComposerBar } from "./ComposerBar";
 import { ComposerInput } from "./ComposerInput";
+import { TextSnippetChip, TextSnippetPreview } from "./TextSnippets";
 import { ModelMenu } from "./ModelMenu";
 import { Queue } from "./Queue";
 import { ReviewMenu } from "./ReviewMenu";
@@ -19,7 +20,7 @@ export function Composer({ session, events }: { session: Session; events: Sessio
   const view = c.view;
   const slashSelected = Math.min(c.slashIndex, Math.max(view.slashMatches.length - 1, 0));
   return (
-    <div className="composer-root min-w-0 shrink-0 px-4 pb-4 pt-1">
+    <div className="composer-root relative z-10 min-w-0 shrink-0 px-4 pb-4 pt-1">
       {view.occupied && (
         <p className="mb-2 break-words px-2 text-center text-xs leading-5 text-amber-200/90">
           此会话正被其他进程占用，当前只读，不能发送。
@@ -82,6 +83,7 @@ export function Composer({ session, events }: { session: Session; events: Sessio
             onEdit={c.editGoal}
           />
         ) : null}
+        <TextSnippetPreview snippets={c.snippets} />
         <div
           className={cn(
             "min-w-0 rounded-[18px] border border-[#2a2a2a] bg-[#171717] transition-colors focus-within:border-[#3a3a3a]",
@@ -102,6 +104,7 @@ export function Composer({ session, events }: { session: Session; events: Sessio
           }}
         >
           <div className="min-w-0 overflow-hidden px-3 pt-3">
+          <TextSnippetChip snippets={c.snippets} onClear={c.dismissSnippets} />
           <Attachments files={c.files} imagesOn={view.imagesOn} onRemove={c.removeFile} />
           <ComposerInput
             text={c.text}

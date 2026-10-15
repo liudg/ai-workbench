@@ -139,6 +139,8 @@ export const DESKTOP_ZH = {
   filesFilterCap: "匹配太多，请缩小筛选",
   addToChat: "添加到聊天",
   addSelectionToChat: "添加到对话",
+  textSnippetChip: "{count} 个已选文本片",
+  textSnippetRemove: "移除已选文本片",
   diffOptions: "“变更”选项",
   diffHideImports: "隐藏导入内容",
   filesHideSidebar: "隐藏边栏",

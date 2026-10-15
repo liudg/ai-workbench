@@ -40,7 +40,6 @@ import { useComposerMenu } from "./useComposerMenu";
 import { useComposerFeeds } from "./useComposerFeeds";
 import { useComposerActions, useComposerSession } from "./useComposerStore";
 import { collaborationMode } from "./collaboration-mode";
-import { appendSnippet, subscribeComposerInsert } from "@/shared/composer-insert";
 import { useGoalDraft } from "./useGoalDraft";
 import { useMentionMenu } from "./useMentionMenu";
 import { useReviewDismiss } from "./useReviewDismiss";
@@ -90,6 +89,7 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     caret,
     editingId,
     fileCount: data.files.length,
+    snippetCount: data.snippets.length,
     goalDraft: goal.localGoal,
     goalLive: goal.live,
     goal: goal.snapshot,
@@ -147,12 +147,14 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     if (goal.publishError) setNotice(goal.publishError);
   }, [goal.publishError]);
 
+  const snippetCount = data.snippets.length;
+  const seenSnippets = useRef(snippetCount);
   useEffect(() => {
-    return subscribeComposerInsert(session.id, (snippet) => {
-      setText((current) => appendSnippet(current, snippet));
+    if (snippetCount > seenSnippets.current) {
       requestAnimationFrame(() => textareaRef.current?.focus());
-    });
-  }, [session.id, textareaRef]);
+    }
+    seenSnippets.current = snippetCount;
+  }, [snippetCount]);
 
   const planEvent = collaborationMode(events) === "plan";
   useEffect(() => {
@@ -209,6 +211,7 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     modelMenuRef,
     attachMenuRef,
     files: data.files,
+    snippets: data.snippets,
     queue: data.queue,
     sandbox,
     catalogNotice: data.catalogNotice,
@@ -281,6 +284,10 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     chooseFast: (enabled: boolean) => chooseComposerFast(run, enabled),
     resetTuning: () => resetComposerTuning(run),
     removeFile: (path: string) => actions.removeAttachment(session.id, path),
+    dismissSnippets: () => {
+      actions.clearTextSnippets(session.id);
+      requestAnimationFrame(() => textareaRef.current?.focus());
+    },
     onKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => handleComposerKey(run, event),
     onPaste: (event: ClipboardEvent<HTMLTextAreaElement>) => pasteComposerImages(run, event),
   };

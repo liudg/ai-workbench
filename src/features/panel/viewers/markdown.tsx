@@ -1,8 +1,8 @@
 import { useRef } from "react";
 import { FileText } from "lucide-react";
 
-import { insertComposerText } from "@/shared/composer-insert";
 import { baseName } from "../files/path";
+import { addSessionTextSnippet } from "../files/useAddTextSnippet";
 import { SelectionMenu } from "../files/SelectionMenu";
 import { payloadTitle, type PanelViewer, type ViewerViewProps } from "../core/registry";
 import { MarkdownPreview } from "./MarkdownPreview";
@@ -31,8 +31,8 @@ function MarkdownViewerBody({ payload, status, sessionId }: ViewerViewProps<Mark
         <SelectionMenu
           rootRef={rootRef}
           path={path}
-          onAdd={(quote) => {
-            insertComposerText(sessionId, quote);
+          onAdd={(draft) => {
+            addSessionTextSnippet(sessionId, draft);
           }}
         />
       ) : null}

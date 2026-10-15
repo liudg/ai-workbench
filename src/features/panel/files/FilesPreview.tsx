@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
-import { appendSnippet, insertComposerText, subscribeComposerInsert } from "@/shared/composer-insert";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
+import { textSnippetChipLabel, textSnippetPreview } from "@/shared/text-snippet";
 import { resolvePreviewPath } from "../core/preview-kind";
 import { FileContextMenu } from "./FileContextMenu";
 import { FilePreview } from "./FilePreview";
@@ -9,6 +9,7 @@ import { projectIdForRoot } from "./preview-project";
 import { FileSearchDialog } from "./FileSearchDialog";
 import { baseName } from "./path";
 import { useAttachFile } from "./useAttachFile";
+import { addSessionTextSnippet, useSessionTextSnippets } from "./useAddTextSnippet";
 import { WorkspaceTree } from "./WorkspaceTree";
 
 const SESSION = "preview";
@@ -22,17 +23,9 @@ export default function FilesPreview() {
   const [path, setPath] = useState("");
   const [line, setLine] = useState<number | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [draft, setDraft] = useState("");
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string } | null>(null);
   const attachFile = useAttachFile(SESSION);
-
-  useEffect(
-    () =>
-      subscribeComposerInsert(SESSION, (snippet) => {
-        setDraft((current) => appendSnippet(current, snippet));
-      }),
-    [],
-  );
+  const snippets = useSessionTextSnippets(SESSION);
 
   useEffect(() => {
     if (!root) {
@@ -63,7 +56,7 @@ export default function FilesPreview() {
               path={path}
               line={line}
               quotePath={joinRoot(root, path)}
-              onQuote={(quote) => insertComposerText(SESSION, quote)}
+              onQuote={(draft) => addSessionTextSnippet(SESSION, draft)}
             />
           </div>
         ) : (
@@ -71,15 +64,30 @@ export default function FilesPreview() {
             {error || "从右侧打开一个文件"}
           </p>
         )}
-        <label className="shrink-0 border-t border-zinc-800 p-3">
+        <div className="shrink-0 border-t border-zinc-800 p-3">
           <span className="mb-1 block text-xs text-zinc-500">对话</span>
+          {snippets.length > 0 ? (
+            <div data-preview-snippets={snippets.length} className="mb-2">
+              <p className="text-xs text-zinc-300">{textSnippetChipLabel(snippets.length)}</p>
+              {snippets.map((snippet) => (
+                <pre
+                  key={snippet.id}
+                  data-preview-snippet
+                  className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap text-xs text-zinc-400"
+                >
+                  {textSnippetPreview(snippet.body)}
+                </pre>
+              ))}
+            </div>
+          ) : null}
           <textarea
             data-preview-composer
             readOnly
-            value={draft}
+            value=""
+            placeholder="随心输入"
             className="h-28 w-full resize-none rounded-lg border border-zinc-700 bg-zinc-900 p-2 font-mono text-xs text-zinc-100"
           />
-        </label>
+        </div>
       </div>
       <aside data-workspace-tree className="flex w-80 shrink-0 flex-col border-l border-zinc-800">
         <div className="flex gap-1 border-b border-zinc-800 p-1.5">

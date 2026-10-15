@@ -46,6 +46,8 @@ export interface ComposerViewInput {
   caret: number;
   editingId: string | null;
   fileCount: number;
+  /** 已选文本片。空输入也能发送。 */
+  snippetCount: number;
   goalDraft: boolean;
   /** 服务端还有未清除的目标，而且用户没有刚关掉芯片。 */
   goalLive?: boolean;
@@ -132,16 +134,18 @@ export function deriveComposerView(input: ComposerViewInput) {
           : planOn
             ? DESKTOP_ZH.planPlaceholder
             : "随心输入";
+  const hasText = Boolean(input.text.trim());
+  const hasSnippets = input.snippetCount > 0;
   const stopMode =
-    queueOn && busy && !input.editingId && !pendingId && !input.text.trim() && input.fileCount === 0;
+    queueOn && busy && !input.editingId && !pendingId && !hasText && !hasSnippets && input.fileCount === 0;
   const sendDisabled = stopMode
     ? false
     : composerLocked ||
       !(pendingId
-        ? input.text.trim()
+        ? hasText
         : imagesOn
-          ? input.text.trim() || input.fileCount > 0
-          : input.text.trim());
+          ? hasText || hasSnippets || input.fileCount > 0
+          : hasText || hasSnippets);
   const menu = input.permissionMenu;
   return {
     pendingId,

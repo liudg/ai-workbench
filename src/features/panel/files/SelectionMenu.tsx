@@ -3,13 +3,13 @@ import { createPortal } from "react-dom";
 
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { selectionMenuUpdate, type SelectionGesture } from "./selection-menu";
-import { formatSelectionQuote } from "./selection-quote";
+import { selectionDraft, type SelectionDraft } from "./selection-quote";
 
 interface MenuBox {
   top: number;
   left: number;
   above: boolean;
-  quote: string;
+  draft: SelectionDraft;
 }
 
 /** 选中预览文字后只提供「添加到对话」。复制走浏览器自己的选区。 */
@@ -20,7 +20,7 @@ export function SelectionMenu({
 }: {
   rootRef: RefObject<HTMLElement | null>;
   path: string;
-  onAdd: (quote: string) => void;
+  onAdd: (draft: SelectionDraft) => void;
 }) {
   const [box, setBox] = useState<MenuBox | null>(null);
 
@@ -107,7 +107,7 @@ export function SelectionMenu({
         data-add-selection
         className="rounded-md px-2.5 py-1 text-xs text-[#e8e8e8] hover:bg-white/10"
         onClick={() => {
-          onAdd(box.quote);
+          onAdd(box.draft);
           setBox(null);
           window.getSelection()?.removeAllRanges();
         }}
@@ -127,14 +127,14 @@ function quoteFromSelection(root: HTMLElement, path: string): MenuBox | null {
   const text = selection.toString();
   if (!text.trim()) return null;
   const lines = lineNumbers(root, range, text);
-  const quote = formatSelectionQuote(path, text, lines.start, lines.end);
-  if (!quote) return null;
+  const draft = selectionDraft(path, text, lines.start, lines.end);
+  if (!draft) return null;
   const rect = range.getClientRects()[0] ?? range.getBoundingClientRect();
   if (rect.width === 0 && rect.height === 0) return null;
   const left = Math.min(window.innerWidth - 56, Math.max(56, rect.left + rect.width / 2));
   const above = rect.top > 48;
   const top = above ? rect.top : rect.bottom;
-  return { top, left, above, quote };
+  return { top, left, above, draft };
 }
 
 function lineNumbers(root: HTMLElement, range: Range, text: string): { start: number | null; end: number | null } {

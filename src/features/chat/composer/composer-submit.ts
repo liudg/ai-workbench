@@ -1,16 +1,19 @@
+import { mergeSnippetText } from "../../../shared/text-snippet.ts";
 import type { Attachment } from "../../../types/index.ts";
 import { isImagePath } from "./media.ts";
 
+type SnippetClear = { clearSnippets?: true };
+
 export type ComposerSubmit =
   | { type: "toggle-plan"; mode: "plan" | "default" }
-  | { type: "plan-message"; text: string }
+  | ({ type: "plan-message"; text: string } & SnippetClear)
   | { type: "set-goal"; text: string }
   | { type: "open-review" }
   | { type: "noop" }
-  | { type: "update-queue"; id: string; text: string; images: string[] }
-  | { type: "answer"; promptId: string; text: string }
-  | { type: "send-images"; text: string; images: string[] }
-  | { type: "send-text"; text: string; clearAttachments: boolean };
+  | ({ type: "update-queue"; id: string; text: string; images: string[] } & SnippetClear)
+  | ({ type: "answer"; promptId: string; text: string } & SnippetClear)
+  | ({ type: "send-images"; text: string; images: string[] } & SnippetClear)
+  | ({ type: "send-text"; text: string; clearAttachments: boolean } & SnippetClear);
 
 export function decideSubmit(input: {
   text: string;
@@ -19,6 +22,7 @@ export function decideSubmit(input: {
   planOn: boolean;
   imagesOn: boolean;
   attached: readonly Attachment[];
+  snippets?: readonly { quote: string }[];
   editingId: string | null;
   pendingId: string | null;
   composerLocked: boolean;
@@ -26,26 +30,28 @@ export function decideSubmit(input: {
   supportsGoals: boolean;
 }): ComposerSubmit {
   const value = input.text.trim();
+  const snippets = input.snippets ?? [];
   if (input.supportsPlan && value === "/plan") {
     return { type: "toggle-plan", mode: input.planOn ? "default" : "plan" };
   }
   const planRequest = value.match(/^\/plan\s+([\s\S]+)$/);
   if (input.supportsPlan && planRequest?.[1]) {
-    return { type: "plan-message", text: planRequest[1].trim() };
+    return { type: "plan-message", ...withSnippets(planRequest[1].trim(), snippets) };
   }
   if (input.supportsReview && value === "/review") return { type: "open-review" };
 
   const imagePaths = imagePathsOf(input);
   const referenced = referencedFiles(input);
   const slash = value.startsWith("/");
-  const body = attachmentBody(value, referenced, input.imagesOn, slash);
+  const message = messageBody(value, snippets, referenced, input.imagesOn, slash);
   if (input.editingId) {
-    if (!body && imagePaths.length === 0) return { type: "noop" };
-    return { type: "update-queue", id: input.editingId, text: body, images: imagePaths };
+    if (!message.text && imagePaths.length === 0) return { type: "noop" };
+    return { type: "update-queue", id: input.editingId, text: message.text, images: imagePaths, ...message.clear };
   }
   if (input.pendingId) {
     if (!value || input.composerLocked) return { type: "noop" };
-    return { type: "answer", promptId: input.pendingId, text: value };
+    const answer = withSnippets(value, snippets);
+    return { type: "answer", promptId: input.pendingId, ...answer };
   }
   if (
     input.goalDraft &&
@@ -56,10 +62,34 @@ export function decideSubmit(input: {
   ) {
     return { type: "set-goal", text: value };
   }
-  const canSend = Boolean(body || imagePaths.length);
+  const canSend = Boolean(message.text || imagePaths.length);
   if (!canSend || input.composerLocked) return { type: "noop" };
-  if (input.imagesOn) return { type: "send-images", text: body, images: imagePaths };
-  return { type: "send-text", text: body, clearAttachments: !slash };
+  if (input.imagesOn) return { type: "send-images", text: message.text, images: imagePaths, ...message.clear };
+  return { type: "send-text", text: message.text, clearAttachments: !slash, ...message.clear };
+}
+
+function withSnippets(
+  value: string,
+  snippets: readonly { quote: string }[],
+): { text: string; clearSnippets?: true } {
+  const text = mergeSnippetText(value, snippets);
+  return snippets.some((item) => item.quote.trim()) ? { text, clearSnippets: true } : { text };
+}
+
+/** 斜杠命令不吞文本片。其余消息先接围栏，再接文件名。 */
+function messageBody(
+  value: string,
+  snippets: readonly { quote: string }[],
+  files: readonly Attachment[],
+  imagesOn: boolean,
+  slash: boolean,
+): { text: string; clear: { clearSnippets?: true } } {
+  if (slash) return { text: value, clear: {} };
+  const merged = withSnippets(value, snippets);
+  return {
+    text: attachmentBody(merged.text, files, imagesOn, false),
+    clear: merged.clearSnippets ? { clearSnippets: true } : {},
+  };
 }
 
 function imagePathsOf(input: { imagesOn: boolean; attached: readonly Attachment[] }): string[] {

@@ -20,6 +20,7 @@ import type {
 import type { CreateProjectInput, ImportProjectInput } from "@/lib/ipc";
 import type { UpdatePhase } from "@/lib/updater";
 import type { PanelSlice } from "@/features/panel/state/slice";
+import type { TextSnippet } from "@/shared/text-snippet";
 
 export type DialogMode = "create" | "import";
 export type AppScreen = "workspace" | "settings";
@@ -74,6 +75,8 @@ export interface WorkspaceSlice {
   lastSandboxByAgent: Partial<Record<AgentKind, SessionSandbox>>;
   sandboxes: Record<string, SessionSandbox>;
   attachments: Record<string, Attachment[]>;
+  /** 选区文本片。和文件附件、输入框草稿分开。 */
+  textSnippets: Record<string, TextSnippet[]>;
   pageAnnotations: Record<string, PageAnnotation[]>;
   queues: Record<string, QueuedTurn[]>;
   catalogs: Record<string, AgentCatalog>;
@@ -87,6 +90,9 @@ export interface WorkspaceSlice {
   removeAttachment(sessionId: string, path: string): void;
   clearAttachments(sessionId: string): void;
   replaceAttachments(sessionId: string, files: Attachment[]): void;
+  addTextSnippet(sessionId: string, snippet: TextSnippet): void;
+  removeTextSnippet(sessionId: string, id: string): void;
+  clearTextSnippets(sessionId: string): void;
   addPageAnnotation(sessionId: string, note: PageAnnotation): void;
   removePageAnnotation(sessionId: string, id: string): void;
   clearPageAnnotations(sessionId: string): void;

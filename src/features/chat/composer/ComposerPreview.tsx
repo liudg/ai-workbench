@@ -8,9 +8,11 @@ import {
   type SessionEvent,
   type SessionTuning,
 } from "@/types";
+import type { TextSnippet } from "@/shared/text-snippet";
 import { AccessMenu } from "./AccessMenu";
 import { ComposerBar } from "./ComposerBar";
 import { ComposerInput } from "./ComposerInput";
+import { TextSnippetChip, TextSnippetPreview } from "./TextSnippets";
 import { MentionMenu } from "./MentionMenu";
 import { ModelMenu } from "./ModelMenu";
 import { SkillMenu } from "./SkillMenu";
@@ -205,6 +207,29 @@ const timeGoal: SessionEvent = {
   time_used_seconds: 3,
 };
 
+const previewSnippet: TextSnippet = {
+  id: "preview-snippet",
+  path: "Assets/Editor/Preview.cs",
+  start: 12,
+  end: 16,
+  body: [
+    "/// <summary>",
+    "/// 传入物品 ID，根据物品类型打开不同预览界面。",
+    "/// </summary>",
+    '/// <param name="itemID"></param>',
+    "public void OpenPreview(string itemID)",
+  ].join("\n"),
+  quote: [
+    "```12:16:Assets/Editor/Preview.cs",
+    "/// <summary>",
+    "/// 传入物品 ID，根据物品类型打开不同预览界面。",
+    "/// </summary>",
+    '/// <param name="itemID"></param>',
+    "public void OpenPreview(string itemID)",
+    "```",
+  ].join("\n"),
+};
+
 /** 预览用的技能目录。不接 app-server，只给 `$` 菜单核对单行省略。 */
 const previewSkills: AgentSkillOption[] = [
   {
@@ -232,6 +257,8 @@ export default function ComposerPreview() {
   const catalog = claude ? claudeCatalog : codexCatalog;
   const initialMenu = params.get("menu");
   const skillsOpen = params.get("skills") === "1";
+  const showSnippets = params.get("snippets") === "1";
+  const [snippets, setSnippets] = useState<TextSnippet[]>(() => (showSnippets ? [previewSnippet] : []));
   const [text, setText] = useState(skillsOpen ? "$" : "");
   const [caret, setCaret] = useState(skillsOpen ? 1 : 0);
   const [planOn, setPlanOn] = useState(false);
@@ -288,6 +315,7 @@ export default function ComposerPreview() {
     caret,
     editingId: null,
     fileCount: 0,
+    snippetCount: snippets.length,
     goalDraft,
     goalLive,
     goal,
@@ -401,8 +429,17 @@ export default function ComposerPreview() {
             }}
           />
         ) : null}
+        {snippets.length > 0 ? (
+          <div className="mb-2">
+            <p className="px-2 text-sm text-[#bdbdbd]">先看这个入口。</p>
+            <div className="h-28" />
+          </div>
+        ) : null}
+        <div className="relative min-w-0">
+        <TextSnippetPreview snippets={snippets} />
         <div className="min-w-0 rounded-[18px] border border-[#2a2a2a] bg-[#171717]">
           <div className="min-w-0 overflow-hidden px-3 pt-3">
+            <TextSnippetChip snippets={snippets} onClear={() => setSnippets([])} />
             <ComposerInput
               text={text}
               placeholder={view.placeholder}
@@ -499,6 +536,7 @@ export default function ComposerPreview() {
           }}
         />
       )}
+      </div>
     </div>
   );
 }
