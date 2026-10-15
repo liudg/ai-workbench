@@ -87,6 +87,11 @@ export interface Backend {
    * 后端用 Codex 同一条探测：`git rev-parse --is-inside-work-tree`。
    */
   projectIsGit(projectId: string): Promise<boolean>;
+  /**
+   * 当前 git 分支。不是仓库、分离头指针或空输出时为 null。
+   * 探测失败（git 不存在、目录不存在）时拒绝，而不是返回一个假分支名。
+   */
+  projectBranch(projectId: string): Promise<string | null>;
   updateQueuedTurn(
     sessionId: string,
     queuedId: string,

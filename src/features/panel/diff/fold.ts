@@ -6,7 +6,27 @@ export function unmodifiedLinesLabel(count: number): string {
 
 export type DiffFoldRow =
   | { kind: "collapse"; count: number }
-  | { kind: "line"; tone: "add" | "del" | "context" | "meta"; text: string; lineNo: number | null };
+  | {
+      kind: "line";
+      tone: "add" | "del" | "context" | "meta";
+      text: string;
+      lineNo: number | null;
+      /** 旧文件行号。新增行没有。 */
+      oldNo: number | null;
+      /** 新文件行号。删除行没有。 */
+      newNo: number | null;
+    };
+
+/** 统一 diff 的一行。`lineNo` 仍是折叠间距用的那一列：删除用旧号，其余用新号。 */
+export function diffLine(
+  tone: "add" | "del" | "context" | "meta",
+  text: string,
+  oldNo: number | null,
+  newNo: number | null,
+): DiffFoldRow {
+  const lineNo = tone === "del" ? oldNo : tone === "meta" ? null : newNo;
+  return { kind: "line", tone, text, lineNo, oldNo, newNo };
+}
 
 /**
  * 把统一 diff 收成折叠行：块与块之间没出现的旧行变成
@@ -18,14 +38,19 @@ export function foldDiffLines(diff: string): DiffFoldRow[] {
   let oldLine = 0;
   let newLine = 0;
   let lastNo: number | null = null;
-  const emit = (tone: "add" | "del" | "context", text: string, lineNo: number) => {
+  const emit = (tone: "add" | "del" | "context", text: string, oldNo: number | null, newNo: number | null) => {
+    const lineNo = tone === "del" ? oldNo : newNo;
+    if (lineNo === null) {
+      rows.push(diffLine(tone, text, oldNo, newNo));
+      return;
+    }
     if (lastNo === null) {
       if (lineNo > 1) rows.push({ kind: "collapse", count: lineNo - 1 });
     } else {
       const gap = lineNo - lastNo - 1;
       if (gap > 0) rows.push({ kind: "collapse", count: gap });
     }
-    rows.push({ kind: "line", tone, text, lineNo });
+    rows.push(diffLine(tone, text, oldNo, newNo));
     lastNo = lineNo;
   };
   for (const line of diff.split(/\r?\n/)) {
@@ -58,21 +83,21 @@ export function foldDiffLines(diff: string): DiffFoldRow[] {
     if (!inHunk) continue;
     if (line.startsWith("\\")) {
       const text = line.replace(/^\\/, "").trim();
-      rows.push({ kind: "line", tone: "meta", text, lineNo: null });
+      rows.push(diffLine("meta", text, null, null));
       continue;
     }
     if (line.startsWith("+")) {
-      emit("add", line.slice(1), newLine);
+      emit("add", line.slice(1), null, newLine);
       newLine += 1;
       continue;
     }
     if (line.startsWith("-")) {
-      emit("del", line.slice(1), oldLine);
+      emit("del", line.slice(1), oldLine, null);
       oldLine += 1;
       continue;
     }
     const text = line.startsWith(" ") ? line.slice(1) : line;
-    emit("context", text, newLine);
+    emit("context", text, oldLine, newLine);
     oldLine += 1;
     newLine += 1;
   }
@@ -88,9 +113,11 @@ export function expandDiffLines(diff: string, source: string | null): DiffFoldRo
   const hunks = parseHunks(diff);
   const rows: DiffFoldRow[] = [];
   let cursor = 1;
+  let oldCursor = 1;
   const emitUntil = (until: number) => {
     while (cursor < until && cursor <= src.length) {
-      rows.push({ kind: "line", tone: "context", text: src[cursor - 1] ?? "", lineNo: cursor });
+      rows.push(diffLine("context", src[cursor - 1] ?? "", oldCursor, cursor));
+      oldCursor += 1;
       cursor += 1;
     }
   };
@@ -99,24 +126,21 @@ export function expandDiffLines(diff: string, source: string | null): DiffFoldRo
     let oldLine = hunk.oldStart;
     for (const line of hunk.lines) {
       if (line.kind === "meta") {
-        rows.push({ kind: "line", tone: "meta", text: line.text, lineNo: null });
+        rows.push(diffLine("meta", line.text, null, null));
         continue;
       }
       if (line.kind === "del") {
-        rows.push({ kind: "line", tone: "del", text: line.text, lineNo: oldLine });
+        rows.push(diffLine("del", line.text, oldLine, null));
         oldLine += 1;
         continue;
       }
       const text = cursor <= src.length ? (src[cursor - 1] ?? line.text) : line.text;
-      rows.push({
-        kind: "line",
-        tone: line.kind === "add" ? "add" : "context",
-        text,
-        lineNo: cursor,
-      });
+      if (line.kind === "add") rows.push(diffLine("add", text, null, cursor));
+      else rows.push(diffLine("context", text, oldLine, cursor));
       if (line.kind === "context") oldLine += 1;
       cursor += 1;
     }
+    oldCursor = oldLine;
   }
   emitUntil(src.length + 1);
   return rows;

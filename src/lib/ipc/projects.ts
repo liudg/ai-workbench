@@ -5,7 +5,7 @@ import type { CreateProjectResult } from "./dto";
 
 export const projectCommands: Pick<
   Backend,
-  "listProjects" | "createProject" | "importProject" | "removeProject" | "projectIsGit"
+  "listProjects" | "createProject" | "importProject" | "removeProject" | "projectIsGit" | "projectBranch"
 > = {
   listProjects: () => invoke<Project[]>("list_projects"),
   createProject: (input) =>
@@ -23,4 +23,5 @@ export const projectCommands: Pick<
     }),
   removeProject: (id) => invoke("remove_project", { id }),
   projectIsGit: (projectId) => invoke<boolean>("project_is_git", { projectId }),
+  projectBranch: (projectId) => invoke<string | null>("project_branch", { projectId }),
 };

@@ -1,6 +1,5 @@
-import { Globe } from "lucide-react";
-
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
+import { NewTabIcon } from "./new-tab-icon";
 import { baseName } from "../files/path";
 import { pageTitleFromHtml } from "../browser/browser";
 import { BrowserView } from "../browser/BrowserView";
@@ -50,7 +49,7 @@ function HtmlViewerBody({ payload, status, tabId, projectId, sessionId, setTitle
 export const htmlViewer: PanelViewer<HtmlPayload> = {
   id: "html",
   match: matchHtml,
-  icon: Globe,
+  icon: NewTabIcon,
   title: htmlTitle,
   async load(target: OpenTarget, ctx) {
     if (target.kind !== "file") {

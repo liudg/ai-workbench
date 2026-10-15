@@ -1,8 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { FileSearch, Folder } from "lucide-react";
+import { Folder } from "lucide-react";
 
-import { cn } from "@/lib/utils";
 import { useElementWidth } from "@/shared/dom/useElementWidth";
 import { insertComposerText } from "@/shared/composer-insert";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
@@ -10,12 +9,9 @@ import { ColumnSplitter } from "../core/ColumnSplitter";
 import { FILES_EXPANDED_WIDTH, diffListWidth, diffListWidthAfterDrag } from "../core/layout";
 import { previewKindForPath, resolvePreviewPath } from "../core/preview-kind";
 import { usePanel } from "../core/PanelProvider";
-import { Hint } from "../core/Hint";
-import { FolderStackIcon } from "../core/panel-icons";
 import { FilePreview } from "./FilePreview";
-import { FileSearchDialog } from "./FileSearchDialog";
 import { WorkspaceTree } from "./WorkspaceTree";
-import { baseName, workspaceRootLabel } from "./path";
+import { baseName } from "./path";
 import { useAttachFile } from "./useAttachFile";
 
 const SPLITTER_WIDTH = 6;
@@ -25,22 +21,16 @@ export function OpenFilesView() {
   const { projectId, projectPath, sessionId, diffFilesWidth, setDiffFilesWidth, openHref } = usePanel();
   const attachFile = useAttachFile(sessionId);
   const [filter, setFilter] = useState("");
-  const [treeOpen, setTreeOpen] = useState(true);
-  const [searchOpen, setSearchOpen] = useState(false);
   const [previewPath, setPreviewPath] = useState("");
   const [previewLine, setPreviewLine] = useState<number | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string } | null>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const paneWidth = useElementWidth(frameRef);
-  const root = workspaceRootLabel(projectPath);
-  const inner = treeOpen ? Math.max(0, paneWidth - SPLITTER_WIDTH) : paneWidth;
-  const auto = treeOpen ? diffListWidth(inner) : null;
-  const dragged = treeOpen && diffFilesWidth !== null ? diffListWidthAfterDrag(inner, diffFilesWidth) : null;
-  const listWidth = !treeOpen
-    ? null
-    : paneWidth <= 0
-      ? FILES_EXPANDED_WIDTH
-      : (dragged ?? auto ?? Math.min(FILES_EXPANDED_WIDTH, inner));
+  const inner = Math.max(0, paneWidth - SPLITTER_WIDTH);
+  const auto = diffListWidth(inner);
+  const dragged = diffFilesWidth !== null ? diffListWidthAfterDrag(inner, diffFilesWidth) : null;
+  const listWidth =
+    paneWidth <= 0 ? FILES_EXPANDED_WIDTH : (dragged ?? auto ?? Math.min(FILES_EXPANDED_WIDTH, inner));
   const metrics = useRef({ pane: 0, list: 0 });
   const widthRef = useRef(diffFilesWidth);
   metrics.current = { pane: inner, list: listWidth ?? auto ?? 0 };
@@ -68,19 +58,15 @@ export function OpenFilesView() {
   };
 
   return (
-    <div ref={frameRef} data-open-files className="relative flex h-full min-h-0 min-w-0 overflow-hidden" data-file-tree={listWidth === null ? "hidden" : "visible"}>
+    <div ref={frameRef} data-open-files className="relative flex h-full min-h-0 min-w-0 overflow-hidden" data-file-tree="visible">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {root ? (
-          <div data-open-files-root className="shrink-0 px-3 pt-2 text-xs text-zinc-500">
-            {root}
-          </div>
-        ) : null}
         {previewPath ? (
           <div className="min-h-0 flex-1">
             <FilePreview
               key={`${previewPath}:${previewLine ?? ""}`}
               projectId={projectId}
               path={previewPath}
+              root={projectPath}
               line={previewLine}
               quotePath={resolvePreviewPath(projectPath, previewPath) || previewPath}
               onQuote={(quote) => insertComposerText(sessionId, quote)}
@@ -120,11 +106,6 @@ export function OpenFilesView() {
               data-files-filter
               className="w-full min-w-0 rounded-md border border-[#2a2a2a] bg-[#171717] px-2 py-1.5 text-[12px] text-[#e8e8e8] outline-none placeholder:text-[#666] focus:border-[#3a3a3a]"
             />
-            <FileColumnTools
-              treeOpen={treeOpen}
-              onSearch={() => setSearchOpen(true)}
-              onToggleTree={() => setTreeOpen((value) => !value)}
-            />
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-1 py-1">
             <WorkspaceTree
@@ -136,21 +117,6 @@ export function OpenFilesView() {
             />
           </div>
         </aside>
-      ) : (
-        <div className="absolute right-2 top-2 z-10">
-          <FileColumnTools
-            treeOpen={false}
-            onSearch={() => setSearchOpen(true)}
-            onToggleTree={() => setTreeOpen(true)}
-          />
-        </div>
-      )}
-      {searchOpen ? (
-        <FileSearchDialog
-          projectId={projectId}
-          onClose={() => setSearchOpen(false)}
-          onOpen={(path, line) => openFile(path, line)}
-        />
       ) : null}
       {contextMenu ? (
         <FileContextMenu
@@ -222,43 +188,5 @@ function FileContextMenu({
       </button>
     </div>,
     document.body,
-  );
-}
-
-function FileColumnTools({
-  treeOpen,
-  onSearch,
-  onToggleTree,
-}: {
-  treeOpen: boolean;
-  onSearch: () => void;
-  onToggleTree: () => void;
-}) {
-  return (
-    <div className="flex shrink-0 items-center gap-1">
-      <Hint label={DESKTOP_ZH.openFilesSearch} align="end">
-        <button
-          type="button"
-          data-file-search-open
-          aria-label={DESKTOP_ZH.openFilesSearch}
-          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-zinc-700 text-zinc-300 hover:bg-zinc-800"
-          onClick={onSearch}
-        >
-          <FileSearch className="h-3.5 w-3.5" />
-        </button>
-      </Hint>
-      <button
-        type="button"
-        data-file-tree-toggle
-        aria-pressed={treeOpen}
-        className={cn(
-          "inline-flex h-7 w-7 items-center justify-center rounded-full border border-zinc-700 text-zinc-300 hover:bg-zinc-800",
-          treeOpen && "bg-zinc-800 text-zinc-50",
-        )}
-        onClick={onToggleTree}
-      >
-        <FolderStackIcon />
-      </button>
-    </div>
   );
 }

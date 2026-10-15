@@ -63,9 +63,88 @@ pub(super) struct LiveCursor {
     finalized: bool,
 }
 
+/// 每个 message id 一份用量。后来的同一 id 替换，不累加。
+/// 发出的是这些 id 的绝对合计，所以实时流和结束后的 jsonl 不会把同一次调用算两遍。
+#[derive(Default)]
+pub(super) struct UsageLedger {
+    messages: HashMap<String, Parts>,
+}
+
+impl UsageLedger {
+    pub(super) fn seed_transcript(&mut self, content: &str) {
+        self.messages = message_parts_from_transcript(content);
+    }
+
+    /// 用文件里的最终用量覆盖同一 id。文件里还没有的实时调用留着。
+    /// 有 assistant 记录时不再保留只来自 `result.usage` 的合计。
+    pub(super) fn merge_transcript(&mut self, content: &str) {
+        let incoming = message_parts_from_transcript(content);
+        let incoming_calls = incoming.keys().any(|key| !key.starts_with("result:"));
+        if incoming_calls {
+            self.messages.retain(|key, _| !key.starts_with("result:"));
+            for (id, parts) in incoming {
+                self.messages.insert(id, parts);
+            }
+            return;
+        }
+        if self.messages.keys().any(|key| !key.starts_with("result:")) {
+            return;
+        }
+        self.messages = incoming;
+    }
+
+    /// 实时增量按 message id 替换，并返回替换后的会话合计快照。
+    pub(super) fn absorb_delta(&mut self, event: &SessionEventBody) -> Option<SessionEventBody> {
+        let SessionEventBody::SessionUsage {
+            scope,
+            key,
+            input_tokens,
+            output_tokens,
+            cache_read_tokens,
+            cache_write_tokens,
+        } = event
+        else {
+            return None;
+        };
+        if scope != "delta" {
+            return None;
+        }
+        let Some(raw) = key.as_deref().map(str::trim).filter(|item| !item.is_empty()) else {
+            return None;
+        };
+        let id = raw.strip_prefix("assistant:").unwrap_or(raw);
+        let parts = Parts {
+            input: *input_tokens,
+            output: *output_tokens,
+            cache_read: *cache_read_tokens,
+            cache_write: *cache_write_tokens,
+        };
+        if parts.is_empty() {
+            return None;
+        }
+        self.messages.retain(|key, _| !key.starts_with("result:"));
+        self.messages.insert(id.to_string(), parts);
+        self.snapshot()
+    }
+
+    pub(super) fn snapshot(&self) -> Option<SessionEventBody> {
+        let mut total = Parts::default();
+        for parts in self.messages.values() {
+            total.add(*parts);
+        }
+        usage_event("snapshot", None, total)
+    }
+}
+
 /// 历史 jsonl → 一条快照。同一 `message.id` 只留文件里的最后一条。
 /// 有 assistant 记录就不加 `result`。没有 assistant 时才用 `result.usage`。
 pub(super) fn snapshot_from_transcript(content: &str) -> Option<SessionEventBody> {
+    let mut ledger = UsageLedger::default();
+    ledger.seed_transcript(content);
+    ledger.snapshot()
+}
+
+fn message_parts_from_transcript(content: &str) -> HashMap<String, Parts> {
     let mut assistants: HashMap<String, Parts> = HashMap::new();
     let mut results: HashMap<String, Parts> = HashMap::new();
     for line in content.lines() {
@@ -98,17 +177,11 @@ pub(super) fn snapshot_from_transcript(content: &str) -> Option<SessionEventBody
             _ => {}
         }
     }
-    let mut total = Parts::default();
     if assistants.is_empty() {
-        for parts in results.values() {
-            total.add(*parts);
-        }
+        results
     } else {
-        for parts in assistants.values() {
-            total.add(*parts);
-        }
+        assistants
     }
-    usage_event("snapshot", None, total)
 }
 
 /// `stream_event` 里的 `message_start` / `message_delta`。
@@ -434,6 +507,50 @@ mod tests {
             }
         }
         assert_eq!(fold_deltas(&events), resumed);
+    }
+
+    #[test]
+    fn ledger_replaces_a_message_instead_of_adding_it_twice() {
+        let mut ledger = UsageLedger::default();
+        ledger.seed_transcript(
+            r#"{"type":"assistant","message":{"id":"msg_1","usage":{"input_tokens":10,"output_tokens":1}}}"#,
+        );
+        let first = usage_event(
+            "delta",
+            Some("assistant:msg_1".into()),
+            Parts {
+                input: Some(10),
+                output: Some(5),
+                cache_read: None,
+                cache_write: None,
+            },
+        )
+        .expect("delta");
+        let (_, _, parts) = usage_of(ledger.absorb_delta(&first));
+        assert_eq!(parts.input, Some(10));
+        assert_eq!(parts.output, Some(5));
+
+        let extra = usage_event(
+            "delta",
+            Some("assistant:msg_2".into()),
+            Parts {
+                input: Some(3),
+                output: Some(1),
+                cache_read: None,
+                cache_write: None,
+            },
+        )
+        .expect("delta");
+        let (_, _, parts) = usage_of(ledger.absorb_delta(&extra));
+        assert_eq!(parts.input, Some(13));
+        assert_eq!(parts.output, Some(6));
+
+        ledger.merge_transcript(
+            r#"{"type":"assistant","message":{"id":"msg_1","usage":{"input_tokens":10,"output_tokens":9}}}"#,
+        );
+        let (_, _, parts) = usage_of(ledger.snapshot());
+        assert_eq!(parts.input, Some(13));
+        assert_eq!(parts.output, Some(10));
     }
 
     fn fold_deltas(events: &[SessionEventBody]) -> Parts {

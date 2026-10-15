@@ -1,8 +1,8 @@
 import source from "../viewers/SourceView.tsx?raw";
 
 import { FileTreeList } from "./FileTreeList";
+import { PreviewPathBar } from "./FilePreview";
 import { buildFileTree, type FileTreeFile } from "./file-tree";
-import { pathCrumb } from "./path";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { SourceView } from "../viewers/SourceView";
 
@@ -21,9 +21,7 @@ export default function CodePreview() {
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#0f0f0f] text-[#e8e8e8]">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <div className="shrink-0 truncate border-b border-[#222] px-3 py-2 font-mono text-[12px] text-[#bdbdbd]">
-          {pathCrumb(PATH)}
-        </div>
+        <PreviewPathBar path={PATH} />
         <div className="min-h-0 flex-1">
           <SourceView text={source} line={line > 0 ? line : 1} />
         </div>

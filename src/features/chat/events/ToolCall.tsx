@@ -2,6 +2,8 @@ import { useState } from "react";
 import { ChevronRight, Image as ImageIcon, Play, Terminal, Wrench } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useWorkbench } from "@/store";
+import { relativizeDisplayText } from "@/features/panel/files/path";
 import { CopyButton } from "./chrome";
 import { EventImages } from "./EventImages";
 import { toolGlyph, toolLineText } from "./tool-line";
@@ -17,13 +19,16 @@ const GLYPH = {
  * 工具、命令和 MCP 调用默认一行：图标、截断摘要、箭头。
  * 点开后才是完整命令和输出。文案来自适配器已规范化的 summary。
  */
-export function ToolCall({ event }: EventViewProps) {
+export function ToolCall({ event, session }: EventViewProps) {
   const [open, setOpen] = useState(false);
+  const projectPath = useWorkbench(
+    (state) => state.projects.find((project) => project.id === session.project_id)?.path ?? "",
+  );
   if (event.kind !== "tool-call") return null;
-  const summary = event.summary;
-  const detail = event.detail ?? "";
+  const summary = relativizeDisplayText(event.summary, projectPath);
+  const detail = relativizeDisplayText(event.detail ?? "", projectPath);
   const images = event.images ?? [];
-  const line = toolLineText(event.name, summary);
+  const line = relativizeDisplayText(toolLineText(event.name, event.summary), projectPath);
   const Icon = GLYPH[toolGlyph(event.name, images.length)];
   const copyText = [event.name, summary, detail].filter((part) => part.trim()).join("\n");
   const hasBody = summary.trim().length > 0 || detail.trim().length > 0 || images.length > 0;

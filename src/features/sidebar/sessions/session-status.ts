@@ -4,7 +4,10 @@ export interface SessionStatusView {
   tone: SessionDotTone;
   word: string;
   prominent: boolean;
-  className: string;
+  /** 运行中和等待是环里的点；失败是实心点。 */
+  marker: "ring" | "dot";
+  ringClass: string;
+  dotClass: string;
 }
 
 /** 会话状态点。适配器没给状态时返回 null，调用方不画占位。 */
@@ -15,21 +18,27 @@ export function sessionStatusView(status: string | null | undefined): SessionSta
         tone: "running",
         word: "运行中",
         prominent: false,
-        className: "h-1.5 w-1.5 bg-[#4f8dff]",
+        marker: "ring",
+        ringClass: "border-[#4f8dff]",
+        dotClass: "bg-[#4f8dff]",
       };
     case "needs-input":
       return {
         tone: "waiting",
         word: "等待",
         prominent: true,
-        className: "h-1.5 w-1.5 bg-amber-400",
+        marker: "ring",
+        ringClass: "border-[#f0a04a]",
+        dotClass: "bg-[#f0a04a]",
       };
     case "failed":
       return {
         tone: "failed",
         word: "失败",
         prominent: false,
-        className: "h-1.5 w-1.5 bg-red-400",
+        marker: "dot",
+        ringClass: "",
+        dotClass: "bg-red-400",
       };
     case "completed":
     case "stopped":

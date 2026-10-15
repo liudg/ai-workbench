@@ -164,7 +164,15 @@ function DiffRowView({ row, wrap }: { row: DiffDisplayRow; wrap: boolean }) {
         row.tone === "meta" && "text-zinc-500",
       )}
     >
-      <span className="w-10 shrink-0 select-none px-2 text-right text-zinc-500">{row.lineNo ?? ""}</span>
+      <span data-diff-old-line className="w-9 shrink-0 select-none px-1 text-right text-[#6a6a6a]">
+        {row.oldNo ?? ""}
+      </span>
+      <span data-diff-new-line className="w-9 shrink-0 select-none px-1 text-right text-[#6a6a6a]">
+        {row.newNo ?? ""}
+      </span>
+      <span data-diff-sign className="w-4 shrink-0 select-none text-center text-[#8a8a8a]">
+        {row.tone === "add" ? "+" : row.tone === "del" ? "-" : ""}
+      </span>
       <LineText text={row.text} parts={row.parts} wrap={wrap} />
     </div>
   );

@@ -8,19 +8,19 @@ test("session status dots only mark running, waiting, and failed", () => {
   const waiting = sessionStatusView("needs-input");
   const failed = sessionStatusView("failed");
   assert.equal(running?.word, "运行中");
-  assert.equal(running?.className.includes("bg-[#4f8dff]"), true);
+  assert.equal(running?.marker, "ring");
+  assert.equal(running?.dotClass.includes("bg-[#4f8dff]"), true);
+  assert.equal(running?.ringClass.includes("border-[#4f8dff]"), true);
   assert.equal(running?.prominent, false);
   assert.equal(waiting?.word, "等待");
+  assert.equal(waiting?.marker, "ring");
   assert.equal(waiting?.prominent, true);
-  assert.equal(waiting?.className.includes("bg-amber-400"), true);
+  assert.equal(waiting?.dotClass.includes("bg-[#f0a04a]"), true);
   assert.equal(failed?.word, "失败");
-  assert.equal(failed?.className.includes("bg-red-400"), true);
+  assert.equal(failed?.marker, "dot");
+  assert.equal(failed?.dotClass.includes("bg-red-400"), true);
   assert.equal(sessionStatusView("completed"), null);
   assert.equal(sessionStatusView("stopped"), null);
-  for (const view of [running, waiting, failed]) {
-    assert.equal(view?.className.includes("border"), false);
-    assert.equal(view?.className.includes("ring-"), false);
-  }
 });
 
 test("a missing status has no dot", () => {

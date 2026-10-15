@@ -82,7 +82,7 @@ export function ChatView({
         onPointerDown={onPointerDown}
         className="chat-log min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto py-4"
       >
-        <div ref={contentRef} className="min-h-full min-w-0">
+        <div ref={contentRef} data-message-column className="mx-auto min-h-full w-full min-w-0 max-w-[760px]">
           {!hasVisibleEvent ? (
             <div className="flex h-full flex-col items-center justify-center gap-3 text-zinc-600">
               <MessageSquareDashed className="h-8 w-8" strokeWidth={1.5} />
@@ -165,7 +165,9 @@ export function ChatView({
           })}
         </div>
       </div>
-      <Composer key={session.id} session={session} events={events} />
+      <div data-composer-column className="mx-auto w-full max-w-[760px]">
+        <Composer key={session.id} session={session} events={events} />
+      </div>
       {pendingId && (
         <div className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-transparent via-amber-400/60 to-transparent" />
       )}

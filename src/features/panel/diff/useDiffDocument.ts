@@ -63,7 +63,6 @@ export function useDiffDocument(turnFiles: FileChange[]) {
 
   useEffect(() => {
     setActivePath("");
-    setOpenPaths([]);
   }, [scope]);
 
   const remote = Boolean(selected && selected.source !== "turn" && !selected.submenu);
@@ -111,6 +110,14 @@ export function useDiffDocument(turnFiles: FileChange[]) {
   const openSet = useMemo(() => new Set(openPaths), [openPaths]);
   const allExpanded = shown.length > 0 && shown.every((file) => openSet.has(file.path));
   const sourceKey = shown.map((file) => file.path).join("\n");
+  const openKey = `${scope}\n${sourceKey}`;
+  const openedKey = useRef("");
+  useEffect(() => {
+    if (openedKey.current === openKey) return;
+    openedKey.current = openKey;
+    const first = shown[0]?.path;
+    setOpenPaths(first ? [first] : []);
+  }, [openKey, shown]);
   const triedSource = useRef(new Set<string>());
   useEffect(() => {
     if (!loadFull || (openPaths.length === 0 && !renderPreview)) return;

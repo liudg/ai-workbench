@@ -52,7 +52,7 @@ export function PanelTabs() {
                 >
                   {Icon ? (
                     <span className="inline-flex shrink-0" data-tab-icon={tab.viewerId}>
-                      <Icon className="h-3 w-3" />
+                      <Icon className="h-3.5 w-3.5" />
                     </span>
                   ) : null}
                   <span className="truncate">{title}</span>

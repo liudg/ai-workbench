@@ -64,6 +64,8 @@ pub struct Shared {
     user_stopped: AtomicBool,
     pending: Mutex<PendingLines>,
     last_diff: Mutex<String>,
+    /// 每个 message id 一份用量。实时流和回合结束都发绝对快照，不把同一调用再加一遍。
+    usage_ledger: Mutex<super::usage::UsageLedger>,
     /// 串起「开始回合」和「回合结束」，避免结果状态盖住紧接着的新回合。
     status_lock: Mutex<()>,
 }
@@ -132,6 +134,7 @@ pub async fn open(
         user_stopped: AtomicBool::new(false),
         pending: Mutex::new(PendingLines { ready: false, lines: Vec::new() }),
         last_diff: Mutex::new(String::new()),
+        usage_ledger: Mutex::new(super::usage::UsageLedger::default()),
         status_lock: Mutex::new(()),
     });
     start_io(&shared, stdin, stdout, stderr);
@@ -142,6 +145,13 @@ pub async fn open(
     }
     register(&shared);
     Ok(shared)
+}
+
+fn usage_delta(event: &SessionEventBody) -> bool {
+    matches!(
+        event,
+        SessionEventBody::SessionUsage { scope, .. } if scope == "delta"
+    )
 }
 
 impl Shared {
@@ -188,7 +198,11 @@ impl Shared {
         let model_before = self.map.lock().unwrap().model.clone();
         if let Some(path) = history::find_session_file(&self.session_id) {
             if let Some(text) = history::read_session_text(&path) {
-                let usage = super::usage::snapshot_from_transcript(&text);
+                let usage = {
+                    let mut ledger = self.usage_ledger.lock().unwrap();
+                    ledger.seed_transcript(&text);
+                    ledger.snapshot()
+                };
                 let (events, diff) = {
                     let mut map = self.map.lock().unwrap();
                     let events = messages::events_from_transcript(&mut map, &text, Some(&self.project_path));
@@ -587,8 +601,31 @@ impl Shared {
                 let _ = self.events.send(event);
             }
             other => {
-                let _ = self.events.send(other);
+                if usage_delta(&other) {
+                    if let Some(snapshot) = self.usage_ledger.lock().unwrap().absorb_delta(&other) {
+                        let _ = self.events.send(snapshot);
+                    }
+                } else {
+                    let _ = self.events.send(other);
+                }
             }
+        }
+    }
+
+    fn refresh_usage_snapshot(&self) {
+        let Some(path) = history::find_session_file(&self.session_id) else {
+            return;
+        };
+        let Some(text) = history::read_session_text(&path) else {
+            return;
+        };
+        let snapshot = {
+            let mut ledger = self.usage_ledger.lock().unwrap();
+            ledger.merge_transcript(&text);
+            ledger.snapshot()
+        };
+        if let Some(snapshot) = snapshot {
+            let _ = self.events.send(snapshot);
         }
     }
 
@@ -615,6 +652,7 @@ impl Shared {
             terminal
         };
         if fire {
+            self.refresh_usage_snapshot();
             self.fire_context_usage();
         }
     }

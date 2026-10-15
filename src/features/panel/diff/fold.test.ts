@@ -37,6 +37,21 @@ test("unchanged lines between hunks collapse into unmodified bars", () => {
   );
 });
 
+test("hunk rows keep old and new line numbers", () => {
+  const diff = ["@@ -1,3 +1,4 @@", " import { Panel } from './panel';", "-export const width = 320;", "+export const width = 480;", "+export const minWidth = 360;", " "].join("\n");
+  const rows = foldDiffLines(diff).filter((row) => row.kind === "line");
+  assert.deepEqual(
+    rows.map((row) => (row.kind === "line" ? `${row.tone}:${row.oldNo ?? ""}:${row.newNo ?? ""}:${row.text}` : "")),
+    [
+      "context:1:1:import { Panel } from './panel';",
+      "del:2::export const width = 320;",
+      "add::2:export const width = 480;",
+      "add::3:export const minWidth = 360;",
+      "context:3:4:",
+    ],
+  );
+});
+
 test("whitespace-only edits drop out and expand fills the new file", () => {
   const spaced = ["@@ -1 +1 @@", "-a b", "+a  b", " same"].join("\n");
   assert.equal(withoutWhitespaceChanges(spaced).includes("+a  b"), false);

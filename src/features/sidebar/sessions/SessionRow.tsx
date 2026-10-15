@@ -138,9 +138,10 @@ export function SessionRow({
         data-agent={session.agent}
         data-active={active ? "true" : "false"}
         className={cn(
-          "group flex h-7 w-full items-center gap-1.5 rounded-md pl-9 pr-2 text-left text-[11.5px] leading-5",
-          active ? "text-[#f3f3f3]" : "text-[#bdbdbd] hover:bg-white/[0.04] hover:text-[#e8e8e8]",
-          active && "hover:bg-white/[0.04]",
+          "group flex h-full w-full items-center gap-1.5 rounded-md pl-9 pr-2 text-left text-[11.5px] leading-none",
+          active
+            ? "bg-[#222] text-[#f3f3f3]"
+            : "text-[#bdbdbd] hover:bg-white/[0.04] hover:text-[#e8e8e8]",
         )}
         onClick={() => void selectSession(projectId, session.id)}
         onKeyDown={(event) => {
@@ -161,11 +162,9 @@ export function SessionRow({
         <span className="relative flex w-16 shrink-0 justify-end text-right tabular-nums">
           <span
             className={cn(
+              "text-[10px] text-[#666]",
               "group-hover:invisible group-focus-within:invisible",
               menuOpen && "invisible",
-              active
-                ? "rounded-md bg-[#2a2a2a] px-1.5 py-px text-[10px] leading-4 text-[#cfcfcf]"
-                : "text-[10px] text-[#666]",
             )}
           >
             {relativeSessionTime(session.updated_at, now)}

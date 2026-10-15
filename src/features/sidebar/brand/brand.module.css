@@ -18,7 +18,7 @@
 .panel {
   margin: 0 14px 4px;
   margin-inline: clamp(4px, 8cqi, 14px);
-  padding: 24px 0 18px;
+  padding: 29px 0 18px;
   border-bottom: 1px solid #232323;
   text-align: center;
 }
@@ -33,11 +33,11 @@
 
 .mark {
   display: block;
-  width: 26px;
+  width: 31px;
   height: auto;
   aspect-ratio: 1;
   max-width: 100%;
-  flex: 0 1 26px;
+  flex: 0 1 31px;
   min-width: 0;
 }
 
@@ -45,8 +45,8 @@
   min-width: 0;
   color: #fff;
   font-family: "Manrope", ui-sans-serif, system-ui, sans-serif;
-  font-size: 26px;
-  font-size: clamp(16px, 18cqi, 26px);
+  font-size: 31px;
+  font-size: clamp(16px, 22cqi, 31px);
   font-style: normal;
   font-weight: 800;
   font-synthesis: none;
