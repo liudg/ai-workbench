@@ -41,6 +41,16 @@ pub use resume::CodexDirectory;
 /// 与原生 Codex TUI 保持一致。
 pub(crate) const CODEX_CLIENT_NAME: &str = "codex-tui";
 
+/// app-server `initialize` 的 clientInfo.version：填即将拉起的 Codex 二进制自己的版本，和原生 TUI 一致。
+///
+/// Codex 拼 User-Agent 后缀用 `format!("{name}; {version}")`，再 trim、空串不加后缀
+/// （app-server/src/request_processors/initialize_processor.rs:131，login/src/auth/default_client.rs:167-173）。
+/// 读不到版本时发空串：UA 尾巴变成 `(codex-tui;)`，Codex 正常处理、不报错。
+/// 不拿工作台自己的版本顶替，否则会冒充一个不存在的 Codex 版本。
+pub(crate) fn client_info_version(cli_version: Option<&str>) -> &str {
+    cli_version.unwrap_or("")
+}
+
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::process::Stdio;
@@ -63,7 +73,7 @@ use crate::models::{
 };
 
 use process::{
-    apply_codex_network_env, classify_codex_stderr, codex_version, hide_console,
+    apply_codex_network_env, classify_codex_stderr, cli_version, hide_console,
     remember_agent_stderr, resolve_codex_bin, trim_newline, StderrClass,
 };
 use sandbox::SandboxChoice;
@@ -159,7 +169,8 @@ impl AgentAdapter for CodexCliAdapter {
         events: EventSink,
     ) -> Result<Arc<dyn AgentSession>, AgentError> {
         let bin = resolve_codex_bin()?;
-        let version = codex_version(&bin).await;
+        let cli_version = cli_version(&bin).await;
+        let version = cli_version.clone().unwrap_or_else(|| "未知版本".into());
         let mut command = Command::new(&bin);
         command
             .arg("app-server")
@@ -322,7 +333,10 @@ impl AgentAdapter for CodexCliAdapter {
             .request(
                 "initialize",
                 json!({
-                    "clientInfo": { "name": CODEX_CLIENT_NAME, "version": env!("CARGO_PKG_VERSION") },
+                    "clientInfo": {
+                        "name": CODEX_CLIENT_NAME,
+                        "version": client_info_version(cli_version.as_deref()),
+                    },
                     "capabilities": { "experimentalApi": true }
                 }),
             )

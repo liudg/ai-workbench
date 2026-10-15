@@ -1,6 +1,9 @@
 //! 定位 Codex 二进制、隐藏控制台窗口、读取 `--version`。
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::{LazyLock, Mutex};
+use std::time::SystemTime;
 
 use tokio::process::Command;
 
@@ -151,23 +154,36 @@ pub(in crate::features::agents::codex) fn hide_console(command: &mut Command) {
     let _ = command;
 }
 
-pub(in crate::features::agents::codex) async fn codex_version(bin: &Path) -> String {
+type VersionKey = (PathBuf, Option<SystemTime>);
+
+static CLI_VERSIONS: LazyLock<Mutex<HashMap<VersionKey, String>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// 即将拉起的这个 Codex 二进制的 `--version` 语义版本。
+///
+/// 按（路径，修改时间）缓存：同一路径原地升级后修改时间会变，重新读取，不沿用旧版本号。
+/// 失败（启动不了、非零退出、输出里没有版本号）不缓存，下次再试。
+pub(in crate::features::agents::codex) async fn cli_version(bin: &Path) -> Option<String> {
+    let modified = std::fs::metadata(bin).and_then(|meta| meta.modified()).ok();
+    let key = (bin.to_path_buf(), modified);
+    if let Some(hit) = CLI_VERSIONS.lock().unwrap().get(&key) {
+        return Some(hit.clone());
+    }
     let mut command = Command::new(bin);
     command.arg("--version");
     apply_utf8_env(&mut command);
     hide_console(&mut command);
-    apply_utf8_env(&mut command);
-    let Ok(output) = command.output().await else {
-        return "未知版本".into();
-    };
-    version_label(&decode_child_bytes(&output.stdout))
+    let output = command.output().await.ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let version = parse_cli_version(&decode_child_bytes(&output.stdout))?;
+    CLI_VERSIONS.lock().unwrap().insert(key, version.clone());
+    Some(version)
 }
 
-/// 状态卡标题用的是 CLI 包版本（`v0.162.1`），`--version` 整行是 `codex-cli 0.162.1`。
-pub(in crate::features::agents::codex) fn version_label(stdout: &str) -> String {
-    let line = stdout.lines().next().unwrap_or("").trim();
-    if line.is_empty() {
-        return "未知版本".into();
-    }
-    crate::features::agents::install::extract_version(line).unwrap_or_else(|| line.to_string())
+/// `--version` 首行 `codex-cli 0.162.1` → `0.162.1`；首行没有语义版本号时返回 None。
+pub(in crate::features::agents::codex) fn parse_cli_version(stdout: &str) -> Option<String> {
+    let line = stdout.lines().next()?.trim();
+    crate::features::agents::install::extract_version(line)
 }

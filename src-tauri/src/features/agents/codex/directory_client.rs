@@ -16,7 +16,7 @@ use crate::encoding::{apply_utf8_env, decode_child_bytes};
 
 use crate::features::agents::directory::DirectoryEntry;
 
-use super::process::{apply_codex_network_env, hide_console, resolve_codex_bin};
+use super::process::{apply_codex_network_env, cli_version, hide_console, resolve_codex_bin};
 use super::resume::parse_thread;
 
 const PAGE_LIMIT: u32 = 100;
@@ -32,7 +32,8 @@ pub(super) struct RpcClient {
 impl RpcClient {
     pub(super) async fn spawn() -> Result<Self, String> {
         let bin = resolve_codex_bin().map_err(|err| err.to_string())?;
-        let mut command = Command::new(bin);
+        let cli_version = cli_version(&bin).await;
+        let mut command = Command::new(&bin);
         command
             .arg("app-server")
             .env_remove("TERM")
@@ -112,7 +113,10 @@ impl RpcClient {
             .request(
                 "initialize",
                 json!({
-                    "clientInfo": { "name": super::CODEX_CLIENT_NAME, "version": env!("CARGO_PKG_VERSION") },
+                    "clientInfo": {
+                        "name": super::CODEX_CLIENT_NAME,
+                        "version": super::client_info_version(cli_version.as_deref()),
+                    },
                     "capabilities": { "experimentalApi": true }
                 }),
                 Duration::from_secs(30),
