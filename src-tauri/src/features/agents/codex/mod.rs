@@ -37,6 +37,10 @@ use session::CodexCliSession;
 
 pub use resume::CodexDirectory;
 
+/// app-server `initialize` 的 clientInfo.name；Codex 用它生成 `originator` 请求头和 User-Agent。
+/// 与原生 Codex TUI 保持一致。
+pub(crate) const CODEX_CLIENT_NAME: &str = "codex-tui";
+
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::process::Stdio;
@@ -318,7 +322,7 @@ impl AgentAdapter for CodexCliAdapter {
             .request(
                 "initialize",
                 json!({
-                    "clientInfo": { "name": "ai-workbench", "version": env!("CARGO_PKG_VERSION") },
+                    "clientInfo": { "name": CODEX_CLIENT_NAME, "version": env!("CARGO_PKG_VERSION") },
                     "capabilities": { "experimentalApi": true }
                 }),
             )

@@ -112,7 +112,7 @@ impl RpcClient {
             .request(
                 "initialize",
                 json!({
-                    "clientInfo": { "name": "ai-workbench", "version": env!("CARGO_PKG_VERSION") },
+                    "clientInfo": { "name": super::CODEX_CLIENT_NAME, "version": env!("CARGO_PKG_VERSION") },
                     "capabilities": { "experimentalApi": true }
                 }),
                 Duration::from_secs(30),
