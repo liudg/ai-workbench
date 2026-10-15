@@ -153,7 +153,7 @@ export const DESKTOP_ZH = {
   activityUsedIntegrations: "已使用 {names} 集成运行了命令",
   activityRanCommands: "已运行 {count} 条命令",
   activitySearchedWeb: "已搜索网页",
-  activityThinking: "思考",
+  activityThinkingNow: "正在思考",
   activityCommandStep: "命令",
   other: "其他",
 } as const;

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { activityStepTitle, activitySummary, foldActivity } from "./activity-fold.ts";
+import { activityStepTitle, activitySummary, foldActivity, isLiveThinking } from "./activity-fold.ts";
 import type { SessionEvent, SessionEventBody } from "../../../types/index.ts";
 
 function event(id: string, body: SessionEventBody): SessionEvent {
@@ -75,7 +75,7 @@ test("a web-only group is just the search phrase", () => {
   assert.equal(summary.webSearch, false);
 });
 
-test("assistant text and thinking split groups, and thinking is one entry", () => {
+test("thinking splits tool groups and leaves no thinking row", () => {
   const pieces = foldActivity([
     event("c1", { kind: "agent-message", text: "先看表格。", phase: "commentary" }),
     event("t1", { kind: "thinking", text: "先核对选区。" }),
@@ -90,11 +90,10 @@ test("assistant text and thinking split groups, and thinking is one entry", () =
   ]);
   assert.deepEqual(
     pieces.map((piece) => piece.type),
-    ["event", "thinking", "tools", "tools", "event", "tools"],
+    ["event", "tools", "tools", "event", "tools"],
   );
-  const thinking = pieces.find((piece) => piece.type === "thinking");
-  assert.ok(thinking && thinking.type === "thinking");
-  assert.equal(thinking.text, "先核对选区。\n\n再看复制。");
+  assert.equal(JSON.stringify(pieces).includes("先核对选区"), false);
+  assert.equal(JSON.stringify(pieces).includes("再看复制"), false);
   const groups = pieces.filter((piece) => piece.type === "tools");
   assert.equal(groups.length, 3);
   const [integrations, commands, trailing] = groups;
@@ -104,6 +103,18 @@ test("assistant text and thinking split groups, and thinking is one entry", () =
   assert.equal(commands.summary, "已运行 3 条命令");
   assert.ok(trailing && trailing.type === "tools");
   assert.equal(trailing.summary, "已运行 1 条命令");
+});
+
+test("live thinking is only while the latest visible event is still thinking", () => {
+  const thinking = event("t1", { kind: "thinking", text: "思考中…" });
+  const done = event("a1", { kind: "agent-message", text: "找到了入口。", phase: "commentary" });
+  assert.equal(isLiveThinking([done, thinking]), true);
+  assert.equal(isLiveThinking([thinking, done]), false);
+  assert.equal(
+    isLiveThinking([thinking, event("s1", { kind: "status-changed", status: "running" })]),
+    true,
+  );
+  assert.equal(isLiveThinking([done, event("s2", { kind: "status-changed", status: "completed" })]), false);
 });
 
 test("a prompt between tools starts a new group", () => {

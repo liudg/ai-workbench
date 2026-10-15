@@ -4,14 +4,13 @@ import { DESKTOP_ZH } from "../../../shared/strings/desktop-zh.ts";
 /**
  * 时间线展示层把相邻的工具调用收成一行。
  * 只读当前事件的 name / summary，不改协议，也不查 MCP 目录。
- * 旁白或思考一插进来就拆组。一轮里的思考合成一条，默认收起。
+ * 旁白或思考一插进来就拆组。思考正文不画出来。
  */
 
 export type ToolCallEvent = Extract<SessionEvent, { kind: "tool-call" }>;
 
 export type ActivityPiece =
   | { type: "event"; event: SessionEvent }
-  | { type: "thinking"; id: string; text: string }
   | {
       type: "tools";
       id: string;
@@ -20,12 +19,21 @@ export type ActivityPiece =
       steps: { id: string; title: string; event: ToolCallEvent }[];
     };
 
+/** 进行中的一轮，最后一条可见事件仍是思考时，末行显示「正在思考」。 */
+export function isLiveThinking(events: readonly SessionEvent[]): boolean {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const kind = events[i].kind;
+    if (kind === "status-changed" || kind === "context-usage" || kind === "session-usage") continue;
+    return kind === "thinking";
+  }
+  return false;
+}
+
 const TITLE_LIMIT = 48;
 
 export function foldActivity(events: readonly SessionEvent[]): ActivityPiece[] {
   const pieces: ActivityPiece[] = [];
   let tools: ToolCallEvent[] = [];
-  let thinking: { type: "thinking"; id: string; text: string } | null = null;
 
   const flushTools = () => {
     if (tools.length === 0) return;
@@ -39,18 +47,11 @@ export function foldActivity(events: readonly SessionEvent[]): ActivityPiece[] {
       continue;
     }
     flushTools();
-    if (event.kind === "thinking") {
-      if (!thinking) {
-        thinking = { type: "thinking", id: event.id, text: "" };
-        pieces.push(thinking);
-      }
-      thinking.text = appendThinking(thinking.text, event.text);
-      continue;
-    }
+    if (event.kind === "thinking") continue;
     pieces.push({ type: "event", event });
   }
   flushTools();
-  return pieces.filter((piece) => piece.type !== "thinking" || piece.text.trim().length > 0);
+  return pieces;
 }
 
 export function activitySummary(calls: readonly ToolCallEvent[]): { text: string; webSearch: boolean } {
@@ -108,13 +109,6 @@ function toolPiece(calls: readonly ToolCallEvent[]): ActivityPiece {
       event,
     })),
   };
-}
-
-function appendThinking(current: string, next: string): string {
-  const extra = next.trim();
-  if (!extra) return current;
-  if (!current.trim()) return extra;
-  return `${current.trim()}\n\n${extra}`;
 }
 
 function integrationLine(names: readonly string[]): string {

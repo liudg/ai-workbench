@@ -4,11 +4,11 @@ import type { Session, SessionEvent } from "@/types";
 import { ActivityGroup } from "../events/ActivityGroup";
 import { foldActivity } from "../events/activity-fold";
 import { EventItem } from "../events/EventItem";
-import { ThinkingFold } from "../events/ThinkingFold";
+import { ThinkingStatus } from "../events/ThinkingStatus";
 
 /**
- * 一段会话过程。旁白按原顺序留下，相邻工具收成一行，思考最多一条且默认收起。
- * `toolsOnly` 仍按完整顺序分组，只是先不画出旁白和思考。
+ * 一段会话过程。旁白按原顺序留下，相邻工具收成一行。
+ * 思考正文不画。`thinking` 为真时，末行是进行中的「正在思考」。
  */
 export function ActivityStream({
   events,
@@ -16,6 +16,7 @@ export function ActivityStream({
   resolvedAnswers,
   showAgentLabel,
   toolsOnly = false,
+  thinking = false,
   onInteract,
 }: {
   events: SessionEvent[];
@@ -23,29 +24,16 @@ export function ActivityStream({
   resolvedAnswers: ReadonlyMap<string, string>;
   showAgentLabel: (event: SessionEvent) => boolean;
   toolsOnly?: boolean;
+  thinking?: boolean;
   onInteract?: () => void;
 }) {
   const pieces = useMemo(() => foldActivity(events), [events]);
   const visible = toolsOnly ? pieces.filter((piece) => piece.type === "tools") : pieces;
-  const [thinkingOpen, setThinkingOpen] = useState(false);
   const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(() => new Set());
 
   return (
     <div className="min-w-0" data-activity-stream>
       {visible.map((piece) => {
-        if (piece.type === "thinking") {
-          return (
-            <ThinkingFold
-              key={piece.id}
-              text={piece.text}
-              open={thinkingOpen}
-              onToggle={() => {
-                onInteract?.();
-                setThinkingOpen((value) => !value);
-              }}
-            />
-          );
-        }
         if (piece.type === "tools") {
           return (
             <ActivityGroup
@@ -79,6 +67,7 @@ export function ActivityStream({
           />
         );
       })}
+      {thinking && !toolsOnly ? <ThinkingStatus /> : null}
     </div>
   );
 }
