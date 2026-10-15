@@ -8,7 +8,7 @@ import { EventItem } from "../events/EventItem";
 import { collapsedTurnSummary, isProcess } from "./timeline";
 import { ActivityStream } from "./ActivityStream";
 import { TurnFoldLine } from "./TurnFoldLine";
-import { SessionAgentIcon } from "@/features/sidebar/sessions/SessionAgentIcon";
+import { SessionAgentIcon } from "@/shared/agent/SessionAgentIcon";
 import { AGENT_LABELS, type Session, type SessionEvent } from "@/types";
 import { agentTurnName, useAgentIdentity } from "../events/use-agent-identity";
 

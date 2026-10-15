@@ -1,4 +1,4 @@
-/** 本地预览页的 document.title。与浏览器面板同一套标签解析，聊天卡不引用 panel。 */
+/** 本地预览页和浏览器面板共用的 document.title 解析。 */
 export function pageTitleFromHtml(html: string): string {
   const match = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
   if (!match) return "";

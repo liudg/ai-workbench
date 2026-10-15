@@ -8,7 +8,7 @@ import {
   readPinnedSessionIds,
   togglePinnedSessionId,
   writePinnedSessionIds,
-} from "@/features/sidebar/sessions/pinned-sessions";
+} from "../pinned-sessions";
 import {
   clearMissingSessionBanner,
   deselectSession,

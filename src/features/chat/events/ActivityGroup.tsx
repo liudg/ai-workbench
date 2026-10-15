@@ -1,13 +1,13 @@
 import { ChevronRight, LayoutGrid, Search } from "lucide-react";
 
-import { relativizeDisplayText } from "@/features/panel/files/path";
 import { cn } from "@/lib/utils";
+import { relativizeDisplayText } from "@/shared/path";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
-import { useWorkbench } from "@/store";
 import type { Session } from "@/types";
 import type { ActivityPiece, ToolCallEvent } from "./activity-fold";
 import { CopyButton } from "./chrome";
 import { EventImages } from "./EventImages";
+import { useSessionProjectPath } from "./use-session-project-path";
 
 type ToolPiece = Extract<ActivityPiece, { type: "tools" }>;
 
@@ -25,9 +25,7 @@ export function ActivityGroup({
   open: boolean;
   onToggle: () => void;
 }) {
-  const projectPath = useWorkbench(
-    (state) => state.projects.find((project) => project.id === session.project_id)?.path ?? "",
-  );
+  const projectPath = useSessionProjectPath(session.project_id);
 
   return (
     <div className="event-in min-w-0 px-6 py-1" data-activity-group data-activity-summary={piece.summary}>

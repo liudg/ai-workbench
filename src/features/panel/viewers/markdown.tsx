@@ -1,9 +1,9 @@
 import { useRef } from "react";
 import { FileText } from "lucide-react";
 
-import { baseName } from "../files/path";
-import { addSessionTextSnippet } from "../files/useAddTextSnippet";
-import { SelectionMenu } from "../files/SelectionMenu";
+import { baseName } from "@/shared/path";
+import { addSessionTextSnippet } from "../core/useAddTextSnippet";
+import { SelectionMenu } from "./SelectionMenu";
 import { payloadTitle, type PanelViewer, type ViewerViewProps } from "../core/registry";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { readPreviewDocument, reopenIfDifferent } from "./document";

@@ -1,15 +1,15 @@
 import { useRef } from "react";
 import { File } from "lucide-react";
 
-import { pathCrumb, relativeToProject } from "./path";
+import { pathCrumb, relativeToProject } from "@/shared/path";
 import { previewKindForPath } from "../core/preview-kind";
 import { ImageFrame } from "../viewers/image";
 import { MarkdownPreview } from "../viewers/MarkdownPreview";
 import { SourceView } from "../viewers/SourceView";
 import { TextPreview } from "../viewers/TextPreview";
 import { PreviewFailed, PreviewPending } from "../viewers/frame";
-import { SelectionMenu } from "./SelectionMenu";
-import type { SelectionDraft } from "./selection-quote";
+import { SelectionMenu } from "../viewers/SelectionMenu";
+import type { SelectionDraft } from "../viewers/selection-quote";
 import { usePreviewFile } from "./usePreviewFile";
 import { usePreviewImage } from "./usePreviewImage";
 

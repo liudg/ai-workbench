@@ -8,7 +8,7 @@ import { diffListWidth, diffListWidthAfterDrag } from "../core/layout";
 import { ColumnSplitter } from "../core/ColumnSplitter";
 import { usePanel } from "../core/PanelProvider";
 import { ChangesSidebar } from "../files/ChangesSidebar";
-import { relativizeFiles } from "../files/path";
+import { relativizeFiles } from "@/shared/path";
 import { setFileFilter } from "../core/file-filter";
 import { DiffFileSection } from "./DiffFileSection";
 import { DiffToolbar } from "./DiffToolbar";

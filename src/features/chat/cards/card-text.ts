@@ -1,4 +1,4 @@
-import { baseName } from "../../panel/files/path.ts";
+import { baseName } from "../../../shared/path.ts";
 import { DESKTOP_ZH } from "../../../shared/strings/desktop-zh.ts";
 
 /** 变更卡先列出的文件数，其余用「再显示」。 */

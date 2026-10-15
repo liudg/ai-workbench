@@ -38,23 +38,28 @@
 
 ## 4. 这一轮做了什么
 
-从 `43fdf1c`（Claude 模型别名对齐）接着收。只搬近期目录、标签和会话目录接线留下的职责，不改作曲栏交互，不造数据。更早的预览、协议和 Codex 目录拆分还在，这里不重复。
+从 `8a247f0`（0.2.53）接着收。只搬放错模块的职责、去掉重复解析和展示层对 store 的直读。不改交互，不造数据，不拆第 6 节里同一条协议的文件。
 
-### Claude 目录
+### 路径和标题
 
-- `agents/claude/catalog.rs` 拆成 `catalog/mod.rs`（initialize / list_models / get_settings 怎么写入一份目录）和 `catalog/models.rs`（模型行解析，以及 id → resolvedModel → label 的对齐）。`is_default` 只在对齐时写一次。
-- 权限菜单挪到 `agents/claude/permission.rs`。它跟模型目录不是一件事。
-- 线程模型的写入收成 `adopt_thread_model`。运行时不再自己改 `cli_config_read` 再调用对齐。
+- 路径规范化从 `panel/files/path.ts` 挪到 `shared/path.ts`。聊天、差异和各个查看器都要用，它不依赖某个功能。
+- 文件状态的颜色留在 `changes-model/status-tone.ts`。那是变更状态，不是路径。
+- `<title>` 解析原先在浏览器和聊天卡各写一份。收成 `shared/html-title.ts`。
 
-### 作曲栏
+### 会话身份和置顶
 
-- 报告名对上哪一行模型、以及没手动选过时先看线程还是配置，在 `composer/model-selection.ts`。`composer-view.ts` 只拼这一屏的状态。
-- 推理档短标签在 `effort-label.ts`（含「这个模型的当前档显示什么」）。滑杆几何和速度档留在 `model-picker.ts`。
-- 汉字判断在 `choice-text.ts`，权限档和推理档共用。两张 id → 中文表仍各管各的。
+- 适配器显示名、图标和 `SessionAgentIcon` 挪到 `shared/agent/`。侧栏和聊天气泡读的是同一份资料，不再从侧栏私有文件往外拿。
+- 置顶 id 的读写挪到 `store/pinned-sessions.ts`，跟未读完成放在一起。store 不再引用侧栏模块。
 
-### 死代码
+### 展示层
 
-- `cached_agent_catalogs` 没有调用点。它一次返回每个 Agent 的目录，界面不该拿来画。按会话取目录的 `agent_catalog` 还在，失败时仍只用这一 Agent 自己的缓存。
+- 项目行、会话列表、归档列表、工具行不再自己调用 `useWorkbench`。分别走 `useProjectItem`、`usePinnedSessionIds`、`useSessionProjectPath`。
+- 开发预览写入资料的 `setState` 收到 `useActivityPreviewProfiles` 和 `useUsagePreviewProfiles`。
+- `AnswerMarkdownHost` 挪到 `chat/answer/`。它接的是回答里的图片和网页卡。差异和活动预览页挪到 `app/preview/`，由应用壳组合，面板和聊天不再互相引用对方的预览页。
+
+### 选区
+
+- 选区菜单和引号规则跟着文本查看器，放在 `panel/viewers/`。写入会话文本片的函数放在 `panel/core/useAddTextSnippet.ts`，打开文件和查看器都从这里进，不再从 files 的私有文件钻过去。
 
 ## 5. 没有 Codex 对应物、这一轮未改产品行为的功能
 
@@ -92,6 +97,11 @@
 | `models/catalog.rs` | 一份能力、模型和安装结果的 serde 模型。`git_only` 已删，剩下的类型互相引用 |
 | `agents/codex/mod.rs` | 适配器编排：拉起进程、把 stdout / stderr 交给子模块。协议细节不在这里 |
 | `useBrowserSession.ts` | 原生 webview 和 iframe 属于同一个浏览器会话 |
+| `agents/claude/runtime.rs` | 一个 `Shared` 和它的 stdin / stdout 循环。进程、目录和消息映射已经在别的文件 |
+| `agents/claude/messages.rs` | 一条 Claude 转录到时间线事件的映射 |
+| `agents/claude/usage.rs` | 一份用量账本。实时流和回合结束写的是同一份绝对快照 |
+| `panel/diff/DiffView.tsx` → `files/ChangesSidebar.tsx` | 变更右列用的是打开文件同一套树、菜单和附加。把侧栏挪进 diff 仍然要引用这些文件控件 |
+| `viewers/html.tsx` → `browser/BrowserView` | HTML 文件页就是这块浏览器主机。查看器注册要挂上它 |
 
 `Workspace`、`RightPane`、`EmptyState`、`UpdateDialog` 不再直接调用 `useWorkbench`。展示组件里的 `backend.` / `useWorkbench` 只剩 `PanelProvider`（规则允许的边界）。
 

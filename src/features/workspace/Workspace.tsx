@@ -1,4 +1,4 @@
-import { AnswerMarkdownHost } from "./AnswerMarkdownHost";
+import { AnswerMarkdownHost } from "@/features/chat/answer/AnswerMarkdownHost";
 import { ChatView } from "@/features/chat/timeline/ChatView";
 import { PanelProvider } from "@/features/panel/core/PanelProvider";
 import { SessionSplit } from "@/features/panel/core/SessionSplit";

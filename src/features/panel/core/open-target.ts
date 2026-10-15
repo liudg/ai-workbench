@@ -1,5 +1,5 @@
 import { DESKTOP_ZH } from "../../../shared/strings/desktop-zh.ts";
-import { baseName } from "../files/path.ts";
+import { baseName } from "../../../shared/path.ts";
 import { lineFromHref, resolvePreviewPath } from "./preview-kind.ts";
 import { payloadTitle, type OpenTarget } from "./registry.ts";
 

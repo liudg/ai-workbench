@@ -7,9 +7,9 @@ import { FileContextMenu } from "./FileContextMenu";
 import { FilePreview } from "./FilePreview";
 import { projectIdForRoot } from "./preview-project";
 import { FileSearchDialog } from "./FileSearchDialog";
-import { baseName } from "./path";
+import { baseName } from "@/shared/path";
 import { useAttachFile } from "./useAttachFile";
-import { addSessionTextSnippet, useSessionTextSnippets } from "./useAddTextSnippet";
+import { addSessionTextSnippet, useSessionTextSnippets } from "../core/useAddTextSnippet";
 import { WorkspaceTree } from "./WorkspaceTree";
 
 const SESSION = "preview";

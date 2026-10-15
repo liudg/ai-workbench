@@ -1,7 +1,7 @@
-import { useWorkbench } from "@/store";
 import type { Session } from "@/types";
 import { SessionRows } from "./SessionRows";
 import { sidebarSessionWindow } from "./session-order";
+import { usePinnedSessionIds } from "./use-pinned-session-ids";
 
 export function SessionList({
   projectId,
@@ -18,7 +18,7 @@ export function SessionList({
   showAll: boolean;
   onToggleShowAll: () => void;
 }) {
-  const pinnedIds = useWorkbench((s) => s.pinnedSessionIds);
+  const pinnedIds = usePinnedSessionIds();
   const { visible, overflow } = sidebarSessionWindow(sessions, showAll, pinnedIds);
 
   return (

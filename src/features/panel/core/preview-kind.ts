@@ -1,5 +1,5 @@
 import { fileLineRef, isFileHref, isHtmlHref, lineFromHref } from "../../../shared/markdown/file-href.ts";
-import { normalizePath } from "../files/path.ts";
+import { normalizePath } from "../../../shared/path.ts";
 
 export { fileLineRef, isFileHref, isHtmlHref, lineFromHref };
 

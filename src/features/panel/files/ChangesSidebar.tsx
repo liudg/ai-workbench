@@ -10,7 +10,7 @@ import { filterFiles, useFileFilter } from "../core/file-filter";
 import { FileContextMenu } from "./FileContextMenu";
 import { FileTreeList } from "./FileTreeList";
 import { buildFileTree } from "./file-tree";
-import { baseName } from "./path";
+import { baseName } from "@/shared/path";
 import { useAttachFile } from "./useAttachFile";
 
 export function ChangesSidebar({

@@ -1,6 +1,6 @@
 import { Image } from "lucide-react";
 
-import { baseName } from "../files/path";
+import { baseName } from "@/shared/path";
 import { payloadTitle, type PanelViewer, type ViewerViewProps } from "../core/registry";
 import { PreviewFailed, PreviewPending } from "./frame";
 import { imageDataUrl, readProjectImage } from "./image-file";

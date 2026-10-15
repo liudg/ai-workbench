@@ -1,10 +1,10 @@
 import { useRef } from "react";
 import { Code } from "lucide-react";
 
+import { baseName } from "@/shared/path";
+import { addSessionTextSnippet } from "../core/useAddTextSnippet";
 import { usePanelOptional } from "../core/PanelProvider";
-import { addSessionTextSnippet } from "../files/useAddTextSnippet";
-import { baseName } from "../files/path";
-import { SelectionMenu } from "../files/SelectionMenu";
+import { SelectionMenu } from "./SelectionMenu";
 import { payloadTitle, type PanelViewer, type ViewerViewProps } from "../core/registry";
 import { SourceView } from "./SourceView";
 import { TextPreview } from "./TextPreview";
