@@ -14,7 +14,7 @@ import { agentTurnName, useAgentIdentity } from "../events/use-agent-identity";
 
 /**
  * 一轮结束后的过程条。名称和用时在同一行。
- * 收起时只留活动摘要；展开后补上旁白。结束后的思考不留条目。最终答复留在下面。
+ * 收起时只留活动摘要；展开后补上旁白。工具行默认收起，结束后的思考不留条目。最终答复留在下面。
  */
 export function TurnProcess({
   events,
@@ -77,6 +77,7 @@ export function TurnProcess({
         resolvedAnswers={resolvedAnswers}
         showAgentLabel={() => false}
         toolsOnly={!expanded}
+        settled
         onInteract={onInteract}
       />
       {answer ? renderEvent(answer, false) : null}

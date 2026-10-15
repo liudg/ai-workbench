@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import type { Session, SessionEvent } from "@/types";
 import { ActivityGroup } from "../events/ActivityGroup";
 import { foldActivity } from "../events/activity-fold";
+import { activityOpenAfterSettle, toggleToolGroup, toolGroupOpen } from "../events/activity-open";
 import { EventItem } from "../events/EventItem";
 import { ThinkingStatus } from "../events/ThinkingStatus";
 import { ViewedImages } from "../events/ViewedImages";
@@ -10,6 +11,7 @@ import { ViewedImages } from "../events/ViewedImages";
 /**
  * 一段会话过程。旁白按原顺序留下，相邻工具收成一行，查看图像单独成行。
  * 思考正文不画。`thinking` 为真时，末行是进行中的「正在思考」。
+ * `settled` 为真时，进行中点开过的工具行收回去，默认只留一行摘要。
  */
 export function ActivityStream({
   events,
@@ -18,6 +20,7 @@ export function ActivityStream({
   showAgentLabel,
   toolsOnly = false,
   thinking = false,
+  settled = false,
   onInteract,
 }: {
   events: SessionEvent[];
@@ -26,6 +29,7 @@ export function ActivityStream({
   showAgentLabel: (event: SessionEvent) => boolean;
   toolsOnly?: boolean;
   thinking?: boolean;
+  settled?: boolean;
   onInteract?: () => void;
 }) {
   const pieces = useMemo(() => foldActivity(events), [events]);
@@ -33,24 +37,25 @@ export function ActivityStream({
     ? pieces.filter((piece) => piece.type === "tools" || piece.type === "images")
     : pieces;
   const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(() => new Set());
+  const [seenSettled, setSeenSettled] = useState(settled);
+  if (settled !== seenSettled) {
+    setSeenSettled(settled);
+    const next = activityOpenAfterSettle(openGroups, seenSettled, settled);
+    if (next !== openGroups) setOpenGroups(next);
+  }
 
   return (
-    <div className="min-w-0" data-activity-stream>
+    <div className="min-w-0" data-activity-stream data-activity-settled={settled ? "true" : "false"}>
       {visible.map((piece) => {
         if (piece.type === "images") {
           return (
             <ViewedImages
               key={piece.id}
               piece={piece}
-              open={openGroups.has(piece.id)}
+              open={toolGroupOpen(openGroups, piece.id)}
               onToggle={() => {
                 onInteract?.();
-                setOpenGroups((prev) => {
-                  const next = new Set(prev);
-                  if (next.has(piece.id)) next.delete(piece.id);
-                  else next.add(piece.id);
-                  return next;
-                });
+                setOpenGroups((prev) => toggleToolGroup(prev, piece.id));
               }}
             />
           );
@@ -61,16 +66,10 @@ export function ActivityStream({
               key={piece.id}
               piece={piece}
               session={session}
-              open={openGroups.has(piece.id)}
-              onInteract={onInteract}
+              open={toolGroupOpen(openGroups, piece.id)}
               onToggle={() => {
                 onInteract?.();
-                setOpenGroups((prev) => {
-                  const next = new Set(prev);
-                  if (next.has(piece.id)) next.delete(piece.id);
-                  else next.add(piece.id);
-                  return next;
-                });
+                setOpenGroups((prev) => toggleToolGroup(prev, piece.id));
               }}
             />
           );

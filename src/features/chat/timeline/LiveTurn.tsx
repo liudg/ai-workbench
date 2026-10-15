@@ -33,6 +33,7 @@ export function LiveTurn({
         resolvedAnswers={resolvedAnswers}
         showAgentLabel={(event) => answer != null && event.id === answer.id}
         thinking={isLiveThinking(events)}
+        settled={false}
         onInteract={onInteract}
       />
     </div>
