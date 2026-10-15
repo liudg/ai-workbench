@@ -36,9 +36,9 @@ export function collapsedTurnSummary(agentLabel: string, durationMs: number): st
   return `${agentLabel} · 用时 ${formatElapsed(durationMs)}`;
 }
 
-/** 进行中的折叠行：`Agent · 正在处理…`。名称由调用方传入。 */
+/** 进行中的折叠行：`Agent · 运行中`。名称由调用方传入。 */
 export function runningTurnSummary(agentLabel: string): string {
-  return `${agentLabel} · 正在处理…`;
+  return `${agentLabel} · 运行中`;
 }
 
 export type TimelineNode =

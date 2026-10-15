@@ -53,7 +53,7 @@ export function SelectionMenu({
     <div
       role="menu"
       data-selection-menu
-      className="fixed z-[80] rounded-lg border border-zinc-200 bg-white px-1 py-1 shadow-lg"
+      className="fixed z-[80] rounded-lg border border-[#2a2a2a] bg-[#1b1b1b] px-1 py-1 shadow-lg"
       style={{
         top: box.top,
         left: box.left,
@@ -65,7 +65,7 @@ export function SelectionMenu({
         type="button"
         role="menuitem"
         data-add-selection
-        className="rounded-md px-2.5 py-1 text-xs text-zinc-800 hover:bg-zinc-100"
+        className="rounded-md px-2.5 py-1 text-xs text-[#e8e8e8] hover:bg-white/10"
         onClick={() => {
           onAdd(box.quote);
           setBox(null);

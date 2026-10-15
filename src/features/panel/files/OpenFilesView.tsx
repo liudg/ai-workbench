@@ -109,16 +109,16 @@ export function OpenFilesView() {
         <aside
           data-workspace-tree
           style={{ width: listWidth, minWidth: listWidth }}
-          className="flex h-full min-h-0 shrink-0 flex-col overflow-hidden border-l border-zinc-800 bg-zinc-950"
+          className="flex h-full min-h-0 shrink-0 flex-col overflow-hidden border-l border-[#222] bg-[#0f0f0f]"
         >
-          <div className="flex shrink-0 items-center gap-1 border-b border-zinc-800 p-1.5">
+          <div className="flex shrink-0 items-center gap-1 border-b border-[#222] p-2">
             <input
               value={filter}
               onChange={(event) => setFilter(event.target.value)}
               placeholder={DESKTOP_ZH.filterFiles}
               aria-label={DESKTOP_ZH.filterFiles}
               data-files-filter
-              className="w-full min-w-0 rounded-md border border-zinc-800 bg-zinc-900 px-1.5 py-1 text-xs text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-zinc-600"
+              className="w-full min-w-0 rounded-md border border-[#2a2a2a] bg-[#171717] px-2 py-1.5 text-[12px] text-[#e8e8e8] outline-none placeholder:text-[#666] focus:border-[#3a3a3a]"
             />
             <FileColumnTools
               treeOpen={treeOpen}

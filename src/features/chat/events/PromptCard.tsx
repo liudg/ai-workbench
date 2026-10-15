@@ -45,7 +45,7 @@ export function PromptEvent({ event, session, resolvedAnswer }: EventViewProps) 
   if (event.kind !== "prompt") return null;
   return (
     <div className="event-in min-w-0 px-6 py-2">
-      <div className="mx-auto min-w-0 max-w-3xl pl-6">
+      <div className="min-w-0 pl-6">
         <PromptBody
           event={event}
           session={session}

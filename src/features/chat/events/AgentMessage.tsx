@@ -1,16 +1,16 @@
-import { Bot } from "lucide-react";
-
-import { AGENT_LABELS } from "@/types";
+import { SessionAgentIcon } from "@/features/sidebar/sessions/SessionAgentIcon";
 import { AssistantAnswer } from "../answer/AssistantAnswer";
 import { Row } from "./chrome";
 import type { EventViewProps } from "./types";
+import { agentTurnName, useAgentIdentity } from "./use-agent-identity";
 
 export function AgentMessage({ event, session, time, showAgentLabel }: EventViewProps) {
+  const identity = useAgentIdentity(session.agent);
   if (event.kind !== "agent-message") return null;
   if (!showAgentLabel) {
     return (
       <div className="event-in min-w-0 px-6 py-1">
-        <div className="mx-auto min-w-0 max-w-3xl pl-6">
+        <div className="min-w-0 pl-6">
           <AssistantAnswer text={event.text} />
         </div>
       </div>
@@ -18,8 +18,8 @@ export function AgentMessage({ event, session, time, showAgentLabel }: EventView
   }
   return (
     <Row
-      icon={<Bot className="h-3.5 w-3.5" />}
-      title={AGENT_LABELS[session.agent]}
+      icon={<SessionAgentIcon identity={identity} className="h-4 w-4" />}
+      title={agentTurnName(session.agent, identity)}
       time={time}
       copyText={event.text}
       actionsBelow

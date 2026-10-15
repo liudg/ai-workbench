@@ -5,13 +5,15 @@ import { turnChanges } from "@/features/changes-model/diff-parse";
 import { useChangeCapabilities } from "@/features/changes-model/use-changes";
 import { ChangeCard } from "../cards/ChangeCard";
 import { EventItem } from "../events/EventItem";
-import { collapsedTurnSummary, formatElapsed, isProcess } from "./timeline";
+import { collapsedTurnSummary, isProcess } from "./timeline";
 import { TurnFoldLine } from "./TurnFoldLine";
+import { SessionAgentIcon } from "@/features/sidebar/sessions/SessionAgentIcon";
 import { AGENT_LABELS, type Session, type SessionEvent } from "@/types";
+import { agentTurnName, useAgentIdentity } from "../events/use-agent-identity";
 
 /**
- * 一轮结束后的过程条。折叠时名称和用时在同一行，右侧是箭头。
- * 展开后是旁白、思考和工具调用；最终答复留在下面，并只标一次 Agent。
+ * 一轮结束后的过程条。名称和用时在同一行，工具芯片留在行下。
+ * 展开后补上旁白和思考；最终答复留在下面，并只标一次 Agent。
  */
 export function TurnProcess({
   events,
@@ -38,6 +40,8 @@ export function TurnProcess({
   const process = events.filter((event) => isProcess(event, answerId));
   const chromeBefore = before.filter((event) => !isProcess(event, answerId));
   const chromeAfter = after.filter((event) => !isProcess(event, answerId));
+  const identity = useAgentIdentity(session.agent);
+  const agentName = agentTurnName(session.agent, identity) || AGENT_LABELS[session.agent];
   const changeFlags = useChangeCapabilities(session.agent);
   const changes = useMemo(
     () => (showsFileChanges(changeFlags) ? turnChanges(events) : null),
@@ -73,17 +77,15 @@ export function TurnProcess({
     <div className="min-w-0">
       {chromeBefore.map((event) => renderEvent(event, false))}
       <TurnFoldLine
-        summary={
-          expanded
-            ? `用时 ${formatElapsed(durationMs)}`
-            : collapsedTurnSummary(AGENT_LABELS[session.agent], durationMs)
-        }
+        summary={collapsedTurnSummary(agentName, durationMs)}
         expanded={expanded}
         onToggle={onToggle}
-        showAgentIcon={!expanded}
+        icon={<SessionAgentIcon identity={identity} className="h-4 w-4" />}
       />
-      {expanded ? process.map((event) => renderEvent(event, false)) : null}
-      {answer ? renderEvent(answer, expanded) : null}
+      {(expanded ? process : process.filter((event) => event.kind === "tool-call")).map((event) =>
+        renderEvent(event, false),
+      )}
+      {answer ? renderEvent(answer, false) : null}
       {chromeAfter.map((event) => renderEvent(event, false))}
       {changes ? <ChangeCard changes={changes} /> : null}
     </div>

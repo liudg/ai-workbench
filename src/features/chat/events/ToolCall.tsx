@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronRight, Image as ImageIcon, Terminal, Wrench } from "lucide-react";
+import { ChevronRight, Image as ImageIcon, Play, Terminal, Wrench } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { CopyButton } from "./chrome";
@@ -29,8 +29,8 @@ export function ToolCall({ event }: EventViewProps) {
   const hasBody = summary.trim().length > 0 || detail.trim().length > 0 || images.length > 0;
 
   return (
-    <div className="event-in group min-w-0 px-6 py-0.5">
-      <div className="mx-auto min-w-0 max-w-3xl">
+    <div className="event-in group min-w-0 px-6 py-0.5 pl-12">
+      <div className="min-w-0">
         <button
           type="button"
           data-tool-row
@@ -39,21 +39,21 @@ export function ToolCall({ event }: EventViewProps) {
           onClick={() => {
             if (hasBody) setOpen((value) => !value);
           }}
-          className="flex w-full min-w-0 items-center gap-2 rounded py-0.5 text-left"
+          className="inline-flex max-w-full min-w-0 items-center gap-2 rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] px-2.5 py-1 text-left text-[12.5px] text-[#cfcfcf] hover:bg-[#222]"
         >
-          <Icon className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
-          <span className="min-w-0 flex-1 truncate text-xs text-zinc-400">{line}</span>
+          {open ? <Icon className="h-3.5 w-3.5 shrink-0 text-[#888]" /> : <Play className="h-3 w-3 shrink-0 fill-current text-[#888]" />}
+          <span className="min-w-0 truncate">{line}</span>
           {hasBody ? (
             <ChevronRight
               className={cn(
-                "h-3.5 w-3.5 shrink-0 text-zinc-600 transition-transform duration-150",
+                "h-3.5 w-3.5 shrink-0 text-[#666] transition-transform duration-150",
                 open && "rotate-90",
               )}
             />
           ) : null}
         </button>
         {open && hasBody ? (
-          <div className="mt-1 min-w-0 overflow-x-hidden rounded-md border border-zinc-800 bg-zinc-900/80 px-2.5 py-1.5 font-mono text-xs">
+          <div className="mt-1 min-w-0 overflow-x-hidden rounded-md border border-[#2a2a2a] bg-[#141414] px-2.5 py-1.5 font-mono text-xs">
             {summary.trim() ? (
               <p className="whitespace-pre-wrap break-all text-zinc-300">{summary}</p>
             ) : null}

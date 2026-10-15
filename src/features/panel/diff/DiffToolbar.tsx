@@ -130,7 +130,7 @@ export function DiffToolbar({
     <div
       ref={rootRef}
       data-diff-toolbar
-      className="relative z-20 flex h-9 min-w-0 shrink-0 flex-nowrap items-center gap-1 border-b border-zinc-800 bg-zinc-950 px-1.5"
+      className="relative z-20 flex h-10 min-w-0 shrink-0 flex-nowrap items-center gap-1.5 border-b border-[#222] bg-[#0f0f0f] px-2"
     >
       {scopes.length > 0 ? <div className="relative shrink-0">
         <button
@@ -138,7 +138,7 @@ export function DiffToolbar({
           data-diff-scope
           aria-expanded={menu === "scope"}
           aria-haspopup="menu"
-          className="inline-flex h-[22px] items-center gap-0.5 whitespace-nowrap rounded-full bg-zinc-800 px-1.5 text-[11px] text-zinc-100"
+          className="inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-md bg-[#1c1c1c] px-2 text-[12px] text-[#e8e8e8]"
           onClick={() => setMenu((value) => (value === "scope" ? null : "scope"))}
         >
           {current?.label ?? ""}
@@ -177,8 +177,8 @@ export function DiffToolbar({
           </div>
         ) : null}
       </div> : null}
-      <span className="shrink-0 whitespace-nowrap font-mono text-[11px] text-emerald-400">+{added}</span>
-      <span className="shrink-0 whitespace-nowrap font-mono text-[11px] text-red-400">-{removed}</span>
+      <span className="shrink-0 whitespace-nowrap font-mono text-[12px] text-[#3fb950]">+{added}</span>
+      <span className="shrink-0 whitespace-nowrap font-mono text-[12px] text-[#f85149]">-{removed}</span>
       <div className="ml-auto flex shrink-0 items-center gap-0.5">
         {DIFF_TOOLBAR_ICON_IDS.map((id) => {
           if (id === "options") {

@@ -1,9 +1,19 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "PingFang SC",
-    "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-sans: Inter, "Noto Sans CJK SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+    "WenQuanYi Micro Hei", ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  --color-wb-bg: #0f0f0f;
+  --color-wb-sidebar: #141414;
+  --color-wb-elev: #171717;
+  --color-wb-border: #222222;
+  --color-wb-line: #232323;
+  --color-wb-text: #e8e8e8;
+  --color-wb-muted: #bdbdbd;
+  --color-wb-faint: #888888;
+  --color-wb-dim: #666666;
+  --color-wb-user: #6e5bff;
 }
 
 html,
@@ -13,7 +23,9 @@ body,
 }
 
 body {
-  @apply bg-zinc-950 text-zinc-200 antialiased select-none;
+  background: #0f0f0f;
+  color: #e8e8e8;
+  @apply antialiased select-none;
   overflow: hidden;
 }
 
@@ -108,9 +120,9 @@ textarea {
 .answer-body {
   max-width: 42rem;
   min-width: 0;
-  color: #e4e4e7;
-  font-size: 15px;
-  line-height: 1.75;
+  color: #e8e8e8;
+  font-size: 14.5px;
+  line-height: 1.7;
   overflow-wrap: break-word;
   text-wrap: pretty;
 }
@@ -303,6 +315,12 @@ button.answer-file {
 .chat-log .answer-section > button {
   cursor: pointer;
 }
+.tok-keyword { color: #c586c0; }
+.tok-type { color: #4ec9b0; }
+.tok-string { color: #ce9178; }
+.tok-comment { color: #6a9955; }
+.tok-number { color: #b5cea8; }
+.tok-plain { color: #d4d4d4; }
 /* 放在各块 margin:0 之后，否则段落和列表会把段间距清掉。 */
 .answer-body > * + * {
   margin-top: 0.95rem;

@@ -15,36 +15,25 @@ export function sessionStatusView(status: string | null | undefined): SessionSta
         tone: "running",
         word: "运行中",
         prominent: false,
-        className: "h-2 w-2 bg-sky-400 animate-pulse",
+        className: "h-1.5 w-1.5 bg-[#4f8dff]",
       };
     case "needs-input":
       return {
         tone: "waiting",
         word: "等待",
         prominent: true,
-        className: "h-2.5 w-2.5 bg-amber-400 animate-pulse ring-2 ring-amber-400/60",
-      };
-    case "completed":
-      return {
-        tone: "ready",
-        word: "就绪",
-        prominent: false,
-        className: "h-2 w-2 bg-emerald-400",
+        className: "h-1.5 w-1.5 bg-amber-400",
       };
     case "failed":
       return {
         tone: "failed",
         word: "失败",
         prominent: false,
-        className: "h-2 w-2 bg-red-400",
+        className: "h-1.5 w-1.5 bg-red-400",
       };
+    case "completed":
     case "stopped":
-      return {
-        tone: "stopped",
-        word: "已停止",
-        prominent: false,
-        className: "h-2 w-2 bg-zinc-500",
-      };
+      return null;
     default:
       return null;
   }

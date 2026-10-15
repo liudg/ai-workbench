@@ -138,11 +138,9 @@ export function SessionRow({
         data-agent={session.agent}
         data-active={active ? "true" : "false"}
         className={cn(
-          "group flex h-7 w-full items-center gap-1.5 rounded-md pl-7 pr-2 text-left text-[13px] leading-5",
-          active
-            ? "text-zinc-100"
-            : "text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-200",
-          active && "hover:bg-zinc-800/40",
+          "group flex h-7 w-full items-center gap-1.5 rounded-md pl-9 pr-2 text-left text-[11.5px] leading-5",
+          active ? "text-[#f3f3f3]" : "text-[#bdbdbd] hover:bg-white/[0.04] hover:text-[#e8e8e8]",
+          active && "hover:bg-white/[0.04]",
         )}
         onClick={() => void selectSession(projectId, session.id)}
         onKeyDown={(event) => {
@@ -160,8 +158,16 @@ export function SessionRow({
           </span>
         )}
         <SessionStatusDot status={session.status} />
-        <span className="relative w-16 shrink-0 text-right text-[11px] tabular-nums text-zinc-500">
-          <span className={cn("group-hover:invisible group-focus-within:invisible", menuOpen && "invisible")}>
+        <span className="relative flex w-16 shrink-0 justify-end text-right tabular-nums">
+          <span
+            className={cn(
+              "group-hover:invisible group-focus-within:invisible",
+              menuOpen && "invisible",
+              active
+                ? "rounded-md bg-[#2a2a2a] px-1.5 py-px text-[10px] leading-4 text-[#cfcfcf]"
+                : "text-[10px] text-[#666]",
+            )}
+          >
             {relativeSessionTime(session.updated_at, now)}
           </span>
           {hasMenu && (

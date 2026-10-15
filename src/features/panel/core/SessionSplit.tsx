@@ -1,7 +1,7 @@
 import { useRef, type ReactNode } from "react";
 
 import { useElementWidth } from "@/shared/dom/useElementWidth";
-import { CHAT_MIN_WIDTH, PANEL_PREFERRED_WIDTH, panelWidthAfterDrag, workspaceColumns } from "./layout";
+import { CHAT_MAX_WIDTH, PANEL_PREFERRED_WIDTH, panelWidthAfterDrag, workspaceColumns } from "./layout";
 import { ColumnSplitter } from "./ColumnSplitter";
 import { ClosedChrome } from "./ClosedChrome";
 import { PanelTabs } from "./PanelTabs";
@@ -34,9 +34,10 @@ export function SessionSplit({ children }: { children: ReactNode }) {
   metrics.current = { row: layoutWidth, panel: columns.panel };
   widthRef.current = previewWidth;
 
+  const chatWidth = measured && panelOpen && !full ? Math.max(0, layoutWidth - panelWidth) : undefined;
+
   return (
-    <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
-      {panelOpen ? null : <ClosedChrome />}
+    <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-[#0f0f0f]">
       <div
         ref={rowRef}
         data-workspace-row
@@ -47,8 +48,15 @@ export function SessionSplit({ children }: { children: ReactNode }) {
           <div
             data-chat-column
             className="relative flex h-full min-w-0 flex-col overflow-hidden"
-            style={{ flex: "1 1 0px", minWidth: CHAT_MIN_WIDTH }}
+            style={
+              chatWidth !== undefined
+                ? { width: chatWidth, flex: "0 0 auto", minWidth: 0 }
+                : panelOpen
+                  ? { flex: "1 1 auto", minWidth: 0, maxWidth: CHAT_MAX_WIDTH }
+                  : { flex: "1 1 auto", minWidth: 0 }
+            }
           >
+            <ClosedChrome />
             {children}
           </div>
         )}
@@ -71,7 +79,7 @@ export function SessionSplit({ children }: { children: ReactNode }) {
                 ? { flex: "1 1 auto", minWidth: 0 }
                 : measured
                   ? { width: panelWidth, maxWidth: panelWidth, flex: "0 0 auto", minWidth: 0 }
-                  : { flex: "0 1 auto", width: PANEL_PREFERRED_WIDTH, maxWidth: "44%", minWidth: 0 }
+                  : { flex: "1 1 auto", width: PANEL_PREFERRED_WIDTH, minWidth: 0 }
             }
           >
             <PanelTabs />

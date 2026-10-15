@@ -1,5 +1,6 @@
 import { useRef } from "react";
 
+import { pathCrumb } from "./path";
 import { previewKindForPath } from "../core/preview-kind";
 import { ImageFrame } from "../viewers/image";
 import { MarkdownPreview } from "../viewers/MarkdownPreview";
@@ -39,8 +40,8 @@ export function FilePreview({
       data-preview-status={image ? picture.status : state.status}
       className="flex h-full min-h-0 flex-col"
     >
-      <div className="shrink-0 truncate border-b border-zinc-800 px-3 py-1.5 font-mono text-[11px] text-zinc-500">
-        {path}
+      <div className="shrink-0 truncate border-b border-[#222] px-3 py-2 font-mono text-[12px] text-[#bdbdbd]">
+        {pathCrumb(path)}
       </div>
       <div className="min-h-0 flex-1">
         {image && picture.status === "loading" ? <PreviewPending /> : null}

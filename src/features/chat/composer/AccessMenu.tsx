@@ -156,7 +156,7 @@ function MenuRow({
       onClick={onPick}
     >
       <span className="min-w-0 flex-1">
-        <span className={cn("block truncate text-sm", warning ? "text-orange-400" : "text-zinc-100")}>
+        <span className={cn("block truncate text-sm", warning ? "text-[#f0a04a]" : "text-zinc-100")}>
           {permissionChoiceLabel(item)}
         </span>
         {detail ? <span className="mt-0.5 block truncate text-xs leading-4 text-zinc-500">{detail}</span> : null}

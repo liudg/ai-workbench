@@ -8,14 +8,14 @@ export function Sidebar() {
   const { projects, notice } = useSidebar();
 
   return (
-    <aside className="flex h-full min-h-0 w-72 shrink-0 flex-col overflow-hidden border-r border-zinc-800/80 bg-zinc-900/30">
+    <aside className="flex h-full min-h-0 w-[260px] shrink-0 flex-col overflow-hidden border-r border-[#222] bg-[#141414]">
       <BrandHeader />
 
       <ProjectHeader />
 
-      <div data-sidebar-scroll className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+      <div data-sidebar-scroll className="min-h-0 flex-1 overflow-y-auto pb-2">
         {projects.length === 0 ? (
-          <div className="mx-2 mt-4 rounded-lg border border-dashed border-zinc-800 px-3 py-6 text-center">
+          <div className="mx-2 mt-4 rounded-lg border border-dashed border-[#2a2a2a] px-3 py-6 text-center">
             <p className="text-xs leading-5 text-zinc-500">
               还没有项目。
               <br />
@@ -32,12 +32,12 @@ export function Sidebar() {
       </div>
 
       {notice && (
-        <div className="mx-3 mb-2 flex items-center justify-between gap-2 rounded-lg border border-zinc-700/80 bg-zinc-900 px-3 py-2 text-xs text-zinc-200">
+        <div className="mx-3 mb-2 flex items-center justify-between gap-2 rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] px-3 py-2 text-xs text-[#e8e8e8]">
           <span>{notice.text}</span>
         </div>
       )}
 
-      <div className="relative z-10 border-t border-zinc-800/80 px-3 py-3">
+      <div className="relative z-10 px-3 py-3">
         <AccountMenu />
       </div>
     </aside>

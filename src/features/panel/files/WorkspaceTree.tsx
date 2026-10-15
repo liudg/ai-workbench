@@ -134,7 +134,7 @@ function TreeRows({
           title={entry.path}
           aria-expanded={open}
           style={pad}
-          className="flex w-full min-w-0 items-center gap-1 rounded-md py-1 text-left text-zinc-300 hover:bg-zinc-800/80"
+          className="flex w-full min-w-0 items-center gap-1 rounded-md py-1 text-left text-[12px] text-[#bdbdbd] hover:bg-white/[0.04]"
           onClick={() => onToggle(entry.path)}
         >
           {open ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
@@ -189,7 +189,7 @@ function TreeRows({
         style={pad}
         className={cn(
           "flex w-full min-w-0 items-center gap-1 rounded-md py-1 text-left",
-          active ? "bg-zinc-800" : "hover:bg-zinc-800/80",
+          active ? "bg-[#2a2a2a]" : "hover:bg-white/[0.04]",
         )}
         onClick={() => onSelect(entry.path)}
         onContextMenu={(event) => {
@@ -197,8 +197,8 @@ function TreeRows({
           onContextMenu(entry.path, event);
         }}
       >
-        <File className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
-        <span className="min-w-0 flex-1 truncate font-mono text-xs text-zinc-200">{entry.name}</span>
+        <File className="h-3.5 w-3.5 shrink-0 text-[#888]" />
+        <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-[#e8e8e8]">{entry.name}</span>
       </button>
     </li>
   );

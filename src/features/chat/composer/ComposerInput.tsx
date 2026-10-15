@@ -30,7 +30,7 @@ export function ComposerInput({
       placeholder={placeholder}
       disabled={disabled}
       rows={Math.min(6, Math.max(2, text.split("\n").length))}
-      className="max-h-40 w-full min-w-0 max-w-full resize-none overflow-x-hidden bg-transparent px-2 text-sm leading-6 text-zinc-100 placeholder:text-zinc-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+      className="max-h-40 w-full min-w-0 max-w-full resize-none overflow-x-hidden bg-transparent px-2 text-sm leading-6 text-[#e8e8e8] placeholder:text-[#666] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
     />
   );
 }

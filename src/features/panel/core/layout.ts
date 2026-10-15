@@ -3,9 +3,10 @@
  * 预览打开时先收起会话文件栏，关闭全部标签后再还原。
  */
 
-export const CHAT_MIN_WIDTH = 400;
-export const PANEL_PREFERRED_WIDTH = 560;
-export const PANEL_MAX_RATIO = 0.44;
+export const SIDEBAR_WIDTH = 260;
+export const CHAT_MIN_WIDTH = 540;
+export const CHAT_MAX_WIDTH = 760;
+export const PANEL_PREFERRED_WIDTH = 540;
 export const FILES_EXPANDED_WIDTH = 240;
 export const FILES_RAIL_WIDTH = 44;
 export const DIFF_LIST_WIDTH = 208;
@@ -60,7 +61,10 @@ export function filesColumnWidth(expanded: boolean, visible: boolean): number {
   return expanded ? FILES_EXPANDED_WIDTH : FILES_RAIL_WIDTH;
 }
 
-/** 聊天列不低于下限；多出来的宽度优先给预览，但预览有上限，不够时预览缩小。 */
+/**
+ * 分屏时聊天列落在 540–760，右侧预览优先 540。
+ * 更宽时多出来的给预览；放不下时先缩小预览，再让聊天低于下限。
+ */
 export function workspaceColumns(input: {
   rowWidth: number;
   panelOpen: boolean;
@@ -74,13 +78,14 @@ export function workspaceColumns(input: {
   const room = Math.max(0, input.rowWidth - files);
   if (mode === "chat") return { chat: room, panel: 0, files };
   if (mode === "full") return { chat: 0, panel: room, files };
-  const preferred = Math.min(
-    PANEL_PREFERRED_WIDTH,
-    Math.round(input.rowWidth * PANEL_MAX_RATIO),
-  );
   const chatFloor = Math.min(CHAT_MIN_WIDTH, room);
-  const panel = Math.max(0, Math.min(preferred, room - chatFloor));
-  return { chat: room - panel, panel, files };
+  let panel = Math.min(PANEL_PREFERRED_WIDTH, Math.max(0, room - chatFloor));
+  let chat = room - panel;
+  if (chat > CHAT_MAX_WIDTH) {
+    chat = CHAT_MAX_WIDTH;
+    panel = room - chat;
+  }
+  return { chat, panel, files };
 }
 
 /** 面板放得下文件栏时给它固定宽度；放不下就整栏收起，避免被压成一个字。 */
@@ -121,12 +126,14 @@ export function toggleFilesSidebar(state: FilesRailState): FilesRailState {
   return { ...state, filesSidebarOpen: !state.filesSidebarOpen };
 }
 
-/** 拖聊天和预览之间的分隔条。返回预览列宽度。 */
+/** 拖聊天和预览之间的分隔条。聊天留在 540–760，放不下时预览可以收到 0。 */
 export function panelWidthAfterDrag(rowWidth: number, filesWidth: number, requested: number): number {
   const room = Math.max(0, rowWidth - filesWidth);
   const chatFloor = Math.min(CHAT_MIN_WIDTH, room);
+  const chatCap = Math.min(CHAT_MAX_WIDTH, room);
   const maxPanel = Math.max(0, room - chatFloor);
-  return Math.max(0, Math.min(Math.round(requested), maxPanel));
+  const minPanel = Math.max(0, room - chatCap);
+  return Math.max(minPanel, Math.min(Math.round(requested), maxPanel));
 }
 
 /** 拖差异和文件列表之间的分隔条。放不下就收起文件列表。 */

@@ -17,6 +17,11 @@ export function fileStatusTone(status: FileStatus): "add" | "del" | "neutral" {
   return "neutral";
 }
 
+/** 预览标题把路径写成「Scripts / GameUI / Module」。 */
+export function pathCrumb(path: string): string {
+  return path.split(/[\\/]/).filter(Boolean).join(" / ");
+}
+
 /** 预览区左上角的盘符，例如 `F:`。没有盘符就不显示。 */
 export function workspaceRootLabel(projectPath: string): string {
   const match = /^[A-Za-z]:/.exec(projectPath.trim());

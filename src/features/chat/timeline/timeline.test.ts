@@ -37,8 +37,8 @@ test("collapsed turn summary is the agent label, a middot, then elapsed time", (
 });
 
 test("running turn summary keeps the agent label and the in-progress phrase", () => {
-  assert.equal(runningTurnSummary("Codex CLI"), "Codex CLI · 正在处理…");
-  assert.equal(runningTurnSummary("Cursor Agent"), "Cursor Agent · 正在处理…");
+  assert.equal(runningTurnSummary("Codex CLI"), "Codex CLI · 运行中");
+  assert.equal(runningTurnSummary("Cursor Agent"), "Cursor Agent · 运行中");
 });
 
 test("review duplicates use dedupe_of and plan duplicates use mode", () => {

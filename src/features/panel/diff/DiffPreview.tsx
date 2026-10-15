@@ -1,10 +1,10 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import { AnswerMarkdownHost } from "@/features/workspace/AnswerMarkdownHost";
 import type { FileChange } from "@/features/changes-model/diff-parse";
 import type { SessionEvent } from "@/types";
-import { PanelProvider } from "../core/PanelProvider";
-import { DiffView } from "./DiffView";
+import { PanelProvider, usePanel } from "../core/PanelProvider";
+import { SessionSplit } from "../core/SessionSplit";
 
 const INSPECT = [
   "diff --git a/Library/GemFeedback/inspect_prefab.cs b/Library/GemFeedback/inspect_prefab.cs",
@@ -110,20 +110,35 @@ export default function DiffPreview() {
     [],
   );
   return (
-    <div className="h-screen w-screen overflow-hidden bg-zinc-950 text-zinc-200">
+    <div className="h-screen w-screen overflow-hidden bg-[#0f0f0f] text-[#e8e8e8]">
       <PanelProvider
         sessionId="preview-session"
         projectId={projectId}
         projectPath={params.get("path") ?? ""}
-        sessionTitle="变更"
+        sessionTitle="梳理需求"
         agent={null}
         events={events}
         usage={null}
       >
         <AnswerMarkdownHost>
-          <DiffView files={FILES} />
+          <SessionSplit>
+            <DiffSeed files={FILES} />
+          </SessionSplit>
         </AnswerMarkdownHost>
       </PanelProvider>
     </div>
   );
+}
+
+function DiffSeed({ files }: { files: FileChange[] }) {
+  const { openBlank, openFiles, openDiff } = usePanel();
+  const once = useRef(false);
+  useEffect(() => {
+    if (once.current) return;
+    once.current = true;
+    openBlank();
+    openFiles();
+    openDiff("preview-diff", "变更", files);
+  }, [files, openBlank, openDiff, openFiles]);
+  return <div className="min-h-0 flex-1" />;
 }

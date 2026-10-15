@@ -3,27 +3,23 @@ import { test } from "node:test";
 
 import { isPinnedSession, sessionStatusView } from "./session-status.ts";
 
-test("session status uses the existing tone for each known state", () => {
+test("session status dots only mark running, waiting, and failed", () => {
   const running = sessionStatusView("running");
   const waiting = sessionStatusView("needs-input");
-  const ready = sessionStatusView("completed");
   const failed = sessionStatusView("failed");
-  const stopped = sessionStatusView("stopped");
   assert.equal(running?.word, "运行中");
-  assert.equal(running?.className.includes("bg-sky-400"), true);
+  assert.equal(running?.className.includes("bg-[#4f8dff]"), true);
   assert.equal(running?.prominent, false);
   assert.equal(waiting?.word, "等待");
   assert.equal(waiting?.prominent, true);
   assert.equal(waiting?.className.includes("bg-amber-400"), true);
-  assert.equal(waiting?.className.includes("ring-"), true);
-  assert.equal(ready?.word, "就绪");
-  assert.equal(ready?.className.includes("bg-emerald-400"), true);
   assert.equal(failed?.word, "失败");
   assert.equal(failed?.className.includes("bg-red-400"), true);
-  assert.equal(stopped?.word, "已停止");
-  assert.equal(stopped?.className.includes("bg-zinc-500"), true);
-  for (const view of [running, waiting, ready, failed, stopped]) {
+  assert.equal(sessionStatusView("completed"), null);
+  assert.equal(sessionStatusView("stopped"), null);
+  for (const view of [running, waiting, failed]) {
     assert.equal(view?.className.includes("border"), false);
+    assert.equal(view?.className.includes("ring-"), false);
   }
 });
 

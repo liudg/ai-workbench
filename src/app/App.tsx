@@ -22,6 +22,9 @@ const UsagePreview = import.meta.env.DEV
 const SidebarPreview = import.meta.env.DEV
   ? lazy(() => import("@/features/sidebar/SidebarPreview"))
   : null;
+const CodePreview = import.meta.env.DEV
+  ? lazy(() => import("@/features/panel/files/CodePreview"))
+  : null;
 
 export default function App() {
   const preview = new URLSearchParams(window.location.search).get("preview");
@@ -67,6 +70,13 @@ export default function App() {
       </Suspense>
     );
   }
+  if (CodePreview && preview === "code") {
+    return (
+      <Suspense fallback={null}>
+        <CodePreview />
+      </Suspense>
+    );
+  }
   return <WorkbenchApp />;
 }
 
@@ -75,14 +85,14 @@ function WorkbenchApp() {
 
   if (!ready) {
     return (
-      <div className="flex h-screen items-center justify-center bg-zinc-950 text-sm text-zinc-600">
+      <div className="flex h-screen items-center justify-center bg-[#0f0f0f] text-sm text-[#666]">
         正在启动工作台…
       </div>
     );
   }
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-zinc-950 text-zinc-200">
+    <div className="flex h-screen w-screen overflow-hidden bg-[#0f0f0f] text-[#e8e8e8]">
       <Sidebar />
       <main className="flex min-w-0 flex-1 flex-col">
         {lastError && !dialogOpen && (

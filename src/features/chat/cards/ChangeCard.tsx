@@ -19,7 +19,7 @@ export function ChangeCard({ changes }: { changes: TurnChanges }) {
 
   return (
     <div className="event-in min-w-0 px-6 py-1.5" data-change-card>
-      <div className="change-card mx-auto min-w-0 max-w-3xl pl-6">
+      <div className="change-card min-w-0 pl-6">
         <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/50">
           <div className="flex min-w-0 items-center gap-2 px-2.5 py-1.5">
             {multiple ? (

@@ -5,7 +5,9 @@ import { useChangeCapabilities } from "@/features/changes-model/use-changes";
 import { showsFileChanges } from "@/features/changes-model/capabilities";
 import { lastSlice, turnChanges } from "@/features/changes-model/diff-parse";
 import { pendingPrompt } from "@/lib/utils";
-import { AGENT_LABELS, type Session, type SessionEvent } from "@/types";
+import { SessionAgentIcon } from "@/features/sidebar/sessions/SessionAgentIcon";
+import { type Session, type SessionEvent } from "@/types";
+import { agentTurnName, useAgentIdentity } from "../events/use-agent-identity";
 import { ChangeCard } from "../cards/ChangeCard";
 import { Composer } from "../composer/Composer";
 import { EventItem } from "../events/EventItem";
@@ -44,6 +46,8 @@ export function ChatView({
     () => events.some((event) => event.kind !== "status-changed"),
     [events],
   );
+  const identity = useAgentIdentity(session.agent);
+  const agentName = agentTurnName(session.agent, identity);
   const changeFlags = useChangeCapabilities(session.agent);
   const liveChanges = useMemo(() => {
     if (!showsFileChanges(changeFlags)) return null;
@@ -148,9 +152,9 @@ export function ChatView({
             return (
               <TurnFoldLine
                 key={`${block.id}-status`}
-                summary={runningTurnSummary(AGENT_LABELS[session.agent])}
+                summary={runningTurnSummary(agentName)}
                 expanded={expanded}
-                showAgentIcon
+                icon={<SessionAgentIcon identity={identity} className="h-4 w-4" />}
                 pulse
                 onToggle={() => {
                   pausePinForToggle();

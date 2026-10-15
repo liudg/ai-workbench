@@ -54,8 +54,8 @@ export function DiffFileSection({
   return (
     <section
       className={cn(
-        "min-w-0 scroll-mt-2 border-b border-zinc-800",
-        active && "bg-zinc-900 ring-1 ring-inset ring-sky-500/50",
+        "min-w-0 scroll-mt-2 border-b border-[#222]",
+        active && "bg-[#121212]",
       )}
       data-diff-file-body={file.path}
       data-diff-open={open ? "true" : "false"}
@@ -69,7 +69,7 @@ export function DiffFileSection({
           data-diff-toggle={file.path}
           aria-expanded={open}
           aria-label={open ? "收起差异" : "展开差异"}
-          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-[#888] hover:bg-white/5 hover:text-[#e8e8e8]"
           onClick={(event) => {
             event.stopPropagation();
             onToggle();
@@ -77,11 +77,11 @@ export function DiffFileSection({
         >
           {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
         </button>
-        <span className="min-w-0 flex-1 truncate font-mono text-zinc-300" title={file.path}>
+        <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-[#cfcfcf]" title={file.path}>
           {file.path}
         </span>
-        <span className="shrink-0 whitespace-nowrap font-mono text-emerald-400">+{file.added}</span>
-        <span className="shrink-0 whitespace-nowrap font-mono text-red-400">-{file.removed}</span>
+        <span className="shrink-0 whitespace-nowrap font-mono text-[12px] text-[#3fb950]">+{file.added}</span>
+        <span className="shrink-0 whitespace-nowrap font-mono text-[12px] text-[#f85149]">-{file.removed}</span>
       </header>
       {open ? (
         renderPreview && markdown ? (
@@ -137,10 +137,10 @@ function SplitCellView({ cell, wrap, edge }: { cell: SplitCell; wrap: boolean; e
       data-diff-tone={cell.tone}
       className={cn(
         "flex min-w-0",
-        edge === "left" && "border-r border-zinc-800",
-        cell.tone === "add" && "bg-emerald-500/15 text-emerald-200",
-        cell.tone === "del" && "bg-red-500/15 text-red-200",
-        cell.tone === "context" && "text-zinc-300",
+        edge === "left" && "border-r border-[#222]",
+        cell.tone === "add" && "bg-[#173324] text-[#b7ebc6]",
+        cell.tone === "del" && "bg-[#3a1f24] text-[#f0b4b4]",
+        cell.tone === "context" && "text-[#d4d4d4]",
         cell.tone === "meta" && "text-zinc-500",
         cell.tone === "pad" && "bg-zinc-950/30",
       )}
@@ -158,9 +158,9 @@ function DiffRowView({ row, wrap }: { row: DiffDisplayRow; wrap: boolean }) {
       data-diff-tone={row.tone}
       className={cn(
         "flex min-w-0 flex-nowrap",
-        row.tone === "add" && "bg-emerald-500/15 text-emerald-200",
-        row.tone === "del" && "bg-red-500/15 text-red-200",
-        row.tone === "context" && "text-zinc-300",
+        row.tone === "add" && "bg-[#173324] text-[#b7ebc6]",
+        row.tone === "del" && "bg-[#3a1f24] text-[#f0b4b4]",
+        row.tone === "context" && "text-[#d4d4d4]",
         row.tone === "meta" && "text-zinc-500",
       )}
     >

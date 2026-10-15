@@ -22,9 +22,9 @@ export function PanelTabs() {
   return (
     <section
       data-preview-panel
-      className="flex h-full w-full min-w-0 flex-col border-l border-zinc-800 bg-zinc-950"
+      className="flex h-full w-full min-w-0 flex-col border-l border-[#222] bg-[#0f0f0f]"
     >
-      <div className="relative z-20 flex h-9 shrink-0 items-stretch border-b border-zinc-800">
+      <div className="relative z-20 flex h-11 shrink-0 items-center border-b border-[#222] px-1.5">
         {layout === "full" ? (
           <span data-session-title className="flex max-w-[34%] shrink-0 items-center truncate px-3 text-xs text-zinc-300">
             {sessionTitle}
@@ -40,8 +40,8 @@ export function PanelTabs() {
               <div
                 key={tab.id}
                 className={cn(
-                  "flex min-w-0 max-w-[180px] items-center rounded-t-md",
-                  selected ? "bg-zinc-800 text-zinc-100" : "text-zinc-400",
+                  "my-1.5 flex min-w-0 max-w-[180px] items-center rounded-md",
+                  selected ? "bg-[#1c1c1c] text-[#e8e8e8]" : "text-[#8d8d8d] hover:bg-white/[0.04]",
                 )}
               >
                 <button
@@ -60,7 +60,7 @@ export function PanelTabs() {
                 <button
                   type="button"
                   aria-label={DESKTOP_ZH.closeTab}
-                  className="mr-1 rounded p-0.5 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-100"
+                  className="mr-1 rounded p-0.5 text-[#666] hover:bg-white/10 hover:text-[#e8e8e8]"
                   onClick={() => closeTab(tab.id)}
                 >
                   <X className="h-3 w-3" />
@@ -73,7 +73,7 @@ export function PanelTabs() {
               type="button"
               data-browser-new-tab
               aria-label={DESKTOP_ZH.panelOpenSideTab}
-              className="my-1 shrink-0 rounded px-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+              className="my-1 shrink-0 rounded-md px-1.5 text-[#8d8d8d] hover:bg-white/5 hover:text-[#e8e8e8]"
               onClick={openBlank}
             >
               <Plus className="h-3.5 w-3.5" />
