@@ -162,6 +162,13 @@ pub(super) fn collaboration_mode_value(mode: &str, model: &str, effort: Option<&
     })
 }
 
+/// 作曲栏选过的强度优先；否则用线程回包里的生效强度（配置里的默认值）。
+pub(super) fn pick_effort(selected: Option<String>, thread: Option<String>) -> Option<String> {
+    selected
+        .filter(|e| !e.trim().is_empty())
+        .or(thread.filter(|e| !e.trim().is_empty()))
+}
+
 pub(super) fn plan_collaboration_mode(model: &str, effort: Option<&str>) -> Value {
     collaboration_mode_value("plan", model, effort)
 }
