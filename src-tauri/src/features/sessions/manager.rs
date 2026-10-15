@@ -247,7 +247,7 @@ impl SessionManager {
         agent: AgentKind,
         access_mode: Option<String>,
     ) -> Result<Session, String> {
-        self.start_new_session(project, agent, access_mode, false)
+        self.start_new_session(project, agent, access_mode, false, &[])
             .await
     }
 
@@ -257,16 +257,21 @@ impl SessionManager {
         agent: AgentKind,
         access_mode: Option<String>,
         withhold_sidebar: bool,
+        writable_roots: &[String],
     ) -> Result<Session, String> {
         let adapter = adapter_for(agent);
         let caps = adapter.capabilities();
         let (tx, rx) = mpsc::unbounded_channel::<SessionEventBody>();
         let sink: EventSink = tx;
+        let mut options = serde_json::json!({ "persist": caps.supports_resume });
+        if !writable_roots.is_empty() {
+            options["writable_roots"] = serde_json::json!(writable_roots);
+        }
         let ctx = SessionContext {
             project_path: project.path.clone(),
             access_mode,
             resume_native_id: None,
-            options: serde_json::json!({ "persist": caps.supports_resume }),
+            options,
         };
         let handle = adapter
             .start_session(ctx, sink)
@@ -328,7 +333,13 @@ impl SessionManager {
         spec: FirstSendSpec,
     ) -> Result<CreateAndSendResult, String> {
         let session = self
-            .start_new_session(project, agent, spec.access_mode.clone(), true)
+            .start_new_session(
+                project,
+                agent,
+                spec.access_mode.clone(),
+                true,
+                &spec.writable_roots,
+            )
             .await?;
         let session_id = session.id.clone();
         if let Err(err) = self.apply_first_send(store, &session_id, &spec).await {

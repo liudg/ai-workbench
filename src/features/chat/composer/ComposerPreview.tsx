@@ -173,15 +173,15 @@ const codexPermissionMenu: PermissionMenu = {
 
 const claudePermissionMenu: PermissionMenu = {
   network_access: false,
-  writable_roots: false,
+  writable_roots: true,
   permission_profiles: false,
   approve_for_me: false,
   title: "权限",
   notice: null,
   active: "ask",
   presets: [
-    { id: "full", label: "跳过权限检查", description: "", caution: true },
-    { id: "ask", label: "询问批准", description: "" },
+    { id: "full", label: "跳过权限检查", description: "", caution: true, allows_extras: true },
+    { id: "ask", label: "询问批准", description: "", allows_extras: true },
   ],
   profiles: [],
 };
@@ -265,7 +265,7 @@ export default function ComposerPreview() {
   const catalog = claude ? claudeCatalog : codexCatalog;
   const initialMenu = params.get("menu");
   const queueQuery = params.get("queue");
-  const showQueue = Boolean(queueQuery) && !claude;
+  const showQueue = Boolean(queueQuery) && Boolean(catalog.capabilities.supports_queue);
   const skillsOpen = params.get("skills") === "1";
   const showSnippets = params.get("snippets") === "1";
   const [snippets, setSnippets] = useState<TextSnippet[]>(() => (showSnippets ? [previewSnippet] : []));

@@ -198,7 +198,7 @@ impl AgentCapabilities {
         }
     }
 
-    /// Claude Code 会话能力。没有对应物的开关保持关闭，界面不要显示成已接通。
+    /// Claude Code 会话能力。关闭项的证据来自 2026-10-15 本机 Claude Code 2.1.300。
     /// 回合 diff 不是 CLI 事件，由 Edit/Write 的工具输入或结果拼出来。
     pub fn claude() -> Self {
         Self {
@@ -209,10 +209,13 @@ impl AgentCapabilities {
             supports_skills: true,
             supports_goals: true,
             supports_images: true,
-            supports_queue: false,
-            supports_fork: false,
+            supports_queue: true,
+            supports_fork: true,
+            // `claude --help` 没有 archive。探测会话 jsonl 的键里没有 archived。
+            // 二进制 `sessionArchived` 是云端创建失败遥测，`unarchive` 命中的是
+            // `bridge_repl_v2_unarchive_*`，不是本地转录。不另做工作台本地标记。
             supports_archive: false,
-            supports_delete: false,
+            supports_delete: true,
             supports_rename: true,
             supports_plan: true,
             changes: ChangeCapabilities {
@@ -220,10 +223,17 @@ impl AgentCapabilities {
                 per_file_patch: true,
                 git_scopes: true,
             },
+            // 没有 `review/start`。`claude ultrareview --help` 是云端多 Agent 审查当前分支，
+            // 不是工作台的分支/提交目标菜单。二进制里的 `/review` 只出现在示例技能名。
             supports_review: false,
+            // `claude --print hi --network --output-format json` 退出码 1：
+            // `error: unknown option '--network'`。`--permission-mode` 只有
+            // acceptEdits、auto、bypassPermissions、manual、dontAsk、plan。
             supports_network_access: false,
-            supports_writable_roots: false,
+            supports_writable_roots: true,
+            // `--permission-mode` 没有具名配置档。`get_sandbox_dialog` 不是配置档列表。
             supports_permission_profiles: false,
+            // 没有 `auto_review`。`approve-for-me` 和 `read-only` 不能映射到 permission mode。
             supports_approve_for_me: false,
             supports_paged_history: true,
         }

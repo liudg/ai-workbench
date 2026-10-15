@@ -24,6 +24,11 @@
 //! 这个旗标不会把会话默认设成跳过权限（`main.tsx` 的选项说明）。
 //! 完全访问另外传 `--permission-mode bypassPermissions`。
 
+use std::collections::HashSet;
+use std::path::Path;
+
+use serde_json::Value;
+
 /// 一次启动要写进 argv 的选择。模型名和推理强度只在调用方已经从 CLI 拿到时才填。
 pub struct Launch {
     pub session_id: String,
@@ -31,6 +36,8 @@ pub struct Launch {
     pub permission_mode: String,
     pub model: Option<String>,
     pub effort: Option<String>,
+    /// 启动时的 `--add-dir`。运行中没有对应的控制请求。
+    pub writable_roots: Vec<String>,
 }
 
 pub fn cli_args(launch: &Launch) -> Vec<String> {
@@ -64,6 +71,10 @@ pub fn cli_args(launch: &Launch) -> Vec<String> {
         cmd.push(effort.to_string());
     }
     cmd.push("--allow-dangerously-skip-permissions".to_string());
+    for dir in &launch.writable_roots {
+        cmd.push("--add-dir".to_string());
+        cmd.push(dir.clone());
+    }
     cmd.extend(["--input-format".to_string(), "stream-json".to_string()]);
     cmd
 }
@@ -83,7 +94,9 @@ pub fn permission_mode_for_access(mode: Option<&str>) -> &'static str {
     }
 }
 
-pub fn access_to_permission_mode(mode: &str) -> Result<&'static str, crate::features::agents::AgentError> {
+pub fn access_to_permission_mode(
+    mode: &str,
+) -> Result<&'static str, crate::features::agents::AgentError> {
     match mode {
         "full" => Ok("bypassPermissions"),
         "ask" | "default" => Ok("default"),
@@ -95,4 +108,52 @@ pub fn access_to_permission_mode(mode: &str) -> Result<&'static str, crate::feat
             "不认识的权限档位 {mode}"
         ))),
     }
+}
+
+pub fn roots_from_options(options: &Value) -> Vec<String> {
+    options
+        .get("writable_roots")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// `--add-dir`：绝对路径、去重、去掉工作区本身。比较时忽略大小写和斜杠方向。
+pub fn normalize_add_dirs(cwd: &str, roots: &[String]) -> Vec<String> {
+    let cwd_path = Path::new(cwd.trim());
+    let cwd_key = path_key(&cwd_path.to_string_lossy());
+    let mut out = Vec::new();
+    let mut seen = HashSet::new();
+    for root in roots {
+        let trimmed = root.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let path = Path::new(trimmed);
+        let absolute = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            cwd_path.join(path)
+        };
+        let display = absolute.to_string_lossy().to_string();
+        let key = path_key(&display);
+        if key.is_empty() || (!cwd_key.is_empty() && key == cwd_key) || !seen.insert(key) {
+            continue;
+        }
+        out.push(display);
+    }
+    out.sort_by(|left, right| path_key(left).cmp(&path_key(right)));
+    out
+}
+
+fn path_key(path: &str) -> String {
+    path.replace('/', "\\")
+        .trim_end_matches('\\')
+        .to_ascii_lowercase()
 }

@@ -48,11 +48,11 @@ pub struct Shared {
     pub project_path: PathBuf,
     outbound: Mutex<Option<mpsc::UnboundedSender<String>>>,
     child: Mutex<Option<Child>>,
-    closed: AtomicBool,
+    pub(super) closed: AtomicBool,
     counter: AtomicU64,
     waiters: Mutex<HashMap<String, oneshot::Sender<Result<Value, String>>>>,
     intents: Mutex<HashMap<String, Intent>>,
-    prompts: Mutex<HashMap<String, PermissionKind>>,
+    pub(super) prompts: Mutex<HashMap<String, PermissionKind>>,
     pub catalog: Mutex<AgentCatalog>,
     goal: Mutex<Option<SessionEventBody>>,
     map: Mutex<MapState>,
@@ -60,7 +60,7 @@ pub struct Shared {
     permission_mode: Mutex<String>,
     access_mode: Mutex<String>,
     stderr: Arc<Mutex<String>>,
-    busy: AtomicBool,
+    pub(super) busy: AtomicBool,
     user_stopped: AtomicBool,
     pending: Mutex<PendingLines>,
     last_diff: Mutex<String>,
@@ -68,19 +68,33 @@ pub struct Shared {
     usage_ledger: Mutex<super::usage::UsageLedger>,
     /// 串起「开始回合」和「回合结束」，避免结果状态盖住紧接着的新回合。
     status_lock: Mutex<()>,
+    /// 已经写进 stdin 的用户消息数。和 `user_results` 一起判断旧 result 是不是还没追上。
+    user_writes: AtomicU64,
+    user_results: AtomicU64,
+    /// `arm_turn` 的次数。新回合已经挂上时，旧 result 不再另开一个锚点。
+    armed_user_turns: AtomicU64,
+    /// 还没写进 stdin 的本地排队。
+    pub(super) queue_state: Mutex<super::queue::QueueState>,
+    /// 启动时写进 `--add-dir` 的目录。Claude 没有在运行中追加目录的控制请求。
+    add_dirs: Mutex<Vec<String>>,
 }
 
 pub async fn open(
     project_path: String,
     access_mode: Option<String>,
     resume_native_id: Option<String>,
+    writable_roots: Vec<String>,
     events: EventSink,
 ) -> Result<Arc<Shared>, AgentError> {
     let project = PathBuf::from(project_path.trim());
     if project.as_os_str().is_empty() {
         return Err(AgentError::Runtime("没有项目目录".into()));
     }
-    let (session_id, resume) = match resume_native_id.as_deref().map(str::trim).filter(|id| !id.is_empty()) {
+    let (session_id, resume) = match resume_native_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+    {
         Some(id) if history::is_uuid(id) => (id.to_string(), true),
         Some(id) => return Err(AgentError::Runtime(format!("无效的会话 id：{id}"))),
         None => (uuid::Uuid::new_v4().to_string(), false),
@@ -91,12 +105,14 @@ pub async fn open(
         _ => "ask",
     };
     let bin = process::resolve_claude_bin()?;
+    let add_dirs = command::normalize_add_dirs(&project.to_string_lossy(), &writable_roots);
     let args = command::cli_args(&Launch {
         session_id: session_id.clone(),
         resume,
         permission_mode: permission_mode.to_string(),
         model: None,
         effort: None,
+        writable_roots: add_dirs.clone(),
     });
     let mut child = process::spawn(&bin, &args, &project)?;
     let stdin = child
@@ -132,10 +148,18 @@ pub async fn open(
         stderr: Arc::new(Mutex::new(String::new())),
         busy: AtomicBool::new(false),
         user_stopped: AtomicBool::new(false),
-        pending: Mutex::new(PendingLines { ready: false, lines: Vec::new() }),
+        pending: Mutex::new(PendingLines {
+            ready: false,
+            lines: Vec::new(),
+        }),
         last_diff: Mutex::new(String::new()),
         usage_ledger: Mutex::new(super::usage::UsageLedger::default()),
         status_lock: Mutex::new(()),
+        user_writes: AtomicU64::new(0),
+        user_results: AtomicU64::new(0),
+        armed_user_turns: AtomicU64::new(0),
+        queue_state: Mutex::new(super::queue::QueueState::default()),
+        add_dirs: Mutex::new(add_dirs),
     });
     start_io(&shared, stdin, stdout, stderr);
 
@@ -169,21 +193,31 @@ impl Shared {
             catalog::apply_initialize(&mut catalog, &init, reported.as_deref());
         }
         // list_models / get_settings 失败不结束会话。通道断了才结束。
-        match self.request(json!({"subtype": "list_models"}), Duration::from_secs(15)).await {
+        match self
+            .request(json!({"subtype": "list_models"}), Duration::from_secs(15))
+            .await
+        {
             Ok(payload) => {
                 let mut catalog = self.catalog.lock().unwrap();
                 catalog::apply_model_list(&mut catalog, &payload);
             }
-            Err(AgentError::Closed) => return Err(self.annotated("Claude Code 的控制通道已关闭".into())),
+            Err(AgentError::Closed) => {
+                return Err(self.annotated("Claude Code 的控制通道已关闭".into()))
+            }
             Err(err) if is_disconnect(&err) => return Err(err),
             Err(_) => {}
         }
-        match self.request(json!({"subtype": "get_settings"}), Duration::from_secs(10)).await {
+        match self
+            .request(json!({"subtype": "get_settings"}), Duration::from_secs(10))
+            .await
+        {
             Ok(payload) => {
                 let mut catalog = self.catalog.lock().unwrap();
                 catalog::apply_settings(&mut catalog, &payload);
             }
-            Err(AgentError::Closed) => return Err(self.annotated("Claude Code 的控制通道已关闭".into())),
+            Err(AgentError::Closed) => {
+                return Err(self.annotated("Claude Code 的控制通道已关闭".into()))
+            }
             Err(err) if is_disconnect(&err) => return Err(err),
             Err(_) => {}
         }
@@ -205,7 +239,8 @@ impl Shared {
                 };
                 let (events, diff) = {
                     let mut map = self.map.lock().unwrap();
-                    let events = messages::events_from_transcript(&mut map, &text, Some(&self.project_path));
+                    let events =
+                        messages::events_from_transcript(&mut map, &text, Some(&self.project_path));
                     let diff = map.latest_diff();
                     map.model = model_before;
                     (events, diff)
@@ -280,26 +315,19 @@ impl Shared {
     }
 
     pub fn send_text(&self, text: String) -> Result<(), AgentError> {
-        self.send_content(Value::String(text))
+        self.submit(Value::String(text.clone()), text, Vec::new(), String::new())
+            .map(|_| ())
     }
 
-    pub fn send_content(&self, content: Value) -> Result<(), AgentError> {
-        if let Value::String(ref text) = content {
-            if text.trim().is_empty() {
-                return Err(AgentError::Runtime("消息不能为空".into()));
-            }
-        }
-        self.begin_turn()?;
-        let line = serde_json::to_string(&control::user_message(&self.session_id, content))
+    pub(super) fn write_user_content(&self, content: &Value) -> Result<(), AgentError> {
+        let line = serde_json::to_string(&control::user_message(&self.session_id, content.clone()))
             .map_err(|err| AgentError::Runtime(err.to_string()))?;
-        if let Err(err) = self.write_line(&line) {
-            self.fail_turn();
-            return Err(err);
-        }
+        self.write_line(&line)?;
+        self.user_writes.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
 
-    fn begin_turn(&self) -> Result<(), AgentError> {
+    pub(super) fn begin_turn(&self) -> Result<(), AgentError> {
         let _guard = self.status_lock.lock().unwrap();
         if self.closed.load(Ordering::SeqCst) {
             return Err(AgentError::Closed);
@@ -310,18 +338,26 @@ impl Shared {
         if self.busy.swap(true, Ordering::SeqCst) {
             return Err(AgentError::Busy);
         }
-        self.user_stopped.store(false, Ordering::SeqCst);
-        let turn_id = uuid::Uuid::new_v4().to_string();
-        self.map.lock().unwrap().begin_turn(&turn_id);
-        let mode = (self.permission_mode.lock().unwrap().as_str() == "plan").then(|| "plan".to_string());
-        let _ = self.events.send(SessionEventBody::TurnAnchor { turn_id, mode });
+        self.arm_turn();
         let _ = self.events.send(SessionEventBody::StatusChanged {
             status: SessionStatus::Running,
         });
         Ok(())
     }
 
-    fn fail_turn(&self) {
+    pub(super) fn arm_turn(&self) {
+        self.armed_user_turns.fetch_add(1, Ordering::SeqCst);
+        self.user_stopped.store(false, Ordering::SeqCst);
+        let turn_id = uuid::Uuid::new_v4().to_string();
+        self.map.lock().unwrap().begin_turn(&turn_id);
+        let mode =
+            (self.permission_mode.lock().unwrap().as_str() == "plan").then(|| "plan".to_string());
+        let _ = self
+            .events
+            .send(SessionEventBody::TurnAnchor { turn_id, mode });
+    }
+
+    pub(super) fn fail_turn(&self) {
         let _guard = self.status_lock.lock().unwrap();
         self.busy.store(false, Ordering::SeqCst);
         let _ = self.events.send(SessionEventBody::Error {
@@ -381,7 +417,13 @@ impl Shared {
         }
         let pending = {
             let _guard = self.status_lock.lock().unwrap();
-            let pending: Vec<_> = self.prompts.lock().unwrap().drain().map(|(id, _)| id).collect();
+            let pending: Vec<_> = self
+                .prompts
+                .lock()
+                .unwrap()
+                .drain()
+                .map(|(id, _)| id)
+                .collect();
             let active = self.busy.load(Ordering::SeqCst) || !pending.is_empty();
             if !active {
                 return Ok(());
@@ -418,8 +460,12 @@ impl Shared {
         if network {
             return Err(AgentError::Runtime("不支持网络访问开关".into()));
         }
-        if !roots.is_empty() {
-            return Err(AgentError::Runtime("不支持额外可写目录".into()));
+        let desired = command::normalize_add_dirs(&self.project_path.to_string_lossy(), roots);
+        let launched = self.add_dirs.lock().unwrap().clone();
+        if desired != launched {
+            return Err(AgentError::Runtime(
+                "Claude Code 的额外目录只在启动参数 --add-dir 里生效，这条会话已经启动".into(),
+            ));
         }
         if !profile.trim().is_empty() {
             return Err(AgentError::Runtime("不支持具名权限配置档".into()));
@@ -429,22 +475,36 @@ impl Shared {
             json!({"subtype": "set_permission_mode", "mode": cli}),
             Some(Intent::SetPermission(cli.to_string())),
         )?;
-        *self.access_mode.lock().unwrap() = if mode == "full" { "full".into() } else { "ask".into() };
+        *self.access_mode.lock().unwrap() = if mode == "full" {
+            "full".into()
+        } else {
+            "ask".into()
+        };
         *self.permission_mode.lock().unwrap() = cli.to_string();
         Ok(())
     }
 
-    pub fn set_tuning(&self, model: Option<String>, effort: Option<String>) -> Result<(), AgentError> {
+    pub fn set_tuning(
+        &self,
+        model: Option<String>,
+        effort: Option<String>,
+    ) -> Result<(), AgentError> {
         if self.closed.load(Ordering::SeqCst) {
             return Err(AgentError::Closed);
         }
-        if let Some(model) = model.map(|item| item.trim().to_string()).filter(|item| !item.is_empty()) {
+        if let Some(model) = model
+            .map(|item| item.trim().to_string())
+            .filter(|item| !item.is_empty())
+        {
             self.enqueue(
                 json!({"subtype": "set_model", "model": model}),
                 Some(Intent::SetModel(model)),
             )?;
         }
-        if let Some(effort) = effort.map(|item| item.trim().to_string()).filter(|item| !item.is_empty()) {
+        if let Some(effort) = effort
+            .map(|item| item.trim().to_string())
+            .filter(|item| !item.is_empty())
+        {
             self.enqueue(
                 json!({
                     "subtype": "apply_flag_settings",
@@ -540,7 +600,7 @@ impl Shared {
         control::request_id(n)
     }
 
-    fn write_line(&self, line: &str) -> Result<(), AgentError> {
+    pub(super) fn write_line(&self, line: &str) -> Result<(), AgentError> {
         if self.closed.load(Ordering::SeqCst) {
             return Err(AgentError::Closed);
         }
@@ -630,9 +690,31 @@ impl Shared {
     }
 
     fn emit_terminal(&self, mut status: SessionStatus) {
-        let fire = {
+        let terminal = matches!(
+            status,
+            SessionStatus::Completed | SessionStatus::Failed | SessionStatus::Stopped
+        );
+        if !terminal {
             let _guard = self.status_lock.lock().unwrap();
-            if self.user_stopped.load(Ordering::SeqCst) {
+            let _ = self.events.send(SessionEventBody::StatusChanged { status });
+            return;
+        }
+        let seen = self.user_results.fetch_add(1, Ordering::SeqCst) + 1;
+        let written = self.user_writes.load(Ordering::SeqCst);
+        if seen < written {
+            self.busy.store(true, Ordering::SeqCst);
+            if self.armed_user_turns.load(Ordering::SeqCst) <= seen {
+                self.arm_turn();
+            }
+            let _ = self.events.send(SessionEventBody::StatusChanged {
+                status: SessionStatus::Running,
+            });
+            return;
+        }
+        let stopped_by_user = {
+            let _guard = self.status_lock.lock().unwrap();
+            let stopped_by_user = self.user_stopped.load(Ordering::SeqCst);
+            if stopped_by_user {
                 match status {
                     SessionStatus::Completed | SessionStatus::Failed => {
                         self.user_stopped.store(false, Ordering::SeqCst);
@@ -641,19 +723,24 @@ impl Shared {
                     _ => {}
                 }
             }
-            let terminal = matches!(
-                status,
-                SessionStatus::Completed | SessionStatus::Failed | SessionStatus::Stopped
-            );
-            if terminal {
-                self.busy.store(false, Ordering::SeqCst);
-            }
-            let _ = self.events.send(SessionEventBody::StatusChanged { status });
-            terminal
+            stopped_by_user
         };
-        if fire {
-            self.refresh_usage_snapshot();
-            self.fire_context_usage();
+        match self.finish_turn(status, stopped_by_user) {
+            super::queue::ClosePlan::Start(item) => {
+                self.busy.store(true, Ordering::SeqCst);
+                self.start_queued_item(item);
+            }
+            super::queue::ClosePlan::Finish => {
+                if self.busy.load(Ordering::SeqCst)
+                    && self.user_writes.load(Ordering::SeqCst) > seen
+                {
+                    return;
+                }
+                self.busy.store(false, Ordering::SeqCst);
+                let _ = self.events.send(SessionEventBody::StatusChanged { status });
+                self.refresh_usage_snapshot();
+                self.fire_context_usage();
+            }
         }
     }
 
@@ -679,7 +766,10 @@ impl Shared {
                     self.apply_intent(intent, result);
                 }
             }
-            ControlIn::Request { request_id, request } => self.on_request(&request_id, &request),
+            ControlIn::Request {
+                request_id,
+                request,
+            } => self.on_request(&request_id, &request),
             ControlIn::Cancel { request_id } => self.on_cancel(&request_id),
         }
     }
@@ -699,7 +789,10 @@ impl Shared {
         }
         if let Some((events, kind)) = messages::permission_events(request_id, request) {
             let _guard = self.status_lock.lock().unwrap();
-            self.prompts.lock().unwrap().insert(request_id.to_string(), kind);
+            self.prompts
+                .lock()
+                .unwrap()
+                .insert(request_id.to_string(), kind);
             for event in events {
                 let _ = self.events.send(event);
             }

@@ -32,9 +32,9 @@ function profile(kind: AgentKind, name: string, icon: string | null): AgentProfi
       supports_tuning: false,
       supports_skills: false,
       supports_rename: linked,
-      supports_fork: kind === "codex-cli",
+      supports_fork: linked,
       supports_archive: kind === "codex-cli",
-      supports_delete: kind === "codex-cli",
+      supports_delete: linked,
       changes: { turn_diff: false, per_file_patch: false, git_scopes: false },
     },
   };

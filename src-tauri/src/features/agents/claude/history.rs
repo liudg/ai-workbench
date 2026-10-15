@@ -118,6 +118,92 @@ pub fn remove_session_file(session_id: &str) -> Result<(), String> {
     std::fs::remove_file(path).map_err(|err| err.to_string())
 }
 
+/// 把一条会话复制成新的 uuid。只改 `sessionId` / `session_id` 字段，不改正文里碰巧出现的同一串字符。
+///
+/// 2026-10-15，Claude Code 2.1.300：`claude --print --resume <id> --fork-session` 不带提示词退出码 1，
+/// stderr 为 `No deferred tool marker found in the resumed session. ... Provide a prompt to continue the conversation.`
+/// 带提示词会新开一轮用户没写的对话。`--fork-session` 的产物就是一份新 session id 的转录。
+pub fn fork_session_file(session_id: &str) -> Result<ListedSession, String> {
+    if !is_uuid(session_id) {
+        return Err(format!("无效的会话 id：{session_id}"));
+    }
+    let path = find_session_file(session_id).ok_or_else(|| format!("找不到会话 {session_id}"))?;
+    fork_under(&path, session_id)
+}
+
+pub fn fork_under(source: &Path, session_id: &str) -> Result<ListedSession, String> {
+    if !is_uuid(session_id) {
+        return Err(format!("无效的会话 id：{session_id}"));
+    }
+    let text = std::fs::read_to_string(source).map_err(|err| err.to_string())?;
+    let new_id = uuid::Uuid::new_v4().to_string();
+    let rewritten = rewrite_session_ids(&text, session_id, &new_id);
+    let parent = source
+        .parent()
+        .ok_or_else(|| "会话文件没有目录".to_string())?;
+    let dest = parent.join(format!("{new_id}.jsonl"));
+    std::fs::write(&dest, &rewritten).map_err(|err| err.to_string())?;
+    let lite = read_lite(&dest).ok_or_else(|| "分叉后的会话读不出来".to_string())?;
+    parse_lite(&new_id, &lite).ok_or_else(|| "分叉后的会话没有标题".to_string())
+}
+
+fn rewrite_session_ids(text: &str, old_id: &str, new_id: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for line in text.split_inclusive('\n') {
+        out.push_str(&rewrite_session_ids_line(line, old_id, new_id));
+    }
+    out
+}
+
+fn rewrite_session_ids_line(line: &str, old_id: &str, new_id: &str) -> String {
+    let mut out = line.to_string();
+    let mut from = 0;
+    while from < out.len() {
+        let Some((key_rel, key_len)) = next_session_key(&out[from..]) else {
+            break;
+        };
+        let after_key = from + key_rel + key_len;
+        let tail = &out[after_key..];
+        let Some(colon_rel) = tail.find(':') else {
+            break;
+        };
+        if !tail[..colon_rel].chars().all(char::is_whitespace) {
+            from = after_key;
+            continue;
+        }
+        let after_colon = after_key + colon_rel + 1;
+        let value_tail = &out[after_colon..];
+        let Some(quote_rel) = value_tail.find('"') else {
+            break;
+        };
+        if !value_tail[..quote_rel].chars().all(char::is_whitespace) {
+            from = after_colon;
+            continue;
+        }
+        let value_start = after_colon + quote_rel + 1;
+        let value = &out[value_start..];
+        if value.starts_with(old_id) && value.as_bytes().get(old_id.len()) == Some(&b'"') {
+            out.replace_range(value_start..value_start + old_id.len(), new_id);
+            from = value_start + new_id.len();
+        } else {
+            from = value_start;
+        }
+    }
+    out
+}
+
+fn next_session_key(text: &str) -> Option<(usize, usize)> {
+    let session_id = text.find("\"sessionId\"");
+    let session_id_snake = text.find("\"session_id\"");
+    match (session_id, session_id_snake) {
+        (Some(left), Some(right)) if left <= right => Some((left, "\"sessionId\"".len())),
+        (Some(_), Some(right)) => Some((right, "\"session_id\"".len())),
+        (Some(left), None) => Some((left, "\"sessionId\"".len())),
+        (None, Some(right)) => Some((right, "\"session_id\"".len())),
+        (None, None) => None,
+    }
+}
+
 pub fn read_session_text(path: &Path) -> Option<String> {
     let bytes = std::fs::read(path).ok()?;
     if bytes.is_empty() {
@@ -204,11 +290,18 @@ pub fn conversation_chain(entries: &[Value]) -> Vec<Value> {
     let main: Vec<&Value> = leaves
         .iter()
         .copied()
-        .filter(|leaf| !flag(leaf, "isSidechain") && !flag(leaf, "isMeta") && text_field(leaf, "teamName").is_empty())
+        .filter(|leaf| {
+            !flag(leaf, "isSidechain")
+                && !flag(leaf, "isMeta")
+                && text_field(leaf, "teamName").is_empty()
+        })
         .collect();
     let pool: Vec<&Value> = if main.is_empty() { leaves } else { main };
     let mut best = pool[0];
-    let mut best_index = index.get(best.get("uuid").and_then(Value::as_str).unwrap_or("")).copied().unwrap_or(0);
+    let mut best_index = index
+        .get(best.get("uuid").and_then(Value::as_str).unwrap_or(""))
+        .copied()
+        .unwrap_or(0);
     for candidate in pool.iter().skip(1) {
         let position = index
             .get(candidate.get("uuid").and_then(Value::as_str).unwrap_or(""))
@@ -335,7 +428,11 @@ fn read_lite(path: &Path) -> Option<LiteFile> {
         let read = file.read(&mut tail_buf).ok()?;
         String::from_utf8_lossy(&tail_buf[..read]).to_string()
     };
-    Some(LiteFile { mtime_ms, head, tail })
+    Some(LiteFile {
+        mtime_ms,
+        head,
+        tail,
+    })
 }
 
 fn parse_lite(session_id: &str, lite: &LiteFile) -> Option<ListedSession> {
@@ -432,7 +529,10 @@ fn content_text(content: &Value) -> String {
         .iter()
         .filter_map(|block| {
             if block.get("type").and_then(Value::as_str) == Some("text") {
-                block.get("text").and_then(Value::as_str).map(str::to_string)
+                block
+                    .get("text")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
             } else {
                 None
             }
@@ -504,5 +604,9 @@ fn flag(value: &Value, key: &str) -> bool {
 }
 
 fn text_field(value: &Value, key: &str) -> String {
-    value.get(key).and_then(Value::as_str).unwrap_or("").to_string()
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string()
 }
