@@ -8,9 +8,10 @@ test("session status dots only mark running, waiting, and failed", () => {
   const waiting = sessionStatusView("needs-input");
   const failed = sessionStatusView("failed");
   assert.equal(running?.word, "运行中");
-  assert.equal(running?.marker, "ring");
-  assert.equal(running?.dotClass.includes("bg-[#4f8dff]"), true);
-  assert.equal(running?.ringClass.includes("border-[#4f8dff]"), true);
+  assert.equal(running?.marker, "spinner");
+  assert.equal(running?.dotClass, "");
+  assert.equal(running?.ringClass.includes("text-[#c6c6c6]"), true);
+  assert.equal(/bg-|emerald|green|#22c55e/.test(`${running?.dotClass} ${running?.ringClass}`), false);
   assert.equal(running?.prominent, false);
   assert.equal(waiting?.word, "等待");
   assert.equal(waiting?.marker, "ring");

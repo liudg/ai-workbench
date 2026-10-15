@@ -4,8 +4,8 @@ export interface SessionStatusView {
   tone: SessionDotTone;
   word: string;
   prominent: boolean;
-  /** 运行中和等待是环里的点；失败是实心点。 */
-  marker: "ring" | "dot";
+  /** 运行中是转圈；等待是环里的点；失败是实心点。 */
+  marker: "spinner" | "ring" | "dot";
   ringClass: string;
   dotClass: string;
 }
@@ -18,9 +18,9 @@ export function sessionStatusView(status: string | null | undefined): SessionSta
         tone: "running",
         word: "运行中",
         prominent: false,
-        marker: "ring",
-        ringClass: "border-[#4f8dff]",
-        dotClass: "bg-[#4f8dff]",
+        marker: "spinner",
+        ringClass: "text-[#c6c6c6]",
+        dotClass: "",
       };
     case "needs-input":
       return {
