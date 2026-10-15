@@ -3,9 +3,14 @@ import { PanelRightClose } from "lucide-react";
 
 import type { FileChange } from "@/features/changes-model/diff-parse";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
-import { FileTreeList } from "./FileTreeList";
+import { resolvePreviewPath } from "../core/preview-kind";
+import { usePanel } from "../core/PanelProvider";
 import { filterFiles, useFileFilter } from "../core/file-filter";
+import { FileContextMenu } from "./FileContextMenu";
+import { FileTreeList } from "./FileTreeList";
 import { buildFileTree } from "./file-tree";
+import { baseName } from "./path";
+import { useAttachFile } from "./useAttachFile";
 
 export function ChangesSidebar({
   files,
@@ -26,8 +31,11 @@ export function ChangesSidebar({
   onHide?: () => void;
   empty: ReactNode;
 }) {
+  const { sessionId, projectPath } = usePanel();
+  const attachFile = useAttachFile(sessionId);
   const [filter, setFilter] = useFileFilter();
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string } | null>(null);
   const shown = useMemo(() => filterFiles(files, filter), [files, filter]);
   const tree = useMemo(() => buildFileTree(shown), [shown]);
 
@@ -86,9 +94,22 @@ export function ChangesSidebar({
             showStats
             onToggle={toggleDir}
             onSelect={onSelect}
+            onContextMenu={(file, event) => setContextMenu({ x: event.clientX, y: event.clientY, path: file.path })}
           />
         )}
       </div>
+      {contextMenu ? (
+        <FileContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onAdd={() => {
+            const absolute = resolvePreviewPath(projectPath, contextMenu.path);
+            if (absolute) attachFile(absolute, baseName(absolute));
+            setContextMenu(null);
+          }}
+          onClose={() => setContextMenu(null)}
+        />
+      ) : null}
     </aside>
   );
 }

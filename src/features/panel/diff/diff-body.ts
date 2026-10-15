@@ -21,13 +21,15 @@ export function withoutWhitespaceChanges(diff: string): string {
       index += 1;
     }
     const filtered = filterWhitespaceHunk(body);
-    if (filtered.some((row) => row.startsWith("+") || row.startsWith("-"))) {
-      out.push(line, ...filtered);
-    }
+    if (filtered.some((row) => row.length > 0)) out.push(line, ...filtered);
   }
   return out.join("\n");
 }
 
+/**
+ * 一行对一行：两边去掉空白后相同，才丢掉这一对。
+ * 不能把整段增删拼起来比，否则拆行会把整个文件当成空白改动。
+ */
 function filterWhitespaceHunk(body: string[]): string[] {
   const out: string[] = [];
   let index = 0;
@@ -53,12 +55,33 @@ function filterWhitespaceHunk(body: string[]): string[] {
       else added.push(row.slice(1));
       index += 1;
     }
-    if (collapseSpace(removed.join("\n")) === collapseSpace(added.join("\n"))) continue;
-    for (const row of removed) out.push(`-${row}`);
-    for (const row of added) out.push(`+${row}`);
+    const kept = pairWhitespaceLines(removed, added);
+    for (const row of kept.removed) out.push(`-${row}`);
+    for (const row of kept.added) out.push(`+${row}`);
     out.push(...notes);
   }
   return out;
+}
+
+function pairWhitespaceLines(removed: string[], added: string[]): { removed: string[]; added: string[] } {
+  const used = new Set<number>();
+  const keptRemoved: string[] = [];
+  for (const row of removed) {
+    const collapsed = collapseSpace(row);
+    const match = added.findIndex((item, itemIndex) => !used.has(itemIndex) && collapseSpace(item) === collapsed);
+    if (match >= 0) {
+      used.add(match);
+      continue;
+    }
+    if (collapsed.length === 0) continue;
+    keptRemoved.push(row);
+  }
+  const keptAdded: string[] = [];
+  added.forEach((item, itemIndex) => {
+    if (used.has(itemIndex) || collapseSpace(item).length === 0) return;
+    keptAdded.push(item);
+  });
+  return { removed: keptRemoved, added: keptAdded };
 }
 
 const IMPORT_LINE = /^(?:import\s|using\s|from\s+\S+\s+import\b|#include\s)/;
@@ -115,10 +138,7 @@ export function diffBodyRows(input: {
   const filtered = input.hideWhitespace ? withoutWhitespaceChanges(original) : original;
   const folded = foldDiffLines(filtered);
   const originalChanges = hasEdits(foldDiffLines(original));
-  if (folded.some((row) => row.kind === "line")) {
-    if (!hasEdits(folded) && originalChanges && input.hideWhitespace) {
-      return { rows: [], whitespaceHidden: true };
-    }
+  if (hasVisibleRows(folded)) {
     if (input.loadFull && input.source != null && isUnifiedDiff(filtered)) {
       return { rows: expandDiffLines(filtered, input.source), whitespaceHidden: false };
     }
@@ -127,11 +147,12 @@ export function diffBodyRows(input: {
   if (input.hideWhitespace && originalChanges) {
     return { rows: [], whitespaceHidden: true };
   }
-  if (!isUnifiedDiff(original)) {
-    const tone = rawTone(input.status, input.added, input.removed);
-    if (tone) {
+  const tone = rawTone(input.status, input.added, input.removed);
+  if (tone) {
+    const lines = rawBodyLines(original, tone);
+    if (lines.length > 0) {
       return {
-        rows: contentLines(original).map((text, index) =>
+        rows: lines.map((text, index) =>
           diffLine(tone, text, tone === "del" ? index + 1 : null, tone === "add" ? index + 1 : null),
         ),
         whitespaceHidden: false,
@@ -139,6 +160,23 @@ export function diffBodyRows(input: {
     }
   }
   return { rows: [], whitespaceHidden: false };
+}
+
+function hasVisibleRows(rows: DiffFoldRow[]): boolean {
+  return rows.some((row) => row.kind === "line" && row.tone !== "meta");
+}
+
+/** 统一 diff 没形成 hunk 时，仍把新增行或删除行画出来。裸正文则整段上色。 */
+function rawBodyLines(diff: string, tone: "add" | "del"): string[] {
+  if (!isUnifiedDiff(diff)) return contentLines(diff);
+  const mark = tone === "add" ? "+" : "-";
+  const header = tone === "add" ? "+++" : "---";
+  const lines: string[] = [];
+  for (const line of diff.split(/\r?\n/)) {
+    if (line.startsWith(header)) continue;
+    if (line.startsWith(mark)) lines.push(line.slice(1));
+  }
+  return lines;
 }
 
 function hasEdits(rows: DiffFoldRow[]): boolean {

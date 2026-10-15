@@ -1,5 +1,5 @@
 import { useRef, type RefObject } from "react";
-import { ArrowUp, ChevronDown, Cpu, Lightbulb, Plus, Shield, Target } from "lucide-react";
+import { ArrowUp, ChevronDown, Lightbulb, Plus, Shield, Target } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useElementWidth } from "@/shared/dom/useElementWidth";
@@ -148,8 +148,8 @@ export function ComposerBar({
             type="button"
             title={modelButton}
             className={cn(
-              "inline-flex h-8 min-w-0 items-center justify-center gap-1 overflow-hidden rounded-full text-sm text-[#cfcfcf] hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40",
-              icons ? "w-8 px-0" : density === "compact" ? "max-w-[6.5rem] px-2" : "max-w-52 px-2",
+              "inline-flex h-8 min-w-0 items-center justify-center gap-1 overflow-hidden rounded-full px-2 text-sm text-[#cfcfcf] hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40",
+              icons || density === "compact" ? "max-w-[8.5rem]" : "max-w-52",
             )}
             data-model-chip
             aria-label="模型"
@@ -161,9 +161,7 @@ export function ComposerBar({
               onToggleMenu("model");
             }}
           >
-            {icons ? (
-              <Cpu className="h-3.5 w-3.5 shrink-0" />
-            ) : modelName ? (
+            {modelName ? (
               <span className="inline-flex min-w-0 items-center gap-1">
                 <span className="min-w-0 truncate">{modelName}</span>
                 {effortLabel ? (
@@ -175,7 +173,7 @@ export function ComposerBar({
             ) : (
               <span className="min-w-0 truncate">{modelButton}</span>
             )}
-            {icons ? null : <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />}
+            <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />
           </button>
         )}
         {editing && (

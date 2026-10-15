@@ -15,6 +15,7 @@ import { MentionMenu } from "./MentionMenu";
 import { ModelMenu } from "./ModelMenu";
 import { SkillMenu } from "./SkillMenu";
 import { deriveComposerView } from "./composer-view";
+import { GoalStatusBar } from "./GoalStatusBar";
 import { effortForModel } from "./composer-submit";
 import { fastTier, tuningForModel } from "./model-picker";
 import { useComposerMenu } from "./useComposerMenu";
@@ -356,17 +357,9 @@ export default function ComposerPreview() {
             onPick={choose}
           />
         )}
+        {view.goalStatus ? <GoalStatusBar text={view.goalStatus} /> : null}
         <div className="min-w-0 rounded-[18px] border border-[#2a2a2a] bg-[#171717]">
           <div className="min-w-0 overflow-hidden px-3 pt-3">
-            {view.goalStatus ? (
-              <p
-                data-goal-status
-                title={view.goalStatus}
-                className="mb-1 truncate px-1 text-xs leading-5 text-fuchsia-300"
-              >
-                {view.goalStatus}
-              </p>
-            ) : null}
             <ComposerInput
               text={text}
               placeholder={view.placeholder}

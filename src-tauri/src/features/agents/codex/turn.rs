@@ -846,10 +846,15 @@ fn normalize_goal_status(status: &str) -> String {
 
 /// 协议字段是 camelCase（`tokenBudget`）。兼容 snake_case。0 是有效用量，不能丢掉。
 fn goal_usage(goal: &Value) -> (Option<i64>, Option<i64>, Option<i64>) {
+    let nested = goal.get("usage").filter(|value| value.is_object());
     (
-        goal_number(goal, &["tokenBudget", "token_budget"]),
-        goal_number(goal, &["tokensUsed", "tokens_used"]),
-        goal_number(goal, &["timeUsedSeconds", "time_used_seconds"]),
+        goal_number(goal, &["tokenBudget", "token_budget"])
+            .or_else(|| nested.and_then(|value| goal_number(value, &["tokenBudget", "token_budget"]))),
+        goal_number(goal, &["tokensUsed", "tokens_used"])
+            .or_else(|| nested.and_then(|value| goal_number(value, &["tokensUsed", "tokens_used"]))),
+        goal_number(goal, &["timeUsedSeconds", "time_used_seconds"]).or_else(|| {
+            nested.and_then(|value| goal_number(value, &["timeUsedSeconds", "time_used_seconds"]))
+        }),
     )
 }
 
@@ -1062,6 +1067,24 @@ mod goal_tests {
                 assert_eq!(time_used_seconds, Some(120));
             }
             _ => panic!("goal usage"),
+        }
+
+        match goal_snapshot_event(Some(&json!({
+            "objective": "把测试补上",
+            "status": "active",
+            "usage": { "token_budget": 50000, "tokensUsed": 12500, "time_used_seconds": 90 }
+        }))) {
+            SessionEventBody::Goal {
+                token_budget,
+                tokens_used,
+                time_used_seconds,
+                ..
+            } => {
+                assert_eq!(token_budget, Some(50000));
+                assert_eq!(tokens_used, Some(12500));
+                assert_eq!(time_used_seconds, Some(90));
+            }
+            _ => panic!("nested goal usage"),
         }
     }
 }

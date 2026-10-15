@@ -126,6 +126,79 @@ test("add-only and delete-only file bodies render as inserts and deletions", () 
   );
 });
 
+test("hiding whitespace drops only lines that differ by spaces", () => {
+  const split = ["@@ -1,2 +1,2 @@", "-ab", "-c", "+a", "+bc"].join("\n");
+  const kept = withoutWhitespaceChanges(split);
+  assert.equal(kept.includes("-ab"), true);
+  assert.equal(kept.includes("+a"), true);
+  assert.equal(kept.includes("+bc"), true);
+  const body = diffBodyRows({
+    diff: split,
+    status: "M",
+    added: 2,
+    removed: 2,
+    source: null,
+    loadFull: false,
+    hideWhitespace: true,
+    hideImports: false,
+  });
+  assert.equal(body.whitespaceHidden, false);
+  assert.deepEqual(
+    body.rows.filter((row) => row.kind === "line").map((row) => (row.kind === "line" ? `${row.tone}:${row.text}` : "")),
+    ["del:ab", "del:c", "add:a", "add:bc"],
+  );
+
+  const mixed = ["@@ -1,3 +1,3 @@", " head", "-a b", "-old", "+a  b", "+new", " tail"].join("\n");
+  const mixedBody = diffBodyRows({
+    diff: mixed,
+    status: "M",
+    added: 2,
+    removed: 2,
+    source: null,
+    loadFull: false,
+    hideWhitespace: true,
+    hideImports: false,
+  });
+  assert.equal(mixedBody.whitespaceHidden, false);
+  assert.deepEqual(
+    mixedBody.rows.filter((row) => row.kind === "line").map((row) => (row.kind === "line" ? `${row.tone}:${row.text}` : "")),
+    ["context:head", "del:old", "add:new", "context:tail"],
+  );
+});
+
+test("a new or deleted file still renders when the diff has no hunk header", () => {
+  const added = diffBodyRows({
+    diff: ["diff --git a/fresh.txt b/fresh.txt", "new file mode 100644", "--- /dev/null", "+++ b/fresh.txt", "+one", "+two"].join(
+      "\n",
+    ),
+    status: "A",
+    added: 2,
+    removed: 0,
+    source: null,
+    loadFull: false,
+    hideWhitespace: false,
+    hideImports: false,
+  });
+  assert.deepEqual(
+    added.rows.filter((row) => row.kind === "line").map((row) => (row.kind === "line" ? `${row.tone}:${row.text}` : "")),
+    ["add:one", "add:two"],
+  );
+  const removed = diffBodyRows({
+    diff: ["diff --git a/old.txt b/old.txt", "deleted file mode 100644", "--- a/old.txt", "-gone"].join("\n"),
+    status: "D",
+    added: 0,
+    removed: 1,
+    source: null,
+    loadFull: false,
+    hideWhitespace: false,
+    hideImports: false,
+  });
+  assert.deepEqual(
+    removed.rows.filter((row) => row.kind === "line").map((row) => (row.kind === "line" ? `${row.tone}:${row.text}` : "")),
+    ["del:gone"],
+  );
+});
+
 test("hiding whitespace keeps a whitespace-only diff marked instead of empty of files", () => {
   const body = diffBodyRows({
     diff: ["@@ -1 +1 @@", "-a b", "+a  b"].join("\n"),

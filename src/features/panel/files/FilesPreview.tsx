@@ -2,9 +2,13 @@ import { useEffect, useState } from "react";
 
 import { appendSnippet, insertComposerText, subscribeComposerInsert } from "@/shared/composer-insert";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
+import { resolvePreviewPath } from "../core/preview-kind";
+import { FileContextMenu } from "./FileContextMenu";
 import { FilePreview } from "./FilePreview";
 import { projectIdForRoot } from "./preview-project";
 import { FileSearchDialog } from "./FileSearchDialog";
+import { baseName } from "./path";
+import { useAttachFile } from "./useAttachFile";
 import { WorkspaceTree } from "./WorkspaceTree";
 
 const SESSION = "preview";
@@ -19,6 +23,8 @@ export default function FilesPreview() {
   const [line, setLine] = useState<number | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [draft, setDraft] = useState("");
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string } | null>(null);
+  const attachFile = useAttachFile(SESSION);
 
   useEffect(
     () =>
@@ -105,7 +111,7 @@ export default function FilesPreview() {
                 setPath(next);
                 setLine(null);
               }}
-              onContextMenu={() => {}}
+              onContextMenu={(next, event) => setContextMenu({ x: event.clientX, y: event.clientY, path: next })}
             />
           ) : (
             <p className="px-2 py-6 text-center text-xs text-zinc-500">{error || DESKTOP_ZH.filesReading}</p>
@@ -121,6 +127,18 @@ export default function FilesPreview() {
             setLine(nextLine);
             setSearchOpen(false);
           }}
+        />
+      ) : null}
+      {contextMenu ? (
+        <FileContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onAdd={() => {
+            const absolute = resolvePreviewPath(root, contextMenu.path);
+            if (absolute) attachFile(absolute, baseName(absolute));
+            setContextMenu(null);
+          }}
+          onClose={() => setContextMenu(null)}
         />
       ) : null}
     </div>

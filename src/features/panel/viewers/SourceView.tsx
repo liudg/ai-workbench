@@ -24,7 +24,7 @@ export function SourceView({ text, line }: { text: string; line: number }) {
             className={cn("flex min-w-0", hit && "bg-[#1e2a3a]")}
           >
             <span className="w-10 shrink-0 select-none px-2 text-right text-[#666]">{number}</span>
-            <span className="min-w-0 flex-1 whitespace-pre-wrap break-words px-2">
+            <span className="min-w-0 flex-1 select-text whitespace-pre-wrap break-words px-2">
               <HighlightedText text={content} />
             </span>
           </div>

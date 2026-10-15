@@ -49,8 +49,9 @@ export function FilePreview({
   quotePath?: string;
   onQuote: (quote: string) => void;
 }) {
-  const image = previewKindForPath(path) === "image";
-  const state = usePreviewFile(projectId, image ? "" : path);
+  const extensionImage = previewKindForPath(path) === "image";
+  const state = usePreviewFile(projectId, extensionImage ? "" : path);
+  const image = extensionImage || (state.status === "ready" && state.kind === "image");
   const picture = usePreviewImage(projectId, image ? path : "");
   const rootRef = useRef<HTMLDivElement>(null);
 
