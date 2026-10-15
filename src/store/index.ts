@@ -24,7 +24,7 @@ export const useWorkbench = create<WorkbenchState>()((set, get) => ({
   ...createPanelSlice(set, get),
 }));
 
-// 侧栏状态来自会话列表刷新。结束且当时没打开，就记一笔「新」。
+// 侧栏状态来自会话列表刷新。结束且当时没打开，就记一笔未读。
 useWorkbench.subscribe((state, previous) => {
   if (
     state.sessions === previous.sessions &&

@@ -232,10 +232,10 @@ function UnreadFinishedMark() {
   return (
     <span
       data-unread-finished=""
-      className="inline-flex h-3.5 shrink-0 items-center rounded bg-[#4f8dff] px-1 text-[10px] font-medium leading-none text-white"
-    >
-      新
-    </span>
+      title="未读"
+      aria-label="未读"
+      className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[#4f8dff]"
+    />
   );
 }
 function MenuItem({
