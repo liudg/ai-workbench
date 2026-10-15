@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import { showsFileChanges } from "@/features/changes-model/capabilities";
 import { turnChanges } from "@/features/changes-model/diff-parse";
@@ -6,14 +6,15 @@ import { useChangeCapabilities } from "@/features/changes-model/use-changes";
 import { ChangeCard } from "../cards/ChangeCard";
 import { EventItem } from "../events/EventItem";
 import { collapsedTurnSummary, isProcess } from "./timeline";
+import { ActivityStream } from "./ActivityStream";
 import { TurnFoldLine } from "./TurnFoldLine";
 import { SessionAgentIcon } from "@/features/sidebar/sessions/SessionAgentIcon";
 import { AGENT_LABELS, type Session, type SessionEvent } from "@/types";
 import { agentTurnName, useAgentIdentity } from "../events/use-agent-identity";
 
 /**
- * 一轮结束后的过程条。名称和用时在同一行，工具芯片留在行下。
- * 展开后补上旁白和思考；最终答复留在下面，并只标一次 Agent。
+ * 一轮结束后的过程条。名称和用时在同一行。
+ * 收起时只留活动摘要；展开后补上旁白，思考最多一条。最终答复留在下面。
  */
 export function TurnProcess({
   events,
@@ -23,6 +24,7 @@ export function TurnProcess({
   resolvedAnswers,
   expanded,
   onToggle,
+  onInteract,
 }: {
   events: SessionEvent[];
   answerId: string | null;
@@ -31,8 +33,8 @@ export function TurnProcess({
   resolvedAnswers: ReadonlyMap<string, string>;
   expanded: boolean;
   onToggle: () => void;
+  onInteract?: () => void;
 }) {
-  const [thinkingOpenIds, setThinkingOpenIds] = useState<ReadonlySet<string>>(new Set());
   const answerIndex = answerId == null ? -1 : events.findIndex((event) => event.id === answerId);
   const before = answerIndex >= 0 ? events.slice(0, answerIndex) : events;
   const answer = answerIndex >= 0 ? events[answerIndex] : null;
@@ -57,19 +59,6 @@ export function TurnProcess({
         event.kind === "prompt" ? (resolvedAnswers.get(event.prompt_id) ?? null) : null
       }
       showAgentLabel={showAgentLabel}
-      thinkingOpen={event.kind === "thinking" ? thinkingOpenIds.has(event.id) : undefined}
-      onToggleThinking={
-        event.kind === "thinking"
-          ? () => {
-              setThinkingOpenIds((prev) => {
-                const next = new Set(prev);
-                if (next.has(event.id)) next.delete(event.id);
-                else next.add(event.id);
-                return next;
-              });
-            }
-          : undefined
-      }
     />
   );
 
@@ -82,9 +71,14 @@ export function TurnProcess({
         onToggle={onToggle}
         icon={<SessionAgentIcon identity={identity} className="h-4 w-4" />}
       />
-      {(expanded ? process : process.filter((event) => event.kind === "tool-call")).map((event) =>
-        renderEvent(event, false),
-      )}
+      <ActivityStream
+        events={process}
+        session={session}
+        resolvedAnswers={resolvedAnswers}
+        showAgentLabel={() => false}
+        toolsOnly={!expanded}
+        onInteract={onInteract}
+      />
       {answer ? renderEvent(answer, false) : null}
       {chromeAfter.map((event) => renderEvent(event, false))}
       {changes ? <ChangeCard changes={changes} /> : null}

@@ -185,9 +185,10 @@ function pushSettled(blocks: TimelineNode[], events: readonly SessionEvent[]) {
 
 /**
  * 把事件日志分成可渲染的块。
- * 正在跑的一轮收成一块，对话里用折叠行标「正在处理」；工具调用各自留在块里。
+ * 正在跑的一轮收成一块，对话里用折叠行标「正在处理」。
  * 停在提问时保持展开，方便回答。
  * 已结束的一轮把旁白、思考和工具调用收成一块，答复单独留在下面。
+ * 相邻工具再收成一行是展示层的事，这里仍按事件留下。
  * 阶段来自任意适配器写入的 `phase`，这里不看 AgentKind。
  */
 export function buildTimeline(

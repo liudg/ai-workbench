@@ -149,5 +149,11 @@ export const DESKTOP_ZH = {
   elicitAccept: "接受",
   elicitDecline: "拒绝",
   elicitCancel: "取消",
+  /** 相邻工具收成一行。名字只来自这一条事件，不查目录。 */
+  activityUsedIntegrations: "已使用 {names} 集成运行了命令",
+  activityRanCommands: "已运行 {count} 条命令",
+  activitySearchedWeb: "已搜索网页",
+  activityThinking: "思考",
+  activityCommandStep: "命令",
   other: "其他",
 } as const;
