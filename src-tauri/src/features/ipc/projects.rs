@@ -20,7 +20,7 @@ pub struct CreateProjectResult {
     pub warning: Option<String>,
 }
 
-fn notify_projects_changed<R: Runtime>(app: &AppHandle<R>) {
+pub(crate) fn notify_projects_changed<R: Runtime>(app: &AppHandle<R>) {
     let _ = app.emit(EVT_PROJECTS_CHANGED, ());
 }
 
@@ -72,6 +72,7 @@ pub fn create_project<R: Runtime>(
             created_at: now,
             updated_at: now,
             external: false,
+            standalone: false,
         },
     )?;
     Ok(CreateProjectResult { project, warning })
@@ -103,6 +104,7 @@ pub fn import_project<R: Runtime>(
             created_at: now,
             updated_at: now,
             external: false,
+            standalone: false,
         },
     )
 }

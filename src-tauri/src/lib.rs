@@ -22,6 +22,7 @@ use std::sync::Arc;
 
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
+use features::chats::TaskFolderStore;
 use features::projects::ProjectStore;
 use features::sessions::{EventEmitter, SessionManager};
 
@@ -30,6 +31,8 @@ macro_rules! workbench_handler {
     ($($extra:path),* $(,)?) => {
         tauri::generate_handler![
             $crate::features::ipc::projects::list_projects,
+            $crate::features::ipc::chats::task_folder,
+            $crate::features::ipc::chats::set_task_folder,
             $crate::features::ipc::projects::create_project,
             $crate::features::ipc::projects::import_project,
             $crate::features::ipc::projects::remove_project,
@@ -103,6 +106,8 @@ pub(crate) fn manage_state<R: Runtime>(
 ) -> Result<(), String> {
     let store = ProjectStore::load(data_dir).map_err(|e| format!("加载项目列表失败: {e}"))?;
     app.manage(store);
+    let folders = TaskFolderStore::load(data_dir).map_err(|e| format!("加载任务文件夹失败: {e}"))?;
+    app.manage(folders);
     app.manage(SessionManager::new(app_emitter(app.clone()), data_dir));
     app.manage(features::preview::search::IndexHub::default());
     app.manage(features::preview::tree::FilterHub::default());

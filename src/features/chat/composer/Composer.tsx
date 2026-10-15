@@ -16,6 +16,7 @@ import { SkillMenu } from "./SkillMenu";
 import { SlashMenu } from "./SlashMenu";
 import { GoalStatusBar } from "./GoalStatusBar";
 import { useComposerController } from "./useComposerController";
+import { WorkContextPicker } from "./WorkContextPicker";
 
 export function Composer({
   session,
@@ -125,6 +126,13 @@ export function Composer({
             />
           ) : null}
           <div className="min-w-0 overflow-hidden px-3 pt-3">
+          {c.workContext ? (
+            <WorkContextPicker
+              projects={c.workContext.projects}
+              canRetarget={c.workContext.canRetarget}
+              onPickProject={c.workContext.onPickProject}
+            />
+          ) : null}
           <TextSnippetChip snippets={c.snippets} onClear={c.dismissSnippets} />
           <Attachments files={c.files} imagesOn={view.imagesOn} onRemove={c.removeFile} />
           <ComposerInput

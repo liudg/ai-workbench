@@ -40,7 +40,7 @@ export function SessionRows({
           className="absolute inset-x-0 overflow-hidden"
         >
           <SessionRow
-            projectId={projectId}
+            projectId={session.project_id || projectId}
             session={session}
             active={selected && session.id === activeSessionId}
             readOnly={readOnlyIds.has(session.id)}

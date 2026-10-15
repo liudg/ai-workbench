@@ -1,7 +1,8 @@
 import { useCallback, useRef, useState } from "react";
-import { Ellipsis, Plus } from "lucide-react";
+import { Ellipsis } from "lucide-react";
 
 import { useDismiss } from "../use-dismiss";
+import { SidebarPlusButton } from "./SidebarPlusButton";
 import { useProjectHeader } from "./use-project-header";
 
 export function ProjectHeader() {
@@ -31,15 +32,7 @@ export function ProjectHeader() {
             </div>
           )}
         </div>
-        <button
-          type="button"
-          className="flex h-7 w-7 items-center justify-center rounded-md text-[#888] transition-colors hover:bg-white/5 hover:text-[#e8e8e8]"
-          aria-label="创建项目"
-          title="创建项目"
-          onClick={() => openDialog("create")}
-        >
-          <Plus className="h-[18px] w-[18px]" strokeWidth={2} />
-        </button>
+        <SidebarPlusButton label="创建项目" onClick={() => openDialog("create")} />
       </div>
     </div>
   );

@@ -1,8 +1,10 @@
+import { useState } from "react";
 import { ArrowLeft, RefreshCw } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import type { AgentInstallation } from "@/types";
 import { useAgentSettings } from "./useAgentSettings";
+import { useTaskFolder } from "./useTaskFolder";
 import { Button } from "@/components/ui/button";
 import { agentCardFace, statusLabel, type AgentCardFace } from "./agent-card";
 
@@ -120,8 +122,44 @@ function AgentsPanel() {
   );
 }
 
+function GeneralPanel() {
+  const { folder, error, busy, change } = useTaskFolder();
+  return (
+    <section data-settings-panel="general">
+      <h2 className="text-base font-medium text-zinc-100">无项目任务文件夹</h2>
+      <p className="mt-1 max-w-lg text-sm leading-6 text-zinc-500">
+        在项目外启动的任务默认存储数据的位置。
+      </p>
+      <div className="mt-6 flex items-center justify-between gap-4 rounded-xl border border-zinc-800 bg-[#161616] px-4 py-3">
+        <span
+          data-task-folder-label=""
+          title={folder?.path ?? ""}
+          className="min-w-0 truncate text-sm text-zinc-100"
+        >
+          {folder?.label ?? "正在读取…"}
+        </span>
+        <button
+          type="button"
+          data-task-folder-change=""
+          disabled={busy || !folder}
+          className="shrink-0 rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-100 hover:bg-zinc-800 disabled:opacity-50"
+          onClick={() => void change()}
+        >
+          更改
+        </button>
+      </div>
+      {error && (
+        <p className="mt-3 text-sm text-red-300" role="alert">
+          {error}
+        </p>
+      )}
+    </section>
+  );
+}
+
 export function SettingsView() {
   const { closeSettings } = useAgentSettings();
+  const [section, setSection] = useState<"agents" | "general">("agents");
 
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col">
@@ -143,17 +181,36 @@ export function SettingsView() {
             <li>
               <button
                 type="button"
-                className="w-full rounded-md bg-zinc-800 px-3 py-2 text-left text-sm text-zinc-50"
-                aria-current="page"
+                data-settings-nav="agents"
+                className={cn(
+                  "w-full rounded-md px-3 py-2 text-left text-sm",
+                  section === "agents" ? "bg-zinc-800 text-zinc-50" : "text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-100",
+                )}
+                aria-current={section === "agents" ? "page" : undefined}
+                onClick={() => setSection("agents")}
               >
                 本地 Agent
+              </button>
+            </li>
+            <li>
+              <button
+                type="button"
+                data-settings-nav="general"
+                className={cn(
+                  "w-full rounded-md px-3 py-2 text-left text-sm",
+                  section === "general" ? "bg-zinc-800 text-zinc-50" : "text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-100",
+                )}
+                aria-current={section === "general" ? "page" : undefined}
+                onClick={() => setSection("general")}
+              >
+                常规
               </button>
             </li>
           </ul>
         </nav>
         <div className="min-w-0 flex-1 overflow-y-auto px-6 py-6">
           <div className="mx-auto max-w-2xl">
-            <AgentsPanel />
+            {section === "agents" ? <AgentsPanel /> : <GeneralPanel />}
           </div>
         </div>
       </div>

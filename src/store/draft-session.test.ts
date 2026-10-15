@@ -317,4 +317,11 @@ test("whitespace does not block an image-only first send", () => {
   const body = firstSendBody(draft({ text: "  \n" }), { text: "  \n", images: ["shot.png"] });
   assert.deepEqual(body.images, ["shot.png"]);
   assert.equal(body.text, "  \n");
+  assert.equal(body.standalone, false);
+});
+
+test("a standalone draft asks the backend to create the task folder on first send", () => {
+  const body = firstSendBody(draft({ projectId: "standalone" }), { text: "整理发布说明" });
+  assert.equal(body.standalone, true);
+  assert.equal(body.projectId, "standalone");
 });

@@ -35,6 +35,9 @@ pub struct CreateAndSendResult {
     pub session: Session,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message_error: Option<String>,
+    /// 独立聊天首发时新建的隐藏项目。普通会话没有这一项。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project: Option<Project>,
 }
 
 pub(crate) fn created_without_first_message(err: &str) -> String {
@@ -101,6 +104,14 @@ impl SessionManager {
             }
         }
         (listed, errors)
+    }
+
+    pub fn session_project_id(&self, session_id: &str) -> Option<String> {
+        self.entries
+            .lock()
+            .unwrap()
+            .get(session_id)
+            .map(|entry| entry.meta.project_id.clone())
     }
 
     /// 只解析工作台已保存的项目。Agent 目录里的其它 cwd 不能当成项目打开。
@@ -369,6 +380,7 @@ impl SessionManager {
                 } else {
                     Some(created_without_first_message(&err))
                 },
+                project: None,
             });
         }
         self.release_sidebar(&session_id);
@@ -380,6 +392,7 @@ impl SessionManager {
             .map(|entry| CreateAndSendResult {
                 session: entry.meta.clone(),
                 message_error: None,
+                project: None,
             })
             .ok_or_else(|| "会话没有建立".to_string())
     }

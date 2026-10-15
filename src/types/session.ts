@@ -18,6 +18,8 @@ export interface Project {
   updated_at: number;
   /** 保留字段。侧边栏不再挂上来自 Agent 目录、尚未导入的项目。 */
   external?: boolean;
+  /** 独立聊天的工作目录。侧栏放在「聊天」里，不进项目分组。 */
+  standalone?: boolean;
 }
 
 export interface Session {
