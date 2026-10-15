@@ -29,5 +29,5 @@ test("reduced motion keeps the thinking label still and readable", () => {
 });
 
 test("the thinking line is mounted only while thinking is still in progress", () => {
-  assert.match(stream, /\{thinking && !toolsOnly \? <ThinkingStatus \/> : null\}/);
+  assert.match(stream, /\{thinking \? <ThinkingStatus \/> : null\}/);
 });

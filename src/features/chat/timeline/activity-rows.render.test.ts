@@ -41,7 +41,7 @@ const session: Session = {
 };
 
 const settledEvents: SessionEvent[] = [
-  event("note", { kind: "agent-message", text: "旁白不该出现在收起的回合里。", phase: "commentary" }),
+  event("note", { kind: "agent-message", text: "旁白按顺序留下。", phase: "commentary" }),
   event("t1", { kind: "thinking", text: "先看背包里的宝石。" }),
   event("m1", {
     kind: "tool-call",
@@ -58,7 +58,7 @@ const settledEvents: SessionEvent[] = [
   }),
 ];
 
-test("a settled stream collapses tool rows and hides thinking", async () => {
+test("a settled stream collapses tool rows and hides finished thinking", async () => {
   const mod = await server.ssrLoadModule("/src/features/chat/timeline/ActivityStream.tsx");
   const html = renderToStaticMarkup(
     createElement(mod.ActivityStream, {
@@ -66,16 +66,14 @@ test("a settled stream collapses tool rows and hides thinking", async () => {
       session,
       resolvedAnswers: new Map(),
       showAgentLabel: () => false,
-      toolsOnly: true,
       settled: true,
-      thinking: true,
     }),
   );
   assert.equal(html.includes('data-activity-settled="true"'), true);
   assert.equal(html.includes("先看背包里的宝石"), false);
   assert.equal(html.includes("再跑一条命令"), false);
   assert.equal(html.includes("正在思考"), false);
-  assert.equal(html.includes("旁白不该出现在收起的回合里"), false);
+  assert.equal(html.includes("旁白按顺序留下"), true);
   assert.equal(html.includes("已使用 unityMCP 集成运行了命令"), true);
   assert.equal(html.includes("已运行 1 条命令"), true);
   assert.equal(html.includes('data-expanded="false"'), true);
@@ -134,5 +132,113 @@ test("a running stream still shows the thinking line and keeps tool rows collaps
   assert.equal(html.includes("先看背包里的宝石"), false);
   assert.equal(html.includes('data-expanded="false"'), true);
   assert.equal(html.includes("data-activity-steps"), false);
-  assert.equal(html.includes("旁白不该出现在收起的回合里"), true);
+  assert.equal(html.includes("旁白按顺序留下"), true);
+});
+
+function commands(prefix: string, count: number): SessionEvent[] {
+  return Array.from({ length: count }, (_, index) =>
+    event(`${prefix}${index}`, {
+      kind: "tool-call",
+      name: "command",
+      summary: `步骤 ${prefix}${index}`,
+      detail: `输出 ${prefix}${index}`,
+    }),
+  );
+}
+
+const nestedTurn: SessionEvent[] = [
+  event("note", { kind: "agent-message", text: "先看表格。", phase: "commentary" }),
+  event("think-a", { kind: "thinking", text: "先看背包里的宝石。" }),
+  ...commands("a", 3),
+  event("think-b", { kind: "thinking", text: "再跑六条。" }),
+  ...commands("b", 6),
+  event("think-c", { kind: "thinking", text: "再跑八条。" }),
+  ...commands("c", 8),
+  event("img", { kind: "tool-call", name: "image", summary: "gem.png", images: ["gem.png"] }),
+  event("mcp", {
+    kind: "tool-call",
+    name: "execute_code",
+    summary: "MCP unityMCP execute_code",
+    detail: "打开了宝石详情",
+  }),
+  event("answer", { kind: "agent-message", text: "目录里有 src。", phase: "final-answer" }),
+];
+
+async function renderProcess(expanded: boolean, agent: Session["agent"]) {
+  const mod = await server.ssrLoadModule("/src/features/chat/timeline/TurnProcess.tsx");
+  return renderToStaticMarkup(
+    createElement(mod.TurnProcess, {
+      events: nestedTurn,
+      answerId: "answer",
+      durationMs: 0,
+      session: { ...session, agent },
+      resolvedAnswers: new Map(),
+      expanded,
+      onToggle: () => {},
+    }),
+  );
+}
+
+test("a collapsed process keeps only the header and hides child activity", async () => {
+  for (const [agent, header] of [
+    ["codex-cli", "Codex CLI · 用时 0s"],
+    ["claude-code", "Claude Code · 用时 0s"],
+  ] as const) {
+    const html = await renderProcess(false, agent);
+    assert.equal(html.includes('data-turn-fold'), true);
+    assert.equal(html.includes(`data-turn-summary="${header}"`), true);
+    assert.equal(html.includes('data-expanded="false"'), true);
+    assert.equal(html.includes('data-expanded="true"'), false);
+    assert.equal(html.includes("data-activity-stream"), false);
+    assert.equal(html.includes("data-activity-group"), false);
+    assert.equal(html.includes("data-viewed-images"), false);
+    assert.equal(html.includes("已运行"), false);
+    assert.equal(html.includes("已使用"), false);
+    assert.equal(html.includes("已查看"), false);
+    assert.equal(html.includes("正在思考"), false);
+    assert.equal(html.includes("先看表格"), false);
+    assert.equal(html.includes("先看背包里的宝石"), false);
+    assert.equal(html.includes("再跑六条"), false);
+    assert.equal(html.includes("再跑八条"), false);
+    assert.equal(html.includes("打开了宝石详情"), false);
+    assert.equal(html.includes("步骤 "), false);
+    assert.equal(html.includes("输出 "), false);
+    assert.equal(html.includes("gem.png"), false);
+    assert.equal(html.includes("目录里有 src"), true);
+    assert.equal(html.indexOf(header) < html.indexOf("目录里有 src"), true);
+  }
+});
+
+test("an expanded process shows collapsed tool, command, MCP, and image rows", async () => {
+  const html = await renderProcess(true, "codex-cli");
+  assert.equal(html.includes('data-turn-summary="Codex CLI · 用时 0s"'), true);
+  assert.equal(html.includes('data-activity-settled="true"'), true);
+  assert.equal(html.includes("先看表格。"), true);
+  assert.equal(html.includes("已运行 3 条命令"), true);
+  assert.equal(html.includes("已运行 6 条命令"), true);
+  assert.equal(html.includes("已运行 8 条命令"), true);
+  assert.equal(html.includes("已查看 1 张图像"), true);
+  assert.equal(html.includes("已使用 unityMCP 集成运行了命令"), true);
+  assert.equal(html.includes("先看背包里的宝石"), false);
+  assert.equal(html.includes("再跑六条"), false);
+  assert.equal(html.includes("再跑八条"), false);
+  assert.equal(html.includes("正在思考"), false);
+  assert.equal(html.includes("打开了宝石详情"), false);
+  assert.equal(html.includes("步骤 "), false);
+  assert.equal(html.includes("输出 "), false);
+  assert.equal(html.includes("gem.png"), false);
+  assert.equal(html.includes("data-activity-steps"), false);
+  assert.equal(html.includes("data-viewed-thumbs"), false);
+  assert.equal(html.includes("目录里有 src"), true);
+  assert.equal((html.match(/data-expanded="true"/g) ?? []).length, 1);
+  assert.equal((html.match(/data-activity-group/g) ?? []).length, 4);
+  assert.equal((html.match(/data-viewed-images/g) ?? []).length, 1);
+  const note = html.indexOf("先看表格");
+  const three = html.indexOf("已运行 3 条命令");
+  const six = html.indexOf("已运行 6 条命令");
+  const eight = html.indexOf("已运行 8 条命令");
+  const images = html.indexOf("已查看 1 张图像");
+  const mcp = html.indexOf("已使用 unityMCP 集成运行了命令");
+  const answer = html.indexOf("目录里有 src");
+  assert.equal(note < three && three < six && six < eight && eight < images && images < mcp && mcp < answer, true);
 });
