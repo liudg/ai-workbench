@@ -1,7 +1,8 @@
 import { backend } from "@/lib/ipc";
 import { useWorkbench } from "@/store";
+import { isDraftId } from "@/store/draft-session";
 import { isMissingSessionError } from "@/store/sync";
-import type { Attachment, PermissionMenu, QueuedTurn, ReviewTargets } from "@/types";
+import type { AgentKind, Attachment, PermissionMenu, QueuedTurn, ReviewTargets } from "@/types";
 import type { FollowUpQueueMode } from "./follow-up-queue-mode";
 import { fileToBase64 } from "./media";
 
@@ -22,6 +23,10 @@ export function storeQueue(sessionId: string, items: QueuedTurn[]) {
 
 export function fetchPermissionMenu(sessionId: string): Promise<PermissionMenu> {
   return backend.permissionMenu(sessionId);
+}
+
+export function fetchDraftPermissionMenu(agent: AgentKind): Promise<PermissionMenu> {
+  return backend.agentPermissionMenu(agent);
 }
 
 export function fetchReviewTargets(sessionId: string): Promise<ReviewTargets> {
@@ -112,17 +117,30 @@ export function pickMentionFiles() {
 }
 
 export function setThreadGoal(sessionId: string, objective: string) {
+  if (isDraftId(sessionId)) {
+    useWorkbench.getState().setDraftGoal(sessionId, objective);
+    return Promise.resolve();
+  }
   return backend.setThreadGoal(sessionId, objective);
 }
 
 export function clearThreadGoal(sessionId: string) {
+  if (isDraftId(sessionId)) {
+    useWorkbench.getState().clearDraftGoal(sessionId);
+    return Promise.resolve();
+  }
   return backend.clearThreadGoal(sessionId);
 }
 
 export function setThreadGoalStatus(sessionId: string, status: "paused" | "active") {
+  if (isDraftId(sessionId)) {
+    useWorkbench.getState().setDraftGoalStatus(sessionId, status);
+    return Promise.resolve();
+  }
   return backend.setThreadGoalStatus(sessionId, status);
 }
 
 export function publishThreadGoal(sessionId: string) {
+  if (isDraftId(sessionId)) return Promise.resolve();
   return backend.publishThreadGoal(sessionId);
 }

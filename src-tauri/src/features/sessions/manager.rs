@@ -23,10 +23,30 @@ use super::catalog::{
     after_list_refresh, catalog_with_ready_retry, command_when_ready, soften_catalog,
     AgentCatalogRefresh, CatalogCache,
 };
+use super::permission_cache::PermissionMenuCache;
 pub use super::log::EventEmitter;
 use super::log::{
     apply_body, prepend_bodies, sidebar_updated_at, SessionEntry, EVT_SESSIONS_CHANGED,
 };
+
+pub struct FirstSendSpec {
+    pub access_mode: Option<String>,
+    pub apply_access: bool,
+    pub network_access: bool,
+    pub writable_roots: Vec<String>,
+    pub profile_id: String,
+    pub apply_tuning: bool,
+    pub model: Option<String>,
+    pub effort: Option<String>,
+    pub apply_service_tier: bool,
+    pub service_tier: Option<String>,
+    pub collaboration_mode: Option<String>,
+    pub goal: Option<String>,
+    pub goal_status: Option<String>,
+    pub text: String,
+    pub images: Vec<String>,
+    pub annotations: Vec<PageAnnotation>,
+}
 
 pub struct SessionManager {
     entries: Arc<Mutex<HashMap<SessionId, SessionEntry>>>,
@@ -34,6 +54,7 @@ pub struct SessionManager {
     directories: Vec<Arc<dyn SessionDirectory>>,
     opening: tokio::sync::Mutex<()>,
     catalog_cache: CatalogCache,
+    permission_cache: PermissionMenuCache,
 }
 
 impl SessionManager {
@@ -44,6 +65,7 @@ impl SessionManager {
             directories: session_directories(),
             opening: tokio::sync::Mutex::new(()),
             catalog_cache: CatalogCache::load(data_dir),
+            permission_cache: PermissionMenuCache::load(data_dir),
         }
     }
 
@@ -83,6 +105,11 @@ impl SessionManager {
         let (listed, _) = self.listed().await;
         let mut sessions = sessions_for_project(&project, &listed);
         let live = self.entries.lock().unwrap();
+        sessions.retain(|session| {
+            live.get(&session.id)
+                .map(|entry| !entry.withhold_sidebar)
+                .unwrap_or(true)
+        });
         for session in &mut sessions {
             if let Some(entry) = live.get(&session.id) {
                 session.status = entry.meta.status;
@@ -97,7 +124,8 @@ impl SessionManager {
         let mut extras: Vec<Session> = live
             .values()
             .filter(|entry| {
-                entry.meta.project_id == project.id
+                !entry.withhold_sidebar
+                    && entry.meta.project_id == project.id
                     && !sessions.iter().any(|session| {
                         session.agent == entry.meta.agent
                             && session.native_id == entry.meta.native_id
@@ -191,7 +219,7 @@ impl SessionManager {
             updated_at: entry.updated_at,
             archived: entry.archived,
         };
-        self.install(meta, Some(handle), rx);
+        self.install(meta, Some(handle), rx, false);
         Ok(())
     }
 
@@ -201,6 +229,17 @@ impl SessionManager {
         project: &Project,
         agent: AgentKind,
         access_mode: Option<String>,
+    ) -> Result<Session, String> {
+        self.start_new_session(project, agent, access_mode, false)
+            .await
+    }
+
+    async fn start_new_session(
+        &self,
+        project: &Project,
+        agent: AgentKind,
+        access_mode: Option<String>,
+        withhold_sidebar: bool,
     ) -> Result<Session, String> {
         let adapter = adapter_for(agent);
         let caps = adapter.capabilities();
@@ -248,7 +287,7 @@ impl SessionManager {
             updated_at: now,
             archived: false,
         };
-        self.install(meta, Some(handle), rx);
+        self.install(meta, Some(handle), rx, withhold_sidebar);
         for directory in &self.directories {
             if directory.kind() == agent {
                 directory.invalidate().await;
@@ -260,6 +299,145 @@ impl SessionManager {
             .get(&session_id)
             .map(|entry| entry.meta.clone())
             .ok_or_else(|| "会话没有建立".to_string())
+    }
+
+    /// 创建、写上草稿里的权限/模型/计划/目标，再发送第一条。
+    /// 发送没有落地就停掉进程并撤掉这次会话，侧栏不会留下空行。
+    pub async fn create_session_and_send(
+        &self,
+        store: &ProjectStore,
+        project: &Project,
+        agent: AgentKind,
+        spec: FirstSendSpec,
+    ) -> Result<Session, String> {
+        let session = self
+            .start_new_session(project, agent, spec.access_mode.clone(), true)
+            .await?;
+        let session_id = session.id.clone();
+        if let Err(err) = self.apply_first_send(store, &session_id, &spec).await {
+            let landed = self
+                .entries
+                .lock()
+                .unwrap()
+                .get(&session_id)
+                .is_some_and(|entry| !entry.withhold_sidebar);
+            if landed {
+                self.emit_changed(&project.id);
+                return self
+                    .entries
+                    .lock()
+                    .unwrap()
+                    .get(&session_id)
+                    .map(|entry| entry.meta.clone())
+                    .ok_or(err);
+            }
+            self.abandon_unsent(&session_id).await;
+            return Err(err);
+        }
+        {
+            let mut entries = self.entries.lock().unwrap();
+            if let Some(entry) = entries.get_mut(&session_id) {
+                entry.withhold_sidebar = false;
+            }
+        }
+        self.emit_changed(&project.id);
+        self.entries
+            .lock()
+            .unwrap()
+            .get(&session_id)
+            .map(|entry| entry.meta.clone())
+            .ok_or_else(|| "会话没有建立".to_string())
+    }
+
+    async fn apply_first_send(
+        &self,
+        store: &ProjectStore,
+        session_id: &str,
+        spec: &FirstSendSpec,
+    ) -> Result<(), String> {
+        if spec.apply_access {
+            self.set_session_access(
+                store,
+                session_id,
+                spec.access_mode.as_deref().unwrap_or("ask"),
+                spec.network_access,
+                spec.writable_roots.clone(),
+                spec.profile_id.clone(),
+            )
+            .await?;
+        }
+        if spec.apply_tuning {
+            self.set_session_tuning(
+                store,
+                session_id,
+                spec.model.clone(),
+                spec.effort.clone(),
+            )
+            .await?;
+        }
+        if spec.apply_service_tier {
+            self.set_session_service_tier(store, session_id, spec.service_tier.clone())
+                .await?;
+        }
+        if spec.collaboration_mode.as_deref() == Some("plan") {
+            self.set_collaboration_mode(store, session_id, "plan").await?;
+        }
+        if let Some(goal) = spec.goal.as_deref().map(str::trim).filter(|goal| !goal.is_empty()) {
+            self.set_thread_goal(store, session_id, goal).await?;
+            if spec.goal_status.as_deref() == Some("paused") {
+                self.set_thread_goal_status(store, session_id, "paused").await?;
+            }
+        }
+        self.send_message(
+            session_id,
+            spec.text.clone(),
+            spec.images.clone(),
+            spec.annotations.clone(),
+        )
+        .await
+    }
+
+    async fn abandon_unsent(&self, session_id: &str) {
+        let Some((agent, native, project_id)) = ({
+            let entries = self.entries.lock().unwrap();
+            entries.get(session_id).map(|entry| {
+                (
+                    entry.meta.agent,
+                    entry.meta.native_id.clone(),
+                    entry.meta.project_id.clone(),
+                )
+            })
+        }) else {
+            return;
+        };
+        if let Some(handle) = self.lookup_agent(session_id) {
+            let _ = handle.stop().await;
+        }
+        let _ = adapter_for(agent).discard_unsent_thread(&native).await;
+        self.entries.lock().unwrap().remove(session_id);
+        self.emit_changed(&project_id);
+    }
+
+    pub fn cached_agent_catalog(&self, kind: AgentKind) -> Result<AgentCatalogRefresh, String> {
+        let catalog = self
+            .catalog_cache
+            .get(kind)
+            .filter(|catalog| catalog.agent.is_none_or(|agent| agent == kind))
+            .ok_or_else(|| "没有已保存的模型列表".to_string())?;
+        Ok(AgentCatalogRefresh {
+            catalog,
+            notice: None,
+        })
+    }
+
+    pub fn draft_permission_menu(&self, kind: AgentKind) -> crate::models::PermissionMenu {
+        if let Some(mut menu) = self.permission_cache.get(kind) {
+            menu.active = None;
+            return menu;
+        }
+        let mut menu = adapter_for(kind).draft_permission_menu();
+        menu.active = None;
+        menu
     }
 
     fn local_count(&self, project_id: &str) -> usize {
@@ -276,6 +454,7 @@ impl SessionManager {
         meta: Session,
         handle: Option<Arc<dyn AgentSession>>,
         mut rx: mpsc::UnboundedReceiver<SessionEventBody>,
+        withhold_sidebar: bool,
     ) {
         let session_id = meta.id.clone();
         self.entries.lock().unwrap().insert(
@@ -287,6 +466,7 @@ impl SessionManager {
                 agent: handle,
                 activity_at: None,
                 queue: Vec::new(),
+                withhold_sidebar,
             },
         );
         // start_session 返回前已经把历史、连接说明和状态放进通道。
@@ -746,10 +926,20 @@ impl SessionManager {
             self.ensure_events(store, session_id).await?;
         }
         let handle = self.agent_handle_ready(session_id).await?;
-        handle
+        let menu = handle
             .permission_menu()
             .await
-            .map_err(|err| err.to_string())
+            .map_err(|err| err.to_string())?;
+        if let Some(kind) = self
+            .entries
+            .lock()
+            .unwrap()
+            .get(session_id)
+            .map(|entry| entry.meta.agent)
+        {
+            self.permission_cache.remember(kind, &menu);
+        }
+        Ok(menu)
     }
 
     pub async fn stop_session(&self, session_id: &str) -> Result<(), String> {

@@ -2,6 +2,7 @@ import { reduceCatalogResult, type CatalogOutcome } from "@/lib/catalog";
 import { backend } from "@/lib/ipc";
 import { withTextSnippet, withoutTextSnippet } from "@/shared/text-snippet";
 import type { AgentKind } from "@/types";
+import { isDraftId } from "../draft-session";
 import { isMissingSessionError } from "../sync";
 import type { WorkspaceSlice, WorkbenchGet, WorkbenchSet } from "../types";
 
@@ -38,6 +39,10 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
     tuning: {},
 
     setSandbox(sessionId, sandbox) {
+      if (isDraftId(sessionId)) {
+        get().setDraftSandbox(sessionId, sandbox);
+        return;
+      }
       const mode = sandbox.profileId ? "ask" : sandbox.mode;
       const agent = agentForSession(get, sessionId);
       set((s) => ({
@@ -53,6 +58,10 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
     },
 
     async loadCatalog(sessionId) {
+      if (isDraftId(sessionId)) {
+        await get().loadDraftCatalog(sessionId);
+        return;
+      }
       const epoch = (catalogEpoch.get(sessionId) ?? 0) + 1;
       catalogEpoch.set(sessionId, epoch);
       const current = () => catalogEpoch.get(sessionId) === epoch;
@@ -84,6 +93,10 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
     },
 
     setTuning(sessionId, model, effort, serviceTier) {
+      if (isDraftId(sessionId)) {
+        get().setDraftTuning(sessionId, model, effort, serviceTier);
+        return;
+      }
       set((s) => {
         const previous = s.tuning[sessionId];
         const nextTier = serviceTier === undefined ? previous?.serviceTier : serviceTier;
@@ -195,14 +208,23 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
     },
 
     async sendMessage(sessionId, text, images, annotations) {
+      if (isDraftId(sessionId)) {
+        return get().commitDraftMessage(sessionId, text, images, annotations);
+      }
       try {
         await backend.sendMessage(sessionId, text, images, annotations);
+        return true;
       } catch (e) {
         reportSessionError(get, set, sessionId, e);
+        return false;
       }
     },
 
     async setCollaborationMode(sessionId, mode) {
+      if (isDraftId(sessionId)) {
+        get().setDraftCollaboration(sessionId, mode);
+        return;
+      }
       try {
         await backend.setCollaborationMode(sessionId, mode);
       } catch (e) {

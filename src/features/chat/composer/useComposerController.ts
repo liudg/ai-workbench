@@ -8,6 +8,8 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 
+import { useWorkbench } from "@/store";
+import { isDraftId } from "@/store/draft-session";
 import type { ReviewStart, Session, SessionEvent, SessionSandbox } from "@/types";
 import {
   addComposerDir,
@@ -59,7 +61,10 @@ import { useReviewDismiss } from "./useReviewDismiss";
 export function useComposerController(session: Session, events: SessionEvent[]) {
   const actions = useComposerActions();
   const data = useComposerSession(session);
-  const [text, setText] = useState("");
+  const draftSession = isDraftId(session.id);
+  const [text, setText] = useState(() =>
+    draftSession ? (useWorkbench.getState().drafts[session.project_id]?.text ?? "") : "",
+  );
   const [caret, setCaret] = useState(0);
   const [menu, setMenu] = useState<null | "access" | "model" | "attach">(null);
   const [reviewOpen, setReviewOpen] = useState(false);
@@ -85,7 +90,10 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
   useReviewDismiss(reviewOpen, reviewRootRef, closeReview);
 
   const caps = composerCaps(data.catalog, data.profile);
-  const permissionMenu = useComposerFeeds(session.id, actions.loadCatalog);
+  const permissionMenu = useComposerFeeds(session.id, session.agent, actions.loadCatalog);
+  const inputLocked = useWorkbench(
+    (s) => draftSession && s.drafts[session.project_id]?.phase === "creating",
+  );
   const sandbox = data.sandbox ?? sandboxFromMenu(permissionMenu);
   const supportsGoals = Boolean(caps?.supports_goals);
   const goal = useGoalDraft(session.id, supportsGoals, events);
@@ -108,6 +116,7 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     goalDraft: goal.localGoal,
     goalLive: goal.live,
     goal: goal.snapshot,
+    inputLocked,
   });
   const goalSupport = goal.publishError ? "unsupported" : view.goalSupport;
   const mentions = useMentionMenu({
@@ -178,6 +187,11 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     if (goal.publishError) setNotice(goal.publishError);
   }, [goal.publishError]);
 
+  useEffect(() => {
+    if (!draftSession) return;
+    useWorkbench.getState().rememberDraftText(session.project_id, text);
+  }, [draftSession, session.project_id, text]);
+
   const snippetCount = data.snippets.length;
   const seenSnippets = useRef(snippetCount);
   useEffect(() => {
@@ -220,6 +234,7 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     projectPath: data.projectPath,
     skillMatches: view.skillMatches.length,
     slashMatches: view.slashMatches.length,
+    holdUntilAccepted: draftSession,
   };
 
   return {

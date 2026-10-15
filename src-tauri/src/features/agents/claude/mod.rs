@@ -66,6 +66,19 @@ impl AgentAdapter for ClaudeCodeAdapter {
         Some("/agent-icons/claude.svg")
     }
 
+    fn draft_permission_menu(&self) -> crate::models::PermissionMenu {
+        let active = self
+            .profile()
+            .default_access
+            .filter(|mode| !mode.is_empty())
+            .unwrap_or_else(|| "full".into());
+        permission::permission_menu(&active)
+    }
+
+    async fn discard_unsent_thread(&self, native_id: &str) -> Result<(), AgentError> {
+        history::remove_session_file(native_id).map_err(AgentError::Runtime)
+    }
+
     fn profile(&self) -> AgentProfile {
         AgentProfile {
             kind: self.kind(),

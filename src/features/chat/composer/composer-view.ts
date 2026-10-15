@@ -52,6 +52,8 @@ export interface ComposerViewInput {
   /** 服务端还有未清除的目标，而且用户没有刚关掉芯片。 */
   goalLive?: boolean;
   goal?: GoalSnapshot | null;
+  /** 草稿正在创建会话。队列型 Agent 这时也不能再发一条。 */
+  inputLocked?: boolean;
 }
 
 /** 会话目录优先。静态 profile 只在目录还没回来时顶上，而且必须是这一个 Agent 的。 */
@@ -76,11 +78,12 @@ export function deriveComposerView(input: ComposerViewInput) {
   const occupied = isReadOnlyOpen([...input.events]);
   const busy = input.status === "running";
   const dead = input.status === "stopped" || input.status === "failed";
+  const held = Boolean(input.inputLocked);
   const caps = input.caps;
   const imagesOn = Boolean(caps?.supports_images);
   const queueOn = Boolean(caps?.supports_queue);
-  const composerLocked = queueOn ? dead || occupied : busy || dead || occupied;
-  const menusLocked = busy || dead || occupied;
+  const composerLocked = held || (queueOn ? dead || occupied : busy || dead || occupied);
+  const menusLocked = held || busy || dead || occupied;
   const token = caps?.supports_slash && !pendingId && !menusLocked ? slashToken(input.text) : null;
   const slashMatches = token ? filterSlash([...input.commands], token) : [];
   const slashOpen = token !== null && (slashMatches.length > 0 || token.length > 1);

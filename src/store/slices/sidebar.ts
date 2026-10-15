@@ -1,5 +1,6 @@
 import { initialSandbox } from "@/lib/sandbox";
 import { backend } from "@/lib/ipc";
+import { draftId } from "../draft-session";
 import type { Session } from "@/types";
 import { browserUnreadStorage, readUnreadFinishedIds } from "../unread-finished";
 import {
@@ -128,11 +129,36 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
       set((s) => {
         const sessions = { ...s.sessions };
         delete sessions[id];
+        const drafts = { ...s.drafts };
+        const draftFocused = { ...s.draftFocused };
+        delete drafts[id];
+        delete draftFocused[id];
+        const key = draftId(id);
+        const dropKey = <T,>(map: Record<string, T>) => {
+          if (!(key in map)) return map;
+          const next = { ...map };
+          delete next[key];
+          return next;
+        };
         const selectedProjectId =
           s.selectedProjectId === id
             ? (projects[0]?.id ?? null)
             : s.selectedProjectId;
-        return { projects, sessions, selectedProjectId };
+        return {
+          projects,
+          sessions,
+          selectedProjectId,
+          drafts,
+          draftFocused,
+          attachments: dropKey(s.attachments),
+          textSnippets: dropKey(s.textSnippets),
+          sandboxes: dropKey(s.sandboxes),
+          tuning: dropKey(s.tuning),
+          accessMode: dropKey(s.accessMode),
+          events: dropKey(s.events),
+          catalogs: dropKey(s.catalogs),
+          catalogNotices: dropKey(s.catalogNotices),
+        };
       });
       const next = get().selectedProjectId;
       if (next) await get().selectProject(next);
@@ -197,6 +223,7 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
       set((s) => ({
         selectedProjectId: projectId,
         activeSessionId: { ...s.activeSessionId, [projectId]: sessionId },
+        draftFocused: { ...s.draftFocused, [projectId]: false },
       }));
       if (!get().sessions[projectId]) {
         const [pid, list] = await loadSessions(projectId);

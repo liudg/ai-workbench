@@ -285,6 +285,7 @@ export function seedSidebarPreview() {
       useWorkbench.setState((state) => ({
         selectedProjectId: projectId,
         activeSessionId: { ...state.activeSessionId, [projectId]: sessionId },
+        draftFocused: { ...(state.draftFocused ?? {}), [projectId]: false },
       }));
     },
     async createSession() {

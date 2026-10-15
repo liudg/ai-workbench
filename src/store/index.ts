@@ -1,6 +1,8 @@
 import { create } from "zustand";
 
 import { createPanelSlice } from "@/features/panel/state/slice";
+import { writeDraftSnapshot } from "./draft-storage";
+import { createDraftSlice } from "./slices/drafts";
 import { createSettingsSlice } from "./slices/settings";
 import { createShellSlice } from "./slices/shell";
 import { createSidebarSlice } from "./slices/sidebar";
@@ -22,7 +24,22 @@ export const useWorkbench = create<WorkbenchState>()((set, get) => ({
   ...createSettingsSlice(set, get),
   ...createUpdatesSlice(set),
   ...createPanelSlice(set, get),
+  ...createDraftSlice(set, get),
 }));
+
+useWorkbench.subscribe((state, previous) => {
+  if (
+    state.drafts === previous.drafts &&
+    state.draftFocused === previous.draftFocused &&
+    state.attachments === previous.attachments &&
+    state.textSnippets === previous.textSnippets &&
+    state.sandboxes === previous.sandboxes &&
+    state.tuning === previous.tuning
+  ) {
+    return;
+  }
+  writeDraftSnapshot(state);
+});
 
 // 侧栏状态来自会话列表刷新。结束且当时没打开，就记一笔未读。
 useWorkbench.subscribe((state, previous) => {

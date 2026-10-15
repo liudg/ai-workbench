@@ -27,6 +27,8 @@ pub(super) struct SessionEntry {
     pub(super) activity_at: Option<i64>,
     /// 作曲栏排队。不进时间线。
     pub(super) queue: Vec<QueuedTurn>,
+    /// 第一条用户消息落地前不进侧栏。
+    pub(super) withhold_sidebar: bool,
 }
 
 pub(super) fn apply_body(
@@ -121,6 +123,7 @@ fn mutate_entry(
         annotations,
     } = &body
     {
+        entry.withhold_sidebar = false;
         if entry.meta.title.starts_with("会话 ") || entry.meta.title == "未命名会话" {
             let owned = if !text.trim().is_empty() {
                 text.clone()
@@ -388,7 +391,35 @@ mod tests {
             agent: None,
             activity_at: None,
             queue: Vec::new(),
+            withhold_sidebar: false,
         }
+    }
+
+    #[test]
+    fn user_message_releases_a_withheld_sidebar_row() {
+        let mut session = entry(1_000);
+        session.withhold_sidebar = true;
+        session.meta.title = "未命名会话".into();
+        mutate_entry(
+            &mut session,
+            "codex-cli:thread",
+            SessionEventBody::StatusChanged {
+                status: SessionStatus::Running,
+            },
+            false,
+        );
+        assert!(session.withhold_sidebar);
+        mutate_entry(
+            &mut session,
+            "codex-cli:thread",
+            SessionEventBody::UserMessage {
+                text: "你好".into(),
+                images: Vec::new(),
+                annotations: 0,
+            },
+            true,
+        );
+        assert!(!session.withhold_sidebar);
     }
 
     #[test]

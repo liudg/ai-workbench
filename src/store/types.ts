@@ -101,7 +101,7 @@ export interface WorkspaceSlice {
     text: string,
     images?: string[],
     annotations?: PageAnnotation[],
-  ): Promise<void>;
+  ): Promise<boolean>;
   setCollaborationMode(sessionId: string, mode: "plan" | "default"): Promise<void>;
   startReview(sessionId: string, target: ReviewStart): Promise<void>;
   answerPrompt(sessionId: string, promptId: string, answer: PromptAnswer): Promise<boolean>;
@@ -121,6 +121,47 @@ export interface SettingsSlice {
   updateInstallation(kind: AgentKind): Promise<void>;
 }
 
+/** 还没发给 Agent 的本地草稿。每个项目最多一份，不进侧栏。 */
+export interface SessionDraft {
+  projectId: string;
+  agent: AgentKind;
+  text: string;
+  sandbox: SessionSandbox | null;
+  tuning: SessionTuning | null;
+  collaboration: "plan" | "default";
+  goal: string | null;
+  goalStatus: "paused" | "active" | null;
+  phase: "idle" | "creating";
+}
+
+export interface DraftSlice {
+  drafts: Record<string, SessionDraft>;
+  /** 这个项目的主区正在看草稿，而不是某条侧栏会话。 */
+  draftFocused: Record<string, boolean>;
+  openDraft(projectId: string, agent: AgentKind): void;
+  rememberDraftText(projectId: string, text: string): void;
+  setDraftSandbox(sessionId: string, sandbox: SessionSandbox): void;
+  setDraftTuning(
+    sessionId: string,
+    model: string,
+    effort: string,
+    serviceTier?: string | null,
+  ): void;
+  setDraftCollaboration(sessionId: string, mode: "plan" | "default"): void;
+  setDraftGoal(sessionId: string, objective: string): void;
+  clearDraftGoal(sessionId: string): void;
+  setDraftGoalStatus(sessionId: string, status: "paused" | "active"): void;
+  loadDraftCatalog(sessionId: string): Promise<void>;
+  commitDraftMessage(
+    sessionId: string,
+    text: string,
+    images?: string[],
+    annotations?: PageAnnotation[],
+  ): Promise<boolean>;
+  /** `/new` 带正文：另起一条真会话，不覆盖当前草稿里还没发出的文字。 */
+  sendNewThread(projectId: string, agent: AgentKind, text: string): Promise<string | null>;
+}
+
 export interface UpdatesSlice {
   update: UpdatePhase;
   updateDialogOpen: boolean;
@@ -134,7 +175,8 @@ export type WorkbenchState = ShellSlice &
   WorkspaceSlice &
   SettingsSlice &
   UpdatesSlice &
-  PanelSlice;
+  PanelSlice &
+  DraftSlice;
 
 export type WorkbenchSet = StoreApi<WorkbenchState>["setState"];
 export type WorkbenchGet = StoreApi<WorkbenchState>["getState"];

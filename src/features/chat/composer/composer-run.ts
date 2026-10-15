@@ -54,6 +54,8 @@ export interface ComposerRun {
   projectPath: string;
   skillMatches: number;
   slashMatches: number;
+  /** 草稿要等创建并发送成功后才清掉输入。失败时原文还在。 */
+  holdUntilAccepted: boolean;
 }
 
 export function rememberCaret(setCaret: (value: number) => void, element: HTMLTextAreaElement) {
@@ -126,6 +128,7 @@ export function runComposerSubmit(run: ComposerRun) {
     supportsGoals: run.supportsGoals,
   });
   if (decision.type === "noop") return;
+  const clearSnippets = "clearSnippets" in decision && Boolean(decision.clearSnippets);
   if (decision.type === "set-goal") {
     void run.submitGoal(decision.text).then((ok) => {
       if (!ok) return;
@@ -146,12 +149,25 @@ export function runComposerSubmit(run: ComposerRun) {
     run.setReviewOpen(true);
     return;
   }
-  if ("clearSnippets" in decision && decision.clearSnippets) {
-    run.actions.clearTextSnippets(run.sessionId);
-  }
   if (decision.type === "plan-message") {
+    if (run.holdUntilAccepted) {
+      void (async () => {
+        await run.actions.setCollaborationMode(run.sessionId, "plan");
+        const ok = await run.actions.sendMessage(run.sessionId, decision.text);
+        if (!ok) {
+          run.textareaRef.current?.focus();
+          return;
+        }
+        run.setText("");
+        run.setCaret(0);
+        run.exitGoal();
+        if (clearSnippets) run.actions.clearTextSnippets(run.sessionId);
+      })();
+      return;
+    }
     run.setText("");
     run.exitGoal();
+    if (clearSnippets) run.actions.clearTextSnippets(run.sessionId);
     void run.actions.setCollaborationMode(run.sessionId, "plan").then(() => {
       void run.actions.sendMessage(run.sessionId, decision.text);
     });
@@ -161,24 +177,39 @@ export function runComposerSubmit(run: ComposerRun) {
     run.setEditingId(null);
     run.setText("");
     run.actions.clearAttachments(run.sessionId);
+    if (clearSnippets) run.actions.clearTextSnippets(run.sessionId);
     void updateQueuedTurn(run.sessionId, decision.id, decision.text, decision.images);
     run.textareaRef.current?.focus();
     return;
   }
   if (decision.type === "answer") {
     run.setText("");
+    if (clearSnippets) run.actions.clearTextSnippets(run.sessionId);
     void run.actions.answerPrompt(run.sessionId, decision.promptId, { type: "single", value: decision.text });
     run.textareaRef.current?.focus();
     return;
   }
-  run.setText("");
-  if (decision.type === "send-images") {
-    void run.actions.sendMessage(run.sessionId, decision.text, decision.images);
-    run.actions.clearAttachments(run.sessionId);
-  } else {
-    void run.actions.sendMessage(run.sessionId, decision.text, []);
-    if (decision.clearAttachments) run.actions.clearAttachments(run.sessionId);
+  const images = decision.type === "send-images" ? decision.images : [];
+  const clearAttachments = decision.type === "send-images" || decision.clearAttachments;
+  if (run.holdUntilAccepted) {
+    void (async () => {
+      const ok = await run.actions.sendMessage(run.sessionId, decision.text, images);
+      if (!ok) {
+        run.textareaRef.current?.focus();
+        return;
+      }
+      run.setText("");
+      run.setCaret(0);
+      if (clearAttachments) run.actions.clearAttachments(run.sessionId);
+      if (clearSnippets) run.actions.clearTextSnippets(run.sessionId);
+      run.textareaRef.current?.focus();
+    })();
+    return;
   }
+  run.setText("");
+  if (clearSnippets) run.actions.clearTextSnippets(run.sessionId);
+  void run.actions.sendMessage(run.sessionId, decision.text, images);
+  if (clearAttachments) run.actions.clearAttachments(run.sessionId);
   run.textareaRef.current?.focus();
 }
 

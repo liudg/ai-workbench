@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 
 import { useWorkbench } from "@/store";
+import { sessionFromDraft } from "@/store/draft-session";
 import { accumulateSessionUsage } from "@/store/session-usage";
 import type { SessionEvent } from "@/types";
 
@@ -13,7 +14,13 @@ export function useWorkspace() {
   const activeSessionId = useWorkbench((s) =>
     selectedProjectId ? s.activeSessionId[selectedProjectId] : undefined,
   );
-  const session = sessions?.find((item) => item.id === activeSessionId);
+  const draft = useWorkbench((s) => (selectedProjectId ? s.drafts[selectedProjectId] : undefined));
+  const draftFocused = useWorkbench((s) =>
+    selectedProjectId ? Boolean(s.draftFocused[selectedProjectId]) : false,
+  );
+  const draftSession = draftFocused && draft ? sessionFromDraft(draft) : null;
+  const liveSession = sessions?.find((item) => item.id === activeSessionId) ?? null;
+  const session = draftSession ?? liveSession;
   const events = useWorkbench((s) => (session ? s.events[session.id] : undefined)) ?? EMPTY_EVENTS;
   const usage = useMemo(() => accumulateSessionUsage(events), [events]);
   return { project, sessions, session, events, usage };

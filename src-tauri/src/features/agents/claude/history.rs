@@ -111,6 +111,13 @@ pub fn find_session_file_under(projects: &Path, session_id: &str) -> Option<Path
     None
 }
 
+pub fn remove_session_file(session_id: &str) -> Result<(), String> {
+    let Some(path) = find_session_file(session_id) else {
+        return Ok(());
+    };
+    std::fs::remove_file(path).map_err(|err| err.to_string())
+}
+
 pub fn read_session_text(path: &Path) -> Option<String> {
     let bytes = std::fs::read(path).ok()?;
     if bytes.is_empty() {

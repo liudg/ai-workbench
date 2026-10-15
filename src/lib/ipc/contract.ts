@@ -32,6 +32,27 @@ import type {
   TreeEntry,
 } from "./dto";
 
+export interface CreateAndSendInput {
+  projectId: string;
+  agent: AgentKind;
+  accessMode: AccessMode | null;
+  networkAccess: boolean;
+  writableRoots: string[];
+  profileId: string;
+  applyAccess: boolean;
+  model: string | null;
+  effort: string | null;
+  applyTuning: boolean;
+  serviceTier: string | null;
+  applyServiceTier: boolean;
+  collaborationMode: "plan" | null;
+  goal: string | null;
+  goalStatus: "paused" | "active" | null;
+  text: string;
+  images: string[];
+  annotations: PageAnnotation[];
+}
+
 export interface Backend {
   listProjects(): Promise<Project[]>;
   createProject(input: CreateProjectInput): Promise<CreateProjectResult>;
@@ -48,6 +69,12 @@ export interface Backend {
     agent?: AgentKind,
     accessMode?: AccessMode,
   ): Promise<Session>;
+  /** 创建会话、写上沙箱/模型和第一条消息。失败时后端撤掉这次会话。 */
+  createSessionAndSend(input: CreateAndSendInput): Promise<Session>;
+  /** 这个 Agent 上一次成功的模型目录。没有缓存时拒绝，不启动 CLI。 */
+  cachedAgentCatalog(agent: AgentKind): Promise<AgentCatalogRefresh>;
+  /** 草稿权限菜单：有缓存用缓存，否则用该 Agent 的离线档位。 */
+  agentPermissionMenu(agent: AgentKind): Promise<PermissionMenu>;
   /** 切换会话后续使用的 Agent。 */
   /** 更新权限档位、网络、额外可写目录和配置档。各适配器自行映射。 */
   setSandbox(sessionId: string, sandbox: SessionSandbox): Promise<void>;

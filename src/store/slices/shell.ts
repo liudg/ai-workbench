@@ -1,4 +1,5 @@
 import { backend } from "@/lib/ipc";
+import { forgetProjectDraft, type DraftCarryState } from "../draft-session";
 import { clearMissingSessionBanner, loadSessions, loadWorkspaceLists } from "../sync";
 import type { ShellSlice, WorkbenchGet, WorkbenchSet } from "../types";
 
@@ -42,10 +43,13 @@ export function createShellSlice(set: WorkbenchSet, get: WorkbenchGet): ShellSli
       });
       backend.onSessionRequest((request) => {
         void (async () => {
-          const created = await get().createSession(request.project_id, request.agent);
-          if (!created) return;
-          if (request.name) await get().renameSession(created, request.name);
-          if (request.text) await get().sendMessage(created, request.text);
+          const text = request.text?.trim() ?? "";
+          if (!text) {
+            get().openDraft(request.project_id, request.agent);
+            return;
+          }
+          const created = await get().sendNewThread(request.project_id, request.agent, text);
+          if (created && request.name) await get().renameSession(created, request.name);
         })();
       });
       backend.onProjectsChanged(() => {
@@ -88,11 +92,46 @@ export function createShellSlice(set: WorkbenchSet, get: WorkbenchGet): ShellSli
           if (!ids.has(key)) delete sessions[key];
         }
         for (const [pid, list] of pairs) sessions[pid] = list;
+        let carried: DraftCarryState = {
+          drafts: s.drafts,
+          draftFocused: s.draftFocused,
+          activeSessionId: s.activeSessionId,
+          sessions,
+          attachments: s.attachments,
+          textSnippets: s.textSnippets,
+          sandboxes: s.sandboxes,
+          tuning: s.tuning,
+          accessMode: s.accessMode,
+          events: s.events,
+          catalogs: s.catalogs,
+          catalogNotices: s.catalogNotices,
+          lastSandboxByAgent: s.lastSandboxByAgent,
+          selectedProjectId: s.selectedProjectId,
+          preferredAgent: s.preferredAgent,
+        };
+        for (const key of Object.keys(s.drafts)) {
+          if (!ids.has(key)) carried = forgetProjectDraft(carried, key);
+        }
         const selectedProjectId =
-          s.selectedProjectId && ids.has(s.selectedProjectId)
-            ? s.selectedProjectId
+          carried.selectedProjectId && ids.has(carried.selectedProjectId)
+            ? carried.selectedProjectId
             : (projects[0]?.id ?? null);
-        return { projects, sessions, selectedProjectId, ready: true };
+        return {
+          projects,
+          sessions: carried.sessions,
+          selectedProjectId,
+          drafts: carried.drafts,
+          draftFocused: carried.draftFocused,
+          attachments: carried.attachments,
+          textSnippets: carried.textSnippets,
+          sandboxes: carried.sandboxes,
+          tuning: carried.tuning,
+          accessMode: carried.accessMode,
+          events: carried.events,
+          catalogs: carried.catalogs,
+          catalogNotices: carried.catalogNotices,
+          ready: true,
+        };
       });
     },
 

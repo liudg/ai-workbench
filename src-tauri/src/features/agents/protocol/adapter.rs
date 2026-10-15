@@ -6,7 +6,9 @@ use async_trait::async_trait;
 
 use crate::features::agents::directory::DirectoryEntry;
 use crate::features::agents::install::{self, CliRelease};
-use crate::models::{AgentCapabilities, AgentInstallation, AgentKind, AgentProfile};
+use crate::models::{
+    AgentCapabilities, AgentInstallation, AgentKind, AgentProfile, PermissionMenu,
+};
 
 use super::context::SessionContext;
 use super::error::AgentError;
@@ -113,6 +115,16 @@ pub trait AgentAdapter: Send + Sync {
             "{} 不支持永久删除",
             self.display_name()
         )))
+    }
+
+    /// 还没有会话时的权限菜单。不启动 CLI。
+    fn draft_permission_menu(&self) -> PermissionMenu {
+        PermissionMenu::unsupported()
+    }
+
+    /// 首条消息没有发出去时撤掉刚建的线程。默认走删除；不支持删除的适配器自己清掉现场。
+    async fn discard_unsent_thread(&self, native_id: &str) -> Result<(), AgentError> {
+        self.delete_thread(native_id).await
     }
 
     /// 归档或取消归档。只有声明了 `supports_archive` 的适配器覆盖它。

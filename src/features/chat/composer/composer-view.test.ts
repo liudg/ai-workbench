@@ -44,6 +44,14 @@ function view(patch: Partial<Parameters<typeof deriveComposerView>[0]> = {}) {
   });
 }
 
+test("a draft that is still creating locks send even for a queue agent", () => {
+  const held = view({ status: "completed", inputLocked: true, text: "hello" });
+  assert.equal(held.composerLocked, true);
+  assert.equal(held.menusLocked, true);
+  assert.equal(held.sendDisabled, true);
+  assert.equal(held.stopMode, false);
+});
+
 test("queue keeps the composer open while a turn is running", () => {
   const running = view({ status: "running" });
   assert.equal(running.composerLocked, false);

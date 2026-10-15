@@ -1,10 +1,11 @@
 //! 会话命令。模型目录、调参和回答提问都转给当前会话的适配器。
 
+use serde::Deserialize;
 use tauri::State;
 
 use crate::features::agents::DiffScope;
 use crate::features::projects::ProjectStore;
-use crate::features::sessions::{AgentCatalogRefresh, SessionManager};
+use crate::features::sessions::{AgentCatalogRefresh, FirstSendSpec, SessionManager};
 use crate::models::*;
 
 #[tauri::command]
@@ -54,6 +55,82 @@ pub async fn delete_session(
     session_id: String,
 ) -> Result<(), String> {
     manager.delete_session(&store, &session_id).await
+}
+
+/// 草稿首发：创建、写入权限/模型/计划/目标，再发送第一条。失败时后端撤掉空会话。
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateAndSendInput {
+    project_id: String,
+    agent: AgentKind,
+    access_mode: Option<String>,
+    network_access: bool,
+    writable_roots: Vec<String>,
+    profile_id: String,
+    apply_access: bool,
+    model: Option<String>,
+    effort: Option<String>,
+    apply_tuning: bool,
+    service_tier: Option<String>,
+    apply_service_tier: bool,
+    collaboration_mode: Option<String>,
+    goal: Option<String>,
+    goal_status: Option<String>,
+    text: String,
+    #[serde(default)]
+    images: Vec<String>,
+    #[serde(default)]
+    annotations: Vec<PageAnnotation>,
+}
+
+#[tauri::command]
+pub async fn create_session_and_send(
+    store: State<'_, ProjectStore>,
+    manager: State<'_, SessionManager>,
+    input: CreateAndSendInput,
+) -> Result<Session, String> {
+    let project = manager.resolve_project(&store, &input.project_id)?;
+    manager
+        .create_session_and_send(
+            &store,
+            &project,
+            input.agent,
+            FirstSendSpec {
+                access_mode: input.access_mode,
+                apply_access: input.apply_access,
+                network_access: input.network_access,
+                writable_roots: input.writable_roots,
+                profile_id: input.profile_id,
+                apply_tuning: input.apply_tuning,
+                model: input.model,
+                effort: input.effort,
+                apply_service_tier: input.apply_service_tier,
+                service_tier: input.service_tier,
+                collaboration_mode: input.collaboration_mode,
+                goal: input.goal,
+                goal_status: input.goal_status,
+                text: input.text,
+                images: input.images,
+                annotations: input.annotations,
+            },
+        )
+        .await
+}
+
+#[tauri::command]
+pub fn cached_agent_catalog(
+    manager: State<'_, SessionManager>,
+    agent: AgentKind,
+) -> Result<AgentCatalogRefresh, String> {
+    manager.cached_agent_catalog(agent)
+}
+
+#[tauri::command]
+pub fn agent_permission_menu(
+    manager: State<'_, SessionManager>,
+    agent: AgentKind,
+) -> PermissionMenu {
+    manager.draft_permission_menu(agent)
 }
 
 /// 创建会话；agent 缺省时用项目默认 Agent。

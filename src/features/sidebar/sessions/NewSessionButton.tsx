@@ -19,7 +19,7 @@ export function NewSessionButton({
   className?: string;
   title?: string;
 }) {
-  const { createSession, openSettings, installations } = useNewSession();
+  const { openDraft, openSettings, installations } = useNewSession();
   const menu = newSessionMenu(installations);
   const immediate = appearance === "primary" ? null : immediateSessionAgent(installations);
   const [open, setOpen] = useState(false);
@@ -28,7 +28,7 @@ export function NewSessionButton({
 
   const choose = (agent: AgentKind) => {
     setOpen(false);
-    void createSession(projectId, agent);
+    openDraft(projectId, agent);
   };
 
   const onPress = (event: ReactMouseEvent) => {

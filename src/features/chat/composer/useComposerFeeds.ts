@@ -1,19 +1,23 @@
 import { useEffect, useState } from "react";
 
-import type { PermissionMenu } from "@/types";
-import { fetchPermissionMenu, fetchQueue, storeQueue } from "./composer-backend";
+import { isDraftId } from "@/store/draft-session";
+import type { AgentKind, PermissionMenu } from "@/types";
+import { fetchDraftPermissionMenu, fetchPermissionMenu, fetchQueue, storeQueue } from "./composer-backend";
 
 export function useComposerFeeds(
   sessionId: string,
+  agent: AgentKind,
   loadCatalog: (sessionId: string) => void,
 ) {
   const [permissionMenu, setPermissionMenu] = useState<PermissionMenu | null>(null);
+  const draft = isDraftId(sessionId);
 
   useEffect(() => {
     void loadCatalog(sessionId);
-  }, [loadCatalog, sessionId]);
+  }, [agent, loadCatalog, sessionId]);
 
   useEffect(() => {
+    if (draft) return;
     let cancelled = false;
     void fetchQueue(sessionId)
       .then((items) => {
@@ -23,19 +27,22 @@ export function useComposerFeeds(
     return () => {
       cancelled = true;
     };
-  }, [sessionId]);
+  }, [draft, sessionId]);
 
   useEffect(() => {
     let cancelled = false;
-    void fetchPermissionMenu(sessionId)
+    const load = draft ? fetchDraftPermissionMenu(agent) : fetchPermissionMenu(sessionId);
+    void load
       .then((next) => {
         if (!cancelled) setPermissionMenu(next);
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!cancelled) setPermissionMenu(null);
+      });
     return () => {
       cancelled = true;
     };
-  }, [sessionId]);
+  }, [agent, draft, sessionId]);
 
   return permissionMenu;
 }

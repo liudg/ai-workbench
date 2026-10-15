@@ -128,6 +128,10 @@ impl AgentAdapter for CodexCliAdapter {
         })
     }
 
+    fn draft_permission_menu(&self) -> crate::models::PermissionMenu {
+        sandbox::offline_permission_menu()
+    }
+
     fn profile(&self) -> AgentProfile {
         AgentProfile {
             kind: self.kind(),

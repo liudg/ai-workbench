@@ -375,6 +375,33 @@ const PRESETS: [PresetSpec; 4] = [
     },
 ];
 
+/// 还没有 app-server 时的档位。不含替我批准、网络和具名配置档，那些要等一次真实探测。
+pub(super) fn offline_permission_menu() -> PermissionMenu {
+    let presets = PRESETS
+        .iter()
+        .filter(|spec| spec.mode != "approve-for-me")
+        .map(|spec| PermissionProfileOption {
+            id: spec.mode.into(),
+            label: spec.label.into(),
+            description: spec.description.into(),
+            disabled_reason: None,
+            caution: spec.caution,
+            allows_extras: spec.allows_extras,
+        })
+        .collect();
+    PermissionMenu {
+        network_access: false,
+        writable_roots: false,
+        permission_profiles: false,
+        approve_for_me: false,
+        title: MENU_TITLE.into(),
+        notice: None,
+        presets,
+        profiles: Vec::new(),
+        active: None,
+    }
+}
+
 /// 按档位 id 取官方标签。权限摘要和 /permissions 选择卡也用它。
 pub(super) fn preset_label(mode: &str) -> Option<&'static str> {
     PRESETS.iter().find(|spec| spec.mode == mode).map(|spec| spec.label)
@@ -905,5 +932,15 @@ mod tests {
         let failed = build_menu(Err("Failed to load permissions: boom".into()), true, true);
         assert!(!failed.permission_profiles);
         assert_eq!(failed.notice.as_deref(), Some("Failed to load permissions: boom"));
+    }
+
+    #[test]
+    fn offline_menu_keeps_builtin_presets_without_a_server() {
+        let menu = offline_permission_menu();
+        assert!(menu.notice.is_none());
+        assert!(!menu.network_access);
+        assert!(menu.profiles.is_empty());
+        let ids: Vec<_> = menu.presets.iter().map(|preset| preset.id.as_str()).collect();
+        assert_eq!(ids, vec!["ask", "full", "read-only"]);
     }
 }
