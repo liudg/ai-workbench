@@ -4,8 +4,8 @@
 //! 同目录有 `claude.exe` 时用那个。`CREATE_NO_WINDOW` 与 Codex 的 `hide_console` 相同，
 //! 这里复制那四行，不改 Codex 源文件。
 //!
-//! 环境：去掉 `CLAUDECODE`，设置 `CLAUDE_CODE_ENTRYPOINT=ai-workbench`
-//! （SDK 写的是 `sdk-py`，subprocess_cli.py 约 L818。工作台不能自称 Python SDK）。
+//! 环境：去掉 `CLAUDECODE`，设置 `CLAUDE_CODE_ENTRYPOINT=cli`
+//! （对齐原生交互式 TUI；原生 --print 默认会自设 sdk-cli。身份句仍由 isNonInteractive 决定）。
 //! 不设置 `CLAUDE_AGENT_SDK_VERSION`。
 
 use std::path::{Path, PathBuf};
@@ -74,7 +74,7 @@ pub fn spawn(bin: &Path, args: &[String], project: &Path) -> Result<Child, Agent
         .args(args)
         .current_dir(project)
         .env_remove("CLAUDECODE")
-        .env("CLAUDE_CODE_ENTRYPOINT", "ai-workbench")
+        .env("CLAUDE_CODE_ENTRYPOINT", "cli")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
