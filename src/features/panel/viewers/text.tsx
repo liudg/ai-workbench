@@ -1,8 +1,8 @@
 import { useRef } from "react";
 import { Code } from "lucide-react";
 
-import { insertComposerText } from "@/shared/composer-insert";
 import { usePanelOptional } from "../core/PanelProvider";
+import { addSessionTextSnippet } from "../files/useAddTextSnippet";
 import { baseName } from "../files/path";
 import { SelectionMenu } from "../files/SelectionMenu";
 import { payloadTitle, type PanelViewer, type ViewerViewProps } from "../core/registry";
@@ -36,8 +36,8 @@ function TextViewerBody({ payload, status }: ViewerViewProps<TextPayload>) {
         <SelectionMenu
           rootRef={rootRef}
           path={path}
-          onAdd={(quote) => {
-            insertComposerText(panel.sessionId, quote);
+          onAdd={(draft) => {
+            addSessionTextSnippet(panel.sessionId, draft);
           }}
         />
       ) : null}

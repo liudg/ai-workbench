@@ -9,6 +9,7 @@ import { SourceView } from "../viewers/SourceView";
 import { TextPreview } from "../viewers/TextPreview";
 import { PreviewFailed, PreviewPending } from "../viewers/frame";
 import { SelectionMenu } from "./SelectionMenu";
+import type { SelectionDraft } from "./selection-quote";
 import { usePreviewFile } from "./usePreviewFile";
 import { usePreviewImage } from "./usePreviewImage";
 
@@ -47,7 +48,7 @@ export function FilePreview({
   line: number | null;
   /** 写进对话的路径。缺省用预览里的相对路径。 */
   quotePath?: string;
-  onQuote: (quote: string) => void;
+  onQuote: (draft: SelectionDraft) => void;
 }) {
   const extensionImage = previewKindForPath(path) === "image";
   const state = usePreviewFile(projectId, extensionImage ? "" : path);

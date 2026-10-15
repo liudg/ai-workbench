@@ -1,5 +1,6 @@
 import { reduceCatalogResult, type CatalogOutcome } from "@/lib/catalog";
 import { backend } from "@/lib/ipc";
+import { withTextSnippet, withoutTextSnippet } from "@/shared/text-snippet";
 import type { AgentKind } from "@/types";
 import { isMissingSessionError } from "../sync";
 import type { WorkspaceSlice, WorkbenchGet, WorkbenchSet } from "../types";
@@ -29,6 +30,7 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
     lastSandboxByAgent: {},
     sandboxes: {},
     attachments: {},
+    textSnippets: {},
     pageAnnotations: {},
     queues: {},
     catalogs: {},
@@ -138,6 +140,30 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
       set((s) => ({
         attachments: { ...s.attachments, [sessionId]: files },
       }));
+    },
+
+    addTextSnippet(sessionId, snippet) {
+      if (!sessionId) return;
+      set((s) => {
+        const current = s.textSnippets[sessionId] ?? [];
+        const next = withTextSnippet(current, snippet);
+        if (next === current) return {};
+        return { textSnippets: { ...s.textSnippets, [sessionId]: next } };
+      });
+    },
+
+    removeTextSnippet(sessionId, id) {
+      set((s) => ({
+        textSnippets: {
+          ...s.textSnippets,
+          [sessionId]: withoutTextSnippet(s.textSnippets[sessionId] ?? [], id),
+        },
+      }));
+    },
+
+    clearTextSnippets(sessionId) {
+      const ids = (get().textSnippets[sessionId] ?? []).map((item) => item.id);
+      for (const id of ids) get().removeTextSnippet(sessionId, id);
     },
 
     addPageAnnotation(sessionId, note) {

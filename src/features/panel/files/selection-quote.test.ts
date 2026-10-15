@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { appendSnippet } from "../../../shared/composer-insert.ts";
-import { formatSelectionQuote, lineRangeFromOffsets } from "./selection-quote.ts";
+import { formatSelectionQuote, lineRangeFromOffsets, selectionDraft } from "./selection-quote.ts";
 
 test("selection quote keeps the path and line range", () => {
   const quote = formatSelectionQuote(
@@ -25,7 +24,14 @@ test("line range follows newlines in the file", () => {
   assert.deepEqual(lineRangeFromOffsets(source, 0, 8), { start: 1, end: 3 });
 });
 
-test("append snippet keeps existing composer text", () => {
-  assert.equal(appendSnippet("", "```a.cs\nline\n```"), "```a.cs\nline\n```");
-  assert.equal(appendSnippet("先看这个", "```a.cs\nline\n```"), "先看这个\n\n```a.cs\nline\n```");
+test("selection draft keeps the body out of the fence", () => {
+  const draft = selectionDraft("a.cs", "using UnityEngine;\n", null, null);
+  assert.ok(draft);
+  assert.equal(draft.body, "using UnityEngine;");
+  assert.equal(draft.quote, "```a.cs\nusing UnityEngine;\n```");
+  assert.equal(draft.start, null);
+  const ranged = selectionDraft("a.cs", "line\n", 4, 2);
+  assert.equal(ranged?.start, 2);
+  assert.equal(ranged?.end, 4);
+  assert.equal(selectionDraft("a.cs", "   \n", 1, 1), null);
 });

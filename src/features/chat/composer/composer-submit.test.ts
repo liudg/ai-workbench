@@ -107,6 +107,88 @@ test("agents without images append file names and keep slash attachments", () =>
   assert.equal(decideSubmit({ ...base, text: "好", composerLocked: true }).type, "noop");
 });
 
+const quote = "```12:14:Assets/Editor/Preview.cs\npublic void Open()\n```";
+
+test("selected text stays out of the box until submit, and a removed snippet is not sent", () => {
+  const snippets = [{ quote }, { quote: "```a.cs\nsecond\n```" }];
+  assert.deepEqual(decideSubmit({ ...base, text: "", snippets: [snippets[0]] }), {
+    type: "send-images",
+    text: quote,
+    images: [],
+    clearSnippets: true,
+  });
+  assert.deepEqual(decideSubmit({ ...base, imagesOn: false, text: "先看这个", snippets }), {
+    type: "send-text",
+    text: `先看这个\n\n${quote}\n\n\`\`\`a.cs\nsecond\n\`\`\``,
+    clearAttachments: true,
+    clearSnippets: true,
+  });
+  assert.deepEqual(
+    decideSubmit({
+      ...base,
+      text: "看这个",
+      snippets: [snippets[0]],
+      attached: [
+        { name: "a.png", path: "C:/a.png" },
+        { name: "notes.txt", path: "C:/work/notes.txt" },
+      ],
+    }),
+    {
+      type: "send-images",
+      text: `看这个\n\n${quote}\n\n附件：C:/work/notes.txt`,
+      images: ["C:/a.png"],
+      clearSnippets: true,
+    },
+  );
+  assert.deepEqual(decideSubmit({ ...base, imagesOn: false, text: "/help", snippets }), {
+    type: "send-text",
+    text: "/help",
+    clearAttachments: false,
+  });
+  assert.deepEqual(
+    decideSubmit({ ...base, text: "改一下", editingId: "q1", snippets: [snippets[0]] }),
+    { type: "update-queue", id: "q1", text: `改一下\n\n${quote}`, images: [], clearSnippets: true },
+  );
+  assert.deepEqual(decideSubmit({ ...base, text: "  ", editingId: "q1", snippets: [snippets[0]] }), {
+    type: "update-queue",
+    id: "q1",
+    text: quote,
+    images: [],
+    clearSnippets: true,
+  });
+  assert.deepEqual(decideSubmit({ ...base, text: "/help", editingId: "q1", snippets: [snippets[0]] }), {
+    type: "update-queue",
+    id: "q1",
+    text: "/help",
+    images: [],
+  });
+  assert.deepEqual(decideSubmit({ ...base, text: "好", pendingId: "p1", snippets: [snippets[0]] }), {
+    type: "answer",
+    promptId: "p1",
+    text: `好\n\n${quote}`,
+    clearSnippets: true,
+  });
+  assert.deepEqual(decideSubmit({ ...base, text: "/plan 先看结构", snippets: [snippets[0]] }), {
+    type: "plan-message",
+    text: `先看结构\n\n${quote}`,
+    clearSnippets: true,
+  });
+  assert.deepEqual(decideSubmit({ ...base, text: "补齐回归", goalDraft: true, snippets }), {
+    type: "set-goal",
+    text: "补齐回归",
+  });
+  assert.equal(decideSubmit({ ...base, text: "", snippets, composerLocked: true }).type, "noop");
+  assert.deepEqual(
+    decideSubmit({ ...base, imagesOn: false, text: "先看这个", snippets: [snippets[1]] }),
+    {
+      type: "send-text",
+      text: "先看这个\n\n```a.cs\nsecond\n```",
+      clearAttachments: true,
+      clearSnippets: true,
+    },
+  );
+});
+
 test("slash menu and effort follow the same rules as the composer", () => {
   assert.deepEqual(decideSlash({ name: "/review" }, { supports_review: true }, false), { type: "review" });
   assert.deepEqual(decideSlash({ name: "/plan" }, { supports_plan: true }, true), {

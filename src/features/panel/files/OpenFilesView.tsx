@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { Folder } from "lucide-react";
 
 import { useElementWidth } from "@/shared/dom/useElementWidth";
-import { insertComposerText } from "@/shared/composer-insert";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
+import { addSessionTextSnippet } from "./useAddTextSnippet";
 import { ColumnSplitter } from "../core/ColumnSplitter";
 import { FILES_EXPANDED_WIDTH, diffListWidth, diffListWidthAfterDrag, pinnedColumnStyle } from "../core/layout";
 import { resolvePreviewPath } from "../core/preview-kind";
@@ -65,7 +65,7 @@ export function OpenFilesView() {
               root={projectPath}
               line={previewLine}
               quotePath={resolvePreviewPath(projectPath, previewPath) || previewPath}
-              onQuote={(quote) => insertComposerText(sessionId, quote)}
+              onQuote={(draft) => addSessionTextSnippet(sessionId, draft)}
             />
           </div>
         ) : (

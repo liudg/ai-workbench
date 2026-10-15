@@ -107,7 +107,9 @@ export function applyComposerSkill(run: ComposerRun, skill: AgentSkillOption) {
 }
 
 export function runComposerSubmit(run: ComposerRun) {
-  const attached = useWorkbench.getState().attachments[run.sessionId] ?? [];
+  const state = useWorkbench.getState();
+  const attached = state.attachments[run.sessionId] ?? [];
+  const snippets = state.textSnippets[run.sessionId] ?? [];
   const decision = decideSubmit({
     text: run.text,
     supportsPlan: Boolean(run.caps?.supports_plan),
@@ -115,6 +117,7 @@ export function runComposerSubmit(run: ComposerRun) {
     planOn: run.view.planOn,
     imagesOn: run.view.imagesOn,
     attached,
+    snippets,
     editingId: run.editingId,
     pendingId: run.view.pendingId,
     composerLocked: run.view.composerLocked,
@@ -137,17 +140,20 @@ export function runComposerSubmit(run: ComposerRun) {
     void run.actions.setCollaborationMode(run.sessionId, decision.mode);
     return;
   }
+  if (decision.type === "open-review") {
+    run.setText("");
+    run.setReviewOpen(true);
+    return;
+  }
+  if ("clearSnippets" in decision && decision.clearSnippets) {
+    run.actions.clearTextSnippets(run.sessionId);
+  }
   if (decision.type === "plan-message") {
     run.setText("");
     run.exitGoal();
     void run.actions.setCollaborationMode(run.sessionId, "plan").then(() => {
       void run.actions.sendMessage(run.sessionId, decision.text);
     });
-    return;
-  }
-  if (decision.type === "open-review") {
-    run.setText("");
-    run.setReviewOpen(true);
     return;
   }
   if (decision.type === "update-queue") {
