@@ -1,12 +1,27 @@
-use super::bin::{platform_vendor_suffix, vendor_exe_near, version_label};
+use super::bin::{parse_cli_version, platform_vendor_suffix, vendor_exe_near};
 use super::proxy::{merge_no_proxy, parse_windows_proxy_server, sanitize_proxy_bypass};
 use super::*;
 
 #[test]
-fn version_label_keeps_the_package_semver() {
-    assert_eq!(version_label("codex-cli 0.162.1\n"), "0.162.1");
-    assert_eq!(version_label("0.162.1"), "0.162.1");
-    assert_eq!(version_label(""), "未知版本");
+fn parse_cli_version_takes_the_semver_from_the_first_line() {
+    assert_eq!(parse_cli_version("codex-cli 0.162.1\n").as_deref(), Some("0.162.1"));
+    assert_eq!(parse_cli_version("codex-cli 0.162.1\r\n").as_deref(), Some("0.162.1"));
+    assert_eq!(parse_cli_version("0.162.1").as_deref(), Some("0.162.1"));
+    assert_eq!(parse_cli_version("  codex-cli 0.200.0  \n").as_deref(), Some("0.200.0"));
+}
+
+#[test]
+fn parse_cli_version_rejects_output_without_a_version() {
+    assert_eq!(parse_cli_version(""), None);
+    assert_eq!(parse_cli_version("\n0.162.1"), None);
+    assert_eq!(parse_cli_version("error: unknown flag"), None);
+}
+
+#[test]
+fn client_info_version_never_falls_back_to_the_workbench_version() {
+    use crate::features::agents::codex::client_info_version;
+    assert_eq!(client_info_version(Some("0.162.1")), "0.162.1");
+    assert_eq!(client_info_version(None), "");
 }
 
 #[test]

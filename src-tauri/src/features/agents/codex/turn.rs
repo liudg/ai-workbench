@@ -171,6 +171,9 @@ impl Shared {
         let mut params = json!({
             "threadId": thread_id,
             "input": input,
+            // 原生 TUI 每个用户回合都带 turnTrigger: "user"（tui/src/app_server_session.rs:1441），
+            // Codex 把它写进回合元数据的 turn_trigger。
+            "turnTrigger": "user",
         });
         merge_json(&mut params, access.turn_permissions(wire));
         if !client_id.is_empty() {
@@ -370,6 +373,8 @@ impl Shared {
         let mut params = json!({
             "cwd": self.cwd,
             "ephemeral": !self.persist,
+            // 与原生 TUI、resume.rs 的 fork 一致；Codex 据此在回合元数据里写 thread_source=user。
+            "threadSource": "user",
         });
         merge_json(&mut params, access.thread_permissions(wire));
         let result = self.request("thread/start", params).await?;
