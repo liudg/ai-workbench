@@ -6,7 +6,8 @@ import { useWorkbench } from "@/store";
 import { relativizeDisplayText } from "@/features/panel/files/path";
 import { CopyButton } from "./chrome";
 import { EventImages } from "./EventImages";
-import { toolGlyph, toolLineText } from "./tool-line";
+import { activityStepTitle } from "./activity-fold";
+import { toolGlyph } from "./tool-line";
 import type { EventViewProps } from "./types";
 
 const GLYPH = {
@@ -16,8 +17,7 @@ const GLYPH = {
 } as const;
 
 /**
- * 工具、命令和 MCP 调用默认一行：图标、截断摘要、箭头。
- * 点开后才是完整命令和输出。文案来自适配器已规范化的 summary。
+ * 单独一条工具调用：主行是短标题，点开才是完整命令和输出。
  */
 export function ToolCall({ event, session }: EventViewProps) {
   const [open, setOpen] = useState(false);
@@ -28,7 +28,7 @@ export function ToolCall({ event, session }: EventViewProps) {
   const summary = relativizeDisplayText(event.summary, projectPath);
   const detail = relativizeDisplayText(event.detail ?? "", projectPath);
   const images = event.images ?? [];
-  const line = relativizeDisplayText(toolLineText(event.name, event.summary), projectPath);
+  const line = relativizeDisplayText(activityStepTitle(event.name, event.summary), projectPath);
   const Icon = GLYPH[toolGlyph(event.name, images.length)];
   const copyText = [event.name, summary, detail].filter((part) => part.trim()).join("\n");
   const hasBody = summary.trim().length > 0 || detail.trim().length > 0 || images.length > 0;

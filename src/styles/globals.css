@@ -87,7 +87,10 @@ body {
 .chat-log button.answer-file,
 .chat-log .change-card button,
 .chat-log button[data-show-more],
-.chat-log button[data-view-changes] {
+.chat-log button[data-view-changes],
+.chat-log button[data-activity-toggle],
+.chat-log button[data-activity-step],
+.chat-log button[data-viewed-toggle] {
   cursor: pointer;
 }
 .chat-log input,

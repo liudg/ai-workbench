@@ -11,10 +11,17 @@ import { agentTurnName, useAgentIdentity } from "../events/use-agent-identity";
 import { ChangeCard } from "../cards/ChangeCard";
 import { Composer } from "../composer/Composer";
 import { EventItem } from "../events/EventItem";
+import { ActivityStream } from "./ActivityStream";
 import { LiveTurn } from "./LiveTurn";
 import { TurnFoldLine } from "./TurnFoldLine";
 import { TurnProcess } from "./TurnProcess";
-import { buildTimeline, contentChars, runningTurnSummary, timelineStatus } from "./timeline";
+import {
+  buildTimeline,
+  contentChars,
+  runningTurnSummary,
+  timelineStatus,
+  type TimelineNode,
+} from "./timeline";
 import { useTimelineFollow } from "./useTimelineFollow";
 
 export function ChatView({
@@ -57,12 +64,11 @@ export function ChatView({
 
   const [liveOverrides, setLiveOverrides] = useState<ReadonlyMap<string, boolean>>(new Map());
   const [foldOverrides, setFoldOverrides] = useState<ReadonlyMap<string, boolean>>(new Map());
-  const [thinkingOverrides, setThinkingOverrides] = useState<ReadonlyMap<string, boolean>>(new Map());
   useEffect(() => {
     setLiveOverrides(new Map());
     setFoldOverrides(new Map());
-    setThinkingOverrides(new Map());
   }, [session.id]);
+  const chunks = useMemo(() => chunkTimeline(blocks), [blocks]);
 
   const {
     scrollRef,
@@ -89,7 +95,20 @@ export function ChatView({
               <p className="text-sm">发送第一条消息，开始这轮会话</p>
             </div>
           ) : (
-            blocks.map((block) => {
+            chunks.map((chunk) => {
+              if (chunk.type === "events") {
+                return (
+                  <ActivityStream
+                    key={`events-${chunk.id}`}
+                    events={chunk.events}
+                    session={session}
+                    resolvedAnswers={resolvedAnswers}
+                    showAgentLabel={(event) => chunk.labels.get(event.id) ?? false}
+                    onInteract={pausePinForToggle}
+                  />
+                );
+              }
+              const block = chunk.block;
               if (block.type === "turn") {
                 const expanded = foldOverrides.get(block.id) ?? false;
                 return (
@@ -101,6 +120,7 @@ export function ChatView({
                     session={session}
                     resolvedAnswers={resolvedAnswers}
                     expanded={expanded}
+                    onInteract={pausePinForToggle}
                     onToggle={() => {
                       pausePinForToggle();
                       setFoldOverrides((prev) => new Map(prev).set(block.id, !expanded));
@@ -117,12 +137,11 @@ export function ChatView({
                     session={session}
                     resolvedAnswers={resolvedAnswers}
                     expanded={expanded}
+                    onInteract={pausePinForToggle}
                   />
                 );
               }
               const event = block.event;
-              const thinkingOpen =
-                event.kind === "thinking" ? (thinkingOverrides.get(event.id) ?? false) : undefined;
               return (
                 <EventItem
                   key={event.id}
@@ -132,15 +151,6 @@ export function ChatView({
                     event.kind === "prompt" ? (resolvedAnswers.get(event.prompt_id) ?? null) : null
                   }
                   showAgentLabel={block.showAgentLabel}
-                  thinkingOpen={thinkingOpen}
-                  onToggleThinking={
-                    event.kind === "thinking"
-                      ? () => {
-                          pausePinForToggle();
-                          setThinkingOverrides((prev) => new Map(prev).set(event.id, !thinkingOpen));
-                        }
-                      : undefined
-                  }
                 />
               );
             })
@@ -173,4 +183,32 @@ export function ChatView({
       )}
     </>
   );
+}
+
+type TimelineChunk =
+  | { type: "events"; id: string; events: SessionEvent[]; labels: ReadonlyMap<string, boolean> }
+  | { type: "block"; block: TimelineNode };
+
+/** 用户消息、已结束的一轮和进行中的一轮各自断开。中间的事件交给活动流。 */
+function chunkTimeline(blocks: readonly TimelineNode[]): TimelineChunk[] {
+  const chunks: TimelineChunk[] = [];
+  let events: SessionEvent[] = [];
+  let labels = new Map<string, boolean>();
+  const flush = () => {
+    if (events.length === 0) return;
+    chunks.push({ type: "events", id: events[0].id, events, labels });
+    events = [];
+    labels = new Map();
+  };
+  for (const block of blocks) {
+    if (block.type === "event" && block.event.kind !== "user-message") {
+      events.push(block.event);
+      labels.set(block.event.id, block.showAgentLabel);
+      continue;
+    }
+    flush();
+    chunks.push({ type: "block", block });
+  }
+  flush();
+  return chunks;
 }

@@ -19,6 +19,9 @@ const ImagePanelPreview = import.meta.env.DEV
 const UsagePreview = import.meta.env.DEV
   ? lazy(() => import("@/features/workspace/UsagePreview"))
   : null;
+const ActivityPreview = import.meta.env.DEV
+  ? lazy(() => import("@/features/chat/timeline/ActivityPreview"))
+  : null;
 const SidebarPreview = import.meta.env.DEV
   ? lazy(() => import("@/features/sidebar/SidebarPreview"))
   : null;
@@ -60,6 +63,13 @@ export default function App() {
     return (
       <Suspense fallback={null}>
         <UsagePreview />
+      </Suspense>
+    );
+  }
+  if (ActivityPreview && preview === "activity") {
+    return (
+      <Suspense fallback={null}>
+        <ActivityPreview />
       </Suspense>
     );
   }
