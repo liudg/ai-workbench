@@ -19,6 +19,7 @@ mod messages;
 mod mutate;
 mod permission;
 mod process;
+mod queue;
 mod runtime;
 mod session;
 mod usage;
@@ -35,8 +36,10 @@ use async_trait::async_trait;
 use session::ClaudeSession;
 
 use crate::features::agents::install::CliRelease;
-use crate::features::agents::{AgentAdapter, AgentError, AgentSession, EventSink, SessionContext};
-use crate::models::{AgentCapabilities, AgentKind, AgentProfile};
+use crate::features::agents::{
+    cwd_key, AgentAdapter, AgentError, AgentSession, DirectoryEntry, EventSink, SessionContext,
+};
+use crate::models::{AgentCapabilities, AgentKind, AgentProfile, SessionStatus};
 
 pub struct ClaudeCodeAdapter;
 
@@ -76,6 +79,35 @@ impl AgentAdapter for ClaudeCodeAdapter {
     }
 
     async fn discard_unsent_thread(&self, native_id: &str) -> Result<(), AgentError> {
+        history::remove_session_file(native_id).map_err(AgentError::Runtime)
+    }
+
+    /// `--fork-session` 不带提示词会失败（CLI：`No deferred tool marker found... Provide a prompt`）。
+    /// 带一条占位提示会多出用户没写的回合。分叉就是把转录复制成新的 session id。
+    async fn fork_thread(&self, native_id: &str) -> Result<DirectoryEntry, AgentError> {
+        let listed = history::fork_session_file(native_id).map_err(AgentError::Runtime)?;
+        Ok(DirectoryEntry {
+            native_id: listed.session_id,
+            cwd: listed.cwd.clone(),
+            cwd_key: cwd_key(&listed.cwd),
+            title: listed.title,
+            created_at: listed.created_at,
+            updated_at: listed.updated_at,
+            status: SessionStatus::Completed,
+            ephemeral: false,
+            archived: false,
+        })
+    }
+
+    /// 没有按会话删除的子命令。`purge` 删整个项目，`rm` 删后台会话。
+    /// 删掉 `<uuid>.jsonl` 之后再 `--resume` 会得到 `No conversation found with session ID`。
+    async fn delete_thread(&self, native_id: &str) -> Result<(), AgentError> {
+        if !history::is_uuid(native_id) {
+            return Err(AgentError::Runtime(format!("无效的会话 id：{native_id}")));
+        }
+        if history::find_session_file(native_id).is_none() {
+            return Err(AgentError::Runtime(format!("找不到会话 {native_id}")));
+        }
         history::remove_session_file(native_id).map_err(AgentError::Runtime)
     }
 
@@ -119,6 +151,7 @@ impl AgentAdapter for ClaudeCodeAdapter {
             ctx.project_path,
             ctx.access_mode,
             ctx.resume_native_id,
+            command::roots_from_options(&ctx.options),
             events,
         )
         .await?;

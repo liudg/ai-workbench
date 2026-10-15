@@ -143,19 +143,19 @@ mod tests {
     }
 
     #[test]
-    fn claude_does_not_pretend_to_have_codex_sandbox_tiers() {
+    fn claude_capabilities_follow_the_native_cli() {
         let caps = adapter_for(AgentKind::ClaudeCode).capabilities();
         assert!(caps.supports_plan);
         assert!(caps.supports_goals);
         assert!(caps.supports_rename);
         assert!(caps.supports_resume);
-        assert!(!caps.supports_queue);
-        assert!(!caps.supports_fork);
+        assert!(caps.supports_queue);
+        assert!(caps.supports_fork);
         assert!(!caps.supports_archive);
-        assert!(!caps.supports_delete);
+        assert!(caps.supports_delete);
         assert!(!caps.supports_review);
         assert!(!caps.supports_network_access);
-        assert!(!caps.supports_writable_roots);
+        assert!(caps.supports_writable_roots);
         assert!(!caps.supports_permission_profiles);
         assert!(!caps.supports_approve_for_me);
         assert!(caps.changes.turn_diff);

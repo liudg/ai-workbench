@@ -32,6 +32,7 @@ fn cli_args_follow_the_sdk_and_require_print() {
         permission_mode: "bypassPermissions".into(),
         model: Some("sonnet".into()),
         effort: Some("high".into()),
+        writable_roots: Vec::new(),
     });
     assert_eq!(
         args,
@@ -62,12 +63,42 @@ fn cli_args_follow_the_sdk_and_require_print() {
         permission_mode: "default".into(),
         model: None,
         effort: Some("  ".into()),
+        writable_roots: Vec::new(),
     });
     assert!(fresh.iter().any(|arg| arg == "--session-id=id-1"));
     assert!(!fresh.iter().any(|arg| arg == "--model" || arg == "--effort"));
     assert!(!fresh.iter().any(|arg| arg == "--system-prompt"));
     assert!(!fresh.iter().any(|arg| arg == "--dangerously-skip-permissions"));
     assert!(fresh.iter().any(|arg| arg == "--allow-dangerously-skip-permissions"));
+}
+
+#[test]
+fn add_dir_is_a_launch_argument() {
+    let args = command::cli_args(&Launch {
+        session_id: "id-1".into(),
+        resume: false,
+        permission_mode: "default".into(),
+        model: None,
+        effort: None,
+        writable_roots: vec![r"D:\extra".into()],
+    });
+    let pos = args.iter().position(|arg| arg == "--add-dir").expect("add-dir");
+    assert_eq!(args[pos + 1], r"D:\extra");
+    assert_eq!(args[pos + 2], "--input-format");
+    let normalized = command::normalize_add_dirs(
+        r"C:\work",
+        &[
+            r"c:\work".into(),
+            r"C:\work\extra".into(),
+            r"C:\work\extra".into(),
+            "  ".into(),
+            "notes".into(),
+        ],
+    );
+    assert_eq!(
+        normalized,
+        vec![r"C:\work\extra".to_string(), r"C:\work\notes".to_string()]
+    );
 }
 
 #[test]
@@ -599,6 +630,29 @@ fn history_chain_skips_sidechain_and_custom_title_wins() {
     )
     .unwrap();
     assert!(history::list_sessions_under(&root).iter().all(|item| item.session_id != side_id));
+
+    let source = project.join(format!("{id}.jsonl"));
+    let mut with_echo = std::fs::read_to_string(&source).unwrap();
+    with_echo.push_str(
+        &json!({
+            "type": "user",
+            "uuid": "77777777-7777-4777-8777-777777777777",
+            "sessionId": id,
+            "session_id": id,
+            "message": {"role": "user", "content": format!("正文里保留 {id}")}
+        })
+        .to_string(),
+    );
+    with_echo.push('\n');
+    std::fs::write(&source, &with_echo).unwrap();
+    let forked = history::fork_under(&source, id).unwrap();
+    assert_ne!(forked.session_id, id);
+    assert_eq!(forked.title, "再次改名");
+    let child = std::fs::read_to_string(project.join(format!("{}.jsonl", forked.session_id))).unwrap();
+    assert!(child.contains(&format!("\"sessionId\":\"{}\"", forked.session_id)));
+    assert!(child.contains(&format!("正文里保留 {id}")));
+    assert!(!child.contains(&format!("\"sessionId\":\"{id}\"")));
+    assert!(std::fs::read_to_string(&source).unwrap().contains(&format!("\"sessionId\":\"{id}\"")));
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -634,11 +688,11 @@ fn catalog_uses_reported_fields_and_permission_menu_is_honest() {
 
     let menu = permission_menu("ask");
     assert!(!menu.network_access);
-    assert!(!menu.writable_roots);
+    assert!(menu.writable_roots);
     assert!(!menu.permission_profiles);
     assert!(!menu.approve_for_me);
     assert_eq!(menu.presets.iter().map(|item| item.id.as_str()).collect::<Vec<_>>(), vec!["full", "ask"]);
-    assert!(menu.presets.iter().all(|item| !item.allows_extras));
+    assert!(menu.presets.iter().all(|item| item.allows_extras));
     assert!(menu.presets.iter().find(|item| item.id == "full").unwrap().caution);
     assert_eq!(menu.active.as_deref(), Some("ask"));
     assert!(menu.notice.is_none());

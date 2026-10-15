@@ -5,13 +5,13 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use super::images;
-use super::permission;
-use super::runtime::Shared;
 use super::super::protocol::{
     default_git_scopes, fold_page_annotations, submit_annotation_as_attachment, turn_scope,
     AnnotationSink, DiffScopeProvider, TurnDelivery, UserTurn,
 };
+use super::images;
+use super::permission;
+use super::runtime::Shared;
 use crate::features::agents::{AgentError, AgentSession};
 use crate::models::{AgentCatalog, PageAnnotation, PermissionMenu, PromptAnswer, SessionEventBody};
 
@@ -41,8 +41,25 @@ impl AgentSession for ClaudeSession {
         let mut images = turn.images;
         let text = fold_page_annotations(&turn.text, &mut images, &turn.annotations);
         let content = images::message_content(&text, &images)?;
-        self.shared.send_content(content)?;
-        Ok(TurnDelivery::Started)
+        self.shared.submit(content, text, images, turn.client_id)
+    }
+
+    async fn update_queued(&self, id: &str, turn: UserTurn) -> Result<(), AgentError> {
+        let mut images = turn.images;
+        let text = fold_page_annotations(&turn.text, &mut images, &turn.annotations);
+        self.shared.update_queued(id, text, images)
+    }
+
+    async fn remove_queued(&self, id: &str) -> Result<(), AgentError> {
+        self.shared.remove_queued(id)
+    }
+
+    async fn steer_queued(&self, id: &str) -> Result<(), AgentError> {
+        self.shared.steer_queued(id)
+    }
+
+    async fn set_follow_up_queue_mode(&self, mode: &str) -> Result<(), AgentError> {
+        self.shared.set_follow_up_queue_mode(mode)
     }
 
     async fn interrupt(&self) -> Result<(), AgentError> {
