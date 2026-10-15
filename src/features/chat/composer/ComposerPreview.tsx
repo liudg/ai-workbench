@@ -24,8 +24,8 @@ import { fastTier, tuningForModel } from "./model-picker";
 import { useComposerMenu } from "./useComposerMenu";
 import { activeGoal } from "./goal";
 import { atToken, clearAtToken, insertMention, mentionFiles } from "./mentions";
-import { QueueStrip } from "./QueueStrip";
-import { nextQueueIndex } from "./queue-strip";
+import { QueuedMessageList } from "./QueueStrip";
+import { toggleFollowUpQueueMode, type FollowUpQueueMode } from "./follow-up-queue-mode";
 
 const workspaceFiles = Object.keys(
   import.meta.glob(["/src/**/*.{ts,tsx,md,json}", "/docs/**/*.md", "/index.html"], {
@@ -264,15 +264,20 @@ export default function ComposerPreview() {
   const claude = params.get("agent") === "claude";
   const catalog = claude ? claudeCatalog : codexCatalog;
   const initialMenu = params.get("menu");
-  const queueMode = params.get("queue");
-  const showQueue = Boolean(queueMode) && !claude;
+  const queueQuery = params.get("queue");
+  const showQueue = Boolean(queueQuery) && !claude;
   const skillsOpen = params.get("skills") === "1";
   const showSnippets = params.get("snippets") === "1";
   const [snippets, setSnippets] = useState<TextSnippet[]>(() => (showSnippets ? [previewSnippet] : []));
-  const [queued, setQueued] = useState<QueuedTurn[]>(() =>
-    showQueue ? (queueMode === "2" ? previewQueued : previewQueued.slice(0, 1)) : [],
+  const [queued, setQueued] = useState<QueuedTurn[]>(() => {
+    if (!showQueue) return [];
+    if (queueQuery === "1") return previewQueued.slice(0, 1);
+    return previewQueued;
+  });
+  const [followUpQueueMode, setFollowUpQueueMode] = useState<FollowUpQueueMode>(
+    queueQuery === "steer" ? "steer" : "queue",
   );
-  const [queueIndex, setQueueIndex] = useState(0);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [text, setText] = useState(skillsOpen ? "$" : "");
   const [caret, setCaret] = useState(skillsOpen ? 1 : 0);
   const [planOn, setPlanOn] = useState(false);
@@ -453,20 +458,31 @@ export default function ComposerPreview() {
         <TextSnippetPreview snippets={snippets} />
         <div className="min-w-0 rounded-[18px] border border-[#2a2a2a] bg-[#171717]">
           {showQueue && queued.length > 0 ? (
-            <QueueStrip
+            <QueuedMessageList
               items={queued}
-              index={queueIndex}
-              editingId={null}
-              defaultMenuOpen={queueMode === "menu"}
-              onCycle={() => setQueueIndex((current) => nextQueueIndex(queued.length, current))}
-              onSteer={(id) => setQueued((current) => current.filter((item) => item.id !== id))}
-              onRemove={(id) => setQueued((current) => current.filter((item) => item.id !== id))}
+              mode={followUpQueueMode}
+              editingId={editingId}
+              canOpenSideChat={false}
+              defaultMenuOpen={queueQuery === "menu"}
+              onSteer={(id) => {
+                setQueued((current) => current.filter((item) => item.id !== id));
+                setEditingId((current) => (current === id ? null : current));
+              }}
+              onRemove={(id) => {
+                setQueued((current) => current.filter((item) => item.id !== id));
+                if (editingId === id) {
+                  setEditingId(null);
+                  setText("");
+                  setCaret(0);
+                }
+              }}
               onEdit={(item) => {
+                setEditingId(item.id);
                 setText(item.text);
                 setCaret(item.text.length);
                 requestAnimationFrame(() => textareaRef.current?.focus());
               }}
-              onCloseQueue={() => setQueued([])}
+              onToggleQueueMode={() => setFollowUpQueueMode((current) => toggleFollowUpQueueMode(current))}
             />
           ) : null}
           <div className="min-w-0 overflow-hidden px-3 pt-3">

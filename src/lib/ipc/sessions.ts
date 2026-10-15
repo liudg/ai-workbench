@@ -35,7 +35,7 @@ export const sessionCommands: Pick<
   | "updateQueuedTurn"
   | "removeQueuedTurn"
   | "steerQueuedTurn"
-  | "closeSessionQueue"
+  | "setFollowUpQueueMode"
   | "sessionQueue"
   | "interruptTurn"
   | "stageChatImage"
@@ -107,7 +107,8 @@ export const sessionCommands: Pick<
     invoke("remove_queued_turn", { sessionId, queuedId }),
   steerQueuedTurn: (sessionId, queuedId) =>
     invoke("steer_queued_turn", { sessionId, queuedId }),
-  closeSessionQueue: (sessionId) => invoke("close_session_queue", { sessionId }),
+  setFollowUpQueueMode: (sessionId, mode) =>
+    invoke("set_follow_up_queue_mode", { sessionId, mode }),
   sessionQueue: (sessionId) =>
     invoke("session_queue", { sessionId }),
   interruptTurn: (sessionId) => invoke("interrupt_turn", { sessionId }),

@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ClipboardEvent,
@@ -24,7 +25,6 @@ import {
   applyComposerSlash,
   beginComposerEdit,
   cancelComposerEdit,
-  closeComposerQueue,
   handleComposerKey,
   interruptComposer,
   pasteComposerImages,
@@ -38,7 +38,16 @@ import {
 } from "./composer-run";
 import { sandboxFromMenu } from "./access";
 import { composerCaps, composerCommands, deriveComposerView } from "./composer-view";
-import { clampQueueIndex, nextQueueIndex, queueStripVisible } from "./queue-strip";
+import { applyFollowUpQueueMode } from "./composer-backend";
+import {
+  browserFollowUpQueueModeStorage,
+  readFollowUpQueueMode,
+  readSessionFollowUpQueueMode,
+  rememberFollowUpQueueMode,
+  toggleFollowUpQueueMode,
+  writeSessionFollowUpQueueMode,
+} from "./follow-up-queue-mode";
+import { queueStripVisible } from "./queue-strip";
 import { useComposerMenu } from "./useComposerMenu";
 import { useComposerFeeds } from "./useComposerFeeds";
 import { useComposerActions, useComposerSession } from "./useComposerStore";
@@ -57,7 +66,9 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
   const [slashIndex, setSlashIndex] = useState(0);
   const [skillIndex, setSkillIndex] = useState(0);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [queueIndex, setQueueIndex] = useState(0);
+  const [followUpQueueMode, setFollowUpQueueMode] = useState(() =>
+    readFollowUpQueueMode(browserFollowUpQueueModeStorage(), session.id, session.agent),
+  );
   const [notice, setNotice] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -138,6 +149,22 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
   useComposerMenu(menu === "access", accessRef, accessMenuRef, closeMenu);
   useComposerMenu(menu === "model", modelRef, modelMenuRef, closeMenu);
   useComposerMenu(menu === "attach", plusRef, attachMenuRef, closeMenu);
+
+  useLayoutEffect(() => {
+    const storage = browserFollowUpQueueModeStorage();
+    if (!readSessionFollowUpQueueMode(storage, session.id)) {
+      writeSessionFollowUpQueueMode(
+        storage,
+        session.id,
+        readFollowUpQueueMode(storage, session.id, session.agent),
+      );
+    }
+  }, [session.agent, session.id]);
+
+  useLayoutEffect(() => {
+    if (!caps?.supports_queue) return;
+    void applyFollowUpQueueMode(session.id, followUpQueueMode);
+  }, [caps?.supports_queue, followUpQueueMode, session.id]);
 
   useEffect(() => {
     setSlashIndex(0);
@@ -235,10 +262,18 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     applySandbox,
     removeQueued: (id: string) => removeComposerQueued(run, id),
     queueStrip: queueStripVisible({ supportsQueue: view.queueOn, count: data.queue.length }),
-    queueIndex: clampQueueIndex(data.queue.length, queueIndex),
-    cycleQueue: () => setQueueIndex((current) => nextQueueIndex(data.queue.length, current)),
+    followUpQueueMode,
     steerQueued: (id: string) => steerComposerQueued(run, id),
-    closeQueue: () => closeComposerQueue(run),
+    toggleQueueMode: () => {
+      const next = toggleFollowUpQueueMode(followUpQueueMode);
+      rememberFollowUpQueueMode(
+        browserFollowUpQueueModeStorage(),
+        session.id,
+        session.agent,
+        next,
+      );
+      setFollowUpQueueMode(next);
+    },
     interrupt: () => interruptComposer(run),
     dismissPlan: () => {
       void actions.setCollaborationMode(session.id, "default");

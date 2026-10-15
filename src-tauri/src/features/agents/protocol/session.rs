@@ -45,14 +45,14 @@ pub trait AgentSession: DiffScopeProvider + AnnotationSink + Send + Sync {
         Err(AgentError::Runtime("这个 Agent 不支持删除排队消息".into()))
     }
 
-    /// 立刻把一条排队消息送进当前回合。没有活跃回合时改成马上开跑。
+    /// 把一条排队消息送出，不打断当前模型回合。没有活跃回合时改成马上开跑。
     async fn steer_queued(&self, _id: &str) -> Result<(), AgentError> {
         Err(AgentError::Runtime("这个 Agent 不支持引导排队消息".into()))
     }
 
-    /// 丢掉尚未发出的排队消息，并且本回合内不再排队。
-    async fn close_queue(&self) -> Result<(), AgentError> {
-        Err(AgentError::Runtime("这个 Agent 不支持关闭排队".into()))
+    /// 切换 `followUpQueueMode`：`queue` 排队，`steer` 写进当前回合。不删除已排队的消息。
+    async fn set_follow_up_queue_mode(&self, _mode: &str) -> Result<(), AgentError> {
+        Err(AgentError::Runtime("这个 Agent 不支持切换队列模式".into()))
     }
 
     /// 停下当前回合，不结束会话，也不清空队列。

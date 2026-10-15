@@ -9,7 +9,7 @@ import { ComposerBar } from "./ComposerBar";
 import { ComposerInput } from "./ComposerInput";
 import { TextSnippetChip, TextSnippetPreview } from "./TextSnippets";
 import { ModelMenu } from "./ModelMenu";
-import { QueueStrip } from "./QueueStrip";
+import { QueuedMessageList } from "./QueueStrip";
 import { ReviewMenu } from "./ReviewMenu";
 import { MentionMenu } from "./MentionMenu";
 import { SkillMenu } from "./SkillMenu";
@@ -113,15 +113,15 @@ export function Composer({
           }}
         >
           {c.queueStrip ? (
-            <QueueStrip
+            <QueuedMessageList
               items={c.queue}
-              index={c.queueIndex}
+              mode={c.followUpQueueMode}
               editingId={c.editingId}
-              onCycle={c.cycleQueue}
+              canOpenSideChat={false}
               onSteer={c.steerQueued}
               onRemove={c.removeQueued}
               onEdit={c.beginEdit}
-              onCloseQueue={c.closeQueue}
+              onToggleQueueMode={c.toggleQueueMode}
             />
           ) : null}
           <div className="min-w-0 overflow-hidden px-3 pt-3">

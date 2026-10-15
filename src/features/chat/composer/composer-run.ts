@@ -3,7 +3,6 @@ import type { ClipboardEvent, KeyboardEvent as ReactKeyboardEvent, RefObject } f
 import { useWorkbench } from "@/store";
 import type { AgentCapabilities, AgentSkillOption, SessionSandbox, SlashCommand } from "@/types";
 import {
-  closeSessionQueue,
   interruptTurn,
   pickAttachments,
   removeQueuedTurn,
@@ -264,11 +263,6 @@ export function removeComposerQueued(run: ComposerRun, id: string) {
 export function steerComposerQueued(run: ComposerRun, id: string) {
   if (run.editingId === id) cancelComposerEdit(run);
   void steerQueuedTurn(run.sessionId, id);
-}
-
-export function closeComposerQueue(run: ComposerRun) {
-  if (run.editingId) cancelComposerEdit(run);
-  void closeSessionQueue(run.sessionId);
 }
 
 export function interruptComposer(run: ComposerRun) {

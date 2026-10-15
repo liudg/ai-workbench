@@ -2,6 +2,7 @@ import { backend } from "@/lib/ipc";
 import { useWorkbench } from "@/store";
 import { isMissingSessionError } from "@/store/sync";
 import type { Attachment, PermissionMenu, QueuedTurn, ReviewTargets } from "@/types";
+import type { FollowUpQueueMode } from "./follow-up-queue-mode";
 import { fileToBase64 } from "./media";
 
 export function reportComposerError(sessionId: string, error: unknown) {
@@ -70,12 +71,30 @@ export function steerQueuedTurn(sessionId: string, queuedId: string) {
   );
 }
 
-export function closeSessionQueue(sessionId: string) {
-  return runQueuedAction(`close:${sessionId}`, () =>
-    backend.closeSessionQueue(sessionId).catch((error: unknown) => {
+const modeEpoch = new Map<string, number>();
+const modeChain = new Map<string, Promise<void>>();
+
+/** 把 followUpQueueMode 写到当前会话。后一次切换盖过还没送出的前一次。 */
+export function applyFollowUpQueueMode(sessionId: string, mode: FollowUpQueueMode) {
+  const epoch = (modeEpoch.get(sessionId) ?? 0) + 1;
+  modeEpoch.set(sessionId, epoch);
+  const previous = modeChain.get(sessionId) ?? Promise.resolve();
+  const next = previous
+    .catch(() => undefined)
+    .then(() => {
+      if (modeEpoch.get(sessionId) !== epoch) return;
+      return backend.setFollowUpQueueMode(sessionId, mode);
+    })
+    .catch((error: unknown) => {
+      if (modeEpoch.get(sessionId) !== epoch) return;
+      if (String(error).includes("不支持切换队列模式")) return;
       reportComposerError(sessionId, error);
-    }),
+    });
+  modeChain.set(
+    sessionId,
+    next.then(() => undefined),
   );
+  return next;
 }
 
 export function interruptTurn(sessionId: string) {

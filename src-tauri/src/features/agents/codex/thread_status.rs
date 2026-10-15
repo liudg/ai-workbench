@@ -52,9 +52,6 @@ impl Shared {
         }
         if let Some(status) = params.get("status").and_then(session_status) {
             self.status_known.store(true, Ordering::SeqCst);
-            if matches!(status, SessionStatus::Completed | SessionStatus::Failed) {
-                self.reopen_queue();
-            }
             emit_status(&self.events, status);
         }
     }

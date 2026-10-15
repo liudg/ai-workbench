@@ -100,10 +100,10 @@ export interface Backend {
     images?: string[],
   ): Promise<void>;
   removeQueuedTurn(sessionId: string, queuedId: string): Promise<void>;
-  /** 立刻送出一条排队消息。回合还在时写进当前回合，否则马上开跑。 */
+  /** 立刻送出一条排队消息。不打断当前模型回合；没有活跃回合时马上开跑。 */
   steerQueuedTurn(sessionId: string, queuedId: string): Promise<void>;
-  /** 丢掉尚未发出的排队消息，并且本回合内不再排队。 */
-  closeSessionQueue(sessionId: string): Promise<void>;
+  /** 切换 followUpQueueMode。不删除已经排着的消息。 */
+  setFollowUpQueueMode(sessionId: string, mode: "queue" | "steer"): Promise<void>;
   sessionQueue(sessionId: string): Promise<QueuedTurn[]>;
   interruptTurn(sessionId: string): Promise<void>;
   stageChatImage(dataBase64: string, name: string): Promise<Attachment>;

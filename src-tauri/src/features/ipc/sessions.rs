@@ -297,11 +297,14 @@ pub async fn steer_queued_turn(
 }
 
 #[tauri::command]
-pub async fn close_session_queue(
+pub async fn set_follow_up_queue_mode(
     manager: State<'_, SessionManager>,
     session_id: String,
+    mode: String,
 ) -> Result<(), String> {
-    manager.close_queue(&session_id).await
+    manager
+        .set_follow_up_queue_mode(&session_id, &mode)
+        .await
 }
 
 #[tauri::command]

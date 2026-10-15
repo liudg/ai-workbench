@@ -1,8 +1,10 @@
 //! `thread/queue/*`。排队卡片不进时间线；消失且不是用户删除时，补一条用户气泡。
 //!
-//! 桌面队列条：引导在回合还在时走 `turn/steer`，成功后再 `thread/queue/delete`；
-//! 没有活跃回合时走 `thread/queue/start`。关闭排队会删掉尚未发出的提交，
-//! 并且本回合内后续输入改为 steer。下一次回合结束重新接受排队。
+//! `followUpQueueMode`：`queue` 时回合中的后续输入走 `thread/queue/add`，
+//! `steer` 时走 `turn/steer`。模式按会话保留，不随回合结束改回去，也不删除已排队的消息。
+//! 引导对应桌面 `sendQueuedMessageNow`（`queueModeOverride: send-now`）：
+//! 把这条排队消息送出，不打断当前模型回合。回合还在时走 `turn/steer`，成功后再
+//! `thread/queue/delete`；没有活跃回合时走 `thread/queue/start`。
 
 use std::collections::HashSet;
 use std::sync::atomic::Ordering;
@@ -183,11 +185,12 @@ impl Shared {
         Ok(())
     }
 
-    pub(super) fn reopen_queue(&self) {
-        self.queue_closed.store(false, Ordering::SeqCst);
+    pub(super) fn set_follow_up_queue_mode(&self, mode: FollowUpQueueMode) {
+        self.follow_up_steer
+            .store(mode == FollowUpQueueMode::Steer, Ordering::SeqCst);
     }
 
-    /// 引导：写进当前回合后从队列删掉。回合已经结束则马上开跑这条排队消息。
+    /// 引导：把这条排队消息送出，不打断当前模型回合。回合已经结束则马上开跑。
     pub(super) async fn steer_queued(&self, id: &str) -> Result<(), AgentError> {
         let Some(item) = self.queued_item(id).await else {
             return Err(AgentError::Runtime(QUEUE_GONE.into()));
@@ -223,34 +226,6 @@ impl Shared {
             return Ok(());
         }
         self.start_queued(id).await
-    }
-
-    /// 关掉这一回合的排队：丢掉待发消息，之后的输入改走 steer。
-    pub(super) async fn close_queue(&self) -> Result<(), AgentError> {
-        self.queue_closed.store(true, Ordering::SeqCst);
-        self.refresh_queue().await;
-        let ids: Vec<String> = self
-            .queued
-            .lock()
-            .unwrap()
-            .iter()
-            .map(|item| item.id.clone())
-            .collect();
-        let mut error = None;
-        for id in ids {
-            if let Err(err) = self.remove_queued(&id).await {
-                if error.is_none() {
-                    error = Some(err);
-                }
-            }
-        }
-        if self.turn_open.load(Ordering::SeqCst) {
-            self.queue_closed.store(true, Ordering::SeqCst);
-        }
-        match error {
-            Some(err) => Err(err),
-            None => Ok(()),
-        }
     }
 
     pub(super) async fn steer_user_turn(
@@ -471,7 +446,22 @@ fn queue_unsupported(err: &AgentError) -> bool {
         || msg.contains("unknown method")
 }
 
-/// 回合进行中的后续输入：默认排队；关掉排队之后写进当前回合。
+/// 桌面 `followUpQueueMode`。切换它不删除队列。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum FollowUpQueueMode {
+    Queue,
+    Steer,
+}
+
+pub(super) fn parse_follow_up_queue_mode(mode: &str) -> Result<FollowUpQueueMode, AgentError> {
+    match mode {
+        "queue" => Ok(FollowUpQueueMode::Queue),
+        "steer" => Ok(FollowUpQueueMode::Steer),
+        _ => Err(AgentError::Runtime("队列模式只能是 queue 或 steer".into())),
+    }
+}
+
+/// 回合进行中：`queue` 排队，`steer` 写进当前回合。空闲时总是新回合。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum FollowUp {
     StartTurn,
@@ -479,10 +469,10 @@ pub(super) enum FollowUp {
     Enqueue,
 }
 
-pub(super) fn follow_up(turn_open: bool, queue_closed: bool) -> FollowUp {
+pub(super) fn follow_up(turn_open: bool, mode: FollowUpQueueMode) -> FollowUp {
     if !turn_open {
         FollowUp::StartTurn
-    } else if queue_closed {
+    } else if mode == FollowUpQueueMode::Steer {
         FollowUp::Steer
     } else {
         FollowUp::Enqueue
@@ -568,11 +558,29 @@ mod tests {
     }
 
     #[test]
-    fn follow_up_steers_only_after_the_queue_is_closed() {
-        assert_eq!(follow_up(true, false), FollowUp::Enqueue);
-        assert_eq!(follow_up(true, true), FollowUp::Steer);
-        assert_eq!(follow_up(false, true), FollowUp::StartTurn);
-        assert_eq!(follow_up(false, false), FollowUp::StartTurn);
+    fn follow_up_queue_mode_steers_without_clearing_the_queue() {
+        assert_eq!(
+            parse_follow_up_queue_mode("queue").unwrap(),
+            FollowUpQueueMode::Queue
+        );
+        assert_eq!(
+            parse_follow_up_queue_mode("steer").unwrap(),
+            FollowUpQueueMode::Steer
+        );
+        assert!(parse_follow_up_queue_mode("close").is_err());
+        assert_eq!(
+            follow_up(true, FollowUpQueueMode::Queue),
+            FollowUp::Enqueue
+        );
+        assert_eq!(follow_up(true, FollowUpQueueMode::Steer), FollowUp::Steer);
+        assert_eq!(
+            follow_up(false, FollowUpQueueMode::Steer),
+            FollowUp::StartTurn
+        );
+        assert_eq!(
+            follow_up(false, FollowUpQueueMode::Queue),
+            FollowUp::StartTurn
+        );
     }
 
     #[test]

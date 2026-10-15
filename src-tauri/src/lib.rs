@@ -63,7 +63,7 @@ macro_rules! workbench_handler {
             $crate::features::ipc::sessions::update_queued_turn,
             $crate::features::ipc::sessions::remove_queued_turn,
             $crate::features::ipc::sessions::steer_queued_turn,
-            $crate::features::ipc::sessions::close_session_queue,
+            $crate::features::ipc::sessions::set_follow_up_queue_mode,
             $crate::features::ipc::sessions::session_queue,
             $crate::features::ipc::sessions::interrupt_turn,
             $crate::features::ipc::sessions::answer_prompt,

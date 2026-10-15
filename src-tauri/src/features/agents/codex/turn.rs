@@ -193,7 +193,6 @@ impl Shared {
             };
         }
         self.attach_plan_mode(&mut params)?;
-        self.reopen_queue();
         self.turn_open.store(true, Ordering::SeqCst);
         if !self.write_method("turn/start", params) {
             self.turn_open.store(false, Ordering::SeqCst);

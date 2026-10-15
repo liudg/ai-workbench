@@ -614,9 +614,12 @@ impl SessionManager {
             .map_err(|err| err.to_string())
     }
 
-    pub async fn close_queue(&self, session_id: &str) -> Result<(), String> {
+    pub async fn set_follow_up_queue_mode(&self, session_id: &str, mode: &str) -> Result<(), String> {
         let handle = self.agent_handle_ready(session_id).await?;
-        handle.close_queue().await.map_err(|err| err.to_string())
+        handle
+            .set_follow_up_queue_mode(mode)
+            .await
+            .map_err(|err| err.to_string())
     }
 
     pub fn session_queue(&self, session_id: &str) -> Vec<QueuedTurn> {

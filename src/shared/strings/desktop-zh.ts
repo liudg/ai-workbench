@@ -159,9 +159,14 @@ export const DESKTOP_ZH = {
   activityViewedImages: "已查看 {count} 张图像",
   activityCommandStep: "命令",
   other: "其他",
-  /** 回合进行中的排队条。侧边聊天只在真有该界面时出现。 */
+  /** 回合进行中的排队列表。侧边聊天只在真有该界面时出现。 */
   queueSteer: "引导",
+  /** 引导：送出这条排队消息，不打断当前模型回合。 */
+  queueSteerHint: "提交这条排队消息，不打断当前模型回合",
   queueEdit: "编辑消息",
   queueSideChat: "在侧边聊天中打开",
+  /** followUpQueueMode 为 queue。切到 steer，不删队列。 */
   queueClose: "关闭排队",
+  /** followUpQueueMode 为 steer。切回 queue。 */
+  queueEnable: "启用队列模式",
 } as const;

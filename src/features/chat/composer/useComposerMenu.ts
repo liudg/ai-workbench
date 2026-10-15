@@ -20,6 +20,7 @@ export function useComposerMenu(
   anchorRef: RefObject<HTMLElement | null>,
   menuRef: RefObject<HTMLElement | null>,
   onClose: () => void,
+  token?: unknown,
 ) {
   useEffect(() => {
     if (!open) return;
@@ -59,5 +60,5 @@ export function useComposerMenu(
       document.removeEventListener("keydown", onKey);
       window.removeEventListener("resize", place);
     };
-  }, [open, anchorRef, menuRef, onClose]);
+  }, [open, anchorRef, menuRef, onClose, token]);
 }

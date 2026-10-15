@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use serde_json::json;
 
 use super::gap;
-use super::queue::{follow_up, FollowUp};
+use super::queue::{follow_up, parse_follow_up_queue_mode, FollowUp, FollowUpQueueMode};
 use super::prompts::{
     async_replies, blocking_answer_payload, elicitation_action_label, elicitation_result,
     is_accept, questions_summary,
@@ -49,10 +49,12 @@ impl AgentSession for CodexCliSession {
             self.shared.handle_slash(turn.text.trim()).await?;
             return Ok(TurnDelivery::Started);
         }
-        match follow_up(
-            self.shared.turn_open.load(Ordering::SeqCst),
-            self.shared.queue_closed.load(Ordering::SeqCst),
-        ) {
+        let mode = if self.shared.follow_up_steer.load(Ordering::SeqCst) {
+            FollowUpQueueMode::Steer
+        } else {
+            FollowUpQueueMode::Queue
+        };
+        match follow_up(self.shared.turn_open.load(Ordering::SeqCst), mode) {
             FollowUp::Enqueue => {
                 self.shared
                     .enqueue(turn.text, turn.images, turn.client_id, turn.annotations)
@@ -97,9 +99,11 @@ impl AgentSession for CodexCliSession {
         self.shared.steer_queued(id).await
     }
 
-    async fn close_queue(&self) -> Result<(), AgentError> {
+    async fn set_follow_up_queue_mode(&self, mode: &str) -> Result<(), AgentError> {
         self.shared.ensure_open()?;
-        self.shared.close_queue().await
+        let mode = parse_follow_up_queue_mode(mode)?;
+        self.shared.set_follow_up_queue_mode(mode);
+        Ok(())
     }
 
     async fn interrupt(&self) -> Result<(), AgentError> {
