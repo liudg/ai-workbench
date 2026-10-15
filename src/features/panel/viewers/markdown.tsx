@@ -1,6 +1,9 @@
+import { useRef } from "react";
 import { FileText } from "lucide-react";
 
+import { insertComposerText } from "@/shared/composer-insert";
 import { baseName } from "../files/path";
+import { SelectionMenu } from "../files/SelectionMenu";
 import { payloadTitle, type PanelViewer, type ViewerViewProps } from "../core/registry";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { readPreviewDocument, reopenIfDifferent } from "./document";
@@ -9,15 +12,32 @@ import { matchMarkdown } from "./kinds";
 
 interface MarkdownPayload {
   title?: string;
+  path?: string;
   text?: string;
   truncated?: boolean;
   error?: string;
 }
 
-function MarkdownViewerBody({ payload, status }: ViewerViewProps<MarkdownPayload>) {
-  if (status === "loading") return <PreviewPending />;
-  if (status === "error") return <PreviewFailed message={payload.error ?? ""} />;
-  return <MarkdownPreview text={payload.text ?? ""} truncated={Boolean(payload.truncated)} />;
+function MarkdownViewerBody({ payload, status, sessionId }: ViewerViewProps<MarkdownPayload>) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const path = payload.path ?? "";
+  let body = <MarkdownPreview text={payload.text ?? ""} truncated={Boolean(payload.truncated)} />;
+  if (status === "loading") body = <PreviewPending />;
+  else if (status === "error") body = <PreviewFailed message={payload.error ?? ""} />;
+  return (
+    <div ref={rootRef} data-open-files-preview className="h-full min-h-0">
+      {body}
+      {status === "ready" && path ? (
+        <SelectionMenu
+          rootRef={rootRef}
+          path={path}
+          onAdd={(quote) => {
+            insertComposerText(sessionId, quote);
+          }}
+        />
+      ) : null}
+    </div>
+  );
 }
 
 export const markdownViewer: PanelViewer<MarkdownPayload> = {
@@ -26,11 +46,12 @@ export const markdownViewer: PanelViewer<MarkdownPayload> = {
   icon: FileText,
   title: (payload) => payloadTitle(payload) || "Markdown",
   async load(target, ctx) {
-    if (target.kind !== "file") return { title: "Markdown", text: "", truncated: false };
+    if (target.kind !== "file") return { title: "Markdown", path: "", text: "", truncated: false };
     const doc = await readPreviewDocument(ctx, target.path);
     reopenIfDifferent(doc.kind, "markdown", target.path, target.line);
     return {
       title: baseName(target.path),
+      path: target.path,
       text: doc.text,
       truncated: doc.truncated,
     };
