@@ -32,6 +32,17 @@ pub struct PromptOption {
     pub disabled_reason: Option<String>,
 }
 
+/// 提问卡片的交互壳。适配器按原生协议写入，界面不看 Agent 名字。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum QuestionSurface {
+    /// 阻塞式 requestUserInput：跳过 + 继续 / 提交。
+    #[default]
+    RequestInput,
+    /// async sendUserMessageQuestion：跳过 + 下一步 / 发送。
+    AsyncReply,
+}
+
 /// 问题卡片中的一道题（对应 Codex requestUserInput 的单个 question，
 /// 或 async 提问消息里的一条 AsyncUserInputQuestion）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -42,9 +53,21 @@ pub struct PromptQuestion {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub header: String,
     pub question: String,
-    /// 回答是敏感信息（Codex isSecret），输入时掩码
+    /// 题下说明。Codex 这张卡没有单独的题目说明；Claude 的 description 放这里。
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub description: String,
+    /// Codex isSecret。桌面端只用来关掉听写；这张卡没有听写，也不做密码掩码。
     #[serde(default)]
     pub is_secret: bool,
+    /// 有选项时仍可写自定义回复（Codex isOther）。没有选项时自由输入不看这个字段。
+    #[serde(default)]
+    pub is_other: bool,
+    /// 多选。Codex requestUserInput 的映射不带这个字段，缺省 false。
+    #[serde(default)]
+    pub multi_select: bool,
+    /// 这道题所属卡片的按钮和占位文案。同一张卡的题应一致。
+    #[serde(default)]
+    pub surface: QuestionSurface,
     /// 编号展示的选项；空数组 = 纯自由文本题。elicitation 的 enum 也放这里。
     pub options: Vec<PromptOption>,
     /// elicitation 字段类型：string / number / integer / boolean。空表示普通问题。

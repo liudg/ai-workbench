@@ -16,7 +16,7 @@
 use serde_json::{json, Value};
 
 use crate::features::agents::AgentError;
-use crate::models::{PromptAnswer, PromptOption, PromptQuestion};
+use crate::models::{PromptAnswer, PromptOption, PromptQuestion, QuestionSurface};
 
 pub fn request_id(counter: u64) -> String {
     let hex = uuid::Uuid::new_v4().simple().to_string();
@@ -73,7 +73,11 @@ pub fn user_message(session_id: &str, content: Value) -> Value {
 pub fn parse_control_response(value: &Value) -> Option<(String, Result<Value, String>)> {
     let response = value.get("response")?;
     let id = response.get("request_id")?.as_str()?.to_string();
-    match response.get("subtype").and_then(Value::as_str).unwrap_or("") {
+    match response
+        .get("subtype")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+    {
         "error" => {
             let message = response
                 .get("error")
@@ -90,12 +94,22 @@ pub fn parse_control_response(value: &Value) -> Option<(String, Result<Value, St
 
 #[derive(Clone)]
 pub enum PermissionKind {
-    Approval { input: Value },
-    Questions { input: Value, questions: Vec<PromptQuestion> },
-    ExitPlan { input: Value },
+    Approval {
+        input: Value,
+    },
+    Questions {
+        input: Value,
+        questions: Vec<PromptQuestion>,
+    },
+    ExitPlan {
+        input: Value,
+    },
 }
 
-pub fn permission_result(kind: &PermissionKind, answer: &PromptAnswer) -> Result<Value, AgentError> {
+pub fn permission_result(
+    kind: &PermissionKind,
+    answer: &PromptAnswer,
+) -> Result<Value, AgentError> {
     match kind {
         PermissionKind::Approval { input } | PermissionKind::ExitPlan { input } => {
             let PromptAnswer::Single { value } = answer else {
@@ -117,7 +131,10 @@ pub fn permission_result(kind: &PermissionKind, answer: &PromptAnswer) -> Result
                 "behavior": "deny",
                 "message": "用户跳过了提问",
             })),
-            PromptAnswer::Questions { answers, skipped: false } => {
+            PromptAnswer::Questions {
+                answers,
+                skipped: false,
+            } => {
                 let mut updated = input.clone();
                 let mut mapped = serde_json::Map::new();
                 for question in questions {
@@ -176,39 +193,53 @@ pub fn questions_from_input(input: &Value) -> Vec<PromptQuestion> {
         .map(|(index, item)| {
             let question = text_field(item, "question");
             let header = text_field(item, "header");
-            let options = item
-                .get("options")
-                .and_then(Value::as_array)
-                .map(|options| {
-                    options
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(option_index, option)| {
-                            let label = text_field(option, "label");
-                            if label.is_empty() {
-                                return None;
-                            }
-                            Some(PromptOption {
-                                id: if label.is_empty() {
-                                    format!("q{}-o{}", index + 1, option_index + 1)
-                                } else {
-                                    label.clone()
-                                },
-                                label,
-                                description: text_field(option, "description"),
-                                disabled_reason: None,
+            let description = text_field(item, "description");
+            let kind = text_field(item, "kind");
+            // CLI 2.1.300：kind 为 text / number 时不带选项。choice 的 Other 由界面提供，不做成选项。
+            let open_ended = kind == "text" || kind == "number";
+            let options = if open_ended {
+                Vec::new()
+            } else {
+                item.get("options")
+                    .and_then(Value::as_array)
+                    .map(|options| {
+                        options
+                            .iter()
+                            .filter_map(|option| {
+                                let label = text_field(option, "label");
+                                if label.is_empty() {
+                                    return None;
+                                }
+                                Some(PromptOption {
+                                    id: label.clone(),
+                                    label,
+                                    description: text_field(option, "description"),
+                                    disabled_reason: None,
+                                })
                             })
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            };
             PromptQuestion {
                 id: format!("q{}", index + 1),
                 header,
                 question,
+                description,
                 is_secret: false,
+                is_other: !options.is_empty(),
+                multi_select: !open_ended
+                    && item
+                        .get("multiSelect")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false),
+                surface: QuestionSurface::RequestInput,
                 options,
-                input_kind: String::new(),
+                input_kind: if kind == "number" {
+                    "number".into()
+                } else {
+                    String::new()
+                },
                 required: false,
             }
         })

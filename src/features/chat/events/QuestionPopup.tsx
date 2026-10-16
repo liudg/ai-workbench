@@ -1,16 +1,26 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
-import { HelpCircle, Pencil, X } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import type { PromptQuestion, SessionEvent } from "@/types";
 import { placeQuestionPopup, type QuestionPopupPlace } from "./question-popup-place";
 import {
+  continueQuestionStep,
   createQuestionStep,
   dismissQuestionStep,
+  focusQuestionFreeform,
+  highlightQuestionOption,
+  optionPresentation,
+  pageQuestion,
+  questionChoiceText,
+  questionKeyAction,
   questionStepCursor,
-  sendQuestionStep,
+  questionSurface,
+  selectQuestionOption,
+  setQuestionFreeform,
   skipQuestionStep,
+  type QuestionKeyFocus,
   type QuestionStepEffect,
   type QuestionStepState,
 } from "./question-steps";
@@ -18,7 +28,8 @@ import { useAnswerPrompt } from "./useAnswerPrompt";
 
 /**
  * 提问浮在作曲栏上方，所有 Agent 共用。
- * 时间线只留摘要；回答仍走原来的 answerPrompt。
+ * 文案和步进来自 Codex 桌面端 request input / sendUserMessageQuestion。
+ * 回答仍走 answerPrompt。
  */
 export function QuestionPopup({
   event,
@@ -31,12 +42,16 @@ export function QuestionPopup({
 }) {
   const answerPrompt = useAnswerPrompt();
   const place = useQuestionPopupPlace(anchor);
-  const [step, setStep] = useState<QuestionStepState>(createQuestionStep);
+  const questions = event.questions;
+  const [step, setStep] = useState<QuestionStepState>(() => createQuestionStep(questions));
   const [closed, setClosed] = useState(false);
   const lock = useRef(false);
-  const questions = event.questions;
+  const cardRef = useRef<HTMLDivElement>(null);
+  const freeformRef = useRef<HTMLInputElement>(null);
   const cursor = questionStepCursor(step, questions.length);
   const question = questions[cursor.index];
+  const choice = step.choices[cursor.index];
+  const surface = questionSurface(questions);
 
   const submitAnswers = (answers: Record<string, string>, skipped: boolean) => {
     if (lock.current) return;
@@ -69,19 +84,82 @@ export function QuestionPopup({
     if (effect.type === "submit") submitAnswers(effect.answers, effect.skipped);
   };
 
-  if (!question || !place || closed || typeof document === "undefined") return null;
+  const showOptions = (question?.options.length ?? 0) > 0;
+  const showOther = showOptions && question?.is_other === true;
+  const showFreeform = !showOptions;
+  useEffect(() => {
+    if (showFreeform) freeformRef.current?.focus();
+    else cardRef.current?.focus();
+  }, [question?.id, showFreeform]);
 
-  const canSend = step.draft.trim().length > 0;
-  const send = () => {
-    if (!canSend) return;
-    apply(sendQuestionStep(step, questions));
+  if (!question || !choice || !place || closed || typeof document === "undefined") return null;
+
+  const title =
+    surface === "async-reply" ? "问题" : question.header?.trim() || question.question;
+  const showBody = surface === "async-reply" || Boolean(question.header?.trim());
+  const placeholder = freeformPlaceholder(surface, question.is_other === true);
+  const primary = surface === "async-reply" ? (cursor.isLast ? "发送" : "下一步") : cursor.isLast ? "提交" : "继续";
+  const answerText = questionChoiceText(question, choice);
+  const canPrimary = surface !== "async-reply" || answerText.length > 0;
+  const selectedIndex = question.options.findIndex((option) => option.id === choice.selectedId);
+
+  const onKeyDown = (keyEvent: KeyboardEvent<HTMLDivElement>) => {
+    const target = keyEvent.target;
+    const focus: QuestionKeyFocus =
+      target instanceof Element && target.closest("[data-request-input-dismiss]")
+        ? "dismiss"
+        : target === freeformRef.current
+          ? "freeform"
+          : target instanceof Element && target.closest("input, textarea")
+            ? "field"
+            : "card";
+    const action = questionKeyAction({
+      key: keyEvent.key,
+      composing: keyEvent.nativeEvent.isComposing,
+      focus,
+      questionCount: questions.length,
+      questionIndex: cursor.index,
+      optionCount: question.options.length,
+      selectedIndex,
+      isOther: showOther,
+      hasOptions: showOptions,
+      multi: question.multi_select === true,
+    });
+    if (action.type === "none") return;
+    keyEvent.preventDefault();
+    if (action.type === "dismiss") {
+      apply(dismissQuestionStep());
+      return;
+    }
+    if (action.type === "page") {
+      apply(pageQuestion(step, questions, action.index));
+      return;
+    }
+    if (action.type === "focus-freeform") {
+      setStep(focusQuestionFreeform(step, questions));
+      freeformRef.current?.focus();
+      return;
+    }
+    if (action.type === "move" || action.type === "select") {
+      const option = question.options[action.index];
+      if (!option) return;
+      const effect =
+        action.type === "move"
+          ? highlightQuestionOption(step, questions, option.id)
+          : selectQuestionOption(step, questions, option.id);
+      apply(effect);
+      if (action.type === "move") cardRef.current?.focus();
+      return;
+    }
+    apply(continueQuestionStep(step, questions));
   };
 
   return createPortal(
     <div
       data-question-popup
+      data-question-surface={surface}
       role="dialog"
-      aria-label="问题"
+      aria-label={surface === "async-reply" ? "问题" : title}
       className="fixed z-40"
       style={{
         left: place.left,
@@ -91,93 +169,124 @@ export function QuestionPopup({
       }}
     >
       <div
+        ref={cardRef}
+        tabIndex={0}
         style={{ maxHeight: place.maxHeight }}
-        className="select-text overflow-y-auto rounded-[18px] border border-[#2a2a2a] bg-[#171717] text-[#e8e8e8] shadow-[0_16px_48px_rgba(0,0,0,0.45)] [&_button]:select-none"
-        onKeyDown={(keyEvent) => {
-          if (keyEvent.key === "Escape" && !keyEvent.nativeEvent.isComposing) {
-            keyEvent.preventDefault();
-            apply(dismissQuestionStep());
-          }
-        }}
+        className="select-text overflow-y-auto rounded-2xl border border-[#2a2a2a] bg-[#171717] text-[#e8e8e8] shadow-[0_16px_48px_rgba(0,0,0,0.45)] outline-none [&_button]:select-none"
+        onKeyDown={onKeyDown}
       >
-        <div className="sticky top-0 z-10 flex items-center gap-2 bg-[#171717] px-4 pb-1 pt-3.5">
-          <HelpCircle className="h-4 w-4 shrink-0 text-zinc-400" />
-          <span className="text-sm text-zinc-300">问题</span>
-          <span className="ml-auto flex items-center gap-1.5">
-            {questions.length > 1 ? (
-              <span className="px-1 text-xs tabular-nums text-zinc-500">
-                {cursor.index + 1}/{questions.length}
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-3 bg-[#171717] px-4 pb-2 pt-4">
+          <p className="min-w-0 break-words text-sm font-medium text-[#f3f3f3]">{title}</p>
+          {questions.length > 1 ? (
+            <div className="flex shrink-0 items-center gap-1 text-xs text-zinc-500">
+              <button
+                type="button"
+                aria-label="上一个问题"
+                disabled={cursor.index === 0}
+                className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-zinc-400 hover:bg-[#2a2a2a] hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
+                onClick={() => apply(pageQuestion(step, questions, cursor.index - 1))}
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </button>
+              <span className="tabular-nums">
+                {cursor.index + 1} of {questions.length}
               </span>
-            ) : null}
-            <button
-              type="button"
-              aria-label="关闭"
-              className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full text-zinc-500 hover:bg-[#2a2a2a] hover:text-zinc-200"
-              onClick={() => apply(dismissQuestionStep())}
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </span>
-        </div>
-        <div className="px-4 pb-2 pt-2">
-          {question.header?.trim() && question.header.trim() !== question.question.trim() ? (
-            <p className="mb-1 break-words text-xs text-zinc-500">{question.header}</p>
+              <button
+                type="button"
+                aria-label="下一个问题"
+                disabled={cursor.isLast}
+                className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-zinc-400 hover:bg-[#2a2a2a] hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
+                onClick={() => apply(pageQuestion(step, questions, cursor.index + 1))}
+              >
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
           ) : null}
-          <p className="break-words whitespace-pre-wrap text-[15px] leading-6 text-[#f3f3f3]">
+        </div>
+        {showBody ? (
+          <p className="break-words whitespace-pre-wrap px-4 text-sm font-medium text-[#f3f3f3]">
             {question.question}
           </p>
-          {question.options.length > 0 ? (
-            <div className="mt-3 space-y-1.5" role="listbox" aria-label={question.question}>
-              {question.options.map((opt, index) => (
+        ) : null}
+        {question.description?.trim() ? (
+          <p className="mt-1 break-words whitespace-pre-wrap px-4 text-sm text-zinc-500">
+            {question.description}
+          </p>
+        ) : null}
+        <div className="flex flex-col gap-1 px-2 py-2">
+          {showOptions ? (
+            <div
+              className="flex flex-col gap-1"
+              role={question.multi_select ? "group" : "radiogroup"}
+              aria-label={question.question}
+            >
+              {question.options.map((option, index) => (
                 <OptionRow
-                  key={opt.id}
+                  key={option.id}
                   index={index}
-                  option={opt}
-                  selected={step.draft === opt.label}
-                  onPick={() => setStep((current) => ({ ...current, draft: opt.label }))}
+                  option={option}
+                  multi={question.multi_select === true}
+                  showNumber={question.options.length > 1}
+                  selected={
+                    question.multi_select
+                      ? choice.selectedIds.includes(option.id)
+                      : choice.selectedId === option.id
+                  }
+                  onPick={() => apply(selectQuestionOption(step, questions, option.id))}
                 />
               ))}
             </div>
           ) : null}
-        </div>
-        <div className="sticky bottom-0 flex items-center gap-2 border-t border-[#2a2a2a] bg-[#171717] px-3 py-2.5">
-          <Pencil className="h-4 w-4 shrink-0 text-zinc-500" />
-          <input
-            key={question.id}
-            value={step.draft}
-            onChange={(change) => {
-              const draft = change.target.value;
-              setStep((current) => ({ ...current, draft }));
-            }}
-            onKeyDown={(keyEvent) => {
-              if (keyEvent.key === "Enter" && !keyEvent.nativeEvent.isComposing) {
-                keyEvent.preventDefault();
-                send();
-              }
-            }}
-            type={question.is_secret ? "password" : "text"}
-            placeholder="或自行撰写回复"
-            autoFocus
-            autoComplete="off"
-            className="min-w-0 flex-1 bg-transparent text-sm text-[#f3f3f3] outline-none placeholder:text-zinc-500"
-          />
-          <button
-            type="button"
-            data-question-skip
-            className="h-8 shrink-0 cursor-pointer rounded-full bg-[#2a2a2a] px-3 text-sm text-[#e8e8e8] hover:bg-[#333]"
-            onClick={() => apply(skipQuestionStep(step, questions))}
-          >
-            跳过
-          </button>
-          <button
-            type="button"
-            data-question-send
-            disabled={!canSend}
-            className="h-8 shrink-0 cursor-pointer rounded-full bg-[#f2f2f2] px-3.5 text-sm font-medium text-[#171717] hover:bg-white disabled:cursor-not-allowed disabled:bg-[#2a2a2a] disabled:text-[#666]"
-            onClick={send}
-          >
-            发送
-          </button>
+          {showFreeform ? (
+            <input
+              ref={freeformRef}
+              key={question.id}
+              value={choice.freeform}
+              onChange={(change) => setStep(setQuestionFreeform(step, questions, change.target.value))}
+              placeholder={placeholder}
+              autoComplete="off"
+              className="min-h-10 w-full bg-transparent px-2 py-2 text-sm text-[#f3f3f3] outline-none placeholder:text-zinc-500"
+            />
+          ) : null}
+          <div className={cn("flex items-center gap-2", showOther && "rounded-xl px-2 py-1.5 focus-within:ring-1 focus-within:ring-zinc-600")}>
+            {showOther ? (
+              <input
+                ref={freeformRef}
+                key={`${question.id}-other`}
+                data-request-input-other-row
+                value={choice.freeform}
+                onChange={(change) => setStep(setQuestionFreeform(step, questions, change.target.value))}
+                onFocus={() => setStep(focusQuestionFreeform(step, questions))}
+                placeholder={placeholder}
+                autoComplete="off"
+                className="min-w-0 flex-1 bg-transparent py-1.5 text-sm text-[#f3f3f3] outline-none placeholder:text-zinc-500"
+              />
+            ) : (
+              <span className="flex-1" />
+            )}
+            <button
+              type="button"
+              data-question-skip
+              data-request-input-dismiss
+              className="h-8 shrink-0 cursor-pointer rounded-full border border-[#3a3a3a] bg-transparent px-3 text-sm text-zinc-400 hover:bg-[#2a2a2a] hover:text-[#e8e8e8]"
+              onKeyDown={(keyEvent) => {
+                if (keyEvent.key === "Enter") keyEvent.stopPropagation();
+              }}
+              onClick={() => apply(skipQuestionStep(step, questions))}
+            >
+              跳过
+            </button>
+            <button
+              type="button"
+              data-question-primary
+              disabled={!canPrimary}
+              className="flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full bg-[#f2f2f2] px-3.5 text-sm font-medium text-[#171717] hover:bg-white disabled:cursor-not-allowed disabled:bg-[#2a2a2a] disabled:text-[#666]"
+              onClick={() => apply(continueQuestionStep(step, questions))}
+            >
+              <span>{primary}</span>
+              {surface === "request-input" ? <span aria-hidden="true">⏎</span> : null}
+            </button>
+          </div>
         </div>
       </div>
     </div>,
@@ -185,51 +294,79 @@ export function QuestionPopup({
   );
 }
 
+function freeformPlaceholder(surface: "request-input" | "async-reply", isOther: boolean): string {
+  if (surface === "async-reply") return isOther ? "或自行撰写回复" : "回复…";
+  return isOther ? "否，并告诉 ChatGPT 应该如何做得不同" : "在此输入";
+}
+
 function OptionRow({
   index,
   option,
+  multi,
+  showNumber,
   selected,
   onPick,
 }: {
   index: number;
   option: PromptQuestion["options"][number];
+  multi: boolean;
+  showNumber: boolean;
   selected: boolean;
   onPick: () => void;
 }) {
   const disabled = Boolean(option.disabled_reason);
-  const note = option.disabled_reason || option.description;
+  const presented = optionPresentation(option.label);
   return (
     <button
       type="button"
-      role="option"
-      aria-selected={selected}
+      role={multi ? "checkbox" : "radio"}
+      aria-checked={selected}
       aria-disabled={disabled}
       disabled={disabled}
       data-question-option={index + 1}
       className={cn(
-        "flex w-full min-w-0 items-start gap-2.5 rounded-xl border px-3 py-2 text-left transition-colors",
+        "flex w-full min-w-0 items-start gap-2.5 rounded-xl px-2 py-2 text-left",
         disabled
-          ? "cursor-not-allowed border-[#2a2a2a] opacity-50"
+          ? "cursor-not-allowed opacity-50"
           : selected
-            ? "cursor-pointer border-[#6e5bff]/70 bg-[#6e5bff]/12"
-            : "cursor-pointer border-[#2c2c2c] bg-[#141414] hover:border-[#3a3a3a] hover:bg-[#1c1c1c]",
+            ? "cursor-pointer bg-white/[0.14]"
+            : "cursor-pointer hover:bg-white/10",
       )}
       onMouseDown={(event) => event.preventDefault()}
       onClick={onPick}
     >
-      <span
-        className={cn(
-          "mt-0.5 flex h-5 min-w-5 shrink-0 items-center justify-center rounded-md border px-1 text-[11px] tabular-nums",
-          selected
-            ? "border-[#6e5bff]/50 bg-[#6e5bff]/15 text-[#d9d4ff]"
-            : "border-[#343434] bg-[#1b1b1b] text-zinc-500",
-        )}
-      >
-        {index + 1}
-      </span>
+      {multi ? (
+        <span
+          className={cn(
+            "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border text-[10px]",
+            selected ? "border-zinc-200 bg-zinc-200 text-[#171717]" : "border-zinc-600 text-transparent",
+          )}
+          aria-hidden="true"
+        >
+          ✓
+        </span>
+      ) : showNumber ? (
+        <span
+          className={cn(
+            "mt-0.5 flex h-5 min-w-5 shrink-0 items-center justify-center rounded-md px-1 text-[11px] tabular-nums",
+            selected ? "bg-white/15 text-zinc-100" : "bg-white/5 text-zinc-500",
+          )}
+        >
+          {index + 1}
+        </span>
+      ) : null}
       <span className="min-w-0 break-words">
-        <span className="block text-sm text-[#f3f3f3]">{option.label}</span>
-        {note ? <span className="mt-0.5 block text-xs leading-4 text-zinc-500">{note}</span> : null}
+        <span className="inline-flex min-w-0 flex-wrap items-center gap-1.5">
+          <span className="text-sm font-medium text-[#f3f3f3]">{presented.label}</span>
+          {presented.recommended ? (
+            <span className="rounded-md bg-white/10 px-1.5 py-0.5 text-xs text-zinc-300">推荐</span>
+          ) : null}
+        </span>
+        {option.description || option.disabled_reason ? (
+          <span className="mt-0.5 block text-sm text-zinc-500">
+            {option.disabled_reason || option.description}
+          </span>
+        ) : null}
       </span>
     </button>
   );
