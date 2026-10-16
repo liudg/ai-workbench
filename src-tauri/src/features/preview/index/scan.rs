@@ -1,7 +1,9 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime};
 
-use super::{DirSnap, FileIndex, Frame, IndexedFile, Node};
+use ignore::WalkBuilder;
+
+use super::{Child, DirSnap, FileIndex, IndexedFile};
 use crate::features::preview::skip_tree_dir;
 
 impl FileIndex {
@@ -31,114 +33,205 @@ impl FileIndex {
     }
 
     fn step(&mut self) -> bool {
-        self.ensure_root();
+        self.ensure_started();
         if self.complete {
             return false;
         }
-        if self.stack.is_empty() {
-            if let Some((path, rel)) = self.pending_dirs.pop_front() {
-                self.push_dir(&path, &rel);
-                return true;
+        loop {
+            if self.walks.is_empty() {
+                self.complete = true;
+                return false;
             }
-            return false;
+            let next = self.walks.front_mut().and_then(|walk| walk.next());
+            match next {
+                Some(Ok(entry)) => {
+                    self.record(&entry);
+                    return true;
+                }
+                Some(Err(_)) => return true,
+                None => {
+                    self.walks.pop_front();
+                }
+            }
         }
-        let exhausted = self
-            .stack
-            .last()
-            .is_some_and(|frame| frame.index >= frame.nodes.len());
-        if exhausted {
-            self.stack.pop();
-            return true;
-        }
-        let node = {
-            let frame = self.stack.last_mut().expect("frame");
-            let node = frame.nodes[frame.index].clone();
-            frame.index += 1;
-            node
-        };
-        if node.is_dir {
-            self.pending_dirs.push_back((node.path, node.rel));
-        } else {
-            self.files.push(IndexedFile::from_node(node));
-        }
-        true
     }
 
-    fn ensure_root(&mut self) {
-        if self.opened_root {
+    fn ensure_started(&mut self) {
+        if self.started {
             return;
         }
-        self.opened_root = true;
+        self.started = true;
         if !self.root.is_dir() {
             self.complete = true;
             return;
         }
         let root = self.root.clone();
-        self.push_dir(&root, "");
+        self.walks.push_back(walker(&root).build());
     }
 
-    fn push_dir(&mut self, dir: &Path, rel: &str) {
-        let canon = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
+    fn record(&mut self, entry: &ignore::DirEntry) {
+        let Some(is_dir) = classify(entry) else {
+            return;
+        };
+        let path = plain_path(entry.path());
+        let Some(rel) = relative_to(&self.root, &path) else {
+            return;
+        };
+        if is_dir {
+            self.note_dir(path, rel);
+            return;
+        }
+        if rel.is_empty() {
+            return;
+        }
+        let name = entry.file_name().to_string_lossy().into_owned();
+        self.note_file(path, rel, name);
+    }
+
+    pub(super) fn note_dir(&mut self, abs: PathBuf, rel: String) {
+        let canon = abs.canonicalize().unwrap_or_else(|_| abs.clone());
         if !self.seen.insert(canon.clone()) {
             return;
         }
-        let mtime = modified_of(dir);
+        self.reads += 1;
+        let mtime = modified_of(&abs);
         self.dirs.push(DirSnap {
-            rel: rel.to_string(),
-            abs: dir.to_path_buf(),
+            rel,
+            abs,
             canon,
             mtime,
         });
-        let Some(nodes) = read_children(&mut self.reads, dir, rel) else {
-            return;
-        };
-        if nodes.is_empty() {
+    }
+
+    pub(super) fn note_file(&mut self, abs: PathBuf, rel: String, name: String) {
+        if rel.is_empty() || !self.file_rels.insert(rel.clone()) {
             return;
         }
-        self.stack.push(Frame { nodes, index: 0 });
+        self.files.push(IndexedFile::create(abs, rel, name));
+    }
+
+    pub(super) fn enqueue_dir(&mut self, abs: PathBuf, rel: String) {
+        let canon = abs.canonicalize().unwrap_or_else(|_| abs.clone());
+        if self.seen.contains(&canon) {
+            return;
+        }
+        self.note_dir(abs.clone(), rel);
+        if abs.is_dir() {
+            self.walks.push_back(walker(&abs).build());
+            self.complete = false;
+        }
     }
 }
 
-pub(super) fn read_children(reads: &mut u64, dir: &Path, rel: &str) -> Option<Vec<Node>> {
-    *reads += 1;
-    let read = std::fs::read_dir(dir).ok()?;
-    let mut nodes = Vec::new();
-    for entry in read.filter_map(|item| item.ok()) {
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
+pub(super) fn walker(root: &Path) -> WalkBuilder {
+    let mut builder = WalkBuilder::new(root);
+    builder
+        .hidden(false)
+        .ignore(false)
+        .git_ignore(true)
+        .git_global(true)
+        .git_exclude(true)
+        .parents(true)
+        .require_git(false)
+        .follow_links(false)
+        .filter_entry(|entry| allow(entry));
+    builder
+}
+
+pub(super) fn list_children(dir: &Path, parent_rel: &str) -> Option<Vec<Child>> {
+    if !dir.is_dir() {
+        return None;
+    }
+    let mut children = Vec::new();
+    let mut saw_root = false;
+    for item in walker(dir).max_depth(Some(1)).build() {
+        let entry = match item {
+            Ok(entry) => entry,
+            Err(_) if !saw_root => return None,
+            Err(_) => continue,
+        };
+        if entry.depth() == 0 {
+            saw_root = true;
+            continue;
+        }
+        let Some(is_dir) = classify(&entry) else {
+            continue;
+        };
+        let name = entry.file_name().to_string_lossy().into_owned();
         if name.is_empty() || name == "." || name == ".." {
             continue;
         }
-        let path = entry.path();
-        let is_dir = path.is_dir();
-        if is_dir && skip_tree_dir(&name) {
-            continue;
-        }
-        if !is_dir && !path.is_file() {
-            continue;
-        }
-        let meta = path.metadata().ok();
-        let child_rel = if rel.is_empty() {
-            name.to_string()
+        let rel = if parent_rel.is_empty() {
+            name.clone()
         } else {
-            format!("{rel}/{name}")
+            format!("{parent_rel}/{name}")
         };
-        nodes.push(Node {
-            len: meta.as_ref().map(|item| item.len()).unwrap_or(0),
-            modified: meta.as_ref().and_then(|item| item.modified().ok()),
-            path,
-            rel: child_rel,
-            name: name.to_string(),
+        children.push(Child {
+            name,
+            rel,
+            path: plain_path(entry.path()),
             is_dir,
         });
     }
-    nodes.sort_by(|left, right| {
+    if !saw_root {
+        return None;
+    }
+    children.sort_by(|left, right| {
         left.name
             .to_lowercase()
             .cmp(&right.name.to_lowercase())
             .then_with(|| left.name.cmp(&right.name))
     });
-    Some(nodes)
+    Some(children)
+}
+
+fn allow(entry: &ignore::DirEntry) -> bool {
+    if entry.depth() == 0 {
+        return true;
+    }
+    let name = entry.file_name().to_string_lossy();
+    if name.is_empty() || name == "." || name == ".." {
+        return false;
+    }
+    match classify(entry) {
+        Some(true) => !skip_tree_dir(&name),
+        Some(false) => true,
+        None => false,
+    }
+}
+
+fn classify(entry: &ignore::DirEntry) -> Option<bool> {
+    let kind = entry.file_type()?;
+    if kind.is_dir() {
+        return Some(true);
+    }
+    if kind.is_file() || (kind.is_symlink() && entry.path().is_file()) {
+        return Some(false);
+    }
+    None
+}
+
+fn relative_to(root: &Path, path: &Path) -> Option<String> {
+    let root = plain_path(root);
+    let path = plain_path(path);
+    if path == root {
+        return Some(String::new());
+    }
+    path.strip_prefix(&root).ok().map(|rel| {
+        rel.components()
+            .map(|part| part.as_os_str().to_string_lossy().into_owned())
+            .collect::<Vec<_>>()
+            .join("/")
+    })
+}
+
+fn plain_path(path: &Path) -> PathBuf {
+    let text = path.to_string_lossy();
+    let stripped = text
+        .strip_prefix(r"\\?\")
+        .or_else(|| text.strip_prefix("//?/"))
+        .unwrap_or(text.as_ref());
+    PathBuf::from(stripped)
 }
 
 pub(super) fn modified_of(path: &Path) -> Option<SystemTime> {

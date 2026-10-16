@@ -86,6 +86,7 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
 
     async selectProject(id) {
       set({ selectedProjectId: id });
+      void backend.warmProjectIndex(id).catch(() => undefined);
       const [pid, list] = await loadSessions(id);
       set((s) => ({ sessions: { ...s.sessions, [pid]: list } }));
       const activeId = get().activeSessionId[id];

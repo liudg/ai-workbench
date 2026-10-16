@@ -61,6 +61,7 @@ export function useWorkspaceTree(projectId: string, filter: string) {
               setFiltering(false);
               return;
             }
+            await new Promise((resolve) => window.setTimeout(resolve, 40));
           }
           if (!cancel) {
             setFilterError("筛选没有完成");

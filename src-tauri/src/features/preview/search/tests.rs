@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use super::cursor::SearchJob;
-use super::{ProjectEntry, SearchOutput};
+use super::{query_indexed_paths, search_blocking, IndexHub, SearchOutput};
 
 fn scratch(name: &str) -> PathBuf {
     let dir =
@@ -27,6 +27,18 @@ fn search_workspace(root: &Path, query: &str, mask: &str, limit: usize) -> Searc
         }
     }
     job.snapshot()
+}
+
+fn search_until(hub: &IndexHub, root: &Path, query: &str, mask: &str, id: u64) -> SearchOutput {
+    let mut guard = 0;
+    loop {
+        let page = search_blocking(hub, root.to_path_buf(), query, mask, id);
+        if page.cancelled || page.done {
+            return page;
+        }
+        guard += 1;
+        assert!(guard < 100_000, "search did not finish");
+    }
 }
 
 #[test]
@@ -107,13 +119,10 @@ fn stepping_reaches_a_match_that_sorts_after_other_directories() {
         guard += 1;
         assert!(guard < 10_000, "search did not finish");
     }
-    assert!(job
-        .cursor
-        .hits
-        .iter()
-        .any(|hit| hit.path == "z-late/hit.ts"));
+    let finished = job.snapshot();
+    assert!(finished.hits.iter().any(|hit| hit.path == "z-late/hit.ts"));
     let mut seen = HashSet::new();
-    for hit in &job.cursor.hits {
+    for hit in &finished.hits {
         let key = format!("{}:{}:{}", hit.kind, hit.path, hit.line.unwrap_or(0));
         assert!(seen.insert(key), "duplicate hit {}", hit.path);
     }
@@ -124,15 +133,121 @@ fn stepping_reaches_a_match_that_sorts_after_other_directories() {
 fn an_older_search_does_not_replace_a_newer_one() {
     let root = scratch("cancel");
     fs::write(root.join("a.ts"), "log\n").unwrap();
-    let mut entry = ProjectEntry::new(root.clone());
-    let first = entry.advance(2, "log", "*.ts", Duration::from_secs(30));
+    let hub = IndexHub::default();
+    hub.finish_for_test(&root);
+    let first = search_until(&hub, &root, "log", "*.ts", 2);
     assert!(!first.cancelled);
     assert!(first.hits.iter().any(|hit| hit.path == "a.ts"));
-    let stale = entry.advance(1, "missing", "*.ts", Duration::from_secs(30));
+    let bytes = hub.content_bytes(&root);
+    assert!(bytes > 0, "content search should have opened the file");
+    let stale = search_blocking(&hub, root.clone(), "missing", "*.ts", 1);
     assert!(stale.cancelled);
     assert!(stale.done);
     assert!(stale.hits.is_empty());
+    assert_eq!(hub.content_bytes(&root), bytes);
     let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn path_query_does_not_read_file_bytes() {
+    let root = scratch("path-only");
+    fs::write(root.join("keep.ts"), "needle in the body\n").unwrap();
+    let hub = IndexHub::default();
+    hub.finish_for_test(&root);
+    let found = query_indexed_paths(&hub, root.clone(), "keep", 20, || true);
+    assert!(found.ready);
+    assert!(found.paths.iter().any(|path| path == "keep.ts"));
+    assert_eq!(hub.content_bytes(&root), 0);
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn content_search_reads_the_edited_bytes_without_rereading_dirs() {
+    let root = scratch("fresh-body");
+    fs::write(root.join("a.ts"), "old\n").unwrap();
+    let hub = IndexHub::default();
+    hub.finish_for_test(&root);
+    let reads = hub.read_count(&root);
+    fs::write(root.join("a.ts"), "fresh-needle\n").unwrap();
+    let found = search_until(&hub, &root, "fresh-needle", "*.ts", 4);
+    assert!(found
+        .hits
+        .iter()
+        .any(|hit| hit.kind == "content" && hit.path == "a.ts"));
+    assert_eq!(hub.read_count(&root), reads);
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+#[ignore]
+fn bench_desktop_temp_cold_index() {
+    let root = PathBuf::from(r"C:\Users\admin\Desktop\temp");
+    if !root.is_dir() {
+        return;
+    }
+    let hub = IndexHub::default();
+    let started = std::time::Instant::now();
+    let first = query_indexed_paths(&hub, root.clone(), "package.json", 20, || true);
+    let first_call_ms = started.elapsed().as_millis();
+    let first_call_ready = first.ready;
+    let first_call_hits = first.paths.len();
+    let mut first_ms = if first.paths.is_empty() {
+        None
+    } else {
+        Some(first_call_ms)
+    };
+    let mut first_ready = if first.paths.is_empty() {
+        None
+    } else {
+        Some(first.ready)
+    };
+    let mut page = first;
+    let mut guard = 0;
+    let mut partial_pages = 0u32;
+    let ready_ms = loop {
+        if !page.ready && !page.paths.is_empty() {
+            partial_pages += 1;
+        }
+        if page.ready {
+            break started.elapsed().as_millis();
+        }
+        std::thread::sleep(Duration::from_millis(5));
+        page = query_indexed_paths(&hub, root.clone(), "package.json", 20, || true);
+        if first_ms.is_none() && !page.paths.is_empty() {
+            first_ms = Some(started.elapsed().as_millis());
+            first_ready = Some(page.ready);
+        }
+        guard += 1;
+        assert!(guard < 100_000, "index did not finish");
+    };
+    let path_bytes = hub.content_bytes(&root);
+    let (files, dirs) = hub.index_counts(&root);
+    let content_started = std::time::Instant::now();
+    let mut content_first = None;
+    guard = 0;
+    let content_done = loop {
+        let page = search_blocking(&hub, root.clone(), "export", "*.json", 7);
+        if content_first.is_none() && page.hits.iter().any(|hit| hit.kind == "content") {
+            content_first = Some(content_started.elapsed().as_millis());
+        }
+        if page.done {
+            break content_started.elapsed().as_millis();
+        }
+        guard += 1;
+        assert!(guard < 100_000, "content search did not finish");
+    };
+    let line = format!(
+        "AFTER dirs={dirs} files={files} path_first_call_ms={first_call_ms} path_first_call_ready={} path_first_call_hits={} path_partial_pages={partial_pages} path_first_package_json_ms={} path_first_ready={} path_complete_ms={ready_ms} path_content_bytes={path_bytes} content_first_export_ms={} content_complete_ms={content_done}\n",
+        first_call_ready,
+        first_call_hits,
+        first_ms.unwrap_or(0),
+        first_ready.unwrap_or(false),
+        content_first.unwrap_or(0),
+    );
+    let out_dir = std::env::temp_dir().join("rea-file-index");
+    let _ = fs::create_dir_all(&out_dir);
+    let _ = fs::write(out_dir.join("after.txt"), &line);
+    println!("{line}");
 }
 
 #[cfg(unix)]

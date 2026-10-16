@@ -2,19 +2,36 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use super::content::{scan_file, ReadOutcome};
 use super::mask::mask_matches;
-use super::{contains_ignore_case, snippet, SearchHit, SearchOutput};
+use super::{SearchHit, SearchOutput};
 use crate::features::preview::index::FileIndex;
+
+pub(super) struct ContentFile {
+    pub abs: std::path::PathBuf,
+    pub rel: String,
+}
+
+pub(super) enum ContentPoll {
+    File(ContentFile),
+    Rest { done: bool },
+}
 
 pub(super) struct SearchCursor {
     pub(super) id: u64,
     query_lower: String,
     mask: String,
-    pub(super) hits: Vec<SearchHit>,
+    name_hits: Vec<SearchHit>,
+    content_hits: Vec<SearchHit>,
     truncated: bool,
     pub(super) done: bool,
     limit: usize,
-    cursor: usize,
+    name_at: usize,
+    content_at: usize,
+    #[cfg(test)]
+    pub(super) opened: u64,
+    #[cfg(test)]
+    cancelled: bool,
 }
 
 impl SearchCursor {
@@ -25,127 +42,123 @@ impl SearchCursor {
             id,
             query_lower,
             mask: mask.to_string(),
-            hits: Vec::new(),
+            name_hits: Vec::new(),
+            content_hits: Vec::new(),
             truncated: false,
             done,
             limit,
-            cursor: 0,
+            name_at: 0,
+            content_at: 0,
+            #[cfg(test)]
+            opened: 0,
+            #[cfg(test)]
+            cancelled: false,
         }
     }
 
-    pub(super) fn pump(&mut self, budget: Duration, index: &mut FileIndex) {
+    /// 把新扫到的路径收成文件名命中。不打开文件。
+    /// 有新文件时返回 true，调用方可以先把这部分结果交出去。
+    pub(super) fn flush_names(&mut self, index: &FileIndex) -> bool {
+        if self.done || self.name_at >= index.file_count() {
+            return false;
+        }
+        let query = self.query_lower.clone();
+        while self.name_at < index.file_count() {
+            let file_index = self.name_at;
+            self.name_at += 1;
+            let rel = index.file_rel(file_index);
+            if !mask_matches(&self.mask, rel) || !index.name_matches(file_index, &query) {
+                continue;
+            }
+            if self.total() >= self.limit {
+                self.truncated = true;
+                self.done = true;
+                return true;
+            }
+            self.name_hits.push(SearchHit {
+                path: rel.to_string(),
+                line: None,
+                text: index.file_name(file_index).to_string(),
+                kind: "name".into(),
+            });
+        }
+        true
+    }
+
+    pub(super) fn poll_content(&mut self, index: &FileIndex) -> ContentPoll {
+        if self.done || self.truncated {
+            return ContentPoll::Rest { done: true };
+        }
+        #[cfg(test)]
+        if self.cancelled {
+            return ContentPoll::Rest { done: true };
+        }
+        while self.content_at < index.file_count() {
+            let file_index = self.content_at;
+            self.content_at += 1;
+            let rel = index.file_rel(file_index);
+            if !mask_matches(&self.mask, rel) {
+                continue;
+            }
+            return ContentPoll::File(ContentFile {
+                abs: index.file_abs(file_index).to_path_buf(),
+                rel: rel.to_string(),
+            });
+        }
+        ContentPoll::Rest {
+            done: index.complete(),
+        }
+    }
+
+    pub(super) fn commit_content(&mut self, outcome: ReadOutcome) {
+        #[cfg(test)]
+        {
+            self.opened += 1;
+        }
         if self.done {
             return;
         }
-        let start = std::time::Instant::now();
-        while !self.done && start.elapsed() < budget {
-            if !self.advance_one(index) {
-                self.done = true;
-                break;
-            }
-        }
-        if self.truncated {
-            self.done = true;
-        }
-    }
-
-    fn advance_one(&mut self, index: &mut FileIndex) -> bool {
-        if self.done || self.truncated {
-            self.done = true;
-            return false;
-        }
-        if self.cursor < index.file_count() {
-            self.consume(index, self.cursor);
-            self.cursor += 1;
-            if self.truncated {
-                self.done = true;
-                return false;
-            }
-            return true;
-        }
-        if index.complete() {
-            self.done = true;
-            return false;
-        }
-        index.pump_steps(1);
-        true
-    }
-
-    fn consume(&mut self, index: &mut FileIndex, file_index: usize) {
-        if self.truncated {
-            return;
-        }
-        let rel = index.file_rel(file_index).to_string();
-        if !mask_matches(&self.mask, &rel) {
-            return;
-        }
-        let name_hit = index.name_matches(file_index, &self.query_lower);
-        let query = self.query_lower.clone();
-        let mut found = Vec::new();
-        {
-            let (path, name, text) = index.load_text(file_index);
-            if name_hit {
-                found.push(SearchHit {
-                    path: path.to_string(),
-                    line: None,
-                    text: name.to_string(),
-                    kind: "name".into(),
-                });
-            }
-            if let Some(text) = text {
-                let path = path.to_string();
-                let room = self.limit.saturating_sub(self.hits.len());
-                for (line_index, line) in text.split('\n').enumerate() {
-                    let line = line.trim_end_matches('\r');
-                    if !contains_ignore_case(line, &query) {
-                        continue;
-                    }
-                    if found.len() >= room {
-                        found.push(SearchHit {
-                            path: path.clone(),
-                            line: None,
-                            text: String::new(),
-                            kind: "overflow".into(),
-                        });
-                        break;
-                    }
-                    let line_no = u32::try_from(line_index + 1).unwrap_or(u32::MAX);
-                    found.push(SearchHit {
-                        path: path.clone(),
-                        line: Some(line_no),
-                        text: snippet(line, &query),
-                        kind: "content".into(),
-                    });
-                }
-            }
-        }
-        for hit in found {
-            if hit.kind == "overflow" {
-                self.truncated = true;
-                return;
-            }
-            if !self.push_hit(hit) {
-                return;
-            }
-        }
-    }
-
-    fn push_hit(&mut self, hit: SearchHit) -> bool {
-        if self.hits.len() >= self.limit {
+        if outcome.overflow {
+            self.content_hits.extend(outcome.hits);
             self.truncated = true;
-            return false;
+            self.done = true;
+            return;
         }
-        self.hits.push(hit);
-        true
+        for hit in outcome.hits {
+            if self.total() >= self.limit {
+                self.truncated = true;
+                self.done = true;
+                return;
+            }
+            self.content_hits.push(hit);
+        }
+    }
+
+    pub(super) fn room(&self) -> usize {
+        self.limit.saturating_sub(self.total())
+    }
+
+    pub(super) fn query_lower(&self) -> String {
+        self.query_lower.clone()
+    }
+
+    fn total(&self) -> usize {
+        self.name_hits.len() + self.content_hits.len()
     }
 
     pub(super) fn snapshot(&self, cancelled: bool) -> SearchOutput {
+        let mut hits = self.name_hits.clone();
+        hits.extend(self.content_hits.iter().cloned());
         SearchOutput {
-            hits: self.hits.clone(),
+            hits,
             truncated: self.truncated,
             done: self.done || cancelled,
             cancelled,
         }
+    }
+
+    pub(super) fn read_file(&mut self, file: &ContentFile) -> ReadOutcome {
+        scan_file(&file.abs, &file.rel, &self.query_lower, self.room())
     }
 }
 
@@ -165,18 +178,55 @@ impl SearchJob {
     }
 
     pub(super) fn pump(&mut self, budget: Duration) {
-        self.cursor.pump(budget, &mut self.index);
+        let start = std::time::Instant::now();
+        while !self.cursor.done && start.elapsed() < budget {
+            self.cursor.flush_names(&self.index);
+            if !self.index.complete() {
+                self.index.pump_budget(Duration::from_millis(10));
+                continue;
+            }
+            if self.cursor.name_at < self.index.file_count() {
+                continue;
+            }
+            match self.cursor.poll_content(&self.index) {
+                ContentPoll::Rest { done } => {
+                    if done {
+                        self.cursor.done = true;
+                    }
+                    if self.index.complete() {
+                        break;
+                    }
+                }
+                ContentPoll::File(file) => {
+                    let outcome = self.cursor.read_file(&file);
+                    self.cursor.commit_content(outcome);
+                }
+            }
+        }
     }
 
-    #[cfg(test)]
     pub(super) fn pump_steps(&mut self, steps: usize) {
         for _ in 0..steps {
             if self.cursor.done {
                 return;
             }
-            if !self.cursor.advance_one(&mut self.index) {
-                self.cursor.done = true;
-                return;
+            if !self.index.complete() {
+                self.index.pump_steps(1);
+                self.cursor.flush_names(&self.index);
+                continue;
+            }
+            self.cursor.flush_names(&self.index);
+            match self.cursor.poll_content(&self.index) {
+                ContentPoll::Rest { done } => {
+                    if done {
+                        self.cursor.done = true;
+                    }
+                    return;
+                }
+                ContentPoll::File(file) => {
+                    let outcome = self.cursor.read_file(&file);
+                    self.cursor.commit_content(outcome);
+                }
             }
         }
     }

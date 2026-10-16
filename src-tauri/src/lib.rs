@@ -81,6 +81,7 @@ macro_rules! workbench_handler {
             $crate::features::preview::tree::list_project_dir,
             $crate::features::preview::tree::filter_project_paths,
             $crate::features::preview::search::search_project_files,
+            $crate::features::preview::search::warm_project_index,
             $crate::features::preview::open_project_file,
             $crate::features::preview::browser::browser_close,
             $($extra),*
