@@ -21,6 +21,8 @@ import {
   layoutAfterHide,
   layoutAfterOpen,
   layoutAfterShow,
+  previewRowFileColumn,
+  sidePanelOpen,
   workspaceColumns,
   type FilesRailState,
 } from "./layout.ts";
@@ -188,6 +190,24 @@ test("full view gives the preview the whole row and chat nothing", () => {
   assert.equal(row.chat, 0);
   assert.equal(row.panel, 1400);
   assert.equal(row.files, 0);
+});
+
+test("a closed files column does not close an open side panel", () => {
+  const files = previewRowFileColumn();
+  assert.equal(files.filesVisible, false);
+  assert.equal(sidePanelOpen("split", 1), true);
+  assert.equal(sidePanelOpen("full", 2), true);
+  assert.equal(sidePanelOpen("chat", 2), false);
+  assert.equal(sidePanelOpen("split", 0), false);
+  const row = workspaceColumns({
+    rowWidth: 1400,
+    panelOpen: sidePanelOpen("split", 1),
+    panelMode: "split",
+    filesExpanded: files.filesExpanded,
+    filesVisible: files.filesVisible,
+  });
+  assert.equal(row.files, 0);
+  assert.ok(row.panel > 0);
 });
 
 test("layout mode follows open, hide, show, and full view", () => {

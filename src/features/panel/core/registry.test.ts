@@ -174,6 +174,35 @@ describe("panel viewers", { concurrency: 1 }, () => {
     }
   });
 
+  test("each session keeps its own side panel layout and active tab", async () => {
+    const undo = registerViewer(stub("html", (target) => (target.kind === "blank" ? 100 : 0)));
+    try {
+      const store = testStore();
+      store.getState().panelShow("session-a");
+      await store.getState().panelOpenTarget("session-a", { kind: "blank" }, ctx);
+      const aTabs = store.getState().panelBySession["session-a"]?.tabs ?? [];
+      assert.equal(aTabs.length, 2);
+      store.getState().panelSelectTab("session-a", aTabs[0].id);
+      store.getState().panelShow("session-b");
+      store.getState().panelHide("session-a");
+      assert.equal(store.getState().panelBySession["session-a"]?.layout, "chat");
+      assert.equal(store.getState().panelBySession["session-a"]?.activeId, aTabs[0].id);
+      assert.equal(store.getState().panelBySession["session-a"]?.tabs.length, 2);
+      assert.equal(store.getState().panelBySession["session-b"]?.layout, "split");
+      assert.equal(store.getState().panelBySession["session-b"]?.tabs.length, 1);
+      store.getState().panelShow("session-a");
+      assert.equal(store.getState().panelBySession["session-a"]?.layout, "split");
+      assert.equal(store.getState().panelBySession["session-a"]?.activeId, aTabs[0].id);
+      assert.equal(store.getState().panelBySession["session-b"]?.layout, "split");
+      assert.notEqual(
+        store.getState().panelBySession["session-a"]?.activeId,
+        store.getState().panelBySession["session-b"]?.activeId,
+      );
+    } finally {
+      undo();
+    }
+  });
+
   test("dragged column widths stay in the panel store and do not create a session panel", () => {
     const store = testStore();
     store.getState().panelSetPreviewWidth("session-a", 640.4);

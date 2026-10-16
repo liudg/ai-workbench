@@ -3,6 +3,7 @@ import { userFacingMessage } from "@/lib/user-facing";
 import { backend } from "@/lib/ipc";
 import { withTextSnippet, withoutTextSnippet } from "@/shared/text-snippet";
 import type { AgentKind } from "@/types";
+import { composerDraftsAfterSend, rememberSessionComposerDraft } from "../composer-draft";
 import { isDraftId } from "../draft-session";
 import { isMissingSessionError } from "../sync";
 import type { WorkspaceSlice, WorkbenchGet, WorkbenchSet } from "../types";
@@ -34,6 +35,7 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
     sandboxes: {},
     attachments: {},
     textSnippets: {},
+    composerDraftBySession: {},
     pageAnnotations: {},
     queues: {},
     catalogs: {},
@@ -179,6 +181,28 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
     clearTextSnippets(sessionId) {
       const ids = (get().textSnippets[sessionId] ?? []).map((item) => item.id);
       for (const id of ids) get().removeTextSnippet(sessionId, id);
+    },
+
+    rememberComposerDraft(sessionId, text) {
+      set((s) => {
+        const next = rememberSessionComposerDraft(s.composerDraftBySession, sessionId, text);
+        if (next === s.composerDraftBySession) return {};
+        return { composerDraftBySession: next };
+      });
+    },
+
+    clearSentComposerDraft(sessionId, previousText, sentText) {
+      set((s) => {
+        const next = composerDraftsAfterSend(
+          s.composerDraftBySession,
+          sessionId,
+          previousText,
+          sentText,
+          true,
+        );
+        if (next === s.composerDraftBySession) return {};
+        return { composerDraftBySession: next };
+      });
     },
 
     addPageAnnotation(sessionId, note) {

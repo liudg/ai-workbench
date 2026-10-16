@@ -79,6 +79,8 @@ export interface WorkspaceSlice {
   attachments: Record<string, Attachment[]>;
   /** 选区文本片。和文件附件、输入框草稿分开。 */
   textSnippets: Record<string, TextSnippet[]>;
+  /** 真实会话还没发出的作曲栏文字。只在内存里，懒草稿不进这里。 */
+  composerDraftBySession: Record<string, string>;
   pageAnnotations: Record<string, PageAnnotation[]>;
   queues: Record<string, QueuedTurn[]>;
   catalogs: Record<string, AgentCatalog>;
@@ -95,6 +97,9 @@ export interface WorkspaceSlice {
   addTextSnippet(sessionId: string, snippet: TextSnippet): void;
   removeTextSnippet(sessionId: string, id: string): void;
   clearTextSnippets(sessionId: string): void;
+  rememberComposerDraft(sessionId: string, text: string): void;
+  /** 发送成功后清掉这次发出的草稿。之后另打的文字留下。 */
+  clearSentComposerDraft(sessionId: string, previousText: string, sentText: string): void;
   addPageAnnotation(sessionId: string, note: PageAnnotation): void;
   removePageAnnotation(sessionId: string, id: string): void;
   clearPageAnnotations(sessionId: string): void;
