@@ -88,6 +88,17 @@ export function questionSurface(questions: readonly QuestionStepItem[]): Questio
   return questions[0]?.surface ?? "request-input";
 }
 
+export function questionPopupTitle(surface: QuestionSurface, header: string, question: string): string {
+  if (surface === "async-reply") return "问题";
+  const label = header.trim();
+  return label || question;
+}
+
+export function questionPopupPrimary(surface: QuestionSurface, isLast: boolean): string {
+  if (surface === "async-reply") return isLast ? "发送" : "下一步";
+  return isLast ? "提交" : "继续";
+}
+
 export function questionChoiceText(
   question: QuestionStepItem | undefined,
   choice: QuestionChoice | undefined,
