@@ -9,6 +9,7 @@ import {
 } from "react";
 
 import { useWorkbench } from "@/store";
+import { composerTextOnMount } from "@/store/composer-draft";
 import { isDraftId, takeComposerText } from "@/store/draft-session";
 import type { ReviewStart, Session, SessionEvent, SessionSandbox } from "@/types";
 import {
@@ -63,8 +64,13 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
   const data = useComposerSession(session);
   const draftSession = isDraftId(session.id);
   const [text, setText] = useState(() => {
-    if (draftSession) return useWorkbench.getState().drafts[session.project_id]?.text ?? "";
-    return takeComposerText(session.id) ?? "";
+    const state = useWorkbench.getState();
+    return composerTextOnMount({
+      sessionId: session.id,
+      projectDraftText: state.drafts[session.project_id]?.text,
+      parkedText: draftSession ? null : takeComposerText(session.id),
+      sessionDrafts: state.composerDraftBySession,
+    });
   });
   const [caret, setCaret] = useState(0);
   const [menu, setMenu] = useState<null | "access" | "model" | "attach">(null);
@@ -188,10 +194,19 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     if (goal.publishError) setNotice(goal.publishError);
   }, [goal.publishError]);
 
+  const textRef = useRef(text);
+  textRef.current = text;
   useEffect(() => {
-    if (!draftSession) return;
-    useWorkbench.getState().rememberDraftText(session.project_id, text);
-  }, [draftSession, session.project_id, text]);
+    if (draftSession) {
+      useWorkbench.getState().rememberDraftText(session.project_id, text);
+      return;
+    }
+    const sessionId = session.id;
+    useWorkbench.getState().rememberComposerDraft(sessionId, text);
+    return () => {
+      useWorkbench.getState().rememberComposerDraft(sessionId, textRef.current);
+    };
+  }, [draftSession, session.id, session.project_id, text]);
 
   const snippetCount = data.snippets.length;
   const seenSnippets = useRef(snippetCount);

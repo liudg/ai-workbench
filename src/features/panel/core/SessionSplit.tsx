@@ -1,7 +1,15 @@
 import { useRef, type ReactNode } from "react";
 
 import { useElementWidth } from "@/shared/dom/useElementWidth";
-import { CHAT_MAX_WIDTH, PANEL_PREFERRED_WIDTH, panelWidthAfterDrag, workspaceColumns } from "./layout";
+import {
+  CHAT_MAX_WIDTH,
+  PANEL_PREFERRED_WIDTH,
+  filesColumnWidth,
+  panelWidthAfterDrag,
+  previewRowFileColumn,
+  sidePanelOpen,
+  workspaceColumns,
+} from "./layout";
 import { ColumnSplitter } from "./ColumnSplitter";
 import { ClosedChrome } from "./ClosedChrome";
 import { PanelTabs } from "./PanelTabs";
@@ -14,21 +22,23 @@ export function SessionSplit({ children }: { children: ReactNode }) {
   const rowRef = useRef<HTMLDivElement>(null);
   const rowWidth = useElementWidth(rowRef);
   const active = tabs.find((tab) => tab.id === activeId) ?? tabs[tabs.length - 1];
-  const panelOpen = layout !== "chat" && Boolean(active);
+  const panelOpen = sidePanelOpen(layout, active ? 1 : 0);
   const full = panelOpen && layout === "full";
   const measured = rowWidth > 0;
   const layoutWidth = panelOpen && !full ? Math.max(0, rowWidth - SPLITTER_WIDTH) : rowWidth;
+  const fileColumn = previewRowFileColumn();
+  const filesWidth = filesColumnWidth(fileColumn.filesExpanded, fileColumn.filesVisible);
   const columns = workspaceColumns({
     rowWidth: layoutWidth,
     panelOpen,
     panelMode: full ? "full" : panelOpen ? "split" : "chat",
-    filesExpanded: false,
-    filesVisible: false,
+    filesExpanded: fileColumn.filesExpanded,
+    filesVisible: fileColumn.filesVisible,
   });
   const panelWidth =
     !measured || previewWidth === null
       ? columns.panel
-      : panelWidthAfterDrag(layoutWidth, 0, previewWidth);
+      : panelWidthAfterDrag(layoutWidth, filesWidth, previewWidth);
   const metrics = useRef({ row: 0, panel: 0 });
   const widthRef = useRef(previewWidth);
   metrics.current = { row: layoutWidth, panel: columns.panel };
@@ -67,7 +77,7 @@ export function SessionSplit({ children }: { children: ReactNode }) {
             onDelta={(dx) => {
               const row = metrics.current.row;
               const base = widthRef.current ?? metrics.current.panel;
-              const next = panelWidthAfterDrag(row, 0, base - dx);
+              const next = panelWidthAfterDrag(row, filesWidth, base - dx);
               widthRef.current = next;
               setPreviewWidth(next);
             }}

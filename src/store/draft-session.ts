@@ -357,6 +357,7 @@ export interface DraftSendSettle {
   restore: { sessionId: string; text: string } | null;
 }
 
+/** 第一条没发出去时的一次性回填。读走就删，不是按会话留下的未发送文字。 */
 const composerSeed = new Map<string, string>();
 
 export function parkComposerText(sessionId: string, text: string): void {

@@ -110,6 +110,17 @@ export function applyComposerSkill(run: ComposerRun, skill: AgentSkillOption) {
   });
 }
 
+function dispatchComposerSend(run: ComposerRun, text: string, images: string[] = []) {
+  const previous = run.text;
+  const pending = run.actions.sendMessage(run.sessionId, text, images);
+  if (run.holdUntilAccepted) return pending;
+  void pending.then((ok) => {
+    if (!ok) return;
+    useWorkbench.getState().clearSentComposerDraft(run.sessionId, previous, text);
+  });
+  return pending;
+}
+
 export function runComposerSubmit(run: ComposerRun) {
   const state = useWorkbench.getState();
   const attached = state.attachments[run.sessionId] ?? [];
@@ -170,7 +181,7 @@ export function runComposerSubmit(run: ComposerRun) {
     run.exitGoal();
     if (clearSnippets) run.actions.clearTextSnippets(run.sessionId);
     void run.actions.setCollaborationMode(run.sessionId, "plan").then(() => {
-      void run.actions.sendMessage(run.sessionId, decision.text);
+      dispatchComposerSend(run, decision.text);
     });
     return;
   }
@@ -209,7 +220,7 @@ export function runComposerSubmit(run: ComposerRun) {
   }
   run.setText("");
   if (clearSnippets) run.actions.clearTextSnippets(run.sessionId);
-  void run.actions.sendMessage(run.sessionId, decision.text, images);
+  dispatchComposerSend(run, decision.text, images);
   if (clearAttachments) run.actions.clearAttachments(run.sessionId);
   run.textareaRef.current?.focus();
 }

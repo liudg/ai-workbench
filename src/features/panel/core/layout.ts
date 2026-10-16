@@ -58,6 +58,19 @@ export function layoutAfterFullToggle(mode: PanelLayoutMode): PanelLayoutMode {
   return mode === "full" ? "split" : "full";
 }
 
+/** 右侧预览是否展开。只看这个会话的 layout 和标签，不看文件列。 */
+export function sidePanelOpen(layout: PanelLayoutMode, tabCount: number): boolean {
+  return layout !== "chat" && tabCount > 0;
+}
+
+/**
+ * 预览这一行不再挂会话文件列。
+ * 宽度保持 0，避免把已经记住的预览挤掉。开合由 sidePanelOpen 决定。
+ */
+export function previewRowFileColumn(): { filesExpanded: false; filesVisible: false } {
+  return { filesExpanded: false, filesVisible: false };
+}
+
 export function filesColumnWidth(expanded: boolean, visible: boolean): number {
   if (!visible) return 0;
   return expanded ? FILES_EXPANDED_WIDTH : FILES_RAIL_WIDTH;
