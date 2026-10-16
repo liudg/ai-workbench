@@ -28,6 +28,9 @@ const SidebarPreview = import.meta.env.DEV
 const CodePreview = import.meta.env.DEV
   ? lazy(() => import("@/features/panel/files/CodePreview"))
   : null;
+const McpPreview = import.meta.env.DEV
+  ? lazy(() => import("@/app/preview/McpPreview"))
+  : null;
 
 export default function App() {
   const preview = new URLSearchParams(window.location.search).get("preview");
@@ -84,6 +87,13 @@ export default function App() {
     return (
       <Suspense fallback={null}>
         <CodePreview />
+      </Suspense>
+    );
+  }
+  if (McpPreview && preview === "mcp") {
+    return (
+      <Suspense fallback={null}>
+        <McpPreview />
       </Suspense>
     );
   }

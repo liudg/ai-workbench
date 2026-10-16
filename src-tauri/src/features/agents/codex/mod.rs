@@ -19,6 +19,7 @@ mod git_diff;
 mod guardian;
 mod history;
 mod host;
+mod mcp;
 mod process;
 mod prompts;
 mod queue;
@@ -120,6 +121,10 @@ impl AgentAdapter for CodexCliAdapter {
 
     fn session_linked(&self) -> bool {
         true
+    }
+
+    fn mcp(&self) -> Option<Arc<dyn crate::features::agents::mcp::McpDriver>> {
+        Some(mcp::driver())
     }
 
     fn cli_release(&self) -> Option<CliRelease> {

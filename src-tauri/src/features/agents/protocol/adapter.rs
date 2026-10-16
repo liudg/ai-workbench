@@ -6,6 +6,7 @@ use async_trait::async_trait;
 
 use crate::features::agents::directory::DirectoryEntry;
 use crate::features::agents::install::{self, CliRelease};
+use crate::features::agents::mcp::McpDriver;
 use crate::models::{
     AgentCapabilities, AgentInstallation, AgentKind, AgentProfile, PermissionMenu,
     SubscriptionUsage,
@@ -135,6 +136,11 @@ pub trait AgentAdapter: Send + Sync {
     /// 首条消息没有发出去时撤掉刚建的线程。默认走删除；不支持删除的适配器自己清掉现场。
     async fn discard_unsent_thread(&self, native_id: &str) -> Result<(), AgentError> {
         self.delete_thread(native_id).await
+    }
+
+    /// 这个 Agent 自己的 MCP 命令。没在本机 CLI 上验证过的返回 None。
+    fn mcp(&self) -> Option<Arc<dyn McpDriver>> {
+        None
     }
 
     /// 归档或取消归档。只有声明了 `supports_archive` 的适配器覆盖它。

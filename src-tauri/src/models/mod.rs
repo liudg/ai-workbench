@@ -6,12 +6,14 @@
 mod agent;
 mod catalog;
 mod event;
+mod mcp;
 mod session;
 mod subscription;
 
 pub use agent::*;
 pub use catalog::*;
 pub use event::*;
+pub use mcp::*;
 pub use session::*;
 pub use subscription::*;
 

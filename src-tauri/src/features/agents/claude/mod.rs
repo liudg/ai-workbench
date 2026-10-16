@@ -15,6 +15,7 @@ mod diff;
 mod directory;
 mod history;
 mod images;
+mod mcp;
 mod messages;
 mod mutate;
 mod permission;
@@ -129,6 +130,10 @@ impl AgentAdapter for ClaudeCodeAdapter {
 
     fn session_linked(&self) -> bool {
         true
+    }
+
+    fn mcp(&self) -> Option<Arc<dyn crate::features::agents::mcp::McpDriver>> {
+        Some(mcp::driver())
     }
 
     fn cli_release(&self) -> Option<CliRelease> {
