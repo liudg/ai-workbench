@@ -36,12 +36,12 @@ export default function McpPreview() {
             setToolsText(null);
             setSelected(kind);
           }}
-          onAdd={(spec: McpAddSpec) => setNotice(`preview add ${spec.name} ${spec.transport}`)}
-          onRemove={(name) => setNotice(`preview remove ${name}`)}
-          onLogin={(name, registration) => setNotice(`preview login ${name} ${registration}`)}
-          onLogout={(name) => setNotice(`preview logout ${name}`)}
-          onSetEnabled={(name, enabled) => setNotice(`preview ${enabled ? "enable" : "disable"} ${name}`)}
-          onListTools={(name) => setToolsText(`tools for ${name}\n(no live call)`)}
+          onAdd={(spec: McpAddSpec) => setNotice(`预览添加 ${spec.name} ${spec.transport}`)}
+          onRemove={(name) => setNotice(`预览卸载 ${name}`)}
+          onLogin={(name, registration) => setNotice(`预览登录 ${name} ${registration}`)}
+          onLogout={(name) => setNotice(`预览取消认证 ${name}`)}
+          onSetEnabled={(name, enabled) => setNotice(`预览${enabled ? "启用" : "禁用"} ${name}`)}
+          onListTools={(name) => setToolsText(`${name} 的工具\n（预览，未调用 CLI）`)}
         />
       </div>
     </div>

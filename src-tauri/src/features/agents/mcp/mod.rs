@@ -51,7 +51,7 @@ impl McpDriver for CursorMcp {
 
     async fn login(&self, name: &str, registration: &str, scopes: &str) -> Result<String, String> {
         if !registration.trim().is_empty() || !scopes.trim().is_empty() {
-            return Err("agent mcp login 帮助没有注册策略或 scopes。".into());
+            return Err("这个 Agent 的 login 不接受注册策略或 scope。".into());
         }
         let captured = exec::run_cli(&bin()?, &args::cursor_login(name)?, exec::LOGIN_LIMIT).await?;
         exec::success_text(captured)

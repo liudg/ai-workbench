@@ -1,88 +1,76 @@
 import type { McpField, McpServerRow, McpSurface } from "@/types";
 
-/** Codex 桌面 `app.asar` 里看到的原文。 */
+/**
+ * 设置页文案。能对上 Codex 桌面 zh-CN（26.1007.9446）的用桌面中文。
+ * 协议名保持英文：MCP、STDIO、HTTP、SSE、OAuth、CLI、JSON、URL、Headers、scope。
+ * 对照笔记只留在开发记录里，不进界面。
+ */
 export const MCP_PAGE = {
-  nav: "MCPs",
-  subtitle: "Connect external tools and data sources",
-  heading: "Servers",
-  empty: "No MCP servers connected",
-  add: "Add server",
-  titleNew: "Connect to a custom MCP",
-  back: "Back",
-  uninstall: "Uninstall",
-  save: "Save",
-  saveError: "Could not save MCP server",
-  uninstallError: "Could not uninstall MCP server",
-  switchNotice: "If you would like to switch MCP server type, please uninstall first.",
-  settings: "Settings",
-  authenticate: "Authenticate",
-  starting: "Starting…",
-  enable: "Enable",
-  disable: "Disable",
-  typeLabel: "Type",
-  typeAria: "MCP server type",
-  name: "Name",
-  key: "Key",
-  value: "Value",
-  removeEntry: "Remove entry",
-  cwd: "Working directory",
-  envPassthrough: "Environment variable passthrough",
+  nav: "MCP 服务器",
+  subtitle: "连接外部工具和数据来源",
+  heading: "服务器",
+  empty: "未连接 MCP 服务器",
+  add: "添加服务器",
+  titleNew: "连接至自定义 MCP",
+  back: "返回",
+  uninstall: "卸载",
+  save: "保存",
+  saveError: "无法保存 MCP 服务器",
+  uninstallError: "无法卸载 MCP 服务器",
+  switchNotice: "如需切换 MCP 服务器类型，请先卸载当前配置。",
+  settings: "设置",
+  authenticate: "进行身份验证",
+  starting: "启动中…",
+  enable: "启用",
+  disable: "禁用",
+  enabled: "已启用",
+  disabled: "已禁用",
+  typeLabel: "类型",
+  typeAria: "MCP 服务器类型",
+  name: "名称",
+  key: "键",
+  value: "值",
+  removeEntry: "移除条目",
+  cwd: "工作目录",
+  envPassthrough: "环境变量传递",
   headers: "Headers",
-  envHeaders: "Headers from environment variables",
-  env: "Environment variables",
-  args: "Arguments",
-  command: "Command to launch",
+  envHeaders: "来自环境变量的 Headers",
+  env: "环境变量",
+  args: "参数",
+  command: "启动命令",
   url: "URL",
-  bearer: "Bearer token env var",
+  bearer: "Bearer 令牌环境变量",
+  registration: "OAuth 客户端注册",
+  scopesPlaceholder: "要请求的 OAuth scope，用逗号分隔",
+  authLabel: "认证",
+  statusLabel: "状态",
+  actionFailed: "操作未成功",
 };
 
-export const PAGE_NOTES = [
-  {
-    label: "导航标题",
-    reason: "slug mcp-settings 的导航标题未观察。导航用已看到的标签 MCPs。",
-  },
-  {
-    label: "空列表",
-    reason:
-      "空状态用 settings.mcp.empty「No MCP servers connected」。同包还有「No MCP servers found」，manageOnly 实际用哪一句未观察。",
-  },
-  {
-    label: "Docs",
-    reason: "看到 Docs 和 Open MCP documentation。链接地址未观察，不放置链接。",
-  },
-  {
-    label: "Restart",
-    reason: "桌面 Restart 会重启 Codex Electron。CLI 没有这个动词，工作台不重启已打开的窗口。",
-  },
-  {
-    label: "Clear all app data",
-    reason: "桌面清的是 Electron 里 MCP Apps 的浏览器数据。CLI 没有这个动词。",
-  },
-  {
-    label: "From plugins",
-    reason: "桌面有 From plugins。CLI 列表没有分开插件服务器，分组方式未观察。",
-  },
-  {
-    label: "scopes",
-    reason:
-      "codex mcp login 有 --scopes。桌面 Authenticate 旁边没看到 scopes 输入，标签用帮助原文。只在带 OAuth client registration 的管理面上显示。",
-  },
-];
-
 const REGISTRATION_LONG: Record<string, string> = {
-  auto: "Automatic",
-  cimd: "Client ID metadata document (CIMD)",
-  dcr: "Dynamic client registration (DCR)",
+  auto: "自动",
+  cimd: "客户端 ID 元数据文档 (CIMD)",
+  dcr: "动态客户端注册 (DCR)",
 };
 
 const ADD_LABEL: Record<string, string> = {
-  args: "Add argument",
-  env: "Add environment variable",
-  headers: "Add header",
+  args: "添加参数",
+  env: "添加环境变量",
+  headers: "添加 Header",
+};
+
+const AUTH_STATUS: Record<string, string> = {
+  unsupported: "不支持",
+  notLoggedIn: "未登录",
+  bearer_token: "Bearer",
+  bearerToken: "Bearer",
+  oAuth: "OAuth",
+  oauth: "OAuth",
+  unknown: "未知",
 };
 
 export function existingTitle(name: string): string {
-  return `Update ${name} MCP`;
+  return `更新 ${name} MCP`;
 }
 
 export function registrationLong(id: string): string {
@@ -90,7 +78,38 @@ export function registrationLong(id: string): string {
 }
 
 export function registrationAria(id: string): string {
-  return `OAuth client registration: ${registrationLong(id)}`;
+  return `OAuth 客户端注册：${registrationLong(id)}`;
+}
+
+export function authStatusLabel(status: string): string {
+  if (!status) return "";
+  return AUTH_STATUS[status] ?? status;
+}
+
+export function enabledLabel(enabled: boolean | null): string {
+  if (enabled === true) return MCP_PAGE.enabled;
+  if (enabled === false) return MCP_PAGE.disabled;
+  return "";
+}
+
+export function statusTextLabel(text: string): string {
+  const trimmed = text.trim();
+  const bare = trimmed.replace(/^[√×✓✗]\s*/, "");
+  if (bare === "Connected") return "已连接";
+  if (bare === "Failed to connect") return "连接失败";
+  if (bare === "ready") return "就绪";
+  return trimmed;
+}
+
+export function rowStatusLine(surface: McpSurface, row: McpServerRow): string {
+  return [
+    row.transport ? transportLabel(surface, row.transport) : "",
+    statusTextLabel(row.status_text),
+    authStatusLabel(row.auth_status),
+    enabledLabel(row.enabled),
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 export function addLabel(fieldId: string): string | null {

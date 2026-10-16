@@ -35,17 +35,17 @@ pub fn codex_add(spec: &McpAddSpec) -> Result<Vec<String>, String> {
     match spec.transport.as_str() {
         "stdio" => {
             require_text(&spec.command, "STDIO 需要启动命令。")?;
-            reject_text(&spec.url, "URL 只用于 Streamable HTTP。")?;
+            reject_text(&spec.url, "URL 只用于流式 HTTP。")?;
             reject_text(
                 &spec.bearer_token_env_var,
-                "Bearer token env var 只用于 Streamable HTTP。",
+                "Bearer 令牌环境变量只用于流式 HTTP。",
             )?;
-            reject_text(&spec.client_id, "OAuth client identifier 只用于 Streamable HTTP。")?;
-            reject_text(&spec.client_secret, "OAuth client secret 只用于 Streamable HTTP。")?;
-            reject_text(&spec.oauth_resource, "OAuth resource 只用于 Streamable HTTP。")?;
+            reject_text(&spec.client_id, "OAuth 客户端 ID 只用于流式 HTTP。")?;
+            reject_text(&spec.client_secret, "OAuth 客户端密钥只用于流式 HTTP。")?;
+            reject_text(&spec.oauth_resource, "OAuth 资源只用于流式 HTTP。")?;
             reject_text(
                 &spec.oauth_registration,
-                "OAuth client registration 只用于 Streamable HTTP。",
+                "OAuth 客户端注册只用于流式 HTTP。",
             )?;
             for pair in &spec.env {
                 args.push("--env".into());
@@ -61,13 +61,13 @@ pub fn codex_add(spec: &McpAddSpec) -> Result<Vec<String>, String> {
             }
         }
         "streamable_http" => {
-            require_text(&spec.url, "Streamable HTTP 需要 URL。")?;
+            require_text(&spec.url, "流式 HTTP 需要 URL。")?;
             reject_text(&spec.command, "命令只用于 STDIO。")?;
             if !spec.args.is_empty() {
                 return Err("参数只用于 STDIO。".into());
             }
             if !spec.env.is_empty() {
-                return Err("环境变量只用于 STDIO。codex mcp add 的 --env 帮助写明 Only valid with stdio servers。".into());
+                return Err("环境变量只用于 STDIO。".into());
             }
             args.push("--url".into());
             args.push(spec.url.trim().to_string());
@@ -98,10 +98,10 @@ pub fn claude_logout(name: &str) -> Result<Vec<String>, String> {
 
 pub fn claude_login(name: &str, registration: &str, scopes: &str) -> Result<Vec<String>, String> {
     if !registration.trim().is_empty() {
-        return Err("claude mcp login 没有 --oauth-client-registration。".into());
+        return Err("Claude 的 login 不支持 --oauth-client-registration。".into());
     }
     if !scopes.trim().is_empty() {
-        return Err("claude mcp login 帮助没有 --scopes。".into());
+        return Err("Claude 的 login 不支持 --scopes。".into());
     }
     let args = vec!["mcp".into(), "login".into(), require_name(name)?];
     reject_browser_flag(&args)?;
@@ -110,13 +110,13 @@ pub fn claude_login(name: &str, registration: &str, scopes: &str) -> Result<Vec<
 
 pub fn claude_add(spec: &McpAddSpec) -> Result<Vec<String>, String> {
     if !spec.bearer_token_env_var.trim().is_empty() {
-        return Err("claude mcp add 没有 --bearer-token-env-var。HTTP 用 Headers。".into());
+        return Err("Claude 的 add 没有 --bearer-token-env-var。HTTP 用 Headers。".into());
     }
     if !spec.client_secret.trim().is_empty() {
         return Err("claude mcp add 的 --client-secret 不接收值，会在终端提示。不传。".into());
     }
     if !spec.oauth_resource.trim().is_empty() || !spec.oauth_registration.trim().is_empty() {
-        return Err("claude mcp add 帮助没有 --oauth-resource 或 --oauth-client-registration。".into());
+        return Err("Claude 的 add 没有 --oauth-resource 或 --oauth-client-registration。".into());
     }
     let name = require_name(&spec.name)?;
     let transport = spec.transport.as_str();
@@ -133,10 +133,10 @@ pub fn claude_add(spec: &McpAddSpec) -> Result<Vec<String>, String> {
     if transport == "stdio" {
         if !spec.headers.is_empty() || !spec.client_id.trim().is_empty() || !spec.callback_port.trim().is_empty()
         {
-            return Err("Headers、OAuth client ID 和回调端口只用于 sse 和 http。".into());
+            return Err("Headers、OAuth 客户端 ID 和回调端口只用于 SSE 和 HTTP。".into());
         }
-        require_text(&spec.command, "stdio 需要启动命令。")?;
-        reject_text(&spec.url, "URL 只用于 sse 和 http。")?;
+        require_text(&spec.command, "STDIO 需要启动命令。")?;
+        reject_text(&spec.url, "URL 只用于 SSE 和 HTTP。")?;
         for pair in &spec.env {
             args.push("-e".into());
             args.push(env_arg(&pair.key, &pair.value)?);
@@ -151,10 +151,10 @@ pub fn claude_add(spec: &McpAddSpec) -> Result<Vec<String>, String> {
             args.push(arg.clone());
         }
     } else {
-        require_text(&spec.url, "sse 和 http 需要 URL。")?;
-        reject_text(&spec.command, "命令只用于 stdio。")?;
+        require_text(&spec.url, "SSE 和 HTTP 需要 URL。")?;
+        reject_text(&spec.command, "命令只用于 STDIO。")?;
         if !spec.args.is_empty() || !spec.env.is_empty() {
-            return Err("参数和环境变量只用于 stdio。".into());
+            return Err("参数和环境变量只用于 STDIO。".into());
         }
         for pair in &spec.headers {
             args.push("-H".into());
@@ -225,7 +225,7 @@ fn push_registration(args: &mut Vec<String>, registration: &str) -> Result<(), S
         return Ok(());
     }
     if !matches!(registration, "auto" | "cimd" | "dcr") {
-        return Err("OAuth client registration 只能是 auto、cimd 或 dcr。".into());
+        return Err("OAuth 客户端注册只能是 auto、cimd 或 dcr。".into());
     }
     args.push("--oauth-client-registration".into());
     args.push(registration.to_string());
@@ -238,7 +238,7 @@ fn push_scopes(args: &mut Vec<String>, scopes: &str) -> Result<(), String> {
         return Ok(());
     }
     if scopes.chars().any(|ch| ch.is_whitespace() && ch != ' ') || scopes.contains('\n') {
-        return Err("scopes 不能换行。".into());
+        return Err("scope 不能换行。".into());
     }
     args.push("--scopes".into());
     args.push(scopes.to_string());
@@ -251,7 +251,7 @@ fn push_scope(args: &mut Vec<String>, scope: &str) -> Result<(), String> {
         return Ok(());
     }
     if !matches!(scope, "local" | "user" | "project") {
-        return Err("Configuration scope 只能是 local、user 或 project。".into());
+        return Err("配置 scope 只能是 local、user 或 project。".into());
     }
     args.push("-s".into());
     args.push(scope.to_string());
@@ -280,7 +280,7 @@ fn reject_unsupported(spec: &McpAddSpec, _allowed: &[&str], flags: &[&str]) -> R
 
 fn reject_browser_flag(args: &[String]) -> Result<(), String> {
     if args.iter().any(|arg| arg == "--no-browser") {
-        return Err("不传 --no-browser。粘贴回调的界面未观察。".into());
+        return Err("不使用 --no-browser。".into());
     }
     Ok(())
 }
