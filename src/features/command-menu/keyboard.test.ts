@@ -1,0 +1,51 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+
+import {
+  isArchiveChord,
+  isDeleteChord,
+  isNewThreadChord,
+  isOpenChord,
+  jumpSection,
+  moveCursor,
+  sectionStarts,
+} from "./keyboard.ts";
+
+const chord = {
+  key: "k",
+  ctrlKey: false,
+  metaKey: false,
+  altKey: false,
+  shiftKey: false,
+};
+
+test("open chords are Ctrl/Cmd+K and Ctrl/Cmd+Shift+P", () => {
+  assert.equal(isOpenChord({ ...chord, ctrlKey: true, key: "k" }), true);
+  assert.equal(isOpenChord({ ...chord, metaKey: true, key: "K" }), true);
+  assert.equal(isOpenChord({ ...chord, ctrlKey: true, shiftKey: true, key: "p" }), true);
+  assert.equal(isOpenChord({ ...chord, ctrlKey: true, shiftKey: true, key: "k" }), false);
+  assert.equal(isOpenChord({ ...chord, key: "k" }), false);
+  assert.equal(isOpenChord({ ...chord, ctrlKey: true, altKey: true, key: "k" }), false);
+});
+
+test("thread chords stay on the observed modifiers", () => {
+  assert.equal(isNewThreadChord({ ...chord, ctrlKey: true, shiftKey: true, key: "o" }), true);
+  assert.equal(isArchiveChord({ ...chord, metaKey: true, shiftKey: true, key: "A" }), true);
+  assert.equal(isDeleteChord({ ...chord, ctrlKey: true, shiftKey: true, key: "Delete" }), true);
+  assert.equal(isDeleteChord({ ...chord, ctrlKey: true, shiftKey: true, key: "Backspace" }), true);
+  assert.equal(isNewThreadChord({ ...chord, ctrlKey: true, key: "o" }), false);
+});
+
+test("arrows stop at the ends", () => {
+  assert.equal(moveCursor(0, 3, "ArrowUp"), 0);
+  assert.equal(moveCursor(2, 3, "ArrowDown"), 2);
+  assert.equal(moveCursor(1, 3, "ArrowDown"), 2);
+});
+
+test("tab jumps to the next section and wraps", () => {
+  const starts = sectionStarts(["suggested", "suggested", "settings", "thread"]);
+  assert.deepEqual(starts, [0, 2, 3]);
+  assert.equal(jumpSection(starts, 0, 1), 2);
+  assert.equal(jumpSection(starts, 3, 1), 0);
+  assert.equal(jumpSection(starts, 0, -1), 3);
+});
