@@ -7,6 +7,8 @@ import {
   dismissQuestionStep,
   optionPresentation,
   pageQuestion,
+  questionPopupPrimary,
+  questionPopupTitle,
   questionChoiceText,
   questionKeyAction,
   selectQuestionOption,
@@ -99,6 +101,16 @@ test("skipping every blocking question closes as a full skip", () => {
     answers: {},
     skipped: true,
   });
+});
+
+test("popup title stays 问题 on async replies and the last button is 发送", () => {
+  assert.equal(questionPopupTitle("async-reply", "框架", "用哪个？"), "问题");
+  assert.equal(questionPopupPrimary("async-reply", false), "下一步");
+  assert.equal(questionPopupPrimary("async-reply", true), "发送");
+  assert.equal(questionPopupTitle("request-input", "框架", "用哪个？"), "框架");
+  assert.equal(questionPopupTitle("request-input", " ", "用哪个？"), "用哪个？");
+  assert.equal(questionPopupPrimary("request-input", false), "继续");
+  assert.equal(questionPopupPrimary("request-input", true), "提交");
 });
 
 test("async reply does not preselect and ignores an empty send", () => {

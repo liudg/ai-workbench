@@ -6,6 +6,8 @@ import { MessageContent } from "../answer/MessageContent";
 import { annotationCountLabel, annotationCountOf } from "./annotation-count";
 import { CopyButton, HoverActions } from "./chrome";
 import { EventImages } from "./EventImages";
+import { QuestionReplyCard } from "./QuestionReplyCard";
+import { parseQuestionReply } from "./question-reply";
 import type { EventViewProps } from "./types";
 import { userBubbleModel } from "./user-image-layout";
 
@@ -13,6 +15,7 @@ export function UserBubble({ event, time }: EventViewProps) {
   if (event.kind !== "user-message") return null;
   const text = event.text;
   const images = event.images ?? [];
+  const replies = parseQuestionReply(text);
   const badge = annotationCountOf(event.annotations);
   const model = userBubbleModel(text, images.length);
   return (
@@ -34,7 +37,9 @@ export function UserBubble({ event, time }: EventViewProps) {
               <EventImages paths={images} className={model.images.thumbClassName} />
             </div>
           ) : null}
-          {model.showTextBubble ? (
+          {replies ? (
+            <QuestionReplyCard rows={replies} />
+          ) : model.showTextBubble ? (
             <div data-user-text className={model.textBubbleClass}>
               {text ? <MessageContent text={text} /> : null}
             </div>

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import type { PromptQuestion, SessionEvent } from "@/types";
@@ -15,6 +15,8 @@ import {
   pageQuestion,
   questionChoiceText,
   questionKeyAction,
+  questionPopupPrimary,
+  questionPopupTitle,
   questionStepCursor,
   questionSurface,
   selectQuestionOption,
@@ -94,11 +96,10 @@ export function QuestionPopup({
 
   if (!question || !choice || !place || closed || typeof document === "undefined") return null;
 
-  const title =
-    surface === "async-reply" ? "问题" : question.header?.trim() || question.question;
+  const title = questionPopupTitle(surface, question.header ?? "", question.question);
   const showBody = surface === "async-reply" || Boolean(question.header?.trim());
   const placeholder = freeformPlaceholder(surface, question.is_other === true);
-  const primary = surface === "async-reply" ? (cursor.isLast ? "发送" : "下一步") : cursor.isLast ? "提交" : "继续";
+  const primary = questionPopupPrimary(surface, cursor.isLast);
   const answerText = questionChoiceText(question, choice);
   const canPrimary = surface !== "async-reply" || answerText.length > 0;
   const selectedIndex = question.options.findIndex((option) => option.id === choice.selectedId);
@@ -177,31 +178,46 @@ export function QuestionPopup({
       >
         <div className="sticky top-0 z-10 flex items-start justify-between gap-3 bg-[#171717] px-4 pb-2 pt-4">
           <p className="min-w-0 break-words text-sm font-medium text-[#f3f3f3]">{title}</p>
-          {questions.length > 1 ? (
-            <div className="flex shrink-0 items-center gap-1 text-xs text-zinc-500">
-              <button
-                type="button"
-                aria-label="上一个问题"
-                disabled={cursor.index === 0}
-                className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-zinc-400 hover:bg-[#2a2a2a] hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
-                onClick={() => apply(pageQuestion(step, questions, cursor.index - 1))}
-              >
-                <ChevronLeft className="h-3.5 w-3.5" />
-              </button>
-              <span className="tabular-nums">
-                {cursor.index + 1} of {questions.length}
-              </span>
-              <button
-                type="button"
-                aria-label="下一个问题"
-                disabled={cursor.isLast}
-                className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-zinc-400 hover:bg-[#2a2a2a] hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
-                onClick={() => apply(pageQuestion(step, questions, cursor.index + 1))}
-              >
-                <ChevronRight className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          ) : null}
+          <div className="flex shrink-0 items-center gap-1 text-xs text-zinc-500">
+            {questions.length > 1 ? (
+              <>
+                <button
+                  type="button"
+                  aria-label="上一个问题"
+                  disabled={cursor.index === 0}
+                  className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-zinc-400 hover:bg-[#2a2a2a] hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
+                  onClick={() => apply(pageQuestion(step, questions, cursor.index - 1))}
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </button>
+                <span className="tabular-nums">
+                  {cursor.index + 1} of {questions.length}
+                </span>
+                <button
+                  type="button"
+                  aria-label="下一个问题"
+                  disabled={cursor.isLast}
+                  className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-zinc-400 hover:bg-[#2a2a2a] hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
+                  onClick={() => apply(pageQuestion(step, questions, cursor.index + 1))}
+                >
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              </>
+            ) : null}
+            <button
+              type="button"
+              aria-label="关闭"
+              data-question-close
+              data-request-input-dismiss
+              className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-zinc-400 hover:bg-[#2a2a2a] hover:text-zinc-200"
+              onKeyDown={(keyEvent) => {
+                if (keyEvent.key === "Enter") keyEvent.stopPropagation();
+              }}
+              onClick={() => apply(dismissQuestionStep())}
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
         {showBody ? (
           <p className="break-words whitespace-pre-wrap px-4 text-sm font-medium text-[#f3f3f3]">
