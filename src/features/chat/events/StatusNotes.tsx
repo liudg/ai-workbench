@@ -1,6 +1,7 @@
 import { AlertCircle, Info, Lock } from "lucide-react";
 
 import type { EventViewProps } from "./types";
+import { visibleErrorText } from "./visible-error";
 
 export function SystemNote({ event }: EventViewProps) {
   if (event.kind !== "system") return null;
@@ -28,11 +29,13 @@ export function ReadOnlyNote({ event }: EventViewProps) {
 
 export function ErrorNote({ event }: EventViewProps) {
   if (event.kind !== "error") return null;
+  const message = visibleErrorText(event.message);
+  if (!message) return null;
   return (
     <div className="event-in min-w-0 px-6 py-2">
       <div className="flex min-w-0 items-start gap-2 rounded-lg border border-red-500/25 bg-red-500/[0.06] px-3 py-2 text-sm text-red-300">
         <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-        <p className="min-w-0 break-words">{event.message}</p>
+        <p className="min-w-0 break-words">{message}</p>
       </div>
     </div>
   );

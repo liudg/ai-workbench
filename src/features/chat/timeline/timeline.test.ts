@@ -3,11 +3,13 @@ import { test } from "node:test";
 
 import {
   buildTimeline,
+  chunkTimeline,
   collapsedTurnSummary,
   formatElapsed,
   isSuppressedMessage,
   pickAnswer,
   runningTurnSummary,
+  timelineChunkKey,
   type TimelineNode,
 } from "./timeline.ts";
 import type { SessionEvent, SessionEventBody } from "../../../types/index.ts";
@@ -227,4 +229,26 @@ test("session usage stays out of the timeline", () => {
   const rendered = JSON.stringify(nodes);
   assert.equal(rendered.includes("session-usage"), false);
   assert.equal(rendered.includes("8000"), false);
+});
+
+test("timeline chunks keep preamble, the user message, and the turn apart", () => {
+  const nodes = buildTimeline(
+    [
+      event("sys", 0, { kind: "system", text: "准备" }),
+      event("u1", 1, { kind: "user-message", text: "你好" }),
+      event("c1", 2, { kind: "agent-message", text: "先看一下", phase: "commentary" }),
+      event("k1", 3, { kind: "tool-call", name: "command", summary: "ls" }),
+      event("a1", 4, { kind: "agent-message", text: "在", phase: "final-answer" }),
+    ],
+    "completed",
+  );
+  const chunks = chunkTimeline(nodes);
+  assert.deepEqual(
+    chunks.map((chunk) => timelineChunkKey(chunk)),
+    ["events-sys", "u1", "c1"],
+  );
+  assert.equal(chunks[0]?.type, "events");
+  assert.equal(chunks[1]?.type, "block");
+  assert.equal(chunks[2]?.type, "block");
+  assert.equal(new Set(chunks.map((chunk) => timelineChunkKey(chunk))).size, chunks.length);
 });

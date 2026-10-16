@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 
+import { useWorkbench } from "@/store";
 import { isDraftId } from "@/store/draft-session";
 import type { AgentKind, PermissionMenu } from "@/types";
 import { fetchDraftPermissionMenu, fetchPermissionMenu, fetchQueue, storeQueue } from "./composer-backend";
+import { queueFetchStillCurrent } from "./queue-strip";
 
 export function useComposerFeeds(
   sessionId: string,
@@ -19,9 +21,13 @@ export function useComposerFeeds(
   useEffect(() => {
     if (draft) return;
     let cancelled = false;
+    const before = useWorkbench.getState().queues[sessionId];
     void fetchQueue(sessionId)
       .then((items) => {
-        if (!cancelled) storeQueue(sessionId, items);
+        if (cancelled) return;
+        const current = useWorkbench.getState().queues[sessionId];
+        if (!queueFetchStillCurrent(before, current)) return;
+        storeQueue(sessionId, items);
       })
       .catch(() => {});
     return () => {

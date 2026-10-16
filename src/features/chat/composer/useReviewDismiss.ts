@@ -1,5 +1,7 @@
 import { useEffect, type RefObject } from "react";
 
+import { isImeKey } from "../keyboard";
+
 export function useReviewDismiss(
   reviewOpen: boolean,
   reviewRootRef: RefObject<HTMLDivElement | null>,
@@ -8,7 +10,15 @@ export function useReviewDismiss(
   useEffect(() => {
     if (!reviewOpen) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeReview();
+      if (
+        event.key !== "Escape" ||
+        isImeKey({ composing: event.isComposing, keyCode: event.keyCode }) ||
+        event.defaultPrevented
+      ) {
+        return;
+      }
+      event.preventDefault();
+      closeReview();
     };
     const onPointer = (event: MouseEvent) => {
       // 选项的 mousedown 会立刻换掉菜单内容。旧节点已脱离文档时，

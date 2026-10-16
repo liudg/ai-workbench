@@ -1,3 +1,4 @@
+import { isImeKey } from "../keyboard.ts";
 import { filledQuestionAnswers } from "./prompt-values.ts";
 
 /**
@@ -273,6 +274,7 @@ export function dismissQuestionStep(): QuestionStepEffect {
 export function questionKeyAction(input: {
   key: string;
   composing: boolean;
+  keyCode?: number;
   focus: QuestionKeyFocus;
   questionCount: number;
   questionIndex: number;
@@ -283,7 +285,7 @@ export function questionKeyAction(input: {
   multi: boolean;
 }): QuestionKeyAction {
   const { key, focus } = input;
-  if (input.composing && key === "Enter") return { type: "none" };
+  if (isImeKey(input)) return { type: "none" };
   if (key === "Escape") return { type: "dismiss" };
   if (focus === "dismiss") return { type: "none" };
   if (focus === "freeform") {

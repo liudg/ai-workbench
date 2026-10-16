@@ -50,6 +50,17 @@ export function queuePreviewText(item: { text: string; images?: string[] }): str
   return extra > 0 ? `${name} +${extra}` : name;
 }
 
+/**
+ * 打开会话时拉到的队列，如果期间已经有实时推送换过这份列表，就不要再写回去。
+ * 比较的是 store 里的数组引用。
+ */
+export function queueFetchStillCurrent(
+  before: readonly unknown[] | undefined,
+  current: readonly unknown[] | undefined,
+): boolean {
+  return before === current;
+}
+
 /** 一条消息一行。顺序就是队列顺序。 */
 export function queueRows(items: readonly QueueStripItem[]): QueueRowModel[] {
   return items.map((item, index) => ({

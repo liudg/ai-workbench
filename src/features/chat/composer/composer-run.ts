@@ -13,6 +13,13 @@ import {
 } from "./composer-backend";
 import { composerKeyIntent, stepIndex } from "./composer-keys";
 import { decideSlash, decideSubmit } from "./composer-submit";
+import {
+  claimSubmit,
+  settleSubmit,
+  shouldClearSubmittedText,
+  submitFingerprint,
+  type SubmitFlight,
+} from "./submit-flight";
 import type { deriveComposerView } from "./composer-view";
 import { fileName, isImagePath } from "./media";
 import { insertSkill } from "./skills";
@@ -55,6 +62,9 @@ export interface ComposerRun {
   projectPath: string;
   skillMatches: number;
   slashMatches: number;
+  fileCount: number;
+  snippetCount: number;
+  submitFlight: { current: SubmitFlight | null };
   /** 草稿要等创建并发送成功后才清掉输入。失败时原文还在。 */
   holdUntilAccepted: boolean;
 }
@@ -110,6 +120,13 @@ export function applyComposerSkill(run: ComposerRun, skill: AgentSkillOption) {
   });
 }
 
+function clearIfUnchanged(run: ComposerRun) {
+  const live = run.textareaRef.current?.value ?? null;
+  if (!shouldClearSubmittedText(live, run.text)) return;
+  run.setText("");
+  run.setCaret(0);
+}
+
 function dispatchComposerSend(run: ComposerRun, text: string, images: string[] = []) {
   const previous = run.text;
   const pending = run.actions.sendMessage(run.sessionId, text, images);
@@ -125,6 +142,12 @@ export function runComposerSubmit(run: ComposerRun) {
   const state = useWorkbench.getState();
   const attached = state.attachments[run.sessionId] ?? [];
   const snippets = state.textSnippets[run.sessionId] ?? [];
+  const fingerprint = submitFingerprint({
+    editingId: run.editingId,
+    text: run.text,
+    fileCount: run.fileCount,
+    snippetCount: run.snippetCount,
+  });
   const decision = decideSubmit({
     text: run.text,
     supportsPlan: Boolean(run.caps?.supports_plan),
@@ -140,12 +163,20 @@ export function runComposerSubmit(run: ComposerRun) {
     supportsGoals: run.supportsGoals,
   });
   if (decision.type === "noop") return;
+  const claim = claimSubmit(run.submitFlight.current, { sessionId: run.sessionId, fingerprint });
+  if (!claim.claimed) return;
+  run.submitFlight.current = claim.flight;
+  const release = () => {
+    run.submitFlight.current = settleSubmit(run.submitFlight.current, run.sessionId, fingerprint);
+  };
   const clearSnippets = "clearSnippets" in decision && Boolean(decision.clearSnippets);
   if (decision.type === "set-goal") {
     void run.submitGoal(decision.text).then((ok) => {
-      if (!ok) return;
-      run.setText("");
-      run.setCaret(0);
+      if (!ok) {
+        release();
+        return;
+      }
+      clearIfUnchanged(run);
     });
     run.textareaRef.current?.focus();
     return;
@@ -164,16 +195,20 @@ export function runComposerSubmit(run: ComposerRun) {
   if (decision.type === "plan-message") {
     if (run.holdUntilAccepted) {
       void (async () => {
-        await run.actions.setCollaborationMode(run.sessionId, "plan");
-        const ok = await run.actions.sendMessage(run.sessionId, decision.text);
-        if (!ok) {
-          run.textareaRef.current?.focus();
-          return;
+        try {
+          await run.actions.setCollaborationMode(run.sessionId, "plan");
+          const ok = await run.actions.sendMessage(run.sessionId, decision.text);
+          if (!ok) {
+            release();
+            run.textareaRef.current?.focus();
+            return;
+          }
+          clearIfUnchanged(run);
+          run.exitGoal();
+          if (clearSnippets) run.actions.clearTextSnippets(run.sessionId);
+        } catch {
+          release();
         }
-        run.setText("");
-        run.setCaret(0);
-        run.exitGoal();
-        if (clearSnippets) run.actions.clearTextSnippets(run.sessionId);
       })();
       return;
     }
@@ -205,16 +240,20 @@ export function runComposerSubmit(run: ComposerRun) {
   const clearAttachments = decision.type === "send-images" || decision.clearAttachments;
   if (run.holdUntilAccepted) {
     void (async () => {
-      const ok = await run.actions.sendMessage(run.sessionId, decision.text, images);
-      if (!ok) {
+      try {
+        const ok = await run.actions.sendMessage(run.sessionId, decision.text, images);
+        if (!ok) {
+          release();
+          run.textareaRef.current?.focus();
+          return;
+        }
+        clearIfUnchanged(run);
+        if (clearAttachments) run.actions.clearAttachments(run.sessionId);
+        if (clearSnippets) run.actions.clearTextSnippets(run.sessionId);
         run.textareaRef.current?.focus();
-        return;
+      } catch {
+        release();
       }
-      run.setText("");
-      run.setCaret(0);
-      if (clearAttachments) run.actions.clearAttachments(run.sessionId);
-      if (clearSnippets) run.actions.clearTextSnippets(run.sessionId);
-      run.textareaRef.current?.focus();
     })();
     return;
   }
@@ -261,6 +300,7 @@ export function handleComposerKey(run: ComposerRun, event: ReactKeyboardEvent<HT
     key: event.key,
     shiftKey: event.shiftKey,
     composing: event.nativeEvent.isComposing,
+    keyCode: event.nativeEvent.keyCode,
     editing: Boolean(run.editingId),
     skillOpen: run.view.skillOpen,
     hasActiveSkill: Boolean(run.activeSkill),

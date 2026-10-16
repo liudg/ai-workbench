@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { DESKTOP_ZH } from "../../../shared/strings/desktop-zh.ts";
-import { queueMenuItems, queuePreviewText, queueRows, queueStripVisible } from "./queue-strip.ts";
+import {
+  queueFetchStillCurrent,
+  queueMenuItems,
+  queuePreviewText,
+  queueRows,
+  queueStripVisible,
+} from "./queue-strip.ts";
 
 const items = [
   { id: "a", text: "先改提示" },
@@ -43,6 +49,15 @@ test("list stays off unless the agent queues and something is waiting", () => {
   assert.equal(queueStripVisible({ supportsQueue: true, count: 2 }), true);
   assert.equal(queueStripVisible({ supportsQueue: false, count: 1 }), false);
   assert.equal(queueStripVisible({ supportsQueue: true, count: 0 }), false);
+});
+
+test("a queue snapshot is stale after a live push replaces the list", () => {
+  const before = [{ id: "a", text: "先" }];
+  const pushed = [{ id: "a", text: "先" }, { id: "b", text: "后" }];
+  assert.equal(queueFetchStillCurrent(before, before), true);
+  assert.equal(queueFetchStillCurrent(undefined, undefined), true);
+  assert.equal(queueFetchStillCurrent(before, pushed), false);
+  assert.equal(queueFetchStillCurrent(undefined, pushed), false);
 });
 
 test("preview keeps one message on one line", () => {

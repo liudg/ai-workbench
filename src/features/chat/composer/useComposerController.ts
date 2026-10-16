@@ -11,13 +11,6 @@ import {
 import { useWorkbench } from "@/store";
 import { composerTextOnMount } from "@/store/composer-draft";
 import { isDraftId, takeComposerText } from "@/store/draft-session";
-import {
-  composerShowsWorkContext,
-  hasUserMessage,
-  isStandaloneDraft,
-  STANDALONE_DRAFT_ID,
-  visibleProjects,
-} from "@/store/standalone";
 import type { ReviewStart, Session, SessionEvent, SessionSandbox } from "@/types";
 import {
   addComposerDir,
@@ -64,17 +57,13 @@ import { useComposerActions, useComposerSession } from "./useComposerStore";
 import { collaborationMode } from "./collaboration-mode";
 import { useGoalDraft } from "./useGoalDraft";
 import { useMentionMenu } from "./useMentionMenu";
+import { releaseSubmitOnEdit, submitFingerprint, type SubmitFlight } from "./submit-flight";
+import { useComposerWorkContext } from "./useComposerWorkContext";
 import { useReviewDismiss } from "./useReviewDismiss";
 
 export function useComposerController(session: Session, events: SessionEvent[]) {
   const actions = useComposerActions();
   const data = useComposerSession(session);
-  const retargetDraft = useWorkbench((s) => s.retargetDraft);
-  const workProjects = useWorkbench((s) => s.projects);
-  const eventsLoaded = useWorkbench((s) => Boolean(s.eventsReady[session.id]));
-  const currentProject = workProjects.find((project) => project.id === session.project_id);
-  const standalone =
-    isStandaloneDraft(session.project_id) || Boolean(currentProject?.standalone);
   const draftSession = isDraftId(session.id);
   const [text, setText] = useState(() => {
     const state = useWorkbench.getState();
@@ -96,6 +85,7 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
   );
   const [notice, setNotice] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const submitFlight = useRef<SubmitFlight | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const reviewRootRef = useRef<HTMLDivElement>(null);
   const accessRef = useRef<HTMLButtonElement>(null);
@@ -114,6 +104,7 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
   const inputLocked = useWorkbench(
     (s) => draftSession && s.drafts[session.project_id]?.phase === "creating",
   );
+  const workContext = useComposerWorkContext(session, events, inputLocked);
   const sandbox = data.sandbox ?? sandboxFromMenu(permissionMenu);
   const supportsGoals = Boolean(caps?.supports_goals);
   const goal = useGoalDraft(session.id, supportsGoals, events);
@@ -210,6 +201,18 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
   const textRef = useRef(text);
   textRef.current = text;
   useEffect(() => {
+    submitFlight.current = releaseSubmitOnEdit(
+      submitFlight.current,
+      session.id,
+      submitFingerprint({
+        editingId,
+        text,
+        fileCount: data.files.length,
+        snippetCount: data.snippets.length,
+      }),
+    );
+  }, [data.files.length, data.snippets.length, editingId, session.id, text]);
+  useEffect(() => {
     if (draftSession) {
       useWorkbench.getState().rememberDraftText(session.project_id, text);
       return;
@@ -263,6 +266,9 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     projectPath: data.projectPath,
     skillMatches: view.skillMatches.length,
     slashMatches: view.slashMatches.length,
+    fileCount: data.files.length,
+    snippetCount: data.snippets.length,
+    submitFlight,
     holdUntilAccepted: draftSession,
   };
 
@@ -272,7 +278,6 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     menu,
     setMenu,
     reviewOpen,
-    setReviewOpen,
     notice,
     dragOver,
     setDragOver,
@@ -291,10 +296,8 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     sandbox,
     catalogNotice: data.catalogNotice,
     view,
-    activeSlash,
     activeSkill,
     slashIndex,
-    caps,
     rememberCaret: (element: HTMLTextAreaElement) => rememberCaret(setCaret, element),
     cancelEdit: () => cancelComposerEdit(run),
     stageBlobs: (blobs: File[]) => stageComposerBlobs(run, blobs),
@@ -329,8 +332,6 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     mentions,
     goalSupport,
     goalNotice: goal.publishError,
-    goalChip: view.goalChip,
-    goalStatus: view.goalStatus,
     dismissGoal: goal.dismiss,
     deleteGoal: () => {
       if (view.occupied || view.dead) return;
@@ -378,23 +379,6 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     },
     onKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => handleComposerKey(run, event),
     onPaste: (event: ClipboardEvent<HTMLTextAreaElement>) => pasteComposerImages(run, event),
-    workContext: composerShowsWorkContext({
-      draft: draftSession,
-      eventsLoaded,
-      hasUserMessage: hasUserMessage(events),
-    })
-      ? {
-          label: standalone ? "聊天" : (currentProject?.name ?? "聊天"),
-          projects: visibleProjects(workProjects).map((project) => ({
-            id: project.id,
-            name: project.name,
-          })),
-          selectedId: standalone ? STANDALONE_DRAFT_ID : session.project_id,
-          standaloneId: STANDALONE_DRAFT_ID,
-          canRetarget: draftSession && !inputLocked,
-          onPickProject: (projectId: string) => retargetDraft(session.project_id, projectId),
-          onPickStandalone: () => retargetDraft(session.project_id, STANDALONE_DRAFT_ID),
-        }
-      : null,
+    workContext,
   };
 }

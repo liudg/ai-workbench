@@ -1,5 +1,7 @@
 import { useEffect, type RefObject } from "react";
 
+import { isImeKey } from "../keyboard";
+
 function placeMenu(anchor: HTMLElement, menu: HTMLElement) {
   const rect = anchor.getBoundingClientRect();
   const width = menu.offsetWidth;
@@ -48,7 +50,15 @@ export function useComposerMenu(
       onClose();
     };
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (
+        event.key !== "Escape" ||
+        isImeKey({ composing: event.isComposing, keyCode: event.keyCode }) ||
+        event.defaultPrevented
+      ) {
+        return;
+      }
+      event.preventDefault();
+      onClose();
     };
     document.addEventListener("mousedown", onPointer);
     document.addEventListener("keydown", onKey);

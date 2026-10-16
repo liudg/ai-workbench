@@ -1,7 +1,16 @@
-import { useEffect, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
+import { useEffect, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
 
 import type { MentionSupport } from "./mentions";
-import { clearAtToken, insertMention, mentionAddEnabled, MENTION_ADD_ORDER, type MentionAddId, type MentionFile } from "./mentions";
+import {
+  caretAfterMentionPick,
+  clearAtToken,
+  insertMention,
+  mentionPickText,
+  mentionAddEnabled,
+  MENTION_ADD_ORDER,
+  type MentionAddId,
+  type MentionFile,
+} from "./mentions";
 import { pickMentionFiles } from "./composer-backend";
 import { stepIndex } from "./composer-keys";
 import { useMentionSearch } from "./useMentionSearch";
@@ -31,6 +40,8 @@ export function useMentionMenu(input: {
 }) {
   const [hidden, setHidden] = useState(false);
   const [index, setIndex] = useState(0);
+  const textRef = useRef(input.text);
+  textRef.current = input.text;
   const searchQuery = input.mentionOpen && !hidden && input.mentionQuery ? input.mentionQuery : null;
   const search = useMentionSearch(input.projectId, searchQuery);
   const show = input.mentionOpen && !hidden;
@@ -66,23 +77,22 @@ export function useMentionMenu(input: {
   };
 
   const pickFiles = async () => {
-    const cleared = clearAtToken(input.text, input.caret);
+    const started = input.text;
+    const cleared = clearAtToken(started, input.caret);
     input.setText(cleared.text);
     input.setCaret(cleared.caret);
     const picked = await pickMentionFiles();
+    const current = mentionPickText(started, textRef.current, cleared.text);
+    // 清掉 @ 之后浏览器可能把光标留在旧下标上。仍用打开文件框前的位置，只夹到当前文本里。
+    const caret = caretAfterMentionPick(cleared.caret, null, current.length);
     if (picked.length === 0) {
-      placeCaret(input.textareaRef.current, cleared.caret);
+      placeCaret(input.textareaRef.current, caret);
       return;
     }
-    const paths = picked.map((file) => file.path);
-    let nextCaret = cleared.caret;
-    input.setText((current) => {
-      const next = insertMention(current, cleared.caret, paths);
-      nextCaret = next.caret;
-      return next.text;
-    });
-    input.setCaret(nextCaret);
-    placeCaret(input.textareaRef.current, nextCaret);
+    const next = insertMention(current, caret, picked.map((file) => file.path));
+    input.setText(next.text);
+    input.setCaret(next.caret);
+    placeCaret(input.textareaRef.current, next.caret);
   };
 
   const chooseAdd = (id: MentionAddId) => {

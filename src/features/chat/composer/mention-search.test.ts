@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { followPathPages, type PathPage } from "./mention-search.ts";
+import { followPathPages, mentionSearchError, type PathPage } from "./mention-search.ts";
 
 const nowait = async () => {};
 
@@ -38,4 +38,10 @@ test("a cancelled path page is not applied", async () => {
     nowait,
   );
   assert.equal(applied, 0);
+});
+
+test("mention search hides opaque errors", () => {
+  assert.equal(mentionSearchError(new Error("null")), "文件列表没有读到。");
+  assert.equal(mentionSearchError("筛选没有完成"), "筛选没有完成");
+  assert.equal(mentionSearchError({}), "文件列表没有读到。");
 });

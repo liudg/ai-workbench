@@ -126,8 +126,8 @@ pub fn roots_from_options(options: &Value) -> Vec<String> {
 
 /// `--add-dir`：绝对路径、去重、去掉工作区本身。比较时忽略大小写和斜杠方向。
 pub fn normalize_add_dirs(cwd: &str, roots: &[String]) -> Vec<String> {
-    let cwd_path = Path::new(cwd.trim());
-    let cwd_key = path_key(&cwd_path.to_string_lossy());
+    let cwd_trimmed = cwd.trim();
+    let cwd_key = path_key(cwd_trimmed);
     let mut out = Vec::new();
     let mut seen = HashSet::new();
     for root in roots {
@@ -135,13 +135,7 @@ pub fn normalize_add_dirs(cwd: &str, roots: &[String]) -> Vec<String> {
         if trimmed.is_empty() {
             continue;
         }
-        let path = Path::new(trimmed);
-        let absolute = if path.is_absolute() {
-            path.to_path_buf()
-        } else {
-            cwd_path.join(path)
-        };
-        let display = absolute.to_string_lossy().to_string();
+        let display = absolute_display(cwd_trimmed, trimmed);
         let key = path_key(&display);
         if key.is_empty() || (!cwd_key.is_empty() && key == cwd_key) || !seen.insert(key) {
             continue;
@@ -150,6 +144,40 @@ pub fn normalize_add_dirs(cwd: &str, roots: &[String]) -> Vec<String> {
     }
     out.sort_by(|left, right| path_key(left).cmp(&path_key(right)));
     out
+}
+
+/// 盘符和 UNC 在任何宿主上都是绝对路径。
+/// `std::path` 只认当前系统的分隔符，Linux 上会把 `C:\work` 再拼到工作目录后面。
+fn absolute_display(cwd: &str, path: &str) -> String {
+    if is_windows_absolute(path) {
+        return path.replace('/', "\\");
+    }
+    if !windows_style(path) && Path::new(path).is_absolute() {
+        return Path::new(path).to_string_lossy().to_string();
+    }
+    if windows_style(cwd) || windows_style(path) {
+        let base = cwd.trim_end_matches(['\\', '/']);
+        let relative = path.trim_start_matches(['\\', '/']).replace('/', "\\");
+        return format!("{base}\\{relative}");
+    }
+    Path::new(cwd).join(path).to_string_lossy().to_string()
+}
+
+fn windows_style(path: &str) -> bool {
+    path.contains('\\') || has_drive_prefix(path)
+}
+
+fn has_drive_prefix(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
+}
+
+fn is_windows_absolute(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    if bytes.len() >= 3 && has_drive_prefix(path) && (bytes[2] == b'\\' || bytes[2] == b'/') {
+        return true;
+    }
+    path.starts_with("\\\\") || path.starts_with("//")
 }
 
 fn path_key(path: &str) -> String {
