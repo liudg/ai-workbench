@@ -27,6 +27,7 @@ mod rpc;
 mod sandbox;
 mod state;
 mod status;
+mod subscription;
 mod thread_status;
 mod tokens;
 mod turn;
@@ -107,6 +108,10 @@ impl AgentAdapter for CodexCliAdapter {
 
     fn capabilities(&self) -> AgentCapabilities {
         AgentCapabilities::codex()
+    }
+
+    async fn subscription_usage(&self) -> Result<crate::models::SubscriptionUsage, AgentError> {
+        subscription::fetch().await
     }
 
     fn icon_href(&self) -> Option<&'static str> {

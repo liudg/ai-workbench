@@ -8,6 +8,7 @@ use crate::features::agents::directory::DirectoryEntry;
 use crate::features::agents::install::{self, CliRelease};
 use crate::models::{
     AgentCapabilities, AgentInstallation, AgentKind, AgentProfile, PermissionMenu,
+    SubscriptionUsage,
 };
 
 use super::context::SessionContext;
@@ -29,6 +30,15 @@ pub trait AgentAdapter: Send + Sync {
     }
 
     fn capabilities(&self) -> AgentCapabilities;
+
+    /// 当前账号的订阅额度窗口。只有 `supports_subscription_usage` 的适配器覆盖它。
+    /// 不打开用户正在用的会话。没有窗口时返回空列表，界面不画。
+    async fn subscription_usage(&self) -> Result<SubscriptionUsage, AgentError> {
+        Err(AgentError::Runtime(format!(
+            "{} 不支持订阅用量",
+            self.display_name()
+        )))
+    }
 
     /// 斜杠命令等不需要已打开会话就能给出的目录。模型/技能仍走 `AgentSession::catalog`。
     fn profile(&self) -> AgentProfile {

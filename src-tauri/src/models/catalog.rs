@@ -145,6 +145,9 @@ pub struct AgentCapabilities {
     /// 继续会话后，时间线上滚再向适配器要更早的回合，而不是一次截断。
     #[serde(default)]
     pub supports_paged_history: bool,
+    /// 账号订阅额度窗口（已用或剩余百分比，以及重置时间）。没有原生数据的适配器保持关闭。
+    #[serde(default)]
+    pub supports_subscription_usage: bool,
 }
 
 impl AgentCapabilities {
@@ -170,6 +173,7 @@ impl AgentCapabilities {
             supports_permission_profiles: false,
             supports_approve_for_me: false,
             supports_paged_history: false,
+            supports_subscription_usage: false,
         }
     }
 
@@ -195,6 +199,8 @@ impl AgentCapabilities {
             supports_permission_profiles: false,
             supports_approve_for_me: false,
             supports_paged_history: true,
+            // 2026-10-16 本机 Codex CLI 0.162.1：`account/rateLimits/read` 带回 `usedPercent` 与 `resetsAt`。
+            supports_subscription_usage: true,
         }
     }
 
@@ -236,6 +242,9 @@ impl AgentCapabilities {
             // 没有 `auto_review`。`approve-for-me` 和 `read-only` 不能映射到 permission mode。
             supports_approve_for_me: false,
             supports_paged_history: true,
+            // 2026-10-16 本机 Claude Code 2.1.300：`get_usage` 回包带 `rate_limits`
+            // （utilization 0–100、resets_at）。当前账号是第三方令牌，实读为 null，界面不画。
+            supports_subscription_usage: true,
         }
     }
 }
@@ -461,5 +470,6 @@ mod tests {
         assert!(!parsed.supports_archive);
         assert!(!parsed.supports_delete);
         assert!(!parsed.supports_rename);
+        assert!(!parsed.supports_subscription_usage);
     }
 }

@@ -160,6 +160,20 @@ mod tests {
         assert!(!caps.supports_approve_for_me);
         assert!(caps.changes.turn_diff);
         assert!(caps.changes.git_scopes);
+        assert!(caps.supports_subscription_usage);
+    }
+
+    #[test]
+    fn subscription_usage_follows_native_quota_commands() {
+        for kind in AgentKind::all() {
+            let on = matches!(kind, AgentKind::CodexCli | AgentKind::ClaudeCode);
+            assert_eq!(
+                adapter_for(kind).capabilities().supports_subscription_usage,
+                on,
+                "{}",
+                kind.as_str()
+            );
+        }
     }
 
     #[test]
@@ -168,6 +182,7 @@ mod tests {
         assert!(caps.supports_archive);
         assert!(caps.supports_rename);
         assert!(caps.supports_delete);
+        assert!(caps.supports_subscription_usage);
     }
 
     #[test]
