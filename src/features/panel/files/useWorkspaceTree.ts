@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { backend, type TreeEntry } from "@/lib/ipc";
+import { filterHopAction, matchingFilter } from "./filter-hop";
 
 export function useWorkspaceTree(
   projectId: string,
@@ -13,7 +14,12 @@ export function useWorkspaceTree(
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const [errors, setErrors] = useState<ReadonlyMap<string, string>>(new Map());
   const [loading, setLoading] = useState<ReadonlySet<string>>(new Set());
-  const [filtered, setFiltered] = useState<{ query: string; paths: string[]; truncated: boolean } | null>(null);
+  const [filtered, setFiltered] = useState<{
+    projectId: string;
+    query: string;
+    paths: string[];
+    truncated: boolean;
+  } | null>(null);
   const [filterError, setFilterError] = useState("");
   const [filtering, setFiltering] = useState(false);
   const [filterCollapsed, setFilterCollapsed] = useState<ReadonlySet<string>>(new Set());
@@ -95,9 +101,16 @@ export function useWorkspaceTree(
           for (let hop = 0; hop < 20000; hop += 1) {
             if (cancel) return;
             const result = await backend.filterProjectPaths(projectId, query);
-            if (cancel || result.cancelled) return;
-            setFiltered({ query, paths: result.paths, truncated: result.truncated });
-            if (result.ready !== false) {
+            const action = filterHopAction({
+              stopped: cancel,
+              cancelled: Boolean(result.cancelled),
+              ready: result.ready !== false,
+            });
+            if (action === "stop") return;
+            if (!result.cancelled) {
+              setFiltered({ projectId, query, paths: result.paths, truncated: result.truncated });
+            }
+            if (action === "done") {
               setFiltering(false);
               return;
             }
@@ -182,7 +195,7 @@ export function useWorkspaceTree(
     directoryPath,
     filterError,
     filtering,
-    filtered: filtered?.query === query ? filtered : null,
+    filtered: matchingFilter(filtered, query, projectId),
     filterCollapsed,
     toggleFilter,
     rootError: errors.get(directoryPath) ?? "",

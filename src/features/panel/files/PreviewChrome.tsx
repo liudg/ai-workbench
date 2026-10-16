@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { Copy, FolderTree, Search } from "lucide-react";
 
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
+import { writeClipboardText } from "@/shared/clipboard";
 import { relativeToProject } from "@/shared/path";
 import { cn } from "@/lib/utils";
-import { breadcrumbSegments, dropdownTreeQuery } from "./file-preview-nav";
-import { WorkspaceTree } from "./WorkspaceTree";
+import { breadcrumbSegments } from "./file-preview-nav";
+import { BreadcrumbMenu } from "./BreadcrumbMenu";
 
 /** 预览顶栏：路径、复制、全库搜索、文件树显隐。内容查看器不放在这里。 */
 export function PreviewChrome({
@@ -157,131 +157,4 @@ export function PreviewChrome({
       ) : null}
     </div>
   );
-}
-
-function BreadcrumbMenu({
-  anchor,
-  projectId,
-  activePath,
-  segmentPath,
-  last,
-  workspaceRoot,
-  onSelectFile,
-  onClose,
-}: {
-  anchor: HTMLButtonElement | null;
-  projectId: string;
-  activePath: string;
-  segmentPath: string;
-  last: boolean;
-  workspaceRoot: string;
-  onSelectFile: (path: string, intent: { isPreview: true }) => void;
-  onClose: () => void;
-}) {
-  const popoverRef = useRef<HTMLDivElement>(null);
-  const anchorRef = useRef<HTMLButtonElement | null>(anchor);
-  anchorRef.current = anchor;
-  const query = dropdownTreeQuery({ activePath, segmentPath, last, workspaceRoot });
-
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    const onPointer = (event: MouseEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-      if (popoverRef.current?.contains(target)) return;
-      if (anchorRef.current?.contains(target)) return;
-      onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    window.addEventListener("mousedown", onPointer);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("mousedown", onPointer);
-    };
-  }, [onClose]);
-
-  useEffect(() => {
-    const place = () => {
-      const button = anchorRef.current;
-      const layer = popoverRef.current;
-      if (!button || !layer) return;
-      const rect = button.getBoundingClientRect();
-      const width = layer.offsetWidth;
-      const height = layer.offsetHeight;
-      let left = rect.left;
-      left = Math.min(Math.max(8, left), window.innerWidth - width - 8);
-      let top = rect.bottom + 6;
-      if (top + height > window.innerHeight - 8) top = Math.max(8, rect.top - height - 6);
-      layer.style.top = `${top}px`;
-      layer.style.left = `${left}px`;
-    };
-    place();
-    const frame = requestAnimationFrame(place);
-    window.addEventListener("resize", place);
-    return () => {
-      cancelAnimationFrame(frame);
-      window.removeEventListener("resize", place);
-    };
-  }, [segmentPath, projectId]);
-
-  if (typeof document === "undefined") return null;
-
-  return createPortal(
-    <div
-      ref={popoverRef}
-      role="dialog"
-      data-breadcrumb-menu
-      data-open-mode={query.openMode}
-      data-should-expand={query.shouldExpandActivePath ? "true" : "false"}
-      aria-label={DESKTOP_ZH.breadcrumbLabel}
-      className="fixed z-[80] flex h-80 w-80 flex-col overflow-hidden rounded-xl border border-[#2a2a2a] bg-[#141414] shadow-[0_12px_32px_rgba(0,0,0,0.45)]"
-    >
-      <div className="min-h-0 flex-1 overflow-auto px-1 py-1">
-        {projectId ? (
-          <WorkspaceTree
-            projectId={projectId}
-            filter=""
-            activePath={activePath}
-            surface={query.surface}
-            directoryPath={query.directoryPath}
-            initialExpanded={query.expandedPaths}
-            revealSelectedPath={query.revealSelectedPath}
-            openMode={query.openMode}
-            includeHidden={query.includeHidden}
-            onSelectFile={onSelectFile}
-          />
-        ) : (
-          <p className="px-2 py-6 text-center text-xs text-red-300" data-directory-error>
-            {DESKTOP_ZH.directoryError}
-          </p>
-        )}
-      </div>
-    </div>,
-    document.body,
-  );
-}
-
-async function writeClipboardText(text: string): Promise<void> {
-  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(text);
-      return;
-    } catch {
-      // 剪贴板权限被拒绝时改用选区。
-    }
-  }
-  if (typeof document === "undefined") throw new Error(DESKTOP_ZH.diffCopyFailed);
-  const area = document.createElement("textarea");
-  area.value = text;
-  area.setAttribute("readonly", "");
-  area.style.position = "fixed";
-  area.style.left = "-9999px";
-  document.body.appendChild(area);
-  area.focus();
-  area.select();
-  const copied = document.execCommand("copy");
-  area.remove();
-  if (!copied) throw new Error(DESKTOP_ZH.diffCopyFailed);
 }

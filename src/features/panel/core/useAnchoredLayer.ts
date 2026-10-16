@@ -1,10 +1,13 @@
 import { useLayoutEffect, type RefObject } from "react";
 
+import { layerOffset } from "./layer-offset";
+
 export function useAnchoredLayer(
   open: boolean,
   anchorRef: RefObject<HTMLElement | null>,
   layerRef: RefObject<HTMLElement | null>,
   revision: string,
+  align: "start" | "end" = "end",
 ) {
   useLayoutEffect(() => {
     if (!open) return;
@@ -13,14 +16,19 @@ export function useAnchoredLayer(
       const layer = layerRef.current;
       if (!anchor || !layer) return;
       const rect = anchor.getBoundingClientRect();
-      const width = layer.offsetWidth;
-      const height = layer.offsetHeight;
-      let left = rect.right - width;
-      left = Math.min(Math.max(8, left), window.innerWidth - width - 8);
-      let top = rect.bottom + 6;
-      if (top + height > window.innerHeight - 8) top = Math.max(8, rect.top - height - 6);
-      layer.style.top = `${top}px`;
-      layer.style.left = `${left}px`;
+      const next = layerOffset({
+        anchorLeft: rect.left,
+        anchorRight: rect.right,
+        anchorTop: rect.top,
+        anchorBottom: rect.bottom,
+        width: layer.offsetWidth,
+        height: layer.offsetHeight,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+        align,
+      });
+      layer.style.top = `${next.top}px`;
+      layer.style.left = `${next.left}px`;
     };
     place();
     const frame = requestAnimationFrame(place);
@@ -34,5 +42,5 @@ export function useAnchoredLayer(
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
     };
-  }, [anchorRef, layerRef, open, revision]);
+  }, [align, anchorRef, layerRef, open, revision]);
 }

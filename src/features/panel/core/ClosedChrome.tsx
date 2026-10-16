@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { registerBuiltinViewers } from "../viewers/register";
 import { viewerById } from "./registry";
 import { Hint } from "./Hint";
+import { useDismissLayer } from "./useDismissLayer";
 import { usePanel } from "./PanelProvider";
 import { SessionUsageCluster } from "./SubscriptionUsageMeter";
 
@@ -17,13 +18,12 @@ export function ClosedChrome() {
   const count = tabs.length;
   const [menu, setMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const focusMenu = useRef(false);
+  useDismissLayer(menu, () => setMenu(false));
   useEffect(() => {
-    if (!menu) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMenu(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    if (!menu || !focusMenu.current) return;
+    focusMenu.current = false;
+    menuRef.current?.querySelector<HTMLButtonElement>("[role='menuitem']")?.focus();
   }, [menu]);
 
   return (
@@ -64,6 +64,17 @@ export function ClosedChrome() {
             aria-expanded={menu}
             aria-label={DESKTOP_ZH.panelOpenTabsMenu}
             className="inline-flex h-7 min-w-7 items-center justify-center rounded-md border border-[#333] bg-transparent px-1.5 text-[13px] font-medium tabular-nums text-[#e8e8e8] hover:bg-[#1c1c1c]"
+            onKeyDown={(event) => {
+              if (event.key !== "ArrowDown") return;
+              event.preventDefault();
+              const item = menuRef.current?.querySelector<HTMLButtonElement>("[role='menuitem']");
+              if (menu && item) {
+                item.focus();
+                return;
+              }
+              focusMenu.current = true;
+              setMenu(true);
+            }}
             onClick={() => {
               showPanel();
               setMenu(false);

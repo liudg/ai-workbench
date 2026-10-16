@@ -2,15 +2,17 @@ import { useEffect, useRef, useState } from "react";
 
 import { useElementWidth } from "@/shared/dom/useElementWidth";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
+import { baseName } from "@/shared/path";
 import { addSessionTextSnippet } from "../core/useAddTextSnippet";
 import { ColumnSplitter } from "../core/ColumnSplitter";
-import { FILES_EXPANDED_WIDTH, diffListWidth, diffListWidthAfterDrag, pinnedColumnStyle } from "../core/layout";
+import { FILES_EXPANDED_WIDTH, nextDraggedListWidth, paneFileColumnWidth, pinnedColumnStyle } from "../core/layout";
 import { resolvePreviewPath } from "../core/preview-kind";
+import { useColumnGesture } from "../core/useColumnGesture";
 import { usePanel } from "../core/PanelProvider";
 import { FileContextMenu } from "./FileContextMenu";
 import { FilePreviewColumn } from "./FilePreview";
+import { clearOpenFilesOnScope, openFilesPlace } from "./open-files-place";
 import { WorkspaceTree } from "./WorkspaceTree";
-import { baseName } from "@/shared/path";
 import { useAttachFile } from "./useAttachFile";
 
 const SPLITTER_WIDTH = 6;
@@ -18,41 +20,48 @@ const SPLITTER_WIDTH = 6;
 /** 打开文件：左侧是预览，右侧是工作区树。选中文件留在当前页。 */
 export function OpenFilesView() {
   const {
+    tabs,
     projectId,
     projectPath,
     sessionId,
-    diffFilesWidth,
-    setDiffFilesWidth,
+    filesTreeWidth,
+    setFilesTreeWidth,
     filesTreeOpen,
     toggleFilesTree,
+    patchTabPayload,
   } = usePanel();
+  const filesTab = tabs.find((tab) => tab.viewerId === "files");
+  const place = openFilesPlace(filesTab?.payload);
   const attachFile = useAttachFile(sessionId);
   const [filter, setFilter] = useState("");
-  const [previewPath, setPreviewPath] = useState("");
-  const [previewLine, setPreviewLine] = useState<number | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string } | null>(null);
   const frameRef = useRef<HTMLDivElement>(null);
+  const seenScope = useRef({ projectId, sessionId });
   const paneWidth = useElementWidth(frameRef);
   const inner = Math.max(0, paneWidth - SPLITTER_WIDTH);
-  const auto = diffListWidth(inner);
-  const dragged = diffFilesWidth !== null ? diffListWidthAfterDrag(inner, diffFilesWidth) : null;
-  const sized =
-    paneWidth <= 0 ? FILES_EXPANDED_WIDTH : (dragged ?? auto ?? Math.min(FILES_EXPANDED_WIDTH, inner));
-  const listWidth = filesTreeOpen ? sized : null;
+  const listWidth = paneFileColumnWidth({
+    paneWidth,
+    splitter: SPLITTER_WIDTH,
+    wanted: filesTreeOpen,
+    dragged: filesTreeWidth,
+    beforeMeasure: FILES_EXPANDED_WIDTH,
+    keepWhenNarrow: true,
+  });
   const metrics = useRef({ pane: 0, list: 0 });
-  const widthRef = useRef(diffFilesWidth);
-  metrics.current = { pane: inner, list: listWidth ?? auto ?? 0 };
-  if (diffFilesWidth !== null) widthRef.current = diffFilesWidth;
+  const drag = useColumnGesture(listWidth ?? 0, sessionId);
+  metrics.current = { pane: inner, list: listWidth ?? 0 };
 
   const openFile = (path: string, _intent: { isPreview: true }, line?: number | null) => {
-    setPreviewPath(path);
-    setPreviewLine(line ?? null);
+    if (!filesTab) return;
+    patchTabPayload(filesTab.id, { path, line: line ?? null });
   };
 
   useEffect(() => {
-    setPreviewPath("");
-    setPreviewLine(null);
-  }, [projectId]);
+    const previous = seenScope.current;
+    seenScope.current = { projectId, sessionId };
+    if (!clearOpenFilesOnScope(previous, { projectId, sessionId }) || !filesTab) return;
+    patchTabPayload(filesTab.id, { path: "", line: null });
+  }, [filesTab, patchTabPayload, projectId, sessionId]);
 
   const addToChat = (path: string) => {
     const absolute = resolvePreviewPath(projectPath, path);
@@ -71,26 +80,24 @@ export function OpenFilesView() {
       <FilePreviewColumn
         projectId={projectId}
         projectPath={projectPath}
-        previewPath={previewPath}
-        previewLine={previewLine}
+        previewPath={place.path}
+        previewLine={place.line}
         treeOpen={filesTreeOpen}
         onToggleTree={toggleFilesTree}
         onSelectFile={openFile}
-        quotePath={previewPath ? resolvePreviewPath(projectPath, previewPath) || previewPath : ""}
+        quotePath={place.path ? resolvePreviewPath(projectPath, place.path) || place.path : ""}
         onQuote={(draft) => addSessionTextSnippet(sessionId, draft)}
       />
       {listWidth !== null ? (
         <ColumnSplitter
           name="open-files"
           onDelta={(dx) => {
-            const pane = metrics.current.pane;
-            const base = widthRef.current ?? metrics.current.list;
-            const current = diffListWidthAfterDrag(pane, base) ?? base;
-            const next = diffListWidthAfterDrag(pane, current - dx);
+            const next = nextDraggedListWidth(metrics.current.pane, drag.base(), dx);
             if (next === null) return;
-            widthRef.current = next;
-            setDiffFilesWidth(next);
+            drag.remember(next);
+            setFilesTreeWidth(next);
           }}
+          onSettle={drag.settle}
         />
       ) : null}
       {listWidth !== null ? (
@@ -114,7 +121,7 @@ export function OpenFilesView() {
             <WorkspaceTree
               projectId={projectId}
               filter={filter}
-              activePath={previewPath}
+              activePath={place.path}
               surface="sidebar"
               directoryPath=""
               onSelectFile={(path, intent) => openFile(path, intent)}

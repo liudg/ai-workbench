@@ -207,11 +207,77 @@ describe("panel viewers", { concurrency: 1 }, () => {
     const store = testStore();
     store.getState().panelSetPreviewWidth("session-a", 640.4);
     store.getState().panelSetDiffFilesWidth("session-a", 280);
+    store.getState().panelSetFilesTreeWidth("session-a", 220);
     assert.equal(store.getState().previewWidthBySession["session-a"], 640);
     assert.equal(store.getState().diffFilesWidthBySession["session-a"], 280);
+    assert.equal(store.getState().filesTreeWidthBySession["session-a"], 220);
     assert.equal(store.getState().panelBySession["session-a"], undefined);
     store.getState().panelSetPreviewWidth("session-a", 640);
     assert.equal(store.getState().previewWidthBySession["session-a"], 640);
+    store.getState().panelSetDiffFilesWidth("session-a", 300);
+    assert.equal(store.getState().filesTreeWidthBySession["session-a"], 220);
+  });
+
+  test("reopening a custom tab keeps its payload and shows a hidden sidebar", async () => {
+    const undo = registerViewer(stub("keep", (target) => (target.kind === "custom" && target.type === "keep" ? 80 : 0)));
+    try {
+      const store = testStore();
+      await store.getState().panelOpenTarget("s", { kind: "custom", type: "keep" }, ctx);
+      store.getState().panelPatchTabPayload("s", "custom:keep", { path: "src/a.ts", line: 4 });
+      store.getState().panelHide("s");
+      assert.equal(store.getState().panelBySession.s?.layout, "chat");
+      await store.getState().panelOpenTarget("s", { kind: "custom", type: "keep" }, ctx);
+      const tab = store.getState().panelBySession.s?.tabs[0];
+      assert.equal(store.getState().panelBySession.s?.layout, "split");
+      assert.equal(store.getState().panelBySession.s?.activeId, "custom:keep");
+      assert.equal((tab?.payload as { path?: string }).path, "src/a.ts");
+      assert.equal((tab?.payload as { line?: number }).line, 4);
+      store.getState().panelPatchTabPayload("s", "missing", { path: "nope" });
+      assert.equal(store.getState().panelBySession.s?.tabs.length, 1);
+    } finally {
+      undo();
+    }
+  });
+
+  test("reopening the active file shows the sidebar again", async () => {
+    const undo = registerViewer(
+      stub("text", matchText, async (target) => ({
+        title: "app.ts",
+        text: "one",
+        truncated: false,
+        line: target.kind === "file" ? target.line : null,
+      })),
+    );
+    try {
+      const store = testStore();
+      const file = { kind: "file" as const, path: "C:/work/demo/src/app.ts", line: 2 };
+      await store.getState().panelOpenTarget("s", file, ctx);
+      store.getState().panelHide("s");
+      await store.getState().panelOpenTarget("s", file, ctx);
+      const tab = store.getState().panelBySession.s?.tabs[0];
+      assert.equal(store.getState().panelBySession.s?.layout, "split");
+      assert.equal((tab?.payload as { line?: number }).line, 2);
+      store.getState().panelHide("s");
+      await store.getState().panelOpenTarget("s", { ...file, line: 4 }, ctx);
+      assert.equal(store.getState().panelBySession.s?.layout, "split");
+      assert.equal((store.getState().panelBySession.s?.tabs[0]?.payload as { line?: number }).line, 4);
+    } finally {
+      undo();
+    }
+  });
+
+  test("reopening the active url shows the sidebar again", async () => {
+    const undo = registerViewer(stub("page", (target) => (target.kind === "url" ? 100 : 0)));
+    try {
+      const store = testStore();
+      await store.getState().panelOpenTarget("s", { kind: "url", url: "https://example.com/a" }, ctx);
+      store.getState().panelHide("s");
+      await store.getState().panelOpenTarget("s", { kind: "url", url: "https://example.com/a" }, ctx);
+      assert.equal(store.getState().panelBySession.s?.layout, "split");
+      assert.equal(store.getState().panelBySession.s?.tabs.length, 1);
+    } finally {
+      undo();
+    }
   });
 
   test("diff view toggles stay on the session and do not create a panel", () => {

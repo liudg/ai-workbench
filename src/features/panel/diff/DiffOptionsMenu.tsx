@@ -4,7 +4,7 @@ import { Check, Clipboard, FileText, Image as ImageIcon, Import as ImportIcon, P
 
 import { cn } from "@/lib/utils";
 import { diffMenuEntries, type DiffMenuIcon } from "./diff-menu";
-import { useAnchoredLayer } from "./useAnchoredLayer";
+import { useAnchoredLayer } from "../core/useAnchoredLayer";
 
 function MenuGlyph({ icon }: { icon: DiffMenuIcon }) {
   const className = "h-3.5 w-3.5 shrink-0";

@@ -4,7 +4,7 @@ import source from "../viewers/SourceView.tsx?raw";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { FileTreeList } from "./FileTreeList";
 import { PreviewChrome } from "./PreviewChrome";
-import { PreviewEmpty } from "./FilePreview";
+import { PreviewEmpty } from "./PreviewBody";
 import { buildFileTree, type FileTreeFile } from "./file-tree";
 import { SourceView } from "../viewers/SourceView";
 

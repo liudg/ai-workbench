@@ -7,7 +7,8 @@ import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { diffMenuEntries } from "./diff-menu";
 import { JumpPopover } from "./DiffJumpPopover";
 import { OptionsMenu } from "./DiffOptionsMenu";
-import { writeClipboardText } from "./git-apply";
+import { writeClipboardText } from "@/shared/clipboard";
+import { useDismissLayer } from "../core/useDismissLayer";
 import type { JumpFile } from "./jump-files";
 import type { DiffScopeItem } from "./scope";
 import { DIFF_TOOLBAR_ICON_IDS } from "./toolbar-actions";
@@ -106,11 +107,9 @@ export function DiffToolbar({
     }
   };
 
+  useDismissLayer(menu !== null, () => setMenu(null));
   useEffect(() => {
     if (!menu) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMenu(null);
-    };
     const onPointer = (event: MouseEvent) => {
       const target = event.target;
       if (!(target instanceof Node)) return;
@@ -118,10 +117,8 @@ export function DiffToolbar({
       if (target instanceof Element && target.closest("[data-diff-options-menu], [data-diff-jump-popover]")) return;
       setMenu(null);
     };
-    window.addEventListener("keydown", onKey);
     window.addEventListener("mousedown", onPointer);
     return () => {
-      window.removeEventListener("keydown", onKey);
       window.removeEventListener("mousedown", onPointer);
     };
   }, [menu]);

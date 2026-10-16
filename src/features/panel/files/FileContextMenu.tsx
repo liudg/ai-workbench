@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
+import { useDismissLayer } from "../core/useDismissLayer";
 
 /** 工作区树和变更树共用的右键菜单。只有「添加到聊天」。 */
 export function FileContextMenu({
@@ -16,22 +17,20 @@ export function FileContextMenu({
   onClose: () => void;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
+  const itemRef = useRef<HTMLButtonElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useDismissLayer(true, onClose);
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
     const onPointer = (event: MouseEvent) => {
       if (menuRef.current?.contains(event.target as Node)) return;
-      onClose();
+      onCloseRef.current();
     };
-    window.addEventListener("keydown", onKey);
     window.addEventListener("mousedown", onPointer);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("mousedown", onPointer);
-    };
-  }, [onClose]);
+    return () => window.removeEventListener("mousedown", onPointer);
+  }, []);
   useLayoutEffect(() => {
+    itemRef.current?.focus();
     const menu = menuRef.current;
     if (!menu) return;
     const width = menu.offsetWidth;
@@ -53,6 +52,7 @@ export function FileContextMenu({
     >
       <button
         type="button"
+        ref={itemRef}
         role="menuitem"
         data-add-to-chat
         className="flex w-full items-center px-3 py-1.5 text-left text-xs text-zinc-100 hover:bg-zinc-800"

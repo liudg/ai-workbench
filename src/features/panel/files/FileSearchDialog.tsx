@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import type { FileSearchHit } from "@/lib/ipc";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { cn } from "@/lib/utils";
+import { useDismissLayer } from "../core/useDismissLayer";
 import { highlightParts, moveSearchCursor } from "./file-search";
 import { useProjectFileSearch } from "./useProjectFileSearch";
 
@@ -28,13 +29,7 @@ export function FileSearchDialog({
     queryRef.current?.focus();
   }, []);
 
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  useDismissLayer(true, onClose);
 
   useEffect(() => {
     setActive(0);

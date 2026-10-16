@@ -13,12 +13,13 @@ import {
 import { ColumnSplitter } from "./ColumnSplitter";
 import { ClosedChrome } from "./ClosedChrome";
 import { PanelTabs } from "./PanelTabs";
+import { useColumnGesture } from "./useColumnGesture";
 import { usePanel } from "./PanelProvider";
 
 const SPLITTER_WIDTH = 6;
 
 export function SessionSplit({ children }: { children: ReactNode }) {
-  const { tabs, activeId, previewWidth, setPreviewWidth, layout } = usePanel();
+  const { tabs, activeId, previewWidth, setPreviewWidth, layout, sessionId } = usePanel();
   const rowRef = useRef<HTMLDivElement>(null);
   const rowWidth = useElementWidth(rowRef);
   const active = tabs.find((tab) => tab.id === activeId) ?? tabs[tabs.length - 1];
@@ -40,10 +41,8 @@ export function SessionSplit({ children }: { children: ReactNode }) {
       ? columns.panel
       : panelWidthAfterDrag(layoutWidth, filesWidth, previewWidth);
   const metrics = useRef({ row: 0, panel: 0 });
-  const widthRef = useRef(previewWidth);
-  metrics.current = { row: layoutWidth, panel: columns.panel };
-  // 拖动中途的渲染可能还拿着旧宽度。有值才回写，避免把已经累加的位移清掉。
-  if (previewWidth !== null) widthRef.current = previewWidth;
+  const drag = useColumnGesture(panelWidth, sessionId);
+  metrics.current = { row: layoutWidth, panel: panelWidth };
 
   const chatWidth = measured && panelOpen && !full ? Math.max(0, layoutWidth - panelWidth) : undefined;
 
@@ -75,12 +74,11 @@ export function SessionSplit({ children }: { children: ReactNode }) {
           <ColumnSplitter
             name="chat-preview"
             onDelta={(dx) => {
-              const row = metrics.current.row;
-              const base = widthRef.current ?? metrics.current.panel;
-              const next = panelWidthAfterDrag(row, filesWidth, base - dx);
-              widthRef.current = next;
+              const next = panelWidthAfterDrag(metrics.current.row, filesWidth, drag.base() - dx);
+              drag.remember(next);
               setPreviewWidth(next);
             }}
+            onSettle={drag.settle}
           />
         ) : null}
         {panelOpen ? (
