@@ -1,6 +1,8 @@
 import { useCallback, useRef, useState } from "react";
-import { RefreshCw, Settings } from "lucide-react";
+import { Command, RefreshCw, Settings } from "lucide-react";
 
+import { OPEN_COMMAND_MENU } from "@/features/command-menu/CommandMenuHost";
+import { COMMAND_MENU_COPY } from "@/features/command-menu/copy";
 import { cn } from "@/lib/utils";
 import { APP_VERSION } from "@/lib/version";
 import { useDismiss } from "../use-dismiss";
@@ -17,6 +19,21 @@ export function AccountMenu() {
     <div ref={rootRef} className="relative">
       {open && (
         <div className="absolute bottom-full left-0 z-30 mb-2 w-56 overflow-hidden rounded-2xl border border-zinc-700/80 bg-zinc-900 py-1.5 shadow-2xl shadow-black/50">
+          <button
+            type="button"
+            data-open-command-menu
+            aria-label={COMMAND_MENU_COPY.open}
+            aria-keyshortcuts="Control+K Control+Shift+P"
+            className="flex w-full items-center gap-3 px-3.5 py-2.5 text-left text-sm text-zinc-100 transition-colors hover:bg-zinc-800/90"
+            onClick={() => {
+              setOpen(false);
+              window.dispatchEvent(new Event(OPEN_COMMAND_MENU));
+            }}
+          >
+            <Command className="h-4 w-4 shrink-0 text-zinc-400" />
+            <span className="min-w-0 flex-1">{COMMAND_MENU_COPY.title}</span>
+            <span className="shrink-0 text-xs text-zinc-500">{COMMAND_MENU_COPY.shortcutOpen}</span>
+          </button>
           <button
             type="button"
             className="flex w-full items-center gap-3 px-3.5 py-2.5 text-left text-sm text-zinc-100 transition-colors hover:bg-zinc-800/90"
