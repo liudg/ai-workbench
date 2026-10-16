@@ -9,14 +9,16 @@ import {
   loginRow,
   previewSurfaces,
 } from "@/features/workspace/settings/mcp/fixtures";
+import { MCP_PAGE, type McpFeedback, type McpToolEntry } from "@/features/workspace/settings/mcp/view";
 
 /** 开发预览。`?preview=mcp`，不启动第二个工作台窗口。 */
 export default function McpPreview() {
   const params = new URLSearchParams(window.location.search);
   const initial = (params.get("agent") as AgentKind | null) ?? "codex-cli";
   const [selected, setSelected] = useState<AgentKind>(initial);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [toolsText, setToolsText] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<McpFeedback | null>(null);
+  const [highlight, setHighlight] = useState<{ name: string; token: number } | null>(null);
+  const [tools, setTools] = useState<Record<string, McpToolEntry[]>>({});
   const rows = useMemo(() => rowsFor(selected, params.get("login") === "1"), [selected, params]);
 
   return (
@@ -27,21 +29,35 @@ export default function McpPreview() {
           selected={selected}
           rows={rows}
           listError={null}
-          busy={false}
-          notice={notice}
-          toolsText={toolsText}
+          rowBusy={null}
+          formBusy={false}
+          feedback={feedback}
+          highlight={highlight}
+          tools={tools}
           initialMode={params.get("form") === "new" ? "new" : "list"}
           onSelect={(kind) => {
-            setNotice(null);
-            setToolsText(null);
+            setFeedback(null);
+            setHighlight(null);
+            setTools({});
             setSelected(kind);
           }}
-          onAdd={(spec: McpAddSpec) => setNotice(`预览添加 ${spec.name} ${spec.transport}`)}
-          onRemove={(name) => setNotice(`预览卸载 ${name}`)}
-          onLogin={(name, registration) => setNotice(`预览登录 ${name} ${registration}`)}
-          onLogout={(name) => setNotice(`预览取消认证 ${name}`)}
-          onSetEnabled={(name, enabled) => setNotice(`预览${enabled ? "启用" : "禁用"} ${name}`)}
-          onListTools={(name) => setToolsText(`${name} 的工具\n（预览，未调用 CLI）`)}
+          onAdd={(spec: McpAddSpec) => {
+            setFeedback({ tone: "success", text: MCP_PAGE.saved });
+            setHighlight({ name: spec.name, token: Date.now() });
+            return true;
+          }}
+          onRemove={(name) => setFeedback({ tone: "success", text: `${MCP_PAGE.removed} ${name}` })}
+          onLogin={(name) => setFeedback({ tone: "success", text: `${MCP_PAGE.authStarted} ${name}` })}
+          onLogout={(name) => setFeedback({ tone: "success", text: `${MCP_PAGE.authCleared} ${name}` })}
+          onSetEnabled={(name, enabled) =>
+            setFeedback({ tone: "success", text: `${enabled ? MCP_PAGE.enabled : MCP_PAGE.disabled} ${name}` })
+          }
+          onListTools={(name) =>
+            setTools((current) => ({
+              ...current,
+              [name]: [{ name: "echo", description: "把文字原样返回" }],
+            }))
+          }
         />
       </div>
     </div>

@@ -5,9 +5,9 @@ use crate::models::{AgentKind, McpField, McpLabeled, McpNote, McpSurface, McpVer
 
 pub fn unverified(kind: AgentKind, display_name: &str, installed: bool) -> McpSurface {
     let reason = if installed {
-        "该 CLI 已安装，暂无法管理 MCP。"
+        installed_without_mcp_reason(display_name)
     } else {
-        "本机未安装该 CLI，暂无法管理 MCP。"
+        not_installed_reason(display_name)
     };
     McpSurface {
         kind,
@@ -38,7 +38,7 @@ pub fn codex(installed: bool) -> McpSurface {
         display_name: AgentKind::CodexCli.display_name().into(),
         installed,
         manageable: installed,
-        unavailable_reason: (!installed).then(|| "未找到 Codex CLI。".into()),
+        unavailable_reason: (!installed).then(|| not_installed_reason(AgentKind::CodexCli.display_name())),
         verbs: McpVerbs {
             list: true,
             add: true,
@@ -136,7 +136,8 @@ pub fn claude(installed: bool) -> McpSurface {
         display_name: AgentKind::ClaudeCode.display_name().into(),
         installed,
         manageable: installed,
-        unavailable_reason: (!installed).then(|| "未找到 Claude Code。".into()),
+        unavailable_reason: (!installed)
+            .then(|| not_installed_reason(AgentKind::ClaudeCode.display_name())),
         verbs: McpVerbs {
             list: true,
             add: true,
@@ -237,7 +238,8 @@ pub fn cursor(installed: bool) -> McpSurface {
         display_name: AgentKind::CursorAgent.display_name().into(),
         installed,
         manageable: installed,
-        unavailable_reason: (!installed).then(|| "未找到 Cursor Agent。".into()),
+        unavailable_reason: (!installed)
+            .then(|| not_installed_reason(AgentKind::CursorAgent.display_name())),
         verbs: McpVerbs {
             list: true,
             add: false,
@@ -256,7 +258,7 @@ pub fn cursor(installed: bool) -> McpSurface {
         login_statuses: Vec::new(),
         logout_label: String::new(),
         scope_label: String::new(),
-        tools_label: "列出可用工具".into(),
+        tools_label: "查看工具".into(),
         notes: vec![
             note(
                 "add / remove",
@@ -308,6 +310,14 @@ fn field(id: &str, label: &str, placeholder: &str, when: &str) -> McpField {
         placeholder: placeholder.into(),
         when: when.into(),
     }
+}
+
+fn not_installed_reason(display_name: &str) -> String {
+    format!("未检测到 {display_name}，安装后可在此管理 MCP。")
+}
+
+fn installed_without_mcp_reason(display_name: &str) -> String {
+    format!("已检测到 {display_name}，暂无法在此管理 MCP。")
 }
 
 fn note(label: &str, reason: &str) -> McpNote {
@@ -376,6 +386,7 @@ mod tests {
         assert!(!surface.verbs.add && !surface.verbs.remove && !surface.verbs.logout);
         assert!(surface.verbs.login && surface.verbs.enable && surface.verbs.disable);
         assert!(surface.verbs.list_tools);
+        assert_eq!(surface.tools_label, "查看工具");
         assert!(surface.transports.is_empty());
         assert_eq!(surface.login_rule, "always");
         assert!(surface.notes.iter().any(|item| item.label == "add / remove"));
@@ -387,12 +398,21 @@ mod tests {
         assert!(!surface.manageable);
         assert_eq!(surface.verbs, McpVerbs::none());
         let reason = surface.unavailable_reason.unwrap();
-        assert_eq!(reason, "本机未安装该 CLI，暂无法管理 MCP。");
-        assert!(!reason.contains("未验证") && !reason.contains("动词") && !reason.contains("不支持"));
+        assert_eq!(reason, "未检测到 Kimi Code，安装后可在此管理 MCP。");
+        assert!(
+            !reason.contains("未验证")
+                && !reason.contains("未观察")
+                && !reason.contains("动词")
+                && !reason.contains("不支持")
+                && !reason.contains("CLI")
+        );
         let installed = unverified(AgentKind::KimiCode, "Kimi Code", true);
+        let installed_reason = installed.unavailable_reason.unwrap();
+        assert_eq!(installed_reason, "已检测到 Kimi Code，暂无法在此管理 MCP。");
+        assert!(!installed_reason.contains("CLI") && !installed_reason.contains("未验证"));
         assert_eq!(
-            installed.unavailable_reason.unwrap(),
-            "该 CLI 已安装，暂无法管理 MCP。"
+            codex(false).unavailable_reason.as_deref(),
+            Some("未检测到 Codex CLI，安装后可在此管理 MCP。")
         );
     }
 }

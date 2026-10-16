@@ -2,35 +2,50 @@ import { useCallback, useEffect, useState } from "react";
 
 import { invoke } from "@/lib/ipc/call";
 import type { AgentKind, McpAddSpec, McpServerRow, McpSurface } from "@/types";
-import { MCP_PAGE } from "./view";
 import { McpPanel } from "./McpPanel";
+import {
+  MCP_PAGE,
+  failureTitle,
+  parseToolList,
+  successText,
+  type McpAction,
+  type McpFeedback,
+  type McpToolEntry,
+} from "./view";
 
 export function McpSettings() {
   const [surfaces, setSurfaces] = useState<McpSurface[] | null>(null);
   const [selected, setSelected] = useState<AgentKind | null>(null);
   const [rows, setRows] = useState<McpServerRow[]>([]);
   const [listError, setListError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [toolsText, setToolsText] = useState<string | null>(null);
+  const [listing, setListing] = useState(false);
+  const [rowBusy, setRowBusy] = useState<string | null>(null);
+  const [formBusy, setFormBusy] = useState(false);
+  const [feedback, setFeedback] = useState<McpFeedback | null>(null);
+  const [highlight, setHighlight] = useState<{ name: string; token: number } | null>(null);
+  const [tools, setTools] = useState<Record<string, McpToolEntry[]>>({});
 
-  const loadList = useCallback(async (kind: AgentKind, known: McpSurface[]) => {
+  const loadList = useCallback(async (kind: AgentKind, known: McpSurface[], refresh: boolean) => {
     const surface = known.find((item) => item.kind === kind);
-    setRows([]);
-    setToolsText(null);
-    setNotice(null);
+    if (!refresh) {
+      setRows([]);
+      setTools({});
+      setFeedback(null);
+      setHighlight(null);
+    }
     if (!surface?.manageable || !surface.verbs.list) {
       setListError(null);
+      setListing(false);
       return;
     }
     setListError(null);
-    setBusy(true);
+    setListing(true);
     try {
       setRows(await invoke<McpServerRow[]>("mcp_list", { kind }));
     } catch (err) {
       setListError(err instanceof Error ? err.message : String(err));
     } finally {
-      setBusy(false);
+      setListing(false);
     }
   }, []);
 
@@ -43,7 +58,7 @@ export function McpSettings() {
         const first = loaded.find((item) => item.manageable) ?? loaded[0];
         if (!first) return;
         setSelected(first.kind);
-        void loadList(first.kind, loaded);
+        void loadList(first.kind, loaded, false);
       })
       .catch((err) => {
         if (!alive) return;
@@ -55,28 +70,41 @@ export function McpSettings() {
     };
   }, [loadList]);
 
+  useEffect(() => {
+    if (feedback?.tone !== "success") return;
+    const timer = window.setTimeout(() => {
+      setFeedback((current) => (current?.tone === "success" ? null : current));
+    }, 4000);
+    return () => window.clearTimeout(timer);
+  }, [feedback]);
+
   function select(kind: AgentKind) {
     setSelected(kind);
-    if (surfaces) void loadList(kind, surfaces);
+    setRowBusy(null);
+    if (surfaces) void loadList(kind, surfaces, false);
   }
 
-  async function run(action: () => Promise<string>, failure: string) {
-    setBusy(true);
-    setNotice(null);
+  async function run(action: McpAction, rowName: string | null, actionFn: () => Promise<string>): Promise<boolean> {
+    if (rowName) setRowBusy(rowName);
+    else setFormBusy(true);
+    setFeedback(null);
     try {
-      const text = await action();
-      setNotice(text);
-      if (selected && surfaces) await loadList(selected, surfaces);
+      await actionFn();
+      if (action !== "tools") setFeedback({ tone: "success", text: successText(action) });
+      if (selected && surfaces) await loadList(selected, surfaces, true);
+      return true;
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
-      setNotice(`${failure}\n${detail}`);
+      setFeedback({ tone: "failure", title: failureTitle(action), detail });
+      return false;
     } finally {
-      setBusy(false);
+      setRowBusy(null);
+      setFormBusy(false);
     }
   }
 
   if (surfaces === null) {
-    return <p className="text-sm text-zinc-500">正在读取 MCP…</p>;
+    return <p className="text-sm text-zinc-500">{MCP_PAGE.loading}</p>;
   }
 
   return (
@@ -85,40 +113,52 @@ export function McpSettings() {
       selected={selected}
       rows={rows}
       listError={listError}
-      busy={busy}
-      notice={notice}
-      toolsText={toolsText}
+      listing={listing}
+      rowBusy={rowBusy}
+      formBusy={formBusy}
+      feedback={feedback}
+      highlight={highlight}
+      tools={tools}
       onSelect={select}
-      onAdd={(spec: McpAddSpec) => {
-        if (!selected) return;
-        void run(() => invoke<string>("mcp_add", { kind: selected, spec }), MCP_PAGE.saveError);
+      onAdd={async (spec: McpAddSpec) => {
+        if (!selected) return false;
+        const ok = await run("save", null, () => invoke<string>("mcp_add", { kind: selected, spec }));
+        if (ok) setHighlight({ name: spec.name, token: Date.now() });
+        return ok;
       }}
       onRemove={(name, scope) => {
         if (!selected) return;
-        void run(() => invoke<string>("mcp_remove", { kind: selected, name, scope }), MCP_PAGE.uninstallError);
+        void run("remove", name, () => invoke<string>("mcp_remove", { kind: selected, name, scope }));
       }}
       onLogin={(name, registration, scopes) => {
         if (!selected) return;
-        void run(
-          () => invoke<string>("mcp_login", { kind: selected, name, registration, scopes }),
-          MCP_PAGE.authenticate,
+        void run("login", name, () =>
+          invoke<string>("mcp_login", { kind: selected, name, registration, scopes }),
         );
       }}
       onLogout={(name) => {
         if (!selected) return;
-        void run(() => invoke<string>("mcp_logout", { kind: selected, name }), MCP_PAGE.actionFailed);
+        void run("logout", name, () => invoke<string>("mcp_logout", { kind: selected, name }));
       }}
       onSetEnabled={(name, enabled) => {
         if (!selected) return;
-        void run(() => invoke<string>("mcp_set_enabled", { kind: selected, name, enabled }), MCP_PAGE.enable);
+        void run(enabled ? "enable" : "disable", name, () =>
+          invoke<string>("mcp_set_enabled", { kind: selected, name, enabled }),
+        );
       }}
       onListTools={(name) => {
         if (!selected) return;
-        setBusy(true);
+        setRowBusy(name);
+        setFeedback(null);
         invoke<string>("mcp_list_tools", { kind: selected, name })
-          .then(setToolsText)
-          .catch((err) => setToolsText(err instanceof Error ? err.message : String(err)))
-          .finally(() => setBusy(false));
+          .then((text) => {
+            setTools((current) => ({ ...current, [name]: parseToolList(text) }));
+          })
+          .catch((err) => {
+            const detail = err instanceof Error ? err.message : String(err);
+            setFeedback({ tone: "failure", title: failureTitle("tools"), detail });
+          })
+          .finally(() => setRowBusy(null));
       }}
     />
   );

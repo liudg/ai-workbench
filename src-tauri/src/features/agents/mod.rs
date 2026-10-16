@@ -137,9 +137,15 @@ mod tests {
             .find(|item| item.kind == AgentKind::KimiCode)
             .unwrap();
         assert!(!kimi.manageable);
-        assert_eq!(
-            kimi.unavailable_reason.as_deref(),
-            Some("本机未安装该 CLI，暂无法管理 MCP。")
+        let expected = if kimi.installed {
+            "已检测到 Kimi Code，暂无法在此管理 MCP。"
+        } else {
+            "未检测到 Kimi Code，安装后可在此管理 MCP。"
+        };
+        let reason = kimi.unavailable_reason.as_deref().unwrap();
+        assert_eq!(reason, expected);
+        assert!(
+            !reason.contains("未验证") && !reason.contains("未观察") && !reason.contains("动词")
         );
     }
 
