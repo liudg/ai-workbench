@@ -40,7 +40,7 @@ export function NewProjectDialog() {
   return (
     <Dialog open={dialog !== null} onOpenChange={(open) => !open && closeDialog()}>
       <DialogContent
-        className="max-w-[440px] gap-5 rounded-2xl border-zinc-700/80 bg-zinc-900 p-6"
+        className="max-w-[440px] gap-5 overflow-hidden rounded-2xl border-zinc-700 bg-zinc-900 p-6 outline-none [&>*]:min-w-0"
         onEscapeKeyDown={(event) => {
           if (sourceMenu) {
             event.preventDefault();
@@ -58,26 +58,26 @@ export function NewProjectDialog() {
         </DialogHeader>
 
         <form
-          className="space-y-4"
+          className="min-w-0 space-y-4"
           onSubmit={(event) => {
             event.preventDefault();
             void submit();
           }}
         >
-          <div className="flex items-center gap-2.5 rounded-xl border border-zinc-600/90 bg-zinc-950/50 px-3 transition-colors focus-within:border-sky-500 focus-within:ring-1 focus-within:ring-sky-500/70">
+          <div className="flex min-w-0 items-center gap-2.5 rounded-xl border border-zinc-600 bg-zinc-950/50 px-3 transition-colors focus-within:border-sky-500 focus-within:ring-1 focus-within:ring-sky-500/70">
             <Folder className="h-4 w-4 shrink-0 text-zinc-500" />
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="项目名称"
               autoFocus
-              className="h-11 w-full bg-transparent text-sm text-zinc-100 outline-none placeholder:text-zinc-500"
+              className="h-11 w-full min-w-0 bg-transparent text-sm text-zinc-100 outline-none placeholder:text-zinc-500"
             />
           </div>
 
-          <div>
+          <div className="min-w-0">
             <div className="mb-2 text-sm text-zinc-300">源文件夹</div>
-            <div className="rounded-xl border border-zinc-700/80 bg-zinc-950/35 px-4 py-7 text-center">
+            <div className="min-w-0 rounded-xl border border-zinc-700 bg-zinc-950/35 px-4 py-7 text-center">
               <div ref={sourceRef} className="relative inline-flex">
                 <button
                   type="button"
@@ -115,7 +115,7 @@ export function NewProjectDialog() {
                 )}
               </div>
               {dir ? (
-                <p className="mx-auto mt-2 max-w-full truncate text-xs text-zinc-500" title={dir}>
+                <p className="mt-2 w-full min-w-0 truncate text-xs text-zinc-500" title={dir}>
                   {dir}
                 </p>
               ) : null}
@@ -131,7 +131,7 @@ export function NewProjectDialog() {
               </div>
             </div>
             {source === "create" && name.trim() && dir.trim() ? (
-              <p className="mt-1.5 truncate text-[11px] text-zinc-500">
+              <p className="mt-1.5 min-w-0 truncate text-[11px] text-zinc-500">
                 将创建：{dir.replace(/[\\/]+$/, "")}/{name.trim()}
               </p>
             ) : null}
@@ -155,7 +155,7 @@ export function NewProjectDialog() {
             </p>
           )}
 
-          <div className="flex items-center justify-end gap-3 pt-1">
+          <div className="flex min-w-0 items-center justify-end gap-3 pt-1">
             <Button
               type="button"
               variant="ghost"
