@@ -27,6 +27,7 @@ const catalogEpoch = new Map<string, number>();
 export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): WorkspaceSlice {
   return {
     events: {},
+    eventsReady: {},
     accessMode: {},
     lastSandboxByAgent: {},
     sandboxes: {},

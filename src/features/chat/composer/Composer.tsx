@@ -91,6 +91,19 @@ export function Composer({
             onEdit={c.editGoal}
           />
         ) : null}
+        {c.workContext ? (
+          <div className="mb-2 flex min-w-0 px-1" data-work-context-slot="above-input">
+            <WorkContextPicker
+              label={c.workContext.label}
+              projects={c.workContext.projects}
+              selectedId={c.workContext.selectedId}
+              standaloneId={c.workContext.standaloneId}
+              canRetarget={c.workContext.canRetarget}
+              onPickProject={c.workContext.onPickProject}
+              onPickStandalone={c.workContext.onPickStandalone}
+            />
+          </div>
+        ) : null}
         <TextSnippetPreview snippets={c.snippets} />
         <div
           ref={anchorRef}
@@ -126,13 +139,6 @@ export function Composer({
             />
           ) : null}
           <div className="min-w-0 overflow-hidden px-3 pt-3">
-          {c.workContext ? (
-            <WorkContextPicker
-              projects={c.workContext.projects}
-              canRetarget={c.workContext.canRetarget}
-              onPickProject={c.workContext.onPickProject}
-            />
-          ) : null}
           <TextSnippetChip snippets={c.snippets} onClear={c.dismissSnippets} />
           <Attachments files={c.files} imagesOn={view.imagesOn} onRemove={c.removeFile} />
           <ComposerInput

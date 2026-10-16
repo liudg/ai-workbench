@@ -10,7 +10,13 @@ import {
 
 import { useWorkbench } from "@/store";
 import { isDraftId, takeComposerText } from "@/store/draft-session";
-import { composerShowsWorkContext, isStandaloneDraft, visibleProjects } from "@/store/standalone";
+import {
+  composerShowsWorkContext,
+  hasUserMessage,
+  isStandaloneDraft,
+  STANDALONE_DRAFT_ID,
+  visibleProjects,
+} from "@/store/standalone";
 import type { ReviewStart, Session, SessionEvent, SessionSandbox } from "@/types";
 import {
   addComposerDir,
@@ -62,11 +68,12 @@ import { useReviewDismiss } from "./useReviewDismiss";
 export function useComposerController(session: Session, events: SessionEvent[]) {
   const actions = useComposerActions();
   const data = useComposerSession(session);
-  const moveStandaloneDraft = useWorkbench((s) => s.moveStandaloneDraft);
+  const retargetDraft = useWorkbench((s) => s.retargetDraft);
   const workProjects = useWorkbench((s) => s.projects);
+  const eventsLoaded = useWorkbench((s) => Boolean(s.eventsReady[session.id]));
+  const currentProject = workProjects.find((project) => project.id === session.project_id);
   const standalone =
-    isStandaloneDraft(session.project_id) ||
-    workProjects.some((project) => project.id === session.project_id && project.standalone);
+    isStandaloneDraft(session.project_id) || Boolean(currentProject?.standalone);
   const draftSession = isDraftId(session.id);
   const [text, setText] = useState(() => {
     if (draftSession) return useWorkbench.getState().drafts[session.project_id]?.text ?? "";
@@ -356,14 +363,22 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     },
     onKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => handleComposerKey(run, event),
     onPaste: (event: ClipboardEvent<HTMLTextAreaElement>) => pasteComposerImages(run, event),
-    workContext: composerShowsWorkContext(standalone, draftSession)
+    workContext: composerShowsWorkContext({
+      draft: draftSession,
+      eventsLoaded,
+      hasUserMessage: hasUserMessage(events),
+    })
       ? {
+          label: standalone ? "聊天" : (currentProject?.name ?? "聊天"),
           projects: visibleProjects(workProjects).map((project) => ({
             id: project.id,
             name: project.name,
           })),
-          canRetarget: true,
-          onPickProject: (projectId: string) => moveStandaloneDraft(projectId),
+          selectedId: standalone ? STANDALONE_DRAFT_ID : session.project_id,
+          standaloneId: STANDALONE_DRAFT_ID,
+          canRetarget: draftSession && !inputLocked,
+          onPickProject: (projectId: string) => retargetDraft(session.project_id, projectId),
+          onPickStandalone: () => retargetDraft(session.project_id, STANDALONE_DRAFT_ID),
         }
       : null,
   };

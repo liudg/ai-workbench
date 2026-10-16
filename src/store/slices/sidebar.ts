@@ -95,6 +95,7 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
           const events = await backend.getSessionEvents(activeId);
           set((s) => ({
             events: { ...s.events, [activeId]: events },
+            eventsReady: { ...s.eventsReady, [activeId]: true },
             lastError: clearMissingSessionBanner(s.lastError, events),
           }));
         } catch (error) {
@@ -200,6 +201,7 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
           sessions: { ...s.sessions, [projectId]: list },
           activeSessionId: { ...s.activeSessionId, [projectId]: session.id },
           events: { ...s.events, [session.id]: s.events[session.id] ?? [] },
+          eventsReady: { ...s.eventsReady, [session.id]: true },
           accessMode: sandbox
             ? {
                 ...s.accessMode,
@@ -247,6 +249,7 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
               ...s.events,
               [sessionId]: merged,
             },
+            eventsReady: { ...s.eventsReady, [sessionId]: true },
             lastError: clearMissingSessionBanner(s.lastError, merged),
           };
         });

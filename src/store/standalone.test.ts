@@ -6,8 +6,10 @@ import { draftId, type DraftCarryState } from "./draft-session.ts";
 import {
   adoptCreatedChat,
   composerShowsWorkContext,
+  hasUserMessage,
   keepSelectedProjectId,
   projectStillListed,
+  retargetEmptyDraft,
   retargetStandaloneDraft,
   standaloneChatSessions,
   STANDALONE_DRAFT_ID,
@@ -75,11 +77,29 @@ function carry(text: string): DraftCarryState {
   };
 }
 
-test("composer project switch stays on the unsent standalone draft only", () => {
-  assert.equal(composerShowsWorkContext(true, true), true);
-  assert.equal(composerShowsWorkContext(true, false), false);
-  assert.equal(composerShowsWorkContext(false, true), false);
-  assert.equal(composerShowsWorkContext(false, false), false);
+test("project switch stays on every empty session and hides after the first user message", () => {
+  assert.equal(hasUserMessage([{ kind: "status-changed" }, { kind: "user-message" }]), true);
+  assert.equal(hasUserMessage([{ kind: "collaboration-mode" }]), false);
+  assert.equal(
+    composerShowsWorkContext({ draft: true, eventsLoaded: false, hasUserMessage: false }),
+    true,
+  );
+  assert.equal(
+    composerShowsWorkContext({ draft: false, eventsLoaded: true, hasUserMessage: false }),
+    true,
+  );
+  assert.equal(
+    composerShowsWorkContext({ draft: false, eventsLoaded: false, hasUserMessage: false }),
+    false,
+  );
+  assert.equal(
+    composerShowsWorkContext({ draft: true, eventsLoaded: true, hasUserMessage: true }),
+    false,
+  );
+  assert.equal(
+    composerShowsWorkContext({ draft: false, eventsLoaded: true, hasUserMessage: true }),
+    false,
+  );
 });
 
 test("sidebar projects omit standalone directories", () => {
@@ -118,6 +138,23 @@ test("selection stays on an open standalone draft or chat", () => {
       current: null,
       standaloneDraftFocused: false,
     }),
+    STANDALONE_DRAFT_ID,
+  );
+  assert.equal(
+    keepSelectedProjectId({
+      projects,
+      current: null,
+      standaloneDraftFocused: false,
+      focusedProjectId: "app",
+    }),
+    "app",
+  );
+  assert.equal(
+    keepSelectedProjectId({
+      projects,
+      current: "app",
+      standaloneDraftFocused: true,
+    }),
     "app",
   );
   assert.equal(projectStillListed(STANDALONE_DRAFT_ID, new Set()), true);
@@ -134,6 +171,22 @@ test("retarget moves the unsent draft onto a project", () => {
   assert.equal(next?.draftFocused[STANDALONE_DRAFT_ID], undefined);
   assert.equal(next?.attachments[draftId("app")]?.[0]?.name, "a.txt");
   assert.equal(next?.attachments[draftId(STANDALONE_DRAFT_ID)], undefined);
+});
+
+test("an empty project draft can move to another project or back to chat", () => {
+  const state = carry("hello");
+  state.drafts.app = { ...draft("from-project"), projectId: "app" };
+  state.draftFocused = { app: true };
+  state.selectedProjectId = "app";
+  const toOther = retargetEmptyDraft(state, "app", "notes");
+  assert.equal(toOther?.drafts.app, undefined);
+  assert.equal(toOther?.drafts.notes?.projectId, "notes");
+  assert.equal(toOther?.selectedProjectId, "notes");
+  const toChat = retargetEmptyDraft(state, "app", STANDALONE_DRAFT_ID);
+  assert.equal(toChat?.drafts.app, undefined);
+  assert.equal(toChat?.drafts[STANDALONE_DRAFT_ID]?.text, "from-project");
+  assert.equal(toChat?.selectedProjectId, STANDALONE_DRAFT_ID);
+  assert.equal(toChat?.draftFocused[STANDALONE_DRAFT_ID], true);
 });
 
 test("a creating draft is not retargeted", () => {
