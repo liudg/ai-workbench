@@ -10,7 +10,7 @@ import {
 
 import { useWorkbench } from "@/store";
 import { isDraftId, takeComposerText } from "@/store/draft-session";
-import { isStandaloneDraft, visibleProjects } from "@/store/standalone";
+import { composerShowsWorkContext, isStandaloneDraft, visibleProjects } from "@/store/standalone";
 import type { ReviewStart, Session, SessionEvent, SessionSandbox } from "@/types";
 import {
   addComposerDir,
@@ -356,13 +356,13 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     },
     onKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => handleComposerKey(run, event),
     onPaste: (event: ClipboardEvent<HTMLTextAreaElement>) => pasteComposerImages(run, event),
-    workContext: standalone
+    workContext: composerShowsWorkContext(standalone, draftSession)
       ? {
           projects: visibleProjects(workProjects).map((project) => ({
             id: project.id,
             name: project.name,
           })),
-          canRetarget: draftSession,
+          canRetarget: true,
           onPickProject: (projectId: string) => moveStandaloneDraft(projectId),
         }
       : null,

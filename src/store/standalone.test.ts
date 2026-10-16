@@ -5,6 +5,7 @@ import type { Session } from "@/types";
 import { draftId, type DraftCarryState } from "./draft-session.ts";
 import {
   adoptCreatedChat,
+  composerShowsWorkContext,
   keepSelectedProjectId,
   projectStillListed,
   retargetStandaloneDraft,
@@ -73,6 +74,13 @@ function carry(text: string): DraftCarryState {
     preferredAgent: "claude-code",
   };
 }
+
+test("composer project switch stays on the unsent standalone draft only", () => {
+  assert.equal(composerShowsWorkContext(true, true), true);
+  assert.equal(composerShowsWorkContext(true, false), false);
+  assert.equal(composerShowsWorkContext(false, true), false);
+  assert.equal(composerShowsWorkContext(false, false), false);
+});
 
 test("sidebar projects omit standalone directories", () => {
   const projects = [project("app"), project("chat", true)];

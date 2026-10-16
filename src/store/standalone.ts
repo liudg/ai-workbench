@@ -9,6 +9,11 @@ export function visibleProjects(projects: readonly Project[]): Project[] {
   return projects.filter((project) => !project.standalone);
 }
 
+/** 项目切换只出现在还没发出的独立聊天草稿上。 */
+export function composerShowsWorkContext(standalone: boolean, draftSession: boolean): boolean {
+  return standalone && draftSession;
+}
+
 export function standaloneChatSessions(
   projects: readonly Project[],
   sessions: Readonly<Record<string, readonly Session[] | undefined>>,
