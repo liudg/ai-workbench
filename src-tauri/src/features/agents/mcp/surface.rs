@@ -5,9 +5,9 @@ use crate::models::{AgentKind, McpField, McpLabeled, McpNote, McpSurface, McpVer
 
 pub fn unverified(kind: AgentKind, display_name: &str, installed: bool) -> McpSurface {
     let reason = if installed {
-        "本机已有该 CLI，但 MCP 动词还没用真实 CLI 验证，所以不提供管理。"
+        "该 CLI 已安装，暂无法管理 MCP。"
     } else {
-        "本机没有该 CLI，MCP 动词未验证。"
+        "本机未安装该 CLI，暂无法管理 MCP。"
     };
     McpSurface {
         kind,
@@ -387,7 +387,12 @@ mod tests {
         assert!(!surface.manageable);
         assert_eq!(surface.verbs, McpVerbs::none());
         let reason = surface.unavailable_reason.unwrap();
-        assert!(reason.contains("未验证"));
-        assert!(!reason.contains("不支持"));
+        assert_eq!(reason, "本机未安装该 CLI，暂无法管理 MCP。");
+        assert!(!reason.contains("未验证") && !reason.contains("动词") && !reason.contains("不支持"));
+        let installed = unverified(AgentKind::KimiCode, "Kimi Code", true);
+        assert_eq!(
+            installed.unavailable_reason.unwrap(),
+            "该 CLI 已安装，暂无法管理 MCP。"
+        );
     }
 }

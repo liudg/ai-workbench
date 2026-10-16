@@ -138,7 +138,7 @@ export const unverifiedSurface: McpSurface = {
   display_name: "Kimi Code",
   installed: false,
   manageable: false,
-  unavailable_reason: "本机没有该 CLI，MCP 动词未验证。",
+  unavailable_reason: "本机未安装该 CLI，暂无法管理 MCP。",
   verbs: none,
   transports: [],
   scopes: [],

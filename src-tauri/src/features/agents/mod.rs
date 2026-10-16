@@ -101,7 +101,7 @@ pub fn require_mcp(kind: AgentKind) -> Result<Arc<dyn McpDriver>, String> {
     let installed = cli_present(adapter.as_ref());
     Err(mcp::unverified(kind, adapter.display_name(), installed)
         .unavailable_reason
-        .unwrap_or_else(|| "MCP 动词未验证。".into()))
+        .unwrap_or_else(|| "暂无法管理 MCP。".into()))
 }
 
 /// 已注册的会话目录。只有会话协议已接入的 Agent 才有目录。
@@ -137,7 +137,10 @@ mod tests {
             .find(|item| item.kind == AgentKind::KimiCode)
             .unwrap();
         assert!(!kimi.manageable);
-        assert!(kimi.unavailable_reason.as_deref().unwrap().contains("未验证"));
+        assert_eq!(
+            kimi.unavailable_reason.as_deref(),
+            Some("本机未安装该 CLI，暂无法管理 MCP。")
+        );
     }
 
     #[test]
