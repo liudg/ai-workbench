@@ -32,7 +32,7 @@ export interface Session {
   status: SessionStatus;
   created_at: number;
   updated_at: number;
-  /** 已归档的聊天不进默认列表，收在「已归档」里。 */
+  /** 已归档的聊天不进侧栏列表。 */
   archived?: boolean;
 }
 

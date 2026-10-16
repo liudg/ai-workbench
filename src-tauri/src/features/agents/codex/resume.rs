@@ -80,7 +80,7 @@ impl CodexDirectory {
         self.cached_list(false).await
     }
 
-    /// `thread/list` 且 `archived: true`。给侧栏「已归档」里的取消归档用。
+    /// `thread/list` 且 `archived: true`。用来标明已归档线程，侧栏不展示它们。
     pub async fn list_archived_threads(&self) -> Result<Vec<DirectoryEntry>, String> {
         self.cached_list(true).await
     }

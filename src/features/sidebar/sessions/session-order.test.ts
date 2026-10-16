@@ -80,6 +80,21 @@ test("show more still previews eight and reveals the rest only when asked", () =
   );
 });
 
+test("expanding once shows every session instead of another eight", () => {
+  const sessions = Array.from({ length: 25 }, (_, index) => ({
+    id: `s${index}`,
+    status: "completed" as const,
+  }));
+  const collapsed = sidebarSessionWindow(sessions, false);
+  assert.equal(collapsed.visible.length, SESSION_PREVIEW_LIMIT);
+  const expanded = sidebarSessionWindow(sessions, true);
+  assert.equal(expanded.visible.length, sessions.length);
+  assert.deepEqual(
+    expanded.visible.map((item) => item.id),
+    expanded.ordered.map((item) => item.id),
+  );
+});
+
 test("the collapsed preview does not include rows past the show-more cut", () => {
   const sessions = Array.from({ length: 40 }, (_, index) => ({
     id: String(index),

@@ -6,7 +6,6 @@ import { pendingSidebarSession } from "@/store/draft-session";
 import { aggregateStatus, type Project } from "@/types";
 import { useProjectItem } from "./use-project-item";
 import { useDismiss } from "../use-dismiss";
-import { ArchivedSessions } from "../sessions/ArchivedSessions";
 import { NewSessionButton } from "../sessions/NewSessionButton";
 import { partitionSidebarSessions } from "../sessions/session-partition";
 import { SessionList } from "../sessions/SessionList";
@@ -128,25 +127,15 @@ export function ProjectItem({ project }: { project: Project }) {
           />
         </div>
       </div>
-      {!collapsed && (grouped.active.length > 0 || grouped.archived.length > 0) && (
-        <>
-          {grouped.active.length > 0 && (
-            <SessionList
-              projectId={project.id}
-              sessions={grouped.active}
-              selected={selected}
-              activeSessionId={rowActiveId}
-              showAll={showAll}
-              onToggleShowAll={() => setShowAll((value) => !value)}
-            />
-          )}
-          <ArchivedSessions
-            projectId={project.id}
-            sessions={grouped.archived}
-            selected={selected}
-            activeSessionId={rowActiveId}
-          />
-        </>
+      {!collapsed && grouped.active.length > 0 && (
+        <SessionList
+          projectId={project.id}
+          sessions={grouped.active}
+          selected={selected}
+          activeSessionId={rowActiveId}
+          showAll={showAll}
+          onToggleShowAll={() => setShowAll((value) => !value)}
+        />
       )}
     </div>
   );

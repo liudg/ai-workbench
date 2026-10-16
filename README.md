@@ -116,7 +116,7 @@ pnpm dev                                                       # 打开 http://l
 
 ## 多 Agent 边界
 
-会话管理器不持有 `CodexDirectory`。每种 Agent 注册一个 `SessionDirectory`：Codex 的 `list` 合并两份 `thread/list`，`archived: false` 与 `codex resume --all` 是同一份未归档列表，`archived: true` 只进入侧栏「已归档」。会话协议未接入的种类不注册目录。侧边栏项目只来自工作台 `projects.json`。某个已注册项目下的会话，是这些目录里 cwd 对上该项目路径的并集，再加内存里已打开的会话，键是 `{agent}:{native_id}`。导入或移除项目只改工作台列表，不删除 Agent 的 rollout，也不改写 Agent 自己的项目列表。
+会话管理器不持有 `CodexDirectory`。每种 Agent 注册一个 `SessionDirectory`：Codex 的 `list` 合并两份 `thread/list`，`archived: false` 与 `codex resume --all` 是同一份未归档列表，`archived: true` 不进入侧栏。会话协议未接入的种类不注册目录。侧边栏项目只来自工作台 `projects.json`。某个已注册项目下的会话，是这些目录里 cwd 对上该项目路径的并集，再加内存里已打开的会话，键是 `{agent}:{native_id}`。导入或移除项目只改工作台列表，不删除 Agent 的 rollout，也不改写 Agent 自己的项目列表。
 
 `SessionContext` 只保留通用字段：工作目录、权限档位、要恢复的 native id，以及 `options`。Codex 从 `options.persist` 决定新线程是否写入官方 resume 列表；行协议留在 `agents/codex/`。
 
