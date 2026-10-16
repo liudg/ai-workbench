@@ -318,7 +318,14 @@ command = \"cmd\"
         let target = dir.join("real.toml");
         let link = dir.join("config.toml");
         std::fs::write(&target, "[mcp_servers.alpha]\ncommand = \"cmd\"\n").unwrap();
-        symlink_file(&target, &link).unwrap();
+        // Windows 未开开发人员模式时创建符号链接返回 1314。没有链接就无法断言跟随目标。
+        if let Err(error) = symlink_file(&target, &link) {
+            if error.raw_os_error() == Some(1314) {
+                eprintln!("skip: symlink privilege not held");
+                return;
+            }
+            panic!("symlink: {error}");
+        }
         apply_enabled(&link, "alpha", false).unwrap();
         let body = std::fs::read_to_string(&target).unwrap();
         assert!(body.contains("enabled = false"));
