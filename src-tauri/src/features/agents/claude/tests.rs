@@ -889,6 +889,72 @@ fn stopped_result_follows_abort_reason() {
 }
 
 #[test]
+fn api_error_object_is_a_retry_note() {
+    let mut state = MapState::default();
+    let ingest = ingest_line(
+        &mut state,
+        r#"{"type":"system","subtype":"api_error","level":"error","error":{"message":"Connection error.","formatted":"Connection dropped (ECONNRESET)","connection":{"message":"ECONNRESET"}},"retryAttempt":1,"maxRetries":10}"#,
+        true,
+        None,
+    );
+    match ingest.events.as_slice() {
+        [SessionEventBody::System { text }] => {
+            assert!(text.contains("Connection dropped (ECONNRESET)"));
+            assert!(!text.to_ascii_lowercase().contains("unknown"));
+        }
+        other => panic!("expected one system note, got {other:?}"),
+    }
+    let again = ingest_line(
+        &mut state,
+        r#"{"type":"system","subtype":"api_error","error":{"formatted":"Connection dropped (ECONNRESET)"},"retryAttempt":2,"maxRetries":10}"#,
+        true,
+        None,
+    );
+    assert!(again.events.is_empty());
+}
+
+#[test]
+fn string_unknown_api_error_is_not_shown_as_unknown() {
+    let mut state = MapState::default();
+    let ingest = ingest_line(
+        &mut state,
+        r#"{"type":"system","subtype":"api_error","error":"unknown","retryAttempt":1,"maxRetries":10}"#,
+        true,
+        None,
+    );
+    match ingest.events.as_slice() {
+        [SessionEventBody::System { text }] => {
+            assert!(text.contains("连接中断"));
+            assert!(!text.to_ascii_lowercase().contains("unknown"));
+        }
+        other => panic!("expected one system note, got {other:?}"),
+    }
+}
+
+#[test]
+fn streaming_abort_keeps_the_session_usable() {
+    let mut state = MapState::default();
+    let ingest = ingest_line(
+        &mut state,
+        r#"{"type":"result","subtype":"error_during_execution","terminal_reason":"aborted_streaming","is_error":true}"#,
+        true,
+        None,
+    );
+    assert!(ingest.events.iter().any(|event| matches!(
+        event,
+        SessionEventBody::Error { message } if message.contains("连接中断")
+    )));
+    assert!(ingest.events.iter().any(|event| matches!(
+        event,
+        SessionEventBody::StatusChanged { status: SessionStatus::Completed }
+    )));
+    assert!(!ingest.events.iter().any(|event| matches!(
+        event,
+        SessionEventBody::StatusChanged { status: SessionStatus::Stopped | SessionStatus::Failed }
+    )));
+}
+
+#[test]
 fn prefer_native_binary_over_a_batch_shim() {
     let dir = temp_dir("bin");
     let cmd = dir.join("claude.cmd");

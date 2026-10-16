@@ -328,15 +328,97 @@ fn on_system(state: &mut MapState, value: &Value, live: bool) -> Vec<SessionEven
         }
         return Vec::new();
     }
-    if subtype == "error" || value.get("error").is_some() {
-        let message = value
-            .get("error")
-            .and_then(Value::as_str)
-            .or_else(|| value.get("message").and_then(Value::as_str))
-            .unwrap_or("Claude Code 报错");
-        return vec![SessionEventBody::Error { message: message.to_string() }];
+    if subtype == "error" || subtype == "api_error" || value.get("error").is_some() {
+        let message = system_error_text(value);
+        // stdout 的 api_error 会在重试期间连发。连接还在重试时只留第一条说明，不把会话打成失败。
+        if subtype == "api_error" && retry_in_progress(value) {
+            let attempt = value.get("retryAttempt").and_then(Value::as_i64).unwrap_or(1);
+            if attempt != 1 {
+                return Vec::new();
+            }
+            return vec![SessionEventBody::System {
+                text: format!("{message}，正在重试"),
+            }];
+        }
+        return vec![SessionEventBody::Error { message }];
     }
     Vec::new()
+}
+
+/// CLI 2.1.301 的 stream-json 常把错误对象收成字符串 `"unknown"`。
+/// 转录里同一条是 `{formatted, message, connection}`。两种都读，不把占位词直接画出来。
+fn system_error_text(value: &Value) -> String {
+    if let Some(error) = value.get("error") {
+        if let Some(text) = error_payload_text(error) {
+            return text;
+        }
+    }
+    if let Some(text) = text_field_filtered(value, "message") {
+        return text;
+    }
+    let reason = value.get("terminal_reason").and_then(Value::as_str).unwrap_or("");
+    if let Some(text) = reason_text(reason) {
+        return text.to_string();
+    }
+    let subtype = value.get("subtype").and_then(Value::as_str).unwrap_or("");
+    if subtype == "api_error" {
+        "Claude Code 连接中断".into()
+    } else {
+        "Claude Code 报错".into()
+    }
+}
+
+fn error_payload_text(error: &Value) -> Option<String> {
+    match error {
+        Value::String(text) => text_if_useful(text),
+        Value::Object(_) => text_field_filtered(error, "formatted")
+            .or_else(|| text_field_filtered(error, "message"))
+            .or_else(|| {
+                error
+                    .pointer("/connection/message")
+                    .and_then(Value::as_str)
+                    .and_then(text_if_useful)
+            }),
+        _ => None,
+    }
+}
+
+fn text_field_filtered(value: &Value, key: &str) -> Option<String> {
+    value.get(key).and_then(Value::as_str).and_then(text_if_useful)
+}
+
+fn text_if_useful(text: &str) -> Option<String> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() || placeholder_error(trimmed) {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+fn placeholder_error(text: &str) -> bool {
+    let folded = text.trim().to_ascii_lowercase();
+    folded == "unknown" || folded == "unknown error"
+}
+
+fn reason_text(reason: &str) -> Option<&'static str> {
+    match reason {
+        "aborted_streaming" => Some("Claude Code 连接中断"),
+        "aborted_tools" => Some("Claude Code 工具调用已中断"),
+        "structured_output_retry_exhausted" => Some("Claude Code 输出重试已用尽"),
+        "tool_deferred_unavailable" => Some("Claude Code 工具暂不可用"),
+        "turn_setup_failed" => Some("Claude Code 没能开始这一轮"),
+        _ => None,
+    }
+}
+
+fn retry_in_progress(value: &Value) -> bool {
+    let attempt = value.get("retryAttempt").and_then(Value::as_i64);
+    let max = value.get("maxRetries").and_then(Value::as_i64);
+    match (attempt, max) {
+        (Some(attempt), Some(max)) => attempt < max,
+        _ => false,
+    }
 }
 
 fn on_assistant(state: &mut MapState, value: &Value, project: Option<&Path>, live: bool) -> Vec<SessionEventBody> {
@@ -462,7 +544,13 @@ fn on_result(state: &mut MapState, value: &Value, live: bool) -> Vec<SessionEven
     // result.usage 是本轮各次 API 调用的再加总，和 assistant 记录重复。不记入会话用量。
     // 打开会话时的状态由 runtime 在历史装完后写。历史 result 不改当前状态。
     if live {
-        events.push(SessionEventBody::StatusChanged { status: result_status(value) });
+        let status = result_status(value);
+        if status != SessionStatus::Stopped {
+            if let Some(message) = turn_failure_message(value) {
+                events.push(SessionEventBody::Error { message });
+            }
+        }
+        events.push(SessionEventBody::StatusChanged { status });
     }
     events
 }
@@ -470,14 +558,38 @@ fn on_result(state: &mut MapState, value: &Value, live: bool) -> Vec<SessionEven
 pub fn result_status(value: &Value) -> SessionStatus {
     let subtype = value.get("subtype").and_then(Value::as_str).unwrap_or("");
     let reason = value.get("terminal_reason").and_then(Value::as_str).unwrap_or("");
+    if user_stopped_turn(subtype, reason) {
+        SessionStatus::Stopped
+    } else {
+        // 连接中断、工具中断、这一轮 is_error：进程还在，作曲栏要能继续发。
+        // 进程自己退出仍由 runtime::on_eof 标成 Failed。
+        SessionStatus::Completed
+    }
+}
+
+fn user_stopped_turn(subtype: &str, reason: &str) -> bool {
+    if reason == "aborted_user" || subtype.contains("interrupt") {
+        return true;
+    }
+    // CLI 2.1.301 的真实中止原因是 aborted_streaming / aborted_tools，不是用户按下停止。
+    if reason_text(reason).is_some() || reason == "aborted_by_mock" {
+        return false;
+    }
+    subtype.contains("abort") || reason.starts_with("aborted_")
+}
+
+fn turn_failure_message(value: &Value) -> Option<String> {
+    let subtype = value.get("subtype").and_then(Value::as_str).unwrap_or("");
+    let reason = value.get("terminal_reason").and_then(Value::as_str).unwrap_or("");
     let is_error = value.get("is_error").and_then(Value::as_bool).unwrap_or(false);
-    if reason.starts_with("aborted_") || subtype.contains("abort") {
-        return SessionStatus::Stopped;
+    if user_stopped_turn(subtype, reason) {
+        return None;
     }
-    if is_error || subtype.starts_with("error") {
-        return SessionStatus::Failed;
+    let failed = is_error || subtype.starts_with("error") || reason_text(reason).is_some();
+    if !failed {
+        return None;
     }
-    SessionStatus::Completed
+    Some(system_error_text(value))
 }
 
 fn on_goal(value: &Value) -> Vec<SessionEventBody> {
