@@ -51,6 +51,7 @@ pub(super) fn plan_implementation_options(
                 |label| format!("Start a fresh thread (current context: {label})"),
             ),
             disabled_reason: (!has_plan).then(|| PLAN_IMPLEMENTATION_NO_APPROVED_PLAN.into()),
+            ..Default::default()
         },
         PromptOption {
             id: STAY_ID.into(),

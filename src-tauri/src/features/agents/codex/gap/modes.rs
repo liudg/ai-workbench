@@ -193,6 +193,11 @@ impl Shared {
                 question: PLAN_IMPLEMENTATION_TITLE.to_string(),
                 options: plan_implementation_options(plan.as_deref(), usage.as_deref()),
                 questions: Vec::new(),
+                header: String::new(),
+                subtitle: String::new(),
+                body: String::new(),
+                body_kind: String::new(),
+                reason: String::new(),
             },
         );
         true

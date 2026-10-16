@@ -11,6 +11,7 @@
 //! `options.persist == true` 时新线程写入官方 resume 列表。
 //! `resume_native_id` 走 `thread/resume`。
 
+mod approval;
 mod catalog;
 mod directory_client;
 mod gap;
@@ -252,6 +253,7 @@ impl AgentAdapter for CodexCliAdapter {
             persist: ctx.flag("persist"),
             turn_id: Mutex::new(None),
             turn_files: Mutex::new(HashMap::new()),
+            file_items: Mutex::new(HashMap::new()),
             turn_diffs: Mutex::new(HashMap::new()),
             last_turn_id: Mutex::new(None),
             model: Mutex::new(String::new()),

@@ -193,6 +193,11 @@ pub fn permission_events(request_id: &str, request: &Value) -> Option<(Vec<Sessi
             question,
             options: Vec::new(),
             questions,
+            header: String::new(),
+            subtitle: String::new(),
+            body: String::new(),
+            body_kind: String::new(),
+            reason: String::new(),
         }];
         let kind = PermissionKind::Questions {
             input,
@@ -219,20 +224,26 @@ pub fn permission_events(request_id: &str, request: &Value) -> Option<(Vec<Sessi
             question: "退出计划模式？".into(),
             options: control::approval_options(),
             questions: Vec::new(),
+            header: String::new(),
+            subtitle: String::new(),
+            body: String::new(),
+            body_kind: String::new(),
+            reason: String::new(),
         });
         return Some((events, PermissionKind::ExitPlan { input }));
     }
-    let question = if summary.is_empty() {
-        format!("允许使用 {tool_name}？")
-    } else {
-        format!("允许 {tool_name}：{summary}？")
-    };
+    let (header, question, body, body_kind) = claude_approval_copy(tool_name, &summary);
     let events = vec![SessionEventBody::Prompt {
         prompt_id: request_id.to_string(),
         prompt_kind: PromptKind::Approval,
         question,
         options: control::approval_options(),
         questions: Vec::new(),
+        header,
+        subtitle: String::new(),
+        body,
+        body_kind,
+        reason: String::new(),
     }];
     Some((events, PermissionKind::Approval { input }))
 }
@@ -664,6 +675,28 @@ pub fn display_tool_name(reported: &str) -> String {
         "Bash" | "PowerShell" => "command".into(),
         other => other.to_string(),
     }
+}
+
+fn claude_approval_copy(tool_name: &str, summary: &str) -> (String, String, String, String) {
+    let header = display_tool_name(tool_name);
+    let shown = summary.trim();
+    let has_detail = !shown.is_empty() && shown != tool_name;
+    let body_kind = match tool_name {
+        "Bash" | "PowerShell" if has_detail => "command",
+        "Edit" | "Write" | "NotebookEdit" | "MultiEdit" if has_detail => "files",
+        _ => "",
+    };
+    let body = if body_kind.is_empty() {
+        String::new()
+    } else {
+        shown.to_string()
+    };
+    let question = if has_detail && body_kind.is_empty() {
+        format!("允许 {tool_name}：{shown}？")
+    } else {
+        format!("允许使用 {tool_name}？")
+    };
+    (header, question, body, body_kind.to_string())
 }
 
 fn tool_summary(reported: &str, input: &Value) -> String {

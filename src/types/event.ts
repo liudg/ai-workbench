@@ -44,6 +44,10 @@ export interface PromptOption {
   description?: string;
   /** 有值时不可选，值是原因。 */
   disabled_reason?: string | null;
+  /** 审批卡位置：primary / deny / leading / scoped。空表示普通选项。 */
+  slot?: string;
+  /** 悬停说明。 */
+  tooltip?: string;
 }
 
 /** 事件体（对应 Rust 的 SessionEventBody；适配器只产生这一层） */
@@ -78,6 +82,16 @@ export type SessionEventBody =
       options: PromptOption[];
       /** prompt_kind === "questions" 时的逐题内容；其它类型为空 */
       questions: PromptQuestion[];
+      /** 审批卡标题上方的类别 */
+      header?: string;
+      /** 标题下方的说明 */
+      subtitle?: string;
+      /** 命令或文件列表 */
+      body?: string;
+      /** command：三行折叠；files：可滚动列表 */
+      body_kind?: string;
+      /** 「原因」行 */
+      reason?: string;
     }
   | { kind: "prompt-resolved"; prompt_id: string; answer: string }
   | { kind: "status-changed"; status: SessionStatus }
