@@ -3,7 +3,12 @@ import { userFacingMessage } from "@/lib/user-facing";
 import { backend } from "@/lib/ipc";
 import { forgetProjectDraft, type DraftCarryState } from "../draft-session";
 import { emptyProjectDraftUpdate, landOnEmptyProjectDraft } from "../lazy-draft";
-import { keepSelectedProjectId, projectStillListed, STANDALONE_DRAFT_ID } from "../standalone";
+import {
+  keepSelectedProjectId,
+  projectStillListed,
+  releaseUntouchedNewChat,
+  STANDALONE_DRAFT_ID,
+} from "../standalone";
 import { clearMissingSessionBanner, loadSessions, loadWorkspaceLists } from "../sync";
 import type { ShellSlice, WorkbenchGet, WorkbenchSet } from "../types";
 
@@ -81,9 +86,17 @@ export function createShellSlice(set: WorkbenchSet, get: WorkbenchGet): ShellSli
       }
       await get().refreshInstallations();
       await get().refreshAll();
+      const hasUserProject = get().projects.some((project) => !project.standalone);
+      const released = releaseUntouchedNewChat({
+        hasUserProject,
+        selectedProjectId: get().selectedProjectId,
+        draftText: get().drafts[STANDALONE_DRAFT_ID]?.text,
+        draftFocused: get().draftFocused,
+      });
+      if (released) set(released);
       const selected = get().selectedProjectId;
       if (selected === STANDALONE_DRAFT_ID) {
-        if (!get().draftFocused[STANDALONE_DRAFT_ID]) {
+        if (hasUserProject && !get().draftFocused[STANDALONE_DRAFT_ID]) {
           const agent =
             get().drafts[STANDALONE_DRAFT_ID]?.agent ??
             persistedAgentKind(get().installations, get().preferredAgent);

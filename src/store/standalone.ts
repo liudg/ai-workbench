@@ -39,6 +39,10 @@ export function standaloneChatSessions(
   return rows;
 }
 
+function hasUserProject(projects: readonly Pick<Project, "standalone">[]): boolean {
+  return projects.some((project) => !project.standalone);
+}
+
 export function keepSelectedProjectId(input: {
   projects: readonly Pick<Project, "id" | "standalone">[];
   current: string | null;
@@ -46,7 +50,11 @@ export function keepSelectedProjectId(input: {
   /** 持久化下来的项目草稿。没有当前选择时回到这份草稿，而不是列表第一项。 */
   focusedProjectId?: string | null;
 }): string | null {
-  if (input.current === STANDALONE_DRAFT_ID) return STANDALONE_DRAFT_ID;
+  const userProject = hasUserProject(input.projects);
+  // 没人打开过「新聊天」、侧栏也没有项目时，停在「选择一个项目」。
+  if (input.current === STANDALONE_DRAFT_ID) {
+    return input.standaloneDraftFocused || userProject ? STANDALONE_DRAFT_ID : null;
+  }
   if (input.current && input.projects.some((project) => project.id === input.current)) {
     return input.current;
   }
@@ -57,7 +65,29 @@ export function keepSelectedProjectId(input: {
   ) {
     return input.focusedProjectId;
   }
-  return STANDALONE_DRAFT_ID;
+  return userProject ? STANDALONE_DRAFT_ID : null;
+}
+
+/**
+ * 没有用户项目时，空白的「新聊天」不是一次选择。
+ * 启动时丢掉它，主区回到「选择一个项目」。已经写过字的草稿留着。
+ */
+export function releaseUntouchedNewChat(input: {
+  hasUserProject: boolean;
+  selectedProjectId: string | null;
+  draftText: string | undefined;
+  draftFocused: Record<string, boolean>;
+}): { selectedProjectId: string | null; draftFocused: Record<string, boolean> } | null {
+  if (input.hasUserProject || input.draftText?.trim()) return null;
+  const selected = input.selectedProjectId === STANDALONE_DRAFT_ID;
+  const focused = Boolean(input.draftFocused[STANDALONE_DRAFT_ID]);
+  if (!selected && !focused) return null;
+  const draftFocused = { ...input.draftFocused };
+  delete draftFocused[STANDALONE_DRAFT_ID];
+  return {
+    selectedProjectId: selected ? null : input.selectedProjectId,
+    draftFocused,
+  };
 }
 
 export function projectStillListed(projectId: string, ids: ReadonlySet<string>): boolean {

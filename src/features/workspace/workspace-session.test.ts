@@ -80,6 +80,18 @@ test("sessions that are still loading do not pretend the project is empty", () =
   );
 });
 
+test("sessions with nothing selected stay empty so the pane can ask for a session", () => {
+  assert.equal(
+    visibleWorkspaceSession({
+      sessions: [session()],
+      activeSessionId: undefined,
+      draft: draft(),
+      draftFocused: false,
+    }),
+    null,
+  );
+});
+
 test("an open draft stays in front of a live session", () => {
   const visible = visibleWorkspaceSession({
     sessions: [session()],

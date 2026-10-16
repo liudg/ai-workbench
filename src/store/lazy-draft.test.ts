@@ -4,6 +4,7 @@ import { test } from "node:test";
 import type { AgentInstallation, AgentKind, Session } from "../types/index.ts";
 import { draftId, isDraftId } from "./draft-session.ts";
 import { landOnEmptyProjectDraft, type LazyDraftState } from "./lazy-draft.ts";
+import { STANDALONE_DRAFT_ID } from "./standalone-id.ts";
 import type { SessionDraft } from "./types.ts";
 
 function installation(kind: AgentKind, linked = true): AgentInstallation {
@@ -125,6 +126,44 @@ test("a draft that is already open is left alone", () => {
 test("sessions still in the project do not open a draft", () => {
   assert.equal(
     landOnEmptyProjectDraft(state({ sessions: { p1: [session("claude-code:keep")] } }), "p1"),
+    null,
+  );
+});
+
+test("a project with sessions and nothing selected does not open a draft", () => {
+  assert.equal(
+    landOnEmptyProjectDraft(
+      state({
+        sessions: { p1: [session("claude-code:keep")] },
+        activeSessionId: {},
+      }),
+      "p1",
+    ),
+    null,
+  );
+});
+
+test("no project does not land on the standalone new chat", () => {
+  assert.equal(
+    landOnEmptyProjectDraft(
+      state({
+        projects: [],
+        selectedProjectId: STANDALONE_DRAFT_ID,
+        sessions: { [STANDALONE_DRAFT_ID]: [] },
+      }),
+      STANDALONE_DRAFT_ID,
+    ),
+    null,
+  );
+  assert.equal(
+    landOnEmptyProjectDraft(
+      state({
+        projects: [],
+        selectedProjectId: null,
+        sessions: {},
+      }),
+      "p1",
+    ),
     null,
   );
 });

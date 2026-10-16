@@ -11,6 +11,7 @@ import type {
   SessionTuning,
 } from "../types/index.ts";
 import { draftId, openProjectDraft } from "./draft-session.ts";
+import { isStandaloneDraft } from "./standalone-id.ts";
 import type { PendingStart, SessionDraft } from "./types.ts";
 
 export interface ProjectDraftFocusState {
@@ -102,13 +103,15 @@ export function emptyProjectDraftUpdate(
 
 /**
  * 当前项目已经没有真实会话时，主区落到懒草稿。
+ * 没有这个项目，或当前是还没打开的「新聊天」时，不落地，主区留在「选择一个项目」。
  * 草稿已经在看，就什么都不改。安装列表还没到时，先用项目自己的默认 Agent。
  */
 export function landOnEmptyProjectDraft(
   state: LazyDraftState,
   projectId: string,
 ): EmptyProjectDraftPatch | null {
-  if (!projectId || state.selectedProjectId !== projectId) return null;
+  if (!projectId || isStandaloneDraft(projectId) || state.selectedProjectId !== projectId) return null;
+  if (!state.projects.some((project) => project.id === projectId)) return null;
   const list = state.sessions[projectId];
   if (!list || list.length > 0) return null;
 

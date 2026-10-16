@@ -9,6 +9,7 @@ import {
   hasUserMessage,
   keepSelectedProjectId,
   projectStillListed,
+  releaseUntouchedNewChat,
   retargetEmptyDraft,
   retargetStandaloneDraft,
   standaloneChatSessions,
@@ -159,6 +160,68 @@ test("selection stays on an open standalone draft or chat", () => {
   );
   assert.equal(projectStillListed(STANDALONE_DRAFT_ID, new Set()), true);
   assert.equal(projectStillListed("gone", new Set(["app"])), false);
+});
+
+test("no user project stays on choose-a-project instead of a new chat", () => {
+  assert.equal(
+    keepSelectedProjectId({
+      projects: [],
+      current: null,
+      standaloneDraftFocused: false,
+    }),
+    null,
+  );
+  assert.equal(
+    keepSelectedProjectId({
+      projects: [project("chat", true)],
+      current: null,
+      standaloneDraftFocused: false,
+    }),
+    null,
+  );
+  assert.equal(
+    keepSelectedProjectId({
+      projects: [],
+      current: STANDALONE_DRAFT_ID,
+      standaloneDraftFocused: false,
+    }),
+    null,
+  );
+  assert.equal(
+    keepSelectedProjectId({
+      projects: [],
+      current: null,
+      standaloneDraftFocused: true,
+    }),
+    STANDALONE_DRAFT_ID,
+  );
+  assert.deepEqual(
+    releaseUntouchedNewChat({
+      hasUserProject: false,
+      selectedProjectId: STANDALONE_DRAFT_ID,
+      draftText: "",
+      draftFocused: { [STANDALONE_DRAFT_ID]: true },
+    }),
+    { selectedProjectId: null, draftFocused: {} },
+  );
+  assert.equal(
+    releaseUntouchedNewChat({
+      hasUserProject: false,
+      selectedProjectId: STANDALONE_DRAFT_ID,
+      draftText: "留下的字",
+      draftFocused: { [STANDALONE_DRAFT_ID]: true },
+    }),
+    null,
+  );
+  assert.equal(
+    releaseUntouchedNewChat({
+      hasUserProject: true,
+      selectedProjectId: STANDALONE_DRAFT_ID,
+      draftText: "",
+      draftFocused: { [STANDALONE_DRAFT_ID]: true },
+    }),
+    null,
+  );
 });
 
 test("retarget moves the unsent draft onto a project", () => {
