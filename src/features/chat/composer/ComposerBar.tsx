@@ -8,6 +8,7 @@ import type { PermissionMenu, SessionSandbox } from "@/types";
 import { buttonLabel, selectedPermission } from "./access";
 import { composerDensity } from "./composer-density";
 import { ModeChip } from "./ModeChip";
+import { PlanModeIndicator } from "./PlanModeIndicator";
 
 export function ComposerBar({
   plusRef,
@@ -19,6 +20,7 @@ export function ComposerBar({
   sandbox,
   permissionMenu,
   planChip,
+  planIndicator,
   goalChip,
   showModel,
   hasCatalog,
@@ -44,6 +46,8 @@ export function ComposerBar({
   sandbox: SessionSandbox | null;
   permissionMenu: PermissionMenu | null;
   planChip: boolean;
+  /** 当前协作模式是计划，而且这个 Agent 支持计划模式。 */
+  planIndicator: boolean;
   goalChip: boolean;
   showModel: boolean;
   hasCatalog: boolean;
@@ -115,7 +119,10 @@ export function ComposerBar({
           {icons ? null : <span className="min-w-0 truncate">{accessLabel}</span>}
           {icons ? null : <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />}
         </button>
-        {(planChip || goalChip) && <span aria-hidden className="mx-0.5 h-4 w-px shrink-0 bg-zinc-700" data-mode-divider />}
+        {(planIndicator || planChip || goalChip) && (
+          <span aria-hidden className="mx-0.5 h-4 w-px shrink-0 bg-zinc-700" data-mode-divider />
+        )}
+        {planIndicator && <PlanModeIndicator disabled={composerLocked} onExit={onDismissPlan} />}
         {planChip && (
           <ModeChip
             id="plan"

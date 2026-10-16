@@ -520,6 +520,7 @@ export default function ComposerPreview() {
               sandbox={sandbox}
               permissionMenu={permissionMenu}
               planChip={view.planChip}
+              planIndicator={view.planIndicator}
               goalChip={view.goalChip}
               showModel
               hasCatalog
