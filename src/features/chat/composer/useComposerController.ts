@@ -307,7 +307,7 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     mentions,
     goalSupport,
     goalNotice: goal.publishError,
-    goalChip: view.goalOn,
+    goalChip: view.goalChip,
     goalStatus: view.goalStatus,
     dismissGoal: goal.dismiss,
     deleteGoal: () => {

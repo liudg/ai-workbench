@@ -377,8 +377,25 @@ test("plan and goal chips are exclusive and the goal bar follows the goal", () =
   assert.equal(drafted.goalStatus?.actionable, false);
   const planning = view({ events: [plan] });
   assert.equal(planning.planOn, true);
+  assert.equal(planning.planChip, true);
   assert.equal(planning.goalOn, false);
+  assert.equal(planning.goalChip, false);
   assert.equal(planning.goalStatus, null);
+  const sent = view({
+    events: [
+      plan,
+      {
+        id: "user",
+        session_id: "s",
+        seq: 2,
+        ts: 2,
+        kind: "user-message",
+        text: "先做计划",
+      },
+    ],
+  });
+  assert.equal(sent.planOn, true);
+  assert.equal(sent.planChip, false);
   const live = view({
     goalLive: true,
     goal: {
@@ -390,6 +407,9 @@ test("plan and goal chips are exclusive and the goal bar follows the goal", () =
     },
   });
   assert.equal(live.goalOn, true);
+  assert.equal(live.goalChip, false);
+  assert.equal(view({ goalDraft: true }).goalChip, true);
+  assert.equal(view({ goalDraft: true, goalLive: true }).goalChip, true);
   assert.equal(live.goalStatus?.label, "进行中的目标");
   assert.equal(live.goalStatus?.objective, "把测试补上");
   assert.equal(live.goalStatus?.usage, "12.5K / 50K");

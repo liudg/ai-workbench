@@ -159,8 +159,8 @@ export function Composer({
             composerLocked={view.composerLocked}
             sandbox={c.sandbox}
             permissionMenu={view.permissionMenu}
-            planChip={view.planOn}
-            goalChip={view.goalOn}
+            planChip={view.planChip}
+            goalChip={view.goalChip}
             showModel={view.showModel}
             hasCatalog={c.hasCatalog}
             modelButton={view.modelButton}

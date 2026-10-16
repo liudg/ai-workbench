@@ -10,10 +10,9 @@ import {
 } from "./composer-backend";
 import { activeGoal } from "./goal";
 
-/** 目标芯片：提交前是本地草稿，提交后跟 `thread/goal` 事件。 */
+/** 目标草稿只在提交前占着输入框标志。提交后标志消失，已保存的目标走状态条。 */
 export function useGoalDraft(sessionId: string, supportsGoals: boolean, events: readonly SessionEvent[]) {
   const [goalDraft, setGoalDraft] = useState(false);
-  const [goalPinned, setGoalPinned] = useState(false);
   const [suppressed, setSuppressed] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
   const goal = activeGoal(events);
@@ -22,7 +21,6 @@ export function useGoalDraft(sessionId: string, supportsGoals: boolean, events: 
 
   useEffect(() => {
     setGoalDraft(false);
-    setGoalPinned(false);
     setSuppressed(false);
     setPublishError(null);
   }, [sessionId]);
@@ -40,7 +38,6 @@ export function useGoalDraft(sessionId: string, supportsGoals: boolean, events: 
 
   useEffect(() => {
     if (!objective) return;
-    setGoalPinned(false);
     setSuppressed(false);
   }, [objective]);
 
@@ -50,16 +47,14 @@ export function useGoalDraft(sessionId: string, supportsGoals: boolean, events: 
   }, []);
 
   const dismiss = useCallback(() => {
-    const shouldClear = Boolean(objective) || goalPinned;
     setGoalDraft(false);
-    setGoalPinned(false);
     setSuppressed(true);
-    if (!shouldClear) return;
+    if (!objective) return;
     void clearThreadGoal(sessionId).catch((error: unknown) => {
       setSuppressed(false);
       reportComposerError(sessionId, error);
     });
-  }, [goalPinned, objective, sessionId]);
+  }, [objective, sessionId]);
 
   const setStatus = useCallback(
     (status: "paused" | "active") => {
@@ -83,7 +78,6 @@ export function useGoalDraft(sessionId: string, supportsGoals: boolean, events: 
       try {
         await setThreadGoal(sessionId, text);
         setGoalDraft(false);
-        setGoalPinned(true);
         return true;
       } catch (error) {
         reportComposerError(sessionId, error);
@@ -95,7 +89,7 @@ export function useGoalDraft(sessionId: string, supportsGoals: boolean, events: 
 
   return {
     goalDraft,
-    localGoal: goalDraft || goalPinned,
+    localGoal: goalDraft,
     live: !suppressed && Boolean(objective),
     snapshot: goal,
     publishError,

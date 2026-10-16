@@ -280,9 +280,10 @@ export default function ComposerPreview() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [text, setText] = useState(skillsOpen ? "$" : "");
   const [caret, setCaret] = useState(skillsOpen ? 1 : 0);
-  const [planOn, setPlanOn] = useState(false);
+  const [planOn, setPlanOn] = useState(() => params.get("plan") === "1");
+  const [sent, setSent] = useState(() => params.get("sent") === "1");
   const goalPreview = params.get("goal");
-  const [goalDraft, setGoalDraft] = useState(false);
+  const [goalDraft, setGoalDraft] = useState(() => params.get("goal") === "draft");
   const [goalLive, setGoalLive] = useState(goalPreview === "live" || goalPreview === "time");
   const [goalRun, setGoalRun] = useState<string | null>(null);
   const [tuning, setTuning] = useState<SessionTuning | undefined>();
@@ -316,8 +317,18 @@ export default function ComposerPreview() {
       const source = goalPreview === "time" ? timeGoal : liveGoal;
       if (source.kind === "goal") rows.push({ ...source, status: goalRun ?? source.status });
     }
+    if (sent) {
+      rows.push({
+        id: "sent",
+        session_id: "preview",
+        seq: 3,
+        ts: 3,
+        kind: "user-message",
+        text: "已发送",
+      });
+    }
     return rows;
-  }, [goalLive, goalPreview, goalRun, planOn]);
+  }, [goalLive, goalPreview, goalRun, planOn, sent]);
   const goal = activeGoal(events);
   const view = deriveComposerView({
     status: showQueue ? "running" : "completed",
@@ -508,8 +519,8 @@ export default function ComposerPreview() {
               composerLocked={false}
               sandbox={sandbox}
               permissionMenu={permissionMenu}
-              planChip={view.planOn}
-              goalChip={view.goalOn}
+              planChip={view.planChip}
+              goalChip={view.goalChip}
               showModel
               hasCatalog
               modelButton={view.modelButton}
@@ -530,7 +541,15 @@ export default function ComposerPreview() {
                 setGoalLive(false);
               }}
               onCancelEdit={() => {}}
-              onSend={() => {}}
+              onSend={() => {
+                if (!text.trim() && !goalDraft) return;
+                const submittingGoal = goalDraft;
+                setSent(true);
+                setText("");
+                setCaret(0);
+                setGoalDraft(false);
+                if (submittingGoal) setGoalLive(true);
+              }}
             />
           </div>
         </div>
