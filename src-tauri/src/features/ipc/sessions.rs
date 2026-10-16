@@ -1,14 +1,18 @@
 //! 会话命令。模型目录、调参和回答提问都转给当前会话的适配器。
 
 use serde::Deserialize;
-use tauri::State;
+use tauri::{AppHandle, Runtime, State};
 
 use crate::features::agents::DiffScope;
+use crate::features::chats::{self, TaskFolderStore};
 use crate::features::projects::ProjectStore;
 use crate::features::sessions::{
     AgentCatalogRefresh, CreateAndSendResult, FirstSendSpec, SessionManager,
 };
 use crate::models::*;
+
+use super::chats::host_documents;
+use super::projects::notify_projects_changed;
 
 #[tauri::command]
 pub async fn list_sessions(
@@ -84,16 +88,26 @@ pub struct CreateAndSendInput {
     images: Vec<String>,
     #[serde(default)]
     annotations: Vec<PageAnnotation>,
+    /// 首发时才建任务目录。草稿阶段还没有项目。
+    #[serde(default)]
+    standalone: bool,
 }
 
 #[tauri::command]
-pub async fn create_session_and_send(
+pub async fn create_session_and_send<R: Runtime>(
+    app: AppHandle<R>,
     store: State<'_, ProjectStore>,
+    folders: State<'_, TaskFolderStore>,
     manager: State<'_, SessionManager>,
     input: CreateAndSendInput,
 ) -> Result<CreateAndSendResult, String> {
-    let project = manager.resolve_project(&store, &input.project_id)?;
-    manager
+    let project = if input.standalone {
+        let root = folders.current(&host_documents(&app));
+        chats::provision_standalone_chat(&store, &root, &input.text, input.agent, &chats::today())?
+    } else {
+        manager.resolve_project(&store, &input.project_id)?
+    };
+    let result = manager
         .create_session_and_send(
             &store,
             &project,
@@ -117,15 +131,57 @@ pub async fn create_session_and_send(
                 annotations: input.annotations,
             },
         )
-        .await
+        .await;
+    match result {
+        Ok(mut created) => {
+            if input.standalone {
+                created.project = Some(project);
+            }
+            Ok(created)
+        }
+        Err(err) => {
+            if input.standalone {
+                chats::rollback_standalone(&store, &project);
+            }
+            Err(err)
+        }
+    }
 }
 
 #[tauri::command]
-pub async fn discard_unsent_session(
+pub async fn discard_unsent_session<R: Runtime>(
+    app: AppHandle<R>,
+    store: State<'_, ProjectStore>,
     manager: State<'_, SessionManager>,
     session_id: String,
 ) -> Result<(), String> {
-    manager.discard_unsent_session(&session_id).await
+    let project_id = manager.session_project_id(&session_id);
+    manager.discard_unsent_session(&session_id).await?;
+    if let Some(project_id) = project_id {
+        forget_empty_standalone(&app, &store, &manager, &project_id).await;
+    }
+    Ok(())
+}
+
+async fn forget_empty_standalone<R: Runtime>(
+    app: &AppHandle<R>,
+    store: &ProjectStore,
+    manager: &SessionManager,
+    project_id: &str,
+) {
+    let Some(project) = store.get(project_id) else {
+        return;
+    };
+    if !project.standalone {
+        return;
+    }
+    if !manager.sessions_for_sidebar(store, project_id).await.is_empty() {
+        return;
+    }
+    if store.remove(project_id).unwrap_or(false) {
+        chats::remove_empty_dir(&project.path);
+        notify_projects_changed(app);
+    }
 }
 
 #[tauri::command]

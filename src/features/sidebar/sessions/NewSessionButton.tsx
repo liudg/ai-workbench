@@ -7,6 +7,7 @@ import type { AgentKind } from "@/types";
 import { useNewSession } from "./use-new-session";
 import { buttonVariants } from "@/components/ui/button";
 import { FixedMenu } from "../FixedMenu";
+import { SidebarPlusButton } from "../projects/SidebarPlusButton";
 
 export function NewSessionButton({
   projectId,
@@ -15,7 +16,7 @@ export function NewSessionButton({
   title = "新建会话",
 }: {
   projectId: string;
-  appearance?: "pencil" | "primary";
+  appearance?: "pencil" | "primary" | "plus";
   className?: string;
   title?: string;
 }) {
@@ -40,30 +41,39 @@ export function NewSessionButton({
     setOpen((value) => !value);
   };
 
+  const shown = cn(className, open && "pointer-events-auto opacity-100");
   return (
     <>
-      <button
-        ref={anchorRef}
-        type="button"
-        className={cn(
-          appearance === "primary" && buttonVariants({ variant: "default" }),
-          className,
-          open && "pointer-events-auto opacity-100",
-        )}
-        aria-label={title}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        title={title}
-        onClick={onPress}
-      >
-        {appearance === "primary" ? (
-          <>
-            <Plus /> 新建会话
-          </>
-        ) : (
-          <SquarePen className="h-3.5 w-3.5" />
-        )}
-      </button>
+      {appearance === "plus" ? (
+        <SidebarPlusButton
+          buttonRef={anchorRef}
+          label={title}
+          title={title}
+          expanded={open}
+          hasPopup
+          className={shown}
+          onClick={onPress}
+        />
+      ) : (
+        <button
+          ref={anchorRef}
+          type="button"
+          className={cn(appearance === "primary" && buttonVariants({ variant: "default" }), shown)}
+          aria-label={title}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          title={title}
+          onClick={onPress}
+        >
+          {appearance === "primary" ? (
+            <>
+              <Plus /> 新建会话
+            </>
+          ) : (
+            <SquarePen className="h-3.5 w-3.5" />
+          )}
+        </button>
+      )}
       <FixedMenu
         open={open}
         anchorRef={anchorRef}

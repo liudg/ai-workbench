@@ -1,6 +1,7 @@
 import { AccountMenu } from "./account/AccountMenu";
 import { BrandHeader } from "./brand/BrandHeader";
 import { useSidebar } from "./use-sidebar";
+import { ChatGroup } from "./chats/ChatGroup";
 import { ProjectHeader } from "./projects/ProjectHeader";
 import { ProjectItem } from "./projects/ProjectItem";
 
@@ -32,6 +33,7 @@ export function Sidebar() {
             ))}
           </div>
         )}
+        <ChatGroup />
       </div>
 
       {notice && (

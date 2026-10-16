@@ -10,6 +10,7 @@ import {
 
 import { useWorkbench } from "@/store";
 import { isDraftId, takeComposerText } from "@/store/draft-session";
+import { composerShowsWorkContext, isStandaloneDraft, visibleProjects } from "@/store/standalone";
 import type { ReviewStart, Session, SessionEvent, SessionSandbox } from "@/types";
 import {
   addComposerDir,
@@ -61,6 +62,11 @@ import { useReviewDismiss } from "./useReviewDismiss";
 export function useComposerController(session: Session, events: SessionEvent[]) {
   const actions = useComposerActions();
   const data = useComposerSession(session);
+  const moveStandaloneDraft = useWorkbench((s) => s.moveStandaloneDraft);
+  const workProjects = useWorkbench((s) => s.projects);
+  const standalone =
+    isStandaloneDraft(session.project_id) ||
+    workProjects.some((project) => project.id === session.project_id && project.standalone);
   const draftSession = isDraftId(session.id);
   const [text, setText] = useState(() => {
     if (draftSession) return useWorkbench.getState().drafts[session.project_id]?.text ?? "";
@@ -350,5 +356,15 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     },
     onKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => handleComposerKey(run, event),
     onPaste: (event: ClipboardEvent<HTMLTextAreaElement>) => pasteComposerImages(run, event),
+    workContext: composerShowsWorkContext(standalone, draftSession)
+      ? {
+          projects: visibleProjects(workProjects).map((project) => ({
+            id: project.id,
+            name: project.name,
+          })),
+          canRetarget: true,
+          onPickProject: (projectId: string) => moveStandaloneDraft(projectId),
+        }
+      : null,
   };
 }

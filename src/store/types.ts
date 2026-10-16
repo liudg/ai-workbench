@@ -175,6 +175,8 @@ export interface DraftSlice {
   ): Promise<boolean>;
   /** `/new` 带正文：另起一条真会话，不覆盖当前草稿里还没发出的文字。 */
   sendNewThread(projectId: string, agent: AgentKind, text: string): Promise<string | null>;
+  /** 独立草稿还没建目录。选中一个项目后，这段输入改到那个项目。 */
+  moveStandaloneDraft(projectId: string): void;
 }
 
 export interface UpdatesSlice {

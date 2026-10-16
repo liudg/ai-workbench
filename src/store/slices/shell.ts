@@ -1,5 +1,6 @@
 import { backend } from "@/lib/ipc";
 import { forgetProjectDraft, type DraftCarryState } from "../draft-session";
+import { keepSelectedProjectId, projectStillListed, STANDALONE_DRAFT_ID } from "../standalone";
 import { clearMissingSessionBanner, loadSessions, loadWorkspaceLists } from "../sync";
 import type { ShellSlice, WorkbenchGet, WorkbenchSet } from "../types";
 
@@ -75,8 +76,10 @@ export function createShellSlice(set: WorkbenchSet, get: WorkbenchGet): ShellSli
       }
       void get().refreshInstallations();
       await get().refreshAll();
-      const first = get().projects[0]?.id;
-      if (first) await get().selectProject(first);
+      if (!get().draftFocused[STANDALONE_DRAFT_ID]) {
+        const first = get().projects.find((project) => !project.standalone)?.id;
+        if (first) await get().selectProject(first);
+      }
       window.setInterval(() => {
         void get().refreshAll();
       }, 20_000);
@@ -92,11 +95,11 @@ export function createShellSlice(set: WorkbenchSet, get: WorkbenchGet): ShellSli
         const sessions = { ...s.sessions };
         const ids = new Set(projects.map((project) => project.id));
         for (const key of Object.keys(sessions)) {
-          if (!ids.has(key)) delete sessions[key];
+          if (!projectStillListed(key, ids)) delete sessions[key];
         }
         const pendingStart = { ...s.pendingStart };
         for (const key of Object.keys(pendingStart)) {
-          if (!ids.has(key)) delete pendingStart[key];
+          if (!projectStillListed(key, ids)) delete pendingStart[key];
         }
         for (const [pid, list] of pairs) {
           if (s.drafts[pid]?.phase === "creating" || pendingStart[pid]) continue;
@@ -120,12 +123,13 @@ export function createShellSlice(set: WorkbenchSet, get: WorkbenchGet): ShellSli
           preferredAgent: s.preferredAgent,
         };
         for (const key of Object.keys(s.drafts)) {
-          if (!ids.has(key)) carried = forgetProjectDraft(carried, key);
+          if (!projectStillListed(key, ids)) carried = forgetProjectDraft(carried, key);
         }
-        const selectedProjectId =
-          carried.selectedProjectId && ids.has(carried.selectedProjectId)
-            ? carried.selectedProjectId
-            : (projects[0]?.id ?? null);
+        const selectedProjectId = keepSelectedProjectId({
+          projects,
+          current: carried.selectedProjectId,
+          standaloneDraftFocused: Boolean(carried.draftFocused[STANDALONE_DRAFT_ID]),
+        });
         return {
           projects,
           sessions: carried.sessions,

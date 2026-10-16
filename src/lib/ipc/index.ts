@@ -7,6 +7,7 @@ import type { Backend } from "./contract";
 import { eventCommands } from "./events";
 import { pickCommands } from "./picks";
 import { previewCommands } from "./preview";
+import { chatCommands } from "./chats";
 import { projectCommands } from "./projects";
 import { sessionCommands } from "./sessions";
 
@@ -25,10 +26,11 @@ export type {
   SessionRequest,
   TreeEntry,
 } from "./dto";
-export type { Backend } from "./contract";
+export type { Backend, TaskFolder } from "./contract";
 export { isTauri };
 
 export const backend: Backend = {
+  ...chatCommands,
   ...projectCommands,
   ...sessionCommands,
   ...previewCommands,

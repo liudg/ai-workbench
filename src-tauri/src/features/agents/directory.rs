@@ -110,6 +110,7 @@ mod tests {
             created_at: 1,
             updated_at: 2,
             external: false,
+            standalone: false,
         }
     }
 

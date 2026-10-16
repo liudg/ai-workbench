@@ -51,16 +51,27 @@ export interface CreateAndSendInput {
   text: string;
   images: string[];
   annotations: PageAnnotation[];
+  /** 首发时由工作台创建任务目录。 */
+  standalone: boolean;
+}
+
+export interface TaskFolder {
+  path: string;
+  label: string;
 }
 
 export interface CreateAndSendResult {
   session: Session;
   /** 会话已经在，但第一条消息没有发出。 */
   messageError?: string | null;
+  /** 独立聊天首发时新建的工作目录。 */
+  project?: Project | null;
 }
 
 export interface Backend {
   listProjects(): Promise<Project[]>;
+  taskFolder(): Promise<TaskFolder>;
+  setTaskFolder(path: string): Promise<TaskFolder>;
   createProject(input: CreateProjectInput): Promise<CreateProjectResult>;
   importProject(input: ImportProjectInput): Promise<Project>;
   removeProject(id: string): Promise<void>;

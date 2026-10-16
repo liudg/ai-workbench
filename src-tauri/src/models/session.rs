@@ -31,6 +31,13 @@ pub struct Project {
     /// 保留字段。侧边栏不再把 Agent 目录合成外部项目；已保存项目始终为 false。
     #[serde(default)]
     pub external: bool,
+    /// 独立聊天的工作目录。侧栏放在「聊天」里，不进项目分组。
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub standalone: bool,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 /// 项目下的一次 Agent 会话。

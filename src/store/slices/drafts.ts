@@ -19,6 +19,7 @@ import {
   type FirstSendOutcome,
 } from "../draft-session";
 import { readDraftSnapshot } from "../draft-storage";
+import { adoptCreatedChat, retargetStandaloneDraft } from "../standalone";
 import type { SessionSandbox } from "@/types";
 import type { DraftSlice, PendingStart, SessionDraft, WorkbenchGet, WorkbenchSet, WorkbenchState } from "../types";
 
@@ -62,12 +63,14 @@ async function settleDraftCreate(
     const gone = await discardQuiet(result.value.session.id);
     if (!gone) dismissed = false;
   }
-  let list = get().sessions[projectId] ?? [];
+  const createdProjectId =
+    result.ok && result.value.session.project_id ? result.value.session.project_id : projectId;
+  let list = get().sessions[createdProjectId] ?? [];
   if (result.ok && !dismissed) {
     try {
-      [, list] = await loadSessions(projectId);
+      [, list] = await loadSessions(createdProjectId);
     } catch {
-      list = get().sessions[projectId] ?? [];
+      list = get().sessions[createdProjectId] ?? [];
     }
   }
   const options = { dismissed, sentText };
@@ -79,20 +82,30 @@ async function settleDraftCreate(
   if (!settled.patch) return false;
   const sessionId = result.ok ? result.value.session.id : null;
   const keepSession = result.ok && !dismissed;
+  const created = keepSession ? result.value.project ?? null : null;
   set((s) => {
     const patch = settled.patch;
     if (!patch) return {};
+    const relocated =
+      keepSession && result.ok && result.value.session.project_id !== projectId
+        ? adoptCreatedChat(patch, projectId, result.value.session)
+        : patch;
+    const projects =
+      created && !s.projects.some((item) => item.id === created.id)
+        ? [...s.projects, created]
+        : s.projects;
     const pendingStart = dropPending(s.pendingStart, projectId);
     if (!(keepSession && sandbox && sessionId)) {
-      return { ...patch, pendingStart, screen: "workspace" as const };
+      return { ...relocated, projects, pendingStart, screen: "workspace" as const };
     }
     return {
-      ...patch,
+      ...relocated,
+      projects,
       pendingStart,
       screen: "workspace" as const,
-      sandboxes: { ...patch.sandboxes, [sessionId]: sandbox },
+      sandboxes: { ...relocated.sandboxes, [sessionId]: sandbox },
       accessMode: {
-        ...patch.accessMode,
+        ...relocated.accessMode,
         [sessionId]: sandbox.profileId ? "ask" : sandbox.mode,
       },
     };
@@ -447,7 +460,14 @@ export function createDraftSlice(
         return backend.createSessionAndSend(body);
       });
       const sent = await settleDraftCreate(set, get, projectId, result, text, "thread", sandbox);
-      return sent ? (get().activeSessionId[projectId] ?? null) : null;
+      const selected = get().selectedProjectId ?? projectId;
+      return sent ? (get().activeSessionId[selected] ?? null) : null;
+    },
+
+    moveStandaloneDraft(projectId) {
+      const next = retargetStandaloneDraft(carry(get()), projectId);
+      if (!next) return;
+      set({ ...next, screen: "workspace" });
     },
   };
 }

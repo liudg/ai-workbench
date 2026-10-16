@@ -5,11 +5,13 @@ import type {
   AgentKind,
   Attachment,
   PageAnnotation,
+  Project,
   Session,
   SessionEvent,
   SessionSandbox,
   SessionTuning,
 } from "@/types";
+import { isStandaloneDraft } from "./standalone-id.ts";
 import type { PendingStart, SessionDraft } from "./types";
 
 export const DRAFT_PREFIX = "draft:";
@@ -112,6 +114,8 @@ export interface FirstSendBody {
   text: string;
   images: string[];
   annotations: PageAnnotation[];
+  /** 首发时由工作台创建任务目录。普通项目会话为 false。 */
+  standalone: boolean;
 }
 
 export function blankDraft(
@@ -201,6 +205,7 @@ export function firstSendBody(draft: SessionDraft, message: DraftMessage): First
     text: message.text,
     images: message.images ? [...message.images] : [],
     annotations: message.annotations ? [...message.annotations] : [],
+    standalone: isStandaloneDraft(draft.projectId),
   };
 }
 
@@ -348,6 +353,7 @@ export type DraftSendResult<T> =
 export interface FirstSendOutcome {
   session: Session;
   messageError?: string | null;
+  project?: Project | null;
 }
 
 export interface DraftSendSettle {
