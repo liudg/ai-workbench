@@ -299,12 +299,13 @@ mod tests {
         });
         let windows = windows_from_usage(&payload);
         assert_eq!(windows.len(), 3);
-        assert_eq!(windows[0].id, "five_hour");
-        assert_eq!(windows[0].label, "5 小时");
-        assert_eq!(windows[0].used_percent, Some(38.0));
-        assert_eq!(windows[0].resets_at_ms, Some(1_792_123_200_000));
-        assert_eq!(windows[2].label, "Opus");
-        assert_eq!(windows[2].used_percent, Some(40.0));
+        let five_hour = windows.iter().find(|window| window.id == "five_hour").unwrap();
+        assert_eq!(five_hour.label, "5 小时");
+        assert_eq!(five_hour.used_percent, Some(38.0));
+        assert_eq!(five_hour.resets_at_ms, Some(1_792_123_200_000));
+        let opus = windows.iter().find(|window| window.label == "Opus").unwrap();
+        assert_eq!(opus.used_percent, Some(40.0));
+        assert!(windows.iter().any(|window| window.id == "seven_day" && window.label == "7 天"));
     }
 
     #[test]

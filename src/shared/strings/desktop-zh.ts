@@ -149,6 +149,7 @@ export const DESKTOP_ZH = {
   usageOutput: "输出",
   usageCacheRead: "缓存读取",
   usageCacheWrite: "缓存写入",
+  subscriptionUsageRefresh: "刷新订阅用量",
   elicitAccept: "接受",
   elicitDecline: "拒绝",
   elicitCancel: "取消",
