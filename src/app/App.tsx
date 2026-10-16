@@ -1,5 +1,6 @@
 import { lazy, Suspense } from "react";
 
+import { CommandMenuHost } from "@/features/command-menu/CommandMenuHost";
 import { NewProjectDialog, Sidebar } from "@/features/sidebar";
 import { RightPane, UpdateDialog } from "@/features/workspace";
 import { useAppShell } from "./use-app-shell";
@@ -27,6 +28,9 @@ const SidebarPreview = import.meta.env.DEV
   : null;
 const CodePreview = import.meta.env.DEV
   ? lazy(() => import("@/features/panel/files/CodePreview"))
+  : null;
+const CommandMenuPreview = import.meta.env.DEV
+  ? lazy(() => import("@/features/command-menu/CommandMenuPreview"))
   : null;
 
 export default function App() {
@@ -87,6 +91,13 @@ export default function App() {
       </Suspense>
     );
   }
+  if (CommandMenuPreview && preview === "command-menu") {
+    return (
+      <Suspense fallback={null}>
+        <CommandMenuPreview />
+      </Suspense>
+    );
+  }
   return <WorkbenchApp />;
 }
 
@@ -121,6 +132,7 @@ function WorkbenchApp() {
       </main>
       <NewProjectDialog />
       <UpdateDialog />
+      <CommandMenuHost />
     </div>
   );
 }
