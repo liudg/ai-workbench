@@ -23,8 +23,10 @@ use command::{
 use version::{first_line, version_from_output};
 pub use version::{extract_version, is_newer, parse_published_version};
 
+#[cfg(any(windows, test))]
+pub(crate) use command::cmd_invocation_line;
 #[cfg(test)]
-use command::{cmd_invocation_line, windows_cmd_line};
+use command::windows_cmd_line;
 
 
 /// 一种本地 CLI 的发布渠道。字段都是静态的，方便适配器用常量声明。

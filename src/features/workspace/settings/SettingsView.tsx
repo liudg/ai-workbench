@@ -7,6 +7,8 @@ import { useAgentSettings } from "./useAgentSettings";
 import { useTaskFolder } from "./useTaskFolder";
 import { Button } from "@/components/ui/button";
 import { agentCardFace, statusLabel, type AgentCardFace } from "./agent-card";
+import { McpSettings } from "./mcp/McpSettings";
+import { MCP_PAGE } from "./mcp/view";
 
 function StatusLine({ face }: { face: AgentCardFace }) {
   if (face.kind === "unwired") {
@@ -159,7 +161,7 @@ function GeneralPanel() {
 
 export function SettingsView() {
   const { closeSettings } = useAgentSettings();
-  const [section, setSection] = useState<"agents" | "general">("agents");
+  const [section, setSection] = useState<"agents" | "general" | "mcp">("agents");
 
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col">
@@ -195,6 +197,20 @@ export function SettingsView() {
             <li>
               <button
                 type="button"
+                data-settings-nav="mcp"
+                className={cn(
+                  "w-full rounded-md px-3 py-2 text-left text-sm",
+                  section === "mcp" ? "bg-zinc-800 text-zinc-50" : "text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-100",
+                )}
+                aria-current={section === "mcp" ? "page" : undefined}
+                onClick={() => setSection("mcp")}
+              >
+                {MCP_PAGE.nav}
+              </button>
+            </li>
+            <li>
+              <button
+                type="button"
                 data-settings-nav="general"
                 className={cn(
                   "w-full rounded-md px-3 py-2 text-left text-sm",
@@ -210,7 +226,7 @@ export function SettingsView() {
         </nav>
         <div className="min-w-0 flex-1 overflow-y-auto px-6 py-6">
           <div className="mx-auto max-w-2xl">
-            {section === "agents" ? <AgentsPanel /> : <GeneralPanel />}
+            {section === "agents" ? <AgentsPanel /> : section === "mcp" ? <McpSettings /> : <GeneralPanel />}
           </div>
         </div>
       </div>

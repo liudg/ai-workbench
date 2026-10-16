@@ -32,6 +32,9 @@ const CodePreview = import.meta.env.DEV
 const CommandMenuPreview = import.meta.env.DEV
   ? lazy(() => import("@/features/command-menu/CommandMenuPreview"))
   : null;
+const McpPreview = import.meta.env.DEV
+  ? lazy(() => import("@/app/preview/McpPreview"))
+  : null;
 
 export default function App() {
   const preview = new URLSearchParams(window.location.search).get("preview");
@@ -95,6 +98,13 @@ export default function App() {
     return (
       <Suspense fallback={null}>
         <CommandMenuPreview />
+      </Suspense>
+    );
+  }
+  if (McpPreview && preview === "mcp") {
+    return (
+      <Suspense fallback={null}>
+        <McpPreview />
       </Suspense>
     );
   }

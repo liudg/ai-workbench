@@ -12,6 +12,7 @@ mod codex;
 mod directory;
 mod external;
 mod install;
+mod mcp;
 mod protocol;
 mod providers;
 mod settled;
@@ -24,7 +25,9 @@ pub use providers::{AnnotationSink, DiffScope, DiffScopeProvider};
 
 use std::sync::Arc;
 
-use crate::models::{AgentInstallation, AgentKind};
+use crate::models::{AgentInstallation, AgentKind, McpSurface};
+
+pub use mcp::McpDriver;
 
 pub use directory::{
     cwd_key, group_projects, session_key, sessions_for_project, DirectoryEntry, SessionDirectory,
@@ -68,6 +71,39 @@ pub async fn upgrade(kind: AgentKind) -> Result<AgentInstallation, AgentError> {
     adapter_for(kind).upgrade().await
 }
 
+fn cli_present(adapter: &dyn AgentAdapter) -> bool {
+    adapter
+        .cli_release()
+        .and_then(|release| install::locate_release(&release))
+        .is_some()
+}
+
+/// 设置页的 MCP 管理面。一种 Agent 一份，没验证过的不假装不支持。
+pub fn mcp_surfaces() -> Vec<McpSurface> {
+    AgentKind::all()
+        .into_iter()
+        .map(|kind| {
+            let adapter = adapter_for(kind);
+            let installed = cli_present(adapter.as_ref());
+            match adapter.mcp() {
+                Some(driver) => driver.surface(installed),
+                None => mcp::unverified(kind, adapter.display_name(), installed),
+            }
+        })
+        .collect()
+}
+
+pub fn require_mcp(kind: AgentKind) -> Result<Arc<dyn McpDriver>, String> {
+    let adapter = adapter_for(kind);
+    if let Some(driver) = adapter.mcp() {
+        return Ok(driver);
+    }
+    let installed = cli_present(adapter.as_ref());
+    Err(mcp::unverified(kind, adapter.display_name(), installed)
+        .unavailable_reason
+        .unwrap_or_else(|| "MCP 动词未验证。".into()))
+}
+
 /// 已注册的会话目录。只有会话协议已接入的 Agent 才有目录。
 pub fn session_directories() -> Vec<Arc<dyn SessionDirectory>> {
     vec![
@@ -80,6 +116,29 @@ pub fn session_directories() -> Vec<Arc<dyn SessionDirectory>> {
 mod tests {
     use super::*;
     use crate::models::PageAnnotation;
+
+    #[test]
+    fn mcp_drivers_follow_clis_verified_on_this_machine() {
+        assert!(adapter_for(AgentKind::CodexCli).mcp().is_some());
+        assert!(adapter_for(AgentKind::ClaudeCode).mcp().is_some());
+        assert!(adapter_for(AgentKind::CursorAgent).mcp().is_some());
+        for kind in [
+            AgentKind::KimiCode,
+            AgentKind::QwenCode,
+            AgentKind::OpenCode,
+            AgentKind::Antigravity,
+        ] {
+            assert!(adapter_for(kind).mcp().is_none(), "{}", kind.as_str());
+        }
+        let surfaces = mcp_surfaces();
+        assert_eq!(surfaces.len(), AgentKind::all().len());
+        let kimi = surfaces
+            .iter()
+            .find(|item| item.kind == AgentKind::KimiCode)
+            .unwrap();
+        assert!(!kimi.manageable);
+        assert!(kimi.unavailable_reason.as_deref().unwrap().contains("未验证"));
+    }
 
     #[test]
     fn folds_page_annotation_into_any_agent_turn() {

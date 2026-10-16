@@ -2,5 +2,6 @@
 
 pub mod agents;
 pub mod chats;
+pub mod mcp;
 pub mod projects;
 pub mod sessions;

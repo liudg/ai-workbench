@@ -3,6 +3,8 @@
 //! 设置页用 `session_linked = false` 表示未接入，不再附一长段说明。
 //! 更新参数都是已安装 CLI 自己的子命令，不跑安装脚本。
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 
 use crate::features::agents::install::{AliasCheck, AliasRule, CliRelease};
@@ -141,6 +143,14 @@ impl AgentAdapter for ExternalCliAdapter {
 
     fn cli_release(&self) -> Option<CliRelease> {
         Some(release_for(self.kind))
+    }
+
+    fn mcp(&self) -> Option<Arc<dyn crate::features::agents::mcp::McpDriver>> {
+        if self.kind == AgentKind::CursorAgent {
+            Some(Arc::new(crate::features::agents::mcp::CursorMcp))
+        } else {
+            None
+        }
     }
 
     async fn detect(&self) -> Result<(), AgentError> {
