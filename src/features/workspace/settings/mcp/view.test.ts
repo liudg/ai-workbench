@@ -9,8 +9,12 @@ import {
   loginNeedsOptions,
   menuActions,
   parseToolList,
+  authMethodLabel,
+  menuDismissKey,
   registrationAria,
   rowStatus,
+  withRowBusy,
+  withoutRowBusy,
   showAdd,
   showLogin,
   showRemove,
@@ -102,6 +106,9 @@ test("settings copy stays product Chinese and keeps protocol names", () => {
   assert.equal(MCP_PAGE.viewDetails, "查看详情");
   assert.equal(MCP_PAGE.processing, "处理中…");
   assert.equal(MCP_PAGE.connected, "已连接");
+  assert.equal(MCP_PAGE.configured, "已配置");
+  assert.equal(MCP_PAGE.authLabel, "认证");
+  assert.equal(MCP_PAGE.scopesPlaceholder, "要请求的 OAuth 权限范围，用逗号分隔");
   assert.equal(MCP_PAGE.loggedOut, "未登录");
   assert.equal(MCP_PAGE.failed, "失败");
   assert.equal(MCP_PAGE.disabled, "已禁用");
@@ -132,14 +139,19 @@ test("failure titles match the action and success text is short Chinese", () => 
   assert.equal(successText("save").includes("Added"), false);
 });
 
-test("row status is one of connected, logged out, failed, or disabled", () => {
-  assert.deepEqual(rowStatus(row({})), { kind: "connected", label: "已连接" });
+test("row status stays configured until the list explicitly says connected or ready", () => {
+  assert.deepEqual(rowStatus(row({})), { kind: "configured", label: "已配置" });
+  assert.deepEqual(rowStatus(row({ auth_status: "unsupported", status_text: "" })), {
+    kind: "configured",
+    label: "已配置",
+  });
+  assert.deepEqual(rowStatus(row({ auth_status: "bearer_token" })), { kind: "configured", label: "已配置" });
   assert.deepEqual(rowStatus(row({ enabled: false, auth_status: "notLoggedIn", status_text: "√ Connected" })), {
     kind: "disabled",
     label: "已禁用",
   });
   assert.deepEqual(rowStatus(row({ auth_status: "notLoggedIn" })), { kind: "loggedOut", label: "未登录" });
-  assert.deepEqual(rowStatus(row({ auth_status: "not_logged_in" })), { kind: "connected", label: "已连接" });
+  assert.deepEqual(rowStatus(row({ auth_status: "not_logged_in" })), { kind: "configured", label: "已配置" });
   assert.deepEqual(rowStatus(row({ enabled: null, status_text: "× Failed to connect", auth_status: "" })), {
     kind: "failed",
     label: "失败",
@@ -152,6 +164,20 @@ test("row status is one of connected, logged out, failed, or disabled", () => {
     kind: "connected",
     label: "已连接",
   });
+  assert.equal(authMethodLabel("unsupported"), "不支持");
+  assert.equal(authMethodLabel("bearer_token"), "Bearer");
+  assert.equal(authMethodLabel("oAuth"), "OAuth");
+  assert.equal(authMethodLabel("notLoggedIn"), null);
+  assert.equal(authMethodLabel(""), null);
+});
+
+test("row busy clears only the finished name, and Escape closes the menu", () => {
+  const both = withRowBusy(withRowBusy(new Set<string>(), "alpha"), "beta");
+  assert.deepEqual([...both].sort(), ["alpha", "beta"]);
+  assert.deepEqual([...withoutRowBusy(both, "alpha")], ["beta"]);
+  assert.equal(withoutRowBusy(both, "missing"), both);
+  assert.equal(menuDismissKey("Escape"), true);
+  assert.equal(menuDismissKey("Enter"), false);
 });
 
 test("transport tags stay STDIO, HTTP, and SSE", () => {

@@ -19,6 +19,8 @@ import {
   loginNeedsOptions,
   menuActions,
   registrationAria,
+  authMethodLabel,
+  menuDismissKey,
   rowStatus,
   showAdd,
   showLoginScopes,
@@ -41,6 +43,7 @@ const quietButton =
 
 const STATUS_DOT: Record<string, string> = {
   connected: "bg-emerald-400",
+  configured: "bg-zinc-400",
   loggedOut: "bg-amber-400",
   failed: "bg-red-400",
   disabled: "bg-zinc-500",
@@ -52,7 +55,7 @@ export interface McpPanelProps {
   rows: McpServerRow[];
   listError: string | null;
   listing?: boolean;
-  rowBusy: string | null;
+  rowBusy: ReadonlySet<string>;
   formBusy: boolean;
   feedback: McpFeedback | null;
   highlight: { name: string; token: number } | null;
@@ -98,6 +101,17 @@ export function McpPanel(props: McpPanelProps) {
       setOpenName(null);
     }
   }, [mode, openName, props.rows]);
+
+  useEffect(() => {
+    if (!menuFor) return;
+    function onKey(event: KeyboardEvent) {
+      if (!menuDismissKey(event.key)) return;
+      event.preventDefault();
+      setMenuFor(null);
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [menuFor]);
 
   useEffect(() => {
     if (!menuFor && !authFor) return;
@@ -217,7 +231,7 @@ export function McpPanel(props: McpPanelProps) {
         <ServerDetail
           surface={surface}
           row={openRow}
-          busy={props.rowBusy === openRow.name}
+          busy={props.rowBusy.has(openRow.name)}
           tools={props.tools[openRow.name]}
           authOpen={authFor === openRow.name}
           onBack={() => {
@@ -277,7 +291,7 @@ export function McpPanel(props: McpPanelProps) {
                 type="button"
                 className={quietButton + " border-red-900 text-red-300"}
                 data-mcp-uninstall-confirm={confirmRow.name}
-                disabled={props.rowBusy === confirmRow.name}
+                disabled={props.rowBusy.has(confirmRow.name)}
                 onClick={() => {
                   const name = confirmRow.name;
                   const scope = confirmRow.scope;
@@ -316,7 +330,7 @@ function ServerList(props: {
   listError: string | null;
   listing: boolean;
   reason: string | null;
-  rowBusy: string | null;
+  rowBusy: ReadonlySet<string>;
   lit: string | null;
   menuFor: string | null;
   authFor: string | null;
@@ -351,7 +365,7 @@ function ServerList(props: {
       )}
       <ul className="mt-4 space-y-2">
         {props.rows.map((row) => {
-          const busy = props.rowBusy === row.name;
+          const busy = props.rowBusy.has(row.name);
           const actions = menuActions(surface, row);
           const tag = transportTag(row.transport);
           return (
@@ -563,6 +577,7 @@ function ServerDetail(props: {
   const { surface, row } = props;
   const actions = menuActions(surface, row);
   const tag = transportTag(row.transport);
+  const authMethod = authMethodLabel(row.auth_status);
   return (
     <div className="mt-6" data-mcp-form="existing">
       <div className="flex items-center justify-between gap-3">
@@ -614,6 +629,11 @@ function ServerDetail(props: {
         <SecretPairs label={MCP_PAGE.headers} pairs={row.headers} />
         {row.env_headers.length > 0 && (
           <Readout label={MCP_PAGE.envHeaders} value={row.env_headers.map((pair) => `${pair.key}=${pair.value}`).join("\n")} />
+        )}
+        {authMethod && (
+          <div data-mcp-auth={authMethod}>
+            <Readout label={MCP_PAGE.authLabel} value={authMethod} />
+          </div>
         )}
       </dl>
       {props.tools && surface.verbs.list_tools && surface.tools_label.trim() && (

@@ -29,7 +29,7 @@ export default function McpPreview() {
           selected={selected}
           rows={rows}
           listError={null}
-          rowBusy={null}
+          rowBusy={new Set<string>()}
           formBusy={false}
           feedback={feedback}
           highlight={highlight}

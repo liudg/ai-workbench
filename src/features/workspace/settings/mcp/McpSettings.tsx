@@ -8,6 +8,8 @@ import {
   failureTitle,
   parseToolList,
   successText,
+  withRowBusy,
+  withoutRowBusy,
   type McpAction,
   type McpFeedback,
   type McpToolEntry,
@@ -19,7 +21,7 @@ export function McpSettings() {
   const [rows, setRows] = useState<McpServerRow[]>([]);
   const [listError, setListError] = useState<string | null>(null);
   const [listing, setListing] = useState(false);
-  const [rowBusy, setRowBusy] = useState<string | null>(null);
+  const [rowBusy, setRowBusy] = useState<ReadonlySet<string>>(() => new Set());
   const [formBusy, setFormBusy] = useState(false);
   const [feedback, setFeedback] = useState<McpFeedback | null>(null);
   const [highlight, setHighlight] = useState<{ name: string; token: number } | null>(null);
@@ -80,12 +82,12 @@ export function McpSettings() {
 
   function select(kind: AgentKind) {
     setSelected(kind);
-    setRowBusy(null);
+    setRowBusy(new Set());
     if (surfaces) void loadList(kind, surfaces, false);
   }
 
   async function run(action: McpAction, rowName: string | null, actionFn: () => Promise<string>): Promise<boolean> {
-    if (rowName) setRowBusy(rowName);
+    if (rowName) setRowBusy((current) => withRowBusy(current, rowName));
     else setFormBusy(true);
     setFeedback(null);
     try {
@@ -98,8 +100,8 @@ export function McpSettings() {
       setFeedback({ tone: "failure", title: failureTitle(action), detail });
       return false;
     } finally {
-      setRowBusy(null);
-      setFormBusy(false);
+      if (rowName) setRowBusy((current) => withoutRowBusy(current, rowName));
+      else setFormBusy(false);
     }
   }
 
@@ -148,7 +150,7 @@ export function McpSettings() {
       }}
       onListTools={(name) => {
         if (!selected) return;
-        setRowBusy(name);
+        setRowBusy((current) => withRowBusy(current, name));
         setFeedback(null);
         invoke<string>("mcp_list_tools", { kind: selected, name })
           .then((text) => {
@@ -158,7 +160,7 @@ export function McpSettings() {
             const detail = err instanceof Error ? err.message : String(err);
             setFeedback({ tone: "failure", title: failureTitle("tools"), detail });
           })
-          .finally(() => setRowBusy(null));
+          .finally(() => setRowBusy((current) => withoutRowBusy(current, name)));
       }}
     />
   );

@@ -24,8 +24,10 @@ export const MCP_PAGE = {
   enabled: "已启用",
   disabled: "已禁用",
   connected: "已连接",
+  configured: "已配置",
   loggedOut: "未登录",
   failed: "失败",
+  authLabel: "认证",
   typeLabel: "类型",
   typeAria: "MCP 服务器类型",
   name: "名称",
@@ -42,7 +44,7 @@ export const MCP_PAGE = {
   url: "URL",
   bearer: "Bearer 令牌环境变量",
   registration: "OAuth 客户端注册",
-  scopesPlaceholder: "要请求的 OAuth scope，用逗号分隔",
+  scopesPlaceholder: "要请求的 OAuth 权限范围，用逗号分隔",
   loading: "正在读取 MCP…",
   processing: "处理中…",
   saved: "已保存",
@@ -91,7 +93,7 @@ export type McpFeedback =
   | { tone: "success"; text: string }
   | { tone: "failure"; title: string; detail: string };
 
-export type McpStatusKind = "connected" | "loggedOut" | "failed" | "disabled";
+export type McpStatusKind = "connected" | "configured" | "loggedOut" | "failed" | "disabled";
 
 export type McpMenuId = "login" | "logout" | "tools" | "remove";
 
@@ -164,7 +166,8 @@ export function rowStatus(row: McpServerRow): { kind: McpStatusKind; label: stri
   if (row.enabled === false) return { kind: "disabled", label: MCP_PAGE.disabled };
   if (row.auth_status === "notLoggedIn") return { kind: "loggedOut", label: MCP_PAGE.loggedOut };
   if (isFailedStatus(row.status_text)) return { kind: "failed", label: MCP_PAGE.failed };
-  return { kind: "connected", label: MCP_PAGE.connected };
+  if (isConnectedStatus(row.status_text)) return { kind: "connected", label: MCP_PAGE.connected };
+  return { kind: "configured", label: MCP_PAGE.configured };
 }
 
 function isFailedStatus(text: string): boolean {
@@ -173,6 +176,38 @@ function isFailedStatus(text: string): boolean {
   if (/[×✗]/.test(trimmed)) return true;
   const bare = trimmed.replace(/^[√×✓✗]\s*/, "");
   return bare === "Failed to connect" || /^failed\b/i.test(bare);
+}
+
+/** 只有列表原文写明已连接或就绪时才算连上。Codex 的 list 没有这项。 */
+function isConnectedStatus(text: string): boolean {
+  const bare = text.trim().replace(/^[√×✓✗]\s*/, "").toLowerCase();
+  return bare === "connected" || bare === "ready";
+}
+
+/** 详情里的认证方式。空或未识别的原文不显示。 */
+export function authMethodLabel(status: string): string | null {
+  if (status === "unsupported") return "不支持";
+  if (status === "bearer_token" || status === "bearerToken") return "Bearer";
+  if (status === "oauth" || status === "oAuth") return "OAuth";
+  return null;
+}
+
+export function withRowBusy(current: ReadonlySet<string>, name: string): ReadonlySet<string> {
+  if (current.has(name)) return current;
+  const next = new Set(current);
+  next.add(name);
+  return next;
+}
+
+export function withoutRowBusy(current: ReadonlySet<string>, name: string): ReadonlySet<string> {
+  if (!current.has(name)) return current;
+  const next = new Set(current);
+  next.delete(name);
+  return next;
+}
+
+export function menuDismissKey(key: string): boolean {
+  return key === "Escape";
 }
 
 /** 列表上的传输标签。协议名只有 STDIO、HTTP、SSE。 */

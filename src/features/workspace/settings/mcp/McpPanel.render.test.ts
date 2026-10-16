@@ -62,7 +62,7 @@ function render(
     createElement(Panel, {
       selected: "codex-cli",
       listError: null,
-      rowBusy: null,
+      rowBusy: new Set<string>(),
       formBusy: false,
       feedback: null,
       highlight: null,
@@ -87,8 +87,10 @@ test("list rows show transport, one status, and a single toggle", () => {
   });
   assert.equal(html.includes('data-mcp-transport-tag="STDIO"'), true);
   assert.equal(html.includes('data-mcp-transport-tag="HTTP"'), true);
-  assert.equal(html.includes('data-mcp-status="connected"'), true);
-  assert.equal(html.includes("已连接"), true);
+  assert.equal(html.includes('data-mcp-status="configured"'), true);
+  assert.equal(html.includes("已配置"), true);
+  assert.equal(html.includes("bg-zinc-400"), true);
+  assert.equal(html.includes("已连接"), false);
   assert.equal(html.includes('data-mcp-highlight="wb-mcp-probe"'), true);
   assert.equal(html.includes("data-mcp-toggle"), false);
   assert.equal(html.includes("data-mcp-enable"), false);
@@ -112,7 +114,7 @@ test("list rows show transport, one status, and a single toggle", () => {
     surfaces: [toggleSurface],
     selected: "cursor-agent",
     rows: [row({ name: "on", enabled: true }), row({ name: "off", enabled: false, transport: "" })],
-    rowBusy: "on",
+    rowBusy: new Set(["on"]),
   });
   const on = toggles.match(/<button[^>]*data-mcp-toggle="on"[^>]*>/)?.[0] ?? "";
   const off = toggles.match(/<button[^>]*data-mcp-toggle="off"[^>]*>/)?.[0] ?? "";
@@ -219,6 +221,8 @@ test("detail is titled with the server name, masks secrets, and lists tools", ()
   assert.equal(html.includes("TOKEN"), true);
   assert.equal(html.includes("Authorization"), true);
   assert.equal(html.includes(">HTTP</dd>"), true);
+  assert.equal(html.includes('data-mcp-auth="Bearer"'), true);
+  assert.equal(html.includes("认证"), true);
   assert.equal(html.includes("卸载此 MCP 服务器"), false);
   assert.equal(html.includes("卸载"), true);
 
@@ -252,6 +256,15 @@ test("detail is titled with the server name, masks secrets, and lists tools", ()
   assert.equal(loggedOut.includes("身份验证"), true);
   assert.equal(loggedOut.includes(SCOPES_PLACEHOLDER), false);
   assert.equal(loggedOut.includes("取消认证"), true);
+  assert.equal(loggedOut.includes('data-mcp-auth="'), false);
+
+  const unsupported = render({
+    surfaces: previewSurfaces,
+    rows: codexRows,
+    initialOpen: "wb-mcp-probe",
+  });
+  assert.equal(unsupported.includes('data-mcp-auth="不支持"'), true);
+  assert.equal(unsupported.includes('data-mcp-status="configured"'), true);
 });
 
-const SCOPES_PLACEHOLDER = "要请求的 OAuth scope，用逗号分隔";
+const SCOPES_PLACEHOLDER = "要请求的 OAuth 权限范围，用逗号分隔";
