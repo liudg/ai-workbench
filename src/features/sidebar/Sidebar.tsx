@@ -1,5 +1,3 @@
-import { COMMAND_MENU_COPY } from "@/features/command-menu/copy";
-import { OPEN_COMMAND_MENU } from "@/features/command-menu/CommandMenuHost";
 import { AccountMenu } from "./account/AccountMenu";
 import { BrandHeader } from "./brand/BrandHeader";
 import { useSidebar } from "./use-sidebar";
@@ -13,18 +11,6 @@ export function Sidebar() {
   return (
     <aside className="flex h-full min-h-0 w-[260px] shrink-0 flex-col overflow-hidden border-r border-[#222] bg-[#141414]">
       <BrandHeader />
-
-      <button
-        type="button"
-        data-open-command-menu
-        aria-label={COMMAND_MENU_COPY.open}
-        aria-keyshortcuts="Control+K Control+Shift+P"
-        className="mx-3 mb-2 flex h-8 items-center justify-between rounded-md border border-[#2a2a2a] bg-[#1a1a1a] px-2 text-xs text-[#cfcfcf] hover:bg-[#222]"
-        onClick={() => window.dispatchEvent(new Event(OPEN_COMMAND_MENU))}
-      >
-        <span>{COMMAND_MENU_COPY.title}</span>
-        <span className="text-[#777]">{COMMAND_MENU_COPY.shortcutOpen}</span>
-      </button>
 
       <ProjectHeader />
 
