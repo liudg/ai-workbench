@@ -1,18 +1,14 @@
-import { useState } from "react";
-
 import { STANDALONE_DRAFT_ID } from "@/store/standalone";
 import { NewSessionButton } from "../sessions/NewSessionButton";
-import { ArchivedSessions } from "../sessions/ArchivedSessions";
 import { SessionList } from "../sessions/SessionList";
 import { partitionSidebarSessions } from "../sessions/session-partition";
 import { useChatGroup } from "./use-chat-group";
 
 export function ChatGroup() {
   const { chats, pending, activeId } = useChatGroup();
-  const [showAll, setShowAll] = useState(false);
   const items = pending ? [pending, ...chats] : chats;
   const grouped = partitionSidebarSessions(items);
-  const empty = grouped.active.length === 0 && grouped.archived.length === 0;
+  const empty = grouped.active.length === 0;
 
   return (
     <section data-sidebar-section="chats" className="pb-2 pt-2">
@@ -30,24 +26,12 @@ export function ChatGroup() {
           无聊天
         </p>
       ) : (
-        <>
-          {grouped.active.length > 0 && (
-            <SessionList
-              projectId={STANDALONE_DRAFT_ID}
-              sessions={grouped.active}
-              selected={Boolean(activeId)}
-              activeSessionId={activeId}
-              showAll={showAll}
-              onToggleShowAll={() => setShowAll((value) => !value)}
-            />
-          )}
-          <ArchivedSessions
-            projectId={STANDALONE_DRAFT_ID}
-            sessions={grouped.archived}
-            selected={Boolean(activeId)}
-            activeSessionId={activeId}
-          />
-        </>
+        <SessionList
+          projectId={STANDALONE_DRAFT_ID}
+          sessions={grouped.active}
+          selected={Boolean(activeId)}
+          activeSessionId={activeId}
+        />
       )}
     </section>
   );

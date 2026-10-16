@@ -1,4 +1,4 @@
-/** 默认列表只留未归档。已归档的会话单独收一组，菜单里才能取消归档。 */
+/** 默认列表只留未归档。已归档的会话不进侧栏。 */
 
 export function partitionSidebarSessions<T extends { archived?: boolean }>(
   sessions: readonly T[],
