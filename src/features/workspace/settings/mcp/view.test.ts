@@ -7,6 +7,7 @@ import {
   existingTitle,
   fieldVisible,
   registrationAria,
+  rowStatusLine,
   showAdd,
   showLogin,
   showRemove,
@@ -77,16 +78,24 @@ function row(patch: Partial<McpServerRow>): McpServerRow {
   };
 }
 
-test("desktop copy stays on the observed strings", () => {
-  assert.equal(MCP_PAGE.nav, "MCPs");
-  assert.equal(MCP_PAGE.subtitle, "Connect external tools and data sources");
-  assert.equal(MCP_PAGE.empty, "No MCP servers connected");
-  assert.equal(MCP_PAGE.add, "Add server");
-  assert.equal(MCP_PAGE.titleNew, "Connect to a custom MCP");
-  assert.equal(existingTitle("demo"), "Update demo MCP");
-  assert.equal(MCP_PAGE.authenticate, "Authenticate");
-  assert.equal(MCP_PAGE.starting, "Starting…");
-  assert.equal(registrationAria("auto"), "OAuth client registration: Automatic");
+test("settings copy follows the Codex zh-CN catalog and keeps protocol names", () => {
+  assert.equal(MCP_PAGE.nav, "MCP 服务器");
+  assert.equal(MCP_PAGE.subtitle, "连接外部工具和数据来源");
+  assert.equal(MCP_PAGE.empty, "未连接 MCP 服务器");
+  assert.equal(MCP_PAGE.add, "添加服务器");
+  assert.equal(MCP_PAGE.titleNew, "连接至自定义 MCP");
+  assert.equal(existingTitle("demo"), "更新 demo MCP");
+  assert.equal(MCP_PAGE.settings, "设置");
+  assert.equal(MCP_PAGE.authenticate, "进行身份验证");
+  assert.equal(MCP_PAGE.starting, "启动中…");
+  assert.equal(MCP_PAGE.headers, "Headers");
+  assert.equal(registrationAria("auto"), "OAuth 客户端注册：自动");
+  assert.equal(rowStatusLine(surface({}), row({})), "STDIO · 不支持 · 已启用");
+  assert.equal(rowStatusLine(surface({}), row({ enabled: false, auth_status: "" })), "STDIO · 已禁用");
+  assert.equal(
+    rowStatusLine(surface({}), row({ transport: "", status_text: "√ Connected", auth_status: "", enabled: null })),
+    "已连接",
+  );
 });
 
 test("field visibility follows the transport token on the surface", () => {

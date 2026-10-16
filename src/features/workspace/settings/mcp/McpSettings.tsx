@@ -106,7 +106,7 @@ export function McpSettings() {
       }}
       onLogout={(name) => {
         if (!selected) return;
-        void run(() => invoke<string>("mcp_logout", { kind: selected, name }), "logout");
+        void run(() => invoke<string>("mcp_logout", { kind: selected, name }), MCP_PAGE.actionFailed);
       }}
       onSetEnabled={(name, enabled) => {
         if (!selected) return;

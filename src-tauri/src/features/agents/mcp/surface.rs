@@ -1,12 +1,13 @@
-//! 每个已验证 CLI 的管理面。文案能对上 Codex 桌面的用桌面原文，其余写明证据。
+//! 每个已验证 CLI 的管理面。界面文案对齐 Codex 桌面 zh-CN；协议名保持英文。
+//! `notes` 只给测试留证据，界面不渲染。
 
 use crate::models::{AgentKind, McpField, McpLabeled, McpNote, McpSurface, McpVerbs};
 
 pub fn unverified(kind: AgentKind, display_name: &str, installed: bool) -> McpSurface {
     let reason = if installed {
-        "本机已有该 CLI，但 MCP 动词还没用真实 CLI 验证，所以不提供管理。"
+        "该 CLI 已安装，暂无法管理 MCP。"
     } else {
-        "本机没有该 CLI，MCP 动词未验证。"
+        "本机未安装该 CLI，暂无法管理 MCP。"
     };
     McpSurface {
         kind,
@@ -50,39 +51,34 @@ pub fn codex(installed: bool) -> McpSurface {
         },
         transports: vec![
             labeled("stdio", "STDIO"),
-            labeled("streamable_http", "Streamable HTTP"),
+            labeled("streamable_http", "流式 HTTP"),
         ],
         scopes: Vec::new(),
         fields: vec![
-            field("name", "Name", "MCP server name", "always"),
+            field("name", "名称", "MCP 服务器名称", "always"),
             field(
                 "command",
-                "Command to launch",
+                "启动命令",
                 "openai-dev-mcp serve-sqlite",
                 "stdio",
             ),
-            field("args", "Arguments", "", "stdio"),
-            field("env", "Environment variables", "", "stdio"),
+            field("args", "参数", "", "stdio"),
+            field("env", "环境变量", "", "stdio"),
             field("url", "URL", "https://mcp.example.com/mcp", "http"),
             field(
                 "bearer_token_env_var",
-                "Bearer token env var",
+                "Bearer 令牌环境变量",
                 "MCP_BEARER_TOKEN",
                 "http",
             ),
-            field(
-                "client_id",
-                "OAuth client identifier",
-                "",
-                "http",
-            ),
-            field("client_secret", "OAuth client secret", "", "http"),
-            field("oauth_resource", "OAuth resource", "", "http"),
+            field("client_id", "OAuth 客户端 ID", "", "http"),
+            field("client_secret", "OAuth 客户端密钥", "", "http"),
+            field("oauth_resource", "OAuth 资源", "", "http"),
         ],
         oauth_registration: registration(),
         login_rule: "status".into(),
         login_statuses: vec!["notLoggedIn".into()],
-        logout_label: "Deauthenticate".into(),
+        logout_label: "取消认证".into(),
         scope_label: String::new(),
         tools_label: String::new(),
         notes: vec![
@@ -92,7 +88,7 @@ pub fn codex(installed: bool) -> McpSurface {
             ),
             note(
                 "sse",
-                "add 只接受 stdio 命令或 --url。没有 sse。类型用桌面上的 STDIO 和 Streamable HTTP。",
+                "add 只接受 stdio 命令或 --url。没有 sse。类型显示 STDIO 和流式 HTTP。",
             ),
             note(
                 "Headers",
@@ -152,50 +148,40 @@ pub fn claude(installed: bool) -> McpSurface {
             list_tools: false,
         },
         transports: vec![
-            labeled("stdio", "stdio"),
-            labeled("sse", "sse"),
-            labeled("http", "http"),
+            labeled("stdio", "STDIO"),
+            labeled("sse", "SSE"),
+            labeled("http", "HTTP"),
         ],
         scopes: vec![
-            labeled("local", "local"),
-            labeled("user", "user"),
-            labeled("project", "project"),
+            labeled("local", "本地"),
+            labeled("user", "用户"),
+            labeled("project", "项目"),
         ],
         fields: vec![
-            field("name", "Name", "MCP server name", "always"),
+            field("name", "名称", "MCP 服务器名称", "always"),
             field(
                 "command",
-                "Command to launch",
+                "启动命令",
                 "openai-dev-mcp serve-sqlite",
                 "stdio",
             ),
-            field("args", "Arguments", "", "stdio"),
-            field("env", "Environment variables", "", "stdio"),
+            field("args", "参数", "", "stdio"),
+            field("env", "环境变量", "", "stdio"),
             field("url", "URL", "https://mcp.example.com/mcp", "http-sse"),
             field("headers", "Headers", "", "http-sse"),
-            field(
-                "client_id",
-                "OAuth client ID",
-                "",
-                "http-sse",
-            ),
-            field(
-                "callback_port",
-                "Fixed port for OAuth callback",
-                "",
-                "http-sse",
-            ),
+            field("client_id", "OAuth 客户端 ID", "", "http-sse"),
+            field("callback_port", "OAuth 回调端口", "", "http-sse"),
         ],
         oauth_registration: Vec::new(),
         login_rule: "http".into(),
         login_statuses: Vec::new(),
-        logout_label: "Clear stored OAuth credentials".into(),
-        scope_label: "Configuration scope".into(),
+        logout_label: "清除已保存的 OAuth 凭据".into(),
+        scope_label: "配置 scope".into(),
         tools_label: String::new(),
         notes: vec![
             note(
                 "传输名",
-                "claude mcp add 帮助的传输是 stdio、sse、http。桌面类型开关只有 STDIO 和 Streamable HTTP，没有 sse。这里用 CLI 原文，不套桌面的 Streamable HTTP。",
+                "claude mcp add 的传输 id 是 stdio、sse、http。界面显示 STDIO、SSE、HTTP。桌面类型开关是 STDIO 和流式 HTTP，没有 SSE。",
             ),
             note(
                 "Configuration scope",
@@ -270,7 +256,7 @@ pub fn cursor(installed: bool) -> McpSurface {
         login_statuses: Vec::new(),
         logout_label: String::new(),
         scope_label: String::new(),
-        tools_label: "List available tools".into(),
+        tools_label: "列出可用工具".into(),
         notes: vec![
             note(
                 "add / remove",
@@ -302,7 +288,7 @@ pub fn cursor(installed: bool) -> McpSurface {
 
 fn registration() -> Vec<McpLabeled> {
     vec![
-        labeled("auto", "Auto"),
+        labeled("auto", "自动"),
         labeled("cimd", "CIMD"),
         labeled("dcr", "DCR"),
     ]
@@ -375,7 +361,8 @@ mod tests {
             vec!["stdio", "sse", "http"]
         );
         assert_eq!(surface.scopes.len(), 3);
-        assert_eq!(surface.scope_label, "Configuration scope");
+        assert_eq!(surface.scope_label, "配置 scope");
+        assert_eq!(surface.logout_label, "清除已保存的 OAuth 凭据");
         assert!(ids(&surface).contains(&"headers"));
         assert!(!ids(&surface).contains(&"bearer_token_env_var"));
         assert!(surface.oauth_registration.is_empty());
@@ -400,7 +387,12 @@ mod tests {
         assert!(!surface.manageable);
         assert_eq!(surface.verbs, McpVerbs::none());
         let reason = surface.unavailable_reason.unwrap();
-        assert!(reason.contains("未验证"));
-        assert!(!reason.contains("不支持"));
+        assert_eq!(reason, "本机未安装该 CLI，暂无法管理 MCP。");
+        assert!(!reason.contains("未验证") && !reason.contains("动词") && !reason.contains("不支持"));
+        let installed = unverified(AgentKind::KimiCode, "Kimi Code", true);
+        assert_eq!(
+            installed.unavailable_reason.unwrap(),
+            "该 CLI 已安装，暂无法管理 MCP。"
+        );
     }
 }

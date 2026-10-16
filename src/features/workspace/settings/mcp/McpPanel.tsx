@@ -4,17 +4,19 @@ import type { AgentKind, McpAddSpec, McpPair, McpServerRow, McpSurface } from "@
 import { cn } from "@/lib/utils";
 import {
   MCP_PAGE,
-  PAGE_NOTES,
   addLabel,
+  authStatusLabel,
   defaultScope,
   defaultTransport,
   existingTitle,
   registrationAria,
+  rowStatusLine,
   showAdd,
   showLogin,
   showLoginScopes,
   showRegistration,
   showRemove,
+  statusTextLabel,
   transportLabel,
   visibleFields,
 } from "./view";
@@ -111,8 +113,6 @@ export function McpPanel(props: McpPanelProps) {
           onListTools={props.onListTools}
         />
       )}
-      {surface && <Notes notes={surface.notes} />}
-      <Notes notes={PAGE_NOTES} />
     </section>
   );
 }
@@ -167,7 +167,7 @@ function ServerList(props: {
         {props.rows.map((row) => (
           <li key={row.name} data-mcp-row={row.name} className="rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3">
             <div className="text-sm font-medium text-zinc-100">{row.name}</div>
-            <p className="mt-1 text-xs leading-5 text-zinc-500">{statusLine(surface, row)}</p>
+            <p className="mt-1 text-xs leading-5 text-zinc-500">{rowStatusLine(surface, row)}</p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <button type="button" className={quietButton} data-mcp-settings={row.name} onClick={() => props.onOpen(row.name)}>
                 {MCP_PAGE.settings}
@@ -247,8 +247,8 @@ function LoginControl(props: {
         <input
           className={inputClass + " w-56"}
           value={scopes}
-          placeholder="Comma-separated list of OAuth scopes to request"
-          aria-label="Comma-separated list of OAuth scopes to request"
+          placeholder={MCP_PAGE.scopesPlaceholder}
+          aria-label={MCP_PAGE.scopesPlaceholder}
           data-mcp-scopes={props.row.name}
           onChange={(event) => setScopes(event.target.value)}
         />
@@ -375,7 +375,7 @@ function NewServer(props: {
         )}
         {showRegistration(surface, transport) && (
           <label className="block text-xs text-zinc-400">
-            OAuth client registration
+            {MCP_PAGE.registration}
             <select className={inputClass + " mt-1"} aria-label={registrationAria(registration)} value={registration} data-mcp-add-registration="" onChange={(event) => setRegistration(event.target.value)}>
               {surface.oauth_registration.map((item) => (
                 <option key={item.id} value={item.id}>
@@ -427,8 +427,8 @@ function ExistingServer(props: {
         {row.env_vars.length > 0 && <Readout label={MCP_PAGE.envPassthrough} value={row.env_vars.join("\n")} />}
         {row.headers.length > 0 && <Readout label={MCP_PAGE.headers} value={row.headers.map((pair) => `${pair.key}: ${pair.value}`).join("\n")} />}
         {row.env_headers.length > 0 && <Readout label={MCP_PAGE.envHeaders} value={row.env_headers.map((pair) => `${pair.key}=${pair.value}`).join("\n")} />}
-        {row.auth_status && <Readout label="auth_status" value={row.auth_status} />}
-        {row.status_text && <Readout label="status" value={row.status_text} />}
+        {row.auth_status && <Readout label={MCP_PAGE.authLabel} value={authStatusLabel(row.auth_status)} />}
+        {row.status_text && <Readout label={MCP_PAGE.statusLabel} value={statusTextLabel(row.status_text)} />}
       </dl>
       {props.notice && (
         <p className="mt-4 text-sm text-red-300" role="alert">
@@ -526,27 +526,6 @@ function Readout({ label, value }: { label: string; value: string }) {
       <dd className="mt-1 whitespace-pre-wrap text-zinc-100">{value}</dd>
     </div>
   );
-}
-
-function Notes({ notes }: { notes: { label: string; reason: string }[] }) {
-  if (notes.length === 0) return null;
-  return (
-    <ul className="mt-8 space-y-2 border-t border-zinc-800 pt-4" data-mcp-notes="">
-      {notes.map((note) => (
-        <li key={note.label} className="text-xs leading-5 text-zinc-500">
-          <span className="text-zinc-300">{note.label}</span>
-          {" · "}
-          {note.reason}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function statusLine(surface: McpSurface, row: McpServerRow): string {
-  return [row.transport ? transportLabel(surface, row.transport) : "", row.status_text, row.auth_status, row.enabled === true ? "enabled" : row.enabled === false ? "disabled" : ""]
-    .filter(Boolean)
-    .join(" · ");
 }
 
 function labelOf(fields: { id: string; label: string }[], id: string, fallback: string): string {
