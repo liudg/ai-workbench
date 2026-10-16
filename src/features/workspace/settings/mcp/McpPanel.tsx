@@ -16,7 +16,7 @@ import {
   addLabel,
   defaultScope,
   defaultTransport,
-  loginNeedsOptions,
+  loginLaunch,
   menuActions,
   registrationAria,
   authMethodLabel,
@@ -62,6 +62,7 @@ export interface McpPanelProps {
   tools: Record<string, McpToolEntry[]>;
   initialMode?: "list" | "new";
   initialOpen?: string | null;
+  initialAuth?: string | null;
   onSelect: (kind: AgentKind) => void;
   onAdd: (spec: McpAddSpec) => Promise<boolean> | boolean;
   onRemove: (name: string, scope: string) => void;
@@ -78,7 +79,7 @@ export function McpPanel(props: McpPanelProps) {
   );
   const [openName, setOpenName] = useState<string | null>(props.initialOpen ?? null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
-  const [authFor, setAuthFor] = useState<string | null>(null);
+  const [authFor, setAuthFor] = useState<string | null>(props.initialAuth ?? null);
   const [confirmName, setConfirmName] = useState<string | null>(null);
   const [lit, setLit] = useState<string | null>(props.highlight?.name ?? null);
   const openRow = props.rows.find((row) => row.name === openName) ?? null;
@@ -145,7 +146,7 @@ export function McpPanel(props: McpPanelProps) {
   function runAction(id: McpMenuId, row: McpServerRow) {
     setMenuFor(null);
     if (id === "login") {
-      if (surface && loginNeedsOptions(surface)) {
+      if (surface && loginLaunch(surface, row) === "options") {
         setAuthFor(row.name);
         return;
       }
@@ -249,6 +250,7 @@ export function McpPanel(props: McpPanelProps) {
       )}
       {surface && mode === "list" && (
         <ServerList
+          key={surface.kind}
           surface={surface}
           rows={props.rows}
           listError={props.listError}
@@ -358,12 +360,17 @@ function ServerList(props: {
         </p>
       )}
       {props.listError && <Failure title={MCP_PAGE.listErrorTitle} detail={props.listError} />}
+      {surface.manageable && props.listing && props.rows.length === 0 && !props.listError && (
+        <p className="mt-8 text-sm text-zinc-500" data-mcp-loading="">
+          {MCP_PAGE.loading}
+        </p>
+      )}
       {surface.manageable && props.rows.length === 0 && !props.listError && !props.listing && (
         <p className="mt-8 text-sm text-zinc-500" data-mcp-empty="">
           {MCP_PAGE.empty}
         </p>
       )}
-      <ul className="mt-4 space-y-2">
+      <ul className="mt-4 space-y-2" data-mcp-list={surface.kind}>
         {props.rows.map((row) => {
           const busy = props.rowBusy.has(row.name);
           const actions = menuActions(surface, row);

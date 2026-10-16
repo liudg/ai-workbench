@@ -45,8 +45,8 @@ pub fn codex(installed: bool) -> McpSurface {
             remove: true,
             login: true,
             logout: true,
-            enable: false,
-            disable: false,
+            enable: true,
+            disable: true,
             list_tools: false,
         },
         transports: vec![
@@ -104,7 +104,7 @@ pub fn codex(installed: bool) -> McpSurface {
             ),
             note(
                 "Enable",
-                "桌面有 Enable 开关，list JSON 有 enabled。命令只有 list、get、add、remove、login、logout，没有 enable 或 disable。不显示开关。",
+                "list JSON 和 config.toml 的 mcp_servers 都有 enabled，缺省为开。没有 enable 子命令，开关写配置里的 enabled。",
             ),
             note(
                 "Authenticate",
@@ -274,7 +274,7 @@ pub fn cursor(installed: bool) -> McpSurface {
             ),
             note(
                 "Enable / Disable",
-                "enable、disable 是两个子命令，列表不返回 enabled。显示两个按钮，不用需要布尔值的开关。Disable 的按钮文案用子命令名，桌面只有 Enable。",
+                "enable、disable 是两个子命令。列表状态 disabled 为关，ready 等其余非空状态为开，用开关而不是两个按钮。",
             ),
             note(
                 "List available tools",
@@ -340,7 +340,8 @@ mod tests {
         let surface = codex(true);
         assert!(surface.manageable);
         assert!(surface.verbs.add && surface.verbs.login && surface.verbs.logout);
-        assert!(!surface.verbs.enable && !surface.verbs.list_tools);
+        assert!(surface.verbs.enable && surface.verbs.disable);
+        assert!(!surface.verbs.list_tools);
         assert!(surface.scopes.is_empty());
         assert_eq!(
             surface

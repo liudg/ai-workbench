@@ -38,7 +38,16 @@ export const codexSurface: McpSurface = {
   installed: true,
   manageable: true,
   unavailable_reason: null,
-  verbs: { ...none, list: true, add: true, remove: true, login: true, logout: true },
+  verbs: {
+    ...none,
+    list: true,
+    add: true,
+    remove: true,
+    login: true,
+    logout: true,
+    enable: true,
+    disable: true,
+  },
   transports: [
     { id: "stdio", label: "STDIO" },
     { id: "streamable_http", label: "流式 HTTP" },
@@ -67,7 +76,7 @@ export const codexSurface: McpSurface = {
   tools_label: "",
   notes: [
     { label: "Headers", reason: "codex mcp add 帮助没有 --header。不提供编辑。" },
-    { label: "Enable", reason: "没有 enable 或 disable 子命令。不显示开关。" },
+    { label: "Enable", reason: "list JSON 和 config.toml 有 enabled。开关写配置里的 enabled。" },
     { label: "Authenticate", reason: "只在 auth_status 为 notLoggedIn 时显示。not_logged_in 未观察。" },
   ],
 };
@@ -198,6 +207,6 @@ export const claudeRows: McpServerRow[] = [
 ];
 
 export const cursorRows: McpServerRow[] = [
-  row({ name: "demo-ready", status_text: "ready" }),
-  row({ name: "demo-other", status_text: "ready" }),
+  row({ name: "demo-ready", status_text: "ready", enabled: true }),
+  row({ name: "demo-other", status_text: "disabled", enabled: false }),
 ];

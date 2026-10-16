@@ -1,7 +1,14 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { invoke } from "@/lib/ipc/call";
 import type { AgentKind, McpAddSpec, McpServerRow, McpSurface } from "@/types";
+import {
+  clearSuccess,
+  visibleFeedback,
+  writeFeedback,
+  type McpFeedbackBook,
+} from "./feedbackState";
+import { emptyBook, finishList, startList, visibleList, type McpListBook } from "./listState";
 import { McpPanel } from "./McpPanel";
 import {
   MCP_PAGE,
@@ -18,36 +25,36 @@ import {
 export function McpSettings() {
   const [surfaces, setSurfaces] = useState<McpSurface[] | null>(null);
   const [selected, setSelected] = useState<AgentKind | null>(null);
-  const [rows, setRows] = useState<McpServerRow[]>([]);
-  const [listError, setListError] = useState<string | null>(null);
-  const [listing, setListing] = useState(false);
+  const [book, setBook] = useState<McpListBook>(emptyBook);
+  const generations = useRef<Record<string, number>>({});
+  const selectedRef = useRef<AgentKind | null>(selected);
+  selectedRef.current = selected;
   const [rowBusy, setRowBusy] = useState<ReadonlySet<string>>(() => new Set());
   const [formBusy, setFormBusy] = useState(false);
-  const [feedback, setFeedback] = useState<McpFeedback | null>(null);
+  const [feedbackBook, setFeedbackBook] = useState<McpFeedbackBook>({});
+  const [bootFeedback, setBootFeedback] = useState<McpFeedback | null>(null);
   const [highlight, setHighlight] = useState<{ name: string; token: number } | null>(null);
   const [tools, setTools] = useState<Record<string, McpToolEntry[]>>({});
 
   const loadList = useCallback(async (kind: AgentKind, known: McpSurface[], refresh: boolean) => {
     const surface = known.find((item) => item.kind === kind);
+    const generation = (generations.current[kind] ?? 0) + 1;
+    generations.current[kind] = generation;
     if (!refresh) {
-      setRows([]);
       setTools({});
-      setFeedback(null);
       setHighlight(null);
     }
+    setBook((current) => startList(current, kind, generation, refresh));
     if (!surface?.manageable || !surface.verbs.list) {
-      setListError(null);
-      setListing(false);
+      setBook((current) => finishList(current, kind, generation, { rows: [] }));
       return;
     }
-    setListError(null);
-    setListing(true);
     try {
-      setRows(await invoke<McpServerRow[]>("mcp_list", { kind }));
+      const rows = await invoke<McpServerRow[]>("mcp_list", { kind });
+      setBook((current) => finishList(current, kind, generation, { rows }));
     } catch (err) {
-      setListError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setListing(false);
+      const error = err instanceof Error ? err.message : String(err);
+      setBook((current) => finishList(current, kind, generation, { error }));
     }
   }, []);
 
@@ -59,13 +66,15 @@ export function McpSettings() {
         setSurfaces(loaded);
         const first = loaded.find((item) => item.manageable) ?? loaded[0];
         if (!first) return;
+        selectedRef.current = first.kind;
         setSelected(first.kind);
         void loadList(first.kind, loaded, false);
       })
       .catch((err) => {
         if (!alive) return;
         setSurfaces([]);
-        setListError(err instanceof Error ? err.message : String(err));
+        const detail = err instanceof Error ? err.message : String(err);
+        setBootFeedback({ tone: "failure", title: MCP_PAGE.listErrorTitle, detail });
       });
     return () => {
       alive = false;
@@ -73,35 +82,46 @@ export function McpSettings() {
   }, [loadList]);
 
   useEffect(() => {
-    if (feedback?.tone !== "success") return;
+    if (!selected || visibleFeedback(feedbackBook, selected)?.tone !== "success") return;
+    const kind = selected;
     const timer = window.setTimeout(() => {
-      setFeedback((current) => (current?.tone === "success" ? null : current));
+      setFeedbackBook((current) => clearSuccess(current, kind));
     }, 4000);
     return () => window.clearTimeout(timer);
-  }, [feedback]);
+  }, [feedbackBook, selected]);
 
   function select(kind: AgentKind) {
+    selectedRef.current = kind;
     setSelected(kind);
     setRowBusy(new Set());
+    setFormBusy(false);
     if (surfaces) void loadList(kind, surfaces, false);
   }
 
   async function run(action: McpAction, rowName: string | null, actionFn: () => Promise<string>): Promise<boolean> {
+    const kind = selected;
+    if (!kind) return false;
     if (rowName) setRowBusy((current) => withRowBusy(current, rowName));
     else setFormBusy(true);
-    setFeedback(null);
+    setFeedbackBook((current) => writeFeedback(current, kind, null));
     try {
       await actionFn();
-      if (action !== "tools") setFeedback({ tone: "success", text: successText(action) });
-      if (selected && surfaces) await loadList(selected, surfaces, true);
+      if (action !== "tools") {
+        setFeedbackBook((current) => writeFeedback(current, kind, { tone: "success", text: successText(action) }));
+      }
+      if (surfaces) await loadList(kind, surfaces, true);
       return true;
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
-      setFeedback({ tone: "failure", title: failureTitle(action), detail });
+      setFeedbackBook((current) =>
+        writeFeedback(current, kind, { tone: "failure", title: failureTitle(action), detail }),
+      );
       return false;
     } finally {
-      if (rowName) setRowBusy((current) => withoutRowBusy(current, rowName));
-      else setFormBusy(false);
+      if (selectedRef.current === kind) {
+        if (rowName) setRowBusy((current) => withoutRowBusy(current, rowName));
+        else setFormBusy(false);
+      }
     }
   }
 
@@ -109,13 +129,16 @@ export function McpSettings() {
     return <p className="text-sm text-zinc-500">{MCP_PAGE.loading}</p>;
   }
 
+  const list = visibleList(book, selected);
+  const feedback = selected ? visibleFeedback(feedbackBook, selected) : bootFeedback;
+
   return (
     <McpPanel
       surfaces={surfaces}
       selected={selected}
-      rows={rows}
-      listError={listError}
-      listing={listing}
+      rows={list.rows}
+      listError={list.error}
+      listing={list.listing}
       rowBusy={rowBusy}
       formBusy={formBusy}
       feedback={feedback}
@@ -150,17 +173,25 @@ export function McpSettings() {
       }}
       onListTools={(name) => {
         if (!selected) return;
+        const kind = selected;
+        const generation = generations.current[kind] ?? 0;
         setRowBusy((current) => withRowBusy(current, name));
-        setFeedback(null);
-        invoke<string>("mcp_list_tools", { kind: selected, name })
+        setFeedbackBook((current) => writeFeedback(current, kind, null));
+        invoke<string>("mcp_list_tools", { kind, name })
           .then((text) => {
+            if (selectedRef.current !== kind || (generations.current[kind] ?? 0) !== generation) return;
             setTools((current) => ({ ...current, [name]: parseToolList(text) }));
           })
           .catch((err) => {
             const detail = err instanceof Error ? err.message : String(err);
-            setFeedback({ tone: "failure", title: failureTitle("tools"), detail });
+            setFeedbackBook((current) =>
+              writeFeedback(current, kind, { tone: "failure", title: failureTitle("tools"), detail }),
+            );
           })
-          .finally(() => setRowBusy((current) => withoutRowBusy(current, name)));
+          .finally(() => {
+            if (selectedRef.current !== kind) return;
+            setRowBusy((current) => withoutRowBusy(current, name));
+          });
       }}
     />
   );

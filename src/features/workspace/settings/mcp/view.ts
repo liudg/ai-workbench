@@ -236,20 +236,32 @@ export function visibleFields(fields: McpField[], transport: string): McpField[]
   return fields.filter((field) => fieldVisible(field.when, transport));
 }
 
+export function isRemoteTransport(row: McpServerRow): boolean {
+  if (row.transport === "http" || row.transport === "streamable_http" || row.transport === "sse") {
+    return true;
+  }
+  return row.url.startsWith("http://") || row.url.startsWith("https://");
+}
+
 export function showLogin(surface: McpSurface, row: McpServerRow): boolean {
   if (!surface.manageable || !surface.verbs.login) return false;
   if (surface.login_rule === "always") return true;
   if (surface.login_rule === "never") return false;
   if (surface.login_rule === "status") {
-    return surface.login_statuses.includes(row.auth_status);
+    if (surface.login_statuses.includes(row.auth_status)) return true;
+    // 新加的 HTTP/SSE 常是 unknown。有登录动词时试一次没有副作用。
+    return row.auth_status === "unknown" && isRemoteTransport(row);
   }
   if (surface.login_rule === "http") {
-    if (row.transport === "http" || row.transport === "streamable_http" || row.transport === "sse") {
-      return true;
-    }
-    return row.url.startsWith("http://") || row.url.startsWith("https://");
+    return isRemoteTransport(row);
   }
   return false;
+}
+
+/** 登录需要注册方式或 scope 时先打开选项，不直接发起。 */
+export function loginLaunch(surface: McpSurface, row: McpServerRow): "hidden" | "direct" | "options" {
+  if (!showLogin(surface, row)) return "hidden";
+  return loginNeedsOptions(surface) ? "options" : "direct";
 }
 
 export function showAdd(surface: McpSurface): boolean {
