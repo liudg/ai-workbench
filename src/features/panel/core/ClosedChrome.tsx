@@ -7,13 +7,13 @@ import { registerBuiltinViewers } from "../viewers/register";
 import { viewerById } from "./registry";
 import { Hint } from "./Hint";
 import { usePanel } from "./PanelProvider";
-import { SessionUsageMeter } from "./SessionUsageMeter";
+import { SessionUsageCluster } from "./SubscriptionUsageMeter";
 
 registerBuiltinViewers();
 
 /** 侧栏收起时的顶栏：标题在左，用量和标记在右。聊天占满其余宽度。 */
 export function ClosedChrome() {
-  const { tabs, sessionTitle, usage, showPanel, selectTab, openBlank, layout } = usePanel();
+  const { tabs, sessionTitle, showPanel, selectTab, openBlank, layout } = usePanel();
   const count = tabs.length;
   const [menu, setMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -35,7 +35,7 @@ export function ClosedChrome() {
       <span data-session-title className="min-w-0 flex-1 truncate text-[14px] font-medium text-[#e8e8e8]">
         {sessionTitle}
       </span>
-      <SessionUsageMeter usage={usage} />
+      <SessionUsageCluster />
       {layout !== "chat" ? (
         <Hint label={DESKTOP_ZH.panelNewTab} shortcut={DESKTOP_ZH.panelShortcutB} align="end">
           <button

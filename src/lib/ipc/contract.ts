@@ -6,6 +6,7 @@ import type {
   SessionSandbox,
   AgentCatalogRefresh,
   AgentProfile,
+  SubscriptionUsage,
   Attachment,
   PageAnnotation,
   Project,
@@ -101,6 +102,8 @@ export interface Backend {
   permissionMenu(sessionId: string): Promise<PermissionMenu>;
   /** 各 Agent 的能力与斜杠命令。不需要已打开的会话。 */
   agentProfiles(): Promise<AgentProfile[]>;
+  /** 当前账号的订阅窗口。能力关闭时后端拒绝。 */
+  subscriptionUsage(kind: AgentKind): Promise<SubscriptionUsage>;
   /** 本机 CLI 安装与官方更新状态。 */
   listAgentInstallations(): Promise<AgentInstallation[]>;
   /** 按该 Agent 的官方渠道升级，并返回刷新后的状态。 */

@@ -1,7 +1,9 @@
 import type {
   AgentCatalogRefresh,
   AgentInstallation,
+  AgentKind,
   AgentProfile,
+  SubscriptionUsage,
   OlderHistory,
   PermissionMenu,
   ReviewTargets,
@@ -27,6 +29,7 @@ export const sessionCommands: Pick<
   | "setSandbox"
   | "permissionMenu"
   | "agentProfiles"
+  | "subscriptionUsage"
   | "listAgentInstallations"
   | "updateAgent"
   | "agentCatalog"
@@ -87,6 +90,8 @@ export const sessionCommands: Pick<
   permissionMenu: (sessionId) =>
     invoke<PermissionMenu>("session_permission_menu", { sessionId }),
   agentProfiles: () => invoke<AgentProfile[]>("agent_profiles"),
+  subscriptionUsage: (kind: AgentKind) =>
+    invoke<SubscriptionUsage>("subscription_usage", { kind }),
   listAgentInstallations: () =>
     invoke<AgentInstallation[]>("list_agent_installations"),
   updateAgent: (kind) => invoke<AgentInstallation>("update_agent", { kind }),

@@ -15,6 +15,19 @@ pub async fn update_agent(kind: AgentKind) -> Result<AgentInstallation, String> 
     agents::upgrade(kind).await.map_err(|err| err.to_string())
 }
 
+/// 当前 agent 的订阅额度。能力关闭时拒绝，界面不显示。
+#[tauri::command]
+pub async fn subscription_usage(kind: AgentKind) -> Result<SubscriptionUsage, String> {
+    let adapter = agents::adapter_for(kind);
+    if !adapter.capabilities().supports_subscription_usage {
+        return Err("这个 Agent 没有订阅用量".into());
+    }
+    adapter
+        .subscription_usage()
+        .await
+        .map_err(|err| err.to_string())
+}
+
 #[tauri::command]
 pub fn agent_profiles() -> Vec<AgentProfile> {
     AgentKind::all()

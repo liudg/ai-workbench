@@ -143,6 +143,24 @@ export interface AgentCapabilities {
   supports_approve_for_me?: boolean;
   /** 继续会话后，时间线上滚再要更早的回合。 */
   supports_paged_history?: boolean;
+  /** 账号订阅窗口。界面只在适配器声明这项时读取，不按 agent 名字分支。 */
+  supports_subscription_usage?: boolean;
+}
+
+/** 一个订阅用量窗口。已用和剩余至少有一个，重置时间可以没有。 */
+export interface SubscriptionWindow {
+  id: string;
+  label: string;
+  /** 已用百分比，0–100。 */
+  used_percent?: number | null;
+  /** 剩余百分比，0–100。 */
+  remaining_percent?: number | null;
+  /** 重置时刻，Unix 毫秒。 */
+  resets_at_ms?: number | null;
+}
+
+export interface SubscriptionUsage {
+  windows: SubscriptionWindow[];
 }
 
 /** 上滚加载更早回合之后的整段事件日志。 */

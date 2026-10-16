@@ -38,6 +38,7 @@ interface PanelApi {
   openFiles: () => void;
   projectPath: string;
   sessionTitle: string;
+  agent: AgentKind | null;
   usage: SessionUsageView | null;
   layout: PanelLayoutMode;
   hidePanel: () => void;
@@ -176,6 +177,7 @@ export function PanelProvider({
       openFiles,
       projectPath,
       sessionTitle,
+      agent,
       usage,
       layout,
       hidePanel,
@@ -204,6 +206,7 @@ export function PanelProvider({
       openFiles,
       projectPath,
       sessionTitle,
+      agent,
       usage,
       layout,
       hidePanel,

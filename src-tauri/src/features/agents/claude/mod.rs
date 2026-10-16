@@ -22,6 +22,7 @@ mod process;
 mod queue;
 mod runtime;
 mod session;
+mod subscription;
 mod usage;
 
 #[cfg(test)]
@@ -63,6 +64,10 @@ impl AgentAdapter for ClaudeCodeAdapter {
 
     fn capabilities(&self) -> AgentCapabilities {
         AgentCapabilities::claude()
+    }
+
+    async fn subscription_usage(&self) -> Result<crate::models::SubscriptionUsage, AgentError> {
+        subscription::fetch().await
     }
 
     fn icon_href(&self) -> Option<&'static str> {

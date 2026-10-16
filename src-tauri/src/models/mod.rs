@@ -7,11 +7,13 @@ mod agent;
 mod catalog;
 mod event;
 mod session;
+mod subscription;
 
 pub use agent::*;
 pub use catalog::*;
 pub use event::*;
 pub use session::*;
+pub use subscription::*;
 
 pub fn now_millis() -> i64 {
     std::time::SystemTime::now()

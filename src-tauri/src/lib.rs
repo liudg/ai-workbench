@@ -53,6 +53,7 @@ macro_rules! workbench_handler {
             $crate::features::ipc::agents::list_agent_installations,
             $crate::features::ipc::agents::update_agent,
             $crate::features::ipc::agents::agent_profiles,
+            $crate::features::ipc::agents::subscription_usage,
             $crate::features::ipc::sessions::agent_catalog,
             $crate::features::ipc::sessions::set_session_tuning,
             $crate::features::ipc::sessions::set_session_service_tier,
