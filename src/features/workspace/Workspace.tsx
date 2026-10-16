@@ -2,7 +2,7 @@ import { AnswerMarkdownHost } from "@/features/chat/answer/AnswerMarkdownHost";
 import { ChatView } from "@/features/chat/timeline/ChatView";
 import { PanelProvider } from "@/features/panel/core/PanelProvider";
 import { SessionSplit } from "@/features/panel/core/SessionSplit";
-import { NoProjectSelected, NoSession } from "./empty/EmptyState";
+import { NoProjectSelected } from "./empty/EmptyState";
 import { useWorkspace } from "./use-workspace";
 
 export function Workspace() {
@@ -36,8 +36,6 @@ export function Workspace() {
         <div className="flex h-full items-center justify-center px-8 text-center text-sm leading-6 text-zinc-500">
           从左侧选择一个会话。
         </div>
-      ) : sessions ? (
-        <NoSession projectId={project.id} />
       ) : (
         <div className="flex h-full items-center justify-center text-sm text-zinc-600">
           加载中…
