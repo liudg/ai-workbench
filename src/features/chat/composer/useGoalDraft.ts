@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { userFacingMessage } from "@/lib/user-facing";
 import type { SessionEvent } from "@/types";
 import {
   clearThreadGoal,
@@ -29,7 +30,7 @@ export function useGoalDraft(sessionId: string, supportsGoals: boolean, events: 
     if (!supportsGoals) return;
     let cancel = false;
     void publishThreadGoal(sessionId).catch((error: unknown) => {
-      if (!cancel) setPublishError(error instanceof Error ? error.message : String(error));
+      if (!cancel) setPublishError(userFacingMessage(error));
     });
     return () => {
       cancel = true;

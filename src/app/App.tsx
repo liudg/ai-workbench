@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
 
 import { CommandMenuHost } from "@/features/command-menu/CommandMenuHost";
+import { userFacingMessage } from "@/lib/user-facing";
 import { NewProjectDialog, Sidebar } from "@/features/sidebar";
 import { RightPane, UpdateDialog } from "@/features/workspace";
 import { useAppShell } from "./use-app-shell";
@@ -34,6 +35,9 @@ const CommandMenuPreview = import.meta.env.DEV
   : null;
 const McpPreview = import.meta.env.DEV
   ? lazy(() => import("@/app/preview/McpPreview"))
+  : null;
+const WorkContextPreview = import.meta.env.DEV
+  ? lazy(() => import("@/app/preview/WorkContextPreview"))
   : null;
 
 export default function App() {
@@ -108,11 +112,19 @@ export default function App() {
       </Suspense>
     );
   }
+  if (WorkContextPreview && preview === "work-context") {
+    return (
+      <Suspense fallback={null}>
+        <WorkContextPreview />
+      </Suspense>
+    );
+  }
   return <WorkbenchApp />;
 }
 
 function WorkbenchApp() {
   const { ready, lastError, dialogOpen, clearError } = useAppShell();
+  const errorText = userFacingMessage(lastError);
 
   if (!ready) {
     return (
@@ -126,9 +138,9 @@ function WorkbenchApp() {
     <div className="flex h-screen w-screen overflow-hidden bg-[#0f0f0f] text-[#e8e8e8]">
       <Sidebar />
       <main className="flex min-w-0 flex-1 flex-col">
-        {lastError && !dialogOpen && (
+        {errorText && !dialogOpen && (
           <div className="flex items-start gap-3 border-b border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-200">
-            <p className="min-w-0 flex-1">{lastError}</p>
+            <p className="min-w-0 flex-1">{errorText}</p>
             <button
               type="button"
               className="shrink-0 text-xs text-red-300 hover:text-white"

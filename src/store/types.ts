@@ -70,6 +70,8 @@ export interface SidebarSlice {
 
 export interface WorkspaceSlice {
   events: Record<string, SessionEvent[]>;
+  /** 这份事件来自完整读取，不是推送里的第一段。空列表也算。 */
+  eventsReady: Record<string, boolean>;
   accessMode: Record<string, AccessMode>;
   /** 只记住同一个 Agent 上一次的沙箱，不拿去填另一个 Agent。 */
   lastSandboxByAgent: Partial<Record<AgentKind, SessionSandbox>>;
@@ -175,6 +177,8 @@ export interface DraftSlice {
   ): Promise<boolean>;
   /** `/new` 带正文：另起一条真会话，不覆盖当前草稿里还没发出的文字。 */
   sendNewThread(projectId: string, agent: AgentKind, text: string): Promise<string | null>;
+  /** 空草稿还没交给适配器。在项目和独立聊天之间改归属，不改已经绑定的会话。 */
+  retargetDraft(fromProjectId: string, targetProjectId: string): void;
   /** 独立草稿还没建目录。选中一个项目后，这段输入改到那个项目。 */
   moveStandaloneDraft(projectId: string): void;
 }

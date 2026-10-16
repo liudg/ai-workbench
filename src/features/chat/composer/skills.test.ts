@@ -9,6 +9,7 @@ test("a failed skill list is not described as no match", () => {
     skillEmptyCopy({ hasCatalog: true, skillsError: "等待 Codex skills/list 超时", listed: 0 }),
     "等待 Codex skills/list 超时",
   );
+  assert.equal(skillEmptyCopy({ hasCatalog: true, skillsError: "null", listed: 0 }), "技能列表没有读到。");
   assert.equal(skillEmptyCopy({ hasCatalog: true, skillsError: null, listed: 0 }), "没有可用技能");
   assert.equal(skillEmptyCopy({ hasCatalog: true, skillsError: null, listed: 2 }), "没有匹配的技能");
 });

@@ -1,4 +1,5 @@
 import { backend } from "@/lib/ipc";
+import { userFacingMessage } from "@/lib/user-facing";
 import { useWorkbench } from "@/store";
 import { isDraftId } from "@/store/draft-session";
 import { isMissingSessionError } from "@/store/sync";
@@ -8,7 +9,7 @@ import { fileToBase64 } from "./media";
 
 export function reportComposerError(sessionId: string, error: unknown) {
   if (isMissingSessionError(error)) useWorkbench.getState().releaseMissingSession(sessionId);
-  else useWorkbench.setState({ lastError: String(error) });
+  else useWorkbench.setState({ lastError: userFacingMessage(error) });
 }
 
 export function fetchQueue(sessionId: string): Promise<QueuedTurn[]> {

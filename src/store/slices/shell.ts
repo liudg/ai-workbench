@@ -1,3 +1,5 @@
+import { persistedAgentKind } from "@/lib/agents";
+import { userFacingMessage } from "@/lib/user-facing";
 import { backend } from "@/lib/ipc";
 import { forgetProjectDraft, type DraftCarryState } from "../draft-session";
 import { keepSelectedProjectId, projectStillListed, STANDALONE_DRAFT_ID } from "../standalone";
@@ -72,13 +74,20 @@ export function createShellSlice(set: WorkbenchSet, get: WorkbenchGet): ShellSli
           profiles: Object.fromEntries(profiles.map((profile) => [profile.kind, profile])),
         });
       } catch (e) {
-        set({ lastError: String(e) });
+        set({ lastError: userFacingMessage(e) });
       }
-      void get().refreshInstallations();
+      await get().refreshInstallations();
       await get().refreshAll();
-      if (!get().draftFocused[STANDALONE_DRAFT_ID]) {
-        const first = get().projects.find((project) => !project.standalone)?.id;
-        if (first) await get().selectProject(first);
+      const selected = get().selectedProjectId;
+      if (selected === STANDALONE_DRAFT_ID) {
+        if (!get().draftFocused[STANDALONE_DRAFT_ID]) {
+          const agent =
+            get().drafts[STANDALONE_DRAFT_ID]?.agent ??
+            persistedAgentKind(get().installations, get().preferredAgent);
+          if (agent) get().openDraft(STANDALONE_DRAFT_ID, agent);
+        }
+      } else if (selected) {
+        await get().selectProject(selected);
       }
       window.setInterval(() => {
         void get().refreshAll();
@@ -125,10 +134,15 @@ export function createShellSlice(set: WorkbenchSet, get: WorkbenchGet): ShellSli
         for (const key of Object.keys(s.drafts)) {
           if (!projectStillListed(key, ids)) carried = forgetProjectDraft(carried, key);
         }
+        const focusedProjectId =
+          Object.keys(carried.draftFocused).find(
+            (id) => id !== STANDALONE_DRAFT_ID && carried.draftFocused[id],
+          ) ?? null;
         const selectedProjectId = keepSelectedProjectId({
           projects,
           current: carried.selectedProjectId,
           standaloneDraftFocused: Boolean(carried.draftFocused[STANDALONE_DRAFT_ID]),
+          focusedProjectId,
         });
         return {
           projects,

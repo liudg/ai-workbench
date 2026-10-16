@@ -111,6 +111,22 @@ test("failure without a cache is a notice and does not invent an empty catalog",
   assert.equal(modelButtonLabel(undefined, undefined, next.notice), "暂无模型");
 });
 
+test("a null or raw catalog failure is not shown", () => {
+  const missing = reduceCatalogResult({ notice: null }, { ok: false, message: "null" });
+  assert.equal(missing.notice, null);
+  assert.equal(modelButtonLabel(undefined, undefined, missing.notice), "读取模型…");
+  const raw = reduceCatalogResult(
+    { notice: null },
+    { ok: false, message: "SyntaxError: Unexpected token" },
+  );
+  assert.equal(raw.notice, null);
+  const leaked = reduceCatalogResult(
+    { notice: null },
+    { ok: true, catalog: { ...catalog("gpt-new"), models: [] }, notice: "null" },
+  );
+  assert.equal(leaked.notice, null);
+});
+
 test("loading has neither a catalog nor a notice", () => {
   assert.equal(modelButtonLabel(undefined, undefined, null), "读取模型…");
 });

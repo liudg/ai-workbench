@@ -1,5 +1,6 @@
 import type { Ref } from "react";
 
+import { userFacingMessage } from "@/lib/user-facing";
 import { cn } from "@/lib/utils";
 import type { Session, SessionEvent } from "@/types";
 import { AccessMenu } from "./AccessMenu";
@@ -29,6 +30,8 @@ export function Composer({
 }) {
   const c = useComposerController(session, events);
   const view = c.view;
+  const notice = userFacingMessage(c.notice);
+  const catalogNotice = userFacingMessage(c.catalogNotice);
   const slashSelected = Math.min(c.slashIndex, Math.max(view.slashMatches.length - 1, 0));
   return (
     <div className="composer-root relative z-10 min-w-0 shrink-0 px-4 pb-4 pt-1">
@@ -37,14 +40,14 @@ export function Composer({
           此会话正被其他进程占用，当前只读，不能发送。
         </p>
       )}
-      {c.notice && (
+      {notice && (
         <p role="status" className="mb-2 break-words px-2 text-center text-xs leading-5 text-amber-200/90">
-          {c.notice}
+          {notice}
         </p>
       )}
-      {c.catalogNotice && (
+      {catalogNotice && (
         <p role="status" className="mb-2 break-words px-2 text-center text-xs leading-5 text-[#888]">
-          {c.catalogNotice}
+          {catalogNotice}
         </p>
       )}
       <div ref={c.reviewRootRef} className="relative min-w-0">
@@ -91,6 +94,19 @@ export function Composer({
             onEdit={c.editGoal}
           />
         ) : null}
+        {c.workContext ? (
+          <div className="mb-2 flex min-w-0 px-1" data-work-context-slot="above-input">
+            <WorkContextPicker
+              label={c.workContext.label}
+              projects={c.workContext.projects}
+              selectedId={c.workContext.selectedId}
+              standaloneId={c.workContext.standaloneId}
+              canRetarget={c.workContext.canRetarget}
+              onPickProject={c.workContext.onPickProject}
+              onPickStandalone={c.workContext.onPickStandalone}
+            />
+          </div>
+        ) : null}
         <TextSnippetPreview snippets={c.snippets} />
         <div
           ref={anchorRef}
@@ -126,13 +142,6 @@ export function Composer({
             />
           ) : null}
           <div className="min-w-0 overflow-hidden px-3 pt-3">
-          {c.workContext ? (
-            <WorkContextPicker
-              projects={c.workContext.projects}
-              canRetarget={c.workContext.canRetarget}
-              onPickProject={c.workContext.onPickProject}
-            />
-          ) : null}
           <TextSnippetChip snippets={c.snippets} onClear={c.dismissSnippets} />
           <Attachments files={c.files} imagesOn={view.imagesOn} onRemove={c.removeFile} />
           <ComposerInput

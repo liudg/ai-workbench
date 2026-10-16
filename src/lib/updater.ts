@@ -3,6 +3,7 @@
 
 import type { Update } from "@tauri-apps/plugin-updater";
 import { isTauri } from "./ipc";
+import { userFacingMessage } from "./user-facing";
 
 export type UpdatePhase =
   | { kind: "idle" }
@@ -39,7 +40,7 @@ export async function checkForUpdate(
       notes: update.body ?? "",
     });
   } catch (e) {
-    onPhase({ kind: "error", message: String(e) });
+    onPhase({ kind: "error", message: userFacingMessage(e) ?? "更新没有完成。" });
   }
 }
 
@@ -68,6 +69,6 @@ export async function installUpdate(
     const { relaunch } = await import("@tauri-apps/plugin-process");
     await relaunch();
   } catch (e) {
-    onPhase({ kind: "error", message: String(e) });
+    onPhase({ kind: "error", message: userFacingMessage(e) ?? "更新没有完成。" });
   }
 }

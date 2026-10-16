@@ -9,9 +9,21 @@ export function visibleProjects(projects: readonly Project[]): Project[] {
   return projects.filter((project) => !project.standalone);
 }
 
-/** 项目切换只出现在还没发出的独立聊天草稿上。 */
-export function composerShowsWorkContext(standalone: boolean, draftSession: boolean): boolean {
-  return standalone && draftSession;
+export function hasUserMessage(events: readonly { kind: string }[]): boolean {
+  return events.some((event) => event.kind === "user-message");
+}
+
+/**
+ * 空会话才显示项目选择：草稿，或已经载入且还没有用户消息的会话。
+ * 第一条用户消息出现后隐藏。事件还没载入的真会话先不显示，避免旧会话闪一下。
+ */
+export function composerShowsWorkContext(input: {
+  draft: boolean;
+  eventsLoaded: boolean;
+  hasUserMessage: boolean;
+}): boolean {
+  if (input.hasUserMessage) return false;
+  return input.draft || input.eventsLoaded;
 }
 
 export function standaloneChatSessions(
@@ -31,12 +43,21 @@ export function keepSelectedProjectId(input: {
   projects: readonly Pick<Project, "id" | "standalone">[];
   current: string | null;
   standaloneDraftFocused: boolean;
+  /** 持久化下来的项目草稿。没有当前选择时回到这份草稿，而不是列表第一项。 */
+  focusedProjectId?: string | null;
 }): string | null {
-  if (input.standaloneDraftFocused) return STANDALONE_DRAFT_ID;
+  if (input.current === STANDALONE_DRAFT_ID) return STANDALONE_DRAFT_ID;
   if (input.current && input.projects.some((project) => project.id === input.current)) {
     return input.current;
   }
-  return input.projects.find((project) => !project.standalone)?.id ?? null;
+  if (input.standaloneDraftFocused) return STANDALONE_DRAFT_ID;
+  if (
+    input.focusedProjectId &&
+    input.projects.some((project) => project.id === input.focusedProjectId && !project.standalone)
+  ) {
+    return input.focusedProjectId;
+  }
+  return STANDALONE_DRAFT_ID;
 }
 
 export function projectStillListed(projectId: string, ids: ReadonlySet<string>): boolean {
@@ -67,23 +88,24 @@ function moveDraftKey<T>(map: Record<string, T>, fromKey: string, toKey: string)
   return next;
 }
 
-/** 独立草稿还没建目录。选中项目后，这段草稿改到那个项目里。 */
-export function retargetStandaloneDraft(
+/** 空草稿还没交给适配器。选中另一个项目或独立聊天时，只改本地草稿归属。 */
+export function retargetEmptyDraft(
   state: DraftCarryState,
+  fromProjectId: string,
   targetProjectId: string,
 ): DraftCarryState | null {
-  if (!targetProjectId || targetProjectId === STANDALONE_DRAFT_ID) return null;
-  const draft = state.drafts[STANDALONE_DRAFT_ID];
+  if (!fromProjectId || !targetProjectId || fromProjectId === targetProjectId) return null;
+  const draft = state.drafts[fromProjectId];
   if (!draft || draft.phase === "creating") return null;
   if (state.drafts[targetProjectId]?.phase === "creating") return null;
-  const fromKey = draftId(STANDALONE_DRAFT_ID);
+  const fromKey = draftId(fromProjectId);
   const toKey = draftId(targetProjectId);
   const drafts = { ...state.drafts, [targetProjectId]: { ...draft, projectId: targetProjectId } };
-  delete drafts[STANDALONE_DRAFT_ID];
+  delete drafts[fromProjectId];
   const draftFocused = { ...state.draftFocused, [targetProjectId]: true };
-  delete draftFocused[STANDALONE_DRAFT_ID];
+  delete draftFocused[fromProjectId];
   const activeSessionId = { ...state.activeSessionId };
-  delete activeSessionId[STANDALONE_DRAFT_ID];
+  delete activeSessionId[fromProjectId];
   delete activeSessionId[targetProjectId];
   return {
     ...state,
@@ -101,6 +123,14 @@ export function retargetStandaloneDraft(
     catalogs: moveDraftKey(state.catalogs, fromKey, toKey),
     catalogNotices: moveDraftKey(state.catalogNotices, fromKey, toKey),
   };
+}
+
+/** 独立草稿还没建目录。选中项目后，这段草稿改到那个项目里。 */
+export function retargetStandaloneDraft(
+  state: DraftCarryState,
+  targetProjectId: string,
+): DraftCarryState | null {
+  return retargetEmptyDraft(state, STANDALONE_DRAFT_ID, targetProjectId);
 }
 
 /** 首发返回的会话属于新建目录，不再挂在草稿 id 上。 */

@@ -1,4 +1,5 @@
 import type { AgentCatalog } from "../types/index.ts";
+import { userFacingMessage } from "./user-facing.ts";
 
 /** 与后端 `CATALOG_STALE_NOTICE` 同一句。有缓存时刷新失败只显示这一条。 */
 export const CATALOG_STALE_NOTICE = "模型列表刷新失败，仍显示上次的模型。";
@@ -41,12 +42,11 @@ export function reduceCatalogResult(state: CatalogMemory, outcome: CatalogOutcom
         notice: CATALOG_STALE_NOTICE,
       };
     }
-    return { live: state.live, cached: state.cached, notice: outcome.message };
+    return { live: state.live, cached: state.cached, notice: userFacingMessage(outcome.message) };
   }
 
   const incoming = outcome.catalog;
-  const trimmed = outcome.notice?.trim() ?? "";
-  const notice = trimmed ? trimmed : null;
+  const notice = userFacingMessage(outcome.notice);
   if (incoming.models.length > 0) {
     const live = keepKnownSkills(incoming, kept);
     return { live, cached: live, notice };

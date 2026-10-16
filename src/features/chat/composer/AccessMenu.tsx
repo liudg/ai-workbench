@@ -1,6 +1,7 @@
 import type { RefObject } from "react";
 import { Check } from "lucide-react";
 
+import { userFacingMessage } from "@/lib/user-facing";
 import { cn } from "@/lib/utils";
 import type { PermissionMenu, PermissionProfileOption, SessionSandbox } from "@/types";
 import { ADD_DIR_LABEL, NETWORK_LABEL, WRITABLE_HEADING } from "./access";
@@ -30,7 +31,7 @@ export function AccessMenu({
   onAddDir: () => void;
   onRemoveDir: (path: string) => void;
 }) {
-  const notice = menu?.notice?.trim() || null;
+  const notice = userFacingMessage(menu?.notice);
   return (
     <div
       ref={menuRef}

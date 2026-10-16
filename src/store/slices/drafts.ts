@@ -19,7 +19,7 @@ import {
   type FirstSendOutcome,
 } from "../draft-session";
 import { readDraftSnapshot } from "../draft-storage";
-import { adoptCreatedChat, retargetStandaloneDraft } from "../standalone";
+import { adoptCreatedChat, retargetEmptyDraft, retargetStandaloneDraft } from "../standalone";
 import type { SessionSandbox } from "@/types";
 import type { DraftSlice, PendingStart, SessionDraft, WorkbenchGet, WorkbenchSet, WorkbenchState } from "../types";
 
@@ -95,11 +95,22 @@ async function settleDraftCreate(
         ? [...s.projects, created]
         : s.projects;
     const pendingStart = dropPending(s.pendingStart, projectId);
+    const revealed =
+      missed && keepSession && sessionId
+        ? {
+            events: {
+              ...relocated.events,
+              [sessionId]: relocated.events[sessionId] ?? [],
+            },
+            eventsReady: { ...s.eventsReady, [sessionId]: true },
+          }
+        : null;
     if (!(keepSession && sandbox && sessionId)) {
-      return { ...relocated, projects, pendingStart, screen: "workspace" as const };
+      return { ...relocated, ...revealed, projects, pendingStart, screen: "workspace" as const };
     }
     return {
       ...relocated,
+      ...revealed,
       projects,
       pendingStart,
       screen: "workspace" as const,
@@ -462,6 +473,12 @@ export function createDraftSlice(
       const sent = await settleDraftCreate(set, get, projectId, result, text, "thread", sandbox);
       const selected = get().selectedProjectId ?? projectId;
       return sent ? (get().activeSessionId[selected] ?? null) : null;
+    },
+
+    retargetDraft(fromProjectId, targetProjectId) {
+      const next = retargetEmptyDraft(carry(get()), fromProjectId, targetProjectId);
+      if (!next) return;
+      set({ ...next, screen: "workspace" });
     },
 
     moveStandaloneDraft(projectId) {
