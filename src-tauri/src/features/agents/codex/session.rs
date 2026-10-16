@@ -211,7 +211,7 @@ impl AgentSession for CodexCliSession {
                 self.shared.approve_denial(prompt_id, &answer).await?;
             }
             Pending::AsyncQuestions { questions } => {
-                // 官方没有「跳过」消息：不回答就只是本地收起，回合结束时也会收起。
+                // 官方没有「跳过」回包：不回答就只在本地收起。回合结束后卡片仍留着。
                 if matches!(answer, PromptAnswer::Questions { skipped: true, .. }) {
                     self.shared.resolve_prompt(prompt_id, "已跳过".into());
                     return Ok(());
@@ -225,22 +225,12 @@ impl AgentSession for CodexCliSession {
                         .insert(prompt_id.to_string(), Pending::AsyncQuestions { questions });
                     return Err(AgentError::Runtime("先回答至少一个问题".into()));
                 }
-                // 只有真正送达的回答才消耗对应问题（`chatwidget/questions.rs`）。
-                let mut sent = Vec::new();
-                for (question_id, reply) in &replies {
-                    if let Err(err) = self.shared.steer_turn(reply).await {
-                        let left: Vec<_> = questions
-                            .iter()
-                            .filter(|q| !sent.contains(&q.id))
-                            .cloned()
-                            .collect();
-                        self.shared.pending.lock().unwrap().insert(
-                            prompt_id.to_string(),
-                            Pending::AsyncQuestions { questions: left },
-                        );
-                        return Err(err);
-                    }
-                    sent.push(question_id.clone());
+                if let Err(err) = self.shared.deliver_async_replies(&replies).await {
+                    self.shared.pending.lock().unwrap().insert(
+                        prompt_id.to_string(),
+                        Pending::AsyncQuestions { questions },
+                    );
+                    return Err(err);
                 }
                 self.shared
                     .resolve_prompt(prompt_id, questions_summary(&questions, &answer));

@@ -51,23 +51,46 @@ impl Shared {
         true
     }
 
-    /// 回合结束时，官方 TUI 收起所有还没回答的 async 提问（`take_question_drafts`）。
-    pub(super) fn drop_async_questions(&self) {
-        let dropped: Vec<String> = {
-            let mut pending = self.pending.lock().unwrap();
-            let ids: Vec<String> = pending
-                .iter()
-                .filter(|(_, item)| matches!(item, Pending::AsyncQuestions { .. }))
-                .map(|(id, _)| id.clone())
-                .collect();
-            for id in &ids {
-                pending.remove(id);
+    /// 回合还在时把回答写进当前回合。回合已经结束时，作为新的用户回合送出。
+    /// `request_user_input_async` 会立刻返回，提问挂在随后结束的回合上；
+    /// 若在 `turn/completed` 收起卡片，用户来不及回答。
+    pub(super) async fn deliver_async_replies(
+        &self,
+        replies: &[(String, String)],
+    ) -> Result<(), AgentError> {
+        let mut index = 0;
+        if self.turn_id.lock().unwrap().is_some() {
+            while index < replies.len() {
+                match self.steer_turn(&replies[index].1).await {
+                    Ok(()) => index += 1,
+                    Err(err) if super::queue::steer_no_turn(&err) => break,
+                    Err(err) => return Err(err),
+                }
             }
-            ids
-        };
-        for id in dropped {
-            self.resolve_prompt(&id, ASYNC_TURN_ENDED.into());
         }
+        if index >= replies.len() {
+            return Ok(());
+        }
+        let rest = &replies[index..];
+        let body = rest
+            .iter()
+            .map(|(_, text)| text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        let shown = rest
+            .iter()
+            .filter_map(|(_, text)| async_reply_display(text))
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        emit(
+            &self.events,
+            SessionEventBody::UserMessage {
+                text: if shown.is_empty() { body.clone() } else { shown },
+                images: Vec::new(),
+                annotations: 0,
+            },
+        );
+        self.begin_turn(body).await
     }
 
     /// 把回答作为普通用户输入写进正在进行的回合（运行中的回合里发消息即 steer）。
@@ -167,9 +190,6 @@ pub(super) fn parse_tool_questions(params: &Value) -> Vec<PromptQuestion> {
         })
         .unwrap_or_default()
 }
-
-/// 回合结束、提问被收起时卡片上的说明。
-pub(super) const ASYNC_TURN_ENDED: &str = "回合已结束，未回答";
 
 /// async 提问消息（agentMessage `questions` 字段）：`[{ title, options: string[] | null }]`。
 /// 题目 id 与桌面端、TUI 相同：`JSON.stringify(["request_user_input_async", item id, 序号])`。

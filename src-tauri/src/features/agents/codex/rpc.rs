@@ -337,7 +337,6 @@ impl Shared {
             "turn/completed" => {
                 self.turn_open.store(false, Ordering::SeqCst);
                 *self.turn_id.lock().unwrap() = None;
-                self.drop_async_questions();
                 if let Some(message) = params.pointer("/turn/error").and_then(error_text) {
                     self.plan_ready.store(false, Ordering::SeqCst);
                     if !self.reject_writer_conflict(&message) {

@@ -494,7 +494,7 @@ pub(super) fn queued_dispatch(turn_open: bool) -> QueuedDispatch {
     }
 }
 
-fn steer_no_turn(err: &AgentError) -> bool {
+pub(super) fn steer_no_turn(err: &AgentError) -> bool {
     let msg = err.to_string();
     msg.contains("回合已结束") || msg.to_ascii_lowercase().contains("no active turn")
 }
