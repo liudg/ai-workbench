@@ -2,6 +2,7 @@ import { persistedAgentKind } from "@/lib/agents";
 import { userFacingMessage } from "@/lib/user-facing";
 import { backend } from "@/lib/ipc";
 import { forgetProjectDraft, type DraftCarryState } from "../draft-session";
+import { emptyProjectDraftUpdate, landOnEmptyProjectDraft } from "../lazy-draft";
 import { keepSelectedProjectId, projectStillListed, STANDALONE_DRAFT_ID } from "../standalone";
 import { clearMissingSessionBanner, loadSessions, loadWorkspaceLists } from "../sync";
 import type { ShellSlice, WorkbenchGet, WorkbenchSet } from "../types";
@@ -43,7 +44,9 @@ export function createShellSlice(set: WorkbenchSet, get: WorkbenchGet): ShellSli
         loadSessions(projectId).then(([pid, list]) =>
           set((s) => {
             if (s.drafts[pid]?.phase === "creating" || s.pendingStart[pid]) return {};
-            return { sessions: { ...s.sessions, [pid]: list } };
+            const sessions = { ...s.sessions, [pid]: list };
+            const landed = landOnEmptyProjectDraft({ ...s, sessions }, pid);
+            return landed ? { sessions, ...emptyProjectDraftUpdate(landed) } : { sessions };
           }),
         );
       });
@@ -144,20 +147,45 @@ export function createShellSlice(set: WorkbenchSet, get: WorkbenchGet): ShellSli
           standaloneDraftFocused: Boolean(carried.draftFocused[STANDALONE_DRAFT_ID]),
           focusedProjectId,
         });
+        const landed = selectedProjectId
+          ? landOnEmptyProjectDraft(
+              {
+                ...s,
+                drafts: carried.drafts,
+                draftFocused: carried.draftFocused,
+                activeSessionId: carried.activeSessionId,
+                sessions: carried.sessions,
+                sandboxes: carried.sandboxes,
+                tuning: carried.tuning,
+                events: carried.events,
+                catalogs: carried.catalogs,
+                catalogNotices: carried.catalogNotices,
+                lastSandboxByAgent: carried.lastSandboxByAgent,
+                selectedProjectId,
+                preferredAgent: carried.preferredAgent,
+                pendingStart,
+                projects,
+              },
+              selectedProjectId,
+            )
+          : null;
+        const update = landed ? emptyProjectDraftUpdate(landed) : null;
         return {
           projects,
           sessions: carried.sessions,
           selectedProjectId,
-          drafts: carried.drafts,
-          draftFocused: carried.draftFocused,
+          drafts: update?.drafts ?? carried.drafts,
+          draftFocused: update?.draftFocused ?? carried.draftFocused,
+          activeSessionId: update?.activeSessionId ?? carried.activeSessionId,
           attachments: carried.attachments,
           textSnippets: carried.textSnippets,
-          sandboxes: carried.sandboxes,
-          tuning: carried.tuning,
+          sandboxes: update?.sandboxes ?? carried.sandboxes,
+          tuning: update?.tuning ?? carried.tuning,
           accessMode: carried.accessMode,
-          events: carried.events,
-          catalogs: carried.catalogs,
-          catalogNotices: carried.catalogNotices,
+          events: update?.events ?? carried.events,
+          catalogs: update?.catalogs ?? carried.catalogs,
+          catalogNotices: update?.catalogNotices ?? carried.catalogNotices,
+          preferredAgent: update?.preferredAgent ?? s.preferredAgent,
           pendingStart,
           ready: true,
         };

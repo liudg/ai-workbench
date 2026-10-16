@@ -1,8 +1,7 @@
 import type { ReactNode } from "react";
-import { FolderOpen, MessagesSquare } from "lucide-react";
+import { FolderOpen } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { NewSessionButton } from "@/features/sidebar";
 import { useEmptyProject } from "./use-empty-project";
 
 function EmptyPane({
@@ -44,18 +43,6 @@ export function NoProjectSelected() {
           导入文件夹
         </Button>
       </div>
-    </EmptyPane>
-  );
-}
-
-export function NoSession({ projectId }: { projectId: string }) {
-  return (
-    <EmptyPane
-      icon={<MessagesSquare className="h-6 w-6 text-zinc-400" />}
-      title="还没有会话"
-      body="会话是 Agent 的一次工作上下文。同一项目可开多个会话并行处理不同任务。"
-    >
-      <NewSessionButton projectId={projectId} appearance="primary" title="新建会话" />
     </EmptyPane>
   );
 }

@@ -3,12 +3,10 @@ import { initialSandbox } from "@/lib/sandbox";
 import { loadSessions } from "../sync";
 import {
   claimDraft,
-  draftId,
   applyDraftSend,
   applyThreadSend,
   firstSendBody,
   forgetProjectDraft,
-  openProjectDraft,
   parkComposerText,
   projectOfDraft,
   runDraftSend,
@@ -18,6 +16,7 @@ import {
   type DraftSendResult,
   type FirstSendOutcome,
 } from "../draft-session";
+import { focusProjectDraft } from "../lazy-draft";
 import { readDraftSnapshot } from "../draft-storage";
 import { adoptCreatedChat, retargetEmptyDraft, retargetStandaloneDraft } from "../standalone";
 import type { SessionSandbox } from "@/types";
@@ -195,43 +194,12 @@ export function createDraftSlice(
         get().lastSandboxByAgent[agent],
         get().profiles[agent]?.default_access,
       );
-      set((s) => {
-        const existing = s.drafts[projectId];
-        const next = openProjectDraft(existing, projectId, agent, sandbox);
-        const id = draftId(projectId);
-        const agentChanged = Boolean(existing && existing.agent !== next.agent);
-        const activeSessionId = { ...s.activeSessionId };
-        delete activeSessionId[projectId];
-        const catalogs = { ...s.catalogs };
-        const catalogNotices = { ...s.catalogNotices };
-        const tuning = { ...s.tuning };
-        const sandboxes = { ...s.sandboxes };
-        const events = { ...s.events };
-        if (!existing || agentChanged) {
-          delete catalogs[id];
-          delete catalogNotices[id];
-          delete tuning[id];
-          delete events[id];
-          if (next.sandbox) sandboxes[id] = next.sandbox;
-          else delete sandboxes[id];
-        } else if (next.sandbox && !sandboxes[id]) {
-          sandboxes[id] = next.sandbox;
-        }
-        return {
-          selectedProjectId: projectId,
-          preferredAgent: agent,
-          screen: "workspace",
-          drafts: { ...s.drafts, [projectId]: next },
-          draftFocused: { ...s.draftFocused, [projectId]: true },
-          activeSessionId,
-          catalogs,
-          catalogNotices,
-          tuning,
-          sandboxes,
-          events,
-          lastError: null,
-        };
-      });
+      set((s) => ({
+        ...focusProjectDraft(s, projectId, agent, sandbox),
+        selectedProjectId: projectId,
+        screen: "workspace" as const,
+        lastError: null,
+      }));
     },
 
     rememberDraftText(projectId, text) {

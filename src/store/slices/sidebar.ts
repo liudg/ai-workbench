@@ -2,6 +2,7 @@ import { initialSandbox } from "@/lib/sandbox";
 import { userFacingMessage } from "@/lib/user-facing";
 import { backend } from "@/lib/ipc";
 import { draftId, isPendingId } from "../draft-session";
+import { emptyProjectDraftUpdate, landOnEmptyProjectDraft } from "../lazy-draft";
 import type { Session } from "@/types";
 import { browserUnreadStorage, readUnreadFinishedIds } from "../unread-finished";
 import {
@@ -74,12 +75,20 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
     preferredAgent: null,
 
     releaseMissingSession(sessionId) {
-      set((s) => ({
-        sessions: withoutSession(s.sessions, sessionId),
-        activeSessionId: deselectSession(s.activeSessionId, sessionId),
-        lifecycleBusy: s.lifecycleBusy === sessionId ? null : s.lifecycleBusy,
-        lastError: null,
-      }));
+      set((s) => {
+        const sessions = withoutSession(s.sessions, sessionId);
+        const activeSessionId = deselectSession(s.activeSessionId, sessionId);
+        const next = {
+          sessions,
+          activeSessionId,
+          lifecycleBusy: s.lifecycleBusy === sessionId ? null : s.lifecycleBusy,
+          lastError: null,
+        };
+        const projectId = s.selectedProjectId;
+        if (!projectId) return next;
+        const landed = landOnEmptyProjectDraft({ ...s, ...next }, projectId);
+        return landed ? { ...next, ...emptyProjectDraftUpdate(landed) } : next;
+      });
     },
 
     openDialog: (mode) => set({ dialog: mode, lastError: null }),
@@ -89,7 +98,12 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
       set({ selectedProjectId: id });
       void backend.warmProjectIndex(id).catch(() => undefined);
       const [pid, list] = await loadSessions(id);
-      set((s) => ({ sessions: { ...s.sessions, [pid]: list } }));
+      set((s) => {
+        const sessions = { ...s.sessions, [pid]: list };
+        if (s.selectedProjectId !== id) return { sessions };
+        const landed = landOnEmptyProjectDraft({ ...s, sessions }, pid);
+        return landed ? { sessions, ...emptyProjectDraftUpdate(landed) } : { sessions };
+      });
       const activeId = get().activeSessionId[id];
       if (activeId && !get().events[activeId]) {
         try {
@@ -331,13 +345,13 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
         set((s) => {
           const activeSessionId = { ...s.activeSessionId };
           if (activeSessionId[projectId] === sessionId) delete activeSessionId[projectId];
-          const drop = (list: Session[] | undefined) =>
-            (list ?? []).filter((item) => item.id !== sessionId);
-          return {
-            sessions: { ...s.sessions, [projectId]: drop(s.sessions[projectId]) },
-            activeSessionId,
-            lastError: null,
+          const sessions = {
+            ...s.sessions,
+            [projectId]: (s.sessions[projectId] ?? []).filter((item) => item.id !== sessionId),
           };
+          const next = { sessions, activeSessionId, lastError: null };
+          const landed = landOnEmptyProjectDraft({ ...s, ...next }, projectId);
+          return landed ? { ...next, ...emptyProjectDraftUpdate(landed) } : next;
         });
         showInfo(set, "任务已删除");
         return true;

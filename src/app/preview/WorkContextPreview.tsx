@@ -4,6 +4,7 @@ import { Sidebar } from "@/features/sidebar";
 import { Workspace } from "@/features/workspace/Workspace";
 import { persistedAgentKind } from "@/lib/agents";
 import { useWorkbench } from "@/store";
+import { emptyProjectDraftUpdate, landOnEmptyProjectDraft } from "@/store/lazy-draft";
 import { keepSelectedProjectId, STANDALONE_DRAFT_ID } from "@/store/standalone";
 import type { AgentInstallation, AgentKind, AgentProfile, Project, Session, SessionEvent } from "@/types";
 
@@ -94,7 +95,7 @@ function userMessage(sessionId: string): SessionEvent {
   };
 }
 
-/** 开发预览。`?preview=work-context`，`scene=fresh|project|empty|sent`。不另开工作台窗口。 */
+/** 开发预览。`?preview=work-context`，`scene=fresh|project|empty|sent|cleared|choose|none`。不另开工作台窗口。 */
 export default function WorkContextPreview() {
   const scene = new URLSearchParams(window.location.search).get("scene") ?? "fresh";
 
@@ -124,6 +125,7 @@ export default function WorkContextPreview() {
       eventsReady: {},
       preferredAgent: null,
     });
+    if (scene === "none") return;
     const agent = persistedAgentKind(installations, null);
     if (scene === "sent") {
       const session = sentSession();
@@ -145,6 +147,27 @@ export default function WorkContextPreview() {
         events: { [session.id]: [] },
         eventsReady: { [session.id]: true },
       });
+      return;
+    }
+    if (scene === "choose") {
+      const session = sentSession();
+      useWorkbench.setState({
+        selectedProjectId: APP_ID,
+        sessions: { [APP_ID]: [session], [NOTES_ID]: [] },
+        activeSessionId: {},
+        events: { [session.id]: [userMessage(session.id)] },
+        eventsReady: { [session.id]: true },
+      });
+      return;
+    }
+    if (scene === "cleared") {
+      useWorkbench.setState({
+        selectedProjectId: APP_ID,
+        sessions: { [APP_ID]: [], [NOTES_ID]: [] },
+        activeSessionId: {},
+      });
+      const landed = landOnEmptyProjectDraft(useWorkbench.getState(), APP_ID);
+      if (landed) useWorkbench.setState(emptyProjectDraftUpdate(landed));
       return;
     }
     const selected = keepSelectedProjectId({

@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 
 import { useWorkbench } from "@/store";
-import { sessionFromDraft } from "@/store/draft-session";
+import { isDraftId } from "@/store/draft-session";
 import { accumulateSessionUsage } from "@/store/session-usage";
 import {
   isStandaloneDraft,
@@ -10,6 +10,7 @@ import {
   STANDALONE_DRAFT_TITLE,
 } from "@/store/standalone";
 import type { SessionEvent } from "@/types";
+import { visibleWorkspaceSession } from "./workspace-session";
 
 const EMPTY_EVENTS: SessionEvent[] = [];
 
@@ -40,13 +41,16 @@ export function useWorkspace() {
       phase: "idle",
     });
   }, [draftAgent, selectedProjectId, storedProject]);
-  const draftSession = draftFocused && draft ? sessionFromDraft(draft) : null;
-  const titledDraft =
-    draftSession && isStandaloneDraft(draftSession.project_id)
-      ? { ...draftSession, title: STANDALONE_DRAFT_TITLE }
-      : draftSession;
-  const liveSession = sessions?.find((item) => item.id === activeSessionId) ?? null;
-  const session = titledDraft ?? liveSession;
+  const picked = visibleWorkspaceSession({
+    sessions,
+    activeSessionId,
+    draft,
+    draftFocused,
+  });
+  const session =
+    picked && isDraftId(picked.id) && isStandaloneDraft(picked.project_id)
+      ? { ...picked, title: STANDALONE_DRAFT_TITLE }
+      : picked;
   const events = useWorkbench((s) => (session ? s.events[session.id] : undefined)) ?? EMPTY_EVENTS;
   const usage = useMemo(() => accumulateSessionUsage(events), [events]);
   return { project, sessions, session, events, usage };
