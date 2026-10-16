@@ -1,4 +1,5 @@
 import { persistedAgentKind } from "@/lib/agents";
+import { userFacingMessage } from "@/lib/user-facing";
 import { backend } from "@/lib/ipc";
 import { forgetProjectDraft, type DraftCarryState } from "../draft-session";
 import { keepSelectedProjectId, projectStillListed, STANDALONE_DRAFT_ID } from "../standalone";
@@ -73,7 +74,7 @@ export function createShellSlice(set: WorkbenchSet, get: WorkbenchGet): ShellSli
           profiles: Object.fromEntries(profiles.map((profile) => [profile.kind, profile])),
         });
       } catch (e) {
-        set({ lastError: String(e) });
+        set({ lastError: userFacingMessage(e) });
       }
       await get().refreshInstallations();
       await get().refreshAll();

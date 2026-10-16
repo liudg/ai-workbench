@@ -1,11 +1,10 @@
 import { keepPreferredAgent } from "@/lib/agents";
 import { backend } from "@/lib/ipc";
+import { userFacingMessage } from "@/lib/user-facing";
 import type { SettingsSlice, WorkbenchGet, WorkbenchSet } from "../types";
 
 function errorText(error: unknown): string {
-  if (typeof error === "string" && error.trim()) return error;
-  if (error instanceof Error && error.message.trim()) return error.message;
-  return "更新失败";
+  return userFacingMessage(error) ?? "更新失败";
 }
 
 export function createSettingsSlice(set: WorkbenchSet, get: WorkbenchGet): SettingsSlice {
@@ -30,7 +29,7 @@ export function createSettingsSlice(set: WorkbenchSet, get: WorkbenchGet): Setti
       } catch (e) {
         set({
           installationsLoading: false,
-          installationError: String(e),
+          installationError: userFacingMessage(e),
           installations: get().installations ?? [],
         });
       }

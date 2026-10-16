@@ -1,3 +1,4 @@
+import { userFacingMessage } from "../../../lib/user-facing.ts";
 import { DESKTOP_ZH } from "../../../shared/strings/desktop-zh.ts";
 import type { AgentSkillOption } from "../../../types/index.ts";
 
@@ -8,8 +9,9 @@ export function skillEmptyCopy(input: {
   listed: number;
 }): string {
   if (!input.hasCatalog) return DESKTOP_ZH.skillLoading;
-  const error = input.skillsError?.trim();
-  if (error && input.listed === 0) return error;
+  if (input.skillsError?.trim() && input.listed === 0) {
+    return userFacingMessage(input.skillsError) ?? "技能列表没有读到。";
+  }
   if (input.listed === 0) return DESKTOP_ZH.skillNone;
   return DESKTOP_ZH.skillNoMatch;
 }

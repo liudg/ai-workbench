@@ -1,5 +1,6 @@
 import type { Ref } from "react";
 
+import { userFacingMessage } from "@/lib/user-facing";
 import { cn } from "@/lib/utils";
 import type { Session, SessionEvent } from "@/types";
 import { AccessMenu } from "./AccessMenu";
@@ -29,6 +30,8 @@ export function Composer({
 }) {
   const c = useComposerController(session, events);
   const view = c.view;
+  const notice = userFacingMessage(c.notice);
+  const catalogNotice = userFacingMessage(c.catalogNotice);
   const slashSelected = Math.min(c.slashIndex, Math.max(view.slashMatches.length - 1, 0));
   return (
     <div className="composer-root relative z-10 min-w-0 shrink-0 px-4 pb-4 pt-1">
@@ -37,14 +40,14 @@ export function Composer({
           此会话正被其他进程占用，当前只读，不能发送。
         </p>
       )}
-      {c.notice && (
+      {notice && (
         <p role="status" className="mb-2 break-words px-2 text-center text-xs leading-5 text-amber-200/90">
-          {c.notice}
+          {notice}
         </p>
       )}
-      {c.catalogNotice && (
+      {catalogNotice && (
         <p role="status" className="mb-2 break-words px-2 text-center text-xs leading-5 text-[#888]">
-          {c.catalogNotice}
+          {catalogNotice}
         </p>
       )}
       <div ref={c.reviewRootRef} className="relative min-w-0">

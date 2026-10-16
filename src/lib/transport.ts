@@ -6,6 +6,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 
+import { userFacingMessage } from "./user-facing";
+
 export interface PickOptions {
   directory: boolean;
   multiple: boolean;
@@ -85,8 +87,18 @@ const bridgeTransport: Transport = {
     }
     if (response.status === 502 || response.status === 504) throw BRIDGE_OFFLINE;
     const body = await response.text();
-    const value = body ? JSON.parse(body) : null;
-    if (!response.ok) throw typeof value === "string" ? value : JSON.stringify(value);
+    let value: unknown = null;
+    try {
+      value = body ? JSON.parse(body) : null;
+    } catch {
+      value = null;
+    }
+    if (!response.ok) {
+      const message = userFacingMessage(value);
+      if (message) throw message;
+      // 空消息会被界面丢掉，避免把 null、JSON 或内部标记画出来。
+      throw new Error("");
+    }
     return value as T;
   },
   listen<T>(channel: string, cb: (payload: T) => void) {

@@ -1,4 +1,5 @@
 import { initialSandbox } from "@/lib/sandbox";
+import { userFacingMessage } from "@/lib/user-facing";
 import { backend } from "@/lib/ipc";
 import { draftId, isPendingId } from "../draft-session";
 import type { Session } from "@/types";
@@ -100,7 +101,7 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
           }));
         } catch (error) {
           if (isMissingSessionError(error)) get().releaseMissingSession(activeId);
-          else set({ lastError: String(error) });
+          else set({ lastError: userFacingMessage(error) });
         }
       }
     },
@@ -111,7 +112,7 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
         await showProject(result.project.id);
         return result.warning;
       } catch (e) {
-        set({ lastError: String(e) });
+        set({ lastError: userFacingMessage(e) });
         return null;
       }
     },
@@ -121,7 +122,7 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
         const project = await backend.importProject(input);
         await showProject(project.id);
       } catch (e) {
-        set({ lastError: String(e) });
+        set({ lastError: userFacingMessage(e) });
       }
     },
 
@@ -191,7 +192,7 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
             await backend.setSandbox(session.id, sandbox);
           } catch (error) {
             if (isMissingSessionError(error)) get().releaseMissingSession(session.id);
-            else set({ lastError: String(error) });
+            else set({ lastError: userFacingMessage(error) });
           }
         }
         const [, list] = await loadSessions(projectId);
@@ -220,7 +221,7 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
         }));
         return session.id;
       } catch (e) {
-        set({ lastError: String(e) });
+        set({ lastError: userFacingMessage(e) });
         return null;
       }
     },
@@ -255,7 +256,7 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
         });
       } catch (e) {
         if (isMissingSessionError(e)) get().releaseMissingSession(sessionId);
-        else set({ lastError: String(e) });
+        else set({ lastError: userFacingMessage(e) });
       }
     },
 

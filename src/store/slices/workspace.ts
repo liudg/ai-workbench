@@ -1,4 +1,5 @@
 import { reduceCatalogResult, type CatalogOutcome } from "@/lib/catalog";
+import { userFacingMessage } from "@/lib/user-facing";
 import { backend } from "@/lib/ipc";
 import { withTextSnippet, withoutTextSnippet } from "@/shared/text-snippet";
 import type { AgentKind } from "@/types";
@@ -19,7 +20,7 @@ function reportSessionError(get: WorkbenchGet, set: WorkbenchSet, sessionId: str
     get().releaseMissingSession(sessionId);
     return;
   }
-  set({ lastError: String(error) });
+  set({ lastError: userFacingMessage(error) });
 }
 
 const catalogEpoch = new Map<string, number>();
@@ -71,7 +72,7 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
         const refresh = await backend.agentCatalog(sessionId);
         outcome = { ok: true as const, catalog: refresh.catalog, notice: refresh.notice };
       } catch (error) {
-        outcome = { ok: false as const, message: String(error) };
+        outcome = { ok: false as const, message: userFacingMessage(error) ?? "" };
       }
       if (!current()) return;
 

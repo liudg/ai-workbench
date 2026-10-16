@@ -1,8 +1,12 @@
 import { useCallback, useRef, useState } from "react";
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown, Folder, MessageSquare } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useComposerMenu } from "./useComposerMenu";
+
+const CARD_SHADOW = "0 1px 2px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.04)";
+const CARD_BG = "linear-gradient(180deg, #1c1c1f 0%, #17171a 100%)";
+const CARD_BG_HOT = "linear-gradient(180deg, #242428 0%, #1e1e22 100%)";
 
 export function WorkContextPicker({
   label,
@@ -22,28 +26,46 @@ export function WorkContextPicker({
   onPickStandalone: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [hot, setHot] = useState(false);
   const anchorRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setOpen(false), []);
   useComposerMenu(open, anchorRef, menuRef, close);
+  const chat = selectedId === standaloneId;
+  const lifted = open || hot;
 
   return (
     <>
       <button
         ref={anchorRef}
         type="button"
-        className="flex max-w-full items-center gap-1 rounded-md py-0.5 text-[13px] text-[#d0d0d0] hover:text-white"
-        aria-label={label === "聊天" ? "聊天" : `项目：${label}`}
+        className="inline-flex max-w-full items-center gap-1.5 rounded-[10px] border py-1 pl-1 pr-2.5 text-[13px] leading-5 text-[#ececef]"
+        style={{
+          backgroundImage: lifted ? CARD_BG_HOT : CARD_BG,
+          borderColor: lifted ? "#3a3a42" : "#2e2e33",
+          boxShadow: CARD_SHADOW,
+        }}
+        aria-label={chat ? "聊天" : `项目：${label}`}
         aria-haspopup="menu"
         aria-expanded={open}
-        data-work-context={selectedId === standaloneId ? "chat" : selectedId}
+        data-work-context={chat ? "chat" : selectedId}
+        data-work-context-icon={chat ? "chat" : "folder"}
+        onMouseEnter={() => setHot(true)}
+        onMouseLeave={() => setHot(false)}
         onClick={(event) => {
           event.stopPropagation();
           setOpen((value) => !value);
         }}
       >
-        <span className="truncate">{label}</span>
-        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[#8d8d8d]" strokeWidth={2} />
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] bg-[#26262b] text-[#d2d2d6]">
+          {chat ? (
+            <MessageSquare className="h-3 w-3" strokeWidth={1.75} />
+          ) : (
+            <Folder className="h-3 w-3" strokeWidth={1.75} />
+          )}
+        </span>
+        <span className="min-w-0 truncate">{label}</span>
+        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[#9a9aa0]" strokeWidth={1.5} />
       </button>
       {open && (
         <div
@@ -51,8 +73,8 @@ export function WorkContextPicker({
           role="menu"
           aria-label="选择项目"
           data-work-context-menu=""
-          className="fixed z-50 min-w-[220px] overflow-hidden rounded-xl border border-zinc-700/80 bg-[#1c1c1c] py-1 shadow-xl shadow-black/50"
-          style={{ top: -9999, left: 8 }}
+          className="fixed z-50 min-w-[220px] overflow-hidden rounded-[10px] border border-[#2e2e33] py-1"
+          style={{ top: -9999, left: 8, backgroundImage: CARD_BG, boxShadow: CARD_SHADOW }}
         >
           {projects.map((project) => {
             const selected = project.id === selectedId;
