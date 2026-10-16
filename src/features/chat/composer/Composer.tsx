@@ -160,6 +160,7 @@ export function Composer({
             sandbox={c.sandbox}
             permissionMenu={view.permissionMenu}
             planChip={view.planChip}
+            planIndicator={view.planIndicator}
             goalChip={view.goalChip}
             showModel={view.showModel}
             hasCatalog={c.hasCatalog}

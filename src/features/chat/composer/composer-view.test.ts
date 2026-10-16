@@ -378,6 +378,7 @@ test("plan and goal chips are exclusive and the goal bar follows the goal", () =
   const planning = view({ events: [plan] });
   assert.equal(planning.planOn, true);
   assert.equal(planning.planChip, true);
+  assert.equal(planning.planIndicator, true);
   assert.equal(planning.goalOn, false);
   assert.equal(planning.goalChip, false);
   assert.equal(planning.goalStatus, null);
@@ -396,6 +397,9 @@ test("plan and goal chips are exclusive and the goal bar follows the goal", () =
   });
   assert.equal(sent.planOn, true);
   assert.equal(sent.planChip, false);
+  assert.equal(sent.planIndicator, true);
+  assert.equal(view({ events: [plan], caps: { ...caps, supports_plan: false } }).planIndicator, false);
+  assert.equal(view({ events: [plan], caps: undefined }).planIndicator, false);
   const live = view({
     goalLive: true,
     goal: {

@@ -125,6 +125,7 @@ export function deriveComposerView(input: ComposerViewInput) {
     live: Boolean(input.goalLive),
   });
   const planOn = mode === "plan";
+  const showPlan = Boolean(caps?.supports_plan);
   const goalOn = mode === "goal";
   const placeholder = occupied
     ? "此会话正被其他进程占用，只能查看"
@@ -188,12 +189,14 @@ export function deriveComposerView(input: ComposerViewInput) {
     goalOn,
     /** 输入框里的计划 pill。首条用户消息发出后消失。 */
     planChip: planChipVisible(input.events, planOn),
+    /** 作曲栏页脚的计划标识。跟当前协作模式走，首发后仍在。 */
+    planIndicator: showPlan && planOn,
     /** 输入框里的目标 pill。只在目标还没提交时出现，跟已保存的目标条分开。 */
     goalChip: Boolean(input.goalDraft),
     goalStatus: goalOn ? goalStatusModel(input.goal ?? null, !input.goal?.objective) : null,
     stopMode,
     sendDisabled,
-    showPlan: Boolean(caps?.supports_plan),
+    showPlan,
     showModel: Boolean(caps?.supports_tuning),
     permissionMenu: menu,
     showNetwork: Boolean(menu?.network_access) && extrasAllowed(menu, input.sandbox),
