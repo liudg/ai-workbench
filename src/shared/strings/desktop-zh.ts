@@ -122,6 +122,10 @@ export const DESKTOP_ZH = {
   panelShortcutF: "Ctrl+Shift+F",
   panelOpenTabsMenu: "已打开的标签页",
   panelOpenTabCount: "{count} 个打开的标签页",
+  /** 预览态按钮。Codex `markdownFileEditor.mode.viewSource`。 */
+  markdownViewSource: "查看源代码",
+  /** 源码态按钮。Codex `markdownFileEditor.mode.viewPreview`。 */
+  markdownViewPreview: "查看预览",
   openFiles: "打开文件",
   openFilesHint: "从工作区目录树中选择文件",
   openFilesSearch: "在文件中搜索",

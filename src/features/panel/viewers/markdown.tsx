@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { FileText } from "lucide-react";
 
 import { baseName } from "@/shared/path";
@@ -6,8 +6,16 @@ import { addSessionTextSnippet } from "../core/useAddTextSnippet";
 import { SelectionMenu } from "./SelectionMenu";
 import { payloadTitle, type PanelViewer, type ViewerViewProps } from "../core/registry";
 import { MarkdownPreview } from "./MarkdownPreview";
+import {
+  markdownModeButtonLabel,
+  markdownViewMode,
+  nextMarkdownViewMode,
+  rememberMarkdownViewMode,
+  type MarkdownViewMode,
+} from "./markdown-mode";
 import { readPreviewDocument, reopenIfDifferent } from "./document";
 import { PreviewFailed, PreviewPending } from "./frame";
+import { TextPreview } from "./TextPreview";
 import { matchMarkdown } from "./kinds";
 
 interface MarkdownPayload {
@@ -21,21 +29,54 @@ interface MarkdownPayload {
 function MarkdownViewerBody({ payload, status, sessionId }: ViewerViewProps<MarkdownPayload>) {
   const rootRef = useRef<HTMLDivElement>(null);
   const path = payload.path ?? "";
-  let body = <MarkdownPreview text={payload.text ?? ""} truncated={Boolean(payload.truncated)} />;
+  const [modeState, setModeState] = useState<{ path: string; mode: MarkdownViewMode }>(() => ({
+    path,
+    mode: markdownViewMode(path),
+  }));
+  if (modeState.path !== path) {
+    setModeState({ path, mode: markdownViewMode(path) });
+  }
+  const shown = modeState.path === path ? modeState.mode : markdownViewMode(path);
+  let body =
+    shown === "source" ? (
+      <TextPreview text={payload.text ?? ""} truncated={Boolean(payload.truncated)} />
+    ) : (
+      <MarkdownPreview text={payload.text ?? ""} truncated={Boolean(payload.truncated)} />
+    );
   if (status === "loading") body = <PreviewPending />;
   else if (status === "error") body = <PreviewFailed message={payload.error ?? ""} />;
+  const title = payloadTitle(payload) || baseName(path);
   return (
-    <div ref={rootRef} data-open-files-preview className="h-full min-h-0">
-      {body}
-      {status === "ready" && path ? (
-        <SelectionMenu
-          rootRef={rootRef}
-          path={path}
-          onAdd={(draft) => {
-            addSessionTextSnippet(sessionId, draft);
+    <div data-open-files-preview data-markdown-view={shown} className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 items-center gap-1.5 border-b border-[#222] px-3 py-1.5">
+        <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-[#bdbdbd]" title={path || title}>
+          {title}
+        </span>
+        <button
+          type="button"
+          data-markdown-mode-toggle
+          className="inline-flex h-7 shrink-0 items-center rounded-full border border-[#3a3a3a] bg-[#2a2a2a] px-3 text-[12px] leading-5 text-[#f3f3f3] hover:bg-[#333]"
+          onClick={() => {
+            const next = nextMarkdownViewMode(shown);
+            rememberMarkdownViewMode(path, next);
+            setModeState({ path, mode: next });
           }}
-        />
-      ) : null}
+        >
+          {markdownModeButtonLabel(shown)}
+        </button>
+      </div>
+      <div ref={rootRef} className="min-h-0 flex-1">
+        {body}
+        {status === "ready" && path ? (
+          <SelectionMenu
+            rootRef={rootRef}
+            path={path}
+            onAdd={(draft) => {
+              addSessionTextSnippet(sessionId, draft);
+            }}
+          />
+        ) : null}
+      </div>
     </div>
   );
 }
