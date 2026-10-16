@@ -39,6 +39,9 @@ const McpPreview = import.meta.env.DEV
 const WorkContextPreview = import.meta.env.DEV
   ? lazy(() => import("@/app/preview/WorkContextPreview"))
   : null;
+const MarkdownModePreview = import.meta.env.DEV
+  ? lazy(() => import("@/app/preview/MarkdownModePreview"))
+  : null;
 
 export default function App() {
   const preview = new URLSearchParams(window.location.search).get("preview");
@@ -116,6 +119,13 @@ export default function App() {
     return (
       <Suspense fallback={null}>
         <WorkContextPreview />
+      </Suspense>
+    );
+  }
+  if (MarkdownModePreview && preview === "markdown") {
+    return (
+      <Suspense fallback={null}>
+        <MarkdownModePreview />
       </Suspense>
     );
   }
