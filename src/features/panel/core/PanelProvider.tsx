@@ -51,6 +51,8 @@ interface PanelApi {
   setPreviewWidth: (width: number) => void;
   setDiffFilesWidth: (width: number) => void;
   patchDiffView: (patch: Partial<DiffViewPrefs>) => void;
+  filesTreeOpen: boolean;
+  toggleFilesTree: () => void;
 }
 
 const PreviewContext = createContext<PanelApi | null>(null);
@@ -159,6 +161,10 @@ export function PanelProvider({
   const patchDiffView = useCallback((patch: Partial<DiffViewPrefs>) => {
     useWorkbench.getState().panelPatchDiffView(sessionId, patch);
   }, [sessionId]);
+  const filesTreeOpen = useWorkbench((s) => s.panelBySession[sessionId]?.filesSidebarOpen ?? true);
+  const toggleFilesTree = useCallback(() => {
+    useWorkbench.getState().panelToggleFilesSidebar(sessionId);
+  }, [sessionId]);
   useCloseBrowserOnUnmount();
 
   const api = useMemo<PanelApi>(
@@ -190,6 +196,8 @@ export function PanelProvider({
       setPreviewWidth,
       setDiffFilesWidth,
       patchDiffView,
+      filesTreeOpen,
+      toggleFilesTree,
     }),
     [
       tabs,
@@ -219,6 +227,8 @@ export function PanelProvider({
       setPreviewWidth,
       setDiffFilesWidth,
       patchDiffView,
+      filesTreeOpen,
+      toggleFilesTree,
     ],
   );
 

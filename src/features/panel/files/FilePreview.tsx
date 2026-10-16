@@ -1,60 +1,145 @@
-import { useRef } from "react";
-import { File } from "lucide-react";
+import { useRef, useState } from "react";
+import { Folder } from "lucide-react";
 
-import { pathCrumb, relativeToProject } from "@/shared/path";
+import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { previewKindForPath } from "../core/preview-kind";
 import { ImageFrame } from "../viewers/image";
 import { MarkdownPreview } from "../viewers/MarkdownPreview";
 import { SourceView } from "../viewers/SourceView";
 import { TextPreview } from "../viewers/TextPreview";
-import { PreviewFailed, PreviewPending } from "../viewers/frame";
 import { SelectionMenu } from "../viewers/SelectionMenu";
 import type { SelectionDraft } from "../viewers/selection-quote";
+import {
+  markdownModeButtonLabel,
+  markdownViewMode,
+  nextMarkdownViewMode,
+  rememberMarkdownViewMode,
+  type MarkdownViewMode,
+} from "../viewers/markdown-mode";
+import { isUnsupportedPreviewPath, previewSelection, previewShellStatus, type PreviewShellStatus } from "./file-preview-nav";
+import { PreviewChrome } from "./PreviewChrome";
+import { FileSearchDialog } from "./FileSearchDialog";
 import { usePreviewFile } from "./usePreviewFile";
 import { usePreviewImage } from "./usePreviewImage";
 
-/** 在当前「打开文件」页里预览。不新开标签。 */
-export function PreviewPathBar({ path, root = "" }: { path: string; root?: string }) {
-  const relative = root ? relativeToProject(path, root) : path;
-  const shown = relative || path;
-  const parts = shown.split(/[\\/]/).filter(Boolean);
-  const name = parts[parts.length - 1] ?? shown;
-  const dirs = parts.slice(0, -1);
+/** 还没有 path 时的预览壳。文件要从树或面包屑里选。 */
+export function PreviewEmpty() {
   return (
     <div
-      data-preview-path-line
-      className="flex shrink-0 items-center gap-1.5 overflow-hidden border-b border-[#222] px-3 py-2 text-[12px] text-[#bdbdbd]"
+      data-open-files-empty
+      data-preview-shell="empty"
+      className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-6 text-center"
     >
-      <File className="h-3.5 w-3.5 shrink-0 text-[#8d8d8d]" strokeWidth={1.75} />
-      <span className="min-w-0 truncate whitespace-nowrap font-mono" title={pathCrumb(shown)}>
-        {dirs.length > 0 ? <span>{dirs.join(" / ")} / </span> : null}
-        <span className="font-bold text-[#f3f3f3]">{name}</span>
-      </span>
+      <Folder className="h-12 w-12 text-zinc-500" strokeWidth={1.25} />
+      <p className="text-sm text-zinc-100">{DESKTOP_ZH.openFiles}</p>
+      <p className="text-xs text-zinc-500">{DESKTOP_ZH.openFilesHint}</p>
     </div>
   );
 }
 
+/** 预览列：顶栏 chrome，下面是空态或某个 path 的内容。 */
+export function FilePreviewColumn({
+  projectId,
+  projectPath,
+  previewPath,
+  previewLine,
+  treeOpen,
+  onToggleTree,
+  onSelectFile,
+  quotePath,
+  onQuote,
+}: {
+  projectId: string;
+  projectPath: string;
+  previewPath: string;
+  previewLine: number | null;
+  treeOpen: boolean;
+  onToggleTree: () => void;
+  onSelectFile: (path: string, intent: { isPreview: true }, line?: number | null) => void;
+  quotePath?: string;
+  onQuote: (draft: SelectionDraft) => void;
+}) {
+  const [searchOpen, setSearchOpen] = useState(false);
+  return (
+    <div data-file-preview-column className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <PreviewChrome
+        path={previewPath}
+        root={projectPath}
+        projectId={projectId}
+        treeOpen={treeOpen}
+        onToggleTree={onToggleTree}
+        searchEnabled={Boolean(projectId)}
+        onSearch={() => setSearchOpen(true)}
+        onSelectFile={(path, intent) => onSelectFile(path, intent, null)}
+      />
+      <div className="min-h-0 flex-1">
+        {previewPath ? (
+          <FilePreview
+            key={`${previewPath}:${previewLine ?? ""}`}
+            projectId={projectId}
+            path={previewPath}
+            line={previewLine}
+            quotePath={quotePath}
+            onQuote={onQuote}
+          />
+        ) : (
+          <PreviewEmpty />
+        )}
+      </div>
+      {searchOpen && projectId ? (
+        <FileSearchDialog
+          projectId={projectId}
+          onClose={() => setSearchOpen(false)}
+          onOpen={(next, line) => {
+            const selected = previewSelection(next, "file");
+            if (!selected) return;
+            onSelectFile(selected.path, { isPreview: true }, line);
+            setSearchOpen(false);
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/** 给定 path 之后的内容。状态壳在查看器外面，Markdown 模式在内容层里面。 */
 export function FilePreview({
   projectId,
   path,
-  root = "",
   line,
   quotePath,
   onQuote,
 }: {
   projectId: string;
   path: string;
-  root?: string;
   line: number | null;
-  /** 写进对话的路径。缺省用预览里的相对路径。 */
   quotePath?: string;
   onQuote: (draft: SelectionDraft) => void;
 }) {
   const extensionImage = previewKindForPath(path) === "image";
-  const state = usePreviewFile(projectId, extensionImage ? "" : path);
-  const image = extensionImage || (state.status === "ready" && state.kind === "image");
+  const unsupported = isUnsupportedPreviewPath(path);
+  const state = usePreviewFile(projectId, extensionImage || unsupported ? "" : path);
+  const image = extensionImage || (!unsupported && state.status === "ready" && state.kind === "image");
   const picture = usePreviewImage(projectId, image ? path : "");
   const rootRef = useRef<HTMLDivElement>(null);
+  const phase = image
+    ? picture.status === "error"
+      ? "error"
+      : picture.status === "ready"
+        ? "ready"
+        : "loading"
+    : unsupported
+      ? "ready"
+      : state.status;
+  const shell = previewShellStatus({
+    path,
+    phase,
+    kind: image ? "image" : state.status === "ready" ? state.kind : undefined,
+    truncated: !image && state.status === "ready" ? state.truncated : false,
+  });
+  const errorMessage =
+    state.status === "error" ? state.message : picture.status === "error" ? picture.message : "";
+  const readyText = !image && state.status === "ready" ? state : null;
 
   return (
     <div
@@ -62,39 +147,105 @@ export function FilePreview({
       data-open-files-preview
       data-preview-path={path}
       data-preview-line={line ?? ""}
-      data-preview-status={image ? picture.status : state.status}
+      data-preview-status={shell}
       className="flex h-full min-h-0 flex-col"
     >
-      <PreviewPathBar path={path} root={root} />
       <div className="min-h-0 flex-1">
-        {image && picture.status === "loading" ? <PreviewPending /> : null}
-        {image && picture.status === "error" ? <PreviewFailed message={picture.message} /> : null}
-        {image && picture.status === "ready" ? <ImageFrame src={picture.src} name={picture.name} /> : null}
-        {!image && state.status === "loading" ? <PreviewPending /> : null}
-        {!image && state.status === "error" ? <PreviewFailed message={state.message} /> : null}
-        {!image && state.status === "ready" ? (
-          <PreviewBody text={state.text} kind={state.kind} truncated={state.truncated} line={line} />
+        {shell === "loading" ? <StatusShell status="loading">{DESKTOP_ZH.filesReading}</StatusShell> : null}
+        {shell === "error" ? <StatusShell status="error">{errorMessage || "无法读取文件"}</StatusShell> : null}
+        {shell === "tooLarge" ? (
+          <StatusShell status="tooLarge" detail={DESKTOP_ZH.previewTooLargeDetail}>
+            {DESKTOP_ZH.previewTooLarge}
+          </StatusShell>
+        ) : null}
+        {shell === "unsupported" ? (
+          <StatusShell status="unsupported" detail={DESKTOP_ZH.previewUnsupportedDetail}>
+            {DESKTOP_ZH.previewUnsupported}
+          </StatusShell>
+        ) : null}
+        {shell === "ready" && image && picture.status === "ready" ? (
+          <div data-content-viewer="image" className="h-full min-h-0">
+            <ImageFrame src={picture.src} name={picture.name} />
+          </div>
+        ) : null}
+        {shell === "ready" && readyText ? (
+          <PreviewContent path={path} text={readyText.text} kind={readyText.kind} line={line} />
         ) : null}
       </div>
-      {!image && state.status === "ready" ? (
-        <SelectionMenu rootRef={rootRef} path={quotePath || path} onAdd={onQuote} />
-      ) : null}
+      {shell === "ready" && readyText ? <SelectionMenu rootRef={rootRef} path={quotePath || path} onAdd={onQuote} /> : null}
     </div>
   );
 }
 
-function PreviewBody({
+function PreviewContent({
+  path,
   text,
   kind,
-  truncated,
   line,
 }: {
+  path: string;
   text: string;
   kind: string;
-  truncated: boolean;
   line: number | null;
 }) {
-  if (line != null) return <SourceView text={text} line={line} />;
-  if (kind === "markdown") return <MarkdownPreview text={text} truncated={truncated} />;
-  return <TextPreview text={text} truncated={truncated} />;
+  if (line != null) {
+    return (
+      <div data-content-viewer="text" className="h-full min-h-0">
+        <SourceView text={text} line={line} />
+      </div>
+    );
+  }
+  if (kind === "markdown") return <MarkdownFileContent path={path} text={text} />;
+  return (
+    <div data-content-viewer="text" className="h-full min-h-0">
+      <TextPreview text={text} truncated={false} />
+    </div>
+  );
+}
+
+function MarkdownFileContent({ path, text }: { path: string; text: string }) {
+  const [modeState, setModeState] = useState<{ path: string; mode: MarkdownViewMode }>(() => ({
+    path,
+    mode: markdownViewMode(path),
+  }));
+  if (modeState.path !== path) setModeState({ path, mode: markdownViewMode(path) });
+  const shown = modeState.path === path ? modeState.mode : markdownViewMode(path);
+  return (
+    <div data-content-viewer="markdown" data-markdown-view={shown} className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 justify-end border-b border-[#222] px-3 py-1.5">
+        <button
+          type="button"
+          data-markdown-mode-toggle
+          className="inline-flex h-7 shrink-0 items-center rounded-full border border-[#3a3a3a] bg-[#2a2a2a] px-3 text-[12px] leading-5 text-[#f3f3f3] hover:bg-[#333]"
+          onClick={() => {
+            const next = nextMarkdownViewMode(shown);
+            rememberMarkdownViewMode(path, next);
+            setModeState({ path, mode: next });
+          }}
+        >
+          {markdownModeButtonLabel(shown)}
+        </button>
+      </div>
+      <div className="min-h-0 flex-1">
+        {shown === "source" ? <TextPreview text={text} truncated={false} /> : <MarkdownPreview text={text} truncated={false} />}
+      </div>
+    </div>
+  );
+}
+
+function StatusShell({
+  status,
+  detail,
+  children,
+}: {
+  status: PreviewShellStatus;
+  detail?: string;
+  children: string;
+}) {
+  return (
+    <div data-preview-shell={status} className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
+      <p className={status === "error" ? "text-sm text-red-300" : "text-sm text-zinc-100"}>{children}</p>
+      {detail ? <p className="text-xs text-zinc-500">{detail}</p> : null}
+    </div>
+  );
 }

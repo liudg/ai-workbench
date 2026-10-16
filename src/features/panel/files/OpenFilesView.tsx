@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { Folder } from "lucide-react";
 
 import { useElementWidth } from "@/shared/dom/useElementWidth";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
@@ -9,16 +8,24 @@ import { FILES_EXPANDED_WIDTH, diffListWidth, diffListWidthAfterDrag, pinnedColu
 import { resolvePreviewPath } from "../core/preview-kind";
 import { usePanel } from "../core/PanelProvider";
 import { FileContextMenu } from "./FileContextMenu";
-import { FilePreview } from "./FilePreview";
+import { FilePreviewColumn } from "./FilePreview";
 import { WorkspaceTree } from "./WorkspaceTree";
 import { baseName } from "@/shared/path";
 import { useAttachFile } from "./useAttachFile";
 
 const SPLITTER_WIDTH = 6;
 
-/** 打开文件：右侧是工作区树。点文件在当前页预览，不新开标签。 */
+/** 打开文件：左侧是预览，右侧是工作区树。选中文件留在当前页。 */
 export function OpenFilesView() {
-  const { projectId, projectPath, sessionId, diffFilesWidth, setDiffFilesWidth } = usePanel();
+  const {
+    projectId,
+    projectPath,
+    sessionId,
+    diffFilesWidth,
+    setDiffFilesWidth,
+    filesTreeOpen,
+    toggleFilesTree,
+  } = usePanel();
   const attachFile = useAttachFile(sessionId);
   const [filter, setFilter] = useState("");
   const [previewPath, setPreviewPath] = useState("");
@@ -29,14 +36,15 @@ export function OpenFilesView() {
   const inner = Math.max(0, paneWidth - SPLITTER_WIDTH);
   const auto = diffListWidth(inner);
   const dragged = diffFilesWidth !== null ? diffListWidthAfterDrag(inner, diffFilesWidth) : null;
-  const listWidth =
+  const sized =
     paneWidth <= 0 ? FILES_EXPANDED_WIDTH : (dragged ?? auto ?? Math.min(FILES_EXPANDED_WIDTH, inner));
+  const listWidth = filesTreeOpen ? sized : null;
   const metrics = useRef({ pane: 0, list: 0 });
   const widthRef = useRef(diffFilesWidth);
   metrics.current = { pane: inner, list: listWidth ?? auto ?? 0 };
   if (diffFilesWidth !== null) widthRef.current = diffFilesWidth;
 
-  const openFile = (path: string, line?: number | null) => {
+  const openFile = (path: string, _intent: { isPreview: true }, line?: number | null) => {
     setPreviewPath(path);
     setPreviewLine(line ?? null);
   };
@@ -54,28 +62,23 @@ export function OpenFilesView() {
   };
 
   return (
-    <div ref={frameRef} data-open-files className="relative flex h-full min-h-0 min-w-0 overflow-hidden" data-file-tree="visible">
-      <div className="flex min-h-0 w-0 min-w-0 flex-1 basis-0 flex-col overflow-hidden">
-        {previewPath ? (
-          <div className="min-h-0 flex-1">
-            <FilePreview
-              key={`${previewPath}:${previewLine ?? ""}`}
-              projectId={projectId}
-              path={previewPath}
-              root={projectPath}
-              line={previewLine}
-              quotePath={resolvePreviewPath(projectPath, previewPath) || previewPath}
-              onQuote={(draft) => addSessionTextSnippet(sessionId, draft)}
-            />
-          </div>
-        ) : (
-          <div data-open-files-empty className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
-            <Folder className="h-12 w-12 text-zinc-500" strokeWidth={1.25} />
-            <p className="text-sm text-zinc-100">{DESKTOP_ZH.openFiles}</p>
-            <p className="text-xs text-zinc-500">{DESKTOP_ZH.openFilesHint}</p>
-          </div>
-        )}
-      </div>
+    <div
+      ref={frameRef}
+      data-open-files
+      data-file-tree={listWidth !== null ? "visible" : "hidden"}
+      className="relative flex h-full min-h-0 min-w-0 overflow-hidden"
+    >
+      <FilePreviewColumn
+        projectId={projectId}
+        projectPath={projectPath}
+        previewPath={previewPath}
+        previewLine={previewLine}
+        treeOpen={filesTreeOpen}
+        onToggleTree={toggleFilesTree}
+        onSelectFile={openFile}
+        quotePath={previewPath ? resolvePreviewPath(projectPath, previewPath) || previewPath : ""}
+        onQuote={(draft) => addSessionTextSnippet(sessionId, draft)}
+      />
       {listWidth !== null ? (
         <ColumnSplitter
           name="open-files"
@@ -93,6 +96,7 @@ export function OpenFilesView() {
       {listWidth !== null ? (
         <aside
           data-workspace-tree
+          data-tree-surface="sidebar"
           style={pinnedColumnStyle(listWidth)}
           className="flex h-full min-h-0 flex-col overflow-hidden border-l border-[#222] bg-[#0f0f0f]"
         >
@@ -111,7 +115,9 @@ export function OpenFilesView() {
               projectId={projectId}
               filter={filter}
               activePath={previewPath}
-              onSelect={(path) => openFile(path)}
+              surface="sidebar"
+              directoryPath=""
+              onSelectFile={(path, intent) => openFile(path, intent)}
               onContextMenu={(path, event) => setContextMenu({ x: event.clientX, y: event.clientY, path })}
             />
           </div>
