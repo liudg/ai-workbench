@@ -1,8 +1,9 @@
 import type { McpField, McpServerRow, McpSurface } from "@/types";
 
 /**
- * 设置页文案。能对上 Codex 桌面 zh-CN（26.1007.9446）的用桌面中文。
- * 协议名保持英文：MCP、STDIO、HTTP、SSE、OAuth、CLI、JSON、URL、Headers、scope。
+ * 设置页文案。能对上 Codex 桌面 zh-CN 的用桌面中文。
+ * 协议名保持英文：MCP、STDIO、HTTP、SSE、OAuth、JSON、URL、Headers。
+ * 菜单文案是产品中文；显不显示由适配器的动词和规则决定，不按 Agent 名字分支。
  * 对照笔记只留在开发记录里，不进界面。
  */
 export const MCP_PAGE = {
@@ -17,14 +18,16 @@ export const MCP_PAGE = {
   save: "保存",
   saveError: "无法保存 MCP 服务器",
   uninstallError: "无法卸载 MCP 服务器",
-  switchNotice: "如需切换 MCP 服务器类型，请先卸载当前配置。",
-  settings: "设置",
   authenticate: "进行身份验证",
-  starting: "启动中…",
   enable: "启用",
   disable: "禁用",
   enabled: "已启用",
   disabled: "已禁用",
+  connected: "已连接",
+  configured: "已配置",
+  loggedOut: "未登录",
+  failed: "失败",
+  authLabel: "认证",
   typeLabel: "类型",
   typeAria: "MCP 服务器类型",
   name: "名称",
@@ -41,11 +44,36 @@ export const MCP_PAGE = {
   url: "URL",
   bearer: "Bearer 令牌环境变量",
   registration: "OAuth 客户端注册",
-  scopesPlaceholder: "要请求的 OAuth scope，用逗号分隔",
-  authLabel: "认证",
-  statusLabel: "状态",
-  actionFailed: "操作未成功",
+  scopesPlaceholder: "要请求的 OAuth 权限范围，用逗号分隔",
+  loading: "正在读取 MCP…",
+  processing: "处理中…",
+  saved: "已保存",
+  removed: "已卸载",
+  authStarted: "已开始身份验证",
+  authCleared: "已取消认证",
+  enableError: "无法启用",
+  disableError: "无法禁用",
+  loginError: "无法进行身份验证",
+  logoutError: "无法取消认证",
+  toolsError: "无法查看工具",
+  listErrorTitle: "无法读取服务器",
+  viewDetails: "查看详情",
+  notInstalled: "未安装",
+  authMenu: "身份验证",
+  logoutMenu: "取消认证",
+  toolsMenu: "查看工具",
+  more: "更多操作",
+  uninstallConfirmTitle: "卸载此 MCP 服务器？",
+  cancel: "取消",
+  showValue: "显示",
+  hideValue: "隐藏",
+  toolsHeading: "工具",
+  toolsEmpty: "没有可用工具",
 };
+
+export const MASKED_VALUE = "••••••";
+
+const DEV_REASON = /未观察|未验证|动词/;
 
 const REGISTRATION_LONG: Record<string, string> = {
   auto: "自动",
@@ -59,18 +87,71 @@ const ADD_LABEL: Record<string, string> = {
   headers: "添加 Header",
 };
 
-const AUTH_STATUS: Record<string, string> = {
-  unsupported: "不支持",
-  notLoggedIn: "未登录",
-  bearer_token: "Bearer",
-  bearerToken: "Bearer",
-  oAuth: "OAuth",
-  oauth: "OAuth",
-  unknown: "未知",
-};
+export type McpAction = "save" | "remove" | "login" | "logout" | "enable" | "disable" | "tools";
 
-export function existingTitle(name: string): string {
-  return `更新 ${name} MCP`;
+export type McpFeedback =
+  | { tone: "success"; text: string }
+  | { tone: "failure"; title: string; detail: string };
+
+export type McpStatusKind = "connected" | "configured" | "loggedOut" | "failed" | "disabled";
+
+export type McpMenuId = "login" | "logout" | "tools" | "remove";
+
+export interface McpMenuAction {
+  id: McpMenuId;
+  label: string;
+}
+
+export interface McpToolEntry {
+  name: string;
+  description: string;
+}
+
+export function failureTitle(action: McpAction): string {
+  switch (action) {
+    case "save":
+      return MCP_PAGE.saveError;
+    case "remove":
+      return MCP_PAGE.uninstallError;
+    case "login":
+      return MCP_PAGE.loginError;
+    case "logout":
+      return MCP_PAGE.logoutError;
+    case "enable":
+      return MCP_PAGE.enableError;
+    case "disable":
+      return MCP_PAGE.disableError;
+    case "tools":
+      return MCP_PAGE.toolsError;
+  }
+}
+
+export function successText(action: Exclude<McpAction, "tools">): string {
+  switch (action) {
+    case "save":
+      return MCP_PAGE.saved;
+    case "remove":
+      return MCP_PAGE.removed;
+    case "login":
+      return MCP_PAGE.authStarted;
+    case "logout":
+      return MCP_PAGE.authCleared;
+    case "enable":
+      return MCP_PAGE.enabled;
+    case "disable":
+      return MCP_PAGE.disabled;
+  }
+}
+
+export function uninstallConfirmBody(name: string): string {
+  return `将移除「${name}」。`;
+}
+
+/** 后端笔记和开发口吻不进界面。空原因也不显示。 */
+export function visibleUnavailableReason(reason: string | null | undefined): string | null {
+  const text = reason?.trim() ?? "";
+  if (!text || DEV_REASON.test(text)) return null;
+  return text;
 }
 
 export function registrationLong(id: string): string {
@@ -81,35 +162,60 @@ export function registrationAria(id: string): string {
   return `OAuth 客户端注册：${registrationLong(id)}`;
 }
 
-export function authStatusLabel(status: string): string {
-  if (!status) return "";
-  return AUTH_STATUS[status] ?? status;
+export function rowStatus(row: McpServerRow): { kind: McpStatusKind; label: string } {
+  if (row.enabled === false) return { kind: "disabled", label: MCP_PAGE.disabled };
+  if (row.auth_status === "notLoggedIn") return { kind: "loggedOut", label: MCP_PAGE.loggedOut };
+  if (isFailedStatus(row.status_text)) return { kind: "failed", label: MCP_PAGE.failed };
+  if (isConnectedStatus(row.status_text)) return { kind: "connected", label: MCP_PAGE.connected };
+  return { kind: "configured", label: MCP_PAGE.configured };
 }
 
-export function enabledLabel(enabled: boolean | null): string {
-  if (enabled === true) return MCP_PAGE.enabled;
-  if (enabled === false) return MCP_PAGE.disabled;
-  return "";
-}
-
-export function statusTextLabel(text: string): string {
+function isFailedStatus(text: string): boolean {
   const trimmed = text.trim();
+  if (!trimmed) return false;
+  if (/[×✗]/.test(trimmed)) return true;
   const bare = trimmed.replace(/^[√×✓✗]\s*/, "");
-  if (bare === "Connected") return "已连接";
-  if (bare === "Failed to connect") return "连接失败";
-  if (bare === "ready") return "就绪";
-  return trimmed;
+  return bare === "Failed to connect" || /^failed\b/i.test(bare);
 }
 
-export function rowStatusLine(surface: McpSurface, row: McpServerRow): string {
-  return [
-    row.transport ? transportLabel(surface, row.transport) : "",
-    statusTextLabel(row.status_text),
-    authStatusLabel(row.auth_status),
-    enabledLabel(row.enabled),
-  ]
-    .filter(Boolean)
-    .join(" · ");
+/** 只有列表原文写明已连接或就绪时才算连上。Codex 的 list 没有这项。 */
+function isConnectedStatus(text: string): boolean {
+  const bare = text.trim().replace(/^[√×✓✗]\s*/, "").toLowerCase();
+  return bare === "connected" || bare === "ready";
+}
+
+/** 详情里的认证方式。空或未识别的原文不显示。 */
+export function authMethodLabel(status: string): string | null {
+  if (status === "unsupported") return "不支持";
+  if (status === "bearer_token" || status === "bearerToken") return "Bearer";
+  if (status === "oauth" || status === "oAuth") return "OAuth";
+  return null;
+}
+
+export function withRowBusy(current: ReadonlySet<string>, name: string): ReadonlySet<string> {
+  if (current.has(name)) return current;
+  const next = new Set(current);
+  next.add(name);
+  return next;
+}
+
+export function withoutRowBusy(current: ReadonlySet<string>, name: string): ReadonlySet<string> {
+  if (!current.has(name)) return current;
+  const next = new Set(current);
+  next.delete(name);
+  return next;
+}
+
+export function menuDismissKey(key: string): boolean {
+  return key === "Escape";
+}
+
+/** 列表上的传输标签。协议名只有 STDIO、HTTP、SSE。 */
+export function transportTag(id: string): "STDIO" | "HTTP" | "SSE" | null {
+  if (id === "stdio") return "STDIO";
+  if (id === "sse") return "SSE";
+  if (id === "http" || id === "streamable_http") return "HTTP";
+  return null;
 }
 
 export function addLabel(fieldId: string): string | null {
@@ -154,8 +260,31 @@ export function showRemove(surface: McpSurface): boolean {
   return surface.manageable && surface.verbs.remove;
 }
 
-export function transportLabel(surface: McpSurface, id: string): string {
-  return surface.transports.find((item) => item.id === id)?.label ?? id;
+export function showToggle(surface: McpSurface, row: McpServerRow): boolean {
+  if (!surface.manageable || row.enabled === null || row.enabled === undefined) return false;
+  return surface.verbs.enable || surface.verbs.disable;
+}
+
+/** 开关要切到 `enabled` 的反方向时，对应动词是否存在。 */
+export function toggleNextAllowed(surface: McpSurface, enabled: boolean): boolean {
+  return enabled ? surface.verbs.disable : surface.verbs.enable;
+}
+
+export function loginNeedsOptions(surface: McpSurface): boolean {
+  return surface.oauth_registration.length > 0 || showLoginScopes(surface);
+}
+
+export function menuActions(surface: McpSurface, row: McpServerRow): McpMenuAction[] {
+  const items: McpMenuAction[] = [];
+  if (showLogin(surface, row)) items.push({ id: "login", label: MCP_PAGE.authMenu });
+  if (surface.manageable && surface.verbs.logout && surface.logout_label.trim()) {
+    items.push({ id: "logout", label: MCP_PAGE.logoutMenu });
+  }
+  if (surface.manageable && surface.verbs.list_tools && surface.tools_label.trim()) {
+    items.push({ id: "tools", label: MCP_PAGE.toolsMenu });
+  }
+  if (showRemove(surface)) items.push({ id: "remove", label: MCP_PAGE.uninstall });
+  return items;
 }
 
 export function defaultTransport(surface: McpSurface): string {
@@ -172,4 +301,55 @@ export function showRegistration(surface: McpSurface, transport: string): boolea
 
 export function showLoginScopes(surface: McpSurface): boolean {
   return surface.oauth_registration.length > 0;
+}
+
+/** 把 list-tools 原文拆成名称和说明。认不出的行整行当作名称，不丢内容。 */
+export function parseToolList(text: string): McpToolEntry[] {
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+  const json = parseToolJson(trimmed);
+  if (json) return json;
+  const entries: McpToolEntry[] = [];
+  for (const raw of trimmed.split(/\r?\n/)) {
+    const line = raw.trim().replace(/^[-*•]\s+/, "");
+    if (!line || /^tools\b/i.test(line) || /^available tools\b/i.test(line)) continue;
+    const colon = line.match(/^([A-Za-z0-9_.:/-]+)\s*[:：]\s+(.+)$/);
+    if (colon) {
+      entries.push({ name: colon[1], description: colon[2].trim() });
+      continue;
+    }
+    const dash = line.match(/^([A-Za-z0-9_.:/-]+)\s+[-–—]\s+(.+)$/);
+    if (dash) {
+      entries.push({ name: dash[1], description: dash[2].trim() });
+      continue;
+    }
+    entries.push({ name: line, description: "" });
+  }
+  return entries;
+}
+
+function parseToolJson(text: string): McpToolEntry[] | null {
+  if (!text.startsWith("{") && !text.startsWith("[")) return null;
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  const list = Array.isArray(value)
+    ? value
+    : value && typeof value === "object" && Array.isArray((value as { tools?: unknown }).tools)
+      ? (value as { tools: unknown[] }).tools
+      : null;
+  if (!list) return null;
+  const entries: McpToolEntry[] = [];
+  for (const item of list) {
+    if (!item || typeof item !== "object") continue;
+    const record = item as { name?: unknown; description?: unknown };
+    const name = typeof record.name === "string" ? record.name.trim() : "";
+    if (!name) continue;
+    const description = typeof record.description === "string" ? record.description.trim() : "";
+    entries.push({ name, description });
+  }
+  return entries;
 }

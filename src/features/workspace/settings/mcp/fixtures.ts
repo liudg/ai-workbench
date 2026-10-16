@@ -126,7 +126,7 @@ export const cursorSurface: McpSurface = {
   login_statuses: [],
   logout_label: "",
   scope_label: "",
-  tools_label: "列出可用工具",
+  tools_label: "查看工具",
   notes: [
     { label: "add / remove", reason: "agent mcp 没有 add 和 remove。不显示 Add server 和 Uninstall。" },
     { label: "Authenticate", reason: "列表里没看到未登录状态。每一行都显示 Authenticate。" },
@@ -138,7 +138,7 @@ export const unverifiedSurface: McpSurface = {
   display_name: "Kimi Code",
   installed: false,
   manageable: false,
-  unavailable_reason: "本机未安装该 CLI，暂无法管理 MCP。",
+  unavailable_reason: "未检测到 Kimi Code，安装后可在此管理 MCP。",
   verbs: none,
   transports: [],
   scopes: [],
