@@ -1,8 +1,8 @@
-//! 在打开的工作区目录里搜索文件名和文件内容。
-//! 工作台没有接入 Codex 的全文搜索 RPC，这里直接读项目目录。
-//! 目录和正文进 `FileIndex` 后，下一次查询不再重走磁盘。索引没建完时按时间片推进。
-//! 新的查询会让旧查询直接作废。
+//! 路径索引和内容搜索是两条通道。
+//! 文件名筛选只读内存里的路径，不打开文件。内容搜索单独读正文，并且可以取消。
+//! 索引在后台建，查询先返回已经扫到的匹配，扫完后 `ready` / `done` 才为真。
 
+mod content;
 mod cursor;
 mod mask;
 
@@ -17,12 +17,14 @@ use std::time::Duration;
 use serde::Serialize;
 use tauri::State;
 
+use self::content::scan_file;
+use self::cursor::{ContentPoll, SearchCursor};
 use super::index::FileIndex;
 use crate::features::projects::ProjectStore;
-use cursor::SearchCursor;
 
 const SEARCH_LIMIT: usize = 100;
 const SEARCH_SLICE: Duration = Duration::from_millis(80);
+const SCAN_SLICE: Duration = Duration::from_millis(20);
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct SearchHit {
@@ -52,6 +54,8 @@ struct ProjectEntry {
     index: FileIndex,
     latest: u64,
     cursor: Option<SearchCursor>,
+    scanning: bool,
+    content_bytes: u64,
 }
 
 pub struct IndexHub {
@@ -72,6 +76,59 @@ impl IndexHub {
             inner: Arc::clone(&self.inner),
         }
     }
+
+    pub(crate) fn warm_root(&self, root: PathBuf) {
+        let key = index_key(&root);
+        {
+            let mut guard = lock(&self.inner);
+            guard
+                .entry(key.clone())
+                .or_insert_with(|| ProjectEntry::new(root));
+        }
+        start_scan(Arc::clone(&self.inner), key);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn finish_for_test(&self, root: &Path) {
+        let key = index_key(root);
+        let mut guard = lock(&self.inner);
+        let entry = guard
+            .entry(key)
+            .or_insert_with(|| ProjectEntry::new(root.to_path_buf()));
+        let mut guard_count = 0;
+        while !entry.index.complete() {
+            entry.index.pump_steps(32);
+            guard_count += 1;
+            assert!(guard_count < 100_000, "index did not finish");
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn content_bytes(&self, root: &Path) -> u64 {
+        let key = index_key(root);
+        lock(&self.inner)
+            .get(&key)
+            .map(|entry| entry.content_bytes)
+            .unwrap_or(0)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn index_counts(&self, root: &Path) -> (usize, usize) {
+        let key = index_key(root);
+        lock(&self.inner)
+            .get(&key)
+            .map(|entry| (entry.index.file_count(), entry.index.dir_count()))
+            .unwrap_or((0, 0))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn read_count(&self, root: &Path) -> u64 {
+        let key = index_key(root);
+        lock(&self.inner)
+            .get(&key)
+            .map(|entry| entry.index.read_count())
+            .unwrap_or(0)
+    }
 }
 
 impl ProjectEntry {
@@ -80,43 +137,16 @@ impl ProjectEntry {
             index: FileIndex::new(root),
             latest: 0,
             cursor: None,
+            scanning: false,
+            content_bytes: 0,
         }
     }
+}
 
-    fn search_busy(&self) -> bool {
-        self.cursor.as_ref().is_some_and(|cursor| !cursor.done)
-    }
-
-    fn prepare_index(&mut self, budget: Duration) {
-        if !self.search_busy() {
-            self.index.refresh(budget);
-        }
-        self.index.pump_budget(budget);
-    }
-
-    fn advance(&mut self, id: u64, query: &str, mask: &str, budget: Duration) -> SearchOutput {
-        if id < self.latest {
-            return SearchOutput {
-                hits: Vec::new(),
-                truncated: false,
-                done: true,
-                cancelled: true,
-            };
-        }
-        self.latest = id;
-        let same = self.cursor.as_ref().is_some_and(|cursor| cursor.id == id);
-        if !same {
-            self.index.refresh(budget);
-            self.cursor = Some(SearchCursor::new(id, query, mask, SEARCH_LIMIT));
-        }
-        let cursor = self.cursor.as_mut().expect("cursor");
-        cursor.pump(budget, &mut self.index);
-        let output = cursor.snapshot(false);
-        if output.done {
-            self.cursor = None;
-        }
-        output
-    }
+fn lock(
+    inner: &Mutex<HashMap<String, ProjectEntry>>,
+) -> std::sync::MutexGuard<'_, HashMap<String, ProjectEntry>> {
+    inner.lock().unwrap_or_else(|err| err.into_inner())
 }
 
 fn index_key(root: &Path) -> String {
@@ -124,6 +154,49 @@ fn index_key(root: &Path) -> String {
         .unwrap_or_else(|_| root.to_path_buf())
         .to_string_lossy()
         .into_owned()
+}
+
+fn start_scan(inner: Arc<Mutex<HashMap<String, ProjectEntry>>>, key: String) {
+    {
+        let mut guard = lock(&inner);
+        let Some(entry) = guard.get_mut(&key) else {
+            return;
+        };
+        if entry.scanning || entry.index.complete() {
+            return;
+        }
+        entry.scanning = true;
+    }
+    let worker = Arc::clone(&inner);
+    let worker_key = key.clone();
+    let spawned = std::thread::Builder::new()
+        .name("file-index".into())
+        .spawn(move || {
+            loop {
+                let mut guard = lock(&worker);
+                let Some(entry) = guard.get_mut(&worker_key) else {
+                    break;
+                };
+                if entry.index.complete() {
+                    entry.scanning = false;
+                    break;
+                }
+                entry.index.pump_budget(SCAN_SLICE);
+                if entry.index.complete() {
+                    entry.scanning = false;
+                    break;
+                }
+                drop(guard);
+                // 放下锁之后留出空隙，查询才能读到已经扫到的路径。
+                std::thread::sleep(Duration::from_millis(2));
+            }
+        });
+    if spawned.is_err() {
+        let mut guard = lock(&inner);
+        if let Some(entry) = guard.get_mut(&key) {
+            entry.scanning = false;
+        }
+    }
 }
 
 pub(crate) fn query_indexed_paths(
@@ -142,25 +215,138 @@ pub(crate) fn query_indexed_paths(
         };
     }
     let key = index_key(&root);
-    let mut guard = hub.inner.lock().unwrap_or_else(|err| err.into_inner());
-    let entry = guard.entry(key).or_insert_with(|| ProjectEntry::new(root));
-    entry.prepare_index(SEARCH_SLICE);
-    if !alive() {
-        return IndexedPaths {
-            paths: Vec::new(),
-            truncated: false,
-            cancelled: true,
-            ready: true,
-        };
+    let (paths, truncated, ready) = {
+        let mut guard = lock(&hub.inner);
+        let entry = guard
+            .entry(key.clone())
+            .or_insert_with(|| ProjectEntry::new(root));
+        if entry.index.complete() {
+            entry.index.refresh(SCAN_SLICE);
+        }
+        if !alive() {
+            return IndexedPaths {
+                paths: Vec::new(),
+                truncated: false,
+                cancelled: true,
+                ready: true,
+            };
+        }
+        let ready = entry.index.complete();
+        let (paths, truncated) = entry.index.matching_paths(query, limit);
+        (paths, truncated, ready)
+    };
+    if !ready {
+        start_scan(Arc::clone(&hub.inner), key);
     }
-    let ready = entry.index.complete();
-    let (paths, truncated) = entry.index.matching_paths(query, limit);
     IndexedPaths {
         paths,
         truncated,
         cancelled: false,
         ready,
     }
+}
+
+pub(crate) fn search_blocking(
+    hub: &IndexHub,
+    root: PathBuf,
+    query: &str,
+    mask: &str,
+    search_id: u64,
+) -> SearchOutput {
+    let key = index_key(&root);
+    {
+        let mut guard = lock(&hub.inner);
+        guard
+            .entry(key.clone())
+            .or_insert_with(|| ProjectEntry::new(root.clone()));
+    }
+    start_scan(Arc::clone(&hub.inner), key.clone());
+    let started = std::time::Instant::now();
+    loop {
+        let polled = {
+            let mut guard = lock(&hub.inner);
+            let Some(entry) = guard.get_mut(&key) else {
+                return cancelled_output();
+            };
+            if search_id < entry.latest {
+                return cancelled_output();
+            }
+            entry.latest = search_id;
+            let same = entry
+                .cursor
+                .as_ref()
+                .is_some_and(|cursor| cursor.id == search_id);
+            if !same {
+                entry.cursor = Some(SearchCursor::new(search_id, query, mask, SEARCH_LIMIT));
+            }
+            let cursor = entry.cursor.as_mut().expect("cursor");
+            if cursor.done {
+                return cursor.snapshot(false);
+            }
+            if cursor.flush_names(&entry.index) {
+                return cursor.snapshot(false);
+            }
+            if started.elapsed() >= SEARCH_SLICE {
+                return cursor.snapshot(false);
+            }
+            match cursor.poll_content(&entry.index) {
+                ContentPoll::Rest { done } => {
+                    if done {
+                        cursor.done = true;
+                    }
+                    return cursor.snapshot(false);
+                }
+                ContentPoll::File(file) => file,
+            }
+        };
+        let cursor_query = {
+            let guard = lock(&hub.inner);
+            guard
+                .get(&key)
+                .and_then(|entry| entry.cursor.as_ref())
+                .filter(|cursor| cursor.id == search_id)
+                .map(|cursor| (cursor.room(), cursor.query_lower()))
+        };
+        let Some((room, query_lower)) = cursor_query else {
+            return cancelled_output();
+        };
+        let outcome = scan_file(&polled.abs, &polled.rel, &query_lower, room);
+        let mut guard = lock(&hub.inner);
+        let Some(entry) = guard.get_mut(&key) else {
+            return cancelled_output();
+        };
+        if entry.latest != search_id {
+            return cancelled_output();
+        }
+        entry.content_bytes = entry.content_bytes.saturating_add(outcome.bytes);
+        let cursor = entry.cursor.as_mut().expect("cursor");
+        cursor.commit_content(outcome);
+        if cursor.done || started.elapsed() >= SEARCH_SLICE {
+            return cursor.snapshot(false);
+        }
+    }
+}
+
+fn cancelled_output() -> SearchOutput {
+    SearchOutput {
+        hits: Vec::new(),
+        truncated: false,
+        done: true,
+        cancelled: true,
+    }
+}
+
+#[tauri::command]
+pub async fn warm_project_index(
+    store: State<'_, ProjectStore>,
+    hub: State<'_, IndexHub>,
+    project_id: String,
+) -> Result<(), String> {
+    let project = store
+        .get(&project_id)
+        .ok_or_else(|| "项目不存在".to_string())?;
+    hub.warm_root(PathBuf::from(project.path));
+    Ok(())
 }
 
 #[tauri::command]
@@ -176,15 +362,10 @@ pub async fn search_project_files(
         .get(&project_id)
         .ok_or_else(|| "项目不存在".to_string())?;
     let root = PathBuf::from(&project.path);
-    let inner = hub.inner.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut guard = inner.lock().unwrap_or_else(|err| err.into_inner());
-        let key = index_key(&root);
-        let entry = guard.entry(key).or_insert_with(|| ProjectEntry::new(root));
-        entry.advance(search_id, &query, &mask, SEARCH_SLICE)
-    })
-    .await
-    .map_err(|err| format!("搜索失败: {err}"))
+    let hub = hub.fork();
+    tokio::task::spawn_blocking(move || search_blocking(&hub, root, &query, &mask, search_id))
+        .await
+        .map_err(|err| format!("搜索失败: {err}"))
 }
 
 fn contains_ignore_case(text: &str, query: &str) -> bool {

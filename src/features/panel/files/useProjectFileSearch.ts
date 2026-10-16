@@ -44,6 +44,7 @@ export function useProjectFileSearch(projectId: string, query: string, mask: str
               setLoading(false);
               return;
             }
+            await new Promise((resolve) => window.setTimeout(resolve, 40));
           }
           if (!stopped) {
             setError("搜索没有完成");

@@ -178,8 +178,10 @@ export interface Backend {
   readPreviewImage(projectId: string, path: string): Promise<PreviewImage>;
   /** 工作区某一层目录。展开后再读下一层，不把整棵树截断。 */
   listProjectDir(projectId: string, path: string): Promise<TreeEntry[]>;
-  /** 按相对路径筛选工作区文件。未接入的查询会带 cancelled。 */
+  /** 按相对路径筛选工作区文件。不读正文。`ready: false` 时接着要下一页。 */
   filterProjectPaths(projectId: string, query: string): Promise<PathFilter>;
+  /** 打开项目后提前建路径索引。失败不影响打开项目。 */
+  warmProjectIndex(projectId: string): Promise<void>;
   /** 在项目目录里搜索文件名和文本。分段返回，searchId 用来取消上一段。 */
   searchProjectFiles(
     projectId: string,

@@ -255,6 +255,7 @@ mod tests {
         let mut found = query_indexed_paths(&hub, root.clone(), "keep.ts", 100, || true);
         let mut guard = 0;
         while !found.ready && !found.cancelled {
+            std::thread::sleep(std::time::Duration::from_millis(2));
             found = query_indexed_paths(&hub, root.clone(), "keep.ts", 100, || true);
             guard += 1;
             assert!(guard < 100_000, "index did not finish");
