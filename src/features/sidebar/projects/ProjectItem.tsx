@@ -19,7 +19,6 @@ export function ProjectItem({ project }: { project: Project }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
-  const [showAll, setShowAll] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const closeMenu = useCallback(() => {
     setMenuOpen(false);
@@ -133,8 +132,6 @@ export function ProjectItem({ project }: { project: Project }) {
           sessions={grouped.active}
           selected={selected}
           activeSessionId={rowActiveId}
-          showAll={showAll}
-          onToggleShowAll={() => setShowAll((value) => !value)}
         />
       )}
     </div>

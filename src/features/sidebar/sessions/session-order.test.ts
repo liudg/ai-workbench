@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   orderSidebarSessions,
   pinActiveSessions,
+  revealMoreSessions,
   SESSION_PREVIEW_LIMIT,
   sidebarSessionWindow,
 } from "./session-order.ts";
@@ -54,45 +55,56 @@ test("idle order is unchanged when nothing is running or waiting", () => {
   );
 });
 
-test("show more still previews eight and reveals the rest only when asked", () => {
+test("show more previews eight, then one more page of eight", () => {
   assert.equal(SESSION_PREVIEW_LIMIT, 8);
   const sessions = Array.from({ length: 9 }, (_, index) => ({
     id: `s${index}`,
     status: index === 8 ? "needs-input" : "completed",
   }));
-  const collapsed = sidebarSessionWindow(sessions, false);
-  assert.equal(collapsed.overflow, true);
+  const collapsed = sidebarSessionWindow(sessions, SESSION_PREVIEW_LIMIT);
+  assert.equal(collapsed.canRevealMore, true);
+  assert.equal(collapsed.canCollapse, false);
   assert.equal(collapsed.visible.length, 8);
   assert.equal(collapsed.visible[0]?.id, "s8");
   assert.equal(
     collapsed.visible.some((item) => item.id === "s7"),
     false,
   );
-  const eight = sidebarSessionWindow(sessions.slice(0, 8), false);
-  assert.equal(eight.overflow, false);
+  const eight = sidebarSessionWindow(sessions.slice(0, 8), SESSION_PREVIEW_LIMIT);
+  assert.equal(eight.canRevealMore, false);
   assert.equal(eight.visible.length, 8);
-  const expanded = sidebarSessionWindow(sessions, true);
-  assert.equal(expanded.overflow, true);
+  const expanded = sidebarSessionWindow(sessions, revealMoreSessions(SESSION_PREVIEW_LIMIT));
   assert.equal(expanded.visible.length, 9);
-  assert.deepEqual(
-    expanded.visible.map((item) => item.id),
-    expanded.ordered.map((item) => item.id),
-  );
+  assert.equal(expanded.canRevealMore, false);
+  assert.equal(expanded.canCollapse, true);
 });
 
-test("expanding once shows every session instead of another eight", () => {
+test("each expand reveals eight more and collapse returns to eight", () => {
   const sessions = Array.from({ length: 25 }, (_, index) => ({
     id: `s${index}`,
     status: "completed" as const,
   }));
-  const collapsed = sidebarSessionWindow(sessions, false);
-  assert.equal(collapsed.visible.length, SESSION_PREVIEW_LIMIT);
-  const expanded = sidebarSessionWindow(sessions, true);
-  assert.equal(expanded.visible.length, sessions.length);
+  const first = sidebarSessionWindow(sessions, SESSION_PREVIEW_LIMIT);
+  assert.equal(first.visible.length, 8);
+  assert.equal(first.canRevealMore, true);
+  const sixteen = revealMoreSessions(SESSION_PREVIEW_LIMIT);
+  assert.equal(sixteen, 16);
+  const second = sidebarSessionWindow(sessions, sixteen);
+  assert.equal(second.visible.length, 16);
   assert.deepEqual(
-    expanded.visible.map((item) => item.id),
-    expanded.ordered.map((item) => item.id),
+    second.visible.map((item) => item.id),
+    second.ordered.slice(0, 16).map((item) => item.id),
   );
+  const third = sidebarSessionWindow(sessions, revealMoreSessions(sixteen));
+  assert.equal(third.visible.length, 24);
+  assert.equal(third.canRevealMore, true);
+  const rest = sidebarSessionWindow(sessions, revealMoreSessions(24));
+  assert.equal(rest.visible.length, 25);
+  assert.equal(rest.canRevealMore, false);
+  assert.equal(rest.canCollapse, true);
+  const collapsed = sidebarSessionWindow(sessions, SESSION_PREVIEW_LIMIT);
+  assert.equal(collapsed.visible.length, 8);
+  assert.equal(collapsed.canCollapse, false);
 });
 
 test("the collapsed preview does not include rows past the show-more cut", () => {
@@ -100,7 +112,7 @@ test("the collapsed preview does not include rows past the show-more cut", () =>
     id: String(index),
     status: "completed" as const,
   }));
-  const { visible } = sidebarSessionWindow(sessions, false);
+  const { visible } = sidebarSessionWindow(sessions, SESSION_PREVIEW_LIMIT);
   const range = visibleRange({
     count: visible.length,
     scrollTop: 0,

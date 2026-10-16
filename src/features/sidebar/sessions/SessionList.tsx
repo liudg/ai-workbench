@@ -1,25 +1,31 @@
+import { useState } from "react";
+
 import type { Session } from "@/types";
 import { SessionRows } from "./SessionRows";
-import { sidebarSessionWindow } from "./session-order";
+import { revealMoreSessions, SESSION_PREVIEW_LIMIT, sidebarSessionWindow } from "./session-order";
 import { usePinnedSessionIds } from "./use-pinned-session-ids";
+
+const rowButtonClass =
+  "w-full rounded-md py-1 pl-[58px] pr-2 text-left text-[11.5px] text-[#666] hover:bg-white/[0.04] hover:text-[#bdbdbd]";
 
 export function SessionList({
   projectId,
   sessions,
   selected,
   activeSessionId,
-  showAll,
-  onToggleShowAll,
 }: {
   projectId: string;
   sessions: Session[];
   selected: boolean;
   activeSessionId: string | undefined;
-  showAll: boolean;
-  onToggleShowAll: () => void;
 }) {
   const pinnedIds = usePinnedSessionIds();
-  const { visible, overflow } = sidebarSessionWindow(sessions, showAll, pinnedIds);
+  const [visibleLimit, setVisibleLimit] = useState(SESSION_PREVIEW_LIMIT);
+  const { visible, canRevealMore, canCollapse } = sidebarSessionWindow(
+    sessions,
+    visibleLimit,
+    pinnedIds,
+  );
 
   return (
     <div className="mt-0.5">
@@ -29,15 +35,26 @@ export function SessionList({
         selected={selected}
         activeSessionId={activeSessionId}
       />
-      {overflow && (
+      {(canRevealMore || canCollapse) && (
         <div className="pt-0.5">
-          <button
-            type="button"
-            className="w-full rounded-md py-1 pl-[58px] pr-2 text-left text-[11.5px] text-[#666] hover:bg-white/[0.04] hover:text-[#bdbdbd]"
-            onClick={onToggleShowAll}
-          >
-            {showAll ? "收起" : "展开显示"}
-          </button>
+          {canRevealMore && (
+            <button
+              type="button"
+              className={rowButtonClass}
+              onClick={() => setVisibleLimit((value) => revealMoreSessions(value))}
+            >
+              展开显示
+            </button>
+          )}
+          {canCollapse && (
+            <button
+              type="button"
+              className={rowButtonClass}
+              onClick={() => setVisibleLimit(SESSION_PREVIEW_LIMIT)}
+            >
+              收起
+            </button>
+          )}
         </div>
       )}
     </div>

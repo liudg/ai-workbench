@@ -1,7 +1,13 @@
 import { isPinnedSession } from "./session-status.ts";
 
-/** 折叠时先露出的条数。和原先的「展开显示」一致。 */
+/** 折叠时先露出的条数。每次「展开显示」再多露出同样的条数。 */
 export const SESSION_PREVIEW_LIMIT = 8;
+
+/** 再点一次「展开显示」时的条数上限。 */
+export function revealMoreSessions(visibleLimit: number): number {
+  const current = normalizeVisibleLimit(visibleLimit);
+  return current + SESSION_PREVIEW_LIMIT;
+}
 
 export function pinActiveSessions<T extends { status?: string | null }>(
   sessions: readonly T[],
@@ -38,11 +44,21 @@ export function orderSidebarSessions<T extends { id: string; status?: string | n
 
 export function sidebarSessionWindow<T extends { id: string; status?: string | null }>(
   sessions: readonly T[],
-  showAll: boolean,
+  visibleLimit: number,
   pinnedIds: readonly string[] = [],
-): { ordered: T[]; visible: T[]; overflow: boolean } {
+): { ordered: T[]; visible: T[]; canRevealMore: boolean; canCollapse: boolean } {
   const ordered = orderSidebarSessions(sessions, pinnedIds);
-  const overflow = ordered.length > SESSION_PREVIEW_LIMIT;
-  const visible = !overflow || showAll ? ordered : ordered.slice(0, SESSION_PREVIEW_LIMIT);
-  return { ordered, visible, overflow };
+  const limit = normalizeVisibleLimit(visibleLimit);
+  const visible = ordered.slice(0, Math.min(ordered.length, limit));
+  return {
+    ordered,
+    visible,
+    canRevealMore: ordered.length > visible.length,
+    canCollapse: visible.length > SESSION_PREVIEW_LIMIT,
+  };
+}
+
+function normalizeVisibleLimit(visibleLimit: number): number {
+  if (!Number.isFinite(visibleLimit)) return SESSION_PREVIEW_LIMIT;
+  return Math.max(SESSION_PREVIEW_LIMIT, Math.trunc(visibleLimit));
 }

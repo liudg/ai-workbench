@@ -1,5 +1,3 @@
-import { useState } from "react";
-
 import { STANDALONE_DRAFT_ID } from "@/store/standalone";
 import { NewSessionButton } from "../sessions/NewSessionButton";
 import { SessionList } from "../sessions/SessionList";
@@ -8,7 +6,6 @@ import { useChatGroup } from "./use-chat-group";
 
 export function ChatGroup() {
   const { chats, pending, activeId } = useChatGroup();
-  const [showAll, setShowAll] = useState(false);
   const items = pending ? [pending, ...chats] : chats;
   const grouped = partitionSidebarSessions(items);
   const empty = grouped.active.length === 0;
@@ -34,8 +31,6 @@ export function ChatGroup() {
           sessions={grouped.active}
           selected={Boolean(activeId)}
           activeSessionId={activeId}
-          showAll={showAll}
-          onToggleShowAll={() => setShowAll((value) => !value)}
         />
       )}
     </section>
