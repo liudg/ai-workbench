@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { searchMentionPaths } from "./composer-backend";
-import { followPathPages } from "./mention-search";
+import { followPathPages, mentionSearchError } from "./mention-search";
 import { mentionFiles, type MentionFile } from "./mentions";
 
 /** `@` 后面有文字时，用已有的工作区路径筛选。取消的旧查询不覆盖新结果。 */
@@ -33,7 +33,7 @@ export function useMentionSearch(projectId: string, query: string | null) {
       ).catch((err: unknown) => {
         if (cancel) return;
         setHits([]);
-        setError(err instanceof Error ? err.message : String(err));
+        setError(mentionSearchError(err));
         setPending(false);
       });
     }, 120);

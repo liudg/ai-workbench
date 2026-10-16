@@ -1,3 +1,5 @@
+import { isImeKey } from "../keyboard.ts";
+
 export function stepIndex(current: number, count: number, key: string) {
   if (count === 0) return 0;
   const next = key === "ArrowDown" ? current + 1 : current - 1;
@@ -32,32 +34,34 @@ export function composerKeyIntent(input: {
   activeSkillMention?: string;
   mentionOpen: boolean;
   hasActiveMention: boolean;
+  keyCode?: number;
 }): ComposerKeyIntent | null {
   const { key } = input;
+  if (isImeKey(input)) return null;
   if (key === "Escape" && input.editing) return { type: "cancel-edit" };
   if (input.mentionOpen && key === "Escape") return { type: "dismiss-mention" };
   if (input.mentionOpen && (key === "ArrowDown" || key === "ArrowUp")) {
     return { type: "mention-move", key };
   }
-  if (input.mentionOpen && key === "Tab" && !input.composing) {
+  if (input.mentionOpen && key === "Tab") {
     return input.hasActiveMention ? { type: "apply-mention" } : { type: "mention-noop" };
   }
-  if (input.mentionOpen && key === "Enter" && !input.shiftKey && !input.composing) {
+  if (input.mentionOpen && key === "Enter" && !input.shiftKey) {
     return input.hasActiveMention ? { type: "apply-mention" } : { type: "mention-noop" };
   }
   if (input.skillOpen && (key === "ArrowDown" || key === "ArrowUp")) {
     return { type: "skill-move", key };
   }
-  if (input.skillOpen && key === "Tab" && input.hasActiveSkill && !input.composing) {
+  if (input.skillOpen && key === "Tab" && input.hasActiveSkill) {
     return { type: "apply-skill" };
   }
   if (input.slashOpen && (key === "ArrowDown" || key === "ArrowUp")) {
     return { type: "slash-move", key };
   }
-  if (input.slashOpen && key === "Tab" && input.hasActiveSlash && !input.composing) {
+  if (input.slashOpen && key === "Tab" && input.hasActiveSlash) {
     return { type: "apply-slash" };
   }
-  if (key === "Enter" && !input.shiftKey && !input.composing) {
+  if (key === "Enter" && !input.shiftKey) {
     const completingSlash =
       input.slashOpen &&
       input.hasActiveSlash &&

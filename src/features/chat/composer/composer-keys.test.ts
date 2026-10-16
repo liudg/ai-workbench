@@ -59,6 +59,12 @@ test("composer keys complete a slash or skill before sending", () => {
   );
   assert.equal(composerKeyIntent({ ...idle, key: "Enter", shiftKey: true }), null);
   assert.equal(composerKeyIntent({ ...idle, composing: true }), null);
+  assert.equal(composerKeyIntent({ ...idle, key: "Escape", editing: true, composing: true }), null);
+  assert.equal(composerKeyIntent({ ...idle, keyCode: 229 }), null);
+  assert.equal(
+    composerKeyIntent({ ...idle, key: "ArrowDown", mentionOpen: true, composing: true }),
+    null,
+  );
   assert.deepEqual(composerKeyIntent({ ...idle, key: "Escape", mentionOpen: true }), {
     type: "dismiss-mention",
   });

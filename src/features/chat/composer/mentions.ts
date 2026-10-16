@@ -11,6 +11,20 @@ export function quoteMentionPath(path: string): string {
   return path;
 }
 
+/**
+ * 文件框关掉之后用哪份文本。
+ * 对话框期间没有新的渲染时，状态还是打开前的原文，这时用已经算好的、去掉 `@` 的文本。
+ */
+export function mentionPickText(started: string, latest: string, cleared: string): string {
+  return latest === started ? cleared : latest;
+}
+
+/** 文件框关掉之后，用这时的光标插入。光标不在了就退回打开文件框之前的位置。 */
+export function caretAfterMentionPick(fallback: number, selection: number | null, length: number): number {
+  const raw = selection == null ? fallback : selection;
+  return Math.min(Math.max(raw, 0), Math.max(length, 0));
+}
+
 export function clearAtToken(text: string, caret: number): { text: string; caret: number } {
   const upto = text.slice(0, Math.max(0, caret));
   const match = upto.match(/(^|[\s\n])@([^@\s]*)$/);

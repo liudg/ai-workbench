@@ -252,6 +252,22 @@ test("number keys select, arrows page, and escape dismisses", () => {
   );
   assert.deepEqual(
     questionKeyAction({
+      key: "Escape",
+      composing: true,
+      keyCode: 229,
+      focus: "freeform",
+      questionCount: 1,
+      questionIndex: 0,
+      optionCount: 2,
+      selectedIndex: 0,
+      isOther: true,
+      hasOptions: true,
+      multi: false,
+    }),
+    { type: "none" },
+  );
+  assert.deepEqual(
+    questionKeyAction({
       key: "Enter",
       composing: false,
       focus: "dismiss",

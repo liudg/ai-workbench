@@ -3,7 +3,9 @@ import { test } from "node:test";
 
 import {
   atToken,
+  caretAfterMentionPick,
   clearAtToken,
+  mentionPickText,
   highlightParts,
   insertMention,
   mentionFiles,
@@ -18,6 +20,18 @@ test("at token is the query after @ and is empty when just typed", () => {
   assert.equal(atToken("user@host", "user@host".length), null);
   const later = "已写 @baoshi 之后";
   assert.equal(atToken(later, later.length), null);
+});
+
+test("mention pick keeps the cleared text until a newer draft arrives", () => {
+  assert.equal(mentionPickText("看 @bao", "看 @bao", "看 "), "看 ");
+  assert.equal(mentionPickText("看 @bao", "看 后面", "看 "), "看 后面");
+});
+
+test("mention pick uses the caret left after the file dialog", () => {
+  assert.equal(caretAfterMentionPick(4, 7, 12), 7);
+  assert.equal(caretAfterMentionPick(4, null, 12), 4);
+  assert.equal(caretAfterMentionPick(4, 40, 12), 12);
+  assert.equal(caretAfterMentionPick(4, -2, 12), 0);
 });
 
 test("file mention replaces the token and quotes paths with spaces", () => {

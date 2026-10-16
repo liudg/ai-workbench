@@ -37,3 +37,14 @@ export function placeQuestionPopup(
   const maxHeight = Math.max(96, anchor.top - gap - ceiling);
   return { left, width, bottom, maxHeight };
 }
+
+/** 卡片真正挂上之后才聚焦。位置还没算出来时不聚焦，否则按键落不到卡片上。 */
+export function questionFocusRequest(input: {
+  placed: boolean;
+  closed: boolean;
+  hasQuestion: boolean;
+  freeform: boolean;
+}): "freeform" | "card" | null {
+  if (!input.placed || input.closed || !input.hasQuestion) return null;
+  return input.freeform ? "freeform" : "card";
+}

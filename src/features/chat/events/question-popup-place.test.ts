@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { placeQuestionPopup } from "./question-popup-place.ts";
+import { placeQuestionPopup, questionFocusRequest } from "./question-popup-place.ts";
 
 test("popup sits just above the composer and matches its width", () => {
   const placed = placeQuestionPopup(
@@ -34,4 +34,23 @@ test("popup keeps a usable height when the ceiling is close", () => {
   );
   assert.equal(placed.maxHeight, 96);
   assert.equal(placed.bottom, 200 - 80 + 8);
+});
+
+test("question focus waits until the popup is on screen", () => {
+  assert.equal(
+    questionFocusRequest({ placed: false, closed: false, hasQuestion: true, freeform: false }),
+    null,
+  );
+  assert.equal(
+    questionFocusRequest({ placed: true, closed: false, hasQuestion: true, freeform: false }),
+    "card",
+  );
+  assert.equal(
+    questionFocusRequest({ placed: true, closed: false, hasQuestion: true, freeform: true }),
+    "freeform",
+  );
+  assert.equal(
+    questionFocusRequest({ placed: true, closed: true, hasQuestion: true, freeform: true }),
+    null,
+  );
 });

@@ -1,3 +1,5 @@
+import { userFacingMessage } from "../../../lib/user-facing.ts";
+
 /** 路径筛选的一页。`ready` 缺省当成已经扫完，避免旧后端把轮询卡住。 */
 export interface PathPage {
   paths: readonly string[];
@@ -13,6 +15,11 @@ export interface PathFollow {
 }
 
 const PAGE_GAP_MS = 40;
+
+/** 筛选失败时只留一句给人看的话。占位错误和异常原文不进菜单。 */
+export function mentionSearchError(error: unknown): string {
+  return userFacingMessage(error) ?? "文件列表没有读到。";
+}
 
 /**
  * 路径索引边扫边返回。`ready !== false` 之前继续要下一页，

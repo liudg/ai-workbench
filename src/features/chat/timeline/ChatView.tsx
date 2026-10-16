@@ -21,10 +21,11 @@ import { TurnFoldLine } from "./TurnFoldLine";
 import { TurnProcess } from "./TurnProcess";
 import {
   buildTimeline,
+  chunkTimeline,
   contentChars,
   runningTurnSummary,
+  timelineChunkKey,
   timelineStatus,
-  type TimelineNode,
 } from "./timeline";
 import { useTimelineFollow } from "./useTimelineFollow";
 
@@ -112,7 +113,7 @@ export function ChatView({
               if (chunk.type === "events") {
                 return (
                   <ActivityStream
-                    key={`events-${chunk.id}`}
+                    key={timelineChunkKey(chunk)}
                     events={chunk.events}
                     session={session}
                     resolvedAnswers={resolvedAnswers}
@@ -126,7 +127,7 @@ export function ChatView({
                 const expanded = foldOverrides.get(block.id) ?? false;
                 return (
                   <TurnProcess
-                    key={block.id}
+                    key={timelineChunkKey(chunk)}
                     events={block.events}
                     answerId={block.answerId}
                     durationMs={block.durationMs}
@@ -145,7 +146,7 @@ export function ChatView({
                 const expanded = liveOverrides.get(block.id) ?? true;
                 return (
                   <LiveTurn
-                    key={block.id}
+                    key={timelineChunkKey(chunk)}
                     events={block.events}
                     session={session}
                     resolvedAnswers={resolvedAnswers}
@@ -157,7 +158,7 @@ export function ChatView({
               const event = block.event;
               return (
                 <EventItem
-                  key={event.id}
+                  key={timelineChunkKey(chunk)}
                   event={event}
                   session={session}
                   resolvedAnswer={
@@ -212,32 +213,4 @@ export function ChatView({
       )}
     </>
   );
-}
-
-type TimelineChunk =
-  | { type: "events"; id: string; events: SessionEvent[]; labels: ReadonlyMap<string, boolean> }
-  | { type: "block"; block: TimelineNode };
-
-/** 用户消息、已结束的一轮和进行中的一轮各自断开。中间的事件交给活动流。 */
-function chunkTimeline(blocks: readonly TimelineNode[]): TimelineChunk[] {
-  const chunks: TimelineChunk[] = [];
-  let events: SessionEvent[] = [];
-  let labels = new Map<string, boolean>();
-  const flush = () => {
-    if (events.length === 0) return;
-    chunks.push({ type: "events", id: events[0].id, events, labels });
-    events = [];
-    labels = new Map();
-  };
-  for (const block of blocks) {
-    if (block.type === "event" && block.event.kind !== "user-message") {
-      events.push(block.event);
-      labels.set(block.event.id, block.showAgentLabel);
-      continue;
-    }
-    flush();
-    chunks.push({ type: "block", block });
-  }
-  flush();
-  return chunks;
 }

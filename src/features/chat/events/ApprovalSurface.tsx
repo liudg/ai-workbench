@@ -3,6 +3,7 @@ import { ChevronDown, FilePen, Globe, Shield, Terminal } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { approvalKeyAction, releaseOwnedApproval, takeApproval, type ApprovalGate } from "./approval-keys";
 import { useAnswerPrompt } from "./useAnswerPrompt";
 import { approvalSlots, type ApprovalPrompt } from "./pending-approval";
 
@@ -30,17 +31,33 @@ export function ApprovalSurface({
   const [expanded, setExpanded] = useState(false);
   const [overflows, setOverflows] = useState(false);
   const [busy, setBusy] = useState(false);
+  const gate = useRef<ApprovalGate>({ busy: false });
   const menuId = useId();
   const choose = (id: string | undefined) => {
-    if (!id || busy) return;
+    const owned = gate.current;
+    if (!id || !takeApproval(owned)) return;
     setBusy(true);
     setMenuOpen(false);
-    void answerPrompt(sessionId, event.prompt_id, { type: "single", value: id });
+    const reopen = () => {
+      if (!releaseOwnedApproval(gate.current, owned)) return;
+      setBusy(false);
+    };
+    void Promise.resolve(answerPrompt(sessionId, event.prompt_id, { type: "single", value: id }))
+      .then((ok) => {
+        if (ok === false) reopen();
+      })
+      .catch(reopen);
   };
   const approve = () => choose(slots.primary?.id);
   const deny = () => choose(slots.deny?.id);
+  const chooseRef = useRef(choose);
+  chooseRef.current = choose;
+  const slotsRef = useRef(slots);
+  slotsRef.current = slots;
 
   useEffect(() => {
+    gate.current = { busy: false };
+    setBusy(false);
     const active = document.activeElement;
     const typing =
       active instanceof Element &&
@@ -52,21 +69,23 @@ export function ApprovalSurface({
     const onKeyDown = (keyEvent: KeyboardEvent) => {
       const target = keyEvent.target;
       if (!(target instanceof Element)) return;
-      if (target.closest("[role='dialog'],[role='menu']")) return;
-      if (keyEvent.key === "Escape") {
-        keyEvent.preventDefault();
-        deny();
-        return;
-      }
-      if (keyEvent.key !== "Enter") return;
-      if (target.closest("button,a")) return;
-      if (target.closest("input, textarea, [contenteditable]:not([contenteditable='false'])")) return;
+      const action = approvalKeyAction({
+        key: keyEvent.key,
+        composing: keyEvent.isComposing,
+        keyCode: keyEvent.keyCode,
+        defaultPrevented: keyEvent.defaultPrevented,
+        inDialog: target.closest("[role='dialog'],[role='menu']") != null,
+        onButton: target.closest("button,a") != null,
+        inField: target.closest("input, textarea, [contenteditable]:not([contenteditable='false'])") != null,
+      });
+      if (action === "none") return;
       keyEvent.preventDefault();
-      approve();
+      const current = slotsRef.current;
+      chooseRef.current(action === "deny" ? current.deny?.id : current.primary?.id);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  });
+  }, []);
 
   useEffect(() => {
     if (!menuOpen) return;
