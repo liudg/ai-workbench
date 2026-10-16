@@ -47,6 +47,26 @@ export function placeTab(
   return { ...session, tabs, activeId: activate ? tab.id : session.activeId, layout };
 }
 
+/** 已有标签再次打开：只聚焦并展开侧栏，不换掉 payload。 */
+export function focusTab(session: SessionPanel, id: string): SessionPanel | null {
+  const layout = layoutAfterOpen(session.layout);
+  if (session.activeId === id && session.layout === layout) return null;
+  return { ...session, activeId: id, layout };
+}
+
+export function patchPayload(current: unknown, patch: Record<string, unknown>): unknown | null {
+  const base: Record<string, unknown> =
+    current && typeof current === "object" ? { ...(current as Record<string, unknown>) } : {};
+  let changed = false;
+  for (const [key, value] of Object.entries(patch)) {
+    if (base[key] !== value) {
+      base[key] = value;
+      changed = true;
+    }
+  }
+  return changed ? base : null;
+}
+
 export function dropTab(session: SessionPanel, id: string): SessionPanel {
   if (!session.tabs.some((tab) => tab.id === id) && !(id in session.histories)) return session;
   const tabs = session.tabs.filter((tab) => tab.id !== id);

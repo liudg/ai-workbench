@@ -2,9 +2,10 @@
 //! 深度优先走到上限后，还没走到的顶层目录就从侧栏消失了。
 //! 这里每次只返回一个目录的直接子项，展开哪个目录再读哪一层。
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
 use tauri::State;
@@ -32,14 +33,30 @@ pub struct PathFilter {
 }
 
 pub struct FilterHub {
-    generation: Arc<AtomicU64>,
+    generations: Mutex<HashMap<String, Arc<AtomicU64>>>,
 }
 
 impl Default for FilterHub {
     fn default() -> Self {
         Self {
-            generation: Arc::new(AtomicU64::new(0)),
+            generations: Mutex::new(HashMap::new()),
         }
+    }
+}
+
+impl FilterHub {
+    /// 每个项目一条序号。别的项目正在筛选时，不会把这一次标成取消。
+    pub fn begin(&self, project_id: &str) -> (Arc<AtomicU64>, u64) {
+        let mut map = self
+            .generations
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+        let generation = map
+            .entry(project_id.to_string())
+            .or_insert_with(|| Arc::new(AtomicU64::new(0)))
+            .clone();
+        let ticket = generation.fetch_add(1, Ordering::SeqCst) + 1;
+        (generation, ticket)
     }
 }
 
@@ -78,8 +95,7 @@ pub async fn filter_project_paths(
         .get(&project_id)
         .ok_or_else(|| "项目不存在".to_string())?;
     let root = PathBuf::from(&project.path);
-    let generation = hub.generation.clone();
-    let ticket = generation.fetch_add(1, Ordering::SeqCst) + 1;
+    let (generation, ticket) = hub.begin(&project_id);
     let indexes = indexes.fork();
     tokio::task::spawn_blocking(move || {
         let alive = || generation.load(Ordering::SeqCst) == ticket;
@@ -282,5 +298,18 @@ mod tests {
         assert!(cancelled.cancelled);
         assert!(cancelled.paths.is_empty());
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn filter_generations_stay_inside_one_project() {
+        let hub = FilterHub::default();
+        let (left, left_ticket) = hub.begin("left");
+        let (right, right_ticket) = hub.begin("right");
+        assert_eq!(left.load(Ordering::SeqCst), left_ticket);
+        assert_eq!(right.load(Ordering::SeqCst), right_ticket);
+        let (_again, again_ticket) = hub.begin("left");
+        assert_eq!(left.load(Ordering::SeqCst), again_ticket);
+        assert_ne!(left.load(Ordering::SeqCst), left_ticket);
+        assert_eq!(right.load(Ordering::SeqCst), right_ticket);
     }
 }

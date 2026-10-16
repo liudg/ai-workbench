@@ -45,11 +45,14 @@ interface PanelApi {
   showPanel: () => void;
   toggleFull: () => void;
   setTabTitle: (id: string, title: string) => void;
+  patchTabPayload: (tabId: string, patch: Record<string, unknown>) => void;
   previewWidth: number | null;
   diffFilesWidth: number | null;
+  filesTreeWidth: number | null;
   diffView: DiffViewPrefs;
   setPreviewWidth: (width: number) => void;
   setDiffFilesWidth: (width: number) => void;
+  setFilesTreeWidth: (width: number) => void;
   patchDiffView: (patch: Partial<DiffViewPrefs>) => void;
   filesTreeOpen: boolean;
   toggleFilesTree: () => void;
@@ -93,6 +96,7 @@ export function PanelProvider({
   const layout = useWorkbench((s) => s.panelBySession[sessionId]?.layout ?? "chat");
   const previewWidth = useWorkbench((s) => s.previewWidthBySession[sessionId] ?? null);
   const diffFilesWidth = useWorkbench((s) => s.diffFilesWidthBySession[sessionId] ?? null);
+  const filesTreeWidth = useWorkbench((s) => s.filesTreeWidthBySession[sessionId] ?? null);
   const storedDiffView = useWorkbench((s) => s.diffViewBySession[sessionId]);
   const diffView = useMemo(
     () => storedDiffView ?? defaultDiffViewPrefs(readDiffMenuOptions(browserDiffMenuStorage())),
@@ -152,11 +156,19 @@ export function PanelProvider({
     (id: string, title: string) => useWorkbench.getState().panelSetTitle(sessionId, id, title),
     [sessionId],
   );
+  const patchTabPayload = useCallback(
+    (tabId: string, patch: Record<string, unknown>) =>
+      useWorkbench.getState().panelPatchTabPayload(sessionId, tabId, patch),
+    [sessionId],
+  );
   const setPreviewWidth = useCallback((width: number) => {
     useWorkbench.getState().panelSetPreviewWidth(sessionId, width);
   }, [sessionId]);
   const setDiffFilesWidth = useCallback((width: number) => {
     useWorkbench.getState().panelSetDiffFilesWidth(sessionId, width);
+  }, [sessionId]);
+  const setFilesTreeWidth = useCallback((width: number) => {
+    useWorkbench.getState().panelSetFilesTreeWidth(sessionId, width);
   }, [sessionId]);
   const patchDiffView = useCallback((patch: Partial<DiffViewPrefs>) => {
     useWorkbench.getState().panelPatchDiffView(sessionId, patch);
@@ -190,11 +202,14 @@ export function PanelProvider({
       showPanel,
       toggleFull,
       setTabTitle,
+      patchTabPayload,
       previewWidth,
       diffFilesWidth,
+      filesTreeWidth,
       diffView,
       setPreviewWidth,
       setDiffFilesWidth,
+      setFilesTreeWidth,
       patchDiffView,
       filesTreeOpen,
       toggleFilesTree,
@@ -221,11 +236,14 @@ export function PanelProvider({
       showPanel,
       toggleFull,
       setTabTitle,
+      patchTabPayload,
       previewWidth,
       diffFilesWidth,
+      filesTreeWidth,
       diffView,
       setPreviewWidth,
       setDiffFilesWidth,
+      setFilesTreeWidth,
       patchDiffView,
       filesTreeOpen,
       toggleFilesTree,

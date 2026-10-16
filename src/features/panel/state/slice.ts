@@ -22,6 +22,7 @@ import {
   blankSession,
   dropTab,
   emptyCtx,
+  patchPayload,
   placeTab,
   readTitle,
   type SessionPanel,
@@ -34,6 +35,8 @@ export interface PanelSlice {
   panelSelectTab(sessionId: string, id: string): void;
   panelCloseTab(sessionId: string, id: string): void;
   panelSetTitle(sessionId: string, id: string, title: string): void;
+  /** 改标签载荷，不切换活动标签，也不改侧栏开合。 */
+  panelPatchTabPayload(sessionId: string, tabId: string, patch: Record<string, unknown>): void;
   panelOpenHref(sessionId: string, href: string, line: number | undefined, ctx: ViewerContext): Promise<void>;
   panelOpenDiff(sessionId: string, id: string, title: string, files: FileChange[]): void;
   panelOpenBlank(sessionId: string): void;
@@ -53,10 +56,13 @@ export interface PanelSlice {
   previewWidthBySession: Record<string, number>;
   /** 差异正文和文件列之间拖出来的文件列宽度。 */
   diffFilesWidthBySession: Record<string, number>;
+  /** 「打开文件」里工作区树列的宽度。和差异文件列分开记。 */
+  filesTreeWidthBySession: Record<string, number>;
   /** 差异工具栏的并排、换行、展开和 ··· 勾选。按会话记，切标签不丢。 */
   diffViewBySession: Record<string, DiffViewPrefs>;
   panelSetPreviewWidth(sessionId: string, width: number): void;
   panelSetDiffFilesWidth(sessionId: string, width: number): void;
+  panelSetFilesTreeWidth(sessionId: string, width: number): void;
   panelPatchDiffView(sessionId: string, patch: Partial<DiffViewPrefs>): void;
 }
 
@@ -91,7 +97,7 @@ export function createPanelSlice(set: PanelSet, get: PanelGet): PanelSlice {
   };
 
   const rememberWidth = (
-    key: "previewWidthBySession" | "diffFilesWidthBySession",
+    key: "previewWidthBySession" | "diffFilesWidthBySession" | "filesTreeWidthBySession",
     sessionId: string,
     width: number,
   ) => {
@@ -117,6 +123,7 @@ export function createPanelSlice(set: PanelSet, get: PanelGet): PanelSlice {
     panelBySession: {},
     previewWidthBySession: {},
     diffFilesWidthBySession: {},
+    filesTreeWidthBySession: {},
     diffViewBySession: {},
 
     panelSelectTab(sessionId, id) {
@@ -126,6 +133,20 @@ export function createPanelSlice(set: PanelSet, get: PanelGet): PanelSlice {
     panelCloseTab(sessionId, id) {
       loads.delete(loadKey(sessionId, id));
       mutate(sessionId, (session) => dropTab(session, id));
+    },
+
+    panelPatchTabPayload(sessionId, tabId, patch) {
+      if (!sessionId) return;
+      mutate(sessionId, (session) => {
+        const index = session.tabs.findIndex((item) => item.id === tabId);
+        if (index < 0) return null;
+        const tab = session.tabs[index];
+        const payload = patchPayload(tab.payload, patch);
+        if (!payload) return null;
+        const tabs = session.tabs.slice();
+        tabs[index] = { ...tab, payload };
+        return { ...session, tabs };
+      });
     },
 
     panelSetTitle(sessionId, id, title) {
@@ -229,6 +250,10 @@ export function createPanelSlice(set: PanelSet, get: PanelGet): PanelSlice {
 
     panelSetDiffFilesWidth(sessionId, width) {
       rememberWidth("diffFilesWidthBySession", sessionId, width);
+    },
+
+    panelSetFilesTreeWidth(sessionId, width) {
+      rememberWidth("filesTreeWidthBySession", sessionId, width);
     },
 
     panelPatchDiffView(sessionId, patch) {

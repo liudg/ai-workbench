@@ -12,7 +12,7 @@ import { modeForPaths, pathsForFileOpen } from "./view-prefs";
 
 export function useDiffDocument(turnFiles: FileChange[]) {
   const { projectId, sessionId, changes, diffView, patchDiffView } = usePanel();
-  const [filter] = useFileFilter();
+  const [filter] = useFileFilter(sessionId);
   const [scope, setScopeState] = useState(() => diffView.scope || "turn");
   const [menuOptions, setMenuOptions] = useState(diffView.menu);
   const [provided, setProvided] = useState<DiffScope[]>([]);

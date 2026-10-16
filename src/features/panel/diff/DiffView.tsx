@@ -4,8 +4,9 @@ import { cn } from "@/lib/utils";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { useElementWidth } from "@/shared/dom/useElementWidth";
 import type { FileChange } from "@/features/changes-model/diff-parse";
-import { diffListWidth, diffListWidthAfterDrag } from "../core/layout";
+import { nextDraggedListWidth, paneFileColumnWidth } from "../core/layout";
 import { ColumnSplitter } from "../core/ColumnSplitter";
+import { useColumnGesture } from "../core/useColumnGesture";
 import { usePanel } from "../core/PanelProvider";
 import { ChangesSidebar } from "../files/ChangesSidebar";
 import { relativizeFiles } from "@/shared/path";
@@ -20,7 +21,8 @@ import { useGitWorkTree } from "./useGitWorkTree";
 const SPLITTER_WIDTH = 6;
 
 export function DiffView({ files }: { files: FileChange[] }) {
-  const { diffFilesWidth, setDiffFilesWidth, projectId, projectPath, sessionFiles, diffView, patchDiffView } = usePanel();
+  const { diffFilesWidth, setDiffFilesWidth, projectId, projectPath, sessionId, sessionFiles, diffView, patchDiffView } =
+    usePanel();
   const displayFiles = useMemo(() => relativizeFiles(files, projectPath), [files, projectPath]);
   const threadFiles = useMemo(
     () => relativizeFiles(sessionFiles.length > 0 ? sessionFiles : files, projectPath),
@@ -41,13 +43,15 @@ export function DiffView({ files }: { files: FileChange[] }) {
   const copy = copyApplyState({ git: git.status, gitReason: git.reason, patch: doc.patch });
   const presentation = diffPresentation(layout, contentWidth);
   const inner = Math.max(0, paneWidth - SPLITTER_WIDTH);
-  const auto = filesWanted ? diffListWidth(inner) : null;
-  const listWidth =
-    auto === null ? null : diffFilesWidth === null ? auto : diffListWidthAfterDrag(inner, diffFilesWidth);
+  const listWidth = paneFileColumnWidth({
+    paneWidth,
+    splitter: SPLITTER_WIDTH,
+    wanted: filesWanted,
+    dragged: diffFilesWidth,
+  });
   const metrics = useRef({ pane: 0, list: 0 });
-  const widthRef = useRef(diffFilesWidth);
-  metrics.current = { pane: inner, list: listWidth ?? auto ?? 0 };
-  if (diffFilesWidth !== null) widthRef.current = diffFilesWidth;
+  const drag = useColumnGesture(listWidth ?? 0, sessionId);
+  metrics.current = { pane: inner, list: listWidth ?? 0 };
   const sourceFor = (path: string) => (doc.loadFull ? (doc.sources[path] ?? null) : null);
 
   useEffect(() => {
@@ -61,7 +65,7 @@ export function DiffView({ files }: { files: FileChange[] }) {
   const jumpTo = (path: string) => {
     const known = threadFiles.some((file) => file.path === path) || displayFiles.some((file) => file.path === path);
     if (!known) return;
-    setFileFilter("");
+    setFileFilter(sessionId, "");
     const inListed = doc.listed.some((file) => file.path === path);
     if (!inListed) {
       const turn = doc.scopes.find((item) => item.source === "turn" && !item.submenu);
@@ -104,7 +108,7 @@ export function DiffView({ files }: { files: FileChange[] }) {
         wrap={doc.wrap}
         onToggleWrap={() => doc.setWrap((value) => !value)}
         onRefresh={() => {
-          setFileFilter("");
+          setFileFilter(sessionId, "");
           setEpoch((value) => value + 1);
           setGitEpoch((value) => value + 1);
           doc.reload();
@@ -119,7 +123,7 @@ export function DiffView({ files }: { files: FileChange[] }) {
         onToggleHideWs={() => doc.setHideWs((value) => !value)}
         hideImports={doc.hideImports}
         onToggleHideImports={() => doc.setHideImports((value) => !value)}
-        filesOpen={listWidth !== null}
+        filesOpen={filesWanted}
         onToggleFiles={() => {
           const next = !filesWanted;
           setFilesWanted(next);
@@ -169,14 +173,12 @@ export function DiffView({ files }: { files: FileChange[] }) {
           <ColumnSplitter
             name="diff-files"
             onDelta={(dx) => {
-              const pane = metrics.current.pane;
-              const base = widthRef.current ?? metrics.current.list;
-              const current = diffListWidthAfterDrag(pane, base) ?? base;
-              const next = diffListWidthAfterDrag(pane, current - dx);
+              const next = nextDraggedListWidth(metrics.current.pane, drag.base(), dx);
               if (next === null) return;
-              widthRef.current = next;
+              drag.remember(next);
               setDiffFilesWidth(next);
             }}
+            onSettle={drag.settle}
           />
         ) : null}
         {listWidth !== null ? (

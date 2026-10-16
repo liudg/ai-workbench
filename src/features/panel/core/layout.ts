@@ -183,6 +183,54 @@ export function diffListWidthAfterDrag(paneWidth: number, requested: number): nu
   return Math.max(DIFF_LIST_MIN, Math.min(Math.round(requested), max));
 }
 
+/**
+ * 右侧文件列的实际宽度。
+ * wanted 是用户偏好。窗口还没量到，或窄到放不下时，列可以暂时不占位，偏好本身不变。
+ */
+export function paneFileColumnWidth(input: {
+  paneWidth: number;
+  splitter: number;
+  wanted: boolean;
+  dragged: number | null;
+  beforeMeasure?: number | null;
+  /** 打开文件在窄面板里仍留一列。差异视图放不下就整列收起。 */
+  keepWhenNarrow?: boolean;
+}): number | null {
+  if (!input.wanted) return null;
+  if (input.paneWidth <= 0) return input.beforeMeasure ?? null;
+  const inner = Math.max(0, input.paneWidth - input.splitter);
+  const auto = diffListWidth(inner);
+  if (auto === null) {
+    if (!input.keepWhenNarrow) return null;
+    const preferred = input.dragged ?? input.beforeMeasure;
+    if (preferred == null) return null;
+    return Math.min(Math.max(0, preferred), inner);
+  }
+  if (input.dragged === null) return auto;
+  return diffListWidthAfterDrag(inner, input.dragged);
+}
+
+/**
+ * 拖拽进行中沿用这一笔已经落到手上的宽度。
+ * 手势还没开始时用屏幕上的宽度，窗口变窄把列夹短之后，下一次拖不会从夹住之前的值跳回去。
+ */
+export function dragBase(gesture: boolean, live: number | null, shown: number): number {
+  if (gesture && live !== null) return live;
+  return shown;
+}
+
+/** 分隔条往右拖时右侧列变窄。方向键跟同一次位移。 */
+export function columnDragDelta(key: "ArrowLeft" | "ArrowRight", shift: boolean): number {
+  const step = shift ? 32 : 8;
+  return key === "ArrowRight" ? step : -step;
+}
+
+/** 一次拖拽后的文件列宽度。pane 放不下时返回 null，调用方保持原宽度。 */
+export function nextDraggedListWidth(pane: number, base: number, dx: number): number | null {
+  const current = diffListWidthAfterDrag(pane, base) ?? base;
+  return diffListWidthAfterDrag(pane, current - dx);
+}
+
 /** 有文件且用户没手动收起过时展开。预览开着时只记住还原值，不把栏重新撑开。 */
 export function noteFilesRail(state: FilesRailState, hasFiles: boolean): FilesRailState | null {
   if (!hasFiles || state.filesTouched || state.filesExpanded) return null;

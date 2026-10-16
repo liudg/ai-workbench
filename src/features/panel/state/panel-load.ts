@@ -15,7 +15,7 @@ import {
   type OpenTarget,
   type ViewerContext,
 } from "../core/registry.ts";
-import { dropTab, errorText, placeTab, type SessionPanel } from "./panel-session.ts";
+import { dropTab, errorText, focusTab, placeTab, type SessionPanel } from "./panel-session.ts";
 
 export interface PanelLoadHost {
   read(sessionId: string): SessionPanel;
@@ -71,15 +71,23 @@ export async function openPanelTarget(
       const line = target.line;
       host.mutate(sessionId, (session) => {
         const tab = session.tabs.find((item) => item.id === id);
-        if (!tab) return session.activeId === id ? null : { ...session, activeId: id };
-        if (lineOf(tab.payload) === line && session.activeId === id) return null;
-        if (lineOf(tab.payload) === line) return { ...session, activeId: id };
+        if (!tab || lineOf(tab.payload) === line) return focusTab(session, id);
         return placeTab(session, { ...tab, payload: withLine(tab.payload, line) }, false, true);
       });
       return;
     }
     if (existing && target.kind === "url" && existing.status !== "error") {
-      host.mutate(sessionId, (session) => (session.activeId === id ? null : { ...session, activeId: id }));
+      host.mutate(sessionId, (session) => focusTab(session, id));
+      return;
+    }
+    if (
+      existing &&
+      target.kind === "custom" &&
+      !viewer.load &&
+      existing.viewerId === viewer.id &&
+      existing.status !== "error"
+    ) {
+      host.mutate(sessionId, (session) => focusTab(session, id));
       return;
     }
 

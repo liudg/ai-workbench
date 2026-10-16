@@ -34,7 +34,7 @@ export function ChangesSidebar({
 }) {
   const { sessionId, projectPath } = usePanel();
   const attachFile = useAttachFile(sessionId);
-  const [filter, setFilter] = useFileFilter();
+  const [filter, setFilter] = useFileFilter(sessionId);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string } | null>(null);
   const shown = useMemo(() => filterFiles(files, filter), [files, filter]);

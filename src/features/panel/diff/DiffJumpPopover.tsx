@@ -5,7 +5,7 @@ import { Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { filterJumpFiles, jumpFileParts, type JumpFile } from "./jump-files";
-import { useAnchoredLayer } from "./useAnchoredLayer";
+import { useAnchoredLayer } from "../core/useAnchoredLayer";
 
 export function JumpPopover({
   anchorRef,

@@ -10,8 +10,12 @@ import {
   FILES_RAIL_WIDTH,
   PANEL_PREFERRED_WIDTH,
   PREVIEW_MIN_WIDTH,
+  columnDragDelta,
   diffListWidth,
   diffListWidthAfterDrag,
+  dragBase,
+  nextDraggedListWidth,
+  paneFileColumnWidth,
   noteFilesRail,
   panelWidthAfterDrag,
   toggleFilesRail,
@@ -161,6 +165,63 @@ test("a wide preview can move both directions from the default split", () => {
   assert.ok(panelWidthAfterDrag(room, 0, atDefault - 120) < atDefault);
   assert.ok(panelWidthAfterDrag(room, 0, atDefault + 120) > atDefault);
   assert.ok(panelWidthAfterDrag(room, 0, atDefault + 120) <= room - CHAT_MIN_WIDTH);
+});
+
+test("a narrow pane hides the diff file column without turning the preference off", () => {
+  assert.equal(paneFileColumnWidth({ paneWidth: 300, splitter: 6, wanted: true, dragged: 240 }), null);
+  assert.equal(paneFileColumnWidth({ paneWidth: 800, splitter: 6, wanted: false, dragged: null }), null);
+  const open = paneFileColumnWidth({ paneWidth: 800, splitter: 6, wanted: true, dragged: null });
+  assert.equal(open, diffListWidth(794));
+  assert.equal(
+    paneFileColumnWidth({
+      paneWidth: 300,
+      splitter: 6,
+      wanted: true,
+      dragged: null,
+      beforeMeasure: 240,
+      keepWhenNarrow: true,
+    }),
+    240,
+  );
+  assert.equal(
+    paneFileColumnWidth({
+      paneWidth: 300,
+      splitter: 6,
+      wanted: true,
+      dragged: 180,
+      beforeMeasure: 240,
+      keepWhenNarrow: true,
+    }),
+    180,
+  );
+  assert.equal(
+    paneFileColumnWidth({
+      paneWidth: 300,
+      splitter: 6,
+      wanted: true,
+      dragged: 400,
+      beforeMeasure: 240,
+      keepWhenNarrow: true,
+    }),
+    294,
+  );
+  assert.equal(
+    paneFileColumnWidth({ paneWidth: 0, splitter: 6, wanted: true, dragged: null, beforeMeasure: 240 }),
+    240,
+  );
+});
+
+test("arrow keys move the splitter the same way a drag does", () => {
+  assert.equal(columnDragDelta("ArrowRight", false), 8);
+  assert.equal(columnDragDelta("ArrowLeft", true), -32);
+  assert.equal(nextDraggedListWidth(800, 200, 10), 190);
+  assert.equal(nextDraggedListWidth(300, 200, 0), null);
+});
+
+test("a new drag starts from the width on screen", () => {
+  assert.equal(dragBase(false, 900, 500), 500);
+  assert.equal(dragBase(true, 492, 500), 492);
+  assert.equal(dragBase(true, null, 240), 240);
 });
 
 test("dragging the diff file list stays inside the pane", () => {
