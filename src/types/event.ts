@@ -10,15 +10,26 @@ export type PromptKind = "approval" | "choice" | "free-text" | "questions" | "el
  */
 export type MessagePhase = "commentary" | "partial-answer" | "final-answer";
 
+/** 提问卡片的按钮和占位。适配器写入，界面不看 Agent 名字。 */
+export type QuestionSurface = "request-input" | "async-reply";
+
 /** 问题卡片中的一道题。适配器把原生提问映射进来；一轮可有多题。 */
 export interface PromptQuestion {
-  /** 阻塞式提问用上游 question id；async 提问按序合成 q1/q2… */
+  /** 阻塞式提问用上游 question id；async 提问用协议合成 id */
   id: string;
   /** 题目标签，可空 */
   header?: string;
   question: string;
-  /** 敏感回答，输入时掩码 */
+  /** 题下说明。没有就不显示。 */
+  description?: string;
+  /** Codex isSecret。这张卡不掩码。 */
   is_secret: boolean;
+  /** 有选项时仍显示自定义输入。没有选项时自由输入不看这个字段。 */
+  is_other?: boolean;
+  /** 多选。缺省是单选。 */
+  multi_select?: boolean;
+  /** 缺省是阻塞式 request-input。 */
+  surface?: QuestionSurface;
   /** 编号展示的选项；空数组 = 纯自由文本题。elicitation 的 enum 也放这里。 */
   options: PromptOption[];
   /** elicitation 字段类型：string / number / integer / boolean。 */

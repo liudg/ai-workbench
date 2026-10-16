@@ -159,6 +159,8 @@ fn permission_allow_deny_and_question_answers_use_question_text() {
             assert_eq!(*prompt_kind, crate::models::PromptKind::Questions);
             assert_eq!(questions[0].id, "q1");
             assert_eq!(questions[0].options[0].id, "甲");
+            assert!(questions[0].is_other);
+            assert!(!questions[0].multi_select);
         }
         other => panic!("unexpected {other:?}"),
     }
@@ -187,6 +189,43 @@ fn permission_allow_deny_and_question_answers_use_question_text() {
     let deny = control::permission_result(&approval, &PromptAnswer::Single { value: "reject".into() }).unwrap();
     assert_eq!(deny["behavior"], "deny");
     assert!(deny.get("updatedInput").is_none());
+}
+
+#[test]
+fn ask_user_question_maps_multi_select_text_and_number() {
+    let input = json!({
+        "questions": [
+            {
+                "question": "要哪些？",
+                "header": "功能",
+                "multiSelect": true,
+                "options": [
+                    {"label": "甲", "description": "一"},
+                    {"label": "乙 (Recommended)", "description": ""}
+                ]
+            },
+            {"question": "补充？", "header": "备注", "kind": "text", "options": [{"label": "不该出现"}]},
+            {"question": "几个？", "header": "数量", "kind": "number", "min": 1, "max": 4}
+        ]
+    });
+    let questions = control::questions_from_input(&input);
+    assert_eq!(questions.len(), 3);
+    assert!(questions[0].multi_select);
+    assert!(questions[0].is_other);
+    assert!(questions[1].options.is_empty());
+    assert!(!questions[1].is_other);
+    assert!(questions[2].options.is_empty());
+    assert_eq!(questions[2].input_kind, "number");
+    let mut answers = HashMap::new();
+    answers.insert("q1".into(), "甲, 乙 (Recommended)".into());
+    let request = json!({"subtype": "can_use_tool", "tool_name": "AskUserQuestion", "input": input});
+    let (_, kind) = messages::permission_events("req-multi", &request).unwrap();
+    let result = control::permission_result(
+        &kind,
+        &PromptAnswer::Questions { answers, skipped: false },
+    )
+    .unwrap();
+    assert_eq!(result["updatedInput"]["answers"]["要哪些？"], "甲, 乙 (Recommended)");
 }
 
 #[test]

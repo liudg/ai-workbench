@@ -4,7 +4,7 @@ use serde_json::{json, Value};
 
 use crate::features::agents::AgentError;
 use crate::models::{
-    PromptAnswer, PromptKind, PromptOption, PromptQuestion, SessionEventBody,
+    PromptAnswer, PromptKind, PromptOption, PromptQuestion, QuestionSurface, SessionEventBody,
 };
 
 use super::state::{emit, Pending, Shared};
@@ -67,7 +67,8 @@ impl Shared {
 
     /// 把回答作为普通用户输入写进正在进行的回合（运行中的回合里发消息即 steer）。
     pub(super) async fn steer_turn(&self, text: &str) -> Result<(), AgentError> {
-        self.steer_input(json!([{ "type": "text", "text": text }])).await
+        self.steer_input(json!([{ "type": "text", "text": text }]))
+            .await
     }
 
     pub(super) async fn steer_input(&self, input: Value) -> Result<(), AgentError> {
@@ -185,7 +186,12 @@ pub(super) fn parse_tool_questions(params: &Value) -> Vec<PromptQuestion> {
                             .unwrap_or("")
                             .to_string(),
                         question,
+                        description: String::new(),
                         is_secret: q.get("isSecret").and_then(Value::as_bool).unwrap_or(false),
+                        // 桌面端 aai：`isOther: e.isOther===true`。映射里没有 isMultiSelect。
+                        is_other: q.get("isOther").and_then(Value::as_bool).unwrap_or(false),
+                        multi_select: false,
+                        surface: QuestionSurface::RequestInput,
                         options,
                         input_kind: String::new(),
                         required: false,
@@ -234,7 +240,12 @@ pub(super) fn parse_async_questions(item: &Value, message_id: &str) -> Vec<Promp
                         id: json!(["request_user_input_async", message_id, index]).to_string(),
                         header: String::new(),
                         question: title,
+                        description: String::new(),
                         is_secret: false,
+                        // 桌面端 sendUserMessageQuestion 的 S$e：`isOther: options.length > 0`。
+                        is_other: !options.is_empty(),
+                        multi_select: false,
+                        surface: QuestionSurface::AsyncReply,
                         options,
                         input_kind: String::new(),
                         required: false,
@@ -523,7 +534,11 @@ fn schema_fields(schema: &Value) -> Vec<PromptQuestion> {
                     title.to_string()
                 },
                 question,
+                description: String::new(),
                 is_secret: format == "password",
+                is_other: false,
+                multi_select: false,
+                surface: QuestionSurface::RequestInput,
                 options,
                 input_kind: kind.to_string(),
                 required: required.contains(key),
@@ -636,7 +651,11 @@ mod tests {
         assert_eq!(questions[0].options.len(), 2);
         assert_eq!(questions[0].options[0].id, "Vite");
         assert_eq!(questions[0].options[0].description, "快速开发服务器");
+        assert!(questions[0].is_other);
+        assert!(!questions[0].multi_select);
+        assert_eq!(questions[0].surface, QuestionSurface::RequestInput);
         assert!(questions[1].options.is_empty());
+        assert!(questions[1].is_other);
         assert!(questions[1].is_secret);
     }
 
@@ -655,13 +674,17 @@ mod tests {
         assert_eq!(questions.len(), 2);
         assert_eq!(questions[0].id, r#"["request_user_input_async","msg_1",0]"#);
         assert_eq!(questions[0].options.len(), 3);
+        assert!(questions[0].is_other);
+        assert_eq!(questions[0].surface, QuestionSurface::AsyncReply);
         assert_eq!(questions[1].id, r#"["request_user_input_async","msg_1",1]"#);
         assert!(questions[1].options.is_empty());
+        assert!(!questions[1].is_other);
         // 普通消息没有 questions 字段
-        assert!(
-            parse_async_questions(&json!({ "type": "agentMessage", "id": "m", "text": "hi" }), "m")
-                .is_empty()
-        );
+        assert!(parse_async_questions(
+            &json!({ "type": "agentMessage", "id": "m", "text": "hi" }),
+            "m"
+        )
+        .is_empty());
     }
 
     #[test]
