@@ -925,10 +925,149 @@ fn string_unknown_api_error_is_not_shown_as_unknown() {
     match ingest.events.as_slice() {
         [SessionEventBody::System { text }] => {
             assert!(text.contains("连接中断"));
+            assert!(text.contains("正在重试"));
+            assert!(!text.to_ascii_lowercase().contains("unknown"));
+            assert!(!text.contains("报错"));
+        }
+        other => panic!("expected one system note, got {other:?}"),
+    }
+}
+
+#[test]
+fn string_unknown_system_error_is_not_a_red_banner() {
+    let mut state = MapState::default();
+    let ingest = ingest_line(
+        &mut state,
+        r#"{"type":"system","subtype":"error","error":"unknown"}"#,
+        true,
+        None,
+    );
+    assert!(!ingest.events.iter().any(|event| matches!(event, SessionEventBody::Error { .. })));
+    match ingest.events.as_slice() {
+        [SessionEventBody::System { text }] => {
+            assert!(text.contains("连接中断"));
+            assert!(!text.contains("报错"));
             assert!(!text.to_ascii_lowercase().contains("unknown"));
         }
         other => panic!("expected one system note, got {other:?}"),
     }
+    let again = ingest_line(
+        &mut state,
+        r#"{"type":"system","subtype":"error","error":"unknown error"}"#,
+        true,
+        None,
+    );
+    assert!(again.events.is_empty());
+}
+
+#[test]
+fn api_retry_unknown_is_a_retry_note() {
+    let mut state = MapState::default();
+    let ingest = ingest_line(
+        &mut state,
+        r#"{"type":"system","subtype":"api_retry","attempt":1,"max_retries":10,"retry_delay_ms":2000,"error_status":null,"error":"unknown"}"#,
+        true,
+        None,
+    );
+    assert!(!ingest.events.iter().any(|event| matches!(event, SessionEventBody::Error { .. })));
+    match ingest.events.as_slice() {
+        [SessionEventBody::System { text }] => {
+            assert!(text.contains("连接中断"));
+            assert!(text.contains("正在重试"));
+            assert!(!text.contains("报错"));
+            assert!(!text.to_ascii_lowercase().contains("unknown"));
+        }
+        other => panic!("expected one system note, got {other:?}"),
+    }
+    let again = ingest_line(
+        &mut state,
+        r#"{"type":"system","subtype":"api_retry","attempt":2,"max_retries":10,"error_status":null,"error":"unknown"}"#,
+        true,
+        None,
+    );
+    assert!(again.events.is_empty());
+    let thinner = ingest_line(
+        &mut state,
+        r#"{"type":"system","subtype":"error","error":"unknown"}"#,
+        true,
+        None,
+    );
+    assert!(thinner.events.is_empty());
+}
+
+#[test]
+fn api_retry_rate_limit_uses_capacity_copy() {
+    let mut state = MapState::default();
+    let ingest = ingest_line(
+        &mut state,
+        r#"{"type":"system","subtype":"api_retry","attempt":1,"max_retries":5,"retry_delay_ms":8000,"error_status":429,"error":"rate_limit"}"#,
+        true,
+        None,
+    );
+    match ingest.events.as_slice() {
+        [SessionEventBody::System { text }] => {
+            assert!(text.contains("请求过于频繁"));
+            assert!(text.contains("正在重试"));
+            assert!(!text.contains("rate_limit"));
+            assert!(!text.contains("报错"));
+        }
+        other => panic!("expected one system note, got {other:?}"),
+    }
+}
+
+#[test]
+fn connection_payload_keeps_formatted_text() {
+    let mut state = MapState::default();
+    let ingest = ingest_line(
+        &mut state,
+        r#"{"type":"system","subtype":"error","error":{"formatted":"unknown","message":"unknown error","connection":{"message":"ECONNRESET"}}}"#,
+        true,
+        None,
+    );
+    match ingest.events.as_slice() {
+        [SessionEventBody::Error { message }] => {
+            assert!(message.contains("ECONNRESET"));
+            assert!(!message.to_ascii_lowercase().contains("unknown"));
+            assert!(!message.contains("报错"));
+        }
+        other => panic!("expected the connection text, got {other:?}"),
+    }
+}
+
+#[test]
+fn terminal_is_error_is_a_red_banner() {
+    let mut state = MapState::default();
+    let live = ingest_line(
+        &mut state,
+        r#"{"type":"system","subtype":"error","error":"unknown"}"#,
+        true,
+        None,
+    );
+    assert!(!live.events.iter().any(|event| matches!(event, SessionEventBody::Error { .. })));
+    let done = ingest_line(
+        &mut state,
+        r#"{"type":"result","subtype":"error_during_execution","is_error":true,"api_error_status":429,"errors":["unknown"]}"#,
+        true,
+        None,
+    );
+    assert!(done.events.iter().any(|event| matches!(
+        event,
+        SessionEventBody::Error { message } if message.contains("请求过于频繁") && !message.contains("报错")
+    )));
+    assert!(done.events.iter().any(|event| matches!(
+        event,
+        SessionEventBody::StatusChanged { status: SessionStatus::Completed }
+    )));
+    let bare = ingest_line(
+        &mut MapState::default(),
+        r#"{"type":"result","subtype":"error_during_execution","is_error":true}"#,
+        true,
+        None,
+    );
+    assert!(bare.events.iter().any(|event| matches!(
+        event,
+        SessionEventBody::Error { message } if message.contains("报错")
+    )));
 }
 
 #[test]

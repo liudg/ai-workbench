@@ -40,6 +40,8 @@ pub struct MapState {
     saved_diff: String,
     pub model: Option<String>,
     usage: super::usage::LiveCursor,
+    /// 这一轮已经给过连接或重试提示。后面的占位错误不再各画一条。
+    connection_noted: bool,
 }
 
 struct ToolRow {
@@ -76,6 +78,7 @@ impl MapState {
         self.turn_diff.clear();
         self.text_stream_id.clear();
         self.thinking_stream_id.clear();
+        self.connection_noted = false;
         self.turn_id = turn_id.to_string();
     }
 
@@ -328,44 +331,104 @@ fn on_system(state: &mut MapState, value: &Value, live: bool) -> Vec<SessionEven
         }
         return Vec::new();
     }
+    // 官方 stream-json 的重试是 `system/api_retry`（`error` 常为类别 `"unknown"`）。
+    // 转录里同一件事是 `system/api_error`，带 `retryAttempt`。都还在重试，不是终态。
+    if retry_notice(subtype, value) {
+        return retry_note(state, value);
+    }
     if subtype == "error" || subtype == "api_error" || value.get("error").is_some() {
-        let message = system_error_text(value);
-        // stdout 的 api_error 会在重试期间连发。连接还在重试时只留第一条说明，不把会话打成失败。
-        if subtype == "api_error" && retry_in_progress(value) {
-            let attempt = value.get("retryAttempt").and_then(Value::as_i64).unwrap_or(1);
-            if attempt != 1 {
-                return Vec::new();
-            }
-            return vec![SessionEventBody::System {
-                text: format!("{message}，正在重试"),
-            }];
+        if let Some(message) = useful_error_text(value) {
+            return vec![SessionEventBody::Error { message }];
         }
-        return vec![SessionEventBody::Error { message }];
+        // 占位词滤掉后没有正文。直播里先不打红条，等 result 或进程退出再定。
+        if live {
+            return opaque_live_note(state, value);
+        }
+        return Vec::new();
     }
     Vec::new()
 }
 
+fn retry_notice(subtype: &str, value: &Value) -> bool {
+    subtype == "api_retry" || (matches!(subtype, "api_error" | "error") && retry_in_progress(value))
+}
+
+/// 重试连发只留第一条。有 `formatted` / `message` / `connection` 就用原文，否则按类别写。
+fn retry_note(state: &mut MapState, value: &Value) -> Vec<SessionEventBody> {
+    let attempt = retry_attempt(value).unwrap_or(1);
+    if attempt != 1 {
+        return Vec::new();
+    }
+    state.connection_noted = true;
+    let detail = useful_error_text(value)
+        .or_else(|| opaque_label(value).map(str::to_string))
+        .unwrap_or_else(|| "Claude Code 连接中断".to_string());
+    vec![SessionEventBody::System {
+        text: format!("{detail}，正在重试"),
+    }]
+}
+
+fn opaque_live_note(state: &mut MapState, value: &Value) -> Vec<SessionEventBody> {
+    if state.connection_noted {
+        return Vec::new();
+    }
+    let Some(text) = opaque_label(value) else {
+        return Vec::new();
+    };
+    state.connection_noted = true;
+    vec![SessionEventBody::System { text: text.to_string() }]
+}
+
+/// 占位错误的灰提示。认得出类别或状态码就用对应句子，否则当成连接中断。
+fn opaque_label(value: &Value) -> Option<&'static str> {
+    if let Some(text) = classified_copy(value) {
+        return Some(text);
+    }
+    if payload_is_opaque(value) {
+        return Some("Claude Code 连接中断");
+    }
+    None
+}
+
 /// CLI 2.1.301 的 stream-json 常把错误对象收成字符串 `"unknown"`。
 /// 转录里同一条是 `{formatted, message, connection}`。两种都读，不把占位词直接画出来。
+/// 终态失败才用这份文案打红条；直播里的占位错误走灰提示。
 fn system_error_text(value: &Value) -> String {
-    if let Some(error) = value.get("error") {
-        if let Some(text) = error_payload_text(error) {
-            return text;
-        }
-    }
-    if let Some(text) = text_field_filtered(value, "message") {
+    if let Some(text) = useful_error_text(value) {
         return text;
     }
-    let reason = value.get("terminal_reason").and_then(Value::as_str).unwrap_or("");
-    if let Some(text) = reason_text(reason) {
+    if let Some(text) = errors_list_text(value) {
+        return text;
+    }
+    if let Some(text) = classified_copy(value) {
         return text.to_string();
     }
+    if payload_is_opaque(value) {
+        return "Claude Code 连接中断".into();
+    }
     let subtype = value.get("subtype").and_then(Value::as_str).unwrap_or("");
-    if subtype == "api_error" {
+    if subtype == "api_error" || subtype == "api_retry" {
         "Claude Code 连接中断".into()
     } else {
         "Claude Code 报错".into()
     }
+}
+
+fn useful_error_text(value: &Value) -> Option<String> {
+    if let Some(error) = value.get("error") {
+        if let Some(text) = error_payload_text(error) {
+            if !error_category_token(&text.to_ascii_lowercase()) {
+                return Some(text);
+            }
+        }
+    }
+    if let Some(text) = text_field_filtered(value, "message") {
+        if !error_category_token(&text.to_ascii_lowercase()) {
+            return Some(text);
+        }
+    }
+    let reason = value.get("terminal_reason").and_then(Value::as_str).unwrap_or("");
+    reason_text(reason).map(str::to_string)
 }
 
 fn error_payload_text(error: &Value) -> Option<String> {
@@ -412,13 +475,110 @@ fn reason_text(reason: &str) -> Option<&'static str> {
     }
 }
 
+fn payload_is_opaque(value: &Value) -> bool {
+    match value.get("error") {
+        Some(error) => error_payload_text(error).is_none(),
+        None => false,
+    }
+}
+
+fn errors_list_text(value: &Value) -> Option<String> {
+    let list = value.get("errors")?.as_array()?;
+    let text = list
+        .iter()
+        .filter_map(|item| item.as_str().and_then(text_if_useful).or_else(|| text_field_filtered(item, "message")))
+        .collect::<Vec<_>>()
+        .join("\n");
+    if text.is_empty() { None } else { Some(text) }
+}
+
+fn classified_copy(value: &Value) -> Option<&'static str> {
+    let category = error_category(value).to_ascii_lowercase();
+    if category != "unknown" && category != "unknown error" {
+        if let Some(text) = category_copy(&category) {
+            return Some(text);
+        }
+    }
+    if let Some(text) = status_copy(http_status(value)) {
+        return Some(text);
+    }
+    if category == "unknown" || category == "unknown error" {
+        return Some("Claude Code 连接中断");
+    }
+    None
+}
+
+fn error_category(value: &Value) -> &str {
+    value
+        .get("error")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|text| error_category_token(&text.to_ascii_lowercase()) || placeholder_error(text))
+        .unwrap_or("")
+}
+
+fn category_copy(category: &str) -> Option<&'static str> {
+    match category {
+        "rate_limit" => Some("Claude Code 请求过于频繁"),
+        "overloaded" => Some("Claude Code 服务繁忙"),
+        "server_error" => Some("Claude Code 连接中断"),
+        "authentication_failed" | "oauth_org_not_allowed" => Some("Claude Code 登录失败"),
+        "billing_error" | "account_on_hold" => Some("Claude Code 账户额度不足"),
+        "invalid_request" => Some("Claude Code 请求无效"),
+        "model_not_found" => Some("Claude Code 找不到模型"),
+        "max_output_tokens" => Some("Claude Code 输出达到上限"),
+        "cloud_credential_error" => Some("Claude Code 云凭证无效"),
+        _ => None,
+    }
+}
+
+fn error_category_token(folded: &str) -> bool {
+    matches!(
+        folded,
+        "authentication_failed"
+            | "oauth_org_not_allowed"
+            | "account_on_hold"
+            | "billing_error"
+            | "rate_limit"
+            | "overloaded"
+            | "invalid_request"
+            | "model_not_found"
+            | "server_error"
+            | "max_output_tokens"
+            | "cloud_credential_error"
+            | "unknown"
+            | "unknown error"
+    )
+}
+
+fn status_copy(status: Option<i64>) -> Option<&'static str> {
+    match status {
+        Some(429) => Some("Claude Code 请求过于频繁"),
+        Some(529) => Some("Claude Code 服务繁忙"),
+        Some(code) if (500..600).contains(&code) => Some("Claude Code 连接中断"),
+        _ => None,
+    }
+}
+
+fn http_status(value: &Value) -> Option<i64> {
+    json_i64(value, "error_status")
+        .or_else(|| json_i64(value, "api_error_status"))
+        .or_else(|| value.pointer("/error/status").and_then(Value::as_i64))
+}
+
 fn retry_in_progress(value: &Value) -> bool {
-    let attempt = value.get("retryAttempt").and_then(Value::as_i64);
-    let max = value.get("maxRetries").and_then(Value::as_i64);
-    match (attempt, max) {
+    match (retry_attempt(value), retry_limit(value)) {
         (Some(attempt), Some(max)) => attempt < max,
         _ => false,
     }
+}
+
+fn retry_attempt(value: &Value) -> Option<i64> {
+    json_i64(value, "retryAttempt").or_else(|| json_i64(value, "attempt"))
+}
+
+fn retry_limit(value: &Value) -> Option<i64> {
+    json_i64(value, "maxRetries").or_else(|| json_i64(value, "max_retries"))
 }
 
 fn on_assistant(state: &mut MapState, value: &Value, project: Option<&Path>, live: bool) -> Vec<SessionEventBody> {
