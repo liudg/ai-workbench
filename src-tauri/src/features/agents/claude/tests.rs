@@ -85,6 +85,12 @@ fn add_dir_is_a_launch_argument() {
     let pos = args.iter().position(|arg| arg == "--add-dir").expect("add-dir");
     assert_eq!(args[pos + 1], r"D:\extra");
     assert_eq!(args[pos + 2], "--input-format");
+}
+
+/// `Path` 只在 Windows 上把 `C:\work` 当成绝对路径。
+#[test]
+#[cfg(windows)]
+fn add_dir_normalizes_against_the_workspace() {
     let normalized = command::normalize_add_dirs(
         r"C:\work",
         &[
