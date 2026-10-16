@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { ReopenAs } from "../core/registry";
+import { BinaryFileError, ReopenAs } from "../core/registry";
 import { readProjectText } from "../viewers/document";
 
 export type PreviewFileState =
@@ -29,6 +29,10 @@ export function usePreviewFile(projectId: string, path: string): PreviewFileStat
         if (cancel) return;
         if (err instanceof ReopenAs && err.target.kind === "file" && err.target.viewerId === "image") {
           setState({ status: "ready", text: "", kind: "image", truncated: false });
+          return;
+        }
+        if (err instanceof BinaryFileError) {
+          setState({ status: "ready", text: "", kind: "binary", truncated: false });
           return;
         }
         setState({ status: "error", message: errorText(err) });

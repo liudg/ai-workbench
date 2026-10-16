@@ -4,9 +4,8 @@ import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { textSnippetChipLabel, textSnippetPreview } from "@/shared/text-snippet";
 import { resolvePreviewPath } from "../core/preview-kind";
 import { FileContextMenu } from "./FileContextMenu";
-import { FilePreview } from "./FilePreview";
+import { FilePreviewColumn } from "./FilePreview";
 import { projectIdForRoot } from "./preview-project";
-import { FileSearchDialog } from "./FileSearchDialog";
 import { baseName } from "@/shared/path";
 import { useAttachFile } from "./useAttachFile";
 import { addSessionTextSnippet, useSessionTextSnippets } from "../core/useAddTextSnippet";
@@ -22,7 +21,7 @@ export default function FilesPreview() {
   const [filter, setFilter] = useState("");
   const [path, setPath] = useState("");
   const [line, setLine] = useState<number | null>(null);
-  const [searchOpen, setSearchOpen] = useState(false);
+  const [treeOpen, setTreeOpen] = useState(true);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string } | null>(null);
   const attachFile = useAttachFile(SESSION);
   const snippets = useSessionTextSnippets(SESSION);
@@ -49,21 +48,20 @@ export default function FilesPreview() {
   return (
     <div className="flex h-screen min-h-0 bg-zinc-950 text-zinc-200">
       <div className="flex min-w-0 flex-1 flex-col">
-        {path && projectId ? (
-          <div className="min-h-0 flex-1">
-            <FilePreview
-              projectId={projectId}
-              path={path}
-              line={line}
-              quotePath={joinRoot(root, path)}
-              onQuote={(draft) => addSessionTextSnippet(SESSION, draft)}
-            />
-          </div>
-        ) : (
-          <p className="p-6 text-sm text-zinc-500" data-files-preview-status>
-            {error || "从右侧打开一个文件"}
-          </p>
-        )}
+        <FilePreviewColumn
+          projectId={projectId}
+          projectPath={root}
+          previewPath={path}
+          previewLine={line}
+          treeOpen={treeOpen}
+          onToggleTree={() => setTreeOpen((open) => !open)}
+          onSelectFile={(next, _intent, nextLine) => {
+            setPath(next);
+            setLine(nextLine ?? null);
+          }}
+          quotePath={path ? joinRoot(root, path) : ""}
+          onQuote={(draft) => addSessionTextSnippet(SESSION, draft)}
+        />
         <div className="shrink-0 border-t border-zinc-800 p-3">
           <span className="mb-1 block text-xs text-zinc-500">对话</span>
           {snippets.length > 0 ? (
@@ -89,53 +87,36 @@ export default function FilesPreview() {
           />
         </div>
       </div>
-      <aside data-workspace-tree className="flex w-80 shrink-0 flex-col border-l border-zinc-800">
-        <div className="flex gap-1 border-b border-zinc-800 p-1.5">
-          <input
-            data-files-filter
-            value={filter}
-            aria-label={DESKTOP_ZH.filterFiles}
-            placeholder={DESKTOP_ZH.filterFiles}
-            onChange={(event) => setFilter(event.target.value)}
-            className="w-full min-w-0 rounded-md border border-zinc-800 bg-zinc-900 px-1.5 py-1 text-xs text-zinc-100 outline-none"
-          />
-          <button
-            type="button"
-            data-file-search-open
-            aria-label={DESKTOP_ZH.openFilesSearch}
-            className="inline-flex h-7 shrink-0 items-center rounded-full border border-zinc-700 px-2 text-[11px] text-zinc-300"
-            onClick={() => setSearchOpen(true)}
-          >
-            搜索
-          </button>
-        </div>
-        <div className="min-h-0 flex-1 overflow-auto px-1 py-1">
-          {projectId ? (
-            <WorkspaceTree
-              projectId={projectId}
-              filter={filter}
-              activePath={path}
-              onSelect={(next) => {
-                setPath(next);
-                setLine(null);
-              }}
-              onContextMenu={(next, event) => setContextMenu({ x: event.clientX, y: event.clientY, path: next })}
+      {treeOpen ? (
+        <aside data-workspace-tree data-tree-surface="sidebar" className="flex w-80 shrink-0 flex-col border-l border-zinc-800">
+          <div className="flex gap-1 border-b border-zinc-800 p-1.5">
+            <input
+              data-files-filter
+              value={filter}
+              aria-label={DESKTOP_ZH.filterFiles}
+              placeholder={DESKTOP_ZH.filterFiles}
+              onChange={(event) => setFilter(event.target.value)}
+              className="w-full min-w-0 rounded-md border border-zinc-800 bg-zinc-900 px-1.5 py-1 text-xs text-zinc-100 outline-none"
             />
-          ) : (
-            <p className="px-2 py-6 text-center text-xs text-zinc-500">{error || DESKTOP_ZH.filesReading}</p>
-          )}
-        </div>
-      </aside>
-      {searchOpen && projectId ? (
-        <FileSearchDialog
-          projectId={projectId}
-          onClose={() => setSearchOpen(false)}
-          onOpen={(next, nextLine) => {
-            setPath(next);
-            setLine(nextLine);
-            setSearchOpen(false);
-          }}
-        />
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto px-1 py-1">
+            {projectId ? (
+              <WorkspaceTree
+                projectId={projectId}
+                filter={filter}
+                activePath={path}
+                surface="sidebar"
+                onSelectFile={(next) => {
+                  setPath(next);
+                  setLine(null);
+                }}
+                onContextMenu={(next, event) => setContextMenu({ x: event.clientX, y: event.clientY, path: next })}
+              />
+            ) : (
+              <p className="px-2 py-6 text-center text-xs text-zinc-500">{error || DESKTOP_ZH.filesReading}</p>
+            )}
+          </div>
+        </aside>
       ) : null}
       {contextMenu ? (
         <FileContextMenu

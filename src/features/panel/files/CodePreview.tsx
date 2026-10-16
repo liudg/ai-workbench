@@ -1,9 +1,11 @@
+import { useState } from "react";
 import source from "../viewers/SourceView.tsx?raw";
 
-import { FileTreeList } from "./FileTreeList";
-import { PreviewPathBar } from "./FilePreview";
-import { buildFileTree, type FileTreeFile } from "./file-tree";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
+import { FileTreeList } from "./FileTreeList";
+import { PreviewChrome } from "./PreviewChrome";
+import { PreviewEmpty } from "./FilePreview";
+import { buildFileTree, type FileTreeFile } from "./file-tree";
 import { SourceView } from "../viewers/SourceView";
 
 const PATH = "src/features/panel/viewers/SourceView.tsx";
@@ -18,36 +20,58 @@ const FILES: FileTreeFile[] = [
 /** 开发预览：用仓库里的真实源码看打开文件的排版，不写进安装包。 */
 export default function CodePreview() {
   const line = source.split("\n").findIndex((row) => row.includes("data-source-line")) + 1;
+  const [path, setPath] = useState("");
+  const [treeOpen, setTreeOpen] = useState(true);
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#0f0f0f] text-[#e8e8e8]">
+    <div className="flex h-screen w-screen overflow-hidden bg-[#0f0f0f] text-[#e8e8e8]" data-file-tree={treeOpen ? "visible" : "hidden"}>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <PreviewPathBar path={PATH} />
+        <PreviewChrome
+          path={path}
+          projectId=""
+          treeOpen={treeOpen}
+          onToggleTree={() => setTreeOpen((open) => !open)}
+          searchEnabled={false}
+          onSearch={() => {}}
+          onSelectFile={(next) => setPath(next)}
+        />
         <div className="min-h-0 flex-1">
-          <SourceView text={source} line={line > 0 ? line : 1} />
+          {path === PATH ? (
+            <div data-content-viewer="text" className="h-full min-h-0">
+              <SourceView text={source} line={line > 0 ? line : 1} />
+            </div>
+          ) : path ? (
+            <p data-preview-shell="error" className="px-6 py-8 text-center text-sm text-red-300">
+              无法读取文件
+            </p>
+          ) : (
+            <PreviewEmpty />
+          )}
         </div>
       </div>
-      <aside className="flex h-full w-[220px] shrink-0 flex-col overflow-hidden border-l border-[#222] bg-[#0f0f0f]">
-        <div className="border-b border-[#222] p-2">
-          <input
-            readOnly
-            value=""
-            placeholder={DESKTOP_ZH.filterFiles}
-            aria-label={DESKTOP_ZH.filterFiles}
-            className="w-full min-w-0 rounded-md border border-[#2a2a2a] bg-[#171717] px-2 py-1.5 text-[12px] text-[#e8e8e8] outline-none placeholder:text-[#666]"
-          />
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-1 py-1">
-          <FileTreeList
-            nodes={buildFileTree(FILES)}
-            collapsed={new Set()}
-            activePath={PATH}
-            rowAttr="data-workspace-file"
-            showStats={false}
-            onToggle={() => {}}
-            onSelect={() => {}}
-          />
-        </div>
-      </aside>
+      {treeOpen ? (
+        <aside data-workspace-tree data-tree-surface="sidebar" className="flex h-full w-[220px] shrink-0 flex-col overflow-hidden border-l border-[#222] bg-[#0f0f0f]">
+          <div className="border-b border-[#222] p-2">
+            <input
+              readOnly
+              value=""
+              placeholder={DESKTOP_ZH.filterFiles}
+              aria-label={DESKTOP_ZH.filterFiles}
+              className="w-full min-w-0 rounded-md border border-[#2a2a2a] bg-[#171717] px-2 py-1.5 text-[12px] text-[#e8e8e8] outline-none placeholder:text-[#666]"
+            />
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto px-1 py-1">
+            <FileTreeList
+              nodes={buildFileTree(FILES)}
+              collapsed={new Set()}
+              activePath={path}
+              rowAttr="data-workspace-file"
+              showStats={false}
+              onToggle={() => {}}
+              onSelect={(file) => setPath(file.path)}
+            />
+          </div>
+        </aside>
+      ) : null}
     </div>
   );
 }
