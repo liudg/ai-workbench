@@ -49,7 +49,7 @@ pub fn parse_codex_list(text: &str) -> Result<Vec<McpServerRow>, String> {
             .and_then(|value| value.as_str())
             .unwrap_or("")
             .to_string();
-        let enabled = item.get("enabled").and_then(|value| value.as_bool());
+        let enabled = codex_enabled(item);
         let auth_status = item
             .get("auth_status")
             .and_then(|value| value.as_str())
@@ -82,6 +82,7 @@ pub fn parse_codex_list(text: &str) -> Result<Vec<McpServerRow>, String> {
 
 /// Claude `mcp list` 文本。探测到的行是 `名字: 命令 - 状态`。
 /// Cursor `mcp list` 文本是 `名字: 状态`，中间没有 ` - `。
+/// 这里不填 `enabled`：Claude 没有开关，Cursor 由 [`parse_cursor_list`] 从状态原文填写。
 pub fn parse_cli_list(text: &str) -> Vec<McpServerRow> {
     let mut rows = Vec::new();
     for line in text.lines() {
@@ -121,6 +122,43 @@ pub fn parse_cli_list(text: &str) -> Vec<McpServerRow> {
         });
     }
     rows
+}
+
+/// Cursor `mcp list` 的状态原文就是启用状态。`disabled` 为关，其余非空状态为开。
+pub fn parse_cursor_list(text: &str) -> Vec<McpServerRow> {
+    let mut rows = parse_cli_list(text);
+    for row in &mut rows {
+        row.enabled = enabled_from_cursor_status(&row.status_text);
+    }
+    rows
+}
+
+pub fn enabled_from_cursor_status(status: &str) -> Option<bool> {
+    let bare = status
+        .trim()
+        .trim_start_matches(|ch: char| matches!(ch, '√' | '×' | '✓' | '✗'))
+        .trim();
+    if bare.is_empty() {
+        return None;
+    }
+    let lower = bare.to_ascii_lowercase();
+    if lower == "disabled" || lower.starts_with("disabled ") || lower.starts_with("disabled:") {
+        Some(false)
+    } else {
+        Some(true)
+    }
+}
+
+/// Codex 配置缺省是启用。`list --json` 有布尔 `enabled` 时用它；缺字段时按启用。
+fn codex_enabled(item: &serde_json::Value) -> Option<bool> {
+    match item.get("enabled") {
+        Some(value) => value.as_bool().or_else(|| match value.as_str()?.trim() {
+            "true" | "enabled" => Some(true),
+            "false" | "disabled" => Some(false),
+            _ => None,
+        }),
+        None => Some(true),
+    }
 }
 
 fn pairs(value: Option<&serde_json::Value>) -> Vec<crate::models::McpPair> {
@@ -233,9 +271,24 @@ mod tests {
         assert_eq!(rows[0].transport, "stdio");
         assert_eq!(rows[0].args, vec!["/c", "echo", "wb-mcp-probe"]);
         assert_eq!(rows[0].auth_status, "unsupported");
+        assert_eq!(rows[0].enabled, Some(true));
         assert_eq!(rows[1].transport, "streamable_http");
         assert_eq!(rows[1].bearer_token_env_var, "MCP_BEARER_TOKEN");
         assert_eq!(rows[1].auth_status, "bearer_token");
+        assert_eq!(rows[1].enabled, Some(true));
+    }
+
+    #[test]
+    fn codex_enabled_follows_config_and_defaults_on_when_omitted() {
+        let text = r#"[
+          { "name": "off", "enabled": false, "transport": { "type": "stdio", "command": "cmd" } },
+          { "name": "word", "enabled": "disabled", "transport": { "type": "stdio", "command": "cmd" } },
+          { "name": "plain", "transport": { "type": "stdio", "command": "cmd" } }
+        ]"#;
+        let rows = parse_codex_list(text).unwrap();
+        assert_eq!(rows[0].enabled, Some(false));
+        assert_eq!(rows[1].enabled, Some(false));
+        assert_eq!(rows[2].enabled, Some(true));
     }
 
     #[test]
@@ -249,12 +302,18 @@ mod tests {
         assert_eq!(rows[0].status_text, "× Failed to connect");
         assert_eq!(rows[1].transport, "streamable_http");
         assert_eq!(rows[1].url, "https://example.invalid/mcp");
+        assert_eq!(rows[0].enabled, None);
 
-        let cursor = "rdp-ops: ready\nunityMCP: ready\n";
-        let rows = parse_cli_list(cursor);
+        let cursor = "rdp-ops: ready\nunityMCP: disabled\nquiet: disabled: paused\n";
+        let rows = parse_cursor_list(cursor);
         assert_eq!(rows[0].name, "rdp-ops");
         assert_eq!(rows[0].status_text, "ready");
+        assert_eq!(rows[0].enabled, Some(true));
         assert!(rows[0].command.is_empty());
         assert!(rows[0].transport.is_empty());
+        assert_eq!(rows[1].enabled, Some(false));
+        assert_eq!(rows[2].enabled, Some(false));
+        assert_eq!(enabled_from_cursor_status(""), None);
+        assert_eq!(enabled_from_cursor_status("needsAuth"), Some(true));
     }
 }

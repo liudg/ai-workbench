@@ -137,11 +137,13 @@ pub fn claude_add(spec: &McpAddSpec) -> Result<Vec<String>, String> {
         }
         require_text(&spec.command, "STDIO 需要启动命令。")?;
         reject_text(&spec.url, "URL 只用于 SSE 和 HTTP。")?;
+        // `-e` 是变长参数，会一直吃到下一个旗标。名字必须在 `-e` 前面，
+        // 命令必须在 `--` 后面，否则服务器名会被当成环境变量。
+        args.push(name);
         for pair in &spec.env {
             args.push("-e".into());
             args.push(env_arg(&pair.key, &pair.value)?);
         }
-        args.push(name);
         args.push("--".into());
         args.push(spec.command.trim().to_string());
         for arg in &spec.args {
@@ -155,10 +157,6 @@ pub fn claude_add(spec: &McpAddSpec) -> Result<Vec<String>, String> {
         reject_text(&spec.command, "命令只用于 STDIO。")?;
         if !spec.args.is_empty() || !spec.env.is_empty() {
             return Err("参数和环境变量只用于 STDIO。".into());
-        }
-        for pair in &spec.headers {
-            args.push("-H".into());
-            args.push(header_arg(&pair.key, &pair.value)?);
         }
         if !spec.client_id.trim().is_empty() {
             args.push("--client-id".into());
@@ -174,6 +172,11 @@ pub fn claude_add(spec: &McpAddSpec) -> Result<Vec<String>, String> {
         }
         args.push(name);
         args.push(spec.url.trim().to_string());
+        // `-H` 同样是变长参数，放在名字和 URL 后面，避免把它们吃进去。
+        for pair in &spec.headers {
+            args.push("-H".into());
+            args.push(header_arg(&pair.key, &pair.value)?);
+        }
     }
     Ok(args)
 }
@@ -412,14 +415,14 @@ mod tests {
                 "http",
                 "-s",
                 "project",
-                "-H",
-                "Authorization: Bearer x",
                 "--client-id",
                 "client",
                 "--callback-port",
                 "8080",
                 "wb-mcp-probe",
-                "https://example.invalid/mcp"
+                "https://example.invalid/mcp",
+                "-H",
+                "Authorization: Bearer x"
             ]
         );
         http.bearer_token_env_var = "TOKEN".into();
@@ -429,6 +432,53 @@ mod tests {
             strs(&claude_remove("wb-mcp-probe", "").unwrap()),
             vec!["mcp", "remove", "wb-mcp-probe"]
         );
+    }
+
+    #[test]
+    fn claude_stdio_env_keeps_the_server_name_out_of_variadic_env() {
+        let mut stdio = spec("stdio");
+        stdio.name = "wb-accept-135".into();
+        stdio.command = "cmd".into();
+        stdio.args = vec!["/c".into(), "echo".into()];
+        stdio.scope = "user".into();
+        stdio.env = vec![
+            McpPair {
+                key: "API_KEY".into(),
+                value: "x".into(),
+            },
+            McpPair {
+                key: "REGION".into(),
+                value: "cn".into(),
+            },
+        ];
+        let added = claude_add(&stdio).unwrap();
+        let args = strs(&added);
+        assert_eq!(
+            args,
+            vec![
+                "mcp",
+                "add",
+                "--transport",
+                "stdio",
+                "-s",
+                "user",
+                "wb-accept-135",
+                "-e",
+                "API_KEY=x",
+                "-e",
+                "REGION=cn",
+                "--",
+                "cmd",
+                "/c",
+                "echo"
+            ]
+        );
+        let name_at = args.iter().position(|arg| *arg == "wb-accept-135").unwrap();
+        let env_at = args.iter().position(|arg| *arg == "-e").unwrap();
+        let dash_at = args.iter().position(|arg| *arg == "--").unwrap();
+        assert!(name_at < env_at);
+        assert!(env_at < dash_at);
+        assert!(!args.windows(2).any(|pair| pair == ["-e", "wb-accept-135"]));
     }
 
     #[test]

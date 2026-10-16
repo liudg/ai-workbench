@@ -16,6 +16,7 @@ import {
   withRowBusy,
   withoutRowBusy,
   showAdd,
+  loginLaunch,
   showLogin,
   showRemove,
   showToggle,
@@ -270,6 +271,23 @@ test("authenticate follows the surface rule and ignores unseen status spellings"
   assert.equal(showLogin(codex, row({ auth_status: "bearer_token" })), false);
   assert.equal(showLogin(codex, row({ auth_status: "not_logged_in" })), false);
   assert.equal(showLogin(codex, row({ auth_status: "notLoggedIn" })), true);
+  assert.equal(showLogin(codex, row({ auth_status: "unknown", transport: "stdio" })), false);
+  assert.equal(
+    showLogin(codex, row({ auth_status: "unknown", transport: "streamable_http", url: "https://example.invalid/mcp" })),
+    true,
+  );
+  assert.equal(showLogin(codex, row({ auth_status: "unknown", transport: "sse" })), true);
+  assert.equal(showLogin(codex, row({ auth_status: "unknown", transport: "http" })), true);
+  assert.equal(
+    loginLaunch(codex, row({ auth_status: "unknown", transport: "streamable_http", url: "https://example.invalid/mcp" })),
+    "options",
+  );
+  assert.deepEqual(
+    menuActions(codex, row({ auth_status: "unknown", transport: "http", url: "https://example.invalid/mcp" })).map(
+      (item) => item.label,
+    ),
+    ["身份验证", "取消认证", "卸载"],
+  );
 
   const claude = surface({
     kind: "claude-code",

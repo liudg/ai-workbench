@@ -92,7 +92,9 @@ test("list rows show transport, one status, and a single toggle", () => {
   assert.equal(html.includes("bg-zinc-400"), true);
   assert.equal(html.includes("已连接"), false);
   assert.equal(html.includes('data-mcp-highlight="wb-mcp-probe"'), true);
-  assert.equal(html.includes("data-mcp-toggle"), false);
+  assert.equal(html.includes('role="switch"'), true);
+  assert.equal(html.includes('data-mcp-toggle="wb-mcp-probe"'), true);
+  assert.equal(html.includes('data-mcp-toggle="wb-mcp-http"'), true);
   assert.equal(html.includes("data-mcp-enable"), false);
   assert.equal(html.includes("data-mcp-disable"), false);
   assert.equal(html.includes("未观察"), false);
@@ -109,6 +111,7 @@ test("list rows show transport, one status, and a single toggle", () => {
   assert.equal(claude.includes('data-mcp-status="connected"'), true);
   assert.equal(claude.includes('data-mcp-transport-tag="HTTP"'), true);
   assert.equal(claude.includes('data-mcp-transport-tag="STDIO"'), true);
+  assert.equal(claude.includes("data-mcp-toggle"), false);
 
   const toggles = render({
     surfaces: [toggleSurface],
@@ -130,7 +133,10 @@ test("list rows show transport, one status, and a single toggle", () => {
     selected: "cursor-agent",
     rows: cursorRows,
   });
-  assert.equal(cursor.includes("data-mcp-toggle"), false);
+  assert.equal(cursor.includes('role="switch"'), true);
+  assert.equal(cursor.includes('data-mcp-toggle="demo-ready"'), true);
+  assert.equal(cursor.includes('data-mcp-toggle="demo-other"'), true);
+  assert.equal(cursor.includes('data-mcp-status="disabled"'), true);
   assert.equal(cursor.includes("已连接"), true);
 });
 
@@ -265,6 +271,38 @@ test("detail is titled with the server name, masks secrets, and lists tools", ()
   });
   assert.equal(unsupported.includes('data-mcp-auth="不支持"'), true);
   assert.equal(unsupported.includes('data-mcp-status="configured"'), true);
+});
+
+test("unknown HTTP auth opens the registration popover, and a new tab shows loading", () => {
+  const unknown = row({
+    name: "fresh-http",
+    transport: "streamable_http",
+    url: "https://example.invalid/mcp",
+    enabled: true,
+    auth_status: "unknown",
+  });
+  const html = render({
+    surfaces: previewSurfaces,
+    rows: [unknown],
+    initialAuth: "fresh-http",
+  });
+  assert.equal(html.includes('data-mcp-popover="fresh-http"'), true);
+  assert.equal(html.includes('data-mcp-registration="fresh-http"'), true);
+  assert.equal(html.includes(SCOPES_PLACEHOLDER), true);
+  assert.equal(html.includes("进行身份验证"), true);
+  assert.equal(html.includes("OAuth 客户端注册"), true);
+
+  const loading = render({
+    surfaces: previewSurfaces,
+    selected: "cursor-agent",
+    rows: [],
+    listing: true,
+  });
+  assert.equal(loading.includes('data-mcp-loading=""'), true);
+  assert.equal(loading.includes("正在读取 MCP…"), true);
+  assert.equal(loading.includes('data-mcp-list="cursor-agent"'), true);
+  assert.equal(loading.includes("未连接 MCP 服务器"), false);
+  assert.equal(loading.includes("data-mcp-toggle"), false);
 });
 
 const SCOPES_PLACEHOLDER = "要请求的 OAuth 权限范围，用逗号分隔";

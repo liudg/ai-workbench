@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { invoke } from "@/lib/ipc/call";
 import type { AgentKind, McpAddSpec, McpServerRow, McpSurface } from "@/types";
+import { emptyBook, finishList, startList, visibleList, type McpListBook } from "./listState";
 import { McpPanel } from "./McpPanel";
 import {
   MCP_PAGE,
@@ -18,9 +19,10 @@ import {
 export function McpSettings() {
   const [surfaces, setSurfaces] = useState<McpSurface[] | null>(null);
   const [selected, setSelected] = useState<AgentKind | null>(null);
-  const [rows, setRows] = useState<McpServerRow[]>([]);
-  const [listError, setListError] = useState<string | null>(null);
-  const [listing, setListing] = useState(false);
+  const [book, setBook] = useState<McpListBook>(emptyBook);
+  const generations = useRef<Record<string, number>>({});
+  const selectedRef = useRef<AgentKind | null>(selected);
+  selectedRef.current = selected;
   const [rowBusy, setRowBusy] = useState<ReadonlySet<string>>(() => new Set());
   const [formBusy, setFormBusy] = useState(false);
   const [feedback, setFeedback] = useState<McpFeedback | null>(null);
@@ -29,25 +31,24 @@ export function McpSettings() {
 
   const loadList = useCallback(async (kind: AgentKind, known: McpSurface[], refresh: boolean) => {
     const surface = known.find((item) => item.kind === kind);
+    const generation = (generations.current[kind] ?? 0) + 1;
+    generations.current[kind] = generation;
     if (!refresh) {
-      setRows([]);
       setTools({});
       setFeedback(null);
       setHighlight(null);
     }
+    setBook((current) => startList(current, kind, generation, refresh));
     if (!surface?.manageable || !surface.verbs.list) {
-      setListError(null);
-      setListing(false);
+      setBook((current) => finishList(current, kind, generation, { rows: [] }));
       return;
     }
-    setListError(null);
-    setListing(true);
     try {
-      setRows(await invoke<McpServerRow[]>("mcp_list", { kind }));
+      const rows = await invoke<McpServerRow[]>("mcp_list", { kind });
+      setBook((current) => finishList(current, kind, generation, { rows }));
     } catch (err) {
-      setListError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setListing(false);
+      const error = err instanceof Error ? err.message : String(err);
+      setBook((current) => finishList(current, kind, generation, { error }));
     }
   }, []);
 
@@ -59,13 +60,15 @@ export function McpSettings() {
         setSurfaces(loaded);
         const first = loaded.find((item) => item.manageable) ?? loaded[0];
         if (!first) return;
+        selectedRef.current = first.kind;
         setSelected(first.kind);
         void loadList(first.kind, loaded, false);
       })
       .catch((err) => {
         if (!alive) return;
         setSurfaces([]);
-        setListError(err instanceof Error ? err.message : String(err));
+        const detail = err instanceof Error ? err.message : String(err);
+        setFeedback({ tone: "failure", title: MCP_PAGE.listErrorTitle, detail });
       });
     return () => {
       alive = false;
@@ -81,6 +84,7 @@ export function McpSettings() {
   }, [feedback]);
 
   function select(kind: AgentKind) {
+    selectedRef.current = kind;
     setSelected(kind);
     setRowBusy(new Set());
     if (surfaces) void loadList(kind, surfaces, false);
@@ -109,13 +113,15 @@ export function McpSettings() {
     return <p className="text-sm text-zinc-500">{MCP_PAGE.loading}</p>;
   }
 
+  const list = visibleList(book, selected);
+
   return (
     <McpPanel
       surfaces={surfaces}
       selected={selected}
-      rows={rows}
-      listError={listError}
-      listing={listing}
+      rows={list.rows}
+      listError={list.error}
+      listing={list.listing}
       rowBusy={rowBusy}
       formBusy={formBusy}
       feedback={feedback}
@@ -150,17 +156,24 @@ export function McpSettings() {
       }}
       onListTools={(name) => {
         if (!selected) return;
+        const kind = selected;
+        const generation = generations.current[kind] ?? 0;
         setRowBusy((current) => withRowBusy(current, name));
         setFeedback(null);
-        invoke<string>("mcp_list_tools", { kind: selected, name })
+        invoke<string>("mcp_list_tools", { kind, name })
           .then((text) => {
+            if (selectedRef.current !== kind || (generations.current[kind] ?? 0) !== generation) return;
             setTools((current) => ({ ...current, [name]: parseToolList(text) }));
           })
           .catch((err) => {
+            if (selectedRef.current !== kind) return;
             const detail = err instanceof Error ? err.message : String(err);
             setFeedback({ tone: "failure", title: failureTitle("tools"), detail });
           })
-          .finally(() => setRowBusy((current) => withoutRowBusy(current, name)));
+          .finally(() => {
+            if (selectedRef.current !== kind) return;
+            setRowBusy((current) => withoutRowBusy(current, name));
+          });
       }}
     />
   );

@@ -38,7 +38,7 @@ impl McpDriver for CursorMcp {
 
     async fn list(&self) -> Result<Vec<McpServerRow>, String> {
         let text = run(args::cursor_list(), exec::LIST_LIMIT).await?;
-        Ok(parse::parse_cli_list(&text))
+        Ok(parse::parse_cursor_list(&text))
     }
 
     async fn add(&self, _spec: &McpAddSpec) -> Result<String, String> {
