@@ -170,15 +170,17 @@ pub fn approval_options() -> Vec<PromptOption> {
     vec![
         PromptOption {
             id: "approve".into(),
-            label: "允许".into(),
+            label: "允许一次".into(),
             description: String::new(),
-            disabled_reason: None,
+            slot: "primary".into(),
+            ..Default::default()
         },
         PromptOption {
             id: "reject".into(),
             label: "拒绝".into(),
             description: String::new(),
-            disabled_reason: None,
+            slot: "deny".into(),
+            ..Default::default()
         },
     ]
 }
@@ -215,6 +217,7 @@ pub fn questions_from_input(input: &Value) -> Vec<PromptQuestion> {
                                     label,
                                     description: text_field(option, "description"),
                                     disabled_reason: None,
+                                    ..Default::default()
                                 })
                             })
                             .collect()

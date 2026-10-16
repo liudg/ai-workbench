@@ -8,7 +8,7 @@ use tokio::sync::oneshot;
 use tokio::time::timeout;
 
 use crate::features::agents::AgentError;
-use crate::models::{MessagePhase, PromptKind, PromptOption, SessionEventBody, SessionStatus};
+use crate::models::{MessagePhase, PromptKind, SessionEventBody, SessionStatus};
 
 const RPC_TIMEOUT: Duration = Duration::from_secs(45);
 
@@ -18,7 +18,7 @@ fn opens_turn(method: Option<&str>) -> bool {
 
 use super::history::{reasoning_text, take_chars, tool_event, tool_view, tool_visible, ToolView};
 use super::prompts::{
-    approval_question, error_text, parse_elicitation, parse_tool_questions, rpc_error_text,
+    error_text, parse_elicitation, parse_tool_questions, rpc_error_text,
 };
 use super::state::{emit, emit_status, ActivityBuf, Pending, Shared, StreamBuf};
 
@@ -211,34 +211,43 @@ impl Shared {
             "item/commandExecution/requestApproval"
             | "item/fileChange/requestApproval"
             | "item/permissions/requestApproval" => {
-                let question = approval_question(method, &params);
-                self.pending
-                    .lock()
-                    .unwrap()
-                    .insert(prompt_id.clone(), Pending::Approval { rpc_id: id });
-                emit(
-                    &self.events,
-                    SessionEventBody::Prompt {
-                        prompt_id,
-                        prompt_kind: PromptKind::Approval,
-                        question,
-                        options: vec![
-                            PromptOption {
-                                id: "approve".into(),
-                                label: "允许".into(),
-                                description: String::new(),
-                                ..Default::default()
+                let params = if method == "item/fileChange/requestApproval" {
+                    let cached = params.get("itemId").and_then(Value::as_str).and_then(|id| {
+                        self.file_items.lock().unwrap().get(id).cloned()
+                    });
+                    super::approval::merge_file_changes(&params, cached.as_ref())
+                } else {
+                    params
+                };
+                match super::approval::approval_from_request(method, &params) {
+                    super::approval::ApprovalFromRequest::AutoDeny(result) => {
+                        self.respond(id, result);
+                    }
+                    super::approval::ApprovalFromRequest::Prompt(prompt) => {
+                        self.pending.lock().unwrap().insert(
+                            prompt_id.clone(),
+                            Pending::Approval {
+                                rpc_id: id,
+                                reply: prompt.reply,
                             },
-                            PromptOption {
-                                id: "reject".into(),
-                                label: "拒绝".into(),
-                                description: String::new(),
-                                ..Default::default()
+                        );
+                        emit(
+                            &self.events,
+                            SessionEventBody::Prompt {
+                                prompt_id,
+                                prompt_kind: PromptKind::Approval,
+                                question: prompt.question,
+                                options: prompt.options,
+                                questions: Vec::new(),
+                                header: prompt.header,
+                                subtitle: prompt.subtitle,
+                                body: prompt.body,
+                                body_kind: prompt.body_kind,
+                                reason: prompt.reason,
                             },
-                        ],
-                        questions: Vec::new(),
-                    },
-                );
+                        );
+                    }
+                }
             }
             "elicitation/request" | "mcpServer/elicitation/request" => {
                 let (question, questions) = parse_elicitation(&params);
@@ -257,6 +266,11 @@ impl Shared {
                         question,
                         options: Vec::new(),
                         questions,
+                        header: String::new(),
+                        subtitle: String::new(),
+                        body: String::new(),
+                        body_kind: String::new(),
+                        reason: String::new(),
                     },
                 );
             }
@@ -283,6 +297,11 @@ impl Shared {
                         question: first,
                         options: Vec::new(),
                         questions,
+                        header: String::new(),
+                        subtitle: String::new(),
+                        body: String::new(),
+                        body_kind: String::new(),
+                        reason: String::new(),
                     },
                 );
             }
@@ -454,6 +473,12 @@ impl Shared {
 
     pub(super) fn handle_item(&self, completed: bool, item: &Value) {
         if item.get("type").and_then(Value::as_str) == Some("fileChange") {
+            if let Some(id) = item.get("id").and_then(Value::as_str).filter(|id| !id.is_empty()) {
+                self.file_items
+                    .lock()
+                    .unwrap()
+                    .insert(id.to_string(), item.clone());
+            }
             let turn_id = self.current_turn_id();
             let files = crate::features::agents::changes::file_changes_from_codex(
                 item.get("changes").unwrap_or(&Value::Null),

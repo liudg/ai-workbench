@@ -595,6 +595,11 @@ impl Shared {
                 question: menu.title,
                 options,
                 questions: Vec::new(),
+                header: String::new(),
+                subtitle: String::new(),
+                body: String::new(),
+                body_kind: String::new(),
+                reason: String::new(),
             },
         );
     }

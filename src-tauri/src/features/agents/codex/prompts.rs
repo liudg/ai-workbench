@@ -41,6 +41,11 @@ impl Shared {
                 question: first,
                 options: Vec::new(),
                 questions,
+                header: String::new(),
+                subtitle: String::new(),
+                body: String::new(),
+                body_kind: String::new(),
+                reason: String::new(),
             },
         );
         true
@@ -105,45 +110,6 @@ impl Shared {
             },
         );
     }
-}
-
-pub(super) fn approval_question(method: &str, params: &Value) -> String {
-    let reason = params.get("reason").and_then(Value::as_str).unwrap_or("");
-    let command = params.get("command").and_then(Value::as_str).unwrap_or("");
-    let title = match method {
-        "item/fileChange/requestApproval" => "Codex 请求修改文件",
-        "item/permissions/requestApproval" => "Codex 请求额外权限",
-        _ => "Codex 请求执行命令",
-    };
-    let mut text = title.to_string();
-    if !command.is_empty() {
-        text.push('\n');
-        text.push_str(command);
-    }
-    if command.is_empty() {
-        if let Some(actions) = params.get("commandActions").and_then(Value::as_array) {
-            let lines: Vec<&str> = actions
-                .iter()
-                .filter_map(|action| action.get("command").and_then(Value::as_str))
-                .take(4)
-                .collect();
-            if !lines.is_empty() {
-                text.push('\n');
-                text.push_str(&lines.join("\n"));
-            }
-        }
-    }
-    if let Some(root) = params.get("grantRoot").and_then(Value::as_str) {
-        if !root.is_empty() {
-            text.push_str("\n写入根目录：");
-            text.push_str(root);
-        }
-    }
-    if !reason.is_empty() {
-        text.push('\n');
-        text.push_str(reason);
-    }
-    text
 }
 
 /// 阻塞式 `item/tool/requestUserInput` 的题目：
@@ -422,10 +388,6 @@ pub(super) fn rpc_error_text(err: &Value) -> String {
         .and_then(Value::as_str)
         .map(str::to_string)
         .unwrap_or_else(|| format!("Codex 返回错误：{err}"))
-}
-
-pub(super) fn is_accept(answer: &str) -> bool {
-    matches!(answer.trim(), "approve" | "accept" | "允许" | "yes" | "y")
 }
 
 pub(super) fn elicitation_action_label(action: &str) -> String {

@@ -240,8 +240,10 @@ fn exit_plan_mode_is_an_approval_card() {
     match &events[1] {
         SessionEventBody::Prompt { question, options, .. } => {
             assert_eq!(question, "退出计划模式？");
-            assert_eq!(options[0].label, "允许");
+            assert_eq!(options[0].label, "允许一次");
+            assert_eq!(options[0].slot, "primary");
             assert_eq!(options[1].id, "reject");
+            assert_eq!(options[1].slot, "deny");
         }
         other => panic!("unexpected {other:?}"),
     }

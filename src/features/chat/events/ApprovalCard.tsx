@@ -56,10 +56,6 @@ function OptionPrompt({ event, session, answerPrompt }: PromptBodyProps) {
   );
 }
 
-export function ApprovalCard(props: PromptBodyProps) {
-  return <OptionPrompt {...props} />;
-}
-
 export function ChoiceCard(props: PromptBodyProps) {
   return <OptionPrompt {...props} />;
 }

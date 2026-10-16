@@ -15,6 +15,7 @@ use crate::models::{
     OCCUPIED_SESSION_NOTICE,
 };
 
+use super::approval::ApprovalReply;
 use super::process::is_thread_writer_conflict;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,6 +71,7 @@ impl Collaboration {
 pub(super) enum Pending {
     Approval {
         rpc_id: u64,
+        reply: ApprovalReply,
     },
     /// 阻塞式 requestUserInput：答案写回 JSON-RPC 响应
     UserInput {
@@ -129,6 +131,8 @@ pub(super) struct Shared {
     pub(super) turn_id: Mutex<Option<String>>,
     /// 已归一的逐文件变更。键是 turn id。
     pub(super) turn_files: Mutex<HashMap<String, Vec<FileChange>>>,
+    /// `item/started` 的 fileChange。审批请求通常只有 itemId，文件列表在这条上。
+    pub(super) file_items: Mutex<HashMap<String, Value>>,
     /// `turn/diff/updated` 和历史里的回合 diff。
     pub(super) turn_diffs: Mutex<HashMap<String, String>>,
     pub(super) last_turn_id: Mutex<Option<String>>,

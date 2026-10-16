@@ -30,6 +30,12 @@ pub struct PromptOption {
     /// 有值时这一项不可选，值是原因。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub disabled_reason: Option<String>,
+    /// 审批卡上的位置：primary / deny / leading / scoped。空表示普通选项。
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub slot: String,
+    /// 悬停说明。审批的会话级选项用它。
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub tooltip: String,
 }
 
 /// 提问卡片的交互壳。适配器按原生协议写入，界面不看 Agent 名字。
@@ -310,6 +316,21 @@ pub enum SessionEventBody {
         /// prompt_kind == Questions 时的逐题内容；其它类型为空
         #[serde(default)]
         questions: Vec<PromptQuestion>,
+        /// 审批卡标题上方的类别，例如「终端」「编辑文件」。
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        header: String,
+        /// 标题下方的一行说明。网络审批把原因放在这里。
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        subtitle: String,
+        /// 命令或文件列表正文。
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        body: String,
+        /// `command` 用三行折叠；`files` 用可滚动文件列表。空则按普通正文。
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        body_kind: String,
+        /// 「原因」行。适配器没给就不出这一行。
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        reason: String,
     },
     PromptResolved {
         prompt_id: String,

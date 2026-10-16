@@ -8,9 +8,10 @@ use serde_json::json;
 
 use super::gap;
 use super::queue::{follow_up, parse_follow_up_queue_mode, FollowUp, FollowUpQueueMode};
+use super::approval::approval_result;
 use super::prompts::{
     async_replies, blocking_answer_payload, elicitation_action_label, elicitation_result,
-    is_accept, questions_summary,
+    questions_summary,
 };
 use super::sandbox;
 use super::state::{self, Pending, Shared};
@@ -160,16 +161,21 @@ impl AgentSession for CodexCliSession {
                 self.shared.resolve_prompt(prompt_id, value.clone());
                 self.shared.note_access();
             }
-            Pending::Approval { rpc_id } => {
+            Pending::Approval { rpc_id, reply } => {
                 let PromptAnswer::Single { value } = &answer else {
-                    return Err(AgentError::Runtime("审批只接受允许或拒绝".into()));
+                    return Err(AgentError::Runtime("审批只接受一个选项".into()));
                 };
-                let decision = if is_accept(value) {
-                    "accept"
-                } else {
-                    "decline"
+                let result = match approval_result(&reply, value) {
+                    Ok(result) => result,
+                    Err(message) => {
+                        self.shared.pending.lock().unwrap().insert(
+                            prompt_id.to_string(),
+                            Pending::Approval { rpc_id, reply },
+                        );
+                        return Err(AgentError::Runtime(message));
+                    }
                 };
-                self.shared.respond(rpc_id, json!({ "decision": decision }));
+                self.shared.respond(rpc_id, result);
                 self.shared.resolve_prompt(prompt_id, value.clone());
             }
             Pending::UserInput { rpc_id, questions } => {
