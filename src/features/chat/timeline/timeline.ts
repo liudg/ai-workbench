@@ -1,4 +1,5 @@
 import type { SessionEvent, SessionStatus } from "../../../types";
+import { choiceHasSlot } from "../events/pending-plan-choice.ts";
 
 /**
  * 时间线以事件日志里最后一次状态为准。
@@ -122,6 +123,7 @@ function hiddenInTimeline(events: readonly SessionEvent[], index: number): boole
 
 export function isProcess(event: SessionEvent, answerId: string | null): boolean {
   if (answerId != null && event.id === answerId) return false;
+  if (choiceHasSlot(event)) return false;
   return (
     event.kind === "thinking" ||
     event.kind === "tool-call" ||

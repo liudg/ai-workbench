@@ -13,7 +13,9 @@ import { Composer } from "../composer/Composer";
 import { EventItem } from "../events/EventItem";
 import { pendingQuestionEvent } from "../events/pending-question";
 import { pendingApprovalEvent } from "../events/pending-approval";
+import { pendingPlanChoice } from "../events/pending-plan-choice";
 import { ApprovalSurface } from "../events/ApprovalSurface";
+import { PlanChoiceSurface } from "../events/PlanChoiceSurface";
 import { QuestionPopup } from "../events/QuestionPopup";
 import { ActivityStream } from "./ActivityStream";
 import { LiveTurn } from "./LiveTurn";
@@ -43,6 +45,10 @@ export function ChatView({
   );
   const approvalEvent = useMemo(
     () => pendingApprovalEvent(events, session.status),
+    [events, session.status],
+  );
+  const planChoice = useMemo(
+    () => pendingPlanChoice(events, session.status),
     [events, session.status],
   );
   const [questionAnchor, setQuestionAnchor] = useState<HTMLDivElement | null>(null);
@@ -192,6 +198,9 @@ export function ChatView({
       <div data-composer-column className="mx-auto w-full max-w-[760px]">
         {approvalEvent ? (
           <ApprovalSurface key={approvalEvent.prompt_id} event={approvalEvent} sessionId={session.id} />
+        ) : null}
+        {planChoice ? (
+          <PlanChoiceSurface key={planChoice.prompt_id} event={planChoice} session={session} />
         ) : null}
         <Composer
           key={session.id}

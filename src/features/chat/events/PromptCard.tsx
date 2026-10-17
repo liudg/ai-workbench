@@ -3,6 +3,7 @@ import { HelpCircle } from "lucide-react";
 import { useAnswerPrompt } from "./useAnswerPrompt";
 import { optionResolvedLabel, promptInteractive } from "./prompt-values";
 import { ChoiceCard } from "./ApprovalCard";
+import { isPinnedChoice } from "./pending-plan-choice";
 import { ElicitationCard } from "./ElicitationCard";
 import { FreeTextPrompt } from "./FreeTextPrompt";
 import { QuestionCard } from "./QuestionCard";
@@ -40,7 +41,7 @@ function PromptBody(props: PromptBodyProps) {
 /** 整条提问只在这里订阅一次 answerPrompt，卡片本身不再读 store。 */
 export function PromptEvent({ event, session, resolvedAnswer }: EventViewProps) {
   const answerPrompt = useAnswerPrompt();
-  if (event.kind !== "prompt" || event.prompt_kind === "approval") return null;
+  if (event.kind !== "prompt" || event.prompt_kind === "approval" || isPinnedChoice(event)) return null;
   return (
     <div className="event-in min-w-0 px-6 py-2">
       <div className="min-w-0 pl-6">

@@ -34,32 +34,61 @@ fn review_targets_map_to_the_protocol() {
 }
 
 #[test]
-fn plan_card_matches_the_tui_copy() {
+fn plan_card_copy_is_chinese_and_pinned() {
     let options = plan_implementation_options(Some("1. Do it"), Some("42% used"));
     let labels: Vec<_> = options.iter().map(|o| o.label.as_str()).collect();
     assert_eq!(
         labels,
-        [
-            "Yes, implement this plan",
-            "Yes, clear context and implement",
-            "No, stay in Plan mode"
-        ]
+        ["是，实施此计划", "是，清空上下文并实施", "否，留在计划模式"]
     );
-    assert_eq!(options[0].description, "Switch to Default and start coding");
+    assert_eq!(
+        options.iter().map(|o| o.id.as_str()).collect::<Vec<_>>(),
+        ["implement", "clear-context", "stay"]
+    );
+    assert_eq!(
+        options.iter().map(|o| o.slot.as_str()).collect::<Vec<_>>(),
+        ["primary", "leading", "deny"]
+    );
+    assert_eq!(options[0].description, "切换到默认模式并开始编码");
     assert_eq!(
         options[1].description,
-        "Start a fresh thread (current context: 42% used)"
+        "用这份计划开一个新线程（当前上下文：42% used）"
     );
     assert!(options[1].disabled_reason.is_none());
-    assert_eq!(options[2].description, "Continue planning with the model");
+    assert_eq!(options[2].description, "继续和模型完善计划");
     let none = plan_implementation_options(None, None);
-    assert_eq!(none[1].description, "Fresh thread with this plan");
-    assert_eq!(
-        none[1].disabled_reason.as_deref(),
-        Some("No approved plan available")
-    );
-    assert_eq!(PLAN_IMPLEMENTATION_TITLE, "Implement this plan?");
+    assert_eq!(none[1].description, "用这份计划开一个新线程");
+    assert_eq!(none[1].disabled_reason.as_deref(), Some("没有可实施的计划"));
+    assert_eq!(PLAN_IMPLEMENTATION_TITLE, "实施此计划？");
     assert_eq!(PLAN_IMPLEMENTATION_CODING_MESSAGE, "Implement the plan.");
+}
+
+#[test]
+fn plan_feedback_is_not_a_missing_option() {
+    let PlanChoice::Selected(yes) = classify_plan_answer("implement", Some("1. Do it")).unwrap()
+    else {
+        panic!("implement");
+    };
+    assert_eq!(yes.id, "implement");
+    let PlanChoice::Selected(stay) = classify_plan_answer(" stay ", Some("1. Do it")).unwrap()
+    else {
+        panic!("stay");
+    };
+    assert_eq!(stay.id, "stay");
+    let PlanChoice::Feedback(text) =
+        classify_plan_answer("蛇身再短一点", Some("1. Do it")).unwrap()
+    else {
+        panic!("feedback");
+    };
+    assert_eq!(text, "蛇身再短一点");
+    assert_eq!(
+        classify_plan_answer("   ", Some("1. Do it")).unwrap_err(),
+        "请选择一个选项"
+    );
+    assert_eq!(
+        classify_plan_answer("clear-context", None).unwrap_err(),
+        "没有可实施的计划"
+    );
 }
 
 #[test]

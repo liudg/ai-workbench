@@ -48,6 +48,9 @@ const QuestionPreview = import.meta.env.DEV
 const GitBranchPreview = import.meta.env.DEV
   ? lazy(() => import("@/app/preview/GitBranchPreview"))
   : null;
+const PlanChoicePreview = import.meta.env.DEV
+  ? lazy(() => import("@/app/preview/PlanChoicePreview"))
+  : null;
 
 export default function App() {
   const preview = new URLSearchParams(window.location.search).get("preview");
@@ -146,6 +149,13 @@ export default function App() {
     return (
       <Suspense fallback={null}>
         <GitBranchPreview />
+      </Suspense>
+    );
+  }
+  if (PlanChoicePreview && preview === "plan-choice") {
+    return (
+      <Suspense fallback={null}>
+        <PlanChoicePreview />
       </Suspense>
     );
   }
