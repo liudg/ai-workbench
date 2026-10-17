@@ -13,9 +13,9 @@ import { AGENT_LABELS, type Session, type SessionEvent } from "@/types";
 import { agentTurnName, useAgentIdentity } from "../events/use-agent-identity";
 
 /**
- * 一轮结束后的过程条。名称和用时在同一行。
- * 收起时只留这一行。展开后补上旁白，工具、命令、集成和查看图像各收成一行，再点开才看到步骤。
- * 结束后的思考不留条目。最终答复留在下面。
+ * 一轮结束后的过程条。状态行是这块的第一个子节点，名称和用时在同一行。
+ * 收起时过程收进这一行。展开后补上旁白，工具、命令、集成和查看图像各收成一行，再点开才看到步骤。
+ * 结束后的思考不留条目。最终答复留在下面。答复前的说明接在状态行下面。
  */
 export function TurnProcess({
   events,
@@ -65,13 +65,13 @@ export function TurnProcess({
 
   return (
     <div className="min-w-0">
-      {chromeBefore.map((event) => renderEvent(event, false))}
       <TurnFoldLine
         summary={collapsedTurnSummary(agentName, durationMs)}
         expanded={expanded}
         onToggle={onToggle}
         icon={<SessionAgentIcon identity={identity} className="h-4 w-4" />}
       />
+      {chromeBefore.map((event) => renderEvent(event, false))}
       {expanded ? (
         <ActivityStream
           events={process}
