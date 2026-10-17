@@ -5,7 +5,13 @@ import type { CreateProjectResult } from "./dto";
 
 export const projectCommands: Pick<
   Backend,
-  "listProjects" | "createProject" | "importProject" | "removeProject" | "projectIsGit" | "projectBranch"
+  | "listProjects"
+  | "createProject"
+  | "importProject"
+  | "removeProject"
+  | "openProjectFolder"
+  | "projectIsGit"
+  | "projectBranch"
 > = {
   listProjects: () => invoke<Project[]>("list_projects"),
   createProject: (input) =>
@@ -22,6 +28,7 @@ export const projectCommands: Pick<
       defaultAgent: input.defaultAgent,
     }),
   removeProject: (id) => invoke("remove_project", { id }),
+  openProjectFolder: (id) => invoke("open_project_folder", { id }),
   projectIsGit: (projectId) => invoke<boolean>("project_is_git", { projectId }),
   projectBranch: (projectId) => invoke<string | null>("project_branch", { projectId }),
 };
