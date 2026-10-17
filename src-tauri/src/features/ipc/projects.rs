@@ -6,7 +6,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Runtime, State};
 
 use crate::features::agents::group_projects;
-use crate::features::projects::{self, ProjectStore};
+use crate::features::projects::{self, reveal_project_folder, ProjectStore};
 use crate::features::sessions::SessionManager;
 use crate::models::*;
 
@@ -184,6 +184,15 @@ pub async fn project_create_branch(
     })
     .await
     .map_err(|err| format!("无法创建分支: {err}"))?
+}
+
+/// 在系统资源管理器中打开项目根目录。没有本地目录或路径无效时返回中文错误。
+#[tauri::command]
+pub async fn open_project_folder(store: State<'_, ProjectStore>, id: String) -> Result<(), String> {
+    let path = store.get(&id).ok_or_else(|| "项目不存在".to_string())?.path;
+    tokio::task::spawn_blocking(move || reveal_project_folder(&path))
+        .await
+        .map_err(|_| "无法在资源管理器中打开".to_string())?
 }
 
 /// 从工作台列表移除项目（不删除磁盘目录，也不删除 Agent 的会话记录）。

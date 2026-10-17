@@ -9,6 +9,7 @@ export const projectCommands: Pick<
   | "createProject"
   | "importProject"
   | "removeProject"
+  | "openProjectFolder"
   | "projectIsGit"
   | "projectBranch"
   | "projectGitBranches"
@@ -30,6 +31,7 @@ export const projectCommands: Pick<
       defaultAgent: input.defaultAgent,
     }),
   removeProject: (id) => invoke("remove_project", { id }),
+  openProjectFolder: (id) => invoke("open_project_folder", { id }),
   projectIsGit: (projectId) => invoke<boolean>("project_is_git", { projectId }),
   projectBranch: (projectId) => invoke<string | null>("project_branch", { projectId }),
   projectGitBranches: (projectId) => invoke<GitBranchMenu>("project_git_branches", { projectId }),
