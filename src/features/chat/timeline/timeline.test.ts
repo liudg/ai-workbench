@@ -6,6 +6,7 @@ import {
   chunkTimeline,
   collapsedTurnSummary,
   formatElapsed,
+  isProcess,
   isSuppressedMessage,
   pickAnswer,
   runningTurnSummary,
@@ -210,6 +211,41 @@ test("labels only the final answer once an earlier turn has settled", () => {
   assert.equal(
     live.events.some((item) => item.id === "a1"),
     false,
+  );
+});
+
+test("a pinned plan choice is not folded into the finished turn", () => {
+  const prompt = event("p1", 30_000, {
+    kind: "prompt",
+    prompt_id: "implement-plan-1",
+    prompt_kind: "choice",
+    question: "实施此计划？",
+    options: [
+      { id: "implement", label: "是，实施此计划", slot: "primary" },
+      { id: "stay", label: "否，留在计划模式", slot: "deny" },
+    ],
+    questions: [],
+  });
+  assert.equal(isProcess(prompt, "a1"), false);
+  const nodes = buildTimeline(
+    [
+      event("u1", 0, { kind: "user-message", text: "做一个贪吃蛇" }),
+      event("k1", 1_000, { kind: "tool-call", name: "command", summary: "ls" }),
+      event("a1", 29_000, {
+        kind: "agent-message",
+        text: "计划正文",
+        phase: "final-answer",
+      }),
+      prompt,
+      event("s1", 29_100, { kind: "status-changed", status: "completed" }),
+    ],
+    "completed",
+  );
+  const turn = turnNode(nodes);
+  assert.equal(turn.answerId, "a1");
+  assert.equal(
+    turn.events.some((item) => item.kind === "prompt"),
+    true,
   );
 });
 

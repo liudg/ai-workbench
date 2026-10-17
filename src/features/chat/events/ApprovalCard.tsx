@@ -2,18 +2,20 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { PromptBodyProps } from "./prompt-props";
 
-function OptionPrompt({ event, session, answerPrompt }: PromptBodyProps) {
+function OptionPrompt({ event, session, answerPrompt, flush = false }: PromptBodyProps & { flush?: boolean }) {
   const pick = (value: string) =>
     answerPrompt(session.id, event.prompt_id, { type: "single", value });
+  const pad = flush ? "" : "pl-6";
   const detailed = event.options.some((opt) => opt.description || opt.disabled_reason);
   if (!detailed) {
     return (
-      <div className="flex min-w-0 flex-wrap gap-2 pl-6">
+      <div className={cn("flex min-w-0 flex-wrap gap-2", pad)}>
         {event.options.map((opt) => (
           <Button
             key={opt.id}
             size="sm"
             variant={opt.id === "reject" ? "outline" : "default"}
+            data-option-id={opt.id}
             onClick={() => pick(opt.id)}
           >
             {opt.label}
@@ -23,7 +25,7 @@ function OptionPrompt({ event, session, answerPrompt }: PromptBodyProps) {
     );
   }
   return (
-    <div role="listbox" className="flex min-w-0 flex-col gap-1 pl-6">
+    <div role="listbox" className={cn("flex min-w-0 flex-col gap-1", pad)}>
       {event.options.map((opt, index) => {
         const disabled = Boolean(opt.disabled_reason);
         return (
@@ -31,6 +33,7 @@ function OptionPrompt({ event, session, answerPrompt }: PromptBodyProps) {
             key={opt.id}
             type="button"
             role="option"
+            data-option-id={opt.id}
             aria-selected={false}
             aria-disabled={disabled}
             disabled={disabled}
@@ -56,6 +59,6 @@ function OptionPrompt({ event, session, answerPrompt }: PromptBodyProps) {
   );
 }
 
-export function ChoiceCard(props: PromptBodyProps) {
-  return <OptionPrompt {...props} />;
+export function ChoiceCard({ flush = false, ...props }: PromptBodyProps & { flush?: boolean }) {
+  return <OptionPrompt flush={flush} {...props} />;
 }

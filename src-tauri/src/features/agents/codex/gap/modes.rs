@@ -7,9 +7,10 @@ use crate::models::{PromptKind, ReviewStart, SessionEventBody};
 
 use super::super::state::{emit, Collaboration, Pending, Shared};
 use super::{
-    collaboration_mode_value, pick_effort, plan_collaboration_mode, plan_implementation_options,
-    review_protocol, CLEAR_CONTEXT_ID, IMPLEMENT_ID, PLAN_IMPLEMENTATION_CLEAR_CONTEXT_PREFIX,
-    PLAN_IMPLEMENTATION_CODING_MESSAGE, PLAN_IMPLEMENTATION_TITLE,
+    classify_plan_answer, collaboration_mode_value, pick_effort, plan_collaboration_mode,
+    plan_implementation_options, review_protocol, PlanChoice, CLEAR_CONTEXT_ID, IMPLEMENT_ID,
+    PLAN_IMPLEMENTATION_CLEAR_CONTEXT_PREFIX, PLAN_IMPLEMENTATION_CODING_MESSAGE,
+    PLAN_IMPLEMENTATION_TITLE,
 };
 
 impl Shared {
@@ -203,51 +204,59 @@ impl Shared {
         true
     }
 
+    fn restore_implement_plan(&self, prompt_id: &str) {
+        self.pending
+            .lock()
+            .unwrap()
+            .insert(prompt_id.to_string(), Pending::ImplementPlan);
+    }
+
     pub(in crate::features::agents::codex) async fn accept_implement_plan(
         &self,
         prompt_id: &str,
         answer: &crate::models::PromptAnswer,
     ) -> Result<(), AgentError> {
         let crate::models::PromptAnswer::Single { value } = answer else {
+            self.restore_implement_plan(prompt_id);
             return Err(AgentError::Runtime("请选择一个选项".into()));
         };
-        let options =
-            plan_implementation_options(self.latest_plan.lock().unwrap().as_deref(), None);
-        let Some(choice) = options.iter().find(|option| option.id == value.trim()) else {
-            self.pending
-                .lock()
-                .unwrap()
-                .insert(prompt_id.to_string(), Pending::ImplementPlan);
-            return Err(AgentError::Runtime("请选择一个选项".into()));
+        let plan = self.latest_plan.lock().unwrap().clone();
+        let choice = match classify_plan_answer(value, plan.as_deref()) {
+            Ok(choice) => choice,
+            Err(message) => {
+                self.restore_implement_plan(prompt_id);
+                return Err(AgentError::Runtime(message));
+            }
         };
-        if let Some(reason) = &choice.disabled_reason {
-            self.pending
-                .lock()
-                .unwrap()
-                .insert(prompt_id.to_string(), Pending::ImplementPlan);
-            return Err(AgentError::Runtime(reason.clone()));
-        }
-        self.resolve_prompt(prompt_id, choice.label.clone());
-        match choice.id.as_str() {
-            IMPLEMENT_ID => {
-                self.set_collaboration_mode("default")?;
-                self.submit_user_text(PLAN_IMPLEMENTATION_CODING_MESSAGE.to_string())
-                    .await
+        match choice {
+            PlanChoice::Feedback(text) => {
+                self.resolve_prompt(prompt_id, text.clone());
+                self.submit_user_text(text).await
             }
-            CLEAR_CONTEXT_ID => {
-                let plan = self.latest_plan.lock().unwrap().clone().unwrap_or_default();
-                emit(
-                    &self.events,
-                    SessionEventBody::NewThread {
-                        name: None,
-                        text: Some(format!(
-                            "{PLAN_IMPLEMENTATION_CLEAR_CONTEXT_PREFIX}\n\n{plan}"
-                        )),
-                    },
-                );
-                Ok(())
+            PlanChoice::Selected(choice) => {
+                self.resolve_prompt(prompt_id, choice.label.clone());
+                match choice.id.as_str() {
+                    IMPLEMENT_ID => {
+                        self.set_collaboration_mode("default")?;
+                        self.submit_user_text(PLAN_IMPLEMENTATION_CODING_MESSAGE.to_string())
+                            .await
+                    }
+                    CLEAR_CONTEXT_ID => {
+                        let plan = plan.unwrap_or_default();
+                        emit(
+                            &self.events,
+                            SessionEventBody::NewThread {
+                                name: None,
+                                text: Some(format!(
+                                    "{PLAN_IMPLEMENTATION_CLEAR_CONTEXT_PREFIX}\n\n{plan}"
+                                )),
+                            },
+                        );
+                        Ok(())
+                    }
+                    _ => Ok(()),
+                }
             }
-            _ => Ok(()),
         }
     }
 }
