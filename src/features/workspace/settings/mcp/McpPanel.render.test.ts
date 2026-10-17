@@ -161,6 +161,12 @@ test("notices split success toast from collapsed failure, and missing CLIs stay 
   assert.equal(form.includes('data-mcp-form="new"'), true);
   assert.equal(form.includes('data-mcp-toast=""'), true);
   assert.equal(form.includes('role="alert"'), false);
+  assert.equal(form.includes('data-mcp-paste="config"'), true);
+  assert.equal(form.includes("粘贴配置"), true);
+  assert.equal(form.includes('data-mcp-required="name"'), true);
+  assert.equal(form.includes("每行一个键值，可一次粘贴多行。"), true);
+  assert.equal(form.includes("未观察"), false);
+  assert.equal(form.includes("未验证"), false);
 
   const failure = render({
     surfaces: previewSurfaces,
