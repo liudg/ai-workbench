@@ -45,6 +45,9 @@ const MarkdownModePreview = import.meta.env.DEV
 const QuestionPreview = import.meta.env.DEV
   ? lazy(() => import("@/app/preview/QuestionPreview"))
   : null;
+const GitBranchPreview = import.meta.env.DEV
+  ? lazy(() => import("@/app/preview/GitBranchPreview"))
+  : null;
 
 export default function App() {
   const preview = new URLSearchParams(window.location.search).get("preview");
@@ -136,6 +139,13 @@ export default function App() {
     return (
       <Suspense fallback={null}>
         <QuestionPreview />
+      </Suspense>
+    );
+  }
+  if (GitBranchPreview && preview === "git-branch") {
+    return (
+      <Suspense fallback={null}>
+        <GitBranchPreview />
       </Suspense>
     );
   }

@@ -58,7 +58,7 @@ import { collaborationMode } from "./collaboration-mode";
 import { useGoalDraft } from "./useGoalDraft";
 import { useMentionMenu } from "./useMentionMenu";
 import { releaseSubmitOnEdit, submitFingerprint, type SubmitFlight } from "./submit-flight";
-import { useComposerWorkContext } from "./useComposerWorkContext";
+import { useComposerGitProject, useComposerWorkContext } from "./useComposerWorkContext";
 import { useReviewDismiss } from "./useReviewDismiss";
 
 export function useComposerController(session: Session, events: SessionEvent[]) {
@@ -105,6 +105,7 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     (s) => draftSession && s.drafts[session.project_id]?.phase === "creating",
   );
   const workContext = useComposerWorkContext(session, events, inputLocked);
+  const gitProject = useComposerGitProject(session);
   const sandbox = data.sandbox ?? sandboxFromMenu(permissionMenu);
   const supportsGoals = Boolean(caps?.supports_goals);
   const goal = useGoalDraft(session.id, supportsGoals, events);
@@ -380,5 +381,6 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     onKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => handleComposerKey(run, event),
     onPaste: (event: ClipboardEvent<HTMLTextAreaElement>) => pasteComposerImages(run, event),
     workContext,
+    gitProject,
   };
 }

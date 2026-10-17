@@ -14,6 +14,13 @@ export interface CreateProjectResult {
   warning: string | null;
 }
 
+/** 本地分支菜单。`dirty_files` 数不清时为 null，不拿 0 充数。 */
+export interface GitBranchMenu {
+  current: string | null;
+  branches: string[];
+  dirty_files: number | null;
+}
+
 export interface ImportProjectInput {
   path: string;
   name?: string;

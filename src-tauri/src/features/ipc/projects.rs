@@ -139,6 +139,53 @@ pub async fn project_branch(
         .map_err(|err| format!("无法读取当前分支: {err}"))?
 }
 
+fn project_root(store: &ProjectStore, project_id: &str) -> Result<PathBuf, String> {
+    let project = store
+        .get(project_id)
+        .ok_or_else(|| "项目不存在".to_string())?;
+    Ok(PathBuf::from(project.path))
+}
+
+/// 本地分支、当前检出和未提交文件数。不是仓库时拒绝，不返回空列表冒充。
+#[tauri::command]
+pub async fn project_git_branches(
+    store: State<'_, ProjectStore>,
+    project_id: String,
+) -> Result<crate::features::git::GitBranchMenu, String> {
+    let root = project_root(&store, &project_id)?;
+    tokio::task::spawn_blocking(move || crate::features::git::local_branch_menu(&root))
+        .await
+        .map_err(|err| format!("无法读取分支: {err}"))?
+}
+
+/// 检出一条已有的本地分支。
+#[tauri::command]
+pub async fn project_checkout_branch(
+    store: State<'_, ProjectStore>,
+    project_id: String,
+    name: String,
+) -> Result<(), String> {
+    let root = project_root(&store, &project_id)?;
+    tokio::task::spawn_blocking(move || crate::features::git::checkout_local_branch(&root, &name))
+        .await
+        .map_err(|err| format!("无法切换分支: {err}"))?
+}
+
+/// 创建并检出一条新的本地分支。
+#[tauri::command]
+pub async fn project_create_branch(
+    store: State<'_, ProjectStore>,
+    project_id: String,
+    name: String,
+) -> Result<(), String> {
+    let root = project_root(&store, &project_id)?;
+    tokio::task::spawn_blocking(move || {
+        crate::features::git::create_and_checkout_branch(&root, &name)
+    })
+    .await
+    .map_err(|err| format!("无法创建分支: {err}"))?
+}
+
 /// 从工作台列表移除项目（不删除磁盘目录，也不删除 Agent 的会话记录）。
 #[tauri::command]
 pub async fn remove_project<R: Runtime>(
