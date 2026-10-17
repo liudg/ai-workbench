@@ -184,6 +184,15 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
       if (next) await get().selectProject(next);
     },
 
+    async openProjectFolder(id) {
+      try {
+        await backend.openProjectFolder(id);
+        set({ lastError: null });
+      } catch (error) {
+        set({ lastError: userFacingMessage(error) ?? "无法在资源管理器中打开" });
+      }
+    },
+
     async createSession(projectId, agent) {
       try {
         const sandbox = initialSandbox(

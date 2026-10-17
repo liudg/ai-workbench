@@ -10,6 +10,7 @@ export function useProjectItem(project: Project) {
   const draftFocused = useWorkbench((s) => Boolean(s.draftFocused[project.id]));
   const selectProject = useWorkbench((s) => s.selectProject);
   const removeProject = useWorkbench((s) => s.removeProject);
+  const openProjectFolder = useWorkbench((s) => s.openProjectFolder);
   return {
     sessions,
     selected,
@@ -19,5 +20,6 @@ export function useProjectItem(project: Project) {
     draftFocused,
     selectProject,
     removeProject,
+    openProjectFolder,
   };
 }

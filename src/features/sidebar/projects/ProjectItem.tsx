@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import { ChevronRight, Ellipsis } from "lucide-react";
+import { ChevronRight, Ellipsis, Folder } from "lucide-react";
 
 import { cn, displayPath } from "@/lib/utils";
 import { pendingSidebarSession } from "@/store/draft-session";
@@ -9,12 +9,22 @@ import { useDismiss } from "../use-dismiss";
 import { NewSessionButton } from "../sessions/NewSessionButton";
 import { partitionSidebarSessions } from "../sessions/session-partition";
 import { SessionList } from "../sessions/SessionList";
+import { projectMenuItems } from "./project-menu";
 import { StatusDot } from "./StatusDot";
 import { useProjectBranch } from "./use-project-branch";
 
 export function ProjectItem({ project }: { project: Project }) {
-  const { sessions, selected, activeSessionId, draft, pendingStart, draftFocused, selectProject, removeProject } =
-    useProjectItem(project);
+  const {
+    sessions,
+    selected,
+    activeSessionId,
+    draft,
+    pendingStart,
+    draftFocused,
+    selectProject,
+    removeProject,
+    openProjectFolder,
+  } = useProjectItem(project);
   const pending = pendingSidebarSession(project.id, draft, pendingStart);
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -54,6 +64,13 @@ export function ProjectItem({ project }: { project: Project }) {
         title={displayPath(project.path)}
         aria-expanded={!collapsed}
         onClick={onHeaderClick}
+        onContextMenu={(event) => {
+          if (project.external) return;
+          event.preventDefault();
+          event.stopPropagation();
+          setConfirming(false);
+          setMenuOpen(true);
+        }}
       >
         <ChevronRight
           className={cn(
@@ -93,26 +110,22 @@ export function ProjectItem({ project }: { project: Project }) {
                 <Ellipsis className="h-4 w-4" />
               </button>
               {menuOpen && (
-                <div className="absolute right-0 top-full z-30 mt-1 w-44 overflow-hidden rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/40">
-                  <button
-                    type="button"
-                    className={cn(
-                      "block w-full px-3 py-2 text-left text-sm hover:bg-zinc-800",
-                      confirming ? "text-red-300" : "text-zinc-200",
-                    )}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (confirming) {
-                        removeProject(project.id);
-                        closeMenu();
-                      } else {
-                        setConfirming(true);
-                      }
-                    }}
-                  >
-                    {confirming ? "确认移除？" : "从列表移除"}
-                  </button>
-                </div>
+                <ProjectMenu
+                  project={project}
+                  confirming={confirming}
+                  onOpenFolder={() => {
+                    closeMenu();
+                    void openProjectFolder(project.id);
+                  }}
+                  onRemove={() => {
+                    if (confirming) {
+                      removeProject(project.id);
+                      closeMenu();
+                    } else {
+                      setConfirming(true);
+                    }
+                  }}
+                />
               )}
             </div>
           )}
@@ -134,6 +147,67 @@ export function ProjectItem({ project }: { project: Project }) {
           activeSessionId={rowActiveId}
         />
       )}
+    </div>
+  );
+}
+
+function ProjectMenu({
+  project,
+  confirming,
+  onOpenFolder,
+  onRemove,
+}: {
+  project: Project;
+  confirming: boolean;
+  onOpenFolder: () => void;
+  onRemove: () => void;
+}) {
+  const entries = projectMenuItems(project.path);
+  const wide = entries.some((entry) => entry.type === "action" && entry.id === "open-folder");
+  return (
+    <div
+      role="menu"
+      aria-label={`${project.name} 菜单`}
+      data-project-menu
+      onContextMenu={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+      className={cn(
+        "absolute right-0 top-full z-30 mt-1 overflow-hidden rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/40",
+        wide ? "w-56" : "w-44",
+      )}
+    >
+      {entries.map((entry, index) => {
+        if (entry.type === "separator") {
+          return (
+            <div key={`sep-${index}`} role="separator" className="mx-2 my-1 border-t border-zinc-800" />
+          );
+        }
+        const label = entry.id === "remove" && confirming ? "确认移除？" : entry.label;
+        return (
+          <button
+            key={entry.id}
+            type="button"
+            role="menuitem"
+            data-project-action={entry.id}
+            className={cn(
+              "flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-zinc-800",
+              entry.id === "remove" && confirming ? "text-red-300" : "text-zinc-200",
+            )}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (entry.id === "open-folder") onOpenFolder();
+              else onRemove();
+            }}
+          >
+            {entry.id === "open-folder" ? (
+              <Folder className="h-4 w-4 shrink-0 text-zinc-400" aria-hidden="true" />
+            ) : null}
+            <span className="whitespace-nowrap">{label}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }
