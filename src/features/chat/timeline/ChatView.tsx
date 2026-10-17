@@ -5,9 +5,7 @@ import { useChangeCapabilities } from "@/features/changes-model/use-changes";
 import { showsFileChanges } from "@/features/changes-model/capabilities";
 import { lastSlice, turnChanges } from "@/features/changes-model/diff-parse";
 import { pendingPrompt } from "@/lib/utils";
-import { SessionAgentIcon } from "@/shared/agent/SessionAgentIcon";
 import { type Session, type SessionEvent } from "@/types";
-import { agentTurnName, useAgentIdentity } from "../events/use-agent-identity";
 import { ChangeCard } from "../cards/ChangeCard";
 import { Composer } from "../composer/Composer";
 import { EventItem } from "../events/EventItem";
@@ -19,13 +17,11 @@ import { PlanChoiceSurface } from "../events/PlanChoiceSurface";
 import { QuestionPopup } from "../events/QuestionPopup";
 import { ActivityStream } from "./ActivityStream";
 import { LiveTurn } from "./LiveTurn";
-import { TurnFoldLine } from "./TurnFoldLine";
 import { TurnProcess } from "./TurnProcess";
 import {
   buildTimeline,
   chunkTimeline,
   contentChars,
-  runningTurnSummary,
   timelineChunkKey,
   timelineStatus,
 } from "./timeline";
@@ -73,8 +69,6 @@ export function ChatView({
     () => events.some((event) => event.kind !== "status-changed"),
     [events],
   );
-  const identity = useAgentIdentity(session.agent);
-  const agentName = agentTurnName(session.agent, identity);
   const changeFlags = useChangeCapabilities(session.agent);
   const liveChanges = useMemo(() => {
     if (!showsFileChanges(changeFlags)) return null;
@@ -158,6 +152,10 @@ export function ChatView({
                     resolvedAnswers={resolvedAnswers}
                     expanded={expanded}
                     onInteract={pausePinForToggle}
+                    onToggle={() => {
+                      pausePinForToggle();
+                      setLiveOverrides((prev) => new Map(prev).set(block.id, !expanded));
+                    }}
                   />
                 );
               }
@@ -176,23 +174,6 @@ export function ChatView({
             })
           )}
           {liveChanges ? <ChangeCard changes={liveChanges} /> : null}
-          {blocks.map((block) => {
-            if (block.type !== "live") return null;
-            const expanded = liveOverrides.get(block.id) ?? true;
-            return (
-              <TurnFoldLine
-                key={`${block.id}-status`}
-                summary={runningTurnSummary(agentName)}
-                expanded={expanded}
-                icon={<SessionAgentIcon identity={identity} className="h-4 w-4" />}
-                pulse
-                onToggle={() => {
-                  pausePinForToggle();
-                  setLiveOverrides((prev) => new Map(prev).set(block.id, !expanded));
-                }}
-              />
-            );
-          })}
         </div>
       </div>
       <div data-composer-column className="mx-auto w-full max-w-[760px]">

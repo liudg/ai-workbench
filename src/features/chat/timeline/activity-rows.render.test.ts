@@ -242,3 +242,79 @@ test("an expanded process shows collapsed tool, command, MCP, and image rows", a
   const answer = html.indexOf("目录里有 src");
   assert.equal(note < three && three < six && six < eight && eight < images && images < mcp && mcp < answer, true);
 });
+
+function assertOrder(html: string, markers: string[]) {
+  let cursor = -1;
+  for (const marker of markers) {
+    const at = html.indexOf(marker);
+    assert.ok(at > cursor, `${marker} after previous marker`);
+    cursor = at;
+  }
+}
+
+test("a settled turn keeps the status line as the first child", async () => {
+  const mod = await server.ssrLoadModule("/src/features/chat/timeline/TurnProcess.tsx");
+  const events: SessionEvent[] = [
+    event("note", { kind: "system", text: "回合前提示" }),
+    event("k1", { kind: "tool-call", name: "command", summary: "rg --files" }),
+    event("answer", { kind: "agent-message", text: "目录里有 src。", phase: "final-answer" }),
+  ];
+  for (const expanded of [false, true]) {
+    const html = renderToStaticMarkup(
+      createElement(mod.TurnProcess, {
+        events,
+        answerId: "answer",
+        durationMs: 0,
+        session,
+        resolvedAnswers: new Map(),
+        expanded,
+        onToggle: () => {},
+      }),
+    );
+    assert.equal(html.startsWith('<div class="min-w-0"><div class="event-in min-w-0 px-6 py-1"><button'), true);
+    assertOrder(html, ['data-turn-summary="Codex CLI · 用时 0s"', "回合前提示", "目录里有 src"]);
+    assert.equal(html.includes("已运行 1 条命令"), expanded);
+  }
+});
+
+const liveEvents: SessionEvent[] = [
+  event("note", { kind: "agent-message", text: "我会查看目录。", phase: "commentary" }),
+  event("k1", { kind: "tool-call", name: "command", summary: "rg --files" }),
+];
+
+test("a running turn keeps the status line as the first child", async () => {
+  const mod = await server.ssrLoadModule("/src/features/chat/timeline/LiveTurn.tsx");
+  const expandedHtml = renderToStaticMarkup(
+    createElement(mod.LiveTurn, {
+      events: liveEvents,
+      session,
+      resolvedAnswers: new Map(),
+      expanded: true,
+      onToggle: () => {},
+    }),
+  );
+  assert.equal(
+    expandedHtml.startsWith('<div class="min-w-0" data-live-turn="true"><div class="event-in min-w-0 px-6 py-1"><button'),
+    true,
+  );
+  assertOrder(expandedHtml, ['data-turn-summary="Codex CLI · 运行中"', "我会查看目录。", "已运行 1 条命令"]);
+  assert.equal(expandedHtml.includes("data-turn-running"), true);
+
+  const collapsedHtml = renderToStaticMarkup(
+    createElement(mod.LiveTurn, {
+      events: liveEvents,
+      session,
+      resolvedAnswers: new Map(),
+      expanded: false,
+      onToggle: () => {},
+    }),
+  );
+  assert.equal(
+    collapsedHtml.startsWith('<div class="min-w-0" data-live-turn="true"><div class="event-in min-w-0 px-6 py-1"><button'),
+    true,
+  );
+  assert.equal(collapsedHtml.includes('data-turn-summary="Codex CLI · 运行中"'), true);
+  assert.equal(collapsedHtml.includes("我会查看目录。"), false);
+  assert.equal(collapsedHtml.includes("已运行 1 条命令"), false);
+  assert.equal(collapsedHtml.includes("data-activity-stream"), false);
+});
