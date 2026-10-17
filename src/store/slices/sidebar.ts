@@ -11,6 +11,7 @@ import {
   togglePinnedSessionId,
   writePinnedSessionIds,
 } from "../pinned-sessions";
+import { orderEvents } from "../event-log";
 import {
   clearMissingSessionBanner,
   deselectSession,
@@ -107,7 +108,7 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
       const activeId = get().activeSessionId[id];
       if (activeId && !get().events[activeId]) {
         try {
-          const events = await backend.getSessionEvents(activeId);
+          const events = orderEvents(await backend.getSessionEvents(activeId));
           set((s) => ({
             events: { ...s.events, [activeId]: events },
             eventsReady: { ...s.eventsReady, [activeId]: true },

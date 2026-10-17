@@ -5,6 +5,7 @@ import { withTextSnippet, withoutTextSnippet } from "@/shared/text-snippet";
 import type { AgentKind } from "@/types";
 import { composerDraftsAfterSend, rememberSessionComposerDraft } from "../composer-draft";
 import { isDraftId } from "../draft-session";
+import { mergeOlderPage } from "../event-log";
 import { isMissingSessionError } from "../sync";
 import type { WorkspaceSlice, WorkbenchGet, WorkbenchSet } from "../types";
 
@@ -277,18 +278,12 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
         }
         throw error;
       }
-      set((s) => {
-        const current = s.events[sessionId] ?? [];
-        const ids = new Set(page.events.map((event) => event.id));
-        const maxSeq = page.events.reduce((max, event) => Math.max(max, event.seq), 0);
-        const extra = current.filter((event) => !ids.has(event.id) && event.seq > maxSeq);
-        return {
-          events: {
-            ...s.events,
-            [sessionId]: extra.length > 0 ? [...page.events, ...extra] : page.events,
-          },
-        };
-      });
+      set((s) => ({
+        events: {
+          ...s.events,
+          [sessionId]: mergeOlderPage(s.events[sessionId] ?? [], page.events),
+        },
+      }));
       return page.exhausted;
     },
 
