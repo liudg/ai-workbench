@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import type { PromptQuestion } from "../../../types/index.ts";
-import { elicitationContent, filledQuestionAnswers, optionResolvedLabel } from "./prompt-values.ts";
+import {
+  compactBlock,
+  elicitationContent,
+  filledQuestionAnswers,
+  optionResolvedLabel,
+  settledAnswerLine,
+} from "./prompt-values.ts";
 
 const question = (patch: Partial<PromptQuestion>): PromptQuestion => ({
   id: "q",
@@ -15,6 +21,15 @@ const question = (patch: Partial<PromptQuestion>): PromptQuestion => ({
 test("question card drops blank answers", () => {
   assert.deepEqual(filledQuestionAnswers({ a: "  甲  ", b: "  ", c: "乙" }), { a: "甲", c: "乙" });
   assert.deepEqual(filledQuestionAnswers({ a: " " }), {});
+});
+
+test("settled answer drops trailing blank lines and stays on one line", () => {
+  assert.equal(compactBlock("贪吃蛇想怎么玩？\n\n"), "贪吃蛇想怎么玩？");
+  assert.equal(compactBlock("第一行\n第二行"), "第一行\n第二行");
+  assert.equal(settledAnswerLine("浏览器页面\n\n"), "已回答：浏览器页面");
+  assert.equal(settledAnswerLine("1. 浏览器页面\r\n2. 键盘\n"), "已回答：1. 浏览器页面\n2. 键盘");
+  assert.equal(settledAnswerLine(" \n "), null);
+  assert.equal(settledAnswerLine(null), null);
 });
 
 test("resolved option label falls back to the raw answer", () => {

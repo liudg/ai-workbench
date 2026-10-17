@@ -24,6 +24,18 @@ export function optionResolvedLabel(
   return options.find((option) => option.id === resolvedAnswer)?.label ?? resolvedAnswer;
 }
 
+/** 卡片正文。去掉首尾空行，中间换行留着。 */
+export function compactBlock(text: string): string {
+  return text.replace(/\r\n/g, "\n").trim();
+}
+
+/** 「已回答：答案」。空回答和纯空行都不占一行。 */
+export function settledAnswerLine(answer: string | null): string | null {
+  if (!answer) return null;
+  const text = compactBlock(answer);
+  return text ? `已回答：${text}` : null;
+}
+
 export type ElicitationContent =
   | { ok: true; content: Record<string, string | number | boolean> }
   | { ok: false };
