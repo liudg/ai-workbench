@@ -39,6 +39,9 @@ macro_rules! workbench_handler {
             $crate::features::ipc::projects::remove_project,
             $crate::features::ipc::projects::project_is_git,
             $crate::features::ipc::projects::project_branch,
+            $crate::features::ipc::projects::project_git_branches,
+            $crate::features::ipc::projects::project_checkout_branch,
+            $crate::features::ipc::projects::project_create_branch,
             $crate::features::ipc::sessions::list_sessions,
             $crate::features::ipc::sessions::fork_session,
             $crate::features::ipc::sessions::rename_session,
@@ -117,7 +120,8 @@ pub(crate) fn manage_state<R: Runtime>(
 ) -> Result<(), String> {
     let store = ProjectStore::load(data_dir).map_err(|e| format!("加载项目列表失败: {e}"))?;
     app.manage(store);
-    let folders = TaskFolderStore::load(data_dir).map_err(|e| format!("加载任务文件夹失败: {e}"))?;
+    let folders =
+        TaskFolderStore::load(data_dir).map_err(|e| format!("加载任务文件夹失败: {e}"))?;
     app.manage(folders);
     app.manage(SessionManager::new(app_emitter(app.clone()), data_dir));
     app.manage(features::preview::search::IndexHub::default());

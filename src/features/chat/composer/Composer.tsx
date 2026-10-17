@@ -17,7 +17,7 @@ import { SkillMenu } from "./SkillMenu";
 import { SlashMenu } from "./SlashMenu";
 import { GoalStatusBar } from "./GoalStatusBar";
 import { useComposerController } from "./useComposerController";
-import { WorkContextPicker } from "./WorkContextPicker";
+import { ComposerContextRow } from "./GitBranchControl";
 
 export function Composer({
   session,
@@ -94,19 +94,11 @@ export function Composer({
             onEdit={c.editGoal}
           />
         ) : null}
-        {c.workContext ? (
-          <div className="mb-2 flex min-w-0 px-1" data-work-context-slot="above-input">
-            <WorkContextPicker
-              label={c.workContext.label}
-              projects={c.workContext.projects}
-              selectedId={c.workContext.selectedId}
-              standaloneId={c.workContext.standaloneId}
-              canRetarget={c.workContext.canRetarget}
-              onPickProject={c.workContext.onPickProject}
-              onPickStandalone={c.workContext.onPickStandalone}
-            />
-          </div>
-        ) : null}
+        <ComposerContextRow
+          workContext={c.workContext}
+          projectId={c.gitProject?.id ?? ""}
+          projectName={c.gitProject?.name ?? ""}
+        />
         <TextSnippetPreview snippets={c.snippets} />
         <div
           ref={anchorRef}

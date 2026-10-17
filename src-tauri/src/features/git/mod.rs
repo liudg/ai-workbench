@@ -1,4 +1,11 @@
-//! 工作树差异。范围只含未提交、未暂存、已暂存；已提交和分支的子菜单没有观察到。
+//! 工作树差异，以及本地分支的读取、切换和创建。
+//! 差异范围只含未提交、未暂存、已暂存；已提交和分支对比的子菜单没有观察到。
+
+mod branch;
+
+pub use branch::{
+    checkout_local_branch, create_and_checkout_branch, local_branch_menu, GitBranchMenu,
+};
 
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -140,6 +147,25 @@ pub fn inside_work_tree(root: &Path) -> Result<bool, String> {
     Err(stderr.to_string())
 }
 
+pub(super) fn git_output(root: &Path, args: &[&str]) -> Result<std::process::Output, String> {
+    if !root.is_dir() {
+        return Err("项目不存在".into());
+    }
+    let mut command = Command::new("git");
+    command
+        .args(args)
+        .current_dir(root)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .env("GIT_TERMINAL_PROMPT", "0");
+    crate::encoding::apply_utf8_env_std(&mut command);
+    hide_console(&mut command);
+    command
+        .output()
+        .map_err(|err| format!("无法运行 git: {err}"))
+}
+
 fn hide_console(command: &mut Command) {
     #[cfg(windows)]
     {
@@ -259,7 +285,10 @@ mod tests {
         assert!(run_git(&root, &["init"]));
         assert_eq!(inside_work_tree(&root).unwrap(), true);
         let branch = current_branch(&root).unwrap();
-        assert!(branch.as_deref().is_some_and(|name| !name.is_empty()), "{branch:?}");
+        assert!(
+            branch.as_deref().is_some_and(|name| !name.is_empty()),
+            "{branch:?}"
+        );
         let _ = fs::remove_dir_all(root);
         let plain = scratch("not-git");
         assert_eq!(current_branch(&plain).unwrap(), None);

@@ -24,6 +24,7 @@ import type {
   CreateProjectInput,
   CreateProjectResult,
   DiffScope,
+  GitBranchMenu,
   FileSearchResult,
   ImportProjectInput,
   PathFilter,
@@ -144,6 +145,12 @@ export interface Backend {
    * 探测失败（git 不存在、目录不存在）时拒绝，而不是返回一个假分支名。
    */
   projectBranch(projectId: string): Promise<string | null>;
+  /** 本地分支、当前检出、未提交文件数。不是仓库时拒绝。 */
+  projectGitBranches(projectId: string): Promise<GitBranchMenu>;
+  /** 检出一条已有本地分支。失败时返回中文说明。 */
+  projectCheckoutBranch(projectId: string, name: string): Promise<void>;
+  /** 创建并检出新分支。失败时返回中文说明。 */
+  projectCreateBranch(projectId: string, name: string): Promise<void>;
   updateQueuedTurn(
     sessionId: string,
     queuedId: string,

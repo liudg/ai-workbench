@@ -13,6 +13,14 @@ import type { Session, SessionEvent } from "@/types";
  * 空会话输入框上方的项目选择。
  * 第一条用户消息出现后消失。创建中的草稿不能改项目。
  */
+/** 作曲栏上的 git 分支只属于真正的项目，独立聊天不显示。 */
+export function useComposerGitProject(session: Session): { id: string; name: string } | null {
+  const projects = useWorkbench((s) => s.projects);
+  const project = projects.find((item) => item.id === session.project_id);
+  if (!project || project.standalone) return null;
+  return { id: project.id, name: project.name };
+}
+
 export function useComposerWorkContext(
   session: Session,
   events: readonly SessionEvent[],
