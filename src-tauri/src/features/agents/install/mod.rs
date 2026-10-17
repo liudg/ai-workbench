@@ -20,7 +20,7 @@ mod version;
 use command::{
     clip, failure_text, find_bin, npm_lists_global, run_captured, Captured,
 };
-use version::{first_line, version_from_output};
+use version::version_from_output;
 pub use version::{extract_version, is_newer, parse_published_version};
 
 #[cfg(any(windows, test))]
@@ -66,9 +66,6 @@ pub enum AliasCheck {
     /// 版本输出（忽略大小写）必须包含其中一段。
     #[allow(dead_code)]
     Contains(&'static [&'static str]),
-    /// Amazon Q / Kiro 的 `q`：输出版本里出现 Kiro 或 Amazon Q，
-    /// 或者首行是 `q 1.2.3` 这种官方短版本行。
-    AmazonQ,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -199,26 +196,7 @@ pub fn confirms(check: AliasCheck, text: Option<&str>) -> bool {
                 .iter()
                 .any(|needle| lower.contains(&needle.to_ascii_lowercase()))
         }
-        AliasCheck::AmazonQ => text.is_some_and(confirms_amazon_q),
     }
-}
-
-fn confirms_amazon_q(text: &str) -> bool {
-    let lower = text.to_ascii_lowercase();
-    if ["kiro", "amazon q", "amazon-q", "q developer"]
-        .iter()
-        .any(|needle| lower.contains(needle))
-    {
-        return true;
-    }
-    let Some(line) = first_line(text) else {
-        return false;
-    };
-    let Some(rest) = line.strip_prefix('q').or_else(|| line.strip_prefix('Q')) else {
-        return false;
-    };
-    let rest = rest.trim();
-    extract_version(rest).is_some() && line.chars().count() < 40 && !rest.contains(' ')
 }
 
 fn version_args<'a>(release: &'a CliRelease, name: &str) -> &'a [&'a str] {
@@ -678,48 +656,6 @@ mod tests {
         ));
         assert!(!confirms(AliasCheck::Contains(&["gemini"]), Some("0.30.0")));
         assert!(!confirms(AliasCheck::Contains(&["gemini"]), None));
-    }
-
-    #[test]
-    fn unrelated_q_is_not_kiro() {
-        let release = CliRelease {
-            bins: &["kiro-cli", "q"],
-            npm_package: "",
-            self_update: &["update", "--non-interactive"],
-            locate: None,
-            version_args: &["version"],
-            aliases: &[AliasRule {
-                name: "q",
-                check: AliasCheck::AmazonQ,
-                version_args: None,
-                update_args: Some(&["update"]),
-            }],
-            note: "",
-        };
-        assert!(choose_bin(&release, &[hit("q", Some("usage: q is a query tool"))]).is_none());
-        assert!(choose_bin(&release, &[hit("q", None)]).is_none());
-        let legacy = choose_bin(&release, &[hit("q", Some("q 1.19.7"))]).expect("amazon q");
-        assert_eq!(legacy.name, "q");
-        assert_eq!(legacy.update_args, &["update"]);
-        let kiro = choose_bin(
-            &release,
-            &[
-                hit("kiro-cli", Some("kiro-cli 2.6.1")),
-                hit("q", Some("Kiro CLI 2.6.1")),
-            ],
-        )
-        .expect("kiro");
-        assert_eq!(kiro.name, "kiro-cli");
-        assert_eq!(kiro.update_args, &["update", "--non-interactive"][..]);
-        assert_eq!(kiro.also, vec!["q".to_string()]);
-    }
-
-    #[test]
-    fn hidden_agents_are_not_discovered() {
-        for kind in [AgentKind::CopilotCli, AgentKind::Goose, AgentKind::KiroCli] {
-            assert!(kind.hidden());
-            assert!(!AgentKind::all().contains(&kind));
-        }
     }
 
     #[test]

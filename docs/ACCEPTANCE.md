@@ -145,7 +145,7 @@ PR 要有一次不由改动作者完成的审阅，看 diff 和说明，而不�
 
 代码在 `src/features/workspace/settings/SettingsView.tsx`、`agent-card.ts`。探测范围是 `AgentKind::all`（`src-tauri/src/models/agent.rs`）。
 
-- 列出的是已注册的七种：Codex CLI、Claude Code、Cursor Agent、Kimi Code、Qwen Code、OpenCode、Antigravity。Goose、GitHub Copilot CLI、Kiro CLI 不出现。
+- 列出的是已注册的七种：Codex CLI、Claude Code、Cursor Agent、Kimi Code、Qwen Code、OpenCode、Antigravity。
 - 未安装、已安装未接入、已接入，三种卡片分得开。未接入写「未接入」，不附一段协议说明。
 - 工作台不代为安装。已安装且官方渠道报告可更新时才有「更新」。更新中按钮不可连点。
 - 更新失败有中文错误，卡片仍留着原来的版本。

@@ -131,15 +131,12 @@ Codex 实现拆在 `agents/codex/`：`mod.rs` 只编排，`rpc` / `prompts` / `c
 | 种类 | 命令 | 官方更新 |
 | --- | --- | --- |
 | Cursor Agent | `agent`（别名 `cursor-agent`） | `agent update` |
-| GitHub Copilot CLI | `copilot` | npm `@github/copilot`，或 `copilot update` |
 | Kimi Code | `kimi` | npm `@moonshot-ai/kimi-code`，或 `kimi upgrade -y` |
 | Qwen Code | `qwen` | npm `@qwen-code/qwen-code`，或 `qwen update` |
 | OpenCode | `opencode` | npm `opencode-ai`，或 `opencode upgrade` |
-| Goose | `goose` | `goose update` |
 | Antigravity | `agy`，其次 `antigravity`，最后 `gemini` | `agy update`。只找到停更的 `gemini` 时不在应用内更新 |
-| Kiro CLI | `kiro-cli`，兼容入口 `q` | `kiro-cli update --non-interactive`；只找到旧的 `q` 时用 `q update` |
 
-Gemini CLI 与 Antigravity、Amazon Q 与 Kiro 各登记成一项，不做成两套会话。`q` 太容易和无关命令重名，版本输出里要出现 Kiro / Amazon Q，或者首行是 `q 1.2.3` 这种官方短版本，才算已安装。
+Gemini CLI 与 Antigravity 登记成一项，不做成两套会话。只找到停更的 `gemini` 时不在应用内更新。
 
 **Codex 和 Claude Code 的会话协议已接入。** 其余适配器只做安装探测和官方升级，`start_session()` 走 trait 默认实现，直接返回「未接入」错误。设置页仍显示「未安装」或「版本 · 未接入」；新建会话菜单不列出它们。接入时实现 `AgentSession`，在适配器里覆盖 `start_session` 和 `session_linked`，再注册 `SessionDirectory`；工作目录用 `ctx.project_path`。认证交给 CLI 自身，应用不保存密钥。Claude Code 的目录读 `~/.claude/projects` 里的 jsonl。
 

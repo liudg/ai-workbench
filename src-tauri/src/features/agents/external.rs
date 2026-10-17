@@ -16,11 +16,6 @@ Gemini CLI（gemini）已于 2026-06-18 停更，官方后继是 Antigravity CLI
 优先识别 agy，其次 antigravity，最后才是仍留在 PATH 上的 gemini。\
 只找到 gemini 时不在应用内更新。";
 
-const KIRO_NOTE: &str = "\
-Kiro CLI 是 Amazon Q Developer CLI 的后继。官方入口是 kiro-cli，q 仍是兼容入口。\
-无关的 q 只有在版本输出里出现 Kiro 或 Amazon Q，或首行是 q 1.2.3 这种官方短版本时才算已安装。\
-更新用 kiro-cli update --non-interactive；只找到旧的 q 时用 q update。";
-
 const OPENCODE_NOTE: &str = "\
 npm 包是 opencode-ai。安装方式认不出来时，opencode upgrade 可能在终端里询问，应用内更新就不会成功。";
 
@@ -41,14 +36,6 @@ pub fn release_for(kind: AgentKind) -> CliRelease {
             item.locate = Some(super::install::locate_cursor_agent);
             item
         }
-        AgentKind::CopilotCli => release(
-            &["copilot"],
-            "@github/copilot",
-            &["update"],
-            &["version"],
-            &[],
-            "",
-        ),
         AgentKind::KimiCode => release(
             &["kimi"],
             "@moonshot-ai/kimi-code",
@@ -68,7 +55,6 @@ pub fn release_for(kind: AgentKind) -> CliRelease {
             &[],
             OPENCODE_NOTE,
         ),
-        AgentKind::Goose => release(&["goose"], "", &["update"], &[], &[], ""),
         AgentKind::Antigravity => release(
             &["agy", "antigravity", "gemini"],
             "",
@@ -81,19 +67,6 @@ pub fn release_for(kind: AgentKind) -> CliRelease {
                 update_args: Some(&[]),
             }],
             GEMINI_NOTE,
-        ),
-        AgentKind::KiroCli => release(
-            &["kiro-cli", "q"],
-            "",
-            &["update", "--non-interactive"],
-            &["version"],
-            &[AliasRule {
-                name: "q",
-                check: AliasCheck::AmazonQ,
-                version_args: None,
-                update_args: Some(&["update"]),
-            }],
-            KIRO_NOTE,
         ),
         AgentKind::CodexCli | AgentKind::ClaudeCode => {
             panic!("Codex 和 Claude 不走外部桩适配器")

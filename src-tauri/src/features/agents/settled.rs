@@ -145,7 +145,7 @@ mod tests {
         assert_eq!(store.version(AgentKind::CursorAgent), None);
 
         store.remember(AgentKind::CursorAgent, "2026.10.01-e373342");
-        store.remember(AgentKind::Goose, "1.0.0");
+        store.remember(AgentKind::KimiCode, "1.0.0");
         assert_eq!(
             store.version(AgentKind::CursorAgent).as_deref(),
             Some("2026.10.01-e373342")
@@ -156,7 +156,7 @@ mod tests {
             reloaded.version(AgentKind::CursorAgent).as_deref(),
             Some("2026.10.01-e373342")
         );
-        assert_eq!(reloaded.version(AgentKind::Goose).as_deref(), Some("1.0.0"));
+        assert_eq!(reloaded.version(AgentKind::KimiCode).as_deref(), Some("1.0.0"));
         assert!(!offer_self_update(
             true,
             Some("2026.10.01-e373342"),

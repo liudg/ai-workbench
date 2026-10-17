@@ -31,9 +31,7 @@
 | OpenCode | `OpenCode` | 同上 |
 | Antigravity | `Antigravity` | 同上 |
 
-枚举里还有三种，`all()` 不包含，设置页不探测、不列出：GitHub Copilot CLI（`CopilotCli`）、Goose（`Goose`）、Kiro CLI（`KiroCli`）。它们走同一个外部适配器，只登记了安装探测用的命令。见文末。
-
-注册表在 `src-tauri/src/features/agents/mod.rs` 的 `adapter_for`。只有 Codex 和 Claude 的 `session_linked` 为真。
+注册表在 `src-tauri/src/features/agents/mod.rs` 的 `adapter_for`。只有 Codex 和 Claude 的 `session_linked` 为真。`AgentKind::all` 就是全部种类。
 
 ## 会话与作曲
 
@@ -140,15 +138,3 @@ Claude 会话方法在 `src-tauri/src/features/agents/claude/session.rs`。启�
 ### 外部适配器
 
 `src-tauri/src/features/agents/external.rs`：`capabilities` 为 `none()`，不覆盖 `session_linked`，`start_session` 因此返回未接入。`cli_release` 只提供探测和官方子命令更新。除 Cursor 外 `mcp()` 为 `None`。
-
-## 不在设置页的三种
-
-`AgentKind` 里有，`all()` 里没有。`ExternalCliAdapter::release_for` 仍写了探测命令。没有会话实现，MCP 未验证，会话能力未知。
-
-| CLI | 可执行文件 | 更新命令 | npm 包 |
-| --- | --- | --- | --- |
-| GitHub Copilot CLI | `copilot` | `update` | `@github/copilot` |
-| Goose | `goose` | `update` | 无 |
-| Kiro CLI | `kiro-cli`，兼容入口 `q` | `kiro-cli update --non-interactive`；只找到 `q` 时用 `q update` | 无 |
-
-Kiro 的 `q` 只有在版本输出像 Amazon Q / Kiro 时才算已安装（`external.rs` 的 `KIRO_NOTE`）。这三种不会出现在 `list_installations` 里。

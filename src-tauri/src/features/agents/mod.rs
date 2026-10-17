@@ -40,13 +40,10 @@ pub fn adapter_for(kind: AgentKind) -> Arc<dyn AgentAdapter> {
         AgentKind::CodexCli => Arc::new(codex::CodexCliAdapter::new()),
         AgentKind::ClaudeCode => Arc::new(claude::ClaudeCodeAdapter::new()),
         AgentKind::CursorAgent
-        | AgentKind::CopilotCli
         | AgentKind::KimiCode
         | AgentKind::QwenCode
         | AgentKind::OpenCode
-        | AgentKind::Goose
-        | AgentKind::Antigravity
-        | AgentKind::KiroCli => Arc::new(external::ExternalCliAdapter::new(kind)),
+        | AgentKind::Antigravity => Arc::new(external::ExternalCliAdapter::new(kind)),
     }
 }
 
