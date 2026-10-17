@@ -42,6 +42,8 @@ pub struct MapState {
     usage: super::usage::LiveCursor,
     /// 这一轮已经给过连接或重试提示。后面的占位错误不再各画一条。
     connection_noted: bool,
+    /// 用户按下了停止。紧跟着的流中止不是断线，不画红条。
+    stop_requested: bool,
 }
 
 struct ToolRow {
@@ -79,7 +81,14 @@ impl MapState {
         self.text_stream_id.clear();
         self.thinking_stream_id.clear();
         self.connection_noted = false;
+        // 新回合不沿用上一次停止，否则后面的真断线会被消掉。
+        self.stop_requested = false;
         self.turn_id = turn_id.to_string();
+    }
+
+    /// 用户按下停止。下一条直播结果里的流中止不再画成断线。
+    pub fn request_user_stop(&mut self) {
+        self.stop_requested = true;
     }
 
     /// 当前轮有 diff 就用当前轮，否则用上一轮留下的。
@@ -337,6 +346,9 @@ fn on_system(state: &mut MapState, value: &Value, live: bool) -> Vec<SessionEven
         return retry_note(state, value);
     }
     if subtype == "error" || subtype == "api_error" || value.get("error").is_some() {
+        if quiet_user_stop(state.stop_requested, value) {
+            return Vec::new();
+        }
         if let Some(message) = useful_error_text(value) {
             return vec![SessionEventBody::Error { message }];
         }
@@ -705,11 +717,13 @@ fn on_result(state: &mut MapState, value: &Value, live: bool) -> Vec<SessionEven
     // 打开会话时的状态由 runtime 在历史装完后写。历史 result 不改当前状态。
     if live {
         let status = result_status(value);
-        if status != SessionStatus::Stopped {
+        if status != SessionStatus::Stopped && !quiet_user_stop(state.stop_requested, value) {
             if let Some(message) = turn_failure_message(value) {
                 events.push(SessionEventBody::Error { message });
             }
         }
+        // 停止只盖住这一轮的结果。后面的断线仍要报。
+        state.stop_requested = false;
         events.push(SessionEventBody::StatusChanged { status });
     }
     events
@@ -731,11 +745,53 @@ fn user_stopped_turn(subtype: &str, reason: &str) -> bool {
     if reason == "aborted_user" || subtype.contains("interrupt") {
         return true;
     }
-    // CLI 2.1.301 的真实中止原因是 aborted_streaming / aborted_tools，不是用户按下停止。
+    // CLI 2.1.301 起，断线和用户按下停止都报 aborted_streaming / aborted_tools。
+    // 这里不能当成用户停止：Stopped 会把作曲栏锁成「请新建会话」。
+    // 按下停止记在 stop_requested 上，只消掉红条，状态仍是 Completed。
     if reason_text(reason).is_some() || reason == "aborted_by_mock" {
         return false;
     }
     subtype.contains("abort") || reason.starts_with("aborted_")
+}
+
+/// 用户按下停止后，流中止和占位断线不画红条。具体的接口错误仍然画。
+fn quiet_user_stop(stop_requested: bool, value: &Value) -> bool {
+    if !stop_requested {
+        return false;
+    }
+    let reason = value.get("terminal_reason").and_then(Value::as_str).unwrap_or("");
+    if user_interrupt_reason(reason) {
+        return true;
+    }
+    opaque_disconnect(value)
+}
+
+fn user_interrupt_reason(reason: &str) -> bool {
+    reason.starts_with("aborted_")
+}
+
+fn opaque_disconnect(value: &Value) -> bool {
+    if specific_error_text(value).is_some() {
+        return false;
+    }
+    let category = error_category(value);
+    category == "unknown" || category == "unknown error" || payload_is_opaque(value)
+}
+
+fn specific_error_text(value: &Value) -> Option<String> {
+    if let Some(error) = value.get("error") {
+        if let Some(text) = error_payload_text(error) {
+            if !error_category_token(&text.to_ascii_lowercase()) {
+                return Some(text);
+            }
+        }
+    }
+    if let Some(text) = text_field_filtered(value, "message") {
+        if !error_category_token(&text.to_ascii_lowercase()) {
+            return Some(text);
+        }
+    }
+    errors_list_text(value)
 }
 
 fn turn_failure_message(value: &Value) -> Option<String> {

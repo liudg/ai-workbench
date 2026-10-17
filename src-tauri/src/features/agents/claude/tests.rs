@@ -892,6 +892,73 @@ fn stopped_result_follows_abort_reason() {
         event,
         SessionEventBody::StatusChanged { status: SessionStatus::Stopped }
     )));
+    assert!(!ingest.events.iter().any(|event| matches!(event, SessionEventBody::Error { .. })));
+
+    // 用户按下停止后，CLI 仍报 aborted_streaming。这不是断线，会话要能继续发。
+    let mut stopped = MapState::default();
+    stopped.request_user_stop();
+    let streaming = ingest_line(
+        &mut stopped,
+        r#"{"type":"result","subtype":"error_during_execution","terminal_reason":"aborted_streaming","is_error":true}"#,
+        true,
+        None,
+    );
+    assert!(!streaming.events.iter().any(|event| matches!(
+        event,
+        SessionEventBody::Error { message } if message.contains("连接中断")
+    )));
+    assert!(!streaming.events.iter().any(|event| matches!(event, SessionEventBody::Error { .. })));
+    assert!(streaming.events.iter().any(|event| matches!(
+        event,
+        SessionEventBody::StatusChanged { status: SessionStatus::Completed }
+    )));
+    let mut tools = MapState::default();
+    tools.request_user_stop();
+    let tool_abort = ingest_line(
+        &mut tools,
+        r#"{"type":"result","subtype":"error_during_execution","terminal_reason":"aborted_tools","is_error":true}"#,
+        true,
+        None,
+    );
+    assert!(!tool_abort.events.iter().any(|event| matches!(event, SessionEventBody::Error { .. })));
+
+    // 停止标记用完。下一次同样的流中止仍是断线。
+    let later = ingest_line(
+        &mut stopped,
+        r#"{"type":"result","subtype":"error_during_execution","terminal_reason":"aborted_streaming","is_error":true}"#,
+        true,
+        None,
+    );
+    assert!(later.events.iter().any(|event| matches!(
+        event,
+        SessionEventBody::Error { message } if message.contains("连接中断")
+    )));
+
+    // 占位 unknown 在停止后也不会画成断线。带具体正文的接口错误仍然画。
+    let mut opaque = MapState::default();
+    opaque.request_user_stop();
+    let unknown = ingest_line(
+        &mut opaque,
+        r#"{"type":"result","subtype":"error_during_execution","is_error":true,"error":"unknown"}"#,
+        true,
+        None,
+    );
+    assert!(!unknown.events.iter().any(|event| matches!(
+        event,
+        SessionEventBody::Error { message } if message.contains("连接中断")
+    )));
+    let mut concrete = MapState::default();
+    concrete.request_user_stop();
+    let dropped = ingest_line(
+        &mut concrete,
+        r#"{"type":"result","subtype":"error_during_execution","is_error":true,"error":{"formatted":"Connection dropped (ECONNRESET)"}}"#,
+        true,
+        None,
+    );
+    assert!(dropped.events.iter().any(|event| matches!(
+        event,
+        SessionEventBody::Error { message } if message.contains("ECONNRESET")
+    )));
 }
 
 #[test]
@@ -1085,6 +1152,7 @@ fn streaming_abort_keeps_the_session_usable() {
         true,
         None,
     );
+    // 没有按下停止：aborted_streaming 仍是断线。
     assert!(ingest.events.iter().any(|event| matches!(
         event,
         SessionEventBody::Error { message } if message.contains("连接中断")
