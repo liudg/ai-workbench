@@ -19,6 +19,13 @@ pub struct McpField {
     pub placeholder: String,
     /// `always`、`stdio`、`http`、`sse` 或 `http-sse`。
     pub when: String,
+    /// `text`、`secret`、`list`、`pairs`。界面按这个画控件。
+    pub control: String,
+    /// 当前传输下可见时，保存前必须有值。
+    pub required: bool,
+    /// 空、`server-name`、`command`、`url`、`env-name`、`port`、`arg-list`、`pairs-env`、`pairs-header`。
+    #[serde(default)]
+    pub rule: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

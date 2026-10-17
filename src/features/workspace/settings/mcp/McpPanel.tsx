@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import type { AgentKind, McpAddSpec, McpPair, McpServerRow, McpSurface } from "@/types";
+import { McpForm } from "./McpForm";
 import {
   Dialog,
   DialogContent,
@@ -13,9 +14,6 @@ import { cn } from "@/lib/utils";
 import {
   MASKED_VALUE,
   MCP_PAGE,
-  addLabel,
-  defaultScope,
-  defaultTransport,
   loginLaunch,
   menuActions,
   registrationAria,
@@ -24,12 +22,10 @@ import {
   rowStatus,
   showAdd,
   showLoginScopes,
-  showRegistration,
   showToggle,
   toggleNextAllowed,
   transportTag,
   uninstallConfirmBody,
-  visibleFields,
   visibleUnavailableReason,
   type McpFeedback,
   type McpMenuId,
@@ -92,8 +88,16 @@ export function McpPanel(props: McpPanelProps) {
   useEffect(() => {
     setLit(props.highlight?.name ?? null);
     if (!props.highlight) return;
+    const name = props.highlight.name;
     const timer = window.setTimeout(() => setLit(null), 4000);
-    return () => window.clearTimeout(timer);
+    const frame = window.requestAnimationFrame(() => {
+      const node = document.querySelector(`[data-mcp-highlight="${CSS.escape(name)}"]`);
+      if (node instanceof HTMLElement) node.scrollIntoView({ block: "nearest" });
+    });
+    return () => {
+      window.clearTimeout(timer);
+      window.cancelAnimationFrame(frame);
+    };
   }, [props.highlight]);
 
   useEffect(() => {
@@ -167,6 +171,7 @@ export function McpPanel(props: McpPanelProps) {
   }
 
   const reason = surface ? visibleUnavailableReason(surface.unavailable_reason) : null;
+  const addOpen = Boolean(surface && mode === "new" && showAdd(surface));
 
   return (
     <section data-mcp-panel="">
@@ -213,9 +218,11 @@ export function McpPanel(props: McpPanelProps) {
         </p>
       )}
       {props.feedback?.tone === "failure" && <Failure title={props.feedback.title} detail={props.feedback.detail} />}
-      {surface && mode === "new" && showAdd(surface) && (
-        <NewServer
+      {surface && addOpen && (
+        <McpForm
+          key={surface.kind}
           surface={surface}
+          existingNames={props.rows.map((row) => row.name)}
           busy={props.formBusy}
           onBack={() => setMode("list")}
           onSave={async (spec) => {
@@ -248,7 +255,7 @@ export function McpPanel(props: McpPanelProps) {
           }}
         />
       )}
-      {surface && mode === "list" && (
+      {surface && !addOpen && !(mode === "existing" && openRow) && (
         <ServerList
           key={surface.kind}
           surface={surface}
@@ -653,225 +660,6 @@ function ServerDetail(props: {
   );
 }
 
-function NewServer(props: {
-  surface: McpSurface;
-  busy: boolean;
-  onBack: () => void;
-  onSave: (spec: McpAddSpec) => Promise<boolean> | boolean;
-}) {
-  const { surface } = props;
-  const [transport, setTransport] = useState(defaultTransport(surface));
-  const [name, setName] = useState("");
-  const [command, setCommand] = useState("");
-  const [args, setArgs] = useState<string[]>([]);
-  const [env, setEnv] = useState<McpPair[]>([]);
-  const [url, setUrl] = useState("");
-  const [bearer, setBearer] = useState("");
-  const [headers, setHeaders] = useState<McpPair[]>([]);
-  const [scope, setScope] = useState(defaultScope(surface));
-  const [clientId, setClientId] = useState("");
-  const [clientSecret, setClientSecret] = useState("");
-  const [oauthResource, setOauthResource] = useState("");
-  const [callbackPort, setCallbackPort] = useState("");
-  const [registration, setRegistration] = useState(surface.oauth_registration[0]?.id ?? "");
-  const [localError, setLocalError] = useState<string | null>(null);
-  const fields = visibleFields(surface.fields, transport);
-  const shown = new Set(fields.map((field) => field.id));
-  const saving = useRef(false);
-
-  async function save() {
-    if (saving.current) return;
-    if (!name.trim() || (shown.has("command") && !command.trim()) || (shown.has("url") && !url.trim())) {
-      setLocalError(MCP_PAGE.saveError);
-      return;
-    }
-    setLocalError(null);
-    saving.current = true;
-    try {
-      await props.onSave({
-        name: name.trim(),
-        transport,
-        command: shown.has("command") ? command.trim() : "",
-        args: shown.has("args") ? args.map((item) => item.trim()).filter(Boolean) : [],
-        env: shown.has("env") ? filledPairs(env) : [],
-        url: shown.has("url") ? url.trim() : "",
-        bearer_token_env_var: shown.has("bearer_token_env_var") ? bearer.trim() : "",
-        headers: shown.has("headers") ? filledPairs(headers) : [],
-        scope: surface.scopes.length > 0 ? scope : "",
-        client_id: shown.has("client_id") ? clientId.trim() : "",
-        client_secret: shown.has("client_secret") ? clientSecret : "",
-        oauth_resource: shown.has("oauth_resource") ? oauthResource.trim() : "",
-        callback_port: shown.has("callback_port") ? callbackPort.trim() : "",
-        oauth_registration: showRegistration(surface, transport) ? registration : "",
-      });
-    } finally {
-      saving.current = false;
-    }
-  }
-
-  return (
-    <div className="mt-6" data-mcp-form="new">
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="text-sm font-medium text-zinc-100">{MCP_PAGE.titleNew}</h3>
-        <button type="button" className={quietButton} onClick={props.onBack}>
-          {MCP_PAGE.back}
-        </button>
-      </div>
-      <div className="mt-4 space-y-4">
-        <TextField id="name" label={labelOf(fields, "name", MCP_PAGE.name)} placeholder={placeholderOf(fields, "name")} value={name} onChange={setName} />
-        {surface.transports.length > 0 && (
-          <div>
-            <div className="mb-2 text-xs text-zinc-400">{MCP_PAGE.typeLabel}</div>
-            <div className="flex flex-wrap gap-2" role="group" aria-label={MCP_PAGE.typeAria}>
-              {surface.transports.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  data-mcp-transport={item.id}
-                  aria-pressed={transport === item.id}
-                  className={cn(quietButton, transport === item.id && "border-zinc-400 bg-zinc-800")}
-                  onClick={() => setTransport(item.id)}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-        {surface.scopes.length > 0 && surface.scope_label && (
-          <label className="block text-xs text-zinc-400">
-            {surface.scope_label}
-            <select className={inputClass + " mt-1"} value={scope} data-mcp-scope="" aria-label={surface.scope_label} onChange={(event) => setScope(event.target.value)}>
-              {surface.scopes.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        {shown.has("command") && (
-          <TextField id="command" label={labelOf(fields, "command", MCP_PAGE.command)} placeholder={placeholderOf(fields, "command")} value={command} onChange={setCommand} />
-        )}
-        {shown.has("args") && <StringList label={labelOf(fields, "args", MCP_PAGE.args)} addLabel={addLabel("args") ?? MCP_PAGE.args} values={args} onChange={setArgs} />}
-        {shown.has("env") && <PairList label={labelOf(fields, "env", MCP_PAGE.env)} addLabel={addLabel("env") ?? MCP_PAGE.env} pairs={env} onChange={setEnv} />}
-        {shown.has("url") && <TextField id="url" label={labelOf(fields, "url", MCP_PAGE.url)} placeholder={placeholderOf(fields, "url")} value={url} onChange={setUrl} />}
-        {shown.has("bearer_token_env_var") && (
-          <TextField id="bearer_token_env_var" label={labelOf(fields, "bearer_token_env_var", MCP_PAGE.bearer)} placeholder={placeholderOf(fields, "bearer_token_env_var")} value={bearer} onChange={setBearer} />
-        )}
-        {shown.has("headers") && (
-          <PairList label={labelOf(fields, "headers", MCP_PAGE.headers)} addLabel={addLabel("headers") ?? MCP_PAGE.headers} pairs={headers} onChange={setHeaders} />
-        )}
-        {shown.has("client_id") && <TextField id="client_id" label={labelOf(fields, "client_id", "client_id")} placeholder="" value={clientId} onChange={setClientId} />}
-        {shown.has("client_secret") && (
-          <TextField id="client_secret" label={labelOf(fields, "client_secret", "client_secret")} placeholder="" value={clientSecret} onChange={setClientSecret} secret />
-        )}
-        {shown.has("oauth_resource") && (
-          <TextField id="oauth_resource" label={labelOf(fields, "oauth_resource", "oauth_resource")} placeholder="" value={oauthResource} onChange={setOauthResource} />
-        )}
-        {shown.has("callback_port") && (
-          <TextField id="callback_port" label={labelOf(fields, "callback_port", "callback_port")} placeholder="" value={callbackPort} onChange={setCallbackPort} />
-        )}
-        {showRegistration(surface, transport) && (
-          <label className="block text-xs text-zinc-400">
-            {MCP_PAGE.registration}
-            <select className={inputClass + " mt-1"} aria-label={registrationAria(registration)} value={registration} data-mcp-add-registration="" onChange={(event) => setRegistration(event.target.value)}>
-              {surface.oauth_registration.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-      </div>
-      {localError && (
-        <p className="mt-4 text-sm text-red-300" role="alert">
-          {localError}
-        </p>
-      )}
-      <button type="button" className={quietButton + " mt-4"} data-mcp-save="" disabled={props.busy} onClick={() => void save()}>
-        {MCP_PAGE.save}
-      </button>
-    </div>
-  );
-}
-
-function TextField(props: {
-  id: string;
-  label: string;
-  placeholder: string;
-  value: string;
-  onChange: (value: string) => void;
-  secret?: boolean;
-}) {
-  return (
-    <label className="block text-xs text-zinc-400">
-      {props.label}
-      <input
-        className={inputClass + " mt-1"}
-        data-mcp-field={props.id}
-        placeholder={props.placeholder}
-        type={props.secret ? "password" : "text"}
-        value={props.value}
-        onChange={(event) => props.onChange(event.target.value)}
-      />
-    </label>
-  );
-}
-
-function StringList(props: { label: string; addLabel: string; values: string[]; onChange: (values: string[]) => void }) {
-  return (
-    <div>
-      <div className="text-xs text-zinc-400">{props.label}</div>
-      <div className="mt-1 space-y-2">
-        {props.values.map((value, index) => (
-          <div key={index} className="flex gap-2">
-            <input
-              className={inputClass}
-              value={value}
-              aria-label={props.label}
-              onChange={(event) => {
-                const next = props.values.slice();
-                next[index] = event.target.value;
-                props.onChange(next);
-              }}
-            />
-            <button type="button" className={quietButton} aria-label={MCP_PAGE.removeEntry} onClick={() => props.onChange(props.values.filter((_, item) => item !== index))}>
-              {MCP_PAGE.removeEntry}
-            </button>
-          </div>
-        ))}
-      </div>
-      <button type="button" className={quietButton + " mt-2"} onClick={() => props.onChange([...props.values, ""])}>
-        {props.addLabel}
-      </button>
-    </div>
-  );
-}
-
-function PairList(props: { label: string; addLabel: string; pairs: McpPair[]; onChange: (pairs: McpPair[]) => void }) {
-  return (
-    <div>
-      <div className="text-xs text-zinc-400">{props.label}</div>
-      <div className="mt-1 space-y-2">
-        {props.pairs.map((pair, index) => (
-          <div key={index} className="flex gap-2">
-            <input className={inputClass} placeholder={MCP_PAGE.key} aria-label={MCP_PAGE.key} value={pair.key} onChange={(event) => props.onChange(replacePair(props.pairs, index, { ...pair, key: event.target.value }))} />
-            <input className={inputClass} placeholder={MCP_PAGE.value} aria-label={MCP_PAGE.value} value={pair.value} onChange={(event) => props.onChange(replacePair(props.pairs, index, { ...pair, value: event.target.value }))} />
-            <button type="button" className={quietButton} aria-label={MCP_PAGE.removeEntry} onClick={() => props.onChange(props.pairs.filter((_, item) => item !== index))}>
-              {MCP_PAGE.removeEntry}
-            </button>
-          </div>
-        ))}
-      </div>
-      <button type="button" className={quietButton + " mt-2"} onClick={() => props.onChange([...props.pairs, { key: "", value: "" }])}>
-        {props.addLabel}
-      </button>
-    </div>
-  );
-}
-
 function Readout({ label, value }: { label: string; value: string }) {
   return (
     <div>
@@ -921,20 +709,3 @@ function SecretPairs({ label, pairs }: { label: string; pairs: McpPair[] }) {
   );
 }
 
-function labelOf(fields: { id: string; label: string }[], id: string, fallback: string): string {
-  return fields.find((field) => field.id === id)?.label ?? fallback;
-}
-
-function placeholderOf(fields: { id: string; placeholder: string }[], id: string): string {
-  return fields.find((field) => field.id === id)?.placeholder ?? "";
-}
-
-function filledPairs(pairs: McpPair[]): McpPair[] {
-  return pairs.filter((pair) => pair.key.trim() || pair.value.trim());
-}
-
-function replacePair(pairs: McpPair[], index: number, pair: McpPair): McpPair[] {
-  const next = pairs.slice();
-  next[index] = pair;
-  return next;
-}

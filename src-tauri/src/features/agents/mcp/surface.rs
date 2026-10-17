@@ -55,25 +55,31 @@ pub fn codex(installed: bool) -> McpSurface {
         ],
         scopes: Vec::new(),
         fields: vec![
-            field("name", "名称", "MCP 服务器名称", "always"),
+            field("name", "名称", "MCP 服务器名称", "always", "text", true, "server-name"),
             field(
                 "command",
                 "启动命令",
                 "openai-dev-mcp serve-sqlite",
                 "stdio",
+                "text",
+                true,
+                "command",
             ),
-            field("args", "参数", "", "stdio"),
-            field("env", "环境变量", "", "stdio"),
-            field("url", "URL", "https://mcp.example.com/mcp", "http"),
+            field("args", "参数", "", "stdio", "list", false, "arg-list"),
+            field("env", "环境变量", "", "stdio", "pairs", false, "pairs-env"),
+            field("url", "URL", "https://mcp.example.com/mcp", "http", "text", true, "url"),
             field(
                 "bearer_token_env_var",
                 "Bearer 令牌环境变量",
                 "MCP_BEARER_TOKEN",
                 "http",
+                "text",
+                false,
+                "env-name",
             ),
-            field("client_id", "OAuth 客户端 ID", "", "http"),
-            field("client_secret", "OAuth 客户端密钥", "", "http"),
-            field("oauth_resource", "OAuth 资源", "", "http"),
+            field("client_id", "OAuth 客户端 ID", "", "http", "text", false, ""),
+            field("client_secret", "OAuth 客户端密钥", "", "http", "secret", false, ""),
+            field("oauth_resource", "OAuth 资源", "", "http", "text", false, ""),
         ],
         oauth_registration: registration(),
         login_rule: "status".into(),
@@ -159,19 +165,22 @@ pub fn claude(installed: bool) -> McpSurface {
             labeled("project", "项目"),
         ],
         fields: vec![
-            field("name", "名称", "MCP 服务器名称", "always"),
+            field("name", "名称", "MCP 服务器名称", "always", "text", true, "server-name"),
             field(
                 "command",
                 "启动命令",
                 "openai-dev-mcp serve-sqlite",
                 "stdio",
+                "text",
+                true,
+                "command",
             ),
-            field("args", "参数", "", "stdio"),
-            field("env", "环境变量", "", "stdio"),
-            field("url", "URL", "https://mcp.example.com/mcp", "http-sse"),
-            field("headers", "Headers", "", "http-sse"),
-            field("client_id", "OAuth 客户端 ID", "", "http-sse"),
-            field("callback_port", "OAuth 回调端口", "", "http-sse"),
+            field("args", "参数", "", "stdio", "list", false, "arg-list"),
+            field("env", "环境变量", "", "stdio", "pairs", false, "pairs-env"),
+            field("url", "URL", "https://mcp.example.com/mcp", "http-sse", "text", true, "url"),
+            field("headers", "Headers", "", "http-sse", "pairs", false, "pairs-header"),
+            field("client_id", "OAuth 客户端 ID", "", "http-sse", "text", false, ""),
+            field("callback_port", "OAuth 回调端口", "", "http-sse", "text", false, "port"),
         ],
         oauth_registration: Vec::new(),
         login_rule: "http".into(),
@@ -303,12 +312,23 @@ fn labeled(id: &str, label: &str) -> McpLabeled {
     }
 }
 
-fn field(id: &str, label: &str, placeholder: &str, when: &str) -> McpField {
+fn field(
+    id: &str,
+    label: &str,
+    placeholder: &str,
+    when: &str,
+    control: &str,
+    required: bool,
+    rule: &str,
+) -> McpField {
     McpField {
         id: id.into(),
         label: label.into(),
         placeholder: placeholder.into(),
         when: when.into(),
+        control: control.into(),
+        required,
+        rule: rule.into(),
     }
 }
 
@@ -355,6 +375,13 @@ mod tests {
         assert!(fields.contains(&"bearer_token_env_var"));
         assert!(!fields.contains(&"headers"));
         assert!(!fields.contains(&"callback_port"));
+        let command = surface.fields.iter().find(|field| field.id == "command").unwrap();
+        assert_eq!(command.control, "text");
+        assert!(command.required);
+        assert_eq!(command.rule, "command");
+        let secret = surface.fields.iter().find(|field| field.id == "client_secret").unwrap();
+        assert_eq!(secret.control, "secret");
+        assert!(!secret.required);
         assert_eq!(surface.login_rule, "status");
         assert_eq!(surface.login_statuses, vec!["notLoggedIn".to_string()]);
         assert!(surface.notes.iter().any(|item| item.label == "Headers"));
@@ -374,6 +401,12 @@ mod tests {
         assert_eq!(surface.scopes.len(), 3);
         assert_eq!(surface.scope_label, "配置 scope");
         assert_eq!(surface.logout_label, "清除已保存的 OAuth 凭据");
+        let headers = surface.fields.iter().find(|field| field.id == "headers").unwrap();
+        assert_eq!(headers.control, "pairs");
+        assert_eq!(headers.rule, "pairs-header");
+        let port = surface.fields.iter().find(|field| field.id == "callback_port").unwrap();
+        assert_eq!(port.rule, "port");
+        assert!(!port.required);
         assert!(ids(&surface).contains(&"headers"));
         assert!(!ids(&surface).contains(&"bearer_token_env_var"));
         assert!(surface.oauth_registration.is_empty());
