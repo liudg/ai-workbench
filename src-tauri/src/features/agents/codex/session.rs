@@ -109,20 +109,7 @@ impl AgentSession for CodexCliSession {
 
     async fn interrupt(&self) -> Result<(), AgentError> {
         self.shared.ensure_open()?;
-        let thread_id = self
-            .shared
-            .thread_id
-            .lock()
-            .unwrap()
-            .clone()
-            .ok_or_else(|| AgentError::Runtime("Codex 线程未建立".into()))?;
-        if !self
-            .shared
-            .write_method("turn/interrupt", json!({ "threadId": thread_id }))
-        {
-            return Err(AgentError::Runtime("无法向 Codex CLI 写入消息".into()));
-        }
-        Ok(())
+        self.shared.write_turn_interrupt()
     }
 
     #[cfg(test)]
