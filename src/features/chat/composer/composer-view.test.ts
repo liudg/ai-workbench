@@ -6,8 +6,9 @@ import {
   type AgentCapabilities,
   type AgentCatalog,
   type SessionEvent,
+  type SessionStatus,
 } from "../../../types/index.ts";
-import { composerCaps, composerCommands, deriveComposerView } from "./composer-view.ts";
+import { composerCaps, composerCommands, deriveComposerView, runComposerPrimary } from "./composer-view.ts";
 
 const caps = {
   supports_slash: true,
@@ -66,6 +67,93 @@ test("queue keeps the composer open while a turn is running", () => {
   assert.equal(noQueue.composerLocked, true);
   assert.equal(noQueue.placeholder, "随心输入");
   assert.equal(view({ status: "stopped" }).placeholder, "会话已停止，请新建会话");
+});
+
+function approval(id = "bash"): SessionEvent {
+  return {
+    id,
+    session_id: "s",
+    seq: 2,
+    ts: 2,
+    kind: "prompt",
+    prompt_id: id,
+    prompt_kind: "approval",
+    question: "允许使用 Bash?",
+    options: [
+      { id: "allow", label: "允许一次" },
+      { id: "deny", label: "拒绝" },
+    ],
+    questions: [],
+  };
+}
+
+function statusEvent(status: SessionStatus, seq: number): SessionEvent {
+  return {
+    id: `status-${seq}`,
+    session_id: "s",
+    seq,
+    ts: seq,
+    kind: "status-changed",
+    status,
+  };
+}
+
+test("a pending approval keeps stop until the turn actually ends", () => {
+  const plan: SessionEvent = {
+    id: "plan",
+    session_id: "s",
+    seq: 1,
+    ts: 1,
+    kind: "collaboration-mode",
+    mode: "plan",
+  };
+  const running = view({ status: "running", events: [plan, approval()] });
+  assert.equal(running.pendingId, "bash");
+  assert.equal(running.stopMode, true);
+  assert.equal(running.sendDisabled, false);
+  const pressed: string[] = [];
+  runComposerPrimary(running.stopMode, {
+    interrupt: () => pressed.push("interrupt"),
+    submit: () => pressed.push("submit"),
+  });
+  assert.deepEqual(pressed, ["interrupt"]);
+
+  const waiting = view({
+    status: "running",
+    events: [plan, approval(), statusEvent("needs-input", 3)],
+  });
+  assert.equal(waiting.stopMode, true);
+  assert.equal(waiting.sendDisabled, false);
+
+  const question: SessionEvent = {
+    id: "ask",
+    session_id: "s",
+    seq: 4,
+    ts: 4,
+    kind: "prompt",
+    prompt_id: "ask",
+    prompt_kind: "questions",
+    question: "选哪个？",
+    options: [],
+    questions: [{ id: "q1", question: "选哪个？", is_secret: false, options: [] }],
+  };
+  assert.equal(view({ status: "needs-input", events: [question] }).stopMode, true);
+
+  const ended = view({
+    status: "needs-input",
+    events: [plan, approval(), statusEvent("completed", 5)],
+  });
+  assert.equal(ended.stopMode, false);
+  const after: string[] = [];
+  runComposerPrimary(ended.stopMode, {
+    interrupt: () => after.push("interrupt"),
+    submit: () => after.push("submit"),
+  });
+  assert.deepEqual(after, ["submit"]);
+  assert.equal(view({ status: "stopped", events: [approval()] }).stopMode, false);
+  assert.equal(view({ status: "completed", events: [approval()] }).stopMode, false);
+  assert.equal(view({ status: "running", events: [approval()], text: "继续" }).stopMode, false);
+  assert.equal(view({ status: "running", events: [approval()], editingId: "queued" }).stopMode, false);
 });
 
 test("slash stays closed while a prompt is waiting or the turn is busy", () => {

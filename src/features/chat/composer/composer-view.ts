@@ -13,6 +13,7 @@ import {
 } from "./model-picker.ts";
 import { pickEffort, pickModel } from "./model-selection.ts";
 import { isReadOnlyOpen, pendingPrompt } from "../../../lib/utils.ts";
+import { timelineStatus } from "../timeline/timeline.ts";
 import {
   type AgentCapabilities,
   type AgentCatalog,
@@ -140,9 +141,13 @@ export function deriveComposerView(input: ComposerViewInput) {
             : "随心输入";
   const hasText = Boolean(input.text.trim());
   const hasSnippets = input.snippetCount > 0;
+  // 会话列表可能晚一拍。回合是否还在，以事件日志最后一次状态为准，和对话时间线一致。
+  // 正在跑，或停在审批 / 提问（needs-input），空输入都保持停止。待发草稿仍是发送。
+  const live = timelineStatus(input.events, input.status);
+  const turnOpen = live === "running" || live === "needs-input";
   const stopMode =
     held ||
-    (queueOn && busy && !input.editingId && !pendingId && !hasText && !hasSnippets && input.fileCount === 0);
+    (queueOn && turnOpen && !input.editingId && !hasText && !hasSnippets && input.fileCount === 0);
   const sendDisabled = stopMode
     ? false
     : composerLocked ||
@@ -203,4 +208,13 @@ export function deriveComposerView(input: ComposerViewInput) {
     showNetwork: Boolean(menu?.network_access) && extrasAllowed(menu, input.sandbox),
     showWritable: Boolean(menu?.writable_roots) && extrasAllowed(menu, input.sandbox),
   };
+}
+
+/** 主按钮。停止态中断当前回合，否则提交输入。 */
+export function runComposerPrimary(
+  stopMode: boolean,
+  actions: { interrupt: () => void; submit: () => void },
+): void {
+  if (stopMode) actions.interrupt();
+  else actions.submit();
 }

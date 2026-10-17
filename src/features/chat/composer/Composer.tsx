@@ -16,6 +16,7 @@ import { MentionMenu } from "./MentionMenu";
 import { SkillMenu } from "./SkillMenu";
 import { SlashMenu } from "./SlashMenu";
 import { GoalStatusBar } from "./GoalStatusBar";
+import { runComposerPrimary } from "./composer-view";
 import { useComposerController } from "./useComposerController";
 import { ComposerContextRow } from "./GitBranchControl";
 
@@ -175,10 +176,12 @@ export function Composer({
             onDismissPlan={c.dismissPlan}
             onDismissGoal={c.dismissGoal}
             onCancelEdit={c.cancelEdit}
-            onSend={() => {
-              if (view.stopMode) c.interrupt();
-              else c.submit();
-            }}
+            onSend={() =>
+              runComposerPrimary(view.stopMode, {
+                interrupt: () => c.interrupt(),
+                submit: () => c.submit(),
+              })
+            }
           />
           </div>
         </div>
