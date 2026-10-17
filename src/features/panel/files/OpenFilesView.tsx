@@ -33,7 +33,6 @@ export function OpenFilesView() {
   const filesTab = tabs.find((tab) => tab.viewerId === "files");
   const place = openFilesPlace(filesTab?.payload);
   const attachFile = useAttachFile(sessionId);
-  const [filter, setFilter] = useState("");
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string } | null>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const seenScope = useRef({ projectId, sessionId });
@@ -60,7 +59,7 @@ export function OpenFilesView() {
     const previous = seenScope.current;
     seenScope.current = { projectId, sessionId };
     if (!clearOpenFilesOnScope(previous, { projectId, sessionId }) || !filesTab) return;
-    patchTabPayload(filesTab.id, { path: "", line: null });
+    patchTabPayload(filesTab.id, { path: "", line: null, filter: "" });
   }, [filesTab, patchTabPayload, projectId, sessionId]);
 
   const addToChat = (path: string) => {
@@ -109,8 +108,11 @@ export function OpenFilesView() {
         >
           <div className="flex shrink-0 items-center gap-1 border-b border-[#222] p-2">
             <input
-              value={filter}
-              onChange={(event) => setFilter(event.target.value)}
+              value={place.filter}
+              onChange={(event) => {
+                if (!filesTab) return;
+                patchTabPayload(filesTab.id, { filter: event.target.value });
+              }}
               placeholder={DESKTOP_ZH.filterFiles}
               aria-label={DESKTOP_ZH.filterFiles}
               data-files-filter
@@ -120,7 +122,7 @@ export function OpenFilesView() {
           <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-1 py-1">
             <WorkspaceTree
               projectId={projectId}
-              filter={filter}
+              filter={place.filter}
               activePath={place.path}
               surface="sidebar"
               directoryPath=""

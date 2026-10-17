@@ -9,6 +9,7 @@ import {
   releaseUntouchedNewChat,
   STANDALONE_DRAFT_ID,
 } from "../standalone";
+import { applyLiveEvent } from "../event-log";
 import { clearMissingSessionBanner, loadSessions, loadWorkspaceLists } from "../sync";
 import type { ShellSlice, WorkbenchGet, WorkbenchSet } from "../types";
 
@@ -30,12 +31,7 @@ export function createShellSlice(set: WorkbenchSet, get: WorkbenchGet): ShellSli
       });
       backend.onSessionEvent((event) => {
         set((s) => {
-          const log = s.events[event.session_id] ?? [];
-          const index = log.findIndex((item) => item.id === event.id);
-          const next =
-            index >= 0
-              ? log.map((item, i) => (i === index ? event : item))
-              : [...log, event];
+          const next = applyLiveEvent(s.events[event.session_id] ?? [], event);
           return {
             events: {
               ...s.events,
