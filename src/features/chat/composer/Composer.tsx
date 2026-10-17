@@ -160,7 +160,6 @@ export function Composer({
             composerLocked={view.composerLocked}
             sandbox={c.sandbox}
             permissionMenu={view.permissionMenu}
-            planChip={view.planChip}
             planIndicator={view.planIndicator}
             goalChip={view.goalChip}
             showModel={view.showModel}

@@ -377,7 +377,6 @@ test("plan and goal chips are exclusive and the goal bar follows the goal", () =
   assert.equal(drafted.goalStatus?.actionable, false);
   const planning = view({ events: [plan] });
   assert.equal(planning.planOn, true);
-  assert.equal(planning.planChip, true);
   assert.equal(planning.planIndicator, true);
   assert.equal(planning.goalOn, false);
   assert.equal(planning.goalChip, false);
@@ -393,11 +392,33 @@ test("plan and goal chips are exclusive and the goal bar follows the goal", () =
         kind: "user-message",
         text: "先做计划",
       },
+      {
+        id: "follow",
+        session_id: "s",
+        seq: 3,
+        ts: 3,
+        kind: "user-message",
+        text: "继续",
+      },
     ],
   });
   assert.equal(sent.planOn, true);
-  assert.equal(sent.planChip, false);
   assert.equal(sent.planIndicator, true);
+  const left = view({
+    events: [
+      plan,
+      {
+        id: "off",
+        session_id: "s",
+        seq: 4,
+        ts: 4,
+        kind: "collaboration-mode",
+        mode: "default",
+      },
+    ],
+  });
+  assert.equal(left.planOn, false);
+  assert.equal(left.planIndicator, false);
   assert.equal(view({ events: [plan], caps: { ...caps, supports_plan: false } }).planIndicator, false);
   assert.equal(view({ events: [plan], caps: undefined }).planIndicator, false);
   const live = view({

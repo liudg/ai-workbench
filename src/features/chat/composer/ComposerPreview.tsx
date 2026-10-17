@@ -519,7 +519,6 @@ export default function ComposerPreview() {
               composerLocked={false}
               sandbox={sandbox}
               permissionMenu={permissionMenu}
-              planChip={view.planChip}
               planIndicator={view.planIndicator}
               goalChip={view.goalChip}
               showModel

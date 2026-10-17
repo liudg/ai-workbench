@@ -25,7 +25,7 @@ import {
   type SessionSandbox,
   type SlashCommand,
 } from "../../../types/index.ts";
-import { exclusiveComposerMode, planChipVisible } from "./collaboration-mode.ts";
+import { exclusiveComposerMode } from "./collaboration-mode.ts";
 import { type GoalSnapshot } from "./goal.ts";
 import { goalStatusModel } from "./goal-status.ts";
 import { atToken, mentionSupport, type MentionSupport } from "./mentions.ts";
@@ -187,9 +187,10 @@ export function deriveComposerView(input: ComposerViewInput) {
     placeholder,
     planOn,
     goalOn,
-    /** 输入框里的计划 pill。首条用户消息发出后消失。 */
-    planChip: planChipVisible(input.events, planOn),
-    /** 作曲栏页脚的计划标识。跟当前协作模式走，首发后仍在。 */
+    /**
+     * 作曲栏页脚的计划标识。跟协作模式走：模式是 plan 就在，
+     * 用户消息不会把它清掉。点一下、或协作模式回到 default，才消失。
+     */
     planIndicator: showPlan && planOn,
     /** 输入框里的目标 pill。只在目标还没提交时出现，跟已保存的目标条分开。 */
     goalChip: Boolean(input.goalDraft),

@@ -61,7 +61,6 @@ export const DESKTOP_ZH = {
   skillLoading: "正在读取技能…",
   skillNone: "没有可用技能",
   skillNoMatch: "没有匹配的技能",
-  closePlan: "关闭计划",
   closeGoal: "关闭目标",
   viewChanges: "查看变更",
   changesTab: "变更",

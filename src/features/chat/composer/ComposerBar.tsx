@@ -1,5 +1,5 @@
 import { useRef, type RefObject } from "react";
-import { ArrowUp, ChevronDown, Lightbulb, Plus, Shield, Target } from "lucide-react";
+import { ArrowUp, ChevronDown, Plus, Shield, Target } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useElementWidth } from "@/shared/dom/useElementWidth";
@@ -19,7 +19,6 @@ export function ComposerBar({
   composerLocked,
   sandbox,
   permissionMenu,
-  planChip,
   planIndicator,
   goalChip,
   showModel,
@@ -45,8 +44,7 @@ export function ComposerBar({
   composerLocked: boolean;
   sandbox: SessionSandbox | null;
   permissionMenu: PermissionMenu | null;
-  planChip: boolean;
-  /** 当前协作模式是计划，而且这个 Agent 支持计划模式。 */
+  /** 当前协作模式是计划，而且这个 Agent 支持计划模式。发消息后仍在。 */
   planIndicator: boolean;
   goalChip: boolean;
   showModel: boolean;
@@ -119,22 +117,10 @@ export function ComposerBar({
           {icons ? null : <span className="min-w-0 truncate">{accessLabel}</span>}
           {icons ? null : <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />}
         </button>
-        {(planIndicator || planChip || goalChip) && (
+        {(planIndicator || goalChip) && (
           <span aria-hidden className="mx-0.5 h-4 w-px shrink-0 bg-zinc-700" data-mode-divider />
         )}
         {planIndicator && <PlanModeIndicator disabled={composerLocked} onExit={onDismissPlan} />}
-        {planChip && (
-          <ModeChip
-            id="plan"
-            label={DESKTOP_ZH.planLabel}
-            tooltip={DESKTOP_ZH.planTooltip}
-            dismissLabel={DESKTOP_ZH.closePlan}
-            icon={<Lightbulb className="h-3.5 w-3.5 shrink-0" />}
-            iconOnly={icons}
-            disabled={composerLocked}
-            onDismiss={onDismissPlan}
-          />
-        )}
         {goalChip && (
           <ModeChip
             id="goal"
