@@ -1,15 +1,16 @@
-import { useCallback, useRef, useState } from "react";
-import { ChevronRight, Ellipsis, Folder } from "lucide-react";
+import { useCallback, useRef, useState, type RefObject } from "react";
+import { ChevronRight, Ellipsis, Folder, Pin, PinOff, Settings, X } from "lucide-react";
 
 import { cn, displayPath } from "@/lib/utils";
 import { pendingSidebarSession } from "@/store/draft-session";
 import { aggregateStatus, type Project } from "@/types";
+import { FixedMenu } from "../FixedMenu";
 import { useProjectItem } from "./use-project-item";
-import { useDismiss } from "../use-dismiss";
 import { NewSessionButton } from "../sessions/NewSessionButton";
 import { partitionSidebarSessions } from "../sessions/session-partition";
 import { SessionList } from "../sessions/SessionList";
-import { projectMenuItems } from "./project-menu";
+import { EditProjectDialog } from "./EditProjectDialog";
+import { projectMenuItems, type ProjectMenuAction } from "./project-menu";
 import { StatusDot } from "./StatusDot";
 import { useProjectBranch } from "./use-project-branch";
 
@@ -24,17 +25,19 @@ export function ProjectItem({ project }: { project: Project }) {
     selectProject,
     removeProject,
     openProjectFolder,
+    pinned,
+    togglePinnedProject,
   } = useProjectItem(project);
   const pending = pendingSidebarSession(project.id, draft, pendingStart);
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const anchorRef = useRef<HTMLButtonElement>(null);
   const closeMenu = useCallback(() => {
     setMenuOpen(false);
     setConfirming(false);
   }, []);
-  useDismiss(menuOpen, menuRef, closeMenu);
 
   const items = pending ? [pending, ...(sessions ?? [])] : (sessions ?? []);
   const grouped = partitionSidebarSessions(items);
@@ -56,6 +59,7 @@ export function ProjectItem({ project }: { project: Project }) {
     : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100";
 
   return (
+    <>
     <div className="py-0.5">
       <div
         className={cn(
@@ -93,8 +97,9 @@ export function ProjectItem({ project }: { project: Project }) {
         {/* 操作钮叠在行尾。短分支留在名字旁边；长分支用剩余宽度，悬停时不把下面的会话顶开。 */}
         <div className="absolute right-1.5 top-[calc(50%-12px)] z-10 flex h-6 w-12 items-center justify-end rounded-md group-hover:bg-[#1b1b1b] group-focus-within:bg-[#1b1b1b]">
           {!project.external && (
-            <div ref={menuRef} className="relative">
+            <div className="relative">
               <button
+                ref={anchorRef}
                 type="button"
                 className={cn(
                   "flex h-6 w-6 items-center justify-center rounded text-[#888] hover:bg-white/10 hover:text-[#e8e8e8]",
@@ -109,10 +114,21 @@ export function ProjectItem({ project }: { project: Project }) {
               >
                 <Ellipsis className="h-4 w-4" />
               </button>
-              {menuOpen && (
-                <ProjectMenu
+              <ProjectMenu
+                  open={menuOpen}
+                  anchorRef={anchorRef}
                   project={project}
+                  pinned={pinned}
                   confirming={confirming}
+                  onClose={closeMenu}
+                  onPin={() => {
+                    closeMenu();
+                    togglePinnedProject(project.id);
+                  }}
+                  onEdit={() => {
+                    closeMenu();
+                    setEditing(true);
+                  }}
                   onOpenFolder={() => {
                     closeMenu();
                     void openProjectFolder(project.id);
@@ -126,7 +142,6 @@ export function ProjectItem({ project }: { project: Project }) {
                     }
                   }}
                 />
-              )}
             </div>
           )}
           <NewSessionButton
@@ -148,36 +163,54 @@ export function ProjectItem({ project }: { project: Project }) {
         />
       )}
     </div>
+    {editing && <EditProjectDialog project={project} onClose={() => setEditing(false)} />}
+    </>
   );
 }
 
 function ProjectMenu({
+  open,
+  anchorRef,
   project,
+  pinned,
   confirming,
+  onClose,
+  onPin,
+  onEdit,
   onOpenFolder,
   onRemove,
 }: {
+  open: boolean;
+  anchorRef: RefObject<HTMLButtonElement | null>;
   project: Project;
+  pinned: boolean;
   confirming: boolean;
+  onClose: () => void;
+  onPin: () => void;
+  onEdit: () => void;
   onOpenFolder: () => void;
   onRemove: () => void;
 }) {
-  const entries = projectMenuItems(project.path);
+  const entries = projectMenuItems({ path: project.path, pinned });
   const wide = entries.some((entry) => entry.type === "action" && entry.id === "open-folder");
   return (
-    <div
-      role="menu"
-      aria-label={`${project.name} 菜单`}
-      data-project-menu
-      onContextMenu={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-      }}
+    <FixedMenu
+      open={open}
+      anchorRef={anchorRef}
+      onClose={onClose}
+      label={`${project.name} 菜单`}
       className={cn(
-        "absolute right-0 top-full z-30 mt-1 overflow-hidden rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/40",
+        "overflow-hidden rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/40",
         wide ? "w-56" : "w-44",
       )}
     >
+      <div
+        data-project-menu
+        onContextMenu={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        }}
+      >
       {entries.map((entry, index) => {
         if (entry.type === "separator") {
           return (
@@ -197,17 +230,37 @@ function ProjectMenu({
             )}
             onClick={(event) => {
               event.stopPropagation();
-              if (entry.id === "open-folder") onOpenFolder();
+              if (entry.id === "pin") onPin();
+              else if (entry.id === "edit") onEdit();
+              else if (entry.id === "open-folder") onOpenFolder();
               else onRemove();
             }}
           >
-            {entry.id === "open-folder" ? (
-              <Folder className="h-4 w-4 shrink-0 text-zinc-400" aria-hidden="true" />
-            ) : null}
+            <MenuIcon id={entry.id} pinned={pinned} danger={entry.id === "remove" && confirming} />
             <span className="whitespace-nowrap">{label}</span>
           </button>
         );
       })}
-    </div>
+      </div>
+    </FixedMenu>
   );
+}
+
+function MenuIcon({
+  id,
+  pinned,
+  danger,
+}: {
+  id: ProjectMenuAction;
+  pinned: boolean;
+  danger: boolean;
+}) {
+  const className = cn("h-4 w-4 shrink-0", danger ? "text-red-300" : "text-zinc-400");
+  if (id === "pin") {
+    const Icon = pinned ? PinOff : Pin;
+    return <Icon className={className} aria-hidden="true" />;
+  }
+  if (id === "edit") return <Settings className={className} aria-hidden="true" />;
+  if (id === "open-folder") return <Folder className={className} aria-hidden="true" />;
+  return <X className={className} aria-hidden="true" />;
 }

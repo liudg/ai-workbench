@@ -11,6 +11,11 @@ import {
   togglePinnedSessionId,
   writePinnedSessionIds,
 } from "../pinned-sessions";
+import {
+  readPinnedProjectIds,
+  togglePinnedProjectId,
+  writePinnedProjectIds,
+} from "../pinned-projects";
 import { orderEvents } from "../event-log";
 import {
   clearMissingSessionBanner,
@@ -70,6 +75,7 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
     sidebarNotice: null,
     lifecycleBusy: null,
     pinnedSessionIds: readPinnedSessionIds(browserPinStorage()),
+    pinnedProjectIds: readPinnedProjectIds(browserPinStorage()),
     selectedProjectId: null,
     activeSessionId: {},
     dialog: null,
@@ -141,6 +147,20 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
       }
     },
 
+    async updateProject(input) {
+      const project = await backend.updateProject(input);
+      set((s) => ({
+        projects: s.projects.map((item) => (item.id === project.id ? project : item)),
+        lastError: null,
+      }));
+      try {
+        const [, list] = await loadSessions(project.id);
+        set((s) => ({ sessions: { ...s.sessions, [project.id]: list } }));
+      } catch {
+        // 名称和源文件夹已经保存。会话列表下次进入项目时再读。
+      }
+    },
+
     async removeProject(id) {
       await backend.removeProject(id);
       const projects = await backend.listProjects();
@@ -160,6 +180,8 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
         };
         const pendingStart = { ...s.pendingStart };
         delete pendingStart[id];
+        const pinnedProjectIds = s.pinnedProjectIds.filter((item) => item !== id);
+        writePinnedProjectIds(pinnedProjectIds, browserPinStorage());
         const selectedProjectId =
           s.selectedProjectId === id
             ? (projects[0]?.id ?? null)
@@ -168,6 +190,7 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
           projects,
           sessions,
           selectedProjectId,
+          pinnedProjectIds,
           drafts,
           draftFocused,
           attachments: dropKey(s.attachments),
@@ -301,6 +324,12 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
       const pinnedSessionIds = togglePinnedSessionId(get().pinnedSessionIds, sessionId);
       writePinnedSessionIds(pinnedSessionIds, browserPinStorage());
       set({ pinnedSessionIds });
+    },
+
+    togglePinnedProject(projectId) {
+      const pinnedProjectIds = togglePinnedProjectId(get().pinnedProjectIds, projectId);
+      writePinnedProjectIds(pinnedProjectIds, browserPinStorage());
+      set({ pinnedProjectIds });
     },
 
     async archiveSession(projectId, sessionId, archived) {

@@ -20,6 +20,7 @@ export type {
   FileSearchHit,
   FileSearchResult,
   ImportProjectInput,
+  UpdateProjectInput,
   PathFilter,
   PreviewDocument,
   PreviewImage,

@@ -58,11 +58,35 @@ pub fn group_projects(stored: &[Project]) -> Vec<Project> {
         .collect()
 }
 
+/// 项目认领的目录。`path` 和源文件夹合成一份，重复的只留一次。
+pub fn project_folder_keys(project: &Project) -> Vec<String> {
+    let mut keys = Vec::new();
+    let mut push = |path: &str| {
+        let key = cwd_key(path);
+        if key.is_empty() || keys.iter().any(|existing| existing == &key) {
+            return;
+        }
+        keys.push(key);
+    };
+    push(&project.path);
+    for folder in &project.folders {
+        push(folder);
+    }
+    keys
+}
+
+pub fn project_matches_cwd(project: &Project, key: &str) -> bool {
+    !key.is_empty()
+        && project_folder_keys(project)
+            .iter()
+            .any(|folder| folder == key)
+}
+
 pub fn sessions_for_project(project: &Project, listed: &[SourcedEntry]) -> Vec<Session> {
-    let key = cwd_key(&project.path);
+    let keys = project_folder_keys(project);
     let mut sessions: Vec<Session> = listed
         .iter()
-        .filter(|item| !item.entry.ephemeral && item.entry.cwd_key == key)
+        .filter(|item| !item.entry.ephemeral && keys.iter().any(|key| key == &item.entry.cwd_key))
         .map(|item| Session {
             id: session_key(item.agent, &item.entry.native_id),
             project_id: project.id.clone(),
@@ -106,6 +130,7 @@ mod tests {
             id: id.into(),
             name: "已保存".into(),
             path: path.into(),
+            folders: Vec::new(),
             default_agent: AgentKind::CodexCli,
             created_at: 1,
             updated_at: 2,
@@ -195,6 +220,23 @@ mod tests {
         assert_eq!(sessions[0].id, "claude-code:same");
         assert_eq!(sessions[1].id, "codex-cli:same");
         assert_eq!(sessions[0].native_id, sessions[1].native_id);
+    }
+
+    #[test]
+    fn extra_source_folder_contributes_sessions() {
+        let mut stored = project("saved", r"F:\app");
+        stored.folders = vec![r"F:\app".into(), r"D:\other\demo".into()];
+        let listed = vec![
+            sourced(AgentKind::CodexCli, "inside", r"f:\app", 50),
+            sourced(AgentKind::CodexCli, "outside", r"D:\other\demo", 80),
+            sourced(AgentKind::ClaudeCode, "elsewhere", r"C:\nope", 90),
+        ];
+        let sessions = sessions_for_project(&stored, &listed);
+        assert_eq!(sessions.len(), 2);
+        assert_eq!(sessions[0].native_id, "outside");
+        assert_eq!(sessions[1].native_id, "inside");
+        assert!(project_matches_cwd(&stored, &cwd_key(r"D:\other\demo")));
+        assert!(!project_matches_cwd(&stored, &cwd_key(r"C:\nope")));
     }
 
     #[test]

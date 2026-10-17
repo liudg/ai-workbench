@@ -138,7 +138,8 @@ pub fn provision_standalone_chat(
     let project = Project {
         id: crate::models::new_id(),
         name,
-        path,
+        path: path.clone(),
+        folders: vec![path],
         default_agent: agent,
         created_at: now,
         updated_at: now,

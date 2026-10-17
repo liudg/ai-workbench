@@ -17,7 +17,7 @@ import type {
   SessionEvent,
   SessionTuning,
 } from "@/types";
-import type { CreateProjectInput, ImportProjectInput } from "@/lib/ipc";
+import type { CreateProjectInput, ImportProjectInput, UpdateProjectInput } from "@/lib/ipc";
 import type { UpdatePhase } from "@/lib/updater";
 import type { PanelSlice } from "@/features/panel/state/slice";
 import type { TextSnippet } from "@/shared/text-snippet";
@@ -47,6 +47,8 @@ export interface SidebarSlice {
   lifecycleBusy: string | null;
   /** 工作台本地置顶。和 Agent 能力无关，顺序是最近置顶在前。 */
   pinnedSessionIds: string[];
+  /** 工作台本地项目置顶。顺序只用来记住有哪些，侧栏仍按项目列表排。 */
+  pinnedProjectIds: string[];
   selectedProjectId: string | null;
   activeSessionId: Record<string, string>;
   dialog: DialogMode | null;
@@ -56,7 +58,9 @@ export interface SidebarSlice {
   selectProject(id: string): Promise<void>;
   createProject(input: CreateProjectInput): Promise<string | null>;
   importProject(input: ImportProjectInput): Promise<void>;
+  updateProject(input: UpdateProjectInput): Promise<void>;
   removeProject(id: string): Promise<void>;
+  togglePinnedProject(projectId: string): void;
   /** 打开项目根目录。失败时写入 `lastError`。 */
   openProjectFolder(id: string): Promise<void>;
   /** 返回新会话 id；失败时写 lastError 并返回 null。 */

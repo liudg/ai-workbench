@@ -3,21 +3,39 @@ import { test } from "node:test";
 
 import { projectMenuItems } from "./project-menu.ts";
 
-test("本地项目把在资源管理器中打开排在移除前面", () => {
-  const items = projectMenuItems("D:/work/app");
-  assert.deepEqual(
-    items.map((item) => (item.type === "action" ? item.label : "—")),
-    ["在资源管理器中打开", "—", "从列表移除"],
-  );
-  assert.equal(items[0]?.type === "action" ? items[0].id : "", "open-folder");
+function labels(path: string | null | undefined, pinned: boolean) {
+  return projectMenuItems({ path, pinned }).map((item) => (item.type === "action" ? item.label : "—"));
+}
+
+test("未置顶的本地项目把置顶和编辑放在打开与移除前面", () => {
+  assert.deepEqual(labels("D:/work/app", false), [
+    "置顶",
+    "编辑",
+    "—",
+    "在资源管理器中打开",
+    "—",
+    "移除项目",
+  ]);
+  const items = projectMenuItems({ path: "D:/work/app", pinned: false });
+  assert.equal(items[0]?.type === "action" ? items[0].id : "", "pin");
+  assert.equal(items[1]?.type === "action" ? items[1].id : "", "edit");
+});
+
+test("已经置顶时菜单写成取消置顶", () => {
+  const items = projectMenuItems({ path: "D:/work/app", pinned: true });
+  assert.equal(items[0]?.type === "action" ? items[0].label : "", "取消置顶");
+  const pinned = labels("D:/work/app", true);
+  assert.equal(pinned[3], "在资源管理器中打开");
+  assert.equal(pinned[pinned.length - 1], "移除项目");
 });
 
 test("没有本地路径时不显示在资源管理器中打开", () => {
   for (const path of ["", "   ", null, undefined]) {
-    const items = projectMenuItems(path);
     assert.deepEqual(
-      items.map((item) => (item.type === "action" ? item.id : "separator")),
-      ["remove"],
+      projectMenuItems({ path, pinned: false }).map((item) =>
+        item.type === "action" ? item.id : "separator",
+      ),
+      ["pin", "edit", "separator", "remove"],
     );
   }
 });

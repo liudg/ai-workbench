@@ -23,8 +23,11 @@ pub enum SessionStatus {
 pub struct Project {
     pub id: ProjectId,
     pub name: String,
-    /// 项目根目录的绝对路径
+    /// 项目根目录的绝对路径。有多个源文件夹时，这一项是第一项。
     pub path: String,
+    /// 源文件夹。第一项与 `path` 相同。旧数据没有这一项时，只认 `path`。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub folders: Vec<String>,
     pub default_agent: AgentKind,
     pub created_at: i64,
     pub updated_at: i64,

@@ -5,10 +5,12 @@
 //!   macOS:   ~/Library/Application Support/com.aiworkbench.app/projects.json
 //!   Linux:   ~/.local/share/com.aiworkbench.app/projects.json
 
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+use crate::features::agents::{cwd_key, project_folder_keys};
 use crate::models::*;
 
 pub struct ProjectStore {
@@ -57,6 +59,32 @@ impl ProjectStore {
         self.save()
     }
 
+    /// 改名称和源文件夹。第一项写回 `path`。目录必须已经存在，这里不移动文件。
+    pub fn update(&self, id: &str, name: &str, folders: &[String]) -> Result<Project, String> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err("项目名不能为空".into());
+        }
+        let normalized = normalize_folders(folders)?;
+        let updated = {
+            let mut projects = self.projects.lock().unwrap();
+            if folder_conflict(&projects, id, &normalized) {
+                return Err("该目录已在项目列表中".into());
+            }
+            let project = projects
+                .iter_mut()
+                .find(|project| project.id == id)
+                .ok_or_else(|| "项目不存在".to_string())?;
+            project.name = name.to_string();
+            project.path = normalized[0].clone();
+            project.folders = normalized;
+            project.updated_at = now_millis();
+            project.clone()
+        };
+        self.save()?;
+        Ok(updated)
+    }
+
     pub fn remove(&self, id: &str) -> Result<bool, String> {
         let mut projects = self.projects.lock().unwrap();
         let before = projects.len();
@@ -68,6 +96,40 @@ impl ProjectStore {
         }
         Ok(removed)
     }
+}
+
+fn normalize_folders(folders: &[String]) -> Result<Vec<String>, String> {
+    if folders.is_empty() {
+        return Err("至少保留一个源文件夹".into());
+    }
+    let mut normalized = Vec::new();
+    let mut seen = HashSet::new();
+    for folder in folders {
+        let (dir, _) = normalize_import_dir(folder)?;
+        let key = cwd_key(&dir);
+        if key.is_empty() || !seen.insert(key) {
+            continue;
+        }
+        normalized.push(dir);
+    }
+    if normalized.is_empty() {
+        Err("至少保留一个源文件夹".into())
+    } else {
+        Ok(normalized)
+    }
+}
+
+fn folder_conflict(projects: &[Project], id: &str, folders: &[String]) -> bool {
+    let incoming: Vec<String> = folders.iter().map(|folder| cwd_key(folder)).collect();
+    projects.iter().any(|project| {
+        if project.id == id {
+            return false;
+        }
+        let owned = project_folder_keys(project);
+        incoming
+            .iter()
+            .any(|key| !key.is_empty() && owned.iter().any(|owned_key| owned_key == key))
+    })
 }
 
 /// 在 parent_dir 下创建名为 name 的项目目录；可选执行 git init。
@@ -134,4 +196,115 @@ pub fn normalize_import_dir(path: &str) -> Result<(String, String), String> {
         .filter(|n| !n.is_empty())
         .unwrap_or_else(|| "未命名项目".into());
     Ok((strip_verbatim_prefix(&canonical.to_string_lossy()), name))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new() -> Self {
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let dir = std::env::temp_dir().join(format!("awb-projects-{nanos}"));
+            fs::create_dir_all(&dir).unwrap();
+            Self(dir)
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn sample(id: &str, path: &str) -> Project {
+        Project {
+            id: id.into(),
+            name: "旧名字".into(),
+            path: path.into(),
+            folders: vec![path.into()],
+            default_agent: AgentKind::CodexCli,
+            created_at: 1,
+            updated_at: 1,
+            external: false,
+            standalone: false,
+        }
+    }
+
+    #[test]
+    fn update_persists_name_and_source_folders() {
+        let scratch = TempDir::new();
+        let data = TempDir::new();
+        let first = scratch.0.join("app");
+        let second = scratch.0.join("notes");
+        fs::create_dir_all(&first).unwrap();
+        fs::create_dir_all(&second).unwrap();
+        let store = ProjectStore::load(&data.0).unwrap();
+        let path = first.to_string_lossy().to_string();
+        store.add(sample("p1", &path)).unwrap();
+
+        let updated = store
+            .update(
+                "p1",
+                " 新名字 ",
+                &[
+                    path.clone(),
+                    second.to_string_lossy().to_string(),
+                    path.clone(),
+                ],
+            )
+            .unwrap();
+        assert_eq!(updated.name, "新名字");
+        assert_eq!(updated.folders.len(), 2);
+        assert_eq!(updated.path, updated.folders[0]);
+        assert!(updated.folders[1].contains("notes"));
+
+        let reloaded = ProjectStore::load(&data.0).unwrap();
+        let saved = reloaded.get("p1").unwrap();
+        assert_eq!(saved.name, "新名字");
+        assert_eq!(saved.folders, updated.folders);
+        assert_eq!(saved.path, updated.path);
+    }
+
+    #[test]
+    fn update_rejects_empty_name_and_a_folder_owned_by_another_project() {
+        let scratch = TempDir::new();
+        let data = TempDir::new();
+        let first = scratch.0.join("app");
+        let second = scratch.0.join("notes");
+        fs::create_dir_all(&first).unwrap();
+        fs::create_dir_all(&second).unwrap();
+        let store = ProjectStore::load(&data.0).unwrap();
+        let app = first.to_string_lossy().to_string();
+        let notes = second.to_string_lossy().to_string();
+        store.add(sample("p1", &app)).unwrap();
+        store.add(sample("p2", &notes)).unwrap();
+
+        assert_eq!(
+            store.update("p1", "  ", &[app.clone()]).unwrap_err(),
+            "项目名不能为空"
+        );
+        assert_eq!(
+            store.update("p1", "改名", &[notes.clone()]).unwrap_err(),
+            "该目录已在项目列表中"
+        );
+        assert_eq!(store.get("p1").unwrap().name, "旧名字");
+        assert!(store.update("missing", "改名", &[app]).is_err());
+    }
+
+    #[test]
+    fn old_project_json_loads_without_folders() {
+        let data = TempDir::new();
+        let raw = r#"[{"id":"1","name":"n","path":"/tmp/p","default_agent":"codex-cli","created_at":1,"updated_at":2}]"#;
+        fs::write(data.0.join("projects.json"), raw).unwrap();
+        let store = ProjectStore::load(&data.0).unwrap();
+        let project = store.get("1").unwrap();
+        assert!(project.folders.is_empty());
+        assert_eq!(project.path, "/tmp/p");
+    }
 }

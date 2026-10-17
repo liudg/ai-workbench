@@ -11,6 +11,8 @@ export function useProjectItem(project: Project) {
   const selectProject = useWorkbench((s) => s.selectProject);
   const removeProject = useWorkbench((s) => s.removeProject);
   const openProjectFolder = useWorkbench((s) => s.openProjectFolder);
+  const pinned = useWorkbench((s) => s.pinnedProjectIds.includes(project.id));
+  const togglePinnedProject = useWorkbench((s) => s.togglePinnedProject);
   return {
     sessions,
     selected,
@@ -21,5 +23,7 @@ export function useProjectItem(project: Project) {
     selectProject,
     removeProject,
     openProjectFolder,
+    pinned,
+    togglePinnedProject,
   };
 }

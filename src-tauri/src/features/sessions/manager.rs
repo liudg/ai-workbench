@@ -12,9 +12,9 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
 use crate::features::agents::{
-    adapter_for, cwd_key, session_directories, session_key, sessions_for_project, AgentSession,
-    DiffScope, DirectoryEntry, EventSink, SessionContext, SessionDirectory, SourcedEntry,
-    TurnDelivery, UserTurn,
+    adapter_for, project_matches_cwd, session_directories, session_key, sessions_for_project,
+    AgentSession, DiffScope, DirectoryEntry, EventSink, SessionContext, SessionDirectory,
+    SourcedEntry, TurnDelivery, UserTurn,
 };
 use crate::features::projects::ProjectStore;
 use crate::models::*;
@@ -212,7 +212,7 @@ impl SessionManager {
         let project = store
             .list()
             .into_iter()
-            .find(|project| cwd_key(&project.path) == found.entry.cwd_key)
+            .find(|project| project_matches_cwd(project, &found.entry.cwd_key))
             .ok_or_else(|| "找不到会话所在目录".to_string())?;
         self.attach(&project, found.agent, &found.entry).await?;
         self.get_events(session_id)
@@ -1108,7 +1108,7 @@ impl SessionManager {
         let project = store
             .list()
             .into_iter()
-            .find(|project| cwd_key(&project.path) == found.entry.cwd_key)
+            .find(|project| project_matches_cwd(project, &found.entry.cwd_key))
             .ok_or_else(|| "找不到会话所在目录".to_string())?;
         Ok((agent, native, project))
     }

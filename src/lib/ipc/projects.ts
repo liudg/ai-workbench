@@ -1,13 +1,14 @@
 import type { Project } from "@/types";
 import { invoke } from "./call";
 import type { Backend } from "./contract";
-import type { CreateProjectResult, GitBranchMenu } from "./dto";
+import type { CreateProjectResult, GitBranchMenu, UpdateProjectInput } from "./dto";
 
 export const projectCommands: Pick<
   Backend,
   | "listProjects"
   | "createProject"
   | "importProject"
+  | "updateProject"
   | "removeProject"
   | "openProjectFolder"
   | "projectIsGit"
@@ -29,6 +30,12 @@ export const projectCommands: Pick<
       path: input.path,
       name: input.name ?? null,
       defaultAgent: input.defaultAgent,
+    }),
+  updateProject: (input: UpdateProjectInput) =>
+    invoke<Project>("update_project", {
+      id: input.id,
+      name: input.name,
+      folders: input.folders,
     }),
   removeProject: (id) => invoke("remove_project", { id }),
   openProjectFolder: (id) => invoke("open_project_folder", { id }),
