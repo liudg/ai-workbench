@@ -49,6 +49,7 @@ describe("open files filter", { concurrency: 1 }, () => {
         path: "src/b.ts",
         line: 4,
         filter: "按钮",
+        tabs: [{ path: "src/b.ts", line: 4 }],
       });
     } finally {
       for (const release of undo) release();

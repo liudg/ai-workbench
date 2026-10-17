@@ -1,10 +1,19 @@
 import { useState } from "react";
 
+import { previewKindForPath } from "../core/preview-kind";
+import {
+  markdownModeButtonLabel,
+  markdownViewMode,
+  nextMarkdownViewMode,
+  rememberMarkdownViewMode,
+  type MarkdownViewMode,
+} from "../viewers/markdown-mode";
+import type { SelectionDraft } from "../viewers/selection-quote";
 import { previewSelection } from "./file-preview-nav";
+import { FileSearchDialog } from "./FileSearchDialog";
 import { PreviewChrome } from "./PreviewChrome";
 import { FilePreview, PreviewEmpty } from "./PreviewBody";
-import { FileSearchDialog } from "./FileSearchDialog";
-import type { SelectionDraft } from "../viewers/selection-quote";
+import { useChooseApp, useOpenProjectFile } from "./useOpenProjectFile";
 
 /** 预览列：顶栏 chrome，下面是空态或某个 path 的内容。 */
 export function FilePreviewColumn({
@@ -29,6 +38,17 @@ export function FilePreviewColumn({
   onQuote: (draft: SelectionDraft) => void;
 }) {
   const [searchOpen, setSearchOpen] = useState(false);
+  const markdown = Boolean(previewPath) && previewKindForPath(previewPath) === "markdown";
+  const [modeState, setModeState] = useState<{ path: string; mode: MarkdownViewMode }>(() => ({
+    path: previewPath,
+    mode: markdownViewMode(previewPath),
+  }));
+  if (markdown && modeState.path !== previewPath) {
+    setModeState({ path: previewPath, mode: markdownViewMode(previewPath) });
+  }
+  const markdownMode = markdown ? (modeState.path === previewPath ? modeState.mode : markdownViewMode(previewPath)) : null;
+  const chooseApp = useChooseApp();
+  const opener = useOpenProjectFile(projectId);
   return (
     <div data-file-preview-column className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <PreviewChrome
@@ -40,6 +60,21 @@ export function FilePreviewColumn({
         searchEnabled={Boolean(projectId)}
         onSearch={() => setSearchOpen(true)}
         onSelectFile={(path, intent) => onSelectFile(path, intent, null)}
+        markdownLabel={markdownMode ? markdownModeButtonLabel(markdownMode) : null}
+        onToggleMarkdown={
+          markdownMode
+            ? () => {
+                const next = nextMarkdownViewMode(markdownMode);
+                rememberMarkdownViewMode(previewPath, next);
+                setModeState({ path: previewPath, mode: next });
+              }
+            : undefined
+        }
+        chooseApp={chooseApp}
+        openNote={opener.note}
+        onOpenWith={(mode) => {
+          void opener.openWith(previewPath, mode);
+        }}
       />
       <div className="min-h-0 flex-1">
         {previewPath ? (
@@ -50,6 +85,7 @@ export function FilePreviewColumn({
             line={previewLine}
             quotePath={quotePath}
             onQuote={onQuote}
+            markdownMode={markdownMode}
           />
         ) : (
           <PreviewEmpty />

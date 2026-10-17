@@ -203,8 +203,10 @@ export interface Backend {
     mask: string,
     searchId: number,
   ): Promise<FileSearchResult>;
-  /** 用系统默认程序打开项目内的文件。 */
-  openProjectFile(projectId: string, path: string): Promise<void>;
+  /** 用系统程序打开文件。`choose` 只在当前系统能弹出选择应用时可用。 */
+  openProjectFile(projectId: string, path: string, mode?: "default" | "choose"): Promise<void>;
+  /** 这个系统能不能在「打开」里选择应用。 */
+  fileOpenCapabilities(): Promise<{ choose_app: boolean }>;
   /** 把项目内文件放进内置浏览器可加载的地址。 */
   prepareBrowserFile(projectId: string, path: string): Promise<BrowserFile>;
   browserShow(url: string, x: number, y: number, width: number, height: number): Promise<void>;
@@ -218,6 +220,8 @@ export interface Backend {
 
   /** 打开系统目录选择器；返回 null 表示取消 */
   pickDirectory(title: string): Promise<string | null>;
+  /** 再打开一个文件。取消时返回 null。 */
+  pickPreviewFile(): Promise<string | null>;
   /** 选择要附加的文件；取消时返回空数组 */
   pickFiles(): Promise<Attachment[]>;
   /** `@` 菜单「文件和文件夹」。选中的路径由作曲栏写成文件提及。 */

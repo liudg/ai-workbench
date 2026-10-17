@@ -125,6 +125,12 @@ export const DESKTOP_ZH = {
   markdownViewSource: "查看源代码",
   /** 源码态按钮。Codex `markdownFileEditor.mode.viewPreview`。 */
   markdownViewPreview: "查看预览",
+  openFile: "打开",
+  openFileMenu: "选择打开方式",
+  openFileDefault: "用默认应用打开",
+  openFileChoose: "选择应用…",
+  openFileFailed: "无法在外部打开",
+  openAnotherFile: "再打开文件",
   openFiles: "打开文件",
   openFilesHint: "从工作区目录树中选择文件",
   openFilesSearch: "在文件中搜索",

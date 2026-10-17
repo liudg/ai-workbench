@@ -13,6 +13,7 @@ mod read;
 
 pub mod search;
 pub mod tree;
+mod open_with;
 
 pub(crate) mod browser;
 
@@ -63,11 +64,21 @@ pub fn open_project_file(
     store: State<'_, ProjectStore>,
     project_id: String,
     path: String,
+    mode: Option<String>,
 ) -> Result<(), String> {
     let project = store
         .get(&project_id)
         .ok_or_else(|| "项目不存在".to_string())?;
     let full = resolve_preview_file(Path::new(&project.path), &path)?;
     let shown = strip_verbatim_prefix(&full.to_string_lossy());
-    browser::open_in_shell(&shown)
+    let resolved = open_with::resolve_open_mode(mode.as_deref(), open_with::choose_app_supported())
+        .map_err(str::to_string)?;
+    open_with::open_resolved(&shown, resolved)
+}
+
+#[tauri::command]
+pub fn file_open_capabilities() -> open_with::FileOpenCapabilities {
+    open_with::FileOpenCapabilities {
+        choose_app: open_with::choose_app_supported(),
+    }
 }

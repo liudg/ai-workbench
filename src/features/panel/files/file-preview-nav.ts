@@ -1,5 +1,12 @@
 /** 文件导航和预览内容之间的连接。目录只展开，文件才进入预览。 */
 
+import { baseName, workspaceRootLabel } from "../../../shared/path.ts";
+
+/** 面包屑最左一截。有盘符用盘符，否则用项目目录名。 */
+export function previewRootLabel(projectPath: string): string {
+  return workspaceRootLabel(projectPath) || baseName(projectPath);
+}
+
 export type FileOpenMode = "workspace" | "file";
 export type TreeSurface = "sidebar" | "dropdown";
 
@@ -72,6 +79,15 @@ export function previewSelection(path: string, kind?: string): PreviewSelection 
   const trimmed = path.trim();
   if (!trimmed || isDirectorySelection(trimmed, kind)) return null;
   return { path: trimmed.replace(/[\\/]+$/, ""), isPreview: true };
+}
+
+/** 项目根在最前。项目外的绝对路径不再套一层盘符。 */
+export function previewCrumbs(path: string, rootLabel: string): BreadcrumbSegment[] {
+  const file = breadcrumbSegments(path);
+  const label = rootLabel.trim();
+  const outside = /^[A-Za-z]:/.test(path) || path.startsWith("/");
+  if (!label || outside) return file;
+  return [{ label, path: "", last: false }, ...file];
 }
 
 export function breadcrumbSegments(path: string): BreadcrumbSegment[] {
