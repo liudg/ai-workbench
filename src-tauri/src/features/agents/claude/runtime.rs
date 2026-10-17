@@ -429,6 +429,8 @@ impl Shared {
                 return Ok(());
             }
             self.user_stopped.store(true, Ordering::SeqCst);
+            // CLI 常把这次停止报成 aborted_streaming。标记留给 messages 消掉红条。
+            self.map.lock().unwrap().request_user_stop();
             self.busy.store(false, Ordering::SeqCst);
             for id in &pending {
                 let _ = self.events.send(SessionEventBody::PromptResolved {
