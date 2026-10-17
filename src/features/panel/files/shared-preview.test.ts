@@ -58,7 +58,38 @@ describe("shared file preview", { concurrency: 1 }, () => {
     }
   });
 
-  test("a web link stays out of the file preview", async () => {
+  test("a line ref from the session keeps a closed file tree closed", async () => {
+  let markdownLoads = 0;
+  const undo = [
+    registerViewer(
+      stub("markdown", matchMarkdown, async () => {
+        markdownLoads += 1;
+        return { title: "note.md", text: "hi" };
+      }),
+    ),
+    registerViewer(stub("files", matchOpenFiles)),
+  ];
+  try {
+    const store = create<PanelSlice>()((set, get) => createPanelSlice(set, get));
+    await store.getState().panelOpenHref("s", "README.md", undefined, ctx);
+    store.getState().panelToggleFilesSidebar("s");
+    assert.equal(store.getState().panelBySession.s?.filesSidebarOpen, false);
+    await store.getState().panelOpenHref("s", "docs/note.md", 1, ctx);
+    const session = store.getState().panelBySession.s;
+    assert.equal(session?.filesSidebarOpen, false);
+    assert.equal(session?.tabs.length, 1);
+    assert.equal(session?.tabs[0]?.id, "custom:open-files");
+    assert.equal(session?.tabs[0]?.viewerId, "files");
+    const place = openFilesPlace(session?.tabs[0]?.payload);
+    assert.equal(place.path, "docs/note.md");
+    assert.equal(place.line, 1);
+    assert.equal(markdownLoads, 0);
+  } finally {
+    for (const release of undo) release();
+  }
+});
+
+test("a web link stays out of the file preview", async () => {
     const undo = registerViewer(stub("page", (target) => (target.kind === "url" ? 100 : 0)));
     try {
       const store = create<PanelSlice>()((set, get) => createPanelSlice(set, get));

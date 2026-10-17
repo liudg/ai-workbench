@@ -170,6 +170,17 @@ test("a wide preview can move both directions from the default split", () => {
 test("a narrow pane hides the diff file column without turning the preference off", () => {
   assert.equal(paneFileColumnWidth({ paneWidth: 300, splitter: 6, wanted: true, dragged: 240 }), null);
   assert.equal(paneFileColumnWidth({ paneWidth: 800, splitter: 6, wanted: false, dragged: null }), null);
+  assert.equal(
+    paneFileColumnWidth({
+      paneWidth: 300,
+      splitter: 6,
+      wanted: false,
+      dragged: 180,
+      beforeMeasure: 240,
+      keepWhenNarrow: true,
+    }),
+    null,
+  );
   const open = paneFileColumnWidth({ paneWidth: 800, splitter: 6, wanted: true, dragged: null });
   assert.equal(open, diffListWidth(794));
   assert.equal(
