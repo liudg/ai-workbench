@@ -2,8 +2,9 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
-import { elicitationContent, promptInteractive } from "./prompt-values";
+import { compactBlock, elicitationContent, promptInteractive, settledAnswerLine } from "./prompt-values";
 import type { PromptBodyProps } from "./prompt-props";
 
 export function ElicitationCard({ event, session, resolvedAnswer, answerPrompt }: PromptBodyProps) {
@@ -26,8 +27,20 @@ export function ElicitationCard({ event, session, resolvedAnswer, answerPrompt }
   };
 
   return (
-    <div className="min-w-0 overflow-x-hidden rounded-lg border border-amber-500/25 bg-amber-500/[0.06] p-3">
-      <p className="min-w-0 break-words whitespace-pre-wrap text-sm leading-6 text-zinc-200">{event.question}</p>
+    <div
+      className={cn(
+        "min-w-0 overflow-x-hidden rounded-lg border border-amber-500/25 bg-amber-500/[0.06]",
+        interactive ? "p-3" : "px-2.5 py-1.5",
+      )}
+    >
+      <p
+        className={cn(
+          "min-w-0 break-words whitespace-pre-wrap text-sm text-zinc-200",
+          interactive ? "leading-6" : "leading-5",
+        )}
+      >
+        {interactive ? event.question : compactBlock(event.question)}
+      </p>
       {interactive ? (
         <>
           <div className="mt-3 space-y-3">
@@ -106,8 +119,8 @@ export function ElicitationCard({ event, session, resolvedAnswer, answerPrompt }
           </div>
         </>
       ) : (
-        <p className="mt-2 break-words text-xs text-zinc-500">
-          {resolvedAnswer ? `已回答：${resolvedAnswer}` : "等待回答…"}
+        <p className="mt-0.5 break-words whitespace-pre-wrap text-xs leading-4 text-zinc-500">
+          {settledAnswerLine(resolvedAnswer) ?? "等待回答…"}
         </p>
       )}
     </div>

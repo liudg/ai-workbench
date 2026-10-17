@@ -1,7 +1,8 @@
 import { HelpCircle } from "lucide-react";
 
+import { cn } from "@/lib/utils";
 import { useAnswerPrompt } from "./useAnswerPrompt";
-import { optionResolvedLabel, promptInteractive } from "./prompt-values";
+import { compactBlock, optionResolvedLabel, promptInteractive, settledAnswerLine } from "./prompt-values";
 import { ChoiceCard } from "./ApprovalCard";
 import { isPinnedChoice } from "./pending-plan-choice";
 import { ElicitationCard } from "./ElicitationCard";
@@ -18,10 +19,22 @@ function PromptBody(props: PromptBodyProps) {
   const interactive = promptInteractive(resolvedAnswer, session.status);
   const resolvedLabel = optionResolvedLabel(event.options, resolvedAnswer);
   return (
-    <div className="min-w-0 rounded-lg border border-amber-500/25 bg-amber-500/[0.06] p-3">
-      <div className="mb-2 flex min-w-0 items-start gap-2">
+    <div
+      className={cn(
+        "min-w-0 rounded-lg border border-amber-500/25 bg-amber-500/[0.06]",
+        interactive ? "p-3" : "px-2.5 py-1.5",
+      )}
+    >
+      <div className={cn("flex min-w-0 items-start gap-2", interactive ? "mb-2" : "mb-1")}>
         <HelpCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
-        <p className="min-w-0 break-words whitespace-pre-wrap text-sm leading-6 text-zinc-200">{event.question}</p>
+        <p
+          className={cn(
+            "min-w-0 break-words whitespace-pre-wrap text-sm text-zinc-200",
+            interactive ? "leading-6" : "leading-5",
+          )}
+        >
+          {interactive ? event.question : compactBlock(event.question)}
+        </p>
       </div>
       {interactive ? (
         event.prompt_kind === "free-text" ? (
@@ -30,8 +43,8 @@ function PromptBody(props: PromptBodyProps) {
           <ChoiceCard {...props} />
         )
       ) : (
-        <p className="min-w-0 break-words pl-6 text-xs text-zinc-500">
-          {resolvedLabel ? `已回答：${resolvedLabel}` : "等待回答…"}
+        <p className="min-w-0 break-words whitespace-pre-wrap pl-6 text-xs leading-4 text-zinc-500">
+          {settledAnswerLine(resolvedLabel) ?? "等待回答…"}
         </p>
       )}
     </div>
