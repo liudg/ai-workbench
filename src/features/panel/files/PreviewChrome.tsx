@@ -1,14 +1,18 @@
-import { useEffect, useRef, useState } from "react";
-import { Copy, FolderTree, Search } from "lucide-react";
+import { useEffect, useRef, useState, type RefObject } from "react";
+import { createPortal } from "react-dom";
+import { AppWindow, ChevronDown, Copy, FolderTree, Search } from "lucide-react";
 
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { writeClipboardText } from "@/shared/clipboard";
 import { relativeToProject } from "@/shared/path";
 import { cn } from "@/lib/utils";
-import { breadcrumbSegments } from "./file-preview-nav";
+import { useAnchoredLayer } from "../core/useAnchoredLayer";
+import { useDismissLayer } from "../core/useDismissLayer";
+import { previewCrumbs, previewRootLabel } from "./file-preview-nav";
 import { BreadcrumbMenu } from "./BreadcrumbMenu";
+import { openWithActions, type OpenWithAction, type OpenWithItem } from "./open-with";
 
-/** 预览顶栏：路径、复制、全库搜索、文件树显隐。内容查看器不放在这里。 */
+/** 预览顶栏：路径在上，搜索、Markdown 切换、复制、打开和文件树在同一排。 */
 export function PreviewChrome({
   path,
   root = "",
@@ -18,6 +22,11 @@ export function PreviewChrome({
   onSelectFile,
   onSearch,
   searchEnabled,
+  markdownLabel = null,
+  onToggleMarkdown,
+  chooseApp = false,
+  onOpenWith,
+  openNote = "",
 }: {
   path: string;
   root?: string;
@@ -27,17 +36,26 @@ export function PreviewChrome({
   onSelectFile: (path: string, intent: { isPreview: true }) => void;
   onSearch: () => void;
   searchEnabled: boolean;
+  markdownLabel?: string | null;
+  onToggleMarkdown?: () => void;
+  chooseApp?: boolean;
+  onOpenWith?: (mode: OpenWithAction) => void;
+  openNote?: string;
 }) {
   const relative = root ? relativeToProject(path, root) : path;
   const shown = relative || path;
-  const segments = breadcrumbSegments(shown);
+  const segments = previewCrumbs(shown, previewRootLabel(root));
+  const actions = onOpenWith ? openWithActions(chooseApp) : [];
   const [openPath, setOpenPath] = useState<string | null>(null);
   const [copyNote, setCopyNote] = useState("");
+  const [openMenu, setOpenMenu] = useState(false);
   const anchors = useRef(new Map<string, HTMLButtonElement>());
+  const openAnchor = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     setOpenPath(null);
     setCopyNote("");
+    setOpenMenu(false);
   }, [shown]);
 
   useEffect(() => {
@@ -59,18 +77,15 @@ export function PreviewChrome({
   const openSegment = segments.find((segment) => segment.path === openPath) ?? null;
 
   return (
-    <div
-      data-preview-chrome
-      className="flex shrink-0 items-center gap-1 border-b border-[#222] px-2 py-1.5 text-[12px] text-[#bdbdbd]"
-    >
+    <div data-preview-chrome className="flex shrink-0 flex-col border-b border-[#222] text-[12px] text-[#bdbdbd]">
       <nav
         data-slot="file-path"
         aria-label={DESKTOP_ZH.breadcrumbLabel}
         data-preview-path-line
-        className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden"
+        className="flex min-w-0 items-center gap-1 overflow-hidden px-2 py-1.5"
       >
         {segments.map((segment, index) => (
-          <span key={segment.path} className="flex min-w-0 items-center gap-1">
+          <span key={`${segment.path}:${segment.label}`} className="flex min-w-0 items-center gap-1">
             {index > 0 ? (
               <span aria-hidden className="shrink-0 text-[#666]">
                 &gt;
@@ -82,7 +97,7 @@ export function PreviewChrome({
                 if (node) anchors.current.set(segment.path, node);
                 else anchors.current.delete(segment.path);
               }}
-              data-breadcrumb-segment={segment.path}
+              data-breadcrumb-segment={segment.path || segment.label}
               data-open-mode={segment.last ? "file" : "workspace"}
               aria-expanded={openPath === segment.path}
               title={segment.label}
@@ -97,20 +112,7 @@ export function PreviewChrome({
           </span>
         ))}
       </nav>
-      <div data-slot="path-actions" className="flex shrink-0 items-center">
-        <button
-          type="button"
-          data-copy-path
-          aria-label={DESKTOP_ZH.copyPath}
-          disabled={!shown}
-          className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[#cfcfcf] hover:bg-white/5 disabled:text-[#555]"
-          onClick={() => void copyPath()}
-        >
-          <Copy className="h-3.5 w-3.5" strokeWidth={1.75} />
-          <span>{copyNote || DESKTOP_ZH.copyPath}</span>
-        </button>
-      </div>
-      <div data-slot="workspace-search" className="flex shrink-0 items-center">
+      <div data-preview-toolbar className="flex items-center gap-1 px-2 py-1">
         <button
           type="button"
           data-file-search-open
@@ -123,8 +125,55 @@ export function PreviewChrome({
           <Search className="h-3.5 w-3.5" strokeWidth={1.75} />
           <span>{DESKTOP_ZH.openFilesSearch}</span>
         </button>
-      </div>
-      <div data-slot="file-actions" className="flex shrink-0 items-center">
+        {markdownLabel && onToggleMarkdown ? (
+          <button
+            type="button"
+            data-markdown-mode-toggle
+            className="inline-flex h-7 shrink-0 items-center rounded-full border border-[#3a3a3a] bg-[#2a2a2a] px-3 text-[12px] leading-5 text-[#f3f3f3] hover:bg-[#333]"
+            onClick={onToggleMarkdown}
+          >
+            {markdownLabel}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          data-copy-path
+          aria-label={DESKTOP_ZH.copyPath}
+          disabled={!shown}
+          className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[#cfcfcf] hover:bg-white/5 disabled:text-[#555]"
+          onClick={() => void copyPath()}
+        >
+          <Copy className="h-3.5 w-3.5" strokeWidth={1.75} />
+          <span>{copyNote || DESKTOP_ZH.copyPath}</span>
+        </button>
+        {onOpenWith ? (
+          <div data-open-with className="flex shrink-0 items-center">
+            <button
+              type="button"
+              data-open-with-default
+              aria-label={DESKTOP_ZH.openFileDefault}
+              disabled={!shown}
+              className="inline-flex h-7 items-center gap-1 rounded-l-md px-2 text-[#cfcfcf] hover:bg-white/5 disabled:text-[#555]"
+              onClick={() => onOpenWith("default")}
+            >
+              <AppWindow className="h-3.5 w-3.5" strokeWidth={1.75} />
+              <span>{openNote || DESKTOP_ZH.openFile}</span>
+            </button>
+            <button
+              type="button"
+              ref={openAnchor}
+              data-open-with-menu-button
+              aria-label={DESKTOP_ZH.openFileMenu}
+              aria-expanded={openMenu}
+              aria-haspopup="menu"
+              disabled={!shown}
+              className="inline-flex h-7 items-center rounded-r-md px-1 text-[#cfcfcf] hover:bg-white/5 disabled:text-[#555]"
+              onClick={() => setOpenMenu((open) => !open)}
+            >
+              <ChevronDown className="h-3.5 w-3.5" strokeWidth={1.75} />
+            </button>
+          </div>
+        ) : null}
         <button
           type="button"
           data-toggle-file-tree
@@ -132,7 +181,7 @@ export function PreviewChrome({
           aria-pressed={treeOpen}
           title={DESKTOP_ZH.toggleFileTree}
           className={cn(
-            "inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-white/5",
+            "ml-auto inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-white/5",
             treeOpen ? "text-[#f3f3f3]" : "text-[#8d8d8d]",
           )}
           onClick={onToggleTree}
@@ -155,6 +204,56 @@ export function PreviewChrome({
           onClose={() => setOpenPath(null)}
         />
       ) : null}
+      {openMenu && onOpenWith ? (
+        <OpenWithMenu
+          anchorRef={openAnchor}
+          items={actions}
+          onSelect={(mode) => {
+            setOpenMenu(false);
+            onOpenWith(mode);
+          }}
+          onClose={() => setOpenMenu(false)}
+        />
+      ) : null}
     </div>
+  );
+}
+
+function OpenWithMenu({
+  anchorRef,
+  items,
+  onSelect,
+  onClose,
+}: {
+  anchorRef: RefObject<HTMLButtonElement | null>;
+  items: readonly OpenWithItem[];
+  onSelect: (mode: OpenWithAction) => void;
+  onClose: () => void;
+}) {
+  const menuRef = useRef<HTMLDivElement>(null);
+  useAnchoredLayer(true, anchorRef, menuRef, items.map((item) => item.id).join(","));
+  useDismissLayer(true, onClose);
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div
+      ref={menuRef}
+      role="menu"
+      data-open-with-menu
+      className="fixed z-[80] min-w-[168px] rounded-xl border border-[#2a2a2a] bg-[#1b1b1b] py-1 text-[#e8e8e8] shadow-[0_12px_32px_rgba(0,0,0,0.45)]"
+    >
+      {items.map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          role="menuitem"
+          data-open-with-action={item.id}
+          className="flex w-full items-center px-3 py-1.5 text-left text-[13px] hover:bg-white/5"
+          onClick={() => onSelect(item.id)}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>,
+    document.body,
   );
 }

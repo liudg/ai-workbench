@@ -75,7 +75,9 @@ export function initialPayload(target: OpenTarget): unknown {
     case "diff":
       return { title: target.title, files: target.files };
     case "custom":
-      if (target.type === "open-files") return { title: DESKTOP_ZH.openFiles, type: target.type };
+      if (target.type === "open-files") {
+        return { title: DESKTOP_ZH.openFiles, type: target.type, path: "", line: null, filter: "", tabs: [] };
+      }
       return target.data && typeof target.data === "object" ? { ...(target.data as object) } : { type: target.type };
     default:
       return {};
@@ -95,15 +97,4 @@ export function errorPayload(current: unknown, message: string): unknown {
   const title = payloadTitle(current);
   const base = current && typeof current === "object" ? { ...(current as object) } : {};
   return { ...base, ...(title ? { title } : {}), error: message };
-}
-
-export function lineOf(payload: unknown): number | null {
-  if (!payload || typeof payload !== "object" || !("line" in payload)) return null;
-  const line = (payload as { line?: unknown }).line;
-  return typeof line === "number" && Number.isInteger(line) && line >= 1 ? line : null;
-}
-
-export function withLine(payload: unknown, line: number | null): unknown {
-  if (payload && typeof payload === "object") return { ...(payload as object), line };
-  return { line };
 }

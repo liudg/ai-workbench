@@ -180,6 +180,9 @@ export function createPanelSlice(set: PanelSet, get: PanelGet): PanelSlice {
 
     panelOpenFiles(sessionId) {
       void openPanelTarget(host, sessionId, { kind: "custom", type: "open-files" }, emptyCtx(), 0);
+      mutate(sessionId, (session) =>
+        session.filesSidebarOpen ? null : { ...session, filesSidebarOpen: true },
+      );
     },
 
     panelHide(sessionId) {

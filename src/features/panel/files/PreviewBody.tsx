@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import { Folder } from "lucide-react";
 
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
@@ -9,13 +9,7 @@ import { SourceView } from "../viewers/SourceView";
 import { TextPreview } from "../viewers/TextPreview";
 import { SelectionMenu } from "../viewers/SelectionMenu";
 import type { SelectionDraft } from "../viewers/selection-quote";
-import {
-  markdownModeButtonLabel,
-  markdownViewMode,
-  nextMarkdownViewMode,
-  rememberMarkdownViewMode,
-  type MarkdownViewMode,
-} from "../viewers/markdown-mode";
+import type { MarkdownViewMode } from "../viewers/markdown-mode";
 import { isUnsupportedPreviewPath, previewShellStatus, type PreviewShellStatus } from "./file-preview-nav";
 import { usePreviewFile } from "./usePreviewFile";
 import { usePreviewImage } from "./usePreviewImage";
@@ -35,19 +29,21 @@ export function PreviewEmpty() {
   );
 }
 
-/** 给定 path 之后的内容。状态壳在查看器外面，Markdown 模式在内容层里面。 */
+/** 给定 path 之后的内容。状态壳在查看器外面，Markdown 模式由顶栏同一排切换。 */
 export function FilePreview({
   projectId,
   path,
   line,
   quotePath,
   onQuote,
+  markdownMode = null,
 }: {
   projectId: string;
   path: string;
   line: number | null;
   quotePath?: string;
   onQuote: (draft: SelectionDraft) => void;
+  markdownMode?: MarkdownViewMode | null;
 }) {
   const extensionImage = previewKindForPath(path) === "image";
   const unsupported = isUnsupportedPreviewPath(path);
@@ -102,7 +98,12 @@ export function FilePreview({
           </div>
         ) : null}
         {shell === "ready" && readyText ? (
-          <PreviewContent path={path} text={readyText.text} kind={readyText.kind} line={line} />
+          <PreviewContent
+            text={readyText.text}
+            kind={readyText.kind}
+            line={line}
+            markdownMode={markdownMode}
+          />
         ) : null}
       </div>
       {shell === "ready" && readyText ? <SelectionMenu rootRef={rootRef} path={quotePath || path} onAdd={onQuote} /> : null}
@@ -111,57 +112,40 @@ export function FilePreview({
 }
 
 function PreviewContent({
-  path,
   text,
   kind,
   line,
+  markdownMode,
 }: {
-  path: string;
   text: string;
   kind: string;
   line: number | null;
+  markdownMode: MarkdownViewMode | null;
 }) {
+  if (kind === "markdown" && markdownMode !== "source") {
+    return (
+      <div data-content-viewer="markdown" data-markdown-view="preview" className="h-full min-h-0">
+        <MarkdownPreview text={text} truncated={false} />
+      </div>
+    );
+  }
   if (line != null) {
     return (
-      <div data-content-viewer="text" className="h-full min-h-0">
+      <div data-content-viewer="text" data-markdown-view={kind === "markdown" ? "source" : undefined} className="h-full min-h-0">
         <SourceView text={text} line={line} />
       </div>
     );
   }
-  if (kind === "markdown") return <MarkdownFileContent path={path} text={text} />;
+  if (kind === "markdown") {
+    return (
+      <div data-content-viewer="markdown" data-markdown-view="source" className="h-full min-h-0">
+        <TextPreview text={text} truncated={false} />
+      </div>
+    );
+  }
   return (
     <div data-content-viewer="text" className="h-full min-h-0">
       <TextPreview text={text} truncated={false} />
-    </div>
-  );
-}
-
-function MarkdownFileContent({ path, text }: { path: string; text: string }) {
-  const [modeState, setModeState] = useState<{ path: string; mode: MarkdownViewMode }>(() => ({
-    path,
-    mode: markdownViewMode(path),
-  }));
-  if (modeState.path !== path) setModeState({ path, mode: markdownViewMode(path) });
-  const shown = modeState.path === path ? modeState.mode : markdownViewMode(path);
-  return (
-    <div data-content-viewer="markdown" data-markdown-view={shown} className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 justify-end border-b border-[#222] px-3 py-1.5">
-        <button
-          type="button"
-          data-markdown-mode-toggle
-          className="inline-flex h-7 shrink-0 items-center rounded-full border border-[#3a3a3a] bg-[#2a2a2a] px-3 text-[12px] leading-5 text-[#f3f3f3] hover:bg-[#333]"
-          onClick={() => {
-            const next = nextMarkdownViewMode(shown);
-            rememberMarkdownViewMode(path, next);
-            setModeState({ path, mode: next });
-          }}
-        >
-          {markdownModeButtonLabel(shown)}
-        </button>
-      </div>
-      <div className="min-h-0 flex-1">
-        {shown === "source" ? <TextPreview text={text} truncated={false} /> : <MarkdownPreview text={text} truncated={false} />}
-      </div>
     </div>
   );
 }

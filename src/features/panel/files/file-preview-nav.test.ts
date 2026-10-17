@@ -7,6 +7,8 @@ import {
   dropdownTreeQuery,
   isDirectorySelection,
   openModeForSegment,
+  previewCrumbs,
+  previewRootLabel,
   previewSelection,
   previewShellStatus,
 } from "./file-preview-nav.ts";
@@ -85,4 +87,23 @@ test("preview chrome status stays on the shell, not on a markdown mode", () => {
   assert.equal(DESKTOP_ZH.openFiles, "打开文件");
   assert.equal(DESKTOP_ZH.openFilesHint, "从工作区目录树中选择文件");
   assert.equal(DESKTOP_ZH.openFilesSearch, "在文件中搜索");
+  assert.equal(DESKTOP_ZH.openFile, "打开");
+  assert.equal(DESKTOP_ZH.openFileDefault, "用默认应用打开");
+  assert.equal(DESKTOP_ZH.openFileChoose, "选择应用…");
+  assert.notEqual(DESKTOP_ZH.openFile, DESKTOP_ZH.openWith);
+});
+
+test("breadcrumb puts the project root ahead of the file and skips it outside the project", () => {
+  assert.equal(previewRootLabel("F:/sample/lab"), "F:");
+  assert.equal(previewRootLabel("/home/lab"), "lab");
+  assert.deepEqual(
+    previewCrumbs("docs/readme.md", "F:").map((segment) => segment.label),
+    ["F:", "docs", "readme.md"],
+  );
+  assert.equal(previewCrumbs("docs/readme.md", "F:")[0]?.last, false);
+  assert.equal(previewCrumbs("docs/readme.md", "F:")[2]?.last, true);
+  assert.deepEqual(
+    previewCrumbs("D:/other/notes.md", "F:").map((segment) => segment.label),
+    ["D:", "other", "notes.md"],
+  );
 });

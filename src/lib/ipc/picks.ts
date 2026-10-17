@@ -4,10 +4,14 @@ import type { Backend } from "./contract";
 
 export const pickCommands: Pick<
   Backend,
-  "pickDirectory" | "pickImageFiles" | "pickFiles" | "pickMentionFiles"
+  "pickDirectory" | "pickPreviewFile" | "pickImageFiles" | "pickFiles" | "pickMentionFiles"
 > = {
   pickDirectory: async (title) => {
     const [selected] = await transport.pick({ directory: true, multiple: false, title });
+    return selected ?? null;
+  },
+  pickPreviewFile: async () => {
+    const [selected] = await transport.pick({ directory: false, multiple: false, title: "再打开文件" });
     return selected ?? null;
   },
   pickImageFiles: async () =>

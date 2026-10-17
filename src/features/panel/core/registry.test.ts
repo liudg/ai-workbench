@@ -121,8 +121,10 @@ describe("panel viewers", { concurrency: 1 }, () => {
       const store = testStore();
       await store.getState().panelOpenHref("left", "src/app.ts#L2", undefined, ctx);
       const left = store.getState().panelBySession.left;
-      assert.equal(left?.tabs[0]?.viewerId, "text");
+      assert.equal(left?.tabs[0]?.id, "custom:open-files");
+      assert.equal(left?.tabs[0]?.viewerId, "files");
       assert.equal(left?.tabs[0]?.status, "ready");
+      assert.equal((left?.tabs[0]?.payload as { path?: string }).path, "src/app.ts");
       assert.equal((left?.tabs[0]?.payload as { line?: number }).line, 2);
       const tabId = left?.tabs[0]?.id ?? "";
       store.getState().panelRememberHistory("left", tabId, {
@@ -133,7 +135,7 @@ describe("panel viewers", { concurrency: 1 }, () => {
       store.getState().panelCloseTab("right", "custom:probe");
       const after = store.getState().panelBySession;
       assert.equal(after.left?.tabs.length, 1);
-      assert.equal(after.left?.tabs[0]?.viewerId, "text");
+      assert.equal(after.left?.tabs[0]?.viewerId, "files");
       assert.equal(after.left?.histories[tabId]?.entries[0]?.address, "C:/work/demo/src/app.ts");
       assert.equal(after.right?.tabs.length, 0);
       assert.deepEqual(after.right?.histories, {});
@@ -240,13 +242,17 @@ describe("panel viewers", { concurrency: 1 }, () => {
   });
 
   test("reopening the active file shows the sidebar again", async () => {
+    let loads = 0;
     const undo = registerViewer(
-      stub("text", matchText, async (target) => ({
-        title: "app.ts",
-        text: "one",
-        truncated: false,
-        line: target.kind === "file" ? target.line : null,
-      })),
+      stub("text", matchText, async (target) => {
+        loads += 1;
+        return {
+          title: "app.ts",
+          text: "one",
+          truncated: false,
+          line: target.kind === "file" ? target.line : null,
+        };
+      }),
     );
     try {
       const store = testStore();
@@ -256,11 +262,14 @@ describe("panel viewers", { concurrency: 1 }, () => {
       await store.getState().panelOpenTarget("s", file, ctx);
       const tab = store.getState().panelBySession.s?.tabs[0];
       assert.equal(store.getState().panelBySession.s?.layout, "split");
+      assert.equal(tab?.viewerId, "files");
+      assert.equal(store.getState().panelBySession.s?.tabs.length, 1);
       assert.equal((tab?.payload as { line?: number }).line, 2);
       store.getState().panelHide("s");
       await store.getState().panelOpenTarget("s", { ...file, line: 4 }, ctx);
       assert.equal(store.getState().panelBySession.s?.layout, "split");
       assert.equal((store.getState().panelBySession.s?.tabs[0]?.payload as { line?: number }).line, 4);
+      assert.equal(loads, 0);
     } finally {
       undo();
     }

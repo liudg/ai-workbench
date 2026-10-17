@@ -834,8 +834,20 @@ extern "system" {
 }
 
 #[cfg(not(windows))]
-fn shell_open(_target: &str) -> Result<(), String> {
-    Err("无法在外部浏览器中打开".into())
+fn shell_open(target: &str) -> Result<(), String> {
+    let program = if cfg!(target_os = "macos") {
+        "open"
+    } else {
+        "xdg-open"
+    };
+    std::process::Command::new(program)
+        .arg(target)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map(|_| ())
+        .map_err(|_| "无法在外部浏览器中打开".to_string())
 }
 
 pub(crate) fn open_in_shell(target: &str) -> Result<(), String> {
