@@ -30,8 +30,8 @@ use crate::models::{AgentInstallation, AgentKind, McpSurface};
 pub use mcp::McpDriver;
 
 pub use directory::{
-    cwd_key, group_projects, session_key, sessions_for_project, DirectoryEntry, SessionDirectory,
-    SourcedEntry,
+    cwd_key, group_projects, project_folder_keys, project_matches_cwd, session_key,
+    sessions_for_project, DirectoryEntry, SessionDirectory, SourcedEntry,
 };
 
 /// 按类型取得适配器实例。

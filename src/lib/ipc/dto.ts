@@ -27,6 +27,12 @@ export interface ImportProjectInput {
   defaultAgent: AgentKind;
 }
 
+export interface UpdateProjectInput {
+  id: string;
+  name: string;
+  folders: string[];
+}
+
 export interface TreeEntry {
   name: string;
   path: string;

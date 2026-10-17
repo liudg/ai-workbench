@@ -67,7 +67,8 @@ pub fn create_project<R: Runtime>(
         Project {
             id: new_id(),
             name: name.trim().to_string(),
-            path: dir,
+            path: dir.clone(),
+            folders: vec![dir],
             default_agent,
             created_at: now,
             updated_at: now,
@@ -99,7 +100,8 @@ pub fn import_project<R: Runtime>(
                 .map(|n| n.trim().to_string())
                 .filter(|n| !n.is_empty())
                 .unwrap_or(inferred_name),
-            path: dir,
+            path: dir.clone(),
+            folders: vec![dir],
             default_agent,
             created_at: now,
             updated_at: now,
@@ -107,6 +109,20 @@ pub fn import_project<R: Runtime>(
             standalone: false,
         },
     )
+}
+
+/// 改项目名称和源文件夹。第一项成为项目路径，不移动磁盘上的目录。
+#[tauri::command]
+pub fn update_project<R: Runtime>(
+    app: AppHandle<R>,
+    store: State<'_, ProjectStore>,
+    id: String,
+    name: String,
+    folders: Vec<String>,
+) -> Result<Project, String> {
+    let project = store.update(&id, &name, &folders)?;
+    notify_projects_changed(&app);
+    Ok(project)
 }
 
 /// 项目目录是否为 git 工作区。探测失败时返回 git 的原文，而不是当成仓库。

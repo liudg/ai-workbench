@@ -13,6 +13,8 @@ export interface Project {
   id: string;
   name: string;
   path: string;
+  /** 源文件夹。第一项与 `path` 相同。旧数据缺省时只认 `path`。 */
+  folders?: string[];
   default_agent: AgentKind;
   created_at: number;
   updated_at: number;

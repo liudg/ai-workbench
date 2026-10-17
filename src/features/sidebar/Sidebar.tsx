@@ -6,19 +6,35 @@ import { ProjectHeader } from "./projects/ProjectHeader";
 import { ProjectItem } from "./projects/ProjectItem";
 
 export function Sidebar() {
-  const { projects, notice } = useSidebar();
+  const { pinned, unpinned, notice } = useSidebar();
+  const noProjects = pinned.length === 0 && unpinned.length === 0;
 
   return (
     <aside className="flex h-full min-h-0 w-[260px] shrink-0 flex-col overflow-hidden border-r border-[#222] bg-[#141414]">
       <BrandHeader />
 
-      <ProjectHeader />
-
       <div
         data-sidebar-scroll
         className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto pb-2 [overflow-anchor:none]"
       >
-        {projects.length === 0 ? (
+        {pinned.length > 0 && (
+          <section data-sidebar-section="pinned">
+            <div className="flex items-center px-3 pb-1.5 pt-2.5">
+              <span className="text-[12px] text-[#cfcfcf]">置顶</span>
+            </div>
+            <div className="space-y-0.5">
+              {pinned.map((project) => (
+                <ProjectItem key={project.id} project={project} />
+              ))}
+            </div>
+          </section>
+        )}
+
+        <div className="sticky top-0 z-20 bg-[#141414]">
+          <ProjectHeader />
+        </div>
+
+        {noProjects ? (
           <div className="mx-2 mt-4 rounded-lg border border-dashed border-[#2a2a2a] px-3 py-6 text-center">
             <p className="text-xs leading-5 text-zinc-500">
               还没有项目。
@@ -28,8 +44,8 @@ export function Sidebar() {
           </div>
         ) : (
           <div className="space-y-0.5">
-            {projects.map((p) => (
-              <ProjectItem key={p.id} project={p} />
+            {unpinned.map((project) => (
+              <ProjectItem key={project.id} project={project} />
             ))}
           </div>
         )}

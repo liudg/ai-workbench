@@ -27,6 +27,7 @@ import type {
   GitBranchMenu,
   FileSearchResult,
   ImportProjectInput,
+  UpdateProjectInput,
   PathFilter,
   PreviewDocument,
   PreviewImage,
@@ -76,6 +77,7 @@ export interface Backend {
   setTaskFolder(path: string): Promise<TaskFolder>;
   createProject(input: CreateProjectInput): Promise<CreateProjectResult>;
   importProject(input: ImportProjectInput): Promise<Project>;
+  updateProject(input: UpdateProjectInput): Promise<Project>;
   removeProject(id: string): Promise<void>;
   /** 在系统资源管理器中打开项目根目录。路径无效时拒绝，并带上中文说明。 */
   openProjectFolder(id: string): Promise<void>;

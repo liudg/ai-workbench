@@ -291,6 +291,20 @@ export function seedSidebarPreview() {
     async createSession() {
       return null;
     },
+    async updateProject(input) {
+      useWorkbench.setState((state) => ({
+        projects: state.projects.map((project) =>
+          project.id === input.id
+            ? {
+                ...project,
+                name: input.name.trim(),
+                path: input.folders[0] ?? project.path,
+                folders: input.folders,
+              }
+            : project,
+        ),
+      }));
+    },
     async removeProject() {},
     async renameSession(sessionId, name) {
       const title = name.trim();
