@@ -192,20 +192,6 @@ export function authMethodLabel(status: string): string | null {
   return null;
 }
 
-export function withRowBusy(current: ReadonlySet<string>, name: string): ReadonlySet<string> {
-  if (current.has(name)) return current;
-  const next = new Set(current);
-  next.add(name);
-  return next;
-}
-
-export function withoutRowBusy(current: ReadonlySet<string>, name: string): ReadonlySet<string> {
-  if (!current.has(name)) return current;
-  const next = new Set(current);
-  next.delete(name);
-  return next;
-}
-
 export function menuDismissKey(key: string): boolean {
   return key === "Escape";
 }

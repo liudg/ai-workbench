@@ -13,8 +13,6 @@ import {
   menuDismissKey,
   registrationAria,
   rowStatus,
-  withRowBusy,
-  withoutRowBusy,
   showAdd,
   loginLaunch,
   showLogin,
@@ -51,10 +49,10 @@ function surface(patch: Partial<McpSurface>): McpSurface {
     ],
     scopes: [],
     fields: [
-      { id: "name", label: "Name", placeholder: "MCP server name", when: "always" },
-      { id: "command", label: "Command to launch", placeholder: "", when: "stdio" },
-      { id: "url", label: "URL", placeholder: "", when: "http" },
-      { id: "headers", label: "Headers", placeholder: "", when: "http-sse" },
+      { id: "name", label: "Name", placeholder: "MCP server name", when: "always", control: "text", required: true, rule: "server-name" },
+      { id: "command", label: "Command to launch", placeholder: "", when: "stdio", control: "text", required: true, rule: "command" },
+      { id: "url", label: "URL", placeholder: "", when: "http", control: "text", required: true, rule: "url" },
+      { id: "headers", label: "Headers", placeholder: "", when: "http-sse", control: "pairs", required: false, rule: "pairs-header" },
     ],
     oauth_registration: [
       { id: "auto", label: "Auto" },
@@ -172,11 +170,7 @@ test("row status stays configured until the list explicitly says connected or re
   assert.equal(authMethodLabel(""), null);
 });
 
-test("row busy clears only the finished name, and Escape closes the menu", () => {
-  const both = withRowBusy(withRowBusy(new Set<string>(), "alpha"), "beta");
-  assert.deepEqual([...both].sort(), ["alpha", "beta"]);
-  assert.deepEqual([...withoutRowBusy(both, "alpha")], ["beta"]);
-  assert.equal(withoutRowBusy(both, "missing"), both);
+test("Escape closes the menu", () => {
   assert.equal(menuDismissKey("Escape"), true);
   assert.equal(menuDismissKey("Enter"), false);
 });

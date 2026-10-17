@@ -9,14 +9,13 @@ import {
   type McpFeedbackBook,
 } from "./feedbackState";
 import { emptyBook, finishList, startList, visibleList, type McpListBook } from "./listState";
+import { beginForm, beginRow, busyNames, emptyBusy, endForm, endRow, formBusy, type McpBusyBook } from "./busyState";
 import { McpPanel } from "./McpPanel";
 import {
   MCP_PAGE,
   failureTitle,
   parseToolList,
   successText,
-  withRowBusy,
-  withoutRowBusy,
   type McpAction,
   type McpFeedback,
   type McpToolEntry,
@@ -29,8 +28,11 @@ export function McpSettings() {
   const generations = useRef<Record<string, number>>({});
   const selectedRef = useRef<AgentKind | null>(selected);
   selectedRef.current = selected;
-  const [rowBusy, setRowBusy] = useState<ReadonlySet<string>>(() => new Set());
-  const [formBusy, setFormBusy] = useState(false);
+  const [busy, setBusy] = useState<McpBusyBook>(emptyBusy);
+  const tickets = useRef(0);
+  const viewEpoch = useRef(0);
+  const feedbackEpoch = useRef(0);
+  const toolTickets = useRef<Record<string, number>>({});
   const [feedbackBook, setFeedbackBook] = useState<McpFeedbackBook>({});
   const [bootFeedback, setBootFeedback] = useState<McpFeedback | null>(null);
   const [highlight, setHighlight] = useState<{ name: string; token: number } | null>(null);
@@ -90,38 +92,49 @@ export function McpSettings() {
     return () => window.clearTimeout(timer);
   }, [feedbackBook, selected]);
 
+  function nextTicket(): number {
+    tickets.current += 1;
+    return tickets.current;
+  }
+
+  function markFeedback(): number {
+    feedbackEpoch.current += 1;
+    return feedbackEpoch.current;
+  }
+
   function select(kind: AgentKind) {
+    viewEpoch.current += 1;
     selectedRef.current = kind;
     setSelected(kind);
-    setRowBusy(new Set());
-    setFormBusy(false);
+    setBusy(emptyBusy());
     if (surfaces) void loadList(kind, surfaces, false);
   }
 
   async function run(action: McpAction, rowName: string | null, actionFn: () => Promise<string>): Promise<boolean> {
     const kind = selected;
     if (!kind) return false;
-    if (rowName) setRowBusy((current) => withRowBusy(current, rowName));
-    else setFormBusy(true);
+    const ticket = nextTicket();
+    const mark = markFeedback();
+    if (rowName) setBusy((current) => beginRow(current, rowName, ticket));
+    else setBusy((current) => beginForm(current, ticket));
     setFeedbackBook((current) => writeFeedback(current, kind, null));
     try {
       await actionFn();
-      if (action !== "tools") {
+      if (feedbackEpoch.current === mark && action !== "tools") {
         setFeedbackBook((current) => writeFeedback(current, kind, { tone: "success", text: successText(action) }));
       }
       if (surfaces) await loadList(kind, surfaces, true);
       return true;
     } catch (err) {
-      const detail = err instanceof Error ? err.message : String(err);
-      setFeedbackBook((current) =>
-        writeFeedback(current, kind, { tone: "failure", title: failureTitle(action), detail }),
-      );
+      if (feedbackEpoch.current === mark) {
+        const detail = err instanceof Error ? err.message : String(err);
+        setFeedbackBook((current) =>
+          writeFeedback(current, kind, { tone: "failure", title: failureTitle(action), detail }),
+        );
+      }
       return false;
     } finally {
-      if (selectedRef.current === kind) {
-        if (rowName) setRowBusy((current) => withoutRowBusy(current, rowName));
-        else setFormBusy(false);
-      }
+      setBusy((current) => (rowName ? endRow(current, rowName, ticket) : endForm(current, ticket)));
     }
   }
 
@@ -139,16 +152,20 @@ export function McpSettings() {
       rows={list.rows}
       listError={list.error}
       listing={list.listing}
-      rowBusy={rowBusy}
-      formBusy={formBusy}
+      rowBusy={new Set(busyNames(busy))}
+      formBusy={formBusy(busy)}
       feedback={feedback}
       highlight={highlight}
       tools={tools}
       onSelect={select}
       onAdd={async (spec: McpAddSpec) => {
-        if (!selected) return false;
-        const ok = await run("save", null, () => invoke<string>("mcp_add", { kind: selected, spec }));
-        if (ok) setHighlight({ name: spec.name, token: Date.now() });
+        const kind = selected;
+        if (!kind) return false;
+        const seen = viewEpoch.current;
+        const ok = await run("save", null, () => invoke<string>("mcp_add", { kind, spec }));
+        if (ok && selectedRef.current === kind && viewEpoch.current === seen) {
+          setHighlight({ name: spec.name, token: Date.now() });
+        }
         return ok;
       }}
       onRemove={(name, scope) => {
@@ -174,23 +191,26 @@ export function McpSettings() {
       onListTools={(name) => {
         if (!selected) return;
         const kind = selected;
-        const generation = generations.current[kind] ?? 0;
-        setRowBusy((current) => withRowBusy(current, name));
+        const ticket = nextTicket();
+        const mark = markFeedback();
+        const seen = viewEpoch.current;
+        toolTickets.current[name] = ticket;
+        setBusy((current) => beginRow(current, name, ticket));
         setFeedbackBook((current) => writeFeedback(current, kind, null));
         invoke<string>("mcp_list_tools", { kind, name })
           .then((text) => {
-            if (selectedRef.current !== kind || (generations.current[kind] ?? 0) !== generation) return;
+            if (selectedRef.current !== kind || viewEpoch.current !== seen || toolTickets.current[name] !== ticket) return;
             setTools((current) => ({ ...current, [name]: parseToolList(text) }));
           })
           .catch((err) => {
+            if (selectedRef.current !== kind || viewEpoch.current !== seen || feedbackEpoch.current !== mark) return;
             const detail = err instanceof Error ? err.message : String(err);
             setFeedbackBook((current) =>
               writeFeedback(current, kind, { tone: "failure", title: failureTitle("tools"), detail }),
             );
           })
           .finally(() => {
-            if (selectedRef.current !== kind) return;
-            setRowBusy((current) => withoutRowBusy(current, name));
+            setBusy((current) => endRow(current, name, ticket));
           });
       }}
     />

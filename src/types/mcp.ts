@@ -13,6 +13,11 @@ export interface McpField {
   placeholder: string;
   /** `always`、`stdio`、`http`、`sse` 或 `http-sse`。 */
   when: string;
+  /** `text`、`secret`、`list`、`pairs`。 */
+  control: string;
+  required: boolean;
+  /** 空、`server-name`、`command`、`url`、`env-name`、`port`、`arg-list`、`pairs-env`、`pairs-header`。 */
+  rule: string;
 }
 
 export interface McpVerbs {
