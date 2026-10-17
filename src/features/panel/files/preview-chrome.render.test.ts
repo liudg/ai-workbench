@@ -23,7 +23,7 @@ after(async () => {
   await server?.close();
 });
 
-async function renderChrome(path: string) {
+async function renderChrome(path: string, treeOpen = true) {
   const tabs = await server.ssrLoadModule("/src/features/panel/files/FileTabs.tsx");
   const column = await server.ssrLoadModule("/src/features/panel/files/FilePreview.tsx");
   return renderToStaticMarkup(
@@ -42,13 +42,28 @@ async function renderChrome(path: string) {
         projectPath: "C:/work/demo",
         previewPath: path,
         previewLine: null,
-        treeOpen: true,
+        treeOpen,
         onToggleTree: () => undefined,
         onSelectFile: () => undefined,
         onQuote: () => undefined,
       }),
     ),
   );
+}
+
+function pinHoldsOpenAndTree(html: string) {
+  const toolbar = html.indexOf("data-preview-toolbar");
+  const scroll = html.indexOf("data-preview-toolbar-scroll");
+  const pin = html.indexOf("data-preview-toolbar-pin");
+  const openWith = html.indexOf("data-open-with");
+  const menu = html.indexOf("data-open-with-menu-button");
+  const tree = html.indexOf("data-toggle-file-tree");
+  assert.equal(toolbar >= 0 && toolbar < scroll && scroll < pin, true);
+  assert.equal(pin < openWith && openWith < menu && menu < tree, true);
+  const pinned = html.slice(pin);
+  assert.equal(pinned.includes("data-open-with") && pinned.includes("data-toggle-file-tree"), true);
+  assert.equal(pinned.includes("data-file-search-open"), false);
+  assert.equal(pinned.includes("data-copy-path"), false);
 }
 
 test("markdown opened in the shared shell keeps file tabs, breadcrumb, and the toolbar", async () => {
@@ -66,8 +81,10 @@ test("markdown opened in the shared shell keeps file tabs, breadcrumb, and the t
   assert.equal(html.includes("data-copy-path"), true);
   assert.equal(html.includes("data-file-search-open"), true);
   assert.equal(html.includes("data-toggle-file-tree"), true);
+  assert.equal(html.includes("aria-pressed=\"true\""), true);
   assert.equal(html.includes("data-file-tab-add"), true);
   assert.equal(html.includes("data-file-tab=\"docs/readme.md\""), true);
+  pinHoldsOpenAndTree(html);
 });
 
 test("a source file uses the same chrome without the markdown toggle", async () => {
@@ -77,4 +94,31 @@ test("a source file uses the same chrome without the markdown toggle", async () 
   assert.equal(html.includes("data-open-with"), true);
   assert.equal(html.includes("data-markdown-mode-toggle"), false);
   assert.equal(html.includes("app.ts"), true);
+  pinHoldsOpenAndTree(html);
+});
+
+test("a closed tree still renders the toggle, and a preview without open-with still pins it", async () => {
+  const closed = await renderChrome("docs/note.md", false);
+  assert.equal(closed.includes("data-toggle-file-tree"), true);
+  assert.equal(closed.includes("aria-pressed=\"false\""), true);
+  assert.equal(closed.includes("切换文件树"), true);
+  pinHoldsOpenAndTree(closed);
+
+  const chrome = await server.ssrLoadModule("/src/features/panel/files/PreviewChrome.tsx");
+  const html = renderToStaticMarkup(
+    createElement(chrome.PreviewChrome, {
+      path: "src/app.ts",
+      projectId: "",
+      treeOpen: true,
+      onToggleTree: () => undefined,
+      onSelectFile: () => undefined,
+      onSearch: () => undefined,
+      searchEnabled: false,
+    }),
+  );
+  const pin = html.indexOf("data-preview-toolbar-pin");
+  const tree = html.indexOf("data-toggle-file-tree");
+  assert.equal(pin >= 0 && pin < tree, true);
+  assert.equal(html.includes("data-open-with"), false);
+  assert.equal(html.includes("切换文件树"), true);
 });
