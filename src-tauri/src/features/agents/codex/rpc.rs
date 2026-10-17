@@ -16,6 +16,31 @@ fn opens_turn(method: Option<&str>) -> bool {
     matches!(method, Some("turn/start" | "review/start"))
 }
 
+/// `turn/started` 的 id 在 `turn.id`。`turn/start` 回包、`turn/plan/updated` 也可能只给 `turnId`。
+fn nested_turn_id(value: &Value) -> Option<&str> {
+    value
+        .pointer("/turn/id")
+        .or_else(|| value.get("turnId"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+}
+
+fn turn_status_name(params: &Value) -> Option<&str> {
+    params
+        .pointer("/turn/status")
+        .or_else(|| params.get("status"))
+        .and_then(Value::as_str)
+}
+
+/// 只有正常结束才问要不要实施。`interrupted` / `failed`，以及带 error 的回包，都不再浮出确认卡。
+fn turn_finished_cleanly(params: &Value) -> bool {
+    if matches!(turn_status_name(params), Some("interrupted" | "failed")) {
+        return false;
+    }
+    params.pointer("/turn/error").and_then(error_text).is_none()
+}
+
 use super::history::{reasoning_text, take_chars, tool_event, tool_view, tool_visible, ToolView};
 use super::prompts::{
     error_text, parse_elicitation, parse_tool_questions, rpc_error_text,
@@ -29,13 +54,51 @@ impl Shared {
         }
         self.closed.store(true, Ordering::SeqCst);
         self.turn_open.store(false, Ordering::SeqCst);
-        if let Some(thread_id) = self.thread_id.lock().unwrap().clone() {
-            let _ = self.write_method("turn/interrupt", json!({ "threadId": thread_id }));
-        }
+        let _ = self.write_turn_interrupt();
         if let Some(child) = self.child.lock().unwrap().as_mut() {
             let _ = child.start_kill();
         }
         emit_status(&self.events, SessionStatus::Stopped);
+    }
+
+    /// app-server `TurnInterruptParams` 要 `threadId` 和当前 `turnId`。
+    /// 缺 turnId 时请求被拒，回合继续跑，计划结束后仍会浮出确认卡。
+    pub(super) fn write_turn_interrupt(&self) -> Result<(), AgentError> {
+        let thread_id = self
+            .thread_id
+            .lock()
+            .unwrap()
+            .clone()
+            .filter(|id| !id.trim().is_empty())
+            .ok_or_else(|| AgentError::Runtime("Codex 线程未建立".into()))?;
+        let turn_id = self
+            .turn_id
+            .lock()
+            .unwrap()
+            .clone()
+            .filter(|id| !id.trim().is_empty())
+            .ok_or_else(|| AgentError::Runtime("当前没有可停止的回合".into()))?;
+        if !self.write_method(
+            "turn/interrupt",
+            json!({
+                "threadId": thread_id,
+                "turnId": turn_id,
+            }),
+        ) {
+            return Err(AgentError::Runtime("无法向 Codex CLI 写入消息".into()));
+        }
+        Ok(())
+    }
+
+    fn remember_turn_if_absent(&self, id: &str) {
+        let id = id.trim();
+        if id.is_empty() {
+            return;
+        }
+        let mut slot = self.turn_id.lock().unwrap();
+        if slot.as_deref().unwrap_or("").is_empty() {
+            *slot = Some(id.to_string());
+        }
     }
 
     pub(super) fn on_exit(&self) {
@@ -162,6 +225,10 @@ impl Shared {
                                 text: format!("Codex {label} 失败：{text}"),
                             },
                         );
+                    }
+                } else if opens_turn(method.as_deref()) {
+                    if let Some(id) = message.get("result").and_then(nested_turn_id) {
+                        self.remember_turn_if_absent(id);
                     }
                 }
             }
@@ -322,7 +389,7 @@ impl Shared {
             "turn/started" => {
                 self.turn_open.store(true, Ordering::SeqCst);
                 self.plan_ready.store(false, Ordering::SeqCst);
-                if let Some(id) = params.pointer("/turn/id").and_then(Value::as_str) {
+                if let Some(id) = nested_turn_id(params) {
                     let id = id.to_string();
                     *self.turn_id.lock().unwrap() = Some(id.clone());
                     emit(
@@ -337,13 +404,18 @@ impl Shared {
             "turn/completed" => {
                 self.turn_open.store(false, Ordering::SeqCst);
                 *self.turn_id.lock().unwrap() = None;
-                if let Some(message) = params.pointer("/turn/error").and_then(error_text) {
-                    self.plan_ready.store(false, Ordering::SeqCst);
-                    if !self.reject_writer_conflict(&message) {
-                        emit(&self.events, SessionEventBody::Error { message });
-                    }
-                } else {
+                if turn_finished_cleanly(params) {
                     self.maybe_offer_implement_plan();
+                } else {
+                    self.plan_ready.store(false, Ordering::SeqCst);
+                    // 用户停止的回合是 interrupted。取消不是失败，不画红条。
+                    if turn_status_name(params) != Some("interrupted") {
+                        if let Some(message) = params.pointer("/turn/error").and_then(error_text) {
+                            if !self.reject_writer_conflict(&message) {
+                                emit(&self.events, SessionEventBody::Error { message });
+                            }
+                        }
+                    }
                 }
                 self.poke_queue();
             }
@@ -351,6 +423,7 @@ impl Shared {
             "item/autoApprovalReview/completed" => self.on_auto_review_completed(params),
             "turn/diff/updated" => {
                 let turn_id = params.get("turnId").and_then(Value::as_str).unwrap_or("");
+                self.remember_turn_if_absent(turn_id);
                 let diff = params.get("diff").and_then(Value::as_str).unwrap_or("");
                 if !turn_id.is_empty() && !diff.is_empty() {
                     self.remember_turn_diff(turn_id, diff);
@@ -380,6 +453,9 @@ impl Shared {
                 }
             }
             "turn/plan/updated" => {
+                if let Some(id) = params.get("turnId").and_then(Value::as_str) {
+                    self.remember_turn_if_absent(id);
+                }
                 if let Some(body) = super::gap::plan_steps_event(params) {
                     emit(&self.events, body);
                 }
@@ -838,6 +914,182 @@ impl Shared {
             params.get("changes").unwrap_or(&Value::Null),
         );
         self.emit_normalized_changes(&turn_id, &files);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::PromptKind;
+
+    fn harness() -> (
+        Shared,
+        tokio::sync::mpsc::UnboundedReceiver<String>,
+        tokio::sync::mpsc::UnboundedReceiver<SessionEventBody>,
+    ) {
+        let (events_tx, events_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (out_tx, out_rx) = tokio::sync::mpsc::unbounded_channel();
+        (Shared::for_test(events_tx, out_tx), out_rx, events_rx)
+    }
+
+    fn rpc_line(line: &str) -> Value {
+        serde_json::from_str(line).expect("rpc json")
+    }
+
+    fn drain(
+        events: &mut tokio::sync::mpsc::UnboundedReceiver<SessionEventBody>,
+    ) -> Vec<SessionEventBody> {
+        let mut bodies = Vec::new();
+        while let Ok(body) = events.try_recv() {
+            bodies.push(body);
+        }
+        bodies
+    }
+
+    #[test]
+    fn interrupt_sends_the_active_turn_id() {
+        let (shared, mut out, _events) = harness();
+        *shared.thread_id.lock().unwrap() = Some("thr_1".into());
+        shared.handle_notification(
+            "turn/started",
+            &json!({
+                "threadId": "thr_1",
+                "turn": { "id": "turn_9", "status": "inProgress", "items": [] }
+            }),
+        );
+        shared.write_turn_interrupt().expect("interrupt");
+        let value = rpc_line(&out.try_recv().expect("interrupt line"));
+        assert_eq!(value["method"], "turn/interrupt");
+        assert_eq!(value["params"]["threadId"], "thr_1");
+        assert_eq!(value["params"]["turnId"], "turn_9");
+        assert!(out.try_recv().is_err());
+    }
+
+    #[test]
+    fn plan_turn_id_is_kept_when_started_omits_the_nested_id() {
+        let (shared, mut out, _events) = harness();
+        *shared.thread_id.lock().unwrap() = Some("thr_1".into());
+        assert!(shared.write_method("turn/start", json!({ "threadId": "thr_1" })));
+        let _ = out.try_recv();
+        shared.handle_line(
+            r#"{"jsonrpc":"2.0","id":1,"result":{"turn":{"id":"turn_from_start","status":"inProgress"}}}"#,
+        );
+        shared.handle_notification(
+            "turn/started",
+            &json!({ "threadId": "thr_1", "turn": { "status": "inProgress" } }),
+        );
+        assert_eq!(
+            shared.turn_id.lock().unwrap().as_deref(),
+            Some("turn_from_start")
+        );
+        shared.handle_notification(
+            "turn/plan/updated",
+            &json!({
+                "turnId": "turn_plan",
+                "plan": [{ "step": "改解析", "status": "pending" }]
+            }),
+        );
+        assert_eq!(
+            shared.turn_id.lock().unwrap().as_deref(),
+            Some("turn_from_start"),
+            "a later plan update must not replace the turn already recorded"
+        );
+
+        let (bare, mut bare_out, _) = harness();
+        *bare.thread_id.lock().unwrap() = Some("thr_2".into());
+        bare.handle_notification(
+            "turn/plan/updated",
+            &json!({
+                "turnId": "turn_plan",
+                "plan": [{ "step": "改解析", "status": "pending" }]
+            }),
+        );
+        bare.write_turn_interrupt().expect("interrupt");
+        let value = rpc_line(&bare_out.try_recv().expect("interrupt line"));
+        assert_eq!(value["params"]["turnId"], "turn_plan");
+    }
+
+    #[test]
+    fn missing_turn_id_does_not_send_an_invalid_interrupt() {
+        let (shared, mut out, _events) = harness();
+        *shared.thread_id.lock().unwrap() = Some("thr_1".into());
+        let err = shared.write_turn_interrupt().expect_err("no turn");
+        assert!(err.to_string().contains("当前没有可停止的回合"));
+        assert!(out.try_recv().is_err());
+    }
+
+    #[test]
+    fn stopped_or_failed_plan_turn_does_not_offer_implementation() {
+        let (shared, _out, mut events) = harness();
+        *shared.thread_id.lock().unwrap() = Some("thr_1".into());
+        *shared.collaboration.lock().unwrap() = super::super::state::Collaboration::Plan;
+        shared.handle_notification(
+            "turn/started",
+            &json!({ "turn": { "id": "turn_plan", "status": "inProgress" } }),
+        );
+        shared.handle_notification(
+            "item/completed",
+            &json!({ "item": { "type": "plan", "id": "p1", "text": "1. 改解析" } }),
+        );
+        shared.handle_notification(
+            "turn/completed",
+            &json!({
+                "turn": { "id": "turn_plan", "status": "interrupted", "error": null }
+            }),
+        );
+        assert!(!drain(&mut events).iter().any(|body| matches!(
+            body,
+            SessionEventBody::Prompt {
+                prompt_kind: PromptKind::Choice,
+                ..
+            }
+        )));
+
+        shared.handle_notification(
+            "turn/started",
+            &json!({ "turn": { "id": "turn_fail", "status": "inProgress" } }),
+        );
+        shared.handle_notification(
+            "item/completed",
+            &json!({ "item": { "type": "plan", "id": "p2", "text": "1. 改解析" } }),
+        );
+        shared.handle_notification(
+            "turn/completed",
+            &json!({
+                "turn": {
+                    "id": "turn_fail",
+                    "status": "failed",
+                    "error": { "message": "模型超时" }
+                }
+            }),
+        );
+        let failed = drain(&mut events);
+        assert!(failed.iter().any(|body| matches!(
+            body,
+            SessionEventBody::Error { message } if message.contains("模型超时")
+        )));
+        assert!(!failed
+            .iter()
+            .any(|body| matches!(body, SessionEventBody::Prompt { .. })));
+
+        shared.handle_notification(
+            "turn/started",
+            &json!({ "turn": { "id": "turn_ok", "status": "inProgress" } }),
+        );
+        shared.handle_notification(
+            "item/completed",
+            &json!({ "item": { "type": "plan", "id": "p3", "text": "1. 改解析" } }),
+        );
+        shared.handle_notification(
+            "turn/completed",
+            &json!({
+                "turn": { "id": "turn_ok", "status": "completed", "error": null }
+            }),
+        );
+        assert!(drain(&mut events).iter().any(|body| matches!(
+            body,
+            SessionEventBody::Prompt { question, .. } if question == "实施此计划？"
+        )));
     }
 }
 

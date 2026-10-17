@@ -263,6 +263,63 @@ impl Shared {
             emit_occupied(&self.events);
         }
     }
+
+    #[cfg(test)]
+    pub(super) fn for_test(events: EventSink, out: mpsc::UnboundedSender<String>) -> Self {
+        let (queue_notify, _queue_rx) = mpsc::unbounded_channel();
+        Self {
+            events,
+            out,
+            child: Mutex::new(None),
+            next_id: AtomicU64::new(1),
+            closed: AtomicBool::new(false),
+            user_stop: AtomicBool::new(false),
+            turn_open: AtomicBool::new(false),
+            access: Mutex::new(super::sandbox::SandboxChoice::from_mode("full")),
+            wire: Mutex::new(super::sandbox::SandboxWire::default()),
+            wire_ready: AtomicBool::new(false),
+            model_override: Mutex::new(None),
+            effort: Mutex::new(None),
+            service_tier: Mutex::new(None),
+            skills: Mutex::new(Vec::new()),
+            thread_id: Mutex::new(None),
+            persist: false,
+            turn_id: Mutex::new(None),
+            turn_files: Mutex::new(HashMap::new()),
+            file_items: Mutex::new(HashMap::new()),
+            turn_diffs: Mutex::new(HashMap::new()),
+            last_turn_id: Mutex::new(None),
+            model: Mutex::new(String::new()),
+            version: Mutex::new("test".into()),
+            cwd: String::new(),
+            pending: Mutex::new(HashMap::new()),
+            waiters: Mutex::new(HashMap::new()),
+            rpc_methods: Mutex::new(HashMap::new()),
+            streams: Mutex::new(HashMap::new()),
+            message_phases: Mutex::new(HashMap::new()),
+            titled: AtomicBool::new(false),
+            question_items: Mutex::new(HashSet::new()),
+            occupancy: Mutex::new(Occupancy::default()),
+            queue_notify,
+            queue_refresh: AsyncMutex::new(()),
+            queued: Mutex::new(Vec::new()),
+            queue_removed: Mutex::new(HashSet::new()),
+            follow_up_steer: AtomicBool::new(false),
+            shown_users: Mutex::new(HashSet::new()),
+            collaboration: Mutex::new(Collaboration::Default),
+            plan_ready: AtomicBool::new(false),
+            review_output: Mutex::new(None),
+            history_cursor: Mutex::new(None),
+            activity: Mutex::new(HashMap::new()),
+            denials: Mutex::new(super::guardian::RecentDenials::default()),
+            status_known: AtomicBool::new(false),
+            token_info: Mutex::new(None),
+            latest_plan: Mutex::new(None),
+            instruction_sources: Mutex::new(Vec::new()),
+            thread_effort: Mutex::new(None),
+            thread_name: Mutex::new(None),
+        }
+    }
 }
 
 fn emit_occupied(events: &EventSink) {
