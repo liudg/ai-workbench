@@ -1,11 +1,11 @@
 {
-  "version": "0.2.65",
-  "notes": "0.2.65：已回答的问题卡更紧凑；停止 Claude 时不再提示连接中断。",
-  "pub_date": "2026-10-17T08:28:52.082Z",
+  "version": "0.2.66",
+  "notes": "0.2.66：计划回合停止不再弹实施确认；预览顶栏钉住打开菜单和文件树；审批挂起时仍可停止。",
+  "pub_date": "2026-10-17T14:37:08.458Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTMC9XZWh0U0NRak4rZUtzekoxZGZKNGpaSWRMNWVmdjFoK0lHdWg3bTZBOWZEQ2pCaTdRVUdYMkl1eGhhVVE2alNPclVEUVR4SWhrbHBPZzlsc05uck8vaFRTTjV5YkFnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyMjI1NzA1CWZpbGU6QUkgV29ya2JlbmNoXzAuMi42NV94NjQtc2V0dXAuZXhlCXZlcnNpb246MC4yLjY1CjZWY0Zzc0RUZ1dBd29pdHorZEtuQmFUTUNXNTF5TUNwL3ZJaGVoQ2N6MFZONGlXdjJrY21uNW1VZmhhMjFGNGdCdXhuY3ZsbWxOWiswWDBQbzJTdUJBPT0K",
-      "url": "https://github.com/OWNER/REPO/releases/download/v0.2.65/AI%20Workbench_0.2.65_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTMC9XZWh0U0NRalBMUlpoOEMvMW1CZWFsa29LWTRobGVNbi9LaXo3MjhkNWxMVGJheERQeEZyTmg1ZVJiQnRKc3NQVTA1aHNuQ0UrV0Uva1lXZzAzaTNrRjNvVkZxWEFrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyMjQ3ODIxCWZpbGU6QUkgV29ya2JlbmNoXzAuMi42Nl94NjQtc2V0dXAuZXhlCXZlcnNpb246MC4yLjY2CnpwK0lUWTNIbjhrNTlBdzgyc0dtZXg0SlMwbDlDdTF3cStSYk1jWk9yVDZJOGN3K3VMMlRBZlVVYlIvYTI0VGVmUkgzT292cktNRGFhVnRPZ2NEVENRPT0K",
+      "url": "https://github.com/OWNER/REPO/releases/download/v0.2.66/AI%20Workbench_0.2.66_x64-setup.exe"
     }
   }
 }
