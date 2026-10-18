@@ -123,15 +123,14 @@ fn urls_equivalent(left: &str, right: &str) -> bool {
 pub fn prepare_browser_file(
     app: AppHandle,
     store: tauri::State<'_, ProjectStore>,
+    manager: tauri::State<'_, crate::features::sessions::SessionManager>,
     project_id: String,
     path: String,
+    session_id: Option<String>,
 ) -> Result<BrowserFile, String> {
-    let project = store
-        .get(&project_id)
-        .ok_or_else(|| "项目不存在".to_string())?;
-    let root = Path::new(&project.path);
-    let full = resolve_preview_file(root, &path)?;
-    let root_real = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+    let root = super::project_root(&store, &manager, &project_id, session_id.as_deref())?;
+    let full = resolve_preview_file(&root, &path)?;
+    let root_real = root.canonicalize().unwrap_or(root);
     app.asset_protocol_scope()
         .allow_directory(&root_real, true)
         .map_err(|err| format!("无法打开此地址: {err}"))?;

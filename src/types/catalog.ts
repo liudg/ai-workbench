@@ -145,6 +145,8 @@ export interface AgentCapabilities {
   supports_paged_history?: boolean;
   /** 账号订阅窗口。界面只在适配器声明这项时读取，不按 agent 名字分支。 */
   supports_subscription_usage?: boolean;
+  /** 新建会话可以在一个新的 Git 工作树里运行。 */
+  supports_worktree?: boolean;
 }
 
 /** 一个订阅用量窗口。已用和剩余至少有一个，重置时间可以没有。 */

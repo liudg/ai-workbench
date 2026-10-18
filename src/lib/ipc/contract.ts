@@ -56,6 +56,8 @@ export interface CreateAndSendInput {
   annotations: PageAnnotation[];
   /** 首发时由工作台创建任务目录。 */
   standalone: boolean;
+  /** 在一个新的 Git 工作树里运行。 */
+  worktree: boolean;
 }
 
 export interface TaskFolder {
@@ -142,17 +144,19 @@ export interface Backend {
    * 后端用 Codex 同一条探测：`git rev-parse --is-inside-work-tree`。
    */
   projectIsGit(projectId: string): Promise<boolean>;
+  /** 仓库里至少有一个提交。空仓库、非 Git 目录和独立聊天为 false。 */
+  projectHasCommit(projectId: string): Promise<boolean>;
   /**
    * 当前 git 分支。不是仓库、分离头指针或空输出时为 null。
    * 探测失败（git 不存在、目录不存在）时拒绝，而不是返回一个假分支名。
    */
-  projectBranch(projectId: string): Promise<string | null>;
+  projectBranch(projectId: string, sessionId?: string): Promise<string | null>;
   /** 本地分支、当前检出、未提交文件数。不是仓库时拒绝。 */
-  projectGitBranches(projectId: string): Promise<GitBranchMenu>;
+  projectGitBranches(projectId: string, sessionId?: string): Promise<GitBranchMenu>;
   /** 检出一条已有本地分支。失败时返回中文说明。 */
-  projectCheckoutBranch(projectId: string, name: string): Promise<void>;
+  projectCheckoutBranch(projectId: string, name: string, sessionId?: string): Promise<void>;
   /** 创建并检出新分支。失败时返回中文说明。 */
-  projectCreateBranch(projectId: string, name: string): Promise<void>;
+  projectCreateBranch(projectId: string, name: string, sessionId?: string): Promise<void>;
   updateQueuedTurn(
     sessionId: string,
     queuedId: string,
@@ -187,28 +191,34 @@ export interface Backend {
   getSessionEvents(sessionId: string): Promise<SessionEvent[]>;
   loadOlderHistory(sessionId: string): Promise<OlderHistory>;
   /** 读取项目目录内的文本，供 HTML / Markdown / 纯文本预览。 */
-  readPreviewFile(projectId: string, path: string): Promise<PreviewDocument>;
+  readPreviewFile(projectId: string, path: string, sessionId?: string): Promise<PreviewDocument>;
   /** 读取 png / jpg / gif / webp / svg / bmp 等图片的真实字节。 */
-  readPreviewImage(projectId: string, path: string): Promise<PreviewImage>;
+  readPreviewImage(projectId: string, path: string, sessionId?: string): Promise<PreviewImage>;
   /** 工作区某一层目录。展开后再读下一层，不把整棵树截断。 */
-  listProjectDir(projectId: string, path: string): Promise<TreeEntry[]>;
+  listProjectDir(projectId: string, path: string, sessionId?: string): Promise<TreeEntry[]>;
   /** 按相对路径筛选工作区文件。不读正文。`ready: false` 时接着要下一页。 */
-  filterProjectPaths(projectId: string, query: string): Promise<PathFilter>;
+  filterProjectPaths(projectId: string, query: string, sessionId?: string): Promise<PathFilter>;
   /** 打开项目后提前建路径索引。失败不影响打开项目。 */
-  warmProjectIndex(projectId: string): Promise<void>;
+  warmProjectIndex(projectId: string, sessionId?: string): Promise<void>;
   /** 在项目目录里搜索文件名和文本。分段返回，searchId 用来取消上一段。 */
   searchProjectFiles(
     projectId: string,
     query: string,
     mask: string,
     searchId: number,
+    sessionId?: string,
   ): Promise<FileSearchResult>;
   /** 用系统程序打开文件。`choose` 只在当前系统能弹出选择应用时可用。 */
-  openProjectFile(projectId: string, path: string, mode?: "default" | "choose"): Promise<void>;
+  openProjectFile(
+    projectId: string,
+    path: string,
+    mode?: "default" | "choose",
+    sessionId?: string,
+  ): Promise<void>;
   /** 这个系统能不能在「打开」里选择应用。 */
   fileOpenCapabilities(): Promise<{ choose_app: boolean }>;
   /** 把项目内文件放进内置浏览器可加载的地址。 */
-  prepareBrowserFile(projectId: string, path: string): Promise<BrowserFile>;
+  prepareBrowserFile(projectId: string, path: string, sessionId?: string): Promise<BrowserFile>;
   browserShow(url: string, x: number, y: number, width: number, height: number): Promise<void>;
   browserBounds(x: number, y: number, width: number, height: number): Promise<void>;
   browserHide(): Promise<void>;

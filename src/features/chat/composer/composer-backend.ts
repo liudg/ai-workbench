@@ -109,8 +109,8 @@ export function interruptTurn(sessionId: string) {
   });
 }
 
-export function searchMentionPaths(projectId: string, query: string) {
-  return backend.filterProjectPaths(projectId, query);
+export function searchMentionPaths(projectId: string, query: string, sessionId?: string) {
+  return backend.filterProjectPaths(projectId, query, sessionId);
 }
 
 export function pickMentionFiles() {

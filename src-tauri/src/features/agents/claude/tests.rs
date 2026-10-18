@@ -33,6 +33,7 @@ fn cli_args_follow_the_sdk_and_require_print() {
         model: Some("sonnet".into()),
         effort: Some("high".into()),
         writable_roots: Vec::new(),
+        worktree: None,
     });
     assert_eq!(
         args,
@@ -64,6 +65,7 @@ fn cli_args_follow_the_sdk_and_require_print() {
         model: None,
         effort: Some("  ".into()),
         writable_roots: Vec::new(),
+        worktree: None,
     });
     assert!(fresh.iter().any(|arg| arg == "--session-id=id-1"));
     assert!(!fresh.iter().any(|arg| arg == "--model" || arg == "--effort"));
@@ -81,10 +83,13 @@ fn add_dir_is_a_launch_argument() {
         model: None,
         effort: None,
         writable_roots: vec![r"D:\extra".into()],
+        worktree: Some("feature-auth".into()),
     });
     let pos = args.iter().position(|arg| arg == "--add-dir").expect("add-dir");
     assert_eq!(args[pos + 1], r"D:\extra");
-    assert_eq!(args[pos + 2], "--input-format");
+    assert_eq!(args[pos + 2], "--worktree");
+    assert_eq!(args[pos + 3], "feature-auth");
+    assert_eq!(args[pos + 4], "--input-format");
 }
 
 /// `Path` 只在 Windows 上把 `C:\work` 当成绝对路径。

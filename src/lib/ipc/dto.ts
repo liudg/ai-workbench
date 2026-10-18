@@ -94,6 +94,7 @@ export interface SessionRequest {
   agent: AgentKind;
   name: string | null;
   text: string | null;
+  worktree?: boolean;
 }
 
 export interface BrowserNotice {

@@ -39,6 +39,7 @@ macro_rules! workbench_handler {
             $crate::features::ipc::projects::open_project_folder,
             $crate::features::ipc::projects::remove_project,
             $crate::features::ipc::projects::project_is_git,
+            $crate::features::ipc::projects::project_has_commit,
             $crate::features::ipc::projects::project_branch,
             $crate::features::ipc::projects::project_git_branches,
             $crate::features::ipc::projects::project_checkout_branch,

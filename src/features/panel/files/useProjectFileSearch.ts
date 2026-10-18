@@ -5,7 +5,12 @@ import { backend, type FileSearchHit } from "@/lib/ipc";
 let fileSearchSerial = 0;
 
 /** 在工作区里分段搜索。空查询不发请求。 */
-export function useProjectFileSearch(projectId: string, query: string, mask: string) {
+export function useProjectFileSearch(
+  projectId: string,
+  query: string,
+  mask: string,
+  sessionId?: string,
+) {
   const [hits, setHits] = useState<FileSearchHit[]>([]);
   const [truncated, setTruncated] = useState(false);
   const [error, setError] = useState("");
@@ -34,7 +39,7 @@ export function useProjectFileSearch(projectId: string, query: string, mask: str
         try {
           for (let hop = 0; hop < 20000; hop += 1) {
             if (stopped) return;
-            const page = await backend.searchProjectFiles(projectId, q, mask, searchId);
+            const page = await backend.searchProjectFiles(projectId, q, mask, searchId, sessionId);
             if (stopped || page.cancelled) return;
             setHits((current) => (sameHits(current, page.hits) ? current : page.hits));
             setTruncated(page.truncated);
@@ -65,7 +70,7 @@ export function useProjectFileSearch(projectId: string, query: string, mask: str
       stopped = true;
       window.clearTimeout(timer);
     };
-  }, [mask, projectId, query]);
+  }, [mask, projectId, query, sessionId]);
 
   return { hits, truncated, error, loading, done };
 }

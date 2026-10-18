@@ -125,6 +125,24 @@ pub fn update_project<R: Runtime>(
     Ok(project)
 }
 
+/// 有至少一次提交时，新建会话才能选工作树。不是仓库或空仓库为 false。
+#[tauri::command]
+pub async fn project_has_commit(
+    store: State<'_, ProjectStore>,
+    project_id: String,
+) -> Result<bool, String> {
+    let project = store
+        .get(&project_id)
+        .ok_or_else(|| "项目不存在".to_string())?;
+    if project.standalone {
+        return Ok(false);
+    }
+    let root = PathBuf::from(project.path);
+    tokio::task::spawn_blocking(move || crate::features::git::repo_has_commit(&root))
+        .await
+        .map_err(|err| format!("无法确认是否为 git 仓库: {err}"))?
+}
+
 /// 项目目录是否为 git 工作区。探测失败时返回 git 的原文，而不是当成仓库。
 #[tauri::command]
 pub async fn project_is_git(
@@ -144,31 +162,40 @@ pub async fn project_is_git(
 #[tauri::command]
 pub async fn project_branch(
     store: State<'_, ProjectStore>,
+    manager: State<'_, SessionManager>,
     project_id: String,
+    session_id: Option<String>,
 ) -> Result<Option<String>, String> {
-    let project = store
-        .get(&project_id)
-        .ok_or_else(|| "项目不存在".to_string())?;
-    let root = PathBuf::from(project.path);
+    let root = git_root(&store, Some(&manager), &project_id, session_id.as_deref())?;
     tokio::task::spawn_blocking(move || crate::features::git::current_branch(&root))
         .await
         .map_err(|err| format!("无法读取当前分支: {err}"))?
 }
 
-fn project_root(store: &ProjectStore, project_id: &str) -> Result<PathBuf, String> {
+fn git_root(
+    store: &ProjectStore,
+    manager: Option<&SessionManager>,
+    project_id: &str,
+    session_id: Option<&str>,
+) -> Result<PathBuf, String> {
     let project = store
         .get(project_id)
         .ok_or_else(|| "项目不存在".to_string())?;
-    Ok(PathBuf::from(project.path))
+    match manager {
+        Some(manager) => manager.work_root(&project, session_id),
+        None => Ok(PathBuf::from(project.path)),
+    }
 }
 
 /// 本地分支、当前检出和未提交文件数。不是仓库时拒绝，不返回空列表冒充。
 #[tauri::command]
 pub async fn project_git_branches(
     store: State<'_, ProjectStore>,
+    manager: State<'_, SessionManager>,
     project_id: String,
+    session_id: Option<String>,
 ) -> Result<crate::features::git::GitBranchMenu, String> {
-    let root = project_root(&store, &project_id)?;
+    let root = git_root(&store, Some(&manager), &project_id, session_id.as_deref())?;
     tokio::task::spawn_blocking(move || crate::features::git::local_branch_menu(&root))
         .await
         .map_err(|err| format!("无法读取分支: {err}"))?
@@ -178,10 +205,12 @@ pub async fn project_git_branches(
 #[tauri::command]
 pub async fn project_checkout_branch(
     store: State<'_, ProjectStore>,
+    manager: State<'_, SessionManager>,
     project_id: String,
     name: String,
+    session_id: Option<String>,
 ) -> Result<(), String> {
-    let root = project_root(&store, &project_id)?;
+    let root = git_root(&store, Some(&manager), &project_id, session_id.as_deref())?;
     tokio::task::spawn_blocking(move || crate::features::git::checkout_local_branch(&root, &name))
         .await
         .map_err(|err| format!("无法切换分支: {err}"))?
@@ -191,10 +220,12 @@ pub async fn project_checkout_branch(
 #[tauri::command]
 pub async fn project_create_branch(
     store: State<'_, ProjectStore>,
+    manager: State<'_, SessionManager>,
     project_id: String,
     name: String,
+    session_id: Option<String>,
 ) -> Result<(), String> {
-    let root = project_root(&store, &project_id)?;
+    let root = git_root(&store, Some(&manager), &project_id, session_id.as_deref())?;
     tokio::task::spawn_blocking(move || {
         crate::features::git::create_and_checkout_branch(&root, &name)
     })

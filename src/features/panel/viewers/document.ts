@@ -1,8 +1,8 @@
 import { backend } from "@/lib/ipc";
 import { BinaryFileError, ReopenAs, type ViewerContext } from "../core/registry";
 
-export async function readProjectText(projectId: string, path: string) {
-  const doc = await backend.readPreviewFile(projectId, path);
+export async function readProjectText(projectId: string, path: string, sessionId?: string) {
+  const doc = await backend.readPreviewFile(projectId, path, sessionId);
   if (doc.kind === "image") {
     throw new ReopenAs({ kind: "file", path, line: null, viewerId: "image" });
   }
@@ -11,7 +11,7 @@ export async function readProjectText(projectId: string, path: string) {
 }
 
 export async function readPreviewDocument(ctx: ViewerContext, path: string) {
-  return readProjectText(ctx.projectId, path);
+  return readProjectText(ctx.projectId, path, ctx.sessionId);
 }
 
 export function reopenIfDifferent(actual: string, viewerId: string, path: string, line: number | null) {

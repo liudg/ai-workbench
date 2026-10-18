@@ -133,6 +133,7 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
   const goalSupport = goal.publishError ? "unsupported" : view.goalSupport;
   const mentions = useMentionMenu({
     projectId: session.project_id,
+    sessionId: session.id,
     text,
     setText,
     caret,

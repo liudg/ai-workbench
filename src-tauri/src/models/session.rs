@@ -58,4 +58,10 @@ pub struct Session {
     /// 已归档的聊天不进默认侧边栏。
     #[serde(default)]
     pub archived: bool,
+    /// 会话工作目录。空表示用项目目录。有值时文件树和变更都看这里。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workdir: Option<String>,
+    /// 工作树分支。有 `workdir` 且这项为空时是分离头指针。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worktree_branch: Option<String>,
 }

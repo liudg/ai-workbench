@@ -91,6 +91,9 @@ pub struct CreateAndSendInput {
     /// 首发时才建任务目录。草稿阶段还没有项目。
     #[serde(default)]
     standalone: bool,
+    /// 在一个新的 Git 工作树里运行。
+    #[serde(default)]
+    worktree: bool,
 }
 
 #[tauri::command]
@@ -129,6 +132,7 @@ pub async fn create_session_and_send<R: Runtime>(
                 text: input.text,
                 images: input.images,
                 annotations: input.annotations,
+                worktree: input.worktree,
             },
         )
         .await;

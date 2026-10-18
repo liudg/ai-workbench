@@ -38,7 +38,12 @@ pub(super) fn apply_body(
     body: SessionEventBody,
     record_activity: bool,
 ) {
-    if let SessionEventBody::NewThread { name, text } = body {
+    if let SessionEventBody::NewThread {
+        name,
+        text,
+        worktree,
+    } = body
+    {
         let (project_id, agent) = {
             let entries = entries.lock().unwrap();
             let Some(entry) = entries.get(session_id) else {
@@ -54,6 +59,7 @@ pub(super) fn apply_body(
                 "agent": agent,
                 "name": name,
                 "text": text,
+                "worktree": worktree,
             }),
         );
         return;
@@ -385,6 +391,8 @@ mod tests {
                 created_at: updated_at - 1_000,
                 updated_at,
                 archived: false,
+                workdir: None,
+                worktree_branch: None,
             },
             events: Vec::new(),
             next_seq: 1,

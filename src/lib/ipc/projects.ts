@@ -12,6 +12,7 @@ export const projectCommands: Pick<
   | "removeProject"
   | "openProjectFolder"
   | "projectIsGit"
+  | "projectHasCommit"
   | "projectBranch"
   | "projectGitBranches"
   | "projectCheckoutBranch"
@@ -40,8 +41,13 @@ export const projectCommands: Pick<
   removeProject: (id) => invoke("remove_project", { id }),
   openProjectFolder: (id) => invoke("open_project_folder", { id }),
   projectIsGit: (projectId) => invoke<boolean>("project_is_git", { projectId }),
-  projectBranch: (projectId) => invoke<string | null>("project_branch", { projectId }),
-  projectGitBranches: (projectId) => invoke<GitBranchMenu>("project_git_branches", { projectId }),
-  projectCheckoutBranch: (projectId, name) => invoke("project_checkout_branch", { projectId, name }),
-  projectCreateBranch: (projectId, name) => invoke("project_create_branch", { projectId, name }),
+  projectHasCommit: (projectId) => invoke<boolean>("project_has_commit", { projectId }),
+  projectBranch: (projectId, sessionId) =>
+    invoke<string | null>("project_branch", { projectId, sessionId: sessionId ?? null }),
+  projectGitBranches: (projectId, sessionId) =>
+    invoke<GitBranchMenu>("project_git_branches", { projectId, sessionId: sessionId ?? null }),
+  projectCheckoutBranch: (projectId, name, sessionId) =>
+    invoke("project_checkout_branch", { projectId, name, sessionId: sessionId ?? null }),
+  projectCreateBranch: (projectId, name, sessionId) =>
+    invoke("project_create_branch", { projectId, name, sessionId: sessionId ?? null }),
 };

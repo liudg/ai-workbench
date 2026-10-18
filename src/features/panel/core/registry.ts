@@ -15,6 +15,8 @@ export interface ViewerContext {
   projectId: string;
   projectPath: string;
   sessionFiles: FileChange[];
+  /** 有工作树时，预览和搜索读这个会话的检出目录。 */
+  sessionId?: string;
 }
 
 export type PanelTabStatus = "loading" | "ready" | "error";

@@ -286,16 +286,21 @@ export function CommandMenuHost() {
       {fileSearchProjectId ? (
         <FileSearchDialog
           projectId={fileSearchProjectId}
+          sessionId={activeSessionId[fileSearchProjectId]}
           onClose={() => setFileSearchProjectId(null)}
           onOpen={(path, line) => {
             const current = useWorkbench.getState();
             const target = current.projects.find((item) => item.id === fileSearchProjectId);
             const openSession = target ? current.activeSessionId[target.id] : null;
+            const openWorkdir = openSession
+              ? current.sessions[target?.id ?? ""]?.find((item) => item.id === openSession)?.workdir?.trim()
+              : "";
             if (!target || !openSession) return;
             void current.panelOpenHref(openSession, path, line ?? undefined, {
               projectId: target.id,
-              projectPath: target.path,
+              projectPath: openWorkdir || target.path,
               sessionFiles: [],
+              sessionId: openSession,
             });
           }}
         />

@@ -466,6 +466,9 @@ pub enum SessionEventBody {
         name: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         text: Option<String>,
+        /// 新会话在一个新的 Git 工作树里运行。
+        #[serde(default, skip_serializing_if = "is_false")]
+        worktree: bool,
     },
 }
 

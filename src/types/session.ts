@@ -36,6 +36,10 @@ export interface Session {
   updated_at: number;
   /** 已归档的聊天不进侧栏列表。 */
   archived?: boolean;
+  /** 会话工作目录。空表示用项目目录。 */
+  workdir?: string | null;
+  /** 工作树分支。有 workdir 且这项为空时是分离头指针。 */
+  worktree_branch?: string | null;
 }
 
 /** 项目聚合状态：需要处理 > 运行中 > 失败 > 已完成 > 已停止 */

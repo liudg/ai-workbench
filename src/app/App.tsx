@@ -51,6 +51,9 @@ const GitBranchPreview = import.meta.env.DEV
 const PlanChoicePreview = import.meta.env.DEV
   ? lazy(() => import("@/app/preview/PlanChoicePreview"))
   : null;
+const WorktreePreview = import.meta.env.DEV
+  ? lazy(() => import("@/app/preview/WorktreePreview"))
+  : null;
 
 export default function App() {
   const preview = new URLSearchParams(window.location.search).get("preview");
@@ -156,6 +159,13 @@ export default function App() {
     return (
       <Suspense fallback={null}>
         <PlanChoicePreview />
+      </Suspense>
+    );
+  }
+  if (WorktreePreview && preview === "worktree") {
+    return (
+      <Suspense fallback={null}>
+        <WorktreePreview />
       </Suspense>
     );
   }

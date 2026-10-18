@@ -36,7 +36,7 @@ export const imageViewer: PanelViewer<ImagePayload> = {
   title: (payload) => payloadTitle(payload) || baseName(payload.path || "") || "图片",
   async load(target, ctx) {
     if (target.kind !== "file") return { title: "图片", path: "", src: "" };
-    const image = await readProjectImage(ctx.projectId, target.path);
+    const image = await readProjectImage(ctx.projectId, target.path, ctx.sessionId);
     return {
       title: image.name || baseName(target.path),
       path: image.path,

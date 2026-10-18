@@ -5,7 +5,7 @@ import { followPathPages, mentionSearchError } from "./mention-search";
 import { mentionFiles, type MentionFile } from "./mentions";
 
 /** `@` 后面有文字时，用已有的工作区路径筛选。取消的旧查询不覆盖新结果。 */
-export function useMentionSearch(projectId: string, query: string | null) {
+export function useMentionSearch(projectId: string, query: string | null, sessionId?: string) {
   const [hits, setHits] = useState<MentionFile[]>([]);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -22,7 +22,7 @@ export function useMentionSearch(projectId: string, query: string | null) {
     setError(null);
     const timer = window.setTimeout(() => {
       void followPathPages(
-        () => searchMentionPaths(projectId, query),
+        () => searchMentionPaths(projectId, query, sessionId),
         (page) => {
           if (cancel) return;
           setHits(mentionFiles(page.paths, query));
@@ -41,7 +41,7 @@ export function useMentionSearch(projectId: string, query: string | null) {
       cancel = true;
       window.clearTimeout(timer);
     };
-  }, [projectId, query]);
+  }, [projectId, query, sessionId]);
 
   return { hits, pending, error };
 }

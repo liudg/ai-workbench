@@ -206,7 +206,7 @@ pub(in crate::features::agents::codex) fn slash_commands() -> Vec<SlashCommand> 
         },
         SlashCommand {
             name: "/worktree".into(),
-            hint: "start or continue a conversation in a new worktree".into(),
+            hint: "在新的工作树里新建会话".into(),
             takes_args: false,
         },
         SlashCommand {

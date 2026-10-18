@@ -155,6 +155,7 @@ export function OpenFilesView() {
             <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-1 py-1">
               <WorkspaceTree
                 projectId={projectId}
+                sessionId={sessionId}
                 filter={place.filter}
                 activePath={place.path}
                 surface="sidebar"

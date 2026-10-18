@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import type { FileSearchHit } from "@/lib/ipc";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { cn } from "@/lib/utils";
+import { usePanelOptional } from "../core/PanelProvider";
 import { useDismissLayer } from "../core/useDismissLayer";
 import { highlightParts, moveSearchCursor } from "./file-search";
 import { useProjectFileSearch } from "./useProjectFileSearch";
@@ -11,19 +12,27 @@ import { useProjectFileSearch } from "./useProjectFileSearch";
 /** 在工作区里搜索文件名和文件内容。结果来自本机目录，不是占位列表。 */
 export function FileSearchDialog({
   projectId,
+  sessionId,
   onClose,
   onOpen,
 }: {
   projectId: string;
+  sessionId?: string;
   onClose: () => void;
   onOpen: (path: string, line: number | null) => void;
 }) {
+  const panelSessionId = usePanelOptional()?.sessionId;
   const [query, setQuery] = useState("");
   const [mask, setMask] = useState<string>(DESKTOP_ZH.openFilesMaskDefault);
   const [active, setActive] = useState(0);
   const queryRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const { hits, truncated, error, loading, done } = useProjectFileSearch(projectId, query, mask);
+  const { hits, truncated, error, loading, done } = useProjectFileSearch(
+    projectId,
+    query,
+    mask,
+    sessionId || panelSessionId,
+  );
 
   useEffect(() => {
     queryRef.current?.focus();

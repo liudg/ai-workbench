@@ -1,5 +1,6 @@
 //! Agent 适配器：一种 CLI 对应一个实现。会话列表属于 SessionManager。
 
+use std::path::Path;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -15,6 +16,17 @@ use crate::models::{
 use super::context::SessionContext;
 use super::error::AgentError;
 use super::session::{AgentSession, EventSink};
+
+/// 适配器准备好的工作树。`cli_name` 有值时由该 CLI 自己创建目录。
+#[derive(Debug, Clone)]
+pub struct PreparedWorktree {
+    pub cwd: String,
+    pub branch: Option<String>,
+    pub cli_name: Option<String>,
+    pub source: String,
+    /// 创建失败时撤掉的检出根。会话结束后不删。
+    pub rollback_root: String,
+}
 
 /// 一种 Agent CLI。负责按项目环境启动 [`AgentSession`]，不持有会话列表。
 #[async_trait]
@@ -141,6 +153,11 @@ pub trait AgentAdapter: Send + Sync {
     /// 这个 Agent 自己的 MCP 命令。没在本机 CLI 上验证过的返回 None。
     fn mcp(&self) -> Option<Arc<dyn McpDriver>> {
         None
+    }
+
+    /// 按这个 Agent 的原生方式准备一个新工作树。没有原生支持时拒绝。
+    fn prepare_worktree(&self, _source: &Path) -> Result<PreparedWorktree, AgentError> {
+        Err(AgentError::Runtime("当前 Agent 不能在工作树里运行".into()))
     }
 
     /// 归档或取消归档。只有声明了 `supports_archive` 的适配器覆盖它。

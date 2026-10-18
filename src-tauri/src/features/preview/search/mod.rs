@@ -339,29 +339,28 @@ fn cancelled_output() -> SearchOutput {
 #[tauri::command]
 pub async fn warm_project_index(
     store: State<'_, ProjectStore>,
+    manager: State<'_, crate::features::sessions::SessionManager>,
     hub: State<'_, IndexHub>,
     project_id: String,
+    session_id: Option<String>,
 ) -> Result<(), String> {
-    let project = store
-        .get(&project_id)
-        .ok_or_else(|| "项目不存在".to_string())?;
-    hub.warm_root(PathBuf::from(project.path));
+    let root = super::project_root(&store, &manager, &project_id, session_id.as_deref())?;
+    hub.warm_root(root);
     Ok(())
 }
 
 #[tauri::command]
 pub async fn search_project_files(
     store: State<'_, ProjectStore>,
+    manager: State<'_, crate::features::sessions::SessionManager>,
     hub: State<'_, IndexHub>,
     project_id: String,
     query: String,
     mask: String,
     search_id: u64,
+    session_id: Option<String>,
 ) -> Result<SearchOutput, String> {
-    let project = store
-        .get(&project_id)
-        .ok_or_else(|| "项目不存在".to_string())?;
-    let root = PathBuf::from(&project.path);
+    let root = super::project_root(&store, &manager, &project_id, session_id.as_deref())?;
     let hub = hub.fork();
     tokio::task::spawn_blocking(move || search_blocking(&hub, root, &query, &mask, search_id))
         .await

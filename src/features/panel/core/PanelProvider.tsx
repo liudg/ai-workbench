@@ -133,6 +133,7 @@ export function PanelProvider({
         projectId: project.projectId,
         projectPath: project.projectPath,
         sessionFiles: filesRef.current,
+        sessionId,
       });
     },
     [sessionId],

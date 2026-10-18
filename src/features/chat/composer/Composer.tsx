@@ -19,6 +19,7 @@ import { GoalStatusBar } from "./GoalStatusBar";
 import { runComposerPrimary } from "./composer-view";
 import { useComposerController } from "./useComposerController";
 import { ComposerContextRow } from "./GitBranchControl";
+import { useSessionWorktree } from "./WorktreeChoice";
 
 export function Composer({
   session,
@@ -30,6 +31,7 @@ export function Composer({
   anchorRef?: Ref<HTMLDivElement>;
 }) {
   const c = useComposerController(session, events);
+  const worktree = useSessionWorktree(session);
   const view = c.view;
   const notice = userFacingMessage(c.notice);
   const catalogNotice = userFacingMessage(c.catalogNotice);
@@ -99,6 +101,8 @@ export function Composer({
           workContext={c.workContext}
           projectId={c.gitProject?.id ?? ""}
           projectName={c.gitProject?.name ?? ""}
+          sessionId={session.id}
+          worktree={worktree}
         />
         <TextSnippetPreview snippets={c.snippets} />
         <div

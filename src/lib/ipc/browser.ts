@@ -14,8 +14,8 @@ export const browserCommands: Pick<
   | "browserClose"
   | "onBrowserNotice"
 > = {
-  prepareBrowserFile: (projectId, path) =>
-    invoke<BrowserFile>("prepare_browser_file", { projectId, path }),
+  prepareBrowserFile: (projectId, path, sessionId) =>
+    invoke<BrowserFile>("prepare_browser_file", { projectId, path, sessionId: sessionId ?? null }),
   browserShow: (url, x, y, width, height) =>
     invoke("browser_show", { url, x, y, width, height }),
   browserBounds: (x, y, width, height) =>

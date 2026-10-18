@@ -16,10 +16,16 @@ function normalizeBranch(value: string | null | undefined): string | null {
 }
 
 /**
- * 当前项目是不是 git 仓库、检出了哪条分支。
- * 菜单打开时再读本地分支和未提交文件数。外部切换靠轮询跟上。
+ * 当前检出是不是 git 仓库、在哪条分支。
+ * `sessionId` 指向工作树时，读写都落在那棵检出上。
+ * 工作树自己的分支不写回项目芯片。
  */
-export function useGitBranch(projectId: string) {
+export function useGitBranch(
+  projectId: string,
+  scope?: { sessionId?: string; isolated?: boolean },
+) {
+  const sessionId = scope?.sessionId;
+  const isolated = Boolean(scope?.isolated);
   const [ready, setReady] = useState(false);
   const [isGit, setIsGit] = useState(false);
   const [branch, setBranch] = useState<string | null>(null);
@@ -39,27 +45,35 @@ export function useGitBranch(projectId: string) {
     if (!projectId) return;
     let cancel = false;
 
+    const stillCurrent = (seen: number) => {
+      if (cancel) return false;
+      return isolated || projectBranchStamp(projectId) === seen;
+    };
+    const remember = (value: string | null) => {
+      if (!isolated) rememberProjectBranch(projectId, value);
+    };
+
     const refresh = async () => {
       const seen = projectBranchStamp(projectId);
       try {
         const git = await backend.projectIsGit(projectId);
-        if (cancel || projectBranchStamp(projectId) !== seen) return;
+        if (!stillCurrent(seen)) return;
         if (!git) {
           readyRef.current = true;
           setReady(true);
           setIsGit(false);
           setBranch(null);
-          rememberProjectBranch(projectId, null);
+          remember(null);
           return;
         }
-        const value = await backend.projectBranch(projectId);
-        if (cancel || projectBranchStamp(projectId) !== seen) return;
+        const value = await backend.projectBranch(projectId, sessionId);
+        if (!stillCurrent(seen)) return;
         const next = normalizeBranch(value);
         readyRef.current = true;
         setReady(true);
         setIsGit(true);
         setBranch(next);
-        rememberProjectBranch(projectId, next);
+        remember(next);
       } catch {
         if (cancel || readyRef.current) return;
         readyRef.current = true;
@@ -86,7 +100,7 @@ export function useGitBranch(projectId: string) {
       window.removeEventListener("focus", onVisible);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [projectId]);
+  }, [isolated, projectId, sessionId]);
 
   const projectRef = useRef(projectId);
   projectRef.current = projectId;
@@ -96,8 +110,8 @@ export function useGitBranch(projectId: string) {
     const id = projectId;
     const seen = projectBranchStamp(id);
     try {
-      const snapshot = await backend.projectGitBranches(id);
-      if (projectRef.current !== id || projectBranchStamp(id) !== seen) return;
+      const snapshot = await backend.projectGitBranches(id, sessionId);
+      if (projectRef.current !== id || (!isolated && projectBranchStamp(id) !== seen)) return;
       setMenu(snapshot);
       setListError(null);
       const next = normalizeBranch(snapshot.current);
@@ -105,12 +119,12 @@ export function useGitBranch(projectId: string) {
       setIsGit(true);
       setReady(true);
       readyRef.current = true;
-      rememberProjectBranch(id, next);
+      if (!isolated) rememberProjectBranch(id, next);
     } catch (error) {
       if (projectRef.current !== id) return;
       setListError(userFacingMessage(error) ?? "无法读取分支");
     }
-  }, [projectId]);
+  }, [isolated, projectId, sessionId]);
 
   useEffect(() => {
     if (!menuActive || !projectId) return;
@@ -130,29 +144,29 @@ export function useGitBranch(projectId: string) {
 
   const checkout = useCallback(
     async (name: string) => {
-      await backend.projectCheckoutBranch(projectId, name);
+      await backend.projectCheckoutBranch(projectId, name, sessionId);
       const next = normalizeBranch(name);
       setBranch(next);
-      rememberProjectBranch(projectId, next);
+      if (!isolated) rememberProjectBranch(projectId, next);
       setMenu((current) => (current ? { ...current, current: next } : current));
     },
-    [projectId],
+    [isolated, projectId, sessionId],
   );
 
   const create = useCallback(
     async (name: string) => {
       const trimmed = name.trim();
-      await backend.projectCreateBranch(projectId, trimmed);
+      await backend.projectCreateBranch(projectId, trimmed, sessionId);
       const next = normalizeBranch(trimmed);
       setBranch(next);
-      rememberProjectBranch(projectId, next);
+      if (!isolated) rememberProjectBranch(projectId, next);
       setMenu((current) => {
         if (!current) return current;
         const rest = current.branches.filter((branch) => branch !== trimmed);
         return { ...current, current: next, branches: [trimmed, ...rest] };
       });
     },
-    [projectId],
+    [isolated, projectId, sessionId],
   );
 
   return {

@@ -97,6 +97,8 @@ pub fn sessions_for_project(project: &Project, listed: &[SourcedEntry]) -> Vec<S
             created_at: item.entry.created_at,
             updated_at: item.entry.updated_at,
             archived: item.entry.archived,
+            workdir: None,
+            worktree_branch: None,
         })
         .collect();
     sessions.sort_by_key(|session| std::cmp::Reverse(session.updated_at));

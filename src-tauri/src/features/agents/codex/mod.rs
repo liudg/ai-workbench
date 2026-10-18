@@ -189,6 +189,22 @@ impl AgentAdapter for CodexCliAdapter {
         result.map_err(AgentError::Runtime)
     }
 
+    fn prepare_worktree(
+        &self,
+        source: &std::path::Path,
+    ) -> Result<crate::features::agents::PreparedWorktree, AgentError> {
+        let root = crate::features::git::codex_worktree_root();
+        let checkout = crate::features::git::create_codex_checkout(source, &root)
+            .map_err(AgentError::Runtime)?;
+        Ok(crate::features::agents::PreparedWorktree {
+            cwd: checkout.cwd.to_string_lossy().to_string(),
+            branch: checkout.branch,
+            cli_name: None,
+            source: source.to_string_lossy().to_string(),
+            rollback_root: checkout.root.to_string_lossy().to_string(),
+        })
+    }
+
     async fn start_session(
         &self,
         ctx: SessionContext,
