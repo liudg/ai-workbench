@@ -694,14 +694,19 @@ mod tests {
     #[test]
     fn desktop_root_must_be_absolute() {
         let home = scratch("home");
+        let absolute = if cfg!(windows) {
+            "C:/codex-worktrees"
+        } else {
+            "/var/codex-worktrees"
+        };
         fs::write(
             home.join("config.toml"),
-            "[desktop]\ngit-worktree-root = \"/var/codex-worktrees\"\n",
+            format!("[desktop]\ngit-worktree-root = \"{absolute}\"\n"),
         )
         .unwrap();
         assert_eq!(
             configured_worktree_root(&home).unwrap(),
-            PathBuf::from("/var/codex-worktrees")
+            PathBuf::from(absolute)
         );
         fs::write(
             home.join("config.toml"),
