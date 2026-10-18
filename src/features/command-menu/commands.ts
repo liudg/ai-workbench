@@ -1,3 +1,5 @@
+import { NEXT_ATTENTION_COPY } from "../attention/next-session.ts";
+import { THREAD_FIND_COPY } from "../chat/find/copy.ts";
 import { showsFileChanges } from "../changes-model/capabilities.ts";
 import { sessionAgents } from "../../lib/agents.ts";
 import type { AgentInstallation, AgentKind, ChangeCapabilities } from "../../types/index.ts";
@@ -24,6 +26,8 @@ export type PaletteCommandId =
   | "open-folder"
   | "settings"
   | "search-chats"
+  | "find-in-thread"
+  | "next-attention"
   | "search-files"
   | "archive"
   | "rename"
@@ -71,6 +75,7 @@ export interface PaletteInput {
   canNewThread: boolean;
   canStandalone: boolean;
   canSearchFiles: boolean;
+  canFind: boolean;
 }
 
 const GROUP_ORDER: readonly CommandGroup[] = [
@@ -123,6 +128,10 @@ function commandItems(input: PaletteInput): PaletteRow[] {
   if (input.canNewThread) rows.push(command("new-thread", COPY.newThread, "thread", COPY.shortcutNew));
   if (input.canStandalone) rows.push(command("new-standalone", COPY.newStandalone, "thread"));
   rows.push(command("search-chats", COPY.searchChats, "thread"));
+  if (input.canFind) {
+    rows.push(command("find-in-thread", THREAD_FIND_COPY.find, "thread", THREAD_FIND_COPY.shortcut));
+  }
+  rows.push(command("next-attention", NEXT_ATTENTION_COPY.command, "navigation"));
   if (active && input.caps?.supports_rename === true) {
     rows.push(command("rename", COPY.rename, "thread"));
   }

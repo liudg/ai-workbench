@@ -25,6 +25,8 @@ import {
   timelineChunkKey,
   timelineStatus,
 } from "./timeline";
+import { FindBar } from "../find/FindBar";
+import { useThreadFind } from "../find/use-thread-find";
 import { useTimelineFollow } from "./useTimelineFollow";
 
 export function ChatView({
@@ -92,9 +94,22 @@ export function ChatView({
     onPointerDown,
     pausePinForToggle,
   } = useTimelineFollow(session.id, layoutKey);
+  const find = useThreadFind(scrollRef, layoutKey);
 
   return (
     <>
+      {find.open ? (
+        <FindBar
+          query={find.query}
+          count={find.count}
+          index={find.index}
+          inputRef={find.inputRef}
+          onQuery={find.onQuery}
+          onNext={find.onNext}
+          onPrevious={find.onPrevious}
+          onClose={find.close}
+        />
+      ) : null}
       <div
         ref={scrollRef}
         onScroll={onTimelineScroll}

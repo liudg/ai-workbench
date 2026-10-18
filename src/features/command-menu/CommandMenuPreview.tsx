@@ -42,6 +42,7 @@ export default function CommandMenuPreview() {
     canNewThread: true,
     canStandalone: true,
     canSearchFiles: params.get("caps") !== "off",
+    canFind: params.get("find") !== "off",
   });
   const safeActive = rows.length === 0 ? 0 : Math.min(active, rows.length - 1);
 

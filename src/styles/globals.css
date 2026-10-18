@@ -368,3 +368,14 @@ button.answer-file {
 [data-mode-chip]:focus-visible [data-mode-tooltip] {
   opacity: 1;
 }
+
+/* 会话内查找。当前命中更深，其余命中浅一档。 */
+mark[data-thread-find-mark] {
+  border-radius: 2px;
+  background-color: rgba(240, 160, 74, 0.45);
+  color: inherit;
+}
+mark[data-thread-find-mark="current"] {
+  background-color: #f0a04a;
+  color: #1a1208;
+}
