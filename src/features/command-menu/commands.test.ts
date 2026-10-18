@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { THREAD_FIND_COPY } from "../chat/find/copy.ts";
 import type { AgentInstallation, AgentKind } from "../../types/index.ts";
 import { COMMAND_MENU_COPY as COPY } from "./copy.ts";
 import {
@@ -52,6 +53,7 @@ const enabled: PaletteInput = {
   canNewThread: true,
   canStandalone: true,
   canSearchFiles: true,
+  canFind: true,
 };
 
 function ids(input: PaletteInput) {
@@ -111,6 +113,23 @@ test("archived sessions leave the recent list and stay searchable", () => {
   assert.equal(rows.some((row) => row.group === "pinned" && row.sessionId === "pin"), true);
   const found = buildPaletteRows({ ...enabled, sessions, query: "归档" });
   assert.equal(found.some((row) => row.sessionId === "old" && row.group === "chats"), true);
+});
+
+test("find stays behind the open chat, and the next-attention command does not", () => {
+  const withChat = ids(enabled);
+  assert.equal(withChat.includes("find-in-thread"), true);
+  assert.equal(withChat.includes("next-attention"), true);
+  assert.equal(
+    buildPaletteRows(enabled).find((row) => row.commandId === "find-in-thread")?.shortcut,
+    THREAD_FIND_COPY.shortcut,
+  );
+  const hidden = ids({ ...enabled, canFind: false });
+  assert.equal(hidden.includes("find-in-thread"), false);
+  assert.equal(hidden.includes("next-attention"), true);
+  const found = buildPaletteRows({ ...enabled, query: "查找" });
+  assert.equal(found.some((row) => row.commandId === "find-in-thread"), true);
+  const next = buildPaletteRows({ ...enabled, query: "下一个需要处理" });
+  assert.equal(next.some((row) => row.commandId === "next-attention"), true);
 });
 
 test("blank titles use the observed untitled label", () => {

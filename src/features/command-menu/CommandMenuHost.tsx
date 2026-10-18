@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { NEXT_ATTENTION_COPY, nextAttentionTarget } from "@/features/attention/next-session";
+import { OPEN_THREAD_FIND } from "@/features/chat/find/use-thread-find";
 import { FileSearchDialog } from "@/features/panel/files/FileSearchDialog";
 import { sessionChanges } from "@/features/changes-model/diff-parse";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
@@ -40,6 +42,9 @@ export function CommandMenuHost() {
   const catalogs = useWorkbench((s) => s.catalogs);
   const profiles = useWorkbench((s) => s.profiles);
 
+  const draftFocused = useWorkbench((s) =>
+    selectedProjectId ? Boolean(s.draftFocused[selectedProjectId]) : false,
+  );
   const project = projects.find((item) => item.id === selectedProjectId) ?? null;
   const sessionId = project ? (activeSessionId[project.id] ?? null) : null;
   const sessionList = project ? (sessions[project.id] ?? []) : [];
@@ -78,6 +83,7 @@ export function CommandMenuHost() {
     canNewThread: Boolean(agent && project && !project.standalone),
     canStandalone: Boolean(agent),
     canSearchFiles: Boolean(session && project),
+    canFind: Boolean(session) || draftFocused,
   };
   const rows = buildPaletteRows(input);
   const safeActive = rows.length === 0 ? 0 : Math.min(active, rows.length - 1);
@@ -117,6 +123,21 @@ export function CommandMenuHost() {
       setDrill("chats");
       setQuery("");
       setActive(0);
+      return;
+    }
+    if (id === "find-in-thread") {
+      close();
+      window.dispatchEvent(new CustomEvent(OPEN_THREAD_FIND));
+      return;
+    }
+    if (id === "next-attention") {
+      const target = nextAttentionTarget(attentionInput(state));
+      close();
+      if (!target) {
+        flashSidebarNotice(NEXT_ATTENTION_COPY.none);
+        return;
+      }
+      void state.selectSession(target.projectId, target.id);
       return;
     }
     if (id === "search-files" && project && session) {
@@ -302,6 +323,33 @@ export function CommandMenuHost() {
       ) : null}
     </>
   );
+}
+
+function attentionInput(state: ReturnType<typeof useWorkbench.getState>) {
+  const projectId = state.selectedProjectId;
+  const draftOn = projectId ? Boolean(state.draftFocused[projectId]) : false;
+  const currentId = !projectId || draftOn ? null : (state.activeSessionId[projectId] ?? null);
+  return {
+    projects: state.projects,
+    pinnedProjectIds: state.pinnedProjectIds,
+    sessions: state.sessions,
+    pinnedSessionIds: state.pinnedSessionIds,
+    events: state.events,
+    eventsReady: state.eventsReady,
+    unreadFinishedIds: state.unreadFinishedIds,
+    currentId,
+  };
+}
+
+function flashSidebarNotice(text: string) {
+  const token = Date.now();
+  useWorkbench.setState({ sidebarNotice: { kind: "info", text, token } });
+  window.setTimeout(() => {
+    const current = useWorkbench.getState().sidebarNotice;
+    if (current?.kind === "info" && current.token === token) {
+      useWorkbench.setState({ sidebarNotice: null });
+    }
+  }, 4000);
 }
 
 function sessionCaps(

@@ -51,6 +51,12 @@ const GitBranchPreview = import.meta.env.DEV
 const PlanChoicePreview = import.meta.env.DEV
   ? lazy(() => import("@/app/preview/PlanChoicePreview"))
   : null;
+const ThreadFindPreview = import.meta.env.DEV
+  ? lazy(() => import("@/app/preview/ThreadFindPreview"))
+  : null;
+const AttentionPreview = import.meta.env.DEV
+  ? lazy(() => import("@/app/preview/AttentionPreview"))
+  : null;
 
 export default function App() {
   const preview = new URLSearchParams(window.location.search).get("preview");
@@ -156,6 +162,20 @@ export default function App() {
     return (
       <Suspense fallback={null}>
         <PlanChoicePreview />
+      </Suspense>
+    );
+  }
+  if (ThreadFindPreview && preview === "thread-find") {
+    return (
+      <Suspense fallback={null}>
+        <ThreadFindPreview />
+      </Suspense>
+    );
+  }
+  if (AttentionPreview && preview === "attention") {
+    return (
+      <Suspense fallback={null}>
+        <AttentionPreview />
       </Suspense>
     );
   }
