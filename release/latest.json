@@ -1,11 +1,11 @@
 {
-  "version": "0.2.67",
-  "notes": "0.2.67：回合状态行固定在消息块最前。",
-  "pub_date": "2026-10-17T23:55:52.353Z",
+  "version": "0.2.68",
+  "notes": "0.2.68：会话内查找、下一个需要处理的聊天、侧栏切换和文件跳转，以及在 Git 工作树里运行会话。",
+  "pub_date": "2026-10-18T13:17:33.912Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTMC9XZWh0U0NRakhvSUcyT003dFlRR0cvRmptTXFmVWQ3cDd1K0crUUFCdDRLSDdFKzJKQkNtMnlnV2dxSnl3UmFuMkpmaGgyL0VYa29HL2dRaGVzbUhLaEJHTEtkU0FrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyMjgxMzM3CWZpbGU6QUkgV29ya2JlbmNoXzAuMi42N194NjQtc2V0dXAuZXhlCXZlcnNpb246MC4yLjY3ClNUaG9GdFZPU0NodGpRUzR0Qi9QOG41WWIvSTU3MytudHU5WTI0eUZmRWdqaFE1TFZjNDlGWTRxM3ljb3VLU0Z2bHAyR05RWEhPNGliRFFpSGdiZUNnPT0K",
-      "url": "https://github.com/OWNER/REPO/releases/download/v0.2.67/AI%20Workbench_0.2.67_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTMC9XZWh0U0NRakF5RDBwN05saGJaRUtqSW5SSkRBR1U4M2hTOEcxcTVOazR6U29VemV2dmdIb2lTbTBNdW1sVTN5SlBkUmxHWUlub0xYY1A5YVF3Tml4ZlltR1VOSEFnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyMzI5NDM3CWZpbGU6QUkgV29ya2JlbmNoXzAuMi42OF94NjQtc2V0dXAuZXhlCXZlcnNpb246MC4yLjY4CmlhWWxNMFFoNzJTT25Vd2pYRkM4SFVaTVlNWGI1VUZxalgyUDA4OWMxNm5ldloxUnZDbStvaGVxNUpLM09wYkRrYTdHYUxlcHFxRTN6UVVpcHRHYkRRPT0K",
+      "url": "https://github.com/OWNER/REPO/releases/download/v0.2.68/AI%20Workbench_0.2.68_x64-setup.exe"
     }
   }
 }
