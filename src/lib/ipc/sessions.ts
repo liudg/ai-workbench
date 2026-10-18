@@ -24,6 +24,7 @@ export const sessionCommands: Pick<
   | "sessionWorktreeDeletePreview"
   | "createSession"
   | "createSessionAndSend"
+  | "cancelSessionStart"
   | "discardUnsentSession"
   | "cachedAgentCatalog"
   | "agentPermissionMenu"
@@ -81,6 +82,7 @@ export const sessionCommands: Pick<
     }),
   createSessionAndSend: (input: CreateAndSendInput) =>
     invoke<CreateAndSendResult>("create_session_and_send", { input }),
+  cancelSessionStart: (projectId) => invoke("cancel_session_start", { projectId }),
   discardUnsentSession: (sessionId) =>
     invoke("discard_unsent_session", { sessionId }),
   cachedAgentCatalog: (agent) =>

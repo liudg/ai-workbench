@@ -58,7 +58,18 @@ impl Shared {
         if let Some(child) = self.child.lock().unwrap().as_mut() {
             let _ = child.start_kill();
         }
+        self.fail_waiters("已停止");
         emit_status(&self.events, SessionStatus::Stopped);
+    }
+
+    /// 进程被停掉或自己退出时，正在等的 `thread/start` 要马上失败，不能再干等超时。
+    pub(super) fn fail_waiters(&self, message: &str) {
+        let pending = std::mem::take(&mut *self.waiters.lock().unwrap());
+        for (_, tx) in pending {
+            let _ = tx.send(json!({
+                "error": { "code": -1, "message": message }
+            }));
+        }
     }
 
     /// app-server `TurnInterruptParams` 要 `threadId` 和当前 `turnId`。
@@ -102,6 +113,7 @@ impl Shared {
     }
 
     pub(super) fn on_exit(&self) {
+        self.fail_waiters("Codex CLI 进程已退出。");
         if self.user_stop.load(Ordering::SeqCst) || self.closed.swap(true, Ordering::SeqCst) {
             return;
         }

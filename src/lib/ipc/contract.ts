@@ -101,6 +101,8 @@ export interface Backend {
   ): Promise<Session>;
   /** 创建会话、写上沙箱/模型和第一条消息。创建失败则没有会话；消息失败时会话仍在。 */
   createSessionAndSend(input: CreateAndSendInput): Promise<CreateAndSendResult>;
+  /** 停下还没建立完的会话，并撤掉这次刚建的工作树。 */
+  cancelSessionStart(projectId: string): Promise<void>;
   /** 撤掉还没有用户消息的会话。用于创建过程中取消。 */
   discardUnsentSession(sessionId: string): Promise<void>;
   /** 这个 Agent 上一次成功的模型目录。没有缓存时拒绝，不启动 CLI。 */

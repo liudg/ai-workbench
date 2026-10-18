@@ -7,11 +7,12 @@ mod worktree;
 pub use branch::{
     checkout_local_branch, create_and_checkout_branch, local_branch_menu, GitBranchMenu,
 };
+#[allow(unused_imports)]
 pub use worktree::{
-    bind_codex_thread, codex_worktree_root, create_codex_checkout, delete_preview,
-    linked_checkout, plan_claude_worktree, record_owned_worktree, remove_checkout,
-    remove_owned_worktree, repo_has_commit, session_worktree, source_revision, Checkout,
-    DeletePreview, OwnedMarker,
+    bind_codex_thread, cancel_worktree_start, codex_worktree_root, create_codex_checkout,
+    delete_preview, linked_checkout, note_start_child, plan_claude_worktree, record_owned_worktree,
+    remove_checkout, remove_owned_worktree, repo_has_commit, session_worktree, source_revision,
+    start_was_cancelled, Checkout, DeletePreview, OwnedMarker, StartChild, WorktreeStart,
 };
 
 use std::path::Path;

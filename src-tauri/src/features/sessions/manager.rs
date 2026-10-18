@@ -286,6 +286,28 @@ impl SessionManager {
         writable_roots: &[String],
         worktree: bool,
     ) -> Result<Session, String> {
+        let startup = git::WorktreeStart::begin(&project.id)?;
+        startup
+            .drive(self.start_new_session_guarded(
+                project,
+                agent,
+                access_mode,
+                withhold_sidebar,
+                writable_roots,
+                worktree,
+            ))
+            .await
+    }
+
+    async fn start_new_session_guarded(
+        &self,
+        project: &Project,
+        agent: AgentKind,
+        access_mode: Option<String>,
+        withhold_sidebar: bool,
+        writable_roots: &[String],
+        worktree: bool,
+    ) -> Result<Session, String> {
         let adapter = adapter_for(agent);
         let caps = adapter.capabilities();
         let prepared = if worktree {
@@ -323,6 +345,11 @@ impl SessionManager {
                 return Err(err.to_string());
             }
         };
+        if git::start_was_cancelled() {
+            let _ = handle.stop().await;
+            rollback_prepared(prepared.as_ref());
+            return Err("已停止".into());
+        }
         let session_id = match handle.native_id().filter(|id| !id.is_empty()) {
             Some(id) => session_key(agent, &id),
             None if caps.supports_resume => {

@@ -122,6 +122,12 @@ pub struct CreateAndSendInput {
     worktree: bool,
 }
 
+/// 停止还没建立完的会话。创建命令自己返回后，前端再解锁草稿。
+#[tauri::command]
+pub fn cancel_session_start(project_id: String) {
+    crate::features::git::cancel_worktree_start(&project_id);
+}
+
 #[tauri::command]
 pub async fn create_session_and_send<R: Runtime>(
     app: AppHandle<R>,
