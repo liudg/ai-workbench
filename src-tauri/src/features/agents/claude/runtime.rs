@@ -118,6 +118,7 @@ pub async fn open(
         worktree: worktree_name,
     });
     let mut child = process::spawn(&bin, &args, &project)?;
+    let _tracked = child.id().map(crate::features::git::note_start_child);
     let stdin = child
         .stdin
         .take()

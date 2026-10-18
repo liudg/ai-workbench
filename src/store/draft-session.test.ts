@@ -320,6 +320,53 @@ test("cancelling before the first message lands unlocks the draft and does not s
   assert.deepEqual(settled.patch.sessions[projectId], []);
 });
 
+test("a failed worktree start unlocks the draft and shows the error", () => {
+  const projectId = "wt-fail";
+  const current = draft({
+    projectId,
+    phase: "creating",
+    text: "只回复一个字：好。不要改文件。",
+    worktree: true,
+  });
+  const settled = applyDraftSend(
+    carry(current),
+    projectId,
+    { ok: false, error: "git 超时", skipped: false },
+    [],
+    { dismissed: false, sentText: "只回复一个字：好。不要改文件。" },
+  );
+  assert.equal(settled.sent, false);
+  assert.equal(settled.restore, null);
+  assert.equal(settled.patch?.drafts[projectId]?.phase, "idle");
+  assert.equal(settled.patch?.drafts[projectId]?.worktree, true);
+  assert.equal(settled.patch?.drafts[projectId]?.text, "只回复一个字：好。不要改文件。");
+  assert.equal(settled.patch?.lastError, "git 超时");
+  assert.equal(settled.patch?.activeSessionId[projectId], undefined);
+});
+
+test("stopping a worktree start that fails unlocks the draft without an error", () => {
+  const projectId = "wt-stop";
+  const current = draft({
+    projectId,
+    phase: "creating",
+    text: "只回复一个字：好。不要改文件。",
+    worktree: true,
+    cancelRequested: true,
+  });
+  const settled = applyDraftSend(
+    carry(current),
+    projectId,
+    { ok: false, error: "已停止", skipped: false },
+    [],
+    { dismissed: true, sentText: "只回复一个字：好。不要改文件。" },
+  );
+  assert.equal(settled.sent, false);
+  assert.equal(settled.patch?.drafts[projectId]?.phase, "idle");
+  assert.equal(settled.patch?.drafts[projectId]?.cancelRequested, false);
+  assert.equal(settled.patch?.lastError, null);
+  assert.equal(settled.patch?.activeSessionId[projectId], undefined);
+});
+
 test("whitespace does not block an image-only first send", () => {
   const body = firstSendBody(draft({ text: "  \n" }), { text: "  \n", images: ["shot.png"] });
   assert.deepEqual(body.images, ["shot.png"]);

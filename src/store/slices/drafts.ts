@@ -187,6 +187,7 @@ export function createDraftSlice(
             : s.pendingStart,
         };
       });
+      void backend.cancelSessionStart(projectId).catch(() => undefined);
     },
     attachments: restored.attachments,
     textSnippets: restored.textSnippets,

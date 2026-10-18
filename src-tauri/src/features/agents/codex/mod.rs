@@ -244,6 +244,7 @@ impl AgentAdapter for CodexCliAdapter {
         let mut child = command.spawn().map_err(|e| {
             AgentError::Runtime(format!("无法启动 Codex CLI（{}）：{e}", bin.display()))
         })?;
+        let _tracked = child.id().map(crate::features::git::note_start_child);
         let stdin = child
             .stdin
             .take()
