@@ -21,6 +21,7 @@ import {
 } from "./git-branch";
 import { useComposerMenu } from "./useComposerMenu";
 import { useGitBranch } from "./useGitBranch";
+import { worktreeBranchMarker } from "./worktree-option";
 import { WorkContextPicker } from "./WorkContextPicker";
 import { WorktreeSessionLabel, WorktreeToggle } from "./WorktreeChoice";
 
@@ -45,13 +46,23 @@ export function ComposerContextRow({
     onToggle: () => void;
     liveLabel: string;
     liveTitle: string;
+    base?: string | null;
+    sha?: string | null;
   } | null;
 }) {
   const branch = useGitBranch(projectId, {
     sessionId,
     isolated: Boolean(worktree?.liveTitle),
   });
-  if (!workContext && !branch.visible && !worktree?.showToggle && !worktree?.liveLabel) return null;
+  const worktreeLabel = worktree?.liveTitle
+    ? worktreeBranchMarker({
+        liveBranch: branch.current,
+        base: worktree.base,
+        sha: worktree.sha,
+      })
+    : null;
+  const showBranch = worktree?.liveTitle ? Boolean(worktreeLabel) : branch.visible;
+  if (!workContext && !showBranch && !worktree?.showToggle && !worktree?.liveLabel) return null;
   return (
     <div
       className="mb-2 flex min-w-0 items-center gap-2 px-1"
@@ -65,10 +76,10 @@ export function ComposerContextRow({
       {worktree?.liveLabel ? (
         <WorktreeSessionLabel label={worktree.liveLabel} title={worktree.liveTitle} />
       ) : null}
-      {branch.visible ? (
+      {showBranch ? (
         <GitBranchChrome
           key={projectId}
-          label={branch.label}
+          label={worktreeLabel ?? branch.label}
           projectName={projectName}
           current={branch.current}
           branches={branch.branches}

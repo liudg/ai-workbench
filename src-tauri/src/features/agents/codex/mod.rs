@@ -194,14 +194,29 @@ impl AgentAdapter for CodexCliAdapter {
         source: &std::path::Path,
     ) -> Result<crate::features::agents::PreparedWorktree, AgentError> {
         let root = crate::features::git::codex_worktree_root();
+        let (base, sha) = crate::features::git::source_revision(source).map_err(AgentError::Runtime)?;
         let checkout = crate::features::git::create_codex_checkout(source, &root)
             .map_err(AgentError::Runtime)?;
+        if let Err(err) = crate::features::git::record_owned_worktree(
+            &checkout.cwd,
+            &crate::features::git::OwnedMarker {
+                root: checkout.root.clone(),
+                base: base.clone(),
+                sha: sha.clone(),
+                branch: None,
+            },
+        ) {
+            crate::features::git::remove_checkout(source, &checkout.root);
+            return Err(AgentError::Runtime(err));
+        }
         Ok(crate::features::agents::PreparedWorktree {
             cwd: checkout.cwd.to_string_lossy().to_string(),
-            branch: checkout.branch,
+            branch: None,
             cli_name: None,
             source: source.to_string_lossy().to_string(),
             rollback_root: checkout.root.to_string_lossy().to_string(),
+            base,
+            sha,
         })
     }
 

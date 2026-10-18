@@ -243,7 +243,7 @@ impl SessionManager {
             .start_session(ctx, tx)
             .await
             .map_err(|err| err.to_string())?;
-        let meta = Session {
+        let mut meta = Session {
             id: session_id,
             project_id: project.id.clone(),
             agent,
@@ -253,9 +253,15 @@ impl SessionManager {
             created_at: entry.created_at,
             updated_at: entry.updated_at,
             archived: entry.archived,
-            workdir: checkout.as_ref().map(|item| item.cwd.to_string_lossy().to_string()),
-            worktree_branch: checkout.as_ref().and_then(|item| item.branch.clone()),
+            workdir: None,
+            worktree_branch: None,
+            worktree_base: None,
+            worktree_sha: None,
+            worktree_owned: false,
         };
+        if let Some(checkout) = checkout.as_ref() {
+            apply_worktree(&mut meta, project, &checkout.cwd.to_string_lossy());
+        }
         self.install(meta, Some(handle), rx, false);
         Ok(())
     }
@@ -339,7 +345,23 @@ impl SessionManager {
         } else {
             format!("会话 {}", self.local_count(&project.id) + 1)
         };
-        let meta = Session {
+        if let Some(item) = prepared.as_ref() {
+            let cwd = std::path::Path::new(&item.cwd);
+            if let Err(err) = git::record_owned_worktree(
+                cwd,
+                &git::OwnedMarker {
+                    root: std::path::PathBuf::from(&item.rollback_root),
+                    base: item.base.clone(),
+                    sha: item.sha.clone(),
+                    branch: item.branch.clone(),
+                },
+            ) {
+                let _ = handle.stop().await;
+                rollback_prepared(prepared.as_ref());
+                return Err(err);
+            }
+        }
+        let mut meta = Session {
             id: session_id.clone(),
             project_id: project.id.clone(),
             agent,
@@ -349,9 +371,15 @@ impl SessionManager {
             created_at: now,
             updated_at: now,
             archived: false,
-            workdir: prepared.as_ref().map(|item| item.cwd.clone()),
-            worktree_branch: prepared.as_ref().and_then(|item| item.branch.clone()),
+            workdir: None,
+            worktree_branch: None,
+            worktree_base: None,
+            worktree_sha: None,
+            worktree_owned: false,
         };
+        if let Some(item) = prepared.as_ref() {
+            apply_worktree(&mut meta, project, &item.cwd);
+        }
         self.install(meta, Some(handle), rx, withhold_sidebar);
         for directory in &self.directories {
             if directory.kind() == agent {
@@ -1149,6 +1177,25 @@ impl SessionManager {
         Ok((agent, native, project))
     }
 
+    async fn session_cwd(&self, session_id: &str, native: &str, agent: AgentKind) -> String {
+        let from_entry = self
+            .entries
+            .lock()
+            .unwrap()
+            .get(session_id)
+            .and_then(|entry| entry.meta.workdir.clone())
+            .filter(|path| !path.trim().is_empty());
+        if let Some(path) = from_entry {
+            return path;
+        }
+        let (active, _) = self.listed().await;
+        active
+            .iter()
+            .find(|item| item.agent == agent && item.entry.native_id == native)
+            .map(|item| item.entry.cwd.clone())
+            .unwrap_or_default()
+    }
+
     pub async fn rename_session(
         &self,
         store: &ProjectStore,
@@ -1176,15 +1223,39 @@ impl SessionManager {
         Ok(())
     }
 
+    pub async fn worktree_delete_preview(
+        &self,
+        store: &ProjectStore,
+        session_id: &str,
+    ) -> Result<git::DeletePreview, String> {
+        let (agent, native, project) = self.locate_session(store, session_id).await?;
+        let cwd = self.session_cwd(session_id, &native, agent).await;
+        if cwd.is_empty() {
+            return Ok(git::DeletePreview { owned: false, dirty: false });
+        }
+        Ok(git::delete_preview(
+            std::path::Path::new(&project.path),
+            std::path::Path::new(&cwd),
+        ))
+    }
+
     pub async fn delete_session(
         &self,
         store: &ProjectStore,
         session_id: &str,
+        discard_worktree: bool,
+        force_worktree: bool,
     ) -> Result<(), String> {
         let (agent, native, project) = self.locate_session(store, session_id).await?;
         let adapter = adapter_for(agent);
         if !adapter.capabilities().supports_delete {
             return Err(format!("{} 不支持永久删除", adapter.display_name()));
+        }
+        if discard_worktree {
+            let cwd = self.session_cwd(session_id, &native, agent).await;
+            if !cwd.is_empty() {
+                git::remove_owned_worktree(std::path::Path::new(&project.path), std::path::Path::new(&cwd), force_worktree)?;
+            }
         }
         if let Err(first) = adapter.delete_thread(&native).await {
             let handle = self
@@ -1271,6 +1342,9 @@ impl SessionManager {
             archived: false,
             workdir: None,
             worktree_branch: None,
+            worktree_base: None,
+            worktree_sha: None,
+            worktree_owned: false,
         };
         // 父会话的 updated_at / activity_at 不动。打开分支走既有 resume。
         let _ = self.attach(&project, agent, &forked).await;
@@ -1278,6 +1352,17 @@ impl SessionManager {
         self.emit_changed(&project.id);
         Ok(session)
     }
+}
+
+fn apply_worktree(session: &mut Session, project: &Project, cwd: &str) {
+    let Some(info) = git::session_worktree(std::path::Path::new(&project.path), std::path::Path::new(cwd)) else {
+        return;
+    };
+    session.workdir = Some(info.cwd.to_string_lossy().to_string());
+    session.worktree_branch = info.branch;
+    session.worktree_base = info.base;
+    session.worktree_sha = info.sha;
+    session.worktree_owned = info.owned;
 }
 
 fn prepare_session_worktree(
@@ -1331,16 +1416,13 @@ fn claim_linked_worktrees(project: &Project, listed: &[SourcedEntry], sessions: 
         let Some(checkout) = linked_of(project, &item.entry.cwd) else {
             continue;
         };
-        let workdir = checkout.cwd.to_string_lossy().to_string();
-        let branch = checkout.branch.clone();
         if let Some(session) = sessions.iter_mut().find(|session| {
             session.agent == item.agent && session.native_id == item.entry.native_id
         }) {
-            session.workdir = Some(workdir);
-            session.worktree_branch = branch;
+            apply_worktree(session, project, &checkout.cwd.to_string_lossy());
             continue;
         }
-        sessions.push(Session {
+        let mut session = Session {
             id: session_key(item.agent, &item.entry.native_id),
             project_id: project.id.clone(),
             agent: item.agent,
@@ -1350,9 +1432,14 @@ fn claim_linked_worktrees(project: &Project, listed: &[SourcedEntry], sessions: 
             created_at: item.entry.created_at,
             updated_at: item.entry.updated_at,
             archived: item.entry.archived,
-            workdir: Some(workdir),
-            worktree_branch: branch,
-        });
+            workdir: None,
+            worktree_branch: None,
+            worktree_base: None,
+            worktree_sha: None,
+            worktree_owned: false,
+        };
+        apply_worktree(&mut session, project, &checkout.cwd.to_string_lossy());
+        sessions.push(session);
     }
 }
 

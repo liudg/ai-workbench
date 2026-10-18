@@ -54,13 +54,39 @@ pub async fn set_session_archived(
         .await
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorktreeDeletePreview {
+    pub owned: bool,
+    pub dirty: bool,
+}
+
+#[tauri::command]
+pub async fn session_worktree_delete_preview(
+    store: State<'_, ProjectStore>,
+    manager: State<'_, SessionManager>,
+    session_id: String,
+) -> Result<WorktreeDeletePreview, String> {
+    let preview = manager.worktree_delete_preview(&store, &session_id).await?;
+    Ok(WorktreeDeletePreview { owned: preview.owned, dirty: preview.dirty })
+}
+
 #[tauri::command]
 pub async fn delete_session(
     store: State<'_, ProjectStore>,
     manager: State<'_, SessionManager>,
     session_id: String,
+    discard_worktree: Option<bool>,
+    force_worktree: Option<bool>,
 ) -> Result<(), String> {
-    manager.delete_session(&store, &session_id).await
+    manager
+        .delete_session(
+            &store,
+            &session_id,
+            discard_worktree.unwrap_or(false),
+            force_worktree.unwrap_or(false),
+        )
+        .await
 }
 
 /// 草稿首发：创建、写入权限/模型/计划/目标，再发送第一条。

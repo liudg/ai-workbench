@@ -1,13 +1,18 @@
 import type { ReactNode } from "react";
 
 import { GitBranchChrome } from "@/features/chat/composer/GitBranchControl";
+import { worktreeBranchMarker } from "@/features/chat/composer/worktree-option";
 import { WorktreeSessionLabel, WorktreeToggle } from "@/features/chat/composer/WorktreeChoice";
+import { DeleteSessionDialog } from "@/features/sidebar/sessions/DeleteSessionDialog";
 
 /**
  * 开发预览。`?preview=worktree`。
- * 上面是有提交的 Git 项目草稿，下面是独立聊天。
+ * `scene=live` 只看运行中的分支标记，`scene=delete` 只看删除确认。
  */
 export default function WorktreePreview() {
+  const scene = new URLSearchParams(window.location.search).get("scene");
+  if (scene === "live") return <LiveMarker />;
+  if (scene === "delete") return <DirtyDelete />;
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-16 bg-[#0f0f0f] px-6 text-[#e8e8e8]">
       <section data-worktree-preview="shown" className="w-full max-w-[760px]">
@@ -37,22 +42,56 @@ export default function WorktreePreview() {
         </ComposerShell>
       </section>
       <section data-worktree-preview="live" className="w-full max-w-[760px]">
-        <ComposerShell>
-          <div className="mb-2 flex min-w-0 items-center gap-2 px-1" data-composer-context>
-            <WorktreeSessionLabel label="工作树 a1b2/demo" title="/tmp/codex/worktrees/a1b2/demo" />
-            <GitBranchChrome
-              label="HEAD"
-              projectName="demo"
-              current={null}
-              branches={["main"]}
-              dirtyFiles={null}
-              listError={null}
-              onCheckout={async () => undefined}
-              onCreate={async () => undefined}
-            />
-          </div>
-        </ComposerShell>
+        <LiveComposer />
       </section>
+    </div>
+  );
+}
+
+function LiveMarker() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-[#0f0f0f] px-6 text-[#e8e8e8]">
+      <section data-worktree-preview="live" className="w-full max-w-[760px]">
+        <LiveComposer />
+      </section>
+    </div>
+  );
+}
+
+function LiveComposer() {
+  const label =
+    worktreeBranchMarker({ liveBranch: null, base: "main", sha: "abcdef1234567890" }) ?? "main";
+  return (
+    <ComposerShell>
+      <div className="mb-2 flex min-w-0 items-center gap-2 px-1" data-composer-context>
+            <WorktreeSessionLabel label="工作树 a1b2/示例" title="/tmp/codex/worktrees/a1b2/示例" />
+        <GitBranchChrome
+          label={label}
+          projectName="demo"
+          current={null}
+          branches={["main"]}
+          dirtyFiles={null}
+          listError={null}
+          onCheckout={async () => undefined}
+          onCreate={async () => undefined}
+        />
+      </div>
+    </ComposerShell>
+  );
+}
+
+function DirtyDelete() {
+  return (
+    <div className="min-h-screen bg-[#0f0f0f] text-[#e8e8e8]" data-worktree-preview="delete">
+      <DeleteSessionDialog
+        open
+        dirtyWorktree
+        error={null}
+        onOpenChange={() => undefined}
+        onDelete={() => undefined}
+        onKeepWorktree={() => undefined}
+        onDiscardWorktree={() => undefined}
+      />
     </div>
   );
 }

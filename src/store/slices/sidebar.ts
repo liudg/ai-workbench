@@ -378,9 +378,12 @@ export function createSidebarSlice(set: WorkbenchSet, get: WorkbenchGet): Sideba
       }
     },
 
-    async deleteSession(projectId, sessionId) {
+    async deleteSession(projectId, sessionId, worktree) {
       try {
-        await backend.deleteSession(sessionId);
+        await backend.deleteSession(sessionId, {
+          discardWorktree: worktree?.discardWorktree ?? false,
+          forceWorktree: worktree?.forceWorktree ?? false,
+        });
         set((s) => {
           const activeSessionId = { ...s.activeSessionId };
           if (activeSessionId[projectId] === sessionId) delete activeSessionId[projectId];

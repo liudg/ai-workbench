@@ -157,12 +157,15 @@ impl AgentAdapter for ClaudeCodeAdapter {
         source: &std::path::Path,
     ) -> Result<crate::features::agents::PreparedWorktree, AgentError> {
         let plan = crate::features::git::plan_claude_worktree(source).map_err(AgentError::Runtime)?;
+        let (base, sha) = crate::features::git::source_revision(source).map_err(AgentError::Runtime)?;
         Ok(crate::features::agents::PreparedWorktree {
             cwd: plan.path.to_string_lossy().to_string(),
             branch: Some(plan.branch),
             cli_name: Some(plan.name),
             source: source.to_string_lossy().to_string(),
             rollback_root: plan.path.to_string_lossy().to_string(),
+            base,
+            sha,
         })
     }
 

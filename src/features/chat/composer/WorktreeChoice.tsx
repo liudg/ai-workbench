@@ -102,5 +102,7 @@ export function useSessionWorktree(session: Session) {
     onToggle: () => setDraftWorktree(session.id, !pressed),
     liveLabel: !draft && workdir ? worktreeCaption(workdir) : "",
     liveTitle: workdir,
+    base: session.worktree_base ?? null,
+    sha: session.worktree_sha ?? null,
   };
 }

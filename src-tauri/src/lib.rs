@@ -49,6 +49,7 @@ macro_rules! workbench_handler {
             $crate::features::ipc::sessions::rename_session,
             $crate::features::ipc::sessions::set_session_archived,
             $crate::features::ipc::sessions::delete_session,
+            $crate::features::ipc::sessions::session_worktree_delete_preview,
             $crate::features::ipc::sessions::create_session,
             $crate::features::ipc::sessions::create_session_and_send,
             $crate::features::ipc::sessions::discard_unsent_session,

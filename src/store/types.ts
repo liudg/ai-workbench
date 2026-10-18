@@ -71,7 +71,11 @@ export interface SidebarSlice {
   forkSession(projectId: string, sessionId: string): Promise<void>;
   togglePinnedSession(sessionId: string): void;
   archiveSession(projectId: string, sessionId: string, archived: boolean): Promise<boolean>;
-  deleteSession(projectId: string, sessionId: string): Promise<boolean>;
+  deleteSession(
+    projectId: string,
+    sessionId: string,
+    worktree?: { discardWorktree: boolean; forceWorktree: boolean },
+  ): Promise<boolean>;
 }
 
 export interface WorkspaceSlice {

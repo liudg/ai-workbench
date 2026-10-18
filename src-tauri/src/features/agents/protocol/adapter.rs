@@ -24,8 +24,12 @@ pub struct PreparedWorktree {
     pub branch: Option<String>,
     pub cli_name: Option<String>,
     pub source: String,
-    /// 创建失败时撤掉的检出根。会话结束后不删。
+    /// 创建失败时撤掉的检出根。会话结束不删；删除会话时只删有记录的检出。
     pub rollback_root: String,
+    /// 创建时所在的分支。源目录是分离头指针时为空。
+    pub base: Option<String>,
+    /// 创建时的提交。
+    pub sha: String,
 }
 
 /// 一种 Agent CLI。负责按项目环境启动 [`AgentSession`]，不持有会话列表。

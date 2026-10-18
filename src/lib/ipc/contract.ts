@@ -88,7 +88,12 @@ export interface Backend {
   forkSession(sessionId: string): Promise<Session>;
   renameSession(sessionId: string, name: string): Promise<void>;
   setSessionArchived(sessionId: string, archived: boolean): Promise<void>;
-  deleteSession(sessionId: string): Promise<void>;
+  deleteSession(
+    sessionId: string,
+    options?: { discardWorktree?: boolean; forceWorktree?: boolean },
+  ): Promise<void>;
+  /** 删除任务前，看这份工作树是不是工作台建的、里面还有没有未保存的改动。 */
+  sessionWorktreeDeletePreview(sessionId: string): Promise<{ owned: boolean; dirty: boolean }>;
   createSession(
     projectId: string,
     agent?: AgentKind,

@@ -2,6 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { FileSearchDialog } from "@/features/panel/files/FileSearchDialog";
 import { sessionChanges } from "@/features/changes-model/diff-parse";
+import { loadWorktreeDeletePreview } from "@/lib/worktree-delete-preview";
+import {
+  worktreeDeleteFlags,
+  worktreeDeleteIsDirty,
+  type WorktreeDeletePreview,
+} from "@/lib/worktree-delete";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { useWorkbench } from "@/store";
 import { STANDALONE_DRAFT_ID } from "@/store/standalone";
@@ -28,6 +34,7 @@ export function CommandMenuHost() {
   const [renameTitle, setRenameTitle] = useState("");
   const [renameError, setRenameError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deletePreview, setDeletePreview] = useState<WorktreeDeletePreview | null | undefined>(undefined);
   const [fileSearchProjectId, setFileSearchProjectId] = useState<string | null>(null);
 
   const projects = useWorkbench((s) => s.projects);
@@ -148,7 +155,9 @@ export function CommandMenuHost() {
     }
     if (id === "delete") {
       setDeleteError(null);
+      setDeletePreview(undefined);
       setDrill("delete");
+      void loadWorktreeDeletePreview(session.id).then(setDeletePreview);
       return;
     }
     if (id === "toggle-files") {
@@ -245,9 +254,10 @@ export function CommandMenuHost() {
     });
   };
 
-  const confirmDelete = () => {
-    if (!session || !project) return;
-    void useWorkbench.getState().deleteSession(project.id, session.id).then((ok) => {
+  const confirmDelete = (action: "delete" | "keep-worktree" | "discard-worktree") => {
+    if (!session || !project || deletePreview === undefined) return;
+    const flags = worktreeDeleteFlags(action, deletePreview);
+    void useWorkbench.getState().deleteSession(project.id, session.id, flags).then((ok) => {
       if (ok) close();
       else setDeleteError(COPY.deleteError);
     });
@@ -264,6 +274,8 @@ export function CommandMenuHost() {
           renameTitle={renameTitle}
           renameError={renameError}
           deleteError={deleteError}
+          dirtyWorktree={worktreeDeleteIsDirty(deletePreview ?? null)}
+          deleteReady={deletePreview !== undefined}
           onQuery={(value) => {
             setQuery(value);
             setActive(0);
@@ -280,7 +292,9 @@ export function CommandMenuHost() {
           }}
           onRenameTitle={setRenameTitle}
           onRenameSubmit={submitRename}
-          onDeleteConfirm={confirmDelete}
+          onDeleteConfirm={() => confirmDelete("delete")}
+          onKeepWorktree={() => confirmDelete("keep-worktree")}
+          onDiscardWorktree={() => confirmDelete("discard-worktree")}
         />
       ) : null}
       {fileSearchProjectId ? (

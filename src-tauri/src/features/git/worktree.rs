@@ -216,8 +216,8 @@ pub fn plan_claude_worktree(source: &Path) -> Result<ClaudeWorktreePlan, String>
     })
 }
 
-/// 创建失败时撤掉半成品。会话结束后不调用：Codex CLI 关闭了自动清理，
-/// Claude 的 `--print` 也不会在退出时删工作树。
+/// 创建失败时撤掉半成品。会话结束不调用。
+/// Codex 官方在会话结束或删除时怎么清理工作树，本仓库资料里没有确认，标为未观察。
 pub fn remove_checkout(source: &Path, checkout_root: &Path) {
     let root_arg = checkout_root.to_string_lossy().to_string();
     let _ = git_status(source, &["worktree", "remove", "--force", &root_arg]);
@@ -256,6 +256,242 @@ pub fn bind_codex_thread(cwd: &Path, thread_id: &str) -> Result<(), String> {
     file.write_all(body.to_string().as_bytes())
         .map_err(|err| format!("无法写入工作树记录: {err}"))?;
     Ok(())
+}
+
+/// 工作台自己创建工作树时写下的记录。没有这份文件的检出不当作工作台的工作树。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OwnedMarker {
+    pub root: PathBuf,
+    pub base: Option<String>,
+    pub sha: String,
+    pub branch: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionWorktree {
+    pub cwd: PathBuf,
+    pub branch: Option<String>,
+    pub base: Option<String>,
+    pub sha: Option<String>,
+    pub owned: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DeletePreview {
+    pub owned: bool,
+    pub dirty: bool,
+}
+
+const MARKER_NAME: &str = "ai-workbench-worktree.json";
+
+/// 源目录当时的分支和提交。分离头指针没有分支名。
+pub fn source_revision(source: &Path) -> Result<(Option<String>, String), String> {
+    let base = current_branch(source)?;
+    let sha = git_stdout(
+        source,
+        &[
+            "rev-parse",
+            "--verify",
+            "--end-of-options",
+            "HEAD^{commit}",
+        ],
+    )?;
+    Ok((base.filter(|name| name != "HEAD"), sha))
+}
+
+pub fn record_owned_worktree(cwd: &Path, marker: &OwnedMarker) -> Result<(), String> {
+    if marker.sha.trim().len() < 7 {
+        return Err("没有提交号".into());
+    }
+    let path = marker_path(cwd)?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|err| format!("无法记录工作树: {err}"))?;
+    }
+    let body = serde_json::json!({
+        "version": 1,
+        "base": marker.base.as_ref().map(|item| item.trim()).filter(|item| !item.is_empty()),
+        "sha": marker.sha.trim(),
+        "branch": marker.branch.as_ref().map(|item| item.trim()).filter(|item| !item.is_empty()),
+        "root": marker.root.to_string_lossy(),
+    });
+    fs::write(&path, body.to_string()).map_err(|err| format!("无法记录工作树: {err}"))
+}
+
+/// 这个检出是不是本仓库的链接工作树，以及工作台有没有记录过它。
+pub fn session_worktree(project: &Path, cwd: &Path) -> Option<SessionWorktree> {
+    let checkout = linked_checkout(project, cwd).ok().flatten()?;
+    let marker = read_marker(&checkout.cwd).filter(|item| same_path(&item.root, &checkout.root));
+    let owned = marker.is_some() && !points_at_main(project, &checkout);
+    let base = marker.as_ref().and_then(|item| item.base.clone());
+    let sha = marker
+        .as_ref()
+        .map(|item| item.sha.clone())
+        .or_else(|| head_sha(&checkout.cwd).ok());
+    Some(SessionWorktree {
+        cwd: checkout.cwd,
+        branch: checkout.branch,
+        base,
+        sha,
+        owned,
+    })
+}
+
+pub fn delete_preview(project: &Path, cwd: &Path) -> DeletePreview {
+    let Some(info) = session_worktree(project, cwd) else {
+        return DeletePreview { owned: false, dirty: false };
+    };
+    if !info.owned {
+        return DeletePreview { owned: false, dirty: false };
+    }
+    let dirty = worktree_is_dirty(&info.cwd, info.base.as_deref(), project);
+    DeletePreview { owned: true, dirty }
+}
+
+/// 只删除带记录、且不是主检出的链接工作树。`force` 用于用户确认过未保存改动。
+/// 返回 false 表示这份目录不是工作台的工作树，什么都没动。
+pub fn remove_owned_worktree(project: &Path, cwd: &Path, force: bool) -> Result<bool, String> {
+    let Some(checkout) = linked_checkout(project, cwd).ok().flatten() else {
+        return Ok(false);
+    };
+    if points_at_main(project, &checkout) {
+        return Ok(false);
+    }
+    let Some(marker) = read_marker(&checkout.cwd).filter(|item| same_path(&item.root, &checkout.root)) else {
+        return Ok(false);
+    };
+    let root_arg = checkout.root.to_string_lossy().to_string();
+    let mut args = vec!["worktree", "remove"];
+    if force {
+        args.push("--force");
+    }
+    args.push(&root_arg);
+    git_status(project, &args)?;
+    if checkout.root.exists() {
+        if let Ok(repo) = repository_root(project) {
+            let _ = git_status(&repo, &args);
+        }
+    }
+    if checkout.root.exists() {
+        return Err("工作树没有删掉".into());
+    }
+    if let Some(parent) = checkout.root.parent() {
+        let _ = fs::remove_dir(parent);
+    }
+    delete_recorded_branch(project, marker.branch.as_deref(), marker.base.as_deref());
+    Ok(true)
+}
+
+fn points_at_main(project: &Path, checkout: &Checkout) -> bool {
+    if same_path(&checkout.root, project) || same_path(&checkout.cwd, project) {
+        return true;
+    }
+    repository_root(project)
+        .ok()
+        .is_some_and(|repo| same_path(&repo, &checkout.root))
+}
+
+fn worktree_is_dirty(cwd: &Path, base: Option<&str>, project: &Path) -> bool {
+    match status_porcelain(cwd) {
+        Ok(text) if !text.trim().is_empty() => return true,
+        Err(_) => return true,
+        Ok(_) => {}
+    }
+    match unmerged_count(cwd, base, project) {
+        Ok(count) => count > 0,
+        Err(_) => true,
+    }
+}
+
+fn status_porcelain(cwd: &Path) -> Result<String, String> {
+    let output = git_output(cwd, &["status", "--porcelain", "--untracked-files=normal"])?;
+    if !output.status.success() {
+        return Err(git_failure(&output, "无法读取工作树状态"));
+    }
+    Ok(crate::encoding::decode_child_bytes(&output.stdout).into_owned())
+}
+
+fn unmerged_count(cwd: &Path, base: Option<&str>, project: &Path) -> Result<u32, String> {
+    let target = if let Some(name) = base.map(str::trim).filter(|name| !name.is_empty()) {
+        let spec = format!("refs/heads/{name}");
+        let verified = git_output(cwd, &["rev-parse", "--verify", "--quiet", &spec])?;
+        if verified.status.success() {
+            spec
+        } else {
+            git_stdout(project, &["rev-parse", "--verify", "HEAD^{commit}"])?
+        }
+    } else {
+        git_stdout(project, &["rev-parse", "--verify", "HEAD^{commit}"])?
+    };
+    let range = format!("{target}..HEAD");
+    let text = git_stdout(cwd, &["rev-list", "--count", &range])?;
+    text.parse::<u32>().map_err(|_| "无法比较提交".to_string())
+}
+
+fn delete_recorded_branch(repo: &Path, branch: Option<&str>, base: Option<&str>) {
+    let Some(branch) = branch.map(str::trim).filter(|name| name.starts_with("worktree-")) else {
+        return;
+    };
+    if base.is_some_and(|name| name == branch) {
+        return;
+    }
+    if current_branch(repo).ok().flatten().as_deref() == Some(branch) {
+        return;
+    }
+    let _ = git_status(repo, &["branch", "-D", branch]);
+}
+
+fn read_marker(cwd: &Path) -> Option<OwnedMarker> {
+    let path = marker_path(cwd).ok()?;
+    let raw = fs::read_to_string(path).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    if value.get("version").and_then(|item| item.as_u64()) != Some(1) {
+        return None;
+    }
+    let sha = value.get("sha").and_then(|item| item.as_str())?.trim().to_string();
+    if sha.len() < 7 {
+        return None;
+    }
+    let root = PathBuf::from(value.get("root").and_then(|item| item.as_str())?.trim());
+    if root.as_os_str().is_empty() {
+        return None;
+    }
+    let base = value
+        .get("base")
+        .and_then(|item| item.as_str())
+        .map(str::trim)
+        .filter(|item| !item.is_empty() && *item != "HEAD")
+        .map(str::to_string);
+    let branch = value
+        .get("branch")
+        .and_then(|item| item.as_str())
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+        .map(str::to_string);
+    Some(OwnedMarker { root, base, sha, branch })
+}
+
+fn marker_path(cwd: &Path) -> Result<PathBuf, String> {
+    let relative = git_stdout(
+        cwd,
+        &[
+            "rev-parse",
+            "--path-format=absolute",
+            "--git-path",
+            MARKER_NAME,
+        ],
+    )?;
+    Ok(PathBuf::from(relative))
+}
+
+fn head_sha(cwd: &Path) -> Result<String, String> {
+    git_stdout(cwd, &["rev-parse", "--verify", "HEAD^{commit}"])
+}
+
+fn same_path(left: &Path, right: &Path) -> bool {
+    match (dunce_or_canonicalize(left), dunce_or_canonicalize(right)) {
+        (Ok(left), Ok(right)) => left == right,
+        _ => left == right,
+    }
 }
 
 fn allocate_bucket(root: &Path) -> Result<PathBuf, String> {
@@ -474,5 +710,90 @@ mod tests {
         .unwrap();
         assert!(configured_worktree_root(&home).is_none());
         let _ = fs::remove_dir_all(home);
+    }
+
+    #[test]
+    fn owned_checkout_reports_base_and_only_removes_itself() {
+        if !git_ok() {
+            return;
+        }
+        let repo = repo_with_commit("owned");
+        let (base, sha) = source_revision(&repo).unwrap();
+        assert_eq!(base.as_deref(), Some("main"));
+        let managed = scratch("owned-managed");
+        let checkout = create_codex_checkout(&repo, &managed).unwrap();
+        record_owned_worktree(
+            &checkout.cwd,
+            &OwnedMarker {
+                root: checkout.root.clone(),
+                base: base.clone(),
+                sha: sha.clone(),
+                branch: None,
+            },
+        )
+        .unwrap();
+        let described = session_worktree(&repo, &checkout.cwd).unwrap();
+        assert!(described.owned);
+        assert_eq!(described.base.as_deref(), Some("main"));
+        assert!(described.sha.unwrap().starts_with(&sha[..7]));
+        assert_eq!(delete_preview(&repo, &checkout.cwd), DeletePreview { owned: true, dirty: false });
+        assert!(!remove_owned_worktree(&repo, &repo, true).unwrap());
+        assert!(repo.join("note.txt").is_file());
+
+        fs::write(checkout.cwd.join("extra.txt"), "dirty\n").unwrap();
+        assert!(delete_preview(&repo, &checkout.cwd).dirty);
+        assert!(remove_owned_worktree(&repo, &checkout.cwd, false).is_err());
+        assert!(checkout.root.exists());
+
+        run_git(&checkout.cwd, &["add", "extra.txt"]);
+        run_git(&checkout.cwd, &["-c", "commit.gpgsign=false", "commit", "-m", "wip"]);
+        assert!(delete_preview(&repo, &checkout.cwd).dirty);
+        fs::write(checkout.cwd.join("extra.txt"), "dirty again\n").unwrap();
+        assert!(delete_preview(&repo, &checkout.cwd).dirty);
+
+        run_git(&checkout.cwd, &["reset", "--hard", &sha]);
+        assert!(!delete_preview(&repo, &checkout.cwd).dirty);
+        assert!(remove_owned_worktree(&repo, &checkout.cwd, false).unwrap());
+        assert!(!checkout.root.exists());
+
+        let manual = scratch("manual");
+        run_git(&repo, &["worktree", "add", "-b", "hand-made", manual.to_str().unwrap()]);
+        assert!(!session_worktree(&repo, &manual).unwrap().owned);
+        assert!(!remove_owned_worktree(&repo, &manual, true).unwrap());
+        assert!(manual.join("note.txt").is_file());
+        run_git(&repo, &["worktree", "remove", manual.to_str().unwrap()]);
+        let _ = fs::remove_dir_all(repo);
+        let _ = fs::remove_dir_all(managed);
+    }
+
+    #[test]
+    fn removing_a_recorded_claude_worktree_deletes_its_branch() {
+        if !git_ok() {
+            return;
+        }
+        let repo = repo_with_commit("claude-remove");
+        let (base, sha) = source_revision(&repo).unwrap();
+        let path = repo.join(".claude").join("worktrees").join("wt-abc12345");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        run_git(&repo, &["worktree", "add", "-b", "worktree-wt-abc12345", path.to_str().unwrap()]);
+        record_owned_worktree(
+            &path,
+            &OwnedMarker {
+                root: path.clone(),
+                base,
+                sha,
+                branch: Some("worktree-wt-abc12345".into()),
+            },
+        )
+        .unwrap();
+        assert!(remove_owned_worktree(&repo, &path, false).unwrap());
+        assert!(!path.exists());
+        let listed = Command::new("git")
+            .args(["branch", "--list", "worktree-wt-abc12345"])
+            .current_dir(&repo)
+            .output()
+            .unwrap();
+        assert!(String::from_utf8_lossy(&listed.stdout).trim().is_empty());
+        let _ = fs::remove_dir_all(repo);
     }
 }
