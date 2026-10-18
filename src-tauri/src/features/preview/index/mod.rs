@@ -122,6 +122,83 @@ impl FileIndex {
     ) -> bool {
         !query_lower.is_empty() && self.files[index].name_lower.contains(query_lower)
     }
+
+    /// 跳转文件。空查询按路径返回前 `limit` 个；否则对相对路径做子序列模糊匹配。
+    pub(in crate::features::preview) fn quick_open_paths(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> (Vec<String>, bool) {
+        if limit == 0 {
+            return (Vec::new(), false);
+        }
+        let needle = query.trim().to_lowercase();
+        if needle.is_empty() {
+            let mut paths: Vec<String> = self.files.iter().map(|file| file.rel.clone()).collect();
+            paths.sort();
+            let truncated = paths.len() > limit;
+            paths.truncate(limit);
+            return (paths, truncated);
+        }
+        let mut scored = Vec::new();
+        for file in &self.files {
+            if let Some(score) = fuzzy_score(&file.rel_lower, &file.name_lower, &needle) {
+                scored.push((score, file.rel.clone()));
+            }
+        }
+        scored.sort_by(|left, right| right.0.cmp(&left.0).then_with(|| left.1.cmp(&right.1)));
+        let truncated = scored.len() > limit;
+        scored.truncate(limit);
+        (
+            scored.into_iter().map(|(_, path)| path).collect(),
+            truncated,
+        )
+    }
+}
+
+fn fuzzy_score(rel_lower: &str, name_lower: &str, query: &str) -> Option<i32> {
+    if query.is_empty() {
+        return None;
+    }
+    let rel: Vec<char> = rel_lower.chars().collect();
+    let wanted: Vec<char> = query.chars().collect();
+    let mut positions = Vec::with_capacity(wanted.len());
+    let mut from = 0;
+    for ch in wanted {
+        let found = rel[from..].iter().position(|item| *item == ch)?;
+        let at = from + found;
+        positions.push(at);
+        from = at + 1;
+    }
+    let name_start = rel.len().saturating_sub(name_lower.chars().count());
+    let mut score = 0;
+    let mut previous: Option<usize> = None;
+    for (index, pos) in positions.iter().copied().enumerate() {
+        let mut bonus = 2;
+        if previous == Some(pos.wrapping_sub(1)) && pos > 0 {
+            bonus += 10;
+        }
+        if pos >= name_start {
+            bonus += 8;
+        }
+        if is_boundary(&rel, pos) {
+            bonus += 6;
+        }
+        if index == 0 && pos == name_start {
+            bonus += 30;
+        }
+        score += bonus;
+        previous = Some(pos);
+    }
+    score -= (name_lower.chars().count() as i32).min(40);
+    Some(score)
+}
+
+fn is_boundary(chars: &[char], pos: usize) -> bool {
+    if pos == 0 {
+        return true;
+    }
+    matches!(chars[pos - 1], '/' | '\\' | '_' | '-' | '.' | ' ')
 }
 
 impl IndexedFile {
@@ -348,6 +425,39 @@ mod tests {
             after,
             "a second refresh inside the gap should not reread"
         );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn quick_open_ranks_filename_matches_and_lists_when_the_query_is_empty() {
+        let root = scratch("quick-open");
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::create_dir_all(root.join("app")).unwrap();
+        fs::create_dir_all(root.join("Assets/Scripts")).unwrap();
+        fs::write(root.join("src/App.tsx"), "export {}\n").unwrap();
+        fs::write(root.join("app/readme.md"), "notes\n").unwrap();
+        fs::write(root.join("Assets/Scripts/HomeMainView.cs"), "class Home {}\n").unwrap();
+        let mut index = FileIndex::new(root.clone());
+        finish(&mut index);
+
+        let (empty, truncated) = index.quick_open_paths("", 2);
+        assert_eq!(empty.len(), 2);
+        assert!(truncated);
+        assert!(empty.windows(2).all(|pair| pair[0] <= pair[1]));
+
+        let (ranked, _) = index.quick_open_paths("app", 10);
+        assert_eq!(ranked.first().map(String::as_str), Some("src/App.tsx"));
+        assert!(ranked.iter().any(|path| path == "app/readme.md"));
+
+        let (fuzzy, _) = index.quick_open_paths("hview", 10);
+        assert_eq!(
+            fuzzy.first().map(String::as_str),
+            Some("Assets/Scripts/HomeMainView.cs")
+        );
+        assert!(index.quick_open_paths("zzz", 10).0.is_empty());
+
+        let (contains, _) = index.matching_paths("app", 10);
+        assert!(contains.iter().any(|path| path == "src/App.tsx"));
         let _ = fs::remove_dir_all(root);
     }
 }

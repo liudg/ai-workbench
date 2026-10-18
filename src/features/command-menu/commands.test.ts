@@ -69,6 +69,21 @@ test("empty query lifts new chat and open folder into 快捷操作", () => {
   assert.ok(rows.findIndex((row) => row.group === "settings") < rows.findIndex((row) => row.group === "thread"));
 });
 
+test("sidebar and file jump stay available without session caps", () => {
+  const rows = buildPaletteRows({
+    ...enabled,
+    caps: null,
+    activeSessionId: null,
+    canNewThread: false,
+    canStandalone: false,
+    canSearchFiles: false,
+  });
+  assert.equal(rows.find((row) => row.commandId === "toggle-sidebar")?.label, COPY.toggleSidebar);
+  assert.equal(rows.find((row) => row.commandId === "toggle-sidebar")?.shortcut, COPY.shortcutSidebar);
+  assert.equal(rows.find((row) => row.commandId === "quick-open")?.label, COPY.quickOpen);
+  assert.equal(rows.find((row) => row.commandId === "quick-open")?.shortcut, COPY.shortcutQuickOpen);
+});
+
 test("capability flags hide commands without reading an agent name", () => {
   const hidden = ids({
     ...enabled,

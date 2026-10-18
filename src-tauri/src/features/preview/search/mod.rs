@@ -23,6 +23,7 @@ use super::index::FileIndex;
 use crate::features::projects::ProjectStore;
 
 const SEARCH_LIMIT: usize = 100;
+const QUICK_OPEN_LIMIT: usize = 80;
 const SEARCH_SLICE: Duration = Duration::from_millis(80);
 const SCAN_SLICE: Duration = Duration::from_millis(20);
 
@@ -246,6 +247,36 @@ pub(crate) fn query_indexed_paths(
     }
 }
 
+pub(crate) fn quick_open_indexed(
+    hub: &IndexHub,
+    root: PathBuf,
+    query: &str,
+    limit: usize,
+) -> IndexedPaths {
+    let key = index_key(&root);
+    let (paths, truncated, ready) = {
+        let mut guard = lock(&hub.inner);
+        let entry = guard
+            .entry(key.clone())
+            .or_insert_with(|| ProjectEntry::new(root));
+        if entry.index.complete() {
+            entry.index.refresh(SCAN_SLICE);
+        }
+        let ready = entry.index.complete();
+        let (paths, truncated) = entry.index.quick_open_paths(query, limit);
+        (paths, truncated, ready)
+    };
+    if !ready {
+        start_scan(Arc::clone(&hub.inner), key);
+    }
+    IndexedPaths {
+        paths,
+        truncated,
+        cancelled: false,
+        ready,
+    }
+}
+
 pub(crate) fn search_blocking(
     hub: &IndexHub,
     root: PathBuf,
@@ -347,6 +378,23 @@ pub async fn warm_project_index(
         .ok_or_else(|| "项目不存在".to_string())?;
     hub.warm_root(PathBuf::from(project.path));
     Ok(())
+}
+
+#[tauri::command]
+pub async fn quick_open_files(
+    store: State<'_, ProjectStore>,
+    hub: State<'_, IndexHub>,
+    project_id: String,
+    query: String,
+) -> Result<IndexedPaths, String> {
+    let project = store
+        .get(&project_id)
+        .ok_or_else(|| "项目不存在".to_string())?;
+    let root = PathBuf::from(&project.path);
+    let hub = hub.fork();
+    tokio::task::spawn_blocking(move || quick_open_indexed(&hub, root, &query, QUICK_OPEN_LIMIT))
+        .await
+        .map_err(|err| format!("无法列出文件: {err}"))
 }
 
 #[tauri::command]

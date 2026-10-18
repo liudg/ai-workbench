@@ -16,7 +16,8 @@ export type CommandGroup =
   | "workspace"
   | "pinned"
   | "recent"
-  | "chats";
+  | "chats"
+  | "files";
 
 export type PaletteCommandId =
   | "new-thread"
@@ -31,15 +32,19 @@ export type PaletteCommandId =
   | "delete"
   | "fork"
   | "toggle-files"
-  | "toggle-changes";
+  | "toggle-changes"
+  | "toggle-sidebar"
+  | "quick-open";
 
 export interface PaletteRow {
   key: string;
-  kind: "command" | "chat";
+  kind: "command" | "chat" | "file";
   commandId?: PaletteCommandId;
   sessionId?: string;
   projectId?: string;
   label: string;
+  detail?: string;
+  filePath?: string;
   group: CommandGroup;
   groupLabel: string;
   shortcut?: string;
@@ -83,6 +88,7 @@ const GROUP_ORDER: readonly CommandGroup[] = [
   "pinned",
   "recent",
   "chats",
+  "files",
 ];
 
 const SUGGESTED = new Set<PaletteCommandId>(["new-thread", "open-folder"]);
@@ -141,6 +147,8 @@ function commandItems(input: PaletteInput): PaletteRow[] {
   if (active && input.caps?.supports_delete === true) {
     rows.push(command("delete", COPY.deleteChat, "thread", COPY.shortcutDelete));
   }
+  rows.push(command("quick-open", COPY.quickOpen, "navigation", COPY.shortcutQuickOpen));
+  rows.push(command("toggle-sidebar", COPY.toggleSidebar, "navigation", COPY.shortcutSidebar));
   if (input.canSearchFiles) rows.push(command("search-files", COPY.searchFiles, "navigation"));
   if (active) rows.push(command("toggle-files", COPY.toggleFiles, "navigation"));
   if (active && showsFileChanges(input.caps?.changes)) {

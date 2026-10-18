@@ -1,4 +1,4 @@
-/** 观察到的开面板和弦是 CmdOrCtrl+K 与 CmdOrCtrl+Shift+P。方向键是否回绕未观察，这里到头停住。Tab 跳到下一分组的第一项并回绕。 */
+/** 观察到的开面板和弦是 CmdOrCtrl+K 与 CmdOrCtrl+Shift+P。B 切换侧边栏，不带 Shift 的 P 跳转文件。方向键是否回绕未观察，这里到头停住。Tab 跳到下一分组的第一项并回绕。 */
 
 export interface ChordEvent {
   key: string;
@@ -30,6 +30,14 @@ export function isArchiveChord(event: ChordEvent): boolean {
 
 export function isDeleteChord(event: ChordEvent): boolean {
   return modified(event) && event.shiftKey && (event.key === "Delete" || event.key === "Backspace");
+}
+
+export function isSidebarChord(event: ChordEvent): boolean {
+  return modified(event) && !event.shiftKey && event.key.toLowerCase() === "b";
+}
+
+export function isQuickOpenChord(event: ChordEvent): boolean {
+  return modified(event) && !event.shiftKey && event.key.toLowerCase() === "p";
 }
 
 export function moveCursor(index: number, count: number, key: "ArrowDown" | "ArrowUp"): number {
