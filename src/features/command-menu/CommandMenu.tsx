@@ -11,7 +11,7 @@ import { COMMAND_MENU_COPY as COPY } from "./copy";
 import type { PaletteRow } from "./commands";
 import { jumpSection, moveCursor, sectionStarts } from "./keyboard";
 
-export type PaletteDrill = "commands" | "chats" | "rename" | "delete";
+export type PaletteDrill = "commands" | "chats" | "files" | "rename" | "delete";
 
 export function CommandMenu({
   query,
@@ -21,6 +21,8 @@ export function CommandMenu({
   renameTitle,
   renameError,
   deleteError,
+  notice,
+  emptyText,
   onQuery,
   onActive,
   onRun,
@@ -37,6 +39,8 @@ export function CommandMenu({
   renameTitle: string;
   renameError: string | null;
   deleteError: string | null;
+  notice?: string | null;
+  emptyText?: string;
   onQuery: (value: string) => void;
   onActive: (index: number) => void;
   onRun: (index: number) => void;
@@ -49,7 +53,8 @@ export function CommandMenu({
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const searchingChats = drill === "chats";
-  const placeholder = searchingChats ? COPY.chatPlaceholder : COPY.placeholder;
+  const placeholder =
+    drill === "files" ? COPY.filePlaceholder : searchingChats ? COPY.chatPlaceholder : COPY.placeholder;
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -65,7 +70,7 @@ export function CommandMenu({
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
-      if (drill === "commands") onClose();
+      if (drill === "commands" || drill === "files") onClose();
       else onBack();
       return;
     }
@@ -103,7 +108,7 @@ export function CommandMenu({
   if (typeof document === "undefined") return null;
 
   const emptyLabel =
-    searchingChats && query.trim().length === 0 ? COPY.noChats : COPY.empty;
+    emptyText ?? (searchingChats && query.trim().length === 0 ? COPY.noChats : COPY.empty);
 
   return createPortal(
     <div
@@ -115,7 +120,8 @@ export function CommandMenu({
     >
       <div
         role="dialog"
-        aria-label={COPY.title}
+        aria-label={drill === "files" ? COPY.quickOpen : COPY.title}
+        data-command-drill={drill}
         aria-describedby="command-menu-description"
         onKeyDown={onKeyDown}
         className="flex max-h-[min(560px,70vh)] w-[min(640px,94vw)] flex-col overflow-hidden rounded-xl border border-[#2e2e2e] bg-[#1a1a1a] shadow-2xl shadow-black/50"
@@ -162,7 +168,12 @@ export function CommandMenu({
         {drill === "delete" ? (
           <DeleteDrill error={deleteError} onConfirm={onDeleteConfirm} onCancel={onBack} />
         ) : null}
-        {drill === "commands" || drill === "chats" ? (
+        {notice ? (
+          <p className="px-3 pt-3 text-xs text-[#a3a3a3]" data-command-notice>
+            {notice}
+          </p>
+        ) : null}
+        {drill === "commands" || drill === "chats" || drill === "files" ? (
           <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto py-2" data-command-list>
             {rows.length === 0 ? (
               <p className="px-4 py-6 text-center text-sm text-[#8d8d8d]" data-command-empty>
@@ -214,7 +225,7 @@ function RowList({
                 type="button"
                 role="option"
                 aria-selected={selected}
-                data-command-row={row.commandId ?? row.sessionId}
+                data-command-row={row.commandId ?? row.sessionId ?? row.filePath}
                 data-command-active={selected ? "true" : "false"}
                 className={
                   selected
@@ -225,8 +236,13 @@ function RowList({
                 onClick={() => onRun(index)}
               >
                 <span className="min-w-0 flex-1 truncate">
-                  {row.kind === "chat" ? highlight(row.label, query) : row.label}
+                  {row.kind === "command" ? row.label : highlight(row.label, query)}
                 </span>
+                {row.detail ? (
+                  <span className="w-[46%] shrink-0 truncate text-right text-xs text-[#777]" data-command-detail>
+                    {row.detail}
+                  </span>
+                ) : null}
                 {row.shortcut ? (
                   <span className="shrink-0 text-xs text-[#777]" data-command-shortcut>
                     {row.shortcut}

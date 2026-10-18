@@ -1,16 +1,22 @@
 import { AccountMenu } from "./account/AccountMenu";
 import { BrandHeader } from "./brand/BrandHeader";
 import { useSidebar } from "./use-sidebar";
+import { useSidebarOpen } from "./visibility";
 import { ChatGroup } from "./chats/ChatGroup";
 import { ProjectHeader } from "./projects/ProjectHeader";
 import { ProjectItem } from "./projects/ProjectItem";
 
 export function Sidebar() {
+  const open = useSidebarOpen();
   const { pinned, unpinned, notice } = useSidebar();
   const noProjects = pinned.length === 0 && unpinned.length === 0;
+  if (!open) return null;
 
   return (
-    <aside className="flex h-full min-h-0 w-[260px] shrink-0 flex-col overflow-hidden border-r border-[#222] bg-[#141414]">
+    <aside
+      data-sidebar-open=""
+      className="flex h-full min-h-0 w-[260px] shrink-0 flex-col overflow-hidden border-r border-[#222] bg-[#141414]"
+    >
       <BrandHeader />
 
       <div

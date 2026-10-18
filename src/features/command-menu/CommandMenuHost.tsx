@@ -4,6 +4,7 @@ import { NEXT_ATTENTION_COPY, nextAttentionTarget } from "@/features/attention/n
 import { OPEN_THREAD_FIND } from "@/features/chat/find/use-thread-find";
 import { FileSearchDialog } from "@/features/panel/files/FileSearchDialog";
 import { sessionChanges } from "@/features/changes-model/diff-parse";
+import { toggleSidebar } from "@/features/sidebar/visibility";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { useWorkbench } from "@/store";
 import { STANDALONE_DRAFT_ID } from "@/store/standalone";
@@ -18,7 +19,16 @@ import {
 } from "./commands";
 import { CommandMenu, type PaletteDrill } from "./CommandMenu";
 import { COMMAND_MENU_COPY as COPY } from "./copy";
-import { isArchiveChord, isDeleteChord, isNewThreadChord, isOpenChord } from "./keyboard";
+import { fileRows } from "./file-rows";
+import {
+  isArchiveChord,
+  isDeleteChord,
+  isNewThreadChord,
+  isOpenChord,
+  isQuickOpenChord,
+  isSidebarChord,
+} from "./keyboard";
+import { useQuickOpen } from "./useQuickOpen";
 
 export const OPEN_COMMAND_MENU = "ai-workbench:open-command-menu";
 
@@ -30,6 +40,7 @@ export function CommandMenuHost() {
   const [renameTitle, setRenameTitle] = useState("");
   const [renameError, setRenameError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [fileNotice, setFileNotice] = useState<string | null>(null);
   const [fileSearchProjectId, setFileSearchProjectId] = useState<string | null>(null);
 
   const projects = useWorkbench((s) => s.projects);
@@ -85,7 +96,18 @@ export function CommandMenuHost() {
     canSearchFiles: Boolean(session && project),
     canFind: Boolean(session) || draftFocused,
   };
-  const rows = buildPaletteRows(input);
+  const filesOpen = open && drill === "files";
+  const quick = useQuickOpen(project?.id ?? null, query, filesOpen);
+  const commandRows = buildPaletteRows(input);
+  const rows = filesOpen ? fileRows(quick.paths) : commandRows;
+  const fileEmpty =
+    quick.phase === "no-project"
+      ? COPY.noProject
+      : quick.phase === "error"
+        ? COPY.fileError
+        : quick.phase === "loading"
+          ? COPY.filePending
+          : COPY.empty;
   const safeActive = rows.length === 0 ? 0 : Math.min(active, rows.length - 1);
 
   const close = () => {
@@ -95,6 +117,7 @@ export function CommandMenuHost() {
     setActive(0);
     setRenameError(null);
     setDeleteError(null);
+    setFileNotice(null);
   };
 
   const runCommand = (id: PaletteCommandId) => {
@@ -117,6 +140,18 @@ export function CommandMenuHost() {
     if (id === "settings") {
       state.openSettings();
       close();
+      return;
+    }
+    if (id === "toggle-sidebar") {
+      toggleSidebar();
+      close();
+      return;
+    }
+    if (id === "quick-open") {
+      setDrill("files");
+      setQuery("");
+      setActive(0);
+      setFileNotice(null);
       return;
     }
     if (id === "search-chats") {
@@ -206,11 +241,24 @@ export function CommandMenuHost() {
       close();
       return;
     }
+    if (row.kind === "file" && row.filePath) {
+      if (!project || !session) {
+        setFileNotice(COPY.needSession);
+        return;
+      }
+      void useWorkbench.getState().panelOpenHref(session.id, row.filePath, undefined, {
+        projectId: project.id,
+        projectPath: project.path,
+        sessionFiles: [],
+      });
+      close();
+      return;
+    }
     if (row.commandId) runCommand(row.commandId);
   };
 
-  const actions = useRef({ input, runCommand });
-  actions.current = { input, runCommand };
+  const actions = useRef({ input, runCommand, open, drill });
+  actions.current = { input, runCommand, open, drill };
 
   useEffect(() => {
     const openMenu = () => {
@@ -228,6 +276,34 @@ export function CommandMenuHost() {
         setDrill("commands");
         setQuery("");
         setActive(0);
+        setFileNotice(null);
+        return;
+      }
+      if (isQuickOpenChord(event)) {
+        event.preventDefault();
+        event.stopPropagation();
+        const view = actions.current;
+        if (view.open && view.drill === "files") {
+          setOpen(false);
+          setDrill("commands");
+          setQuery("");
+          setActive(0);
+          setFileNotice(null);
+          return;
+        }
+        setOpen(true);
+        setDrill("files");
+        setQuery("");
+        setActive(0);
+        setRenameError(null);
+        setDeleteError(null);
+        setFileNotice(null);
+        return;
+      }
+      if (isSidebarChord(event)) {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleSidebar();
         return;
       }
       const visible = (id: PaletteCommandId) =>
@@ -251,6 +327,7 @@ export function CommandMenuHost() {
       }
     };
     window.addEventListener(OPEN_COMMAND_MENU, openMenu);
+    // 捕获阶段，输入框聚焦时也能接到。Enter、Esc、方向键和 Tab 不在这里处理。
     window.addEventListener("keydown", onKey, true);
     return () => {
       window.removeEventListener(OPEN_COMMAND_MENU, openMenu);
@@ -285,9 +362,12 @@ export function CommandMenuHost() {
           renameTitle={renameTitle}
           renameError={renameError}
           deleteError={deleteError}
+          notice={filesOpen ? fileNotice : null}
+          emptyText={filesOpen ? fileEmpty : undefined}
           onQuery={(value) => {
             setQuery(value);
             setActive(0);
+            setFileNotice(null);
           }}
           onActive={setActive}
           onRun={runIndex}
@@ -298,6 +378,7 @@ export function CommandMenuHost() {
             setActive(0);
             setRenameError(null);
             setDeleteError(null);
+            setFileNotice(null);
           }}
           onRenameTitle={setRenameTitle}
           onRenameSubmit={submitRename}

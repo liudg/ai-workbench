@@ -8,6 +8,7 @@ export const previewCommands: Pick<
   | "readPreviewImage"
   | "listProjectDir"
   | "filterProjectPaths"
+  | "quickOpenFiles"
   | "warmProjectIndex"
   | "searchProjectFiles"
   | "openProjectFile"
@@ -21,6 +22,8 @@ export const previewCommands: Pick<
     invoke<TreeEntry[]>("list_project_dir", { projectId, path }),
   filterProjectPaths: (projectId, query) =>
     invoke<PathFilter>("filter_project_paths", { projectId, query }),
+  quickOpenFiles: (projectId, query) =>
+    invoke<PathFilter>("quick_open_files", { projectId, query }),
   warmProjectIndex: (projectId) => invoke("warm_project_index", { projectId }),
   searchProjectFiles: (projectId, query, mask, searchId) =>
     invoke<FileSearchResult>("search_project_files", { projectId, query, mask, searchId }),

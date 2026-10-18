@@ -6,6 +6,8 @@ import {
   isDeleteChord,
   isNewThreadChord,
   isOpenChord,
+  isQuickOpenChord,
+  isSidebarChord,
   jumpSection,
   moveCursor,
   sectionStarts,
@@ -26,6 +28,19 @@ test("open chords are Ctrl/Cmd+K and Ctrl/Cmd+Shift+P", () => {
   assert.equal(isOpenChord({ ...chord, ctrlKey: true, shiftKey: true, key: "k" }), false);
   assert.equal(isOpenChord({ ...chord, key: "k" }), false);
   assert.equal(isOpenChord({ ...chord, ctrlKey: true, altKey: true, key: "k" }), false);
+});
+
+test("sidebar and quick open use Ctrl or Cmd without Shift", () => {
+  assert.equal(isSidebarChord({ ...chord, ctrlKey: true, key: "b" }), true);
+  assert.equal(isSidebarChord({ ...chord, metaKey: true, key: "B" }), true);
+  assert.equal(isQuickOpenChord({ ...chord, ctrlKey: true, key: "p" }), true);
+  assert.equal(isQuickOpenChord({ ...chord, metaKey: true, key: "P" }), true);
+  assert.equal(isSidebarChord({ ...chord, ctrlKey: true, shiftKey: true, key: "b" }), false);
+  assert.equal(isQuickOpenChord({ ...chord, ctrlKey: true, shiftKey: true, key: "p" }), false);
+  assert.equal(isOpenChord({ ...chord, ctrlKey: true, shiftKey: true, key: "p" }), true);
+  assert.equal(isQuickOpenChord({ ...chord, ctrlKey: true, key: "f" }), false);
+  assert.equal(isSidebarChord({ ...chord, key: "b" }), false);
+  assert.equal(isQuickOpenChord({ ...chord, ctrlKey: true, altKey: true, key: "p" }), false);
 });
 
 test("thread chords stay on the observed modifiers", () => {
