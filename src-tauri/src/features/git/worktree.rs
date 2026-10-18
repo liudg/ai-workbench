@@ -1336,7 +1336,11 @@ mod tests {
             let startup = WorktreeStart::begin(&id).unwrap();
             startup
                 .drive(async {
-                    let mut child = Command::new("sleep").arg("30").spawn().unwrap();
+                    let mut child = long_sleep()
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null())
+                        .spawn()
+                        .unwrap();
                     let _tracked = note_start_child(child.id());
                     let project = id.clone();
                     std::thread::spawn(move || {
@@ -1361,6 +1365,18 @@ mod tests {
 
     fn resolve_git_path(cwd: &Path, text: &str) -> PathBuf {
         super::resolve_git_path(cwd, text)
+    }
+
+    fn long_sleep() -> Command {
+        if cfg!(windows) {
+            let mut command = Command::new("ping");
+            command.args(["-n", "31", "127.0.0.1"]);
+            command
+        } else {
+            let mut command = Command::new("sleep");
+            command.arg("30");
+            command
+        }
     }
 
     fn unique_start(name: &str) -> String {
