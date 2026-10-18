@@ -57,6 +57,9 @@ const ThreadFindPreview = import.meta.env.DEV
 const AttentionPreview = import.meta.env.DEV
   ? lazy(() => import("@/app/preview/AttentionPreview"))
   : null;
+const WorktreePreview = import.meta.env.DEV
+  ? lazy(() => import("@/app/preview/WorktreePreview"))
+  : null;
 
 export default function App() {
   const preview = new URLSearchParams(window.location.search).get("preview");
@@ -176,6 +179,13 @@ export default function App() {
     return (
       <Suspense fallback={null}>
         <AttentionPreview />
+      </Suspense>
+    );
+  }
+  if (WorktreePreview && preview === "worktree") {
+    return (
+      <Suspense fallback={null}>
+        <WorktreePreview />
       </Suspense>
     );
   }

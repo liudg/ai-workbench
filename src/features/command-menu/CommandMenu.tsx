@@ -23,6 +23,8 @@ export function CommandMenu({
   deleteError,
   notice,
   emptyText,
+  dirtyWorktree = false,
+  deleteReady = true,
   onQuery,
   onActive,
   onRun,
@@ -31,6 +33,8 @@ export function CommandMenu({
   onRenameTitle,
   onRenameSubmit,
   onDeleteConfirm,
+  onKeepWorktree,
+  onDiscardWorktree,
 }: {
   query: string;
   rows: readonly PaletteRow[];
@@ -41,6 +45,8 @@ export function CommandMenu({
   deleteError: string | null;
   notice?: string | null;
   emptyText?: string;
+  dirtyWorktree?: boolean;
+  deleteReady?: boolean;
   onQuery: (value: string) => void;
   onActive: (index: number) => void;
   onRun: (index: number) => void;
@@ -49,6 +55,8 @@ export function CommandMenu({
   onRenameTitle: (value: string) => void;
   onRenameSubmit: () => void;
   onDeleteConfirm: () => void;
+  onKeepWorktree?: () => void;
+  onDiscardWorktree?: () => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -82,7 +90,7 @@ export function CommandMenu({
       return;
     }
     if (drill === "delete") {
-      if (event.key === "Enter") {
+      if (event.key === "Enter" && deleteReady && !dirtyWorktree) {
         event.preventDefault();
         onDeleteConfirm();
       }
@@ -166,7 +174,15 @@ export function CommandMenu({
           />
         ) : null}
         {drill === "delete" ? (
-          <DeleteDrill error={deleteError} onConfirm={onDeleteConfirm} onCancel={onBack} />
+          <DeleteDrill
+            error={deleteError}
+            dirtyWorktree={dirtyWorktree}
+            ready={deleteReady}
+            onConfirm={onDeleteConfirm}
+            onKeep={onKeepWorktree}
+            onDiscard={onDiscardWorktree}
+            onCancel={onBack}
+          />
         ) : null}
         {notice ? (
           <p className="px-3 pt-3 text-xs text-[#a3a3a3]" data-command-notice>
@@ -319,27 +335,48 @@ function RenameDrill({
 
 function DeleteDrill({
   error,
+  dirtyWorktree,
+  ready,
   onConfirm,
+  onKeep,
+  onDiscard,
   onCancel,
 }: {
   error: string | null;
+  dirtyWorktree: boolean;
+  ready: boolean;
   onConfirm: () => void;
+  onKeep?: () => void;
+  onDiscard?: () => void;
   onCancel: () => void;
 }) {
   return (
-    <div className="space-y-3 px-4 py-4" data-command-drill="delete">
-      <p className="text-sm text-[#a3a3a3]">{COPY.deleteDescription}</p>
+    <div className="space-y-3 px-4 py-4" data-command-drill="delete" data-dirty-worktree={dirtyWorktree ? "true" : "false"}>
+      <p className="text-sm text-[#a3a3a3]">
+        {dirtyWorktree ? COPY.deleteDirtyWorktree : COPY.deleteDescription}
+      </p>
       {error ? <p className="text-sm text-red-300">{error}</p> : null}
       <div className="flex justify-end gap-2">
         <button type="button" className="rounded-md px-3 py-1.5 text-sm text-[#ccc] hover:bg-white/5" onClick={onCancel}>
           {COPY.cancel}
         </button>
+        {dirtyWorktree ? (
+          <button
+            type="button"
+            disabled={!ready}
+            className="rounded-md px-3 py-1.5 text-sm text-[#ccc] hover:bg-white/5 disabled:opacity-40"
+            onClick={onKeep}
+          >
+            {COPY.keepWorktree}
+          </button>
+        ) : null}
         <button
           type="button"
-          className="rounded-md bg-red-600 px-3 py-1.5 text-sm text-white hover:bg-red-500"
-          onClick={onConfirm}
+          disabled={!ready}
+          className="rounded-md bg-red-600 px-3 py-1.5 text-sm text-white hover:bg-red-500 disabled:opacity-40"
+          onClick={dirtyWorktree ? onDiscard : onConfirm}
         >
-          {COPY.deleteAction}
+          {dirtyWorktree ? COPY.discardWorktree : COPY.deleteAction}
         </button>
       </div>
     </div>

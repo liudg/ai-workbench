@@ -25,7 +25,7 @@ export function ActivityGroup({
   open: boolean;
   onToggle: () => void;
 }) {
-  const projectPath = useSessionProjectPath(session.project_id);
+  const projectPath = useSessionProjectPath(session);
 
   return (
     <div className="event-in min-w-0 px-6 py-1" data-activity-group data-activity-summary={piece.summary}>

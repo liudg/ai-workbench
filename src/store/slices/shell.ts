@@ -1,7 +1,7 @@
 import { persistedAgentKind } from "@/lib/agents";
 import { userFacingMessage } from "@/lib/user-facing";
 import { backend } from "@/lib/ipc";
-import { forgetProjectDraft, type DraftCarryState } from "../draft-session";
+import { draftId, forgetProjectDraft, type DraftCarryState } from "../draft-session";
 import { emptyProjectDraftUpdate, landOnEmptyProjectDraft } from "../lazy-draft";
 import {
   keepSelectedProjectId,
@@ -54,11 +54,18 @@ export function createShellSlice(set: WorkbenchSet, get: WorkbenchGet): ShellSli
       backend.onSessionRequest((request) => {
         void (async () => {
           const text = request.text?.trim() ?? "";
+          const worktree = Boolean(request.worktree);
           if (!text) {
             get().openDraft(request.project_id, request.agent);
+            if (worktree) get().setDraftWorktree(draftId(request.project_id), true);
             return;
           }
-          const created = await get().sendNewThread(request.project_id, request.agent, text);
+          const created = await get().sendNewThread(
+            request.project_id,
+            request.agent,
+            text,
+            worktree,
+          );
           if (created && request.name) await get().renameSession(created, request.name);
         })();
       });

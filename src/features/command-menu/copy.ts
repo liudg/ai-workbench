@@ -58,6 +58,10 @@ export const COMMAND_MENU_COPY = {
   cancel: "取消",
   deleteTitle: "要删除任务？",
   deleteDescription: "这将永久删除该任务及其子智能体任务。此操作无法撤销。",
+  deleteDirtyWorktree:
+    "工作树里还有未保存的改动。可以连工作树一起删除，或只删除任务、留下工作树。",
+  keepWorktree: "保留工作树",
+  discardWorktree: "一起删除",
   deleteAction: "删除",
   renameError: "无法保存更改。请重试",
   deleteError: "无法删除任务。请重试。",

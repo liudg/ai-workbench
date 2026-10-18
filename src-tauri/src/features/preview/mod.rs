@@ -17,12 +17,25 @@ mod open_with;
 
 pub(crate) mod browser;
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use tauri::State;
 
 use crate::features::projects::ProjectStore;
+use crate::features::sessions::SessionManager;
 use crate::models::strip_verbatim_prefix;
+
+fn project_root(
+    store: &ProjectStore,
+    manager: &SessionManager,
+    project_id: &str,
+    session_id: Option<&str>,
+) -> Result<PathBuf, String> {
+    let project = store
+        .get(project_id)
+        .ok_or_else(|| "项目不存在".to_string())?;
+    manager.work_root(&project, session_id)
+}
 
 pub use image::{read_image_at, PreviewImage};
 pub use path::resolve_preview_file;
@@ -32,13 +45,12 @@ pub use read::{read_preview_at, PreviewDocument};
 #[tauri::command]
 pub async fn read_preview_file(
     store: State<'_, ProjectStore>,
+    manager: State<'_, SessionManager>,
     project_id: String,
     path: String,
+    session_id: Option<String>,
 ) -> Result<PreviewDocument, String> {
-    let project = store
-        .get(&project_id)
-        .ok_or_else(|| "项目不存在".to_string())?;
-    let root = PathBuf::from(&project.path);
+    let root = project_root(&store, &manager, &project_id, session_id.as_deref())?;
     tokio::task::spawn_blocking(move || read_preview_at(&root, &path))
         .await
         .map_err(|err| format!("无法读取文件: {err}"))?
@@ -47,13 +59,12 @@ pub async fn read_preview_file(
 #[tauri::command]
 pub async fn read_preview_image(
     store: State<'_, ProjectStore>,
+    manager: State<'_, SessionManager>,
     project_id: String,
     path: String,
+    session_id: Option<String>,
 ) -> Result<PreviewImage, String> {
-    let project = store
-        .get(&project_id)
-        .ok_or_else(|| "项目不存在".to_string())?;
-    let root = PathBuf::from(&project.path);
+    let root = project_root(&store, &manager, &project_id, session_id.as_deref())?;
     tokio::task::spawn_blocking(move || read_image_at(&root, &path))
         .await
         .map_err(|err| format!("无法读取图片: {err}"))?
@@ -62,14 +73,14 @@ pub async fn read_preview_image(
 #[tauri::command]
 pub fn open_project_file(
     store: State<'_, ProjectStore>,
+    manager: State<'_, SessionManager>,
     project_id: String,
     path: String,
     mode: Option<String>,
+    session_id: Option<String>,
 ) -> Result<(), String> {
-    let project = store
-        .get(&project_id)
-        .ok_or_else(|| "项目不存在".to_string())?;
-    let full = resolve_preview_file(Path::new(&project.path), &path)?;
+    let root = project_root(&store, &manager, &project_id, session_id.as_deref())?;
+    let full = resolve_preview_file(&root, &path)?;
     let shown = strip_verbatim_prefix(&full.to_string_lossy());
     let resolved = open_with::resolve_open_mode(mode.as_deref(), open_with::choose_app_supported())
         .map_err(str::to_string)?;

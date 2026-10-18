@@ -13,6 +13,7 @@ use tauri::State;
 use super::search::{query_indexed_paths, IndexHub};
 use super::skip_tree_dir;
 use crate::features::projects::ProjectStore;
+use crate::features::sessions::SessionManager;
 
 const FILTER_LIMIT: usize = 4000;
 
@@ -63,13 +64,12 @@ impl FilterHub {
 #[tauri::command]
 pub async fn list_project_dir(
     store: State<'_, ProjectStore>,
+    manager: State<'_, SessionManager>,
     project_id: String,
     path: String,
+    session_id: Option<String>,
 ) -> Result<Vec<TreeEntry>, String> {
-    let project = store
-        .get(&project_id)
-        .ok_or_else(|| "项目不存在".to_string())?;
-    let root = PathBuf::from(&project.path);
+    let root = super::project_root(&store, &manager, &project_id, session_id.as_deref())?;
     tokio::task::spawn_blocking(move || list_dir_at(&root, &path))
         .await
         .map_err(|err| format!("无法读取目录: {err}"))?
@@ -78,10 +78,12 @@ pub async fn list_project_dir(
 #[tauri::command]
 pub async fn filter_project_paths(
     store: State<'_, ProjectStore>,
+    manager: State<'_, SessionManager>,
     hub: State<'_, FilterHub>,
     indexes: State<'_, IndexHub>,
     project_id: String,
     query: String,
+    session_id: Option<String>,
 ) -> Result<PathFilter, String> {
     if query.trim().is_empty() {
         return Ok(PathFilter {
@@ -91,10 +93,7 @@ pub async fn filter_project_paths(
             ready: true,
         });
     }
-    let project = store
-        .get(&project_id)
-        .ok_or_else(|| "项目不存在".to_string())?;
-    let root = PathBuf::from(&project.path);
+    let root = super::project_root(&store, &manager, &project_id, session_id.as_deref())?;
     let (generation, ticket) = hub.begin(&project_id);
     let indexes = indexes.fork();
     tokio::task::spawn_blocking(move || {

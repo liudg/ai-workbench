@@ -62,7 +62,6 @@ pub(super) const INIT_PROMPT: &str = match std::str::from_utf8(&INIT_PROMPT_BYTE
 pub(super) const INIT_PROMPT_SOURCE: &str =
     "openai/codex rust-v0.162.1 codex-rs/tui/assets/prompt_for_init_command.md";
 
-const WORKTREE_NOT_WIRED: &str = "/worktree 在 Codex TUI 里是托管工作树（codex_worktree + thread/attachment/add）。工作台还没有接入这套接口，这里不创建工作树。";
 
 struct HistoryPage {
     data: Vec<Value>,
@@ -394,6 +393,9 @@ impl Shared {
             *self.model.lock().unwrap() = model.to_string();
         }
         *self.thread_id.lock().unwrap() = Some(thread_id.clone());
+        // codex-worktree `bind_thread`：把线程 id 写进检出的 `codex-thread.json`。
+        // 不是工作树、或记录已经属于别人时保持沉默，不往时间线写说明。
+        let _ = crate::features::git::bind_codex_thread(std::path::Path::new(&self.cwd), &thread_id);
         self.apply_thread_snapshot(&result);
         // `thread/start` 只在内存里建线程。Codex 要等线程名写入后才把 rollout
         // 落到 `~/.codex/sessions`，`codex resume <id>` 才能找到它。
@@ -504,7 +506,11 @@ impl Shared {
                 let name = (!rest.trim().is_empty()).then(|| rest.trim().to_string());
                 emit(
                     &self.events,
-                    SessionEventBody::NewThread { name, text: None },
+                    SessionEventBody::NewThread {
+                        name,
+                        text: None,
+                        worktree: false,
+                    },
                 );
             }
             "quit" | "exit" => self.stop(),
@@ -528,12 +534,7 @@ impl Shared {
             "mcp" => self.emit_mcp(rest.trim()).await?,
             "goal" => self.emit_goal(&rest).await?,
             "hooks" => self.emit_hooks().await?,
-            "worktree" => emit(
-                &self.events,
-                SessionEventBody::System {
-                    text: WORKTREE_NOT_WIRED.into(),
-                },
-            ),
+            "worktree" => self.start_worktree_thread(&rest),
             // `slash_dispatch.rs`：把官方 init 提示原文当作普通用户消息发出。
             "init" => self.submit_user_text(INIT_PROMPT.to_string()).await?,
             _ => {
@@ -548,6 +549,35 @@ impl Shared {
             }
         }
         Ok(())
+    }
+
+    /// `/worktree`：另开一个会话，由宿主按 Codex 托管工作树创建检出。
+    /// app-server 没有把当前线程搬进新工作树的 RPC，所以不改这条会话的 cwd。
+    fn start_worktree_thread(&self, rest: &str) {
+        let cwd = std::path::Path::new(&self.cwd);
+        match crate::features::git::repo_has_commit(cwd) {
+            Ok(true) => {
+                let text = rest.trim();
+                emit(
+                    &self.events,
+                    SessionEventBody::NewThread {
+                        name: None,
+                        text: (!text.is_empty()).then(|| text.to_string()),
+                        worktree: true,
+                    },
+                );
+            }
+            Ok(false) => emit(
+                &self.events,
+                SessionEventBody::System {
+                    text: "这个目录还没有 Git 提交，不能新建工作树。".into(),
+                },
+            ),
+            Err(err) => emit(
+                &self.events,
+                SessionEventBody::System { text: err },
+            ),
+        }
     }
 
     /// `/permissions`：与作曲栏同一份菜单（`permissionProfile/list`）。

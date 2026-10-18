@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { backend } from "@/lib/ipc";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
+import { usePanelOptional } from "../core/PanelProvider";
 import type { OpenWithAction } from "./open-with";
 
 export function usePickPreviewFile() {
@@ -33,7 +34,9 @@ export function useChooseApp(): boolean {
   return choose;
 }
 
-export function useOpenProjectFile(projectId: string) {
+export function useOpenProjectFile(projectId: string, sessionId?: string) {
+  const panelSessionId = usePanelOptional()?.sessionId;
+  const resolvedSessionId = sessionId || panelSessionId;
   const [note, setNote] = useState("");
   useEffect(() => {
     if (!note) return;
@@ -44,7 +47,7 @@ export function useOpenProjectFile(projectId: string) {
   const openWith = async (path: string, mode: OpenWithAction) => {
     if (!projectId || !path) return;
     try {
-      await backend.openProjectFile(projectId, path, mode);
+      await backend.openProjectFile(projectId, path, mode, resolvedSessionId);
       setNote("");
     } catch (err) {
       const message = err instanceof Error ? err.message : typeof err === "string" ? err : "";

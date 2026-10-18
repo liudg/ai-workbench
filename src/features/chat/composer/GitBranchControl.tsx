@@ -21,7 +21,9 @@ import {
 } from "./git-branch";
 import { useComposerMenu } from "./useComposerMenu";
 import { useGitBranch } from "./useGitBranch";
+import { worktreeBranchMarker } from "./worktree-option";
 import { WorkContextPicker } from "./WorkContextPicker";
+import { WorktreeSessionLabel, WorktreeToggle } from "./WorktreeChoice";
 
 const CARD_SHADOW = "0 1px 2px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.04)";
 const CARD_BG = "linear-gradient(180deg, #1c1c1f 0%, #17171a 100%)";
@@ -31,13 +33,36 @@ export function ComposerContextRow({
   workContext,
   projectId,
   projectName,
+  sessionId,
+  worktree,
 }: {
   workContext: ComponentProps<typeof WorkContextPicker> | null;
   projectId: string;
   projectName: string;
+  sessionId?: string;
+  worktree?: {
+    showToggle: boolean;
+    pressed: boolean;
+    onToggle: () => void;
+    liveLabel: string;
+    liveTitle: string;
+    base?: string | null;
+    sha?: string | null;
+  } | null;
 }) {
-  const branch = useGitBranch(projectId);
-  if (!workContext && !branch.visible) return null;
+  const branch = useGitBranch(projectId, {
+    sessionId,
+    isolated: Boolean(worktree?.liveTitle),
+  });
+  const worktreeLabel = worktree?.liveTitle
+    ? worktreeBranchMarker({
+        liveBranch: branch.current,
+        base: worktree.base,
+        sha: worktree.sha,
+      })
+    : null;
+  const showBranch = worktree?.liveTitle ? Boolean(worktreeLabel) : branch.visible;
+  if (!workContext && !showBranch && !worktree?.showToggle && !worktree?.liveLabel) return null;
   return (
     <div
       className="mb-2 flex min-w-0 items-center gap-2 px-1"
@@ -45,10 +70,16 @@ export function ComposerContextRow({
       data-work-context-slot="above-input"
     >
       {workContext ? <WorkContextPicker {...workContext} /> : null}
-      {branch.visible ? (
+      {worktree?.showToggle ? (
+        <WorktreeToggle pressed={worktree.pressed} onToggle={worktree.onToggle} />
+      ) : null}
+      {worktree?.liveLabel ? (
+        <WorktreeSessionLabel label={worktree.liveLabel} title={worktree.liveTitle} />
+      ) : null}
+      {showBranch ? (
         <GitBranchChrome
           key={projectId}
-          label={branch.label}
+          label={worktreeLabel ?? branch.label}
           projectName={projectName}
           current={branch.current}
           branches={branch.branches}

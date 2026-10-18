@@ -6,9 +6,10 @@ import { filterHopAction, matchingFilter } from "./filter-hop";
 export function useWorkspaceTree(
   projectId: string,
   filter: string,
-  options?: { directoryPath?: string; initialExpanded?: readonly string[] },
+  options?: { directoryPath?: string; initialExpanded?: readonly string[]; sessionId?: string },
 ) {
   const directoryPath = options?.directoryPath ?? "";
+  const sessionId = options?.sessionId || undefined;
   const expandKey = (options?.initialExpanded ?? []).join("\0");
   const [cache, setCache] = useState<ReadonlyMap<string, TreeEntry[]>>(new Map());
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
@@ -69,7 +70,7 @@ export function useWorkspaceTree(
     const load = (dir: string) => {
       if (inflight.current.has(dir)) return;
       inflight.current.add(dir);
-      void backend.listProjectDir(projectId, dir).then(
+      void backend.listProjectDir(projectId, dir, sessionId).then(
         (entries) => remember(dir, entries),
         (err: unknown) => fail(dir, err),
       );
@@ -82,7 +83,7 @@ export function useWorkspaceTree(
     return () => {
       live.current += 1;
     };
-  }, [projectId, directoryPath, expandKey]);
+  }, [directoryPath, expandKey, projectId, sessionId]);
 
   useEffect(() => {
     const query = filter.trim();
@@ -100,7 +101,7 @@ export function useWorkspaceTree(
         try {
           for (let hop = 0; hop < 20000; hop += 1) {
             if (cancel) return;
-            const result = await backend.filterProjectPaths(projectId, query);
+            const result = await backend.filterProjectPaths(projectId, query, sessionId);
             const action = filterHopAction({
               stopped: cancel,
               cancelled: Boolean(result.cancelled),
@@ -132,7 +133,7 @@ export function useWorkspaceTree(
       cancel = true;
       window.clearTimeout(timer);
     };
-  }, [filter, projectId]);
+  }, [filter, projectId, sessionId]);
 
   const toggleFilter = (id: string) => {
     setFilterCollapsed((current) => {
@@ -155,7 +156,7 @@ export function useWorkspaceTree(
     const ticket = live.current;
     inflight.current.add(dir);
     setLoading((current) => new Set(current).add(dir));
-    void backend.listProjectDir(projectId, dir).then(
+    void backend.listProjectDir(projectId, dir, sessionId).then(
       (entries) => {
         inflight.current.delete(dir);
         if (live.current !== ticket) return;

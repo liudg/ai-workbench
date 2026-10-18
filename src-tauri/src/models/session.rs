@@ -58,4 +58,19 @@ pub struct Session {
     /// 已归档的聊天不进默认侧边栏。
     #[serde(default)]
     pub archived: bool,
+    /// 会话工作目录。空表示用项目目录。有值时文件树和变更都看这里。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workdir: Option<String>,
+    /// 工作树自己的分支。Codex 的托管检出没有分支，这项为空。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worktree_branch: Option<String>,
+    /// 创建工作树时源目录的分支。分离头指针时为空，界面改显示短提交号。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worktree_base: Option<String>,
+    /// 创建时或当前检出的提交。界面在没有分支名时取前 7 位。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worktree_sha: Option<String>,
+    /// 这份工作树是工作台创建并记录过的。用户自己的工作树和主检出始终为 false。
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub worktree_owned: bool,
 }

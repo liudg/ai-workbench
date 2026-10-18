@@ -36,6 +36,16 @@ export interface Session {
   updated_at: number;
   /** 已归档的聊天不进侧栏列表。 */
   archived?: boolean;
+  /** 会话工作目录。空表示用项目目录。 */
+  workdir?: string | null;
+  /** 工作树自己的分支。分离头指针时为空。 */
+  worktree_branch?: string | null;
+  /** 创建工作树时基于的分支。 */
+  worktree_base?: string | null;
+  /** 创建时的提交。没有分支名时界面取前 7 位。 */
+  worktree_sha?: string | null;
+  /** 工作台创建并记录过的工作树。 */
+  worktree_owned?: boolean;
 }
 
 /** 项目聚合状态：需要处理 > 运行中 > 失败 > 已完成 > 已停止 */

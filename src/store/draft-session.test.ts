@@ -105,6 +105,7 @@ test("first send body carries claude and codex defaults only when the draft set 
   assert.equal(claude.applyServiceTier, false);
   assert.equal(claude.collaborationMode, null);
   assert.equal(claude.text, "hi");
+  assert.equal(claude.worktree, false);
 
   const codex = firstSendBody(
     draft({
@@ -131,6 +132,12 @@ test("first send body carries claude and codex defaults only when the draft set 
   assert.equal(codex.goal, "ship");
   assert.equal(codex.goalStatus, "paused");
   assert.deepEqual(codex.images, ["a.png"]);
+  assert.equal(codex.worktree, false);
+  assert.equal(firstSendBody(draft({ worktree: true }), { text: "hi" }).worktree, true);
+  assert.equal(
+    firstSendBody(draft({ projectId: "standalone", worktree: true }), { text: "hi" }).worktree,
+    false,
+  );
 });
 
 test("draft first send success removes the draft and selects the real session", async () => {

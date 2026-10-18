@@ -5,6 +5,12 @@ import { OPEN_THREAD_FIND } from "@/features/chat/find/use-thread-find";
 import { FileSearchDialog } from "@/features/panel/files/FileSearchDialog";
 import { sessionChanges } from "@/features/changes-model/diff-parse";
 import { toggleSidebar } from "@/features/sidebar/visibility";
+import { loadWorktreeDeletePreview } from "@/lib/worktree-delete-preview";
+import {
+  worktreeDeleteFlags,
+  worktreeDeleteIsDirty,
+  type WorktreeDeletePreview,
+} from "@/lib/worktree-delete";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { useWorkbench } from "@/store";
 import { STANDALONE_DRAFT_ID } from "@/store/standalone";
@@ -41,6 +47,7 @@ export function CommandMenuHost() {
   const [renameError, setRenameError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [fileNotice, setFileNotice] = useState<string | null>(null);
+  const [deletePreview, setDeletePreview] = useState<WorktreeDeletePreview | null | undefined>(undefined);
   const [fileSearchProjectId, setFileSearchProjectId] = useState<string | null>(null);
 
   const projects = useWorkbench((s) => s.projects);
@@ -204,7 +211,9 @@ export function CommandMenuHost() {
     }
     if (id === "delete") {
       setDeleteError(null);
+      setDeletePreview(undefined);
       setDrill("delete");
+      void loadWorktreeDeletePreview(session.id).then(setDeletePreview);
       return;
     }
     if (id === "toggle-files") {
@@ -343,9 +352,10 @@ export function CommandMenuHost() {
     });
   };
 
-  const confirmDelete = () => {
-    if (!session || !project) return;
-    void useWorkbench.getState().deleteSession(project.id, session.id).then((ok) => {
+  const confirmDelete = (action: "delete" | "keep-worktree" | "discard-worktree") => {
+    if (!session || !project || deletePreview === undefined) return;
+    const flags = worktreeDeleteFlags(action, deletePreview);
+    void useWorkbench.getState().deleteSession(project.id, session.id, flags).then((ok) => {
       if (ok) close();
       else setDeleteError(COPY.deleteError);
     });
@@ -364,6 +374,8 @@ export function CommandMenuHost() {
           deleteError={deleteError}
           notice={filesOpen ? fileNotice : null}
           emptyText={filesOpen ? fileEmpty : undefined}
+          dirtyWorktree={worktreeDeleteIsDirty(deletePreview ?? null)}
+          deleteReady={deletePreview !== undefined}
           onQuery={(value) => {
             setQuery(value);
             setActive(0);
@@ -382,22 +394,29 @@ export function CommandMenuHost() {
           }}
           onRenameTitle={setRenameTitle}
           onRenameSubmit={submitRename}
-          onDeleteConfirm={confirmDelete}
+          onDeleteConfirm={() => confirmDelete("delete")}
+          onKeepWorktree={() => confirmDelete("keep-worktree")}
+          onDiscardWorktree={() => confirmDelete("discard-worktree")}
         />
       ) : null}
       {fileSearchProjectId ? (
         <FileSearchDialog
           projectId={fileSearchProjectId}
+          sessionId={activeSessionId[fileSearchProjectId]}
           onClose={() => setFileSearchProjectId(null)}
           onOpen={(path, line) => {
             const current = useWorkbench.getState();
             const target = current.projects.find((item) => item.id === fileSearchProjectId);
             const openSession = target ? current.activeSessionId[target.id] : null;
+            const openWorkdir = openSession
+              ? current.sessions[target?.id ?? ""]?.find((item) => item.id === openSession)?.workdir?.trim()
+              : "";
             if (!target || !openSession) return;
             void current.panelOpenHref(openSession, path, line ?? undefined, {
               projectId: target.id,
-              projectPath: target.path,
+              projectPath: openWorkdir || target.path,
               sessionFiles: [],
+              sessionId: openSession,
             });
           }}
         />

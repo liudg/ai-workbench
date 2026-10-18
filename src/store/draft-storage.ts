@@ -28,6 +28,7 @@ interface PersistedDraft {
   attachments: Attachment[];
   textSnippets: TextSnippet[];
   focused: boolean;
+  worktree?: boolean;
 }
 
 interface PersistedFile {
@@ -127,6 +128,7 @@ function parseDraft(value: unknown): PersistedDraft | null {
     attachments: asAttachments(raw.attachments),
     textSnippets: asSnippets(raw.textSnippets),
     focused: Boolean(raw.focused),
+    worktree: raw.worktree === true,
   };
 }
 
@@ -163,6 +165,7 @@ export function readDraftSnapshot(): DraftSnapshot {
       goal: draft.goal,
       goalStatus: draft.goal ? draft.goalStatus : null,
       phase: "idle",
+      ...(draft.worktree ? { worktree: true } : {}),
     };
     const id = draftId(draft.projectId);
     snapshot.drafts[draft.projectId] = session;
@@ -201,6 +204,7 @@ export function writeDraftSnapshot(state: {
       attachments: state.attachments[id] ?? [],
       textSnippets: state.textSnippets[id] ?? [],
       focused: Boolean(state.draftFocused[draft.projectId]),
+      ...(draft.worktree ? { worktree: true } : {}),
     };
   });
   try {

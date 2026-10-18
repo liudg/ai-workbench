@@ -116,6 +116,8 @@ export interface FirstSendBody {
   annotations: PageAnnotation[];
   /** 首发时由工作台创建任务目录。普通项目会话为 false。 */
   standalone: boolean;
+  /** 在一个新的 Git 工作树里运行。独立聊天始终为 false。 */
+  worktree: boolean;
 }
 
 export function blankDraft(
@@ -206,6 +208,7 @@ export function firstSendBody(draft: SessionDraft, message: DraftMessage): First
     images: message.images ? [...message.images] : [],
     annotations: message.annotations ? [...message.annotations] : [],
     standalone: isStandaloneDraft(draft.projectId),
+    worktree: Boolean(draft.worktree) && !isStandaloneDraft(draft.projectId),
   };
 }
 

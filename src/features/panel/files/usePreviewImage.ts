@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { usePanelOptional } from "../core/PanelProvider";
 import { imageDataUrl, readProjectImage } from "../viewers/image-file";
 
 export type PreviewImageState =
@@ -9,13 +10,14 @@ export type PreviewImageState =
 
 /** 按图片读取，不走文本预览。 */
 export function usePreviewImage(projectId: string, path: string): PreviewImageState {
+  const sessionId = usePanelOptional()?.sessionId;
   const [state, setState] = useState<PreviewImageState>({ status: "loading" });
 
   useEffect(() => {
     if (!path) return;
     let cancel = false;
     setState({ status: "loading" });
-    void readProjectImage(projectId, path).then(
+    void readProjectImage(projectId, path, sessionId).then(
       (image) => {
         if (cancel) return;
         setState({
@@ -32,7 +34,7 @@ export function usePreviewImage(projectId: string, path: string): PreviewImageSt
     return () => {
       cancel = true;
     };
-  }, [path, projectId]);
+  }, [path, projectId, sessionId]);
 
   return state;
 }

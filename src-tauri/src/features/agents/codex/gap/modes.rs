@@ -250,6 +250,7 @@ impl Shared {
                                 text: Some(format!(
                                     "{PLAN_IMPLEMENTATION_CLEAR_CONTEXT_PREFIX}\n\n{plan}"
                                 )),
+                                worktree: false,
                             },
                         );
                         Ok(())

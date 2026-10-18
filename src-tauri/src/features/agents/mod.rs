@@ -19,7 +19,7 @@ mod settled;
 
 pub use protocol::{
     fold_page_annotations, submit_annotation_as_attachment, AgentAdapter, AgentError, AgentSession,
-    EventSink, SessionContext, TurnDelivery, UserTurn,
+    EventSink, PreparedWorktree, SessionContext, TurnDelivery, UserTurn,
 };
 pub use providers::{AnnotationSink, DiffScope, DiffScopeProvider};
 
@@ -226,6 +226,7 @@ mod tests {
         assert!(caps.changes.turn_diff);
         assert!(caps.changes.git_scopes);
         assert!(caps.supports_subscription_usage);
+        assert!(caps.supports_worktree);
     }
 
     #[test]
@@ -242,11 +243,25 @@ mod tests {
     }
 
     #[test]
+    fn worktree_follows_native_cli_flags() {
+        for kind in AgentKind::all() {
+            let on = matches!(kind, AgentKind::CodexCli | AgentKind::ClaudeCode);
+            assert_eq!(
+                adapter_for(kind).capabilities().supports_worktree,
+                on,
+                "{}",
+                kind.as_str()
+            );
+        }
+    }
+
+    #[test]
     fn codex_can_archive_because_the_cli_has_the_rpc() {
         let caps = adapter_for(AgentKind::CodexCli).capabilities();
         assert!(caps.supports_archive);
         assert!(caps.supports_rename);
         assert!(caps.supports_delete);
+        assert!(caps.supports_worktree);
         assert!(caps.supports_subscription_usage);
     }
 

@@ -21,7 +21,7 @@ const GLYPH = {
  */
 export function ToolCall({ event, session }: EventViewProps) {
   const [open, setOpen] = useState(false);
-  const projectPath = useSessionProjectPath(session.project_id);
+  const projectPath = useSessionProjectPath(session);
   if (event.kind !== "tool-call") return null;
   const summary = relativizeDisplayText(event.summary, projectPath);
   const detail = relativizeDisplayText(event.detail ?? "", projectPath);

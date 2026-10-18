@@ -21,6 +21,7 @@ export const sessionCommands: Pick<
   | "renameSession"
   | "setSessionArchived"
   | "deleteSession"
+  | "sessionWorktreeDeletePreview"
   | "createSession"
   | "createSessionAndSend"
   | "discardUnsentSession"
@@ -64,7 +65,14 @@ export const sessionCommands: Pick<
     invoke("rename_session", { sessionId, name }),
   setSessionArchived: (sessionId, archived) =>
     invoke("set_session_archived", { sessionId, archived }),
-  deleteSession: (sessionId) => invoke("delete_session", { sessionId }),
+  deleteSession: (sessionId, options) =>
+    invoke("delete_session", {
+      sessionId,
+      discardWorktree: options?.discardWorktree ?? false,
+      forceWorktree: options?.forceWorktree ?? false,
+    }),
+  sessionWorktreeDeletePreview: (sessionId) =>
+    invoke("session_worktree_delete_preview", { sessionId }),
   createSession: (projectId, agent, accessMode) =>
     invoke<Session>("create_session", {
       projectId,

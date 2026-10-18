@@ -152,16 +152,45 @@ impl AgentAdapter for ClaudeCodeAdapter {
         process::resolve_claude_bin().map(|_| ())
     }
 
+    fn prepare_worktree(
+        &self,
+        source: &std::path::Path,
+    ) -> Result<crate::features::agents::PreparedWorktree, AgentError> {
+        let plan = crate::features::git::plan_claude_worktree(source).map_err(AgentError::Runtime)?;
+        let (base, sha) = crate::features::git::source_revision(source).map_err(AgentError::Runtime)?;
+        Ok(crate::features::agents::PreparedWorktree {
+            cwd: plan.path.to_string_lossy().to_string(),
+            branch: Some(plan.branch),
+            cli_name: Some(plan.name),
+            source: source.to_string_lossy().to_string(),
+            rollback_root: plan.path.to_string_lossy().to_string(),
+            base,
+            sha,
+        })
+    }
+
     async fn start_session(
         &self,
         ctx: SessionContext,
         events: EventSink,
     ) -> Result<Arc<dyn AgentSession>, AgentError> {
+        let worktree_name = ctx
+            .options
+            .get("worktree_name")
+            .and_then(|value| value.as_str())
+            .map(str::to_string);
+        let worktree_path = ctx
+            .options
+            .get("worktree_path")
+            .and_then(|value| value.as_str())
+            .map(str::to_string);
         let shared = runtime::open(
             ctx.project_path,
             ctx.access_mode,
             ctx.resume_native_id,
             command::roots_from_options(&ctx.options),
+            worktree_name,
+            worktree_path,
             events,
         )
         .await?;

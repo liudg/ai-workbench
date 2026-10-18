@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { FileTreeList } from "./FileTreeList";
 import { buildFileTree, treePathLabel, type FileTreeFile } from "./file-tree";
 import { previewSelection, type FileOpenMode, type TreeSurface } from "./file-preview-nav";
+import { usePanelOptional } from "../core/PanelProvider";
 import { useWorkspaceTree } from "./useWorkspaceTree";
 
 /** 工作区目录树。侧栏和面包屑下拉是同一套树，只是 surface 不同。 */
@@ -18,6 +19,7 @@ export function WorkspaceTree({
   onContextMenu,
   surface = "sidebar",
   directoryPath = "",
+  sessionId = "",
   initialExpanded = [],
   revealSelectedPath = false,
   openMode = "",
@@ -30,12 +32,18 @@ export function WorkspaceTree({
   onContextMenu?: (path: string, event: ReactMouseEvent) => void;
   surface?: TreeSurface;
   directoryPath?: string;
+  sessionId?: string;
   initialExpanded?: readonly string[];
   revealSelectedPath?: boolean;
   openMode?: FileOpenMode | "";
   includeHidden?: boolean;
 }) {
-  const tree = useWorkspaceTree(projectId, filter, { directoryPath, initialExpanded });
+  const panelSessionId = usePanelOptional()?.sessionId ?? "";
+  const tree = useWorkspaceTree(projectId, filter, {
+    directoryPath,
+    initialExpanded,
+    sessionId: sessionId || panelSessionId,
+  });
   const activeRef = useRef<HTMLButtonElement | null>(null);
   const rootReady = Boolean(tree.rootEntries);
 

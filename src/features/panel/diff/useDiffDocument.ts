@@ -152,7 +152,7 @@ export function useDiffDocument(turnFiles: FileChange[]) {
       if (!path || triedSource.current.has(path)) continue;
       triedSource.current.add(path);
       void backend
-        .readPreviewFile(projectId, path)
+        .readPreviewFile(projectId, path, sessionId)
         .then((doc) => {
           if (doc.kind === "binary") return;
           setSources((current) =>
@@ -161,7 +161,7 @@ export function useDiffDocument(turnFiles: FileChange[]) {
         })
         .catch(() => {});
     }
-  }, [loadFull, openPaths.length, projectId, reloadToken, renderPreview, sourceKey]);
+  }, [loadFull, openPaths.length, projectId, reloadToken, renderPreview, sessionId, sourceKey]);
 
   const queueScroll = useCallback((path: string) => {
     scrollPath.current = path;

@@ -19,7 +19,7 @@ import {
 import { focusProjectDraft } from "../lazy-draft";
 import { readDraftSnapshot } from "../draft-storage";
 import { adoptCreatedChat, retargetEmptyDraft, retargetStandaloneDraft } from "../standalone";
-import type { SessionSandbox } from "@/types";
+import type { AgentKind, SessionSandbox } from "@/types";
 import type { DraftSlice, PendingStart, SessionDraft, WorkbenchGet, WorkbenchSet, WorkbenchState } from "../types";
 
 const catalogEpoch = new Map<string, number>();
@@ -32,6 +32,11 @@ function dropPending(
   const next = { ...pending };
   delete next[projectId];
   return next;
+}
+
+function worktreeAllowed(state: WorkbenchState, agent: AgentKind, sessionId: string | null): boolean {
+  const catalog = sessionId ? state.catalogs[sessionId]?.capabilities : undefined;
+  return Boolean((catalog ?? state.profiles[agent]?.capabilities)?.supports_worktree);
 }
 
 async function discardQuiet(sessionId: string): Promise<boolean> {
@@ -309,6 +314,17 @@ export function createDraftSlice(
       });
     },
 
+    setDraftWorktree(sessionId, enabled) {
+      const projectId = projectOfDraft(sessionId);
+      if (!projectId) return;
+      set((s) => {
+        const draft = s.drafts[projectId];
+        if (!draft || draft.phase === "creating") return {};
+        if (Boolean(draft.worktree) === enabled) return {};
+        return { drafts: { ...s.drafts, [projectId]: { ...draft, worktree: enabled } } };
+      });
+    },
+
     setDraftGoalStatus(sessionId, status) {
       const projectId = projectOfDraft(sessionId);
       if (!projectId) return;
@@ -365,6 +381,7 @@ export function createDraftSlice(
       const claimed = claimDraft(existing);
       if (!claimed) return false;
       const body = firstSendBody(claimed, { text, images, annotations });
+      body.worktree = body.worktree && worktreeAllowed(get(), claimed.agent, sessionId);
       const result = await runDraftSend(projectId, () => {
         const at = Date.now();
         set((s) => {
@@ -392,7 +409,7 @@ export function createDraftSlice(
       return settleDraftCreate(set, get, projectId, result, text, "draft");
     },
 
-    async sendNewThread(projectId, agent, text) {
+    async sendNewThread(projectId, agent, text, worktree = false) {
       const sandbox = initialSandbox(
         get().lastSandboxByAgent[agent],
         get().profiles[agent]?.default_access,
@@ -408,9 +425,11 @@ export function createDraftSlice(
           goal: null,
           goalStatus: null,
           phase: "idle",
+          worktree,
         },
         { text },
       );
+      body.worktree = body.worktree && worktreeAllowed(get(), agent, null);
       const result = await runDraftSend(projectId, () => {
         const at = Date.now();
         set((s) => {

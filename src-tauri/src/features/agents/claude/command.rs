@@ -38,6 +38,8 @@ pub struct Launch {
     pub effort: Option<String>,
     /// 启动时的 `--add-dir`。运行中没有对应的控制请求。
     pub writable_roots: Vec<String>,
+    /// `--worktree` 的名字。CLI 在仓库 `.claude/worktrees/<name>` 建分支 `worktree-<name>`。
+    pub worktree: Option<String>,
 }
 
 pub fn cli_args(launch: &Launch) -> Vec<String> {
@@ -74,6 +76,10 @@ pub fn cli_args(launch: &Launch) -> Vec<String> {
     for dir in &launch.writable_roots {
         cmd.push("--add-dir".to_string());
         cmd.push(dir.clone());
+    }
+    if let Some(name) = nonempty(launch.worktree.as_deref()) {
+        cmd.push("--worktree".to_string());
+        cmd.push(name.to_string());
     }
     cmd.extend(["--input-format".to_string(), "stream-json".to_string()]);
     cmd

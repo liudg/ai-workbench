@@ -71,7 +71,11 @@ export interface SidebarSlice {
   forkSession(projectId: string, sessionId: string): Promise<void>;
   togglePinnedSession(sessionId: string): void;
   archiveSession(projectId: string, sessionId: string, archived: boolean): Promise<boolean>;
-  deleteSession(projectId: string, sessionId: string): Promise<boolean>;
+  deleteSession(
+    projectId: string,
+    sessionId: string,
+    worktree?: { discardWorktree: boolean; forceWorktree: boolean },
+  ): Promise<boolean>;
 }
 
 export interface WorkspaceSlice {
@@ -145,6 +149,8 @@ export interface SessionDraft {
   goal: string | null;
   goalStatus: "paused" | "active" | null;
   phase: "idle" | "creating";
+  /** 首发时在一个新的 Git 工作树里运行。 */
+  worktree?: boolean;
   /** 只在内存里。创建开始的时间，临时侧栏行用它，不写入本地存储。 */
   creatingSince?: number;
   /** 用户在创建完成前点了停止。结果回来之前仍然锁住发送。 */
@@ -179,6 +185,7 @@ export interface DraftSlice {
   setDraftGoal(sessionId: string, objective: string): void;
   clearDraftGoal(sessionId: string): void;
   setDraftGoalStatus(sessionId: string, status: "paused" | "active"): void;
+  setDraftWorktree(sessionId: string, enabled: boolean): void;
   loadDraftCatalog(sessionId: string): Promise<void>;
   commitDraftMessage(
     sessionId: string,
@@ -187,7 +194,12 @@ export interface DraftSlice {
     annotations?: PageAnnotation[],
   ): Promise<boolean>;
   /** `/new` 带正文：另起一条真会话，不覆盖当前草稿里还没发出的文字。 */
-  sendNewThread(projectId: string, agent: AgentKind, text: string): Promise<string | null>;
+  sendNewThread(
+    projectId: string,
+    agent: AgentKind,
+    text: string,
+    worktree?: boolean,
+  ): Promise<string | null>;
   /** 空草稿还没交给适配器。在项目和独立聊天之间改归属，不改已经绑定的会话。 */
   retargetDraft(fromProjectId: string, targetProjectId: string): void;
   /** 独立草稿还没建目录。选中一个项目后，这段输入改到那个项目。 */

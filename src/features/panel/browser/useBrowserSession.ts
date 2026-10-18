@@ -114,7 +114,7 @@ export function useBrowserSession({
   useEffect(() => {
     if (!path) return;
     const address = displayFileAddress(path);
-    const key = `${projectId}\n${address}`;
+    const key = `${projectId}\n${sessionId}\n${address}`;
     if (openedFile.current === key) return;
     const restored = entryToRestore(historyRef.current);
     if (restored) {
@@ -123,7 +123,7 @@ export function useBrowserSession({
       return;
     }
     let cancel = false;
-    void preparedFile(projectId, path)
+    void preparedFile(projectId, path, sessionId)
       .then((file) => {
         if (cancel) return;
         openedFile.current = key;
@@ -137,7 +137,7 @@ export function useBrowserSession({
     return () => {
       cancel = true;
     };
-  }, [openTarget, path, projectId]);
+  }, [openTarget, path, projectId, sessionId]);
 
   useEffect(() => {
     if (!isTauri) return;
@@ -261,7 +261,7 @@ export function useBrowserSession({
       void openTarget({ address: plan.address, target: plan.target }, "visit");
       return;
     }
-    void preparedFile(projectId, plan.path)
+    void preparedFile(projectId, plan.path, sessionId)
       .then((file) => openTarget(file, "visit"))
       .catch((err: unknown) => setError(message(err, DESKTOP_ZH.browserOpenFailed)));
   };
@@ -315,10 +315,14 @@ export function useBrowserSession({
   };
 }
 
-async function preparedFile(projectId: string, path: string): Promise<{ address: string; target: string }> {
+async function preparedFile(
+  projectId: string,
+  path: string,
+  sessionId?: string,
+): Promise<{ address: string; target: string }> {
   const address = displayFileAddress(path);
   try {
-    const file = await backend.prepareBrowserFile(projectId, path);
+    const file = await backend.prepareBrowserFile(projectId, path, sessionId);
     return { address: file.display || address, target: file.url };
   } catch (err) {
     // 子 webview 挂上后，主窗口不再是 webview window，这条命令会报「没有主窗口」。

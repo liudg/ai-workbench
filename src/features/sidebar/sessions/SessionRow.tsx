@@ -10,6 +10,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { loadWorktreeDeletePreview } from "@/lib/worktree-delete-preview";
+import {
+  worktreeDeleteFlags,
+  worktreeDeleteIsDirty,
+  type WorktreeDeletePreview,
+} from "@/lib/worktree-delete";
 import { cn } from "@/lib/utils";
 import { isPendingId } from "@/store/draft-session";
 import type { Session } from "@/types";
@@ -17,6 +23,7 @@ import { FixedMenu } from "../FixedMenu";
 import { SessionAgentIcon } from "@/shared/agent/SessionAgentIcon";
 import { SessionStatusDot } from "./SessionStatusDot";
 import { relativeSessionTime } from "./relative-time";
+import { DeleteSessionDialog } from "./DeleteSessionDialog";
 import { sessionMenuItems, type SessionMenuAction } from "./session-menu";
 import { useSessionRow } from "./use-session-row";
 
@@ -53,6 +60,7 @@ export function SessionRow({
   const [title, setTitle] = useState(session.title);
   const [renameError, setRenameError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deletePreview, setDeletePreview] = useState<WorktreeDeletePreview | null>(null);
   const anchorRef = useRef<HTMLButtonElement>(null);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
   const archived = Boolean(session.archived);
@@ -76,7 +84,18 @@ export function SessionRow({
       return;
     }
     setDeleteError(null);
-    setDeleteOpen(true);
+    setDeletePreview(null);
+    void loadWorktreeDeletePreview(session.id).then((preview) => {
+      setDeletePreview(preview);
+      setDeleteOpen(true);
+    });
+  };
+
+  const finishDelete = (action: "delete" | "keep-worktree" | "discard-worktree") => {
+    void deleteSession(projectId, session.id, worktreeDeleteFlags(action, deletePreview)).then((ok) => {
+      if (ok) setDeleteOpen(false);
+      else setDeleteError("无法删除任务。请重试。");
+    });
   };
 
   return (
@@ -200,33 +219,15 @@ export function SessionRow({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>要删除任务？</DialogTitle>
-            <DialogDescription>
-              这将永久删除该任务及其子智能体任务。此操作无法撤销。
-            </DialogDescription>
-          </DialogHeader>
-          {deleteError && <p className="text-sm text-red-300">{deleteError}</p>}
-          <DialogFooter>
-            <Button variant="outline" autoFocus onClick={() => setDeleteOpen(false)}>
-              取消
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                void deleteSession(projectId, session.id).then((ok) => {
-                  if (ok) setDeleteOpen(false);
-                  else setDeleteError("无法删除任务。请重试。");
-                });
-              }}
-            >
-              删除
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DeleteSessionDialog
+        open={deleteOpen}
+        dirtyWorktree={worktreeDeleteIsDirty(deletePreview)}
+        error={deleteError}
+        onOpenChange={setDeleteOpen}
+        onDelete={() => finishDelete("delete")}
+        onKeepWorktree={() => finishDelete("keep-worktree")}
+        onDiscardWorktree={() => finishDelete("discard-worktree")}
+      />
     </>
   );
 }

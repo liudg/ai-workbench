@@ -84,6 +84,8 @@ pub async fn open(
     access_mode: Option<String>,
     resume_native_id: Option<String>,
     writable_roots: Vec<String>,
+    worktree_name: Option<String>,
+    worktree_path: Option<String>,
     events: EventSink,
 ) -> Result<Arc<Shared>, AgentError> {
     let project = PathBuf::from(project_path.trim());
@@ -113,6 +115,7 @@ pub async fn open(
         model: None,
         effort: None,
         writable_roots: add_dirs.clone(),
+        worktree: worktree_name,
     });
     let mut child = process::spawn(&bin, &args, &project)?;
     let stdin = child
@@ -166,6 +169,14 @@ pub async fn open(
     if let Err(err) = shared.startup().await {
         shared.shutdown();
         return Err(err);
+    }
+    if let Some(path) = worktree_path.filter(|path| !path.is_empty()) {
+        if !std::path::Path::new(&path).is_dir() {
+            shared.shutdown();
+            return Err(AgentError::Runtime(
+                "工作树没有建出来。确认当前目录是有提交的 Git 仓库后再试。".into(),
+            ));
+        }
     }
     register(&shared);
     Ok(shared)

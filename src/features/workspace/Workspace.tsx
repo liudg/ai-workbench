@@ -15,7 +15,7 @@ export function Workspace() {
       <PanelProvider
         sessionId={session.id}
         projectId={project.id}
-        projectPath={project.path}
+        projectPath={session.workdir?.trim() || project.path}
         sessionTitle={session.title}
         agent={session.agent}
         events={events}

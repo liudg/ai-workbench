@@ -25,6 +25,7 @@ function placeCaret(textarea: HTMLTextAreaElement | null, caret: number) {
 /** `@` 菜单：空查询是添加项，有查询时用工作区路径筛选。 */
 export function useMentionMenu(input: {
   projectId: string;
+  sessionId?: string;
   text: string;
   setText: Dispatch<SetStateAction<string>>;
   caret: number;
@@ -43,7 +44,7 @@ export function useMentionMenu(input: {
   const textRef = useRef(input.text);
   textRef.current = input.text;
   const searchQuery = input.mentionOpen && !hidden && input.mentionQuery ? input.mentionQuery : null;
-  const search = useMentionSearch(input.projectId, searchQuery);
+  const search = useMentionSearch(input.projectId, searchQuery, input.sessionId);
   const show = input.mentionOpen && !hidden;
   const activeAdd = MENTION_ADD_ORDER[Math.min(index, MENTION_ADD_ORDER.length - 1)] ?? "files";
   const hasActive = show
