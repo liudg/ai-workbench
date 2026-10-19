@@ -27,6 +27,19 @@ test("a detached worktree marker names the base branch or a short commit", () =>
   assert.equal(worktreeBranchMarker({ liveBranch: null, base: "HEAD", sha: "abc" }), null);
 });
 
+test("a recorded worktree session still shows its marker", () => {
+  const workdir = "/home/me/.codex/worktrees/a1b2/demo/src";
+  assert.equal(worktreeCaption(workdir), "工作树 demo/src");
+  assert.equal(
+    worktreeBranchMarker({ liveBranch: null, base: "main", sha: "abcdef1234567890" }),
+    "基于 main",
+  );
+  assert.equal(
+    worktreeBranchMarker({ liveBranch: "HEAD", base: "main", sha: "abcdef1234567890" }),
+    "基于 main",
+  );
+});
+
 test("worktree caption uses the last two path segments", () => {
   assert.equal(worktreeCaption("/home/me/.codex/worktrees/a1b2/demo"), "工作树 a1b2/demo");
   assert.equal(worktreeCaption("C:\\repo\\.claude\\worktrees\\wt-abcd1234"), "工作树 worktrees/wt-abcd1234");

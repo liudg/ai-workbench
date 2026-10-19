@@ -2,11 +2,17 @@
 //! 差异范围只含未提交、未暂存、已暂存；已提交和分支对比的子菜单没有观察到。
 
 mod branch;
+mod recorded;
 mod worktree;
 
 pub use branch::{
     checkout_local_branch, create_and_checkout_branch, local_branch_menu, GitBranchMenu,
 };
+pub use recorded::{
+    checkout_contains, checkout_matches, recorded_checkouts, RecordedCheckout, RecordedWorktrees,
+};
+#[cfg(test)]
+pub use worktree::block_git;
 #[allow(unused_imports)]
 pub use worktree::{
     bind_codex_thread, cancel_worktree_start, codex_worktree_root, create_codex_checkout,
