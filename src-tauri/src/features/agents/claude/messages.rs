@@ -42,6 +42,8 @@ pub struct MapState {
     usage: super::usage::LiveCursor,
     /// 这一轮已经给过连接或重试提示。后面的占位错误不再各画一条。
     connection_noted: bool,
+    /// 这一轮已经把接口错误画成红条。后面的笼统 result 不再叠「报错」。
+    turn_failure_noted: bool,
     /// 用户按下了停止。紧跟着的流中止不是断线，不画红条。
     stop_requested: bool,
 }
@@ -81,6 +83,7 @@ impl MapState {
         self.text_stream_id.clear();
         self.thinking_stream_id.clear();
         self.connection_noted = false;
+        self.turn_failure_noted = false;
         // 新回合不沿用上一次停止，否则后面的真断线会被消掉。
         self.stop_requested = false;
         self.turn_id = turn_id.to_string();
@@ -628,7 +631,12 @@ fn on_assistant(state: &mut MapState, value: &Value, project: Option<&Path>, liv
         text.push_str(plain);
     }
     let anchor = message_anchor(value);
-    if !text.is_empty() {
+    let api_error = flag(value, "isApiErrorMessage") || flag(message, "isApiErrorMessage");
+    if !text.is_empty() && (api_error || connection_lost_text(&text)) {
+        // 接口错误不是模型答复。流式碎片若已经写成这句英文，用同一 stream 清掉。
+        events.extend(retract_streamed_api_error(state, &text));
+        events.extend(api_error_notice(state, value, &text));
+    } else if !text.is_empty() {
         state.text = text;
         events.extend(text_event(state, MessagePhase::FinalAnswer, anchor));
     }
@@ -692,7 +700,8 @@ fn on_result(state: &mut MapState, value: &Value, live: bool) -> Vec<SessionEven
     let mut events = Vec::new();
     if state.text.trim().is_empty() {
         if let Some(result) = value.get("result").and_then(Value::as_str) {
-            if !result.trim().is_empty() {
+            // 断线句子留在 result 里时，不要再写成最终答复。
+            if !result.trim().is_empty() && !connection_lost_text(result) {
                 state.text = result.to_string();
                 events.extend(text_event(state, MessagePhase::FinalAnswer, None));
             }
@@ -717,8 +726,12 @@ fn on_result(state: &mut MapState, value: &Value, live: bool) -> Vec<SessionEven
     // 打开会话时的状态由 runtime 在历史装完后写。历史 result 不改当前状态。
     if live {
         let status = result_status(value);
-        if status != SessionStatus::Stopped && !quiet_user_stop(state.stop_requested, value) {
+        if status != SessionStatus::Stopped
+            && !quiet_user_stop(state.stop_requested, value)
+            && !state.turn_failure_noted
+        {
             if let Some(message) = turn_failure_message(value) {
+                state.turn_failure_noted = true;
                 events.push(SessionEventBody::Error { message });
             }
         }
@@ -805,7 +818,66 @@ fn turn_failure_message(value: &Value) -> Option<String> {
     if !failed {
         return None;
     }
+    if value
+        .get("result")
+        .and_then(Value::as_str)
+        .is_some_and(connection_lost_text)
+    {
+        return Some("Claude Code 连接中断".into());
+    }
     Some(system_error_text(value))
+}
+
+/// `claude.exe` 在 `truncatedAfterOutput` 时写入的断线句子。
+fn connection_lost_text(text: &str) -> bool {
+    text.trim()
+        .to_ascii_lowercase()
+        .contains("connection lost mid-response")
+}
+
+/// 流式增量已经把这句英文写进当前气泡时，用空正文盖掉，避免留在答复里。
+fn retract_streamed_api_error(state: &mut MapState, api_text: &str) -> Vec<SessionEventBody> {
+    if !stream_is_this_error(state, api_text) {
+        return Vec::new();
+    }
+    let stream_id = state.text_stream_id.clone();
+    state.text_stream_id.clear();
+    state.text.clear();
+    vec![SessionEventBody::AgentMessage {
+        text: String::new(),
+        stream_id: Some(stream_id),
+        phase: Some(MessagePhase::Commentary),
+        mode: None,
+        dedupe_of: None,
+    }]
+}
+
+fn stream_is_this_error(state: &MapState, api_text: &str) -> bool {
+    if state.text_stream_id.is_empty() {
+        return false;
+    }
+    let current = state.text.trim();
+    let api = api_text.trim();
+    if current.is_empty() {
+        return false;
+    }
+    current == api || api.starts_with(current) || connection_lost_text(current)
+}
+
+/// 助手信封上的 `isApiErrorMessage`。`error=server_error` 走已有的「连接中断」。
+fn api_error_notice(state: &mut MapState, value: &Value, text: &str) -> Vec<SessionEventBody> {
+    if state.turn_failure_noted {
+        return Vec::new();
+    }
+    state.turn_failure_noted = true;
+    let message = classified_copy(value).map(str::to_string).unwrap_or_else(|| {
+        if connection_lost_text(text) {
+            "Claude Code 连接中断".to_string()
+        } else {
+            "Claude Code 报错".to_string()
+        }
+    });
+    vec![SessionEventBody::Error { message }]
 }
 
 fn on_goal(value: &Value) -> Vec<SessionEventBody> {

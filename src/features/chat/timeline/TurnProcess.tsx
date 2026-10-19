@@ -15,7 +15,8 @@ import { agentTurnName, useAgentIdentity } from "../events/use-agent-identity";
 /**
  * 一轮结束后的过程条。状态行是这块的第一个子节点，名称和用时在同一行。
  * 收起时过程收进这一行。展开后补上旁白，工具、命令、集成和查看图像各收成一行，再点开才看到步骤。
- * 结束后的思考不留条目。最终答复留在下面。答复前的说明接在状态行下面。
+ * 结束后的思考不留条目。最终答复留在下面，时间和复制跟在答复末尾。
+ * 折叠行已经带了 Agent 名，答复不再重复。答复前的说明接在状态行下面。
  */
 export function TurnProcess({
   events,
@@ -51,7 +52,7 @@ export function TurnProcess({
     [changeFlags, events],
   );
 
-  const renderEvent = (event: SessionEvent, showAgentLabel: boolean) => (
+  const renderEvent = (event: SessionEvent, showAgentLabel: boolean, showMessageFooter = false) => (
     <EventItem
       key={event.id}
       event={event}
@@ -60,6 +61,7 @@ export function TurnProcess({
         event.kind === "prompt" ? (resolvedAnswers.get(event.prompt_id) ?? null) : null
       }
       showAgentLabel={showAgentLabel}
+      showMessageFooter={showMessageFooter}
     />
   );
 
@@ -82,7 +84,7 @@ export function TurnProcess({
           onInteract={onInteract}
         />
       ) : null}
-      {answer ? renderEvent(answer, false) : null}
+      {answer ? renderEvent(answer, false, true) : null}
       {chromeAfter.map((event) => renderEvent(event, false))}
       {changes ? <ChangeCard changes={changes} /> : null}
     </div>

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 
 import type { Session, SessionEvent } from "@/types";
 import { ActivityGroup } from "../events/ActivityGroup";
-import { foldActivity } from "../events/activity-fold";
+import { foldActivity, type ActivityPiece } from "../events/activity-fold";
 import { activityOpenAfterSettle, toggleToolGroup, toolGroupOpen } from "../events/activity-open";
 import { EventItem } from "../events/EventItem";
 import { ThinkingStatus } from "../events/ThinkingStatus";
@@ -41,7 +41,7 @@ export function ActivityStream({
 
   return (
     <div className="min-w-0" data-activity-stream data-activity-settled={settled ? "true" : "false"}>
-      {pieces.map((piece) => {
+      {pieces.map((piece, index) => {
         if (piece.type === "images") {
           return (
             <ViewedImages
@@ -70,6 +70,7 @@ export function ActivityStream({
           );
         }
         const event = piece.event;
+        const labeled = showAgentLabel(event);
         return (
           <EventItem
             key={event.id}
@@ -78,11 +79,21 @@ export function ActivityStream({
             resolvedAnswer={
               event.kind === "prompt" ? (resolvedAnswers.get(event.prompt_id) ?? null) : null
             }
-            showAgentLabel={showAgentLabel(event)}
+            showAgentLabel={labeled}
+            showMessageFooter={labeled && !laterTools(pieces, index)}
           />
         );
       })}
       {thinking ? <ThinkingStatus /> : null}
     </div>
   );
+}
+
+/** 时间不要夹在这段正文和后面的工具摘要之间。 */
+function laterTools(pieces: readonly ActivityPiece[], index: number): boolean {
+  for (let cursor = index + 1; cursor < pieces.length; cursor += 1) {
+    const kind = pieces[cursor].type;
+    if (kind === "tools" || kind === "images") return true;
+  }
+  return false;
 }

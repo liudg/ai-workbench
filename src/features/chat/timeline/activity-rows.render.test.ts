@@ -282,6 +282,73 @@ const liveEvents: SessionEvent[] = [
   event("k1", { kind: "tool-call", name: "command", summary: "rg --files" }),
 ];
 
+test("a running turn does not repeat the agent name or wedge the time before tools", async () => {
+  const mod = await server.ssrLoadModule("/src/features/chat/timeline/LiveTurn.tsx");
+  const events: SessionEvent[] = [
+    event("a1", { kind: "agent-message", text: "先看一下工作目录。", phase: "final-answer" }),
+    event("k1", { kind: "tool-call", name: "command", summary: "rg --files" }),
+    event("a2", { kind: "agent-message", text: "坦克大战可以做成 H5。", phase: "partial-answer" }),
+    event("t1", { kind: "thinking", text: "继续想方案。" }),
+  ];
+  const html = renderToStaticMarkup(
+    createElement(mod.LiveTurn, {
+      events,
+      session: { ...session, agent: "claude-code" },
+      resolvedAnswers: new Map(),
+      expanded: true,
+      onToggle: () => {},
+    }),
+  );
+  assert.equal(html.includes('data-turn-summary="Claude Code · 运行中"'), true);
+  assert.equal(html.includes("data-agent-label"), false);
+  assert.equal(html.includes("data-message-footer"), false);
+  assert.equal(html.includes("星期"), false);
+  assertOrder(html, [
+    'data-turn-summary="Claude Code · 运行中"',
+    "先看一下工作目录。",
+    "已运行 1 条命令",
+    "坦克大战可以做成 H5。",
+    "正在思考",
+  ]);
+  const between = html.slice(html.indexOf("先看一下工作目录。"), html.indexOf("已运行 1 条命令"));
+  assert.equal(between.includes("data-message-footer"), false);
+  assert.equal(between.includes("Claude Code"), false);
+});
+
+test("a settled answer keeps the time under the reply, after the tools", async () => {
+  const mod = await server.ssrLoadModule("/src/features/chat/timeline/TurnProcess.tsx");
+  const events: SessionEvent[] = [
+    event("a1", { kind: "agent-message", text: "先看一下工作目录。", phase: "final-answer" }),
+    event("k1", { kind: "tool-call", name: "command", summary: "rg --files" }),
+    event("a2", { kind: "agent-message", text: "目录里有 src。", phase: "final-answer" }),
+  ];
+  const html = renderToStaticMarkup(
+    createElement(mod.TurnProcess, {
+      events,
+      answerId: "a2",
+      durationMs: 3_339_000,
+      session: { ...session, agent: "claude-code" },
+      resolvedAnswers: new Map(),
+      expanded: true,
+      onToggle: () => {},
+    }),
+  );
+  assert.equal(html.includes('data-turn-summary="Claude Code · 用时 55m 39s"'), true);
+  assert.equal(html.includes("data-agent-label"), false);
+  assertOrder(html, [
+    'data-turn-summary="Claude Code · 用时 55m 39s"',
+    "先看一下工作目录。",
+    "已运行 1 条命令",
+    "目录里有 src。",
+    "data-message-footer",
+  ]);
+  const between = html.slice(html.indexOf("先看一下工作目录。"), html.indexOf("已运行 1 条命令"));
+  assert.equal(between.includes("data-message-footer"), false);
+  const footer = html.slice(html.indexOf("data-message-footer"));
+  assert.match(footer, /星期/);
+  assert.match(footer, /复制/);
+});
+
 test("a running turn keeps the status line as the first child", async () => {
   const mod = await server.ssrLoadModule("/src/features/chat/timeline/LiveTurn.tsx");
   const expandedHtml = renderToStaticMarkup(

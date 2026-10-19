@@ -59,7 +59,7 @@ export function Row({
   children,
   tone = "default",
   copyText,
-  actionsBelow = false,
+  chrome = "inline",
 }: {
   icon: ReactNode;
   title: string;
@@ -67,7 +67,8 @@ export function Row({
   children: ReactNode;
   tone?: "default" | "muted";
   copyText?: string;
-  actionsBelow?: boolean;
+  /** 时间与复制。`below` 跟在正文下面；折叠行已经带了名字时用 `hidden`。 */
+  chrome?: "inline" | "below" | "hidden";
 }) {
   return (
     <div className="event-in group min-w-0 px-6 py-2">
@@ -75,6 +76,7 @@ export function Row({
         <div className="mb-1 flex min-w-0 items-center gap-2">
           <span className="shrink-0 text-zinc-500">{icon}</span>
           <span
+            data-agent-label={title}
             className={cn(
               "min-w-0 break-words text-xs font-medium",
               tone === "muted" ? "text-zinc-500" : "text-zinc-400",
@@ -82,7 +84,7 @@ export function Row({
           >
             {title}
           </span>
-          {actionsBelow ? null : (
+          {chrome === "inline" ? (
             <>
               <span className="text-[11px] text-zinc-600 opacity-0 transition-opacity group-hover:opacity-100">
                 {time}
@@ -94,12 +96,14 @@ export function Row({
                 />
               ) : null}
             </>
-          )}
+          ) : null}
         </div>
         <div className="min-w-0 cursor-text break-words pl-6">
           {children}
-          {actionsBelow ? (
-            <HoverActions time={time}>{copyText ? <CopyButton text={copyText} /> : null}</HoverActions>
+          {chrome === "below" ? (
+            <div data-message-footer>
+              <HoverActions time={time}>{copyText ? <CopyButton text={copyText} /> : null}</HoverActions>
+            </div>
           ) : null}
         </div>
       </div>

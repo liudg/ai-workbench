@@ -6,6 +6,7 @@ import {
   chunkTimeline,
   collapsedTurnSummary,
   formatElapsed,
+  isCliConnectionLostAnswer,
   isProcess,
   isSuppressedMessage,
   pickAnswer,
@@ -42,6 +43,45 @@ test("collapsed turn summary is the agent label, a middot, then elapsed time", (
 test("running turn summary keeps the agent label and the in-progress phrase", () => {
   assert.equal(runningTurnSummary("Codex CLI"), "Codex CLI · 运行中");
   assert.equal(runningTurnSummary("Cursor Agent"), "Cursor Agent · 运行中");
+});
+
+test("connection-lost API error text is not the turn answer", () => {
+  const lost =
+    "API Error: Connection lost mid-response. The response above may be incomplete.";
+  assert.equal(isCliConnectionLostAnswer(lost), true);
+  assert.equal(isCliConnectionLostAnswer(`  ${lost}  `), true);
+  assert.equal(isCliConnectionLostAnswer("先看目录"), false);
+  const events = [
+    event("u1", 0, { kind: "user-message", text: "做游戏" }),
+    event("a1", 1_000, { kind: "agent-message", text: "先看目录。", phase: "final-answer" }),
+    event("k1", 2_000, { kind: "tool-call", name: "command", summary: "rg --files" }),
+    event("a2", 3_000, { kind: "agent-message", text: lost, phase: "final-answer" }),
+    event("e1", 4_000, { kind: "error", message: "Claude Code 报错" }),
+  ];
+  assert.equal(isSuppressedMessage(events, 3), true);
+  const nodes = buildTimeline(events, "completed");
+  const turn = turnNode(nodes);
+  assert.equal(turn.answerId, "a1");
+  assert.equal(
+    turn.events.some((item) => item.id === "a2" || (item.kind === "agent-message" && item.text === lost)),
+    false,
+  );
+  const banner = turn.events.find((item) => item.kind === "error");
+  assert.ok(banner && banner.kind === "error");
+  assert.equal(banner.message, "Claude Code 连接中断");
+
+  const earlier = buildTimeline(
+    [
+      event("u0", 0, { kind: "user-message", text: "别的" }),
+      event("e0", 1, { kind: "error", message: "Claude Code 报错" }),
+      event("u1", 2, { kind: "user-message", text: "做游戏" }),
+      event("a2", 3, { kind: "agent-message", text: lost, phase: "final-answer" }),
+    ],
+    "completed",
+  );
+  const rendered = JSON.stringify(earlier);
+  assert.equal(rendered.includes("Claude Code 报错"), true);
+  assert.equal(rendered.includes(lost), false);
 });
 
 test("review duplicates use dedupe_of and plan duplicates use mode", () => {
