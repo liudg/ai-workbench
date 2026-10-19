@@ -53,6 +53,46 @@ thread_local! {
     static SUPPRESS_CANCEL: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
+#[cfg(test)]
+thread_local! {
+    static GIT_BLOCKED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static GIT_CALLS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+/// 测试里拦住 `git`。列会话的路径不能靠它识别工作树。
+#[cfg(test)]
+pub struct GitGuard;
+
+#[cfg(test)]
+pub fn block_git() -> GitGuard {
+    GIT_CALLS.with(|calls| calls.set(0));
+    GIT_BLOCKED.with(|flag| flag.set(true));
+    GitGuard
+}
+
+#[cfg(test)]
+impl GitGuard {
+    pub fn calls(&self) -> u32 {
+        GIT_CALLS.with(|calls| calls.get())
+    }
+}
+
+#[cfg(test)]
+impl Drop for GitGuard {
+    fn drop(&mut self) {
+        GIT_BLOCKED.with(|flag| flag.set(false));
+    }
+}
+
+#[cfg(test)]
+fn reject_blocked_git() -> Result<(), String> {
+    if !GIT_BLOCKED.with(|flag| flag.get()) {
+        return Ok(());
+    }
+    GIT_CALLS.with(|calls| calls.set(calls.get().saturating_add(1)));
+    Err("测试禁止调用 git".into())
+}
+
 fn starts() -> &'static Mutex<std::collections::HashMap<String, Arc<StartSlot>>> {
     static STARTS: std::sync::OnceLock<Mutex<std::collections::HashMap<String, Arc<StartSlot>>>> =
         std::sync::OnceLock::new();
@@ -462,7 +502,7 @@ pub struct DeletePreview {
     pub dirty: bool,
 }
 
-const MARKER_NAME: &str = "ai-workbench-worktree.json";
+pub(crate) const MARKER_NAME: &str = "ai-workbench-worktree.json";
 
 /// 源目录当时的分支和提交。分离头指针没有分支名。
 pub fn source_revision(source: &Path) -> Result<(Option<String>, String), String> {
@@ -626,10 +666,18 @@ fn delete_recorded_branch(repo: &Path, branch: Option<&str>, base: Option<&str>)
     let _ = git_status(repo, &["branch", "-D", branch]);
 }
 
+pub(crate) fn read_marker_file(path: &Path) -> Option<OwnedMarker> {
+    let raw = fs::read_to_string(path).ok()?;
+    parse_marker_json(&raw)
+}
+
 fn read_marker(cwd: &Path) -> Option<OwnedMarker> {
     let path = marker_path(cwd).ok()?;
-    let raw = fs::read_to_string(path).ok()?;
-    let value: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    read_marker_file(&path)
+}
+
+fn parse_marker_json(raw: &str) -> Option<OwnedMarker> {
+    let value: serde_json::Value = serde_json::from_str(raw).ok()?;
     if value.get("version").and_then(|item| item.as_u64()) != Some(1) {
         return None;
     }
@@ -847,6 +895,8 @@ fn git_output(root: &Path, args: &[&str]) -> Result<std::process::Output, String
     if !root.is_dir() {
         return Err("项目不存在".into());
     }
+    #[cfg(test)]
+    reject_blocked_git()?;
     if start_cancelled() {
         return Err("已停止".into());
     }
@@ -1055,6 +1105,42 @@ mod tests {
         assert!(bind_codex_thread(&checkout.cwd, "other").is_err());
 
         remove_checkout(&repo, &checkout.root);
+        assert!(!checkout.root.exists());
+        let _ = fs::remove_dir_all(repo);
+        let _ = fs::remove_dir_all(managed);
+    }
+
+    #[test]
+    fn recorded_marker_is_readable_without_git_and_delete_still_works() {
+        if !git_ok() {
+            return;
+        }
+        let repo = repo_with_commit("list-recorded");
+        let managed = scratch("list-managed");
+        let checkout = create_codex_checkout(&repo, &managed).unwrap();
+        let (base, sha) = source_revision(&repo).unwrap();
+        record_owned_worktree(
+            &checkout.cwd,
+            &OwnedMarker {
+                root: checkout.root.clone(),
+                base: base.clone(),
+                sha: sha.clone(),
+                branch: None,
+            },
+        )
+        .unwrap();
+        let guard = block_git();
+        let found = crate::features::git::recorded_checkouts(&repo, &managed);
+        assert_eq!(guard.calls(), 0);
+        assert_eq!(found.len(), 1, "新建的托管检出应能只靠标记文件认出来");
+        assert!(crate::features::git::checkout_matches(
+            &found,
+            &checkout.cwd.to_string_lossy()
+        ));
+        assert_eq!(found[0].base.as_deref(), Some("main"));
+        assert!(found[0].sha.starts_with(&sha[..7]));
+        drop(guard);
+        assert!(remove_owned_worktree(&repo, &checkout.cwd, true).unwrap());
         assert!(!checkout.root.exists());
         let _ = fs::remove_dir_all(repo);
         let _ = fs::remove_dir_all(managed);

@@ -24,11 +24,11 @@ use super::catalog::{
     after_list_refresh, catalog_with_ready_retry, command_when_ready, soften_catalog,
     AgentCatalogRefresh, CatalogCache,
 };
-use super::permission_cache::PermissionMenuCache;
 pub use super::log::EventEmitter;
 use super::log::{
     apply_body, prepend_bodies, sidebar_updated_at, SessionEntry, EVT_SESSIONS_CHANGED,
 };
+use super::permission_cache::PermissionMenuCache;
 
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -77,6 +77,7 @@ pub struct SessionManager {
     opening: tokio::sync::Mutex<()>,
     catalog_cache: CatalogCache,
     permission_cache: PermissionMenuCache,
+    recorded: git::RecordedWorktrees,
 }
 
 impl SessionManager {
@@ -88,6 +89,7 @@ impl SessionManager {
             opening: tokio::sync::Mutex::new(()),
             catalog_cache: CatalogCache::load(data_dir),
             permission_cache: PermissionMenuCache::load(data_dir),
+            recorded: git::RecordedWorktrees::new(),
         }
     }
 
@@ -123,6 +125,10 @@ impl SessionManager {
         Ok(project)
     }
 
+    /// 侧栏会话。目录 cwd 对上项目路径的留下。
+    /// 工作台自己建过的工作树靠标记文件归入这个项目，不对每条会话跑 git。
+    /// Codex `thread/list` 不识别工作树；检出是新建会话时另建的，线程 cwd 就是检出目录。
+    /// 官方在打开线程之后会不会再解析工作树，仓库资料里没有，标为未观察。
     pub async fn sessions_for_sidebar(
         &self,
         store: &ProjectStore,
@@ -133,8 +139,8 @@ impl SessionManager {
             Err(_) => return Vec::new(),
         };
         let (listed, _) = self.listed().await;
-        let mut sessions = sessions_for_project(&project, &listed);
-        claim_linked_worktrees(&project, &listed, &mut sessions);
+        let recorded = self.recorded_for(&project);
+        let mut sessions = sidebar_from_listing(&project, &listed, &recorded);
         let live = self.entries.lock().unwrap();
         sessions.retain(|session| {
             live.get(&session.id)
@@ -147,6 +153,13 @@ impl SessionManager {
                 session.archived = entry.meta.archived;
                 if session.title == "未命名会话" && !entry.meta.title.is_empty() {
                     session.title = entry.meta.title.clone();
+                }
+                if let Some(dir) = entry.meta.workdir.clone().filter(|path| !path.is_empty()) {
+                    session.workdir = Some(dir);
+                    session.worktree_branch = entry.meta.worktree_branch.clone();
+                    session.worktree_base = entry.meta.worktree_base.clone();
+                    session.worktree_sha = entry.meta.worktree_sha.clone();
+                    session.worktree_owned = entry.meta.worktree_owned;
                 }
                 // 目录 updatedAt 决定顺序。只有真实对话才并入本进程的活动时间。
                 session.updated_at = sidebar_updated_at(session.updated_at, entry.activity_at);
@@ -212,10 +225,9 @@ impl SessionManager {
         let Some(found) = found else {
             return Err("会话不存在".to_string());
         };
-        let project = store
-            .list()
-            .into_iter()
-            .find(|project| project_owns_cwd(project, &found.entry.cwd))
+        let projects = store.list();
+        let project = self
+            .project_for_cwd(&projects, &found.entry.cwd)
             .ok_or_else(|| "找不到会话所在目录".to_string())?;
         self.attach(&project, found.agent, &found.entry).await?;
         self.get_events(session_id)
@@ -308,6 +320,7 @@ impl SessionManager {
         writable_roots: &[String],
         worktree: bool,
     ) -> Result<Session, String> {
+        let _refresh_recorded = worktree.then(|| RefreshRecorded(&self.recorded));
         let adapter = adapter_for(agent);
         let caps = adapter.capabilities();
         let prepared = if worktree {
@@ -499,9 +512,10 @@ impl SessionManager {
             let Some(entry) = entries.get(session_id) else {
                 return Ok(());
             };
-            !entry.events.iter().any(|event| {
-                matches!(event.body, SessionEventBody::UserMessage { .. })
-            })
+            !entry
+                .events
+                .iter()
+                .any(|event| matches!(event.body, SessionEventBody::UserMessage { .. }))
         };
         if !unsent {
             return Err("这条会话已经有消息".into());
@@ -528,25 +542,27 @@ impl SessionManager {
             .await?;
         }
         if spec.apply_tuning {
-            self.set_session_tuning(
-                store,
-                session_id,
-                spec.model.clone(),
-                spec.effort.clone(),
-            )
-            .await?;
+            self.set_session_tuning(store, session_id, spec.model.clone(), spec.effort.clone())
+                .await?;
         }
         if spec.apply_service_tier {
             self.set_session_service_tier(store, session_id, spec.service_tier.clone())
                 .await?;
         }
         if spec.collaboration_mode.as_deref() == Some("plan") {
-            self.set_collaboration_mode(store, session_id, "plan").await?;
+            self.set_collaboration_mode(store, session_id, "plan")
+                .await?;
         }
-        if let Some(goal) = spec.goal.as_deref().map(str::trim).filter(|goal| !goal.is_empty()) {
+        if let Some(goal) = spec
+            .goal
+            .as_deref()
+            .map(str::trim)
+            .filter(|goal| !goal.is_empty())
+        {
             self.set_thread_goal(store, session_id, goal).await?;
             if spec.goal_status.as_deref() == Some("paused") {
-                self.set_thread_goal_status(store, session_id, "paused").await?;
+                self.set_thread_goal_status(store, session_id, "paused")
+                    .await?;
             }
         }
         self.send_message(
@@ -958,7 +974,11 @@ impl SessionManager {
             .map_err(|err| err.to_string())
     }
 
-    pub async fn set_follow_up_queue_mode(&self, session_id: &str, mode: &str) -> Result<(), String> {
+    pub async fn set_follow_up_queue_mode(
+        &self,
+        session_id: &str,
+        mode: &str,
+    ) -> Result<(), String> {
         let handle = self.agent_handle_ready(session_id).await?;
         handle
             .set_follow_up_queue_mode(mode)
@@ -1196,10 +1216,9 @@ impl SessionManager {
         let Some(found) = found else {
             return Err("会话不存在".into());
         };
-        let project = store
-            .list()
-            .into_iter()
-            .find(|project| project_owns_cwd(project, &found.entry.cwd))
+        let projects = store.list();
+        let project = self
+            .project_for_cwd(&projects, &found.entry.cwd)
             .ok_or_else(|| "找不到会话所在目录".to_string())?;
         Ok((agent, native, project))
     }
@@ -1258,7 +1277,10 @@ impl SessionManager {
         let (agent, native, project) = self.locate_session(store, session_id).await?;
         let cwd = self.session_cwd(session_id, &native, agent).await;
         if cwd.is_empty() {
-            return Ok(git::DeletePreview { owned: false, dirty: false });
+            return Ok(git::DeletePreview {
+                owned: false,
+                dirty: false,
+            });
         }
         Ok(git::delete_preview(
             std::path::Path::new(&project.path),
@@ -1281,7 +1303,13 @@ impl SessionManager {
         if discard_worktree {
             let cwd = self.session_cwd(session_id, &native, agent).await;
             if !cwd.is_empty() {
-                git::remove_owned_worktree(std::path::Path::new(&project.path), std::path::Path::new(&cwd), force_worktree)?;
+                let removed = git::remove_owned_worktree(
+                    std::path::Path::new(&project.path),
+                    std::path::Path::new(&cwd),
+                    force_worktree,
+                );
+                self.recorded.invalidate();
+                removed?;
             }
         }
         if let Err(first) = adapter.delete_thread(&native).await {
@@ -1377,12 +1405,21 @@ impl SessionManager {
         let _ = self.attach(&project, agent, &forked).await;
         self.invalidate_kind(agent).await;
         self.emit_changed(&project.id);
-        Ok(session)
+        let opened = self
+            .entries
+            .lock()
+            .unwrap()
+            .get(&session.id)
+            .map(|entry| entry.meta.clone());
+        Ok(opened.unwrap_or(session))
     }
 }
 
 fn apply_worktree(session: &mut Session, project: &Project, cwd: &str) {
-    let Some(info) = git::session_worktree(std::path::Path::new(&project.path), std::path::Path::new(cwd)) else {
+    let Some(info) = git::session_worktree(
+        std::path::Path::new(&project.path),
+        std::path::Path::new(cwd),
+    ) else {
         return;
     };
     session.workdir = Some(info.cwd.to_string_lossy().to_string());
@@ -1426,27 +1463,56 @@ fn linked_of(project: &Project, cwd: &str) -> Option<Checkout> {
     if project.standalone || cwd.trim().is_empty() {
         return None;
     }
-    git::linked_checkout(std::path::Path::new(&project.path), std::path::Path::new(cwd))
-        .ok()
-        .flatten()
+    git::linked_checkout(
+        std::path::Path::new(&project.path),
+        std::path::Path::new(cwd),
+    )
+    .ok()
+    .flatten()
 }
 
-fn project_owns_cwd(project: &Project, cwd: &str) -> bool {
-    project_matches_cwd(project, &crate::features::agents::cwd_key(cwd)) || linked_of(project, cwd).is_some()
+struct RefreshRecorded<'a>(&'a git::RecordedWorktrees);
+
+impl Drop for RefreshRecorded<'_> {
+    fn drop(&mut self) {
+        self.0.invalidate();
+    }
 }
 
-fn claim_linked_worktrees(project: &Project, listed: &[SourcedEntry], sessions: &mut Vec<Session>) {
+fn sidebar_from_listing(
+    project: &Project,
+    listed: &[SourcedEntry],
+    recorded: &[git::RecordedCheckout],
+) -> Vec<Session> {
+    let mut sessions = sessions_for_project(project, listed);
+    attach_recorded_worktrees(project, listed, recorded, &mut sessions);
+    sessions
+}
+
+/// 只并入带工作台标记的检出。不调用 `linked_checkout`。
+fn attach_recorded_worktrees(
+    project: &Project,
+    listed: &[SourcedEntry],
+    recorded: &[git::RecordedCheckout],
+    sessions: &mut Vec<Session>,
+) {
+    if project.standalone || recorded.is_empty() {
+        return;
+    }
     for item in listed {
         if item.entry.ephemeral {
             continue;
         }
-        let Some(checkout) = linked_of(project, &item.entry.cwd) else {
+        let Some(checkout) = recorded
+            .iter()
+            .find(|row| git::checkout_contains(row, &item.entry.cwd))
+        else {
             continue;
         };
         if let Some(session) = sessions.iter_mut().find(|session| {
             session.agent == item.agent && session.native_id == item.entry.native_id
         }) {
-            apply_worktree(session, project, &checkout.cwd.to_string_lossy());
+            fill_recorded(session, &item.entry.cwd, checkout);
             continue;
         }
         let mut session = Session {
@@ -1465,9 +1531,17 @@ fn claim_linked_worktrees(project: &Project, listed: &[SourcedEntry], sessions: 
             worktree_sha: None,
             worktree_owned: false,
         };
-        apply_worktree(&mut session, project, &checkout.cwd.to_string_lossy());
+        fill_recorded(&mut session, &item.entry.cwd, checkout);
         sessions.push(session);
     }
+}
+
+fn fill_recorded(session: &mut Session, cwd: &str, checkout: &git::RecordedCheckout) {
+    session.workdir = Some(cwd.to_string());
+    session.worktree_branch = checkout.branch.clone();
+    session.worktree_base = checkout.base.clone();
+    session.worktree_sha = Some(checkout.sha.clone());
+    session.worktree_owned = true;
 }
 
 impl SessionManager {
@@ -1499,10 +1573,48 @@ impl SessionManager {
         {
             return Err("工作树不属于这个项目".into());
         }
-        if linked_of(project, &workdir).is_none() {
+        if !self.workdir_belongs(project, &workdir) {
             return Err("工作树不属于这个项目".into());
         }
         Ok(std::path::PathBuf::from(workdir))
+    }
+
+    fn recorded_for(&self, project: &Project) -> Vec<git::RecordedCheckout> {
+        if project.standalone {
+            return Vec::new();
+        }
+        self.recorded.for_path(
+            std::path::Path::new(&project.path),
+            &git::codex_worktree_root(),
+        )
+    }
+
+    /// 先对路径，再对工作台记过的检出。都不是时才对这一条 cwd 跑 git。
+    fn project_for_cwd(&self, projects: &[Project], cwd: &str) -> Option<Project> {
+        let key = crate::features::agents::cwd_key(cwd);
+        if let Some(project) = projects
+            .iter()
+            .find(|project| project_matches_cwd(project, &key))
+        {
+            return Some(project.clone());
+        }
+        if let Some(project) = projects.iter().find(|project| {
+            !project.standalone && git::checkout_matches(&self.recorded_for(project), cwd)
+        }) {
+            return Some(project.clone());
+        }
+        projects
+            .iter()
+            .find(|project| linked_of(project, cwd).is_some())
+            .cloned()
+    }
+
+    fn workdir_belongs(&self, project: &Project, workdir: &str) -> bool {
+        if project.standalone {
+            return false;
+        }
+        git::checkout_matches(&self.recorded_for(project), workdir)
+            || linked_of(project, workdir).is_some()
     }
 }
 
@@ -1519,7 +1631,12 @@ fn parse_session_key(session_id: &str) -> Option<(AgentKind, String)> {
 
 #[cfg(test)]
 mod tests {
-    use super::created_without_first_message;
+    use super::{created_without_first_message, sidebar_from_listing};
+    use crate::features::agents::{DirectoryEntry, SourcedEntry};
+    use crate::features::git::RecordedWorktrees;
+    use crate::models::{AgentKind, SessionStatus};
+    use std::fs;
+    use std::path::{Path, PathBuf};
 
     #[test]
     fn partial_send_names_the_created_session_and_the_missed_message() {
@@ -1531,5 +1648,121 @@ mod tests {
             created_without_first_message("  "),
             "会话已创建，第一条消息没有发出"
         );
+    }
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "ai-workbench-sidebar-wt-{name}-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn project_at(path: &Path) -> crate::models::Project {
+        crate::models::Project {
+            id: "saved".into(),
+            name: "已保存".into(),
+            path: path.to_string_lossy().to_string(),
+            folders: Vec::new(),
+            default_agent: AgentKind::CodexCli,
+            created_at: 1,
+            updated_at: 2,
+            external: false,
+            standalone: false,
+        }
+    }
+
+    fn sourced(id: &str, cwd: &Path) -> SourcedEntry {
+        SourcedEntry {
+            agent: AgentKind::CodexCli,
+            entry: DirectoryEntry {
+                native_id: id.into(),
+                cwd: cwd.to_string_lossy().to_string(),
+                cwd_key: crate::features::agents::cwd_key(&cwd.to_string_lossy()),
+                title: id.into(),
+                created_at: 10,
+                updated_at: 20,
+                status: SessionStatus::Completed,
+                ephemeral: false,
+                archived: false,
+            },
+        }
+    }
+
+    #[test]
+    fn sidebar_listing_does_not_run_linked_worktree_git() {
+        let repo = scratch("repo");
+        fs::create_dir_all(repo.join(".git")).unwrap();
+        let gitdir = repo.join(".git").join("worktrees").join("demo");
+        fs::create_dir_all(&gitdir).unwrap();
+        fs::write(gitdir.join("commondir"), "../..\n").unwrap();
+        let managed = scratch("managed");
+        let checkout = managed.join("ab12").join("demo");
+        let nested = checkout.join("src");
+        fs::create_dir_all(&nested).unwrap();
+        fs::write(
+            checkout.join(".git"),
+            format!("gitdir: {}\n", gitdir.display()),
+        )
+        .unwrap();
+        fs::write(
+            gitdir.join("ai-workbench-worktree.json"),
+            serde_json::json!({
+                "version": 1,
+                "base": "main",
+                "sha": "abcdef1234567890",
+                "root": checkout,
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let mut listed = vec![sourced("inside", &repo), sourced("worktree", &nested)];
+        let mut extras = Vec::new();
+        for index in 0..12 {
+            let dir = scratch(&format!("other-{index}"));
+            extras.push(dir.clone());
+            listed.push(sourced(&format!("other-{index}"), &dir));
+        }
+        let mut skipped = sourced("ghost", &nested);
+        skipped.entry.ephemeral = true;
+        skipped.entry.native_id = "ghost".into();
+        listed.push(skipped);
+
+        let index = RecordedWorktrees::new();
+        let guard = crate::features::git::block_git();
+        let recorded = index.for_path(&repo, &managed);
+        let sessions = sidebar_from_listing(&project_at(&repo), &listed, &recorded);
+        assert_eq!(guard.calls(), 0, "列会话不能为了工作树启动 git");
+        drop(guard);
+
+        assert_eq!(recorded.len(), 1);
+        let home = sessions
+            .iter()
+            .find(|item| item.native_id == "inside")
+            .unwrap();
+        assert!(home.workdir.is_none());
+        assert!(!home.worktree_owned);
+        let marked = sessions
+            .iter()
+            .find(|item| item.native_id == "worktree")
+            .unwrap();
+        let workdir = marked.workdir.as_deref().unwrap().replace('\\', "/");
+        assert!(workdir.ends_with("demo/src"), "{workdir}");
+        assert_eq!(marked.worktree_base.as_deref(), Some("main"));
+        assert_eq!(marked.worktree_sha.as_deref(), Some("abcdef1234567890"));
+        assert!(marked.worktree_owned);
+        assert!(sessions
+            .iter()
+            .all(|item| !item.native_id.starts_with("other-")));
+        assert!(sessions.iter().all(|item| item.native_id != "ghost"));
+
+        let _ = fs::remove_dir_all(&repo);
+        let _ = fs::remove_dir_all(&managed);
+        for dir in extras {
+            let _ = fs::remove_dir_all(dir);
+        }
     }
 }
