@@ -1,5 +1,5 @@
 //! 会话事件日志。追加、覆盖同一条流，以及把更早的回合插到前面。
-//! 侧边栏排序时间也在这里算：打开、附着和状态变化不算新活动。
+//! 侧边栏排序时间也在这里算：打开、附着、状态变化，以及 resume 改写的目录时间，都不算新活动。
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -223,11 +223,20 @@ fn note_activity(entry: &mut SessionEntry, at: i64) {
     entry.meta.updated_at = at;
 }
 
-/// 没有真实对话时沿用目录 updatedAt，即使内存里的时间被打开流程碰过。
-pub(super) fn sidebar_updated_at(directory_updated_at: i64, activity_at: Option<i64>) -> i64 {
+/// 侧边栏排序时间。
+///
+/// 有真实对话时，目录时间和这次活动取较新的。
+/// 没有真实对话时，打开时记下的时间如果更早就留在那里：
+/// resume 可能把目录 `updated_at` 改到现在，那不是新的一轮。
+/// 内存里的时间如果比目录还新，也仍然用目录，避免打开流程自己把时间改掉。
+pub(super) fn sidebar_updated_at(
+    directory_updated_at: i64,
+    activity_at: Option<i64>,
+    opened_updated_at: i64,
+) -> i64 {
     match activity_at {
         Some(activity) => directory_updated_at.max(activity),
-        None => directory_updated_at,
+        None => directory_updated_at.min(opened_updated_at),
     }
 }
 
@@ -485,9 +494,16 @@ mod tests {
         assert_eq!(session.activity_at, None);
         assert_eq!(session.meta.updated_at, 1_000);
         assert_eq!(session.meta.status, SessionStatus::Running);
-        assert_eq!(sidebar_updated_at(1_000, session.activity_at), 1_000);
+        assert_eq!(
+            sidebar_updated_at(1_000, session.activity_at, session.meta.updated_at),
+            1_000
+        );
         session.meta.updated_at = 9_999_999;
-        assert_eq!(sidebar_updated_at(1_000, session.activity_at), 1_000);
+        assert_eq!(
+            sidebar_updated_at(1_000, session.activity_at, session.meta.updated_at),
+            1_000
+        );
+        assert_eq!(sidebar_updated_at(9_999_999, None, 1_000), 1_000);
     }
 
     #[test]
@@ -508,9 +524,12 @@ mod tests {
         assert!(activity >= 1_000);
         assert_eq!(session.meta.updated_at, activity);
         assert_eq!(session.meta.title, "概括当前项目");
-        assert_eq!(sidebar_updated_at(1_000, session.activity_at), activity);
         assert_eq!(
-            sidebar_updated_at(activity + 50, session.activity_at),
+            sidebar_updated_at(1_000, session.activity_at, session.meta.updated_at),
+            activity
+        );
+        assert_eq!(
+            sidebar_updated_at(activity + 50, session.activity_at, 1_000),
             activity + 50
         );
     }
