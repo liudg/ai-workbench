@@ -3,7 +3,8 @@ import { FileText } from "lucide-react";
 
 import { baseName } from "@/shared/path";
 import { addSessionTextSnippet } from "../core/useAddTextSnippet";
-import { SelectionMenu } from "./SelectionMenu";
+import { SelectionMenu } from "@/shared/selection/SelectionMenu";
+import { fileSelectionDraft } from "./file-selection";
 import { payloadTitle, type PanelViewer, type ViewerViewProps } from "../core/registry";
 import { MarkdownPreview } from "./MarkdownPreview";
 import {
@@ -70,7 +71,7 @@ function MarkdownViewerBody({ payload, status, sessionId }: ViewerViewProps<Mark
         {status === "ready" && path ? (
           <SelectionMenu
             rootRef={rootRef}
-            path={path}
+            readDraft={(root) => fileSelectionDraft(root, path)}
             onAdd={(draft) => {
               addSessionTextSnippet(sessionId, draft);
             }}

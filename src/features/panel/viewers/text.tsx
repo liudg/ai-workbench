@@ -4,7 +4,8 @@ import { Code } from "lucide-react";
 import { baseName } from "@/shared/path";
 import { addSessionTextSnippet } from "../core/useAddTextSnippet";
 import { usePanelOptional } from "../core/PanelProvider";
-import { SelectionMenu } from "./SelectionMenu";
+import { SelectionMenu } from "@/shared/selection/SelectionMenu";
+import { fileSelectionDraft } from "./file-selection";
 import { payloadTitle, type PanelViewer, type ViewerViewProps } from "../core/registry";
 import { SourceView } from "./SourceView";
 import { TextPreview } from "./TextPreview";
@@ -35,7 +36,7 @@ function TextViewerBody({ payload, status }: ViewerViewProps<TextPayload>) {
       {status === "ready" && path && panel ? (
         <SelectionMenu
           rootRef={rootRef}
-          path={path}
+          readDraft={(root) => fileSelectionDraft(root, path)}
           onAdd={(draft) => {
             addSessionTextSnippet(panel.sessionId, draft);
           }}

@@ -27,6 +27,7 @@ import {
 } from "./timeline";
 import { FindBar } from "../find/FindBar";
 import { useThreadFind } from "../find/use-thread-find";
+import { ChatSelectionMenu } from "./ChatSelectionMenu";
 import { useTimelineFollow } from "./useTimelineFollow";
 
 export function ChatView({
@@ -191,6 +192,7 @@ export function ChatView({
           {liveChanges ? <ChangeCard changes={liveChanges} /> : null}
         </div>
       </div>
+      <ChatSelectionMenu rootRef={scrollRef} sessionId={session.id} />
       <div data-composer-column className="mx-auto w-full max-w-[760px]">
         {approvalEvent ? (
           <ApprovalSurface key={approvalEvent.prompt_id} event={approvalEvent} sessionId={session.id} />

@@ -7,7 +7,8 @@ import { ImageFrame } from "../viewers/image";
 import { MarkdownPreview } from "../viewers/MarkdownPreview";
 import { SourceView } from "../viewers/SourceView";
 import { TextPreview } from "../viewers/TextPreview";
-import { SelectionMenu } from "../viewers/SelectionMenu";
+import { SelectionMenu } from "@/shared/selection/SelectionMenu";
+import { fileSelectionDraft } from "../viewers/file-selection";
 import type { SelectionDraft } from "../viewers/selection-quote";
 import type { MarkdownViewMode } from "../viewers/markdown-mode";
 import { isUnsupportedPreviewPath, previewShellStatus, type PreviewShellStatus } from "./file-preview-nav";
@@ -106,7 +107,13 @@ export function FilePreview({
           />
         ) : null}
       </div>
-      {shell === "ready" && readyText ? <SelectionMenu rootRef={rootRef} path={quotePath || path} onAdd={onQuote} /> : null}
+      {shell === "ready" && readyText ? (
+        <SelectionMenu
+          rootRef={rootRef}
+          readDraft={(root) => fileSelectionDraft(root, quotePath || path)}
+          onAdd={onQuote}
+        />
+      ) : null}
     </div>
   );
 }

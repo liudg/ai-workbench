@@ -61,7 +61,7 @@
 
 ### 选区
 
-- 选区菜单和引号规则跟着文本查看器，放在 `panel/viewers/`。写入会话文本片的函数放在 `panel/core/useAddTextSnippet.ts`，打开文件和查看器都从这里进，不再从 files 的私有文件钻过去。
+- 选区菜单的手势和松开位置在 `shared/selection/`。文件行号仍在 `panel/viewers/`。写入会话文本片的函数放在 `panel/core/useAddTextSnippet.ts`，预览和聊天记录都从这里进。
 
 ## 5. 没有 Codex 对应物、这一轮未改产品行为的功能
 
