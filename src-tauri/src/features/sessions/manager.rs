@@ -1303,13 +1303,13 @@ impl SessionManager {
         if discard_worktree {
             let cwd = self.session_cwd(session_id, &native, agent).await;
             if !cwd.is_empty() {
-                let removed = git::remove_owned_worktree(
+                // 没有错误返回：登记、目录或分支清不掉也不能让「无法删除任务」把会话留住。
+                git::discard_confirmed_worktree(
                     std::path::Path::new(&project.path),
                     std::path::Path::new(&cwd),
                     force_worktree,
                 );
                 self.recorded.invalidate();
-                removed?;
             }
         }
         if let Err(first) = adapter.delete_thread(&native).await {

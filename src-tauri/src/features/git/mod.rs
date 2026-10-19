@@ -16,9 +16,10 @@ pub use worktree::block_git;
 #[allow(unused_imports)]
 pub use worktree::{
     bind_codex_thread, cancel_worktree_start, codex_worktree_root, create_codex_checkout,
-    delete_preview, linked_checkout, note_start_child, plan_claude_worktree, record_owned_worktree,
-    remove_checkout, remove_owned_worktree, repo_has_commit, session_worktree, source_revision,
-    start_was_cancelled, Checkout, DeletePreview, OwnedMarker, StartChild, WorktreeStart,
+    delete_preview, discard_confirmed_worktree, linked_checkout, note_start_child,
+    plan_claude_worktree, record_owned_worktree, remove_checkout, remove_owned_worktree,
+    repo_has_commit, session_worktree, source_revision, start_was_cancelled, Checkout,
+    DeletePreview, OwnedMarker, StartChild, WorktreeStart,
 };
 
 use std::path::Path;

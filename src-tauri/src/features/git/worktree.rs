@@ -59,6 +59,7 @@ thread_local! {
     static GIT_CALLS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
     static AFTER_WORKTREE_GIT_REMOVE: std::cell::Cell<fn(&Path)> =
         const { std::cell::Cell::new(noop_after_worktree_remove) };
+    static SKIP_GIT_WORKTREE_REMOVE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 #[cfg(test)]
@@ -575,6 +576,10 @@ pub fn delete_preview(project: &Path, cwd: &Path) -> DeletePreview {
 
 /// 只删除带记录、且不是主检出的链接工作树。`force` 用于用户确认过未保存改动。
 /// 返回 false 表示这份目录不是工作台的工作树，什么都没动。
+///
+/// `force == false` 时不带 `--force`。git 若因未提交文件、状态检查失败或工作树锁而在摘登记之前退出，
+/// 目录保持原样并返回错误。`force == true` 时先 `--force`，登记还在再 `--force --force`（锁定的工作树），
+/// 然后尽量摘掉管理目录。登记没了就清磁盘和 `worktree-*` 分支；目录清不掉也不算失败。
 pub fn remove_owned_worktree(project: &Path, cwd: &Path, force: bool) -> Result<bool, String> {
     let Some(checkout) = linked_checkout(project, cwd).ok().flatten() else {
         return Ok(false);
@@ -588,13 +593,67 @@ pub fn remove_owned_worktree(project: &Path, cwd: &Path, force: bool) -> Result<
         return Ok(false);
     };
     let root_arg = checkout.root.to_string_lossy().to_string();
+    let mut git_error =
+        git_worktree_remove(project, &checkout, &root_arg, if force { 1 } else { 0 });
+    if force && checkout_still_registered(project, &checkout) {
+        match git_worktree_remove(project, &checkout, &root_arg, 2) {
+            None => git_error = None,
+            Some(err) if git_error.is_none() => git_error = Some(err),
+            Some(_) => {}
+        }
+    }
+    after_worktree_git_remove(&checkout.root);
+    if checkout_still_registered(project, &checkout) && force {
+        best_effort_unregister(project, &checkout);
+    }
+    if checkout_still_registered(project, &checkout) {
+        if force {
+            discard_worktree_directory(project, &checkout);
+            if !checkout.root.exists() {
+                let _ = git_status(project, &["worktree", "prune"]);
+            }
+            if !checkout_still_registered(project, &checkout) {
+                delete_recorded_branch(project, marker.branch.as_deref(), marker.base.as_deref());
+                return Ok(true);
+            }
+        }
+        return Err(git_error.unwrap_or_else(|| "工作树没有删掉".into()));
+    }
+    discard_worktree_directory(project, &checkout);
+    if !checkout.root.exists() {
+        let _ = git_status(project, &["worktree", "prune"]);
+    }
+    delete_recorded_branch(project, marker.branch.as_deref(), marker.base.as_deref());
+    Ok(true)
+}
+
+/// 用户已经确认删除这份会话上的自建工作树。
+/// 干净预览传来的 `force` 是 false：先让 git 自己拒绝未提交改动；这一步失败再强制删。
+/// 一起删除传来的 `force` 是 true，直接强制。登记最后仍在也正常返回，调用方继续删会话。
+/// 主检出和没有工作台记录的工作树不会动。
+pub fn discard_confirmed_worktree(project: &Path, cwd: &Path, force: bool) {
+    if !force && remove_owned_worktree(project, cwd, false).is_ok() {
+        return;
+    }
+    let _ = remove_owned_worktree(project, cwd, true);
+}
+
+fn git_worktree_remove(
+    project: &Path,
+    checkout: &Checkout,
+    root_arg: &str,
+    forces: usize,
+) -> Option<String> {
+    #[cfg(test)]
+    if SKIP_GIT_WORKTREE_REMOVE.with(|flag| flag.get()) {
+        return Some("git worktree remove skipped".into());
+    }
     let mut args = vec!["worktree", "remove"];
-    if force {
+    for _ in 0..forces {
         args.push("--force");
     }
-    args.push(&root_arg);
-    // `git worktree remove` 可能先摘掉登记，再删目录失败（目录被占用，或退出码是 0 但空目录还在）。
-    // 登记还在就保持失败，避免脏工作树被当成已经删掉。登记没了就尽量清目录，清不掉也不挡住删会话。
+    args.push(root_arg);
+    // 可能先摘掉登记，再删目录失败（目录被占用，或退出码是 0 但空目录还在）。
     let mut git_error = git_status(project, &args).err();
     if checkout.root.exists() {
         if let Ok(repo) = repository_root(project) {
@@ -605,13 +664,58 @@ pub fn remove_owned_worktree(project: &Path, cwd: &Path, force: bool) -> Result<
             }
         }
     }
-    after_worktree_git_remove(&checkout.root);
-    if checkout_still_registered(project, &checkout) {
-        return Err(git_error.unwrap_or_else(|| "工作树没有删掉".into()));
+    git_error
+}
+
+/// `git worktree remove` 没摘掉登记时，只删链接工作树自己的管理目录，不动主库 `.git`。
+fn best_effort_unregister(project: &Path, checkout: &Checkout) {
+    if points_at_main(project, checkout) {
+        return;
     }
-    discard_worktree_directory(project, &checkout);
-    delete_recorded_branch(project, marker.branch.as_deref(), marker.base.as_deref());
-    Ok(true)
+    if let Some(gitdir) = linked_worktree_gitdir(&checkout.root) {
+        if linked_admin_gitdir(project, &gitdir) {
+            let _ = fs::remove_dir_all(&gitdir);
+        }
+    }
+    let _ = git_status(project, &["worktree", "prune"]);
+    if let Ok(repo) = repository_root(project) {
+        let _ = git_status(&repo, &["worktree", "prune"]);
+    }
+}
+
+fn linked_worktree_gitdir(root: &Path) -> Option<PathBuf> {
+    let file = root.join(".git");
+    if !file.is_file() {
+        return None;
+    }
+    let text = fs::read_to_string(file).ok()?;
+    let line = text.lines().next()?.trim();
+    let rest = line.strip_prefix("gitdir:")?.trim();
+    if rest.is_empty() {
+        return None;
+    }
+    let path = PathBuf::from(rest);
+    let path = if path.is_absolute() || windows_absolute(rest) {
+        path
+    } else {
+        root.join(path)
+    };
+    Some(dunce_or_canonicalize(&path).unwrap_or(path))
+}
+
+fn linked_admin_gitdir(project: &Path, gitdir: &Path) -> bool {
+    let Ok(Some(common)) = git_path(project, "--git-common-dir") else {
+        return false;
+    };
+    let worktrees = common.join("worktrees");
+    let gitdir = dunce_or_canonicalize(gitdir).unwrap_or_else(|_| gitdir.to_path_buf());
+    let gitdir_parts = path_segments(&gitdir);
+    let parent_parts = path_segments(&dunce_or_canonicalize(&worktrees).unwrap_or(worktrees));
+    gitdir_parts.len() == parent_parts.len() + 1
+        && gitdir_parts
+            .iter()
+            .zip(&parent_parts)
+            .all(|(left, right)| left.eq_ignore_ascii_case(right))
 }
 
 fn after_worktree_git_remove(root: &Path) {
@@ -1492,6 +1596,190 @@ mod tests {
         let mut perms = meta.permissions();
         perms.set_mode(0o555);
         let _ = fs::set_permissions(parent, perms);
+    }
+
+    fn owned_claude(name: &str) -> (PathBuf, PathBuf, String) {
+        let repo = repo_with_commit(name);
+        let (base, sha) = source_revision(&repo).unwrap();
+        let branch = format!("worktree-{name}");
+        let path = repo.join(".claude").join("worktrees").join(name);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        run_git(
+            &repo,
+            &["worktree", "add", "-b", &branch, path.to_str().unwrap()],
+        );
+        record_owned_worktree(
+            &path,
+            &OwnedMarker {
+                root: path.clone(),
+                base,
+                sha,
+                branch: Some(branch.clone()),
+            },
+        )
+        .unwrap();
+        (repo, path, branch)
+    }
+
+    #[test]
+    fn non_force_remove_failure_retries_with_force() {
+        if !git_ok() {
+            return;
+        }
+        let (repo, path, branch) = owned_claude("retry-dirty");
+        fs::write(path.join("extra.txt"), "dirty\n").unwrap();
+        assert!(remove_owned_worktree(&repo, &path, false).is_err());
+        assert!(path.join("extra.txt").is_file());
+        assert!(worktree_listed(&repo, &path));
+        assert!(branch_listed(&repo, &branch));
+
+        discard_confirmed_worktree(&repo, &path, false);
+        assert!(
+            !path.exists(),
+            "确认删除后应强制去掉非 force 删不掉的工作树"
+        );
+        assert!(!worktree_listed(&repo, &path));
+        assert!(!branch_listed(&repo, &branch));
+        assert!(repo.join("note.txt").is_file());
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn clean_locked_worktree_is_removed_after_confirmed_delete() {
+        if !git_ok() {
+            return;
+        }
+        let (repo, path, branch) = owned_claude("retry-lock");
+        let preview = delete_preview(&repo, &path);
+        assert!(preview.owned);
+        assert!(!preview.dirty);
+        run_git(&repo, &["worktree", "lock", path.to_str().unwrap()]);
+        let err = remove_owned_worktree(&repo, &path, false).unwrap_err();
+        assert!(
+            err.to_lowercase().contains("locked"),
+            "不带 --force 应在摘登记前失败: {err}"
+        );
+        assert!(path.exists());
+        assert!(worktree_listed(&repo, &path));
+        assert!(branch_listed(&repo, &branch));
+
+        discard_confirmed_worktree(&repo, &path, false);
+        assert!(!path.exists());
+        assert!(!worktree_listed(&repo, &path));
+        assert!(!branch_listed(&repo, &branch));
+        assert!(repo.join("note.txt").is_file());
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn forced_delete_removes_a_locked_worktree() {
+        if !git_ok() {
+            return;
+        }
+        let (repo, path, branch) = owned_claude("force-lock");
+        run_git(&repo, &["worktree", "lock", path.to_str().unwrap()]);
+        assert!(remove_owned_worktree(&repo, &path, true).unwrap());
+        assert!(!path.exists());
+        assert!(!worktree_listed(&repo, &path));
+        assert!(!branch_listed(&repo, &branch));
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn git_remove_failure_still_clears_registration_on_confirmed_delete() {
+        if !git_ok() {
+            return;
+        }
+        let (repo, path, branch) = owned_claude("skip-git");
+        struct ClearSkip;
+        impl Drop for ClearSkip {
+            fn drop(&mut self) {
+                super::SKIP_GIT_WORKTREE_REMOVE.with(|flag| flag.set(false));
+            }
+        }
+        let _clear = ClearSkip;
+        super::SKIP_GIT_WORKTREE_REMOVE.with(|flag| flag.set(true));
+        assert!(remove_owned_worktree(&repo, &path, false).is_err());
+        assert!(path.exists(), "未确认强制时不能把 git 失败当成已经删掉");
+        assert!(worktree_listed(&repo, &path));
+        assert!(branch_listed(&repo, &branch));
+
+        discard_confirmed_worktree(&repo, &path, false);
+        assert!(
+            !worktree_listed(&repo, &path),
+            "git worktree remove 失败后仍应摘掉登记"
+        );
+        assert!(!path.exists());
+        assert!(!branch_listed(&repo, &branch));
+        assert!(repo.join("note.txt").is_file());
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn confirmed_delete_returns_when_the_worktree_stays_registered() {
+        if !git_ok() {
+            return;
+        }
+        let (repo, path, branch) = owned_claude("stay-reg");
+        let gitdir = super::linked_worktree_gitdir(&path).expect("gitdir");
+        let (still_there, still_listed, branch_there) = {
+            let _unlock_tree = UnlockDir(path.clone());
+            let _unlock_gitdir = UnlockDir(gitdir.clone());
+            chmod_mode(&path, 0o555);
+            chmod_mode(&gitdir, 0o555);
+            assert!(
+                remove_owned_worktree(&repo, &path, true).is_err(),
+                "目录和管理目录都删不掉时，低层删除仍应失败"
+            );
+            discard_confirmed_worktree(&repo, &path, true);
+            (
+                path.exists(),
+                worktree_listed(&repo, &path),
+                branch_listed(&repo, &branch),
+            )
+        };
+        assert!(still_there, "删不掉的目录应留下");
+        assert!(still_listed, "登记还在也不能让确认删除返回失败");
+        assert!(branch_there);
+        assert!(repo.join("note.txt").is_file());
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[cfg(unix)]
+    fn chmod_mode(path: &Path, mode: u32) {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(path).unwrap().permissions();
+        perms.set_mode(mode);
+        fs::set_permissions(path, perms).unwrap();
+    }
+
+    #[test]
+    fn confirmed_delete_leaves_the_main_checkout_and_unrecorded_worktree() {
+        if !git_ok() {
+            return;
+        }
+        let repo = repo_with_commit("keep-main");
+        discard_confirmed_worktree(&repo, &repo, false);
+        discard_confirmed_worktree(&repo, &repo, true);
+        assert!(repo.join("note.txt").is_file());
+        let manual = scratch("keep-manual");
+        run_git(
+            &repo,
+            &[
+                "worktree",
+                "add",
+                "-b",
+                "hand-made-keep",
+                manual.to_str().unwrap(),
+            ],
+        );
+        discard_confirmed_worktree(&repo, &manual, true);
+        assert!(manual.join("note.txt").is_file());
+        assert!(worktree_listed(&repo, &manual));
+        run_git(&repo, &["worktree", "remove", manual.to_str().unwrap()]);
+        let _ = fs::remove_dir_all(repo);
+        let _ = fs::remove_dir_all(manual);
     }
 
     #[test]
