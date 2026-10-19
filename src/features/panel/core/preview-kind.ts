@@ -7,6 +7,12 @@ export type PreviewKind = "html" | "markdown" | "text" | "image";
 
 const IMAGE_EXT = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico", "avif"]);
 
+/** 没有行号的本地 HTML 用内置浏览器打开。带行号的仍当源码。 */
+export function opensLocalHtmlInBrowser(path: string, line: number | null | undefined): boolean {
+  if (line != null) return false;
+  return previewKindForPath(path) === "html";
+}
+
 export function previewKindForPath(path: string): PreviewKind {
   const name = path.split(/[\\/]/).pop() ?? path;
   const ext = name.includes(".") ? name.split(".").pop()?.toLowerCase() ?? "" : "";

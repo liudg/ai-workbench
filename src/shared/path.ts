@@ -61,7 +61,8 @@ export function relativizeFiles<T extends { path: string }>(files: readonly T[],
 }
 
 export function normalizePath(path: string): string {
-  const unix = path.replace(/\\/g, "/");
+  // Codex 把带空格的路径写成 `</C:/...>`，剥掉尖括号后会留下 `/C:/...`。
+  const unix = path.replace(/\\/g, "/").replace(/^\/+([A-Za-z]:\/)/, "$1");
   const drive = /^[A-Za-z]:/.exec(unix)?.[0] ?? "";
   const rooted = unix.startsWith("/");
   const rest = drive ? unix.slice(drive.length) : unix;

@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { fileLineRef, isHtmlHref, lineFromHref, previewKindForPath, resolvePreviewPath } from "./preview-kind.ts";
+import {
+  fileLineRef,
+  isHtmlHref,
+  lineFromHref,
+  opensLocalHtmlInBrowser,
+  previewKindForPath,
+  resolvePreviewPath,
+} from "./preview-kind.ts";
 
 test("preview resolves project files and files outside the project", () => {
   const root = "C:/work/demo";
@@ -33,4 +40,31 @@ test("line references and html links parse without inventing a scheme", () => {
   assert.equal(isHtmlHref("index.html"), true);
   assert.equal(isHtmlHref("https://example.com/a.html?q=1"), true);
   assert.equal(isHtmlHref("notes.md"), false);
+});
+
+test("codex angle-bracket windows paths resolve onto the drive", () => {
+  const root = "D:/work/demo";
+  const expected = "C:/Users/admin/Documents/AI Workbench/2026-10-19/h5-3/snake.html";
+  assert.equal(
+    resolvePreviewPath(root, "</C:/Users/admin/Documents/AI Workbench/2026-10-19/h5-3/snake.html>"),
+    expected,
+  );
+  assert.equal(
+    resolvePreviewPath(root, "/C:/Users/admin/Documents/AI Workbench/2026-10-19/h5-3/snake.html"),
+    expected,
+  );
+  assert.equal(
+    resolvePreviewPath(root, "file:///C:/Users/admin/Documents/AI%20Workbench/2026-10-19/h5-3/snake.html"),
+    expected,
+  );
+  assert.equal(
+    resolvePreviewPath(root, "file://localhost/C:/Users/admin/Documents/AI Workbench/2026-10-19/h5-3/snake.html"),
+    expected,
+  );
+  assert.equal(resolvePreviewPath(root, "<file:///C:/work/demo/readme.txt>"), "C:/work/demo/readme.txt");
+  assert.equal(resolvePreviewPath("", "/tmp/notes.md"), "/tmp/notes.md");
+  assert.equal(opensLocalHtmlInBrowser(expected, null), true);
+  assert.equal(opensLocalHtmlInBrowser("page.htm", null), true);
+  assert.equal(opensLocalHtmlInBrowser(expected, 4), false);
+  assert.equal(opensLocalHtmlInBrowser("C:/work/demo/src/app.ts", null), false);
 });

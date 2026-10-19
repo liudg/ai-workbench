@@ -4,7 +4,7 @@ import { create } from "zustand";
 
 import { registerViewer, type PanelViewer, type ViewerContext } from "../core/registry.ts";
 import { createPanelSlice, type PanelSlice } from "../state/slice.ts";
-import { matchMarkdown, matchOpenFiles, matchText } from "../viewers/kinds.ts";
+import { matchHtml, matchMarkdown, matchOpenFiles, matchText } from "../viewers/kinds.ts";
 import { openFilesPlace } from "./open-files-place.ts";
 
 const ctx: ViewerContext = { projectId: "p", projectPath: "C:/work/demo", sessionFiles: [] };
@@ -84,6 +84,68 @@ describe("shared file preview", { concurrency: 1 }, () => {
     assert.equal(place.path, "docs/note.md");
     assert.equal(place.line, 1);
     assert.equal(markdownLoads, 0);
+  } finally {
+    for (const release of undo) release();
+  }
+});
+
+test("local html without a line opens in the browser", async () => {
+  let htmlLoads = 0;
+  const undo = [
+    registerViewer(
+      stub("html", matchHtml, async (target) => {
+        htmlLoads += 1;
+        return {
+          title: "snake.html",
+          path: target.kind === "file" ? target.path : "",
+          text: "<p>snake</p>",
+        };
+      }),
+    ),
+    registerViewer(stub("text", matchText, async () => ({ title: "app.ts", text: "one" }))),
+    registerViewer(stub("files", matchOpenFiles)),
+  ];
+  try {
+    const store = create<PanelSlice>()((set, get) => createPanelSlice(set, get));
+    await store
+      .getState()
+      .panelOpenHref(
+        "s",
+        "</C:/Users/admin/Documents/AI Workbench/2026-10-19/h5-3/snake.html>",
+        undefined,
+        ctx,
+      );
+    const session = store.getState().panelBySession.s;
+    assert.equal(session?.tabs.length, 1);
+    assert.equal(session?.tabs[0]?.viewerId, "html");
+    assert.equal(
+      session?.tabs[0]?.id,
+      "doc:c:/users/admin/documents/ai workbench/2026-10-19/h5-3/snake.html",
+    );
+    assert.equal(
+      (session?.tabs[0]?.payload as { path?: string }).path,
+      "C:/Users/admin/Documents/AI Workbench/2026-10-19/h5-3/snake.html",
+    );
+    assert.equal(htmlLoads, 1);
+
+    await store.getState().panelOpenHref("s", "src/app.ts", undefined, ctx);
+    const files = store.getState().panelBySession.s;
+    assert.equal(files?.tabs.length, 2);
+    assert.equal(files?.activeId, "custom:open-files");
+    assert.equal(openFilesPlace(files?.tabs.find((tab) => tab.id === "custom:open-files")?.payload).path, "src/app.ts");
+
+    await store.getState().panelOpenHref("s", "notes.htm#L3", undefined, ctx);
+    const lined = store.getState().panelBySession.s;
+    assert.equal(lined?.activeId, "custom:open-files");
+    const place = openFilesPlace(lined?.tabs.find((tab) => tab.id === "custom:open-files")?.payload);
+    assert.equal(place.path, "notes.htm");
+    assert.equal(place.line, 3);
+    assert.equal(htmlLoads, 1);
+
+    await store.getState().panelOpenHref("s", "index.html", undefined, ctx);
+    const page = store.getState().panelBySession.s?.tabs.find((tab) => tab.viewerId === "html" && tab.id.includes("index.html"));
+    assert.equal((page?.payload as { path?: string }).path, "C:/work/demo/index.html");
+    assert.equal(htmlLoads, 2);
   } finally {
     for (const release of undo) release();
   }
