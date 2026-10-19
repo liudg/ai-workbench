@@ -6,6 +6,8 @@
 //! `get_session_messages`（L1059）。项目目录是 `CLAUDE_CONFIG_DIR` 或 `~/.claude` 下的 `projects`
 //! （`_get_projects_dir` L130–141）。跳过 sidechain。标题优先 `customTitle`，然后 `aiTitle`、
 //! `lastPrompt` / `summary` / 首条用户提示（L441–457）。
+//! 侧边栏的 `updated_at` 用最后一条用户或助手消息的 `timestamp`，不用文件 mtime。
+//! resume 会重写 jsonl，mtime 会变成刚刚，但消息时间不变。
 
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
@@ -399,6 +401,7 @@ pub fn is_uuid(value: &str) -> bool {
 
 struct LiteFile {
     mtime_ms: i64,
+    activity_ms: Option<i64>,
     head: String,
     tail: String,
 }
@@ -428,8 +431,10 @@ fn read_lite(path: &Path) -> Option<LiteFile> {
         let read = file.read(&mut tail_buf).ok()?;
         String::from_utf8_lossy(&tail_buf[..read]).to_string()
     };
+    let activity_ms = last_conversation_millis(&mut file, size);
     Some(LiteFile {
         mtime_ms,
+        activity_ms,
         head,
         tail,
     })
@@ -469,8 +474,260 @@ fn parse_lite(session_id: &str, lite: &LiteFile) -> Option<ListedSession> {
         title,
         cwd,
         created_at,
-        updated_at: lite.mtime_ms,
+        // 最后一条真实对话的时间。resume 改写文件只动 mtime，不该把会话顶上去。
+        updated_at: lite.activity_ms.unwrap_or(lite.mtime_ms),
     })
+}
+
+const ACTIVITY_CHUNK: u64 = 65_536;
+const ACTIVITY_SCAN_MAX: u64 = 16 * 1024 * 1024;
+const ACTIVITY_PROBE_MAX: usize = 4_096;
+const TYPE_NEEDLES: &[&[u8]] = &[
+    b"\"type\":\"assistant\"",
+    b"\"type\": \"assistant\"",
+    b"\"type\":\"user\"",
+    b"\"type\": \"user\"",
+];
+
+enum Probe {
+    Activity(i64),
+    SkipBefore(u64),
+    Stop,
+}
+
+/// 从文件末尾往前找最后一条用户或助手消息的 `timestamp`。
+/// 旁路、元数据、压缩摘要，以及 resume 写入的 hook / tick 不算。
+fn last_conversation_millis(file: &mut File, len: u64) -> Option<i64> {
+    let mut end = len;
+    let mut probes = 0usize;
+    while end > 0 && len.saturating_sub(end) <= ACTIVITY_SCAN_MAX && probes < ACTIVITY_PROBE_MAX {
+        let take = ACTIVITY_CHUNK.min(end);
+        let start = end - take;
+        if len.saturating_sub(start) > ACTIVITY_SCAN_MAX && start > 0 {
+            break;
+        }
+        // 多读一点，避免 `"type":"user"` 正好跨过这块的边界。
+        let extra = 32.min(len.saturating_sub(end)) as usize;
+        file.seek(SeekFrom::Start(start)).ok()?;
+        let mut buf = vec![0u8; take as usize + extra];
+        file.read_exact(&mut buf).ok()?;
+        let Some(rel) = rfind_type(&buf) else {
+            end = start;
+            continue;
+        };
+        let abs = start + rel as u64;
+        if abs >= end {
+            end = start;
+            continue;
+        }
+        probes += 1;
+        match probe_at(file, abs, len) {
+            Probe::Activity(ms) => return Some(ms),
+            Probe::Stop => return None,
+            Probe::SkipBefore(next) => {
+                if next >= end {
+                    if abs == 0 {
+                        return None;
+                    }
+                    end = abs;
+                } else {
+                    end = next;
+                }
+            }
+        }
+    }
+    None
+}
+
+fn rfind_type(buf: &[u8]) -> Option<usize> {
+    let mut best: Option<usize> = None;
+    for needle in TYPE_NEEDLES {
+        let mut from = 0;
+        while from < buf.len() {
+            let Some(rel) = find_from(buf, needle, from) else {
+                break;
+            };
+            best = Some(best.map_or(rel, |current| current.max(rel)));
+            from = rel + 1;
+        }
+    }
+    best
+}
+
+fn find_from(haystack: &[u8], needle: &[u8], from: usize) -> Option<usize> {
+    if needle.is_empty() || from >= haystack.len() {
+        return None;
+    }
+    haystack[from..]
+        .windows(needle.len())
+        .position(|window| window == needle)
+        .map(|rel| from + rel)
+}
+
+fn probe_at(file: &mut File, abs: u64, len: u64) -> Probe {
+    const BACK: u64 = 4_096;
+    const FORWARD: u64 = 4_096;
+    let begin = abs.saturating_sub(BACK);
+    let want = (abs - begin) + FORWARD;
+    let read_len = want.min(len.saturating_sub(begin)) as usize;
+    if read_len == 0 {
+        return Probe::Stop;
+    }
+    if file.seek(SeekFrom::Start(begin)).is_err() {
+        return Probe::SkipBefore(abs);
+    }
+    let mut buf = vec![0u8; read_len];
+    let Ok(read) = file.read(&mut buf) else {
+        return Probe::SkipBefore(abs);
+    };
+    buf.truncate(read);
+    let rel = (abs - begin) as usize;
+    if rel > buf.len() {
+        return Probe::SkipBefore(abs);
+    }
+    let start_rel = match buf[..rel].iter().rposition(|byte| *byte == b'\n') {
+        Some(index) => Some(index + 1),
+        None if begin == 0 => Some(0),
+        None => None,
+    };
+    let Some(start_rel) = start_rel else {
+        return probe_line_start(file, abs, len);
+    };
+    let end_rel = buf[rel..]
+        .iter()
+        .position(|byte| *byte == b'\n')
+        .map(|index| rel + index)
+        .unwrap_or(buf.len());
+    let prefix = String::from_utf8_lossy(&buf[start_rel..end_rel]);
+    let line_start = begin + start_rel as u64;
+    match conversation_millis_of_line(&prefix) {
+        Some(ms) => Probe::Activity(ms),
+        None => Probe::SkipBefore(line_start),
+    }
+}
+
+/// 命中落在超长行中间时，回到这一行开头看信封上的 type / timestamp。
+fn probe_line_start(file: &mut File, abs: u64, len: u64) -> Probe {
+    let Some(line_start) = line_start_before(file, abs) else {
+        return if abs == 0 {
+            Probe::Stop
+        } else {
+            Probe::SkipBefore(abs)
+        };
+    };
+    if line_start >= abs {
+        return Probe::SkipBefore(abs);
+    }
+    if file.seek(SeekFrom::Start(line_start)).is_err() {
+        return Probe::SkipBefore(line_start);
+    }
+    let want = 4_096.min(len.saturating_sub(line_start)) as usize;
+    let mut buf = vec![0u8; want];
+    let Ok(read) = file.read(&mut buf) else {
+        return Probe::SkipBefore(line_start);
+    };
+    buf.truncate(read);
+    let end = buf
+        .iter()
+        .position(|byte| *byte == b'\n')
+        .unwrap_or(buf.len());
+    let prefix = String::from_utf8_lossy(&buf[..end]);
+    match conversation_millis_of_line(&prefix) {
+        Some(ms) => Probe::Activity(ms),
+        None => Probe::SkipBefore(line_start),
+    }
+}
+
+fn line_start_before(file: &mut File, from: u64) -> Option<u64> {
+    let mut end = from;
+    let mut walked = 0u64;
+    while end > 0 && walked < ACTIVITY_SCAN_MAX {
+        let take = ACTIVITY_CHUNK.min(end);
+        let start = end - take;
+        file.seek(SeekFrom::Start(start)).ok()?;
+        let mut buf = vec![0u8; take as usize];
+        file.read_exact(&mut buf).ok()?;
+        if let Some(rel) = buf.iter().rposition(|byte| *byte == b'\n') {
+            return Some(start + rel as u64 + 1);
+        }
+        walked += take;
+        end = start;
+    }
+    if end == 0 {
+        Some(0)
+    } else {
+        None
+    }
+}
+
+fn conversation_millis_of_line(line: &str) -> Option<i64> {
+    let line = line.trim().trim_end_matches('\r');
+    if line.is_empty() {
+        return None;
+    }
+    if line.len() <= LITE_READ_BUF_SIZE {
+        if let Ok(entry) = serde_json::from_str::<Value>(line) {
+            return conversation_millis_of_entry(&entry);
+        }
+    }
+    conversation_millis_of_prefix(line)
+}
+
+fn conversation_millis_of_entry(entry: &Value) -> Option<i64> {
+    let kind = entry.get("type").and_then(Value::as_str)?;
+    if kind != "user" && kind != "assistant" {
+        return None;
+    }
+    if flag(entry, "isSidechain") || flag(entry, "isMeta") || flag(entry, "isCompactSummary") {
+        return None;
+    }
+    if kind == "user" && resume_noise_entry(entry) {
+        return None;
+    }
+    parse_millis(entry.get("timestamp").and_then(Value::as_str)?)
+}
+
+fn resume_noise_entry(entry: &Value) -> bool {
+    let message = entry.get("message").unwrap_or(&Value::Null);
+    let content = message.get("content").unwrap_or(&Value::Null);
+    let text = content_text(content);
+    resume_noise_text(text.trim_start())
+}
+
+fn conversation_millis_of_prefix(prefix: &str) -> Option<i64> {
+    let header = prefix.split("\"message\"").next().unwrap_or(prefix);
+    let kind = first_string(header, "type")?;
+    if kind != "user" && kind != "assistant" {
+        return None;
+    }
+    if prefix_flag(header, "isSidechain")
+        || prefix_flag(header, "isMeta")
+        || prefix_flag(header, "isCompactSummary")
+    {
+        return None;
+    }
+    if kind == "user" && resume_noise_prefix(prefix) {
+        return None;
+    }
+    let stamp = first_string(header, "timestamp").or_else(|| first_string(prefix, "timestamp"))?;
+    parse_millis(&stamp)
+}
+
+fn prefix_flag(header: &str, key: &str) -> bool {
+    header.contains(&format!("\"{key}\":true")) || header.contains(&format!("\"{key}\": true"))
+}
+
+fn resume_noise_prefix(prefix: &str) -> bool {
+    const MARKERS: &[&str] = &["<session-start-hook>", "<tick>", "<local-command-stdout>"];
+    MARKERS
+        .iter()
+        .any(|marker| prefix.contains(&format!("\"{marker}")))
+}
+
+fn resume_noise_text(text: &str) -> bool {
+    text.starts_with("<local-command-stdout>")
+        || text.starts_with("<session-start-hook>")
+        || text.starts_with("<tick>")
 }
 
 fn first_prompt(head: &str) -> String {
@@ -609,4 +866,238 @@ fn text_field(value: &Value, key: &str) -> String {
         .and_then(Value::as_str)
         .unwrap_or("")
         .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use std::time::{Duration, SystemTime};
+
+    const OLDER: &str = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const NEWER: &str = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+
+    fn scratch(name: &str) -> PathBuf {
+        let path =
+            std::env::temp_dir().join(format!("claude-history-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&path);
+        std::fs::create_dir_all(&path).unwrap();
+        path
+    }
+
+    fn write_session(root: &Path, id: &str, body: &str) -> PathBuf {
+        let project = root.join("-workspace-demo");
+        std::fs::create_dir_all(&project).unwrap();
+        let path = project.join(format!("{id}.jsonl"));
+        std::fs::write(&path, body).unwrap();
+        path
+    }
+
+    fn touch(path: &Path, secs: u64) {
+        let file = std::fs::File::options().write(true).open(path).unwrap();
+        file.set_modified(SystemTime::UNIX_EPOCH + Duration::from_secs(secs))
+            .unwrap();
+    }
+
+    fn user_line(uuid: &str, stamp: &str, text: &str) -> String {
+        format!(
+            "{}\n",
+            serde_json::json!({
+                "type": "user",
+                "uuid": uuid,
+                "parentUuid": null,
+                "cwd": "/workspace/demo",
+                "timestamp": stamp,
+                "message": {"role": "user", "content": text}
+            })
+        )
+    }
+
+    fn listed_at(root: &Path, id: &str) -> i64 {
+        list_sessions_under(root)
+            .into_iter()
+            .find(|item| item.session_id == id)
+            .unwrap()
+            .updated_at
+    }
+
+    #[test]
+    fn sidebar_time_follows_the_last_message_not_the_file_mtime() {
+        let root = scratch("mtime");
+        let early = "2020-01-01T00:00:00Z";
+        let later = "2021-06-01T00:00:00Z";
+        let mut body = user_line("11111111-1111-4111-8111-111111111111", early, "先说的");
+        body.push_str(&format!(
+            "{}\n",
+            serde_json::json!({
+                "type": "assistant",
+                "uuid": "22222222-2222-4222-8222-222222222222",
+                "parentUuid": "11111111-1111-4111-8111-111111111111",
+                "timestamp": later,
+                "message": {"role": "assistant", "content": [{"type": "text", "text": "后说的"}]}
+            })
+        ));
+        let path = write_session(&root, OLDER, &body);
+        touch(&path, 1_700_000_000);
+        let expected = parse_millis(later).unwrap();
+        assert_eq!(listed_at(&root, OLDER), expected);
+        assert!(listed_at(&root, OLDER) < 1_700_000_000_000);
+
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .unwrap()
+            .write_all(
+                format!(
+                    "{}\n",
+                    serde_json::json!({
+                        "type": "custom-title",
+                        "customTitle": "改名",
+                        "sessionId": OLDER
+                    })
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+        touch(&path, 1_800_000_000);
+        assert_eq!(listed_at(&root, OLDER), expected);
+        assert_eq!(
+            list_sessions_under(&root)
+                .into_iter()
+                .find(|item| item.session_id == OLDER)
+                .unwrap()
+                .title,
+            "改名"
+        );
+
+        let hook = format!(
+            "{}\n",
+            serde_json::json!({
+                "type": "user",
+                "uuid": "33333333-3333-4333-8333-333333333333",
+                "parentUuid": "22222222-2222-4222-8222-222222222222",
+                "timestamp": "2026-10-19T00:00:00Z",
+                "isMeta": false,
+                "message": {"role": "user", "content": "<session-start-hook>boot"}
+            })
+        );
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .unwrap()
+            .write_all(hook.as_bytes())
+            .unwrap();
+        touch(&path, 1_900_000_000);
+        assert_eq!(listed_at(&root, OLDER), expected);
+
+        let side = format!(
+            "{}\n",
+            serde_json::json!({
+                "type": "user",
+                "uuid": "44444444-4444-4444-8444-444444444444",
+                "parentUuid": null,
+                "isSidechain": true,
+                "timestamp": "2026-10-19T01:00:00Z",
+                "message": {"role": "user", "content": "side"}
+            })
+        );
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .unwrap()
+            .write_all(side.as_bytes())
+            .unwrap();
+        assert_eq!(listed_at(&root, OLDER), expected);
+
+        let follow = user_line(
+            "55555555-5555-4555-8555-555555555555",
+            "2022-01-01T00:00:00Z",
+            "又一句",
+        );
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .unwrap()
+            .write_all(follow.as_bytes())
+            .unwrap();
+        touch(&path, 1_600_000_000);
+        assert_eq!(
+            listed_at(&root, OLDER),
+            parse_millis("2022-01-01T00:00:00Z").unwrap()
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_newer_mtime_does_not_sort_ahead_of_a_later_message() {
+        let root = scratch("order");
+        let older_body = user_line(
+            "11111111-1111-4111-8111-111111111111",
+            "2020-01-01T00:00:00Z",
+            "旧对话",
+        );
+        let newer_body = user_line(
+            "22222222-2222-4222-8222-222222222222",
+            "2024-05-01T00:00:00Z",
+            "新对话",
+        );
+        let older_path = write_session(&root, OLDER, &older_body);
+        let newer_path = write_session(&root, NEWER, &newer_body);
+        touch(&older_path, 1_900_000_000);
+        touch(&newer_path, 1_600_000_000);
+        let listed = list_sessions_under(&root);
+        assert_eq!(listed[0].session_id, NEWER);
+        assert_eq!(listed[1].session_id, OLDER);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_long_trailing_snapshot_does_not_hide_the_message_time() {
+        let root = scratch("blob");
+        let stamp = "2019-08-08T08:08:08Z";
+        let mut body = user_line("11111111-1111-4111-8111-111111111111", stamp, "还在");
+        let mut blob = String::from("{\"type\":\"file-history-snapshot\",\"entries\":[");
+        blob.push_str(&"{\"type\":\"user\",\"timestamp\":\"2026-01-01T00:00:00Z\"},".repeat(2_000));
+        blob.push_str("]}\n");
+        body.push_str(&blob);
+        let path = write_session(&root, OLDER, &body);
+        touch(&path, 1_800_000_000);
+        assert_eq!(listed_at(&root, OLDER), parse_millis(stamp).unwrap());
+
+        let mut long = format!(
+            "{{\"type\":\"user\",\"uuid\":\"66666666-6666-4666-8666-666666666666\",\"cwd\":\"/workspace/demo\",\"timestamp\":\"{stamp}\",\"message\":{{\"role\":\"user\",\"content\":\"{}\"}}}}\n",
+            "b".repeat(80_000)
+        );
+        // 上面这条覆盖同一文件，时间仍应来自开头的 timestamp，而不是 mtime。
+        long.insert_str(
+            0,
+            &user_line(
+                "11111111-1111-4111-8111-111111111111",
+                "2018-01-01T00:00:00Z",
+                "更早",
+            ),
+        );
+        std::fs::write(&path, long).unwrap();
+        touch(&path, 1_800_000_000);
+        assert_eq!(listed_at(&root, OLDER), parse_millis(stamp).unwrap());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_transcript_without_timestamps_still_uses_mtime() {
+        let root = scratch("fallback");
+        let body = format!(
+            "{}\n",
+            serde_json::json!({
+                "type": "user",
+                "uuid": "11111111-1111-4111-8111-111111111111",
+                "cwd": "/workspace/demo",
+                "message": {"role": "user", "content": "没有时间"}
+            })
+        );
+        let path = write_session(&root, OLDER, &body);
+        touch(&path, 123_456);
+        assert_eq!(listed_at(&root, OLDER), 123_456_000);
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

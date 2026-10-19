@@ -161,8 +161,13 @@ impl SessionManager {
                     session.worktree_sha = entry.meta.worktree_sha.clone();
                     session.worktree_owned = entry.meta.worktree_owned;
                 }
-                // 目录 updatedAt 决定顺序。只有真实对话才并入本进程的活动时间。
-                session.updated_at = sidebar_updated_at(session.updated_at, entry.activity_at);
+                // 目录里的活动时间决定顺序。本进程有真实对话时再取较新的。
+                // 只是打开或 resume 时，目录时间可能变新；没有新对话就留在打开时记下的时间。
+                session.updated_at = sidebar_updated_at(
+                    session.updated_at,
+                    entry.activity_at,
+                    entry.meta.updated_at,
+                );
             }
         }
         let mut extras: Vec<Session> = live
