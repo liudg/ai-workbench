@@ -12,6 +12,7 @@ export function EventItem({
   thinkingOpen = false,
   onToggleThinking,
   showAgentLabel = true,
+  showMessageFooter,
 }: EventItemProps) {
   if (!isRenderedEventKind(event.kind)) return null;
   const Renderer = eventRenderers[event.kind];
@@ -24,6 +25,7 @@ export function EventItem({
       thinkingOpen={thinkingOpen}
       onToggleThinking={onToggleThinking ?? noop}
       showAgentLabel={showAgentLabel}
+      showMessageFooter={showMessageFooter}
     />
   );
 }

@@ -93,12 +93,25 @@ function skippedInTimeline(event: SessionEvent): boolean {
 }
 
 /**
+ * CLI 断线时写进助手正文的固定句子。这不是模型答复。
+ * 会话 `75f542b0` 末行与 `claude.exe` 里的常量一致。
+ */
+export const CLI_CONNECTION_LOST_TEXT =
+  "API Error: Connection lost mid-response. The response above may be incomplete.";
+
+export function isCliConnectionLostAnswer(text: string): boolean {
+  return text.trim() === CLI_CONNECTION_LOST_TEXT;
+}
+
+/**
  * 审查重复看 `dedupe_of`。
  * 计划模式里与 plan-text 相同的正文看 `mode`，正文不同则留下。
+ * 接口断线的英文句子不进时间线。
  */
 export function isSuppressedMessage(events: readonly SessionEvent[], index: number): boolean {
   const event = events[index];
   if (event.kind !== "agent-message") return false;
+  if (isCliConnectionLostAnswer(event.text)) return true;
   if (event.dedupe_of) return true;
   if (event.mode !== "plan") return false;
   const text = event.text.trim();
@@ -193,10 +206,34 @@ function pushSettled(blocks: TimelineNode[], events: readonly SessionEvent[]) {
  * 相邻工具再收成一行是展示层的事，这里仍按事件留下。
  * 阶段来自任意适配器写入的 `phase`，这里不看 AgentKind。
  */
+/**
+ * 已经写进日志的断线英文，旁边若还有笼统「报错」，改成同一句「连接中断」。
+ * 只改这一轮里、断线句子之后的那条，不影响别的失败。
+ */
+function softenConnectionLost(events: readonly SessionEvent[]): readonly SessionEvent[] {
+  const rewrite = new Set<number>();
+  for (let index = 0; index < events.length; index += 1) {
+    const event = events[index];
+    if (event.kind !== "agent-message" || !isCliConnectionLostAnswer(event.text)) continue;
+    for (let cursor = index + 1; cursor < events.length; cursor += 1) {
+      const next = events[cursor];
+      if (next.kind === "user-message") break;
+      if (next.kind === "error" && next.message.trim() === "Claude Code 报错") rewrite.add(cursor);
+    }
+  }
+  if (rewrite.size === 0) return events;
+  return events.map((event, index) =>
+    rewrite.has(index) && event.kind === "error"
+      ? { ...event, message: "Claude Code 连接中断" }
+      : event,
+  );
+}
+
 export function buildTimeline(
   events: readonly SessionEvent[],
   status: SessionStatus,
 ): TimelineNode[] {
+  events = softenConnectionLost(events);
   const blocks: TimelineNode[] = [];
   let index = 0;
   while (index < events.length && events[index].kind !== "user-message") {

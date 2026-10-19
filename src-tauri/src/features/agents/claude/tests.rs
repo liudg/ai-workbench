@@ -1173,6 +1173,199 @@ fn streaming_abort_keeps_the_session_usable() {
 }
 
 #[test]
+fn api_error_message_is_not_the_answer() {
+    let lost = "API Error: Connection lost mid-response. The response above may be incomplete.";
+    let mut state = MapState::default();
+    state.begin_turn("turn-1");
+    let prior = ingest_line(
+        &mut state,
+        &json!({
+            "type": "assistant",
+            "uuid": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            "message": {"role": "assistant", "content": [{"type": "text", "text": "先看目录。"}]}
+        })
+        .to_string(),
+        true,
+        None,
+    );
+    assert!(prior.events.iter().any(|event| matches!(
+        event,
+        SessionEventBody::AgentMessage { text, .. } if text == "先看目录。"
+    )));
+
+    let err = ingest_line(
+        &mut state,
+        &json!({
+            "type": "assistant",
+            "uuid": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            "isApiErrorMessage": true,
+            "truncatedAfterOutput": true,
+            "error": "server_error",
+            "message": {
+                "role": "assistant",
+                "model": "<synthetic>",
+                "content": [{"type": "text", "text": lost}]
+            }
+        })
+        .to_string(),
+        true,
+        None,
+    );
+    assert!(!err.events.iter().any(|event| matches!(
+        event,
+        SessionEventBody::AgentMessage { text, .. } if text.contains("Connection lost") || text.contains("API Error")
+    )));
+    assert!(err.events.iter().any(|event| matches!(
+        event,
+        SessionEventBody::Error { message } if message == "Claude Code 连接中断"
+    )));
+    assert!(!err.events.iter().any(|event| matches!(
+        event,
+        SessionEventBody::Error { message } if message.contains("报错")
+    )));
+
+    let done = ingest_line(
+        &mut state,
+        r#"{"type":"result","subtype":"error_during_execution","is_error":true}"#,
+        true,
+        None,
+    );
+    assert!(!done.events.iter().any(|event| matches!(event, SessionEventBody::Error { .. })));
+    assert!(!done.events.iter().any(|event| matches!(
+        event,
+        SessionEventBody::AgentMessage { text, .. } if text.contains("Connection lost")
+    )));
+    assert!(done.events.iter().any(|event| matches!(
+        event,
+        SessionEventBody::StatusChanged { status: SessionStatus::Completed }
+    )));
+
+    let mut streamed = MapState::default();
+    streamed.begin_turn("turn-2");
+    let partial = ingest_line(
+        &mut streamed,
+        &json!({
+            "type": "stream_event",
+            "event": {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": lost}}
+        })
+        .to_string(),
+        true,
+        None,
+    );
+    let partial_id = agent_stream_id(&partial.events);
+    let cleared = ingest_line(
+        &mut streamed,
+        &json!({
+            "type": "assistant",
+            "uuid": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+            "isApiErrorMessage": true,
+            "error": "server_error",
+            "message": {"role": "assistant", "model": "<synthetic>", "content": [{"type": "text", "text": lost}]}
+        })
+        .to_string(),
+        true,
+        None,
+    );
+    assert!(cleared.events.iter().any(|event| matches!(
+        event,
+        SessionEventBody::AgentMessage { text, stream_id, .. }
+            if text.is_empty() && stream_id.as_deref() == Some(partial_id.as_str())
+    )));
+    assert!(cleared.events.iter().any(|event| matches!(
+        event,
+        SessionEventBody::Error { message } if message == "Claude Code 连接中断"
+    )));
+
+    let mut only_result = MapState::default();
+    let bare = ingest_line(
+        &mut only_result,
+        &json!({
+            "type": "result",
+            "subtype": "error_during_execution",
+            "is_error": true,
+            "result": lost
+        })
+        .to_string(),
+        true,
+        None,
+    );
+    assert!(!bare.events.iter().any(|event| matches!(
+        event,
+        SessionEventBody::AgentMessage { text, .. } if text.contains("Connection lost")
+    )));
+    assert!(bare.events.iter().any(|event| matches!(
+        event,
+        SessionEventBody::Error { message } if message == "Claude Code 连接中断"
+    )));
+}
+
+#[test]
+fn meta_resume_is_not_a_user_bubble() {
+    let resume = "Your response above was cut off mid-stream. Resume directly from where it stops \u{2014} no apology, no recap. If none of it survived, answer the request from the start.";
+    let mut live = MapState::default();
+    let echoed = ingest_line(
+        &mut live,
+        &json!({
+            "type": "user",
+            "uuid": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+            "isMeta": true,
+            "message": {"role": "user", "content": resume}
+        })
+        .to_string(),
+        true,
+        None,
+    );
+    assert!(echoed.events.is_empty());
+    let replay = ingest_line(
+        &mut MapState::default(),
+        &json!({
+            "type": "user",
+            "uuid": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+            "isMeta": true,
+            "message": {"role": "user", "content": [{"type": "text", "text": resume}]}
+        })
+        .to_string(),
+        false,
+        None,
+    );
+    assert!(replay.events.iter().all(|event| !matches!(event, SessionEventBody::UserMessage { .. })));
+
+    let user = "11111111-1111-4111-8111-111111111111";
+    let assistant = "22222222-2222-4222-8222-222222222222";
+    let meta = "33333333-3333-4333-8333-333333333333";
+    let lost_id = "44444444-4444-4444-8444-444444444444";
+    let lost = "API Error: Connection lost mid-response. The response above may be incomplete.";
+    let transcript = format!(
+        "{}\n{}\n{}\n{}\n",
+        json!({"type":"user","uuid":user,"parentUuid":null,"message":{"role":"user","content":"做个游戏"}}),
+        json!({"type":"assistant","uuid":assistant,"parentUuid":user,"message":{"role":"assistant","content":[{"type":"text","text":"先看目录"}]}}),
+        json!({"type":"user","uuid":meta,"parentUuid":assistant,"isMeta":true,"message":{"role":"user","content":resume}}),
+        json!({"type":"assistant","uuid":lost_id,"parentUuid":meta,"isApiErrorMessage":true,"truncatedAfterOutput":true,"error":"server_error","message":{"role":"assistant","model":"<synthetic>","content":[{"type":"text","text":lost}]}}),
+    );
+    let mut history = MapState::default();
+    let events = messages::events_from_transcript(&mut history, &transcript, None);
+    let texts: Vec<_> = events
+        .iter()
+        .filter_map(|event| match event {
+            SessionEventBody::UserMessage { text, .. } => Some(text.as_str()),
+            SessionEventBody::AgentMessage { text, .. } if !text.is_empty() => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(texts, vec!["做个游戏", "先看目录"]);
+    assert!(events.iter().any(|event| matches!(
+        event,
+        SessionEventBody::Error { message } if message == "Claude Code 连接中断"
+    )));
+    assert!(!events.iter().any(|event| match event {
+        SessionEventBody::UserMessage { text, .. } | SessionEventBody::AgentMessage { text, .. } => {
+            text.contains("cut off mid-stream") || text.contains("Connection lost")
+        }
+        _ => false,
+    }));
+}
+
+#[test]
 fn prefer_native_binary_over_a_batch_shim() {
     let dir = temp_dir("bin");
     let cmd = dir.join("claude.cmd");
