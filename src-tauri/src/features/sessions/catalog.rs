@@ -9,6 +9,7 @@ use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 
+use crate::features::agents::adapter_for;
 use crate::models::{AgentCatalog, AgentKind};
 
 /// 刷新失败但仍有上次成功的目录时，作曲栏只显示这一条弱提示。
@@ -128,7 +129,19 @@ impl CatalogCache {
     }
 
     pub fn get(&self, kind: AgentKind) -> Option<AgentCatalog> {
-        self.catalogs.lock().unwrap().get(&kind).cloned()
+        self.catalogs
+            .lock()
+            .unwrap()
+            .get(&kind)
+            .cloned()
+            .map(|mut catalog| {
+                // 旧缓存没有 supports_worktree 时，serde 会把它读成 false，
+                // 草稿就会拿这份目录盖住适配器 profile。静态支持以当前适配器为准。
+                if adapter_for(kind).capabilities().supports_worktree {
+                    catalog.capabilities.supports_worktree = true;
+                }
+                catalog
+            })
     }
 
     /// 空模型不是一次成功的刷新，不能把已有目录写掉。

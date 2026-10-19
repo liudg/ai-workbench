@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { sessionSupportsWorktree } from "@/lib/catalog";
 import { backend } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
 import { useWorkbench } from "@/store";
@@ -65,7 +66,7 @@ export function useSessionWorktree(session: Session) {
   const catalogCaps = useWorkbench((s) => s.catalogs[session.id]?.capabilities);
   const pressed = useWorkbench((s) => Boolean(s.drafts[session.project_id]?.worktree));
   const setDraftWorktree = useWorkbench((s) => s.setDraftWorktree);
-  const supports = Boolean((catalogCaps ?? profileCaps)?.supports_worktree);
+  const supports = sessionSupportsWorktree(catalogCaps, profileCaps);
   const draft = isDraftId(session.id);
   const standalone = isStandaloneDraft(session.project_id) || Boolean(project?.standalone);
   const projectId = project?.id ?? "";

@@ -1,6 +1,6 @@
 use super::*;
 use crate::features::agents::adapter_for;
-use crate::models::AgentModelOption;
+use crate::models::{AgentCapabilities, AgentModelOption};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 fn model(id: &str) -> AgentModelOption {
@@ -64,6 +64,48 @@ fn fresh_models_replace_the_cache_without_a_notice() {
 fn error_without_a_cache_stays_an_error() {
     let err = soften_catalog(None, Err("等待 Codex model/list 超时".into())).unwrap_err();
     assert!(err.contains("超时"));
+}
+
+#[test]
+fn stale_cached_catalog_keeps_static_worktree_support() {
+    let dir =
+        std::env::temp_dir().join(format!("ai-workbench-catalog-wt-{}", uuid::Uuid::new_v4()));
+    let cache = CatalogCache::load(&dir);
+    let mut claude = catalog("opus");
+    claude.capabilities.supports_worktree = false;
+    claude.agent = Some(AgentKind::ClaudeCode);
+    cache.remember(AgentKind::ClaudeCode, &claude);
+    let mut cursor = catalog("cursor");
+    cursor.capabilities = AgentCapabilities::none();
+    cursor.agent = Some(AgentKind::CursorAgent);
+    cache.remember(AgentKind::CursorAgent, &cursor);
+    let mut codex = catalog("gpt");
+    codex.capabilities.supports_worktree = false;
+    cache.remember(AgentKind::CodexCli, &codex);
+
+    let loaded = CatalogCache::load(&dir);
+    assert!(
+        loaded
+            .get(AgentKind::ClaudeCode)
+            .expect("claude")
+            .capabilities
+            .supports_worktree
+    );
+    assert!(
+        loaded
+            .get(AgentKind::CodexCli)
+            .expect("codex")
+            .capabilities
+            .supports_worktree
+    );
+    assert!(
+        !loaded
+            .get(AgentKind::CursorAgent)
+            .expect("cursor")
+            .capabilities
+            .supports_worktree
+    );
+    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]

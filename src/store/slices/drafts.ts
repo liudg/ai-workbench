@@ -1,3 +1,4 @@
+import { sessionSupportsWorktree } from "@/lib/catalog";
 import { backend } from "@/lib/ipc";
 import { initialSandbox } from "@/lib/sandbox";
 import { loadSessions } from "../sync";
@@ -36,7 +37,7 @@ function dropPending(
 
 function worktreeAllowed(state: WorkbenchState, agent: AgentKind, sessionId: string | null): boolean {
   const catalog = sessionId ? state.catalogs[sessionId]?.capabilities : undefined;
-  return Boolean((catalog ?? state.profiles[agent]?.capabilities)?.supports_worktree);
+  return sessionSupportsWorktree(catalog, state.profiles[agent]?.capabilities);
 }
 
 async function discardQuiet(sessionId: string): Promise<boolean> {

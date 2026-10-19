@@ -14,6 +14,20 @@ export type CatalogOutcome =
   | { ok: true; catalog: AgentCatalog; notice?: string | null }
   | { ok: false; message: string };
 
+/**
+ * 新建会话能不能用工作树。
+ * 适配器 profile 是静态能力。会话目录可能是空的，或是加上这个字段之前的缓存，
+ * 读出来是 false。这种 false 不能把 profile 关掉。
+ * profile 还没到时，才看目录里已经写明的支持。
+ */
+export function sessionSupportsWorktree(
+  catalog: { supports_worktree?: boolean } | null | undefined,
+  profile: { supports_worktree?: boolean } | null | undefined,
+): boolean {
+  if (profile) return Boolean(profile.supports_worktree);
+  return Boolean(catalog?.supports_worktree);
+}
+
 /** 作曲栏只读这一会话自己的目录。别的会话的 payload 不参与显示。 */
 export function sessionCatalog(
   catalogs: Record<string, AgentCatalog>,

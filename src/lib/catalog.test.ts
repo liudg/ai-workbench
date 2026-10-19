@@ -8,6 +8,7 @@ import {
   preferCatalog,
   reduceCatalogResult,
   sessionCatalog,
+  sessionSupportsWorktree,
 } from "./catalog.ts";
 
 function catalog(id: string, skills: string[] = []): AgentCatalog {
@@ -148,4 +149,22 @@ test("the composer reads only the catalog stored for this session", () => {
     false,
   );
   assert.equal(sessionCatalog(catalogs, "missing"), undefined);
+});
+
+test("an empty or stale catalog cannot hide static worktree support", () => {
+  assert.equal(
+    sessionSupportsWorktree({ supports_worktree: false }, { supports_worktree: true }),
+    true,
+  );
+  assert.equal(sessionSupportsWorktree(undefined, { supports_worktree: true }), true);
+  assert.equal(sessionSupportsWorktree({ supports_worktree: true }, undefined), true);
+  assert.equal(
+    sessionSupportsWorktree({ supports_worktree: true }, { supports_worktree: false }),
+    false,
+  );
+  assert.equal(
+    sessionSupportsWorktree({ supports_worktree: false }, { supports_worktree: false }),
+    false,
+  );
+  assert.equal(sessionSupportsWorktree(undefined, undefined), false);
 });

@@ -57,7 +57,12 @@ thread_local! {
 thread_local! {
     static GIT_BLOCKED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static GIT_CALLS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    static AFTER_WORKTREE_GIT_REMOVE: std::cell::Cell<fn(&Path)> =
+        const { std::cell::Cell::new(noop_after_worktree_remove) };
 }
+
+#[cfg(test)]
+fn noop_after_worktree_remove(_root: &Path) {}
 
 /// 测试里拦住 `git`。列会话的路径不能靠它识别工作树。
 #[cfg(test)]
@@ -588,20 +593,63 @@ pub fn remove_owned_worktree(project: &Path, cwd: &Path, force: bool) -> Result<
         args.push("--force");
     }
     args.push(&root_arg);
-    git_status(project, &args)?;
+    // `git worktree remove` 可能先摘掉登记，再删目录失败（目录被占用，或退出码是 0 但空目录还在）。
+    // 登记还在就保持失败，避免脏工作树被当成已经删掉。登记没了就尽量清目录，清不掉也不挡住删会话。
+    let mut git_error = git_status(project, &args).err();
     if checkout.root.exists() {
         if let Ok(repo) = repository_root(project) {
-            let _ = git_status(&repo, &args);
+            match git_status(&repo, &args) {
+                Ok(()) => git_error = None,
+                Err(err) if git_error.is_none() => git_error = Some(err),
+                Err(_) => {}
+            }
         }
     }
+    after_worktree_git_remove(&checkout.root);
+    if checkout_still_registered(project, &checkout) {
+        return Err(git_error.unwrap_or_else(|| "工作树没有删掉".into()));
+    }
+    discard_worktree_directory(project, &checkout);
+    delete_recorded_branch(project, marker.branch.as_deref(), marker.base.as_deref());
+    Ok(true)
+}
+
+fn after_worktree_git_remove(root: &Path) {
+    #[cfg(test)]
+    AFTER_WORKTREE_GIT_REMOVE.with(|hook| hook.get()(root));
+    #[cfg(not(test))]
+    let _ = root;
+}
+
+fn checkout_still_registered(project: &Path, checkout: &Checkout) -> bool {
+    if !checkout.root.exists() {
+        return false;
+    }
+    linked_checkout(project, &checkout.root)
+        .ok()
+        .flatten()
+        .is_some()
+        || (checkout.cwd.exists()
+            && linked_checkout(project, &checkout.cwd)
+                .ok()
+                .flatten()
+                .is_some())
+}
+
+/// 登记已经摘掉之后清磁盘。删不掉就留下，调用方仍然继续删会话。
+fn discard_worktree_directory(project: &Path, checkout: &Checkout) {
+    if points_at_main(project, checkout) {
+        return;
+    }
     if checkout.root.exists() {
-        return Err("工作树没有删掉".into());
+        let _ = fs::remove_dir_all(&checkout.root);
+    }
+    if checkout.root.exists() {
+        return;
     }
     if let Some(parent) = checkout.root.parent() {
         let _ = fs::remove_dir(parent);
     }
-    delete_recorded_branch(project, marker.branch.as_deref(), marker.base.as_deref());
-    Ok(true)
 }
 
 fn points_at_main(project: &Path, checkout: &Checkout) -> bool {
@@ -1299,6 +1347,151 @@ mod tests {
             .unwrap();
         assert!(String::from_utf8_lossy(&listed.stdout).trim().is_empty());
         let _ = fs::remove_dir_all(repo);
+    }
+
+    fn leave_empty_worktree_dir(root: &Path) {
+        let _ = fs::create_dir_all(root);
+    }
+
+    struct ClearRemoveHook;
+
+    impl Drop for ClearRemoveHook {
+        fn drop(&mut self) {
+            super::AFTER_WORKTREE_GIT_REMOVE
+                .with(|hook| hook.set(super::noop_after_worktree_remove));
+        }
+    }
+
+    fn branch_listed(repo: &Path, name: &str) -> bool {
+        let listed = Command::new("git")
+            .args(["branch", "--list", name])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        !String::from_utf8_lossy(&listed.stdout).trim().is_empty()
+    }
+
+    fn worktree_listed(repo: &Path, path: &Path) -> bool {
+        let listed = Command::new("git")
+            .args(["worktree", "list", "--porcelain"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        let text = String::from_utf8_lossy(&listed.stdout);
+        text.contains(&path.to_string_lossy().to_string())
+    }
+
+    #[test]
+    fn git_remove_that_leaves_the_directory_still_finishes() {
+        if !git_ok() {
+            return;
+        }
+        let repo = repo_with_commit("leave-dir");
+        let (base, sha) = source_revision(&repo).unwrap();
+        let path = repo.join(".claude").join("worktrees").join("wt-leave01");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        run_git(
+            &repo,
+            &[
+                "worktree",
+                "add",
+                "-b",
+                "worktree-wt-leave01",
+                path.to_str().unwrap(),
+            ],
+        );
+        record_owned_worktree(
+            &path,
+            &OwnedMarker {
+                root: path.clone(),
+                base,
+                sha,
+                branch: Some("worktree-wt-leave01".into()),
+            },
+        )
+        .unwrap();
+        let _hook = ClearRemoveHook;
+        super::AFTER_WORKTREE_GIT_REMOVE.with(|hook| hook.set(leave_empty_worktree_dir));
+        assert!(remove_owned_worktree(&repo, &path, true).unwrap());
+        assert!(!path.exists(), "空目录应被清掉");
+        assert!(!worktree_listed(&repo, &path));
+        assert!(!branch_listed(&repo, "worktree-wt-leave01"));
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn leftover_directory_that_cannot_be_removed_still_unregisters() {
+        if !git_ok() {
+            return;
+        }
+        let repo = repo_with_commit("leave-locked");
+        let (base, sha) = source_revision(&repo).unwrap();
+        let path = repo.join(".claude").join("worktrees").join("wt-locked1");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        run_git(
+            &repo,
+            &[
+                "worktree",
+                "add",
+                "-b",
+                "worktree-wt-locked1",
+                path.to_str().unwrap(),
+            ],
+        );
+        record_owned_worktree(
+            &path,
+            &OwnedMarker {
+                root: path.clone(),
+                base,
+                sha,
+                branch: Some("worktree-wt-locked1".into()),
+            },
+        )
+        .unwrap();
+        let parent = path.parent().unwrap().to_path_buf();
+        let (removed, still_there) = {
+            let _unlock = UnlockDir(parent);
+            let _hook = ClearRemoveHook;
+            super::AFTER_WORKTREE_GIT_REMOVE.with(|hook| hook.set(leave_undeletable_worktree));
+            let removed = remove_owned_worktree(&repo, &path, true);
+            (removed, path.exists())
+        };
+        assert!(removed.unwrap());
+        assert!(still_there, "删不掉的空目录不能让这次删除失败");
+        assert!(!worktree_listed(&repo, &path));
+        assert!(!branch_listed(&repo, "worktree-wt-locked1"));
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[cfg(unix)]
+    struct UnlockDir(PathBuf);
+
+    #[cfg(unix)]
+    impl Drop for UnlockDir {
+        fn drop(&mut self) {
+            use std::os::unix::fs::PermissionsExt;
+            if let Ok(meta) = fs::metadata(&self.0) {
+                let mut perms = meta.permissions();
+                perms.set_mode(0o755);
+                let _ = fs::set_permissions(&self.0, perms);
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    fn leave_undeletable_worktree(root: &Path) {
+        let _ = fs::create_dir_all(root);
+        let Some(parent) = root.parent() else {
+            return;
+        };
+        use std::os::unix::fs::PermissionsExt;
+        let Ok(meta) = fs::metadata(parent) else {
+            return;
+        };
+        let mut perms = meta.permissions();
+        perms.set_mode(0o555);
+        let _ = fs::set_permissions(parent, perms);
     }
 
     #[test]
