@@ -60,10 +60,16 @@ thread_local! {
     static AFTER_WORKTREE_GIT_REMOVE: std::cell::Cell<fn(&Path)> =
         const { std::cell::Cell::new(noop_after_worktree_remove) };
     static SKIP_GIT_WORKTREE_REMOVE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static PREPARE_WORKTREE_DIR_REMOVE: std::cell::Cell<fn(&Path, u32)> =
+        const { std::cell::Cell::new(noop_prepare_worktree_dir_remove) };
+    static FAIL_REMOVE_DIR_ALL_TIMES: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 }
 
 #[cfg(test)]
 fn noop_after_worktree_remove(_root: &Path) {}
+
+#[cfg(test)]
+fn noop_prepare_worktree_dir_remove(_path: &Path, _attempt: u32) {}
 
 /// 测试里拦住 `git`。列会话的路径不能靠它识别工作树。
 #[cfg(test)]
@@ -451,9 +457,10 @@ pub fn remove_checkout(source: &Path, checkout_root: &Path) {
     if let Ok(repo) = repository_root(source) {
         let _ = git_status(&repo, &["worktree", "remove", "--force", &root_arg]);
     }
-    let _ = fs::remove_dir_all(checkout_root);
-    if let Some(bucket) = checkout_root.parent() {
-        let _ = fs::remove_dir(bucket);
+    remove_worktree_tree(checkout_root);
+    if !checkout_root.exists() {
+        let repo = repository_root(source).unwrap_or_else(|_| source.to_path_buf());
+        remove_empty_worktree_containers(checkout_root, &repo);
     }
 }
 
@@ -579,7 +586,9 @@ pub fn delete_preview(project: &Path, cwd: &Path) -> DeletePreview {
 ///
 /// `force == false` 时不带 `--force`。git 若因未提交文件、状态检查失败或工作树锁而在摘登记之前退出，
 /// 目录保持原样并返回错误。`force == true` 时先 `--force`，登记还在再 `--force --force`（锁定的工作树），
-/// 然后尽量摘掉管理目录。登记没了就清磁盘和 `worktree-*` 分支；目录清不掉也不算失败。
+/// 然后尽量摘掉管理目录。登记没了就清磁盘和 `worktree-*` 分支。
+/// git 常常先摘登记、删光文件，再在根目录上 `rmdir` 失败（Windows 句柄还没放开，或退出码已是 0）。
+/// 这时目录是空的，要再删几次；仍然删不掉也不算失败。
 pub fn remove_owned_worktree(project: &Path, cwd: &Path, force: bool) -> Result<bool, String> {
     let Some(checkout) = linked_checkout(project, cwd).ok().flatten() else {
         return Ok(false);
@@ -608,7 +617,7 @@ pub fn remove_owned_worktree(project: &Path, cwd: &Path, force: bool) -> Result<
     }
     if checkout_still_registered(project, &checkout) {
         if force {
-            discard_worktree_directory(project, &checkout);
+            discard_worktree_directory(project, &checkout, &marker.root);
             if !checkout.root.exists() {
                 let _ = git_status(project, &["worktree", "prune"]);
             }
@@ -619,7 +628,7 @@ pub fn remove_owned_worktree(project: &Path, cwd: &Path, force: bool) -> Result<
         }
         return Err(git_error.unwrap_or_else(|| "工作树没有删掉".into()));
     }
-    discard_worktree_directory(project, &checkout);
+    discard_worktree_directory(project, &checkout, &marker.root);
     if !checkout.root.exists() {
         let _ = git_status(project, &["worktree", "prune"]);
     }
@@ -741,19 +750,137 @@ fn checkout_still_registered(project: &Path, checkout: &Checkout) -> bool {
 }
 
 /// 登记已经摘掉之后清磁盘。删不掉就留下，调用方仍然继续删会话。
-fn discard_worktree_directory(project: &Path, checkout: &Checkout) {
+///
+/// `git worktree remove` 可能已经把文件删光，只留下空目录：Windows 上进程刚退出时
+/// `RemoveDirectory` 会暂时返回「拒绝访问」或「目录非空」。`remove_dir_all` 这时也会失败，
+/// 空目录要用 `remove_dir` 再试几次。主检出不能动。
+fn discard_worktree_directory(project: &Path, checkout: &Checkout, marker_root: &Path) {
     if points_at_main(project, checkout) {
         return;
     }
-    if checkout.root.exists() {
-        let _ = fs::remove_dir_all(&checkout.root);
+    let repo = repository_root(project).unwrap_or_else(|_| project.to_path_buf());
+    remove_worktree_tree(&checkout.root);
+    if !same_path(&checkout.root, marker_root) && !is_repository_path(project, marker_root) {
+        remove_worktree_tree(marker_root);
     }
     if checkout.root.exists() {
         return;
     }
-    if let Some(parent) = checkout.root.parent() {
-        let _ = fs::remove_dir(parent);
+    remove_empty_worktree_containers(&checkout.root, &repo);
+    if !same_path(&checkout.root, marker_root) && !marker_root.exists() {
+        remove_empty_worktree_containers(marker_root, &repo);
     }
+}
+
+fn worktree_dir_remove_attempts() -> u32 {
+    if cfg!(windows) {
+        8
+    } else {
+        3
+    }
+}
+
+fn pause_before_dir_remove_retry(attempt: u32) {
+    // Windows 要等杀死的进程和 git 放开目录句柄。其它系统只留很短的间隔。
+    let step = if cfg!(windows) { 50 } else { 20 };
+    std::thread::sleep(Duration::from_millis(step * u64::from(attempt + 1)));
+}
+
+fn remove_worktree_tree(path: &Path) {
+    let attempts = worktree_dir_remove_attempts();
+    for attempt in 0..attempts {
+        #[cfg(test)]
+        PREPARE_WORKTREE_DIR_REMOVE.with(|hook| hook.get()(path, attempt));
+        match remove_dir_all_worktree(path) {
+            Ok(()) => return,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return,
+            Err(_) => match fs::remove_dir(path) {
+                Ok(()) => return,
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => return,
+                Err(_) if !path.exists() => return,
+                Err(_) => {}
+            },
+        }
+        if attempt + 1 == attempts {
+            return;
+        }
+        pause_before_dir_remove_retry(attempt);
+    }
+}
+
+fn remove_dir_all_worktree(path: &Path) -> std::io::Result<()> {
+    #[cfg(test)]
+    {
+        let left = FAIL_REMOVE_DIR_ALL_TIMES.with(|times| times.get());
+        if left > 0 {
+            FAIL_REMOVE_DIR_ALL_TIMES.with(|times| times.set(left - 1));
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "simulated remove_dir_all failure",
+            ));
+        }
+    }
+    fs::remove_dir_all(path)
+}
+
+/// 工作树根删掉之后，清掉因此变空的外壳。
+/// 只到上一级（Codex 的四位目录，或 `.claude/worktrees`），外加因此变空的 `.claude`。
+/// 不删仓库本身，也不顺着托管根往上删到 `.codex`。
+fn remove_empty_worktree_containers(removed: &Path, repo: &Path) {
+    let Some(parent) = removed.parent() else {
+        return;
+    };
+    if !can_remove_empty_container(parent, repo) || !remove_empty_dir_retry(parent) {
+        return;
+    }
+    if parent.file_name().and_then(|name| name.to_str()) != Some("worktrees") {
+        return;
+    }
+    let Some(claude) = parent.parent() else {
+        return;
+    };
+    if claude.file_name().and_then(|name| name.to_str()) == Some(".claude")
+        && can_remove_empty_container(claude, repo)
+    {
+        let _ = remove_empty_dir_retry(claude);
+    }
+}
+
+fn can_remove_empty_container(dir: &Path, repo: &Path) -> bool {
+    dir.parent().is_some() && !same_path(dir, repo)
+}
+
+fn remove_empty_dir_retry(path: &Path) -> bool {
+    // 子目录刚删掉时，父目录会短暂报「非空」。真有别的内容就不要空转。
+    let attempts = if cfg!(windows) { 4 } else { 2 };
+    for attempt in 0..attempts {
+        match fs::remove_dir(path) {
+            Ok(()) => return true,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return true,
+            Err(_) if !path.exists() => return true,
+            Err(err) if attempt > 0 && directory_not_empty(&err) => return false,
+            Err(_) => {}
+        }
+        if attempt + 1 == attempts {
+            return !path.exists();
+        }
+        pause_before_dir_remove_retry(attempt);
+    }
+    !path.exists()
+}
+
+fn directory_not_empty(err: &std::io::Error) -> bool {
+    // 1.77 还没有稳定的 `ErrorKind::DirectoryNotEmpty`。
+    matches!(err.raw_os_error(), Some(39 | 66 | 145))
+}
+
+fn is_repository_path(project: &Path, path: &Path) -> bool {
+    if same_path(path, project) {
+        return true;
+    }
+    repository_root(project)
+        .ok()
+        .is_some_and(|repo| same_path(&repo, path))
 }
 
 fn points_at_main(project: &Path, checkout: &Checkout) -> bool {
@@ -1518,9 +1645,114 @@ mod tests {
         super::AFTER_WORKTREE_GIT_REMOVE.with(|hook| hook.set(leave_empty_worktree_dir));
         assert!(remove_owned_worktree(&repo, &path, true).unwrap());
         assert!(!path.exists(), "空目录应被清掉");
+        assert!(
+            !repo.join(".claude").join("worktrees").exists(),
+            "空的 .claude/worktrees 应被清掉"
+        );
+        assert!(!repo.join(".claude").exists(), "空的 .claude 应被清掉");
+        assert!(repo.join("note.txt").is_file());
         assert!(!worktree_listed(&repo, &path));
         assert!(!branch_listed(&repo, "worktree-wt-leave01"));
         let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn empty_directory_is_removed_when_remove_dir_all_fails() {
+        if !git_ok() {
+            return;
+        }
+        let (repo, path, branch) = owned_claude("rmdir-fallback");
+        struct ClearFail;
+        impl Drop for ClearFail {
+            fn drop(&mut self) {
+                super::FAIL_REMOVE_DIR_ALL_TIMES.with(|times| times.set(0));
+                super::AFTER_WORKTREE_GIT_REMOVE
+                    .with(|hook| hook.set(super::noop_after_worktree_remove));
+            }
+        }
+        let _clear = ClearFail;
+        super::FAIL_REMOVE_DIR_ALL_TIMES.with(|times| times.set(1));
+        super::AFTER_WORKTREE_GIT_REMOVE.with(|hook| hook.set(leave_empty_worktree_dir));
+        assert!(remove_owned_worktree(&repo, &path, true).unwrap());
+        assert!(!path.exists(), "remove_dir_all 失败后空目录仍应被 rmdir");
+        assert!(!repo.join(".claude").exists());
+        assert!(!worktree_listed(&repo, &path));
+        assert!(!branch_listed(&repo, &branch));
+        assert!(repo.join("note.txt").is_file());
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn directory_locked_on_the_first_try_is_removed_on_retry() {
+        if !git_ok() {
+            return;
+        }
+        let (repo, path, branch) = owned_claude("rmdir-retry");
+        let parent = path.parent().unwrap().to_path_buf();
+        struct ClearHook;
+        impl Drop for ClearHook {
+            fn drop(&mut self) {
+                super::PREPARE_WORKTREE_DIR_REMOVE
+                    .with(|hook| hook.set(super::noop_prepare_worktree_dir_remove));
+                super::AFTER_WORKTREE_GIT_REMOVE
+                    .with(|hook| hook.set(super::noop_after_worktree_remove));
+            }
+        }
+        fn lock_once(target: &Path, attempt: u32) {
+            if target.file_name().and_then(|name| name.to_str()) != Some("rmdir-retry") {
+                return;
+            }
+            let Some(parent) = target.parent() else {
+                return;
+            };
+            use std::os::unix::fs::PermissionsExt;
+            let Ok(meta) = fs::metadata(parent) else {
+                return;
+            };
+            let mut perms = meta.permissions();
+            perms.set_mode(if attempt == 0 { 0o555 } else { 0o755 });
+            let _ = fs::set_permissions(parent, perms);
+        }
+        let _clear = ClearHook;
+        let _unlock = UnlockDir(parent);
+        super::AFTER_WORKTREE_GIT_REMOVE.with(|hook| hook.set(leave_empty_worktree_dir));
+        super::PREPARE_WORKTREE_DIR_REMOVE.with(|hook| hook.set(lock_once));
+        assert!(remove_owned_worktree(&repo, &path, true).unwrap());
+        assert!(!path.exists(), "第一次删不掉的空目录应在重试后消失");
+        assert!(!worktree_listed(&repo, &path));
+        assert!(!branch_listed(&repo, &branch));
+        assert!(repo.join("note.txt").is_file());
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn codex_bucket_is_removed_with_the_worktree() {
+        if !git_ok() {
+            return;
+        }
+        let repo = repo_with_commit("codex-bucket");
+        let managed = scratch("codex-bucket-root");
+        let checkout = create_codex_checkout(&repo, &managed).unwrap();
+        let (base, sha) = source_revision(&repo).unwrap();
+        record_owned_worktree(
+            &checkout.cwd,
+            &OwnedMarker {
+                root: checkout.root.clone(),
+                base,
+                sha,
+                branch: None,
+            },
+        )
+        .unwrap();
+        let bucket = checkout.root.parent().unwrap().to_path_buf();
+        assert!(remove_owned_worktree(&repo, &checkout.cwd, true).unwrap());
+        assert!(!checkout.root.exists(), "Codex 工作树目录应被清掉");
+        assert!(!bucket.exists(), "空的四位目录应被清掉");
+        assert!(managed.is_dir(), "托管根要留着");
+        assert!(repo.join("note.txt").is_file());
+        let _ = fs::remove_dir_all(repo);
+        let _ = fs::remove_dir_all(managed);
     }
 
     #[cfg(unix)]

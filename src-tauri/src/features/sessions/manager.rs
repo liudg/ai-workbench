@@ -1304,6 +1304,10 @@ impl SessionManager {
             let cwd = self.session_cwd(session_id, &native, agent).await;
             if !cwd.is_empty() {
                 // 没有错误返回：登记、目录或分支清不掉也不能让「无法删除任务」把会话留住。
+                // 已打开的 Agent 若正站在工作树里，Windows 会拒绝删掉这个空目录。先停进程。
+                if let Some(handle) = self.lookup_agent(session_id) {
+                    let _ = handle.stop().await;
+                }
                 git::discard_confirmed_worktree(
                     std::path::Path::new(&project.path),
                     std::path::Path::new(&cwd),
