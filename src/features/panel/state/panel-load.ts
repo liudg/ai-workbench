@@ -4,6 +4,7 @@ import {
   mergeLoadedPayload,
   tabIdFor,
 } from "../core/open-target.ts";
+import { opensLocalHtmlInBrowser } from "../core/preview-kind.ts";
 import { ReopenAs, resolveViewer, type OpenTarget, type ViewerContext } from "../core/registry.ts";
 import { sessionAfterSharedFileOpen } from "./open-shared-file.ts";
 import { errorText, focusTab, placeTab, type SessionPanel } from "./panel-session.ts";
@@ -23,7 +24,7 @@ export async function openPanelTarget(
   ctx: ViewerContext,
   depth: number,
 ): Promise<void> {
-  if (target.kind === "file") {
+  if (target.kind === "file" && !opensInAppBrowser(target)) {
     host.mutate(sessionId, (session) =>
       sessionAfterSharedFileOpen(session, ctx.projectPath, target.path, target.line),
     );
@@ -76,7 +77,8 @@ export async function openPanelTarget(
 
     const payload = initialPayload(target);
     const blocked = target.kind === "blocked";
-    const willLoad = Boolean(viewer.load) && target.kind === "custom";
+    // 本地 HTML 不进「打开文件」，要加载页面后交给内置浏览器。
+    const willLoad = Boolean(viewer.load) && (target.kind === "custom" || target.kind === "file");
     const status = blocked ? "error" : willLoad ? "loading" : "ready";
     const moveToEnd = target.kind === "diff";
     host.mutate(sessionId, (session) =>
@@ -124,4 +126,10 @@ export async function openPanelTarget(
       });
     }
   }
+
+/** 无行号的本地 HTML 进内置浏览器。指定了别的查看器时仍进「打开文件」。 */
+function opensInAppBrowser(target: Extract<OpenTarget, { kind: "file" }>): boolean {
+  if (target.viewerId && target.viewerId !== "html") return false;
+  return opensLocalHtmlInBrowser(target.path, target.line);
+}
 

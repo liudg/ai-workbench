@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { pathCrumb, relativeToProject, relativizeDisplayText, relativizeFiles, workspaceRootLabel } from "./path.ts";
+import {
+  normalizePath,
+  pathCrumb,
+  relativeToProject,
+  relativizeDisplayText,
+  relativizeFiles,
+  workspaceRootLabel,
+} from "./path.ts";
 
 test("open-files root label is the drive letter", () => {
   assert.equal(workspaceRootLabel("F:\\sample\\mercury_dev"), "F:");
@@ -30,6 +37,16 @@ test("paths under the project root become project-relative", () => {
     ),
     [{ path: "src/core/A.ts", added: 1 }],
   );
+});
+
+test("a slash before a windows drive is not a unix root", () => {
+  assert.equal(
+    normalizePath("/C:/Users/admin/Documents/AI Workbench/snake.html"),
+    "C:/Users/admin/Documents/AI Workbench/snake.html",
+  );
+  assert.equal(normalizePath("\\C:\\Users\\admin\\snake.html"), "C:/Users/admin/snake.html");
+  assert.equal(normalizePath("/C:/foo/../bar.html"), "C:/bar.html");
+  assert.equal(normalizePath("/home/me/notes.md"), "/home/me/notes.md");
 });
 
 test("preview titles space the path separators", () => {

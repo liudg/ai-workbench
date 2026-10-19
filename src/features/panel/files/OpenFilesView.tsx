@@ -6,7 +6,7 @@ import { baseName } from "@/shared/path";
 import { addSessionTextSnippet } from "../core/useAddTextSnippet";
 import { ColumnSplitter } from "../core/ColumnSplitter";
 import { FILES_EXPANDED_WIDTH, nextDraggedListWidth, paneFileColumnWidth, pinnedColumnStyle } from "../core/layout";
-import { resolvePreviewPath } from "../core/preview-kind";
+import { opensLocalHtmlInBrowser, resolvePreviewPath } from "../core/preview-kind";
 import { useColumnGesture } from "../core/useColumnGesture";
 import { usePanel } from "../core/PanelProvider";
 import { FileContextMenu } from "./FileContextMenu";
@@ -38,6 +38,7 @@ export function OpenFilesView() {
     filesTreeOpen,
     toggleFilesTree,
     patchTabPayload,
+    openHref,
   } = usePanel();
   const filesTab = tabs.find((tab) => tab.viewerId === "files");
   const place = openFilesPlace(filesTab?.payload);
@@ -68,6 +69,10 @@ export function OpenFilesView() {
   const openFile = (path: string, _intent: { isPreview: true }, line?: number | null) => {
     const canonical = canonicalOpenPath(projectPath, path);
     if (!canonical) return;
+    if (opensLocalHtmlInBrowser(canonical, line)) {
+      openHref(canonical);
+      return;
+    }
     writePlace(openFileInPlace(place, canonical, line ?? null));
   };
 
