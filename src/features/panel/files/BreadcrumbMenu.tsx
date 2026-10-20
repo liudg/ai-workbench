@@ -18,7 +18,7 @@ export function BreadcrumbMenu({
   onSelectFile,
   onClose,
 }: {
-  anchor: HTMLButtonElement | null;
+  anchor: HTMLElement | null;
   projectId: string;
   activePath: string;
   segmentPath: string;
@@ -28,7 +28,7 @@ export function BreadcrumbMenu({
   onClose: () => void;
 }) {
   const popoverRef = useRef<HTMLDivElement>(null);
-  const anchorRef = useRef<HTMLButtonElement | null>(anchor);
+  const anchorRef = useRef<HTMLElement | null>(anchor);
   anchorRef.current = anchor;
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;

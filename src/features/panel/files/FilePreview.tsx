@@ -10,32 +10,26 @@ import {
 } from "../viewers/markdown-mode";
 import type { SelectionDraft } from "../viewers/selection-quote";
 import { previewSelection } from "./file-preview-nav";
+import type { OpenWithAction } from "./open-with";
 import { FileSearchDialog } from "./FileSearchDialog";
-import { PreviewChrome } from "./PreviewChrome";
 import { FilePreview, PreviewEmpty } from "./PreviewBody";
 import { useChooseApp, useOpenProjectFile } from "./useOpenProjectFile";
 
-/** 预览列：顶栏 chrome，下面是空态或某个 path 的内容。 */
-export function FilePreviewColumn({
+/** 顶栏和预览共用搜索、Markdown 模式和外部打开。页面把顶栏放在两栏上面。 */
+export function useFilePreviewChrome({
   projectId,
   projectPath,
   previewPath,
-  previewLine,
   treeOpen,
   onToggleTree,
   onSelectFile,
-  quotePath,
-  onQuote,
 }: {
   projectId: string;
   projectPath: string;
   previewPath: string;
-  previewLine: number | null;
   treeOpen: boolean;
   onToggleTree: () => void;
   onSelectFile: (path: string, intent: { isPreview: true }, line?: number | null) => void;
-  quotePath?: string;
-  onQuote: (draft: SelectionDraft) => void;
 }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const markdown = Boolean(previewPath) && previewKindForPath(previewPath) === "markdown";
@@ -49,33 +43,65 @@ export function FilePreviewColumn({
   const markdownMode = markdown ? (modeState.path === previewPath ? modeState.mode : markdownViewMode(previewPath)) : null;
   const chooseApp = useChooseApp();
   const opener = useOpenProjectFile(projectId);
+  return {
+    chromeProps: {
+      path: previewPath,
+      root: projectPath,
+      projectId,
+      treeOpen,
+      onToggleTree,
+      searchEnabled: Boolean(projectId),
+      onSearch: () => setSearchOpen(true),
+      onSelectFile: (path: string, intent: { isPreview: true }) => onSelectFile(path, intent, null),
+      markdownLabel: markdownMode ? markdownModeButtonLabel(markdownMode) : null,
+      onToggleMarkdown: markdownMode
+        ? () => {
+            const next = nextMarkdownViewMode(markdownMode);
+            rememberMarkdownViewMode(previewPath, next);
+            setModeState({ path: previewPath, mode: next });
+          }
+        : undefined,
+      chooseApp,
+      openNote: opener.note,
+      onOpenWith: (mode: OpenWithAction) => {
+        void opener.openWith(previewPath, mode);
+      },
+    },
+    markdownMode,
+    searchDialog:
+      searchOpen && projectId ? (
+        <FileSearchDialog
+          projectId={projectId}
+          onClose={() => setSearchOpen(false)}
+          onOpen={(next, line) => {
+            const selected = previewSelection(next, "file");
+            if (!selected) return;
+            onSelectFile(selected.path, { isPreview: true }, line);
+            setSearchOpen(false);
+          }}
+        />
+      ) : null,
+  };
+}
+
+/** 预览列：空态或某个 path 的内容。顶栏在这一列外面。 */
+export function FilePreviewColumn({
+  projectId,
+  previewPath,
+  previewLine,
+  quotePath,
+  onQuote,
+  markdownMode = null,
+}: {
+  projectId: string;
+  previewPath: string;
+  previewLine: number | null;
+  quotePath?: string;
+  onQuote: (draft: SelectionDraft) => void;
+  markdownMode?: MarkdownViewMode | null;
+}) {
   return (
     <div data-file-preview-column className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-      <PreviewChrome
-        path={previewPath}
-        root={projectPath}
-        projectId={projectId}
-        treeOpen={treeOpen}
-        onToggleTree={onToggleTree}
-        searchEnabled={Boolean(projectId)}
-        onSearch={() => setSearchOpen(true)}
-        onSelectFile={(path, intent) => onSelectFile(path, intent, null)}
-        markdownLabel={markdownMode ? markdownModeButtonLabel(markdownMode) : null}
-        onToggleMarkdown={
-          markdownMode
-            ? () => {
-                const next = nextMarkdownViewMode(markdownMode);
-                rememberMarkdownViewMode(previewPath, next);
-                setModeState({ path: previewPath, mode: next });
-              }
-            : undefined
-        }
-        chooseApp={chooseApp}
-        openNote={opener.note}
-        onOpenWith={(mode) => {
-          void opener.openWith(previewPath, mode);
-        }}
-      />
       <div className="min-h-0 flex-1">
         {previewPath ? (
           <FilePreview
@@ -91,18 +117,6 @@ export function FilePreviewColumn({
           <PreviewEmpty />
         )}
       </div>
-      {searchOpen && projectId ? (
-        <FileSearchDialog
-          projectId={projectId}
-          onClose={() => setSearchOpen(false)}
-          onOpen={(next, line) => {
-            const selected = previewSelection(next, "file");
-            if (!selected) return;
-            onSelectFile(selected.path, { isPreview: true }, line);
-            setSearchOpen(false);
-          }}
-        />
-      ) : null}
     </div>
   );
 }

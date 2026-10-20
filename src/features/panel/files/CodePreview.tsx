@@ -23,33 +23,35 @@ export default function CodePreview() {
   const [path, setPath] = useState("");
   const [treeOpen, setTreeOpen] = useState(true);
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#0f0f0f] text-[#e8e8e8]" data-file-tree={treeOpen ? "visible" : "hidden"}>
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <PreviewChrome
-          path={path}
-          projectId=""
-          treeOpen={treeOpen}
-          onToggleTree={() => setTreeOpen((open) => !open)}
-          searchEnabled={false}
-          onSearch={() => {}}
-          onSelectFile={(next) => setPath(next)}
-        />
-        <div className="min-h-0 flex-1">
-          {path === PATH ? (
-            <div data-content-viewer="text" className="h-full min-h-0">
-              <SourceView text={source} line={line > 0 ? line : 1} />
-            </div>
-          ) : path ? (
-            <p data-preview-shell="error" className="px-6 py-8 text-center text-sm text-red-300">
-              无法读取文件
-            </p>
-          ) : (
-            <PreviewEmpty />
-          )}
+    <div className="flex h-screen w-screen flex-col overflow-hidden bg-[#0f0f0f] text-[#e8e8e8]" data-file-tree={treeOpen ? "visible" : "hidden"}>
+      <PreviewChrome
+        path={path}
+        projectId=""
+        treeOpen={treeOpen}
+        onToggleTree={() => setTreeOpen((open) => !open)}
+        searchEnabled={false}
+        onSearch={() => {}}
+        onSelectFile={(next) => setPath(next)}
+        onOpenWith={() => {}}
+      />
+      <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1">
+            {path === PATH ? (
+              <div data-content-viewer="text" className="h-full min-h-0">
+                <SourceView text={source} line={line > 0 ? line : 1} />
+              </div>
+            ) : path ? (
+              <p data-preview-shell="error" className="px-6 py-8 text-center text-sm text-red-300">
+                无法读取文件
+              </p>
+            ) : (
+              <PreviewEmpty />
+            )}
+          </div>
         </div>
-      </div>
-      {treeOpen ? (
-        <aside data-workspace-tree data-tree-surface="sidebar" className="flex h-full w-[220px] shrink-0 flex-col overflow-hidden border-l border-[#222] bg-[#0f0f0f]">
+        {treeOpen ? (
+          <aside data-workspace-tree data-tree-surface="sidebar" className="flex h-full w-[220px] shrink-0 flex-col overflow-hidden border-l border-[#222] bg-[#0f0f0f]">
           <div className="border-b border-[#222] p-2">
             <input
               readOnly
@@ -70,8 +72,9 @@ export default function CodePreview() {
               onSelect={(file) => setPath(file.path)}
             />
           </div>
-        </aside>
-      ) : null}
+          </aside>
+        ) : null}
+      </div>
     </div>
   );
 }

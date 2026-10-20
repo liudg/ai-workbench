@@ -4,7 +4,8 @@ import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { textSnippetChipLabel, textSnippetPreview } from "@/shared/text-snippet";
 import { resolvePreviewPath } from "../core/preview-kind";
 import { FileContextMenu } from "./FileContextMenu";
-import { FilePreviewColumn } from "./FilePreview";
+import { FilePreviewColumn, useFilePreviewChrome } from "./FilePreview";
+import { PreviewChrome } from "./PreviewChrome";
 import { projectIdForRoot } from "./preview-project";
 import { baseName } from "@/shared/path";
 import { useAttachFile } from "./useAttachFile";
@@ -45,20 +46,28 @@ export default function FilesPreview() {
     };
   }, [root]);
 
+  const chrome = useFilePreviewChrome({
+    projectId,
+    projectPath: root,
+    previewPath: path,
+    treeOpen,
+    onToggleTree: () => setTreeOpen((open) => !open),
+    onSelectFile: (next, _intent, nextLine) => {
+      setPath(next);
+      setLine(nextLine ?? null);
+    },
+  });
+
   return (
-    <div className="flex h-screen min-h-0 bg-zinc-950 text-zinc-200">
+    <div className="flex h-screen min-h-0 flex-col bg-zinc-950 text-zinc-200">
+      <PreviewChrome {...chrome.chromeProps} />
+      <div className="flex min-h-0 min-w-0 flex-1">
       <div className="flex min-w-0 flex-1 flex-col">
         <FilePreviewColumn
           projectId={projectId}
-          projectPath={root}
           previewPath={path}
           previewLine={line}
-          treeOpen={treeOpen}
-          onToggleTree={() => setTreeOpen((open) => !open)}
-          onSelectFile={(next, _intent, nextLine) => {
-            setPath(next);
-            setLine(nextLine ?? null);
-          }}
+          markdownMode={chrome.markdownMode}
           quotePath={path ? joinRoot(root, path) : ""}
           onQuote={(draft) => addSessionTextSnippet(SESSION, draft)}
         />
@@ -118,6 +127,8 @@ export default function FilesPreview() {
           </div>
         </aside>
       ) : null}
+      </div>
+      {chrome.searchDialog}
       {contextMenu ? (
         <FileContextMenu
           x={contextMenu.x}

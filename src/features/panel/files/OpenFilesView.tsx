@@ -10,8 +10,9 @@ import { opensLocalHtmlInBrowser, resolvePreviewPath } from "../core/preview-kin
 import { useColumnGesture } from "../core/useColumnGesture";
 import { usePanel } from "../core/PanelProvider";
 import { FileContextMenu } from "./FileContextMenu";
-import { FilePreviewColumn } from "./FilePreview";
+import { FilePreviewColumn, useFilePreviewChrome } from "./FilePreview";
 import { FileTabs } from "./FileTabs";
+import { PreviewChrome } from "./PreviewChrome";
 import {
   canonicalOpenPath,
   clearOpenFilesOnScope,
@@ -26,7 +27,7 @@ import { usePickPreviewFile } from "./useOpenProjectFile";
 
 const SPLITTER_WIDTH = 6;
 
-/** 打开文件：左侧是预览，右侧是工作区树。选中文件留在当前页。 */
+/** 打开文件：文件标签下面一行顶栏横跨预览和文件树，下面两栏顶部齐平。 */
 export function OpenFilesView() {
   const {
     tabs,
@@ -40,6 +41,45 @@ export function OpenFilesView() {
     patchTabPayload,
     openHref,
   } = usePanel();
+  return (
+    <OpenFilesScreen
+      tabs={tabs}
+      projectId={projectId}
+      projectPath={projectPath}
+      sessionId={sessionId}
+      filesTreeWidth={filesTreeWidth}
+      setFilesTreeWidth={setFilesTreeWidth}
+      filesTreeOpen={filesTreeOpen}
+      toggleFilesTree={toggleFilesTree}
+      patchTabPayload={patchTabPayload}
+      openHref={openHref}
+    />
+  );
+}
+
+export function OpenFilesScreen({
+  tabs,
+  projectId,
+  projectPath,
+  sessionId,
+  filesTreeWidth,
+  setFilesTreeWidth,
+  filesTreeOpen,
+  toggleFilesTree,
+  patchTabPayload,
+  openHref,
+}: {
+  tabs: readonly { id: string; viewerId: string; payload: unknown }[];
+  projectId: string;
+  projectPath: string;
+  sessionId: string;
+  filesTreeWidth: number | null;
+  setFilesTreeWidth: (width: number) => void;
+  filesTreeOpen: boolean;
+  toggleFilesTree: () => void;
+  patchTabPayload: (tabId: string, patch: Record<string, unknown>) => void;
+  openHref: (href: string, line?: number) => void;
+}) {
   const filesTab = tabs.find((tab) => tab.viewerId === "files");
   const place = openFilesPlace(filesTab?.payload);
   const attachFile = useAttachFile(sessionId);
@@ -91,6 +131,15 @@ export function OpenFilesView() {
     });
   };
 
+  const chrome = useFilePreviewChrome({
+    projectId,
+    projectPath,
+    previewPath: place.path,
+    treeOpen: filesTreeOpen,
+    onToggleTree: toggleFilesTree,
+    onSelectFile: openFile,
+  });
+
   useEffect(() => {
     const previous = seenScope.current;
     seenScope.current = { projectId, sessionId };
@@ -113,15 +162,13 @@ export function OpenFilesView() {
       className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden"
     >
       <FileTabs tabs={place.tabs} activePath={place.path} onSelect={selectFile} onClose={closeFile} onAdd={addFile} />
-      <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+      <PreviewChrome {...chrome.chromeProps} />
+      <div data-open-files-split className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
         <FilePreviewColumn
           projectId={projectId}
-          projectPath={projectPath}
           previewPath={place.path}
           previewLine={place.line}
-          treeOpen={filesTreeOpen}
-          onToggleTree={toggleFilesTree}
-          onSelectFile={openFile}
+          markdownMode={chrome.markdownMode}
           quotePath={place.path ? resolvePreviewPath(projectPath, place.path) || place.path : ""}
           onQuote={(draft) => addSessionTextSnippet(sessionId, draft)}
         />
@@ -180,6 +227,7 @@ export function OpenFilesView() {
           onClose={() => setContextMenu(null)}
         />
       ) : null}
+      {chrome.searchDialog}
     </div>
   );
 }
