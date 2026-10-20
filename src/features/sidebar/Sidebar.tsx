@@ -1,5 +1,6 @@
 import { AccountMenu } from "./account/AccountMenu";
 import { BrandHeader } from "./brand/BrandHeader";
+import { SidebarPeek } from "./SidebarPeek";
 import { useSidebar } from "./use-sidebar";
 import { useSidebarOpen } from "./visibility";
 import { ChatGroup } from "./chats/ChatGroup";
@@ -8,9 +9,14 @@ import { ProjectItem } from "./projects/ProjectItem";
 
 export function Sidebar() {
   const open = useSidebarOpen();
+  const frame = <SidebarFrame />;
+  if (open) return frame;
+  return <SidebarPeek>{frame}</SidebarPeek>;
+}
+
+function SidebarFrame() {
   const { pinned, unpinned, notice } = useSidebar();
   const noProjects = pinned.length === 0 && unpinned.length === 0;
-  if (!open) return null;
 
   return (
     <aside

@@ -62,6 +62,35 @@ body {
   animation: event-in 160ms ease-out;
 }
 
+/* Hint 胶囊。hidden 与 group-hover 同权重，后写的 hidden 会把悬停显示盖掉。 */
+.group\/hint:hover > [role="tooltip"] {
+  display: flex;
+}
+
+/* 收起侧栏后，左缘悬停把侧栏浮出；移出再滑回去。 */
+@keyframes sidebar-peek-in {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@keyframes sidebar-peek-out {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+.sidebar-peek-in {
+  animation: sidebar-peek-in 180ms ease-out both;
+}
+.sidebar-peek-out {
+  animation: sidebar-peek-out 150ms ease-in both;
+}
+
 /* 进行中的「正在思考」：浅光在字面上来回走，字宽之外不扫。 */
 @keyframes thinking-shimmer {
   from {
@@ -90,6 +119,16 @@ body {
     background-image: none;
     color: #8a8a8a;
     -webkit-text-fill-color: #8a8a8a;
+  }
+  .sidebar-peek-in,
+  .sidebar-peek-out {
+    animation: none;
+  }
+  .sidebar-peek-in {
+    transform: translateX(0);
+  }
+  .sidebar-peek-out {
+    transform: translateX(-100%);
   }
 }
 
