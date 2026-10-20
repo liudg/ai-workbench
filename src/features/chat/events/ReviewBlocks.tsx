@@ -14,6 +14,7 @@ export function ReviewNote({ event }: EventViewProps) {
 
 export function ReviewFindings({ event }: EventViewProps) {
   if (event.kind !== "review-findings") return null;
+  const findings = Array.isArray(event.findings) ? event.findings : [];
   return (
     <div className="event-in min-w-0 px-6 py-2">
       <div className="min-w-0 rounded-lg border border-zinc-800 bg-zinc-900/60 p-3">
@@ -22,7 +23,7 @@ export function ReviewFindings({ event }: EventViewProps) {
           <p className="mt-1 break-words whitespace-pre-wrap text-sm leading-6 text-zinc-200">{event.summary}</p>
         ) : null}
         <div className="mt-2 space-y-3">
-          {event.findings.map((finding, index) => (
+          {findings.map((finding, index) => (
             <div key={`${finding.location}-${index}`} className="min-w-0">
               <p className="break-words text-sm text-zinc-100">{finding.title}</p>
               {finding.location ? (

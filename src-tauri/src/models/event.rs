@@ -404,7 +404,8 @@ pub enum SessionEventBody {
     /// `exitedReviewMode` 解析后的审查结果。解析失败时 findings 为空。
     ReviewFindings {
         summary: String,
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        /// 空结果也要写出。省略时前端会对 `undefined` 调用 `reduce`，整页空白。
+        #[serde(default)]
         findings: Vec<ReviewFinding>,
         raw: String,
     },
@@ -496,4 +497,32 @@ pub fn strip_verbatim_prefix(path: &str) -> String {
         return rest.to_string();
     }
     path.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_review_findings_stay_in_the_payload() {
+        let body = SessionEventBody::ReviewFindings {
+            summary: "通过".into(),
+            findings: Vec::new(),
+            raw: "通过".into(),
+        };
+        let json = serde_json::to_value(&body).unwrap();
+        assert_eq!(json["kind"], "review-findings");
+        assert_eq!(json["findings"], serde_json::json!([]));
+
+        let omitted = serde_json::json!({
+            "kind": "review-findings",
+            "summary": "通过",
+            "raw": "通过",
+        });
+        let parsed: SessionEventBody = serde_json::from_value(omitted).unwrap();
+        match parsed {
+            SessionEventBody::ReviewFindings { findings, .. } => assert!(findings.is_empty()),
+            other => panic!("unexpected {other:?}"),
+        }
+    }
 }

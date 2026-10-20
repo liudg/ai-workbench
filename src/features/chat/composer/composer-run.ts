@@ -158,6 +158,7 @@ export function runComposerSubmit(run: ComposerRun) {
     snippets,
     editingId: run.editingId,
     pendingId: run.view.pendingId,
+    pendingKind: run.view.pendingKind,
     composerLocked: run.view.composerLocked,
     goalDraft: run.goalDraft,
     supportsGoals: run.supportsGoals,

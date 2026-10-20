@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  deleteShortcutMenu,
   isArchiveChord,
   isDeleteChord,
   isNewThreadChord,
@@ -49,6 +50,8 @@ test("thread chords stay on the observed modifiers", () => {
   assert.equal(isDeleteChord({ ...chord, ctrlKey: true, shiftKey: true, key: "Delete" }), true);
   assert.equal(isDeleteChord({ ...chord, ctrlKey: true, shiftKey: true, key: "Backspace" }), true);
   assert.equal(isNewThreadChord({ ...chord, ctrlKey: true, key: "o" }), false);
+  assert.deepEqual(deleteShortcutMenu(false), { open: true, drill: "delete" });
+  assert.deepEqual(deleteShortcutMenu(true), { open: true, drill: "delete" });
 });
 
 test("arrows stop at the ends", () => {

@@ -5,6 +5,7 @@ import {
   buildTimeline,
   chunkTimeline,
   collapsedTurnSummary,
+  contentChars,
   formatElapsed,
   isCliConnectionLostAnswer,
   isProcess,
@@ -327,4 +328,48 @@ test("timeline chunks keep preamble, the user message, and the turn apart", () =
   assert.equal(chunks[1]?.type, "block");
   assert.equal(chunks[2]?.type, "block");
   assert.equal(new Set(chunks.map((chunk) => timelineChunkKey(chunk))).size, chunks.length);
+});
+
+test("review findings omitted from the payload do not throw", () => {
+  const review = event("r1", 1, {
+    kind: "review-findings",
+    summary: "通过",
+    raw: "",
+    findings: [{ title: "标题", location: "a.ts", body: "正文" }],
+  });
+  const missing = { ...review, findings: undefined } as unknown as SessionEvent;
+  assert.equal(contentChars([missing]), "通过".length);
+  assert.equal(contentChars([review]), "通过".length + "正文".length);
+});
+
+function messageTexts(nodes: TimelineNode[], kind: "user-message" | "agent-message"): string[] {
+  const texts: string[] = [];
+  for (const node of nodes) {
+    if (node.type === "event" && node.event.kind === kind) texts.push(node.event.text);
+    if (node.type === "turn") {
+      for (const event of node.events) {
+        if (event.kind === kind) texts.push(event.text);
+      }
+    }
+  }
+  return texts;
+}
+
+// CP-002：整段对话被再写进日志一遍，id 和 seq 都不同。
+// 事件日志只按 id/seq 去重，时间线会把同样的气泡再画一遍。
+// 第二次写入从哪条路径来还没有事件 JSON，不能按正文哈希合并。
+// 这条断言是正确行为，当前会失败。根因确认前不要改成按正文去重。
+test("CP-002 double emit with distinct ids is still drawn twice", () => {
+  const write = "Write the numbers 1 to 3000, one per line, no tools.";
+  const events = [
+    event("u1", 1, { kind: "user-message", text: "reply ok" }),
+    event("a1", 2, { kind: "agent-message", text: "ok" }),
+    event("u2", 3, { kind: "user-message", text: write }),
+    event("u3", 4, { kind: "user-message", text: "reply ok" }),
+    event("a2", 5, { kind: "agent-message", text: "ok" }),
+    event("u4", 6, { kind: "user-message", text: write }),
+  ];
+  const nodes = buildTimeline(events, "completed");
+  assert.deepEqual(messageTexts(nodes, "user-message"), ["reply ok", write]);
+  assert.deepEqual(messageTexts(nodes, "agent-message"), ["ok"]);
 });

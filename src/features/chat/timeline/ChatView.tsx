@@ -28,9 +28,24 @@ import {
 import { FindBar } from "../find/FindBar";
 import { useThreadFind } from "../find/use-thread-find";
 import { ChatSelectionMenu } from "./ChatSelectionMenu";
+import { ChatErrorBoundary } from "./ChatErrorBoundary";
 import { useTimelineFollow } from "./useTimelineFollow";
 
 export function ChatView({
+  session,
+  events,
+}: {
+  session: Session;
+  events: SessionEvent[];
+}) {
+  return (
+    <ChatErrorBoundary resetKey={session.id}>
+      <ChatTimeline session={session} events={events} />
+    </ChatErrorBoundary>
+  );
+}
+
+function ChatTimeline({
   session,
   events,
 }: {

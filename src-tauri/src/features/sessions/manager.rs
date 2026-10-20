@@ -649,6 +649,8 @@ impl SessionManager {
                 activity_at: None,
                 queue: Vec::new(),
                 withhold_sidebar,
+                parked_for_archive: false,
+                reader_epoch: 0,
             },
         );
         // start_session 返回前已经把历史、连接说明和状态放进通道。
@@ -656,12 +658,28 @@ impl SessionManager {
         while let Ok(body) = rx.try_recv() {
             apply_body(&self.entries, &self.emit, &session_id, body, false);
         }
+        self.spawn_reader(session_id, 0, rx);
+    }
+
+    fn spawn_reader(
+        &self,
+        session_id: String,
+        epoch: u64,
+        mut rx: mpsc::UnboundedReceiver<SessionEventBody>,
+    ) {
         let entries = Arc::clone(&self.entries);
         let emit = Arc::clone(&self.emit);
-        let sid = session_id;
         tauri::async_runtime::spawn(async move {
             while let Some(body) = rx.recv().await {
-                apply_body(&entries, &emit, &sid, body, true);
+                let current = entries
+                    .lock()
+                    .unwrap()
+                    .get(&session_id)
+                    .map(|entry| entry.reader_epoch);
+                if current != Some(epoch) {
+                    break;
+                }
+                apply_body(&entries, &emit, &session_id, body, true);
             }
         });
     }
@@ -1353,24 +1371,41 @@ impl SessionManager {
         if !adapter.capabilities().supports_archive {
             return Err(format!("{} 不支持归档", adapter.display_name()));
         }
-        if let Err(first) = adapter.set_archived(&native, archived).await {
-            if !archived {
-                return Err(first.to_string());
+        if archived {
+            if let Err(first) = adapter.set_archived(&native, true).await {
+                // 已打开的线程占着写锁时，`thread/archive` 会拒绝。先停再试一次。
+                // 停过的进程记成可恢复：取消归档时重新 resume，不把历史再写进现有日志。
+                let handle = self
+                    .entries
+                    .lock()
+                    .unwrap()
+                    .get(session_id)
+                    .and_then(|entry| entry.agent.clone());
+                if let Some(handle) = handle {
+                    let _ = handle.stop().await;
+                    if let Some(entry) = self.entries.lock().unwrap().get_mut(session_id) {
+                        entry.parked_for_archive = true;
+                    }
+                }
+                adapter
+                    .set_archived(&native, true)
+                    .await
+                    .map_err(|_| first.to_string())?;
             }
-            // 已打开的线程占着写锁时，`thread/archive` 会拒绝。先停再试一次。
-            let handle = self
+        } else if let Err(err) = adapter.set_archived(&native, false).await {
+            let parked = self
                 .entries
                 .lock()
                 .unwrap()
                 .get(session_id)
-                .and_then(|entry| entry.agent.clone());
-            if let Some(handle) = handle {
-                let _ = handle.stop().await;
+                .is_some_and(|entry| entry.parked_for_archive);
+            if !parked {
+                return Err(err.to_string());
             }
-            adapter
-                .set_archived(&native, true)
-                .await
-                .map_err(|_| first.to_string())?;
+        }
+        if !archived {
+            self.revive_parked_session(session_id, agent, &native, &project)
+                .await?;
         }
         if let Some(entry) = self.entries.lock().unwrap().get_mut(session_id) {
             entry.meta.archived = archived;
@@ -1421,6 +1456,97 @@ impl SessionManager {
             .get(&session.id)
             .map(|entry| entry.meta.clone());
         Ok(opened.unwrap_or(session))
+    }
+
+    /// 归档为了放开写锁停过的会话，取消归档后重新 `thread/resume`。
+    /// 启动通道里的历史丢掉：日志里已经有这一段，再写入会把气泡画两遍。
+    async fn revive_parked_session(
+        &self,
+        session_id: &str,
+        agent: AgentKind,
+        native: &str,
+        project: &Project,
+    ) -> Result<(), String> {
+        let parked = self
+            .entries
+            .lock()
+            .unwrap()
+            .get(session_id)
+            .is_some_and(|entry| entry.parked_for_archive);
+        if !parked {
+            return Ok(());
+        }
+        let epoch = {
+            let mut entries = self.entries.lock().unwrap();
+            let Some(entry) = entries.get_mut(session_id) else {
+                return Err("会话不存在".to_string());
+            };
+            entry.reader_epoch = entry.reader_epoch.saturating_add(1);
+            entry.agent = None;
+            entry.reader_epoch
+        };
+        let cwd = self.session_cwd(session_id, native, agent).await;
+        let project_path = if cwd.trim().is_empty() {
+            project.path.clone()
+        } else {
+            cwd
+        };
+        let (tx, mut rx) = mpsc::unbounded_channel::<SessionEventBody>();
+        let ctx = SessionContext {
+            project_path,
+            access_mode: None,
+            resume_native_id: Some(native.to_string()),
+            options: serde_json::json!({ "persist": true }),
+        };
+        let handle = adapter_for(agent)
+            .start_session(ctx, tx)
+            .await
+            .map_err(|err| err.to_string())?;
+        while let Ok(body) = rx.try_recv() {
+            if !startup_body_on_revive(&body) {
+                continue;
+            }
+            apply_body(&self.entries, &self.emit, session_id, body, false);
+        }
+        let still_stopped = self
+            .entries
+            .lock()
+            .unwrap()
+            .get(session_id)
+            .is_some_and(|entry| entry.meta.status == SessionStatus::Stopped);
+        if still_stopped {
+            apply_body(
+                &self.entries,
+                &self.emit,
+                session_id,
+                SessionEventBody::StatusChanged {
+                    status: SessionStatus::Completed,
+                },
+                false,
+            );
+        }
+        {
+            let mut entries = self.entries.lock().unwrap();
+            let Some(entry) = entries.get_mut(session_id) else {
+                return Err("会话不存在".to_string());
+            };
+            entry.agent = Some(handle);
+            entry.parked_for_archive = false;
+            entry.meta.archived = false;
+        }
+        self.spawn_reader(session_id.to_string(), epoch, rx);
+        Ok(())
+    }
+}
+
+/// 取消归档重新接上时，只留状态和说明。用户消息和助手消息已经在日志里。
+pub(super) fn startup_body_on_revive(body: &SessionEventBody) -> bool {
+    match body {
+        SessionEventBody::StatusChanged { status } => *status != SessionStatus::Stopped,
+        SessionEventBody::ReadOnly { .. }
+        | SessionEventBody::Error { .. }
+        | SessionEventBody::System { .. } => true,
+        _ => false,
     }
 }
 
@@ -1657,6 +1783,38 @@ mod tests {
             created_without_first_message("  "),
             "会话已创建，第一条消息没有发出"
         );
+    }
+
+    #[test]
+    fn revive_drops_transcript_and_a_stopped_status() {
+        use crate::models::SessionEventBody;
+        assert!(super::startup_body_on_revive(
+            &SessionEventBody::StatusChanged {
+                status: SessionStatus::Completed,
+            }
+        ));
+        assert!(super::startup_body_on_revive(&SessionEventBody::System {
+            text: "已连接".into(),
+        }));
+        assert!(!super::startup_body_on_revive(
+            &SessionEventBody::StatusChanged {
+                status: SessionStatus::Stopped,
+            }
+        ));
+        assert!(!super::startup_body_on_revive(&SessionEventBody::UserMessage {
+            text: "reply ok".into(),
+            images: Vec::new(),
+            annotations: 0,
+        }));
+        assert!(!super::startup_body_on_revive(
+            &SessionEventBody::AgentMessage {
+                text: "ok".into(),
+                stream_id: None,
+                phase: None,
+                mode: None,
+                dedupe_of: None,
+            }
+        ));
     }
 
     fn scratch(name: &str) -> PathBuf {

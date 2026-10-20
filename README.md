@@ -55,7 +55,7 @@ pnpm dev                                                       # 打开 http://l
 1. **云端开发**：日常开发在本云仓库进行；
 2. **Windows 构建**：Windows 安装包（NSIS）**必须在 Windows 机器上构建**——使用 GitHub Actions `windows-latest`（`.github/workflows/release-windows.yml` 已备好，推送 `v*` tag 即可）或 Cursor 私有 Windows worker；默认 Linux 云主机不能产出 .exe；
 3. **签名**：构建时设置 `TAURI_SIGNING_PRIVATE_KEY`（私钥不入库；本项目的私钥在云端交付物 `artifacts/tauri-signing/`，公钥已内嵌 `tauri.conf.json`）；
-4. **更新源**：把 `latest.json`（由 `scripts/gen-latest-json.mjs` 生成，模板见 [release/latest.json](release/latest.json)）与 `.nsis.zip` 上传到 GitHub Release 或任意 HTTPS 静态地址，并把 `tauri.conf.json → plugins.updater.endpoints` 中的 `OWNER/REPO` 替换为实际值；
+4. **更新源**：仓库里还没有公开的 `latest.json`。`tauri.conf.json → plugins.updater.endpoints` 为空，`src/lib/update-source.ts` 的 `UPDATE_ENDPOINT` 也是空字符串，应用内检查显示「暂无可用更新源」。有真实 HTTPS 地址后，这两处写成同一个地址，再上传 `latest.json`（由 `scripts/gen-latest-json.mjs` 生成，模板见 [release/latest.json](release/latest.json)）和安装包；
 5. **用户侧**：旧版本用户启动应用即收到更新提示，一键升级到新版。
 
 ## 架构总览

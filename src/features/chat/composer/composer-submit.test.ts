@@ -67,6 +67,16 @@ test("queue edit, pending answer, and image send stay distinct", () => {
     promptId: "p1",
     text: "好",
   });
+  assert.deepEqual(
+    decideSubmit({
+      ...base,
+      imagesOn: false,
+      text: "先排队",
+      pendingId: "p1",
+      pendingKind: "approval",
+    }),
+    { type: "send-text", text: "先排队", clearAttachments: true },
+  );
   assert.equal(decideSubmit({ ...base, text: "好", pendingId: "p1", composerLocked: true }).type, "noop");
   assert.deepEqual(
     decideSubmit({ ...base, text: "", attached: [{ name: "a.png", path: "C:/a.png" }] }),
