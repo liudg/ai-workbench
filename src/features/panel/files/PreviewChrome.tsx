@@ -1,18 +1,19 @@
 import { useEffect, useId, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
-import { AppWindow, ChevronDown, Copy, FolderTree, Search } from "lucide-react";
+import { AppWindow, ChevronDown, Copy, Folder, Search } from "lucide-react";
 
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { writeClipboardText } from "@/shared/clipboard";
 import { relativeToProject } from "@/shared/path";
 import { cn } from "@/lib/utils";
+import { Hint } from "../core/Hint";
 import { useAnchoredLayer } from "../core/useAnchoredLayer";
 import { useDismissLayer } from "../core/useDismissLayer";
 import { previewCrumbs, previewRootLabel } from "./file-preview-nav";
 import { BreadcrumbMenu } from "./BreadcrumbMenu";
 import { openWithActions, type OpenWithAction, type OpenWithItem } from "./open-with";
 
-/** 预览顶栏：路径在上，搜索、Markdown 切换、复制、打开和文件树在同一排。 */
+/** 打开文件顶栏：路径在左，操作靠右，一行横跨预览和文件树。 */
 export function PreviewChrome({
   path,
   root = "",
@@ -49,7 +50,7 @@ export function PreviewChrome({
   const [openPath, setOpenPath] = useState<string | null>(null);
   const [copyNote, setCopyNote] = useState("");
   const [openMenu, setOpenMenu] = useState(false);
-  const anchors = useRef(new Map<string, HTMLButtonElement>());
+  const anchors = useRef(new Map<string, HTMLElement>());
   const openAnchor = useRef<HTMLButtonElement | null>(null);
   const lastMenuToggle = useRef(0);
   const menuId = useId();
@@ -86,122 +87,131 @@ export function PreviewChrome({
   };
 
   return (
-    <div data-preview-chrome className="flex shrink-0 flex-col border-b border-[#222] text-[12px] text-[#bdbdbd]">
+    <div
+      data-preview-chrome
+      data-preview-toolbar
+      className="flex h-10 min-w-0 shrink-0 flex-nowrap items-center gap-2 border-b border-[#222] bg-[#0f0f0f] px-2 text-[12px] text-[#bdbdbd]"
+    >
       <nav
         data-slot="file-path"
         aria-label={DESKTOP_ZH.breadcrumbLabel}
         data-preview-path-line
-        className="flex min-w-0 items-center gap-1 overflow-hidden px-2 py-1.5"
+        className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap"
       >
         {segments.map((segment, index) => (
-          <span key={`${segment.path}:${segment.label}`} className="flex min-w-0 items-center gap-1">
+          <span key={`${segment.path}:${segment.label}`} className="inline whitespace-nowrap align-middle">
             {index > 0 ? (
-              <span aria-hidden className="shrink-0 text-[#666]">
+              <span aria-hidden className="px-1 text-[#666]">
                 &gt;
               </span>
             ) : null}
             <button
               type="button"
-              ref={(node) => {
-                if (node) anchors.current.set(segment.path, node);
-                else anchors.current.delete(segment.path);
-              }}
               data-breadcrumb-segment={segment.path || segment.label}
               data-open-mode={segment.last ? "file" : "workspace"}
               aria-expanded={openPath === segment.path}
               title={segment.label}
-              className={cn(
-                "max-w-[12rem] truncate rounded px-1 py-0.5 hover:bg-white/[0.06]",
-                segment.last ? "font-medium text-[#f3f3f3]" : "text-[#bdbdbd]",
-              )}
+              className="contents"
               onClick={() => setOpenPath((current) => (current === segment.path ? null : segment.path))}
             >
-              {segment.label}
+              <span
+                ref={(node) => {
+                  if (node) anchors.current.set(segment.path, node);
+                  else anchors.current.delete(segment.path);
+                }}
+                className={cn(
+                  "rounded px-1 py-0.5 hover:bg-white/[0.06]",
+                  segment.last ? "font-medium text-[#f3f3f3]" : "text-[#bdbdbd]",
+                )}
+              >
+                {segment.label}
+              </span>
             </button>
           </span>
         ))}
       </nav>
-      <div data-preview-toolbar className="flex min-w-0 items-center gap-1 px-2 py-1">
-        <div data-preview-toolbar-scroll className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
+      <div data-preview-actions className="ml-auto flex shrink-0 items-center gap-1">
+        <button
+          type="button"
+          data-file-search-open
+          aria-label={DESKTOP_ZH.openFilesSearch}
+          title={searchEnabled ? DESKTOP_ZH.openFilesSearch : DESKTOP_ZH.previewSearchUnavailable}
+          disabled={!searchEnabled}
+          className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-[#cfcfcf] hover:bg-white/5 disabled:text-[#555]"
+          onClick={onSearch}
+        >
+          <Search className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+          <span>{DESKTOP_ZH.openFilesSearch}</span>
+        </button>
+        {markdownLabel && onToggleMarkdown ? (
           <button
             type="button"
-            data-file-search-open
-            aria-label={DESKTOP_ZH.openFilesSearch}
-            title={searchEnabled ? DESKTOP_ZH.openFilesSearch : DESKTOP_ZH.previewSearchUnavailable}
-            disabled={!searchEnabled}
-            className="inline-flex h-7 min-w-0 items-center gap-1 rounded-md px-2 text-[#cfcfcf] hover:bg-white/5 disabled:text-[#555]"
-            onClick={onSearch}
+            data-markdown-mode-toggle
+            className="inline-flex h-7 shrink-0 items-center rounded-full border border-[#3a3a3a] bg-[#2a2a2a] px-3 text-[12px] leading-5 text-[#f3f3f3] hover:bg-[#333]"
+            onClick={onToggleMarkdown}
           >
-            <Search className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
-            <span className="truncate">{DESKTOP_ZH.openFilesSearch}</span>
+            {markdownLabel}
           </button>
-          {markdownLabel && onToggleMarkdown ? (
+        ) : null}
+        <button
+          type="button"
+          data-copy-path
+          aria-label={DESKTOP_ZH.copyPath}
+          disabled={!shown}
+          className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-[#cfcfcf] hover:bg-white/5 disabled:text-[#555]"
+          onClick={() => void copyPath()}
+        >
+          <Copy className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+          <span>{copyNote || DESKTOP_ZH.copyPath}</span>
+        </button>
+        {onOpenWith ? (
+          <div
+            data-open-with
+            className="inline-flex h-7 shrink-0 items-stretch overflow-hidden rounded-full border border-[#3a3a3a] bg-[#2a2a2a] text-[#e8e8e8]"
+          >
             <button
               type="button"
-              data-markdown-mode-toggle
-              className="inline-flex h-7 shrink-0 items-center rounded-full border border-[#3a3a3a] bg-[#2a2a2a] px-3 text-[12px] leading-5 text-[#f3f3f3] hover:bg-[#333]"
-              onClick={onToggleMarkdown}
+              data-open-with-default
+              aria-label={DESKTOP_ZH.openFileDefault}
+              disabled={!shown}
+              className="inline-flex items-center gap-1 rounded-l-full pl-2 pr-1.5 hover:bg-white/10 disabled:text-[#555] disabled:hover:bg-transparent"
+              onClick={() => onOpenWith("default")}
             >
-              {markdownLabel}
+              <AppWindow className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+              <span className="max-w-16 truncate">{openNote || DESKTOP_ZH.openFile}</span>
             </button>
-          ) : null}
-          <button
-            type="button"
-            data-copy-path
-            aria-label={DESKTOP_ZH.copyPath}
-            disabled={!shown}
-            className="inline-flex h-7 min-w-0 items-center gap-1 rounded-md px-2 text-[#cfcfcf] hover:bg-white/5 disabled:text-[#555]"
-            onClick={() => void copyPath()}
-          >
-            <Copy className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
-            <span className="truncate">{copyNote || DESKTOP_ZH.copyPath}</span>
-          </button>
-        </div>
-        <div data-preview-toolbar-pin className="flex shrink-0 items-center gap-1">
-          {onOpenWith ? (
-            <div data-open-with className="flex shrink-0 items-center">
-              <button
-                type="button"
-                data-open-with-default
-                aria-label={DESKTOP_ZH.openFileDefault}
-                disabled={!shown}
-                className="inline-flex h-7 shrink-0 items-center gap-1 rounded-l-md px-2 text-[#cfcfcf] hover:bg-white/5 disabled:text-[#555]"
-                onClick={() => onOpenWith("default")}
-              >
-                <AppWindow className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
-                <span className="max-w-16 truncate">{openNote || DESKTOP_ZH.openFile}</span>
-              </button>
-              <button
-                type="button"
-                ref={openAnchor}
-                data-open-with-menu-button
-                aria-label={DESKTOP_ZH.openFileMenu}
-                aria-expanded={openMenu}
-                aria-haspopup="menu"
-                aria-controls={menuId}
-                disabled={!shown}
-                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-r-md text-[#cfcfcf] hover:bg-white/5 disabled:text-[#555]"
-                onClick={toggleOpenMenu}
-              >
-                <ChevronDown className="h-3.5 w-3.5" strokeWidth={1.75} />
-              </button>
-            </div>
-          ) : null}
+            <span data-open-with-divider aria-hidden className="h-3.5 w-px shrink-0 self-center bg-[#555]" />
+            <button
+              type="button"
+              ref={openAnchor}
+              data-open-with-menu-button
+              aria-label={DESKTOP_ZH.openFileMenu}
+              aria-expanded={openMenu}
+              aria-haspopup="menu"
+              aria-controls={menuId}
+              disabled={!shown}
+              className="inline-flex w-7 items-center justify-center rounded-r-full hover:bg-white/10 disabled:text-[#555] disabled:hover:bg-transparent"
+              onClick={toggleOpenMenu}
+            >
+              <ChevronDown className="h-3.5 w-3.5" strokeWidth={1.75} />
+            </button>
+          </div>
+        ) : null}
+        <Hint label={DESKTOP_ZH.toggleFileTree} align="end">
           <button
             type="button"
             data-toggle-file-tree
             aria-label={DESKTOP_ZH.toggleFileTree}
             aria-pressed={treeOpen}
-            title={DESKTOP_ZH.toggleFileTree}
             className={cn(
-              "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md hover:bg-white/5",
-              treeOpen ? "text-[#f3f3f3]" : "text-[#8d8d8d]",
+              "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px]",
+              treeOpen ? "bg-white/10 text-[#e8e8e8]" : "text-[#8d8d8d] hover:bg-white/5 hover:text-[#e8e8e8]",
             )}
             onClick={onToggleTree}
           >
-            <FolderTree className="h-3.5 w-3.5" strokeWidth={1.75} />
+            <Folder data-file-tree-icon="folder" className="h-3.5 w-3.5" />
           </button>
-        </div>
+        </Hint>
       </div>
       {openSegment ? (
         <BreadcrumbMenu
