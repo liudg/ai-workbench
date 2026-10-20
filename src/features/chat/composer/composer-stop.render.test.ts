@@ -44,6 +44,7 @@ const caps = {
   supports_skills: true,
   supports_images: true,
   supports_queue: true,
+  supports_cancel: true,
   supports_plan: true,
   supports_review: true,
   changes: { turn_diff: false, per_file_patch: false, git_scopes: false },
@@ -187,6 +188,34 @@ test("pending approval shows 停止 and clicking it interrupts; a finished turn 
   assert.equal(send.disabled, true);
   send.click();
   assert.deepEqual(pressed, ["interrupt"]);
+
+  const cancelOnly = deriveComposerView(
+    composerInput({
+      status: "running",
+      caps: { ...caps, supports_queue: false, supports_cancel: true },
+      events: [approval()],
+    }),
+  );
+  assert.equal(cancelOnly.stopMode, true);
+  assert.equal(cancelOnly.queueOn, false);
+  await act(async () => {
+    root.render(
+      bar({
+        stopMode: cancelOnly.stopMode,
+        sendDisabled: cancelOnly.sendDisabled,
+        onSend: () =>
+          runComposerPrimary(cancelOnly.stopMode, {
+            interrupt: () => pressed.push("interrupt"),
+            submit: () => pressed.push("submit"),
+          }),
+      }),
+    );
+  });
+  const cancelStop = dom.document.querySelector('button[aria-label="停止"]');
+  assert.ok(cancelStop instanceof dom.HTMLButtonElement);
+  assert.equal(cancelStop.disabled, false);
+  cancelStop.click();
+  assert.deepEqual(pressed, ["interrupt", "interrupt"]);
 
   await act(async () => {
     root.unmount();

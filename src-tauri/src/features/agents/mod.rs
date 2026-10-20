@@ -215,6 +215,7 @@ mod tests {
         assert!(caps.supports_rename);
         assert!(caps.supports_resume);
         assert!(caps.supports_queue);
+        assert!(caps.supports_cancel);
         assert!(caps.supports_fork);
         assert!(!caps.supports_archive);
         assert!(caps.supports_delete);
@@ -263,6 +264,29 @@ mod tests {
         assert!(caps.supports_delete);
         assert!(caps.supports_worktree);
         assert!(caps.supports_subscription_usage);
+        assert!(caps.supports_cancel);
+        assert!(caps.supports_queue);
+    }
+
+    #[test]
+    fn cancel_is_declared_separately_from_queue() {
+        let codex = adapter_for(AgentKind::CodexCli).capabilities();
+        let claude = adapter_for(AgentKind::ClaudeCode).capabilities();
+        assert!(codex.supports_cancel && codex.supports_queue);
+        assert!(claude.supports_cancel && claude.supports_queue);
+        let cursor = adapter_for(AgentKind::CursorAgent).capabilities();
+        assert!(cursor.supports_cancel);
+        assert!(!cursor.supports_queue);
+        for kind in [
+            AgentKind::KimiCode,
+            AgentKind::QwenCode,
+            AgentKind::OpenCode,
+            AgentKind::Antigravity,
+        ] {
+            let caps = adapter_for(kind).capabilities();
+            assert!(!caps.supports_cancel, "{}", kind.as_str());
+            assert!(!caps.supports_queue, "{}", kind.as_str());
+        }
     }
 
     #[test]

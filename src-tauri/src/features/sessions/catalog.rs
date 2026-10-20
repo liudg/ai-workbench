@@ -135,10 +135,14 @@ impl CatalogCache {
             .get(&kind)
             .cloned()
             .map(|mut catalog| {
-                // 旧缓存没有 supports_worktree 时，serde 会把它读成 false，
+                // 旧缓存没有这些开关时，serde 会把它读成 false，
                 // 草稿就会拿这份目录盖住适配器 profile。静态支持以当前适配器为准。
-                if adapter_for(kind).capabilities().supports_worktree {
+                let caps = adapter_for(kind).capabilities();
+                if caps.supports_worktree {
                     catalog.capabilities.supports_worktree = true;
+                }
+                if caps.supports_cancel {
+                    catalog.capabilities.supports_cancel = true;
                 }
                 catalog
             })

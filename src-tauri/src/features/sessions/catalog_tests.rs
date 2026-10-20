@@ -73,6 +73,7 @@ fn stale_cached_catalog_keeps_static_worktree_support() {
     let cache = CatalogCache::load(&dir);
     let mut claude = catalog("opus");
     claude.capabilities.supports_worktree = false;
+    claude.capabilities.supports_cancel = false;
     claude.agent = Some(AgentKind::ClaudeCode);
     cache.remember(AgentKind::ClaudeCode, &claude);
     let mut cursor = catalog("cursor");
@@ -81,6 +82,7 @@ fn stale_cached_catalog_keeps_static_worktree_support() {
     cache.remember(AgentKind::CursorAgent, &cursor);
     let mut codex = catalog("gpt");
     codex.capabilities.supports_worktree = false;
+    codex.capabilities.supports_cancel = false;
     cache.remember(AgentKind::CodexCli, &codex);
 
     let loaded = CatalogCache::load(&dir);
@@ -105,6 +107,26 @@ fn stale_cached_catalog_keeps_static_worktree_support() {
             .capabilities
             .supports_worktree
     );
+    assert!(
+        loaded
+            .get(AgentKind::ClaudeCode)
+            .expect("claude")
+            .capabilities
+            .supports_cancel
+    );
+    assert!(
+        loaded
+            .get(AgentKind::CodexCli)
+            .expect("codex")
+            .capabilities
+            .supports_cancel
+    );
+    let cursor_caps = loaded
+        .get(AgentKind::CursorAgent)
+        .expect("cursor")
+        .capabilities;
+    assert!(cursor_caps.supports_cancel);
+    assert!(!cursor_caps.supports_queue);
     let _ = fs::remove_dir_all(&dir);
 }
 

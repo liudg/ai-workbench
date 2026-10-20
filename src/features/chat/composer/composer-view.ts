@@ -93,6 +93,7 @@ export function deriveComposerView(input: ComposerViewInput) {
   const caps = input.caps;
   const imagesOn = Boolean(caps?.supports_images);
   const queueOn = Boolean(caps?.supports_queue);
+  const cancelOn = Boolean(caps?.supports_cancel);
   const composerLocked = held || (queueOn ? dead || occupied : busy || dead || occupied);
   const menusLocked = held || busy || dead || occupied;
   const token = caps?.supports_slash && !pendingId && !menusLocked ? slashToken(input.text) : null;
@@ -152,12 +153,13 @@ export function deriveComposerView(input: ComposerViewInput) {
   const hasText = Boolean(input.text.trim());
   const hasSnippets = input.snippetCount > 0;
   // 会话列表可能晚一拍。回合是否还在，以事件日志最后一次状态为准，和对话时间线一致。
+  // 停止只看 supports_cancel 和回合是否还开着。排队另看 supports_queue。
   // 正在跑，或停在审批 / 提问（needs-input），空输入都保持停止。待发草稿仍是发送。
   const live = timelineStatus(input.events, input.status);
   const turnOpen = live === "running" || live === "needs-input";
   const stopMode =
     held ||
-    (queueOn && turnOpen && !input.editingId && !hasText && !hasSnippets && input.fileCount === 0);
+    (cancelOn && turnOpen && !input.editingId && !hasText && !hasSnippets && input.fileCount === 0);
   const sendDisabled = stopMode
     ? false
     : composerLocked ||

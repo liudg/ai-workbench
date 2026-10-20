@@ -109,6 +109,9 @@ pub struct AgentCapabilities {
     /// 回合进行中仍可发送，消息进入适配器的排队接口。
     #[serde(default)]
     pub supports_queue: bool,
+    /// 回合进行中可以中断当前回合。停止按钮只看这项，不看排队。
+    #[serde(default)]
+    pub supports_cancel: bool,
     /// 侧边栏 `thread/fork`。菜单不再提供分叉。
     #[serde(default)]
     pub supports_fork: bool,
@@ -164,6 +167,7 @@ impl AgentCapabilities {
             supports_goals: false,
             supports_images: false,
             supports_queue: false,
+            supports_cancel: false,
             supports_fork: false,
             supports_archive: false,
             supports_delete: false,
@@ -191,6 +195,8 @@ impl AgentCapabilities {
             supports_goals: true,
             supports_images: true,
             supports_queue: true,
+            // `turn/interrupt` 带当前 turn id（`agents/codex/rpc.rs`）。
+            supports_cancel: true,
             supports_fork: true,
             supports_archive: true,
             supports_delete: true,
@@ -223,6 +229,8 @@ impl AgentCapabilities {
             supports_goals: true,
             supports_images: true,
             supports_queue: true,
+            // stdin `{"subtype":"interrupt"}`。CLI 把这次停止报成 aborted_streaming / aborted_user。
+            supports_cancel: true,
             supports_fork: true,
             // `claude --help` 没有 archive。探测会话 jsonl 的键里没有 archived。
             // 二进制 `sessionArchived` 是云端创建失败遥测，`unarchive` 命中的是
@@ -255,6 +263,17 @@ impl AgentCapabilities {
             // 2026-10-18 Claude Code 文档：`--worktree <name>` / `-w` 在仓库
             // `.claude/worktrees/<name>` 建分支 `worktree-<name>`。
             supports_worktree: true,
+        }
+    }
+
+    /// Cursor Agent 桩。会话协议未接入，这里不实现中断。
+    /// 停止按钮只看 `supports_cancel`；排队界面只看 `supports_queue`。
+    pub fn cursor() -> Self {
+        Self {
+            // 排队没有接入。关闭，避免作曲栏画出队列。
+            supports_queue: false,
+            supports_cancel: true,
+            ..Self::none()
         }
     }
 }
@@ -466,6 +485,7 @@ mod tests {
         assert!(parsed.supports_slash);
         assert!(!parsed.supports_images);
         assert!(!parsed.supports_queue);
+        assert!(!parsed.supports_cancel);
         assert!(!parsed.supports_goals);
         assert!(!parsed.supports_plan);
         assert!(!parsed.changes.turn_diff);

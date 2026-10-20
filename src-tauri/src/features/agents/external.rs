@@ -100,7 +100,10 @@ impl AgentAdapter for ExternalCliAdapter {
     }
 
     fn capabilities(&self) -> AgentCapabilities {
-        AgentCapabilities::none()
+        match self.kind {
+            AgentKind::CursorAgent => AgentCapabilities::cursor(),
+            _ => AgentCapabilities::none(),
+        }
     }
 
     fn icon_href(&self) -> Option<&'static str> {

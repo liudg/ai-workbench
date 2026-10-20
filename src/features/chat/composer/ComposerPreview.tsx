@@ -44,6 +44,7 @@ const caps = {
   supports_goals: true,
   supports_images: true,
   supports_queue: true,
+  supports_cancel: true,
   supports_plan: true,
   supports_review: true,
   changes: { turn_diff: false, per_file_patch: false, git_scopes: false },
