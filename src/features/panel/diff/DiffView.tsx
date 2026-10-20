@@ -14,6 +14,7 @@ import { setFileFilter } from "../core/file-filter";
 import { DiffFileSection } from "./DiffFileSection";
 import { DiffToolbar } from "./DiffToolbar";
 import { copyApplyState } from "./git-apply";
+import { jumpSelection, visibleJumpFiles } from "./jump-files";
 import { diffPresentation, nextDiffLayout, type DiffLayoutMode } from "./split-rows";
 import { useDiffDocument } from "./useDiffDocument";
 import { useGitWorkTree } from "./useGitWorkTree";
@@ -21,15 +22,10 @@ import { useGitWorkTree } from "./useGitWorkTree";
 const SPLITTER_WIDTH = 6;
 
 export function DiffView({ files }: { files: FileChange[] }) {
-  const { diffFilesWidth, setDiffFilesWidth, projectId, projectPath, sessionId, sessionFiles, diffView, patchDiffView } =
+  const { diffFilesWidth, setDiffFilesWidth, projectId, projectPath, sessionId, diffView, patchDiffView } =
     usePanel();
   const displayFiles = useMemo(() => relativizeFiles(files, projectPath), [files, projectPath]);
-  const threadFiles = useMemo(
-    () => relativizeFiles(sessionFiles.length > 0 ? sessionFiles : files, projectPath),
-    [files, projectPath, sessionFiles],
-  );
-  const [followThread, setFollowThread] = useState(false);
-  const doc = useDiffDocument(followThread ? threadFiles : displayFiles);
+  const doc = useDiffDocument(displayFiles);
   const frameRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const paneWidth = useElementWidth(frameRef);
@@ -63,15 +59,8 @@ export function DiffView({ files }: { files: FileChange[] }) {
   }, [doc.revealFile, doc.shown, pendingJump]);
 
   const jumpTo = (path: string) => {
-    const known = threadFiles.some((file) => file.path === path) || displayFiles.some((file) => file.path === path);
-    if (!known) return;
+    if (!jumpSelection(doc.shown, path)) return;
     setFileFilter(sessionId, "");
-    const inListed = doc.listed.some((file) => file.path === path);
-    if (!inListed) {
-      const turn = doc.scopes.find((item) => item.source === "turn" && !item.submenu);
-      if (turn && doc.scope !== turn.id) doc.setScope(turn.id);
-      if (!followThread) setFollowThread(true);
-    }
     setPendingJump(path);
   };
 
@@ -129,7 +118,7 @@ export function DiffView({ files }: { files: FileChange[] }) {
           setFilesWanted(next);
           patchDiffView({ filesOpen: next });
         }}
-        jumpFiles={threadFiles}
+        jumpFiles={visibleJumpFiles(doc.shown)}
         activePath={doc.active?.path ?? ""}
         onJump={jumpTo}
         copyCommand={copy.command}

@@ -674,7 +674,8 @@ impl Shared {
                 }
                 self.plan_ready.store(true, Ordering::SeqCst);
             }
-            "enteredReviewMode" => {
+            // `item/started` 和 `item/completed` 都会进来。审查正文只在完成时写一次。
+            "enteredReviewMode" if completed => {
                 let text = item.get("review").and_then(Value::as_str).unwrap_or("");
                 if !text.is_empty() {
                     emit(
@@ -685,7 +686,7 @@ impl Shared {
                     );
                 }
             }
-            "exitedReviewMode" => {
+            "exitedReviewMode" if completed => {
                 let text = item.get("review").and_then(Value::as_str).unwrap_or("");
                 let review_id = item.get("id").and_then(Value::as_str).unwrap_or("review");
                 self.note_review_output(review_id, text);
@@ -1102,6 +1103,62 @@ mod tests {
             body,
             SessionEventBody::Prompt { question, .. } if question == "实施此计划？"
         )));
+    }
+
+    #[test]
+    fn review_mode_items_are_recorded_only_when_completed() {
+        let (shared, _out, mut events) = harness();
+        let entered = json!({
+            "item": {
+                "type": "enteredReviewMode",
+                "id": "rev-in",
+                "review": "看未提交改动"
+            }
+        });
+        shared.handle_notification("item/started", &entered);
+        assert!(
+            drain(&mut events).is_empty(),
+            "item/started must not write a review note"
+        );
+        shared.handle_notification("item/completed", &entered);
+        let notes = drain(&mut events);
+        assert_eq!(notes.len(), 1);
+        assert!(matches!(
+            &notes[0],
+            SessionEventBody::ReviewNote { text } if text == "看未提交改动"
+        ));
+
+        let exited = json!({
+            "item": {
+                "type": "exitedReviewMode",
+                "id": "rev-out",
+                "review": "没有问题"
+            }
+        });
+        shared.handle_notification("item/started", &exited);
+        assert!(
+            drain(&mut events).is_empty(),
+            "item/started must not write review findings"
+        );
+        shared.handle_notification("item/completed", &exited);
+        let findings = drain(&mut events);
+        assert_eq!(findings.len(), 1);
+        assert!(matches!(
+            &findings[0],
+            SessionEventBody::ReviewFindings { summary, .. } if summary == "没有问题"
+        ));
+
+        shared.handle_notification(
+            "item/completed",
+            &json!({
+                "item": { "type": "agentMessage", "id": "msg-1", "text": "没有问题" }
+            }),
+        );
+        let messages = drain(&mut events);
+        assert!(matches!(
+            &messages[0],
+            SessionEventBody::AgentMessage { dedupe_of: Some(id), .. } if id == "rev-out"
+        ));
     }
 }
 
