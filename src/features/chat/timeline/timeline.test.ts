@@ -355,11 +355,10 @@ function messageTexts(nodes: TimelineNode[], kind: "user-message" | "agent-messa
   return texts;
 }
 
-// CP-002：整段对话被再写进日志一遍，id 和 seq 都不同。
-// 事件日志只按 id/seq 去重，时间线会把同样的气泡再画一遍。
-// 第二次写入从哪条路径来还没有事件 JSON，不能按正文哈希合并。
-// 这条断言是正确行为，当前会失败。根因确认前不要改成按正文去重。
-test("CP-002 double emit with distinct ids is still drawn twice", () => {
+// 历史回放的重复正文在 Codex bodies_from_turns 去掉。
+// 时间线只按已经写进日志的事件画：id 不同就各画一个气泡。
+// 实时第二次发送同文案不在这里按正文丢掉。
+test("distinct message ids are both drawn", () => {
   const write = "Write the numbers 1 to 3000, one per line, no tools.";
   const events = [
     event("u1", 1, { kind: "user-message", text: "reply ok" }),
@@ -370,6 +369,6 @@ test("CP-002 double emit with distinct ids is still drawn twice", () => {
     event("u4", 6, { kind: "user-message", text: write }),
   ];
   const nodes = buildTimeline(events, "completed");
-  assert.deepEqual(messageTexts(nodes, "user-message"), ["reply ok", write]);
-  assert.deepEqual(messageTexts(nodes, "agent-message"), ["ok"]);
+  assert.deepEqual(messageTexts(nodes, "user-message"), ["reply ok", write, "reply ok", write]);
+  assert.deepEqual(messageTexts(nodes, "agent-message"), ["ok", "ok"]);
 });

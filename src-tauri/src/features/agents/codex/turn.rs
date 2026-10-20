@@ -255,6 +255,7 @@ impl Shared {
             Ok(page) => {
                 *self.history_cursor.lock().unwrap() = page.next;
                 let turns = chronological_turns(std::slice::from_ref(&page.data));
+                // 同一页里重复的用户/助手正文已在 bodies_from_turns 去掉，这里只追加剩下的。
                 for body in bodies_from_turns(&turns) {
                     self.note_replayed(&body);
                     emit(&self.events, body);
