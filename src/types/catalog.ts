@@ -125,6 +125,8 @@ export interface AgentCapabilities {
   supports_images?: boolean;
   /** 回合进行中仍可发送，消息进入排队。 */
   supports_queue?: boolean;
+  /** 回合进行中可以中断。停止按钮只看这项和回合是否还在跑。 */
+  supports_cancel?: boolean;
   supports_fork?: boolean;
   /** `thread/archive` 与 `thread/unarchive`。没有这对接口时为 false。 */
   supports_archive?: boolean;

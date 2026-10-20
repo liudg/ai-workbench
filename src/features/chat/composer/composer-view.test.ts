@@ -9,6 +9,7 @@ import {
   type SessionStatus,
 } from "../../../types/index.ts";
 import { composerCaps, composerCommands, deriveComposerView, runComposerPrimary } from "./composer-view.ts";
+import { queueStripVisible } from "./queue-strip.ts";
 
 const caps = {
   supports_slash: true,
@@ -18,6 +19,7 @@ const caps = {
   supports_skills: true,
   supports_images: true,
   supports_queue: true,
+  supports_cancel: true,
   supports_plan: true,
   supports_review: true,
   changes: { turn_diff: false, per_file_patch: false, git_scopes: false },
@@ -62,11 +64,31 @@ test("queue keeps the composer open while a turn is running", () => {
   assert.equal(running.sendDisabled, false);
   const noQueue = view({
     status: "running",
-    caps: { ...caps, supports_queue: false },
+    caps: { ...caps, supports_queue: false, supports_cancel: false },
   });
   assert.equal(noQueue.composerLocked, true);
+  assert.equal(noQueue.queueOn, false);
+  assert.equal(noQueue.stopMode, false);
   assert.equal(noQueue.placeholder, "随心输入");
   assert.equal(view({ status: "stopped" }).placeholder, "会话已停止，请新建会话");
+});
+
+test("stop shows while a turn is open when cancel is supported and the queue is not", () => {
+  const capsOffQueue = { ...caps, supports_queue: false, supports_cancel: true };
+  const running = view({ status: "running", caps: capsOffQueue });
+  assert.equal(running.queueOn, false);
+  assert.equal(running.stopMode, true);
+  assert.equal(running.sendDisabled, false);
+  assert.equal(running.placeholder, "随心输入");
+  assert.equal(running.composerLocked, true);
+  assert.equal(queueStripVisible({ supportsQueue: running.queueOn, count: 2 }), false);
+  const idle = view({ status: "completed", caps: capsOffQueue });
+  assert.equal(idle.stopMode, false);
+  assert.equal(idle.queueOn, false);
+  const queued = view({ status: "running" });
+  assert.equal(queued.queueOn, true);
+  assert.equal(queued.stopMode, true);
+  assert.equal(queueStripVisible({ supportsQueue: queued.queueOn, count: 2 }), true);
 });
 
 function approval(id = "bash"): SessionEvent {
