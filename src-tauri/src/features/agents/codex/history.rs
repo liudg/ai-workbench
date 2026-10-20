@@ -3,6 +3,8 @@
 //! 实时会话（`rpc`）和目录恢复（`resume`）共用这一份映射。
 //! 会话目录只负责列出线程，不在这里解析回合。
 
+use std::collections::HashSet;
+
 use serde_json::Value;
 
 use crate::models::{MessagePhase, SessionEventBody};
@@ -119,7 +121,90 @@ pub fn bodies_from_turns(turns: &[Value]) -> Vec<SessionEventBody> {
             bodies.push(SessionEventBody::TurnChanges { turn_id, files });
         }
     }
+    // 同一页里 Codex 会把已经写过的用户句和助手句再放进另一个 turn id。
+    // 实时发送不经过这里，同文案的第二次亲手发送仍由会话日志追加。
+    collapse_replayed_transcript(bodies)
+}
+
+/// 历史页里已经出现过的一轮，不要再追加同样的用户气泡和助手气泡。
+///
+/// 会话 `01a142da` 的 `thread/turns/list` 把「用提问工具问我2个问题」和同一段提问正文
+/// 放进了两个 turn id。两次都是 `stream_id == None`，`load_history` 一次循环写完，序号递增。
+/// 用户正文和至少一条助手正文都已经出现过时，这两条不再进入日志。
+/// 这一轮里新的助手正文留下。助手带 `stream_id` 或 `dedupe_of` 的不参与比较。
+fn collapse_replayed_transcript(bodies: Vec<SessionEventBody>) -> Vec<SessionEventBody> {
+    let starts = user_message_indexes(&bodies);
+    if starts.is_empty() {
+        return bodies;
+    }
+    let mut drop = vec![false; bodies.len()];
+    let mut seen_user: HashSet<(String, Vec<String>)> = HashSet::new();
+    let mut seen_agent: HashSet<String> = HashSet::new();
+    for (nth, start) in starts.iter().copied().enumerate() {
+        let end = starts.get(nth + 1).copied().unwrap_or(bodies.len());
+        let Some(user_key) = user_replay_key(&bodies[start]) else {
+            continue;
+        };
+        if seen_user.contains(&user_key) {
+            let repeated: Vec<usize> = bodies[start + 1..end]
+                .iter()
+                .enumerate()
+                .filter_map(|(offset, body)| {
+                    let text = replay_agent_text(body)?;
+                    seen_agent.contains(&text).then_some(start + 1 + offset)
+                })
+                .collect();
+            if !repeated.is_empty() {
+                drop[start] = true;
+                for index in repeated {
+                    drop[index] = true;
+                }
+            }
+        }
+        seen_user.insert(user_key);
+        for body in &bodies[start + 1..end] {
+            if let Some(text) = replay_agent_text(body) {
+                seen_agent.insert(text);
+            }
+        }
+    }
     bodies
+        .into_iter()
+        .enumerate()
+        .filter(|(index, _)| !drop[*index])
+        .map(|(_, body)| body)
+        .collect()
+}
+
+fn user_message_indexes(bodies: &[SessionEventBody]) -> Vec<usize> {
+    bodies
+        .iter()
+        .enumerate()
+        .filter_map(|(index, body)| match body {
+            SessionEventBody::UserMessage { .. } => Some(index),
+            _ => None,
+        })
+        .collect()
+}
+
+fn user_replay_key(body: &SessionEventBody) -> Option<(String, Vec<String>)> {
+    match body {
+        SessionEventBody::UserMessage { text, images, .. } => Some((text.clone(), images.clone())),
+        _ => None,
+    }
+}
+
+/// 历史回放写的助手正文没有流 id。带 `dedupe_of` 的审查重复另有标记，不在这里比较。
+fn replay_agent_text(body: &SessionEventBody) -> Option<String> {
+    match body {
+        SessionEventBody::AgentMessage {
+            text,
+            stream_id: None,
+            dedupe_of: None,
+            ..
+        } => Some(text.clone()),
+        _ => None,
+    }
 }
 
 fn push_history_item(
@@ -958,6 +1043,163 @@ mod tests {
             bodies[0],
             SessionEventBody::Thinking { ref text, stream_id: None } if text == "先看入口"
         ));
+    }
+
+    /// 会话 `codex-cli:01a142da-511d-78a3-90a9-996e1dfeacc9`：
+    /// 同一页两个 turn id，用户句和提问正文各出现两次，`stream_id` 都是空。
+    #[test]
+    fn history_replay_keeps_one_copy_of_a_repeated_question_turn() {
+        let prompt = "用提问工具问我2个问题";
+        let question = "你希望这次任务优先达成什么结果？\n- 完成指定目标\n- 先梳理可行方向\n\n你希望我用哪种方式呈现结果？\n- 简洁说明\n- 详细说明";
+        let numbered = "1. 你希望这次任务优先达成什么结果？\n2. 你希望我用简洁说明还是详细说明呈现结果？";
+        let done = "已通过提问工具提出两个问题。";
+        let later_user = "向我请求权限批准";
+        let later_agent = "请批准我继续执行当前任务。";
+        let turns = vec![
+            json!({
+                "id": "01a142da-552b-7613-99ab-c05cd146797b",
+                "items": [
+                    {"type": "userMessage", "content": [{"type": "text", "text": prompt}]},
+                    {"type": "agentMessage", "text": question, "phase": "final_answer"},
+                    {"type": "agentMessage", "text": numbered, "phase": "final_answer"}
+                ]
+            }),
+            json!({
+                "id": "01a142da-be0f-7043-bdd8-063f4b4c0346",
+                "items": [
+                    {"type": "userMessage", "content": [{"type": "text", "text": prompt}]},
+                    {"type": "agentMessage", "text": question, "phase": "final_answer"},
+                    {"type": "agentMessage", "text": done, "phase": "final_answer"}
+                ]
+            }),
+            json!({
+                "id": "01a142db-ba20-75e3-bd85-8e830ac00623",
+                "items": [
+                    {"type": "userMessage", "content": [{"type": "text", "text": later_user}]},
+                    {"type": "agentMessage", "text": later_agent, "phase": "final_answer"}
+                ]
+            }),
+        ];
+        let bodies = bodies_from_turns(&turns);
+        assert_eq!(
+            message_texts(&bodies, "user"),
+            vec![prompt.to_string(), later_user.to_string()]
+        );
+        assert_eq!(
+            message_texts(&bodies, "agent"),
+            vec![
+                question.to_string(),
+                numbered.to_string(),
+                done.to_string(),
+                later_agent.to_string(),
+            ]
+        );
+        assert!(bodies.iter().any(|body| matches!(
+            body,
+            SessionEventBody::TurnAnchor { turn_id, .. }
+                if turn_id == "01a142da-be0f-7043-bdd8-063f4b4c0346"
+        )));
+    }
+
+    #[test]
+    fn history_replay_drops_an_exact_second_copy_of_the_same_turn() {
+        let turns = vec![
+            json!({
+                "id": "t1",
+                "items": [
+                    {"type": "userMessage", "content": [{"type": "text", "text": "reply ok"}]},
+                    {"type": "agentMessage", "text": "ok", "phase": "final_answer"}
+                ]
+            }),
+            json!({
+                "id": "t2",
+                "items": [
+                    {"type": "userMessage", "content": [{"type": "text", "text": "reply ok"}]},
+                    {"type": "agentMessage", "text": "ok", "phase": "final_answer"}
+                ]
+            }),
+        ];
+        let bodies = bodies_from_turns(&turns);
+        assert_eq!(message_texts(&bodies, "user"), vec!["reply ok".to_string()]);
+        assert_eq!(message_texts(&bodies, "agent"), vec!["ok".to_string()]);
+    }
+
+    #[test]
+    fn history_replay_keeps_a_second_send_when_the_reply_is_new() {
+        let turns = vec![
+            json!({
+                "id": "t1",
+                "items": [
+                    {"type": "userMessage", "content": [{"type": "text", "text": "reply ok"}]},
+                    {"type": "agentMessage", "text": "ok", "phase": "final_answer"}
+                ]
+            }),
+            json!({
+                "id": "t2",
+                "items": [
+                    {"type": "userMessage", "content": [{"type": "text", "text": "reply ok"}]},
+                    {"type": "agentMessage", "text": "收到，换一种说法。", "phase": "final_answer"}
+                ]
+            }),
+        ];
+        let bodies = bodies_from_turns(&turns);
+        assert_eq!(
+            message_texts(&bodies, "user"),
+            vec!["reply ok".to_string(), "reply ok".to_string()]
+        );
+        assert_eq!(
+            message_texts(&bodies, "agent"),
+            vec!["ok".to_string(), "收到，换一种说法。".to_string()]
+        );
+    }
+
+    #[test]
+    fn history_replay_does_not_treat_streamed_agent_text_as_a_replay() {
+        let bodies = super::collapse_replayed_transcript(vec![
+            SessionEventBody::UserMessage {
+                text: "写数字".into(),
+                images: Vec::new(),
+                annotations: 0,
+            },
+            SessionEventBody::AgentMessage {
+                text: "1 2 3".into(),
+                stream_id: Some("msg-a".into()),
+                phase: Some(MessagePhase::FinalAnswer),
+                mode: None,
+                dedupe_of: None,
+            },
+            SessionEventBody::UserMessage {
+                text: "写数字".into(),
+                images: Vec::new(),
+                annotations: 0,
+            },
+            SessionEventBody::AgentMessage {
+                text: "1 2 3".into(),
+                stream_id: Some("msg-b".into()),
+                phase: Some(MessagePhase::FinalAnswer),
+                mode: None,
+                dedupe_of: None,
+            },
+        ]);
+        assert_eq!(
+            message_texts(&bodies, "user"),
+            vec!["写数字".to_string(), "写数字".to_string()]
+        );
+        assert_eq!(
+            message_texts(&bodies, "agent"),
+            vec!["1 2 3".to_string(), "1 2 3".to_string()]
+        );
+    }
+
+    fn message_texts(bodies: &[SessionEventBody], kind: &str) -> Vec<String> {
+        bodies
+            .iter()
+            .filter_map(|body| match (kind, body) {
+                ("user", SessionEventBody::UserMessage { text, .. }) => Some(text.clone()),
+                ("agent", SessionEventBody::AgentMessage { text, .. }) => Some(text.clone()),
+                _ => None,
+            })
+            .collect()
     }
 
 
