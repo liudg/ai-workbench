@@ -48,12 +48,12 @@ before(async () => {
     appType: "custom",
     logLevel: "error",
   });
-  toggleMod = (await server.ssrLoadModule("/src/features/panel/core/SidebarToggle.js")) as unknown as typeof toggleMod;
-  chromeMod = (await server.ssrLoadModule("/src/features/panel/core/ClosedChrome.js")) as unknown as typeof chromeMod;
-  panelMod = (await server.ssrLoadModule("/src/features/panel/core/PanelProvider.js")) as unknown as typeof panelMod;
-  sidebarMod = (await server.ssrLoadModule("/src/features/sidebar/Sidebar.js")) as unknown as typeof sidebarMod;
-  peekMod = (await server.ssrLoadModule("/src/features/sidebar/SidebarPeek.js")) as unknown as typeof peekMod;
-  visibilityMod = (await server.ssrLoadModule("/src/features/sidebar/visibility.js")) as unknown as typeof visibilityMod;
+  toggleMod = (await server.ssrLoadModule("/src/features/panel/core/SidebarToggle.tsx")) as unknown as typeof toggleMod;
+  chromeMod = (await server.ssrLoadModule("/src/features/panel/core/ClosedChrome.tsx")) as unknown as typeof chromeMod;
+  panelMod = (await server.ssrLoadModule("/src/features/panel/core/PanelProvider.tsx")) as unknown as typeof panelMod;
+  sidebarMod = (await server.ssrLoadModule("/src/features/sidebar/Sidebar.tsx")) as unknown as typeof sidebarMod;
+  peekMod = (await server.ssrLoadModule("/src/features/sidebar/SidebarPeek.tsx")) as unknown as typeof peekMod;
+  visibilityMod = (await server.ssrLoadModule("/src/features/sidebar/visibility.ts")) as unknown as typeof visibilityMod;
 });
 
 after(async () => {
