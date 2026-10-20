@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { filterJumpFiles, jumpFileParts } from "./jump-files.ts";
+import { filterJumpFiles, jumpFileParts, jumpSelection, visibleJumpFiles } from "./jump-files.ts";
 
 const files = [
   { path: "Library/GemFeedback/inspect_prefab.cs" },
@@ -15,6 +15,18 @@ test("jump row splits the file name from its parent path", () => {
     dir: "Library/GemFeedback",
   });
   assert.deepEqual(jumpFileParts("note.txt"), { name: "note.txt", dir: "" });
+});
+
+test("jump list is the files currently shown for the scope", () => {
+  const shown = [{ path: "qa-dirty-note.md" }];
+  assert.deepEqual(
+    visibleJumpFiles(shown).map((file) => file.path),
+    ["qa-dirty-note.md"],
+  );
+  assert.deepEqual(visibleJumpFiles([]), []);
+  assert.equal(jumpSelection(shown, "qa-dirty-note.md"), "qa-dirty-note.md");
+  assert.equal(jumpSelection(shown, "session-only.md"), null);
+  assert.equal(jumpSelection([], "qa-dirty-note.md"), null);
 });
 
 test("jump filter matches the file name or the directory", () => {

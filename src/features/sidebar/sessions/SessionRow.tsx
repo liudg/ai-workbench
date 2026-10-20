@@ -24,6 +24,7 @@ import { SessionAgentIcon } from "@/shared/agent/SessionAgentIcon";
 import { SessionStatusDot } from "./SessionStatusDot";
 import { relativeSessionTime } from "./relative-time";
 import { DeleteSessionDialog } from "./DeleteSessionDialog";
+import { shouldSubmitRename } from "./rename-submit";
 import { sessionMenuItems, type SessionMenuAction } from "./session-menu";
 import { useSessionRow } from "./use-session-row";
 
@@ -95,6 +96,14 @@ export function SessionRow({
     void deleteSession(projectId, session.id, worktreeDeleteFlags(action, deletePreview)).then((ok) => {
       if (ok) setDeleteOpen(false);
       else setDeleteError("无法删除任务。请重试。");
+    });
+  };
+
+  const submitRename = () => {
+    if (!title.trim()) return;
+    void renameSession(session.id, title).then((ok) => {
+      if (ok) setRenameOpen(false);
+      else setRenameError("无法保存更改。请重试");
     });
   };
 
@@ -197,6 +206,20 @@ export function SessionRow({
             placeholder="添加标题…"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
+            onKeyDown={(event) => {
+              if (
+                !shouldSubmitRename({
+                  key: event.key,
+                  composing: event.nativeEvent.isComposing,
+                  keyCode: event.keyCode,
+                  title,
+                })
+              ) {
+                return;
+              }
+              event.preventDefault();
+              submitRename();
+            }}
             className="h-9 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none focus:border-zinc-500"
           />
           {renameError && <p className="text-sm text-red-300">{renameError}</p>}
@@ -204,15 +227,7 @@ export function SessionRow({
             <Button variant="outline" onClick={() => setRenameOpen(false)}>
               取消
             </Button>
-            <Button
-              disabled={!title.trim()}
-              onClick={() => {
-                void renameSession(session.id, title).then((ok) => {
-                  if (ok) setRenameOpen(false);
-                  else setRenameError("无法保存更改。请重试");
-                });
-              }}
-            >
+            <Button disabled={!title.trim()} onClick={submitRename}>
               保存
             </Button>
           </DialogFooter>
