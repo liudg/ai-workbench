@@ -40,6 +40,51 @@
 
 ## 4. 这一轮做了什么
 
+从 `a968e05`（0.2.80）接着收。只搬放错模块的职责、去掉展示层对 store 的直读，以及两处重复的失败文案。不改交互，不造数据，不拆第 6 节里同一条协议的文件。MCP 编辑和 Plan 模式没动。
+
+### 侧栏开关
+
+- 侧栏开合状态从 `sidebar/visibility.ts` 挪到 `shared/shell/sidebar-open.ts`。会话顶栏、侧栏和命令菜单都读这一份，面板不再钻进侧栏私有文件。
+- `Ctrl+B` 的显示文字跟开合状态放在一起。命令菜单文案引用这一份，不再各写一遍。
+
+### 命令菜单
+
+- 打开事件从宿主组件里拆到 `command-menu/open-event.ts`。账号菜单只靠功能入口拿到事件和文案。
+- 宿主组件不再调用 `useWorkbench`。项目、会话和目录从 `use-command-menu-state.ts` 进出。
+
+### 打开文件顶栏
+
+- 「打开」胶囊的下拉在 `OpenWithMenu.tsx`。顶栏只负责那一行。
+- 搜索、Markdown 模式和外部打开的状态在 `use-file-preview-chrome.tsx`。预览列组件不再带着这份状态。
+
+### 工作树开关
+
+- `useSessionWorktree` 挪到 `use-session-worktree.ts`。按钮和标签不再直接问仓库有没有提交。
+
+### 空仓库差异
+
+- `git diff` 和没有提交时的未跟踪差异在 `git/diff.rs`。分支名和工作区探测留在 `git/mod.rs`。
+
+### 开发预览
+
+- 注意力预览和工作上下文预览写入 store 的代码分别在 `use-attention-preview.ts`、`use-work-context-preview.ts`。Plan 预览按这一轮的约束没动。
+
+### 确认删除工作树的四个测试
+
+在 git 2.43.0、Linux 上，这四个测试对 `a968e05` 的产品代码已经通过：`discard_confirmed_worktree` 会 `worktree remove --force`，锁定的再 `--force --force`，登记还在就删链接工作树的管理目录并 `worktree prune`。用同样的 git 命令手工删掉脏工作树、锁定工作树，以及先删 `.git/worktrees/<name>` 再 `prune`，`worktree list --porcelain` 都不再留下该路径；没有工作台记录的外部工作树仍在列表里。
+
+失败断言 `worktree_listed` 原先用路径字符串做子串包含。分隔符、符号链接或主检出路径前缀都会让「还在不在列表里」判错。测试改成只认 `worktree ` 行，并按规范化后的路径相等。产品删除逻辑没有改。
+
+### 看过、职责已经分开、没有再拆
+
+- 重命名回车在 `rename-submit.ts`。会话行只调用它。
+- 跳转弹窗的文件来源在 `jump-files.ts`，只使用当前范围正在显示的文件。
+- 审查正文只在 `item/completed` 写入，仍在 `agents/codex/rpc.rs`。那是一条 JSON-RPC，见第 6 节。
+- Ctrl+Enter 走哪条通道在 `composer-now.ts`。真正送出和逐条引导仍在 `composer-run.ts`，因为它们共用同一次作曲运行。
+- 侧栏收起后的左缘滑出仍是 `SidebarPeek` 一件事。
+
+## 4.1 上一轮留下的搬迁
+
 从 `8a247f0`（0.2.53）接着收。只搬放错模块的职责、去掉重复解析和展示层对 store 的直读。不改交互，不造数据，不拆第 6 节里同一条协议的文件。
 
 ### 路径和标题
@@ -105,6 +150,6 @@
 | `panel/diff/DiffView.tsx` → `files/ChangesSidebar.tsx` | 变更右列用的是打开文件同一套树、菜单和附加。把侧栏挪进 diff 仍然要引用这些文件控件 |
 | `viewers/html.tsx` → `browser/BrowserView` | HTML 文件页就是这块浏览器主机。查看器注册要挂上它 |
 
-`Workspace`、`RightPane`、`EmptyState`、`UpdateDialog` 不再直接调用 `useWorkbench`。展示组件里的 `backend.` / `useWorkbench` 只剩 `PanelProvider`（规则允许的边界）。
+`Workspace`、`RightPane`、`EmptyState`、`UpdateDialog`、命令菜单宿主、工作树按钮不再直接调用 `useWorkbench`。展示组件里还直接调用的，是 `PanelProvider`（规则允许的边界）和 `PlanChoicePreview`（这一轮不改 Plan）。
 
 审计时如果上面某一条已经不再成立，删掉对应行，不要留过期借口。

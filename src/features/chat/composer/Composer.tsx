@@ -19,7 +19,7 @@ import { GoalStatusBar } from "./GoalStatusBar";
 import { runComposerPrimary } from "./composer-view";
 import { useComposerController } from "./useComposerController";
 import { ComposerContextRow } from "./GitBranchControl";
-import { useSessionWorktree } from "./WorktreeChoice";
+import { useSessionWorktree } from "./use-session-worktree";
 
 export function Composer({
   session,

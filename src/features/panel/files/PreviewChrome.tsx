@@ -1,5 +1,4 @@
-import { useEffect, useId, useRef, useState, type RefObject } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useId, useRef, useState } from "react";
 import { AppWindow, ChevronDown, Copy, Folder, Search } from "lucide-react";
 
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
@@ -7,11 +6,10 @@ import { writeClipboardText } from "@/shared/clipboard";
 import { relativeToProject } from "@/shared/path";
 import { cn } from "@/lib/utils";
 import { Hint } from "../core/Hint";
-import { useAnchoredLayer } from "../core/useAnchoredLayer";
-import { useDismissLayer } from "../core/useDismissLayer";
 import { previewCrumbs, previewRootLabel } from "./file-preview-nav";
 import { BreadcrumbMenu } from "./BreadcrumbMenu";
-import { openWithActions, type OpenWithAction, type OpenWithItem } from "./open-with";
+import { OpenWithMenu } from "./OpenWithMenu";
+import { openWithActions, type OpenWithAction } from "./open-with";
 
 /** 打开文件顶栏：路径在左，操作靠右，一行横跨预览和文件树。 */
 export function PreviewChrome({
@@ -241,60 +239,5 @@ export function PreviewChrome({
         />
       ) : null}
     </div>
-  );
-}
-
-function OpenWithMenu({
-  menuId,
-  anchorRef,
-  items,
-  onSelect,
-  onClose,
-}: {
-  menuId: string;
-  anchorRef: RefObject<HTMLButtonElement | null>;
-  items: readonly OpenWithItem[];
-  onSelect: (mode: OpenWithAction) => void;
-  onClose: () => void;
-}) {
-  const menuRef = useRef<HTMLDivElement>(null);
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-  useAnchoredLayer(true, anchorRef, menuRef, items.map((item) => item.id).join(","));
-  useDismissLayer(true, onClose);
-  useEffect(() => {
-    const onPointer = (event: MouseEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-      if (menuRef.current?.contains(target)) return;
-      if (anchorRef.current?.contains(target)) return;
-      onCloseRef.current();
-    };
-    window.addEventListener("mousedown", onPointer);
-    return () => window.removeEventListener("mousedown", onPointer);
-  }, [anchorRef]);
-  if (typeof document === "undefined") return null;
-  return createPortal(
-    <div
-      ref={menuRef}
-      id={menuId}
-      role="menu"
-      data-open-with-menu
-      className="fixed z-[80] min-w-[168px] rounded-xl border border-[#2a2a2a] bg-[#1b1b1b] py-1 text-[#e8e8e8] shadow-[0_12px_32px_rgba(0,0,0,0.45)]"
-    >
-      {items.map((item) => (
-        <button
-          key={item.id}
-          type="button"
-          role="menuitem"
-          data-open-with-action={item.id}
-          className="flex w-full items-center px-3 py-1.5 text-left text-[13px] hover:bg-white/5"
-          onClick={() => onSelect(item.id)}
-        >
-          {item.label}
-        </button>
-      ))}
-    </div>,
-    document.body,
   );
 }

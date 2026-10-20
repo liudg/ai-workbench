@@ -38,7 +38,7 @@ let chromeMod: typeof import("../panel/core/ClosedChrome.tsx");
 let panelMod: typeof import("../panel/core/PanelProvider.tsx");
 let sidebarMod: typeof import("./Sidebar.tsx");
 let peekMod: typeof import("./SidebarPeek.tsx");
-let visibilityMod: typeof import("./visibility.ts");
+let visibilityMod: typeof import("../../shared/shell/sidebar-open.ts");
 
 before(async () => {
   server = await createServer({
@@ -53,7 +53,7 @@ before(async () => {
   panelMod = (await server.ssrLoadModule("/src/features/panel/core/PanelProvider.tsx")) as unknown as typeof panelMod;
   sidebarMod = (await server.ssrLoadModule("/src/features/sidebar/Sidebar.tsx")) as unknown as typeof sidebarMod;
   peekMod = (await server.ssrLoadModule("/src/features/sidebar/SidebarPeek.tsx")) as unknown as typeof peekMod;
-  visibilityMod = (await server.ssrLoadModule("/src/features/sidebar/visibility.ts")) as unknown as typeof visibilityMod;
+  visibilityMod = (await server.ssrLoadModule("/src/shared/shell/sidebar-open.ts")) as unknown as typeof visibilityMod;
 });
 
 after(async () => {

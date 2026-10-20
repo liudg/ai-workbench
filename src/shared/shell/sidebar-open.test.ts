@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { isSidebarOpen, setSidebarOpen, toggleSidebar } from "./visibility.ts";
+import { isSidebarOpen, setSidebarOpen, toggleSidebar } from "./sidebar-open.ts";
 
 test("the sidebar starts open and toggles closed", () => {
   setSidebarOpen(true);

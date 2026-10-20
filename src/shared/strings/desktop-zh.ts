@@ -193,4 +193,6 @@ export const DESKTOP_ZH = {
   queueClose: "关闭排队",
   /** followUpQueueMode 为 steer。切回 queue。 */
   queueEnable: "启用队列模式",
+  renameSaveError: "无法保存更改。请重试",
+  deleteSessionError: "无法删除任务。请重试。",
 } as const;

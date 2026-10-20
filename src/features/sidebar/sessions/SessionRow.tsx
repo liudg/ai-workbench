@@ -17,6 +17,7 @@ import {
   type WorktreeDeletePreview,
 } from "@/lib/worktree-delete";
 import { cn } from "@/lib/utils";
+import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { isPendingId } from "@/store/draft-session";
 import type { Session } from "@/types";
 import { FixedMenu } from "../FixedMenu";
@@ -95,7 +96,7 @@ export function SessionRow({
   const finishDelete = (action: "delete" | "keep-worktree" | "discard-worktree") => {
     void deleteSession(projectId, session.id, worktreeDeleteFlags(action, deletePreview)).then((ok) => {
       if (ok) setDeleteOpen(false);
-      else setDeleteError("无法删除任务。请重试。");
+      else setDeleteError(DESKTOP_ZH.deleteSessionError);
     });
   };
 
@@ -103,7 +104,7 @@ export function SessionRow({
     if (!title.trim()) return;
     void renameSession(session.id, title).then((ok) => {
       if (ok) setRenameOpen(false);
-      else setRenameError("无法保存更改。请重试");
+      else setRenameError(DESKTOP_ZH.renameSaveError);
     });
   };
 

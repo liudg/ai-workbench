@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react";
 
-import { CommandMenuHost } from "@/features/command-menu/CommandMenuHost";
+import { CommandMenuHost } from "@/features/command-menu";
 import { userFacingMessage } from "@/lib/user-facing";
 import { NewProjectDialog, Sidebar } from "@/features/sidebar";
 import { RightPane, UpdateDialog } from "@/features/workspace";
