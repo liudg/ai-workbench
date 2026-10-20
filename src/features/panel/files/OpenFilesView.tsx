@@ -10,7 +10,8 @@ import { opensLocalHtmlInBrowser, resolvePreviewPath } from "../core/preview-kin
 import { useColumnGesture } from "../core/useColumnGesture";
 import { usePanel } from "../core/PanelProvider";
 import { FileContextMenu } from "./FileContextMenu";
-import { FilePreviewColumn, useFilePreviewChrome } from "./FilePreview";
+import { FilePreviewColumn } from "./FilePreview";
+import { useFilePreviewChrome } from "./use-file-preview-chrome";
 import { FileTabs } from "./FileTabs";
 import { PreviewChrome } from "./PreviewChrome";
 import {

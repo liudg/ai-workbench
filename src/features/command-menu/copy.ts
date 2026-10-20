@@ -1,3 +1,6 @@
+import { SIDEBAR_SHORTCUT_LABEL } from "../../shared/shell/sidebar-open.ts";
+import { DESKTOP_ZH } from "../../shared/strings/desktop-zh.ts";
+
 /** 本机 Codex 桌面 zh-CN 命令菜单里读到的文案。快捷键显示沿用工作台已有的 Ctrl 写法。 */
 
 export const COMMAND_MENU_COPY = {
@@ -40,7 +43,7 @@ export const COMMAND_MENU_COPY = {
   toggleSidebar: "显示/隐藏侧边栏",
   quickOpen: "跳转文件",
   shortcutOpen: "Ctrl+K",
-  shortcutSidebar: "Ctrl+B",
+  shortcutSidebar: SIDEBAR_SHORTCUT_LABEL,
   shortcutQuickOpen: "Ctrl+P",
   filePlaceholder: "输入文件名",
   noProject: "先打开一个项目",
@@ -63,6 +66,6 @@ export const COMMAND_MENU_COPY = {
   keepWorktree: "保留工作树",
   discardWorktree: "一起删除",
   deleteAction: "删除",
-  renameError: "无法保存更改。请重试",
-  deleteError: "无法删除任务。请重试。",
+  renameError: DESKTOP_ZH.renameSaveError,
+  deleteError: DESKTOP_ZH.deleteSessionError,
 } as const;

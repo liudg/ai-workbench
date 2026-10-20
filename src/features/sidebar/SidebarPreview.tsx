@@ -1,8 +1,8 @@
-import { CommandMenuHost } from "@/features/command-menu/CommandMenuHost";
+import { CommandMenuHost } from "@/features/command-menu";
 
 import { Sidebar } from "./Sidebar";
 import { seedSidebarPreview } from "./sidebar-preview-fixture";
-import { useSidebarOpen } from "./visibility";
+import { useSidebarOpen } from "@/shared/shell/sidebar-open";
 
 seedSidebarPreview();
 

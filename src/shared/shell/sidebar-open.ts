@@ -1,5 +1,8 @@
 import { useSyncExternalStore } from "react";
 
+/** 侧栏开关和命令菜单共用的快捷键标签。 */
+export const SIDEBAR_SHORTCUT_LABEL = "Ctrl+B" as const;
+
 let open = true;
 const listeners = new Set<() => void>();
 

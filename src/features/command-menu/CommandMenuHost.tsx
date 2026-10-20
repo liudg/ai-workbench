@@ -4,7 +4,7 @@ import { NEXT_ATTENTION_COPY, nextAttentionTarget } from "@/features/attention/n
 import { OPEN_THREAD_FIND } from "@/features/chat/find/use-thread-find";
 import { FileSearchDialog } from "@/features/panel/files/FileSearchDialog";
 import { sessionChanges } from "@/features/changes-model/diff-parse";
-import { toggleSidebar } from "@/features/sidebar/visibility";
+import { toggleSidebar } from "@/shared/shell/sidebar-open";
 import { loadWorktreeDeletePreview } from "@/lib/worktree-delete-preview";
 import {
   worktreeDeleteFlags,
@@ -12,19 +12,18 @@ import {
   type WorktreeDeletePreview,
 } from "@/lib/worktree-delete";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
-import { useWorkbench } from "@/store";
 import { STANDALONE_DRAFT_ID } from "@/store/standalone";
-import type { AgentCatalog, AgentKind, AgentProfile } from "@/types";
 
 import {
   buildPaletteRows,
   resolveCommandAgent,
-  type PaletteCaps,
   type PaletteCommandId,
   type PaletteSession,
 } from "./commands";
 import { CommandMenu, type PaletteDrill } from "./CommandMenu";
 import { COMMAND_MENU_COPY as COPY } from "./copy";
+import { OPEN_COMMAND_MENU } from "./open-event";
+import { attentionInput, flashSidebarNotice, sessionCaps, useCommandMenuState } from "./use-command-menu-state";
 import { fileRows } from "./file-rows";
 import {
   deleteShortcutMenu,
@@ -36,8 +35,6 @@ import {
   isSidebarChord,
 } from "./keyboard";
 import { useQuickOpen } from "./useQuickOpen";
-
-export const OPEN_COMMAND_MENU = "ai-workbench:open-command-menu";
 
 export function CommandMenuHost() {
   const [open, setOpen] = useState(false);
@@ -51,19 +48,19 @@ export function CommandMenuHost() {
   const [deletePreview, setDeletePreview] = useState<WorktreeDeletePreview | null | undefined>(undefined);
   const [fileSearchProjectId, setFileSearchProjectId] = useState<string | null>(null);
 
-  const projects = useWorkbench((s) => s.projects);
-  const sessions = useWorkbench((s) => s.sessions);
-  const selectedProjectId = useWorkbench((s) => s.selectedProjectId);
-  const activeSessionId = useWorkbench((s) => s.activeSessionId);
-  const pinnedSessionIds = useWorkbench((s) => s.pinnedSessionIds);
-  const installations = useWorkbench((s) => s.installations);
-  const preferredAgent = useWorkbench((s) => s.preferredAgent);
-  const catalogs = useWorkbench((s) => s.catalogs);
-  const profiles = useWorkbench((s) => s.profiles);
-
-  const draftFocused = useWorkbench((s) =>
-    selectedProjectId ? Boolean(s.draftFocused[selectedProjectId]) : false,
-  );
+  const {
+    projects,
+    sessions,
+    selectedProjectId,
+    activeSessionId,
+    pinnedSessionIds,
+    installations,
+    preferredAgent,
+    catalogs,
+    profiles,
+    draftFocused,
+    read,
+  } = useCommandMenuState();
   const project = projects.find((item) => item.id === selectedProjectId) ?? null;
   const sessionId = project ? (activeSessionId[project.id] ?? null) : null;
   const sessionList = project ? (sessions[project.id] ?? []) : [];
@@ -129,7 +126,7 @@ export function CommandMenuHost() {
   };
 
   const runCommand = (id: PaletteCommandId) => {
-    const state = useWorkbench.getState();
+    const state = read();
     if (id === "new-thread" && agent && project && !project.standalone) {
       state.openDraft(project.id, agent);
       close();
@@ -247,7 +244,7 @@ export function CommandMenuHost() {
     const row = rows[index];
     if (!row) return;
     if (row.kind === "chat" && row.sessionId && row.projectId) {
-      void useWorkbench.getState().selectSession(row.projectId, row.sessionId);
+      void read().selectSession(row.projectId, row.sessionId);
       close();
       return;
     }
@@ -256,7 +253,7 @@ export function CommandMenuHost() {
         setFileNotice(COPY.needSession);
         return;
       }
-      void useWorkbench.getState().panelOpenHref(session.id, row.filePath, undefined, {
+      void read().panelOpenHref(session.id, row.filePath, undefined, {
         projectId: project.id,
         projectPath: project.path,
         sessionFiles: [],
@@ -350,7 +347,7 @@ export function CommandMenuHost() {
 
   const submitRename = () => {
     if (!session || !renameTitle.trim()) return;
-    void useWorkbench.getState().renameSession(session.id, renameTitle).then((ok) => {
+    void read().renameSession(session.id, renameTitle).then((ok) => {
       if (ok) close();
       else setRenameError(COPY.renameError);
     });
@@ -359,7 +356,7 @@ export function CommandMenuHost() {
   const confirmDelete = (action: "delete" | "keep-worktree" | "discard-worktree") => {
     if (!session || !project || deletePreview === undefined) return;
     const flags = worktreeDeleteFlags(action, deletePreview);
-    void useWorkbench.getState().deleteSession(project.id, session.id, flags).then((ok) => {
+    void read().deleteSession(project.id, session.id, flags).then((ok) => {
       if (ok) close();
       else setDeleteError(COPY.deleteError);
     });
@@ -409,7 +406,7 @@ export function CommandMenuHost() {
           sessionId={activeSessionId[fileSearchProjectId]}
           onClose={() => setFileSearchProjectId(null)}
           onOpen={(path, line) => {
-            const current = useWorkbench.getState();
+            const current = read();
             const target = current.projects.find((item) => item.id === fileSearchProjectId);
             const openSession = target ? current.activeSessionId[target.id] : null;
             const openWorkdir = openSession
@@ -427,45 +424,4 @@ export function CommandMenuHost() {
       ) : null}
     </>
   );
-}
-
-function attentionInput(state: ReturnType<typeof useWorkbench.getState>) {
-  const projectId = state.selectedProjectId;
-  const draftOn = projectId ? Boolean(state.draftFocused[projectId]) : false;
-  const currentId = !projectId || draftOn ? null : (state.activeSessionId[projectId] ?? null);
-  return {
-    projects: state.projects,
-    pinnedProjectIds: state.pinnedProjectIds,
-    sessions: state.sessions,
-    pinnedSessionIds: state.pinnedSessionIds,
-    events: state.events,
-    eventsReady: state.eventsReady,
-    unreadFinishedIds: state.unreadFinishedIds,
-    currentId,
-  };
-}
-
-function flashSidebarNotice(text: string) {
-  const token = Date.now();
-  useWorkbench.setState({ sidebarNotice: { kind: "info", text, token } });
-  window.setTimeout(() => {
-    const current = useWorkbench.getState().sidebarNotice;
-    if (current?.kind === "info" && current.token === token) {
-      useWorkbench.setState({ sidebarNotice: null });
-    }
-  }, 4000);
-}
-
-function sessionCaps(
-  sessionId: string | null,
-  agent: AgentKind | null,
-  catalogs: Record<string, AgentCatalog>,
-  profiles: Partial<Record<AgentKind, AgentProfile>>,
-): PaletteCaps | null {
-  if (!sessionId || !agent) return null;
-  const catalog = catalogs[sessionId]?.capabilities;
-  if (catalog) return catalog;
-  const profile = profiles[agent];
-  if (profile?.kind === agent) return profile.capabilities;
-  return null;
 }

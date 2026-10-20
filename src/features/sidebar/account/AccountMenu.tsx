@@ -1,8 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { Command, RefreshCw, Settings } from "lucide-react";
 
-import { OPEN_COMMAND_MENU } from "@/features/command-menu/CommandMenuHost";
-import { COMMAND_MENU_COPY } from "@/features/command-menu/copy";
+import { COMMAND_MENU_COPY, OPEN_COMMAND_MENU } from "@/features/command-menu";
 import { cn } from "@/lib/utils";
 import { APP_VERSION } from "@/lib/version";
 import { useDismiss } from "../use-dismiss";

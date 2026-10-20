@@ -1,7 +1,6 @@
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
-import { COMMAND_MENU_COPY } from "@/features/command-menu/copy";
-import { toggleSidebar, useSidebarOpen } from "@/features/sidebar/visibility";
+import { SIDEBAR_SHORTCUT_LABEL, toggleSidebar, useSidebarOpen } from "@/shared/shell/sidebar-open";
 import { Hint } from "./Hint";
 
 export const SIDEBAR_TOGGLE_COPY = {
@@ -15,14 +14,14 @@ export function SidebarToggle() {
   const label = open ? SIDEBAR_TOGGLE_COPY.hide : SIDEBAR_TOGGLE_COPY.show;
   const Icon = open ? PanelLeftClose : PanelLeftOpen;
   return (
-    <Hint label={label} shortcut={COMMAND_MENU_COPY.shortcutSidebar} align="start">
+    <Hint label={label} shortcut={SIDEBAR_SHORTCUT_LABEL} align="start">
       <button
         type="button"
         data-sidebar-toggle=""
         data-sidebar-toggle-state={open ? "open" : "closed"}
         aria-pressed={open}
         aria-keyshortcuts="Control+B"
-        aria-label={`${label} ${COMMAND_MENU_COPY.shortcutSidebar}`}
+        aria-label={`${label} ${SIDEBAR_SHORTCUT_LABEL}`}
         className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[#333] text-[#cfcfcf] hover:bg-[#1c1c1c]"
         onClick={() => toggleSidebar()}
       >

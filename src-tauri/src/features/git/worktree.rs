@@ -1603,13 +1603,33 @@ mod tests {
     }
 
     fn worktree_listed(repo: &Path, path: &Path) -> bool {
-        let listed = Command::new("git")
+        let mut command = Command::new("git");
+        command
             .args(["worktree", "list", "--porcelain"])
             .current_dir(repo)
-            .output()
-            .unwrap();
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .env_remove("GIT_COMMON_DIR");
+        let listed = command.output().unwrap();
         let text = String::from_utf8_lossy(&listed.stdout);
-        text.contains(&path.to_string_lossy().to_string())
+        let want = listed_worktree_key(path);
+        text.lines().any(|line| {
+            let Some(raw) = line.strip_prefix("worktree ") else {
+                return false;
+            };
+            listed_worktree_key(Path::new(raw.trim())) == want
+        })
+    }
+
+    /// porcelain 里的路径和测试里的 `PathBuf` 可能只是分隔符或符号链接不同。
+    /// 按规范化后的路径相等，不用子串包含，避免主检出路径把子目录误判成还在列表里。
+    fn listed_worktree_key(path: &Path) -> String {
+        let resolved = super::dunce_or_canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        resolved
+            .to_string_lossy()
+            .replace('\\', "/")
+            .trim_end_matches('/')
+            .to_string()
     }
 
     #[test]

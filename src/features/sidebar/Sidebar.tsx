@@ -2,7 +2,7 @@ import { AccountMenu } from "./account/AccountMenu";
 import { BrandHeader } from "./brand/BrandHeader";
 import { SidebarPeek } from "./SidebarPeek";
 import { useSidebar } from "./use-sidebar";
-import { useSidebarOpen } from "./visibility";
+import { useSidebarOpen } from "@/shared/shell/sidebar-open";
 import { ChatGroup } from "./chats/ChatGroup";
 import { ProjectHeader } from "./projects/ProjectHeader";
 import { ProjectItem } from "./projects/ProjectItem";
