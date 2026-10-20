@@ -247,6 +247,19 @@ export function createWorkspaceSlice(set: WorkbenchSet, get: WorkbenchGet): Work
       }
     },
 
+    async sendMessageNow(sessionId, text, images, annotations) {
+      if (isDraftId(sessionId)) {
+        return get().commitDraftMessage(sessionId, text, images, annotations);
+      }
+      try {
+        await backend.sendMessageNow(sessionId, text, images, annotations);
+        return true;
+      } catch (e) {
+        reportSessionError(get, set, sessionId, e);
+        return false;
+      }
+    },
+
     async setCollaborationMode(sessionId, mode) {
       if (isDraftId(sessionId)) {
         get().setDraftCollaboration(sessionId, mode);

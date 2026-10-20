@@ -835,6 +835,30 @@ impl SessionManager {
         images: Vec<String>,
         annotations: Vec<crate::models::PageAnnotation>,
     ) -> Result<(), String> {
+        self.dispatch_user_message(session_id, text, images, annotations, false)
+            .await
+    }
+
+    /// 立刻送出。回合进行中走引导，不进队列，也不改 followUpQueueMode。
+    pub async fn send_message_now(
+        &self,
+        session_id: &str,
+        text: String,
+        images: Vec<String>,
+        annotations: Vec<crate::models::PageAnnotation>,
+    ) -> Result<(), String> {
+        self.dispatch_user_message(session_id, text, images, annotations, true)
+            .await
+    }
+
+    async fn dispatch_user_message(
+        &self,
+        session_id: &str,
+        text: String,
+        images: Vec<String>,
+        annotations: Vec<crate::models::PageAnnotation>,
+        now: bool,
+    ) -> Result<(), String> {
         let handle = self.agent_handle_ready(session_id).await?;
         if handle.read_only() {
             return Err(OCCUPIED_SESSION_NOTICE.to_string());
@@ -866,15 +890,18 @@ impl SessionManager {
                 .map_err(|err| err.to_string());
         }
         let client_id = new_id();
-        let delivery = handle
-            .deliver(UserTurn {
-                text: display.clone(),
-                images,
-                client_id,
-                annotations,
-            })
-            .await
-            .map_err(|err| err.to_string())?;
+        let turn = UserTurn {
+            text: display.clone(),
+            images,
+            client_id,
+            annotations,
+        };
+        let delivery = if now {
+            handle.deliver_now(turn).await
+        } else {
+            handle.deliver(turn).await
+        }
+        .map_err(|err| err.to_string())?;
         if delivery == TurnDelivery::Started {
             self.record_local(
                 session_id,
@@ -993,6 +1020,18 @@ impl SessionManager {
         let handle = self.agent_handle_ready(session_id).await?;
         handle
             .steer_queued(queued_id)
+            .await
+            .map_err(|err| err.to_string())
+    }
+
+    /// 按顺序逐条引导。不合并正文，也不改 followUpQueueMode。
+    pub async fn flush_queued(&self, session_id: &str, ids: Vec<String>) -> Result<(), String> {
+        if ids.is_empty() {
+            return Ok(());
+        }
+        let handle = self.agent_handle_ready(session_id).await?;
+        handle
+            .flush_queued(ids)
             .await
             .map_err(|err| err.to_string())
     }

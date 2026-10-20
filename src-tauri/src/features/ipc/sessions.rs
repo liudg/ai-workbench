@@ -411,6 +411,25 @@ pub async fn send_message(
 }
 
 #[tauri::command]
+pub async fn send_message_now(
+    manager: State<'_, SessionManager>,
+    session_id: String,
+    text: String,
+    images: Option<Vec<String>>,
+    annotations: Option<Vec<PageAnnotation>>,
+) -> Result<(), String> {
+    let text = text.trim().to_string();
+    let images = images.unwrap_or_default();
+    let annotations = annotations.unwrap_or_default();
+    if text.is_empty() && images.is_empty() && annotations.is_empty() {
+        return Err("消息不能为空".into());
+    }
+    manager
+        .send_message_now(&session_id, text, images, annotations)
+        .await
+}
+
+#[tauri::command]
 pub async fn submit_annotation(
     manager: State<'_, SessionManager>,
     session_id: String,
@@ -474,6 +493,15 @@ pub async fn steer_queued_turn(
     queued_id: String,
 ) -> Result<(), String> {
     manager.steer_queued_turn(&session_id, &queued_id).await
+}
+
+#[tauri::command]
+pub async fn flush_queued_turns(
+    manager: State<'_, SessionManager>,
+    session_id: String,
+    queued_ids: Vec<String>,
+) -> Result<(), String> {
+    manager.flush_queued(&session_id, queued_ids).await
 }
 
 #[tauri::command]

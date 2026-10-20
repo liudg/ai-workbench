@@ -16,11 +16,34 @@ export type ComposerKeyIntent =
   | { type: "apply-skill" }
   | { type: "slash-move"; key: "ArrowDown" | "ArrowUp" }
   | { type: "apply-slash" }
-  | { type: "submit" };
+  | { type: "submit" }
+  | { type: "submit-now" };
+
+/** Ctrl/Cmd+Enter。Shift 留给换行，Alt 留给别的快捷键。连发不重复送出。 */
+export function isSendNowChord(input: {
+  key: string;
+  shiftKey: boolean;
+  ctrlKey?: boolean;
+  metaKey?: boolean;
+  altKey?: boolean;
+  repeat?: boolean;
+}): boolean {
+  return (
+    input.key === "Enter" &&
+    !input.shiftKey &&
+    !input.altKey &&
+    !input.repeat &&
+    Boolean(input.ctrlKey || input.metaKey)
+  );
+}
 
 export function composerKeyIntent(input: {
   key: string;
   shiftKey: boolean;
+  ctrlKey?: boolean;
+  metaKey?: boolean;
+  altKey?: boolean;
+  repeat?: boolean;
   composing: boolean;
   editing: boolean;
   skillOpen: boolean;
@@ -38,6 +61,15 @@ export function composerKeyIntent(input: {
 }): ComposerKeyIntent | null {
   const { key } = input;
   if (isImeKey(input)) return null;
+  if (
+    key === "Enter" &&
+    !input.shiftKey &&
+    (input.ctrlKey || input.metaKey) &&
+    (input.repeat || input.altKey)
+  ) {
+    return null;
+  }
+  if (isSendNowChord(input)) return { type: "submit-now" };
   if (key === "Escape" && input.editing) return { type: "cancel-edit" };
   if (input.mentionOpen && key === "Escape") return { type: "dismiss-mention" };
   if (input.mentionOpen && (key === "ArrowDown" || key === "ArrowUp")) {

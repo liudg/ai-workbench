@@ -23,6 +23,18 @@ impl ClaudeSession {
     pub fn new(shared: Arc<Shared>) -> Self {
         Self { shared }
     }
+
+    fn deliver_turn(&self, turn: UserTurn, now: bool) -> Result<TurnDelivery, AgentError> {
+        let mut images = turn.images;
+        let text = fold_page_annotations(&turn.text, &mut images, &turn.annotations);
+        let content = images::message_content(&text, &images)?;
+        if now {
+            self.shared
+                .submit_now(content, text, images, turn.client_id)
+        } else {
+            self.shared.submit(content, text, images, turn.client_id)
+        }
+    }
 }
 
 impl Drop for ClaudeSession {
@@ -38,10 +50,11 @@ impl AgentSession for ClaudeSession {
     }
 
     async fn deliver(&self, turn: UserTurn) -> Result<TurnDelivery, AgentError> {
-        let mut images = turn.images;
-        let text = fold_page_annotations(&turn.text, &mut images, &turn.annotations);
-        let content = images::message_content(&text, &images)?;
-        self.shared.submit(content, text, images, turn.client_id)
+        self.deliver_turn(turn, false)
+    }
+
+    async fn deliver_now(&self, turn: UserTurn) -> Result<TurnDelivery, AgentError> {
+        self.deliver_turn(turn, true)
     }
 
     async fn update_queued(&self, id: &str, turn: UserTurn) -> Result<(), AgentError> {

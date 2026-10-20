@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use serde_json::json;
 
 use super::gap;
-use super::queue::{follow_up, parse_follow_up_queue_mode, FollowUp, FollowUpQueueMode};
+use super::queue::{follow_up, parse_follow_up_queue_mode, send_now, FollowUp, FollowUpQueueMode};
 use super::approval::approval_result;
 use super::prompts::{
     async_replies, blocking_answer_payload, elicitation_action_label, elicitation_result,
@@ -28,6 +28,61 @@ pub(super) struct CodexCliSession {
     pub(super) shared: Arc<Shared>,
 }
 
+impl CodexCliSession {
+    async fn deliver_follow_up(
+        &self,
+        turn: UserTurn,
+        now: bool,
+    ) -> Result<TurnDelivery, AgentError> {
+        self.shared.ensure_open()?;
+        if self.shared.read_only() {
+            return Err(AgentError::Runtime(OCCUPIED_SESSION_NOTICE.into()));
+        }
+        if turn.text.trim_start().starts_with('/') && turn.images.is_empty() {
+            self.shared.handle_slash(turn.text.trim()).await?;
+            return Ok(TurnDelivery::Started);
+        }
+        let turn_open = self.shared.turn_open.load(Ordering::SeqCst);
+        let follow = if now {
+            send_now(turn_open)
+        } else {
+            let mode = if self.shared.follow_up_steer.load(Ordering::SeqCst) {
+                FollowUpQueueMode::Steer
+            } else {
+                FollowUpQueueMode::Queue
+            };
+            follow_up(turn_open, mode)
+        };
+        match follow {
+            FollowUp::Enqueue => {
+                self.shared
+                    .enqueue(turn.text, turn.images, turn.client_id, turn.annotations)
+                    .await?;
+                Ok(TurnDelivery::Queued)
+            }
+            FollowUp::Steer => {
+                self.shared
+                    .steer_user_turn(turn.text, turn.images, turn.annotations)
+                    .await?;
+                Ok(TurnDelivery::Started)
+            }
+            FollowUp::StartTurn => {
+                if !turn.client_id.is_empty() {
+                    self.shared
+                        .shown_users
+                        .lock()
+                        .unwrap()
+                        .insert(turn.client_id.clone());
+                }
+                self.shared
+                    .begin_user_turn(turn.text, turn.images, turn.client_id, turn.annotations)
+                    .await?;
+                Ok(TurnDelivery::Started)
+            }
+        }
+    }
+}
+
 #[async_trait]
 impl AgentSession for CodexCliSession {
     async fn send_message(&self, text: String) -> Result<(), AgentError> {
@@ -42,45 +97,28 @@ impl AgentSession for CodexCliSession {
     }
 
     async fn deliver(&self, turn: UserTurn) -> Result<TurnDelivery, AgentError> {
+        self.deliver_follow_up(turn, false).await
+    }
+
+    async fn deliver_now(&self, turn: UserTurn) -> Result<TurnDelivery, AgentError> {
+        self.deliver_follow_up(turn, true).await
+    }
+
+    async fn steer_queued(&self, id: &str) -> Result<(), AgentError> {
         self.shared.ensure_open()?;
-        if self.shared.read_only() {
-            return Err(AgentError::Runtime(OCCUPIED_SESSION_NOTICE.into()));
-        }
-        if turn.text.trim_start().starts_with('/') && turn.images.is_empty() {
-            self.shared.handle_slash(turn.text.trim()).await?;
-            return Ok(TurnDelivery::Started);
-        }
-        let mode = if self.shared.follow_up_steer.load(Ordering::SeqCst) {
-            FollowUpQueueMode::Steer
-        } else {
-            FollowUpQueueMode::Queue
-        };
-        match follow_up(self.shared.turn_open.load(Ordering::SeqCst), mode) {
-            FollowUp::Enqueue => {
-                self.shared
-                    .enqueue(turn.text, turn.images, turn.client_id, turn.annotations)
-                    .await?;
-                return Ok(TurnDelivery::Queued);
-            }
-            FollowUp::Steer => {
-                self.shared
-                    .steer_user_turn(turn.text, turn.images, turn.annotations)
-                    .await?;
-                return Ok(TurnDelivery::Started);
-            }
-            FollowUp::StartTurn => {}
-        }
-        if !turn.client_id.is_empty() {
-            self.shared
-                .shown_users
-                .lock()
-                .unwrap()
-                .insert(turn.client_id.clone());
-        }
-        self.shared
-            .begin_user_turn(turn.text, turn.images, turn.client_id, turn.annotations)
-            .await?;
-        Ok(TurnDelivery::Started)
+        self.shared.steer_queued(id).await
+    }
+
+    async fn flush_queued(&self, ids: Vec<String>) -> Result<(), AgentError> {
+        self.shared.ensure_open()?;
+        self.shared.flush_queued(ids).await
+    }
+
+    async fn set_follow_up_queue_mode(&self, mode: &str) -> Result<(), AgentError> {
+        self.shared.ensure_open()?;
+        let mode = parse_follow_up_queue_mode(mode)?;
+        self.shared.set_follow_up_queue_mode(mode);
+        Ok(())
     }
 
     async fn update_queued(&self, id: &str, turn: UserTurn) -> Result<(), AgentError> {
@@ -93,18 +131,6 @@ impl AgentSession for CodexCliSession {
     async fn remove_queued(&self, id: &str) -> Result<(), AgentError> {
         self.shared.ensure_open()?;
         self.shared.remove_queued(id).await
-    }
-
-    async fn steer_queued(&self, id: &str) -> Result<(), AgentError> {
-        self.shared.ensure_open()?;
-        self.shared.steer_queued(id).await
-    }
-
-    async fn set_follow_up_queue_mode(&self, mode: &str) -> Result<(), AgentError> {
-        self.shared.ensure_open()?;
-        let mode = parse_follow_up_queue_mode(mode)?;
-        self.shared.set_follow_up_queue_mode(mode);
-        Ok(())
     }
 
     async fn interrupt(&self) -> Result<(), AgentError> {

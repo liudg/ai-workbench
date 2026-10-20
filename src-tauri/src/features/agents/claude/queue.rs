@@ -58,6 +58,11 @@ pub(super) fn plan_submit(busy: bool, steer: bool) -> SubmitPlan {
     }
 }
 
+/// Ctrl+Enter 这一条。强制写进当前回合，不读、也不改会话上存的队列模式。
+pub(super) fn plan_submit_now(busy: bool) -> SubmitPlan {
+    plan_submit(busy, true)
+}
+
 /// `auto_flush`：这一回合正常结束，而且不是用户按下的停止。
 /// 一次只取出队首，避免几条紧挨着的写入被 Claude 合成一轮。
 pub(super) fn plan_close(state: &mut QueueState, auto_flush: bool) -> ClosePlan {
@@ -92,13 +97,38 @@ impl Shared {
         images: Vec<String>,
         client_id: String,
     ) -> Result<TurnDelivery, AgentError> {
+        let steer = self.queue_state.lock().unwrap().steer;
+        self.finish_submit(content, text, images, client_id, steer)
+    }
+
+    /// 立刻写入。忙的时候走引导那条提前写入，不进本地队列，也不改 steer 开关。
+    pub(super) fn submit_now(
+        &self,
+        content: Value,
+        text: String,
+        images: Vec<String>,
+        client_id: String,
+    ) -> Result<TurnDelivery, AgentError> {
+        self.finish_submit(content, text, images, client_id, true)
+    }
+
+    fn finish_submit(
+        &self,
+        content: Value,
+        text: String,
+        images: Vec<String>,
+        client_id: String,
+        steer: bool,
+    ) -> Result<TurnDelivery, AgentError> {
         if text.trim().is_empty() && images.is_empty() {
             return Err(AgentError::Runtime("消息不能为空".into()));
         }
         self.ensure_writable()?;
-        let plan = {
-            let state = self.queue_state.lock().unwrap();
-            plan_submit(self.busy.load(Ordering::SeqCst), state.steer)
+        let busy = self.busy.load(Ordering::SeqCst);
+        let plan = if steer {
+            plan_submit_now(busy)
+        } else {
+            plan_submit(busy, false)
         };
         match plan {
             SubmitPlan::Hold => self.hold(text, images, client_id),
@@ -310,6 +340,14 @@ mod tests {
         assert_eq!(plan_submit(false, true), SubmitPlan::Start);
         assert_eq!(plan_submit(true, false), SubmitPlan::Hold);
         assert_eq!(plan_submit(true, true), SubmitPlan::WriteAhead);
+    }
+
+    #[test]
+    fn ctrl_enter_writes_ahead_without_the_saved_queue_mode() {
+        assert_eq!(plan_submit_now(false), SubmitPlan::Start);
+        assert_eq!(plan_submit_now(true), SubmitPlan::WriteAhead);
+        assert_ne!(plan_submit_now(true), SubmitPlan::Hold);
+        assert_eq!(plan_submit(true, false), SubmitPlan::Hold);
     }
 
     #[test]
