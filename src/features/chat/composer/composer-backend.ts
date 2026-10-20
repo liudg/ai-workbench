@@ -77,6 +77,16 @@ export function steerQueuedTurn(sessionId: string, queuedId: string) {
   );
 }
 
+/** 按给定顺序逐条引导。同一次清空还没结束时，再按一次不重入。 */
+export function flushQueuedTurns(sessionId: string, ids: readonly string[]) {
+  if (ids.length === 0) return Promise.resolve();
+  return runQueuedAction(`flush:${sessionId}`, () =>
+    backend.flushQueuedTurns(sessionId, [...ids]).catch((error: unknown) => {
+      reportComposerError(sessionId, error);
+    }),
+  );
+}
+
 const modeEpoch = new Map<string, number>();
 const modeChain = new Map<string, Promise<void>>();
 

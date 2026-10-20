@@ -137,6 +137,16 @@ export interface Backend {
     images?: string[],
     annotations?: PageAnnotation[],
   ): Promise<void>;
+  /**
+   * 立刻送出这一条。回合进行中作为引导插入，不进队列。
+   * 不改 followUpQueueMode。没有活跃回合时和普通发送一样。
+   */
+  sendMessageNow(
+    sessionId: string,
+    text: string,
+    images?: string[],
+    annotations?: PageAnnotation[],
+  ): Promise<void>;
   /** 把一条页面批注交给当前会话的 AnnotationSink。 */
   submitAnnotation(sessionId: string, note: PageAnnotation): Promise<void>;
   /** DiffScopeProvider：当前适配器提供的差异范围。 */
@@ -173,6 +183,8 @@ export interface Backend {
   removeQueuedTurn(sessionId: string, queuedId: string): Promise<void>;
   /** 立刻送出一条排队消息。不打断当前模型回合；没有活跃回合时马上开跑。 */
   steerQueuedTurn(sessionId: string, queuedId: string): Promise<void>;
+  /** 按顺序逐条引导。不合并正文，也不改 followUpQueueMode。 */
+  flushQueuedTurns(sessionId: string, queuedIds: string[]): Promise<void>;
   /** 切换 followUpQueueMode。不删除已经排着的消息。 */
   setFollowUpQueueMode(sessionId: string, mode: "queue" | "steer"): Promise<void>;
   sessionQueue(sessionId: string): Promise<QueuedTurn[]>;

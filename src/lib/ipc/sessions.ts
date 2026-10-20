@@ -38,12 +38,14 @@ export const sessionCommands: Pick<
   | "setSessionTuning"
   | "setSessionServiceTier"
   | "sendMessage"
+  | "sendMessageNow"
   | "submitAnnotation"
   | "diffScopes"
   | "diffForScope"
   | "updateQueuedTurn"
   | "removeQueuedTurn"
   | "steerQueuedTurn"
+  | "flushQueuedTurns"
   | "setFollowUpQueueMode"
   | "sessionQueue"
   | "interruptTurn"
@@ -118,6 +120,13 @@ export const sessionCommands: Pick<
       images: images ?? [],
       annotations: annotations ?? [],
     }),
+  sendMessageNow: (sessionId, text, images, annotations) =>
+    invoke("send_message_now", {
+      sessionId,
+      text,
+      images: images ?? [],
+      annotations: annotations ?? [],
+    }),
   submitAnnotation: (sessionId, note) =>
     invoke("submit_annotation", { sessionId, note }),
   diffScopes: (sessionId) => invoke<DiffScope[]>("diff_scopes", { sessionId }),
@@ -134,6 +143,8 @@ export const sessionCommands: Pick<
     invoke("remove_queued_turn", { sessionId, queuedId }),
   steerQueuedTurn: (sessionId, queuedId) =>
     invoke("steer_queued_turn", { sessionId, queuedId }),
+  flushQueuedTurns: (sessionId, queuedIds) =>
+    invoke("flush_queued_turns", { sessionId, queuedIds }),
   setFollowUpQueueMode: (sessionId, mode) =>
     invoke("set_follow_up_queue_mode", { sessionId, mode }),
   sessionQueue: (sessionId) =>

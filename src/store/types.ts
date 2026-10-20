@@ -119,6 +119,13 @@ export interface WorkspaceSlice {
     images?: string[],
     annotations?: PageAnnotation[],
   ): Promise<boolean>;
+  /** 立刻送出。运行中引导进当前回合，不进队列，也不改队列模式。 */
+  sendMessageNow(
+    sessionId: string,
+    text: string,
+    images?: string[],
+    annotations?: PageAnnotation[],
+  ): Promise<boolean>;
   setCollaborationMode(sessionId: string, mode: "plan" | "default"): Promise<void>;
   startReview(sessionId: string, target: ReviewStart): Promise<void>;
   answerPrompt(sessionId: string, promptId: string, answer: PromptAnswer): Promise<boolean>;

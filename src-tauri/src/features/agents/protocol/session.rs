@@ -50,6 +50,24 @@ pub trait AgentSession: DiffScopeProvider + AnnotationSink + Send + Sync {
         Err(AgentError::Runtime("这个 Agent 不支持引导排队消息".into()))
     }
 
+    /// 立刻送出这一条。回合进行中走引导，不进队列，也不改 followUpQueueMode。
+    /// 没有活跃回合时和普通发送一样开一轮。
+    async fn deliver_now(&self, turn: UserTurn) -> Result<TurnDelivery, AgentError> {
+        self.deliver(turn).await
+    }
+
+    /// 按顺序把这些排队消息逐条送出。不合并正文，也不改 followUpQueueMode。
+    /// 默认就是连续调用 [`Self::steer_queued`]。
+    async fn flush_queued(&self, ids: Vec<String>) -> Result<(), AgentError> {
+        for id in ids {
+            if id.is_empty() {
+                continue;
+            }
+            self.steer_queued(&id).await?;
+        }
+        Ok(())
+    }
+
     /// 切换 `followUpQueueMode`：`queue` 排队，`steer` 写进当前回合。不删除已排队的消息。
     async fn set_follow_up_queue_mode(&self, _mode: &str) -> Result<(), AgentError> {
         Err(AgentError::Runtime("这个 Agent 不支持切换队列模式".into()))

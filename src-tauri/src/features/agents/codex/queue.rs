@@ -5,6 +5,7 @@
 //! 引导对应桌面 `sendQueuedMessageNow`（`queueModeOverride: send-now`）：
 //! 把这条排队消息送出，不打断当前模型回合。回合还在时走 `turn/steer`，成功后再
 //! `thread/queue/delete`；没有活跃回合时走 `thread/queue/start`。
+//! Ctrl+Enter 整队送出也是逐条引导，不把多条正文并成一条，也不改 `followUpQueueMode`。
 
 use std::collections::HashSet;
 use std::sync::atomic::Ordering;
@@ -239,6 +240,51 @@ impl Shared {
             build_turn_input(&text, &skills, &images, &annotations)
         };
         self.steer_input(input).await
+    }
+
+    /// 按队列顺序逐条引导。每条仍走单条引导，图片和正文不并到一起。
+    /// 空闲时第一条用 `thread/queue/start` 开回合；后面的要等这个回合有了 turn id，
+    /// 再 `turn/steer`。不能在回合还没起来时连打 start，否则会再开一轮。
+    pub(super) async fn flush_queued(&self, ids: Vec<String>) -> Result<(), AgentError> {
+        let mut started_while_idle = false;
+        for id in ids {
+            if id.is_empty() {
+                continue;
+            }
+            let open = self.turn_open.load(Ordering::SeqCst);
+            match flush_step(open, started_while_idle) {
+                FlushStep::Steer => self.steer_queued(&id).await?,
+                FlushStep::Start => {
+                    self.steer_queued(&id).await?;
+                    started_while_idle = true;
+                }
+                FlushStep::WaitThenSteer => {
+                    self.wait_for_steer().await?;
+                    self.steer_queued(&id).await?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    async fn wait_for_steer(&self) -> Result<(), AgentError> {
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            if self.closed.load(Ordering::SeqCst) {
+                return Err(AgentError::Closed);
+            }
+            let ready =
+                self.turn_open.load(Ordering::SeqCst) && self.turn_id.lock().unwrap().is_some();
+            if ready {
+                return Ok(());
+            }
+            if tokio::time::Instant::now() >= deadline {
+                return Err(AgentError::Runtime(
+                    "队列还没接上当前回合，剩下的消息仍留在队列里".into(),
+                ));
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
     }
 
     async fn queued_item(&self, id: &str) -> Option<QueuedTurn> {
@@ -479,6 +525,29 @@ pub(super) fn follow_up(turn_open: bool, mode: FollowUpQueueMode) -> FollowUp {
     }
 }
 
+/// Ctrl+Enter 这一条。不看会话上存的 followUpQueueMode，所以不会把它改掉。
+pub(super) fn send_now(turn_open: bool) -> FollowUp {
+    follow_up(turn_open, FollowUpQueueMode::Steer)
+}
+
+/// 整队送出的下一步。不合并条目。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum FlushStep {
+    Steer,
+    Start,
+    WaitThenSteer,
+}
+
+pub(super) fn flush_step(turn_open: bool, started_while_idle: bool) -> FlushStep {
+    if turn_open {
+        FlushStep::Steer
+    } else if started_while_idle {
+        FlushStep::WaitThenSteer
+    } else {
+        FlushStep::Start
+    }
+}
+
 /// 引导按钮。回合还在就 steer，否则让这条排队消息自己开跑。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum QueuedDispatch {
@@ -580,6 +649,39 @@ mod tests {
         assert_eq!(
             follow_up(false, FollowUpQueueMode::Queue),
             FollowUp::StartTurn
+        );
+    }
+
+    #[test]
+    fn ctrl_enter_steers_without_reading_the_saved_queue_mode() {
+        assert_eq!(send_now(true), FollowUp::Steer);
+        assert_eq!(send_now(false), FollowUp::StartTurn);
+        assert_ne!(send_now(true), FollowUp::Enqueue);
+        assert_eq!(follow_up(true, FollowUpQueueMode::Queue), FollowUp::Enqueue);
+    }
+
+    #[test]
+    fn idle_flush_starts_once_then_steers_each_remaining_row() {
+        assert_eq!(flush_step(false, false), FlushStep::Start);
+        assert_eq!(flush_step(false, true), FlushStep::WaitThenSteer);
+        assert_eq!(flush_step(true, false), FlushStep::Steer);
+        assert_eq!(flush_step(true, true), FlushStep::Steer);
+        let mut started = false;
+        let mut open = false;
+        let mut steps = Vec::new();
+        for index in 0..3 {
+            let step = flush_step(open, started);
+            if step == FlushStep::Start {
+                started = true;
+                if index == 0 {
+                    open = true;
+                }
+            }
+            steps.push(step);
+        }
+        assert_eq!(
+            steps,
+            vec![FlushStep::Start, FlushStep::Steer, FlushStep::Steer]
         );
     }
 

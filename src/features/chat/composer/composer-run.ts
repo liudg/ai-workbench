@@ -4,6 +4,7 @@ import { useWorkbench } from "@/store";
 import { projectOfDraft } from "@/store/draft-session";
 import type { AgentCapabilities, AgentSkillOption, SessionSandbox, SlashCommand } from "@/types";
 import {
+  flushQueuedTurns,
   interruptTurn,
   pickAttachments,
   removeQueuedTurn,
@@ -12,6 +13,7 @@ import {
   updateQueuedTurn,
 } from "./composer-backend";
 import { composerKeyIntent, stepIndex } from "./composer-keys";
+import { composerCtrlEnter, queueFlushIds, submitDelivery } from "./composer-now";
 import { decideSlash, decideSubmit } from "./composer-submit";
 import {
   claimSubmit,
@@ -127,9 +129,10 @@ function clearIfUnchanged(run: ComposerRun) {
   run.setCaret(0);
 }
 
-function dispatchComposerSend(run: ComposerRun, text: string, images: string[] = []) {
+function dispatchComposerSend(run: ComposerRun, text: string, images: string[] = [], now = false) {
   const previous = run.text;
-  const pending = run.actions.sendMessage(run.sessionId, text, images);
+  const send = now ? run.actions.sendMessageNow : run.actions.sendMessage;
+  const pending = send(run.sessionId, text, images);
   if (run.holdUntilAccepted) return pending;
   void pending.then((ok) => {
     if (!ok) return;
@@ -138,7 +141,8 @@ function dispatchComposerSend(run: ComposerRun, text: string, images: string[] =
   return pending;
 }
 
-export function runComposerSubmit(run: ComposerRun) {
+export function runComposerSubmit(run: ComposerRun, options?: { now?: boolean }) {
+  const now = Boolean(options?.now);
   const state = useWorkbench.getState();
   const attached = state.attachments[run.sessionId] ?? [];
   const snippets = state.textSnippets[run.sessionId] ?? [];
@@ -164,6 +168,12 @@ export function runComposerSubmit(run: ComposerRun) {
     supportsGoals: run.supportsGoals,
   });
   if (decision.type === "noop") return;
+  const deliverNow =
+    submitDelivery({
+      now,
+      holdUntilAccepted: run.holdUntilAccepted,
+      decision: decision.type,
+    }) === "send-now";
   const claim = claimSubmit(run.submitFlight.current, { sessionId: run.sessionId, fingerprint });
   if (!claim.claimed) return;
   run.submitFlight.current = claim.flight;
@@ -217,16 +227,25 @@ export function runComposerSubmit(run: ComposerRun) {
     run.exitGoal();
     if (clearSnippets) run.actions.clearTextSnippets(run.sessionId);
     void run.actions.setCollaborationMode(run.sessionId, "plan").then(() => {
-      dispatchComposerSend(run, decision.text);
+      dispatchComposerSend(run, decision.text, [], deliverNow);
     });
     return;
   }
   if (decision.type === "update-queue") {
+    const queuedId = decision.id;
+    const queuedText = decision.text;
+    const queuedImages = decision.images;
     run.setEditingId(null);
     run.setText("");
     run.actions.clearAttachments(run.sessionId);
     if (clearSnippets) run.actions.clearTextSnippets(run.sessionId);
-    void updateQueuedTurn(run.sessionId, decision.id, decision.text, decision.images);
+    if (deliverNow) {
+      void run.actions.sendMessageNow(run.sessionId, queuedText, queuedImages).then((ok) => {
+        if (ok) void removeQueuedTurn(run.sessionId, queuedId);
+      });
+    } else {
+      void updateQueuedTurn(run.sessionId, queuedId, queuedText, queuedImages);
+    }
     run.textareaRef.current?.focus();
     return;
   }
@@ -260,9 +279,36 @@ export function runComposerSubmit(run: ComposerRun) {
   }
   run.setText("");
   if (clearSnippets) run.actions.clearTextSnippets(run.sessionId);
-  dispatchComposerSend(run, decision.text, images);
+  dispatchComposerSend(run, decision.text, images, deliverNow);
   if (clearAttachments) run.actions.clearAttachments(run.sessionId);
   run.textareaRef.current?.focus();
+}
+
+/** Ctrl+Enter。有内容直接送出；空输入则按队列顺序逐条引导。 */
+export function runComposerCtrlEnter(run: ComposerRun) {
+  const queue = useWorkbench.getState().queues[run.sessionId] ?? [];
+  const action = composerCtrlEnter({
+    text: run.text,
+    fileCount: run.fileCount,
+    snippetCount: run.snippetCount,
+    queueCount: queue.length,
+    editing: Boolean(run.editingId),
+    pendingQuestion: Boolean(run.view.pendingId) && run.view.pendingKind !== "approval",
+    composerLocked: run.view.composerLocked,
+  });
+  if (action.type === "noop") return;
+  if (action.type === "plain-submit") {
+    runComposerSubmit(run);
+    return;
+  }
+  if (action.type === "flush-queue") {
+    void flushQueuedTurns(
+      run.sessionId,
+      queueFlushIds(queue.map((item) => item.id)),
+    );
+    return;
+  }
+  runComposerSubmit(run, { now: true });
 }
 
 export async function pickComposerFiles(run: ComposerRun) {
@@ -300,6 +346,10 @@ export function handleComposerKey(run: ComposerRun, event: ReactKeyboardEvent<HT
   const intent = composerKeyIntent({
     key: event.key,
     shiftKey: event.shiftKey,
+    ctrlKey: event.ctrlKey,
+    metaKey: event.metaKey,
+    altKey: event.altKey,
+    repeat: event.repeat,
     composing: event.nativeEvent.isComposing,
     keyCode: event.nativeEvent.keyCode,
     editing: Boolean(run.editingId),
@@ -329,6 +379,7 @@ export function handleComposerKey(run: ComposerRun, event: ReactKeyboardEvent<HT
   } else if (intent.type === "apply-skill" && run.activeSkill) applyComposerSkill(run, run.activeSkill);
   else if (intent.type === "apply-slash" && run.activeSlash) applyComposerSlash(run, run.activeSlash);
   else if (intent.type === "submit") runComposerSubmit(run);
+  else if (intent.type === "submit-now") runComposerCtrlEnter(run);
 }
 
 export function pasteComposerImages(run: ComposerRun, event: ClipboardEvent<HTMLTextAreaElement>) {

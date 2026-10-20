@@ -13,6 +13,7 @@ export function useComposerActions() {
   return useWorkbench(
     useShallow((state) => ({
       sendMessage: state.sendMessage,
+      sendMessageNow: state.sendMessageNow,
       setCollaborationMode: state.setCollaborationMode,
       startReview: state.startReview,
       answerPrompt: state.answerPrompt,
