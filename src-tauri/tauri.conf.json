@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "AI Workbench",
-  "version": "0.2.75",
+  "version": "0.2.77",
   "identifier": "com.aiworkbench.app",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -13,13 +13,14 @@
     "windows": [
       {
         "label": "main",
-        "title": "AI 工作台",
+        "title": "AI 工作�?,
         "width": 1280,
         "height": 800,
         "minWidth": 960,
         "minHeight": 600,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --remote-debugging-port=9222"
       }
     ],
     "security": {

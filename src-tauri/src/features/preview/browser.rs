@@ -292,6 +292,8 @@ fn show_browser(
     let builder = tauri::webview::WebviewBuilder::new(LABEL, WebviewUrl::External(url))
         .background_color(tauri::webview::Color(15, 23, 42, 255))
         .initialization_script(PAGE_JS)
+        // 与 tauri.conf.json 主窗口 additionalBrowserArgs 一致：同一数据目录下 WebView2 参数不同会建不出子 webview。
+        .additional_browser_args(crate::WEBVIEW2_BROWSER_ARGS)
         .on_page_load(move |_webview, payload| {
             if payload.event() != tauri::webview::PageLoadEvent::Finished {
                 return;

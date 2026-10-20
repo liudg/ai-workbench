@@ -135,6 +135,12 @@ pub(crate) fn manage_state<R: Runtime>(
     Ok(())
 }
 
+/// WebView2 启动参数：wry 默认的 --disable-features 加上固定 CDP 端口 9222（自验自动化用选择器）。
+/// 必须与 tauri.conf.json 主窗口的 additionalBrowserArgs 保持一字不差。
+/// 所有构建（含发布版）都开；端口只绑 127.0.0.1，但本机任何进程都能无认证连上。
+pub const WEBVIEW2_BROWSER_ARGS: &str =
+    "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --remote-debugging-port=9222";
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
