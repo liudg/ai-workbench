@@ -11,7 +11,7 @@ export function Hint({
 }: {
   label: string;
   shortcut?: string;
-  align?: "center" | "end";
+  align?: "start" | "center" | "end";
   children: ReactNode;
 }) {
   const text = shortcut ? `${label} ${shortcut}` : label;
@@ -22,7 +22,7 @@ export function Hint({
         role="tooltip"
         className={cn(
           "pointer-events-none absolute top-full z-50 mt-1 hidden items-center gap-1.5 whitespace-nowrap rounded-full bg-zinc-950 px-2 py-1 text-[11px] text-white shadow-lg group-hover/hint:flex",
-          align === "end" ? "right-0" : "left-1/2 -translate-x-1/2",
+          align === "end" ? "right-0" : align === "start" ? "left-0" : "left-1/2 -translate-x-1/2",
         )}
       >
         <span>{label}</span>
