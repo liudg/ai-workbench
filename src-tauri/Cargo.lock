@@ -19,7 +19,7 @@ dependencies = [
 
 [[package]]
 name = "ai-workbench"
-version = "0.2.81"
+version = "0.2.82"
 dependencies = [
  "async-trait",
  "chrono",
