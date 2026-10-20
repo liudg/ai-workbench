@@ -93,6 +93,12 @@ export function UpdateDialog() {
               </p>
             </>
           )}
+          {update.kind === "unavailable" && (
+            <>
+              <RefreshCw className="mt-0.5 h-5 w-5 shrink-0 text-zinc-500" />
+              <p className="text-sm text-zinc-300">暂无可用更新源</p>
+            </>
+          )}
           {update.kind === "error" && (
             <>
               <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-400" />

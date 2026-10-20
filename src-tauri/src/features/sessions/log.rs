@@ -29,6 +29,10 @@ pub(super) struct SessionEntry {
     pub(super) queue: Vec<QueuedTurn>,
     /// 第一条用户消息落地前不进侧栏。
     pub(super) withhold_sidebar: bool,
+    /// 归档时为了放开写锁停过进程。取消归档要重新接上。
+    pub(super) parked_for_archive: bool,
+    /// 事件读取代数。换进程后，旧读取循环不再写入。
+    pub(super) reader_epoch: u64,
 }
 
 pub(super) fn apply_body(
@@ -412,6 +416,8 @@ mod tests {
             activity_at: None,
             queue: Vec::new(),
             withhold_sidebar: false,
+            parked_for_archive: false,
+            reader_epoch: 0,
         }
     }
 

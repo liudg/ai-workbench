@@ -109,6 +109,7 @@ test("a pending approval keeps stop until the turn actually ends", () => {
   };
   const running = view({ status: "running", events: [plan, approval()] });
   assert.equal(running.pendingId, "bash");
+  assert.equal(running.pendingKind, "approval");
   assert.equal(running.stopMode, true);
   assert.equal(running.sendDisabled, false);
   const pressed: string[] = [];

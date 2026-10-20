@@ -2,7 +2,7 @@
 //
 // 用法：
 //   node scripts/gen-latest-json.mjs \
-//     --url https://github.com/OWNER/REPO/releases/download/v0.1.1 \
+//     --url https://example.com/releases/download/v0.1.1 \
 //     [--notes "更新说明"] [--bundle src-tauri/target/release/bundle/nsis] \
 //     [--out release/latest.json]
 //

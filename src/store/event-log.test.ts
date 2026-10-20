@@ -109,3 +109,14 @@ test("reconnect keeps a newer local body when the seq did not move", () => {
   const snapshot = mergeEvents(undefined, remote).find((event) => event.id === "a");
   assert.equal(snapshot && textOf(snapshot), "snapshot");
 });
+
+test("the same text with a new id and seq stays a second row", () => {
+  const log = applyLiveEvent(applyLiveEvent([], ev("u1", 1, "reply ok")), ev("u2", 2, "reply ok"));
+  assert.deepEqual(
+    log.map((event) => [event.id, textOf(event)]),
+    [
+      ["u1", "reply ok"],
+      ["u2", "reply ok"],
+    ],
+  );
+});

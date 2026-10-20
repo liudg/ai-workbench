@@ -25,6 +25,8 @@ export function decideSubmit(input: {
   snippets?: readonly { quote: string }[];
   editingId: string | null;
   pendingId: string | null;
+  /** 缺省仍把作曲栏当成该提问的回答。审批的决定只来自审批卡。 */
+  pendingKind?: string | null;
   composerLocked: boolean;
   goalDraft: boolean;
   supportsGoals: boolean;
@@ -48,7 +50,7 @@ export function decideSubmit(input: {
     if (!message.text && imagePaths.length === 0) return { type: "noop" };
     return { type: "update-queue", id: input.editingId, text: message.text, images: imagePaths, ...message.clear };
   }
-  if (input.pendingId) {
+  if (input.pendingId && input.pendingKind !== "approval") {
     if (!value || input.composerLocked) return { type: "noop" };
     const answer = withSnippets(value, snippets);
     return { type: "answer", promptId: input.pendingId, ...answer };

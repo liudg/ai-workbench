@@ -32,6 +32,11 @@ export function isDeleteChord(event: ChordEvent): boolean {
   return modified(event) && event.shiftKey && (event.key === "Delete" || event.key === "Backspace");
 }
 
+/** 删除和弦必须把面板打开到删除页。只改 drill 时菜单还关着，快捷键看起来没反应。 */
+export function deleteShortcutMenu(_open: boolean): { open: true; drill: "delete" } {
+  return { open: true, drill: "delete" };
+}
+
 export function isSidebarChord(event: ChordEvent): boolean {
   return modified(event) && !event.shiftKey && event.key.toLowerCase() === "b";
 }

@@ -74,8 +74,18 @@ export function composerCommands(
   return profile?.commands ? [...profile.commands] : [];
 }
 
+function pendingKindOf(events: readonly SessionEvent[], pendingId: string | null): string | null {
+  if (!pendingId) return null;
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event.kind === "prompt" && event.prompt_id === pendingId) return event.prompt_kind;
+  }
+  return null;
+}
+
 export function deriveComposerView(input: ComposerViewInput) {
   const pendingId = pendingPrompt([...input.events]);
+  const pendingKind = pendingKindOf(input.events, pendingId);
   const occupied = isReadOnlyOpen([...input.events]);
   const busy = input.status === "running";
   const dead = input.status === "stopped" || input.status === "failed";
@@ -159,6 +169,7 @@ export function deriveComposerView(input: ComposerViewInput) {
   const menu = input.permissionMenu;
   return {
     pendingId,
+    pendingKind,
     occupied,
     busy,
     dead,

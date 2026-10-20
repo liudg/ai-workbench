@@ -33,7 +33,7 @@ node scripts/copy-installer.mjs
 构建完成后在仓库根目录执行：
 
 ```powershell
-node scripts/gen-latest-json.mjs --url "https://github.com/<OWNER>/<REPO>/releases/download/v<version>" --notes "更新说明"
+node scripts/gen-latest-json.mjs --url "https://example.com/releases/download/v<version>" --notes "更新说明"
 ```
 
 脚本自动读取 `tauri.conf.json` 的版本号、在 NSIS 产物目录找到已签名的 `.exe`（或旧的 `.nsis.zip`）与 `.sig`，生成 `release/latest.json`：
@@ -46,7 +46,7 @@ node scripts/gen-latest-json.mjs --url "https://github.com/<OWNER>/<REPO>/releas
   "platforms": {
     "windows-x86_64": {
       "signature": "<.sig 文件内容>",
-      "url": "https://github.com/<OWNER>/<REPO>/releases/download/v0.1.1/AI%20Workbench_0.1.1_x64-setup.exe"
+      "url": "https://example.com/releases/download/v0.1.1/AI%20Workbench_0.1.1_x64-setup.exe"
     }
   }
 }
@@ -60,19 +60,13 @@ node scripts/gen-latest-json.mjs --url "https://github.com/<OWNER>/<REPO>/releas
 
 ## 3. 发布更新源
 
-应用启动时与「检查更新」会请求 `tauri.conf.json → plugins.updater.endpoints` 的第一个可用 URL，当前为：
+当前提交没有更新地址：`tauri.conf.json` 的 `endpoints` 为空，`src/lib/update-source.ts` 的 `UPDATE_ENDPOINT` 也是空字符串。检查更新显示「暂无可用更新源」，不会请求占位地址。
 
-```
-https://github.com/OWNER/REPO/releases/latest/download/latest.json
-```
+有公开的 HTTPS `latest.json` 之后，把这两处写成同一个地址，然后：
 
-发布时把 `OWNER/REPO` 替换为实际仓库（同时改 `tauri.conf.json` 的 endpoints），然后：
-
-1. 在 GitHub 创建 Release（tag `v<version>`）；
+1. 在托管处发布该版本（GitHub Release 的 tag 用 `v<version>`，或任意 HTTPS 静态目录）；
 2. 上传 `latest.json`、`-setup.exe`、`.exe.sig`（若使用 v1 兼容包，再加 `.nsis.zip` 与其 `.sig`）；
-3. 标记为 Latest release。用户下次启动应用即收到更新提示。
-
-不使用 GitHub 时，`latest.json` 与安装包放到任何 HTTPS 静态托管均可（保持 endpoints 指向它）。
+3. 若用 GitHub Release，把它标为 Latest release。用户下次启动应用即收到更新提示。
 
 ## 4. GitHub Actions（已备好）
 

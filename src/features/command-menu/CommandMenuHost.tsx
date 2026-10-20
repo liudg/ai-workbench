@@ -27,6 +27,7 @@ import { CommandMenu, type PaletteDrill } from "./CommandMenu";
 import { COMMAND_MENU_COPY as COPY } from "./copy";
 import { fileRows } from "./file-rows";
 import {
+  deleteShortcutMenu,
   isArchiveChord,
   isDeleteChord,
   isNewThreadChord,
@@ -332,6 +333,9 @@ export function CommandMenuHost() {
       if (isDeleteChord(event) && visible("delete")) {
         event.preventDefault();
         event.stopPropagation();
+        const menu = deleteShortcutMenu(current.open);
+        setOpen(menu.open);
+        setDrill(menu.drill);
         current.runCommand("delete");
       }
     };

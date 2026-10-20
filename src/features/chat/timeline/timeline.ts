@@ -348,9 +348,13 @@ export function contentChars(events: readonly SessionEvent[]): number {
       case "review-note":
         chars += event.text.length;
         break;
-      case "review-findings":
-        chars += event.summary.length + event.findings.reduce((sum, finding) => sum + finding.body.length, 0);
+      case "review-findings": {
+        const findings = Array.isArray(event.findings) ? event.findings : [];
+        chars +=
+          (event.summary?.length ?? 0) +
+          findings.reduce((sum, finding) => sum + (finding?.body?.length ?? 0), 0);
         break;
+      }
       default:
         break;
     }

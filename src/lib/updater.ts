@@ -3,12 +3,14 @@
 
 import type { Update } from "@tauri-apps/plugin-updater";
 import { isTauri } from "./ipc";
+import { configuredUpdateEndpoint, updateFailureIsMissingSource } from "./update-source";
 import { userFacingMessage } from "./user-facing";
 
 export type UpdatePhase =
   | { kind: "idle" }
   | { kind: "checking" }
   | { kind: "none" } // 已是最新
+  | { kind: "unavailable" }
   | { kind: "available"; version: string; notes: string }
   | { kind: "downloading"; received: number; total: number | null }
   | { kind: "ready"; version: string } // 安装完成，待重启
@@ -23,6 +25,10 @@ export async function checkForUpdate(
   if (!isTauri) {
     // 浏览器预览：没有真实更新源，呈现「已是最新」
     onPhase({ kind: "none" });
+    return;
+  }
+  if (!configuredUpdateEndpoint()) {
+    onPhase({ kind: "unavailable" });
     return;
   }
   onPhase({ kind: "checking" });
@@ -40,7 +46,12 @@ export async function checkForUpdate(
       notes: update.body ?? "",
     });
   } catch (e) {
-    onPhase({ kind: "error", message: userFacingMessage(e) ?? "更新没有完成。" });
+    const message = userFacingMessage(e) ?? "更新没有完成。";
+    if (updateFailureIsMissingSource(message)) {
+      onPhase({ kind: "unavailable" });
+      return;
+    }
+    onPhase({ kind: "error", message });
   }
 }
 
