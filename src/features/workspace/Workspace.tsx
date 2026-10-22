@@ -6,7 +6,7 @@ import { NoProjectSelected } from "./empty/EmptyState";
 import { useWorkspace } from "./use-workspace";
 
 export function Workspace() {
-  const { project, sessions, session, events, usage } = useWorkspace();
+  const { project, sessions, session, events, eventsReady, usage } = useWorkspace();
 
   if (!project) return <NoProjectSelected />;
 
@@ -23,7 +23,7 @@ export function Workspace() {
       >
         <AnswerMarkdownHost>
           <SessionSplit>
-            <ChatView session={session} events={events} />
+            <ChatView session={session} events={events} eventsReady={eventsReady} />
           </SessionSplit>
         </AnswerMarkdownHost>
       </PanelProvider>

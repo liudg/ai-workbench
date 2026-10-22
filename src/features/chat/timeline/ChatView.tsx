@@ -33,16 +33,21 @@ import { useHistoryEnter } from "./useHistoryEnter";
 import { useTimelineFollow } from "./useTimelineFollow";
 import { useTurnVirtualizer } from "./useTurnVirtualizer";
 
+const EMPTY_CHUNK_KEYS: readonly string[] = [];
+
 export function ChatView({
   session,
   events,
+  eventsReady = true,
 }: {
   session: Session;
   events: SessionEvent[];
+  /** 选中会话的历史还没回来时为 false。预览直接给了事件，默认已就绪。 */
+  eventsReady?: boolean;
 }) {
   return (
     <ChatErrorBoundary resetKey={session.id}>
-      <ChatTimeline session={session} events={events} />
+      <ChatTimeline session={session} events={events} eventsReady={eventsReady} />
     </ChatErrorBoundary>
   );
 }
@@ -50,9 +55,11 @@ export function ChatView({
 function ChatTimeline({
   session,
   events,
+  eventsReady,
 }: {
   session: Session;
   events: SessionEvent[];
+  eventsReady: boolean;
 }) {
   const pendingId = useMemo(() => pendingPrompt(events), [events]);
   const questionEvent = useMemo(
@@ -104,7 +111,8 @@ function ChatTimeline({
   }, [session.id]);
   const chunks = useMemo(() => chunkTimeline(blocks), [blocks]);
   const chunkKeys = useMemo(() => chunks.map((chunk) => timelineChunkKey(chunk)), [chunks]);
-  const entering = useHistoryEnter(session.id, chunkKeys);
+  const trackedKeys = eventsReady ? chunkKeys : EMPTY_CHUNK_KEYS;
+  const entering = useHistoryEnter(session.id, trackedKeys);
 
   const {
     scrollRef,
@@ -118,7 +126,7 @@ function ChatTimeline({
   const find = useThreadFind(scrollRef, layoutKey);
   const virtual = useTurnVirtualizer({
     sessionId: session.id,
-    keys: chunkKeys,
+    keys: trackedKeys,
     anchor: { scrollRef, ...anchor },
     revealAll: find.open,
   });
@@ -203,7 +211,9 @@ function ChatTimeline({
         className="chat-log min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto py-4"
       >
         <div ref={contentRef} data-message-column className="mx-auto min-h-full w-full min-w-0 max-w-[760px]">
-          {!hasVisibleEvent ? (
+          {!eventsReady ? (
+            <div className="min-h-full" data-history-pending />
+          ) : !hasVisibleEvent ? (
             <div className="flex h-full flex-col items-center justify-center gap-3 text-zinc-600">
               <MessageSquareDashed className="h-8 w-8" strokeWidth={1.5} />
               <p className="text-sm">发送第一条消息，开始这轮会话</p>
@@ -227,7 +237,7 @@ function ChatTimeline({
               })}
             </div>
           )}
-          {liveChanges ? <ChangeCard changes={liveChanges} defaultExpanded /> : null}
+          {eventsReady && liveChanges ? <ChangeCard changes={liveChanges} defaultExpanded /> : null}
         </div>
       </div>
       <ChatSelectionMenu rootRef={scrollRef} sessionId={session.id} />

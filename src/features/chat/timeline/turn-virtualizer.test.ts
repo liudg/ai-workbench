@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { keysEnteringAfterTail } from "./history-enter.ts";
+import { keysEnteringAfterTail, reduceHistoryEnter } from "./history-enter.ts";
 import {
   aboveViewportDelta,
   distanceAfterHeightChange,
@@ -173,4 +173,44 @@ test("history on the first paint does not enter, and only a new tail does", () =
   assert.deepEqual([...keysEnteringAfterTail(["a", "b", "c"], "b", true)], ["c"]);
   assert.equal(keysEnteringAfterTail(["x", "a", "b"], "b", true).size, 0);
   assert.equal(keysEnteringAfterTail(["a", "b", "c"], "missing", true).size, 0);
+});
+
+test("an empty frame does not arm enter, and the first fill stays still", () => {
+  const idle = { tail: null, ready: false };
+  const emptied = reduceHistoryEnter(idle, []);
+  assert.equal(emptied.entering.size, 0);
+  assert.deepEqual(emptied.cursor, idle);
+
+  const armed = reduceHistoryEnter({ tail: null, ready: true }, []);
+  assert.equal(armed.entering.size, 0);
+  assert.deepEqual(armed.cursor, idle);
+
+  const filled = reduceHistoryEnter(armed.cursor, ["a", "b", "c"]);
+  assert.equal(filled.entering.size, 0);
+  assert.deepEqual(filled.cursor, { tail: "c", ready: true });
+
+  const appended = reduceHistoryEnter(filled.cursor, ["a", "b", "c", "d"]);
+  assert.deepEqual([...appended.entering], ["d"]);
+  assert.equal(appended.cursor.tail, "d");
+
+  const direct = reduceHistoryEnter({ tail: null, ready: true }, ["a", "b", "c"]);
+  assert.equal(direct.entering.size, 0);
+  assert.equal(direct.cursor.tail, "c");
+
+  const prepended = reduceHistoryEnter(filled.cursor, ["x", "a", "b", "c"]);
+  assert.equal(prepended.entering.size, 0);
+});
+
+test("folded turns use a short estimate so the tail window is not a few tall placeholders", () => {
+  assert.ok(TURN_ESTIMATE_PX <= 120);
+  assert.ok(TURN_ESTIMATE_PX >= 80);
+  const span = turnWindow({
+    count: 50,
+    distanceFromBottom: 0,
+    viewport: VIEWPORT,
+    heights: uniform(50),
+  });
+  assert.ok(span.end - span.start >= 8);
+  assert.ok(span.start > 0);
+  assert.equal(span.end, 50);
 });

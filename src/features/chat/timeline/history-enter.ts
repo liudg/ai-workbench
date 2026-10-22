@@ -14,3 +14,31 @@ export function keysEnteringAfterTail(
   if (index < 0) return new Set();
   return new Set(keys.slice(index + 1));
 }
+
+export interface HistoryEnterCursor {
+  tail: string | null;
+  ready: boolean;
+}
+
+/**
+ * 空列表不能把追踪标成就绪。
+ * 从空列表来的第一包历史把尾部锚到最后一条，这一包不淡入。
+ * 已经就绪且锚点为空时同样先锚住，避免整页被标成进入。
+ */
+export function reduceHistoryEnter(
+  cursor: HistoryEnterCursor,
+  keys: readonly string[],
+): { entering: ReadonlySet<string>; cursor: HistoryEnterCursor } {
+  if (keys.length === 0) {
+    if (cursor.tail == null) return { entering: new Set(), cursor: { tail: null, ready: false } };
+    return { entering: new Set(), cursor };
+  }
+  const tail = keys[keys.length - 1] ?? null;
+  if (!cursor.ready || cursor.tail == null) {
+    return { entering: new Set(), cursor: { tail, ready: true } };
+  }
+  return {
+    entering: keysEnteringAfterTail(keys, cursor.tail, true),
+    cursor: { tail, ready: true },
+  };
+}
