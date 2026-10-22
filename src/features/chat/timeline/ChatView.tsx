@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { MessageSquareDashed } from "lucide-react";
 
 import { useChangeCapabilities } from "@/features/changes-model/use-changes";
@@ -29,7 +29,9 @@ import { FindBar } from "../find/FindBar";
 import { useThreadFind } from "../find/use-thread-find";
 import { ChatSelectionMenu } from "./ChatSelectionMenu";
 import { ChatErrorBoundary } from "./ChatErrorBoundary";
+import { useHistoryEnter } from "./useHistoryEnter";
 import { useTimelineFollow } from "./useTimelineFollow";
+import { useTurnVirtualizer } from "./useTurnVirtualizer";
 
 export function ChatView({
   session,
@@ -101,6 +103,8 @@ function ChatTimeline({
     setFoldOverrides(new Map());
   }, [session.id]);
   const chunks = useMemo(() => chunkTimeline(blocks), [blocks]);
+  const chunkKeys = useMemo(() => chunks.map((chunk) => timelineChunkKey(chunk)), [chunks]);
+  const entering = useHistoryEnter(session.id, chunkKeys);
 
   const {
     scrollRef,
@@ -109,8 +113,73 @@ function ChatTimeline({
     onTimelineWheel,
     onPointerDown,
     pausePinForToggle,
+    ...anchor
   } = useTimelineFollow(session.id, layoutKey);
   const find = useThreadFind(scrollRef, layoutKey);
+  const virtual = useTurnVirtualizer({
+    sessionId: session.id,
+    keys: chunkKeys,
+    anchor: { scrollRef, ...anchor },
+    revealAll: find.open,
+  });
+
+  const renderChunk = (chunk: (typeof chunks)[number]): ReactNode => {
+    if (chunk.type === "events") {
+      return (
+        <ActivityStream
+          events={chunk.events}
+          session={session}
+          resolvedAnswers={resolvedAnswers}
+          showAgentLabel={(event) => chunk.labels.get(event.id) ?? false}
+          onInteract={pausePinForToggle}
+        />
+      );
+    }
+    const block = chunk.block;
+    if (block.type === "turn") {
+      const expanded = foldOverrides.get(block.id) ?? false;
+      return (
+        <TurnProcess
+          events={block.events}
+          answerId={block.answerId}
+          durationMs={block.durationMs}
+          session={session}
+          resolvedAnswers={resolvedAnswers}
+          expanded={expanded}
+          onInteract={pausePinForToggle}
+          onToggle={() => {
+            pausePinForToggle();
+            setFoldOverrides((prev) => new Map(prev).set(block.id, !expanded));
+          }}
+        />
+      );
+    }
+    if (block.type === "live") {
+      const expanded = liveOverrides.get(block.id) ?? true;
+      return (
+        <LiveTurn
+          events={block.events}
+          session={session}
+          resolvedAnswers={resolvedAnswers}
+          expanded={expanded}
+          onInteract={pausePinForToggle}
+          onToggle={() => {
+            pausePinForToggle();
+            setLiveOverrides((prev) => new Map(prev).set(block.id, !expanded));
+          }}
+        />
+      );
+    }
+    const event = block.event;
+    return (
+      <EventItem
+        event={event}
+        session={session}
+        resolvedAnswer={event.kind === "prompt" ? (resolvedAnswers.get(event.prompt_id) ?? null) : null}
+        showAgentLabel={block.showAgentLabel}
+      />
+    );
+  };
 
   return (
     <>
@@ -140,71 +209,25 @@ function ChatTimeline({
               <p className="text-sm">发送第一条消息，开始这轮会话</p>
             </div>
           ) : (
-            chunks.map((chunk) => {
-              if (chunk.type === "events") {
+            <div className="turn-virtual-list" style={{ position: "relative", height: virtual.totalHeight, width: "100%" }}>
+              {chunks.slice(virtual.start, virtual.end).map((chunk, offset) => {
+                const index = virtual.start + offset;
+                const key = chunkKeys[index] ?? timelineChunkKey(chunk);
                 return (
-                  <ActivityStream
-                    key={timelineChunkKey(chunk)}
-                    events={chunk.events}
-                    session={session}
-                    resolvedAnswers={resolvedAnswers}
-                    showAgentLabel={(event) => chunk.labels.get(event.id) ?? false}
-                    onInteract={pausePinForToggle}
-                  />
+                  <div
+                    key={key}
+                    data-turn-key={key}
+                    ref={virtual.refFor(key)}
+                    className={entering.has(key) ? "turn-virtual-item" : "turn-virtual-item enter-static"}
+                    style={{ position: "absolute", top: virtual.prefix[index] ?? 0, left: 0, width: "100%" }}
+                  >
+                    {renderChunk(chunk)}
+                  </div>
                 );
-              }
-              const block = chunk.block;
-              if (block.type === "turn") {
-                const expanded = foldOverrides.get(block.id) ?? false;
-                return (
-                  <TurnProcess
-                    key={timelineChunkKey(chunk)}
-                    events={block.events}
-                    answerId={block.answerId}
-                    durationMs={block.durationMs}
-                    session={session}
-                    resolvedAnswers={resolvedAnswers}
-                    expanded={expanded}
-                    onInteract={pausePinForToggle}
-                    onToggle={() => {
-                      pausePinForToggle();
-                      setFoldOverrides((prev) => new Map(prev).set(block.id, !expanded));
-                    }}
-                  />
-                );
-              }
-              if (block.type === "live") {
-                const expanded = liveOverrides.get(block.id) ?? true;
-                return (
-                  <LiveTurn
-                    key={timelineChunkKey(chunk)}
-                    events={block.events}
-                    session={session}
-                    resolvedAnswers={resolvedAnswers}
-                    expanded={expanded}
-                    onInteract={pausePinForToggle}
-                    onToggle={() => {
-                      pausePinForToggle();
-                      setLiveOverrides((prev) => new Map(prev).set(block.id, !expanded));
-                    }}
-                  />
-                );
-              }
-              const event = block.event;
-              return (
-                <EventItem
-                  key={timelineChunkKey(chunk)}
-                  event={event}
-                  session={session}
-                  resolvedAnswer={
-                    event.kind === "prompt" ? (resolvedAnswers.get(event.prompt_id) ?? null) : null
-                  }
-                  showAgentLabel={block.showAgentLabel}
-                />
-              );
-            })
+              })}
+            </div>
           )}
-          {liveChanges ? <ChangeCard changes={liveChanges} /> : null}
+          {liveChanges ? <ChangeCard changes={liveChanges} defaultExpanded /> : null}
         </div>
       </div>
       <ChatSelectionMenu rootRef={scrollRef} sessionId={session.id} />

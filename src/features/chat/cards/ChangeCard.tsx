@@ -9,9 +9,16 @@ import { fileStatusTone } from "@/features/changes-model/status-tone";
 import { baseName, relativeToProject } from "@/shared/path";
 import { canShowMore, editedFilesLabel, visibleChangeFiles } from "./card-text";
 
-export function ChangeCard({ changes }: { changes: TurnChanges }) {
+export function ChangeCard({
+  changes,
+  defaultExpanded = false,
+}: {
+  changes: TurnChanges;
+  /** 已结束的一轮默认收起。进行中的变更卡由调用方展开。 */
+  defaultExpanded?: boolean;
+}) {
   const preview = usePanel();
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const [revealed, setRevealed] = useState(false);
   const multiple = changes.files.length > 1;
   const rows = visibleChangeFiles(changes.files, expanded && multiple, revealed);
