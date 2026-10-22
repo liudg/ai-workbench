@@ -315,6 +315,16 @@ describe("panel viewers", { concurrency: 1 }, () => {
       path: "C:/work/demo/src/app.ts",
       line: 4,
     });
+    assert.deepEqual(targetFromHref("C:/work/demo", "src/Auth/LoginService.cs:648"), {
+      kind: "file",
+      path: "C:/work/demo/src/Auth/LoginService.cs",
+      line: 648,
+    });
+    assert.deepEqual(targetFromHref("C:/work/demo", "src/Auth/LoginService.cs:648:12", undefined), {
+      kind: "file",
+      path: "C:/work/demo/src/Auth/LoginService.cs",
+      line: 648,
+    });
     assert.deepEqual(targetFromHref("C:/work/demo", "../secret.txt"), {
       kind: "file",
       path: "C:/work/secret.txt",

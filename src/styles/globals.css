@@ -154,7 +154,8 @@ body {
   user-select: none;
   cursor: default;
 }
-.chat-log button.answer-file,
+.chat-log button.answer-cite,
+.chat-log button.answer-file-more,
 .chat-log .change-card button,
 .chat-log button[data-show-more],
 .chat-log button[data-view-changes],
@@ -252,36 +253,106 @@ ol.answer-list {
   color: #a1a1aa;
 }
 .answer-inline-code,
-.answer-path,
-.answer-file {
+.answer-path {
   font-family: var(--font-mono);
   font-size: 0.86em;
   line-height: 1.45;
   overflow-wrap: normal;
-}
-.answer-inline-code,
-.answer-path {
   border-radius: 0.3em;
   background: rgb(39 39 42 / 0.95);
   color: #f4f4f5;
   padding: 0.08em 0.38em;
 }
-.answer-path,
-span.answer-file {
+.answer-path {
   cursor: help;
 }
-.answer-file {
-  border-bottom: 1px dotted rgb(161 161 170 / 0.7);
-  color: #f4f4f5;
-}
-button.answer-file {
+/* 文件引用：圆角软底胶囊，跟文字一起换行。不画蓝点和横滑。 */
+.answer-cite {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0.05rem 0.2rem 0.05rem 0;
+  padding: 0.08rem 0.45rem 0.08rem 0.32rem;
   border: 0;
-  border-bottom: 1px dotted rgb(125 211 252 / 0.7);
-  background: transparent;
-  padding: 0;
-  font: inherit;
-  color: #7dd3fc;
+  border-radius: 0.75rem;
+  background: rgb(39 39 42 / 0.72);
+  color: #e4e4e7;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.35;
+  vertical-align: middle;
   cursor: pointer;
+}
+.answer-cite-icon {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  color: #a1a1aa;
+}
+.answer-cite-name {
+  min-width: 0;
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.answer-cite-line {
+  flex: none;
+  color: #71717a;
+}
+span.answer-cite {
+  cursor: default;
+}
+button.answer-cite:hover {
+  background: rgb(63 63 70 / 0.88);
+}
+.answer-file-section > .answer-h {
+  margin-bottom: 0.45rem;
+}
+.answer-file-list {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  min-width: 0;
+  max-width: 100%;
+}
+.answer-file-list-label {
+  color: #71717a;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+.answer-file-rows {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.28rem;
+  min-width: 0;
+  max-width: 100%;
+}
+.answer-file-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.15rem 0.45rem;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.answer-file-more {
+  border: 0;
+  background: transparent;
+  padding: 0.1rem 0;
+  color: #a1a1aa;
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+.answer-file-more:hover {
+  color: #e4e4e7;
 }
 .answer-pre {
   margin: 0;

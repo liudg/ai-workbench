@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { isFileHref } from "../../../shared/markdown/file-href.ts";
 import {
   fileLineRef,
   isHtmlHref,
@@ -40,6 +41,37 @@ test("line references and html links parse without inventing a scheme", () => {
   assert.equal(isHtmlHref("index.html"), true);
   assert.equal(isHtmlHref("https://example.com/a.html?q=1"), true);
   assert.equal(isHtmlHref("notes.md"), false);
+  assert.equal(isHtmlHref("index.html:12"), false);
+});
+
+test("path line, column, range, and hash are stripped before the file is resolved", () => {
+  const root = "C:/work/demo";
+  const file = "C:/work/demo/src/Auth/LoginService.cs";
+  for (const href of [
+    "src/Auth/LoginService.cs:648",
+    "src/Auth/LoginService.cs:648:12",
+    "src/Auth/LoginService.cs:648-660",
+    "src/Auth/LoginService.cs:648:1-660:4",
+    "src/Auth/LoginService.cs#L648",
+    "src/Auth/LoginService.cs#L648-L660",
+    "src/Auth/LoginService.cs#L648C3",
+    "src/Auth/LoginService.cs:648?plain=1",
+  ]) {
+    assert.equal(resolvePreviewPath(root, href), file, href);
+    assert.equal(lineFromHref(href), 648, href);
+    assert.equal(isFileHref(href), true, href);
+  }
+  assert.equal(resolvePreviewPath(root, "C:/outside/Auth/LoginService.cs:648"), "C:/outside/Auth/LoginService.cs");
+  assert.equal(lineFromHref("C:/outside/Auth/LoginService.cs:648:9"), 648);
+  assert.equal(resolvePreviewPath(root, "C:/work/demo/index.html"), "C:/work/demo/index.html");
+  assert.equal(lineFromHref("C:/work/demo/index.html"), null);
+  assert.equal(isFileHref("LoginService.cs:648"), true);
+  assert.equal(isFileHref("LoginService.cs:648:12"), true);
+  assert.equal(isFileHref("https://example.com/LoginService.cs:648"), false);
+  assert.equal(isFileHref("note:12"), false);
+  assert.deepEqual(fileLineRef("LoginService.cs:648"), { path: "LoginService.cs", line: 648 });
+  assert.deepEqual(fileLineRef("src/Auth/LoginService.cs:648:12"), { path: "src/Auth/LoginService.cs", line: 648 });
+  assert.equal(fileLineRef("just some words"), null);
 });
 
 test("codex angle-bracket windows paths resolve onto the drive", () => {
