@@ -52,6 +52,10 @@ export function useWorkspace() {
       ? { ...picked, title: STANDALONE_DRAFT_TITLE }
       : picked;
   const events = useWorkbench((s) => (session ? s.events[session.id] : undefined)) ?? EMPTY_EVENTS;
+  const eventsReady = useWorkbench((s) => {
+    if (!session || isDraftId(session.id)) return true;
+    return s.eventsReady[session.id] === true;
+  });
   const usage = useMemo(() => accumulateSessionUsage(events), [events]);
-  return { project, sessions, session, events, usage };
+  return { project, sessions, session, events, eventsReady, usage };
 }
