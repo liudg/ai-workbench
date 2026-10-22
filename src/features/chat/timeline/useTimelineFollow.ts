@@ -1,13 +1,28 @@
 import { useEffect, useLayoutEffect, useRef, type WheelEvent } from "react";
 
 import { useWorkbench } from "@/store";
-import { distanceFromBottom, historyScrollTop, nearBottom, shouldApplyHistory } from "./timeline-follow";
+import {
+  compensatedScrollTop,
+  distanceFromBottom,
+  historyScrollTop,
+  nearBottom,
+  shouldApplyHistory,
+  type TimelineAnchor,
+} from "./timeline-follow";
 
 /** 时间线贴底、以及向上翻页时保持视口。分页走会话 store，不放在视图里。 */
-export function useTimelineFollow(sessionId: string, layoutKey: string) {
+export function useTimelineFollow(sessionId: string, layoutKey: string): TimelineAnchor & {
+  contentRef: { current: HTMLDivElement | null };
+  onTimelineScroll: () => void;
+  onTimelineWheel: (event: WheelEvent<HTMLDivElement>) => void;
+  onPointerDown: () => void;
+  pausePinForToggle: () => void;
+} {
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const followRef = useRef(true);
+  const distanceRef = useRef(0);
+  const anchorTopRef = useRef(0);
   const pinningRef = useRef(false);
   const suppressPinRef = useRef(false);
   const interactingRef = useRef(false);
@@ -24,6 +39,8 @@ export function useTimelineFollow(sessionId: string, layoutKey: string) {
   if (seenSession.current !== sessionId) {
     seenSession.current = sessionId;
     followRef.current = true;
+    distanceRef.current = 0;
+    anchorTopRef.current = 0;
     suppressPinRef.current = false;
     interactingRef.current = false;
     historyExhausted.current = false;
@@ -31,19 +48,33 @@ export function useTimelineFollow(sessionId: string, layoutKey: string) {
     requestEpoch.current += 1;
   }
 
-  const pinRef = useRef(() => {});
-  pinRef.current = () => {
-    if (suppressPinRef.current || interactingRef.current || !followRef.current) return;
+  const applyScrollRef = useRef<(aboveDelta: number) => void>(() => {});
+  applyScrollRef.current = (aboveDelta: number) => {
     const el = scrollRef.current;
-    if (!el) return;
-    const top = Math.max(0, el.scrollHeight - el.clientHeight);
-    if (el.scrollTop >= top - 1) return;
+    if (!el || interactingRef.current) return;
+    const follow = followRef.current && !suppressPinRef.current;
+    const top = compensatedScrollTop({
+      beforeTop: anchorTopRef.current,
+      nextHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+      follow,
+      aboveDelta,
+    });
+    if (top == null) return;
+    if (Math.abs(el.scrollTop - top) <= 1) {
+      anchorTopRef.current = el.scrollTop;
+      if (follow) distanceRef.current = 0;
+      return;
+    }
     pinningRef.current = true;
     el.scrollTop = top;
+    anchorTopRef.current = el.scrollTop;
+    if (follow) distanceRef.current = 0;
     requestAnimationFrame(() => {
       pinningRef.current = false;
     });
   };
+  const applyScroll = (aboveDelta: number) => applyScrollRef.current(aboveDelta);
 
   useEffect(() => {
     return () => {
@@ -52,14 +83,16 @@ export function useTimelineFollow(sessionId: string, layoutKey: string) {
   }, []);
 
   useLayoutEffect(() => {
-    pinRef.current();
+    applyScrollRef.current(0);
   }, [sessionId, layoutKey]);
 
   useEffect(() => {
     const content = contentRef.current;
-    if (!content) return;
-    const observer = new ResizeObserver(() => pinRef.current());
-    observer.observe(content);
+    const scroller = scrollRef.current;
+    if ((!content && !scroller) || typeof ResizeObserver !== "function") return;
+    const observer = new ResizeObserver(() => applyScrollRef.current(0));
+    if (content) observer.observe(content);
+    if (scroller) observer.observe(scroller);
     return () => observer.disconnect();
   }, [sessionId]);
 
@@ -90,17 +123,20 @@ export function useTimelineFollow(sessionId: string, layoutKey: string) {
           if (!shouldApplyHistory({ epoch, currentEpoch: requestEpoch.current })) return;
           const node = scrollRef.current;
           if (node) {
-            node.scrollTop = historyScrollTop({
+            const top = historyScrollTop({
               beforeHeight,
               beforeTop,
               nextHeight: node.scrollHeight,
             });
-            followRef.current = nearBottom(
-              distanceFromBottom(node.scrollHeight, node.scrollTop, node.clientHeight),
-            );
+            pinningRef.current = true;
+            node.scrollTop = top;
+            anchorTopRef.current = node.scrollTop;
+            distanceRef.current = distanceFromBottom(node.scrollHeight, node.scrollTop, node.clientHeight);
+            followRef.current = nearBottom(distanceRef.current);
           }
           requestAnimationFrame(() => {
             if (!shouldApplyHistory({ epoch, currentEpoch: requestEpoch.current })) return;
+            pinningRef.current = false;
             suppressPinRef.current = false;
             historyLoading.current = false;
           });
@@ -110,9 +146,9 @@ export function useTimelineFollow(sessionId: string, layoutKey: string) {
         if (!shouldApplyHistory({ epoch, currentEpoch: requestEpoch.current })) return;
         const node = scrollRef.current;
         if (node) {
-          followRef.current = nearBottom(
-            distanceFromBottom(node.scrollHeight, node.scrollTop, node.clientHeight),
-          );
+          anchorTopRef.current = node.scrollTop;
+          distanceRef.current = distanceFromBottom(node.scrollHeight, node.scrollTop, node.clientHeight);
+          followRef.current = nearBottom(distanceRef.current);
         }
         suppressPinRef.current = false;
         historyLoading.current = false;
@@ -122,7 +158,9 @@ export function useTimelineFollow(sessionId: string, layoutKey: string) {
   const onTimelineScroll = () => {
     const el = scrollRef.current;
     if (!el || pinningRef.current) return;
-    followRef.current = nearBottom(distanceFromBottom(el.scrollHeight, el.scrollTop, el.clientHeight));
+    anchorTopRef.current = el.scrollTop;
+    distanceRef.current = distanceFromBottom(el.scrollHeight, el.scrollTop, el.clientHeight);
+    followRef.current = nearBottom(distanceRef.current);
     if (el.scrollTop < 48) requestOlder();
   };
 
@@ -161,6 +199,7 @@ export function useTimelineFollow(sessionId: string, layoutKey: string) {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         suppressPinRef.current = false;
+        applyScrollRef.current(0);
       });
     });
   };
@@ -168,6 +207,11 @@ export function useTimelineFollow(sessionId: string, layoutKey: string) {
   return {
     scrollRef,
     contentRef,
+    followRef,
+    distanceRef,
+    anchorTopRef,
+    pinningRef,
+    applyScroll,
     onTimelineScroll,
     onTimelineWheel,
     onPointerDown,

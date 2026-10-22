@@ -62,6 +62,11 @@ body {
   animation: event-in 160ms ease-out;
 }
 
+/* 切到已有会话时，历史回合套上这个类，第一帧不淡入。新追加的回合不加。 */
+.enter-static .event-in {
+  animation: none;
+}
+
 /* Hint 胶囊。hidden 与 group-hover 同权重，后写的 hidden 会把悬停显示盖掉。 */
 .group\/hint:hover > [role="tooltip"] {
   display: flex;
