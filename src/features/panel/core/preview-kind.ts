@@ -1,4 +1,10 @@
-import { fileLineRef, isFileHref, isHtmlHref, lineFromHref } from "../../../shared/markdown/file-href.ts";
+import {
+  fileLineRef,
+  isFileHref,
+  isHtmlHref,
+  lineFromHref,
+  stripFileLocation,
+} from "../../../shared/markdown/file-href.ts";
 import { normalizePath } from "../../../shared/path.ts";
 
 export { fileLineRef, isFileHref, isHtmlHref, lineFromHref };
@@ -49,13 +55,14 @@ export function sameFile(projectPath: string, changePath: string, absolute: stri
 function hrefToPath(href: string): string | null {
   const trimmed = href.trim().replace(/^<|>$/g, "");
   if (!trimmed || /^(https?:|mailto:|data:|javascript:|#)/i.test(trimmed)) return null;
-  const filePath = fileUrlPath(trimmed);
-  const raw = filePath ?? trimmed;
-  const cut = raw.split(/[?#]/)[0] ?? raw;
+  const located = stripFileLocation(trimmed);
+  const filePath = fileUrlPath(located.path);
+  const raw = stripFileLocation(filePath ?? located.path).path;
+  if (!raw) return null;
   try {
-    return decodeURIComponent(cut);
+    return decodeURIComponent(raw);
   } catch {
-    return cut;
+    return raw;
   }
 }
 

@@ -1,7 +1,8 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, File } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { baseName } from "@/shared/path";
 import {
   codeDisplayLines,
   inlinePlain,
@@ -11,7 +12,8 @@ import {
   type CollapseMeta,
   type Inline,
 } from "./answer-markdown";
-import { fileLineRef, isFileHref, isHtmlHref, lineFromHref } from "./file-href";
+import { visibleFileCiteCount } from "./file-cites";
+import { fileLineRef, isFileHref, isHtmlHref, stripFileLocation } from "./file-href";
 import { useMarkdownHost } from "./host";
 import type { ImageSource } from "./markdown-images";
 
@@ -46,6 +48,9 @@ function BlockView({ block }: { block: AnswerBlock }) {
       );
     }
     case "list":
+      if (block.meta?.kind === "files") {
+        return <FileCiteList items={block.items} label={block.meta.fallback} />;
+      }
       return (
         <MaybeCollapsed meta={block.meta}>
           <ListView ordered={block.ordered} items={block.items} />
@@ -74,6 +79,16 @@ function BlockView({ block }: { block: AnswerBlock }) {
     case "image":
       return <HostImage alt={block.alt} source={block.source} />;
     case "section":
+      if (block.meta.kind === "files" && block.body.type === "list") {
+        return (
+          <div className="answer-file-section" data-answer-block="file-list">
+            <div className="answer-h answer-h2">
+              <Inlines nodes={block.title} />
+            </div>
+            <FileCiteList items={block.body.items} />
+          </div>
+        );
+      }
       return <SectionView title={block.title} meta={block.meta} body={block.body} />;
     default:
       return null;
@@ -134,6 +149,29 @@ function Disclosure({
         <span className="answer-section-meta">{meta.detail}</span>
       </button>
       {open ? <div className="answer-section-body">{children}</div> : null}
+    </div>
+  );
+}
+
+function FileCiteList({ items, label }: { items: Inline[][]; label?: string | null }) {
+  const [revealed, setRevealed] = useState(false);
+  const count = visibleFileCiteCount(items.length, revealed);
+  const hidden = items.length - count;
+  return (
+    <div className="answer-file-list" data-answer-file-list data-file-count={items.length}>
+      {label ? <div className="answer-file-list-label">{label}</div> : null}
+      <div className="answer-file-rows">
+        {items.slice(0, count).map((item, index) => (
+          <div key={index} className="answer-file-row">
+            <Inlines nodes={item} />
+          </div>
+        ))}
+      </div>
+      {hidden > 0 ? (
+        <button type="button" data-show-more className="answer-file-more" onClick={() => setRevealed(true)}>
+          显示另外 {hidden} 个
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -269,15 +307,12 @@ function CodeSpan({ node }: { node: Extract<Inline, { type: "code" }> }) {
   const ref = fileLineRef(node.text);
   if (ref && host?.canOpen && isFileHref(ref.path)) {
     return (
-      <button
-        type="button"
-        className="answer-inline-code"
-        data-line-ref={ref.line}
-        title={node.title ?? ref.path}
-        onClick={() => host.openHref(ref.path, ref.line)}
-      >
-        {node.display ?? node.text}
-      </button>
+      <CitationPill
+        path={ref.path}
+        line={ref.line}
+        title={ref.path}
+        onOpen={() => host.openHref(ref.path, ref.line)}
+      />
     );
   }
   return (
@@ -290,9 +325,6 @@ function CodeSpan({ node }: { node: Extract<Inline, { type: "code" }> }) {
 function LinkView({ node }: { node: Extract<Inline, { type: "link" }> }) {
   const host = useMarkdownHost();
   const plain = inlinePlain(node.inlines);
-  const ref = fileLineRef(plain);
-  const line = ref?.line ?? lineFromHref(node.href) ?? undefined;
-  const target = ref?.path ?? node.href;
   if (/^https?:\/\//i.test(node.href) && !isHtmlHref(node.href)) {
     return (
       <a href={node.href} title={node.title} target="_blank" rel="noreferrer noopener">
@@ -300,23 +332,64 @@ function LinkView({ node }: { node: Extract<Inline, { type: "link" }> }) {
       </a>
     );
   }
-  if ((!isFileHref(target) && !isHtmlHref(node.href)) || !host?.canOpen) {
-    if (!isFileHref(target) && !isHtmlHref(node.href)) return <Inlines nodes={node.inlines} />;
+  const target = fileLinkTarget(node.href, plain);
+  if (!isFileHref(target.path) && !isHtmlHref(node.href)) return <Inlines nodes={node.inlines} />;
+  return (
+    <CitationPill
+      path={target.path}
+      line={target.line}
+      title={target.path}
+      onOpen={host?.canOpen ? () => host.openHref(target.path, target.line) : null}
+    />
+  );
+}
+
+function fileLinkTarget(href: string, plain: string): { path: string; line?: number } {
+  const label = fileLineRef(plain);
+  const fromHref = stripFileLocation(href);
+  const line = label?.line ?? fromHref.line ?? undefined;
+  return { path: fromHref.path || label?.path || href, line };
+}
+
+function CitationPill({
+  path,
+  line,
+  title,
+  onOpen,
+}: {
+  path: string;
+  line?: number;
+  title?: string;
+  onOpen: (() => void) | null;
+}) {
+  const name = baseName(path) || path;
+  const tip = title ?? (line != null ? `${path}:${line}` : path);
+  const body = (
+    <>
+      <File className="answer-cite-icon" aria-hidden />
+      <span className="answer-cite-name">{name}</span>
+      {line != null ? <span className="answer-cite-line">{line}</span> : null}
+    </>
+  );
+  if (!onOpen) {
     return (
-      <span className="answer-file" title={node.title ?? node.href}>
-        <Inlines nodes={node.inlines} />
+      <span className="answer-cite" data-answer-cite data-cite-path={path} title={tip}>
+        {body}
       </span>
     );
   }
   return (
     <button
       type="button"
-      className="answer-file"
+      className="answer-cite"
+      data-answer-cite
+      data-cite-path={path}
+      data-cite-line={line}
       data-line-ref={line}
-      title={node.title ?? node.href}
-      onClick={() => host.openHref(target, line)}
+      title={tip}
+      onClick={onOpen}
     >
-      <Inlines nodes={node.inlines} />
+      {body}
     </button>
   );
 }

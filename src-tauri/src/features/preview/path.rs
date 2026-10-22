@@ -67,7 +67,78 @@ fn normalize_requested_path(requested: &str) -> String {
         .next()
         .unwrap_or(extracted.as_str())
         .trim();
-    strip_spurious_drive_slash(without_query)
+    // Codex 的 `file.cs:648`、`:648:12`、`:648-660` 不是文件名。`#L` 已在上面随 `#` 去掉。
+    let without_line = strip_line_suffix(without_query);
+    strip_spurious_drive_slash(without_line)
+}
+
+/// 末尾的 `:line`、`:line:col`、`:line-line`、`:line:col-line:col`。盘符冒号不在末尾，留着。
+fn strip_line_suffix(value: &str) -> &str {
+    let bytes = value.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b':' && colon_location_suffix(&value[index..]) {
+            let path = &value[..index];
+            if !path.is_empty() && !path.ends_with(['/', '\\']) {
+                return path;
+            }
+        }
+        index += 1;
+    }
+    value
+}
+
+fn colon_location_suffix(tail: &str) -> bool {
+    let Some(mut rest) = tail.strip_prefix(':') else {
+        return false;
+    };
+    let Some((_line, next)) = take_positive_line(rest) else {
+        return false;
+    };
+    rest = next;
+    if let Some(after_colon) = rest.strip_prefix(':') {
+        let Some((_col, next)) = take_u32(after_colon) else {
+            return false;
+        };
+        rest = next;
+    }
+    if rest.is_empty() {
+        return true;
+    }
+    let Some(after_dash) = rest.strip_prefix('-') else {
+        return false;
+    };
+    let Some((_end, next)) = take_positive_line(after_dash) else {
+        return false;
+    };
+    rest = next;
+    if let Some(after_colon) = rest.strip_prefix(':') {
+        let Some((_col, next)) = take_u32(after_colon) else {
+            return false;
+        };
+        rest = next;
+    }
+    rest.is_empty()
+}
+
+fn take_positive_line(input: &str) -> Option<(u32, &str)> {
+    let (line, rest) = take_u32(input)?;
+    if line < 1 {
+        return None;
+    }
+    Some((line, rest))
+}
+
+fn take_u32(input: &str) -> Option<(u32, &str)> {
+    let end = input
+        .bytes()
+        .position(|byte| !byte.is_ascii_digit())
+        .unwrap_or(input.len());
+    if end == 0 {
+        return None;
+    }
+    let line = input[..end].parse::<u32>().ok()?;
+    Some((line, &input[end..]))
 }
 
 fn unwrap_angles(value: &str) -> &str {
@@ -256,5 +327,34 @@ mod tests {
             "/tmp/notes.md"
         );
         assert!(candidate_path(root, "   ").is_err());
+    }
+
+    #[test]
+    fn line_column_range_and_hash_are_not_part_of_the_file() {
+        let root = Path::new("D:/work/demo");
+        let file = "D:/work/demo/src/Auth/LoginService.cs";
+        for sample in [
+            "src/Auth/LoginService.cs:648",
+            "src/Auth/LoginService.cs:648:12",
+            "src/Auth/LoginService.cs:648-660",
+            "src/Auth/LoginService.cs:648:1-660:4",
+            "src/Auth/LoginService.cs#L648",
+            "src/Auth/LoginService.cs#L648-L660",
+            "src/Auth/LoginService.cs:648?plain=1",
+        ] {
+            assert_eq!(shown(&candidate_path(root, sample).unwrap()), file, "{sample}");
+        }
+        assert_eq!(
+            shown(&candidate_path(root, "C:/work/Auth/LoginService.cs:648").unwrap()),
+            "C:/work/Auth/LoginService.cs"
+        );
+        assert_eq!(
+            shown(&candidate_path(root, "C:/work/demo/index.html").unwrap()),
+            "C:/work/demo/index.html"
+        );
+        assert_eq!(
+            shown(&candidate_path(root, "src/Auth/LoginService.cs").unwrap()),
+            file
+        );
     }
 }
