@@ -29,18 +29,15 @@ after(async () => {
 
 function render(text: string): string {
   return renderToStaticMarkup(
-    createElement(
-      MarkdownHost,
-      {
-        api: {
-          canOpen: true,
-          openHref: () => undefined,
-          renderImage: () => null,
-          renderWebsite: () => null,
-        },
+    createElement(MarkdownHost, {
+      api: {
+        canOpen: true,
+        openHref: () => undefined,
+        renderImage: () => null,
+        renderWebsite: () => null,
       },
-      createElement(MarkdownBody, { text }),
-    ),
+      children: createElement(MarkdownBody, { text }),
+    }),
   );
 }
 
