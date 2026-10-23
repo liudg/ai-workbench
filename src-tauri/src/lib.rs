@@ -10,6 +10,7 @@
 //! - `tray`                    系统托盘与常驻后台
 //! - `dev_bridge`              网页预览用的本机 HTTP 入口（`dev-bridge` feature）
 
+mod daemon;
 mod encoding;
 mod features;
 mod models;
@@ -167,6 +168,7 @@ pub fn run() {
             }
         })
         .invoke_handler(workbench_handler![
+            daemon::daemon_endpoint,
             features::preview::browser::prepare_browser_file,
             features::preview::browser::browser_show,
             features::preview::browser::browser_bounds,

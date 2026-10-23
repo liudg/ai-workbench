@@ -1,5 +1,5 @@
 import { AccountMenu } from "./account/AccountMenu";
-import { BrandHeader } from "./brand/BrandHeader";
+import { BrandHeader } from "@/shared/brand/BrandHeader";
 import { SidebarPeek } from "./SidebarPeek";
 import { useSidebar } from "./use-sidebar";
 import { useSidebarOpen } from "@/shared/shell/sidebar-open";

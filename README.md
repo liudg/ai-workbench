@@ -37,14 +37,14 @@ pnpm tauri:build    # 产出 NSIS 安装包，并复制到 release/（只保留�
 
 ### 网页预览（连真实后端）
 
-网页预览不带任何模拟数据。浏览器经 Vite 代理 `/__bridge` 连本机 dev bridge，命令和事件都由同一套 Rust 后端处理，Codex 会话是真实的 `codex app-server`：
+v2 的界面只和后台 daemon 通信。网页预览时先手动启动 daemon，Vite 开发服务器读它写在数据目录里的 `daemon.json`，把地址交给页面：
 
 ```powershell
-cd src-tauri; cargo run --features dev-bridge --bin dev-bridge   # 监听 127.0.0.1:4574
-pnpm dev                                                       # 打开 http://localhost:4573
+cargo run -p aiwb-daemon   # 后台服务，随机端口，地址和 token 写入数据目录的 daemon.json
+pnpm dev                   # 打开 http://localhost:4573
 ```
 
-没启动 dev bridge 时，界面会提示没有连上后端。内置浏览器、本机图片缩略图和系统文件对话框只在桌面版可用；网页预览里选目录改为手动输入路径。数据目录可用 `AI_WORKBENCH_DATA_DIR` 指定。
+桌面版不用手动启动：应用打开时会自动拉起 daemon，关掉窗口它也继续运行，从托盘退出时才一起停下。数据目录可用 `AIWB_DATA_DIR` 指定。系统文件对话框只在桌面版可用，网页预览里选目录改为手动输入路径。
 
 ## 发布与自动更新
 
@@ -145,11 +145,11 @@ Gemini CLI 与 Antigravity 登记成一项，不做成两套会话。只找到�
 ## 常用命令
 
 ```powershell
-pnpm dev             # 网页预览（需先启动 dev bridge）
+pnpm dev             # 网页预览（需先 cargo run -p aiwb-daemon）
 pnpm build           # 前端类型检查 + 构建
 pnpm tauri:dev       # 桌面开发模式
 pnpm tauri:build     # 打包
 pnpm icons:gen       # 重新生成应用图标（scripts/gen-icons.mjs）
 ```
 
-数据文件位置：项目列表持久化于 `%APPDATA%\com.aiworkbench.app\projects.json`（Windows）。
+数据文件位置：`%APPDATA%\com.aiworkbench.app\workbench.sqlite`（Windows）。首次启动 v2 时会把旧版 `projects.json` 里的项目导入进来。

@@ -1,5 +1,5 @@
 //! 系统托盘：常驻后台，关窗不退出。
-//! 菜单：显示主窗口 / 退出。左键点击托盘图标同样唤起主窗口。
+//! 菜单：显示主窗口 / 退出。左键点击托盘图标同样唤起主窗口。退出时一起停掉后台服务。
 
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -19,7 +19,7 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
         .tooltip("AI 工作台")
         .on_menu_event(|app, event| match event.id().as_ref() {
             MENU_SHOW => show_main_window(app),
-            MENU_QUIT => app.exit(0),
+            MENU_QUIT => quit_app(app),
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
@@ -39,6 +39,14 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
 
     builder.build(app)?;
     Ok(())
+}
+
+/// 退出应用时一起停掉后台服务。
+fn quit_app(app: &AppHandle) {
+    if let Ok(data_dir) = app.path().app_data_dir() {
+        crate::daemon::shutdown(&data_dir);
+    }
+    app.exit(0);
 }
 
 fn show_main_window(app: &AppHandle) {

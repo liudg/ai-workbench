@@ -5,7 +5,8 @@ node_modules/
 dist/
 dist-ssr/
 
-# Tauri
+# Cargo / Tauri
+/target/
 src-tauri/target/
 # Alternate cargo target dirs agents create (target-main, target-refactor, ...)
 src-tauri/target-*/
@@ -34,3 +35,6 @@ release/*.exe.sig
 release/*.sig
 release/*.nsis.zip
 release/*.zip
+
+# daemon sidecar（scripts/build-daemon.mjs 生成）
+src-tauri/binaries/

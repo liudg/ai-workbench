@@ -1,0 +1,9 @@
+[package]
+name = "aiwb-core"
+description = "AI Workbench 领域模型与 daemon 通信协议"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true

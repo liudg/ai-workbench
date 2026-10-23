@@ -39,6 +39,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 encoding_rs = "0.8"
 ignore = "0.4"
 diffy = "0.4.2"
+aiwb-core = { path = "../crates/aiwb-core" }
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.56"
@@ -49,13 +50,3 @@ windows = { version = "0.62", features = [
   "Win32_System_Com_StructuredStorage",
   "Win32_UI_WindowsAndMessaging",
 ] }
-
-[profile.dev]
-incremental = true
-
-[profile.release]
-codegen-units = 1
-lto = true
-opt-level = "s"
-panic = "abort"
-strip = true
