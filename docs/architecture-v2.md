@@ -1,11 +1,12 @@
 # AI Workbench v2 架构设计
 
 ## 已定的方向
-- 产品核心单位是**任务**，不是会话。首页是任务看板，聊天只是任务里的一个视图。
+- 目标只有一个：比 v1 更好用。在 v1 的基础上改，借鉴 herdr、orca、t3code 的好设计（见 AGENTS.md「设计来源」）。
 - 后台常驻进程持有 Agent，窗口关掉、应用更新或界面崩溃时 Agent 继续跑，靠托盘和系统通知提醒。
-- 只给自己用：不做安装引导、账号、多语言。
+- 每个会话都能选 Agent 和模型，会话中途也能换 Agent，之前的上下文交接给新 Agent（见「跨 Agent 交接」）。不支持交接的 Agent，会话开始后锁定，只能在同一 Agent 内换模型。出处：t3code `apps/web/src/components/ChatView.tsx` 里 `modelPickerLockedProvider` 的逻辑、`packages/client-runtime/src/state/threadWorkflows.ts` 的 `threadSupportsProviderHandoff`；Codex 和 Claude 适配器都声明了 `supportsProviderSwitchingViaHandoff: true`。
+- 侧栏是「项目 → 会话」。任务只在后台用，负责工作树归属和扇出分组；看板是主区的一个视图，不做首页。
+- 只给自己用：不做账号、多语言。
 - 技术栈不变：Tauri + Rust + React。
-- 直接重构，不做回放测试；AGENTS.md 的 Codex 对标规则作废，重构完按新架构重写。
 
 ## 现状问题（重构的理由）
 - **会话列表靠拼**：`SessionManager`（`src-tauri/src/features/sessions/manager.rs`）每次把各 CLI 的目录（Codex `thread/list`、`~/.claude/projects/*.jsonl`）和内存里的会话合并，工作树归属靠标记文件推断，状态来源不唯一。
@@ -53,7 +54,7 @@
 写入规则：一条事件的追加和受它影响的投影更新放在同一个事务里，提交后广播出去。单用户本地场景不需要 t3code 那套 command receipt 和 outbox。
 
 ## 会话来源
-**已定**：工作台新建的会话以数据库为准。用纯终端 CLI 开的历史会话，通过"导入"拉进来，导入时用 CLI 的 resume 接管。侧栏不再每次扫描各 CLI 的目录。
+**已定**（2026-10-26 用户确认，取代 v1 自动列出 CLI 历史会话的做法）：工作台新建的会话以数据库为准。用纯终端 CLI 开的历史会话（Codex 和 Claude 都算），通过"导入"拉进来，导入时用 CLI 的 resume 接管。侧栏不再每次扫描各 CLI 的目录。
 - 代价：在终端里新开的会话不会自动出现在侧栏，要导入一下。
 - 换来的：列表、状态、工作树归属都只有一个来源，现在大部分"状态对不上"的问题会一起消失。
 
@@ -75,30 +76,34 @@
 - **通用 ACP 驱动**：配置一条 `{kind, display_name, command, args, env}` 就能接入一个 Agent。Cursor、Gemini、Qwen、OpenCode、Kimi 等以注册表条目的形式加入，每一条都用真实 CLI 验证握手和能力后再启用。t3code 也是这么做的（`packages/provider-acp`、`provider-acp-registry`）。
 
 ## 前端结构
-- `app/`：外壳、路由（看板 / 任务视图 / 设置）、分屏布局。
+- `app/`：外壳、主区视图（会话 / 看板 / 设置）、分屏布局。
 - `lib/daemon/`：连接、RPC、订阅、查询缓存。
-- `features/board`：任务看板和注意力队列。
-- `features/task`：任务视图，包括聊天、右侧面板（diff / 文件 / 终端 / 浏览器）和会话切换。
+- `features/board`：看板和注意力队列。
+- `features/sidebar`、`features/workspace`、`features/panel`：沿用 v1 的侧栏、会话视图和右侧面板（diff / 文件 / 终端 / 浏览器），数据改走 daemon。
 - `features/chat`：时间线和作曲栏，从现有代码迁移。
 - `features/git`、`features/terminal`、`features/command-menu`、`features/settings`。
 - **复用的现有代码**：Markdown 渲染（`shared/markdown`）、diff 渲染（`features/panel/diff`、`changes-model/diff-parse`）、时间线虚拟化（`chat/timeline/useTurnVirtualizer`）、作曲栏各菜单、命令面板的模糊匹配、审批卡和问题卡。
-- **重写的**：`store/slices/*`、`draft-session.ts`、`lib/ipc/*`、侧栏（换成任务列表和看板）。
+- **重写的**：`store/slices/*`、`draft-session.ts`、`lib/ipc/*`。
 
 ## 迁移步骤（新分支 `v2`）
+
 1. **骨架** ✅（2026-10-23）：搭 workspace 和 daemon（RPC 加 WebSocket 加 SQLite 迁移）；Tauri 壳负责拉起和连接 daemon；前端连接客户端；把旧 `ProjectStore` 的项目导入数据库。
    - 完成标准：界面能列出项目。
-   - 落地情况：`crates/aiwb-core`、`aiwb-store`、`aiwb-daemon`；壳侧 `src-tauri/src/daemon.rs`；前端 `src/lib/daemon/`、`src/features/projects/`。daemon 先复制到 `数据目录/daemon/<构建标识>/` 再运行，所以重新编译、安装新版都不会被正在运行的程序挡住；构建标识不一致时会自动替换 daemon。旧前端代码还在仓库里，入口已经切到新外壳，第 6 步删除。
-2. **Codex 迁入** ✅（2026-10-26）：在任务和会话模型上跑通新建任务（目录或工作树）、对话、审批、排队和 steer、中断；复用时间线和作曲栏。
+   - 落地情况：`crates/aiwb-core`、`aiwb-store`、`aiwb-daemon`；壳侧 `src-tauri/src/daemon.rs`；前端 `src/lib/daemon/`、`src/features/projects/`。daemon 先复制到 `数据目录/daemon/<构建标识>/` 再运行，所以重新编译、安装新版都不会被正在运行的程序挡住；构建标识不一致时会自动替换 daemon。这一步把入口切到了只有项目列表的新外壳，v1 的界面因此不再显示，第 3 步处理。
+2. **Codex 迁入**（后端 2026-10-26 完成，界面未完成）：在任务和会话模型上跑通新建任务（目录或工作树）、对话、审批、排队和 steer、中断；复用时间线和作曲栏。
    - 完成标准：关掉窗口，Agent 继续跑；重新打开后从断开的 seq 续上，内容不丢。
    - 落地情况：旧的 `features/agents`、`features/git`、`models`、`encoding` 搬成 `aiwb-agents`、`aiwb-git`、`aiwb-core::models`、`aiwb-proc`，旧应用壳改为依赖它们。daemon 新增 `runtime.rs`（按需接上 Agent、归并流式事件、写库、推送）和 `tasks.*` / `sessions.*` 方法；`session:<id>` 主题按 `fromRev` 补差。daemon 重启后，上次没跑完的会话记成已停止，下一条消息用 resume 接回原线程，不重放历史。前端新增 `features/tasks`（侧栏任务列表）和 `features/task`（新任务、任务视图、作曲栏），聊天时间线通过 `ChatHost` 拿数据，不再读旧 store。
    - 任务视图补齐：代码审查菜单（`sessions.reviewTargets` / `startReview`）、粘贴和拖入图片（由应用壳存图并放进 WebView 可显示范围）、右侧差异面板。面板拆成通用的 `PanelHost`（界面状态来源 + 数据来源 `PanelData`）和旧工作区用的 `PanelProvider`；任务视图用独立的面板 store。差异、文件树、文件名筛选、正文搜索、文本和图片预览走 daemon 的 `sessions.diff*` / `listDir` / `filterPaths` / `searchFiles` / `readFile` / `readImage`，按会话的工作目录读；用系统程序打开、内置浏览器加载本地文件仍是应用壳的本机能力（`open_path` / `prepare_browser_path`，目录由前端带过去）；页面批注走 `sessions.submitAnnotation`。文件预览、目录、索引、搜索的代码搬进 `aiwb-files`，应用壳只留命令外壳。
    - 和设计的出入：事件表不是纯追加。流式覆盖改写同一 seq，每次写入换新的 `rev`，客户端按 rev 续传。
-3. **Claude 迁入**：标准同上，再加上"从 CLI 历史导入会话"。
-4. **看板和注意力**：注意力投影、看板、侧栏状态药丸、系统通知和任务栏角标（这一步把路线图阶段 1 的核心部分提前做了）。
-5. **ACP 通用驱动**：先接一个能登录的 Agent 跑通完整对话，其他的只验证握手和能力。
-6. **清理**：删除旧的 `SessionManager`、旧 store 和 `dev_bridge`，与旧 store 绑定的测试一并删掉或改写；按新架构重写 AGENTS.md。
-
-步骤 2 完成后，v2 就已经能替代日常使用；之后的功能（diff 评论、checkpoint、终端、扇出）都在 v2 上做。
+   - 界面缺的部分放到第 3 步。
+3. **v2 界面**：以 v1 的外壳组件为底（侧栏、会话视图、右侧面板、新建项目和编辑项目对话框、设置、更新、命令菜单），数据来源从旧 store、invoke 换成 daemon，做法和已经改好的 `ChatHost`、`PanelHost` 一样。为了跑通才写的简版组件（`features/task` 的 `NewTask`、`TaskComposer`，`features/tasks` 的任务列表，`features/projects` 的项目列表）在被替换后删掉。新会话的作曲栏加上 Agent 和模型选择。
+   - 先做：把 v1 的功能列成清单，逐项标「沿用」「改进（写出处）」「去掉（写理由）」，用户确认后再动手。
+   - 完成标准：清单里确认的每一项在真实应用里验证通过。
+4. **Claude 迁入**：标准同第 2 步，再加上"从 CLI 历史导入会话"（Codex 和 Claude 都要）。
+5. **跨 Agent 交接**：会话中途换 Agent 时，把之前的上下文交给新 Agent。照 t3code 的做法，不用 LLM 写摘要，而是按 token 预算（默认 16k）挑选历史消息；对方之前参与过的，只补它没看到的那段（t3code `apps/server/src/orchestration-v2/ContextHandoffService.ts`、`packages/provider-core/src/server/handoffBudget.ts`）。
+6. **看板和注意力**：注意力投影、看板、侧栏状态药丸、系统通知和任务栏角标（这一步把路线图阶段 1 的核心部分提前做了）。
+7. **ACP 通用驱动**：先接一个能登录的 Agent 跑通完整对话，其他的只验证握手和能力。
+8. **清理**：删除旧的 `SessionManager`、旧 store 和 `dev_bridge`，与旧 store 绑定的测试一并删掉或改写；更新 AGENTS.md 里的架构描述。
 
 ## 待确认
 - 用来验证 Codex/Claude 的真实 CLI 在哪台机器上。

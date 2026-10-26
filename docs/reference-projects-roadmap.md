@@ -3,7 +3,7 @@
 ## Context
 目前 AI Workbench 已经能把 Codex（app-server JSON-RPC）和 Claude Code（stream-json）接进同一个界面，对话、作曲栏、审批、diff 预览、浏览器、命令面板这些基础都有了。用户的反馈是：它"不像 AI 工作台，功能单一，bug 多"。本次参考三个同类热门项目，找出可以借鉴的功能，排好路线图，这一轮先不写代码。用户已确认可借鉴范围完全放开，Codex 桌面端没有的功能也可以纳入。
 
-**已定的决策（2026-10-23）**：核心单位是任务，首页是任务看板；后台常驻 daemon 持有 Agent；只给自己用，不做引导和账号；技术栈不变；直接重构，不做回放测试；AGENTS.md 的 Codex 对标规则作废。
+已定的方向见 [architecture-v2.md](architecture-v2.md)「已定的方向」。参考项目源码在 `Z:\workbench`。
 
 ## 三个参考项目各自的长处
 | 项目 | 形态 | 核心思路 | 最值得借鉴 |
@@ -50,7 +50,7 @@
 
 ### 阶段 5：多 Agent 编排（本项目的差异点）
 17. **扇出**（orca / t3code 的 Shift 多选模型）：一个 prompt 发给多个 agent 或模型，每个各开一个 worktree；在一个对比视图里并排看结果和 diff，选中后合并。
-18. **跨 Agent 交接**（t3code `ContextHandoffService.ts`）：在会话中途换 agent。不用 LLM 写摘要，而是按 token 预算挑选历史消息，并附上被省略部分的引用。
+18. **跨 Agent 交接**（t3code `ContextHandoffService.ts`）：在会话中途换 agent。不用 LLM 写摘要，而是按 token 预算挑选历史消息，并附上被省略部分的引用。已提前到 architecture-v2.md 迁移步骤第 5 步。
 19. **Agent 互相驱动**（herdr `agent wait --until`，t3code Orchestrator MCP）：工作台提供一个本地 MCP，让一个 agent 能创建、等待、steer 其他 agent 的会话；目标处于 blocked 时拒绝注入输入。
 20. **会话 snooze 与定时任务**（t3code `scheduledTasks/`）。
 
