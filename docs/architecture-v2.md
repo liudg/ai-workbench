@@ -43,7 +43,8 @@
 
 ## 领域模型（SQLite）
 - `project`：id、path、name，以及项目配置（`.aiwb.json` 解析后缓存）。
-- `task`：id、project_id、title、goal、workspace（`root` 或 `worktree{path, branch, base_ref, base_sha}`）、pinned、settled_at、archived_at、created_at。
+- `task`：id、project_id（独立聊天为空）、title、goal、workspace（`root` 或 `worktree{path, branch, base_ref, base_sha}`）、pinned、settled_at、archived_at、created_at。
+  - 独立聊天（2026-10-26 用户确认保留）：不属于任何项目，workspace 记成 `folder{path}`。照 v1 的做法，第一条消息发出时在「无项目任务文件夹」下建 `YYYY-MM-DD/<slug>` 作为工作目录，slug 取自首条提示词（v1 `src-tauri/src/features/chats/folder.rs`、`slug.rs`）。v1 把它记成一个隐藏项目，v2 不这么做。
 - `session`：id、task_id、agent、native_id、model/effort/access 等选项、created_at。一个任务可以挂多个会话，用于扇出对比或中途换 Agent。
 - `event`：(session_id, seq) 为主键，带 ts 和 body（归一化事件 JSON），只追加。
 - `attention`：投影表，每个会话一行，字段为 state（needs_input / failed / working / done / idle）、unread、updated_at、last_message_preview。
