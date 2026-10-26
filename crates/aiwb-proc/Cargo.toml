@@ -1,0 +1,12 @@
+[package]
+name = "aiwb-proc"
+description = "子进程输出解码与 UTF-8 环境"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+encoding_rs = "0.8"
+tokio.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

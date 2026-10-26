@@ -1,0 +1,222 @@
+//! Claude Code 会话。
+//!
+//! 启动参数和 stdin 控制帧对齐官方 Python SDK
+//! `claude_agent_sdk/_internal/transport/subprocess_cli.py`、`query.py`，
+//! 以及 CLI 源码里 headless 必须带的 `--print` / `--verbose`
+//! （`main.tsx` 非交互判断、`cli/print.ts` 的 stream-json 要求）
+//! 和 `--allow-dangerously-skip-permissions`
+//! （`utils/permissions/permissionSetup.ts` `initializeToolPermissionContext`）。
+//! 认证留在 CLI。这里不保存密钥，也不传 `--system-prompt ""`。
+
+mod catalog;
+mod command;
+mod control;
+mod diff;
+mod directory;
+mod history;
+mod images;
+mod mcp;
+mod messages;
+mod mutate;
+mod permission;
+mod process;
+mod queue;
+mod runtime;
+mod session;
+mod subscription;
+mod usage;
+
+#[cfg(test)]
+mod tests;
+
+pub use directory::ClaudeDirectory;
+
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use session::ClaudeSession;
+
+use crate::install::CliRelease;
+use crate::{
+    AgentAdapter, AgentError, AgentSession, DirectoryEntry, EventSink, SessionContext,
+};
+use aiwb_core::models::{cwd_key, AgentCapabilities, AgentKind, AgentProfile, SessionStatus};
+
+pub struct ClaudeCodeAdapter;
+
+impl ClaudeCodeAdapter {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for ClaudeCodeAdapter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl AgentAdapter for ClaudeCodeAdapter {
+    fn kind(&self) -> AgentKind {
+        AgentKind::ClaudeCode
+    }
+
+    fn capabilities(&self) -> AgentCapabilities {
+        AgentCapabilities::claude()
+    }
+
+    async fn subscription_usage(&self) -> Result<aiwb_core::models::SubscriptionUsage, AgentError> {
+        subscription::fetch().await
+    }
+
+    fn icon_href(&self) -> Option<&'static str> {
+        Some("/agent-icons/claude.svg")
+    }
+
+    fn draft_permission_menu(&self) -> aiwb_core::models::PermissionMenu {
+        let active = self
+            .profile()
+            .default_access
+            .filter(|mode| !mode.is_empty())
+            .unwrap_or_else(|| "full".into());
+        permission::permission_menu(&active)
+    }
+
+    async fn discard_unsent_thread(&self, native_id: &str) -> Result<(), AgentError> {
+        history::remove_session_file(native_id).map_err(AgentError::Runtime)
+    }
+
+    /// `--fork-session` 不带提示词会失败（CLI：`No deferred tool marker found... Provide a prompt`）。
+    /// 带一条占位提示会多出用户没写的回合。分叉就是把转录复制成新的 session id。
+    async fn fork_thread(&self, native_id: &str) -> Result<DirectoryEntry, AgentError> {
+        let listed = history::fork_session_file(native_id).map_err(AgentError::Runtime)?;
+        Ok(DirectoryEntry {
+            native_id: listed.session_id,
+            cwd: listed.cwd.clone(),
+            cwd_key: cwd_key(&listed.cwd),
+            title: listed.title,
+            created_at: listed.created_at,
+            updated_at: listed.updated_at,
+            status: SessionStatus::Completed,
+            ephemeral: false,
+            archived: false,
+        })
+    }
+
+    /// 没有按会话删除的子命令。`purge` 删整个项目，`rm` 删后台会话。
+    /// 删掉 `<uuid>.jsonl` 之后再 `--resume` 会得到 `No conversation found with session ID`。
+    async fn delete_thread(&self, native_id: &str) -> Result<(), AgentError> {
+        if !history::is_uuid(native_id) {
+            return Err(AgentError::Runtime(format!("无效的会话 id：{native_id}")));
+        }
+        if history::find_session_file(native_id).is_none() {
+            return Err(AgentError::Runtime(format!("找不到会话 {native_id}")));
+        }
+        history::remove_session_file(native_id).map_err(AgentError::Runtime)
+    }
+
+    fn profile(&self) -> AgentProfile {
+        AgentProfile {
+            kind: self.kind(),
+            capabilities: self.capabilities(),
+            commands: Vec::new(),
+            default_access: Some("full".into()),
+            display_name: None,
+            icon: None,
+        }
+    }
+
+    fn session_linked(&self) -> bool {
+        true
+    }
+
+    fn mcp(&self) -> Option<Arc<dyn crate::mcp::McpDriver>> {
+        Some(mcp::driver())
+    }
+
+    fn cli_release(&self) -> Option<CliRelease> {
+        Some(CliRelease {
+            bins: &["claude"],
+            npm_package: "@anthropic-ai/claude-code",
+            self_update: &["update"],
+            locate: None,
+            version_args: &[],
+            aliases: &[],
+            note: "",
+        })
+    }
+
+    async fn detect(&self) -> Result<(), AgentError> {
+        process::resolve_claude_bin().map(|_| ())
+    }
+
+    fn prepare_worktree(
+        &self,
+        source: &std::path::Path,
+    ) -> Result<crate::PreparedWorktree, AgentError> {
+        let plan = aiwb_git::plan_claude_worktree(source).map_err(AgentError::Runtime)?;
+        let (base, sha) = aiwb_git::source_revision(source).map_err(AgentError::Runtime)?;
+        Ok(crate::PreparedWorktree {
+            cwd: plan.path.to_string_lossy().to_string(),
+            branch: Some(plan.branch),
+            cli_name: Some(plan.name),
+            source: source.to_string_lossy().to_string(),
+            rollback_root: plan.path.to_string_lossy().to_string(),
+            base,
+            sha,
+        })
+    }
+
+    async fn start_session(
+        &self,
+        ctx: SessionContext,
+        events: EventSink,
+    ) -> Result<Arc<dyn AgentSession>, AgentError> {
+        let worktree_name = ctx
+            .options
+            .get("worktree_name")
+            .and_then(|value| value.as_str())
+            .map(str::to_string);
+        let worktree_path = ctx
+            .options
+            .get("worktree_path")
+            .and_then(|value| value.as_str())
+            .map(str::to_string);
+        let shared = runtime::open(
+            ctx.project_path,
+            ctx.access_mode,
+            ctx.resume_native_id,
+            command::roots_from_options(&ctx.options),
+            worktree_name,
+            worktree_path,
+            events,
+        )
+        .await?;
+        Ok(Arc::new(ClaudeSession::new(shared)))
+    }
+
+    async fn rename_thread(&self, native_id: &str, name: &str) -> Result<(), AgentError> {
+        if !history::is_uuid(native_id) {
+            return Err(AgentError::Runtime(format!("无效的会话 id：{native_id}")));
+        }
+        let title = name.trim();
+        if title.is_empty() {
+            return Err(AgentError::Runtime("标题不能为空".into()));
+        }
+        let file = history::find_session_file(native_id);
+        let live = runtime::live_session(native_id);
+        if file.is_some() {
+            mutate::append_custom_title(native_id, title).map_err(AgentError::Runtime)?;
+            if let Some(shared) = live {
+                let _ = shared.fire_rename(title);
+            }
+            return Ok(());
+        }
+        if let Some(shared) = live {
+            return shared.fire_rename(title);
+        }
+        Err(AgentError::Runtime(format!("找不到会话 {native_id}")))
+    }
+}

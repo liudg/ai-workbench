@@ -1,11 +1,11 @@
 import type { RefObject } from "react";
 
-import { addSessionTextSnippet } from "@/features/panel/core/useAddTextSnippet";
 import { SelectionMenu } from "@/shared/selection/SelectionMenu";
 
+import { useChatHost } from "../host";
 import { chatDraftFromSelection } from "./chat-selection";
 
-/** 聊天记录里的选区进当前会话的文本片。侧边提问没有界面，不放空项。 */
+/** 聊天记录里的选区进当前会话的文本片。宿主不收文本片时不出现。 */
 export function ChatSelectionMenu({
   rootRef,
   sessionId,
@@ -13,12 +13,14 @@ export function ChatSelectionMenu({
   rootRef: RefObject<HTMLElement | null>;
   sessionId: string;
 }) {
+  const addTextSnippet = useChatHost().addTextSnippet;
+  if (!addTextSnippet) return null;
   return (
     <SelectionMenu
       rootRef={rootRef}
       readDraft={chatDraftFromSelection}
       onAdd={(draft) => {
-        addSessionTextSnippet(sessionId, draft);
+        addTextSnippet(sessionId, draft);
       }}
     />
   );

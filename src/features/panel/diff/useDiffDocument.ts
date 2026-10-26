@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
-import { backend, type DiffScope } from "@/lib/ipc";
+import type { DiffScope } from "@/lib/ipc";
 import { parseUnifiedDiff, type FileChange } from "@/features/changes-model/diff-parse";
 import { usePanel } from "@/features/panel/core/PanelProvider";
 import { filterFiles, useFileFilter } from "../core/file-filter";
@@ -11,7 +11,7 @@ import { diffScopeMenu, filesForScope } from "./scope";
 import { modeForPaths, pathsForFileOpen } from "./view-prefs";
 
 export function useDiffDocument(turnFiles: FileChange[]) {
-  const { projectId, sessionId, changes, diffView, patchDiffView } = usePanel();
+  const { projectId, sessionId, changes, diffView, patchDiffView, data } = usePanel();
   const [filter] = useFileFilter(sessionId);
   const [scope, setScopeState] = useState(() => diffView.scope || "turn");
   const [menuOptions, setMenuOptions] = useState(diffView.menu);
@@ -33,7 +33,7 @@ export function useDiffDocument(turnFiles: FileChange[]) {
 
   useEffect(() => {
     let cancel = false;
-    void backend
+    void data
       .diffScopes(sessionId)
       .then((rows) => {
         if (!cancel) setProvided(rows);
@@ -44,7 +44,7 @@ export function useDiffDocument(turnFiles: FileChange[]) {
     return () => {
       cancel = true;
     };
-  }, [sessionId]);
+  }, [data, sessionId]);
 
   useEffect(() => {
     writeDiffMenuOptions(menuOptions, browserDiffMenuStorage());
@@ -97,7 +97,7 @@ export function useDiffDocument(turnFiles: FileChange[]) {
     setLoading(true);
     setGitError("");
     setGitFiles(null);
-    void backend
+    void data
       .diffForScope(sessionId, selected.id, false)
       .then((diff) => {
         if (cancel) return;
@@ -113,7 +113,7 @@ export function useDiffDocument(turnFiles: FileChange[]) {
     return () => {
       cancel = true;
     };
-  }, [remote, reloadToken, selected, sessionId]);
+  }, [data, remote, reloadToken, selected, sessionId]);
 
   const base = useMemo(
     () => filesForScope(selected, turnFiles, gitFiles),
@@ -151,7 +151,7 @@ export function useDiffDocument(turnFiles: FileChange[]) {
     for (const path of sourceKey.split("\n")) {
       if (!path || triedSource.current.has(path)) continue;
       triedSource.current.add(path);
-      void backend
+      void data
         .readPreviewFile(projectId, path, sessionId)
         .then((doc) => {
           if (doc.kind === "binary") return;
@@ -161,7 +161,7 @@ export function useDiffDocument(turnFiles: FileChange[]) {
         })
         .catch(() => {});
     }
-  }, [loadFull, openPaths.length, projectId, reloadToken, renderPreview, sessionId, sourceKey]);
+  }, [data, loadFull, openPaths.length, projectId, reloadToken, renderPreview, sessionId, sourceKey]);
 
   const queueScroll = useCallback((path: string) => {
     scrollPath.current = path;

@@ -1,7 +1,7 @@
 import { Image } from "lucide-react";
 
 import { baseName } from "@/shared/path";
-import { payloadTitle, type PanelViewer, type ViewerViewProps } from "../core/registry";
+import { payloadTitle, type PanelViewer, type ViewerContext, type ViewerViewProps } from "../core/registry";
 import { PreviewFailed, PreviewPending } from "./frame";
 import { imageDataUrl, readProjectImage } from "./image-file";
 import { matchImage } from "./kinds";
@@ -36,7 +36,7 @@ export const imageViewer: PanelViewer<ImagePayload> = {
   title: (payload) => payloadTitle(payload) || baseName(payload.path || "") || "图片",
   async load(target, ctx) {
     if (target.kind !== "file") return { title: "图片", path: "", src: "" };
-    const image = await readProjectImage(ctx.projectId, target.path, ctx.sessionId);
+    const image = await readProjectImage(requireData(ctx), ctx.projectId, target.path, ctx.sessionId);
     return {
       title: image.name || baseName(target.path),
       path: image.path,
@@ -45,3 +45,8 @@ export const imageViewer: PanelViewer<ImagePayload> = {
   },
   View: ImageViewerBody,
 };
+
+function requireData(ctx: ViewerContext) {
+  if (!ctx.data) throw new Error("无法读取图片");
+  return ctx.data;
+}

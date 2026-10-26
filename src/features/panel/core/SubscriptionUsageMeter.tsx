@@ -15,16 +15,8 @@ const TONE_CLASS = {
 } as const;
 
 /** 订阅剩余和重置时间。没有窗口时不渲染。点击再拉一次，悬停列出全部窗口。 */
-export function SubscriptionUsageMeter({
-  agent,
-  projectId,
-  sessionId,
-}: {
-  agent: AgentKind | null;
-  projectId: string;
-  sessionId: string;
-}) {
-  const { headline, windows, now, tone, remaining, refresh } = useSubscriptionUsage(agent, projectId, sessionId);
+export function SubscriptionUsageMeter({ agent }: { agent: AgentKind | null }) {
+  const { headline, windows, now, tone, remaining, refresh } = useSubscriptionUsage(agent);
   const [open, setOpen] = useState(false);
   if (!headline || remaining === null) return null;
   const rows = windows.flatMap((window) => {
@@ -73,10 +65,10 @@ export function SubscriptionUsageMeter({
 
 /** 订阅芯片在 token 用量左侧。两处顶栏共用，避免只改其中一处。 */
 export function SessionUsageCluster() {
-  const { usage, agent, projectId, sessionId } = usePanel();
+  const { usage, agent } = usePanel();
   return (
     <span className="inline-flex shrink-0 items-center">
-      <SubscriptionUsageMeter agent={agent} projectId={projectId} sessionId={sessionId} />
+      <SubscriptionUsageMeter agent={agent} />
       <SessionUsageMeter usage={usage} />
     </span>
   );

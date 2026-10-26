@@ -58,7 +58,13 @@ impl Services {
         })
     }
 
+    /// 还有任务的项目不移除，免得把任务记录一起删掉。
     pub(crate) fn remove_project(&self, params: RemoveProject) -> ServiceResult<bool> {
+        let tasks = self.store.list_tasks().map_err(|e| e.to_string())?;
+        let count = tasks.iter().filter(|task| task.project_id == params.id).count();
+        if count > 0 {
+            return Err(format!("这个项目下还有 {count} 个任务，先删掉它们再移除项目"));
+        }
         self.hub.publish_with(TOPIC_PROJECTS, || {
             let removed = self.store.remove_project(&params.id).map_err(|e| e.to_string())?;
             Ok((removed, to_value(self.list_projects()?)?))
@@ -116,7 +122,7 @@ mod tests {
             port: 0,
             token: "t".into(),
         };
-        Services::new(Arc::new(Store::open_in_memory().unwrap()), info)
+        Services::new(Arc::new(Store::open_in_memory().unwrap()), info, std::env::temp_dir())
     }
 
     #[tokio::test]
@@ -149,7 +155,9 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(removed, json!(true));
-        assert_eq!(rx.recv().await.unwrap().data, json!([]));
+        let pushed = rx.recv().await.unwrap();
+        assert_eq!(pushed.topic, TOPIC_PROJECTS);
+        assert_eq!(pushed.data, json!([]));
     }
 
     #[tokio::test]

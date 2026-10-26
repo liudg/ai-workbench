@@ -39,12 +39,16 @@ interface Pending {
 
 type TopicListener = (data: unknown) => void;
 
+/** 每次（重新）订阅时取一次的额外参数，比如会话主题的 `fromRev`。 */
+export type SubscribeParams = () => Record<string, unknown>;
+
 export class DaemonClient {
   private readonly options: Required<ClientOptions>;
   private socket: SocketLike | null = null;
   private status: ConnectionStatus = "offline";
   private readonly statusListeners = new Set<(status: ConnectionStatus) => void>();
   private readonly topics = new Map<string, Set<TopicListener>>();
+  private readonly topicParams = new Map<string, SubscribeParams>();
   /** 每个主题最近一次收到的值。后加入的监听者先拿到它。 */
   private readonly latest = new Map<string, unknown>();
   private readonly pending = new Map<number, Pending>();
@@ -108,12 +112,16 @@ export class DaemonClient {
     });
   }
 
-  /** 订阅主题。先收到一份当前值，之后每次变化收到完整的新值。 */
-  subscribe(topic: string, listener: TopicListener) {
+  /**
+   * 订阅主题。先收到一份当前值，之后每次变化收到新值。
+   * `params` 只看第一个订阅者的；断线重连时重新取一次。
+   */
+  subscribe(topic: string, listener: TopicListener, params?: SubscribeParams) {
     let listeners = this.topics.get(topic);
     if (!listeners) {
       listeners = new Set();
       this.topics.set(topic, listeners);
+      if (params) this.topicParams.set(topic, params);
       if (this.status === "online") this.sendSubscribe(topic);
     }
     listeners.add(listener);
@@ -124,6 +132,7 @@ export class DaemonClient {
       current.delete(listener);
       if (current.size > 0) return;
       this.topics.delete(topic);
+      this.topicParams.delete(topic);
       this.latest.delete(topic);
       if (this.status === "online") {
         this.call("unsubscribe", { topic }).catch(() => {});
@@ -181,7 +190,8 @@ export class DaemonClient {
   }
 
   private sendSubscribe(topic: string) {
-    this.call("subscribe", { topic }).catch(() => {});
+    const extra = this.topicParams.get(topic)?.() ?? {};
+    this.call("subscribe", { ...extra, topic }).catch(() => {});
   }
 
   private handle(raw: unknown) {

@@ -1,0 +1,22 @@
+[package]
+name = "aiwb-agents"
+description = "AI Workbench 的 Agent 适配器：Codex、Claude Code 和其它 CLI"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+aiwb-core = { path = "../aiwb-core" }
+aiwb-git = { path = "../aiwb-git" }
+aiwb-proc = { path = "../aiwb-proc" }
+async-trait = "0.1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+diffy = "0.4.2"
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+toml_edit = "0.20.2"
+uuid.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.56"

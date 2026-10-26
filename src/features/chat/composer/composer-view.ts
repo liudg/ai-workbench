@@ -55,6 +55,8 @@ export interface ComposerViewInput {
   goal?: GoalSnapshot | null;
   /** 草稿正在创建会话。队列型 Agent 这时也不能再发一条。 */
   inputLocked?: boolean;
+  /** 停止或失败后还能接着发：下一条会重新接上 Agent。 */
+  resumable?: boolean;
 }
 
 /** 会话目录优先。静态 profile 只在目录还没回来时顶上，而且必须是这一个 Agent 的。 */
@@ -88,7 +90,7 @@ export function deriveComposerView(input: ComposerViewInput) {
   const pendingKind = pendingKindOf(input.events, pendingId);
   const occupied = isReadOnlyOpen([...input.events]);
   const busy = input.status === "running";
-  const dead = input.status === "stopped" || input.status === "failed";
+  const dead = !input.resumable && (input.status === "stopped" || input.status === "failed");
   const held = Boolean(input.inputLocked);
   const caps = input.caps;
   const imagesOn = Boolean(caps?.supports_images);

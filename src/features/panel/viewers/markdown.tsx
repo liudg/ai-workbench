@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { FileText } from "lucide-react";
 
 import { baseName } from "@/shared/path";
-import { addSessionTextSnippet } from "../core/useAddTextSnippet";
+import { usePanelData } from "../core/PanelProvider";
 import { SelectionMenu } from "@/shared/selection/SelectionMenu";
 import { fileSelectionDraft } from "./file-selection";
 import { payloadTitle, type PanelViewer, type ViewerViewProps } from "../core/registry";
@@ -28,6 +28,7 @@ interface MarkdownPayload {
 }
 
 function MarkdownViewerBody({ payload, status, sessionId }: ViewerViewProps<MarkdownPayload>) {
+  const data = usePanelData();
   const rootRef = useRef<HTMLDivElement>(null);
   const path = payload.path ?? "";
   const [modeState, setModeState] = useState<{ path: string; mode: MarkdownViewMode }>(() => ({
@@ -73,7 +74,7 @@ function MarkdownViewerBody({ payload, status, sessionId }: ViewerViewProps<Mark
             rootRef={rootRef}
             readDraft={(root) => fileSelectionDraft(root, path)}
             onAdd={(draft) => {
-              addSessionTextSnippet(sessionId, draft);
+              data.addTextSnippet(sessionId, draft);
             }}
           />
         ) : null}

@@ -4,8 +4,9 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use crate::features::agents::AgentSession;
-use crate::models::*;
+use aiwb_agents::AgentSession;
+use aiwb_core::models::*;
+use aiwb_core::timeline::{is_conversation_activity, merge_into, title_from_user_message};
 
 /// 前端事件名约定
 pub const EVT_SESSION_EVENT: &str = "session-event";
@@ -135,18 +136,7 @@ fn mutate_entry(
     {
         entry.withhold_sidebar = false;
         if entry.meta.title.starts_with("会话 ") || entry.meta.title == "未命名会话" {
-            let owned = if !text.trim().is_empty() {
-                text.clone()
-            } else if *annotations > 0 {
-                format!("{annotations} 条注释")
-            } else if !images.is_empty() {
-                "图片".to_string()
-            } else {
-                String::new()
-            };
-            let first_line = owned.lines().next().unwrap_or("");
-            let title: String = first_line.chars().take(24).collect();
-            if !title.is_empty() {
+            if let Some(title) = title_from_user_message(text, images.len(), *annotations) {
                 entry.meta.title = title;
                 title_changed = true;
             }
@@ -170,25 +160,6 @@ fn mutate_entry(
         project_id: entry.meta.project_id.clone(),
         notify: status_changed || title_changed,
     }
-}
-
-/// 用户或模型的一轮内容。状态、系统说明、只读通知和错误都不改排序时间。
-fn is_conversation_activity(body: &SessionEventBody) -> bool {
-    matches!(
-        body,
-        SessionEventBody::UserMessage { .. }
-            | SessionEventBody::AgentMessage { .. }
-            | SessionEventBody::Thinking { .. }
-            | SessionEventBody::ToolCall { .. }
-            | SessionEventBody::Prompt { .. }
-            | SessionEventBody::PromptResolved { .. }
-            | SessionEventBody::PlanSteps { .. }
-            | SessionEventBody::PlanText { .. }
-            | SessionEventBody::ReviewFindings { .. }
-            | SessionEventBody::TurnDiff { .. }
-            | SessionEventBody::FileChange { .. }
-            | SessionEventBody::TurnChanges { .. }
-    )
 }
 
 /// 更早的回合插到日志前面。已有事件的 seq 整体上移，新插入的页使用更小的序号。
@@ -244,144 +215,15 @@ pub(super) fn sidebar_updated_at(
     }
 }
 
-fn replace_keyed(
-    entry: &mut SessionEntry,
-    body: &SessionEventBody,
-    record_activity: bool,
-) -> Option<SessionEvent> {
-    let existing = entry
-        .events
-        .iter_mut()
-        .rev()
-        .find(|event| match (&event.body, body) {
-            (
-                SessionEventBody::TurnDiff {
-                    turn_id: existing, ..
-                },
-                SessionEventBody::TurnDiff { turn_id, .. },
-            ) => existing == turn_id,
-            (
-                SessionEventBody::FileChange {
-                    turn_id: existing,
-                    path: existing_path,
-                    ..
-                },
-                SessionEventBody::FileChange { turn_id, path, .. },
-            ) => existing == turn_id && existing_path == path,
-            (
-                SessionEventBody::TurnChanges {
-                    turn_id: existing, ..
-                },
-                SessionEventBody::TurnChanges { turn_id, .. },
-            ) => existing == turn_id,
-            (
-                SessionEventBody::PlanSteps {
-                    turn_id: existing, ..
-                },
-                SessionEventBody::PlanSteps { turn_id, .. },
-            ) => existing == turn_id,
-            (
-                SessionEventBody::PlanText {
-                    stream_id: Some(existing),
-                    ..
-                },
-                SessionEventBody::PlanText {
-                    stream_id: Some(stream_id),
-                    ..
-                },
-            ) => existing == stream_id,
-            (
-                SessionEventBody::ToolCall {
-                    stream_id: Some(existing),
-                    ..
-                },
-                SessionEventBody::ToolCall {
-                    stream_id: Some(stream_id),
-                    ..
-                },
-            ) => existing == stream_id,
-            _ => false,
-        })?;
-    existing.body = body.clone();
-    let at = now_millis();
-    existing.ts = at;
-    let event = existing.clone();
-    if record_activity {
-        note_activity(entry, at);
-    }
-    Some(event)
-}
-
-/// 同一 `stream_id` 的助手消息或思考覆盖上一条，并沿用原来的事件 id。
+/// 同一条流或同一回合的覆盖事件改写日志里的那一条，并沿用原来的事件 id。
 fn replace_stream(
     entry: &mut SessionEntry,
     body: &SessionEventBody,
     record_activity: bool,
 ) -> Option<SessionEvent> {
-    if let Some(event) = replace_keyed(entry, body, record_activity) {
-        return Some(event);
-    }
-    let (text, stream_id, thinking, phase, mode, dedupe_of) = match body {
-        SessionEventBody::AgentMessage {
-            text,
-            stream_id: Some(stream_id),
-            phase,
-            mode,
-            dedupe_of,
-        } => (
-            text,
-            stream_id,
-            false,
-            *phase,
-            mode.clone(),
-            dedupe_of.clone(),
-        ),
-        SessionEventBody::Thinking {
-            text,
-            stream_id: Some(stream_id),
-        } => (text, stream_id, true, None, None, None),
-        _ => return None,
-    };
-    let existing = entry
-        .events
-        .iter_mut()
-        .rev()
-        .find(|event| match &event.body {
-            SessionEventBody::AgentMessage {
-                stream_id: Some(id),
-                ..
-            } if !thinking => id == stream_id,
-            SessionEventBody::Thinking {
-                stream_id: Some(id),
-                ..
-            } if thinking => id == stream_id,
-            _ => false,
-        })?;
-    match &mut existing.body {
-        SessionEventBody::AgentMessage {
-            text: slot,
-            phase: slot_phase,
-            mode: slot_mode,
-            dedupe_of: slot_dedupe,
-            ..
-        } if !thinking => {
-            *slot = text.clone();
-            if let Some(phase) = phase {
-                *slot_phase = Some(phase);
-            }
-            if mode.is_some() {
-                *slot_mode = mode;
-            }
-            if dedupe_of.is_some() {
-                *slot_dedupe = dedupe_of;
-            }
-        }
-        SessionEventBody::Thinking { text: slot, .. } if thinking => *slot = text.clone(),
-        _ => return None,
-    }
     let at = now_millis();
-    existing.ts = at;
-    let event = existing.clone();
+    let index = merge_into(&mut entry.events, body, at)?;
+    let event = entry.events[index].clone();
     if record_activity {
         note_activity(entry, at);
     }
@@ -611,7 +453,7 @@ mod tests {
             &SessionEventBody::AgentMessage {
                 text: "先看目录结构".into(),
                 stream_id: Some("s1".into()),
-                phase: Some(crate::models::MessagePhase::Commentary),
+                phase: Some(aiwb_core::models::MessagePhase::Commentary),
                 mode: Some("plan".into()),
                 dedupe_of: Some("rev-1".into()),
             },
@@ -629,7 +471,7 @@ mod tests {
                 ..
             } => {
                 assert_eq!(text, "先看目录结构");
-                assert_eq!(phase, &Some(crate::models::MessagePhase::Commentary));
+                assert_eq!(phase, &Some(aiwb_core::models::MessagePhase::Commentary));
                 assert_eq!(mode.as_deref(), Some("plan"));
                 assert_eq!(dedupe_of.as_deref(), Some("rev-1"));
             }
@@ -658,7 +500,7 @@ mod tests {
             SessionEventBody::AgentMessage {
                 text: "我".into(),
                 stream_id: Some("assistant:turn-1:1".into()),
-                phase: Some(crate::models::MessagePhase::PartialAnswer),
+                phase: Some(aiwb_core::models::MessagePhase::PartialAnswer),
                 mode: None,
                 dedupe_of: None,
             },
@@ -669,7 +511,7 @@ mod tests {
             SessionEventBody::AgentMessage {
                 text: "我是上一轮".into(),
                 stream_id: Some("assistant:turn-1:1".into()),
-                phase: Some(crate::models::MessagePhase::FinalAnswer),
+                phase: Some(aiwb_core::models::MessagePhase::FinalAnswer),
                 mode: None,
                 dedupe_of: None,
             },
@@ -687,7 +529,7 @@ mod tests {
             SessionEventBody::AgentMessage {
                 text: "我是这一轮".into(),
                 stream_id: Some("assistant:44444444-4444-4444-8444-444444444444".into()),
-                phase: Some(crate::models::MessagePhase::FinalAnswer),
+                phase: Some(aiwb_core::models::MessagePhase::FinalAnswer),
                 mode: None,
                 dedupe_of: None,
             },

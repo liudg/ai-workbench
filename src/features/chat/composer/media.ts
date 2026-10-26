@@ -35,16 +35,3 @@ export function fileName(path: string): string {
   const clean = trimmed.split(/[?#]/)[0];
   return clean.split(/[\\/]/).filter(Boolean).pop() || "图片";
 }
-
-export function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const value = typeof reader.result === "string" ? reader.result : "";
-      const comma = value.indexOf(",");
-      resolve(comma >= 0 ? value.slice(comma + 1) : value);
-    };
-    reader.onerror = () => reject(reader.error ?? new Error("无法读取图片"));
-    reader.readAsDataURL(file);
-  });
-}

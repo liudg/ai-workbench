@@ -3,10 +3,11 @@ import { ChevronRight, File } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import type { FileChange, FileStatus, TurnChanges } from "@/features/changes-model/diff-parse";
-import { usePanel } from "@/features/panel/core/PanelProvider";
+import { usePanelOptional } from "@/features/panel/core/PanelProvider";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { fileStatusTone } from "@/features/changes-model/status-tone";
 import { baseName, relativeToProject } from "@/shared/path";
+import { useChatHost } from "../host";
 import { canShowMore, editedFilesLabel, visibleChangeFiles } from "./card-text";
 
 export function ChangeCard({
@@ -17,7 +18,10 @@ export function ChangeCard({
   /** 已结束的一轮默认收起。进行中的变更卡由调用方展开。 */
   defaultExpanded?: boolean;
 }) {
-  const preview = usePanel();
+  // 没有右侧面板的宿主只列文件，不给打开差异的入口。
+  const preview = usePanelOptional();
+  const hostPath = useChatHost().projectPath;
+  const root = preview?.projectPath ?? hostPath;
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [revealed, setRevealed] = useState(false);
   const multiple = changes.files.length > 1;
@@ -58,16 +62,18 @@ export function ChangeCard({
             )}
             <span className="ml-auto flex shrink-0 items-center gap-2">
               <Stat added={changes.added} removed={changes.removed} />
-              <button
-                type="button"
-                data-view-changes
-                className="rounded px-2 py-1 text-xs text-zinc-100 hover:bg-zinc-800"
-                onClick={() =>
-                  preview.openDiff(`diff:${changes.id}`, DESKTOP_ZH.changesTab, changes.files)
-                }
-              >
-                {DESKTOP_ZH.viewChanges}
-              </button>
+              {preview ? (
+                <button
+                  type="button"
+                  data-view-changes
+                  className="rounded px-2 py-1 text-xs text-zinc-100 hover:bg-zinc-800"
+                  onClick={() =>
+                    preview.openDiff(`diff:${changes.id}`, DESKTOP_ZH.changesTab, changes.files)
+                  }
+                >
+                  {DESKTOP_ZH.viewChanges}
+                </button>
+              ) : null}
             </span>
           </div>
           {rows.length > 0 ? (
@@ -76,9 +82,11 @@ export function ChangeCard({
                 <li key={file.path}>
                   <FileRow
                     file={file}
-                    root={preview.projectPath}
-                    onOpen={() =>
-                      preview.openDiff(`diff:${changes.id}:${file.path}`, baseName(file.path), [file])
+                    root={root}
+                    onOpen={
+                      preview
+                        ? () => preview.openDiff(`diff:${changes.id}:${file.path}`, baseName(file.path), [file])
+                        : undefined
                     }
                   />
                 </li>
@@ -103,8 +111,22 @@ export function ChangeCard({
   );
 }
 
-function FileRow({ file, onOpen, root }: { file: FileChange; onOpen: () => void; root: string }) {
+function FileRow({ file, onOpen, root }: { file: FileChange; onOpen?: () => void; root: string }) {
   const label = relativeToProject(file.path, root) || file.path;
+  const body = (
+    <>
+      <StatusMark status={file.status} />
+      <span className="min-w-0 flex-1 truncate font-mono text-xs text-zinc-200">{label}</span>
+      <Stat added={file.added} removed={file.removed} />
+    </>
+  );
+  if (!onOpen) {
+    return (
+      <div data-change-file={file.path} title={label} className="flex w-full min-w-0 items-center gap-2 px-2.5 py-1">
+        {body}
+      </div>
+    );
+  }
   return (
     <button
       type="button"
@@ -113,9 +135,7 @@ function FileRow({ file, onOpen, root }: { file: FileChange; onOpen: () => void;
       className="flex w-full min-w-0 items-center gap-2 px-2.5 py-1 text-left hover:bg-zinc-800/70"
       onClick={onOpen}
     >
-      <StatusMark status={file.status} />
-      <span className="min-w-0 flex-1 truncate font-mono text-xs text-zinc-200">{label}</span>
-      <Stat added={file.added} removed={file.removed} />
+      {body}
     </button>
   );
 }

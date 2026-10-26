@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import type { ReactElement } from "react";
 import { createServer, type ViteDevServer } from "vite";
 import { fileURLToPath } from "node:url";
 
@@ -10,6 +11,18 @@ import type { Session, SessionEvent, SessionEventBody } from "../../../types/ind
 const root = fileURLToPath(new URL("../../../../", import.meta.url));
 
 let server: ViteDevServer;
+let chatHost: typeof import("../host.tsx").ChatHostProvider;
+
+/** 聊天组件从 ChatHost 拿回答提问、Agent 资料和项目目录。测试给一份空的。 */
+const testHost = {
+  answerPrompt: async () => true,
+  profiles: {},
+  projectPath: "",
+};
+
+function renderInHost(element: ReactElement): string {
+  return renderToStaticMarkup(createElement(chatHost, { host: testHost, children: element }));
+}
 
 before(async () => {
   server = await createServer({
@@ -19,6 +32,7 @@ before(async () => {
     appType: "custom",
     logLevel: "error",
   });
+  chatHost = (await server.ssrLoadModule("/src/features/chat/host.tsx")).ChatHostProvider;
 });
 
 after(async () => {
@@ -60,7 +74,7 @@ const settledEvents: SessionEvent[] = [
 
 test("a settled stream collapses tool rows and hides finished thinking", async () => {
   const mod = await server.ssrLoadModule("/src/features/chat/timeline/ActivityStream.tsx");
-  const html = renderToStaticMarkup(
+  const html = renderInHost(
     createElement(mod.ActivityStream, {
       events: settledEvents,
       session,
@@ -93,7 +107,7 @@ test("opening a settled row shows the calls in order with their output", async (
   assert.equal(pieces.length, 2);
   const html = pieces
     .map((piece: { id: string }) =>
-      renderToStaticMarkup(
+      renderInHost(
         createElement(group.ActivityGroup, {
           piece,
           session,
@@ -117,7 +131,7 @@ test("opening a settled row shows the calls in order with their output", async (
 
 test("a running stream still shows the thinking line and keeps tool rows collapsed", async () => {
   const mod = await server.ssrLoadModule("/src/features/chat/timeline/ActivityStream.tsx");
-  const html = renderToStaticMarkup(
+  const html = renderInHost(
     createElement(mod.ActivityStream, {
       events: settledEvents,
       session,
@@ -166,7 +180,7 @@ const nestedTurn: SessionEvent[] = [
 
 async function renderProcess(expanded: boolean, agent: Session["agent"]) {
   const mod = await server.ssrLoadModule("/src/features/chat/timeline/TurnProcess.tsx");
-  return renderToStaticMarkup(
+  return renderInHost(
     createElement(mod.TurnProcess, {
       events: nestedTurn,
       answerId: "answer",
@@ -260,7 +274,7 @@ test("a settled turn keeps the status line as the first child", async () => {
     event("answer", { kind: "agent-message", text: "目录里有 src。", phase: "final-answer" }),
   ];
   for (const expanded of [false, true]) {
-    const html = renderToStaticMarkup(
+    const html = renderInHost(
       createElement(mod.TurnProcess, {
         events,
         answerId: "answer",
@@ -290,7 +304,7 @@ test("a running turn does not repeat the agent name or wedge the time before too
     event("a2", { kind: "agent-message", text: "坦克大战可以做成 H5。", phase: "partial-answer" }),
     event("t1", { kind: "thinking", text: "继续想方案。" }),
   ];
-  const html = renderToStaticMarkup(
+  const html = renderInHost(
     createElement(mod.LiveTurn, {
       events,
       session: { ...session, agent: "claude-code" },
@@ -322,7 +336,7 @@ test("a settled answer keeps the time under the reply, after the tools", async (
     event("k1", { kind: "tool-call", name: "command", summary: "rg --files" }),
     event("a2", { kind: "agent-message", text: "目录里有 src。", phase: "final-answer" }),
   ];
-  const html = renderToStaticMarkup(
+  const html = renderInHost(
     createElement(mod.TurnProcess, {
       events,
       answerId: "a2",
@@ -351,7 +365,7 @@ test("a settled answer keeps the time under the reply, after the tools", async (
 
 test("a running turn keeps the status line as the first child", async () => {
   const mod = await server.ssrLoadModule("/src/features/chat/timeline/LiveTurn.tsx");
-  const expandedHtml = renderToStaticMarkup(
+  const expandedHtml = renderInHost(
     createElement(mod.LiveTurn, {
       events: liveEvents,
       session,
@@ -367,7 +381,7 @@ test("a running turn keeps the status line as the first child", async () => {
   assertOrder(expandedHtml, ['data-turn-summary="Codex CLI · 运行中"', "我会查看目录。", "已运行 1 条命令"]);
   assert.equal(expandedHtml.includes("data-turn-running"), true);
 
-  const collapsedHtml = renderToStaticMarkup(
+  const collapsedHtml = renderInHost(
     createElement(mod.LiveTurn, {
       events: liveEvents,
       session,

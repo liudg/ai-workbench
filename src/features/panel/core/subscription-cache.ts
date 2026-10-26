@@ -1,4 +1,3 @@
-import { backend } from "@/lib/ipc";
 import type { AgentKind, SubscriptionUsage } from "@/types";
 
 const cache = new Map<string, SubscriptionUsage>();
@@ -33,11 +32,13 @@ export function seedSubscriptionUsage(kind: string, usage: SubscriptionUsage) {
 }
 
 /** 同一 agent 的在途请求合并。失败时保留上一份成功结果。 */
-export function refreshSubscriptionUsage(kind: AgentKind): Promise<void> {
+export function refreshSubscriptionUsage(
+  kind: AgentKind,
+  fetch: (kind: AgentKind) => Promise<SubscriptionUsage>,
+): Promise<void> {
   const pending = inflight.get(kind);
   if (pending) return pending;
-  const task = backend
-    .subscriptionUsage(kind)
+  const task = fetch(kind)
     .then((usage) => {
       cache.set(kind, usage);
       emit();

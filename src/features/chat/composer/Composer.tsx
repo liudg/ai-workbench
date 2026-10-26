@@ -17,6 +17,7 @@ import { SkillMenu } from "./SkillMenu";
 import { SlashMenu } from "./SlashMenu";
 import { GoalStatusBar } from "./GoalStatusBar";
 import { runComposerPrimary } from "./composer-view";
+import { fetchReviewTargets } from "./composer-backend";
 import { useComposerController } from "./useComposerController";
 import { ComposerContextRow } from "./GitBranchControl";
 import { useSessionWorktree } from "./use-session-worktree";
@@ -78,7 +79,9 @@ export function Composer({
             onPick={c.applySkill}
           />
         )}
-        {c.reviewOpen && <ReviewMenu sessionId={session.id} onStart={c.startReview} />}
+        {c.reviewOpen && (
+          <ReviewMenu sessionId={session.id} loadTargets={fetchReviewTargets} onStart={c.startReview} />
+        )}
         {view.slashOpen && !c.reviewOpen && (
           <SlashMenu
             matches={view.slashMatches}

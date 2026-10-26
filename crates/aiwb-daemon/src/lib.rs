@@ -6,6 +6,7 @@
 mod connection;
 mod hub;
 mod instance;
+mod runtime;
 mod server;
 mod services;
 
@@ -16,6 +17,7 @@ use aiwb_core::DaemonInfo;
 use aiwb_store::{import_legacy_projects, Store, DB_FILE};
 
 pub use hub::Hub;
+pub use runtime::AdapterFactory;
 pub use server::router;
 pub use services::Services;
 
@@ -65,7 +67,14 @@ pub async fn run(config: Config) -> Result<(), String> {
         port,
         token: format!("{}{}", uuid::Uuid::new_v4().simple(), uuid::Uuid::new_v4().simple()),
     };
-    let services = Arc::new(Services::new(Arc::new(store), info.clone()));
+    let services = Arc::new(Services::new(
+        Arc::new(store),
+        info.clone(),
+        config.data_dir.clone(),
+    ));
+    if let Err(err) = services.settle_interrupted() {
+        eprintln!("整理上次没跑完的会话失败：{err}");
+    }
     instance::write_info(&config.data_dir, &info)?;
     eprintln!("daemon {} 已启动，端口 {port}", info.version);
 
@@ -76,10 +85,11 @@ pub async fn run(config: Config) -> Result<(), String> {
             ctrl_c.request_shutdown();
         }
     });
-    let result = axum::serve(listener, router(services))
+    let result = axum::serve(listener, router(services.clone()))
         .with_graceful_shutdown(async move { shutdown.shutdown_requested().await })
         .await
         .map_err(|e| format!("服务出错：{e}"));
+    services.stop_agents().await;
     instance::remove_info(&config.data_dir, info.pid);
     eprintln!("daemon 已退出");
     result

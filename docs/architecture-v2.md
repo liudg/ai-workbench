@@ -88,8 +88,11 @@
 1. **骨架** ✅（2026-10-23）：搭 workspace 和 daemon（RPC 加 WebSocket 加 SQLite 迁移）；Tauri 壳负责拉起和连接 daemon；前端连接客户端；把旧 `ProjectStore` 的项目导入数据库。
    - 完成标准：界面能列出项目。
    - 落地情况：`crates/aiwb-core`、`aiwb-store`、`aiwb-daemon`；壳侧 `src-tauri/src/daemon.rs`；前端 `src/lib/daemon/`、`src/features/projects/`。daemon 先复制到 `数据目录/daemon/<构建标识>/` 再运行，所以重新编译、安装新版都不会被正在运行的程序挡住；构建标识不一致时会自动替换 daemon。旧前端代码还在仓库里，入口已经切到新外壳，第 6 步删除。
-2. **Codex 迁入**：在任务和会话模型上跑通新建任务（目录或工作树）、对话、审批、排队和 steer、中断；复用时间线和作曲栏。
+2. **Codex 迁入** ✅（2026-10-26）：在任务和会话模型上跑通新建任务（目录或工作树）、对话、审批、排队和 steer、中断；复用时间线和作曲栏。
    - 完成标准：关掉窗口，Agent 继续跑；重新打开后从断开的 seq 续上，内容不丢。
+   - 落地情况：旧的 `features/agents`、`features/git`、`models`、`encoding` 搬成 `aiwb-agents`、`aiwb-git`、`aiwb-core::models`、`aiwb-proc`，旧应用壳改为依赖它们。daemon 新增 `runtime.rs`（按需接上 Agent、归并流式事件、写库、推送）和 `tasks.*` / `sessions.*` 方法；`session:<id>` 主题按 `fromRev` 补差。daemon 重启后，上次没跑完的会话记成已停止，下一条消息用 resume 接回原线程，不重放历史。前端新增 `features/tasks`（侧栏任务列表）和 `features/task`（新任务、任务视图、作曲栏），聊天时间线通过 `ChatHost` 拿数据，不再读旧 store。
+   - 任务视图补齐：代码审查菜单（`sessions.reviewTargets` / `startReview`）、粘贴和拖入图片（由应用壳存图并放进 WebView 可显示范围）、右侧差异面板。面板拆成通用的 `PanelHost`（界面状态来源 + 数据来源 `PanelData`）和旧工作区用的 `PanelProvider`；任务视图用独立的面板 store。差异、文件树、文件名筛选、正文搜索、文本和图片预览走 daemon 的 `sessions.diff*` / `listDir` / `filterPaths` / `searchFiles` / `readFile` / `readImage`，按会话的工作目录读；用系统程序打开、内置浏览器加载本地文件仍是应用壳的本机能力（`open_path` / `prepare_browser_path`，目录由前端带过去）；页面批注走 `sessions.submitAnnotation`。文件预览、目录、索引、搜索的代码搬进 `aiwb-files`，应用壳只留命令外壳。
+   - 和设计的出入：事件表不是纯追加。流式覆盖改写同一 seq，每次写入换新的 `rev`，客户端按 rev 续传。
 3. **Claude 迁入**：标准同上，再加上"从 CLI 历史导入会话"。
 4. **看板和注意力**：注意力投影、看板、侧栏状态药丸、系统通知和任务栏角标（这一步把路线图阶段 1 的核心部分提前做了）。
 5. **ACP 通用驱动**：先接一个能登录的 Agent 跑通完整对话，其他的只验证握手和能力。

@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 
 import { OPEN_THREAD_FIND } from "@/features/chat/find/use-thread-find";
-import { ChatView } from "@/features/chat/timeline/ChatView";
+import { StoreChatView } from "@/features/workspace/StoreChatView";
 import type { Session, SessionEvent, SessionEventBody, SessionStatus } from "@/types";
 
 import { useActivityPreviewProfiles } from "./use-activity-preview";
@@ -44,7 +44,7 @@ export default function ThreadFindPreview() {
 
   return (
     <div className="relative flex h-screen min-h-0 flex-col bg-[#0f0f0f] text-[#e8e8e8]">
-      <ChatView session={session("completed")} events={events} />
+      <StoreChatView session={session("completed")} events={events} />
     </div>
   );
 }

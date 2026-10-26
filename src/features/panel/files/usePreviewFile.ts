@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { usePanelOptional } from "../core/PanelProvider";
+import { usePanelData, usePanelOptional } from "../core/PanelProvider";
 import { BinaryFileError, ReopenAs } from "../core/registry";
 import { readProjectText } from "../viewers/document";
 
@@ -11,13 +11,14 @@ export type PreviewFileState =
 
 export function usePreviewFile(projectId: string, path: string): PreviewFileState {
   const sessionId = usePanelOptional()?.sessionId;
+  const data = usePanelData();
   const [state, setState] = useState<PreviewFileState>({ status: "loading" });
 
   useEffect(() => {
     if (!path) return;
     let cancel = false;
     setState({ status: "loading" });
-    void readProjectText(projectId, path, sessionId).then(
+    void readProjectText(data, projectId, path, sessionId).then(
       (doc) => {
         if (cancel) return;
         setState({
@@ -43,7 +44,7 @@ export function usePreviewFile(projectId: string, path: string): PreviewFileStat
     return () => {
       cancel = true;
     };
-  }, [path, projectId, sessionId]);
+  }, [data, path, projectId, sessionId]);
 
   return state;
 }

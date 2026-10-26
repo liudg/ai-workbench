@@ -1,5 +1,5 @@
 use aiwb_core::Project;
-use rusqlite::{params, Row};
+use rusqlite::{params, OptionalExtension, Row};
 
 use crate::{Store, StoreError, StoreResult};
 
@@ -45,6 +45,13 @@ impl Store {
             ],
         )?;
         Ok(changed > 0)
+    }
+
+    pub fn project(&self, id: &str) -> StoreResult<Option<Project>> {
+        Ok(self
+            .conn()
+            .query_row("SELECT * FROM project WHERE id = ?1", [id], from_row)
+            .optional()?)
     }
 
     pub fn remove_project(&self, id: &str) -> StoreResult<bool> {

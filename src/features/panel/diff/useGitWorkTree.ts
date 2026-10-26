@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 
-import { backend } from "@/lib/ipc";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
+import { usePanel } from "../core/PanelProvider";
 import type { GitProbe } from "./git-apply";
 
-/** 问后端这条项目目录是不是 git 工作区。失败时保留后端原文，不当成「是仓库」。 */
+/** 问后端这条会话的工作目录是不是 git 工作区。失败时保留后端原文，不当成「是仓库」。 */
 export function useGitWorkTree(projectId: string, reloadToken: number): { status: GitProbe; reason: string } {
+  const { data, sessionId } = usePanel();
   const [status, setStatus] = useState<GitProbe>("checking");
   const [reason, setReason] = useState<string>(DESKTOP_ZH.diffGitChecking);
 
@@ -18,7 +19,7 @@ export function useGitWorkTree(projectId: string, reloadToken: number): { status
     let cancel = false;
     setStatus("checking");
     setReason(DESKTOP_ZH.diffGitChecking);
-    void backend.projectIsGit(projectId).then(
+    void data.isGit(projectId, sessionId).then(
       (yes) => {
         if (cancel) return;
         if (yes) {
@@ -38,7 +39,7 @@ export function useGitWorkTree(projectId: string, reloadToken: number): { status
     return () => {
       cancel = true;
     };
-  }, [projectId, reloadToken]);
+  }, [data, projectId, reloadToken, sessionId]);
 
   return { status, reason };
 }

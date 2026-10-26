@@ -1,7 +1,7 @@
 //! 安装探测、升级，以及不打开会话就能拿到的 Agent 资料。
 
-use crate::features::agents;
-use crate::models::*;
+use aiwb_agents as agents;
+use aiwb_core::models::*;
 
 /// 本机已注册 CLI 的安装与更新状态。未安装的也会返回，供设置页展示。
 #[tauri::command]
@@ -30,14 +30,5 @@ pub async fn subscription_usage(kind: AgentKind) -> Result<SubscriptionUsage, St
 
 #[tauri::command]
 pub fn agent_profiles() -> Vec<AgentProfile> {
-    AgentKind::all()
-        .into_iter()
-        .map(|kind| {
-            let adapter = agents::adapter_for(kind);
-            let mut profile = adapter.profile();
-            profile.display_name = Some(adapter.display_name().to_string());
-            profile.icon = adapter.icon_href().map(str::to_string);
-            profile
-        })
-        .collect()
+    agents::agent_profiles()
 }

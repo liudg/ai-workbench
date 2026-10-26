@@ -3,13 +3,13 @@
 use serde::Deserialize;
 use tauri::{AppHandle, Runtime, State};
 
-use crate::features::agents::DiffScope;
+use aiwb_agents::DiffScope;
 use crate::features::chats::{self, TaskFolderStore};
 use crate::features::projects::ProjectStore;
 use crate::features::sessions::{
     AgentCatalogRefresh, CreateAndSendResult, FirstSendSpec, SessionManager,
 };
-use crate::models::*;
+use aiwb_core::models::*;
 
 use super::chats::host_documents;
 use super::projects::notify_projects_changed;
@@ -125,7 +125,7 @@ pub struct CreateAndSendInput {
 /// 停止还没建立完的会话。创建命令自己返回后，前端再解锁草稿。
 #[tauri::command]
 pub fn cancel_session_start(project_id: String) {
-    crate::features::git::cancel_worktree_start(&project_id);
+    aiwb_git::cancel_worktree_start(&project_id);
 }
 
 #[tauri::command]
@@ -378,7 +378,7 @@ pub async fn set_thread_goal_status(
 pub async fn review_targets(
     manager: State<'_, SessionManager>,
     session_id: String,
-) -> Result<crate::models::ReviewTargets, String> {
+) -> Result<aiwb_core::models::ReviewTargets, String> {
     manager.review_targets(&session_id).await
 }
 
@@ -386,7 +386,7 @@ pub async fn review_targets(
 pub async fn start_review(
     manager: State<'_, SessionManager>,
     session_id: String,
-    target: crate::models::ReviewStart,
+    target: aiwb_core::models::ReviewStart,
 ) -> Result<(), String> {
     manager.start_review(&session_id, target).await
 }
@@ -555,7 +555,7 @@ pub async fn load_older_history(
     store: State<'_, ProjectStore>,
     manager: State<'_, SessionManager>,
     session_id: String,
-) -> Result<crate::models::OlderHistory, String> {
+) -> Result<aiwb_core::models::OlderHistory, String> {
     manager.load_older_history(&store, &session_id).await
 }
 

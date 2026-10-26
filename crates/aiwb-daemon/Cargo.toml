@@ -9,8 +9,12 @@ name = "aiwb-daemon"
 path = "src/main.rs"
 
 [dependencies]
+aiwb-agents = { path = "../aiwb-agents" }
 aiwb-core = { path = "../aiwb-core" }
+aiwb-files = { path = "../aiwb-files" }
+aiwb-git = { path = "../aiwb-git" }
 aiwb-store = { path = "../aiwb-store" }
+async-trait = "0.1"
 axum = { version = "0.7", features = ["ws"] }
 fs4 = { version = "0.13", features = ["sync"] }
 futures-util = "0.3"

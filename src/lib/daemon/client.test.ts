@@ -105,6 +105,23 @@ test("断线后已发出的调用失败，重连后重新订阅", async () => {
   client.stop();
 });
 
+test("订阅参数在每次重连时重新取", async () => {
+  const { client, sockets } = setup();
+  let fromRev = 0;
+  client.subscribe("session:s", () => {}, () => ({ fromRev }));
+  client.start();
+  await flush();
+  sockets[0].open();
+  assert.deepEqual(sockets[0].sent[0].params, { fromRev: 0, topic: "session:s" });
+  fromRev = 7;
+  sockets[0].drop();
+  await flush();
+  await flush();
+  sockets[1].open();
+  assert.deepEqual(sockets[1].sent[0].params, { fromRev: 7, topic: "session:s" });
+  client.stop();
+});
+
 test("后加入的监听者先拿到最近的值；最后一个离开时退订", async () => {
   const { client, sockets } = setup();
   client.start();

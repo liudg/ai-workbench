@@ -5,10 +5,10 @@ use std::path::PathBuf;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Runtime, State};
 
-use crate::features::agents::group_projects;
+use aiwb_agents::group_projects;
 use crate::features::projects::{self, reveal_project_folder, ProjectStore};
 use crate::features::sessions::SessionManager;
-use crate::models::*;
+use aiwb_core::models::*;
 
 /// 前端事件名：项目列表发生变化
 pub const EVT_PROJECTS_CHANGED: &str = "projects-changed";
@@ -138,7 +138,7 @@ pub async fn project_has_commit(
         return Ok(false);
     }
     let root = PathBuf::from(project.path);
-    tokio::task::spawn_blocking(move || crate::features::git::repo_has_commit(&root))
+    tokio::task::spawn_blocking(move || aiwb_git::repo_has_commit(&root))
         .await
         .map_err(|err| format!("无法确认是否为 git 仓库: {err}"))?
 }
@@ -153,7 +153,7 @@ pub async fn project_is_git(
         .get(&project_id)
         .ok_or_else(|| "项目不存在".to_string())?;
     let root = PathBuf::from(project.path);
-    tokio::task::spawn_blocking(move || crate::features::git::inside_work_tree(&root))
+    tokio::task::spawn_blocking(move || aiwb_git::inside_work_tree(&root))
         .await
         .map_err(|err| format!("无法确认是否为 git 仓库: {err}"))?
 }
@@ -167,7 +167,7 @@ pub async fn project_branch(
     session_id: Option<String>,
 ) -> Result<Option<String>, String> {
     let root = git_root(&store, Some(&manager), &project_id, session_id.as_deref())?;
-    tokio::task::spawn_blocking(move || crate::features::git::current_branch(&root))
+    tokio::task::spawn_blocking(move || aiwb_git::current_branch(&root))
         .await
         .map_err(|err| format!("无法读取当前分支: {err}"))?
 }
@@ -194,9 +194,9 @@ pub async fn project_git_branches(
     manager: State<'_, SessionManager>,
     project_id: String,
     session_id: Option<String>,
-) -> Result<crate::features::git::GitBranchMenu, String> {
+) -> Result<aiwb_git::GitBranchMenu, String> {
     let root = git_root(&store, Some(&manager), &project_id, session_id.as_deref())?;
-    tokio::task::spawn_blocking(move || crate::features::git::local_branch_menu(&root))
+    tokio::task::spawn_blocking(move || aiwb_git::local_branch_menu(&root))
         .await
         .map_err(|err| format!("无法读取分支: {err}"))?
 }
@@ -211,7 +211,7 @@ pub async fn project_checkout_branch(
     session_id: Option<String>,
 ) -> Result<(), String> {
     let root = git_root(&store, Some(&manager), &project_id, session_id.as_deref())?;
-    tokio::task::spawn_blocking(move || crate::features::git::checkout_local_branch(&root, &name))
+    tokio::task::spawn_blocking(move || aiwb_git::checkout_local_branch(&root, &name))
         .await
         .map_err(|err| format!("无法切换分支: {err}"))?
 }
@@ -227,7 +227,7 @@ pub async fn project_create_branch(
 ) -> Result<(), String> {
     let root = git_root(&store, Some(&manager), &project_id, session_id.as_deref())?;
     tokio::task::spawn_blocking(move || {
-        crate::features::git::create_and_checkout_branch(&root, &name)
+        aiwb_git::create_and_checkout_branch(&root, &name)
     })
     .await
     .map_err(|err| format!("无法创建分支: {err}"))?

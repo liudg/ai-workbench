@@ -5,7 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use crate::models::{AgentKind, PermissionMenu};
+use aiwb_core::models::{AgentKind, PermissionMenu};
 
 pub struct PermissionMenuCache {
     file: PathBuf,

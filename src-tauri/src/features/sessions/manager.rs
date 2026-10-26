@@ -11,14 +11,14 @@ use std::sync::{Arc, Mutex};
 
 use tokio::sync::mpsc;
 
-use crate::features::agents::{
+use aiwb_agents::{
     adapter_for, project_matches_cwd, session_directories, session_key, sessions_for_project,
     AgentSession, DiffScope, DirectoryEntry, EventSink, PreparedWorktree, SessionContext,
     SessionDirectory, SourcedEntry, TurnDelivery, UserTurn,
 };
-use crate::features::git::{self, Checkout};
+use aiwb_git::{self as git, Checkout};
 use crate::features::projects::ProjectStore;
-use crate::models::*;
+use aiwb_core::models::*;
 
 use super::catalog::{
     after_list_refresh, catalog_with_ready_retry, command_when_ready, soften_catalog,
@@ -612,7 +612,7 @@ impl SessionManager {
         })
     }
 
-    pub fn draft_permission_menu(&self, kind: AgentKind) -> crate::models::PermissionMenu {
+    pub fn draft_permission_menu(&self, kind: AgentKind) -> aiwb_core::models::PermissionMenu {
         if let Some(mut menu) = self.permission_cache.get(kind) {
             menu.active = None;
             return menu;
@@ -833,7 +833,7 @@ impl SessionManager {
         session_id: &str,
         text: String,
         images: Vec<String>,
-        annotations: Vec<crate::models::PageAnnotation>,
+        annotations: Vec<aiwb_core::models::PageAnnotation>,
     ) -> Result<(), String> {
         self.dispatch_user_message(session_id, text, images, annotations, false)
             .await
@@ -845,7 +845,7 @@ impl SessionManager {
         session_id: &str,
         text: String,
         images: Vec<String>,
-        annotations: Vec<crate::models::PageAnnotation>,
+        annotations: Vec<aiwb_core::models::PageAnnotation>,
     ) -> Result<(), String> {
         self.dispatch_user_message(session_id, text, images, annotations, true)
             .await
@@ -856,7 +856,7 @@ impl SessionManager {
         session_id: &str,
         text: String,
         images: Vec<String>,
-        annotations: Vec<crate::models::PageAnnotation>,
+        annotations: Vec<aiwb_core::models::PageAnnotation>,
         now: bool,
     ) -> Result<(), String> {
         let handle = self.agent_handle_ready(session_id).await?;
@@ -1167,7 +1167,7 @@ impl SessionManager {
         &self,
         store: &crate::features::projects::ProjectStore,
         session_id: &str,
-    ) -> Result<crate::models::PermissionMenu, String> {
+    ) -> Result<aiwb_core::models::PermissionMenu, String> {
         if self.lookup_agent(session_id).is_none() {
             self.ensure_events(store, session_id).await?;
         }
@@ -1604,7 +1604,7 @@ fn apply_worktree(session: &mut Session, project: &Project, cwd: &str) {
 }
 
 fn prepare_session_worktree(
-    adapter: &Arc<dyn crate::features::agents::AgentAdapter>,
+    adapter: &Arc<dyn aiwb_agents::AgentAdapter>,
     project: &Project,
     caps: &AgentCapabilities,
 ) -> Result<PreparedWorktree, String> {
@@ -1765,7 +1765,7 @@ impl SessionManager {
 
     /// 先对路径，再对工作台记过的检出。都不是时才对这一条 cwd 跑 git。
     fn project_for_cwd(&self, projects: &[Project], cwd: &str) -> Option<Project> {
-        let key = crate::features::agents::cwd_key(cwd);
+        let key = aiwb_core::models::cwd_key(cwd);
         if let Some(project) = projects
             .iter()
             .find(|project| project_matches_cwd(project, &key))
@@ -1806,9 +1806,9 @@ fn parse_session_key(session_id: &str) -> Option<(AgentKind, String)> {
 #[cfg(test)]
 mod tests {
     use super::{created_without_first_message, sidebar_from_listing};
-    use crate::features::agents::{DirectoryEntry, SourcedEntry};
-    use crate::features::git::RecordedWorktrees;
-    use crate::models::{AgentKind, SessionStatus};
+    use aiwb_agents::{DirectoryEntry, SourcedEntry};
+    use aiwb_git::RecordedWorktrees;
+    use aiwb_core::models::{AgentKind, SessionStatus};
     use std::fs;
     use std::path::{Path, PathBuf};
 
@@ -1826,7 +1826,7 @@ mod tests {
 
     #[test]
     fn revive_drops_transcript_and_a_stopped_status() {
-        use crate::models::SessionEventBody;
+        use aiwb_core::models::SessionEventBody;
         assert!(super::startup_body_on_revive(
             &SessionEventBody::StatusChanged {
                 status: SessionStatus::Completed,
@@ -1866,8 +1866,8 @@ mod tests {
         dir
     }
 
-    fn project_at(path: &Path) -> crate::models::Project {
-        crate::models::Project {
+    fn project_at(path: &Path) -> aiwb_core::models::Project {
+        aiwb_core::models::Project {
             id: "saved".into(),
             name: "已保存".into(),
             path: path.to_string_lossy().to_string(),
@@ -1886,7 +1886,7 @@ mod tests {
             entry: DirectoryEntry {
                 native_id: id.into(),
                 cwd: cwd.to_string_lossy().to_string(),
-                cwd_key: crate::features::agents::cwd_key(&cwd.to_string_lossy()),
+                cwd_key: aiwb_core::models::cwd_key(&cwd.to_string_lossy()),
                 title: id.into(),
                 created_at: 10,
                 updated_at: 20,
@@ -1938,7 +1938,7 @@ mod tests {
         listed.push(skipped);
 
         let index = RecordedWorktrees::new();
-        let guard = crate::features::git::block_git();
+        let guard = aiwb_git::block_git();
         let recorded = index.for_path(&repo, &managed);
         let sessions = sidebar_from_listing(&project_at(&repo), &listed, &recorded);
         assert_eq!(guard.calls(), 0, "列会话不能为了工作树启动 git");

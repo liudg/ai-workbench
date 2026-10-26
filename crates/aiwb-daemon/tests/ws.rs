@@ -23,7 +23,11 @@ async fn start() -> (u16, Arc<Services>) {
         port,
         token: "secret".into(),
     };
-    let services = Arc::new(Services::new(Arc::new(Store::open_in_memory().unwrap()), info));
+    let services = Arc::new(Services::new(
+        Arc::new(Store::open_in_memory().unwrap()),
+        info,
+        std::env::temp_dir(),
+    ));
     let app = router(services.clone());
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     (port, services)

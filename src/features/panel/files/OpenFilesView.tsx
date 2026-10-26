@@ -3,12 +3,11 @@ import { useEffect, useRef, useState } from "react";
 import { useElementWidth } from "@/shared/dom/useElementWidth";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { baseName } from "@/shared/path";
-import { addSessionTextSnippet } from "../core/useAddTextSnippet";
 import { ColumnSplitter } from "../core/ColumnSplitter";
 import { FILES_EXPANDED_WIDTH, nextDraggedListWidth, paneFileColumnWidth, pinnedColumnStyle } from "../core/layout";
 import { opensLocalHtmlInBrowser, resolvePreviewPath } from "../core/preview-kind";
 import { useColumnGesture } from "../core/useColumnGesture";
-import { usePanel } from "../core/PanelProvider";
+import { usePanel, usePanelData } from "../core/PanelProvider";
 import { FileContextMenu } from "./FileContextMenu";
 import { FilePreviewColumn } from "./FilePreview";
 import { useFilePreviewChrome } from "./use-file-preview-chrome";
@@ -81,6 +80,7 @@ export function OpenFilesScreen({
   patchTabPayload: (tabId: string, patch: Record<string, unknown>) => void;
   openHref: (href: string, line?: number) => void;
 }) {
+  const panelData = usePanelData();
   const filesTab = tabs.find((tab) => tab.viewerId === "files");
   const place = openFilesPlace(filesTab?.payload);
   const attachFile = useAttachFile(sessionId);
@@ -171,7 +171,7 @@ export function OpenFilesScreen({
           previewLine={place.line}
           markdownMode={chrome.markdownMode}
           quotePath={place.path ? resolvePreviewPath(projectPath, place.path) || place.path : ""}
-          onQuote={(draft) => addSessionTextSnippet(sessionId, draft)}
+          onQuote={(draft) => panelData.addTextSnippet(sessionId, draft)}
         />
         {listWidth !== null ? (
           <ColumnSplitter

@@ -23,6 +23,15 @@ struct TopicParams {
     topic: String,
 }
 
+/// 订阅参数里除 `topic` 以外的部分（会话主题的 `fromRev`）。
+fn snapshot_params(params: &Value) -> Value {
+    let mut rest = params.clone();
+    if let Some(map) = rest.as_object_mut() {
+        map.remove("topic");
+    }
+    rest
+}
+
 pub(crate) async fn serve(socket: WebSocket, services: Arc<Services>) {
     let (mut sink, mut stream) = socket.split();
     let (out, mut outbox) = mpsc::unbounded_channel::<String>();
@@ -102,12 +111,13 @@ fn subscribe(
     id: u64,
     params: Value,
 ) -> Response {
+    let extra = snapshot_params(&params);
     let topic = match parse_topic(params) {
         Ok(topic) => topic,
         Err(err) => return Response::err(id, err),
     };
     let result = services.hub().snapshot_with(
-        || services.snapshot(&topic),
+        || services.snapshot(&topic, &extra),
         |seq, data| {
             subs.lock().unwrap().insert(topic.clone(), seq);
             send(out, &Push { topic: topic.clone(), data });
@@ -139,12 +149,12 @@ async fn forward(services: Arc<Services>, subs: Subscriptions, out: mpsc::Unboun
                     );
                 }
             }
-            // 落后太多丢了推送：每个已订阅主题重发一次快照。
+            // 落后太多丢了推送：每个已订阅主题重发一次完整快照（会话主题带 reset）。
             Err(broadcast::error::RecvError::Lagged(_)) => {
                 let topics: Vec<String> = subs.lock().unwrap().keys().cloned().collect();
                 for topic in topics {
                     let _ = services.hub().snapshot_with(
-                        || services.snapshot(&topic),
+                        || services.snapshot(&topic, &Value::Null),
                         |seq, data| {
                             subs.lock().unwrap().insert(topic.clone(), seq);
                             send(&out, &Push { topic: topic.clone(), data });

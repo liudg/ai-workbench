@@ -1,3 +1,4 @@
+import { Fragment, type ReactNode } from "react";
 import { Folder, Plus, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -15,6 +16,7 @@ export function ProjectList({
   onAdd,
   onRemove,
   onDismissError,
+  renderTasks,
 }: {
   projects: Project[];
   loading: boolean;
@@ -24,6 +26,8 @@ export function ProjectList({
   onAdd: () => void;
   onRemove: (id: string) => void;
   onDismissError: () => void;
+  /** 项目行下面的任务列表。 */
+  renderTasks: (project: Project) => ReactNode;
 }) {
   return (
     <section className="flex min-h-0 flex-1 flex-col">
@@ -45,8 +49,8 @@ export function ProjectList({
           </div>
         )}
         {projects.map((project) => (
+          <Fragment key={project.id}>
           <div
-            key={project.id}
             role="button"
             tabIndex={0}
             title={project.path}
@@ -78,6 +82,8 @@ export function ProjectList({
               <X className="h-3.5 w-3.5" />
             </button>
           </div>
+          {renderTasks(project)}
+          </Fragment>
         ))}
       </div>
 

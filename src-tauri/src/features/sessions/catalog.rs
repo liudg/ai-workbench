@@ -9,8 +9,8 @@ use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 
-use crate::features::agents::adapter_for;
-use crate::models::{AgentCatalog, AgentKind};
+use aiwb_agents::adapter_for;
+use aiwb_core::models::{AgentCatalog, AgentKind};
 
 /// 刷新失败但仍有上次成功的目录时，作曲栏只显示这一条弱提示。
 pub const CATALOG_STALE_NOTICE: &str = "模型列表刷新失败，仍显示上次的模型。";

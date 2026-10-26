@@ -2,7 +2,6 @@ import { useRef } from "react";
 import { Code } from "lucide-react";
 
 import { baseName } from "@/shared/path";
-import { addSessionTextSnippet } from "../core/useAddTextSnippet";
 import { usePanelOptional } from "../core/PanelProvider";
 import { SelectionMenu } from "@/shared/selection/SelectionMenu";
 import { fileSelectionDraft } from "./file-selection";
@@ -38,7 +37,7 @@ function TextViewerBody({ payload, status }: ViewerViewProps<TextPayload>) {
           rootRef={rootRef}
           readDraft={(root) => fileSelectionDraft(root, path)}
           onAdd={(draft) => {
-            addSessionTextSnippet(panel.sessionId, draft);
+            panel.data.addTextSnippet(panel.sessionId, draft);
           }}
         />
       ) : null}

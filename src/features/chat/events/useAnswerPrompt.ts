@@ -1,6 +1,6 @@
-import { useWorkbench } from "@/store";
+import { useChatHost } from "../host";
 
-/** 提问卡片只通过这个钩子回答，不自己读 store。 */
+/** 提问卡片只通过这个钩子回答。 */
 export function useAnswerPrompt() {
-  return useWorkbench((s) => s.answerPrompt);
+  return useChatHost().answerPrompt;
 }

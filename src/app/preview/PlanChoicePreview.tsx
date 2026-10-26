@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 
 import { AnswerMarkdownHost } from "@/features/chat/answer/AnswerMarkdownHost";
-import { ChatView } from "@/features/chat/timeline/ChatView";
+import { StoreChatView } from "@/features/workspace/StoreChatView";
 import { PanelProvider } from "@/features/panel/core/PanelProvider";
 import { SessionSplit } from "@/features/panel/core/SessionSplit";
 import { useWorkbench } from "@/store";
@@ -105,7 +105,7 @@ export default function PlanChoicePreview() {
       >
         <AnswerMarkdownHost>
           <SessionSplit>
-            <ChatView session={current} events={events} />
+            <StoreChatView session={current} events={events} />
           </SessionSplit>
         </AnswerMarkdownHost>
       </PanelProvider>

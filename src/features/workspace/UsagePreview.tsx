@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 
-import { ChatView } from "@/features/chat/timeline/ChatView";
+import { StoreChatView } from "@/features/workspace/StoreChatView";
 import { AnswerMarkdownHost } from "@/features/chat/answer/AnswerMarkdownHost";
 import { PanelProvider } from "@/features/panel/core/PanelProvider";
 import { SessionSplit } from "@/features/panel/core/SessionSplit";
@@ -160,7 +160,7 @@ function Frame({
       >
         <AnswerMarkdownHost>
           <SessionSplit>
-            <ChatView session={session(id, title, status)} events={events} />
+            <StoreChatView session={session(id, title, status)} events={events} />
           </SessionSplit>
         </AnswerMarkdownHost>
       </PanelProvider>

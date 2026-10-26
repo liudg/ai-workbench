@@ -13,7 +13,7 @@ use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Runtime, 
 use super::resolve_preview_file;
 use crate::features::images::stage_image_bytes;
 use crate::features::projects::ProjectStore;
-use crate::models::{strip_verbatim_prefix, PageAnnotation};
+use aiwb_core::models::{strip_verbatim_prefix, PageAnnotation};
 
 const LABEL: &str = "preview-browser";
 const EVENT: &str = "preview-browser";
@@ -129,7 +129,17 @@ pub fn prepare_browser_file(
     session_id: Option<String>,
 ) -> Result<BrowserFile, String> {
     let root = super::project_root(&store, &manager, &project_id, session_id.as_deref())?;
-    let full = resolve_preview_file(&root, &path)?;
+    browser_file_at(&app, root, &path)
+}
+
+/// 同 [`prepare_browser_file`]，目录由调用方给出。任务视图的工作目录在 daemon 里，前端直接带过来。
+#[tauri::command]
+pub fn prepare_browser_path(app: AppHandle, root: String, path: String) -> Result<BrowserFile, String> {
+    browser_file_at(&app, std::path::PathBuf::from(root), &path)
+}
+
+fn browser_file_at(app: &AppHandle, root: std::path::PathBuf, path: &str) -> Result<BrowserFile, String> {
+    let full = resolve_preview_file(&root, path)?;
     let root_real = root.canonicalize().unwrap_or(root);
     app.asset_protocol_scope()
         .allow_directory(&root_real, true)

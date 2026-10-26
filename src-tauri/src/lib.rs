@@ -1,19 +1,15 @@
 //! AI 工作台 —— Tauri 应用入口。
 //!
 //! 模块划分：
-//! - `models` / `encoding`     共享协议与子进程编码
 //! - `features::projects`      项目列表持久化
 //! - `features::sessions`      会话生命周期 / 事件日志 / 前端推送
-//! - `features::agents`        多 Agent 适配层（公开契约；CLI 实现私有）
 //! - `features::images`        时间线本机图片
 //! - `features::ipc`           前端 invoke 入口
 //! - `tray`                    系统托盘与常驻后台
 //! - `dev_bridge`              网页预览用的本机 HTTP 入口（`dev-bridge` feature）
 
 mod daemon;
-mod encoding;
 mod features;
-mod models;
 mod tray;
 
 #[cfg(feature = "dev-bridge")]
@@ -101,12 +97,13 @@ macro_rules! workbench_handler {
             $crate::features::images::stage_chat_image,
             $crate::features::preview::read_preview_file,
             $crate::features::preview::read_preview_image,
-            $crate::features::preview::tree::list_project_dir,
-            $crate::features::preview::tree::filter_project_paths,
-            $crate::features::preview::search::search_project_files,
-            $crate::features::preview::search::quick_open_files,
-            $crate::features::preview::search::warm_project_index,
+            $crate::features::preview::list_project_dir,
+            $crate::features::preview::filter_project_paths,
+            $crate::features::preview::search_project_files,
+            $crate::features::preview::quick_open_files,
+            $crate::features::preview::warm_project_index,
             $crate::features::preview::open_project_file,
+            $crate::features::preview::open_path,
             $crate::features::preview::file_open_capabilities,
             $crate::features::preview::browser::browser_close,
             $($extra),*
@@ -133,8 +130,8 @@ pub(crate) fn manage_state<R: Runtime>(
         TaskFolderStore::load(data_dir).map_err(|e| format!("加载任务文件夹失败: {e}"))?;
     app.manage(folders);
     app.manage(SessionManager::new(app_emitter(app.clone()), data_dir));
-    app.manage(features::preview::search::IndexHub::default());
-    app.manage(features::preview::tree::FilterHub::default());
+    app.manage(aiwb_files::IndexHub::default());
+    app.manage(aiwb_files::FilterHub::default());
     Ok(())
 }
 
@@ -170,6 +167,7 @@ pub fn run() {
         .invoke_handler(workbench_handler![
             daemon::daemon_endpoint,
             features::preview::browser::prepare_browser_file,
+            features::preview::browser::prepare_browser_path,
             features::preview::browser::browser_show,
             features::preview::browser::browser_bounds,
             features::preview::browser::browser_hide,

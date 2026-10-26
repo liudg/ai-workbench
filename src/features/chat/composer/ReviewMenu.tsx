@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 
 import type { ReviewStart, ReviewTargets } from "@/types";
-import { fetchReviewTargets } from "./composer-backend";
 
 type Step = "presets" | "branch" | "commit" | "custom";
 
@@ -11,9 +10,11 @@ type Step = "presets" | "branch" | "commit" | "custom";
  */
 export function ReviewMenu({
   sessionId,
+  loadTargets,
   onStart,
 }: {
   sessionId: string;
+  loadTargets: (sessionId: string) => Promise<ReviewTargets>;
   onStart: (target: ReviewStart) => void;
 }) {
   const [targets, setTargets] = useState<ReviewTargets | null>(null);
@@ -23,13 +24,13 @@ export function ReviewMenu({
 
   useEffect(() => {
     let cancelled = false;
-    void fetchReviewTargets(sessionId)
+    void loadTargets(sessionId)
       .then((next) => !cancelled && setTargets(next))
       .catch((err) => !cancelled && setError(String(err)));
     return () => {
       cancelled = true;
     };
-  }, [sessionId]);
+  }, [loadTargets, sessionId]);
 
   const labels = targets?.labels;
   const open = (next: Step) => {

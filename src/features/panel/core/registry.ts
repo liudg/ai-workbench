@@ -1,6 +1,7 @@
 import type { ComponentType } from "react";
 
 import type { FileChange } from "../../changes-model/diff-parse.ts";
+import type { PanelData } from "./PanelProvider.tsx";
 
 /** 打开动作。查看器只靠 match 得分认领，核心不按种类分支渲染。 */
 export type OpenTarget =
@@ -17,6 +18,8 @@ export interface ViewerContext {
   sessionFiles: FileChange[];
   /** 有工作树时，预览和搜索读这个会话的检出目录。 */
   sessionId?: string;
+  /** 读文件的来源。打开文件类目标时由面板带上；新标签、差异这类目标用不到。 */
+  data?: PanelData;
 }
 
 export type PanelTabStatus = "loading" | "ready" | "error";

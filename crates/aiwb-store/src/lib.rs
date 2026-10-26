@@ -3,6 +3,7 @@
 mod legacy;
 mod migrations;
 mod projects;
+mod tasks;
 
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard};

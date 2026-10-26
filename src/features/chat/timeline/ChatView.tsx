@@ -1,13 +1,12 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode, type Ref } from "react";
 import { MessageSquareDashed } from "lucide-react";
 
-import { useChangeCapabilities } from "@/features/changes-model/use-changes";
+import { useChangeCapabilities } from "../use-change-capabilities";
 import { showsFileChanges } from "@/features/changes-model/capabilities";
 import { lastSlice, turnChanges } from "@/features/changes-model/diff-parse";
 import { pendingPrompt } from "@/lib/utils";
 import { type Session, type SessionEvent } from "@/types";
 import { ChangeCard } from "../cards/ChangeCard";
-import { Composer } from "../composer/Composer";
 import { EventItem } from "../events/EventItem";
 import { pendingQuestionEvent } from "../events/pending-question";
 import { pendingApprovalEvent } from "../events/pending-approval";
@@ -35,19 +34,29 @@ import { useTurnVirtualizer } from "./useTurnVirtualizer";
 
 const EMPTY_CHUNK_KEYS: readonly string[] = [];
 
+/** 作曲栏由宿主给出。`anchorRef` 接到输入框外框上，提问浮层贴着它摆。 */
+export type RenderComposer = (anchorRef: Ref<HTMLDivElement>) => ReactNode;
+
 export function ChatView({
   session,
   events,
   eventsReady = true,
+  renderComposer,
 }: {
   session: Session;
   events: SessionEvent[];
   /** 选中会话的历史还没回来时为 false。预览直接给了事件，默认已就绪。 */
   eventsReady?: boolean;
+  renderComposer: RenderComposer;
 }) {
   return (
     <ChatErrorBoundary resetKey={session.id}>
-      <ChatTimeline session={session} events={events} eventsReady={eventsReady} />
+      <ChatTimeline
+        session={session}
+        events={events}
+        eventsReady={eventsReady}
+        renderComposer={renderComposer}
+      />
     </ChatErrorBoundary>
   );
 }
@@ -56,10 +65,12 @@ function ChatTimeline({
   session,
   events,
   eventsReady,
+  renderComposer,
 }: {
   session: Session;
   events: SessionEvent[];
   eventsReady: boolean;
+  renderComposer: RenderComposer;
 }) {
   const pendingId = useMemo(() => pendingPrompt(events), [events]);
   const questionEvent = useMemo(
@@ -248,12 +259,7 @@ function ChatTimeline({
         {planChoice ? (
           <PlanChoiceSurface key={planChoice.prompt_id} event={planChoice} session={session} />
         ) : null}
-        <Composer
-          key={session.id}
-          session={session}
-          events={events}
-          anchorRef={setQuestionAnchor}
-        />
+        {renderComposer(setQuestionAnchor)}
       </div>
       {questionEvent ? (
         <QuestionPopup

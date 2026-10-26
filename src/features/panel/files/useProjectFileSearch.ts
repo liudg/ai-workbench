@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
-import { backend, type FileSearchHit } from "@/lib/ipc";
+import type { FileSearchHit } from "@/lib/ipc";
+import { usePanelData } from "../core/PanelProvider";
 
 let fileSearchSerial = 0;
 
@@ -11,6 +12,7 @@ export function useProjectFileSearch(
   mask: string,
   sessionId?: string,
 ) {
+  const data = usePanelData();
   const [hits, setHits] = useState<FileSearchHit[]>([]);
   const [truncated, setTruncated] = useState(false);
   const [error, setError] = useState("");
@@ -39,7 +41,7 @@ export function useProjectFileSearch(
         try {
           for (let hop = 0; hop < 20000; hop += 1) {
             if (stopped) return;
-            const page = await backend.searchProjectFiles(projectId, q, mask, searchId, sessionId);
+            const page = await data.searchFiles(projectId, q, mask, searchId, sessionId ?? "");
             if (stopped || page.cancelled) return;
             setHits((current) => (sameHits(current, page.hits) ? current : page.hits));
             setTruncated(page.truncated);
@@ -70,7 +72,7 @@ export function useProjectFileSearch(
       stopped = true;
       window.clearTimeout(timer);
     };
-  }, [mask, projectId, query, sessionId]);
+  }, [data, mask, projectId, query, sessionId]);
 
   return { hits, truncated, error, loading, done };
 }

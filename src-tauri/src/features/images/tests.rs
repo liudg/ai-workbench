@@ -79,7 +79,7 @@ fn rejects_non_images_and_traversal() {
 #[test]
 fn stages_pasted_png_bytes() {
     let dir = temp_dir("stage");
-    let encoded = super::encode_base64(MINI_PNG);
+    let encoded = aiwb_files::encode_base64(MINI_PNG);
     let bytes = decode_base64(&format!("data:image/png;base64,{encoded}")).unwrap();
     let (name, path) = stage_image_bytes(&dir, "clip board.png", &bytes).unwrap();
     assert!(name.ends_with(".png"));

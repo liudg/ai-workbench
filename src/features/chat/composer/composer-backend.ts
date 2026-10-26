@@ -5,7 +5,7 @@ import { isDraftId } from "@/store/draft-session";
 import { isMissingSessionError } from "@/store/sync";
 import type { AgentKind, Attachment, PermissionMenu, QueuedTurn, ReviewTargets } from "@/types";
 import type { FollowUpQueueMode } from "./follow-up-queue-mode";
-import { fileToBase64 } from "./media";
+import { fileToBase64 } from "@/shared/file-base64";
 
 export function reportComposerError(sessionId: string, error: unknown) {
   if (isMissingSessionError(error)) useWorkbench.getState().releaseMissingSession(sessionId);

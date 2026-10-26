@@ -20,6 +20,7 @@ import {
   type PaletteCommandId,
   type PaletteSession,
 } from "./commands";
+import { backendPanelData } from "@/features/panel/core/PanelProvider";
 import { CommandMenu, type PaletteDrill } from "./CommandMenu";
 import { COMMAND_MENU_COPY as COPY } from "./copy";
 import { OPEN_COMMAND_MENU } from "./open-event";
@@ -257,6 +258,7 @@ export function CommandMenuHost() {
         projectId: project.id,
         projectPath: project.path,
         sessionFiles: [],
+        data: backendPanelData,
       });
       close();
       return;
@@ -418,6 +420,7 @@ export function CommandMenuHost() {
               projectPath: openWorkdir || target.path,
               sessionFiles: [],
               sessionId: openSession,
+              data: backendPanelData,
             });
           }}
         />

@@ -7,7 +7,7 @@ use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 
 use crate::features::projects::{normalize_import_dir, ProjectStore};
-use crate::models::{now_millis, strip_verbatim_prefix, AgentKind, Project};
+use aiwb_core::models::{now_millis, strip_verbatim_prefix, AgentKind, Project};
 
 use super::slug::{candidate_name, chat_slug};
 
@@ -136,7 +136,7 @@ pub fn provision_standalone_chat(
         .unwrap_or_else(|| chat_slug(prompt));
     let now = now_millis();
     let project = Project {
-        id: crate::models::new_id(),
+        id: aiwb_core::models::new_id(),
         name,
         path: path.clone(),
         folders: vec![path],

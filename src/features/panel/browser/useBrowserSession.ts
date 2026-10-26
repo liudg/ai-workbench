@@ -3,10 +3,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 
 import { backend, isTauri } from "@/lib/ipc";
-import { useWorkbench } from "@/store";
 import type { PageAnnotation } from "@/types";
 import { pageTitleFromHtml } from "@/shared/html-title";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
+import { usePanel, type PanelData } from "../core/PanelProvider";
 import { tabTitleFromDocument } from "./annotate";
 import {
   canGoBack,
@@ -43,7 +43,10 @@ export function useBrowserSession({
   onTitle: (title: string) => void;
 }) {
   const viewport = useRef<HTMLDivElement>(null);
-  const history = useWorkbench((s) => s.panelBySession[sessionId]?.histories[tabId] ?? EMPTY_HISTORY);
+  const { histories, rememberHistory, data } = usePanel();
+  const history = histories[tabId] ?? EMPTY_HISTORY;
+  const dataRef = useRef(data);
+  dataRef.current = data;
   const [draft, setDraft] = useState<string | null>(null);
   const [annotating, setAnnotating] = useState(false);
   const [snapshotFailed, setSnapshotFailed] = useState(false);
@@ -62,9 +65,9 @@ export function useBrowserSession({
   const commit = useCallback(
     (next: BrowserHistory) => {
       historyRef.current = next;
-      useWorkbench.getState().panelRememberHistory(sessionId, tabId, next);
+      rememberHistory(tabId, next);
     },
-    [sessionId, tabId],
+    [rememberHistory, tabId],
   );
 
   const placeNative = useCallback(async (target: string) => {
@@ -123,7 +126,7 @@ export function useBrowserSession({
       return;
     }
     let cancel = false;
-    void preparedFile(projectId, path, sessionId)
+    void preparedFile(dataRef.current, projectId, path, sessionId)
       .then((file) => {
         if (cancel) return;
         openedFile.current = key;
@@ -171,7 +174,7 @@ export function useBrowserSession({
             setError(DESKTOP_ZH.browserAnnotateFailed);
             return;
           }
-          void backend.submitAnnotation(sid, note).catch(() => {
+          void dataRef.current.submitAnnotation(sid, note).catch(() => {
             setError(DESKTOP_ZH.browserAnnotateFailed);
           });
         } catch {
@@ -261,7 +264,7 @@ export function useBrowserSession({
       void openTarget({ address: plan.address, target: plan.target }, "visit");
       return;
     }
-    void preparedFile(projectId, plan.path, sessionId)
+    void preparedFile(dataRef.current, projectId, plan.path, sessionId)
       .then((file) => openTarget(file, "visit"))
       .catch((err: unknown) => setError(message(err, DESKTOP_ZH.browserOpenFailed)));
   };
@@ -316,13 +319,14 @@ export function useBrowserSession({
 }
 
 async function preparedFile(
+  data: PanelData,
   projectId: string,
   path: string,
   sessionId?: string,
 ): Promise<{ address: string; target: string }> {
   const address = displayFileAddress(path);
   try {
-    const file = await backend.prepareBrowserFile(projectId, path, sessionId);
+    const file = await data.prepareBrowserFile(projectId, path, sessionId ?? "");
     return { address: file.display || address, target: file.url };
   } catch (err) {
     // 子 webview 挂上后，主窗口不再是 webview window，这条命令会报「没有主窗口」。

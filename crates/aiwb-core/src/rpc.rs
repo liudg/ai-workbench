@@ -1,13 +1,23 @@
 //! WebSocket 上的消息格式。
 //!
 //! 客户端发 [`Request`]；daemon 回 [`Response`]，或者给已订阅的主题推 [`Push`]。
-//! 订阅后先推一份当前快照，之后每次变化再推完整的新值。
+//! 订阅后先推一份当前快照，之后每次变化再推完整的新值。会话时间线例外：只推变了的事件。
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// 主题：项目列表。
 pub const TOPIC_PROJECTS: &str = "projects";
+
+/// 主题：任务列表，每个任务带上它的会话和状态。
+pub const TOPIC_TASKS: &str = "tasks";
+
+/// 主题前缀：一个会话的时间线。订阅参数 `fromRev` 给出客户端已有的最大 rev，只补之后的。
+pub const TOPIC_SESSION_PREFIX: &str = "session:";
+
+pub fn session_topic(session_id: &str) -> String {
+    format!("{TOPIC_SESSION_PREFIX}{session_id}")
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Request {

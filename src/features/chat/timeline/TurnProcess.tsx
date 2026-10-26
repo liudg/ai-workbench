@@ -2,7 +2,7 @@ import { useMemo } from "react";
 
 import { showsFileChanges } from "@/features/changes-model/capabilities";
 import { turnChanges } from "@/features/changes-model/diff-parse";
-import { useChangeCapabilities } from "@/features/changes-model/use-changes";
+import { useChangeCapabilities } from "../use-change-capabilities";
 import { ChangeCard } from "../cards/ChangeCard";
 import { EventItem } from "../events/EventItem";
 import { collapsedTurnSummary, isProcess } from "./timeline";

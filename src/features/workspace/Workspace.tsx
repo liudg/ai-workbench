@@ -1,5 +1,5 @@
 import { AnswerMarkdownHost } from "@/features/chat/answer/AnswerMarkdownHost";
-import { ChatView } from "@/features/chat/timeline/ChatView";
+import { StoreChatView } from "@/features/workspace/StoreChatView";
 import { PanelProvider } from "@/features/panel/core/PanelProvider";
 import { SessionSplit } from "@/features/panel/core/SessionSplit";
 import { NoProjectSelected } from "./empty/EmptyState";
@@ -23,7 +23,7 @@ export function Workspace() {
       >
         <AnswerMarkdownHost>
           <SessionSplit>
-            <ChatView session={session} events={events} eventsReady={eventsReady} />
+            <StoreChatView session={session} events={events} eventsReady={eventsReady} />
           </SessionSplit>
         </AnswerMarkdownHost>
       </PanelProvider>

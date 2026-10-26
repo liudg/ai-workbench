@@ -1,8 +1,9 @@
-import { useWorkbench } from "@/store";
+import { usePanelData } from "../core/PanelProvider";
 
-/** 把工作区文件附到当前会话。打开文件页不直接写 store。 */
+/** 把工作区文件附到当前会话的作曲栏。 */
 export function useAttachFile(sessionId: string) {
+  const data = usePanelData();
   return (path: string, name: string) => {
-    useWorkbench.getState().addAttachments(sessionId, [{ name, path }]);
+    data.attachFile(sessionId, { name, path });
   };
 }

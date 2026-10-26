@@ -1,7 +1,7 @@
 //! MCP 管理命令。参数原样交给该 Agent 自己的 CLI。
 
-use crate::features::agents;
-use crate::models::*;
+use aiwb_agents as agents;
+use aiwb_core::models::*;
 
 #[tauri::command]
 pub fn mcp_surfaces() -> Vec<McpSurface> {

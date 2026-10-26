@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, type WheelEvent } from "react";
 
-import { useWorkbench } from "@/store";
+import { useChatHost } from "../host";
 import {
   compensatedScrollTop,
   distanceFromBottom,
@@ -31,10 +31,7 @@ export function useTimelineFollow(sessionId: string, layoutKey: string): Timelin
   const historyExhausted = useRef(false);
   const historyLoading = useRef(false);
   const requestEpoch = useRef(0);
-  const loadOlderHistory = useWorkbench((s) => s.loadOlderHistory);
-  const pagedHistory = useWorkbench(
-    (s) => s.catalogs[sessionId]?.capabilities.supports_paged_history === true,
-  );
+  const loadOlderHistory = useChatHost().loadOlderHistory;
 
   if (seenSession.current !== sessionId) {
     seenSession.current = sessionId;
@@ -106,7 +103,7 @@ export function useTimelineFollow(sessionId: string, layoutKey: string): Timelin
   }, []);
 
   const requestOlder = () => {
-    if (!pagedHistory || historyExhausted.current || historyLoading.current) return;
+    if (!loadOlderHistory || historyExhausted.current || historyLoading.current) return;
     const el = scrollRef.current;
     if (!el) return;
     const epoch = requestEpoch.current;

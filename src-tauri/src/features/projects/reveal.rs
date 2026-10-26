@@ -5,7 +5,7 @@ use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use crate::models::strip_verbatim_prefix;
+use aiwb_core::models::strip_verbatim_prefix;
 
 /// 项目保存的本地根目录。空路径、不存在或不是文件夹时返回给界面的中文说明。
 pub(crate) fn project_folder(path: &str) -> Result<PathBuf, String> {

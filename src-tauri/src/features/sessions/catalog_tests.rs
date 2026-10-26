@@ -1,6 +1,6 @@
 use super::*;
-use crate::features::agents::adapter_for;
-use crate::models::{AgentCapabilities, AgentModelOption};
+use aiwb_agents::adapter_for;
+use aiwb_core::models::{AgentCapabilities, AgentModelOption};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 fn model(id: &str) -> AgentModelOption {

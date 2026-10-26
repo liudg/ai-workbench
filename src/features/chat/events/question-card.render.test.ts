@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import type { ReactElement } from "react";
 import { createServer, type ViteDevServer } from "vite";
 import { fileURLToPath } from "node:url";
 
@@ -10,6 +11,18 @@ import type { PromptQuestion, Session, SessionEvent } from "../../../types/index
 const root = fileURLToPath(new URL("../../../../", import.meta.url));
 
 let server: ViteDevServer;
+let chatHost: typeof import("../host.tsx").ChatHostProvider;
+
+/** 聊天组件从 ChatHost 拿回答提问、Agent 资料和项目目录。测试给一份空的。 */
+const testHost = {
+  answerPrompt: async () => true,
+  profiles: {},
+  projectPath: "",
+};
+
+function renderInHost(element: ReactElement): string {
+  return renderToStaticMarkup(createElement(chatHost, { host: testHost, children: element }));
+}
 let questionCard: typeof import("./QuestionCard.tsx").QuestionCard;
 let elicitationCard: typeof import("./ElicitationCard.tsx").ElicitationCard;
 let promptEvent: typeof import("./PromptCard.tsx").PromptEvent;
@@ -22,6 +35,7 @@ before(async () => {
     appType: "custom",
     logLevel: "error",
   });
+  chatHost = (await server.ssrLoadModule("/src/features/chat/host.tsx")).ChatHostProvider;
   questionCard = (await server.ssrLoadModule("/src/features/chat/events/QuestionCard.tsx")).QuestionCard;
   elicitationCard = (await server.ssrLoadModule("/src/features/chat/events/ElicitationCard.tsx")).ElicitationCard;
   promptEvent = (await server.ssrLoadModule("/src/features/chat/events/PromptCard.tsx")).PromptEvent;
@@ -73,7 +87,7 @@ const view = {
 };
 
 test("answered question card hugs the answer and drops trailing blank lines", () => {
-  const html = renderToStaticMarkup(
+  const html = renderInHost(
     createElement(questionCard, {
       event: prompt("questions", {
         question: "贪吃蛇想怎么玩？",
@@ -99,7 +113,7 @@ test("answered question card hugs the answer and drops trailing blank lines", ()
 });
 
 test("multiple answers stay stacked without a blank footer", () => {
-  const html = renderToStaticMarkup(
+  const html = renderInHost(
     createElement(questionCard, {
       event: prompt("questions", {
         questions: [question("q1", "第一题"), question("q2", "   ")],
@@ -115,7 +129,7 @@ test("multiple answers stay stacked without a blank footer", () => {
 });
 
 test("an open question card stays compact while it waits", () => {
-  const html = renderToStaticMarkup(
+  const html = renderInHost(
     createElement(questionCard, {
       event: prompt("questions", { questions: [question("q1", "贪吃蛇想怎么玩？")] }),
       session: { ...session, status: "needs-input" },
@@ -129,7 +143,7 @@ test("an open question card stays compact while it waits", () => {
 });
 
 test("settled choice and elicitation cards use the same tight shell", () => {
-  const choice = renderToStaticMarkup(
+  const choice = renderInHost(
     createElement(promptEvent, {
       event: prompt("choice", {
         question: "选一个？\n\n",
@@ -146,7 +160,7 @@ test("settled choice and elicitation cards use the same tight shell", () => {
   assert.equal(choice.includes("p-3"), false);
   assert.equal(choice.includes("leading-6"), false);
 
-  const open = renderToStaticMarkup(
+  const open = renderInHost(
     createElement(promptEvent, {
       event: prompt("choice", {
         question: "选一个？",
@@ -161,7 +175,7 @@ test("settled choice and elicitation cards use the same tight shell", () => {
   assert.match(open, /leading-6/);
   assert.match(open, /浏览器页面/);
 
-  const elicitation = renderToStaticMarkup(
+  const elicitation = renderInHost(
     createElement(elicitationCard, {
       event: prompt("elicitation", {
         question: "需要仓库地址\n\n",

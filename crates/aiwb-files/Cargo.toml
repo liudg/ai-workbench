@@ -1,0 +1,13 @@
+[package]
+name = "aiwb-files"
+description = "AI Workbench 的项目文件解析和文本预览"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+aiwb-core = { path = "../aiwb-core" }
+ignore = "0.4"
+serde.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

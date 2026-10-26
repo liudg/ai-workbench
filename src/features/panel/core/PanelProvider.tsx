@@ -7,8 +7,29 @@ import {
   type ReactNode,
 } from "react";
 
+import {
+  backend,
+  type BrowserFile,
+  type DiffScope,
+  type FileSearchResult,
+  type PathFilter,
+  type PreviewDocument,
+  type PreviewImage,
+  type TreeEntry,
+} from "@/lib/ipc";
 import type { SessionUsageView } from "@/store/session-usage";
-import type { AgentKind, ChangeCapabilities, SessionEvent } from "@/types";
+import type {
+  AgentKind,
+  Attachment,
+  ChangeCapabilities,
+  PageAnnotation,
+  SessionEvent,
+  SessionStatus,
+  SubscriptionUsage,
+} from "@/types";
+import type { TextSnippetDraft } from "@/shared/text-snippet";
+import type { BrowserHistory } from "../browser/browser";
+import { addSessionTextSnippet } from "./useAddTextSnippet";
 import { useCloseBrowserOnUnmount } from "../browser/use-browser-host";
 import { showsFileChanges } from "@/features/changes-model/capabilities";
 import type { PanelLayoutMode } from "./layout";
@@ -19,11 +40,52 @@ import {
 import { defaultDiffViewPrefs, type DiffViewPrefs } from "../diff/view-prefs";
 import { sessionChanges, type FileChange } from "@/features/changes-model/diff-parse";
 import { useWorkbench } from "@/store";
+import type { PanelSlice } from "../state/slice";
 import type { PanelTab } from "./registry";
 
 const EMPTY_TABS: PanelTab[] = [];
+const EMPTY_HISTORIES: Record<string, BrowserHistory> = {};
+
+/**
+ * 面板要从外面拿的数据和动作：差异、文件、搜索、用系统程序打开、内置浏览器加载本地文件、
+ * 页面批注发给 Agent、把文件放进作曲栏附件。路径都相对会话的工作目录。
+ */
+export interface PanelData {
+  diffScopes(sessionId: string): Promise<DiffScope[]>;
+  diffForScope(sessionId: string, scope: string, ignoreWhitespace: boolean): Promise<string>;
+  readPreviewFile(projectId: string, path: string, sessionId: string): Promise<PreviewDocument>;
+  readPreviewImage(projectId: string, path: string, sessionId: string): Promise<PreviewImage>;
+  listDir(projectId: string, dir: string, sessionId: string): Promise<TreeEntry[]>;
+  filterPaths(projectId: string, query: string, sessionId: string): Promise<PathFilter>;
+  searchFiles(
+    projectId: string,
+    query: string,
+    mask: string,
+    searchId: number,
+    sessionId: string,
+  ): Promise<FileSearchResult>;
+  openFile(projectId: string, path: string, mode: "default" | "choose", sessionId: string): Promise<void>;
+  prepareBrowserFile(projectId: string, path: string, sessionId: string): Promise<BrowserFile>;
+  submitAnnotation(sessionId: string, note: PageAnnotation): Promise<void>;
+  attachFile(sessionId: string, file: Attachment): void;
+  /** 预览里选中的文字放进作曲栏，发送时作为引用。 */
+  addTextSnippet(sessionId: string, draft: TextSnippetDraft): void;
+  isGit(projectId: string, sessionId: string): Promise<boolean>;
+  subscriptionUsage(agent: AgentKind): Promise<SubscriptionUsage>;
+}
+
+/** 面板的界面状态（标签、布局、宽度）放在哪个 store 里。 */
+export interface PanelStateSource {
+  use<T>(select: (state: PanelSlice) => T): T;
+  get(): PanelSlice;
+}
 
 interface PanelApi {
+  data: PanelData;
+  histories: Record<string, BrowserHistory>;
+  rememberHistory: (tabId: string, history: BrowserHistory) => void;
+  status: SessionStatus | undefined;
+  subscriptionSupported: boolean;
   tabs: PanelTab[];
   activeId: string;
   projectId: string;
@@ -72,16 +134,7 @@ export function usePanelOptional(): PanelApi | null {
 
 export type { PanelTab };
 
-export function PanelProvider({
-  sessionId,
-  projectId,
-  projectPath,
-  sessionTitle,
-  agent,
-  events,
-  usage,
-  children,
-}: {
+interface PanelProps {
   sessionId: string;
   projectId: string;
   projectPath: string;
@@ -90,19 +143,40 @@ export function PanelProvider({
   events: readonly SessionEvent[];
   usage: SessionUsageView | null;
   children: ReactNode;
+}
+
+export function PanelHost({
+  state,
+  data,
+  changes,
+  status,
+  subscriptionSupported,
+  sessionId,
+  projectId,
+  projectPath,
+  sessionTitle,
+  agent,
+  events,
+  usage,
+  children,
+}: PanelProps & {
+  state: PanelStateSource;
+  data: PanelData;
+  changes: ChangeCapabilities | undefined;
+  status: SessionStatus | undefined;
+  subscriptionSupported: boolean;
 }) {
-  const tabs = useWorkbench((s) => s.panelBySession[sessionId]?.tabs ?? EMPTY_TABS);
-  const activeId = useWorkbench((s) => s.panelBySession[sessionId]?.activeId ?? "");
-  const layout = useWorkbench((s) => s.panelBySession[sessionId]?.layout ?? "chat");
-  const previewWidth = useWorkbench((s) => s.previewWidthBySession[sessionId] ?? null);
-  const diffFilesWidth = useWorkbench((s) => s.diffFilesWidthBySession[sessionId] ?? null);
-  const filesTreeWidth = useWorkbench((s) => s.filesTreeWidthBySession[sessionId] ?? null);
-  const storedDiffView = useWorkbench((s) => s.diffViewBySession[sessionId]);
+  const tabs = state.use((s) => s.panelBySession[sessionId]?.tabs ?? EMPTY_TABS);
+  const activeId = state.use((s) => s.panelBySession[sessionId]?.activeId ?? "");
+  const layout = state.use((s) => s.panelBySession[sessionId]?.layout ?? "chat");
+  const previewWidth = state.use((s) => s.previewWidthBySession[sessionId] ?? null);
+  const diffFilesWidth = state.use((s) => s.diffFilesWidthBySession[sessionId] ?? null);
+  const filesTreeWidth = state.use((s) => s.filesTreeWidthBySession[sessionId] ?? null);
+  const storedDiffView = state.use((s) => s.diffViewBySession[sessionId]);
   const diffView = useMemo(
     () => storedDiffView ?? defaultDiffViewPrefs(readDiffMenuOptions(browserDiffMenuStorage())),
     [storedDiffView],
   );
-  const changes = useWorkbench((s) => (agent ? s.profiles[agent]?.capabilities.changes : undefined));
   const sessionFiles = useMemo(
     () => (showsFileChanges(changes) ? sessionChanges(events) : []),
     [changes, events],
@@ -110,78 +184,89 @@ export function PanelProvider({
   const filesRef = useRef(sessionFiles);
   filesRef.current = sessionFiles;
   const projectRef = useRef({ projectId, projectPath });
+  const dataRef = useRef(data);
+  dataRef.current = data;
   projectRef.current = { projectId, projectPath };
 
   const selectTab = useCallback(
-    (id: string) => useWorkbench.getState().panelSelectTab(sessionId, id),
-    [sessionId],
+    (id: string) => state.get().panelSelectTab(sessionId, id),
+    [sessionId, state],
   );
   const closeTab = useCallback(
-    (id: string) => useWorkbench.getState().panelCloseTab(sessionId, id),
-    [sessionId],
+    (id: string) => state.get().panelCloseTab(sessionId, id),
+    [sessionId, state],
   );
   const openDiff = useCallback(
     (id: string, title: string, files: FileChange[]) => {
-      useWorkbench.getState().panelOpenDiff(sessionId, id, title, files);
+      state.get().panelOpenDiff(sessionId, id, title, files);
     },
-    [sessionId],
+    [sessionId, state],
   );
   const openHref = useCallback(
     (href: string, line?: number) => {
       const project = projectRef.current;
-      void useWorkbench.getState().panelOpenHref(sessionId, href, line, {
+      void state.get().panelOpenHref(sessionId, href, line, {
         projectId: project.projectId,
         projectPath: project.projectPath,
         sessionFiles: filesRef.current,
         sessionId,
+        data: dataRef.current,
       });
     },
-    [sessionId],
+    [sessionId, state],
   );
   const openBlank = useCallback(() => {
-    useWorkbench.getState().panelOpenBlank(sessionId);
-  }, [sessionId]);
+    state.get().panelOpenBlank(sessionId);
+  }, [sessionId, state]);
   const openFiles = useCallback(() => {
-    useWorkbench.getState().panelOpenFiles(sessionId);
-  }, [sessionId]);
+    state.get().panelOpenFiles(sessionId);
+  }, [sessionId, state]);
   const hidePanel = useCallback(() => {
-    useWorkbench.getState().panelHide(sessionId);
-  }, [sessionId]);
+    state.get().panelHide(sessionId);
+  }, [sessionId, state]);
   const showPanel = useCallback(() => {
-    useWorkbench.getState().panelShow(sessionId);
-  }, [sessionId]);
+    state.get().panelShow(sessionId);
+  }, [sessionId, state]);
   const toggleFull = useCallback(() => {
-    useWorkbench.getState().panelToggleFull(sessionId);
-  }, [sessionId]);
+    state.get().panelToggleFull(sessionId);
+  }, [sessionId, state]);
   const setTabTitle = useCallback(
-    (id: string, title: string) => useWorkbench.getState().panelSetTitle(sessionId, id, title),
-    [sessionId],
+    (id: string, title: string) => state.get().panelSetTitle(sessionId, id, title),
+    [sessionId, state],
   );
   const patchTabPayload = useCallback(
     (tabId: string, patch: Record<string, unknown>) =>
-      useWorkbench.getState().panelPatchTabPayload(sessionId, tabId, patch),
-    [sessionId],
+      state.get().panelPatchTabPayload(sessionId, tabId, patch),
+    [sessionId, state],
   );
   const setPreviewWidth = useCallback((width: number) => {
-    useWorkbench.getState().panelSetPreviewWidth(sessionId, width);
-  }, [sessionId]);
+    state.get().panelSetPreviewWidth(sessionId, width);
+  }, [sessionId, state]);
   const setDiffFilesWidth = useCallback((width: number) => {
-    useWorkbench.getState().panelSetDiffFilesWidth(sessionId, width);
-  }, [sessionId]);
+    state.get().panelSetDiffFilesWidth(sessionId, width);
+  }, [sessionId, state]);
   const setFilesTreeWidth = useCallback((width: number) => {
-    useWorkbench.getState().panelSetFilesTreeWidth(sessionId, width);
-  }, [sessionId]);
+    state.get().panelSetFilesTreeWidth(sessionId, width);
+  }, [sessionId, state]);
   const patchDiffView = useCallback((patch: Partial<DiffViewPrefs>) => {
-    useWorkbench.getState().panelPatchDiffView(sessionId, patch);
-  }, [sessionId]);
-  const filesTreeOpen = useWorkbench((s) => s.panelBySession[sessionId]?.filesSidebarOpen ?? true);
+    state.get().panelPatchDiffView(sessionId, patch);
+  }, [sessionId, state]);
+  const histories = state.use((s) => s.panelBySession[sessionId]?.histories ?? EMPTY_HISTORIES);
+  const rememberHistory = useCallback(
+    (tabId: string, history: BrowserHistory) => state.get().panelRememberHistory(sessionId, tabId, history),
+    [sessionId, state],
+  );
+  const filesTreeOpen = state.use((s) => s.panelBySession[sessionId]?.filesSidebarOpen ?? true);
   const toggleFilesTree = useCallback(() => {
-    useWorkbench.getState().panelToggleFilesSidebar(sessionId);
-  }, [sessionId]);
-  useCloseBrowserOnUnmount();
-
+    state.get().panelToggleFilesSidebar(sessionId);
+  }, [sessionId, state]);
   const api = useMemo<PanelApi>(
     () => ({
+      data,
+      histories,
+      rememberHistory,
+      status,
+      subscriptionSupported,
       tabs,
       activeId,
       projectId,
@@ -216,6 +301,11 @@ export function PanelProvider({
       toggleFilesTree,
     }),
     [
+      data,
+      histories,
+      rememberHistory,
+      status,
+      subscriptionSupported,
       tabs,
       activeId,
       projectId,
@@ -252,4 +342,58 @@ export function PanelProvider({
   );
 
   return <PreviewContext.Provider value={api}>{children}</PreviewContext.Provider>;
+}
+
+const workbenchPanelState: PanelStateSource = {
+  use: (select) => useWorkbench(select),
+  get: () => useWorkbench.getState(),
+};
+
+export const backendPanelData: PanelData = {
+  diffScopes: (sessionId) => backend.diffScopes(sessionId),
+  diffForScope: (sessionId, scope, ignoreWhitespace) => backend.diffForScope(sessionId, scope, ignoreWhitespace),
+  readPreviewFile: (projectId, path, sessionId) => backend.readPreviewFile(projectId, path, sessionId || undefined),
+  readPreviewImage: (projectId, path, sessionId) => backend.readPreviewImage(projectId, path, sessionId || undefined),
+  listDir: (projectId, dir, sessionId) => backend.listProjectDir(projectId, dir, sessionId || undefined),
+  filterPaths: (projectId, query, sessionId) => backend.filterProjectPaths(projectId, query, sessionId || undefined),
+  searchFiles: (projectId, query, mask, searchId, sessionId) =>
+    backend.searchProjectFiles(projectId, query, mask, searchId, sessionId || undefined),
+  openFile: (projectId, path, mode, sessionId) => backend.openProjectFile(projectId, path, mode, sessionId || undefined),
+  prepareBrowserFile: (projectId, path, sessionId) =>
+    backend.prepareBrowserFile(projectId, path, sessionId || undefined),
+  submitAnnotation: (sessionId, note) => backend.submitAnnotation(sessionId, note),
+  attachFile: (sessionId, file) => useWorkbench.getState().addAttachments(sessionId, [file]),
+  addTextSnippet: (sessionId, draft) => {
+    addSessionTextSnippet(sessionId, draft);
+  },
+  isGit: (projectId) => backend.projectIsGit(projectId),
+  subscriptionUsage: (agent) => backend.subscriptionUsage(agent),
+};
+
+/** 旧工作区的面板：状态在旧 store，数据走旧后端。 */
+export function PanelProvider(props: PanelProps) {
+  useCloseBrowserOnUnmount();
+  const { agent, projectId, sessionId } = props;
+  const changes = useWorkbench((s) => (agent ? s.profiles[agent]?.capabilities.changes : undefined));
+  const subscriptionSupported = useWorkbench((s) =>
+    agent ? Boolean(s.profiles[agent]?.capabilities.supports_subscription_usage) : false,
+  );
+  const status = useWorkbench(
+    (s) => s.sessions[projectId]?.find((item) => item.id === sessionId)?.status,
+  );
+  return (
+    <PanelHost
+      {...props}
+      state={workbenchPanelState}
+      data={backendPanelData}
+      changes={changes}
+      status={status}
+      subscriptionSupported={subscriptionSupported}
+    />
+  );
+}
+
+/** 面板里用面板的数据来源；面板外（旧版命令面板）用旧后端。 */
+export function usePanelData(): PanelData {
+  return usePanelOptional()?.data ?? backendPanelData;
 }

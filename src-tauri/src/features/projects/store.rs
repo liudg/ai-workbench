@@ -10,8 +10,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use crate::features::agents::{cwd_key, project_folder_keys};
-use crate::models::*;
+use aiwb_agents::project_folder_keys;
+use aiwb_core::models::cwd_key;
+use aiwb_core::models::*;
 
 pub struct ProjectStore {
     file: PathBuf,
@@ -165,12 +166,12 @@ pub fn create_project_dir(
             use std::os::windows::process::CommandExt;
             git.creation_flags(0x08000000);
         }
-        crate::encoding::apply_utf8_env_std(&mut git);
+        aiwb_proc::apply_utf8_env_std(&mut git);
         match git.output() {
             Ok(out) if out.status.success() => None,
             Ok(out) => Some(format!(
                 "git init 失败: {}",
-                crate::encoding::decode_child_bytes(&out.stderr).trim()
+                aiwb_proc::decode_child_bytes(&out.stderr).trim()
             )),
             Err(e) => Some(format!("未找到 git，已跳过初始化（{e}）")),
         }

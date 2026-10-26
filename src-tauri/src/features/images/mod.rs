@@ -6,14 +6,12 @@ use std::path::{Component, Path, PathBuf};
 
 use tauri::{AppHandle, Manager, Runtime};
 
-use crate::models::strip_verbatim_prefix;
+use aiwb_core::models::strip_verbatim_prefix;
 
-mod preview_codec;
 
 #[cfg(test)]
 mod tests;
 
-pub use preview_codec::{classify_preview_image, encode_base64};
 
 const MAX_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
 
@@ -78,19 +76,19 @@ pub fn stage_image_bytes(
 }
 
 fn sniff_kind(header: &[u8]) -> Option<&'static str> {
-    if preview_codec::sniff_image("png", header) {
+    if aiwb_files::sniff_image("png", header) {
         Some("png")
-    } else if preview_codec::sniff_image("jpg", header) {
+    } else if aiwb_files::sniff_image("jpg", header) {
         Some("jpg")
-    } else if preview_codec::sniff_image("gif", header) {
+    } else if aiwb_files::sniff_image("gif", header) {
         Some("gif")
-    } else if preview_codec::sniff_image("webp", header) {
+    } else if aiwb_files::sniff_image("webp", header) {
         Some("webp")
-    } else if preview_codec::sniff_image("bmp", header) {
+    } else if aiwb_files::sniff_image("bmp", header) {
         Some("bmp")
-    } else if preview_codec::sniff_image("ico", header) {
+    } else if aiwb_files::sniff_image("ico", header) {
         Some("ico")
-    } else if preview_codec::sniff_image("avif", header) {
+    } else if aiwb_files::sniff_image("avif", header) {
         Some("avif")
     } else {
         None
@@ -166,7 +164,7 @@ fn b64_value(byte: u8) -> Result<u8, String> {
 
 pub fn validate_chat_image(raw: &str) -> Result<PathBuf, String> {
     let path = local_path_from_input(raw)?;
-    let ext = preview_codec::image_extension(&path)
+    let ext = aiwb_files::image_extension(&path)
         .ok_or("只接受 png、jpg、gif、webp、bmp、ico、avif 图片")?;
     if path
         .components()
@@ -192,7 +190,7 @@ pub fn validate_chat_image(raw: &str) -> Result<PathBuf, String> {
     let read = file
         .read(&mut header)
         .map_err(|_| "无法读取图片内容".to_string())?;
-    if !preview_codec::sniff_image(&ext, &header[..read]) {
+    if !aiwb_files::sniff_image(&ext, &header[..read]) {
         return Err("文件内容和图片扩展名不一致".into());
     }
     Ok(canonical)

@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 
 import { CommandMenuHost, OPEN_COMMAND_MENU } from "@/features/command-menu";
-import { ChatView } from "@/features/chat/timeline/ChatView";
+import { StoreChatView } from "@/features/workspace/StoreChatView";
 import { Sidebar } from "@/features/sidebar";
 
 import { useAttentionPreview } from "./use-attention-preview";
@@ -19,7 +19,7 @@ export default function AttentionPreview() {
     <div className="flex h-screen w-screen overflow-hidden bg-[#0f0f0f] text-[#e8e8e8]">
       <Sidebar />
       <main className="relative flex min-w-0 flex-1 flex-col">
-        <ChatView session={session} events={events} />
+        <StoreChatView session={session} events={events} />
       </main>
       <CommandMenuHost />
     </div>

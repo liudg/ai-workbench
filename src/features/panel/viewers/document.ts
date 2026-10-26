@@ -1,8 +1,8 @@
-import { backend } from "@/lib/ipc";
 import { BinaryFileError, ReopenAs, type ViewerContext } from "../core/registry";
+import type { PanelData } from "../core/PanelProvider";
 
-export async function readProjectText(projectId: string, path: string, sessionId?: string) {
-  const doc = await backend.readPreviewFile(projectId, path, sessionId);
+export async function readProjectText(data: PanelData, projectId: string, path: string, sessionId?: string) {
+  const doc = await data.readPreviewFile(projectId, path, sessionId ?? "");
   if (doc.kind === "image") {
     throw new ReopenAs({ kind: "file", path, line: null, viewerId: "image" });
   }
@@ -11,7 +11,8 @@ export async function readProjectText(projectId: string, path: string, sessionId
 }
 
 export async function readPreviewDocument(ctx: ViewerContext, path: string) {
-  return readProjectText(ctx.projectId, path, ctx.sessionId);
+  if (!ctx.data) throw new Error("无法读取文件");
+  return readProjectText(ctx.data, ctx.projectId, path, ctx.sessionId);
 }
 
 export function reopenIfDifferent(actual: string, viewerId: string, path: string, line: number | null) {
