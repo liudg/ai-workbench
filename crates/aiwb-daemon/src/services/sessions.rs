@@ -1,17 +1,14 @@
 //! 会话操作：发送、停止、回答提问、排队、选项、目录和权限菜单。
 
 use aiwb_agents::{TurnDelivery, UserTurn};
-use std::path::Path;
-
-use aiwb_agents::DiffScope;
 use aiwb_core::models::{
-    AgentCatalog, AgentKind, PageAnnotation, PermissionMenu, PromptAnswer, ReviewStart, ReviewTargets,
+    AgentCatalog, PageAnnotation, PermissionMenu, PromptAnswer, ReviewStart, ReviewTargets,
     SubscriptionUsage,
 };
-use aiwb_files::PreviewDocument;
 use aiwb_core::task::SessionOptions;
 use serde::Deserialize;
 
+use super::agents::AgentParam;
 use super::{ServiceResult, Services};
 
 #[derive(Deserialize)]
@@ -50,6 +47,13 @@ pub(crate) struct Queued {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct FlushQueued {
+    session_id: String,
+    ids: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct UpdateQueued {
     session_id: String,
     id: String,
@@ -67,22 +71,6 @@ pub(crate) struct SetOptions {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct Diff {
-    session_id: String,
-    scope: String,
-    #[serde(default)]
-    ignore_whitespace: bool,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct ReadFile {
-    session_id: String,
-    path: String,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct StartReview {
     session_id: String,
     target: ReviewStart,
@@ -96,8 +84,18 @@ pub(crate) struct Annotation {
 }
 
 #[derive(Deserialize)]
-pub(crate) struct AgentParam {
-    agent: AgentKind,
+#[serde(rename_all = "camelCase")]
+pub(crate) struct Goal {
+    session_id: String,
+    objective: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct GoalStatus {
+    session_id: String,
+    /// `paused` 或 `active`。
+    status: String,
 }
 
 #[derive(serde::Serialize)]
@@ -165,14 +163,45 @@ impl Services {
         handle.steer_queued(&params.id).await.map_err(|e| e.to_string())
     }
 
+    /// 按给定顺序把排队的消息逐条引导进当前回合。
+    pub(crate) async fn flush_queued(&self, params: FlushQueued) -> ServiceResult<()> {
+        let handle = self.runtimes.handle(&params.session_id).await?;
+        handle.flush_queued(params.ids).await.map_err(|e| e.to_string())
+    }
+
     pub(crate) async fn set_options(&self, params: SetOptions) -> ServiceResult<()> {
         self.runtimes.set_options(&params.session_id, &params.options).await
     }
 
-    /// 模型、推理强度、技能。要接上 CLI 才拿得到。
+    /// 模型、推理强度、技能。要接上 CLI 才拿得到。拿到了就记下来，给这种 Agent 的新会话用。
     pub(crate) async fn catalog(&self, params: SessionId) -> ServiceResult<AgentCatalog> {
         let handle = self.runtimes.handle(&params.session_id).await?;
-        handle.catalog().await.map_err(|e| e.to_string())
+        let catalog = handle.catalog().await.map_err(|e| e.to_string())?;
+        if let Some(session) = self.store.session(&params.session_id).map_err(|e| e.to_string())? {
+            self.remember_catalog(session.agent, &catalog);
+        }
+        Ok(catalog)
+    }
+
+    pub(crate) async fn set_goal(&self, params: Goal) -> ServiceResult<()> {
+        let handle = self.runtimes.handle(&params.session_id).await?;
+        handle.set_goal(&params.objective).await.map_err(|e| e.to_string())
+    }
+
+    pub(crate) async fn clear_goal(&self, params: SessionId) -> ServiceResult<()> {
+        let handle = self.runtimes.handle(&params.session_id).await?;
+        handle.clear_goal().await.map_err(|e| e.to_string())
+    }
+
+    pub(crate) async fn set_goal_status(&self, params: GoalStatus) -> ServiceResult<()> {
+        let handle = self.runtimes.handle(&params.session_id).await?;
+        handle.set_goal_status(&params.status).await.map_err(|e| e.to_string())
+    }
+
+    /// 把当前目标再推给 Agent 一次。
+    pub(crate) async fn publish_goal(&self, params: SessionId) -> ServiceResult<()> {
+        let handle = self.runtimes.handle(&params.session_id).await?;
+        handle.publish_goal().await.map_err(|e| e.to_string())
     }
 
     pub(crate) async fn permission_menu(&self, params: SessionId) -> ServiceResult<PermissionMenu> {
@@ -192,36 +221,6 @@ impl Services {
     /// 还没有任务时的权限菜单，不启动 CLI。
     pub(crate) fn draft_permission_menu(&self, params: AgentParam) -> PermissionMenu {
         self.runtimes.adapter(params.agent).draft_permission_menu()
-    }
-
-    /// 差异面板的范围：上一轮（Agent 提供）和 git 的几种。
-    pub(crate) async fn diff_scopes(&self, params: SessionId) -> ServiceResult<Vec<DiffScope>> {
-        let handle = self.runtimes.handle(&params.session_id).await?;
-        handle.diff_scopes().await.map_err(|e| e.to_string())
-    }
-
-    pub(crate) async fn diff(&self, params: Diff) -> ServiceResult<String> {
-        let cwd = self.runtimes.workdir(&params.session_id)?;
-        let handle = self.runtimes.handle(&params.session_id).await?;
-        handle
-            .diff_for_scope(&cwd, &params.scope, params.ignore_whitespace)
-            .await
-            .map_err(|e| e.to_string())
-    }
-
-    /// 会话工作目录里的一个文件，按文本读出来。
-    pub(crate) async fn read_file(&self, params: ReadFile) -> ServiceResult<PreviewDocument> {
-        let cwd = self.runtimes.workdir(&params.session_id)?;
-        tokio::task::spawn_blocking(move || aiwb_files::read_preview_at(Path::new(&cwd), &params.path))
-            .await
-            .map_err(|e| e.to_string())?
-    }
-
-    pub(crate) async fn is_git(&self, params: SessionId) -> ServiceResult<bool> {
-        let cwd = self.runtimes.workdir(&params.session_id)?;
-        tokio::task::spawn_blocking(move || aiwb_git::inside_work_tree(Path::new(&cwd)))
-            .await
-            .map_err(|e| e.to_string())?
     }
 
     pub(crate) async fn review_targets(&self, params: SessionId) -> ServiceResult<ReviewTargets> {

@@ -55,6 +55,9 @@ pub async fn run(config: Config) -> Result<(), String> {
         Ok(count) => eprintln!("从旧版导入了 {count} 个项目"),
         Err(err) => eprintln!("导入旧版项目失败：{err}"),
     }
+    if let Err(err) = services::import_legacy_task_folder(&store, &config.data_dir) {
+        eprintln!("导入旧版任务文件夹失败：{err}");
+    }
 
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", config.port))
         .await

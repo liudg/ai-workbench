@@ -222,7 +222,7 @@ impl Runtimes {
         Ok(logs.get_mut(session_id).expect("log just inserted"))
     }
 
-    /// 会话干活的目录：工作树任务是检出目录，否则是项目主目录。
+    /// 会话干活的目录：工作树任务是检出目录，独立聊天是它自己的文件夹，否则是项目主目录。
     pub(crate) fn workdir(&self, session_id: &str) -> RuntimeResult<String> {
         let session = self
             .store
@@ -240,10 +240,11 @@ impl Runtimes {
             .map_err(store_err)?
             .ok_or_else(|| "任务不存在".to_string())?;
         Ok(match task.workspace {
-            TaskWorkspace::Worktree { path, .. } => path,
+            TaskWorkspace::Worktree { path, .. } | TaskWorkspace::Folder { path } => path,
             TaskWorkspace::Root => {
+                let project_id = task.project_id.ok_or_else(|| "项目不存在".to_string())?;
                 self.store
-                    .project(&task.project_id)
+                    .project(&project_id)
                     .map_err(store_err)?
                     .ok_or_else(|| "项目不存在".to_string())?
                     .path

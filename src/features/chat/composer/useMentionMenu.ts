@@ -11,8 +11,9 @@ import {
   type MentionAddId,
   type MentionFile,
 } from "./mentions";
-import { pickMentionFiles } from "./composer-backend";
+import { pickFiles as pickLocalFiles } from "@/lib/native/pick-files";
 import { stepIndex } from "./composer-keys";
+import type { ComposerHost } from "./host";
 import { useMentionSearch } from "./useMentionSearch";
 
 function placeCaret(textarea: HTMLTextAreaElement | null, caret: number) {
@@ -24,8 +25,7 @@ function placeCaret(textarea: HTMLTextAreaElement | null, caret: number) {
 
 /** `@` 菜单：空查询是添加项，有查询时用工作区路径筛选。 */
 export function useMentionMenu(input: {
-  projectId: string;
-  sessionId?: string;
+  host: ComposerHost;
   text: string;
   setText: Dispatch<SetStateAction<string>>;
   caret: number;
@@ -44,7 +44,7 @@ export function useMentionMenu(input: {
   const textRef = useRef(input.text);
   textRef.current = input.text;
   const searchQuery = input.mentionOpen && !hidden && input.mentionQuery ? input.mentionQuery : null;
-  const search = useMentionSearch(input.projectId, searchQuery, input.sessionId);
+  const search = useMentionSearch(input.host, searchQuery);
   const show = input.mentionOpen && !hidden;
   const activeAdd = MENTION_ADD_ORDER[Math.min(index, MENTION_ADD_ORDER.length - 1)] ?? "files";
   const hasActive = show
@@ -82,7 +82,7 @@ export function useMentionMenu(input: {
     const cleared = clearAtToken(started, input.caret);
     input.setText(cleared.text);
     input.setCaret(cleared.caret);
-    const picked = await pickMentionFiles();
+    const picked = await pickLocalFiles("选择文件");
     const current = mentionPickText(started, textRef.current, cleared.text);
     // 清掉 @ 之后浏览器可能把光标留在旧下标上。仍用打开文件框前的位置，只夹到当前文本里。
     const caret = caretAfterMentionPick(cleared.caret, null, current.length);

@@ -1,10 +1,31 @@
+//! 项目：新建（建目录，可选 git init）、导入已有文件夹、改名和源文件夹、置顶、移除，以及分支。
+
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use aiwb_core::rpc::TOPIC_PROJECTS;
 use aiwb_core::Project;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-use super::{now_millis, to_value, ServiceResult, Services};
+use super::{blocking, now_millis, to_value, ServiceResult, Services};
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CreateProject {
+    name: String,
+    parent_dir: String,
+    #[serde(default)]
+    init_git: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CreatedProject {
+    project: Project,
+    /// 目录建好了但 git init 没成功。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    warning: Option<String>,
+}
 
 #[derive(Deserialize)]
 pub(crate) struct AddProject {
@@ -14,15 +35,62 @@ pub(crate) struct AddProject {
 }
 
 #[derive(Deserialize)]
-pub(crate) struct RemoveProject {
+pub(crate) struct UpdateProject {
+    id: String,
+    name: String,
+    folders: Vec<String>,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct PinProject {
+    id: String,
+    pinned: bool,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct ProjectId {
     id: String,
 }
 
-const DEFAULT_AGENT: &str = "codex-cli";
+/// 分支操作的目录：给了会话就是会话的工作目录，否则是项目主目录。
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct GitScope {
+    #[serde(default)]
+    project_id: Option<String>,
+    #[serde(default)]
+    session_id: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct BranchName {
+    #[serde(flatten)]
+    scope: GitScope,
+    name: String,
+}
 
 impl Services {
     pub(crate) fn list_projects(&self) -> ServiceResult<Vec<Project>> {
         self.store.list_projects().map_err(|e| e.to_string())
+    }
+
+    fn project_or_err(&self, id: &str) -> ServiceResult<Project> {
+        self.store
+            .project(id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "项目不存在".to_string())
+    }
+
+    /// 在 `parentDir` 下建名为 `name` 的目录。
+    pub(crate) async fn create_project(&self, params: CreateProject) -> ServiceResult<CreatedProject> {
+        let name = params.name.trim().to_string();
+        let (dir, warning) = {
+            let name = name.clone();
+            blocking(move || create_project_dir(&params.parent_dir, &name, params.init_git)).await??
+        };
+        let project = self.insert_project(name, dir)?;
+        Ok(CreatedProject { project, warning })
     }
 
     pub(crate) fn add_project(&self, params: AddProject) -> ServiceResult<Project> {
@@ -33,6 +101,10 @@ impl Services {
             .filter(|name| !name.is_empty())
             .or_else(|| path.file_name().map(|n| n.to_string_lossy().into_owned()))
             .unwrap_or_else(|| path.to_string_lossy().into_owned());
+        self.insert_project(name, path)
+    }
+
+    fn insert_project(&self, name: String, path: PathBuf) -> ServiceResult<Project> {
         let path = path.to_string_lossy().into_owned();
         self.hub.publish_with(TOPIC_PROJECTS, || {
             let mut projects = self.list_projects()?;
@@ -48,7 +120,7 @@ impl Services {
                 name,
                 path: path.clone(),
                 folders: vec![path],
-                default_agent: DEFAULT_AGENT.into(),
+                pinned: false,
                 created_at: now,
                 updated_at: now,
             };
@@ -58,22 +130,150 @@ impl Services {
         })
     }
 
+    /// 第一项成为主目录。不移动磁盘上的目录。
+    pub(crate) fn update_project(&self, params: UpdateProject) -> ServiceResult<Project> {
+        let name = params.name.trim();
+        if name.is_empty() {
+            return Err("项目名不能为空".into());
+        }
+        let folders = normalize_folders(&params.folders)?;
+        self.hub.publish_with(TOPIC_PROJECTS, || {
+            let projects = self.list_projects()?;
+            let taken = projects.iter().filter(|p| p.id != params.id).any(|p| {
+                p.folders
+                    .iter()
+                    .any(|owned| folders.iter().any(|folder| same_dir(owned, folder)))
+            });
+            if taken {
+                return Err("这个目录已经在项目列表里".to_string());
+            }
+            let changed = self
+                .store
+                .update_project(&params.id, name, &folders, now_millis())
+                .map_err(|e| e.to_string())?;
+            if !changed {
+                return Err("项目不存在".into());
+            }
+            let projects = self.list_projects()?;
+            let project = projects
+                .iter()
+                .find(|p| p.id == params.id)
+                .cloned()
+                .ok_or_else(|| "项目不存在".to_string())?;
+            Ok((project, to_value(projects)?))
+        })
+    }
+
+    pub(crate) fn pin_project(&self, params: PinProject) -> ServiceResult<bool> {
+        self.hub.publish_with(TOPIC_PROJECTS, || {
+            let changed = self
+                .store
+                .set_project_pinned(&params.id, params.pinned)
+                .map_err(|e| e.to_string())?;
+            Ok((changed, to_value(self.list_projects()?)?))
+        })
+    }
+
     /// 还有任务的项目不移除，免得把任务记录一起删掉。
-    pub(crate) fn remove_project(&self, params: RemoveProject) -> ServiceResult<bool> {
+    pub(crate) fn remove_project(&self, params: ProjectId) -> ServiceResult<bool> {
         let tasks = self.store.list_tasks().map_err(|e| e.to_string())?;
-        let count = tasks.iter().filter(|task| task.project_id == params.id).count();
+        let count = tasks
+            .iter()
+            .filter(|task| task.project_id.as_deref() == Some(params.id.as_str()))
+            .count();
         if count > 0 {
-            return Err(format!("这个项目下还有 {count} 个任务，先删掉它们再移除项目"));
+            return Err(format!("这个项目下还有 {count} 个会话，先删掉它们再移除项目"));
         }
         self.hub.publish_with(TOPIC_PROJECTS, || {
             let removed = self.store.remove_project(&params.id).map_err(|e| e.to_string())?;
             Ok((removed, to_value(self.list_projects()?)?))
         })
     }
+
+    fn git_root(&self, scope: &GitScope) -> ServiceResult<PathBuf> {
+        if let Some(session_id) = scope.session_id.as_deref() {
+            return Ok(PathBuf::from(self.runtimes.workdir(session_id)?));
+        }
+        let project_id = scope
+            .project_id
+            .as_deref()
+            .ok_or_else(|| "没有指定项目或会话".to_string())?;
+        Ok(PathBuf::from(self.project_or_err(project_id)?.path))
+    }
+
+    pub(crate) async fn is_git_dir(&self, scope: GitScope) -> ServiceResult<bool> {
+        let root = self.git_root(&scope)?;
+        blocking(move || aiwb_git::inside_work_tree(&root)).await?
+    }
+
+    /// 至少有一次提交，才能从它建工作树。
+    pub(crate) async fn has_commit(&self, scope: GitScope) -> ServiceResult<bool> {
+        let root = self.git_root(&scope)?;
+        blocking(move || aiwb_git::repo_has_commit(&root)).await?
+    }
+
+    /// 当前分支。不是仓库或分离头指针时为空。
+    pub(crate) async fn current_branch(&self, scope: GitScope) -> ServiceResult<Option<String>> {
+        let root = self.git_root(&scope)?;
+        blocking(move || aiwb_git::current_branch(&root)).await?
+    }
+
+    pub(crate) async fn branches(&self, scope: GitScope) -> ServiceResult<aiwb_git::GitBranchMenu> {
+        let root = self.git_root(&scope)?;
+        blocking(move || aiwb_git::local_branch_menu(&root)).await?
+    }
+
+    pub(crate) async fn checkout_branch(&self, params: BranchName) -> ServiceResult<()> {
+        let root = self.git_root(&params.scope)?;
+        blocking(move || aiwb_git::checkout_local_branch(&root, &params.name)).await?
+    }
+
+    pub(crate) async fn create_branch(&self, params: BranchName) -> ServiceResult<()> {
+        let root = self.git_root(&params.scope)?;
+        blocking(move || aiwb_git::create_and_checkout_branch(&root, &params.name)).await?
+    }
+}
+
+/// 建项目目录，可选 git init。git init 失败只给警告，目录照样留下。
+fn create_project_dir(parent_dir: &str, name: &str, init_git: bool) -> ServiceResult<(PathBuf, Option<String>)> {
+    if name.is_empty() {
+        return Err("项目名不能为空".into());
+    }
+    if name.contains(['/', '\\']) || name == "." || name == ".." {
+        return Err("项目名不能包含路径分隔符".into());
+    }
+    let parent = normalize_dir(parent_dir)?;
+    let dir = parent.join(name);
+    if dir.exists() {
+        return Err(format!("目录已存在: {}", dir.display()));
+    }
+    std::fs::create_dir_all(&dir).map_err(|e| format!("创建目录失败 {}: {e}", dir.display()))?;
+    let warning = if init_git {
+        aiwb_git::init_repository(&dir).err()
+    } else {
+        None
+    };
+    Ok((dir, warning))
+}
+
+/// 去重，保持顺序；每一项都必须是已存在的目录。
+fn normalize_folders(folders: &[String]) -> ServiceResult<Vec<String>> {
+    let mut seen = HashSet::new();
+    let mut normalized = Vec::new();
+    for folder in folders {
+        let dir = normalize_dir(folder)?.to_string_lossy().into_owned();
+        if seen.insert(dir_key(&dir)) {
+            normalized.push(dir);
+        }
+    }
+    if normalized.is_empty() {
+        return Err("至少保留一个源文件夹".into());
+    }
+    Ok(normalized)
 }
 
 /// 必须是已存在的目录。返回不带 `\\?\` 前缀的绝对路径。
-fn normalize_dir(raw: &str) -> ServiceResult<PathBuf> {
+pub(crate) fn normalize_dir(raw: &str) -> ServiceResult<PathBuf> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return Err("目录不能为空".into());
@@ -84,24 +284,29 @@ fn normalize_dir(raw: &str) -> ServiceResult<PathBuf> {
     if !canonical.is_dir() {
         return Err(format!("不是目录：{trimmed}"));
     }
-    let text = canonical.to_string_lossy();
-    Ok(match text.strip_prefix(r"\\?\") {
+    Ok(strip_verbatim(canonical))
+}
+
+pub(crate) fn strip_verbatim(path: PathBuf) -> PathBuf {
+    let text = path.to_string_lossy();
+    match text.strip_prefix(r"\\?\") {
         Some(rest) if !rest.starts_with("UNC\\") => PathBuf::from(rest),
         Some(rest) => PathBuf::from(format!(r"\\{}", &rest[4..])),
-        None => canonical,
-    })
+        None => path,
+    }
+}
+
+fn dir_key(path: &str) -> String {
+    let p = path.trim_end_matches(['/', '\\']).replace('\\', "/");
+    if cfg!(windows) {
+        p.to_lowercase()
+    } else {
+        p
+    }
 }
 
 fn same_dir(a: &str, b: &str) -> bool {
-    let key = |p: &str| {
-        let p = p.trim_end_matches(['/', '\\']).replace('\\', "/");
-        if cfg!(windows) {
-            p.to_lowercase()
-        } else {
-            p
-        }
-    };
-    key(a) == key(b)
+    dir_key(a) == dir_key(b)
 }
 
 #[cfg(test)]
@@ -168,6 +373,83 @@ mod tests {
             .await
             .unwrap_err();
         assert!(err.contains("找不到目录"));
+    }
+
+    #[tokio::test]
+    async fn create_makes_the_folder_and_rejects_existing_names() {
+        let services = services();
+        let parent = tempfile::tempdir().unwrap();
+        let created = services
+            .dispatch(
+                "projects.create",
+                json!({ "name": "demo", "parentDir": parent.path().to_string_lossy(), "initGit": false }),
+            )
+            .await
+            .unwrap();
+        assert!(parent.path().join("demo").is_dir());
+        assert_eq!(created["project"]["name"], json!("demo"));
+        assert!(created.get("warning").is_none());
+
+        let again = services
+            .dispatch(
+                "projects.create",
+                json!({ "name": "demo", "parentDir": parent.path().to_string_lossy() }),
+            )
+            .await
+            .unwrap_err();
+        assert!(again.contains("目录已存在"));
+        let bad = services
+            .dispatch(
+                "projects.create",
+                json!({ "name": "a/b", "parentDir": parent.path().to_string_lossy() }),
+            )
+            .await
+            .unwrap_err();
+        assert!(bad.contains("路径分隔符"));
+    }
+
+    #[tokio::test]
+    async fn update_folders_pin_and_reject_taken_folders() {
+        let services = services();
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        let first = services
+            .dispatch("projects.add", json!({ "path": a.path().to_string_lossy() }))
+            .await
+            .unwrap();
+        let second = services
+            .dispatch("projects.add", json!({ "path": b.path().to_string_lossy() }))
+            .await
+            .unwrap();
+        let id = first["id"].as_str().unwrap();
+
+        let taken = services
+            .dispatch(
+                "projects.update",
+                json!({ "id": id, "name": "A", "folders": [a.path().to_string_lossy(), second["path"]] }),
+            )
+            .await
+            .unwrap_err();
+        assert!(taken.contains("已经在项目列表里"));
+
+        let extra = tempfile::tempdir().unwrap();
+        let updated = services
+            .dispatch(
+                "projects.update",
+                json!({ "id": id, "name": " 新名 ", "folders": [extra.path().to_string_lossy(), a.path().to_string_lossy(), extra.path().to_string_lossy()] }),
+            )
+            .await
+            .unwrap();
+        assert_eq!(updated["name"], json!("新名"));
+        assert_eq!(updated["folders"].as_array().unwrap().len(), 2);
+        assert_eq!(updated["path"], updated["folders"][0]);
+
+        services
+            .dispatch("projects.setPinned", json!({ "id": id, "pinned": true }))
+            .await
+            .unwrap();
+        let listed = services.list_projects().unwrap();
+        assert!(listed.iter().find(|p| p.id == id).unwrap().pinned);
     }
 
     #[test]

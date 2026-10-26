@@ -39,6 +39,7 @@ let panelMod: typeof import("../panel/core/PanelProvider.tsx");
 let sidebarMod: typeof import("./Sidebar.tsx");
 let peekMod: typeof import("./SidebarPeek.tsx");
 let visibilityMod: typeof import("../../shared/shell/sidebar-open.ts");
+let daemonMod: typeof import("../../lib/daemon/index.ts");
 
 before(async () => {
   server = await createServer({
@@ -54,9 +55,12 @@ before(async () => {
   sidebarMod = (await server.ssrLoadModule("/src/features/sidebar/Sidebar.tsx")) as unknown as typeof sidebarMod;
   peekMod = (await server.ssrLoadModule("/src/features/sidebar/SidebarPeek.tsx")) as unknown as typeof peekMod;
   visibilityMod = (await server.ssrLoadModule("/src/shared/shell/sidebar-open.ts")) as unknown as typeof visibilityMod;
+  daemonMod = (await server.ssrLoadModule("/src/lib/daemon/index.ts")) as unknown as typeof daemonMod;
 });
 
 after(async () => {
+  // 侧栏会连 daemon；测试里没有 daemon，停掉重试，进程才能退出。
+  daemonMod?.daemon.stop();
   visibilityMod?.setSidebarOpen(true);
   await server?.close();
   for (const key of installed) Reflect.deleteProperty(globalThis, key);

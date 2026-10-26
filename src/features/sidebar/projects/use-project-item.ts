@@ -1,29 +1,15 @@
-import { useWorkbench } from "@/store";
-import type { Project } from "@/types";
+import { projectsApi, type Project } from "@/features/projects";
+import { revealFolder } from "@/lib/native/open-path";
+import { showError } from "@/shared/shell/error-banner";
+import { leaveProject, openProject } from "@/shared/shell/navigation";
+import type { SidebarTask } from "../sidebar-task";
 
-export function useProjectItem(project: Project) {
-  const sessions = useWorkbench((s) => s.sessions[project.id]);
-  const selected = useWorkbench((s) => s.selectedProjectId === project.id);
-  const activeSessionId = useWorkbench((s) => s.activeSessionId[project.id]);
-  const draft = useWorkbench((s) => s.drafts[project.id]);
-  const pendingStart = useWorkbench((s) => s.pendingStart[project.id]);
-  const draftFocused = useWorkbench((s) => Boolean(s.draftFocused[project.id]));
-  const selectProject = useWorkbench((s) => s.selectProject);
-  const removeProject = useWorkbench((s) => s.removeProject);
-  const openProjectFolder = useWorkbench((s) => s.openProjectFolder);
-  const pinned = useWorkbench((s) => s.pinnedProjectIds.includes(project.id));
-  const togglePinnedProject = useWorkbench((s) => s.togglePinnedProject);
+export function useProjectItem(project: Project, tasks: readonly SidebarTask[]) {
   return {
-    sessions,
-    selected,
-    activeSessionId,
-    draft,
-    pendingStart,
-    draftFocused,
-    selectProject,
-    removeProject,
-    openProjectFolder,
-    pinned,
-    togglePinnedProject,
+    selectProject: () => openProject(project.id, tasks.map((task) => task.id)),
+    togglePinned: () => void projectsApi.setProjectPinned(project.id, !project.pinned).catch(showError),
+    openFolder: () => void revealFolder(project.path).catch(showError),
+    removeProject: () =>
+      void projectsApi.removeProject(project.id).then(() => leaveProject(project.id), showError),
   };
 }

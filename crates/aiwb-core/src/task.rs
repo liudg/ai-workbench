@@ -4,11 +4,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::models::{AgentKind, QueuedTurn, SessionEvent, SessionStatus};
 
-/// 任务在哪里干活：项目主目录，或者工作台建的工作树。
+/// 任务在哪里干活：项目主目录、工作台建的工作树，或者独立聊天自己的文件夹。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum TaskWorkspace {
     Root,
+    /// 不属于项目的独立聊天，在「无项目任务文件夹」下建的目录。
+    Folder { path: String },
     #[serde(rename_all = "camelCase")]
     Worktree {
         path: String,
@@ -24,7 +26,9 @@ pub enum TaskWorkspace {
 #[serde(rename_all = "camelCase")]
 pub struct Task {
     pub id: String,
-    pub project_id: String,
+    /// 独立聊天为空。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<String>,
     pub title: String,
     pub workspace: TaskWorkspace,
     pub pinned: bool,

@@ -1,4 +1,4 @@
-import type { Ref } from "react";
+import { useCallback, type Ref } from "react";
 
 import { userFacingMessage } from "@/lib/user-facing";
 import { cn } from "@/lib/utils";
@@ -17,23 +17,26 @@ import { SkillMenu } from "./SkillMenu";
 import { SlashMenu } from "./SlashMenu";
 import { GoalStatusBar } from "./GoalStatusBar";
 import { runComposerPrimary } from "./composer-view";
-import { fetchReviewTargets } from "./composer-backend";
+import type { ComposerHost } from "./host";
 import { useComposerController } from "./useComposerController";
 import { ComposerContextRow } from "./GitBranchControl";
-import { useSessionWorktree } from "./use-session-worktree";
 
 export function Composer({
+  host,
   session,
   events,
   anchorRef,
 }: {
+  host: ComposerHost;
   session: Session;
   events: SessionEvent[];
   anchorRef?: Ref<HTMLDivElement>;
 }) {
-  const c = useComposerController(session, events);
-  const worktree = useSessionWorktree(session);
+  const c = useComposerController(host, session, events);
   const view = c.view;
+  // 审查菜单按会话取一次目标，不跟着每次渲染新建的宿主重取。
+  const reviewTargets = host.reviewTargets;
+  const loadTargets = useCallback(() => reviewTargets(), [session.id]);
   const notice = userFacingMessage(c.notice);
   const catalogNotice = userFacingMessage(c.catalogNotice);
   const slashSelected = Math.min(c.slashIndex, Math.max(view.slashMatches.length - 1, 0));
@@ -80,7 +83,7 @@ export function Composer({
           />
         )}
         {c.reviewOpen && (
-          <ReviewMenu sessionId={session.id} loadTargets={fetchReviewTargets} onStart={c.startReview} />
+          <ReviewMenu sessionId={session.id} loadTargets={loadTargets} onStart={c.startReview} />
         )}
         {view.slashOpen && !c.reviewOpen && (
           <SlashMenu
@@ -101,11 +104,11 @@ export function Composer({
           />
         ) : null}
         <ComposerContextRow
-          workContext={c.workContext}
-          projectId={c.gitProject?.id ?? ""}
-          projectName={c.gitProject?.name ?? ""}
-          sessionId={session.id}
-          worktree={worktree}
+          agentChoice={host.agentChoice}
+          workContext={host.workContext}
+          git={host.git}
+          worktree={host.worktree}
+          locked={host.inputLocked}
         />
         <TextSnippetPreview snippets={c.snippets} />
         <div

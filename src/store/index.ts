@@ -13,7 +13,7 @@ import {
   browserUnreadStorage,
   syncUnreadFinished,
   writeUnreadFinishedIds,
-} from "./unread-finished";
+} from "@/shared/unread-finished";
 
 export type { AppScreen, DialogMode } from "./types";
 

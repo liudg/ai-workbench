@@ -49,8 +49,32 @@ const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (session_id, seq)
     );
     CREATE INDEX event_rev ON event(session_id, rev);",
+    // 3：项目置顶、去掉项目默认 Agent；独立聊天的任务不属于项目；作曲栏草稿。
+    // 改 project_id 可空要重建任务表，外键在迁移期间是关着的，删旧表不会连带删会话。
+    "ALTER TABLE project ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE project DROP COLUMN default_agent;
+    CREATE TABLE task_new (
+        id          TEXT PRIMARY KEY,
+        project_id  TEXT REFERENCES project(id) ON DELETE CASCADE,
+        title       TEXT NOT NULL,
+        workspace   TEXT NOT NULL,
+        pinned      INTEGER NOT NULL DEFAULT 0,
+        archived_at INTEGER,
+        created_at  INTEGER NOT NULL,
+        updated_at  INTEGER NOT NULL
+    );
+    INSERT INTO task_new SELECT id, project_id, title, workspace, pinned, archived_at, created_at, updated_at FROM task;
+    DROP TABLE task;
+    ALTER TABLE task_new RENAME TO task;
+    CREATE INDEX task_project ON task(project_id);
+    CREATE TABLE draft (
+        key        TEXT PRIMARY KEY,
+        body       TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+    );",
 ];
 
+/// 调用时外键必须是关着的：重建表的迁移要先删旧表。
 pub(crate) fn run(conn: &mut Connection) -> rusqlite::Result<()> {
     let current: usize = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
     for (index, sql) in MIGRATIONS.iter().enumerate().skip(current) {

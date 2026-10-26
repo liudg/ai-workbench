@@ -1,9 +1,6 @@
-import { AnswerMarkdownHost } from "@/features/chat/answer/AnswerMarkdownHost";
-import { StoreChatView } from "@/features/workspace/StoreChatView";
-import { PanelProvider } from "@/features/panel/core/PanelProvider";
-import { SessionSplit } from "@/features/panel/core/SessionSplit";
 import type { Session, SessionEvent, SessionEventBody, SessionStatus } from "@/types";
-import { useActivityPreviewProfiles } from "./use-activity-preview";
+import { PreviewSession } from "./PreviewSession";
+import { ACTIVITY_PREVIEW_PROFILES } from "./use-activity-preview";
 
 function session(id: string, title: string, status: SessionStatus): Session {
   return {
@@ -115,28 +112,13 @@ function Frame({
   const current = session(id, title, status);
   return (
     <div data-activity-frame={id} className="h-[70vh] min-h-0 border-b border-[#222]">
-      <PanelProvider
-        sessionId={id}
-        projectId="preview"
-        projectPath=""
-        sessionTitle={title}
-        agent="codex-cli"
-        events={events}
-        usage={null}
-      >
-        <AnswerMarkdownHost>
-          <SessionSplit>
-            <StoreChatView session={current} events={events} />
-          </SessionSplit>
-        </AnswerMarkdownHost>
-      </PanelProvider>
+      <PreviewSession session={current} events={events} profiles={ACTIVITY_PREVIEW_PROFILES} />
     </div>
   );
 }
 
 /** 开发预览：进行中末行「正在思考」，结束后不留思考条目。`?preview=activity` */
 export default function ActivityPreview() {
-  useActivityPreviewProfiles();
   return (
     <div className="h-screen w-screen overflow-auto bg-[#0f0f0f] text-[#e8e8e8]">
       <Frame id="activity-live" title="正在思考" status="running" events={liveEvents} />

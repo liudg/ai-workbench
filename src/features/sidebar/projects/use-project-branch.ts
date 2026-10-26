@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { backend } from "@/lib/ipc";
+import { projectsApi } from "@/features/projects";
 import {
   cachedProjectBranch,
   projectBranchStamp,
@@ -30,7 +30,7 @@ export function useProjectBranch(projectId: string): string | null {
     if (cached !== undefined) setBranch(cached);
     const seen = projectBranchStamp(projectId);
     let cancel = false;
-    void backend.projectBranch(projectId).then(
+    void projectsApi.currentBranch({ projectId }).then(
       (value) => {
         if (cancel || projectBranchStamp(projectId) !== seen) return;
         rememberProjectBranch(projectId, value);

@@ -1,15 +1,13 @@
 import { useState } from "react";
 
-import { backend } from "@/lib/ipc";
+import { projectsApi, type Project } from "@/features/projects";
+import { pickFolder } from "@/lib/native/pick-folder";
 import { userFacingMessage } from "@/lib/user-facing";
-import { useWorkbench } from "@/store";
-import type { Project } from "@/types";
+import { leaveProject } from "@/shared/shell/navigation";
 import { projectFolders, sameFolder } from "./project-folders";
 
 /** 编辑项目的草稿。目录选择和保存走这里，对话框只渲染。 */
 export function useEditProjectForm(project: Project, onClose: () => void) {
-  const updateProject = useWorkbench((s) => s.updateProject);
-  const removeProject = useWorkbench((s) => s.removeProject);
   const [name, setName] = useState(project.name);
   const [folders, setFolders] = useState(() => projectFolders(project));
   const [error, setError] = useState<string | null>(null);
@@ -23,7 +21,7 @@ export function useEditProjectForm(project: Project, onClose: () => void) {
     if (busy) return;
     setError(null);
     try {
-      const selected = await backend.pickDirectory("添加源文件夹");
+      const selected = await pickFolder("添加源文件夹");
       if (!selected) return;
       setFolders((current) =>
         current.some((item) => sameFolder(item, selected)) ? current : [...current, selected],
@@ -38,7 +36,7 @@ export function useEditProjectForm(project: Project, onClose: () => void) {
     setBusy(true);
     setError(null);
     try {
-      await updateProject({ id: project.id, name: name.trim(), folders });
+      await projectsApi.updateProject({ id: project.id, name: name.trim(), folders });
       onClose();
     } catch (err) {
       setError(userFacingMessage(err) ?? "无法保存项目");
@@ -51,7 +49,9 @@ export function useEditProjectForm(project: Project, onClose: () => void) {
     setBusy(true);
     setError(null);
     try {
-      await removeProject(project.id);
+      await projectsApi.removeProject(project.id);
+      leaveProject(project.id);
+      onClose();
     } catch (err) {
       setError(userFacingMessage(err) ?? "无法移除项目");
       setBusy(false);

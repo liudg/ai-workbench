@@ -1,17 +1,8 @@
 import type { ClipboardEvent, KeyboardEvent as ReactKeyboardEvent, RefObject } from "react";
 
-import { useWorkbench } from "@/store";
-import { projectOfDraft } from "@/store/draft-session";
+import { pickFiles } from "@/lib/native/pick-files";
+import { stageImage } from "@/lib/native/stage-image";
 import type { AgentCapabilities, AgentSkillOption, SessionSandbox, SlashCommand } from "@/types";
-import {
-  flushQueuedTurns,
-  interruptTurn,
-  pickAttachments,
-  removeQueuedTurn,
-  stageChatImage,
-  steerQueuedTurn,
-  updateQueuedTurn,
-} from "./composer-backend";
 import { composerKeyIntent, stepIndex } from "./composer-keys";
 import { composerCtrlEnter, queueFlushIds, submitDelivery } from "./composer-now";
 import { decideSlash, decideSubmit } from "./composer-submit";
@@ -24,14 +15,15 @@ import {
 } from "./submit-flight";
 import type { deriveComposerView } from "./composer-view";
 import { fileName, isImagePath } from "./media";
+import type { ComposerHost } from "./host";
 import { insertSkill } from "./skills";
-import type { useComposerActions } from "./useComposerStore";
 
-type Actions = ReturnType<typeof useComposerActions>;
 type View = ReturnType<typeof deriveComposerView>;
 
 export interface ComposerRun {
-  sessionId: string;
+  host: ComposerHost;
+  /** 防重复提交按这个键记。一般是会话 id。 */
+  flightKey: string;
   text: string;
   caret: number;
   editingId: string | null;
@@ -44,7 +36,6 @@ export interface ComposerRun {
   setSlashIndex: (value: number | ((current: number) => number)) => void;
   setSkillIndex: (value: number | ((current: number) => number)) => void;
   textareaRef: RefObject<HTMLTextAreaElement | null>;
-  actions: Actions;
   caps: AgentCapabilities | undefined;
   view: View;
   goalDraft: boolean;
@@ -61,11 +52,8 @@ export interface ComposerRun {
   activeSlash: SlashCommand | undefined;
   activeSkill: AgentSkillOption | undefined;
   sandbox: SessionSandbox | null;
-  projectPath: string;
   skillMatches: number;
   slashMatches: number;
-  fileCount: number;
-  snippetCount: number;
   submitFlight: { current: SubmitFlight | null };
   /** 草稿要等创建并发送成功后才清掉输入。失败时原文还在。 */
   holdUntilAccepted: boolean;
@@ -79,7 +67,7 @@ export function cancelComposerEdit(run: ComposerRun) {
   run.setEditingId(null);
   run.setText("");
   run.setCaret(0);
-  run.actions.clearAttachments(run.sessionId);
+  run.host.clearAttachments();
 }
 
 export async function stageComposerBlobs(run: ComposerRun, blobs: File[]) {
@@ -88,10 +76,14 @@ export async function stageComposerBlobs(run: ComposerRun, blobs: File[]) {
   if (rejected) run.setNotice("只能附加图片");
   if (images.length === 0) return;
   const staged = [];
-  for (const file of images) staged.push(await stageChatImage(file));
+  try {
+    for (const file of images) staged.push(await stageImage(file));
+  } catch (error) {
+    run.host.reportError(error);
+  }
   if (staged.length) {
     if (!rejected) run.setNotice(null);
-    run.actions.addAttachments(run.sessionId, staged);
+    run.host.addAttachments(staged);
   }
 }
 
@@ -105,7 +97,7 @@ export function applyComposerSlash(run: ComposerRun, command: SlashCommand) {
   if (decision.type === "toggle-plan") {
     run.setText("");
     if (decision.mode === "plan") run.exitGoal();
-    void run.actions.setCollaborationMode(run.sessionId, decision.mode);
+    void run.host.setCollaborationMode(decision.mode);
     return;
   }
   run.setText(decision.text);
@@ -129,28 +121,15 @@ function clearIfUnchanged(run: ComposerRun) {
   run.setCaret(0);
 }
 
-function dispatchComposerSend(run: ComposerRun, text: string, images: string[] = [], now = false) {
-  const previous = run.text;
-  const send = now ? run.actions.sendMessageNow : run.actions.sendMessage;
-  const pending = send(run.sessionId, text, images);
-  if (run.holdUntilAccepted) return pending;
-  void pending.then((ok) => {
-    if (!ok) return;
-    useWorkbench.getState().clearSentComposerDraft(run.sessionId, previous, text);
-  });
-  return pending;
-}
-
 export function runComposerSubmit(run: ComposerRun, options?: { now?: boolean }) {
   const now = Boolean(options?.now);
-  const state = useWorkbench.getState();
-  const attached = state.attachments[run.sessionId] ?? [];
-  const snippets = state.textSnippets[run.sessionId] ?? [];
+  const attached = run.host.files;
+  const snippets = run.host.snippets;
   const fingerprint = submitFingerprint({
     editingId: run.editingId,
     text: run.text,
-    fileCount: run.fileCount,
-    snippetCount: run.snippetCount,
+    fileCount: attached.length,
+    snippetCount: snippets.length,
   });
   const decision = decideSubmit({
     text: run.text,
@@ -174,11 +153,11 @@ export function runComposerSubmit(run: ComposerRun, options?: { now?: boolean })
       holdUntilAccepted: run.holdUntilAccepted,
       decision: decision.type,
     }) === "send-now";
-  const claim = claimSubmit(run.submitFlight.current, { sessionId: run.sessionId, fingerprint });
+  const claim = claimSubmit(run.submitFlight.current, { sessionId: run.flightKey, fingerprint });
   if (!claim.claimed) return;
   run.submitFlight.current = claim.flight;
   const release = () => {
-    run.submitFlight.current = settleSubmit(run.submitFlight.current, run.sessionId, fingerprint);
+    run.submitFlight.current = settleSubmit(run.submitFlight.current, run.flightKey, fingerprint);
   };
   const clearSnippets = "clearSnippets" in decision && Boolean(decision.clearSnippets);
   if (decision.type === "set-goal") {
@@ -195,7 +174,7 @@ export function runComposerSubmit(run: ComposerRun, options?: { now?: boolean })
   if (decision.type === "toggle-plan") {
     run.setText("");
     if (decision.mode === "plan") run.exitGoal();
-    void run.actions.setCollaborationMode(run.sessionId, decision.mode);
+    void run.host.setCollaborationMode(decision.mode);
     return;
   }
   if (decision.type === "open-review") {
@@ -207,8 +186,8 @@ export function runComposerSubmit(run: ComposerRun, options?: { now?: boolean })
     if (run.holdUntilAccepted) {
       void (async () => {
         try {
-          await run.actions.setCollaborationMode(run.sessionId, "plan");
-          const ok = await run.actions.sendMessage(run.sessionId, decision.text);
+          await run.host.setCollaborationMode("plan");
+          const ok = await run.host.send(decision.text, [], false);
           if (!ok) {
             release();
             run.textareaRef.current?.focus();
@@ -216,7 +195,7 @@ export function runComposerSubmit(run: ComposerRun, options?: { now?: boolean })
           }
           clearIfUnchanged(run);
           run.exitGoal();
-          if (clearSnippets) run.actions.clearTextSnippets(run.sessionId);
+          if (clearSnippets) run.host.clearTextSnippets();
         } catch {
           release();
         }
@@ -225,10 +204,8 @@ export function runComposerSubmit(run: ComposerRun, options?: { now?: boolean })
     }
     run.setText("");
     run.exitGoal();
-    if (clearSnippets) run.actions.clearTextSnippets(run.sessionId);
-    void run.actions.setCollaborationMode(run.sessionId, "plan").then(() => {
-      dispatchComposerSend(run, decision.text, [], deliverNow);
-    });
+    if (clearSnippets) run.host.clearTextSnippets();
+    void run.host.setCollaborationMode("plan").then(() => run.host.send(decision.text, [], deliverNow));
     return;
   }
   if (decision.type === "update-queue") {
@@ -237,22 +214,22 @@ export function runComposerSubmit(run: ComposerRun, options?: { now?: boolean })
     const queuedImages = decision.images;
     run.setEditingId(null);
     run.setText("");
-    run.actions.clearAttachments(run.sessionId);
-    if (clearSnippets) run.actions.clearTextSnippets(run.sessionId);
+    run.host.clearAttachments();
+    if (clearSnippets) run.host.clearTextSnippets();
     if (deliverNow) {
-      void run.actions.sendMessageNow(run.sessionId, queuedText, queuedImages).then((ok) => {
-        if (ok) void removeQueuedTurn(run.sessionId, queuedId);
+      void run.host.send(queuedText, queuedImages, true).then((ok) => {
+        if (ok) void run.host.removeQueued(queuedId);
       });
     } else {
-      void updateQueuedTurn(run.sessionId, queuedId, queuedText, queuedImages);
+      void run.host.updateQueued(queuedId, queuedText, queuedImages);
     }
     run.textareaRef.current?.focus();
     return;
   }
   if (decision.type === "answer") {
     run.setText("");
-    if (clearSnippets) run.actions.clearTextSnippets(run.sessionId);
-    void run.actions.answerPrompt(run.sessionId, decision.promptId, { type: "single", value: decision.text });
+    if (clearSnippets) run.host.clearTextSnippets();
+    void run.host.answerPrompt(decision.promptId, { type: "single", value: decision.text });
     run.textareaRef.current?.focus();
     return;
   }
@@ -261,15 +238,15 @@ export function runComposerSubmit(run: ComposerRun, options?: { now?: boolean })
   if (run.holdUntilAccepted) {
     void (async () => {
       try {
-        const ok = await run.actions.sendMessage(run.sessionId, decision.text, images);
+        const ok = await run.host.send(decision.text, images, false);
         if (!ok) {
           release();
           run.textareaRef.current?.focus();
           return;
         }
         clearIfUnchanged(run);
-        if (clearAttachments) run.actions.clearAttachments(run.sessionId);
-        if (clearSnippets) run.actions.clearTextSnippets(run.sessionId);
+        if (clearAttachments) run.host.clearAttachments();
+        if (clearSnippets) run.host.clearTextSnippets();
         run.textareaRef.current?.focus();
       } catch {
         release();
@@ -278,19 +255,19 @@ export function runComposerSubmit(run: ComposerRun, options?: { now?: boolean })
     return;
   }
   run.setText("");
-  if (clearSnippets) run.actions.clearTextSnippets(run.sessionId);
-  dispatchComposerSend(run, decision.text, images, deliverNow);
-  if (clearAttachments) run.actions.clearAttachments(run.sessionId);
+  if (clearSnippets) run.host.clearTextSnippets();
+  void run.host.send(decision.text, images, deliverNow);
+  if (clearAttachments) run.host.clearAttachments();
   run.textareaRef.current?.focus();
 }
 
 /** Ctrl+Enter。有内容直接送出；空输入则按队列顺序逐条引导。 */
 export function runComposerCtrlEnter(run: ComposerRun) {
-  const queue = useWorkbench.getState().queues[run.sessionId] ?? [];
+  const queue = run.host.queue;
   const action = composerCtrlEnter({
     text: run.text,
-    fileCount: run.fileCount,
-    snippetCount: run.snippetCount,
+    fileCount: run.host.files.length,
+    snippetCount: run.host.snippets.length,
     queueCount: queue.length,
     editing: Boolean(run.editingId),
     pendingQuestion: Boolean(run.view.pendingId) && run.view.pendingKind !== "approval",
@@ -302,10 +279,7 @@ export function runComposerCtrlEnter(run: ComposerRun) {
     return;
   }
   if (action.type === "flush-queue") {
-    void flushQueuedTurns(
-      run.sessionId,
-      queueFlushIds(queue.map((item) => item.id)),
-    );
+    void run.host.flushQueued(queueFlushIds(queue.map((item) => item.id)));
     return;
   }
   runComposerSubmit(run, { now: true });
@@ -314,18 +288,18 @@ export function runComposerCtrlEnter(run: ComposerRun) {
 export async function pickComposerFiles(run: ComposerRun) {
   if (run.view.composerLocked) return;
   run.setMenu(null);
-  const picked = await pickAttachments(run.view.imagesOn);
+  const picked = await pickFiles(run.view.imagesOn ? "选择图片" : "选择文件");
   if (!picked.length) return;
   if (run.view.imagesOn) {
     const images = picked.filter((file) => isImagePath(file.path));
     if (images.length !== picked.length) run.setNotice("只能附加图片");
     if (images.length) {
       run.setNotice(images.length === picked.length ? null : "只能附加图片");
-      run.actions.addAttachments(run.sessionId, images);
+      run.host.addAttachments(images);
     }
     return;
   }
-  run.actions.addAttachments(run.sessionId, picked);
+  run.host.addAttachments(picked);
 }
 
 export function beginComposerEdit(
@@ -335,10 +309,7 @@ export function beginComposerEdit(
   run.setEditingId(item.id);
   run.setText(item.text);
   run.setCaret(item.text.length);
-  run.actions.replaceAttachments(
-    run.sessionId,
-    (item.images ?? []).map((path) => ({ path, name: fileName(path) })),
-  );
+  run.host.replaceAttachments((item.images ?? []).map((path) => ({ path, name: fileName(path) })));
   requestAnimationFrame(() => run.textareaRef.current?.focus());
 }
 
@@ -392,19 +363,10 @@ export function pasteComposerImages(run: ComposerRun, event: ClipboardEvent<HTML
 
 export function removeComposerQueued(run: ComposerRun, id: string) {
   if (run.editingId === id) cancelComposerEdit(run);
-  void removeQueuedTurn(run.sessionId, id);
+  void run.host.removeQueued(id);
 }
 
 export function steerComposerQueued(run: ComposerRun, id: string) {
   if (run.editingId === id) cancelComposerEdit(run);
-  void steerQueuedTurn(run.sessionId, id);
-}
-
-export function interruptComposer(run: ComposerRun) {
-  const projectId = projectOfDraft(run.sessionId);
-  if (projectId) {
-    useWorkbench.getState().cancelDraftSend(projectId);
-    return;
-  }
-  void interruptTurn(run.sessionId);
+  void run.host.steerQueued(id);
 }

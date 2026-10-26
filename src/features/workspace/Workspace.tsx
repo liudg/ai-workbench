@@ -1,46 +1,22 @@
-import { AnswerMarkdownHost } from "@/features/chat/answer/AnswerMarkdownHost";
-import { StoreChatView } from "@/features/workspace/StoreChatView";
-import { PanelProvider } from "@/features/panel/core/PanelProvider";
-import { SessionSplit } from "@/features/panel/core/SessionSplit";
 import { NoProjectSelected } from "./empty/EmptyState";
+import { NewSessionView } from "./new/NewSessionView";
+import { SessionView } from "./session/SessionView";
+import { SettingsView } from "./settings/SettingsView";
 import { useWorkspace } from "./use-workspace";
 
 export function Workspace() {
-  const { project, sessions, session, events, eventsReady, usage } = useWorkspace();
+  const { settings, view, projects, project, task, taskSession, loading } = useWorkspace();
 
-  if (!project) return <NoProjectSelected />;
-
-  if (session) {
-    return (
-      <PanelProvider
-        sessionId={session.id}
-        projectId={project.id}
-        projectPath={session.workdir?.trim() || project.path}
-        sessionTitle={session.title}
-        agent={session.agent}
-        events={events}
-        usage={usage}
-      >
-        <AnswerMarkdownHost>
-          <SessionSplit>
-            <StoreChatView session={session} events={events} eventsReady={eventsReady} />
-          </SessionSplit>
-        </AnswerMarkdownHost>
-      </PanelProvider>
-    );
+  if (settings) return <SettingsView />;
+  if (view.kind === "task") {
+    if (task && taskSession) {
+      return <SessionView key={task.id} task={task} taskSession={taskSession} project={project} />;
+    }
+    return loading ? null : <NoProjectSelected />;
   }
-
-  return (
-    <div className="relative flex h-full min-w-0 flex-1 flex-col">
-      {sessions && sessions.length > 0 ? (
-        <div className="flex h-full items-center justify-center px-8 text-center text-sm leading-6 text-zinc-500">
-          从左侧选择一个会话。
-        </div>
-      ) : (
-        <div className="flex h-full items-center justify-center text-sm text-zinc-600">
-          加载中…
-        </div>
-      )}
-    </div>
-  );
+  if (view.kind === "new") {
+    if (view.projectId && !project) return loading ? null : <NoProjectSelected />;
+    return <NewSessionView projectId={view.projectId} project={project} projects={projects} />;
+  }
+  return <NoProjectSelected />;
 }

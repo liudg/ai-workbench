@@ -19,6 +19,8 @@ import {
   filterBranchNames,
   uncommittedFileLabel,
 } from "./git-branch";
+import { AgentPicker } from "./AgentPicker";
+import type { AgentChoice, ComposerHost, WorktreeLine } from "./host";
 import { useComposerMenu } from "./useComposerMenu";
 import { useGitBranch } from "./useGitBranch";
 import { worktreeBranchMarker } from "./worktree-option";
@@ -30,28 +32,20 @@ const CARD_BG = "linear-gradient(180deg, #1c1c1f 0%, #17171a 100%)";
 const CARD_BG_HOT = "linear-gradient(180deg, #242428 0%, #1e1e22 100%)";
 
 export function ComposerContextRow({
+  agentChoice,
   workContext,
-  projectId,
-  projectName,
-  sessionId,
+  git,
   worktree,
+  locked,
 }: {
+  agentChoice: AgentChoice | null;
   workContext: ComponentProps<typeof WorkContextPicker> | null;
-  projectId: string;
-  projectName: string;
-  sessionId?: string;
-  worktree?: {
-    showToggle: boolean;
-    pressed: boolean;
-    onToggle: () => void;
-    liveLabel: string;
-    liveTitle: string;
-    base?: string | null;
-    sha?: string | null;
-  } | null;
+  git: ComposerHost["git"];
+  worktree: WorktreeLine | null;
+  locked: boolean;
 }) {
-  const branch = useGitBranch(projectId, {
-    sessionId,
+  const branch = useGitBranch(git?.projectId ?? "", {
+    sessionId: git?.sessionId,
     isolated: Boolean(worktree?.liveTitle),
   });
   const worktreeLabel = worktree?.liveTitle
@@ -61,26 +55,34 @@ export function ComposerContextRow({
         sha: worktree.sha,
       })
     : null;
-  const showBranch = worktree?.liveTitle ? Boolean(worktreeLabel) : branch.visible;
-  if (!workContext && !showBranch && !worktree?.showToggle && !worktree?.liveLabel) return null;
+  const showBranch = Boolean(git) && (worktree?.liveTitle ? Boolean(worktreeLabel) : branch.visible);
+  if (!agentChoice && !workContext && !showBranch && !worktree?.showToggle && !worktree?.liveLabel) return null;
   return (
     <div
-      className="mb-2 flex min-w-0 items-center gap-2 px-1"
+      className="mb-2 flex min-w-0 flex-wrap items-center gap-2 px-1"
       data-composer-context
       data-work-context-slot="above-input"
     >
       {workContext ? <WorkContextPicker {...workContext} /> : null}
+      {agentChoice ? (
+        <AgentPicker
+          options={agentChoice.options}
+          selected={agentChoice.selected}
+          disabled={locked}
+          onPick={agentChoice.onPick}
+        />
+      ) : null}
       {worktree?.showToggle ? (
         <WorktreeToggle pressed={worktree.pressed} onToggle={worktree.onToggle} />
       ) : null}
       {worktree?.liveLabel ? (
         <WorktreeSessionLabel label={worktree.liveLabel} title={worktree.liveTitle} />
       ) : null}
-      {showBranch ? (
+      {showBranch && git ? (
         <GitBranchChrome
-          key={projectId}
+          key={git.projectId}
           label={worktreeLabel ?? branch.label}
-          projectName={projectName}
+          projectName={git.projectName}
           current={branch.current}
           branches={branch.branches}
           dirtyFiles={branch.dirtyFiles}

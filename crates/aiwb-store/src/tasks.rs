@@ -149,6 +149,13 @@ impl Store {
         )? > 0)
     }
 
+    pub fn set_task_pinned(&self, id: &str, pinned: bool) -> StoreResult<bool> {
+        Ok(self
+            .conn()
+            .execute("UPDATE task SET pinned = ?2 WHERE id = ?1", params![id, pinned])?
+            > 0)
+    }
+
     pub fn set_task_archived(&self, id: &str, archived_at: Option<i64>, now: i64) -> StoreResult<bool> {
         Ok(self.conn().execute(
             "UPDATE task SET archived_at = ?2, updated_at = ?3 WHERE id = ?1",
@@ -266,7 +273,7 @@ mod tests {
                 name: "p".into(),
                 path: "/p".into(),
                 folders: vec!["/p".into()],
-                default_agent: "codex-cli".into(),
+                pinned: false,
                 created_at: 1,
                 updated_at: 1,
             })
@@ -277,7 +284,7 @@ mod tests {
     fn task(id: &str, updated_at: i64) -> (Task, TaskSession) {
         let task = Task {
             id: id.into(),
-            project_id: "p".into(),
+            project_id: Some("p".into()),
             title: "修登录".into(),
             workspace: TaskWorkspace::Worktree {
                 path: "/wt".into(),
@@ -342,6 +349,21 @@ mod tests {
         store.remove_project("p").unwrap();
         assert!(store.list_tasks().unwrap().is_empty());
         assert!(store.list_sessions().unwrap().is_empty());
+    }
+
+    #[test]
+    fn standalone_task_has_no_project_and_survives_project_removal() {
+        let store = store_with_project();
+        let (mut a, sa) = task("t1", 5);
+        a.project_id = None;
+        a.workspace = TaskWorkspace::Folder { path: "/chats/2026-10-26/hi".into() };
+        store.insert_task(&a, &sa).unwrap();
+        assert!(store.set_task_pinned("t1", true).unwrap());
+        store.remove_project("p").unwrap();
+        let listed = store.task("t1").unwrap().unwrap();
+        assert_eq!(listed.project_id, None);
+        assert!(listed.pinned);
+        assert_eq!(listed.workspace, a.workspace);
     }
 
     #[test]

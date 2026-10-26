@@ -242,6 +242,14 @@ pub async fn open_project_folder(store: State<'_, ProjectStore>, id: String) -> 
         .map_err(|_| "无法在资源管理器中打开".to_string())?
 }
 
+/// 在系统资源管理器中打开一个目录。路径由前端给出，项目数据在 daemon 里。
+#[tauri::command]
+pub async fn reveal_folder(path: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || reveal_project_folder(&path))
+        .await
+        .map_err(|_| "无法在资源管理器中打开".to_string())?
+}
+
 /// 从工作台列表移除项目（不删除磁盘目录，也不删除 Agent 的会话记录）。
 #[tauri::command]
 pub async fn remove_project<R: Runtime>(

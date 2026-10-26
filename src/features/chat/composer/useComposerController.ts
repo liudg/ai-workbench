@@ -1,16 +1,12 @@
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useRef,
   useState,
   type ClipboardEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 
-import { useWorkbench } from "@/store";
-import { composerTextOnMount } from "@/store/composer-draft";
-import { isDraftId, takeComposerText } from "@/store/draft-session";
 import type { ReviewStart, Session, SessionEvent, SessionSandbox } from "@/types";
 import {
   addComposerDir,
@@ -29,7 +25,6 @@ import {
   beginComposerEdit,
   cancelComposerEdit,
   handleComposerKey,
-  interruptComposer,
   pasteComposerImages,
   pickComposerFiles,
   rememberCaret,
@@ -41,48 +36,24 @@ import {
 } from "./composer-run";
 import { sandboxFromMenu } from "./access";
 import { composerCaps, composerCommands, deriveComposerView } from "./composer-view";
-import { applyFollowUpQueueMode } from "./composer-backend";
-import {
-  browserFollowUpQueueModeStorage,
-  readFollowUpQueueMode,
-  readSessionFollowUpQueueMode,
-  rememberFollowUpQueueMode,
-  toggleFollowUpQueueMode,
-  writeSessionFollowUpQueueMode,
-} from "./follow-up-queue-mode";
+import { toggleFollowUpQueueMode } from "./follow-up-queue-mode";
+import type { ComposerHost } from "./host";
 import { queueStripVisible } from "./queue-strip";
 import { useComposerMenu } from "./useComposerMenu";
-import { useComposerFeeds } from "./useComposerFeeds";
-import { useComposerActions, useComposerSession } from "./useComposerStore";
 import { collaborationMode } from "./collaboration-mode";
 import { useGoalDraft } from "./useGoalDraft";
 import { useMentionMenu } from "./useMentionMenu";
 import { releaseSubmitOnEdit, submitFingerprint, type SubmitFlight } from "./submit-flight";
-import { useComposerGitProject, useComposerWorkContext } from "./useComposerWorkContext";
 import { useReviewDismiss } from "./useReviewDismiss";
 
-export function useComposerController(session: Session, events: SessionEvent[]) {
-  const actions = useComposerActions();
-  const data = useComposerSession(session);
-  const draftSession = isDraftId(session.id);
-  const [text, setText] = useState(() => {
-    const state = useWorkbench.getState();
-    return composerTextOnMount({
-      sessionId: session.id,
-      projectDraftText: state.drafts[session.project_id]?.text,
-      parkedText: draftSession ? null : takeComposerText(session.id),
-      sessionDrafts: state.composerDraftBySession,
-    });
-  });
+export function useComposerController(host: ComposerHost, session: Session, events: SessionEvent[]) {
+  const [text, setText] = useState(() => host.initialText);
   const [caret, setCaret] = useState(0);
   const [menu, setMenu] = useState<null | "access" | "model" | "attach">(null);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [slashIndex, setSlashIndex] = useState(0);
   const [skillIndex, setSkillIndex] = useState(0);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [followUpQueueMode, setFollowUpQueueMode] = useState(() =>
-    readFollowUpQueueMode(browserFollowUpQueueModeStorage(), session.id, session.agent),
-  );
   const [notice, setNotice] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const submitFlight = useRef<SubmitFlight | null>(null);
@@ -99,41 +70,35 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
   const closeReview = useCallback(() => setReviewOpen(false), []);
   useReviewDismiss(reviewOpen, reviewRootRef, closeReview);
 
-  const caps = composerCaps(data.catalog, data.profile);
-  const permissionMenu = useComposerFeeds(session.id, session.agent, actions.loadCatalog);
-  const inputLocked = useWorkbench(
-    (s) => draftSession && s.drafts[session.project_id]?.phase === "creating",
-  );
-  const workContext = useComposerWorkContext(session, events, inputLocked);
-  const gitProject = useComposerGitProject(session);
-  const sandbox = data.sandbox ?? sandboxFromMenu(permissionMenu);
+  const caps = composerCaps(host.catalog, host.profile);
+  const sandbox = host.sandbox ?? sandboxFromMenu(host.permissionMenu);
   const supportsGoals = Boolean(caps?.supports_goals);
-  const goal = useGoalDraft(session.id, supportsGoals, events);
+  const goal = useGoalDraft(host, session.id, supportsGoals, events);
   const view = deriveComposerView({
     status: session.status,
     events,
     caps,
-    permissionMenu,
+    permissionMenu: host.permissionMenu,
     sandbox,
-    commands: composerCommands(data.catalog, data.profile),
-    skills: data.catalog?.skills ?? [],
-    catalog: data.catalog,
-    tuning: data.tuning,
-    catalogNotice: data.catalogNotice,
+    commands: composerCommands(host.catalog, host.profile),
+    skills: host.catalog?.skills ?? [],
+    catalog: host.catalog,
+    tuning: host.tuning,
+    catalogNotice: host.catalogNotice,
     text,
     caret,
     editingId,
-    fileCount: data.files.length,
-    snippetCount: data.snippets.length,
+    fileCount: host.files.length,
+    snippetCount: host.snippets.length,
     goalDraft: goal.localGoal,
     goalLive: goal.live,
     goal: goal.snapshot,
-    inputLocked,
+    inputLocked: host.inputLocked,
+    resumable: true,
   });
   const goalSupport = goal.publishError ? "unsupported" : view.goalSupport;
   const mentions = useMentionMenu({
-    projectId: session.project_id,
-    sessionId: session.id,
+    host,
     text,
     setText,
     caret,
@@ -145,48 +110,24 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     goalSupport,
     planSupport: view.planSupport,
     onGoal: () => {
-      if (collaborationMode(events) === "plan") {
-        void actions.setCollaborationMode(session.id, "default");
-      }
+      if (collaborationMode(events) === "plan") void host.setCollaborationMode("default");
       goal.enter();
     },
     onPlan: () => {
       if (view.planOn) {
-        void actions.setCollaborationMode(session.id, "default");
+        void host.setCollaborationMode("default");
         return;
       }
       goal.dismiss();
-      void actions.setCollaborationMode(session.id, "plan");
+      void host.setCollaborationMode("plan");
     },
   });
   const activeSlash = view.slashMatches[Math.min(slashIndex, view.slashMatches.length - 1)];
   const activeSkill = view.skillMatches[Math.min(skillIndex, Math.max(view.skillMatches.length - 1, 0))];
 
-  const applySandbox = useCallback(
-    (next: SessionSandbox) => {
-      actions.setSandbox(session.id, next);
-    },
-    [actions.setSandbox, session.id],
-  );
   useComposerMenu(menu === "access", accessRef, accessMenuRef, closeMenu);
   useComposerMenu(menu === "model", modelRef, modelMenuRef, closeMenu);
   useComposerMenu(menu === "attach", plusRef, attachMenuRef, closeMenu);
-
-  useLayoutEffect(() => {
-    const storage = browserFollowUpQueueModeStorage();
-    if (!readSessionFollowUpQueueMode(storage, session.id)) {
-      writeSessionFollowUpQueueMode(
-        storage,
-        session.id,
-        readFollowUpQueueMode(storage, session.id, session.agent),
-      );
-    }
-  }, [session.agent, session.id]);
-
-  useLayoutEffect(() => {
-    if (!caps?.supports_queue) return;
-    void applyFollowUpQueueMode(session.id, followUpQueueMode);
-  }, [caps?.supports_queue, followUpQueueMode, session.id]);
 
   useEffect(() => {
     setSlashIndex(0);
@@ -200,8 +141,6 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     if (goal.publishError) setNotice(goal.publishError);
   }, [goal.publishError]);
 
-  const textRef = useRef(text);
-  textRef.current = text;
   useEffect(() => {
     submitFlight.current = releaseSubmitOnEdit(
       submitFlight.current,
@@ -209,24 +148,20 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
       submitFingerprint({
         editingId,
         text,
-        fileCount: data.files.length,
-        snippetCount: data.snippets.length,
+        fileCount: host.files.length,
+        snippetCount: host.snippets.length,
       }),
     );
-  }, [data.files.length, data.snippets.length, editingId, session.id, text]);
-  useEffect(() => {
-    if (draftSession) {
-      useWorkbench.getState().rememberDraftText(session.project_id, text);
-      return;
-    }
-    const sessionId = session.id;
-    useWorkbench.getState().rememberComposerDraft(sessionId, text);
-    return () => {
-      useWorkbench.getState().rememberComposerDraft(sessionId, textRef.current);
-    };
-  }, [draftSession, session.id, session.project_id, text]);
+  }, [host.files.length, host.snippets.length, editingId, session.id, text]);
 
-  const snippetCount = data.snippets.length;
+  // 没发出去的字交给宿主保存，切会话、重启都在。
+  const remember = host.rememberText;
+  useEffect(() => {
+    remember(text);
+    // 同一会话里宿主每次渲染都是新的，只在字变了时写。
+  }, [session.id, text]);
+
+  const snippetCount = host.snippets.length;
   const seenSnippets = useRef(snippetCount);
   useEffect(() => {
     if (snippetCount > seenSnippets.current) {
@@ -237,11 +172,12 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
 
   const planEvent = collaborationMode(events) === "plan";
   useEffect(() => {
-    if (view.goalOn && planEvent) void actions.setCollaborationMode(session.id, "default");
-  }, [actions.setCollaborationMode, planEvent, session.id, view.goalOn]);
+    if (view.goalOn && planEvent) void host.setCollaborationMode("default");
+  }, [planEvent, session.id, view.goalOn]);
 
   const run: ComposerRun = {
-    sessionId: session.id,
+    host,
+    flightKey: session.id,
     text,
     caret,
     editingId,
@@ -254,7 +190,6 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     setSlashIndex,
     setSkillIndex,
     textareaRef,
-    actions,
     caps,
     view,
     goalDraft: goal.localGoal,
@@ -265,13 +200,10 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     activeSlash,
     activeSkill,
     sandbox,
-    projectPath: data.projectPath,
     skillMatches: view.skillMatches.length,
     slashMatches: view.slashMatches.length,
-    fileCount: data.files.length,
-    snippetCount: data.snippets.length,
     submitFlight,
-    holdUntilAccepted: draftSession,
+    holdUntilAccepted: host.draft,
   };
 
   return {
@@ -292,11 +224,11 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     accessMenuRef,
     modelMenuRef,
     attachMenuRef,
-    files: data.files,
-    snippets: data.snippets,
-    queue: data.queue,
+    files: host.files,
+    snippets: host.snippets,
+    queue: host.queue,
     sandbox,
-    catalogNotice: data.catalogNotice,
+    catalogNotice: host.catalogNotice,
     view,
     activeSkill,
     slashIndex,
@@ -308,29 +240,20 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     submit: () => runComposerSubmit(run),
     pickFiles: () => pickComposerFiles(run),
     beginEdit: (item: { id: string; text: string; images?: string[] }) => beginComposerEdit(run, item),
-    applySandbox,
+    applySandbox: (next: SessionSandbox) => host.setSandbox(next),
     removeQueued: (id: string) => removeComposerQueued(run, id),
-    queueStrip: queueStripVisible({ supportsQueue: view.queueOn, count: data.queue.length }),
-    followUpQueueMode,
+    queueStrip: queueStripVisible({ supportsQueue: view.queueOn, count: host.queue.length }),
+    followUpQueueMode: host.followUpQueueMode,
     steerQueued: (id: string) => steerComposerQueued(run, id),
-    toggleQueueMode: () => {
-      const next = toggleFollowUpQueueMode(followUpQueueMode);
-      rememberFollowUpQueueMode(
-        browserFollowUpQueueModeStorage(),
-        session.id,
-        session.agent,
-        next,
-      );
-      setFollowUpQueueMode(next);
-    },
-    interrupt: () => interruptComposer(run),
+    toggleQueueMode: () => host.setFollowUpQueueMode(toggleFollowUpQueueMode(host.followUpQueueMode)),
+    interrupt: () => host.interrupt(),
     dismissPlan: () => {
-      void actions.setCollaborationMode(session.id, "default");
+      void host.setCollaborationMode("default");
     },
-    models: data.catalog?.models ?? [],
-    hasCatalog: Boolean(data.catalog),
-    skillsError: data.catalog?.skills_error ?? null,
-    skillCount: data.catalog?.skills.length ?? 0,
+    models: host.catalog?.models ?? [],
+    hasCatalog: Boolean(host.catalog),
+    skillsError: host.catalog?.skills_error ?? null,
+    skillCount: host.catalog?.skills.length ?? 0,
     mentions,
     goalSupport,
     goalNotice: goal.publishError,
@@ -363,7 +286,7 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     },
     startReview: (target: ReviewStart) => {
       setReviewOpen(false);
-      void actions.startReview(session.id, target);
+      void host.startReview(target).catch((error: unknown) => host.reportError(error));
     },
     addDir: () => addComposerDir(run),
     removeDir: (path: string) => removeComposerDir(run, path),
@@ -374,14 +297,12 @@ export function useComposerController(session: Session, events: SessionEvent[]) 
     chooseEffort: (effort: string) => chooseComposerEffort(run, effort),
     chooseFast: (enabled: boolean) => chooseComposerFast(run, enabled),
     resetTuning: () => resetComposerTuning(run),
-    removeFile: (path: string) => actions.removeAttachment(session.id, path),
+    removeFile: (path: string) => host.removeAttachment(path),
     dismissSnippets: () => {
-      actions.clearTextSnippets(session.id);
+      host.clearTextSnippets();
       requestAnimationFrame(() => textareaRef.current?.focus());
     },
     onKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => handleComposerKey(run, event),
     onPaste: (event: ClipboardEvent<HTMLTextAreaElement>) => pasteComposerImages(run, event),
-    workContext,
-    gitProject,
   };
 }

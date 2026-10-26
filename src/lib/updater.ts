@@ -1,8 +1,7 @@
-// 应用更新：封装 tauri-plugin-updater。
-// 浏览器预览模式下为空实现（自动检查静默成功，无更新）。
+// 应用更新：封装 tauri-plugin-updater。网页预览里没有更新源。
 
 import type { Update } from "@tauri-apps/plugin-updater";
-import { isTauri } from "./ipc";
+import { isTauri } from "./daemon/endpoint";
 import { configuredUpdateEndpoint, updateFailureIsMissingSource } from "./update-source";
 import { userFacingMessage } from "./user-facing";
 
@@ -22,12 +21,7 @@ let pending: Update | null = null;
 export async function checkForUpdate(
   onPhase: (p: UpdatePhase) => void,
 ): Promise<void> {
-  if (!isTauri) {
-    // 浏览器预览：没有真实更新源，呈现「已是最新」
-    onPhase({ kind: "none" });
-    return;
-  }
-  if (!configuredUpdateEndpoint()) {
+  if (!isTauri || !configuredUpdateEndpoint()) {
     onPhase({ kind: "unavailable" });
     return;
   }

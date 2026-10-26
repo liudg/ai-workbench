@@ -452,6 +452,9 @@ pub fn plan_claude_worktree(source: &Path) -> Result<ClaudeWorktreePlan, String>
     })
 }
 
+/// 任务工作树的分支前缀。
+const TASK_BRANCH_PREFIX: &str = "aiwb/";
+
 /// 任务的工作树。任务层统一创建，Agent 只拿到 `cwd`。
 #[derive(Debug, Clone)]
 pub struct TaskWorktree {
@@ -479,7 +482,7 @@ pub fn create_task_worktree(source: &Path, managed_root: &Path) -> Result<TaskWo
     let (base, sha) = source_revision(&source)?;
     fs::create_dir_all(managed_root).map_err(|err| format!("无法创建工作树目录: {err}"))?;
     let id = uuid::Uuid::new_v4().simple().to_string()[..8].to_string();
-    let branch = format!("aiwb/{id}");
+    let branch = format!("{TASK_BRANCH_PREFIX}{id}");
     let root = managed_root.join(format!("{repo_name}-{id}"));
     let root_arg = root.to_string_lossy().to_string();
     git_status(&repo, &["worktree", "add", "-b", &branch, &root_arg, &sha])?;
@@ -495,6 +498,14 @@ pub fn create_task_worktree(source: &Path, managed_root: &Path) -> Result<TaskWo
     }
     let cwd = dunce_or_canonicalize(&cwd).map_err(undo)?;
     let root = dunce_or_canonicalize(&root).map_err(undo)?;
+    // 删除任务时靠这份记录认出是工作台建的工作树，才会连目录和分支一起清掉。
+    let marker = OwnedMarker {
+        root: root.clone(),
+        base: base.clone(),
+        sha: sha.clone(),
+        branch: Some(branch.clone()),
+    };
+    record_owned_worktree(&cwd, &marker).map_err(undo)?;
     Ok(TaskWorktree {
         cwd,
         root,
@@ -988,7 +999,7 @@ fn unmerged_count(cwd: &Path, base: Option<&str>, project: &Path) -> Result<u32,
 fn delete_recorded_branch(repo: &Path, branch: Option<&str>, base: Option<&str>) {
     let Some(branch) = branch
         .map(str::trim)
-        .filter(|name| name.starts_with("worktree-"))
+        .filter(|name| name.starts_with("worktree-") || name.starts_with(TASK_BRANCH_PREFIX))
     else {
         return;
     };
@@ -1428,6 +1439,29 @@ mod tests {
         assert_eq!(current_branch(&made.cwd).unwrap().as_deref(), Some(made.branch.as_str()));
 
         remove_checkout(&repo, &made.root);
+        let _ = fs::remove_dir_all(managed);
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn task_worktree_is_owned_and_removed_with_its_branch() {
+        if !git_ok() {
+            return;
+        }
+        let repo = repo_with_commit("task-owned");
+        let managed = scratch("task-owned-managed");
+        let made = create_task_worktree(&repo, &managed).unwrap();
+        assert_eq!(
+            delete_preview(&repo, &made.cwd),
+            DeletePreview { owned: true, dirty: false }
+        );
+        fs::write(made.cwd.join("draft.txt"), "x").unwrap();
+        assert!(delete_preview(&repo, &made.cwd).dirty);
+
+        discard_confirmed_worktree(&repo, &made.cwd, true);
+        assert!(!made.root.exists());
+        let branches = git_output(&repo, &["branch", "--list", &made.branch]).unwrap();
+        assert!(branches.stdout.is_empty());
         let _ = fs::remove_dir_all(managed);
         let _ = fs::remove_dir_all(repo);
     }

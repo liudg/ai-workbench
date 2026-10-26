@@ -173,7 +173,7 @@ async fn task_runs_streams_and_resumes_after_restart() {
     let task = first
         .dispatch(
             "tasks.create",
-            json!({ "projectId": project["id"], "prompt": "看看登录\n细节", "options": { "model": "m1" } }),
+            json!({ "projectId": project["id"], "agent": "codex-cli", "prompt": "看看登录\n细节", "options": { "model": "m1" } }),
         )
         .await
         .unwrap();
@@ -253,7 +253,7 @@ async fn restart_marks_running_sessions_stopped() {
         .await
         .unwrap();
     let task = first
-        .dispatch("tasks.create", json!({ "projectId": project["id"] }))
+        .dispatch("tasks.create", json!({ "projectId": project["id"], "agent": "codex-cli" }))
         .await
         .unwrap();
     let session_id = task["sessions"][0]["id"].as_str().unwrap().to_string();
@@ -311,7 +311,7 @@ async fn diff_file_and_git_follow_the_task_worktree() {
         .await
         .unwrap();
     let task = services
-        .dispatch("tasks.create", json!({ "projectId": project["id"], "worktree": true }))
+        .dispatch("tasks.create", json!({ "projectId": project["id"], "agent": "codex-cli", "worktree": true }))
         .await
         .unwrap();
     let session_id = task["sessions"][0]["id"].clone();
@@ -321,22 +321,22 @@ async fn diff_file_and_git_follow_the_task_worktree() {
     // 改的是工作树，主目录不动。
     std::fs::write(worktree.join("calc.py"), "def add(a, b):\n    return a - b\n").unwrap();
     let diff = services
-        .dispatch("sessions.diff", json!({ "sessionId": session_id, "scope": "uncommitted" }))
+        .dispatch("files.diff", json!({ "sessionId": session_id, "scope": "uncommitted" }))
         .await
         .unwrap();
     assert!(diff.as_str().unwrap().contains("+    return a - b"), "{diff}");
     let file = services
-        .dispatch("sessions.readFile", json!({ "sessionId": session_id, "path": "calc.py" }))
+        .dispatch("files.readFile", json!({ "sessionId": session_id, "path": "calc.py" }))
         .await
         .unwrap();
     assert!(file["text"].as_str().unwrap().contains("a - b"));
     let is_git = services
-        .dispatch("sessions.isGit", json!({ "sessionId": session_id }))
+        .dispatch("git.isRepo", json!({ "sessionId": session_id }))
         .await
         .unwrap();
     assert_eq!(is_git, json!(true));
     let scopes = services
-        .dispatch("sessions.diffScopes", json!({ "sessionId": session_id }))
+        .dispatch("files.diffScopes", json!({ "sessionId": session_id }))
         .await
         .unwrap();
     assert!(scopes.as_array().unwrap().iter().any(|scope| scope["id"] == "uncommitted"));
@@ -347,14 +347,14 @@ async fn diff_file_and_git_follow_the_task_worktree() {
 
     // 文件面板：列目录、按名筛选、搜正文，都在工作树里。
     let listed = services
-        .dispatch("sessions.listDir", json!({ "sessionId": session_id, "path": "" }))
+        .dispatch("files.listDir", json!({ "sessionId": session_id, "path": "" }))
         .await
         .unwrap();
     assert!(listed.as_array().unwrap().iter().any(|entry| entry["path"] == "calc.py"));
     let mut filtered = json!(null);
     for _ in 0..50 {
         filtered = services
-            .dispatch("sessions.filterPaths", json!({ "sessionId": session_id, "query": "calc" }))
+            .dispatch("files.filterPaths", json!({ "sessionId": session_id, "query": "calc" }))
             .await
             .unwrap();
         if filtered["ready"] == json!(true) {
@@ -366,7 +366,7 @@ async fn diff_file_and_git_follow_the_task_worktree() {
     for _ in 0..200 {
         found = services
             .dispatch(
-                "sessions.searchFiles",
+                "files.searchFiles",
                 json!({ "sessionId": session_id, "query": "a - b", "mask": "", "searchId": 1 }),
             )
             .await
@@ -380,7 +380,92 @@ async fn diff_file_and_git_follow_the_task_worktree() {
         "{found}"
     );
     let not_image = services
-        .dispatch("sessions.readImage", json!({ "sessionId": session_id, "path": "calc.py" }))
+        .dispatch("files.readImage", json!({ "sessionId": session_id, "path": "calc.py" }))
         .await;
     assert!(not_image.is_err());
+
+    // 还没建会话时，面板按项目读主目录：主目录没改过，只有 git 的几种范围。
+    let main_diff = services
+        .dispatch("files.diff", json!({ "projectId": project["id"], "scope": "uncommitted" }))
+        .await
+        .unwrap();
+    assert_eq!(main_diff, json!(""));
+    let main_scopes = services
+        .dispatch("files.diffScopes", json!({ "projectId": project["id"] }))
+        .await
+        .unwrap();
+    assert!(main_scopes.as_array().unwrap().iter().all(|scope| scope["source"] == "git"));
+    let main_file = services
+        .dispatch("files.readFile", json!({ "projectId": project["id"], "path": "calc.py" }))
+        .await
+        .unwrap();
+    assert!(main_file["text"].as_str().unwrap().contains("a + b"));
+
+    // 分支跟着会话的工作目录走；删除前能看出工作树有没保存的改动，确认后连目录一起删。
+    let branch = services
+        .dispatch("git.branch", json!({ "sessionId": session_id }))
+        .await
+        .unwrap();
+    assert_eq!(branch, task["workspace"]["branch"]);
+    let main = services
+        .dispatch("git.branch", json!({ "projectId": project["id"] }))
+        .await
+        .unwrap();
+    assert_eq!(main, json!("main"));
+    let task_id = task["id"].clone();
+    let preview = services
+        .dispatch("tasks.deletePreview", json!({ "id": task_id }))
+        .await
+        .unwrap();
+    assert_eq!(preview, json!({ "owned": true, "dirty": true }));
+    services
+        .dispatch(
+            "tasks.remove",
+            json!({ "id": task_id, "discardWorktree": true, "forceWorktree": true }),
+        )
+        .await
+        .unwrap();
+    assert!(!worktree.exists());
+}
+
+#[tokio::test]
+async fn standalone_chat_gets_a_dated_folder_under_the_task_folder() {
+    let dir = tempfile::tempdir().unwrap();
+    let chats = tempfile::tempdir().unwrap();
+    let script = Arc::new(Script::default());
+    let services = services(Arc::new(Store::open_in_memory().unwrap()), script, dir.path());
+    let folder = services
+        .dispatch("settings.setTaskFolder", json!({ "path": chats.path().to_string_lossy() }))
+        .await
+        .unwrap();
+    assert!(folder["label"].as_str().unwrap().len() > 0);
+
+    let task = services
+        .dispatch("tasks.create", json!({ "agent": "codex-cli", "prompt": "Reply with pong" }))
+        .await
+        .unwrap();
+    assert!(task.get("projectId").is_none());
+    assert_eq!(task["workspace"]["kind"], "folder");
+    let path = std::path::PathBuf::from(task["workspace"]["path"].as_str().unwrap());
+    assert!(path.is_dir());
+    assert!(path.ends_with("reply-with-pong"));
+    let session_id = task["sessions"][0]["id"].as_str().unwrap().to_string();
+    wait_for_answer(&services, &session_id, "收到：Reply with pong").await;
+
+    let worktree = services
+        .dispatch("tasks.create", json!({ "agent": "codex-cli", "worktree": true }))
+        .await
+        .unwrap_err();
+    assert!(worktree.contains("不能建工作树"));
+    // 删除独立聊天不碰它的文件夹。
+    let preview = services
+        .dispatch("tasks.deletePreview", json!({ "id": task["id"] }))
+        .await
+        .unwrap();
+    assert_eq!(preview, json!({ "owned": false, "dirty": false }));
+    services
+        .dispatch("tasks.remove", json!({ "id": task["id"], "discardWorktree": true }))
+        .await
+        .unwrap();
+    assert!(path.is_dir());
 }

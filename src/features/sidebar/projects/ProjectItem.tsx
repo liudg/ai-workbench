@@ -1,34 +1,31 @@
 import { useCallback, useRef, useState, type RefObject } from "react";
 import { ChevronRight, Ellipsis, Folder, Pin, PinOff, Settings, X } from "lucide-react";
 
+import type { Project } from "@/features/projects";
 import { cn, displayPath } from "@/lib/utils";
-import { pendingSidebarSession } from "@/store/draft-session";
-import { aggregateStatus, type Project } from "@/types";
 import { FixedMenu } from "../FixedMenu";
-import { useProjectItem } from "./use-project-item";
 import { NewSessionButton } from "../sessions/NewSessionButton";
 import { partitionSidebarSessions } from "../sessions/session-partition";
 import { SessionList } from "../sessions/SessionList";
+import { aggregateStatus, type SidebarTask } from "../sidebar-task";
 import { EditProjectDialog } from "./EditProjectDialog";
 import { projectMenuItems, type ProjectMenuAction } from "./project-menu";
 import { StatusDot } from "./StatusDot";
 import { useProjectBranch } from "./use-project-branch";
+import { useProjectItem } from "./use-project-item";
 
-export function ProjectItem({ project }: { project: Project }) {
-  const {
-    sessions,
-    selected,
-    activeSessionId,
-    draft,
-    pendingStart,
-    draftFocused,
-    selectProject,
-    removeProject,
-    openProjectFolder,
-    pinned,
-    togglePinnedProject,
-  } = useProjectItem(project);
-  const pending = pendingSidebarSession(project.id, draft, pendingStart);
+export function ProjectItem({
+  project,
+  tasks,
+  selected,
+  activeTaskId,
+}: {
+  project: Project;
+  tasks: readonly SidebarTask[];
+  selected: boolean;
+  activeTaskId: string | null;
+}) {
+  const { selectProject, togglePinned, openFolder, removeProject } = useProjectItem(project, tasks);
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -39,10 +36,8 @@ export function ProjectItem({ project }: { project: Project }) {
     setConfirming(false);
   }, []);
 
-  const items = pending ? [pending, ...(sessions ?? [])] : (sessions ?? []);
-  const grouped = partitionSidebarSessions(items);
-  const rowActiveId = draftFocused && pending ? pending.id : activeSessionId;
-  const status = sessions ? aggregateStatus(grouped.active) : null;
+  const grouped = partitionSidebarSessions(tasks);
+  const status = aggregateStatus(grouped.active);
   const branch = useProjectBranch(project.id);
 
   const onHeaderClick = () => {
@@ -51,7 +46,7 @@ export function ProjectItem({ project }: { project: Project }) {
       return;
     }
     setCollapsed(false);
-    void selectProject(project.id);
+    selectProject();
   };
 
   const actionVisibility = menuOpen
@@ -69,7 +64,6 @@ export function ProjectItem({ project }: { project: Project }) {
         aria-expanded={!collapsed}
         onClick={onHeaderClick}
         onContextMenu={(event) => {
-          if (project.external) return;
           event.preventDefault();
           event.stopPropagation();
           setConfirming(false);
@@ -96,8 +90,7 @@ export function ProjectItem({ project }: { project: Project }) {
         <span className="min-w-0 flex-1" />
         {/* 操作钮叠在行尾。短分支留在名字旁边；长分支用剩余宽度，悬停时不把下面的会话顶开。 */}
         <div className="absolute right-1.5 top-[calc(50%-12px)] z-10 flex h-6 w-12 items-center justify-end rounded-md group-hover:bg-[#1b1b1b] group-focus-within:bg-[#1b1b1b]">
-          {!project.external && (
-            <div className="relative">
+          <div className="relative">
               <button
                 ref={anchorRef}
                 type="button"
@@ -118,12 +111,11 @@ export function ProjectItem({ project }: { project: Project }) {
                   open={menuOpen}
                   anchorRef={anchorRef}
                   project={project}
-                  pinned={pinned}
                   confirming={confirming}
                   onClose={closeMenu}
                   onPin={() => {
                     closeMenu();
-                    togglePinnedProject(project.id);
+                    togglePinned();
                   }}
                   onEdit={() => {
                     closeMenu();
@@ -131,19 +123,18 @@ export function ProjectItem({ project }: { project: Project }) {
                   }}
                   onOpenFolder={() => {
                     closeMenu();
-                    void openProjectFolder(project.id);
+                    openFolder();
                   }}
                   onRemove={() => {
                     if (confirming) {
-                      removeProject(project.id);
+                      removeProject();
                       closeMenu();
                     } else {
                       setConfirming(true);
                     }
                   }}
                 />
-            </div>
-          )}
+          </div>
           <NewSessionButton
             projectId={project.id}
             className={cn(
@@ -155,12 +146,7 @@ export function ProjectItem({ project }: { project: Project }) {
         </div>
       </div>
       {!collapsed && grouped.active.length > 0 && (
-        <SessionList
-          projectId={project.id}
-          sessions={grouped.active}
-          selected={selected}
-          activeSessionId={rowActiveId}
-        />
+        <SessionList tasks={grouped.active} activeTaskId={activeTaskId} />
       )}
     </div>
     {editing && <EditProjectDialog project={project} onClose={() => setEditing(false)} />}
@@ -172,7 +158,6 @@ function ProjectMenu({
   open,
   anchorRef,
   project,
-  pinned,
   confirming,
   onClose,
   onPin,
@@ -183,7 +168,6 @@ function ProjectMenu({
   open: boolean;
   anchorRef: RefObject<HTMLButtonElement | null>;
   project: Project;
-  pinned: boolean;
   confirming: boolean;
   onClose: () => void;
   onPin: () => void;
@@ -191,6 +175,7 @@ function ProjectMenu({
   onOpenFolder: () => void;
   onRemove: () => void;
 }) {
+  const pinned = project.pinned;
   const entries = projectMenuItems({ path: project.path, pinned });
   const wide = entries.some((entry) => entry.type === "action" && entry.id === "open-folder");
   return (

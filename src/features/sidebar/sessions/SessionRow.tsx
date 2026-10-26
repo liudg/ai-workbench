@@ -10,7 +10,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { loadWorktreeDeletePreview } from "@/lib/worktree-delete-preview";
 import {
   worktreeDeleteFlags,
   worktreeDeleteIsDirty,
@@ -18,10 +17,9 @@ import {
 } from "@/lib/worktree-delete";
 import { cn } from "@/lib/utils";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
-import { isPendingId } from "@/store/draft-session";
-import type { Session } from "@/types";
-import { FixedMenu } from "../FixedMenu";
 import { SessionAgentIcon } from "@/shared/agent/SessionAgentIcon";
+import { FixedMenu } from "../FixedMenu";
+import type { SidebarTask } from "../sidebar-task";
 import { SessionStatusDot } from "./SessionStatusDot";
 import { relativeSessionTime } from "./relative-time";
 import { DeleteSessionDialog } from "./DeleteSessionDialog";
@@ -30,71 +28,54 @@ import { sessionMenuItems, type SessionMenuAction } from "./session-menu";
 import { useSessionRow } from "./use-session-row";
 
 export function SessionRow({
-  projectId,
-  session,
+  task,
   active,
-  readOnly,
   now,
 }: {
-  projectId: string;
-  session: Session;
+  task: SidebarTask;
   active: boolean;
-  readOnly: boolean;
   now: number;
 }) {
-  const {
-    selectSession,
-    caps,
-    identity,
-    busy,
-    pinned,
-    renameSession,
-    togglePinnedSession,
-    archiveSession,
-    deleteSession,
-    unreadFinished,
-  } = useSessionRow(session);
-  const showUnread = unreadFinished && !active;
+  const row = useSessionRow(task);
+  const showUnread = row.unreadFinished && !active;
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [title, setTitle] = useState(session.title);
+  const [title, setTitle] = useState(task.title);
   const [renameError, setRenameError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deletePreview, setDeletePreview] = useState<WorktreeDeletePreview | null>(null);
   const anchorRef = useRef<HTMLButtonElement>(null);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
-  const archived = Boolean(session.archived);
-  const pending = isPendingId(session.id);
-  const items = pending ? [] : sessionMenuItems({ caps, pinned, archived });
+  const items = sessionMenuItems({ pinned: task.pinned, archived: task.archived });
 
   const run = (action: SessionMenuAction) => {
     closeMenu();
     if (action === "rename") {
-      setTitle(session.title);
+      setTitle(task.title);
       setRenameError(null);
       setRenameOpen(true);
       return;
     }
     if (action === "pin") {
-      togglePinnedSession(session.id);
+      row.togglePinned();
       return;
     }
     if (action === "archive") {
-      void archiveSession(projectId, session.id, !archived);
+      row.toggleArchived();
       return;
     }
     setDeleteError(null);
     setDeletePreview(null);
-    void loadWorktreeDeletePreview(session.id).then((preview) => {
+    void row.loadDeletePreview().then((preview) => {
       setDeletePreview(preview);
       setDeleteOpen(true);
     });
   };
 
   const finishDelete = (action: "delete" | "keep-worktree" | "discard-worktree") => {
-    void deleteSession(projectId, session.id, worktreeDeleteFlags(action, deletePreview)).then((ok) => {
+    void row.remove(worktreeDeleteFlags(action, deletePreview)).then((ok) => {
       if (ok) setDeleteOpen(false);
       else setDeleteError(DESKTOP_ZH.deleteSessionError);
     });
@@ -102,7 +83,7 @@ export function SessionRow({
 
   const submitRename = () => {
     if (!title.trim()) return;
-    void renameSession(session.id, title).then((ok) => {
+    void row.rename(title).then((ok) => {
       if (ok) setRenameOpen(false);
       else setRenameError(DESKTOP_ZH.renameSaveError);
     });
@@ -114,38 +95,32 @@ export function SessionRow({
         role="button"
         tabIndex={0}
         data-session-row=""
-        data-session-id={session.id}
-        data-session-pending={pending ? "true" : "false"}
-        data-agent={session.agent}
+        data-session-id={task.id}
+        data-agent={task.agent}
         data-active={active ? "true" : "false"}
-        data-pinned={pinned ? "true" : "false"}
-        data-archived={archived ? "true" : "false"}
+        data-pinned={task.pinned ? "true" : "false"}
+        data-archived={task.archived ? "true" : "false"}
         className={cn(
           "group flex h-full w-full items-center gap-1.5 rounded-md pl-9 pr-2 text-left text-[11.5px] leading-none",
           active
             ? "bg-[#222] text-[#f3f3f3]"
             : "text-[#bdbdbd] hover:bg-white/[0.04] hover:text-[#e8e8e8]",
         )}
-        onClick={() => void selectSession(projectId, session.id)}
+        onClick={row.select}
         onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
-            void selectSession(projectId, session.id);
+            row.select();
           }
         }}
       >
-        <SessionAgentIcon identity={identity} />
+        <SessionAgentIcon identity={row.identity} />
         <span className="flex min-w-0 flex-1 items-center gap-1">
-          <span className="min-w-0 truncate">{session.title}</span>
+          <span className="min-w-0 truncate">{task.title}</span>
           {showUnread && <UnreadFinishedMark />}
         </span>
-        {readOnly && (
-          <span className="ml-1 shrink-0 rounded bg-amber-400/15 px-1.5 py-0.5 text-[10px] leading-4 text-amber-200">
-            只读
-          </span>
-        )}
-        <SessionStatusDot status={session.status} />
-        {pinned && <Pin className="h-3 w-3 shrink-0 text-[#8a8a8a]" aria-hidden="true" />}
+        <SessionStatusDot status={task.status} />
+        {task.pinned && <Pin className="h-3 w-3 shrink-0 text-[#8a8a8a]" aria-hidden="true" />}
         <span className="relative flex w-16 shrink-0 justify-end text-right tabular-nums">
           <span
             className={cn(
@@ -154,31 +129,29 @@ export function SessionRow({
               menuOpen && "invisible",
             )}
           >
-            {relativeSessionTime(session.updated_at, now)}
+            {relativeSessionTime(task.updatedAt, now)}
           </span>
-          {items.length > 0 && (
-            <button
-              ref={anchorRef}
-              type="button"
-              className={cn(
-                "absolute inset-0 hidden items-center justify-end text-zinc-300 group-hover:flex group-focus-within:flex",
-                menuOpen && "flex",
-              )}
-              aria-label="聊天操作"
-              aria-haspopup="menu"
-              aria-expanded={menuOpen}
-              onClick={(event) => {
-                event.stopPropagation();
-                setMenuOpen((open) => !open);
-              }}
-            >
-              <Ellipsis className="h-4 w-4" />
-            </button>
-          )}
+          <button
+            ref={anchorRef}
+            type="button"
+            className={cn(
+              "absolute inset-0 hidden items-center justify-end text-zinc-300 group-hover:flex group-focus-within:flex",
+              menuOpen && "flex",
+            )}
+            aria-label="聊天操作"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            onClick={(event) => {
+              event.stopPropagation();
+              setMenuOpen((open) => !open);
+            }}
+          >
+            <Ellipsis className="h-4 w-4" />
+          </button>
         </span>
       </div>
       <FixedMenu
-        open={menuOpen && items.length > 0}
+        open={menuOpen}
         anchorRef={anchorRef}
         onClose={closeMenu}
         label="聊天操作"
@@ -190,7 +163,6 @@ export function SessionRow({
             action={item.id}
             label={item.label}
             danger={item.danger}
-            disabled={busy && item.id === "archive"}
             onSelect={() => run(item.id)}
           />
         ))}
@@ -263,27 +235,24 @@ function MenuItem({
   label,
   onSelect,
   danger = false,
-  disabled = false,
 }: {
   action: SessionMenuAction;
   label: string;
   onSelect: () => void;
   danger?: boolean;
-  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       role="menuitem"
       data-session-action={action}
-      disabled={disabled}
       className={cn(
-        "block w-full px-3 py-2 text-left text-sm hover:bg-zinc-800 disabled:opacity-60",
+        "block w-full px-3 py-2 text-left text-sm hover:bg-zinc-800",
         danger ? "text-red-400" : "text-zinc-100",
       )}
       onClick={(event) => {
         event.stopPropagation();
-        if (!disabled) onSelect();
+        onSelect();
       }}
     >
       {label}

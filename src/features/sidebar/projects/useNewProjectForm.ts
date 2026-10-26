@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { persistedAgentKind } from "@/lib/agents";
-import { backend } from "@/lib/ipc";
-import { useWorkbench } from "@/store";
+import { projectsApi } from "@/features/projects";
+import { pickFolder } from "@/lib/native/pick-folder";
+import { userFacingMessage } from "@/lib/user-facing";
+import { showError } from "@/shared/shell/error-banner";
+import { closeProjectDialog, openNewSession, useNavigation } from "@/shared/shell/navigation";
 
 function basename(path: string) {
   return path.split(/[\\/]/).filter(Boolean).pop() ?? "";
@@ -10,14 +12,7 @@ function basename(path: string) {
 
 /** 新建/导入项目的表单。目录选择和提交都走这里，对话框只渲染。 */
 export function useNewProjectForm() {
-  const dialog = useWorkbench((s) => s.dialog);
-  const closeDialog = useWorkbench((s) => s.closeDialog);
-  const createProject = useWorkbench((s) => s.createProject);
-  const importProject = useWorkbench((s) => s.importProject);
-  const lastError = useWorkbench((s) => s.lastError);
-  const clearError = useWorkbench((s) => s.clearError);
-  const installations = useWorkbench((s) => s.installations);
-  const preferredAgent = useWorkbench((s) => s.preferredAgent);
+  const dialog = useNavigation((state) => state.projectDialog);
 
   const [name, setName] = useState("");
   const [dir, setDir] = useState("");
@@ -25,6 +20,7 @@ export function useNewProjectForm() {
   const [sourceMenu, setSourceMenu] = useState(false);
   const [initGit, setInitGit] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [lastError, setLastError] = useState<string | null>(null);
   const sourceRef = useRef<HTMLDivElement>(null);
   const closeSourceMenu = useCallback(() => setSourceMenu(false), []);
 
@@ -36,14 +32,12 @@ export function useNewProjectForm() {
       setSourceMenu(false);
       setInitGit(true);
       setBusy(false);
-      clearError();
+      setLastError(null);
     }
-  }, [dialog, clearError]);
+  }, [dialog]);
 
   const pickDir = async () => {
-    const selected = await backend.pickDirectory(
-      source === "create" ? "选择项目存放位置" : "选择要导入的项目文件夹",
-    );
+    const selected = await pickFolder(source === "create" ? "选择项目存放位置" : "选择要导入的项目文件夹");
     if (!selected) return;
     setDir(selected);
     if (source === "import" && !name.trim()) setName(basename(selected));
@@ -51,33 +45,24 @@ export function useNewProjectForm() {
 
   const submit = async () => {
     if (!valid || busy) return;
-    const defaultAgent = persistedAgentKind(installations, preferredAgent);
-    if (!defaultAgent) {
-      useWorkbench.setState({
-        lastError:
-          installations === null
-            ? "正在检测本地 Agent，请稍后再创建项目。"
-            : "未检测到已安装的 Agent。",
-      });
-      return;
-    }
     setBusy(true);
-    if (source === "create") {
-      const warning = await createProject({
-        name,
-        parentDir: dir,
-        defaultAgent,
-        initGit,
-      });
-      if (warning) useWorkbench.setState({ lastError: warning });
-    } else {
-      await importProject({
-        path: dir,
-        name: name.trim() || undefined,
-        defaultAgent,
-      });
+    setLastError(null);
+    try {
+      if (source === "create") {
+        const created = await projectsApi.createProject({ name: name.trim(), parentDir: dir, initGit });
+        // git init 没成功不挡建项目，提示一下。
+        if (created.warning) showError(created.warning);
+        openNewSession(created.project.id);
+      } else {
+        const project = await projectsApi.importProject({ path: dir, name: name.trim() || undefined });
+        openNewSession(project.id);
+      }
+      closeProjectDialog();
+    } catch (error) {
+      setLastError(userFacingMessage(error) ?? "无法创建项目");
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   };
 
   const valid = source === "create" ? Boolean(name.trim() && dir.trim()) : Boolean(dir.trim());
@@ -85,7 +70,7 @@ export function useNewProjectForm() {
 
   return {
     dialog,
-    closeDialog,
+    closeDialog: closeProjectDialog,
     lastError,
     name,
     setName,

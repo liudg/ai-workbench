@@ -1,11 +1,5 @@
-import { useEffect } from "react";
-
-import { AnswerMarkdownHost } from "@/features/chat/answer/AnswerMarkdownHost";
-import { StoreChatView } from "@/features/workspace/StoreChatView";
-import { PanelProvider } from "@/features/panel/core/PanelProvider";
-import { SessionSplit } from "@/features/panel/core/SessionSplit";
-import { useWorkbench } from "@/store";
-import type { Session, SessionEvent, SessionEventBody } from "@/types";
+import type { AgentKind, AgentProfile, Session, SessionEvent, SessionEventBody } from "@/types";
+import { PreviewSession } from "./PreviewSession";
 
 const sessionId = "plan-choice-preview";
 
@@ -67,48 +61,30 @@ const events: SessionEvent[] = [
   }),
 ];
 
+const PROFILES: Partial<Record<AgentKind, AgentProfile>> = {
+  "codex-cli": {
+    kind: "codex-cli",
+    display_name: "Codex CLI",
+    icon: "",
+    commands: [],
+    capabilities: {
+      supports_slash: true,
+      supports_resume: false,
+      supports_questions: true,
+      supports_tuning: false,
+      supports_skills: false,
+      supports_plan: true,
+      supports_queue: true,
+      changes: { turn_diff: false, per_file_patch: false, git_scopes: false },
+    },
+  },
+};
+
 /** 开发预览：计划回合结束后，确认面板在输入框上方。`?preview=plan-choice` */
 export default function PlanChoicePreview() {
-  useEffect(() => {
-    useWorkbench.setState({
-      profiles: {
-        "codex-cli": {
-          kind: "codex-cli",
-          display_name: "Codex CLI",
-          icon: "",
-          commands: [],
-          capabilities: {
-            supports_slash: true,
-            supports_resume: false,
-            supports_questions: true,
-            supports_tuning: false,
-            supports_skills: false,
-            supports_plan: true,
-            supports_queue: true,
-            changes: { turn_diff: false, per_file_patch: false, git_scopes: false },
-          },
-        },
-      },
-    });
-  }, []);
-  const current = session();
   return (
     <div className="h-screen w-screen bg-[#0f0f0f] text-[#e8e8e8]">
-      <PanelProvider
-        sessionId={sessionId}
-        projectId="preview"
-        projectPath=""
-        sessionTitle={current.title}
-        agent="codex-cli"
-        events={events}
-        usage={null}
-      >
-        <AnswerMarkdownHost>
-          <SessionSplit>
-            <StoreChatView session={current} events={events} />
-          </SessionSplit>
-        </AnswerMarkdownHost>
-      </PanelProvider>
+      <PreviewSession session={session()} events={events} profiles={PROFILES} />
     </div>
   );
 }

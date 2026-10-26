@@ -1,5 +1,5 @@
-import { useWorkbench } from "@/store";
+import { openProjectDialog } from "@/shared/shell/navigation";
 
 export function useProjectHeader() {
-  return useWorkbench((s) => s.openDialog);
+  return openProjectDialog;
 }

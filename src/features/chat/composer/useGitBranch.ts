@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { backend } from "@/lib/ipc";
-import type { GitBranchMenu } from "@/lib/ipc/dto";
+import { projectsApi, type GitBranchMenu, type GitScope } from "@/features/projects";
 import { userFacingMessage } from "@/lib/user-facing";
 import { projectBranchStamp, rememberProjectBranch } from "@/shared/project-branch";
 
@@ -26,6 +25,7 @@ export function useGitBranch(
 ) {
   const sessionId = scope?.sessionId;
   const isolated = Boolean(scope?.isolated);
+  const target: GitScope = sessionId ? { sessionId } : { projectId };
   const [ready, setReady] = useState(false);
   const [isGit, setIsGit] = useState(false);
   const [branch, setBranch] = useState<string | null>(null);
@@ -56,7 +56,7 @@ export function useGitBranch(
     const refresh = async () => {
       const seen = projectBranchStamp(projectId);
       try {
-        const git = await backend.projectIsGit(projectId);
+        const git = await projectsApi.isGitRepo(target);
         if (!stillCurrent(seen)) return;
         if (!git) {
           readyRef.current = true;
@@ -66,7 +66,7 @@ export function useGitBranch(
           remember(null);
           return;
         }
-        const value = await backend.projectBranch(projectId, sessionId);
+        const value = await projectsApi.currentBranch(target);
         if (!stillCurrent(seen)) return;
         const next = normalizeBranch(value);
         readyRef.current = true;
@@ -110,7 +110,7 @@ export function useGitBranch(
     const id = projectId;
     const seen = projectBranchStamp(id);
     try {
-      const snapshot = await backend.projectGitBranches(id, sessionId);
+      const snapshot = await projectsApi.branchMenu(sessionId ? { sessionId } : { projectId: id });
       if (projectRef.current !== id || (!isolated && projectBranchStamp(id) !== seen)) return;
       setMenu(snapshot);
       setListError(null);
@@ -144,7 +144,7 @@ export function useGitBranch(
 
   const checkout = useCallback(
     async (name: string) => {
-      await backend.projectCheckoutBranch(projectId, name, sessionId);
+      await projectsApi.checkoutBranch(sessionId ? { sessionId } : { projectId }, name);
       const next = normalizeBranch(name);
       setBranch(next);
       if (!isolated) rememberProjectBranch(projectId, next);
@@ -156,7 +156,7 @@ export function useGitBranch(
   const create = useCallback(
     async (name: string) => {
       const trimmed = name.trim();
-      await backend.projectCreateBranch(projectId, trimmed, sessionId);
+      await projectsApi.createBranch(sessionId ? { sessionId } : { projectId }, trimmed);
       const next = normalizeBranch(trimmed);
       setBranch(next);
       if (!isolated) rememberProjectBranch(projectId, next);

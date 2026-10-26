@@ -4,7 +4,9 @@ import type { AgentKind, SessionStatus } from "@/types";
 
 export type TaskWorkspace =
   | { kind: "root" }
-  | { kind: "worktree"; path: string; branch: string; baseRef?: string; baseSha: string };
+  | { kind: "worktree"; path: string; branch: string; baseRef?: string; baseSha: string }
+  /** 独立聊天自己的文件夹。 */
+  | { kind: "folder"; path: string };
 
 export interface SessionAccess {
   mode: string;
@@ -35,7 +37,8 @@ export interface TaskSession {
 
 export interface TaskEntry {
   id: string;
-  projectId: string;
+  /** 独立聊天没有项目。 */
+  projectId?: string;
   title: string;
   workspace: TaskWorkspace;
   pinned: boolean;
@@ -46,9 +49,15 @@ export interface TaskEntry {
 }
 
 export interface CreateTaskInput {
-  projectId: string;
+  /** 空表示独立聊天。 */
+  projectId: string | null;
+  agent: AgentKind;
   prompt: string;
   images: string[];
   worktree: boolean;
   options: SessionOptions;
+  /** 首发前先设好的目标。 */
+  goal?: string;
+  goalStatus?: "paused" | "active";
 }
+

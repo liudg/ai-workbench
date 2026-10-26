@@ -1,10 +1,10 @@
 import { useEffect } from "react";
 
 import { OPEN_THREAD_FIND } from "@/features/chat/find/use-thread-find";
-import { StoreChatView } from "@/features/workspace/StoreChatView";
 import type { Session, SessionEvent, SessionEventBody, SessionStatus } from "@/types";
 
-import { useActivityPreviewProfiles } from "./use-activity-preview";
+import { PreviewSession } from "./PreviewSession";
+import { ACTIVITY_PREVIEW_PROFILES } from "./use-activity-preview";
 
 function session(status: SessionStatus): Session {
   return {
@@ -36,7 +36,6 @@ const events: SessionEvent[] = [
 
 /** 开发预览：`?preview=thread-find&q=装备`。`q` 预填查找。 */
 export default function ThreadFindPreview() {
-  useActivityPreviewProfiles();
   const query = new URLSearchParams(window.location.search).get("q") ?? "装备";
   useEffect(() => {
     window.dispatchEvent(new CustomEvent(OPEN_THREAD_FIND, { detail: { query } }));
@@ -44,7 +43,7 @@ export default function ThreadFindPreview() {
 
   return (
     <div className="relative flex h-screen min-h-0 flex-col bg-[#0f0f0f] text-[#e8e8e8]">
-      <StoreChatView session={session("completed")} events={events} />
+      <PreviewSession session={session("completed")} events={events} profiles={ACTIVITY_PREVIEW_PROFILES} panel={false} />
     </div>
   );
 }

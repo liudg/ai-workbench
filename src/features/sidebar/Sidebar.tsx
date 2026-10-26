@@ -2,6 +2,7 @@ import { AccountMenu } from "./account/AccountMenu";
 import { BrandHeader } from "@/shared/brand/BrandHeader";
 import { SidebarPeek } from "./SidebarPeek";
 import { useSidebar } from "./use-sidebar";
+import { ConnectionNotice } from "@/shared/shell/ConnectionNotice";
 import { useSidebarOpen } from "@/shared/shell/sidebar-open";
 import { ChatGroup } from "./chats/ChatGroup";
 import { ProjectHeader } from "./projects/ProjectHeader";
@@ -15,8 +16,17 @@ export function Sidebar() {
 }
 
 function SidebarFrame() {
-  const { pinned, unpinned, notice } = useSidebar();
-  const noProjects = pinned.length === 0 && unpinned.length === 0;
+  const { pinned, unpinned, loading, tasksOf, selectedProjectId, activeTaskId, notice } = useSidebar();
+  const noProjects = !loading && pinned.length === 0 && unpinned.length === 0;
+  const item = (project: (typeof pinned)[number]) => (
+    <ProjectItem
+      key={project.id}
+      project={project}
+      tasks={tasksOf(project.id)}
+      selected={selectedProjectId === project.id}
+      activeTaskId={activeTaskId}
+    />
+  );
 
   return (
     <aside
@@ -35,9 +45,7 @@ function SidebarFrame() {
               <span className="text-[12px] text-[#cfcfcf]">置顶</span>
             </div>
             <div className="space-y-0.5">
-              {pinned.map((project) => (
-                <ProjectItem key={project.id} project={project} />
-              ))}
+              {pinned.map(item)}
             </div>
           </section>
         )}
@@ -55,21 +63,18 @@ function SidebarFrame() {
             </p>
           </div>
         ) : (
-          <div className="space-y-0.5">
-            {unpinned.map((project) => (
-              <ProjectItem key={project.id} project={project} />
-            ))}
-          </div>
+          <div className="space-y-0.5">{unpinned.map(item)}</div>
         )}
-        <ChatGroup />
+        <ChatGroup tasks={tasksOf(null)} activeTaskId={activeTaskId} />
       </div>
 
       {notice && (
         <div className="mx-3 mb-2 flex items-center justify-between gap-2 rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] px-3 py-2 text-xs text-[#e8e8e8]">
-          <span>{notice.text}</span>
+          <span>{notice}</span>
         </div>
       )}
 
+      <ConnectionNotice />
       <div className="relative z-10 px-3 py-3">
         <AccountMenu />
       </div>

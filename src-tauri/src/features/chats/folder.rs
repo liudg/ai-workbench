@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::features::projects::{normalize_import_dir, ProjectStore};
 use aiwb_core::models::{now_millis, strip_verbatim_prefix, AgentKind, Project};
 
-use super::slug::{candidate_name, chat_slug};
+use aiwb_core::chat_slug::{candidate_name, chat_slug};
 
 const FOLDER_NAME: &str = "AI Workbench";
 

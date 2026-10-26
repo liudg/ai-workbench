@@ -13,5 +13,9 @@ export async function resolveEndpoint(): Promise<DaemonEndpoint> {
   if (isTauri) return invoke<DaemonEndpoint>("daemon_endpoint");
   const response = await fetch(DEV_ENDPOINT_PATH);
   if (!response.ok) throw new Error(await response.text());
-  return (await response.json()) as DaemonEndpoint;
+  const endpoint = (await response.json()) as Partial<DaemonEndpoint> | null;
+  if (typeof endpoint?.url !== "string" || typeof endpoint.token !== "string") {
+    throw new Error("daemon 地址不完整");
+  }
+  return { url: endpoint.url, token: endpoint.token };
 }

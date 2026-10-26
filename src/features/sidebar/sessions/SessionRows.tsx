@@ -1,51 +1,38 @@
 import { useEffect, useState } from "react";
 
-import type { Session } from "@/types";
+import type { SidebarTask } from "../sidebar-task";
 import { SessionRow } from "./SessionRow";
-import { useReadOnlySessionKey } from "./use-session-list";
 import { useVirtualRows } from "./use-virtual-rows";
 import { SESSION_ROW_HEIGHT } from "./virtual-window";
 
 export function SessionRows({
-  projectId,
-  sessions,
-  selected,
-  activeSessionId,
+  tasks,
+  activeTaskId,
 }: {
-  projectId: string;
-  sessions: Session[];
-  selected: boolean;
-  activeSessionId: string | undefined;
+  tasks: readonly SidebarTask[];
+  activeTaskId: string | null;
 }) {
-  const readOnlyKey = useReadOnlySessionKey(sessions);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 30_000);
     return () => window.clearInterval(timer);
   }, []);
-  const { ref, start, end } = useVirtualRows(sessions.length, SESSION_ROW_HEIGHT);
-  const rows = sessions.slice(start, end);
-  const readOnlyIds = new Set(readOnlyKey ? readOnlyKey.slice(0, -1).split("\n") : []);
+  const { ref, start, end } = useVirtualRows(tasks.length, SESSION_ROW_HEIGHT);
+  const rows = tasks.slice(start, end);
 
   return (
     <div
       ref={ref}
       className="relative overflow-hidden bg-[#141414]"
-      style={{ height: sessions.length * SESSION_ROW_HEIGHT }}
+      style={{ height: tasks.length * SESSION_ROW_HEIGHT }}
     >
-      {rows.map((session, index) => (
+      {rows.map((task, index) => (
         <div
-          key={session.id}
+          key={task.id}
           style={{ top: (start + index) * SESSION_ROW_HEIGHT, height: SESSION_ROW_HEIGHT }}
           className="absolute inset-x-0 overflow-hidden"
         >
-          <SessionRow
-            projectId={session.project_id || projectId}
-            session={session}
-            active={selected && session.id === activeSessionId}
-            readOnly={readOnlyIds.has(session.id)}
-            now={now}
-          />
+          <SessionRow task={task} active={task.id === activeTaskId} now={now} />
         </div>
       ))}
     </div>

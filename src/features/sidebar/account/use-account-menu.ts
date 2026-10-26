@@ -1,8 +1,7 @@
-import { useWorkbench } from "@/store";
+import { useUpdateCheck } from "@/features/updates";
+import { openSettings } from "@/shared/shell/navigation";
 
 export function useAccountMenu() {
-  const checkUpdates = useWorkbench((s) => s.checkUpdates);
-  const openSettings = useWorkbench((s) => s.openSettings);
-  const checking = useWorkbench((s) => s.update.kind === "checking");
-  return { checkUpdates, openSettings, checking };
+  const { checking, checkNow } = useUpdateCheck();
+  return { checkUpdates: checkNow, openSettings, checking };
 }

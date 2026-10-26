@@ -1,17 +1,44 @@
 import { useMemo } from "react";
 
-import { useWorkbench } from "@/store";
-import { visibleProjects } from "@/store/standalone";
+import { useProjects } from "@/features/projects";
+import { useTasks } from "@/features/tasks";
+import { selectedProjectOf, useNavigation } from "@/shared/shell/navigation";
 import { splitPinnedProjects } from "./projects/project-sections";
+import { sidebarTask, type SidebarTask } from "./sidebar-task";
+import { useSidebarNotice } from "./sidebar-notice";
+import { useUnreadTracking } from "./unread";
 
+const NO_TASKS: SidebarTask[] = [];
+
+/** 侧栏的项目和会话。会话按项目分好，独立聊天单独一组。 */
 export function useSidebar() {
-  const all = useWorkbench((s) => s.projects);
-  const pinnedIds = useWorkbench((s) => s.pinnedProjectIds);
-  const projects = useMemo(() => visibleProjects(all), [all]);
+  const { projects, loading } = useProjects();
+  const { tasks, loading: tasksLoading } = useTasks();
+  const view = useNavigation((state) => state.view);
+  const visibleTaskId = view.kind === "task" ? view.taskId : null;
+  useUnreadTracking(tasksLoading ? null : tasks, visibleTaskId);
+
+  const byProject = useMemo(() => {
+    const groups = new Map<string | null, SidebarTask[]>();
+    for (const task of tasks) {
+      const row = sidebarTask(task);
+      const list = groups.get(row.projectId);
+      if (list) list.push(row);
+      else groups.set(row.projectId, [row]);
+    }
+    return groups;
+  }, [tasks]);
   const sections = useMemo(
-    () => splitPinnedProjects(projects, pinnedIds),
-    [projects, pinnedIds],
+    () => splitPinnedProjects(projects, projects.filter((project) => project.pinned).map((project) => project.id)),
+    [projects],
   );
-  const notice = useWorkbench((s) => s.sidebarNotice);
-  return { pinned: sections.pinned, unpinned: sections.unpinned, notice };
+  return {
+    pinned: sections.pinned,
+    unpinned: sections.unpinned,
+    loading,
+    tasksOf: (projectId: string | null) => byProject.get(projectId) ?? NO_TASKS,
+    selectedProjectId: selectedProjectOf(view),
+    activeTaskId: visibleTaskId,
+    notice: useSidebarNotice(),
+  };
 }

@@ -8,7 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { Project } from "@/types";
+import type { Project } from "@/features/projects";
 import { useEditProjectForm } from "./useEditProjectForm";
 
 export function EditProjectDialog({

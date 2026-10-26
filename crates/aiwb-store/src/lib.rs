@@ -1,5 +1,6 @@
 //! SQLite 存储，工作台的唯一数据源。连接用一把锁串行化；调用方不要在持锁期间等待别的东西。
 
+mod drafts;
 mod legacy;
 mod migrations;
 mod projects;
@@ -40,8 +41,9 @@ impl Store {
 
     fn init(mut conn: Connection) -> StoreResult<Self> {
         conn.pragma_update(None, "journal_mode", "WAL")?;
-        conn.pragma_update(None, "foreign_keys", "ON")?;
+        conn.pragma_update(None, "foreign_keys", "OFF")?;
         migrations::run(&mut conn)?;
+        conn.pragma_update(None, "foreign_keys", "ON")?;
         Ok(Self {
             conn: Mutex::new(conn),
         })
@@ -65,5 +67,49 @@ impl Store {
             [key, value],
         )?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 第 2 版的库升上来，任务和会话都还在，项目默认 Agent 没了。
+    #[test]
+    fn upgrades_version_two_without_losing_sessions() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("db.sqlite");
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                CREATE TABLE project (id TEXT PRIMARY KEY, name TEXT NOT NULL, folders TEXT NOT NULL,
+                    default_agent TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+                CREATE TABLE task (id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+                    title TEXT NOT NULL, workspace TEXT NOT NULL, pinned INTEGER NOT NULL DEFAULT 0,
+                    archived_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+                CREATE INDEX task_project ON task(project_id);
+                CREATE TABLE session (id TEXT PRIMARY KEY,
+                    task_id TEXT NOT NULL REFERENCES task(id) ON DELETE CASCADE,
+                    agent TEXT NOT NULL, native_id TEXT, status TEXT NOT NULL, options TEXT NOT NULL,
+                    created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+                CREATE TABLE event (session_id TEXT NOT NULL REFERENCES session(id) ON DELETE CASCADE,
+                    seq INTEGER NOT NULL, rev INTEGER NOT NULL, id TEXT NOT NULL, ts INTEGER NOT NULL,
+                    body TEXT NOT NULL, PRIMARY KEY (session_id, seq));
+                INSERT INTO project VALUES ('p', 'P', '[\"/p\"]', 'codex-cli', 1, 1);
+                INSERT INTO task VALUES ('t', 'p', '标题', '{\"kind\":\"root\"}', 0, NULL, 1, 1);
+                INSERT INTO session VALUES ('s', 't', 'codex-cli', NULL, 'completed', '{}', 1, 1);
+                PRAGMA user_version = 2;",
+            )
+            .unwrap();
+        }
+        let store = Store::open(&path).unwrap();
+        assert_eq!(store.list_projects().unwrap()[0].path, "/p");
+        assert_eq!(store.task("t").unwrap().unwrap().project_id.as_deref(), Some("p"));
+        assert!(store.session("s").unwrap().is_some());
+        // 外键重新打开了：删项目连带删任务和会话。
+        store.remove_project("p").unwrap();
+        assert!(store.session("s").unwrap().is_none());
     }
 }

@@ -17,7 +17,6 @@ struct LegacyProject {
     path: String,
     #[serde(default)]
     folders: Vec<String>,
-    default_agent: String,
     created_at: i64,
     updated_at: i64,
     #[serde(default)]
@@ -56,7 +55,7 @@ pub fn import_legacy_projects(store: &Store, data_dir: &Path) -> StoreResult<usi
             name: item.name,
             path: folders[0].clone(),
             folders,
-            default_agent: item.default_agent,
+            pinned: false,
             created_at: item.created_at,
             updated_at: item.updated_at,
         };
@@ -91,7 +90,6 @@ mod tests {
         assert_eq!(projects.len(), 2);
         assert_eq!(projects[0].folders, vec!["C:\\one".to_string()]);
         assert_eq!(projects[1].folders.len(), 2);
-        assert_eq!(projects[1].default_agent, "claude-code");
 
         // 用户在新版删掉的项目，不会因为旧文件还在又回来。
         store.remove_project("p1").unwrap();

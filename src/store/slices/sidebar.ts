@@ -4,7 +4,7 @@ import { backend } from "@/lib/ipc";
 import { draftId, isPendingId } from "../draft-session";
 import { emptyProjectDraftUpdate, landOnEmptyProjectDraft } from "../lazy-draft";
 import type { Session } from "@/types";
-import { browserUnreadStorage, readUnreadFinishedIds } from "../unread-finished";
+import { browserUnreadStorage, readUnreadFinishedIds } from "@/shared/unread-finished";
 import {
   browserPinStorage,
   readPinnedSessionIds,

@@ -50,7 +50,7 @@ export function AccountMenu() {
             className="flex w-full items-center gap-3 px-3.5 py-2.5 text-left text-sm text-zinc-100 transition-colors hover:bg-zinc-800/90"
             onClick={() => {
               setOpen(false);
-              checkUpdates(true);
+              checkUpdates();
             }}
           >
             <RefreshCw

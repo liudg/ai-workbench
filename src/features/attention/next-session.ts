@@ -1,6 +1,6 @@
 import type { Project, Session, SessionEvent, SessionStatus } from "../../types/index.ts";
 import { isDraftId, isPendingId } from "../../store/draft-session.ts";
-import { isFinishedStatus } from "../../store/unread-finished.ts";
+import { isFinishedStatus } from "../../shared/unread-finished.ts";
 import { standaloneChatSessions } from "../../store/standalone.ts";
 import { pendingApprovalEvent } from "../chat/events/pending-approval.ts";
 import { pendingQuestionEvent } from "../chat/events/pending-question.ts";

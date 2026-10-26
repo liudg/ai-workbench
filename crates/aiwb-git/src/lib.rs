@@ -110,6 +110,16 @@ pub fn inside_work_tree(root: &Path) -> Result<bool, String> {
     Err(stderr.to_string())
 }
 
+/// 在新建的项目目录里 `git init`。
+pub fn init_repository(root: &Path) -> Result<(), String> {
+    let output = git_output(root, &["init"])?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let stderr = aiwb_proc::decode_child_bytes(&output.stderr);
+    Err(format!("git init 失败: {}", stderr.trim()))
+}
+
 pub(crate) fn git_output(root: &Path, args: &[&str]) -> Result<std::process::Output, String> {
     if !root.is_dir() {
         return Err("项目不存在".into());

@@ -11,7 +11,7 @@ fn from_row(row: &Row<'_>) -> rusqlite::Result<Project> {
         name: row.get("name")?,
         path: folders.first().cloned().unwrap_or_default(),
         folders,
-        default_agent: row.get("default_agent")?,
+        pinned: row.get("pinned")?,
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
     })
@@ -33,13 +33,13 @@ impl Store {
         }
         let folders = serde_json::to_string(&project.folders).expect("serialize folders");
         let changed = self.conn().execute(
-            "INSERT OR IGNORE INTO project (id, name, folders, default_agent, created_at, updated_at)
+            "INSERT OR IGNORE INTO project (id, name, folders, pinned, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![
                 project.id,
                 project.name,
                 folders,
-                project.default_agent,
+                project.pinned,
                 project.created_at,
                 project.updated_at
             ],
@@ -52,6 +52,25 @@ impl Store {
             .conn()
             .query_row("SELECT * FROM project WHERE id = ?1", [id], from_row)
             .optional()?)
+    }
+
+    /// 改名称和源文件夹。第一项是主目录。
+    pub fn update_project(&self, id: &str, name: &str, folders: &[String], now: i64) -> StoreResult<bool> {
+        if folders.is_empty() {
+            return Err(StoreError::Invalid("至少保留一个源文件夹".into()));
+        }
+        let folders = serde_json::to_string(folders).expect("serialize folders");
+        Ok(self.conn().execute(
+            "UPDATE project SET name = ?2, folders = ?3, updated_at = ?4 WHERE id = ?1",
+            params![id, name, folders, now],
+        )? > 0)
+    }
+
+    pub fn set_project_pinned(&self, id: &str, pinned: bool) -> StoreResult<bool> {
+        Ok(self
+            .conn()
+            .execute("UPDATE project SET pinned = ?2 WHERE id = ?1", params![id, pinned])?
+            > 0)
     }
 
     pub fn remove_project(&self, id: &str) -> StoreResult<bool> {
@@ -69,7 +88,7 @@ mod tests {
             name: id.into(),
             path: path.into(),
             folders: vec![path.into()],
-            default_agent: "codex-cli".into(),
+            pinned: false,
             created_at,
             updated_at: created_at,
         }
@@ -89,6 +108,22 @@ mod tests {
         assert!(store.remove_project("a").unwrap());
         assert!(!store.remove_project("a").unwrap());
         assert_eq!(store.list_projects().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn update_and_pin() {
+        let store = Store::open_in_memory().unwrap();
+        store.insert_project(&sample("a", "/a", 1)).unwrap();
+        let folders = vec!["/a2".to_string(), "/b".to_string()];
+        assert!(store.update_project("a", "新名", &folders, 5).unwrap());
+        assert!(store.set_project_pinned("a", true).unwrap());
+        let project = store.project("a").unwrap().unwrap();
+        assert_eq!(project.name, "新名");
+        assert_eq!(project.path, "/a2");
+        assert_eq!(project.folders, folders);
+        assert!(project.pinned);
+        assert_eq!(project.updated_at, 5);
+        assert!(!store.update_project("missing", "x", &folders, 5).unwrap());
     }
 
     #[test]
