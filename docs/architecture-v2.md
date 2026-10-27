@@ -98,13 +98,18 @@
    - 和设计的出入：事件表不是纯追加。流式覆盖改写同一 seq，每次写入换新的 `rev`，客户端按 rev 续传。
    - 界面缺的部分放到第 3 步。
 3. **v2 界面**：以 v1 的外壳组件为底（侧栏、会话视图、右侧面板、新建项目和编辑项目对话框、设置、更新、命令菜单），数据来源从旧 store、invoke 换成 daemon，做法和已经改好的 `ChatHost`、`PanelHost` 一样。为了跑通才写的简版组件（`features/task` 的 `NewTask`、`TaskComposer`，`features/tasks` 的任务列表，`features/projects` 的项目列表）在被替换后删掉。新会话的作曲栏加上 Agent 和模型选择。
-   - 先做：把 v1 的功能列成清单，逐项标「沿用」「改进（写出处）」「去掉（写理由）」，用户确认后再动手。
+   - 先做：把 v1 的功能列成清单，逐项标「沿用」「改进（写出处）」「去掉（写理由）」，用户确认后再动手。清单见 [v2-feature-checklist.md](v2-feature-checklist.md)。
    - 完成标准：清单里确认的每一项在真实应用里验证通过。
+   - 落地情况（2026-10-27，代码完成，桌面版还没逐项验证）：
+     - daemon：迁移 3（项目置顶、去掉项目默认 Agent、任务可以不属于项目、`draft` 表）；`projects.create/update/setPinned`、`git.*`、`files.*`（按会话或项目读，没建会话时面板也能用）、`settings.taskFolder`、`tasks.setPinned/deletePreview`、`sessions.setGoal` 等、`agents.installations/upgrade/catalog`、`mcp.*`、`drafts.*`。任务工作树建时写记录，删除任务时可连目录和 `aiwb/` 分支一起删。`/health` 带上运行中的会话数，托盘退出前确认用。
+     - 前端：`features/sidebar`、`features/settings`、`features/command-menu`、`features/updates` 用 v1 的组件，数据换成 daemon；`features/projects`、`features/tasks`、`features/agents` 是各自的数据入口；主区在 `features/workspace`（会话视图、新会话视图）。v1 作曲栏通过 `ComposerHost` 取数据（`chat/composer/host.ts`），已有会话和新会话各一份实现。导航、错误横幅这些纯界面状态在 `shared/shell`。
+     - 简版的 `features/task`、任务列表、项目列表已删。旧前端 store（`src/store` 里除 `session-usage`、`subscription-usage` 外）已经没人用，提前删了；第 8 步只剩 Rust 侧的 `SessionManager`、`dev_bridge` 和 `lib/ipc`。
+     - 和清单的出入：「下一个需要处理的会话」随第 6 步、「分叉聊天」随第 5 步重做，第 3 步先从命令菜单拿掉；侧栏的「只读」标记去掉（理由见清单）。
 4. **Claude 迁入**：标准同第 2 步，再加上"从 CLI 历史导入会话"（Codex 和 Claude 都要）。
 5. **跨 Agent 交接**：会话中途换 Agent 时，把之前的上下文交给新 Agent。照 t3code 的做法，不用 LLM 写摘要，而是按 token 预算（默认 16k）挑选历史消息；对方之前参与过的，只补它没看到的那段（t3code `apps/server/src/orchestration-v2/ContextHandoffService.ts`、`packages/provider-core/src/server/handoffBudget.ts`）。
 6. **看板和注意力**：注意力投影、看板、侧栏状态药丸、系统通知和任务栏角标（这一步把路线图阶段 1 的核心部分提前做了）。
 7. **ACP 通用驱动**：先接一个能登录的 Agent 跑通完整对话，其他的只验证握手和能力。
-8. **清理**：删除旧的 `SessionManager`、旧 store 和 `dev_bridge`，与旧 store 绑定的测试一并删掉或改写；更新 AGENTS.md 里的架构描述。
+8. **清理**：删除旧的 `SessionManager` 和 `dev_bridge`（旧前端 store 第 3 步已删）；`lib/ipc` 只留应用壳的本机能力（内置浏览器、图片、选文件），其余删掉；更新 AGENTS.md 里的架构描述。
 
 ## 待确认
 - 用来验证 Codex/Claude 的真实 CLI 在哪台机器上。
