@@ -7,8 +7,8 @@ v1 的功能逐项标「沿用」「改进」「去掉」。改进写出处，�
 - **v2 现状**（2026-10-27）：
   - **网页已验**：在网页预览里连真实 daemon（独立的数据目录）点过，结果对。
   - **已接上**：daemon 方法和界面都接上了，有测试或只看了代码，还没在界面上点过。
-  - **桌面待验**：只有桌面版才有的本机能力（系统对话框、资源管理器、托盘、内置浏览器 webview），还没在桌面版里点过。
-  - 所有条目都还没在桌面版里整体走一遍，这是第 3 步的完成标准。
+  - **桌面已验**：2026-10-27 在桌面版里（`pnpm tauri:dev`，真实数据目录）点过，结果对。当天 Codex 连不上它的服务器，需要模型回话的部分没验。
+  - **桌面待验**：要用系统对话框、托盘、内置浏览器窗口这些原生界面，得在桌面版里手动点。
 
 ## 1. 项目
 | 功能 | v1 位置 | 标记 | 说明 | v2 现状 |
@@ -18,23 +18,23 @@ v1 的功能逐项标「沿用」「改进」「去掉」。改进写出处，�
 | 项目默认 Agent | `useNewProjectForm.ts` 的 `defaultAgent` | 去掉 | 改成在每个会话里选。新会话默认用上次选的 Agent 和这个 Agent 上次选的模型（t3code `apps/web/src/composerDraftStore.ts` 的 `stickyActiveProvider`、`stickyModelSelectionByProvider`） | 已去掉（迁移 3 删了这一列） |
 | 编辑项目：名称、多个源文件夹 | `EditProjectDialog.tsx`，`update_project` | 沿用 | `projects.update` | 网页已验（改名） |
 | 置顶项目 | `project-menu.ts`、`project-sections.ts` | 沿用 | 存进数据库 | 网页已验 |
-| 在资源管理器中打开 | `project-menu.ts`，`open_project_folder` | 沿用 | 壳新增 `reveal_folder` | 桌面待验 |
+| 在资源管理器中打开 | `project-menu.ts`，`open_project_folder` | 沿用 | 壳新增 `reveal_folder` | 桌面已验（命令没报错；窗口要人看一眼） |
 | 移除项目 | `project-menu.ts`，`remove_project` | 沿用 | | 已接上 |
-| 分支显示、切换、新建 | `chat/composer/GitBranchControl.tsx`，`project_branch` / `project_checkout_branch` / `project_create_branch` / `project_git_branches` | 沿用 | `git.*`，按会话或项目 | 网页已验（显示）；切换、新建已接上 |
+| 分支显示、切换、新建 | `chat/composer/GitBranchControl.tsx`，`project_branch` / `project_checkout_branch` / `project_create_branch` / `project_git_branches` | 沿用 | `git.*`，按会话或项目 | 桌面已验（显示）；切换、新建已接上 |
 | 提交、推送、开 PR 的按钮 | 无 | 改进（路线图 8） | v1 没有。按仓库状态给出一个主操作，和分支控件并存（t3code `apps/web/src/components/GitActionsControl.logic.ts`） | — |
 
 ## 2. 侧栏和会话列表
 | 功能 | v1 位置 | 标记 | 说明 | v2 现状 |
 |---|---|---|---|---|
-| 「项目 → 会话」列表，按时间排序，虚拟滚动 | `sidebar/sessions/*` | 沿用 | 一个任务一行，显示任务现在用的会话 | 网页已验 |
+| 「项目 → 会话」列表，按时间排序，虚拟滚动 | `sidebar/sessions/*` | 沿用 | 一个任务一行，显示任务现在用的会话 | 桌面已验 |
 | 会话状态点 | `SessionStatusDot.tsx`、`session-status.ts` | 改进（迁移第 6 步） | 换成状态药丸，颜色只用来提示「需要你看」（t3code `apps/web/src/components/Sidebar.logic.ts`） | 第 3 步沿用 v1 的点 |
 | 「只读」标记 | `SessionRow.tsx` | 去掉 | v1 读 CLI 历史文件时用来标被别的进程占着的会话；v2 由 daemon 独占会话，没有这个来源 | — |
-| 新建会话按钮和 Agent 菜单 | `NewSessionButton.tsx`、`lib/agents` 的 `newSessionMenu` | 改进 | 按钮只负责开新会话；Agent 和模型放到作曲栏里选（t3code `apps/web/src/components/chat/ModelPickerContent.tsx`） | 网页已验 |
+| 新建会话按钮和 Agent 菜单 | `NewSessionButton.tsx`、`lib/agents` 的 `newSessionMenu` | 改进 | 按钮只负责开新会话；Agent 和模型放到作曲栏里选（t3code `apps/web/src/components/chat/ModelPickerContent.tsx`） | 桌面已验 |
 | 独立聊天（不属于任何项目）和设置里的「无项目任务文件夹」 | `sidebar/chats/ChatGroup.tsx`，`task_folder` / `set_task_folder` | 沿用 | 2026-10-26 用户确认保留。做法见 architecture-v2.md「领域模型」 | 网页已验（建目录、建任务）；当天 Codex 连不上服务器，没跑完一轮对话 |
-| 重命名 | `session-menu.ts`，`rename_session` | 改进 | v1 要看 Agent 支不支持；v2 记在数据库里，所有 Agent 都能改（architecture-v2.md「Agent 驱动接口」） | 网页已验 |
-| 置顶 | `session-menu.ts`、`use-pinned-session-ids.ts` | 沿用 | 改成存在数据库里 | 已接上 |
-| 归档 / 取消归档 | `session-menu.ts`，`set_session_archived` | 改进 | 同重命名 | 已接上 |
-| 删除，以及删除前预览工作树 | `DeleteSessionDialog.tsx`，`delete_session` / `session_worktree_delete_preview` | 改进 | 同重命名；保留 v1 的工作树预览，确认后连工作树和 `aiwb/` 分支一起删 | 已接上（daemon 有测试） |
+| 重命名 | `session-menu.ts`，`rename_session` | 改进 | v1 要看 Agent 支不支持；v2 记在数据库里，所有 Agent 都能改（architecture-v2.md「Agent 驱动接口」） | 桌面已验 |
+| 置顶 | `session-menu.ts`、`use-pinned-session-ids.ts` | 沿用 | 改成存在数据库里 | 桌面已验 |
+| 归档 / 取消归档 | `session-menu.ts`，`set_session_archived` | 改进 | 同重命名 | 桌面已验（取消归档从命令菜单） |
+| 删除，以及删除前预览工作树 | `DeleteSessionDialog.tsx`，`delete_session` / `session_worktree_delete_preview` | 改进 | 同重命名；保留 v1 的工作树预览，确认后连工作树和 `aiwb/` 分支一起删 | 桌面已验（主目录会话）；工作树的删除预览 daemon 有测试 |
 | 侧栏开关 Ctrl+B，收起后悬停贴边展开 | `use-sidebar.ts`、`SidebarPeek.tsx` | 沿用 | | 已接上（渲染测试） |
 | CLI 里的历史会话自动出现在侧栏 | `SessionManager` 合并各 CLI 目录 | 去掉 | 2026-10-26 用户确认改成手动导入（迁移第 4 步） | — |
 | 左下角菜单：检查更新、设置、命令菜单 | `sidebar/account/AccountMenu.tsx` | 沿用 | | 网页已验（设置） |
@@ -42,11 +42,11 @@ v1 的功能逐项标「沿用」「改进」「去掉」。改进写出处，�
 ## 3. 作曲栏
 | 功能 | v1 位置 | 标记 | 说明 | v2 现状 |
 |---|---|---|---|---|
-| 输入、Enter 发送、输入法保护 | `ComposerInput.tsx`、`composer-keys.ts` | 沿用 | | 网页已验 |
-| 选 Agent | 无（v1 在新建会话按钮里选） | 改进 | 新会话在作曲栏上方选，建好后锁定；中途换 Agent 在迁移第 5 步（t3code `apps/web/src/components/ChatView.tsx` 的 `modelPickerLockedProvider`、`ModelPickerSidebar.tsx`） | 网页已验 |
+| 输入、Enter 发送、输入法保护 | `ComposerInput.tsx`、`composer-keys.ts` | 沿用 | 桌面已验 |
+| 选 Agent | 无（v1 在新建会话按钮里选） | 改进 | 新会话在作曲栏上方选，建好后锁定；中途换 Agent 在迁移第 5 步（t3code `apps/web/src/components/ChatView.tsx` 的 `modelPickerLockedProvider`、`ModelPickerSidebar.tsx`） | 桌面已验（显示和选择） |
 | 模型、强度、速度档 | `ModelMenu.tsx`、`model-picker.ts`，`set_session_tuning` / `set_session_service_tier` | 沿用 | 新会话用这个 Agent 上次拿到的模型目录（daemon 记下）；一次都没拿到过时提示用默认模型 | 网页已验（显示） |
-| 权限：预设、网络、可写目录、profile | `AccessMenu.tsx`、`access.ts`，`set_session_access` | 沿用 | 新会话默认用这个 Agent 上次的选择或它的默认档 | 网页已验（显示） |
-| 主目录或新工作树 | `WorktreeChoice.tsx`、`worktree-option.ts` | 沿用 | 工作树由任务层建，不再看 Agent 能力，有提交就能选 | 网页已验（开关出现）；建工作树 daemon 有测试 |
+| 权限：预设、网络、可写目录、profile | `AccessMenu.tsx`、`access.ts`，`set_session_access` | 沿用 | 新会话默认用这个 Agent 上次的选择或它的默认档 | 桌面已验（显示） |
+| 主目录或新工作树 | `WorktreeChoice.tsx`、`worktree-option.ts` | 沿用 | 工作树由任务层建，不再看 Agent 能力，有提交就能选 | 桌面已验（开关）；在网络共享上的仓库里建工作树会被 git 以 safe.directory 拒绝，错误原样显示、不留残留 |
 | 空会话上方选项目 | `WorkContextPicker.tsx`、`useComposerWorkContext.ts` | 沿用 | 只在新会话上，换项目时草稿跟过去 | 网页已验（显示） |
 | 附件：文件、图片、粘贴和拖入图片 | `AttachMenu.tsx`、`Attachments.tsx`、`media.ts` | 沿用 | | 桌面待验 |
 | `@` 提及文件 | `MentionMenu.tsx`、`mentions.ts` | 沿用 | 新会话按项目目录找 | 已接上 |
@@ -64,7 +64,7 @@ v1 的功能逐项标「沿用」「改进」「去掉」。改进写出处，�
 | 功能 | v1 位置 | 标记 | 说明 | v2 现状 |
 |---|---|---|---|---|
 | 时间线、回合折叠、虚拟化、跟随滚动 | `chat/timeline/*` | 沿用 | | 网页已验 |
-| 回答、思考、工具调用、活动分组、状态提示 | `chat/events/*` | 沿用 | | 网页已验（回答） |
+| 回答、思考、工具调用、活动分组、状态提示 | `chat/events/*` | 沿用 | 网页已验（回答）；桌面已验（错误） |
 | 审批卡、问题卡、计划选择、elicitation | `ApprovalCard.tsx`、`QuestionCard.tsx`、`PlanChoiceSurface.tsx`、`ElicitationCard.tsx` | 沿用 | | 已接上 |
 | 变更卡、网页卡、图片 | `chat/cards/*`、`EventImages.tsx` | 沿用 | | 已接上 |
 | 会话内查找 Ctrl+F | `chat/find/*` | 沿用 | | 已接上 |
@@ -77,11 +77,11 @@ v1 的功能逐项标「沿用」「改进」「去掉」。改进写出处，�
 | 功能 | v1 位置 | 标记 | 说明 | v2 现状 |
 |---|---|---|---|---|
 | 面板开关和右侧栏按钮（没有会话时也能打开） | `panel/core/SessionSplit.tsx`、`ClosedChrome.tsx` | 沿用 | 新会话按项目主目录读（`files.*` 支持项目范围） | 已接上 |
-| 差异：范围（上一轮、未暂存、已暂存、未提交、分支）、分栏或合并、折叠、跳转文件、选项菜单 | `panel/diff/*` | 沿用 | | 网页已验（打开） |
+| 差异：范围（上一轮、未暂存、已暂存、未提交、分支）、分栏或合并、折叠、跳转文件、选项菜单 | `panel/diff/*` | 沿用 | 桌面已验（打开） |
 | 复制 `git apply` 命令 | `panel/diff/git-apply.ts` | 沿用 | | 已接上 |
 | 逐行评论后批量发回、hunk 级暂存和还原 | 无 | 改进（路线图 7、8） | v1 没有 | — |
-| 文件树、打开的文件标签、面包屑、右键「添加到聊天」 | `panel/files/*` | 沿用 | | 网页已验（打开文件） |
-| 文件名和正文搜索 Ctrl+Shift+F，跳转文件 Ctrl+P | `FileSearchDialog.tsx`、`useQuickOpen.ts` | 沿用 | Ctrl+P 走 `files.quickOpen` | 网页已验（Ctrl+P） |
+| 文件树、打开的文件标签、面包屑、右键「添加到聊天」 | `panel/files/*` | 沿用 | 桌面已验（打开文件、Markdown 预览） |
+| 文件名和正文搜索 Ctrl+Shift+F，跳转文件 Ctrl+P | `FileSearchDialog.tsx`、`useQuickOpen.ts` | 沿用 | Ctrl+P 走 `files.quickOpen` | 桌面已验（Ctrl+P） |
 | 预览：源码、Markdown（预览和源码切换）、图片、HTML、文档 | `panel/viewers/*` | 沿用 | | 网页已验（源码） |
 | 用默认应用或指定应用打开 | `OpenWithMenu.tsx`、`open-with.ts` | 沿用 | | 桌面待验 |
 | 内置浏览器：标签页、新标签页、页面批注 | `panel/browser/*` | 沿用 | | 桌面待验 |
@@ -90,7 +90,7 @@ v1 的功能逐项标「沿用」「改进」「去掉」。改进写出处，�
 ## 6. 命令菜单和快捷键
 | 功能 | v1 位置 | 标记 | 说明 | v2 现状 |
 |---|---|---|---|---|
-| 命令菜单 Ctrl+K：新聊天、新独立聊天、打开文件夹、设置、搜索聊天、会话内查找、搜索文件、归档、重命名、置顶、删除、面板开关、侧栏开关、跳转文件 | `command-menu/*` | 沿用 | 动作走和界面同一组 daemon 方法；挂在会话视图的面板里。「下一个待处理」「分叉」见第 4 节 | 网页已验 |
+| 命令菜单 Ctrl+K：新聊天、新独立聊天、打开文件夹、设置、搜索聊天、会话内查找、搜索文件、归档、重命名、置顶、删除、面板开关、侧栏开关、跳转文件 | `command-menu/*` | 沿用 | 动作走和界面同一组 daemon 方法；挂在会话视图的面板里。「下一个待处理」「分叉」见第 4 节 | 桌面已验 |
 | 快捷键：Ctrl+Shift+O 新聊天、Ctrl+Shift+A 归档、Ctrl+Shift+Delete 删除、Ctrl+Shift+B / Ctrl+Shift+F 面板 | `command-menu/copy.ts`、`shared/strings/desktop-zh.ts` | 沿用 | | 已接上 |
 | 跳转面板 Ctrl+J | 无 | 改进（路线图 5） | orca `src/renderer/src/components/WorktreeJumpPalette.tsx` | — |
 | 自定义快捷键 | 无 | 改进（路线图 16） | t3code `packages/shared/src/keybindings.ts` | — |
@@ -98,9 +98,9 @@ v1 的功能逐项标「沿用」「改进」「去掉」。改进写出处，�
 ## 7. 设置、更新、托盘
 | 功能 | v1 位置 | 标记 | 说明 | v2 现状 |
 |---|---|---|---|---|
-| 本地 Agent：检测安装、版本、升级 | `settings/SettingsView.tsx`、`agent-card.ts`，`list_agent_installations` / `update_agent` | 沿用 | `agents.installations` / `agents.upgrade` | 网页已验（检测） |
-| MCP：列表、添加、删除、启停、登录登出、看工具 | `settings/mcp/*`，`mcp_*` | 沿用 | `mcp.*` | 网页已验（列表） |
-| 无项目任务文件夹 | `useTaskFolder.ts` | 沿用 | 记在数据库，首次启动搬旧版 `task-folder.json` | 网页已验 |
+| 本地 Agent：检测安装、版本、升级 | `settings/SettingsView.tsx`、`agent-card.ts`，`list_agent_installations` / `update_agent` | 沿用 | `agents.installations` / `agents.upgrade` | 桌面已验（检测） |
+| MCP：列表、添加、删除、启停、登录登出、看工具 | `settings/mcp/*`，`mcp_*` | 沿用 | `mcp.*` | 桌面已验（列表） |
+| 无项目任务文件夹 | `useTaskFolder.ts` | 沿用 | 记在数据库，首次启动搬旧版 `task-folder.json` | 桌面已验（显示）；更改要用系统对话框，桌面待验 |
 | 应用更新 | `updates/UpdateDialog.tsx`，`tauri-plugin-updater` | 沿用 | 网页预览里显示没有更新源，不再假装已是最新 | 桌面待验 |
 | 托盘：显示窗口、退出 | `src-tauri/src/tray.rs` | 改进 | 退出时还有会话在运行或等输入就二次确认（architecture-v2.md「进程结构」） | 桌面待验 |
 | 系统通知、任务栏角标 | 无 | 改进（迁移第 6 步） | orca `src/renderer/src/attention/agent-attention-policy.ts` | — |
