@@ -523,7 +523,8 @@ export default function ComposerPreview() {
               planIndicator={view.planIndicator}
               goalChip={view.goalChip}
               showModel
-              hasCatalog
+              modelReady
+              agentIdentity={null}
               modelButton={view.modelButton}
               modelName={view.modelName}
               effortLabel={view.effortLabel}
@@ -572,6 +573,7 @@ export default function ComposerPreview() {
       {menu === "model" && (
         <ModelMenu
           menuRef={modelMenuRef}
+          agents={null}
           models={catalog.models}
           modelId={view.selectedModel?.id}
           modelLabel={view.selectedModel?.label}

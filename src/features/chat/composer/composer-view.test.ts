@@ -293,7 +293,7 @@ test("the model button follows CLI config before the catalog default", () => {
     view({
       catalog: { ...catalog, configured_model: null, configured_effort: null },
     }).modelButton,
-    "GPT-6.1-Sol 低",
+    "GPT-6.1-Sol 轻度",
   );
   assert.equal(
     view({

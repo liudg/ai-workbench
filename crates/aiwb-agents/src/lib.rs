@@ -62,11 +62,12 @@ pub fn agent_profiles() -> Vec<AgentProfile> {
 }
 
 /// 全部已注册种类。顺序跟着 `AgentKind::all`。没装上的也返回，设置页要列出它们。
-pub async fn list_installations() -> Vec<AgentInstallation> {
+/// `check_updates` 时顺带查官方最新版本，要走网络，会慢。
+pub async fn list_installations(check_updates: bool) -> Vec<AgentInstallation> {
     let mut handles = Vec::new();
     for kind in AgentKind::all() {
         handles.push(tokio::spawn(async move {
-            adapter_for(kind).installation().await
+            adapter_for(kind).installation(check_updates).await
         }));
     }
     let mut listed = Vec::new();

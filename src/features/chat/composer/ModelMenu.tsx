@@ -1,14 +1,28 @@
-import { useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
+// 模型和推理强度。左边的 Agent 竖栏照 t3code `apps/web/src/components/chat/ModelPickerSidebar.tsx`，
+// 会话建好后只剩当前 Agent 照 `apps/web/src/components/chat/ModelPickerContent.tsx` 的 `lockedProvider`。
+
+import {
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { Check, ChevronRight, RotateCcw, Zap } from "lucide-react";
 
+import { userFacingMessage } from "@/lib/user-facing";
 import { cn } from "@/lib/utils";
+import { SessionAgentIcon } from "@/shared/agent/SessionAgentIcon";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
-import type { AgentModelOption, ReasoningEffortOption } from "@/types";
+import type { AgentKind, AgentModelOption, ReasoningEffortOption } from "@/types";
+import type { AgentChoice } from "./host";
 import { effortChoiceLabel, effortDisplay } from "./effort-label";
 import { modelSections, sliderEfforts, snapEffortIndex } from "./model-picker";
 
 export function ModelMenu({
   menuRef,
+  agents,
   models,
   modelId,
   modelLabel,
@@ -23,6 +37,7 @@ export function ModelMenu({
   onReset,
 }: {
   menuRef: RefObject<HTMLDivElement>;
+  agents: AgentChoice | null;
   models: AgentModelOption[];
   modelId?: string;
   modelLabel?: string;
@@ -36,12 +51,13 @@ export function ModelMenu({
   onFast: (enabled: boolean) => void;
   onReset: () => void;
 }) {
-  const [panel, setPanel] = useState<"effort" | "models">("effort");
+  const [panel, setPanel] = useState<"effort" | "models">(models.length > 0 ? "effort" : "models");
   const [liveEffort, setLiveEffort] = useState<string | null>(null);
   const shownEffort = liveEffort ?? effortId;
   const current = models.find((item) => item.id === modelId);
   const effortLabel = effortDisplay(current, shownEffort);
   const hasEfforts = sliderEfforts(current).length > 0;
+  const agentName = agents?.options?.find((option) => option.kind === agents.selected)?.name;
   return (
     <div
       ref={menuRef}
@@ -49,11 +65,15 @@ export function ModelMenu({
       aria-label={panel === "models" ? DESKTOP_ZH.selectModel : "推理强度"}
       data-intensity-popover
       data-intensity-panel={panel}
-      className="fixed z-50 w-[17.5rem] select-none rounded-2xl border border-zinc-700/80 bg-zinc-900 text-zinc-100 shadow-xl shadow-black/50"
+      className={cn(
+        "fixed z-50 select-none rounded-2xl border border-zinc-700/80 bg-zinc-900 text-zinc-100 shadow-xl shadow-black/50",
+        panel === "models" && agents ? "w-[20rem]" : "w-[17.5rem]",
+      )}
       style={{ top: -9999, left: 8 }}
     >
       {panel === "models" ? (
-        <ModelList
+        <ModelPanel
+          agents={agents}
           models={models}
           modelId={modelId}
           onPick={(model) => {
@@ -105,7 +125,10 @@ export function ModelMenu({
                     : "inline-flex max-w-full items-center gap-0.5 text-lg font-semibold leading-none text-blue-400"
                 }
               >
-                <span className="truncate">{modelLabel || current?.label || DESKTOP_ZH.selectModel}</span>
+                <span className="truncate">
+                  {agentName ? `${agentName} · ` : ""}
+                  {modelLabel || current?.label || DESKTOP_ZH.selectModel}
+                </span>
                 <ChevronRight className="h-3.5 w-3.5 shrink-0" />
               </span>
             </button>
@@ -280,20 +303,116 @@ function EffortSlider({
   );
 }
 
-function ModelList({
+/** 别的 Agent 的模型：竖栏切过去时读一次。 */
+type OtherModels = { agent: AgentKind; models: AgentModelOption[] | null; error: string | null };
+
+function ModelPanel({
+  agents,
   models,
   modelId,
   onPick,
 }: {
+  agents: AgentChoice | null;
   models: AgentModelOption[];
   modelId?: string;
   onPick: (model: AgentModelOption) => void;
 }) {
-  const sections = modelSections(models);
+  const selected = agents?.selected;
+  const switcher = agents?.switcher ?? null;
+  const [railAgent, setRailAgent] = useState(selected);
+  const [other, setOther] = useState<OtherModels | null>(null);
+  const viewingOther = switcher !== null && railAgent !== undefined && railAgent !== selected;
+
+  useEffect(() => {
+    if (!switcher || railAgent === undefined || railAgent === selected) return;
+    let cancelled = false;
+    setOther({ agent: railAgent, models: null, error: null });
+    switcher.loadModels(railAgent).then(
+      (found) => {
+        if (!cancelled) setOther({ agent: railAgent, models: found, error: null });
+      },
+      (error: unknown) => {
+        if (!cancelled) setOther({ agent: railAgent, models: null, error: userFacingMessage(error) });
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [railAgent, selected, switcher]);
+
+  const nameOf = (kind: AgentKind | undefined) => agents?.options?.find((option) => option.kind === kind)?.name;
+  const loaded = other?.agent === railAgent ? other : null;
+  const list = viewingOther ? (
+    <ModelList
+      title={nameOf(railAgent)}
+      models={loaded?.models ?? null}
+      error={loaded?.error ?? null}
+      onPick={(model) => {
+        if (railAgent !== undefined) switcher?.onPick(railAgent, model);
+      }}
+    />
+  ) : (
+    <ModelList title={nameOf(selected)} models={models} error={null} modelId={modelId} onPick={onPick} />
+  );
+  if (!agents) return list;
+  return (
+    <div className="grid grid-cols-[3rem_minmax(0,1fr)]">
+      <div
+        role="toolbar"
+        aria-orientation="vertical"
+        aria-label="Agent"
+        data-agent-rail
+        className="flex flex-col items-center gap-1 border-r border-zinc-800 py-2"
+      >
+        {(agents.options ?? []).map((option) => {
+          const active = option.kind === railAgent;
+          return (
+            <button
+              key={option.kind}
+              type="button"
+              title={option.name}
+              aria-label={option.name}
+              aria-pressed={active}
+              data-agent={option.kind}
+              className={cn(
+                "flex h-8 w-8 items-center justify-center rounded-lg hover:bg-zinc-800",
+                active && "bg-zinc-800 ring-1 ring-zinc-600",
+              )}
+              onClick={() => setRailAgent(option.kind)}
+            >
+              <SessionAgentIcon identity={option.identity} className="h-4 w-4" />
+            </button>
+          );
+        })}
+      </div>
+      {list}
+    </div>
+  );
+}
+
+function ModelList({
+  title,
+  models,
+  error,
+  modelId,
+  onPick,
+}: {
+  title?: string;
+  /** null 表示还在读。 */
+  models: AgentModelOption[] | null;
+  error: string | null;
+  modelId?: string;
+  onPick: (model: AgentModelOption) => void;
+}) {
+  const sections = models ? modelSections(models) : [];
   return (
     <div data-model-list role="listbox" aria-label={DESKTOP_ZH.selectModel} className="max-h-80 overflow-y-auto py-2">
-      <p className="px-3 pb-1 pt-1 text-sm font-medium text-zinc-100">{DESKTOP_ZH.selectModel}</p>
-      {sections.length === 0 ? (
+      <p className="truncate px-3 pb-1 pt-1 text-sm font-medium text-zinc-100">{title || DESKTOP_ZH.selectModel}</p>
+      {error ? (
+        <p className="break-words px-3 py-2 text-xs text-zinc-500">{error}</p>
+      ) : models === null ? (
+        <p className="px-3 py-2 text-xs text-zinc-500">读取模型…</p>
+      ) : sections.length === 0 ? (
         <p className="px-3 py-2 text-xs text-zinc-500">当前 Agent 没有可选模型</p>
       ) : (
         sections.map((section) => (

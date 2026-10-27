@@ -130,7 +130,7 @@ impl AgentAdapter for ExternalCliAdapter {
     }
 
     async fn detect(&self) -> Result<(), AgentError> {
-        let found = self.installation().await;
+        let found = self.installation(false).await;
         if found.installed {
             Ok(())
         } else {
@@ -150,7 +150,7 @@ mod tests {
     #[ignore]
     async fn live_cursor_update_runs_agent_update() {
         let adapter = ExternalCliAdapter::new(AgentKind::CursorAgent);
-        let before = adapter.installation().await;
+        let before = adapter.installation(true).await;
         assert!(before.installed, "{:?}", before);
         let after = adapter.upgrade().await.expect("agent update");
         eprintln!(

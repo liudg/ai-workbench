@@ -247,10 +247,12 @@ fn detail_lines(
     }
 }
 
+/// `check_updates` 为 false 时只看本机：不跑 npm，不带最新版本和更新方式。
 pub async fn inspect_release(
     kind: AgentKind,
     display_name: &str,
     release: &CliRelease,
+    check_updates: bool,
 ) -> AgentInstallation {
     let found = discover(release).await;
     let hits: Vec<BinHit> = found
@@ -266,6 +268,19 @@ pub async fn inspect_release(
     let Some(bin) = found.iter().find(|item| item.name == chosen.name) else {
         return absent_with_note(kind, display_name, release.note);
     };
+    if !check_updates {
+        return AgentInstallation {
+            kind,
+            display_name: display_name.to_string(),
+            installed: true,
+            version: chosen.version.clone(),
+            latest_version: None,
+            update_available: false,
+            update_via: None,
+            detail: detail_lines(release.note, &chosen.also, &chosen.version, None),
+            session_linked: false,
+        };
+    }
 
     let tracks_npm = !release.npm_package.is_empty();
     let npm = if tracks_npm { find_bin(&["npm"]) } else { None };
@@ -359,7 +374,7 @@ pub async fn upgrade_release(
     display_name: &str,
     release: &CliRelease,
 ) -> Result<AgentInstallation, String> {
-    let current = inspect_release(kind, display_name, release).await;
+    let current = inspect_release(kind, display_name, release, true).await;
     if !current.installed {
         return Err(format!("未安装 {display_name}"));
     }
@@ -432,7 +447,7 @@ async fn settle_cli_update(
     captured: &Captured,
     label: &str,
 ) -> Result<AgentInstallation, String> {
-    let mut refreshed = inspect_release(kind, display_name, release).await;
+    let mut refreshed = inspect_release(kind, display_name, release, true).await;
     let output = format!("{} {}", captured.stdout.trim(), captured.stderr.trim());
     let output = output.trim();
     if update_failed(output) {
@@ -588,7 +603,7 @@ mod tests {
                 aliases: &[],
                 note: "",
             };
-            let found = inspect_release(kind, name, &release).await;
+            let found = inspect_release(kind, name, &release, true).await;
             eprintln!(
                 "{name}: installed={} version={:?} latest={:?} update={} via={:?}",
                 found.installed,

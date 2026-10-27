@@ -70,7 +70,7 @@ test("the slider keeps every catalog effort in order", () => {
     ["low", "high"],
   );
   assert.deepEqual(sliderEfforts(model({ id: "empty", label: "Empty", default_effort: "high" })), []);
-  assert.equal(effortDisplay(current, "low"), "低");
+  assert.equal(effortDisplay(current, "low"), "轻度");
   assert.equal(effortDisplay(model({ id: "named", label: "Named", efforts: [{ id: "high", description: "long", label: "高" }] }), "high"), "高");
   assert.equal(effortDisplay(current, "missing"), "");
   assert.equal(
@@ -88,13 +88,13 @@ test("the slider keeps every catalog effort in order", () => {
       }),
       "xhigh",
     ),
-    "很高",
+    "极高",
   );
   assert.equal(
     effortDisplay(model({ id: "maxed", label: "Max", efforts: [{ id: "max", description: "Maximum reasoning" }] }), "max"),
-    "最高",
+    "Max",
   );
-  assert.equal(effortDisplay(model({ id: "ultra", label: "Ultra", efforts: [{ id: "ultra", description: "" }] }), "ultra"), "极高");
+  assert.equal(effortDisplay(model({ id: "ultra", label: "Ultra", efforts: [{ id: "ultra", description: "" }] }), "ultra"), "Ultra");
   assert.equal(
     effortDisplay(model({ id: "min", label: "Min", efforts: [{ id: "minimal", description: "Minimal reasoning" }] }), "minimal"),
     "最低",

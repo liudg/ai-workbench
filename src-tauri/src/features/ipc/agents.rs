@@ -6,7 +6,7 @@ use aiwb_core::models::*;
 /// 本机已注册 CLI 的安装与更新状态。未安装的也会返回，供设置页展示。
 #[tauri::command]
 pub async fn list_agent_installations() -> Vec<AgentInstallation> {
-    agents::list_installations().await
+    agents::list_installations(true).await
 }
 
 /// 按该 Agent 声明的官方渠道升级，并返回刷新后的安装状态。

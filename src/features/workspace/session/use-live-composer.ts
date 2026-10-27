@@ -6,6 +6,7 @@ import type { ComposerHost } from "@/features/chat/composer/host";
 import { worktreeCaption } from "@/features/chat/composer/worktree-option";
 import type { Project } from "@/features/projects";
 import type { SessionOptions, TaskEntry, TaskSession } from "@/features/tasks";
+import { agentIdentity } from "@/shared/agent/identity";
 import { showError } from "@/shared/shell/error-banner";
 import type { AgentProfile, QueuedTurn, Session, SessionSandbox, SessionTuning } from "@/types";
 import * as api from "./api";
@@ -86,7 +87,17 @@ export function useLiveComposer({
             sha: worktree.baseSha,
           }
         : null,
-      agentChoice: null,
+      agentChoice: {
+        options: [
+          {
+            kind: taskSession.agent,
+            name: profile?.display_name || taskSession.agent,
+            identity: agentIdentity(taskSession.agent, profile),
+          },
+        ],
+        selected: taskSession.agent,
+        switcher: null,
+      },
 
       rememberText: (text) => {
         if (readDraft(sessionId).text !== text) patchDraft(sessionId, { text });
@@ -141,5 +152,5 @@ export function useLiveComposer({
       filterPaths: (query) => api.filterPaths({ sessionId }, query),
       reportError: report,
     };
-  }, [catalog, draft, notice, options, permissionMenu, profile, project, queue, session.workdir, sessionId, task.workspace]);
+  }, [catalog, draft, notice, options, permissionMenu, profile, project, queue, session.workdir, sessionId, task.workspace, taskSession.agent]);
 }

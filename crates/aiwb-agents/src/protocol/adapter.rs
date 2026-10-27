@@ -82,11 +82,12 @@ pub trait AgentAdapter: Send + Sync {
         false
     }
 
-    /// 探测安装版本，并对照官方来源看有没有更新。
-    async fn installation(&self) -> AgentInstallation {
+    /// 探测安装版本。`check_updates` 时再对照官方来源看有没有更新，要走网络。
+    async fn installation(&self, check_updates: bool) -> AgentInstallation {
         let mut item = match self.cli_release() {
             Some(release) => {
-                install::inspect_release(self.kind(), self.display_name(), &release).await
+                install::inspect_release(self.kind(), self.display_name(), &release, check_updates)
+                    .await
             }
             None => AgentInstallation::absent(self.kind(), self.display_name()),
         };

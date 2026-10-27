@@ -1,6 +1,6 @@
 // 会话视图和 daemon 之间的调用。展示组件不直接碰连接。
 
-import { daemon } from "@/lib/daemon";
+import { CLI_TIMEOUT_MS, daemon } from "@/lib/daemon";
 import type { SessionOptions } from "@/features/tasks";
 import type {
   DiffScope,
@@ -20,9 +20,6 @@ import type {
   ReviewTargets,
   SubscriptionUsage,
 } from "@/types";
-
-/** 会话操作要等 Agent CLI 起来并回话，CLI 启动或重连时会慢。 */
-const CLI_TIMEOUT_MS = 90_000;
 
 /** 文件和差异读哪里：会话的工作目录，或者还没建会话时的项目主目录。 */
 export type FileScope = { sessionId: string } | { projectId: string };

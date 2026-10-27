@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 
-import { useAgentProfiles, useSessionAgents } from "@/features/agents";
+import { useAgentDetection, useAgentProfiles, useSessionAgents } from "@/features/agents";
 import { AnswerMarkdownHost } from "@/features/chat/answer/AnswerMarkdownHost";
 import { Composer } from "@/features/chat/composer/Composer";
 import { ChatHostProvider, type ChatHost } from "@/features/chat/host";
@@ -23,10 +23,22 @@ export function NewSessionView({ projectId, project, projects }: {
 }) {
   const key = newSessionKey(projectId);
   const agents = useSessionAgents();
+  const detection = useAgentDetection();
   const { draft, loaded } = useComposerDraft(key);
   const agent = draftAgent(draft, agents);
 
   if (!loaded) return null;
+  if (!agent && agents === null && detection.error) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+        <p className="break-words text-sm text-zinc-400">检测本地 Agent 失败：{detection.error}</p>
+        <button type="button" className="text-sm text-indigo-300 hover:text-indigo-200" onClick={detection.retry}>
+          重试
+        </button>
+        <CommandMenuHost />
+      </div>
+    );
+  }
   // 本机 Agent 还在检测：记得上次用的就先用它，否则等检测完。
   if (!agent && agents === null) {
     return (

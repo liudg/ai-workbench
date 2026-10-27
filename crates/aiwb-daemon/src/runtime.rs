@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 
 use aiwb_agents::{AgentAdapter, AgentError, AgentSession, SessionContext, TurnDelivery, UserTurn};
 use aiwb_core::models::{
-    new_id, now_millis, AgentKind, PageAnnotation, QueuedTurn, SessionEvent, SessionEventBody,
+    new_id, AgentCatalog, now_millis, AgentKind, PageAnnotation, QueuedTurn, SessionEvent, SessionEventBody,
     SessionStatus,
 };
 use aiwb_core::rpc::{session_topic, TOPIC_TASKS};
@@ -42,6 +42,8 @@ pub struct Runtimes {
     live: Mutex<HashMap<String, Arc<dyn AgentSession>>>,
     /// 同一时间只打开一个会话，避免对同一线程起两个 CLI。
     opening: tokio::sync::Mutex<()>,
+    /// 同一时间只探一次目录。等锁的一方拿到锁后先看缓存。
+    pub(crate) probing: tokio::sync::Mutex<()>,
 }
 
 impl Runtimes {
@@ -53,6 +55,7 @@ impl Runtimes {
             logs: Mutex::default(),
             live: Mutex::default(),
             opening: tokio::sync::Mutex::new(()),
+            probing: tokio::sync::Mutex::new(()),
         }
     }
 
@@ -473,6 +476,25 @@ impl Runtimes {
         if let Some(handle) = handle {
             let _ = handle.stop().await;
         }
+    }
+
+    /// 不建线程起一次 CLI，只要模型目录，拿到就关掉。
+    pub(crate) async fn probe_catalog(&self, agent: AgentKind, cwd: String) -> RuntimeResult<AgentCatalog> {
+        let ctx = SessionContext {
+            project_path: cwd,
+            access_mode: None,
+            resume_native_id: None,
+            options: json!({}),
+        };
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let handle = self
+            .adapter(agent)
+            .start_session(ctx, tx)
+            .await
+            .map_err(|e| e.to_string())?;
+        let catalog = handle.catalog().await.map_err(|e| e.to_string());
+        let _ = handle.stop().await;
+        catalog
     }
 
     pub(crate) async fn stop_all(&self) {

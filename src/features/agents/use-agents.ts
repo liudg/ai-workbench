@@ -4,6 +4,7 @@ import { useShallow } from "zustand/react/shallow";
 import { sessionAgents } from "@/lib/agents";
 import type { AgentInstallation, AgentKind, AgentProfile } from "@/types";
 import {
+  loadInstallationUpdates,
   loadInstallations,
   loadProfiles,
   refreshInstallations,
@@ -24,9 +25,15 @@ export function useSessionAgents(): AgentInstallation[] | null {
   return installations === null ? null : sessionAgents(installations);
 }
 
+/** 检测本机 Agent 失败的原因和重试。 */
+export function useAgentDetection(): { error: string | null; retry: () => void } {
+  const error = useAgentState((state) => state.installationError);
+  return { error, retry: () => void refreshInstallations() };
+}
+
 /** 设置页：安装列表、检测和升级。 */
 export function useAgentInstallations() {
-  useEffect(loadInstallations, []);
+  useEffect(loadInstallationUpdates, []);
   const state = useAgentState(
     useShallow((s) => ({
       installations: s.installations,
@@ -36,5 +43,5 @@ export function useAgentInstallations() {
       upgrading: s.upgrading,
     })),
   );
-  return { ...state, refresh: refreshInstallations, upgrade: upgradeInstallation };
+  return { ...state, refresh: () => refreshInstallations(true), upgrade: upgradeInstallation };
 }

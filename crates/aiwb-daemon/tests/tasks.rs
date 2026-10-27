@@ -9,7 +9,7 @@ use aiwb_agents::{
     SessionContext, TurnDelivery,
 };
 use aiwb_core::models::{
-    AgentCapabilities, AgentKind, PageAnnotation, PromptAnswer, SessionEventBody, SessionStatus,
+    AgentCatalog, AgentCapabilities, AgentKind, PageAnnotation, PromptAnswer, SessionEventBody, SessionStatus,
 };
 use aiwb_core::DaemonInfo;
 use aiwb_daemon::{AdapterFactory, Services};
@@ -20,6 +20,7 @@ use serde_json::{json, Value};
 #[derive(Default)]
 struct Script {
     started: Mutex<Vec<SessionContext>>,
+    stopped: Mutex<usize>,
 }
 
 struct FakeAdapter(Arc<Script>);
@@ -27,6 +28,7 @@ struct FakeAdapter(Arc<Script>);
 struct FakeSession {
     sink: EventSink,
     native: String,
+    script: Arc<Script>,
 }
 
 #[async_trait]
@@ -63,6 +65,7 @@ impl AgentAdapter for FakeAdapter {
         Ok(Arc::new(FakeSession {
             sink: events,
             native,
+            script: self.0.clone(),
         }))
     }
 }
@@ -113,7 +116,25 @@ impl AgentSession for FakeSession {
     }
 
     async fn stop(&self) -> Result<(), AgentError> {
+        *self.script.stopped.lock().unwrap() += 1;
         Ok(())
+    }
+
+    async fn catalog(&self) -> Result<AgentCatalog, AgentError> {
+        let mut catalog = AgentCatalog::empty();
+        catalog.models.push(
+            serde_json::from_value(json!({
+                "id": "fake-model",
+                "label": "Fake",
+                "description": "",
+                "is_default": true,
+                "default_effort": "",
+                "efforts": [],
+            }))
+            .unwrap(),
+        );
+        catalog.thread_model = Some(self.native.clone());
+        Ok(catalog)
     }
 
     fn native_id(&self) -> Option<String> {
@@ -468,4 +489,46 @@ async fn standalone_chat_gets_a_dated_folder_under_the_task_folder() {
         .await
         .unwrap();
     assert!(path.is_dir());
+}
+
+#[tokio::test]
+async fn probe_catalog_starts_a_threadless_cli_once_and_remembers_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let chats = tempfile::tempdir().unwrap();
+    let script = Arc::new(Script::default());
+    let services = services(Arc::new(Store::open_in_memory().unwrap()), script.clone(), dir.path());
+    services
+        .dispatch("settings.setTaskFolder", json!({ "path": chats.path().to_string_lossy() }))
+        .await
+        .unwrap();
+    let cached = services
+        .dispatch("agents.catalog", json!({ "agent": "codex-cli" }))
+        .await
+        .unwrap();
+    assert_eq!(cached, Value::Null);
+
+    let (first, second) = tokio::join!(
+        services.dispatch("agents.probeCatalog", json!({ "agent": "codex-cli" })),
+        services.dispatch("agents.probeCatalog", json!({ "agent": "codex-cli", "projectId": null })),
+    );
+    let (first, second) = (first.unwrap(), second.unwrap());
+    assert_eq!(first["models"][0]["id"], "fake-model");
+    assert_eq!(first, second);
+    // 探出来的目录不带线程自己的模型。
+    assert!(first.get("thread_model").is_none());
+
+    let started = script.started.lock().unwrap().clone();
+    assert_eq!(started.len(), 1);
+    assert!(started[0].resume_native_id.is_none());
+    assert!(!started[0].flag("persist"));
+    assert_eq!(
+        std::path::Path::new(&started[0].project_path).canonicalize().unwrap(),
+        chats.path().canonicalize().unwrap()
+    );
+    assert_eq!(*script.stopped.lock().unwrap(), 1);
+    let remembered = services
+        .dispatch("agents.catalog", json!({ "agent": "codex-cli" }))
+        .await
+        .unwrap();
+    assert_eq!(remembered, first);
 }

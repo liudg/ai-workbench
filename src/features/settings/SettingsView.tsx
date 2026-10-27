@@ -103,7 +103,7 @@ function AgentsPanel() {
       )}
 
       {installations === null ? (
-        <p className="mt-8 text-sm text-zinc-500">正在检测本地 Agent…</p>
+        loading ? <p className="mt-8 text-sm text-zinc-500">正在检测本地 Agent…</p> : null
       ) : installations.length === 0 ? (
         <p className="mt-8 text-sm text-zinc-500">没有可管理的本地 Agent。</p>
       ) : (

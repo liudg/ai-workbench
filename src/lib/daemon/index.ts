@@ -11,6 +11,9 @@ export { DaemonClient, OFFLINE_MESSAGE, type ConnectionStatus, type DaemonEndpoi
 export { TOPIC_PROJECTS, TOPIC_TASKS } from "./topics";
 export type { SessionFeedState } from "./session-feed";
 
+/** 要等 Agent CLI 起来并回话的调用。CLI 启动或重连时会慢。 */
+export const CLI_TIMEOUT_MS = 90_000;
+
 export const daemon = new DaemonClient({ resolveEndpoint });
 const topics = new TopicCache(daemon);
 const feeds = new SessionFeeds(daemon);

@@ -40,6 +40,10 @@ export function Composer({
   const notice = userFacingMessage(c.notice);
   const catalogNotice = userFacingMessage(c.catalogNotice);
   const slashSelected = Math.min(c.slashIndex, Math.max(view.slashMatches.length - 1, 0));
+  const agents = host.agentChoice;
+  const agentIdentity = agents?.options?.find((option) => option.kind === agents.selected)?.identity ?? null;
+  // 有 Agent 竖栏时，没有模型也能打开选择器去换 Agent。
+  const showModel = view.showModel || agents !== null;
   return (
     <div className="composer-root relative z-10 min-w-0 shrink-0 px-4 pb-4 pt-1">
       {view.occupied && (
@@ -104,11 +108,9 @@ export function Composer({
           />
         ) : null}
         <ComposerContextRow
-          agentChoice={host.agentChoice}
           workContext={host.workContext}
           git={host.git}
           worktree={host.worktree}
-          locked={host.inputLocked}
         />
         <TextSnippetPreview snippets={c.snippets} />
         <div
@@ -173,8 +175,9 @@ export function Composer({
             permissionMenu={view.permissionMenu}
             planIndicator={view.planIndicator}
             goalChip={view.goalChip}
-            showModel={view.showModel}
-            hasCatalog={c.hasCatalog}
+            showModel={showModel}
+            modelReady={c.hasCatalog || agents !== null}
+            agentIdentity={agentIdentity}
             modelButton={view.modelButton}
             modelName={view.modelName}
             effortLabel={view.effortLabel}
@@ -211,10 +214,11 @@ export function Composer({
           onRemoveDir={c.removeDir}
         />
       )}
-      {c.menu === "model" && view.showModel && (
+      {c.menu === "model" && showModel && (
         <ModelMenu
           menuRef={c.modelMenuRef}
-          models={c.models}
+          agents={agents}
+          models={view.showModel ? c.models : []}
           modelId={view.selectedModel?.id}
           modelLabel={view.selectedModel?.label}
           effortId={view.selectedEffort}

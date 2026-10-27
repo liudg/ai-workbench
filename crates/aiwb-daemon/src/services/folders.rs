@@ -26,7 +26,7 @@ pub(crate) struct SetTaskFolder {
 }
 
 impl Services {
-    fn task_folder_path(&self) -> ServiceResult<PathBuf> {
+    pub(super) fn task_folder_path(&self) -> ServiceResult<PathBuf> {
         let custom = self.store.meta(META_KEY).map_err(|e| e.to_string())?;
         Ok(match custom.filter(|path| !path.trim().is_empty()) {
             Some(path) => PathBuf::from(path),

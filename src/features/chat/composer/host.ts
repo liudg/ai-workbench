@@ -2,10 +2,12 @@
 
 import type { ComponentProps } from "react";
 
+import type { AgentIdentity } from "@/shared/agent/identity";
 import type { TextSnippet } from "@/shared/text-snippet";
 import type {
   AgentCatalog,
   AgentKind,
+  AgentModelOption,
   AgentProfile,
   Attachment,
   PermissionMenu,
@@ -16,17 +18,30 @@ import type {
   SessionSandbox,
   SessionTuning,
 } from "@/types";
-import type { AgentOption } from "./AgentPicker";
 import type { FollowUpQueueMode } from "./follow-up-queue-mode";
 import type { PathPage } from "./mention-search";
 import type { WorkContextPicker } from "./WorkContextPicker";
 
-/** 新会话的 Agent 选择。会话建好后就锁定。 */
+export interface AgentOption {
+  kind: AgentKind;
+  identity: AgentIdentity | null;
+  name: string;
+}
+
+/** 模型选择器左边的 Agent 竖栏。 */
 export interface AgentChoice {
-  /** 还没检测完本机 Agent 时为 null。 */
+  /** 还没检测完本机 Agent 时为 null。会话建好后只有当前这一个。 */
   options: AgentOption[] | null;
   selected: AgentKind;
-  onPick: (agent: AgentKind) => void;
+  /** 还能换 Agent 时才有。会话建好后为 null。 */
+  switcher: AgentSwitcher | null;
+}
+
+export interface AgentSwitcher {
+  /** 竖栏切到别的 Agent 时读它的模型。 */
+  loadModels: (agent: AgentKind) => Promise<AgentModelOption[]>;
+  /** 选了别的 Agent 的模型：换成这个 Agent，用这个模型。 */
+  onPick: (agent: AgentKind, model: AgentModelOption) => void;
 }
 
 /** 新会话的工作树开关，或已有会话所在的工作树。 */

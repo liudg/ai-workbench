@@ -4,8 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { agentsApi } from "@/features/agents";
-import type { AgentOption } from "@/features/chat/composer/AgentPicker";
-import type { ComposerHost } from "@/features/chat/composer/host";
+import type { AgentOption, ComposerHost } from "@/features/chat/composer/host";
 import { projectsApi, type Project } from "@/features/projects";
 import { tasksApi } from "@/features/tasks";
 import { agentIdentity } from "@/shared/agent/identity";
@@ -26,7 +25,7 @@ import { rememberAgent, rememberSandbox, rememberTuning, stickyAgent, stickySand
 
 const STANDALONE = "chat";
 const NO_QUEUE: never[] = [];
-/** 这种 Agent 还没有任何会话拿到过模型目录。 */
+/** 没有上次的目录，现探也没探到。 */
 const NO_CATALOG = "暂无模型列表，使用 Agent 默认模型";
 
 export function newSessionKey(projectId: ProjectScope): string {
@@ -42,7 +41,7 @@ export function draftAgent(draft: ComposerDraft, agents: AgentInstallation[] | n
   return usable[0] ?? null;
 }
 
-function useAgentCatalog(agent: AgentKind | null) {
+function useAgentCatalog(agent: AgentKind | null, projectId: ProjectScope) {
   const [catalog, setCatalog] = useState<AgentCatalog | undefined>(undefined);
   const [missing, setMissing] = useState(false);
   const [permissionMenu, setPermissionMenu] = useState<PermissionMenu | null>(null);
@@ -52,11 +51,9 @@ function useAgentCatalog(agent: AgentKind | null) {
     setPermissionMenu(null);
     if (!agent) return;
     let cancelled = false;
-    void agentsApi.cachedCatalog(agent).then(
-      (cached) => {
-        if (cancelled) return;
-        setCatalog(cached ?? undefined);
-        setMissing(!cached);
+    void agentsApi.probeCatalog(agent, projectId).then(
+      (next) => {
+        if (!cancelled) setCatalog(next);
       },
       () => {
         if (!cancelled) setMissing(true);
@@ -71,7 +68,7 @@ function useAgentCatalog(agent: AgentKind | null) {
     return () => {
       cancelled = true;
     };
-  }, [agent]);
+  }, [agent, projectId]);
   return { catalog, permissionMenu, notice: missing ? NO_CATALOG : null };
 }
 
@@ -113,7 +110,7 @@ export function useNewComposer({
 }): ComposerHost {
   const key = newSessionKey(projectId);
   const [creating, setCreating] = useState(false);
-  const { catalog, permissionMenu, notice } = useAgentCatalog(agent);
+  const { catalog, permissionMenu, notice } = useAgentCatalog(agent, projectId);
   const hasCommit = useHasCommit(projectId);
   const tuning = draft.tuning ?? stickyTuning(agent) ?? undefined;
   const sandbox = draft.sandbox ?? initialSandbox(stickySandbox(agent), profiles[agent]?.default_access);
@@ -166,10 +163,13 @@ export function useNewComposer({
       agentChoice: {
         options,
         selected: agent,
-        onPick: (next) => {
-          rememberAgent(next);
-          // 模型、权限是上一个 Agent 的，换了就不带过去。
-          patch({ agent: next, tuning: null, sandbox: null });
+        switcher: {
+          loadModels: (next) => agentsApi.probeCatalog(next, projectId).then((found) => found.models),
+          onPick: (next, model) => {
+            rememberAgent(next);
+            // 权限是上一个 Agent 的，换了就不带过去。
+            patch({ agent: next, tuning: { model: model.id, effort: model.default_effort }, sandbox: null });
+          },
         },
       },
 

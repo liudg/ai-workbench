@@ -19,8 +19,7 @@ import {
   filterBranchNames,
   uncommittedFileLabel,
 } from "./git-branch";
-import { AgentPicker } from "./AgentPicker";
-import type { AgentChoice, ComposerHost, WorktreeLine } from "./host";
+import type { ComposerHost, WorktreeLine } from "./host";
 import { useComposerMenu } from "./useComposerMenu";
 import { useGitBranch } from "./useGitBranch";
 import { worktreeBranchMarker } from "./worktree-option";
@@ -32,17 +31,13 @@ const CARD_BG = "linear-gradient(180deg, #1c1c1f 0%, #17171a 100%)";
 const CARD_BG_HOT = "linear-gradient(180deg, #242428 0%, #1e1e22 100%)";
 
 export function ComposerContextRow({
-  agentChoice,
   workContext,
   git,
   worktree,
-  locked,
 }: {
-  agentChoice: AgentChoice | null;
   workContext: ComponentProps<typeof WorkContextPicker> | null;
   git: ComposerHost["git"];
   worktree: WorktreeLine | null;
-  locked: boolean;
 }) {
   const branch = useGitBranch(git?.projectId ?? "", {
     sessionId: git?.sessionId,
@@ -56,7 +51,7 @@ export function ComposerContextRow({
       })
     : null;
   const showBranch = Boolean(git) && (worktree?.liveTitle ? Boolean(worktreeLabel) : branch.visible);
-  if (!agentChoice && !workContext && !showBranch && !worktree?.showToggle && !worktree?.liveLabel) return null;
+  if (!workContext && !showBranch && !worktree?.showToggle && !worktree?.liveLabel) return null;
   return (
     <div
       className="mb-2 flex min-w-0 flex-wrap items-center gap-2 px-1"
@@ -64,14 +59,6 @@ export function ComposerContextRow({
       data-work-context-slot="above-input"
     >
       {workContext ? <WorkContextPicker {...workContext} /> : null}
-      {agentChoice ? (
-        <AgentPicker
-          options={agentChoice.options}
-          selected={agentChoice.selected}
-          disabled={locked}
-          onPick={agentChoice.onPick}
-        />
-      ) : null}
       {worktree?.showToggle ? (
         <WorktreeToggle pressed={worktree.pressed} onToggle={worktree.onToggle} />
       ) : null}

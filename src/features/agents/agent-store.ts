@@ -12,6 +12,7 @@ interface AgentState {
   profiles: Profiles;
   /** 还没检测完时为 null。 */
   installations: AgentInstallation[] | null;
+  /** 设置页的检测更新正在进行。 */
   installationsLoading: boolean;
   installationError: string | null;
   /** 某张卡片上的升级失败。和顶部的 `installationError` 分开。 */
@@ -30,6 +31,9 @@ const useAgentStore = create<AgentState>()(() => ({
 
 let profilesRequested = false;
 let installationsRequested = false;
+let updatesRequested = false;
+/** 已经拿到带更新信息的列表。之后到的只看本机的结果不能把它盖掉。 */
+let updatesLoaded = false;
 
 export function loadProfiles() {
   if (profilesRequested) return;
@@ -42,23 +46,32 @@ export function loadProfiles() {
   );
 }
 
-export async function refreshInstallations() {
+/** 失败时留着上次的列表（没有就仍为 null），只给出原因。检测失败不等于没装。 */
+export async function refreshInstallations(checkUpdates = false) {
   installationsRequested = true;
-  useAgentStore.setState({ installationsLoading: true });
+  if (checkUpdates) {
+    updatesRequested = true;
+    useAgentStore.setState({ installationsLoading: true, installationError: null });
+  }
   try {
-    const installations = await agentInstallations();
-    useAgentStore.setState({ installations, installationsLoading: false, installationError: null });
+    const installations = await agentInstallations(checkUpdates);
+    if (checkUpdates) updatesLoaded = true;
+    else if (updatesLoaded) return;
+    useAgentStore.setState({ installations, installationError: null });
   } catch (error) {
-    useAgentStore.setState((state) => ({
-      installationsLoading: false,
-      installationError: userFacingMessage(error),
-      installations: state.installations ?? [],
-    }));
+    useAgentStore.setState({ installationError: userFacingMessage(error) });
+  } finally {
+    if (checkUpdates) useAgentStore.setState({ installationsLoading: false });
   }
 }
 
 export function loadInstallations() {
   if (!installationsRequested) void refreshInstallations();
+}
+
+/** 设置页：本次运行第一次打开时顺带查一次更新。 */
+export function loadInstallationUpdates() {
+  if (!updatesRequested) void refreshInstallations(true);
 }
 
 export async function upgradeInstallation(kind: AgentKind) {
@@ -87,6 +100,7 @@ export async function upgradeInstallation(kind: AgentKind) {
 export function seedAgents(profiles: Profiles, installations: AgentInstallation[]) {
   profilesRequested = true;
   installationsRequested = true;
+  updatesRequested = true;
   useAgentStore.setState({ profiles, installations, installationsLoading: false });
 }
 
