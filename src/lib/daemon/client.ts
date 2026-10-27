@@ -6,7 +6,8 @@ export interface DaemonEndpoint {
   token: string;
 }
 
-export type ConnectionStatus = "connecting" | "online" | "offline";
+/** `disabled`：故意不连，比如开发样例页。 */
+export type ConnectionStatus = "connecting" | "online" | "offline" | "disabled";
 
 /** 只用到 WebSocket 的这几样，测试里可以换成假的。 */
 export interface SocketLike {
@@ -90,6 +91,7 @@ export class DaemonClient {
   disable(reason: string) {
     this.disabled = reason;
     this.stop();
+    this.setStatus("disabled");
   }
 
   getStatus() {

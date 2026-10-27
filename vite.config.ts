@@ -47,6 +47,8 @@ export default defineConfig({
     port: 4573,
     strictPort: true,
     host: "127.0.0.1",
+    // Rust 编译产物会被锁住，监听它们会让开发服务器崩掉。
+    watch: { ignored: ["**/target/**", "**/src-tauri/**", "**/crates/**"] },
     // 网页预览经 dev bridge 连真实后端：cargo run --features dev-bridge --bin dev-bridge
     proxy: {
       "/__bridge": { target: "http://127.0.0.1:4574", changeOrigin: false },

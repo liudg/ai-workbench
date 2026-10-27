@@ -3,7 +3,7 @@ import { useConnectionStatus } from "@/lib/daemon";
 /** 连不上后台服务时显示在侧栏底部；连上后不占位置。 */
 export function ConnectionNotice() {
   const status = useConnectionStatus();
-  if (status === "online") return null;
+  if (status === "online" || status === "disabled") return null;
   return (
     <div className="mx-3 mb-3 flex items-center gap-2 rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] px-3 py-2 text-xs text-[#bdbdbd]">
       <span

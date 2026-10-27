@@ -200,6 +200,7 @@ test("停用后不再连接，调用马上按原因失败", async () => {
   const { client, sockets } = setup();
   client.disable("样例页不连后台服务");
   client.start();
+  assert.equal(client.getStatus(), "disabled");
   await flush();
   assert.equal(sockets.length, 0);
   await assert.rejects(client.call("projects.list"), /样例页不连后台服务/);

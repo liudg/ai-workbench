@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { backend } from "@/lib/ipc";
+import { backend, isTauri } from "@/lib/ipc";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { usePanelData, usePanelOptional } from "../core/PanelProvider";
 import type { OpenWithAction } from "./open-with";
@@ -18,6 +18,8 @@ export function usePickPreviewFile() {
 export function useChooseApp(): boolean {
   const [choose, setChoose] = useState(false);
   useEffect(() => {
+    // 「用其他应用打开」是桌面版的本机能力。
+    if (!isTauri) return;
     let cancel = false;
     void backend.fileOpenCapabilities().then(
       (caps) => {
