@@ -197,6 +197,7 @@ export function useNewComposer({
             goal: current.goal ?? undefined,
             goalStatus: current.goal ? (current.goalStatus ?? undefined) : undefined,
           });
+          rememberAgent(agent);
           const sessionId = created.sessions[created.sessions.length - 1]?.id;
           // 文字跟着发出去了；附件、片段、选项都清掉，新会话页回到空白。
           if (sessionId) moveDraft(key, sessionId, {});

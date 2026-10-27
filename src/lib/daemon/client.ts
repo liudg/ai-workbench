@@ -105,7 +105,8 @@ export class DaemonClient {
     };
   }
 
-  call<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
+  /** `timeoutMs` 给要等 Agent CLI 的调用放宽等待；不给用默认值。 */
+  call<T>(method: string, params: Record<string, unknown> = {}, timeoutMs?: number): Promise<T> {
     if (this.disabled) return Promise.reject(new Error(this.disabled));
     const id = this.nextId++;
     const text = JSON.stringify({ id, method, params });
@@ -113,7 +114,7 @@ export class DaemonClient {
       const timer = setTimeout(() => {
         this.pending.delete(id);
         reject(new Error(this.status === "online" ? "后台服务没有响应" : OFFLINE_MESSAGE));
-      }, this.options.callTimeoutMs);
+      }, timeoutMs ?? this.options.callTimeoutMs);
       this.pending.set(id, { resolve: resolve as (value: unknown) => void, reject, timer });
       if (this.socket && this.socket.readyState === OPEN && this.status === "online") {
         this.socket.send(text);

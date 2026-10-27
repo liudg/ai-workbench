@@ -26,7 +26,16 @@ export function NewSessionView({ projectId, project, projects }: {
   const { draft, loaded } = useComposerDraft(key);
   const agent = draftAgent(draft, agents);
 
-  if (!loaded || agents === null) return null;
+  if (!loaded) return null;
+  // 本机 Agent 还在检测：记得上次用的就先用它，否则等检测完。
+  if (!agent && agents === null) {
+    return (
+      <div className="flex h-full items-center justify-center text-sm text-zinc-500">
+        正在检测本地 Agent…
+        <CommandMenuHost />
+      </div>
+    );
+  }
   if (!agent) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
@@ -63,7 +72,7 @@ function NewSession({
   project: Project | undefined;
   projects: Project[];
   agent: AgentKind;
-  agents: NonNullable<ReturnType<typeof useSessionAgents>>;
+  agents: ReturnType<typeof useSessionAgents>;
   draft: ComposerDraft;
 }) {
   const profiles = useAgentProfiles();
