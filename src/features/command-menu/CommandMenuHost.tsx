@@ -1,30 +1,29 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { NEXT_ATTENTION_COPY, nextAttentionTarget } from "@/features/attention/next-session";
 import { OPEN_THREAD_FIND } from "@/features/chat/find/use-thread-find";
 import { FileSearchDialog } from "@/features/panel/files/FileSearchDialog";
-import { sessionChanges } from "@/features/changes-model/diff-parse";
-import { toggleSidebar } from "@/shared/shell/sidebar-open";
-import { loadWorktreeDeletePreview } from "@/lib/worktree-delete-preview";
+import { currentSession, tasksApi } from "@/features/tasks";
 import {
   worktreeDeleteFlags,
   worktreeDeleteIsDirty,
   type WorktreeDeletePreview,
 } from "@/lib/worktree-delete";
-import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
-import { STANDALONE_DRAFT_ID } from "@/store/standalone";
-
+import { showError } from "@/shared/shell/error-banner";
 import {
-  buildPaletteRows,
-  resolveCommandAgent,
-  type PaletteCommandId,
-  type PaletteSession,
-} from "./commands";
-import { backendPanelData } from "@/features/panel/core/PanelProvider";
+  leaveTask,
+  openNewSession,
+  openProjectDialog,
+  openSettings,
+  openTask,
+} from "@/shared/shell/navigation";
+import { toggleSidebar } from "@/shared/shell/sidebar-open";
+import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
+
+import { buildPaletteRows, type PaletteCommandId } from "./commands";
 import { CommandMenu, type PaletteDrill } from "./CommandMenu";
 import { COMMAND_MENU_COPY as COPY } from "./copy";
 import { OPEN_COMMAND_MENU } from "./open-event";
-import { attentionInput, flashSidebarNotice, sessionCaps, useCommandMenuState } from "./use-command-menu-state";
+import { useCommandMenuState } from "./use-command-menu-state";
 import { fileRows } from "./file-rows";
 import {
   deleteShortcutMenu,
@@ -37,6 +36,7 @@ import {
 } from "./keyboard";
 import { useQuickOpen } from "./useQuickOpen";
 
+/** 挂在会话视图的面板里，文件类命令用面板的数据来源；没有面板时只有通用命令。 */
 export function CommandMenuHost() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -47,63 +47,25 @@ export function CommandMenuHost() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [fileNotice, setFileNotice] = useState<string | null>(null);
   const [deletePreview, setDeletePreview] = useState<WorktreeDeletePreview | null | undefined>(undefined);
-  const [fileSearchProjectId, setFileSearchProjectId] = useState<string | null>(null);
+  const [fileSearchOpen, setFileSearchOpen] = useState(false);
 
-  const {
-    projects,
-    sessions,
-    selectedProjectId,
-    activeSessionId,
-    pinnedSessionIds,
-    installations,
-    preferredAgent,
-    catalogs,
-    profiles,
-    draftFocused,
-    read,
-  } = useCommandMenuState();
-  const project = projects.find((item) => item.id === selectedProjectId) ?? null;
-  const sessionId = project ? (activeSessionId[project.id] ?? null) : null;
-  const sessionList = project ? (sessions[project.id] ?? []) : [];
-  const session = sessionId ? (sessionList.find((item) => item.id === sessionId) ?? null) : null;
+  const { view, sessions, task, project, panel, changes } = useCommandMenuState();
+  const session = task ? (currentSession(task) ?? null) : null;
+  const quickScope = session ? { sessionId: session.id } : project ? { projectId: project.id } : null;
 
-  const paletteSessions = useMemo<PaletteSession[]>(() => {
-    const rows: PaletteSession[] = [];
-    for (const [projectId, list] of Object.entries(sessions)) {
-      for (const item of list) {
-        rows.push({
-          id: item.id,
-          projectId,
-          title: item.title,
-          archived: item.archived === true,
-          updatedAt: item.updated_at,
-          pinned: pinnedSessionIds.includes(item.id),
-        });
-      }
-    }
-    return rows;
-  }, [pinnedSessionIds, sessions]);
-
-  const caps = sessionCaps(session?.id ?? null, session?.agent ?? null, catalogs, profiles);
-  const agent = resolveCommandAgent({
-    installations,
-    activeAgent: session?.agent ?? null,
-    projectDefault: project && !project.standalone ? project.default_agent : null,
-    preferred: preferredAgent,
-  });
   const input = {
     query,
     mode: drill === "chats" ? ("chats" as const) : ("commands" as const),
-    sessions: paletteSessions,
-    activeSessionId: session?.id ?? null,
-    caps,
-    canNewThread: Boolean(agent && project && !project.standalone),
-    canStandalone: Boolean(agent),
-    canSearchFiles: Boolean(session && project),
-    canFind: Boolean(session) || draftFocused,
+    sessions,
+    activeSessionId: task?.id ?? null,
+    changes,
+    canNewThread: Boolean(project),
+    canStandalone: true,
+    canSearchFiles: Boolean(panel && quickScope),
+    canFind: view.kind !== "none",
   };
   const filesOpen = open && drill === "files";
-  const quick = useQuickOpen(project?.id ?? null, query, filesOpen);
+  const quick = useQuickOpen(quickScope, query, filesOpen);
   const commandRows = buildPaletteRows(input);
   const rows = filesOpen ? fileRows(quick.paths) : commandRows;
   const fileEmpty =
@@ -127,24 +89,23 @@ export function CommandMenuHost() {
   };
 
   const runCommand = (id: PaletteCommandId) => {
-    const state = read();
-    if (id === "new-thread" && agent && project && !project.standalone) {
-      state.openDraft(project.id, agent);
+    if (id === "new-thread" && project) {
+      openNewSession(project.id);
       close();
       return;
     }
-    if (id === "new-standalone" && agent) {
-      state.openDraft(STANDALONE_DRAFT_ID, agent);
+    if (id === "new-standalone") {
+      openNewSession(null);
       close();
       return;
     }
     if (id === "open-folder") {
-      state.openDialog("import");
+      openProjectDialog("import");
       close();
       return;
     }
     if (id === "settings") {
-      state.openSettings();
+      openSettings();
       close();
       return;
     }
@@ -171,39 +132,26 @@ export function CommandMenuHost() {
       window.dispatchEvent(new CustomEvent(OPEN_THREAD_FIND));
       return;
     }
-    if (id === "next-attention") {
-      const target = nextAttentionTarget(attentionInput(state));
-      close();
-      if (!target) {
-        flashSidebarNotice(NEXT_ATTENTION_COPY.none);
-        return;
-      }
-      void state.selectSession(target.projectId, target.id);
-      return;
-    }
-    if (id === "search-files" && project && session) {
-      setFileSearchProjectId(project.id);
+    if (id === "search-files" && panel) {
+      setFileSearchOpen(true);
       close();
       return;
     }
-    if (!session || !project) return;
+    if (!task) return;
     if (id === "pin") {
-      state.togglePinnedSession(session.id);
+      void tasksApi.setTaskPinned(task.id, !task.pinned).catch(showError);
       close();
       return;
     }
     if (id === "archive") {
-      void state.archiveSession(project.id, session.id, session.archived !== true);
-      close();
-      return;
-    }
-    if (id === "fork") {
-      void state.forkSession(project.id, session.id);
+      const archived = Boolean(task.archivedAt);
+      if (!archived) leaveTask(task.id);
+      void tasksApi.archiveTask(task.id, !archived).catch(showError);
       close();
       return;
     }
     if (id === "rename") {
-      setRenameTitle(session.title);
+      setRenameTitle(task.title);
       setRenameError(null);
       setDrill("rename");
       return;
@@ -212,31 +160,25 @@ export function CommandMenuHost() {
       setDeleteError(null);
       setDeletePreview(undefined);
       setDrill("delete");
-      void loadWorktreeDeletePreview(session.id).then(setDeletePreview);
+      void tasksApi
+        .deletePreview(task.id)
+        .catch(() => null)
+        .then(setDeletePreview);
       return;
     }
+    if (!panel) return;
+    const activeTab = panel.tabs.find((tab) => tab.id === panel.activeId);
     if (id === "toggle-files") {
-      const panel = state.panelBySession[session.id];
-      const activeTab = panel?.tabs.find((tab) => tab.id === panel.activeId);
-      const showing = Boolean(panel && panel.layout !== "chat" && activeTab?.viewerId === "files");
-      if (showing) state.panelHide(session.id);
-      else state.panelOpenFiles(session.id);
+      const showing = panel.layout !== "chat" && activeTab?.viewerId === "files";
+      if (showing) panel.hidePanel();
+      else panel.openFiles();
       close();
       return;
     }
     if (id === "toggle-changes") {
-      const panel = state.panelBySession[session.id];
-      const activeTab = panel?.tabs.find((tab) => tab.id === panel.activeId);
-      const showing = Boolean(panel && panel.layout !== "chat" && activeTab?.viewerId === "diff");
-      if (showing) state.panelHide(session.id);
-      else {
-        state.panelOpenDiff(
-          session.id,
-          `diff:${session.id}`,
-          DESKTOP_ZH.changesTab,
-          sessionChanges(state.events[session.id] ?? []),
-        );
-      }
+      const showing = panel.layout !== "chat" && activeTab?.viewerId === "diff";
+      if (showing) panel.hidePanel();
+      else panel.openDiff(`diff:${panel.sessionId}`, DESKTOP_ZH.changesTab, panel.sessionFiles);
       close();
     }
   };
@@ -244,22 +186,17 @@ export function CommandMenuHost() {
   const runIndex = (index: number) => {
     const row = rows[index];
     if (!row) return;
-    if (row.kind === "chat" && row.sessionId && row.projectId) {
-      void read().selectSession(row.projectId, row.sessionId);
+    if (row.kind === "chat" && row.sessionId) {
+      openTask(row.sessionId, row.projectId || null);
       close();
       return;
     }
     if (row.kind === "file" && row.filePath) {
-      if (!project || !session) {
+      if (!panel) {
         setFileNotice(COPY.needSession);
         return;
       }
-      void read().panelOpenHref(session.id, row.filePath, undefined, {
-        projectId: project.id,
-        projectPath: project.path,
-        sessionFiles: [],
-        data: backendPanelData,
-      });
+      panel.openHref(row.filePath);
       close();
       return;
     }
@@ -348,20 +285,20 @@ export function CommandMenuHost() {
   }, []);
 
   const submitRename = () => {
-    if (!session || !renameTitle.trim()) return;
-    void read().renameSession(session.id, renameTitle).then((ok) => {
-      if (ok) close();
-      else setRenameError(COPY.renameError);
-    });
+    if (!task || !renameTitle.trim()) return;
+    void tasksApi.renameTask(task.id, renameTitle).then(close, () => setRenameError(COPY.renameError));
   };
 
   const confirmDelete = (action: "delete" | "keep-worktree" | "discard-worktree") => {
-    if (!session || !project || deletePreview === undefined) return;
+    if (!task || deletePreview === undefined) return;
     const flags = worktreeDeleteFlags(action, deletePreview);
-    void read().deleteSession(project.id, session.id, flags).then((ok) => {
-      if (ok) close();
-      else setDeleteError(COPY.deleteError);
-    });
+    void tasksApi.removeTask(task.id, flags).then(
+      () => {
+        leaveTask(task.id);
+        close();
+      },
+      () => setDeleteError(COPY.deleteError),
+    );
   };
 
   return (
@@ -402,27 +339,11 @@ export function CommandMenuHost() {
           onDiscardWorktree={() => confirmDelete("discard-worktree")}
         />
       ) : null}
-      {fileSearchProjectId ? (
+      {fileSearchOpen && panel ? (
         <FileSearchDialog
-          projectId={fileSearchProjectId}
-          sessionId={activeSessionId[fileSearchProjectId]}
-          onClose={() => setFileSearchProjectId(null)}
-          onOpen={(path, line) => {
-            const current = read();
-            const target = current.projects.find((item) => item.id === fileSearchProjectId);
-            const openSession = target ? current.activeSessionId[target.id] : null;
-            const openWorkdir = openSession
-              ? current.sessions[target?.id ?? ""]?.find((item) => item.id === openSession)?.workdir?.trim()
-              : "";
-            if (!target || !openSession) return;
-            void current.panelOpenHref(openSession, path, line ?? undefined, {
-              projectId: target.id,
-              projectPath: openWorkdir || target.path,
-              sessionFiles: [],
-              sessionId: openSession,
-              data: backendPanelData,
-            });
-          }}
+          projectId={panel.projectId}
+          onClose={() => setFileSearchOpen(false)}
+          onOpen={(path, line) => panel.openHref(path, line ?? undefined)}
         />
       ) : null}
     </>

@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef } from "react";
 
 import { AnswerMarkdownHost } from "@/features/chat/answer/AnswerMarkdownHost";
 import { parseUnifiedDiff, type FileChange } from "@/features/changes-model/diff-parse";
-import { PanelProvider, usePanel } from "@/features/panel/core/PanelProvider";
+import { usePanel } from "@/features/panel/core/PanelProvider";
+import { ProjectPanel } from "@/features/workspace";
 import { SessionSplit } from "@/features/panel/core/SessionSplit";
 import type { SessionEvent } from "@/types";
 
@@ -123,21 +124,13 @@ export default function DiffPreview() {
   );
   return (
     <div className="h-screen w-screen overflow-hidden bg-[#0f0f0f] text-[#e8e8e8]">
-      <PanelProvider
-        sessionId="preview-session"
-        projectId={projectId}
-        projectPath={params.get("path") ?? ""}
-        sessionTitle="梳理需求"
-        agent={null}
-        events={events}
-        usage={null}
-      >
+      <ProjectPanel projectId={projectId} path={params.get("path") ?? ""} title="梳理需求" events={events}>
         <AnswerMarkdownHost>
           <SessionSplit>
             <DiffSeed files={files} />
           </SessionSplit>
         </AnswerMarkdownHost>
-      </PanelProvider>
+      </ProjectPanel>
     </div>
   );
 }

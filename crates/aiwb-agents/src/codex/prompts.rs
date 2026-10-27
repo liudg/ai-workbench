@@ -392,6 +392,10 @@ pub(super) fn error_text(value: &Value) -> Option<String> {
     match value {
         Value::Null => None,
         Value::String(text) if !text.is_empty() => Some(text.clone()),
+        // `turn.error` 是 `{ message, codexErrorInfo, ... }`，给人看的是 message。
+        Value::Object(map) if map.get("message").and_then(Value::as_str).is_some_and(|m| !m.is_empty()) => {
+            map.get("message").and_then(Value::as_str).map(str::to_string)
+        }
         other => {
             let text = other.to_string();
             if text == "null" || text == "{}" {
@@ -822,5 +826,20 @@ mod tests {
         )
         .unwrap();
         assert_eq!(cancelled, json!({ "action": "cancel" }));
+    }
+}
+
+#[cfg(test)]
+mod error_text_tests {
+    use serde_json::json;
+
+    use super::error_text;
+
+    #[test]
+    fn turn_error_object_shows_its_message() {
+        let raw = json!({ "additionalDetails": null, "codexErrorInfo": "other", "message": "workspace routing discovery failed" });
+        assert_eq!(error_text(&raw).as_deref(), Some("workspace routing discovery failed"));
+        assert_eq!(error_text(&json!({ "code": 1 })).as_deref(), Some("{\"code\":1}"));
+        assert_eq!(error_text(&json!(null)), None);
     }
 }

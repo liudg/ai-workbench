@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { invoke } from "@/lib/ipc/call";
-import type { AgentKind, McpAddSpec, McpServerRow, McpSurface } from "@/types";
+import * as api from "./api";
+import type { AgentKind, McpAddSpec, McpSurface } from "@/types";
 import {
   clearSuccess,
   visibleFeedback,
@@ -52,7 +52,7 @@ export function McpSettings() {
       return;
     }
     try {
-      const rows = await invoke<McpServerRow[]>("mcp_list", { kind });
+      const rows = await api.mcpList(kind);
       setBook((current) => finishList(current, kind, generation, { rows }));
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
@@ -62,7 +62,7 @@ export function McpSettings() {
 
   useEffect(() => {
     let alive = true;
-    invoke<McpSurface[]>("mcp_surfaces")
+    api.mcpSurfaces()
       .then((loaded) => {
         if (!alive) return;
         setSurfaces(loaded);
@@ -162,7 +162,7 @@ export function McpSettings() {
         const kind = selected;
         if (!kind) return false;
         const seen = viewEpoch.current;
-        const ok = await run("save", null, () => invoke<string>("mcp_add", { kind, spec }));
+        const ok = await run("save", null, () => api.mcpAdd(kind, spec));
         if (ok && selectedRef.current === kind && viewEpoch.current === seen) {
           setHighlight({ name: spec.name, token: Date.now() });
         }
@@ -170,22 +170,22 @@ export function McpSettings() {
       }}
       onRemove={(name, scope) => {
         if (!selected) return;
-        void run("remove", name, () => invoke<string>("mcp_remove", { kind: selected, name, scope }));
+        void run("remove", name, () => api.mcpRemove(selected, name, scope));
       }}
       onLogin={(name, registration, scopes) => {
         if (!selected) return;
         void run("login", name, () =>
-          invoke<string>("mcp_login", { kind: selected, name, registration, scopes }),
+          api.mcpLogin(selected, name, registration, scopes),
         );
       }}
       onLogout={(name) => {
         if (!selected) return;
-        void run("logout", name, () => invoke<string>("mcp_logout", { kind: selected, name }));
+        void run("logout", name, () => api.mcpLogout(selected, name));
       }}
       onSetEnabled={(name, enabled) => {
         if (!selected) return;
         void run(enabled ? "enable" : "disable", name, () =>
-          invoke<string>("mcp_set_enabled", { kind: selected, name, enabled }),
+          api.mcpSetEnabled(selected, name, enabled),
         );
       }}
       onListTools={(name) => {
@@ -197,7 +197,7 @@ export function McpSettings() {
         toolTickets.current[name] = ticket;
         setBusy((current) => beginRow(current, name, ticket));
         setFeedbackBook((current) => writeFeedback(current, kind, null));
-        invoke<string>("mcp_list_tools", { kind, name })
+        api.mcpListTools(kind, name)
           .then((text) => {
             if (selectedRef.current !== kind || viewEpoch.current !== seen || toolTickets.current[name] !== ticket) return;
             setTools((current) => ({ ...current, [name]: parseToolList(text) }));

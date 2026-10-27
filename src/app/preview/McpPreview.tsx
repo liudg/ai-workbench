@@ -1,15 +1,15 @@
 import { useMemo, useState } from "react";
 
 import type { AgentKind, McpAddSpec, McpServerRow } from "@/types";
-import { McpPanel } from "@/features/workspace/settings/mcp/McpPanel";
+import { McpPanel } from "@/features/settings/mcp/McpPanel";
 import {
   claudeRows,
   codexRows,
   cursorRows,
   loginRow,
   previewSurfaces,
-} from "@/features/workspace/settings/mcp/fixtures";
-import { MCP_PAGE, type McpFeedback, type McpToolEntry } from "@/features/workspace/settings/mcp/view";
+} from "@/features/settings/mcp/fixtures";
+import { MCP_PAGE, type McpFeedback, type McpToolEntry } from "@/features/settings/mcp/view";
 
 /** 开发预览。`?preview=mcp`，不启动第二个工作台窗口。 */
 export default function McpPreview() {

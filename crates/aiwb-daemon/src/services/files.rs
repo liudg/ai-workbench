@@ -4,7 +4,7 @@
 use std::path::Path;
 
 use aiwb_agents::{default_git_scopes, DiffScope};
-use aiwb_files::{PathFilter, PreviewDocument, PreviewImage, SearchOutput, TreeEntry};
+use aiwb_files::{IndexedPaths, PathFilter, PreviewDocument, PreviewImage, SearchOutput, TreeEntry, QUICK_OPEN_LIMIT};
 use serde::Deserialize;
 
 use super::{blocking, scope_key, Scope, ServiceResult, Services};
@@ -66,6 +66,13 @@ impl Services {
         let filters = self.filters.fork();
         let indexes = self.indexes.fork();
         blocking(move || aiwb_files::filter_paths(&filters, &indexes, &key, root, &params.query)).await
+    }
+
+    /// 跳转文件：空查询也列出一批文件。索引还没建完时 `ready` 为 false，接着再要。
+    pub(crate) async fn quick_open(&self, params: FilterPaths) -> ServiceResult<IndexedPaths> {
+        let root = self.scope_dir(&params.scope)?;
+        let indexes = self.indexes.fork();
+        blocking(move || aiwb_files::quick_open_indexed(&indexes, root, &params.query, QUICK_OPEN_LIMIT)).await
     }
 
     /// 分段返回。同一个 `searchId` 接着要下一段，换了 id 就是新的一次搜索。

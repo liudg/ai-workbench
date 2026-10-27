@@ -76,6 +76,17 @@ pub fn ensure_running(data_dir: &Path) -> Result<DaemonInfo, String> {
     .ok_or_else(|| format!("后台服务没有启动，详情见 {}", data_dir.join(LOG_FILE).display()))
 }
 
+/// 还在跑或在等输入的会话数。daemon 没在跑时为 0。
+pub fn running_sessions(data_dir: &Path) -> usize {
+    let Some(info) = read_info(data_dir) else {
+        return 0;
+    };
+    http(info.port, "GET /health", None)
+        .and_then(|body| serde_json::from_str::<serde_json::Value>(&body).ok())
+        .and_then(|value| value["running"].as_u64())
+        .unwrap_or(0) as usize
+}
+
 /// 托盘退出时调用。daemon 没在跑就什么也不做。
 pub fn shutdown(data_dir: &Path) {
     if let Some(info) = read_info(data_dir) {

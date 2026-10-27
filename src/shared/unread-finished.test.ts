@@ -6,12 +6,9 @@ import {
   readUnreadFinishedIds,
   reconcileUnreadFinished,
   sameUnreadIds,
-  syncUnreadFinished,
   UNREAD_FINISHED_KEY,
-  visibleSessionId,
   writeUnreadFinishedIds,
   type UnreadSession,
-  type UnreadSnapshot,
   type UnreadStorage,
 } from "./unread-finished.ts";
 
@@ -23,15 +20,6 @@ function session(id: string, status: string): UnreadSession {
   return { id, status };
 }
 
-function snap(input: Partial<UnreadSnapshot> & Pick<UnreadSnapshot, "sessions">): UnreadSnapshot {
-  return {
-    selectedProjectId: "project",
-    activeSessionId: {},
-    unreadFinishedIds: [],
-    ...input,
-  };
-}
-
 test("finished means completed, failed, or stopped", () => {
   assert.equal(isFinishedStatus("completed"), true);
   assert.equal(isFinishedStatus("failed"), true);
@@ -40,15 +28,6 @@ test("finished means completed, failed, or stopped", () => {
   assert.equal(isFinishedStatus("needs-input"), false);
   assert.equal(isFinishedStatus(null), false);
   assert.equal(isFinishedStatus(undefined), false);
-});
-
-test("only the selected project's active session is open", () => {
-  assert.equal(visibleSessionId(null, { project: "codex-cli:a" }), null);
-  assert.equal(visibleSessionId("project", {}), null);
-  assert.equal(
-    visibleSessionId("project", { project: "codex-cli:a", other: "claude-code:b" }),
-    "codex-cli:a",
-  );
 });
 
 test("a finish while the session is not open marks Codex and Claude the same way", () => {
@@ -151,27 +130,6 @@ test("a session that starts running again drops the mark, then a later finish ca
   assert.deepEqual(marked, ["codex-cli:a"]);
 });
 
-test("another project's active session stays marked until that project is open", () => {
-  const sessions = {
-    a: [session("codex-cli:a", "completed")],
-    b: [session("claude-code:b", "completed")],
-  };
-  const staying = reconcileUnreadFinished({
-    previousSessions: sessions,
-    nextSessions: sessions,
-    previousUnread: ["claude-code:b"],
-    visibleSessionId: visibleSessionId("a", { a: "codex-cli:a", b: "claude-code:b" }),
-  });
-  assert.deepEqual(staying, ["claude-code:b"]);
-  const opened = reconcileUnreadFinished({
-    previousSessions: sessions,
-    nextSessions: sessions,
-    previousUnread: staying,
-    visibleSessionId: visibleSessionId("b", { a: "codex-cli:a", b: "claude-code:b" }),
-  });
-  assert.deepEqual(opened, []);
-});
-
 test("a deleted session drops its mark; an unloaded id stays", () => {
   const ids = reconcileUnreadFinished({
     previousSessions: groups([session("codex-cli:gone", "completed")]),
@@ -193,23 +151,6 @@ test("marks cap by dropping the oldest", () => {
   assert.equal(ids.length, 200);
   assert.equal(ids[0], "codex-cli:1");
   assert.equal(ids[ids.length - 1], "claude-code:new");
-});
-
-test("sync skips a write when the mark list is unchanged", () => {
-  const sessions = groups([session("codex-cli:a", "completed")]);
-  const state = snap({ sessions, unreadFinishedIds: ["codex-cli:a"] });
-  assert.equal(syncUnreadFinished(state, state), null);
-  const finished = syncUnreadFinished(
-    snap({
-      sessions: groups([session("claude-code:b", "running")]),
-      unreadFinishedIds: [],
-    }),
-    snap({
-      sessions: groups([session("claude-code:b", "failed")]),
-      unreadFinishedIds: [],
-    }),
-  );
-  assert.deepEqual(finished, ["claude-code:b"]);
 });
 
 test("storage round-trips ids and ignores corrupt payloads", () => {

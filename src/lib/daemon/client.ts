@@ -58,6 +58,8 @@ export class DaemonClient {
   private attempt = 0;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private stopped = true;
+  /** 不再连接时的原因。调用直接按这个原因失败。 */
+  private disabled: string | null = null;
 
   constructor(options: ClientOptions) {
     this.options = {
@@ -69,7 +71,7 @@ export class DaemonClient {
   }
 
   start() {
-    if (!this.stopped) return;
+    if (!this.stopped || this.disabled) return;
     this.stopped = false;
     void this.connect();
   }
@@ -84,6 +86,12 @@ export class DaemonClient {
     this.setStatus("offline");
   }
 
+  /** 以后都不连了，比如开发样例页。之后的调用马上失败。 */
+  disable(reason: string) {
+    this.disabled = reason;
+    this.stop();
+  }
+
   getStatus() {
     return this.status;
   }
@@ -96,6 +104,7 @@ export class DaemonClient {
   }
 
   call<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
+    if (this.disabled) return Promise.reject(new Error(this.disabled));
     const id = this.nextId++;
     const text = JSON.stringify({ id, method, params });
     return new Promise<T>((resolve, reject) => {

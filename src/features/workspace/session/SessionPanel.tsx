@@ -73,3 +73,37 @@ export function SessionPanel({
     </PanelHost>
   );
 }
+
+/** 只按项目主目录读的面板，没有会话。开发样例页用。 */
+export function ProjectPanel({
+  projectId,
+  path,
+  title,
+  events = [],
+  children,
+}: {
+  projectId: string;
+  path: string;
+  title: string;
+  events?: SessionEvent[];
+  children: ReactNode;
+}) {
+  const session = useMemo<Session>(
+    () => ({
+      id: `project:${projectId}`,
+      project_id: projectId,
+      agent: "codex-cli",
+      native_id: "",
+      title,
+      status: "completed",
+      created_at: 0,
+      updated_at: 0,
+    }),
+    [projectId, title],
+  );
+  return (
+    <SessionPanel session={session} scope={{ projectId }} workdir={path} events={events} profile={undefined}>
+      {children}
+    </SessionPanel>
+  );
+}

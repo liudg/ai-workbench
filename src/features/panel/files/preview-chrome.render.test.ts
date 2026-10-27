@@ -10,6 +10,8 @@ const root = fileURLToPath(new URL("../../../../", import.meta.url));
 let server: ViteDevServer;
 let view: typeof import("./OpenFilesView.tsx");
 let chromeModule: typeof import("./PreviewChrome.tsx");
+let panelModule: typeof import("../core/PanelProvider.tsx");
+let storeModule: typeof import("../state/store.ts");
 
 before(async () => {
   server = await createServer({
@@ -23,15 +25,39 @@ before(async () => {
   chromeModule = (await server.ssrLoadModule(
     "/src/features/panel/files/PreviewChrome.tsx",
   )) as typeof import("./PreviewChrome.tsx");
+  panelModule = (await server.ssrLoadModule("/src/features/panel/core/PanelProvider.tsx")) as typeof import("../core/PanelProvider.tsx");
+  storeModule = (await server.ssrLoadModule("/src/features/panel/state/store.ts")) as typeof import("../state/store.ts");
 });
 
 after(async () => {
   await server?.close();
 });
 
+/** 打开的文件读面板的数据来源，外面套一层面板。这里只看排版，数据不会被调用。 */
+function inPanel(child: ReturnType<typeof createElement>) {
+  return createElement(panelModule.PanelHost, {
+    state: {
+      use: (select) => storeModule.usePanelStore(select),
+      get: () => storeModule.usePanelStore.getState(),
+    },
+    data: {} as never,
+    changes: undefined,
+    status: undefined,
+    subscriptionSupported: false,
+    sessionId: "s",
+    projectId: "p",
+    projectPath: "C:/work/demo",
+    sessionTitle: "",
+    agent: null,
+    events: [],
+    usage: null,
+    children: child,
+  });
+}
+
 function screen(path: string, treeOpen = true) {
   return renderToStaticMarkup(
-    createElement(view.OpenFilesScreen, {
+    inPanel(createElement(view.OpenFilesScreen, {
       tabs: [
         {
           id: "files",
@@ -48,7 +74,7 @@ function screen(path: string, treeOpen = true) {
       toggleFilesTree: () => undefined,
       patchTabPayload: () => undefined,
       openHref: () => undefined,
-    }),
+    })),
   );
 }
 

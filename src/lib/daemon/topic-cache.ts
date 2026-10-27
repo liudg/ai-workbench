@@ -9,6 +9,7 @@ interface Entry {
   watchers: Set<() => void>;
   unsubscribe: () => void;
   release: ReturnType<typeof setTimeout> | null;
+  fixed?: boolean;
 }
 
 export class TopicCache {
@@ -17,6 +18,11 @@ export class TopicCache {
 
   constructor(client: Pick<DaemonClient, "subscribe">) {
     this.client = client;
+  }
+
+  /** 固定一个主题的值，不向 daemon 订阅。开发样例页用。 */
+  seed(topic: string, value: unknown) {
+    this.entries.set(topic, { value, watchers: new Set(), unsubscribe: () => {}, release: null, fixed: true });
   }
 
   get(topic: string): unknown {
@@ -40,7 +46,7 @@ export class TopicCache {
     const watched = entry;
     return () => {
       watched.watchers.delete(onChange);
-      if (watched.watchers.size > 0 || watched.release) return;
+      if (watched.watchers.size > 0 || watched.release || watched.fixed) return;
       watched.release = setTimeout(() => {
         watched.release = null;
         if (watched.watchers.size > 0 || this.entries.get(topic) !== watched) return;

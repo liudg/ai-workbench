@@ -35,10 +35,6 @@ export function useNavigation<T>(select: (state: NavigationState) => T): T {
   return useNavigationStore(select);
 }
 
-export function currentView(): MainView {
-  return useNavigationStore.getState().view;
-}
-
 export function openTask(taskId: string, projectId: ProjectScope) {
   useNavigationStore.setState((state) => ({
     view: { kind: "task", taskId, projectId },

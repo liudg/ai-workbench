@@ -1,22 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { showWorktreeOption, worktreeBranchMarker, worktreeCaption } from "./worktree-option.ts";
-
-const shown = {
-  draft: true,
-  standalone: false,
-  supportsWorktree: true,
-  hasCommit: true,
-};
-
-test("worktree option appears only for a capable draft in a git project with a commit", () => {
-  assert.equal(showWorktreeOption(shown), true);
-  assert.equal(showWorktreeOption({ ...shown, draft: false }), false);
-  assert.equal(showWorktreeOption({ ...shown, standalone: true }), false);
-  assert.equal(showWorktreeOption({ ...shown, supportsWorktree: false }), false);
-  assert.equal(showWorktreeOption({ ...shown, hasCommit: false }), false);
-});
+import { worktreeBranchMarker, worktreeCaption } from "./worktree-option.ts";
 
 test("a detached worktree marker names the base branch or a short commit", () => {
   assert.equal(worktreeBranchMarker({ liveBranch: "worktree-wt-abcd1234" }), "worktree-wt-abcd1234");

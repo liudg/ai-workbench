@@ -7,15 +7,14 @@ import {
   type ReactNode,
 } from "react";
 
-import {
-  backend,
-  type BrowserFile,
-  type DiffScope,
-  type FileSearchResult,
-  type PathFilter,
-  type PreviewDocument,
-  type PreviewImage,
-  type TreeEntry,
+import type {
+  BrowserFile,
+  DiffScope,
+  FileSearchResult,
+  PathFilter,
+  PreviewDocument,
+  PreviewImage,
+  TreeEntry,
 } from "@/lib/ipc";
 import type { SessionUsageView } from "@/store/session-usage";
 import type {
@@ -29,7 +28,6 @@ import type {
 } from "@/types";
 import type { TextSnippetDraft } from "@/shared/text-snippet";
 import type { BrowserHistory } from "../browser/browser";
-import { addSessionTextSnippet } from "./useAddTextSnippet";
 import { useCloseBrowserOnUnmount } from "../browser/use-browser-host";
 import { showsFileChanges } from "@/features/changes-model/capabilities";
 import type { PanelLayoutMode } from "./layout";
@@ -39,7 +37,6 @@ import {
 } from "../diff/diff-menu-options";
 import { defaultDiffViewPrefs, type DiffViewPrefs } from "../diff/view-prefs";
 import { sessionChanges, type FileChange } from "@/features/changes-model/diff-parse";
-import { useWorkbench } from "@/store";
 import type { PanelSlice } from "../state/slice";
 import type { PanelTab } from "./registry";
 
@@ -166,6 +163,7 @@ export function PanelHost({
   status: SessionStatus | undefined;
   subscriptionSupported: boolean;
 }) {
+  useCloseBrowserOnUnmount();
   const tabs = state.use((s) => s.panelBySession[sessionId]?.tabs ?? EMPTY_TABS);
   const activeId = state.use((s) => s.panelBySession[sessionId]?.activeId ?? "");
   const layout = state.use((s) => s.panelBySession[sessionId]?.layout ?? "chat");
@@ -344,56 +342,7 @@ export function PanelHost({
   return <PreviewContext.Provider value={api}>{children}</PreviewContext.Provider>;
 }
 
-const workbenchPanelState: PanelStateSource = {
-  use: (select) => useWorkbench(select),
-  get: () => useWorkbench.getState(),
-};
-
-export const backendPanelData: PanelData = {
-  diffScopes: (sessionId) => backend.diffScopes(sessionId),
-  diffForScope: (sessionId, scope, ignoreWhitespace) => backend.diffForScope(sessionId, scope, ignoreWhitespace),
-  readPreviewFile: (projectId, path, sessionId) => backend.readPreviewFile(projectId, path, sessionId || undefined),
-  readPreviewImage: (projectId, path, sessionId) => backend.readPreviewImage(projectId, path, sessionId || undefined),
-  listDir: (projectId, dir, sessionId) => backend.listProjectDir(projectId, dir, sessionId || undefined),
-  filterPaths: (projectId, query, sessionId) => backend.filterProjectPaths(projectId, query, sessionId || undefined),
-  searchFiles: (projectId, query, mask, searchId, sessionId) =>
-    backend.searchProjectFiles(projectId, query, mask, searchId, sessionId || undefined),
-  openFile: (projectId, path, mode, sessionId) => backend.openProjectFile(projectId, path, mode, sessionId || undefined),
-  prepareBrowserFile: (projectId, path, sessionId) =>
-    backend.prepareBrowserFile(projectId, path, sessionId || undefined),
-  submitAnnotation: (sessionId, note) => backend.submitAnnotation(sessionId, note),
-  attachFile: (sessionId, file) => useWorkbench.getState().addAttachments(sessionId, [file]),
-  addTextSnippet: (sessionId, draft) => {
-    addSessionTextSnippet(sessionId, draft);
-  },
-  isGit: (projectId) => backend.projectIsGit(projectId),
-  subscriptionUsage: (agent) => backend.subscriptionUsage(agent),
-};
-
-/** 旧工作区的面板：状态在旧 store，数据走旧后端。 */
-export function PanelProvider(props: PanelProps) {
-  useCloseBrowserOnUnmount();
-  const { agent, projectId, sessionId } = props;
-  const changes = useWorkbench((s) => (agent ? s.profiles[agent]?.capabilities.changes : undefined));
-  const subscriptionSupported = useWorkbench((s) =>
-    agent ? Boolean(s.profiles[agent]?.capabilities.supports_subscription_usage) : false,
-  );
-  const status = useWorkbench(
-    (s) => s.sessions[projectId]?.find((item) => item.id === sessionId)?.status,
-  );
-  return (
-    <PanelHost
-      {...props}
-      state={workbenchPanelState}
-      data={backendPanelData}
-      changes={changes}
-      status={status}
-      subscriptionSupported={subscriptionSupported}
-    />
-  );
-}
-
-/** 面板里用面板的数据来源；面板外（旧版命令面板）用旧后端。 */
+/** 面板里的组件用面板的数据来源。 */
 export function usePanelData(): PanelData {
-  return usePanelOptional()?.data ?? backendPanelData;
+  return usePanel().data;
 }

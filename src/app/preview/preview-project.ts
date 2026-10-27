@@ -1,15 +1,13 @@
-import { backend } from "@/lib/ipc";
+import { projectsApi } from "@/features/projects";
+import { daemon } from "@/lib/daemon";
+import type { Project } from "@/features/projects";
 
 /** 开发预览把本机目录登记成项目。已经在列表里就复用，不另造一条。 */
 export async function projectIdForRoot(root: string, name: string): Promise<string> {
   const existing = await findProjectId(root);
   if (existing) return existing;
   try {
-    const project = await backend.importProject({
-      path: root,
-      defaultAgent: "codex-cli",
-      name,
-    });
+    const project = await projectsApi.importProject({ path: root, name });
     return project.id;
   } catch (err: unknown) {
     const again = await findProjectId(root);
@@ -19,7 +17,7 @@ export async function projectIdForRoot(root: string, name: string): Promise<stri
 }
 
 async function findProjectId(root: string): Promise<string> {
-  const projects = await backend.listProjects();
+  const projects = await daemon.call<Project[]>("projects.list");
   return projects.find((item) => samePath(item.path, root))?.id ?? "";
 }
 

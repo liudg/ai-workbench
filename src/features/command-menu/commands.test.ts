@@ -2,29 +2,13 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { THREAD_FIND_COPY } from "../chat/find/copy.ts";
-import type { AgentInstallation, AgentKind } from "../../types/index.ts";
 import { COMMAND_MENU_COPY as COPY } from "./copy.ts";
 import {
   buildPaletteRows,
   RECENT_CHAT_LIMIT,
-  resolveCommandAgent,
   type PaletteInput,
   type PaletteSession,
 } from "./commands.ts";
-
-function install(kind: AgentKind, linked = true): AgentInstallation {
-  return {
-    kind,
-    display_name: kind,
-    installed: true,
-    version: "1",
-    latest_version: null,
-    update_available: false,
-    update_via: null,
-    detail: null,
-    session_linked: linked,
-  };
-}
 
 function session(id: string, title: string, updatedAt: number, extra: Partial<PaletteSession> = {}): PaletteSession {
   return {
@@ -43,13 +27,7 @@ const enabled: PaletteInput = {
   mode: "commands",
   sessions: [session("s", "当前", 1)],
   activeSessionId: "s",
-  caps: {
-    supports_archive: true,
-    supports_rename: true,
-    supports_delete: true,
-    supports_fork: true,
-    changes: { turn_diff: true, per_file_patch: true, git_scopes: true },
-  },
+  changes: { turn_diff: true, per_file_patch: true, git_scopes: true },
   canNewThread: true,
   canStandalone: true,
   canSearchFiles: true,
@@ -71,10 +49,10 @@ test("empty query lifts new chat and open folder into 快捷操作", () => {
   assert.ok(rows.findIndex((row) => row.group === "settings") < rows.findIndex((row) => row.group === "thread"));
 });
 
-test("sidebar and file jump stay available without session caps", () => {
+test("sidebar and file jump stay available without a session", () => {
   const rows = buildPaletteRows({
     ...enabled,
-    caps: null,
+    changes: undefined,
     activeSessionId: null,
     canNewThread: false,
     canStandalone: false,
@@ -86,31 +64,16 @@ test("sidebar and file jump stay available without session caps", () => {
   assert.equal(rows.find((row) => row.commandId === "quick-open")?.shortcut, COPY.shortcutQuickOpen);
 });
 
-test("capability flags hide commands without reading an agent name", () => {
-  const hidden = ids({
-    ...enabled,
-    caps: {
-      supports_archive: false,
-      supports_rename: false,
-      supports_delete: false,
-      supports_fork: false,
-      changes: { turn_diff: false, per_file_patch: false, git_scopes: false },
-    },
-  });
-  assert.equal(hidden.includes("archive"), false);
-  assert.equal(hidden.includes("rename"), false);
-  assert.equal(hidden.includes("delete"), false);
-  assert.equal(hidden.includes("fork"), false);
-  assert.equal(hidden.includes("toggle-changes"), false);
-  assert.equal(hidden.includes("pin"), true);
-  assert.equal(hidden.includes("toggle-files"), true);
+test("every open session gets rename, pin, archive and delete; changes follow the capability", () => {
+  const rows = ids({ ...enabled, changes: { turn_diff: false, per_file_patch: false, git_scopes: false } });
+  for (const id of ["rename", "pin", "archive", "delete", "toggle-files"]) assert.equal(rows.includes(id), true, id);
+  assert.equal(rows.includes("toggle-changes"), false);
+  const none = ids({ ...enabled, activeSessionId: null });
+  for (const id of ["rename", "pin", "archive", "delete"]) assert.equal(none.includes(id), false, id);
 });
 
-test("unknown caps keep the changes command and hold archive until the flag is true", () => {
-  const rows = ids({ ...enabled, caps: null });
-  assert.equal(rows.includes("toggle-changes"), true);
-  assert.equal(rows.includes("archive"), false);
-  assert.equal(rows.includes("pin"), true);
+test("unknown changes capability keeps the changes command", () => {
+  assert.equal(ids({ ...enabled, changes: undefined }).includes("toggle-changes"), true);
 });
 
 test("archived sessions leave the recent list and stay searchable", () => {
@@ -130,21 +93,17 @@ test("archived sessions leave the recent list and stay searchable", () => {
   assert.equal(found.some((row) => row.sessionId === "old" && row.group === "chats"), true);
 });
 
-test("find stays behind the open chat, and the next-attention command does not", () => {
+test("find stays behind the open chat", () => {
   const withChat = ids(enabled);
   assert.equal(withChat.includes("find-in-thread"), true);
-  assert.equal(withChat.includes("next-attention"), true);
   assert.equal(
     buildPaletteRows(enabled).find((row) => row.commandId === "find-in-thread")?.shortcut,
     THREAD_FIND_COPY.shortcut,
   );
   const hidden = ids({ ...enabled, canFind: false });
   assert.equal(hidden.includes("find-in-thread"), false);
-  assert.equal(hidden.includes("next-attention"), true);
   const found = buildPaletteRows({ ...enabled, query: "查找" });
   assert.equal(found.some((row) => row.commandId === "find-in-thread"), true);
-  const next = buildPaletteRows({ ...enabled, query: "下一个需要处理" });
-  assert.equal(next.some((row) => row.commandId === "next-attention"), true);
 });
 
 test("blank titles use the observed untitled label", () => {
@@ -163,44 +122,4 @@ test("a query drops the shortcut group and zero scores", () => {
   const settings = buildPaletteRows({ ...enabled, query: "设置" });
   assert.equal(settings.some((row) => row.commandId === "settings"), true);
   assert.equal(settings.some((row) => row.group === "suggested"), false);
-});
-
-test("new chat agent comes from the usable installation list", () => {
-  const alien = "not-registered" as AgentKind;
-  assert.equal(
-    resolveCommandAgent({
-      installations: [install(alien)],
-      activeAgent: "codex-cli",
-      projectDefault: "claude-code",
-      preferred: "cursor-agent",
-    }),
-    alien,
-  );
-  assert.equal(
-    resolveCommandAgent({
-      installations: [install("codex-cli"), install("claude-code")],
-      activeAgent: "claude-code",
-      projectDefault: "codex-cli",
-      preferred: "codex-cli",
-    }),
-    "claude-code",
-  );
-  assert.equal(
-    resolveCommandAgent({
-      installations: [install("codex-cli"), install("claude-code")],
-      activeAgent: "codex-cli",
-      projectDefault: "claude-code",
-      preferred: "claude-code",
-    }),
-    "codex-cli",
-  );
-  assert.equal(
-    resolveCommandAgent({
-      installations: [install("claude-code", false)],
-      activeAgent: null,
-      projectDefault: null,
-      preferred: null,
-    }),
-    null,
-  );
 });

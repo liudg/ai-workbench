@@ -21,10 +21,13 @@ import type {
 } from "@/types";
 import { filterPaths } from "../session/api";
 import { moveDraft, patchDraft, readDraft, type ComposerDraft } from "../session/composer-drafts";
-import { rememberAgent, rememberTuning, stickyAgent, stickyTuning } from "./sticky";
+import { initialSandbox } from "@/lib/sandbox";
+import { rememberAgent, rememberSandbox, rememberTuning, stickyAgent, stickySandbox, stickyTuning } from "./sticky";
 
 const STANDALONE = "chat";
 const NO_QUEUE: never[] = [];
+/** 这种 Agent 还没有任何会话拿到过模型目录。 */
+const NO_CATALOG = "暂无模型列表，使用 Agent 默认模型";
 
 export function newSessionKey(projectId: ProjectScope): string {
   return `new:${projectId ?? STANDALONE}`;
@@ -41,17 +44,23 @@ export function draftAgent(draft: ComposerDraft, agents: AgentInstallation[] | n
 
 function useAgentCatalog(agent: AgentKind | null) {
   const [catalog, setCatalog] = useState<AgentCatalog | undefined>(undefined);
+  const [missing, setMissing] = useState(false);
   const [permissionMenu, setPermissionMenu] = useState<PermissionMenu | null>(null);
   useEffect(() => {
     setCatalog(undefined);
+    setMissing(false);
     setPermissionMenu(null);
     if (!agent) return;
     let cancelled = false;
     void agentsApi.cachedCatalog(agent).then(
       (cached) => {
-        if (!cancelled) setCatalog(cached ?? undefined);
+        if (cancelled) return;
+        setCatalog(cached ?? undefined);
+        setMissing(!cached);
       },
-      () => {},
+      () => {
+        if (!cancelled) setMissing(true);
+      },
     );
     void agentsApi.draftPermissionMenu(agent).then(
       (menu) => {
@@ -63,7 +72,7 @@ function useAgentCatalog(agent: AgentKind | null) {
       cancelled = true;
     };
   }, [agent]);
-  return { catalog, permissionMenu };
+  return { catalog, permissionMenu, notice: missing ? NO_CATALOG : null };
 }
 
 function useHasCommit(projectId: ProjectScope) {
@@ -104,9 +113,10 @@ export function useNewComposer({
 }): ComposerHost {
   const key = newSessionKey(projectId);
   const [creating, setCreating] = useState(false);
-  const { catalog, permissionMenu } = useAgentCatalog(agent);
+  const { catalog, permissionMenu, notice } = useAgentCatalog(agent);
   const hasCommit = useHasCommit(projectId);
   const tuning = draft.tuning ?? stickyTuning(agent) ?? undefined;
+  const sandbox = draft.sandbox ?? initialSandbox(stickySandbox(agent), profiles[agent]?.default_access);
 
   return useMemo<ComposerHost>(() => {
     const patch = (next: Partial<ComposerDraft>) => patchDraft(key, next);
@@ -126,10 +136,10 @@ export function useNewComposer({
       inputLocked: creating,
       initialText: readDraft(key).text,
       catalog,
-      catalogNotice: null,
+      catalogNotice: notice,
       profile: profiles[agent],
       tuning,
-      sandbox: draft.sandbox ?? null,
+      sandbox,
       permissionMenu,
       projectPath: project?.path ?? "",
       files: draft.files,
@@ -180,7 +190,7 @@ export function useNewComposer({
               model: tuning?.model,
               effort: tuning?.model ? tuning.effort : undefined,
               serviceTier: tuning?.serviceTier === undefined ? undefined : (tuning.serviceTier ?? ""),
-              access: current.sandbox ? { ...current.sandbox } : undefined,
+              access: sandbox ? { ...sandbox } : undefined,
               collaborationMode: current.collaboration === "plan" ? "plan" : undefined,
               followUpQueueMode: current.followUpQueueMode,
             },
@@ -203,7 +213,10 @@ export function useNewComposer({
       startReview: async () => {},
       reviewTargets: () => Promise.reject(new Error("先发一条消息")),
       answerPrompt: async () => false,
-      setSandbox: (next) => patch({ sandbox: next }),
+      setSandbox: (next) => {
+        rememberSandbox(agent, next);
+        patch({ sandbox: next });
+      },
       setTuning: (model, effort, serviceTier) => {
         const next: SessionTuning = { model, effort };
         if (serviceTier !== undefined) next.serviceTier = serviceTier;
@@ -236,5 +249,5 @@ export function useNewComposer({
           : Promise.resolve({ paths: [], truncated: false, cancelled: false, ready: true }),
       reportError: showError,
     };
-  }, [agent, agents, catalog, creating, draft, hasCommit, key, permissionMenu, profiles, project, projectId, projects, tuning]);
+  }, [agent, agents, catalog, notice, sandbox, creating, draft, hasCommit, key, permissionMenu, profiles, project, projectId, projects, tuning]);
 }

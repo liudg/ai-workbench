@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import type { McpServerRow, McpSurface } from "@/types";
 import { claudeRows, codexRows, cursorRows, loginRow, previewSurfaces } from "./fixtures.ts";
 
-const root = fileURLToPath(new URL("../../../../../", import.meta.url));
+const root = fileURLToPath(new URL("../../../../", import.meta.url));
 
 let server: ViteDevServer;
 let Panel: typeof import("./McpPanel.tsx").McpPanel;
@@ -21,7 +21,7 @@ before(async () => {
     appType: "custom",
     logLevel: "error",
   });
-  const mod = await server.ssrLoadModule("/src/features/workspace/settings/mcp/McpPanel.tsx");
+  const mod = await server.ssrLoadModule("/src/features/settings/mcp/McpPanel.tsx");
   Panel = mod.McpPanel;
 });
 

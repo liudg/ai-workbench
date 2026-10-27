@@ -3,13 +3,8 @@ import { test } from "node:test";
 
 import type { AgentInstallation, AgentKind } from "../types/index.ts";
 import {
-  immediateSessionAgent,
   installedAgents,
-  keepPreferredAgent,
-  newSessionMenu,
-  persistedAgentKind,
   sessionAgents,
-  unlinkedAgents,
 } from "./agents.ts";
 
 function row(
@@ -47,63 +42,11 @@ test("installed agents follow the detection list", () => {
 
 test("only installed and session-linked agents can open a session", () => {
   assert.deepEqual(sessionAgents(registry).map((item) => item.kind), ["codex-cli"]);
-  assert.deepEqual(
-    unlinkedAgents(registry).map((item) => item.kind),
-    ["claude-code", "kimi-code"],
-  );
   assert.deepEqual(sessionAgents([row("codex-cli", false, true)]), []);
 });
 
 test("empty detection does not invent a default agent", () => {
   assert.deepEqual(installedAgents(null), []);
   assert.deepEqual(sessionAgents(undefined), []);
-  assert.equal(persistedAgentKind([], null), null);
-  assert.equal(persistedAgentKind(null, "codex-cli"), null);
-  assert.equal(
-    persistedAgentKind([row("claude-code", true, false)], "claude-code"),
-    null,
-  );
-});
-
-test("the new-session menu hides agents that are installed but not linked", () => {
-  assert.deepEqual(newSessionMenu(null), { status: "loading" });
-  assert.deepEqual(newSessionMenu(undefined), { status: "loading" });
-  assert.deepEqual(newSessionMenu([]), { status: "empty", reason: "none" });
-  assert.deepEqual(newSessionMenu([row("claude-code", true, false, "Claude Code")]), {
-    status: "empty",
-    reason: "unwired",
-  });
-  assert.deepEqual(newSessionMenu([row("cursor-agent", false, false)]), {
-    status: "empty",
-    reason: "none",
-  });
-  const ready = newSessionMenu(registry);
-  assert.equal(ready.status, "ready");
-  if (ready.status === "ready") {
-    assert.deepEqual(
-      ready.agents.map((item) => item.kind),
-      ["codex-cli"],
-    );
-    assert.equal(
-      ready.agents.some((item) => item.session_linked !== true),
-      false,
-    );
-  }
-  assert.equal(immediateSessionAgent(registry), "codex-cli");
-  assert.equal(immediateSessionAgent([row("codex-cli", true, true)]), "codex-cli");
-  assert.equal(
-    immediateSessionAgent([
-      row("codex-cli", true, true),
-      row("claude-code", true, false),
-    ]),
-    "codex-cli",
-  );
-});
-
-test("preferred agent is kept only when it can open sessions", () => {
-  assert.equal(persistedAgentKind(registry, "codex-cli"), "codex-cli");
-  assert.equal(persistedAgentKind(registry, "kimi-code"), "codex-cli");
-  assert.equal(keepPreferredAgent("claude-code", registry), "codex-cli");
-  assert.equal(keepPreferredAgent("codex-cli", registry), "codex-cli");
-  assert.equal(keepPreferredAgent(null, [row("claude-code", true, false)]), null);
+  assert.deepEqual(sessionAgents([row("claude-code", true, false)]), []);
 });

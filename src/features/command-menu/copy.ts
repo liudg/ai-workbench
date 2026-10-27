@@ -37,7 +37,6 @@ export const COMMAND_MENU_COPY = {
   rename: "重命名聊天",
   pin: "置顶/取消置顶聊天",
   deleteChat: "删除聊天",
-  fork: "分叉聊天",
   toggleFiles: "显示/隐藏导航面板",
   toggleChanges: "显示/隐藏“变更”面板",
   toggleSidebar: "显示/隐藏侧边栏",

@@ -32,10 +32,15 @@ async fn ws(
     upgrade.on_upgrade(move |socket| connection::serve(socket, services))
 }
 
-/// 不带 token：只回版本，供应用壳判断要不要换 daemon。
+/// 不带 token：版本供应用壳判断要不要换 daemon；`running` 是还在跑或在等输入的会话数，退出前确认用。
 async fn health(State(services): State<Arc<Services>>) -> impl IntoResponse {
     let info = services.info();
-    Json(json!({ "version": info.version, "build": info.build, "pid": info.pid }))
+    Json(json!({
+        "version": info.version,
+        "build": info.build,
+        "pid": info.pid,
+        "running": services.running_sessions(),
+    }))
 }
 
 async fn shutdown(State(services): State<Arc<Services>>, headers: HeaderMap) -> StatusCode {

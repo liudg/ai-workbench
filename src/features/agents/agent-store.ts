@@ -83,6 +83,13 @@ export async function upgradeInstallation(kind: AgentKind) {
   }
 }
 
+/** 开发样例页：直接给出能力和安装情况，不向 daemon 要。 */
+export function seedAgents(profiles: Profiles, installations: AgentInstallation[]) {
+  profilesRequested = true;
+  installationsRequested = true;
+  useAgentStore.setState({ profiles, installations, installationsLoading: false });
+}
+
 export function useAgentState<T>(select: (state: AgentState) => T): T {
   return useAgentStore(select);
 }

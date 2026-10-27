@@ -1,9 +1,9 @@
 import { Sidebar } from "@/features/sidebar";
-import { Workspace } from "@/features/workspace/Workspace";
+import { Workspace } from "@/features/workspace";
 
 import { useWorkContextPreview } from "./use-work-context-preview";
 
-/** 开发预览。`?preview=work-context`，`scene=fresh|project|empty|sent|cleared|choose|none`。不另开工作台窗口。 */
+/** 开发预览。`?preview=work-context`，`scene=fresh|project|none`。不连后台服务。 */
 export default function WorkContextPreview() {
   useWorkContextPreview();
   return (

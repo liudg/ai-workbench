@@ -4,6 +4,7 @@ mod agents;
 mod drafts;
 mod files;
 mod folders;
+mod mcp;
 mod projects;
 mod sessions;
 mod tasks;
@@ -76,6 +77,19 @@ impl Services {
         self.runtimes.settle_interrupted()
     }
 
+    /// 还在跑或在等输入的会话数。读不到时当作 0。
+    pub fn running_sessions(&self) -> usize {
+        self.store
+            .list_sessions()
+            .map(|sessions| {
+                sessions
+                    .iter()
+                    .filter(|s| matches!(s.status, aiwb_core::models::SessionStatus::Running | aiwb_core::models::SessionStatus::NeedsInput))
+                    .count()
+            })
+            .unwrap_or(0)
+    }
+
     pub fn request_shutdown(&self) {
         self.shutdown.send_replace(true);
     }
@@ -119,6 +133,14 @@ impl Services {
             "agents.catalog" => to_value(self.cached_catalog(parse(params)?)?),
             "agents.permissionMenu" => to_value(self.draft_permission_menu(parse(params)?)),
             "agents.subscriptionUsage" => to_value(self.subscription_usage(parse(params)?).await?),
+            "mcp.surfaces" => to_value(self.mcp_surfaces()),
+            "mcp.list" => to_value(self.mcp_list(parse(params)?).await?),
+            "mcp.add" => to_value(self.mcp_add(parse(params)?).await?),
+            "mcp.remove" => to_value(self.mcp_remove(parse(params)?).await?),
+            "mcp.login" => to_value(self.mcp_login(parse(params)?).await?),
+            "mcp.logout" => to_value(self.mcp_logout(parse(params)?).await?),
+            "mcp.setEnabled" => to_value(self.mcp_set_enabled(parse(params)?).await?),
+            "mcp.listTools" => to_value(self.mcp_list_tools(parse(params)?).await?),
             "tasks.list" => to_value(self.store.task_entries().map_err(|e| e.to_string())?),
             "tasks.create" => to_value(self.create_task(parse(params)?).await?),
             "tasks.rename" => to_value(self.rename_task(parse(params)?)?),
@@ -147,6 +169,7 @@ impl Services {
             "files.readImage" => to_value(self.read_image(parse(params)?).await?),
             "files.listDir" => to_value(self.list_dir(parse(params)?).await?),
             "files.filterPaths" => to_value(self.filter_paths(parse(params)?).await?),
+            "files.quickOpen" => to_value(self.quick_open(parse(params)?).await?),
             "files.searchFiles" => to_value(self.search_files(parse(params)?).await?),
             "sessions.submitAnnotation" => to_value(self.submit_annotation(parse(params)?).await?),
             "sessions.reviewTargets" => to_value(self.review_targets(parse(params)?).await?),

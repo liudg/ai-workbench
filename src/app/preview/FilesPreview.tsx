@@ -2,31 +2,23 @@ import { useEffect, useState } from "react";
 
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { textSnippetChipLabel, textSnippetPreview } from "@/shared/text-snippet";
-import { resolvePreviewPath } from "../core/preview-kind";
-import { FileContextMenu } from "./FileContextMenu";
-import { FilePreviewColumn } from "./FilePreview";
-import { useFilePreviewChrome } from "./use-file-preview-chrome";
-import { PreviewChrome } from "./PreviewChrome";
-import { projectIdForRoot } from "./preview-project";
+import { usePanel } from "@/features/panel/core/PanelProvider";
+import { resolvePreviewPath } from "@/features/panel/core/preview-kind";
+import { FileContextMenu } from "@/features/panel/files/FileContextMenu";
+import { FilePreviewColumn } from "@/features/panel/files/FilePreview";
+import { PreviewChrome } from "@/features/panel/files/PreviewChrome";
+import { useFilePreviewChrome } from "@/features/panel/files/use-file-preview-chrome";
+import { useAttachFile } from "@/features/panel/files/useAttachFile";
+import { WorkspaceTree } from "@/features/panel/files/WorkspaceTree";
+import { ProjectPanel, useComposerDraft } from "@/features/workspace";
 import { baseName } from "@/shared/path";
-import { useAttachFile } from "./useAttachFile";
-import { addSessionTextSnippet, useSessionTextSnippets } from "../core/useAddTextSnippet";
-import { WorkspaceTree } from "./WorkspaceTree";
+import { projectIdForRoot } from "./preview-project";
 
-const SESSION = "preview";
-
-/** 开发预览：文件树和选区菜单走真实后端，不造搜索结果。 */
+/** 开发预览：文件树和选区菜单走 daemon 读真实目录，不造搜索结果。`?root=` 给目录。 */
 export default function FilesPreview() {
   const root = new URLSearchParams(window.location.search).get("root") ?? "";
   const [projectId, setProjectId] = useState("");
   const [error, setError] = useState("");
-  const [filter, setFilter] = useState("");
-  const [path, setPath] = useState("");
-  const [line, setLine] = useState<number | null>(null);
-  const [treeOpen, setTreeOpen] = useState(true);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string } | null>(null);
-  const attachFile = useAttachFile(SESSION);
-  const snippets = useSessionTextSnippets(SESSION);
 
   useEffect(() => {
     if (!root) {
@@ -46,6 +38,26 @@ export default function FilesPreview() {
       cancel = true;
     };
   }, [root]);
+
+  if (!projectId) {
+    return <p className="p-6 text-sm text-zinc-400">{error || DESKTOP_ZH.filesReading}</p>;
+  }
+  return (
+    <ProjectPanel projectId={projectId} path={root} title="search-fixture">
+      <FilesBody root={root} projectId={projectId} />
+    </ProjectPanel>
+  );
+}
+
+function FilesBody({ root, projectId }: { root: string; projectId: string }) {
+  const panel = usePanel();
+  const [filter, setFilter] = useState("");
+  const [path, setPath] = useState("");
+  const [line, setLine] = useState<number | null>(null);
+  const [treeOpen, setTreeOpen] = useState(true);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string } | null>(null);
+  const attachFile = useAttachFile(panel.sessionId);
+  const snippets = useComposerDraft(panel.sessionId).draft.snippets;
 
   const chrome = useFilePreviewChrome({
     projectId,
@@ -70,7 +82,7 @@ export default function FilesPreview() {
           previewLine={line}
           markdownMode={chrome.markdownMode}
           quotePath={path ? joinRoot(root, path) : ""}
-          onQuote={(draft) => addSessionTextSnippet(SESSION, draft)}
+          onQuote={(draft) => panel.data.addTextSnippet(panel.sessionId, draft)}
         />
         <div className="shrink-0 border-t border-zinc-800 p-3">
           <span className="mb-1 block text-xs text-zinc-500">对话</span>
@@ -110,7 +122,7 @@ export default function FilesPreview() {
             />
           </div>
           <div className="min-h-0 flex-1 overflow-auto px-1 py-1">
-            {projectId ? (
+            {(
               <WorkspaceTree
                 projectId={projectId}
                 filter={filter}
@@ -122,8 +134,6 @@ export default function FilesPreview() {
                 }}
                 onContextMenu={(next, event) => setContextMenu({ x: event.clientX, y: event.clientY, path: next })}
               />
-            ) : (
-              <p className="px-2 py-6 text-center text-xs text-zinc-500">{error || DESKTOP_ZH.filesReading}</p>
             )}
           </div>
         </aside>

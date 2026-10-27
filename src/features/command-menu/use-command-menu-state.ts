@@ -1,74 +1,46 @@
-import { useWorkbench } from "@/store";
-import type { AgentCatalog, AgentKind, AgentProfile } from "@/types";
+import { useMemo } from "react";
 
-import type { PaletteCaps } from "./commands";
+import { useAgentProfiles } from "@/features/agents";
+import { usePanelOptional } from "@/features/panel/core/PanelProvider";
+import { useProjects } from "@/features/projects";
+import { currentSession, useTasks } from "@/features/tasks";
+import { useNavigation } from "@/shared/shell/navigation";
 
-/** 命令菜单读工作台状态。展示组件只拿这里的结果。 */
+import type { PaletteSession } from "./commands";
+
+const UNTITLED = "";
+
+/** 命令菜单要的数据：所有会话、正在看的会话和项目、当前的面板。展示组件只拿这里的结果。 */
 export function useCommandMenuState() {
-  const projects = useWorkbench((s) => s.projects);
-  const sessions = useWorkbench((s) => s.sessions);
-  const selectedProjectId = useWorkbench((s) => s.selectedProjectId);
-  const activeSessionId = useWorkbench((s) => s.activeSessionId);
-  const pinnedSessionIds = useWorkbench((s) => s.pinnedSessionIds);
-  const installations = useWorkbench((s) => s.installations);
-  const preferredAgent = useWorkbench((s) => s.preferredAgent);
-  const catalogs = useWorkbench((s) => s.catalogs);
-  const profiles = useWorkbench((s) => s.profiles);
-  const draftFocused = useWorkbench((s) =>
-    selectedProjectId ? Boolean(s.draftFocused[selectedProjectId]) : false,
+  const { tasks } = useTasks();
+  const { projects } = useProjects();
+  const view = useNavigation((state) => state.view);
+  const profiles = useAgentProfiles();
+  const panel = usePanelOptional();
+
+  const sessions = useMemo<PaletteSession[]>(
+    () =>
+      tasks.map((task) => ({
+        id: task.id,
+        projectId: task.projectId ?? "",
+        title: task.title.trim() || UNTITLED,
+        archived: Boolean(task.archivedAt),
+        updatedAt: task.updatedAt,
+        pinned: task.pinned,
+      })),
+    [tasks],
   );
+  const task = view.kind === "task" ? (tasks.find((item) => item.id === view.taskId) ?? null) : null;
+  const projectId = view.kind === "none" ? null : view.projectId;
+  const project = projectId ? (projects.find((item) => item.id === projectId) ?? null) : null;
+  const agent = task ? currentSession(task)?.agent : undefined;
   return {
-    projects,
+    view,
+    tasks,
     sessions,
-    selectedProjectId,
-    activeSessionId,
-    pinnedSessionIds,
-    installations,
-    preferredAgent,
-    catalogs,
-    profiles,
-    draftFocused,
-    read: () => useWorkbench.getState(),
+    task,
+    project,
+    panel,
+    changes: agent ? profiles[agent]?.capabilities.changes : undefined,
   };
-}
-
-export function attentionInput(state: ReturnType<typeof useWorkbench.getState>) {
-  const projectId = state.selectedProjectId;
-  const draftOn = projectId ? Boolean(state.draftFocused[projectId]) : false;
-  const currentId = !projectId || draftOn ? null : (state.activeSessionId[projectId] ?? null);
-  return {
-    projects: state.projects,
-    pinnedProjectIds: state.pinnedProjectIds,
-    sessions: state.sessions,
-    pinnedSessionIds: state.pinnedSessionIds,
-    events: state.events,
-    eventsReady: state.eventsReady,
-    unreadFinishedIds: state.unreadFinishedIds,
-    currentId,
-  };
-}
-
-export function flashSidebarNotice(text: string) {
-  const token = Date.now();
-  useWorkbench.setState({ sidebarNotice: { kind: "info", text, token } });
-  window.setTimeout(() => {
-    const current = useWorkbench.getState().sidebarNotice;
-    if (current?.kind === "info" && current.token === token) {
-      useWorkbench.setState({ sidebarNotice: null });
-    }
-  }, 4000);
-}
-
-export function sessionCaps(
-  sessionId: string | null,
-  agent: AgentKind | null,
-  catalogs: Record<string, AgentCatalog>,
-  profiles: Partial<Record<AgentKind, AgentProfile>>,
-): PaletteCaps | null {
-  if (!sessionId || !agent) return null;
-  const catalog = catalogs[sessionId]?.capabilities;
-  if (catalog) return catalog;
-  const profile = profiles[agent];
-  if (profile?.kind === agent) return profile.capabilities;
-  return null;
 }

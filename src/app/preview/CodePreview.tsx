@@ -1,12 +1,12 @@
 import { useState } from "react";
-import source from "../viewers/SourceView.tsx?raw";
+import source from "@/features/panel/viewers/SourceView.tsx?raw";
 
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
-import { FileTreeList } from "./FileTreeList";
-import { PreviewChrome } from "./PreviewChrome";
-import { PreviewEmpty } from "./PreviewBody";
-import { buildFileTree, type FileTreeFile } from "./file-tree";
-import { SourceView } from "../viewers/SourceView";
+import { buildFileTree, type FileTreeFile } from "@/features/panel/files/file-tree";
+import { FileTreeList } from "@/features/panel/files/FileTreeList";
+import { PreviewEmpty } from "@/features/panel/files/PreviewBody";
+import { PreviewChrome } from "@/features/panel/files/PreviewChrome";
+import { SourceView } from "@/features/panel/viewers/SourceView";
 
 const PATH = "src/features/panel/viewers/SourceView.tsx";
 

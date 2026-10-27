@@ -15,6 +15,12 @@ export const daemon = new DaemonClient({ resolveEndpoint });
 const topics = new TopicCache(daemon);
 const feeds = new SessionFeeds(daemon);
 
+/** 开发样例页：不连 daemon，主题用给定的值，调用直接失败。只从开发入口调用。 */
+export function startPreview(values: Record<string, unknown>) {
+  daemon.disable("样例页不连后台服务");
+  for (const [topic, value] of Object.entries(values)) topics.seed(topic, value);
+}
+
 const watchStatus = (onChange: () => void) => daemon.onStatus(onChange);
 const readStatus = () => daemon.getStatus();
 

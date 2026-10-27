@@ -5,6 +5,7 @@ import { AnswerMarkdownHost } from "@/features/chat/answer/AnswerMarkdownHost";
 import { Composer } from "@/features/chat/composer/Composer";
 import { ChatHostProvider, type ChatHost } from "@/features/chat/host";
 import { ChatView } from "@/features/chat/timeline/ChatView";
+import { CommandMenuHost } from "@/features/command-menu";
 import { SessionSplit } from "@/features/panel/core/SessionSplit";
 import type { Project } from "@/features/projects";
 import type { TaskEntry, TaskSession } from "@/features/tasks";
@@ -77,6 +78,7 @@ export function SessionView({
             />
           </SessionSplit>
         </AnswerMarkdownHost>
+        <CommandMenuHost />
       </SessionPanel>
     </ChatHostProvider>
   );

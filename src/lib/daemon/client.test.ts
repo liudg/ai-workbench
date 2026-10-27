@@ -195,3 +195,27 @@ test("TopicCache 观察者马上回来时不退订，值还在", async () => {
   assert.deepEqual(cache.get("projects"), ["x"]);
   stopAgain();
 });
+
+test("停用后不再连接，调用马上按原因失败", async () => {
+  const { client, sockets } = setup();
+  client.disable("样例页不连后台服务");
+  client.start();
+  await flush();
+  assert.equal(sockets.length, 0);
+  await assert.rejects(client.call("projects.list"), /样例页不连后台服务/);
+});
+
+test("固定的主题值不向 daemon 订阅，观察者走了也还在", () => {
+  const subscribed: string[] = [];
+  const cache = new TopicCache({
+    subscribe: (topic) => {
+      subscribed.push(topic);
+      return () => {};
+    },
+  });
+  cache.seed("projects", [1]);
+  const stop = cache.watch("projects", () => {});
+  stop();
+  assert.deepEqual(subscribed, []);
+  assert.deepEqual(cache.get("projects"), [1]);
+});

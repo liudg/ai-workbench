@@ -9,13 +9,6 @@ export interface UnreadSession {
   status?: string | null;
 }
 
-export interface UnreadSnapshot {
-  sessions: Record<string, readonly UnreadSession[]>;
-  selectedProjectId: string | null;
-  activeSessionId: Record<string, string>;
-  unreadFinishedIds: readonly string[];
-}
-
 export interface UnreadStorage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
@@ -23,16 +16,6 @@ export interface UnreadStorage {
 
 export function isFinishedStatus(status: string | null | undefined): boolean {
   return status === "completed" || status === "failed" || status === "stopped";
-}
-
-/** 主区正在看的那条。别的项目里记住的 active 不算打开。 */
-export function visibleSessionId(
-  selectedProjectId: string | null,
-  activeSessionId: Record<string, string>,
-): string | null {
-  if (!selectedProjectId) return null;
-  const id = activeSessionId[selectedProjectId];
-  return id ? id : null;
 }
 
 export function sameUnreadIds(left: readonly string[], right: readonly string[]): boolean {
@@ -99,17 +82,6 @@ export function reconcileUnreadFinished(input: {
     return kept.slice(kept.length - MAX_UNREAD_FINISHED);
   }
   return kept;
-}
-
-/** 没有变化时返回 null，避免再写一遍 store。 */
-export function syncUnreadFinished(previous: UnreadSnapshot, next: UnreadSnapshot): string[] | null {
-  const ids = reconcileUnreadFinished({
-    previousSessions: previous.sessions,
-    nextSessions: next.sessions,
-    previousUnread: next.unreadFinishedIds,
-    visibleSessionId: visibleSessionId(next.selectedProjectId, next.activeSessionId),
-  });
-  return sameUnreadIds(ids, next.unreadFinishedIds) ? null : ids;
 }
 
 export function readUnreadFinishedIds(storage: UnreadStorage | null): string[] {

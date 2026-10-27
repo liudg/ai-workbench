@@ -5,6 +5,7 @@ import { AnswerMarkdownHost } from "@/features/chat/answer/AnswerMarkdownHost";
 import { Composer } from "@/features/chat/composer/Composer";
 import { ChatHostProvider, type ChatHost } from "@/features/chat/host";
 import { ChatView } from "@/features/chat/timeline/ChatView";
+import { CommandMenuHost } from "@/features/command-menu";
 import { SessionSplit } from "@/features/panel/core/SessionSplit";
 import type { Project } from "@/features/projects";
 import { openSettings, type ProjectScope } from "@/shared/shell/navigation";
@@ -33,6 +34,7 @@ export function NewSessionView({ projectId, project, projects }: {
         <button type="button" className="text-sm text-indigo-300 hover:text-indigo-200" onClick={openSettings}>
           打开设置
         </button>
+        <CommandMenuHost />
       </div>
     );
   }
@@ -121,9 +123,13 @@ function NewSession({
           <AnswerMarkdownHost>
             <SessionSplit>{chat}</SessionSplit>
           </AnswerMarkdownHost>
+          <CommandMenuHost />
         </SessionPanel>
       ) : (
-        <AnswerMarkdownHost>{chat}</AnswerMarkdownHost>
+        <>
+          <AnswerMarkdownHost>{chat}</AnswerMarkdownHost>
+          <CommandMenuHost />
+        </>
       )}
     </ChatHostProvider>
   );

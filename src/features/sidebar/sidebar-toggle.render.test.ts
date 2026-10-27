@@ -36,6 +36,7 @@ let server: ViteDevServer;
 let toggleMod: typeof import("../panel/core/SidebarToggle.tsx");
 let chromeMod: typeof import("../panel/core/ClosedChrome.tsx");
 let panelMod: typeof import("../panel/core/PanelProvider.tsx");
+let panelStoreMod: typeof import("../panel/state/store.ts");
 let sidebarMod: typeof import("./Sidebar.tsx");
 let peekMod: typeof import("./SidebarPeek.tsx");
 let visibilityMod: typeof import("../../shared/shell/sidebar-open.ts");
@@ -52,6 +53,7 @@ before(async () => {
   toggleMod = (await server.ssrLoadModule("/src/features/panel/core/SidebarToggle.tsx")) as unknown as typeof toggleMod;
   chromeMod = (await server.ssrLoadModule("/src/features/panel/core/ClosedChrome.tsx")) as unknown as typeof chromeMod;
   panelMod = (await server.ssrLoadModule("/src/features/panel/core/PanelProvider.tsx")) as unknown as typeof panelMod;
+  panelStoreMod = (await server.ssrLoadModule("/src/features/panel/state/store.ts")) as unknown as typeof panelStoreMod;
   sidebarMod = (await server.ssrLoadModule("/src/features/sidebar/Sidebar.tsx")) as unknown as typeof sidebarMod;
   peekMod = (await server.ssrLoadModule("/src/features/sidebar/SidebarPeek.tsx")) as unknown as typeof peekMod;
   visibilityMod = (await server.ssrLoadModule("/src/shared/shell/sidebar-open.ts")) as unknown as typeof visibilityMod;
@@ -101,7 +103,15 @@ async function render(node: ReturnType<typeof createElement>) {
 test("the session header toggle shares the sidebar state and stays in front of the title", async () => {
   visibilityMod.setSidebarOpen(true);
   const view = await render(
-    createElement(panelMod.PanelProvider, {
+    createElement(panelMod.PanelHost, {
+      state: {
+        use: (select) => panelStoreMod.usePanelStore(select),
+        get: () => panelStoreMod.usePanelStore.getState(),
+      },
+      data: {} as never,
+      changes: undefined,
+      status: undefined,
+      subscriptionSupported: false,
       sessionId: "s",
       projectId: "p",
       projectPath: "/tmp/demo",

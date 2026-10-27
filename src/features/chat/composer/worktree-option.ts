@@ -1,13 +1,3 @@
-/** 新建会话时，要不要给出「在新的工作树中运行」。只看能力、草稿和仓库，不看 Agent 名字。 */
-export function showWorktreeOption(input: {
-  draft: boolean;
-  standalone: boolean;
-  supportsWorktree: boolean;
-  hasCommit: boolean;
-}): boolean {
-  return input.draft && !input.standalone && input.supportsWorktree && input.hasCommit;
-}
-
 /**
  * 工作树会话的分支标记。
  * 有自己的分支就显示分支名。分离头指针显示创建时基于的分支，没有分支名时显示 7 位提交号。

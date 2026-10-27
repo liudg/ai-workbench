@@ -1,8 +1,6 @@
-import { NEXT_ATTENTION_COPY } from "../attention/next-session.ts";
 import { THREAD_FIND_COPY } from "../chat/find/copy.ts";
 import { showsFileChanges } from "../changes-model/capabilities.ts";
-import { sessionAgents } from "../../lib/agents.ts";
-import type { AgentInstallation, AgentKind, ChangeCapabilities } from "../../types/index.ts";
+import type { ChangeCapabilities } from "../../types/index.ts";
 import { COMMAND_MENU_COPY as COPY } from "./copy.ts";
 import { commandFilter } from "./fuzzy.ts";
 
@@ -28,13 +26,11 @@ export type PaletteCommandId =
   | "settings"
   | "search-chats"
   | "find-in-thread"
-  | "next-attention"
   | "search-files"
   | "archive"
   | "rename"
   | "pin"
   | "delete"
-  | "fork"
   | "toggle-files"
   | "toggle-changes"
   | "toggle-sidebar"
@@ -63,20 +59,14 @@ export interface PaletteSession {
   pinned: boolean;
 }
 
-export interface PaletteCaps {
-  supports_archive?: boolean;
-  supports_rename?: boolean;
-  supports_delete?: boolean;
-  supports_fork?: boolean;
-  changes?: ChangeCapabilities;
-}
 
 export interface PaletteInput {
   query: string;
   mode: "commands" | "chats";
   sessions: readonly PaletteSession[];
   activeSessionId: string | null;
-  caps: PaletteCaps | null;
+  /** 当前会话的 Agent 声明的变更能力。没有会话时为空。 */
+  changes: ChangeCapabilities | undefined;
   canNewThread: boolean;
   canStandalone: boolean;
   canSearchFiles: boolean;
@@ -98,26 +88,6 @@ const GROUP_ORDER: readonly CommandGroup[] = [
 
 const SUGGESTED = new Set<PaletteCommandId>(["new-thread", "open-folder"]);
 
-/**
- * 新聊天用的 Agent 只从「能开会话」的安装列表里挑。
- * 优先当前会话，其次项目默认，其次用户最近选过的。不写死某一种类。
- */
-export function resolveCommandAgent(input: {
-  installations: AgentInstallation[] | null | undefined;
-  activeAgent: AgentKind | null;
-  projectDefault: AgentKind | null;
-  preferred: AgentKind | null;
-}): AgentKind | null {
-  const usable = sessionAgents(input.installations);
-  if (usable.length === 0) return null;
-  if (usable.length === 1) return usable[0].kind;
-  const ranked = [input.activeAgent, input.projectDefault, input.preferred];
-  for (const kind of ranked) {
-    if (kind && usable.some((item) => item.kind === kind)) return kind;
-  }
-  return usable[0].kind;
-}
-
 export function buildPaletteRows(input: PaletteInput): PaletteRow[] {
   const query = input.query.trim();
   if (input.mode === "chats") return sortGroups(chatRows(input, query));
@@ -137,12 +107,10 @@ function commandItems(input: PaletteInput): PaletteRow[] {
   if (input.canFind) {
     rows.push(command("find-in-thread", THREAD_FIND_COPY.find, "thread", THREAD_FIND_COPY.shortcut));
   }
-  rows.push(command("next-attention", NEXT_ATTENTION_COPY.command, "navigation"));
-  if (active && input.caps?.supports_rename === true) {
-    rows.push(command("rename", COPY.rename, "thread"));
-  }
+  // 改名、置顶、归档、删除记在工作台的数据库里，所有 Agent 都有。
+  if (active) rows.push(command("rename", COPY.rename, "thread"));
   if (active) rows.push(command("pin", COPY.pin, "thread"));
-  if (active && input.caps?.supports_archive === true) {
+  if (active) {
     rows.push(
       command(
         "archive",
@@ -152,15 +120,12 @@ function commandItems(input: PaletteInput): PaletteRow[] {
       ),
     );
   }
-  if (active && input.caps?.supports_fork === true) rows.push(command("fork", COPY.fork, "thread"));
-  if (active && input.caps?.supports_delete === true) {
-    rows.push(command("delete", COPY.deleteChat, "thread", COPY.shortcutDelete));
-  }
+  if (active) rows.push(command("delete", COPY.deleteChat, "thread", COPY.shortcutDelete));
   rows.push(command("quick-open", COPY.quickOpen, "navigation", COPY.shortcutQuickOpen));
   rows.push(command("toggle-sidebar", COPY.toggleSidebar, "navigation", COPY.shortcutSidebar));
   if (input.canSearchFiles) rows.push(command("search-files", COPY.searchFiles, "navigation"));
   if (active) rows.push(command("toggle-files", COPY.toggleFiles, "navigation"));
-  if (active && showsFileChanges(input.caps?.changes)) {
+  if (active && showsFileChanges(input.changes)) {
     rows.push(command("toggle-changes", COPY.toggleChanges, "panels"));
   }
   rows.push(command("open-folder", COPY.openFolder, "workspace"));

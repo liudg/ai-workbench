@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { buildPaletteRows, type PaletteCaps, type PaletteRow, type PaletteSession } from "./commands";
+import { buildPaletteRows, type PaletteRow, type PaletteSession } from "./commands";
 import { CommandMenu, type PaletteDrill } from "./CommandMenu";
 import { COMMAND_MENU_COPY as COPY } from "./copy";
 import { fileRows } from "./file-rows";
@@ -12,21 +12,8 @@ const sessions: PaletteSession[] = [
   { id: "s4", projectId: "p", title: "整理差异", archived: false, updatedAt: 2, pinned: false },
 ];
 
-const onCaps: PaletteCaps = {
-  supports_archive: true,
-  supports_rename: true,
-  supports_delete: true,
-  supports_fork: true,
-  changes: { turn_diff: true, per_file_patch: true, git_scopes: true },
-};
-
-const offCaps: PaletteCaps = {
-  supports_archive: false,
-  supports_rename: false,
-  supports_delete: false,
-  supports_fork: false,
-  changes: { turn_diff: false, per_file_patch: false, git_scopes: false },
-};
+const onChanges = { turn_diff: true, per_file_patch: true, git_scopes: true };
+const offChanges = { turn_diff: false, per_file_patch: false, git_scopes: false };
 
 const PREVIEW_FILES = [
   "src/App.tsx",
@@ -40,10 +27,10 @@ function previewDrill(value: string | null): PaletteDrill {
   return "commands";
 }
 
-/** 开发预览：`?preview=command-menu`。`caps=off` 关掉能力开关，`q` 预填搜索，`drill=files` 看跳转文件。 */
+/** 开发预览：`?preview=command-menu`。`caps=off` 关掉变更能力，`q` 预填搜索，`drill=files` 看跳转文件。 */
 export default function CommandMenuPreview() {
   const params = new URLSearchParams(window.location.search);
-  const caps = params.get("caps") === "off" ? offCaps : onCaps;
+  const changes = params.get("caps") === "off" ? offChanges : onChanges;
   const [query, setQuery] = useState(params.get("q") ?? "");
   const [drill, setDrill] = useState<PaletteDrill>(previewDrill(params.get("drill")));
   const [active, setActive] = useState(0);
@@ -53,7 +40,7 @@ export default function CommandMenuPreview() {
     mode: drill === "chats" ? "chats" : "commands",
     sessions,
     activeSessionId: "s1",
-    caps,
+    changes,
     canNewThread: true,
     canStandalone: true,
     canSearchFiles: params.get("caps") !== "off",

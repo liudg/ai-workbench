@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 
-import { PanelTabs } from "../core/PanelTabs";
+import { usePanel } from "@/features/panel/core/PanelProvider";
+import { PanelTabs } from "@/features/panel/core/PanelTabs";
+import { ProjectPanel } from "@/features/workspace";
 import { projectIdForRoot } from "./preview-project";
-import { PanelProvider, usePanel } from "../core/PanelProvider";
 
 /** 开发预览：文件树点 png，经查看器注册表在标签里显示真实图片。 */
 export default function ImagePanelPreview() {
@@ -38,17 +39,9 @@ export default function ImagePanelPreview() {
   }
 
   return (
-    <PanelProvider
-      sessionId="preview"
-      projectId={projectId}
-      projectPath={root}
-      sessionTitle="preview"
-      agent={null}
-      events={[]}
-      usage={null}
-    >
+    <ProjectPanel projectId={projectId} path={root} title="preview">
       <ImagePanelBoot />
-    </PanelProvider>
+    </ProjectPanel>
   );
 }
 
