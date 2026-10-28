@@ -2,7 +2,6 @@
 
 mod branch;
 mod diff;
-mod recorded;
 mod worktree;
 
 pub use diff::git_diff_text;
@@ -10,19 +9,9 @@ pub use diff::git_diff_text;
 pub use branch::{
     checkout_local_branch, create_and_checkout_branch, local_branch_menu, GitBranchMenu,
 };
-pub use recorded::{
-    checkout_contains, checkout_matches, recorded_checkouts, RecordedCheckout, RecordedWorktrees,
-};
-#[cfg(any(test, feature = "test-support"))]
-pub use worktree::block_git;
-#[allow(unused_imports)]
 pub use worktree::{
-    bind_codex_thread, cancel_worktree_start, codex_worktree_root, create_codex_checkout,
-    create_task_worktree, TaskWorktree,
-    delete_preview, discard_confirmed_worktree, linked_checkout, note_start_child,
-    plan_claude_worktree, record_owned_worktree, remove_checkout, remove_owned_worktree,
-    repo_has_commit, session_worktree, source_revision, start_was_cancelled, Checkout,
-    DeletePreview, OwnedMarker, StartChild, WorktreeStart,
+    bind_codex_thread, create_task_worktree, delete_preview, discard_confirmed_worktree,
+    repo_has_commit, DeletePreview, TaskWorktree,
 };
 
 use std::path::Path;

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import type { FileSearchHit } from "@/lib/ipc";
+import type { FileSearchHit } from "@/types";
 import { usePanelData } from "../core/PanelProvider";
 
 let fileSearchSerial = 0;

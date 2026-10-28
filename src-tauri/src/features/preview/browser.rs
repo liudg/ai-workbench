@@ -12,7 +12,6 @@ use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Runtime, 
 
 use super::resolve_preview_file;
 use crate::features::images::stage_image_bytes;
-use crate::features::projects::ProjectStore;
 use aiwb_core::models::{strip_verbatim_prefix, PageAnnotation};
 
 const LABEL: &str = "preview-browser";
@@ -84,24 +83,6 @@ pub fn navigation_target(raw: &str) -> Result<Url, String> {
     }
 }
 
-pub fn external_open_target(raw: &str) -> Result<String, String> {
-    let text = raw.trim();
-    if text.is_empty() || text.chars().any(char::is_control) {
-        return Err("无法在外部浏览器中打开".into());
-    }
-    let lower = text.to_ascii_lowercase();
-    if lower.starts_with("https://") || lower.starts_with("http://") {
-        navigation_target(text)?;
-        return Ok(text.to_string());
-    }
-    let path = text.replace('/', "\\");
-    let as_path = Path::new(&path);
-    if as_path.is_absolute() && as_path.is_file() {
-        return Ok(path);
-    }
-    Err("无法在外部浏览器中打开".into())
-}
-
 pub fn should_navigate(stored: &str, requested: &str, live: Option<&str>) -> bool {
     if urls_equivalent(stored, requested) {
         return false;
@@ -119,20 +100,6 @@ fn urls_equivalent(left: &str, right: &str) -> bool {
     !left.is_empty() && norm(left) == norm(right)
 }
 
-#[tauri::command]
-pub fn prepare_browser_file(
-    app: AppHandle,
-    store: tauri::State<'_, ProjectStore>,
-    manager: tauri::State<'_, crate::features::sessions::SessionManager>,
-    project_id: String,
-    path: String,
-    session_id: Option<String>,
-) -> Result<BrowserFile, String> {
-    let root = super::project_root(&store, &manager, &project_id, session_id.as_deref())?;
-    browser_file_at(&app, root, &path)
-}
-
-/// 同 [`prepare_browser_file`]，目录由调用方给出。任务视图的工作目录在 daemon 里，前端直接带过来。
 #[tauri::command]
 pub fn prepare_browser_path(app: AppHandle, root: String, path: String) -> Result<BrowserFile, String> {
     browser_file_at(&app, std::path::PathBuf::from(root), &path)
@@ -165,21 +132,6 @@ pub async fn browser_show(
 ) -> Result<(), String> {
     let target = navigation_target(&url)?;
     show_browser(app, target, x, y, width, height)
-}
-
-#[tauri::command]
-pub async fn browser_bounds(
-    app: AppHandle,
-    x: f64,
-    y: f64,
-    width: f64,
-    height: f64,
-) -> Result<(), String> {
-    let _guard = host_lock().lock().map_err(|_| "浏览器正忙".to_string())?;
-    let Some(webview) = app.get_webview(LABEL) else {
-        return Ok(());
-    };
-    place(&webview, x, y, width, height, false)
 }
 
 #[tauri::command]
@@ -216,29 +168,6 @@ pub async fn browser_annotate(app: AppHandle, on: bool) -> Result<(), String> {
     let script = format!("window.__awSetAnnotate&&window.__awSetAnnotate({on}, true);");
     let _ = webview.eval(script);
     Ok(())
-}
-
-#[tauri::command]
-pub fn browser_page_title(app: AppHandle, title: String) {
-    emit_title(&app, &title);
-}
-
-#[tauri::command]
-pub fn browser_annotate_state(app: AppHandle, kind: String, on: bool) {
-    if kind == "annotate" || kind == "suspended" {
-        emit_flag(&app, &kind, on);
-    }
-}
-
-#[tauri::command]
-pub fn browser_annotation_submit(app: AppHandle, note: PageAnnotation) {
-    accept_annotation(app, note);
-}
-
-#[tauri::command]
-pub async fn browser_open_external(target: String) -> Result<(), String> {
-    let target = external_open_target(&target)?;
-    shell_open(&target)
 }
 
 #[tauri::command]
@@ -874,7 +803,7 @@ fn take_pwstr(ptr: windows::core::PWSTR) -> String {
 }
 
 #[cfg(windows)]
-fn shell_open(target: &str) -> Result<(), String> {
+pub(crate) fn open_in_shell(target: &str) -> Result<(), String> {
     use std::ffi::OsStr;
     use std::os::windows::ffi::OsStrExt;
     let op: Vec<u16> = OsStr::new("open").encode_wide().chain(Some(0)).collect();
@@ -890,7 +819,7 @@ fn shell_open(target: &str) -> Result<(), String> {
         )
     };
     if code <= 32 {
-        return Err("无法在外部浏览器中打开".into());
+        return Err("无法在外部打开".into());
     }
     Ok(())
 }
@@ -908,7 +837,7 @@ extern "system" {
 }
 
 #[cfg(not(windows))]
-fn shell_open(target: &str) -> Result<(), String> {
+pub(crate) fn open_in_shell(target: &str) -> Result<(), String> {
     let program = if cfg!(target_os = "macos") {
         "open"
     } else {
@@ -921,11 +850,7 @@ fn shell_open(target: &str) -> Result<(), String> {
         .stderr(std::process::Stdio::null())
         .spawn()
         .map(|_| ())
-        .map_err(|_| "无法在外部浏览器中打开".to_string())
-}
-
-pub(crate) fn open_in_shell(target: &str) -> Result<(), String> {
-    shell_open(target).map_err(|_| "无法在外部打开".to_string())
+        .map_err(|_| "无法在外部打开".to_string())
 }
 
 #[cfg(test)]
@@ -940,16 +865,6 @@ mod tests {
         assert!(navigation_target("javascript:alert(1)").is_err());
         assert!(navigation_target("file:///C:/secret.html").is_err());
         assert!(navigation_target("  ").is_err());
-    }
-
-    #[test]
-    fn external_target_keeps_web_urls() {
-        assert_eq!(
-            external_open_target(" https://example.com ").unwrap(),
-            "https://example.com"
-        );
-        assert!(external_open_target("javascript:alert(1)").is_err());
-        assert!(external_open_target("not a path").is_err());
     }
 
     #[test]

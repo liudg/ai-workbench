@@ -1,6 +1,6 @@
-//! Agent 适配器：一种 CLI 对应一个实现。会话列表属于 SessionManager。
+//! Agent 适配器：一种 CLI 对应一个实现。会话列表在 daemon 的数据库里。
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -16,21 +16,6 @@ use aiwb_core::models::{
 use super::context::SessionContext;
 use super::error::AgentError;
 use super::session::{AgentSession, EventSink};
-
-/// 适配器准备好的工作树。`cli_name` 有值时由该 CLI 自己创建目录。
-#[derive(Debug, Clone)]
-pub struct PreparedWorktree {
-    pub cwd: String,
-    pub branch: Option<String>,
-    pub cli_name: Option<String>,
-    pub source: String,
-    /// 创建失败时撤掉的检出根。会话结束不删；删除会话时只删有记录的检出。
-    pub rollback_root: String,
-    /// 创建时所在的分支。源目录是分离头指针时为空。
-    pub base: Option<String>,
-    /// 创建时的提交。
-    pub sha: String,
-}
 
 /// 一种 Agent CLI。负责按项目环境启动 [`AgentSession`]，不持有会话列表。
 #[async_trait]
@@ -177,14 +162,6 @@ pub trait AgentAdapter: Send + Sync {
         )))
     }
 
-    /// 重命名聊天。
-    async fn rename_thread(&self, _native_id: &str, _name: &str) -> Result<(), AgentError> {
-        Err(AgentError::Runtime(format!(
-            "{} 不支持重命名聊天",
-            self.display_name()
-        )))
-    }
-
     /// 永久删除聊天。这不是删除工作区文件。
     async fn delete_thread(&self, _native_id: &str) -> Result<(), AgentError> {
         Err(AgentError::Runtime(format!(
@@ -208,16 +185,4 @@ pub trait AgentAdapter: Send + Sync {
         None
     }
 
-    /// 按这个 Agent 的原生方式准备一个新工作树。没有原生支持时拒绝。
-    fn prepare_worktree(&self, _source: &Path) -> Result<PreparedWorktree, AgentError> {
-        Err(AgentError::Runtime("当前 Agent 不能在工作树里运行".into()))
-    }
-
-    /// 归档或取消归档。只有声明了 `supports_archive` 的适配器覆盖它。
-    async fn set_archived(&self, _native_id: &str, _archived: bool) -> Result<(), AgentError> {
-        Err(AgentError::Runtime(format!(
-            "{} 不支持归档",
-            self.display_name()
-        )))
-    }
 }

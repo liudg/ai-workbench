@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 
-import type { FileSearchHit } from "@/lib/ipc";
+import type { FileSearchHit } from "@/types";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { cn } from "@/lib/utils";
 import { usePanelOptional } from "../core/PanelProvider";

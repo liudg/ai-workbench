@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-import type { TreeEntry } from "@/lib/ipc";
+import type { TreeEntry } from "@/types";
 import { usePanelData } from "../core/PanelProvider";
 import { filterHopAction, matchingFilter } from "./filter-hop";
 
@@ -107,7 +107,7 @@ export function useWorkspaceTree(
             const action = filterHopAction({
               stopped: cancel,
               cancelled: Boolean(result.cancelled),
-              ready: result.ready !== false,
+              ready: result.ready,
             });
             if (action === "stop") return;
             if (!result.cancelled) {

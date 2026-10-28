@@ -1,8 +1,4 @@
-//! 按功能划分的后端。命令层只依赖各功能的公开类型，不进入适配器内部。
+//! 应用壳的本机能力。业务都在 daemon 里。
 
-pub mod chats;
 pub mod images;
-pub mod ipc;
 pub mod preview;
-pub mod projects;
-pub mod sessions;

@@ -549,6 +549,11 @@ mod tests {
     use super::*;
 
     #[test]
+    fn cwd_key_ignores_verbatim_prefix_and_case() {
+        assert_eq!(cwd_key(r"\\?\F:\App\"), cwd_key(r"f:\app"));
+    }
+
+    #[test]
     fn empty_review_findings_stay_in_the_payload() {
         let body = SessionEventBody::ReviewFindings {
             summary: "通过".into(),

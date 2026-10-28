@@ -3,6 +3,11 @@
 ## 项目目标
 AI Workbench 是一个多 Agent 桌面工作台（Tauri + React），在同一个界面里驱动 Codex、Claude Code 等本地 Agent。借鉴 herdr、orca、t3code 的好设计，目标是比 v1 更好用。
 
+## 架构
+- 后台常驻 `aiwb-daemon`（`crates/`）持有项目、任务、会话和 Agent，SQLite 是唯一数据源；前端经 WebSocket JSON-RPC 直连它（`src/lib/daemon`），桌面版和网页预览走同一条通道。
+- Tauri 应用壳（`src-tauri/`）只做原生能力：拉起 daemon、窗口、托盘、通知和任务栏角标、内置浏览器、本机打开和图片。前端调用壳的地方都在 `src/lib/native`。
+- 详细设计和迁移记录见 `docs/architecture-v2.md`。
+
 ## 多 Agent 规则
 - 换 Agent 不需要改 UI：界面完全由当前会话适配器的数据和能力驱动，不用 Agent 名字判断能力。
 - 模型、强度、权限、服务档位等目录来自各自的适配器或 CLI，不跨 Agent 串用。

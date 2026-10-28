@@ -1,4 +1,4 @@
-// 与 `src-tauri/src/models/session.rs` 对应。
+// 与 `crates/aiwb-core/src/models/session.rs` 对应。
 
 import type { AgentKind } from "./agent.ts";
 

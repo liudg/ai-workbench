@@ -1,11 +1,11 @@
 import { userFacingMessage } from "../../../lib/user-facing.ts";
 
-/** 路径筛选的一页。`ready` 缺省当成已经扫完，避免旧后端把轮询卡住。 */
+/** 路径筛选的一页。`ready` 为 false 时索引还在建。 */
 export interface PathPage {
   paths: readonly string[];
   truncated: boolean;
   cancelled: boolean;
-  ready?: boolean;
+  ready: boolean;
 }
 
 export interface PathFollow {
@@ -22,7 +22,7 @@ export function mentionSearchError(error: unknown): string {
 }
 
 /**
- * 路径索引边扫边返回。`ready !== false` 之前继续要下一页，
+ * 路径索引边扫边返回。`ready` 之前继续要下一页，
  * 取消的页不交给调用方，也不能当成最终结果。
  */
 export async function followPathPages(
@@ -36,9 +36,8 @@ export async function followPathPages(
     if (cancelled()) return;
     const page = await load();
     if (cancelled() || page.cancelled) return;
-    const ready = page.ready !== false;
-    onPage({ paths: page.paths, truncated: page.truncated, ready });
-    if (ready) return;
+    onPage({ paths: page.paths, truncated: page.truncated, ready: page.ready });
+    if (page.ready) return;
     await wait(PAGE_GAP_MS);
   }
   throw new Error("筛选没有完成");

@@ -9,17 +9,6 @@ rust-version = "1.77.2"
 name = "ai_workbench_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
-[[bin]]
-name = "dev-bridge"
-path = "src/bin/dev-bridge.rs"
-required-features = ["dev-bridge"]
-
-[features]
-# 网页预览的本机后端（cargo run --features dev-bridge --bin dev-bridge）。
-# 非默认 feature：tauri build 走 cargo build --bins，不会编译这个二进制，也不会打进安装包。
-# 桌面开发由 pnpm tauri:dev 传 --bin ai-workbench。不要加 package.default-run。
-dev-bridge = ["tauri/test"]
-
 [build-dependencies]
 tauri-build = { version = "2.0.2", features = [] }
 
@@ -30,26 +19,15 @@ tauri-plugin-process = "2"
 tauri-plugin-updater = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-toml_edit = "0.20.2"
 uuid = { version = "1", features = ["v4"] }
-async-trait = "0.1"
-thiserror = "2"
 tokio = { version = "1", features = ["full"] }
-chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
-encoding_rs = "0.8"
-ignore = "0.4"
-diffy = "0.4.2"
-aiwb-agents = { path = "../crates/aiwb-agents" }
 aiwb-core = { path = "../crates/aiwb-core" }
 aiwb-files = { path = "../crates/aiwb-files" }
-aiwb-git = { path = "../crates/aiwb-git" }
-aiwb-proc = { path = "../crates/aiwb-proc" }
 tauri-plugin-notification = "2"
 tokio-tungstenite = "0.24"
 futures-util = "0.3"
 
 [target.'cfg(windows)'.dependencies]
-winreg = "0.56"
 webview2-com = "0.39"
 png = "0.17"
 windows = { version = "0.62", features = [
@@ -58,7 +36,3 @@ windows = { version = "0.62", features = [
   "Win32_System_Com_StructuredStorage",
   "Win32_UI_WindowsAndMessaging",
 ] }
-
-[dev-dependencies]
-aiwb-git = { path = "../crates/aiwb-git", features = ["test-support"] }
-tempfile = "3"

@@ -6,14 +6,20 @@ import { isTauri } from "@/lib/daemon/endpoint";
 import { baseName } from "@/shared/path";
 import type { Attachment } from "@/types";
 
-export async function pickFiles(title: string): Promise<Attachment[]> {
-  let paths: string[];
+async function pickPaths(title: string, multiple: boolean): Promise<string[]> {
   if (isTauri) {
-    const selected = await open({ multiple: true, directory: false, title });
-    paths = Array.isArray(selected) ? selected : typeof selected === "string" ? [selected] : [];
-  } else {
-    const typed = window.prompt(`${title}\n输入本机绝对路径：`)?.trim();
-    paths = typed ? [typed] : [];
+    const selected = await open({ multiple, directory: false, title });
+    return Array.isArray(selected) ? selected : typeof selected === "string" ? [selected] : [];
   }
-  return paths.map((path) => ({ path, name: baseName(path) }));
+  const typed = window.prompt(`${title}\n输入本机绝对路径：`)?.trim();
+  return typed ? [typed] : [];
+}
+
+export async function pickFiles(title: string): Promise<Attachment[]> {
+  return (await pickPaths(title, true)).map((path) => ({ path, name: baseName(path) }));
+}
+
+/** 选一个文件。取消时返回 null。 */
+export async function pickFile(title: string): Promise<string | null> {
+  return (await pickPaths(title, false))[0] ?? null;
 }

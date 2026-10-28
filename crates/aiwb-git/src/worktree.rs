@@ -1,21 +1,11 @@
-//! 新建会话用的 Git 工作树。
+//! 任务用的 Git 工作树：任务层统一创建，Agent 只拿到 cwd；删除任务时按记录清掉目录和分支。
 //!
-//! Codex 的布局对齐 `openai/codex` `codex-rs/worktree`（2026-10-18 main）：
-//! 在托管根目录下建 `{4位十六进制}/{仓库名}`，`git worktree add --detach`，
-//! 再 `reset --hard`。CLI 的 `WorktreeSettings::for_cli` 关闭自动清理。
-//! app-server 的 `thread/start` 只收 `cwd`，没有创建工作树的 RPC。
-//! 这些 git 命令同样关掉钩子和 fsmonitor。`git reset --hard` 会调用
-//! `core.fsmonitor`；它不返回时，文件已经在磁盘上，记录和 thread/start 都还没开始。
-//!
-//! Claude Code 的 `--worktree <name>` 把工作树放在仓库 `.claude/worktrees/<name>`，
-//! 分支名是 `worktree-<name>`。这里只算出路径和名字，由适配器把旗标交给 CLI。
+//! 这些 git 命令关掉钩子和 fsmonitor，单条有时限，卡住时能返回。
 
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 /// 单条 git 的上限。钩子或 fsmonitor 卡住时要能返回，而不是一直占着启动。
@@ -27,36 +17,8 @@ pub struct Checkout {
     pub cwd: PathBuf,
     /// `git worktree remove` 用的检出根。
     pub root: PathBuf,
-    /// 有名字才是分支。Codex 托管检出是分离头指针，这里是 `None`。
+    /// 有名字才是分支。分离头指针时是 `None`。
     pub branch: Option<String>,
-}
-
-/// Claude `--worktree` 会自己创建的目标。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ClaudeWorktreePlan {
-    pub name: String,
-    pub path: PathBuf,
-    pub branch: String,
-}
-
-/// 一次「新建会话」的取消位。停止按钮要能打断还没返回的 git 和 Agent 进程。
-struct StartSlot {
-    cancelled: AtomicBool,
-    pids: Mutex<Vec<u32>>,
-}
-
-tokio::task_local! {
-    static ACTIVE_START: Arc<StartSlot>;
-}
-
-thread_local! {
-    static SUPPRESS_CANCEL: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-}
-
-#[cfg(any(test, feature = "test-support"))]
-thread_local! {
-    static GIT_BLOCKED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-    static GIT_CALLS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 }
 
 #[cfg(test)]
@@ -74,149 +36,6 @@ fn noop_after_worktree_remove(_root: &Path) {}
 
 #[cfg(test)]
 fn noop_prepare_worktree_dir_remove(_path: &Path, _attempt: u32) {}
-
-/// 测试里拦住 `git`。列会话的路径不能靠它识别工作树。
-#[cfg(any(test, feature = "test-support"))]
-pub struct GitGuard;
-
-#[cfg(any(test, feature = "test-support"))]
-pub fn block_git() -> GitGuard {
-    GIT_CALLS.with(|calls| calls.set(0));
-    GIT_BLOCKED.with(|flag| flag.set(true));
-    GitGuard
-}
-
-#[cfg(any(test, feature = "test-support"))]
-impl GitGuard {
-    pub fn calls(&self) -> u32 {
-        GIT_CALLS.with(|calls| calls.get())
-    }
-}
-
-#[cfg(any(test, feature = "test-support"))]
-impl Drop for GitGuard {
-    fn drop(&mut self) {
-        GIT_BLOCKED.with(|flag| flag.set(false));
-    }
-}
-
-#[cfg(any(test, feature = "test-support"))]
-fn reject_blocked_git() -> Result<(), String> {
-    if !GIT_BLOCKED.with(|flag| flag.get()) {
-        return Ok(());
-    }
-    GIT_CALLS.with(|calls| calls.set(calls.get().saturating_add(1)));
-    Err("测试禁止调用 git".into())
-}
-
-fn starts() -> &'static Mutex<std::collections::HashMap<String, Arc<StartSlot>>> {
-    static STARTS: std::sync::OnceLock<Mutex<std::collections::HashMap<String, Arc<StartSlot>>>> =
-        std::sync::OnceLock::new();
-    STARTS.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
-}
-
-fn latches() -> &'static Mutex<std::collections::HashMap<String, Instant>> {
-    static LATCHES: std::sync::OnceLock<Mutex<std::collections::HashMap<String, Instant>>> =
-        std::sync::OnceLock::new();
-    LATCHES.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
-}
-
-pub struct WorktreeStart {
-    project_id: String,
-    slot: Arc<StartSlot>,
-}
-
-/// 把子进程登记到当前这次启动。Drop 时摘掉，避免之后误杀复用的 pid。
-pub struct StartChild {
-    slot: Option<Arc<StartSlot>>,
-    pid: u32,
-}
-
-impl WorktreeStart {
-    pub fn begin(project_id: &str) -> Result<Self, String> {
-        let mut latches = latches().lock().unwrap();
-        if let Some(at) = latches.remove(project_id) {
-            if at.elapsed() < Duration::from_secs(30) {
-                return Err("已停止".into());
-            }
-        }
-        drop(latches);
-        let mut starts = starts().lock().unwrap();
-        if starts.contains_key(project_id) {
-            return Err("这个项目正在建立会话".into());
-        }
-        let slot = Arc::new(StartSlot {
-            cancelled: AtomicBool::new(false),
-            pids: Mutex::new(Vec::new()),
-        });
-        starts.insert(project_id.to_string(), Arc::clone(&slot));
-        Ok(Self {
-            project_id: project_id.to_string(),
-            slot,
-        })
-    }
-
-    /// 这次 future 里的 git 和 Agent 进程都算同一次启动，await 换线程也还在。
-    pub async fn drive<F, T>(&self, fut: F) -> T
-    where
-        F: std::future::Future<Output = T>,
-    {
-        ACTIVE_START.scope(Arc::clone(&self.slot), fut).await
-    }
-}
-
-impl Drop for WorktreeStart {
-    fn drop(&mut self) {
-        let mut starts = starts().lock().unwrap();
-        if let Some(current) = starts.get(&self.project_id) {
-            if Arc::ptr_eq(current, &self.slot) {
-                starts.remove(&self.project_id);
-            }
-        }
-    }
-}
-
-impl Drop for StartChild {
-    fn drop(&mut self) {
-        let Some(slot) = self.slot.take() else {
-            return;
-        };
-        slot.pids.lock().unwrap().retain(|pid| *pid != self.pid);
-    }
-}
-
-pub fn note_start_child(pid: u32) -> StartChild {
-    let slot = ACTIVE_START.try_with(Arc::clone).ok();
-    if let Some(slot) = slot.as_ref() {
-        slot.pids.lock().unwrap().push(pid);
-    }
-    StartChild { slot, pid }
-}
-
-pub fn start_was_cancelled() -> bool {
-    ACTIVE_START
-        .try_with(|slot| slot.cancelled.load(Ordering::SeqCst))
-        .unwrap_or(false)
-}
-
-/// 停止还在建立的会话。进程还没登记时先记下，随后的 begin 直接失败。
-pub fn cancel_worktree_start(project_id: &str) {
-    let starts = starts().lock().unwrap();
-    if let Some(slot) = starts.get(project_id) {
-        slot.cancelled.store(true, Ordering::SeqCst);
-        let pids = slot.pids.lock().unwrap().clone();
-        drop(starts);
-        for pid in pids {
-            kill_pid(pid);
-        }
-        return;
-    }
-    drop(starts);
-    latches()
-        .lock()
-        .unwrap()
-        .insert(project_id.to_string(), Instant::now());
-}
 
 fn kill_pid(pid: u32) {
     if pid == 0 {
@@ -236,28 +55,6 @@ fn kill_pid(pid: u32) {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status();
-}
-
-struct SuppressCancel;
-
-impl SuppressCancel {
-    fn enter() -> Self {
-        SUPPRESS_CANCEL.with(|flag| flag.set(true));
-        Self
-    }
-}
-
-impl Drop for SuppressCancel {
-    fn drop(&mut self) {
-        SUPPRESS_CANCEL.with(|flag| flag.set(false));
-    }
-}
-
-fn start_cancelled() -> bool {
-    if SUPPRESS_CANCEL.with(|flag| flag.get()) {
-        return false;
-    }
-    start_was_cancelled()
 }
 
 pub fn repo_has_commit(root: &Path) -> Result<bool, String> {
@@ -329,129 +126,6 @@ pub fn linked_checkout(project: &Path, cwd: &Path) -> Result<Option<Checkout>, S
     Ok(Some(Checkout { cwd, root, branch }))
 }
 
-/// `$CODEX_HOME/worktrees`，或 `config.toml` 里绝对路径的 `desktop.git-worktree-root`。
-pub fn codex_worktree_root() -> PathBuf {
-    let home = codex_home();
-    configured_worktree_root(&home).unwrap_or_else(|| home.join("worktrees"))
-}
-
-pub fn configured_worktree_root(codex_home: &Path) -> Option<PathBuf> {
-    let raw = fs::read_to_string(codex_home.join("config.toml")).ok()?;
-    let doc = raw.parse::<toml_edit::Document>().ok()?;
-    let configured = doc
-        .get("desktop")
-        .and_then(|item| item.get("git-worktree-root"))
-        .and_then(|item| item.as_str())
-        .map(str::trim)
-        .filter(|item| !item.is_empty())?;
-    let path = PathBuf::from(configured);
-    path.is_absolute().then_some(path)
-}
-
-pub fn create_codex_checkout(source: &Path, managed_root: &Path) -> Result<Checkout, String> {
-    if !managed_root.is_absolute() {
-        return Err("工作树目录必须是绝对路径".into());
-    }
-    let source = dunce_or_canonicalize(source)?;
-    let repo = repository_root(&source)?;
-    let repo_name = repo
-        .file_name()
-        .ok_or_else(|| "仓库没有目录名".to_string())?;
-    let sha = git_stdout(
-        &repo,
-        &["rev-parse", "--verify", "--end-of-options", "HEAD^{commit}"],
-    )?;
-    fs::create_dir_all(managed_root).map_err(|err| format!("无法创建工作树目录: {err}"))?;
-    let bucket = allocate_bucket(managed_root)?;
-    let root = bucket.join(repo_name);
-    let root_arg = root.to_string_lossy().to_string();
-    if let Err(err) = git_status(
-        &repo,
-        &[
-            "worktree",
-            "add",
-            "--detach",
-            "--no-checkout",
-            &root_arg,
-            &sha,
-        ],
-    ) {
-        let _ = fs::remove_dir(&bucket);
-        return Err(err);
-    }
-    let populated = (|| {
-        let config = git_stdout(
-            &root,
-            &[
-                "rev-parse",
-                "--path-format=absolute",
-                "--git-path",
-                "config.worktree",
-            ],
-        )?;
-        git_status(
-            &root,
-            &["config", "--file", &config, "core.worktree", &root_arg],
-        )?;
-        git_status(
-            &root,
-            &[
-                "--work-tree=.",
-                "reset",
-                "--hard",
-                "--no-recurse-submodules",
-                &sha,
-            ],
-        )?;
-        Ok::<(), String>(())
-    })();
-    if let Err(err) = populated {
-        remove_checkout(&repo, &root);
-        return Err(err);
-    }
-    let relative = match relative_checkout(&repo, &source) {
-        Ok(path) => path,
-        Err(err) => {
-            remove_checkout(&repo, &root);
-            return Err(err);
-        }
-    };
-    let cwd = root.join(&relative);
-    if !cwd.is_dir() {
-        remove_checkout(&repo, &root);
-        return Err("工作树里没有对应的工作目录".into());
-    }
-    let cwd = match dunce_or_canonicalize(&cwd) {
-        Ok(path) => path,
-        Err(err) => {
-            remove_checkout(&repo, &root);
-            return Err(err);
-        }
-    };
-    let canonical_root = match dunce_or_canonicalize(&root) {
-        Ok(path) => path,
-        Err(err) => {
-            remove_checkout(&repo, &root);
-            return Err(err);
-        }
-    };
-    Ok(Checkout {
-        cwd,
-        root: canonical_root,
-        branch: None,
-    })
-}
-
-pub fn plan_claude_worktree(source: &Path) -> Result<ClaudeWorktreePlan, String> {
-    let repo = repository_root(source)?;
-    let name = format!("wt-{}", &uuid::Uuid::new_v4().simple().to_string()[..8]);
-    Ok(ClaudeWorktreePlan {
-        path: repo.join(".claude").join("worktrees").join(&name),
-        branch: format!("worktree-{name}"),
-        name,
-    })
-}
-
 /// 任务工作树的分支前缀。
 const TASK_BRANCH_PREFIX: &str = "aiwb/";
 
@@ -518,7 +192,6 @@ pub fn create_task_worktree(source: &Path, managed_root: &Path) -> Result<TaskWo
 /// 创建失败时撤掉半成品。会话结束不调用。
 /// Codex 官方在会话结束或删除时怎么清理工作树，本仓库资料里没有确认，标为未观察。
 pub fn remove_checkout(source: &Path, checkout_root: &Path) {
-    let _suppress = SuppressCancel::enter();
     let root_arg = checkout_root.to_string_lossy().to_string();
     let _ = git_status(source, &["worktree", "remove", "--force", &root_arg]);
     if let Ok(repo) = repository_root(source) {
@@ -1082,19 +755,6 @@ fn same_path(left: &Path, right: &Path) -> bool {
     }
 }
 
-fn allocate_bucket(root: &Path) -> Result<PathBuf, String> {
-    for _ in 0..64 {
-        let id = uuid::Uuid::new_v4().simple().to_string();
-        let bucket = root.join(&id[..4]);
-        match fs::create_dir(&bucket) {
-            Ok(()) => return Ok(bucket),
-            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(err) => return Err(format!("无法创建工作树目录: {err}")),
-        }
-    }
-    Err("没有可用的工作树目录".into())
-}
-
 fn git_path(cwd: &Path, argument: &str) -> Result<Option<PathBuf>, String> {
     let output = match git_output(cwd, &["rev-parse", "--path-format=absolute", argument]) {
         Ok(output) => output,
@@ -1241,11 +901,6 @@ fn git_output(root: &Path, args: &[&str]) -> Result<std::process::Output, String
     if !root.is_dir() {
         return Err("项目不存在".into());
     }
-    #[cfg(any(test, feature = "test-support"))]
-    reject_blocked_git()?;
-    if start_cancelled() {
-        return Err("已停止".into());
-    }
     let mut command = isolated_git(root);
     command
         .args(args)
@@ -1259,21 +914,12 @@ fn git_output(root: &Path, args: &[&str]) -> Result<std::process::Output, String
 }
 
 fn capture_git(mut child: std::process::Child) -> Result<std::process::Output, String> {
-    let tracked = note_start_child(child.id());
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
     let out_handle = std::thread::spawn(move || read_pipe(stdout));
     let err_handle = std::thread::spawn(move || read_pipe(stderr));
     let started = Instant::now();
     let status = loop {
-        if start_cancelled() {
-            let _ = child.kill();
-            let _ = child.wait();
-            let _ = out_handle.join();
-            let _ = err_handle.join();
-            drop(tracked);
-            return Err("已停止".into());
-        }
         match child.try_wait() {
             Ok(Some(status)) => break status,
             Ok(None) if started.elapsed() > GIT_COMMAND_LIMIT => {
@@ -1282,17 +928,12 @@ fn capture_git(mut child: std::process::Child) -> Result<std::process::Output, S
                 let _ = child.wait();
                 let _ = out_handle.join();
                 let _ = err_handle.join();
-                drop(tracked);
                 return Err("等待 git 超时，已停止这次操作。".into());
             }
             Ok(None) => std::thread::sleep(Duration::from_millis(30)),
-            Err(err) => {
-                drop(tracked);
-                return Err(format!("无法等待 git: {err}"));
-            }
+            Err(err) => return Err(format!("无法等待 git: {err}")),
         }
     };
-    drop(tracked);
     let stdout = out_handle.join().unwrap_or_default();
     let stderr = err_handle.join().unwrap_or_default();
     Ok(std::process::Output {
@@ -1348,19 +989,6 @@ fn dunce_or_canonicalize(path: &Path) -> Result<PathBuf, String> {
             PathBuf::from(aiwb_core::models::strip_verbatim_prefix(&text))
         })
         .map_err(|err| format!("无法解析路径: {err}"))
-}
-
-fn codex_home() -> PathBuf {
-    if let Some(dir) = std::env::var_os("CODEX_HOME") {
-        let path = PathBuf::from(dir);
-        if !path.as_os_str().is_empty() {
-            return path;
-        }
-    }
-    if let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) {
-        return PathBuf::from(home).join(".codex");
-    }
-    PathBuf::from(".codex")
 }
 
 #[cfg(test)]
@@ -1479,108 +1107,27 @@ mod tests {
     }
 
     #[test]
-    fn codex_checkout_is_detached_and_linked() {
+    fn task_worktree_is_linked_and_binds_one_codex_thread() {
         if !git_ok() {
             return;
         }
-        let repo = repo_with_commit("codex");
+        let repo = repo_with_commit("linked");
         let managed = scratch("managed");
-        let checkout = create_codex_checkout(&repo, &managed).unwrap();
-        assert!(checkout.cwd.starts_with(&managed));
-        assert_eq!(checkout.branch, None);
-        assert_eq!(current_branch(&checkout.cwd).unwrap(), None);
-        assert!(checkout.cwd.join("note.txt").is_file());
-        let linked = linked_checkout(&repo, &checkout.cwd).unwrap().unwrap();
-        assert_eq!(linked.branch, None);
+        let made = create_task_worktree(&repo, &managed).unwrap();
+        assert!(made.cwd.starts_with(dunce_or_canonicalize(&managed).unwrap()));
+        assert!(made.cwd.join("note.txt").is_file());
+        let linked = linked_checkout(&repo, &made.cwd).unwrap().unwrap();
+        assert_eq!(linked.branch.as_deref(), Some(made.branch.as_str()));
         assert!(linked_checkout(&repo, &repo).unwrap().is_none());
 
-        bind_codex_thread(&checkout.cwd, "thread-1").unwrap();
-        bind_codex_thread(&checkout.cwd, "thread-1").unwrap();
-        assert!(bind_codex_thread(&checkout.cwd, "other").is_err());
+        bind_codex_thread(&made.cwd, "thread-1").unwrap();
+        bind_codex_thread(&made.cwd, "thread-1").unwrap();
+        assert!(bind_codex_thread(&made.cwd, "other").is_err());
 
-        remove_checkout(&repo, &checkout.root);
-        assert!(!checkout.root.exists());
+        remove_checkout(&repo, &made.root);
+        assert!(!made.root.exists());
         let _ = fs::remove_dir_all(repo);
         let _ = fs::remove_dir_all(managed);
-    }
-
-    #[test]
-    fn recorded_marker_is_readable_without_git_and_delete_still_works() {
-        if !git_ok() {
-            return;
-        }
-        let repo = repo_with_commit("list-recorded");
-        let managed = scratch("list-managed");
-        let checkout = create_codex_checkout(&repo, &managed).unwrap();
-        let (base, sha) = source_revision(&repo).unwrap();
-        record_owned_worktree(
-            &checkout.cwd,
-            &OwnedMarker {
-                root: checkout.root.clone(),
-                base: base.clone(),
-                sha: sha.clone(),
-                branch: None,
-            },
-        )
-        .unwrap();
-        let guard = block_git();
-        let found = crate::recorded_checkouts(&repo, &managed);
-        assert_eq!(guard.calls(), 0);
-        assert_eq!(found.len(), 1, "新建的托管检出应能只靠标记文件认出来");
-        assert!(crate::checkout_matches(
-            &found,
-            &checkout.cwd.to_string_lossy()
-        ));
-        assert_eq!(found[0].base.as_deref(), Some("main"));
-        assert!(found[0].sha.starts_with(&sha[..7]));
-        drop(guard);
-        assert!(remove_owned_worktree(&repo, &checkout.cwd, true).unwrap());
-        assert!(!checkout.root.exists());
-        let _ = fs::remove_dir_all(repo);
-        let _ = fs::remove_dir_all(managed);
-    }
-
-    #[test]
-    fn claude_plan_uses_the_documented_directory_and_branch() {
-        if !git_ok() {
-            return;
-        }
-        let repo = repo_with_commit("claude");
-        let nested = repo.join("src");
-        fs::create_dir_all(&nested).unwrap();
-        let plan = plan_claude_worktree(&nested).unwrap();
-        assert!(plan
-            .path
-            .starts_with(repo.join(".claude").join("worktrees")));
-        assert!(plan.name.starts_with("wt-"));
-        assert_eq!(plan.branch, format!("worktree-{}", plan.name));
-        let _ = fs::remove_dir_all(repo);
-    }
-
-    #[test]
-    fn desktop_root_must_be_absolute() {
-        let home = scratch("home");
-        let absolute = if cfg!(windows) {
-            "C:/codex-worktrees"
-        } else {
-            "/var/codex-worktrees"
-        };
-        fs::write(
-            home.join("config.toml"),
-            format!("[desktop]\ngit-worktree-root = \"{absolute}\"\n"),
-        )
-        .unwrap();
-        assert_eq!(
-            configured_worktree_root(&home).unwrap(),
-            PathBuf::from(absolute)
-        );
-        fs::write(
-            home.join("config.toml"),
-            "[desktop]\ngit-worktree-root = \"relative\"\n",
-        )
-        .unwrap();
-        assert!(configured_worktree_root(&home).is_none());
-        let _ = fs::remove_dir_all(home);
     }
 
     #[test]
@@ -1592,17 +1139,7 @@ mod tests {
         let (base, sha) = source_revision(&repo).unwrap();
         assert_eq!(base.as_deref(), Some("main"));
         let managed = scratch("owned-managed");
-        let checkout = create_codex_checkout(&repo, &managed).unwrap();
-        record_owned_worktree(
-            &checkout.cwd,
-            &OwnedMarker {
-                root: checkout.root.clone(),
-                base: base.clone(),
-                sha: sha.clone(),
-                branch: None,
-            },
-        )
-        .unwrap();
+        let checkout = create_task_worktree(&repo, &managed).unwrap();
         let described = session_worktree(&repo, &checkout.cwd).unwrap();
         assert!(described.owned);
         assert_eq!(described.base.as_deref(), Some("main"));
@@ -1859,35 +1396,6 @@ mod tests {
         assert!(!branch_listed(&repo, &branch));
         assert!(repo.join("note.txt").is_file());
         let _ = fs::remove_dir_all(repo);
-    }
-
-    #[test]
-    fn codex_bucket_is_removed_with_the_worktree() {
-        if !git_ok() {
-            return;
-        }
-        let repo = repo_with_commit("codex-bucket");
-        let managed = scratch("codex-bucket-root");
-        let checkout = create_codex_checkout(&repo, &managed).unwrap();
-        let (base, sha) = source_revision(&repo).unwrap();
-        record_owned_worktree(
-            &checkout.cwd,
-            &OwnedMarker {
-                root: checkout.root.clone(),
-                base,
-                sha,
-                branch: None,
-            },
-        )
-        .unwrap();
-        let bucket = checkout.root.parent().unwrap().to_path_buf();
-        assert!(remove_owned_worktree(&repo, &checkout.cwd, true).unwrap());
-        assert!(!checkout.root.exists(), "Codex 工作树目录应被清掉");
-        assert!(!bucket.exists(), "空的四位目录应被清掉");
-        assert!(managed.is_dir(), "托管根要留着");
-        assert!(repo.join("note.txt").is_file());
-        let _ = fs::remove_dir_all(repo);
-        let _ = fs::remove_dir_all(managed);
     }
 
     #[cfg(unix)]
@@ -2222,7 +1730,7 @@ mod tests {
         );
         let managed = scratch("hooks-managed");
         let started = std::time::Instant::now();
-        let checkout = create_codex_checkout(&repo, &managed).unwrap();
+        let checkout = create_task_worktree(&repo, &managed).unwrap();
         assert!(
             started.elapsed() < std::time::Duration::from_secs(10),
             "checkout waited on a hook or fsmonitor"
@@ -2230,17 +1738,6 @@ mod tests {
         assert!(checkout.cwd.join("note.txt").is_file());
         assert!(!hook_ran.exists(), "post-checkout hook ran");
         assert!(!monitor_ran.exists(), "fsmonitor ran");
-        let (base, sha) = source_revision(&repo).unwrap();
-        record_owned_worktree(
-            &checkout.cwd,
-            &OwnedMarker {
-                root: checkout.root.clone(),
-                base,
-                sha,
-                branch: None,
-            },
-        )
-        .unwrap();
         assert!(session_worktree(&repo, &checkout.cwd).unwrap().owned);
         remove_checkout(&repo, &checkout.root);
         assert!(!checkout.root.exists());
@@ -2249,79 +1746,12 @@ mod tests {
         let _ = fs::remove_dir_all(mark);
     }
 
-    #[test]
-    fn cancel_before_begin_rejects_the_start() {
-        let id = unique_start("early");
-        cancel_worktree_start(&id);
-        match WorktreeStart::begin(&id) {
-            Err(err) => assert_eq!(err, "已停止"),
-            Ok(_) => panic!("取消之后不应该再开始"),
-        }
-    }
-
-    #[test]
-    fn cancel_kills_the_in_flight_start_process() {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-        runtime.block_on(async {
-            let id = unique_start("kill");
-            let startup = WorktreeStart::begin(&id).unwrap();
-            startup
-                .drive(async {
-                    let mut child = long_sleep()
-                        .stdout(Stdio::null())
-                        .stderr(Stdio::null())
-                        .spawn()
-                        .unwrap();
-                    let _tracked = note_start_child(child.id());
-                    let project = id.clone();
-                    std::thread::spawn(move || {
-                        std::thread::sleep(Duration::from_millis(40));
-                        cancel_worktree_start(&project);
-                    });
-                    let started = std::time::Instant::now();
-                    let status = child.wait().unwrap();
-                    assert!(
-                        started.elapsed() < Duration::from_secs(5),
-                        "stop did not kill the child"
-                    );
-                    assert!(!status.success());
-                })
-                .await;
-        });
-    }
-
     fn relative_checkout(root: &Path, source: &Path) -> Result<PathBuf, String> {
         super::relative_checkout(root, source)
     }
 
     fn resolve_git_path(cwd: &Path, text: &str) -> PathBuf {
         super::resolve_git_path(cwd, text)
-    }
-
-    fn long_sleep() -> Command {
-        if cfg!(windows) {
-            let mut command = Command::new("ping");
-            command.args(["-n", "31", "127.0.0.1"]);
-            command
-        } else {
-            let mut command = Command::new("sleep");
-            command.arg("30");
-            command
-        }
-    }
-
-    fn unique_start(name: &str) -> String {
-        format!(
-            "{name}-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        )
     }
 
     fn shell_quote(path: &Path) -> String {

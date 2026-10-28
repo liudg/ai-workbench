@@ -1,17 +1,21 @@
 import { useEffect, useState } from "react";
 
-import { backend } from "@/lib/ipc";
+import { usePanelOptional } from "@/features/panel/core/PanelProvider";
 import { pageTitleFromHtml } from "@/shared/html-title";
 
 /** 本地 html 的标题。外链不读文件。 */
-export function useWebsiteTitle(projectId: string, href: string, label: string): string {
+export function useWebsiteTitle(href: string, label: string): string {
+  const panel = usePanelOptional();
+  const data = panel?.data;
+  const projectId = panel?.projectId ?? "";
+  const sessionId = panel?.sessionId ?? "";
   const [title, setTitle] = useState(label);
   useEffect(() => {
     setTitle(label);
-    if (!projectId || /^https?:\/\//i.test(href)) return;
+    if (!data || /^https?:\/\//i.test(href)) return;
     let cancel = false;
-    void backend
-      .readPreviewFile(projectId, href)
+    void data
+      .readPreviewFile(projectId, href, sessionId)
       .then((doc) => {
         if (cancel) return;
         const parsed = pageTitleFromHtml(doc.text);
@@ -21,6 +25,6 @@ export function useWebsiteTitle(projectId: string, href: string, label: string):
     return () => {
       cancel = true;
     };
-  }, [href, label, projectId]);
+  }, [data, href, label, projectId, sessionId]);
   return title;
 }

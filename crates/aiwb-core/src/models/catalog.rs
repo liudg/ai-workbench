@@ -112,18 +112,9 @@ pub struct AgentCapabilities {
     /// 回合进行中可以中断当前回合。停止按钮只看这项，不看排队。
     #[serde(default)]
     pub supports_cancel: bool,
-    /// 侧边栏 `thread/fork`。菜单不再提供分叉。
+    /// 原生分叉（Codex `thread/fork`）。分叉任务时同一个 Agent 用它，否则另起一段带上前文。
     #[serde(default)]
     pub supports_fork: bool,
-    /// 侧边栏 `thread/archive` 与 `thread/unarchive`。没有这对 RPC 的适配器保持关闭。
-    #[serde(default)]
-    pub supports_archive: bool,
-    /// 侧边栏 `thread/delete`。
-    #[serde(default)]
-    pub supports_delete: bool,
-    /// 侧边栏 `thread/name/set`。
-    #[serde(default)]
-    pub supports_rename: bool,
     /// `/plan` 和作曲栏计划芯片，走 `turn/start.collaborationMode`。
     #[serde(default)]
     pub supports_plan: bool,
@@ -151,9 +142,6 @@ pub struct AgentCapabilities {
     /// 账号订阅额度窗口（已用或剩余百分比，以及重置时间）。没有原生数据的适配器保持关闭。
     #[serde(default)]
     pub supports_subscription_usage: bool,
-    /// 新建会话可以在一个新的 Git 工作树里运行。和变更视图读取工作树文件不是同一个开关。
-    #[serde(default)]
-    pub supports_worktree: bool,
     /// 会话中途换成别的 Agent，或者从别的 Agent 换过来：前文作为第一条消息的文字交过去。
     /// 照 t3code 适配器的 `supportsProviderSwitchingViaHandoff`。
     #[serde(default)]
@@ -173,9 +161,6 @@ impl AgentCapabilities {
             supports_queue: false,
             supports_cancel: false,
             supports_fork: false,
-            supports_archive: false,
-            supports_delete: false,
-            supports_rename: false,
             supports_plan: false,
             changes: ChangeCapabilities::none(),
             supports_review: false,
@@ -185,7 +170,6 @@ impl AgentCapabilities {
             supports_approve_for_me: false,
             supports_paged_history: false,
             supports_subscription_usage: false,
-            supports_worktree: false,
             supports_context_handoff: false,
         }
     }
@@ -203,9 +187,6 @@ impl AgentCapabilities {
             // `turn/interrupt` 带当前 turn id（`agents/codex/rpc.rs`）。
             supports_cancel: true,
             supports_fork: true,
-            supports_archive: true,
-            supports_delete: true,
-            supports_rename: true,
             supports_plan: true,
             changes: ChangeCapabilities::codex(),
             supports_review: true,
@@ -216,9 +197,6 @@ impl AgentCapabilities {
             supports_paged_history: true,
             // 2026-10-16 本机 Codex CLI 0.162.1：`account/rateLimits/read` 带回 `usedPercent` 与 `resetsAt`。
             supports_subscription_usage: true,
-            // 2026-10-18 openai/codex main：`codex --worktree` 由 codex-worktree 建托管检出，
-            // `thread/start` 只把那个目录当作 cwd。没有单独的创建 RPC。
-            supports_worktree: true,
             // 交接只是第一条 `turn/start` 的文字输入。
             supports_context_handoff: true,
         }
@@ -239,12 +217,6 @@ impl AgentCapabilities {
             // stdin `{"subtype":"interrupt"}`。CLI 把这次停止报成 aborted_streaming / aborted_user。
             supports_cancel: true,
             supports_fork: true,
-            // `claude --help` 没有 archive。探测会话 jsonl 的键里没有 archived。
-            // 二进制 `sessionArchived` 是云端创建失败遥测，`unarchive` 命中的是
-            // `bridge_repl_v2_unarchive_*`，不是本地转录。不另做工作台本地标记。
-            supports_archive: false,
-            supports_delete: true,
-            supports_rename: true,
             supports_plan: true,
             changes: ChangeCapabilities {
                 turn_diff: true,
@@ -267,9 +239,6 @@ impl AgentCapabilities {
             // 2026-10-16 本机 Claude Code 2.1.300：`get_usage` 回包带 `rate_limits`
             // （utilization 0–100、resets_at）。当前账号是第三方令牌，实读为 null，界面不画。
             supports_subscription_usage: true,
-            // 2026-10-18 Claude Code 文档：`--worktree <name>` / `-w` 在仓库
-            // `.claude/worktrees/<name>` 建分支 `worktree-<name>`。
-            supports_worktree: true,
             // 交接只是第一条 stdin 用户消息的文字。
             supports_context_handoff: true,
         }
@@ -506,10 +475,6 @@ mod tests {
         assert!(!parsed.supports_permission_profiles);
         assert!(!parsed.supports_approve_for_me);
         assert!(!parsed.supports_paged_history);
-        assert!(!parsed.supports_archive);
-        assert!(!parsed.supports_delete);
-        assert!(!parsed.supports_rename);
         assert!(!parsed.supports_subscription_usage);
-        assert!(!parsed.supports_worktree);
     }
 }

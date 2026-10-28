@@ -110,4 +110,4 @@ v1 的功能逐项标「沿用」「改进」「去掉」。改进写出处，�
 | 功能 | v1 位置 | 标记 | 说明 | v2 现状 |
 |---|---|---|---|---|
 | 网页预览里的界面样例页（`?preview=diff` 等） | `app/App.tsx`、`app/preview/*` | 沿用 | 17 个；v1 的注意力样例不再要，侧栏样例里带上各种药丸。侧栏、工作上下文样例用固定数据不连后台；文件类样例连 daemon 读真实目录 | 网页已验（侧栏、工作上下文） |
-| 网页预览连后端 | `src-tauri/src/dev_bridge.rs` | 去掉 | 网页预览直接连 daemon（architecture-v2.md「进程结构」）；`dev_bridge` 本身第 8 步删 | 有 |
+| 网页预览连后端 | `src-tauri/src/dev_bridge.rs` | 去掉 | 网页预览直接连 daemon（architecture-v2.md「进程结构」）；`dev_bridge` 第 8 步已删 | 有 |

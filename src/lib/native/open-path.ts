@@ -22,6 +22,13 @@ export async function revealFolder(path: string): Promise<void> {
   await invoke("reveal_folder", { path });
 }
 
+/** 这个系统能不能在「打开」里选择应用。 */
+export async function canChooseApp(): Promise<boolean> {
+  if (!isTauri) return false;
+  const caps = await invoke<{ choose_app: boolean }>("file_open_capabilities");
+  return Boolean(caps.choose_app);
+}
+
 export async function prepareBrowserPath(root: string, path: string): Promise<BrowserFile> {
   if (!isTauri) throw new Error(DESKTOP_ONLY);
   return invoke<BrowserFile>("prepare_browser_path", { root, path });

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
-import type { DiffScope } from "@/lib/ipc";
+import type { DiffScope } from "@/types";
 import { parseUnifiedDiff, type FileChange } from "@/features/changes-model/diff-parse";
 import { usePanel } from "@/features/panel/core/PanelProvider";
 import { filterFiles, useFileFilter } from "../core/file-filter";

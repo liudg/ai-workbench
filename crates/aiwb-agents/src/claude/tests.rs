@@ -12,7 +12,6 @@ use super::diff;
 use super::history::{self, conversation_chain};
 use super::images;
 use super::messages::{self, ingest_line, MapState};
-use super::mutate;
 use super::permission::permission_menu;
 use super::process;
 use aiwb_core::models::{AgentKind, MessagePhase, PromptAnswer, SessionEventBody, SessionStatus};
@@ -33,7 +32,6 @@ fn cli_args_follow_the_sdk_and_require_print() {
         model: Some("sonnet".into()),
         effort: Some("high".into()),
         writable_roots: Vec::new(),
-        worktree: None,
     });
     assert_eq!(
         args,
@@ -65,7 +63,6 @@ fn cli_args_follow_the_sdk_and_require_print() {
         model: None,
         effort: Some("  ".into()),
         writable_roots: Vec::new(),
-        worktree: None,
     });
     assert!(fresh.iter().any(|arg| arg == "--session-id=id-1"));
     assert!(!fresh.iter().any(|arg| arg == "--model" || arg == "--effort"));
@@ -83,13 +80,10 @@ fn add_dir_is_a_launch_argument() {
         model: None,
         effort: None,
         writable_roots: vec![r"D:\extra".into()],
-        worktree: Some("feature-auth".into()),
     });
     let pos = args.iter().position(|arg| arg == "--add-dir").expect("add-dir");
     assert_eq!(args[pos + 1], r"D:\extra");
-    assert_eq!(args[pos + 2], "--worktree");
-    assert_eq!(args[pos + 3], "feature-auth");
-    assert_eq!(args[pos + 4], "--input-format");
+    assert_eq!(args[pos + 2], "--input-format");
 }
 
 /// `Path` 只在 Windows 上把 `C:\work` 当成绝对路径。
@@ -682,7 +676,10 @@ fn history_chain_skips_sidechain_and_custom_title_wins() {
     let found = listed.iter().find(|item| item.session_id == id).expect("listed");
     assert_eq!(found.title, "自定义");
     assert_eq!(found.cwd, "/workspace/demo");
-    mutate::append_custom_title_at(&path, id, "再次改名").unwrap();
+    let mut renamed = std::fs::read_to_string(&path).unwrap();
+    renamed.push_str(&json!({"type":"custom-title","customTitle":"再次改名","sessionId":id}).to_string());
+    renamed.push('\n');
+    std::fs::write(&path, renamed).unwrap();
     let listed = history::list_sessions_under(&root);
     assert_eq!(listed.iter().find(|item| item.session_id == id).unwrap().title, "再次改名");
 

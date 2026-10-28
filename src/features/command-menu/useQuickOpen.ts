@@ -39,7 +39,7 @@ export function useQuickOpen(scope: QuickOpenScope | null, query: string, enable
             const result = await daemon.call<IndexedPaths>("files.quickOpen", { ...scope, query });
             if (stopped) return;
             if (!result.cancelled) setPaths(result.paths);
-            const ready = result.ready !== false && !result.cancelled;
+            const ready = result.ready && !result.cancelled;
             if (ready) {
               setPhase("ready");
               return;

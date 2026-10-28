@@ -7,24 +7,22 @@ import {
   type ReactNode,
 } from "react";
 
-import type {
-  BrowserFile,
-  DiffScope,
-  FileSearchResult,
-  PathFilter,
-  PreviewDocument,
-  PreviewImage,
-  TreeEntry,
-} from "@/lib/ipc";
+import type { BrowserFile } from "@/lib/native/open-path";
 import type { SessionUsageView } from "@/store/session-usage";
 import type {
   AgentKind,
   Attachment,
   ChangeCapabilities,
+  DiffScope,
+  FileSearchResult,
   PageAnnotation,
+  PathFilter,
+  PreviewDocument,
+  PreviewImage,
   SessionEvent,
   SessionStatus,
   SubscriptionUsage,
+  TreeEntry,
 } from "@/types";
 import type { TextSnippetDraft } from "@/shared/text-snippet";
 import type { BrowserHistory } from "../browser/browser";

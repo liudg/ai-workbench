@@ -7,9 +7,9 @@
 | 层 | 技术 |
 | --- | --- |
 | 桌面壳 | Tauri 2（系统托盘、关窗驻留、原生文件对话框、自动更新 updater） |
-| 后端 | Rust：`project_store` + `session_manager`（会话/事件总线）+ `agents`（适配器、能力、会话目录） |
+| 后端 | Rust：常驻进程 `aiwb-daemon`（RPC、任务和会话服务、SQLite）+ `aiwb-agents`（适配器、能力）+ `aiwb-git` / `aiwb-files` |
 | 前端 | React 18 + TypeScript + Vite + Tailwind CSS 4 + Radix/shadcn 风格组件 + zustand |
-| IPC | Tauri commands（invoke）+ 事件广播（`session-event` / `sessions-changed` / `projects-changed`） |
+| 通信 | 前端经 WebSocket JSON-RPC 直连 daemon（调用 + 按主题订阅）；Tauri 命令只留应用壳的本机能力 |
 
 ## 在 Windows 上运行
 
@@ -61,68 +61,58 @@ pnpm dev                   # 打开 http://localhost:4573
 ## 架构总览
 
 ```
-┌──────────────────────────── 前端（src/）────────────────────────────┐
-│ app/App.tsx          左右布局 + 工作区路由                            │
-│ features/sidebar     已注册项目（可折叠；超过 8 条会话可展开）         │
-│ features/chat        时间线、事件、作曲栏                            │
-│ features/panel       差异、会话文件、内置浏览器、预览                 │
-│ store/               zustand；项目列表以重拉为唯一数据源              │
-│ lib/ipc.ts           Backend 接口；lib/transport.ts：Tauri / dev bridge │
-│ types.ts             与 Rust models.rs 对应的 IPC 协议类型            │
-└────────────────────────────────┬───────────────────────────────────┘
-                                 │ invoke / listen
-┌────────────────────────────────┴───────────────────────────────────┐
-│                     后端（src-tauri/src/）                           │
-│ features/ipc/      invoke 入口（参数 camelCase）                     │
-│ models.rs          Project / Session / SessionEventBody              │
-│ features/projects  项目列表 projects.json；建目录 + git init         │
-│ features/sessions  会话注册表。项目只来自 projects.json               │
-│ features/agents    AgentAdapter / AgentSession / 会话目录            │
-│ features/git       未提交 / 未暂存 / 已暂存 diff                      │
-│ features/preview   文本预览与内置浏览器                               │
-│ tray.rs            托盘菜单（显示主窗口/退出）+ 单击唤起              │
-│ lib.rs             组装；关窗隐藏到托盘                               │
-└────────────────────────────────────────────────────────────────────┘
+┌──────────── Tauri 应用壳（src-tauri/）────────────┐      ┌──────────── aiwb-daemon（crates/）────────────┐
+│ daemon.rs     拉起或连接 daemon，把地址交给前端    │      │ server / connection  WebSocket JSON-RPC + token │
+│ attention.rs  订阅注意力：系统通知、任务栏角标      │      │ services/   项目、任务、会话、文件、Git、导入… │
+│ tray.rs       托盘（显示主窗口 / 退出）            │      │ runtime     接上 Agent、归并事件、写库、推送   │
+│ features/     本机打开、内置浏览器、时间线图片      │      │ aiwb-store  SQLite（唯一数据源）               │
+└──────────────────────────────────────────────────┘      │ aiwb-agents Codex / Claude 适配器              │
+┌──────────── 前端（src/）─────────────────────────┐      └──────────────────────────────────────────────┘
+│ lib/daemon    连接、RPC、订阅、主题缓存 ──────────┼── WebSocket ──▶
+│ lib/native    应用壳的本机能力（invoke）           │
+│ features/     侧栏、会话视图、看板、面板、设置…    │
+└──────────────────────────────────────────────────┘
 ```
+
+网页预览和桌面版走同一条 WebSocket；网页预览没有应用壳，本机打开、内置浏览器、粘贴图片这些不可用。设计细节见 [docs/architecture-v2.md](docs/architecture-v2.md)。
 
 ### 事件流（一条消息的生命周期）
 
 ```
-前端 invoke send_message
-  → SessionManager 记录 UserMessage（首条消息自动命名会话标题）
-  → AgentSession.send_message（适配器，非阻塞）
-  → 适配器经 EventSink 推送 SessionEventBody（AgentMessage/ToolCall/Prompt/StatusChanged…）
-  → SessionManager 转发任务：编号 seq → 写入事件日志 → 更新会话状态
-  → 广播 "session-event"（增量）与 "sessions-changed"（结构变化）
-  → 前端按 id 去重合并 / 重拉会话列表 → 渲染
+前端 sessions.send
+  → daemon 写一条 UserMessage 事件，交给会话运行时
+  → 运行时按需接上 Agent（已停止的用 resume 接回原线程），AgentSession 发出这一轮
+  → 适配器经 EventSink 推送 SessionEventBody（AgentMessage / ToolCall / Prompt / StatusChanged…）
+  → 运行时归并流式事件，和注意力投影在同一个事务里写库
+  → 推给订阅了 session:<id> 和 tasks 的连接，前端按 rev 补差 → 渲染
 ```
 
 ### 会话状态机
 
-`running`（处理中）→ `needs-input`（有待答提问，界面内联展示审批卡）→ 回答后回到 `running` → `completed`（空闲，可继续发消息）。另有 `failed` / `stopped`（停止后会话归档、不可再发消息）。项目状态点取所有会话的聚合（待处理 > 运行中 > 失败 > 已完成 > 已停止）。
+`running`（处理中）→ `needs-input`（有待答提问，界面内联展示审批卡）→ 回答后回到 `running` → `completed`（空闲，可继续发消息）。另有 `failed` / `stopped`。侧栏和看板的状态药丸取注意力投影（要你处理 > 运行中 > 已完成 > 空闲）。
 
-### IPC 命令
+### RPC 方法
 
-| 命令 | 说明 |
+| 分组 | 方法 |
 | --- | --- |
-| `list_projects` / `create_project` / `import_project` / `remove_project` | 项目管理；create 支持选父目录建文件夹 + git init |
-| `list_sessions` / `create_session` / `stop_session` | 会话生命周期（create 缺省用项目默认 Agent） |
-| `rename_session` / `set_session_archived` / `delete_session` | 重命名、归档、删除。菜单按当前会话的能力开关显示 |
-| `send_message` / `answer_prompt` | 发消息 / 回答提问（审批、选择、自由文本、问题卡片） |
-| `get_session_events` | 打开会话：已连接则返回日志，否则按目录里的 native id resume |
-| `agent_profiles` / `agent_catalog` | 能力与斜杠命令（profile）；模型、推理强度和技能（catalog） |
-| `list_agent_installations` / `update_agent` | 本机 CLI 探测与官方升级。适配器声明 npm 包或 CLI 自更新；设置页只渲染探测结果 |
-| `set_session_access` / `set_session_tuning` | 权限档位；模型与推理强度 |
+| `projects.*` | `list` / `create` / `add` / `update` / `remove` / `setPinned` |
+| `tasks.*` | `list` / `create` / `rename` / `archive` / `setPinned` / `remove` / `deletePreview` / `fork` / `switchAgent` |
+| `sessions.*` | `send` / `interrupt` / `answer` / `stop` / `setOptions`，排队（`updateQueued` / `removeQueued` / `steerQueued` / `flushQueued`），目标、审查、页面批注、目录与权限菜单 |
+| `files.*` / `git.*` | 差异、目录、筛选、搜索、读文件；分支读取、切换和创建 |
+| `agents.*` / `mcp.*` | 能力、模型目录、安装与升级、订阅用量；各 Agent 的 MCP 管理 |
+| `imports.*` / `drafts.*` / `settings.*` / `attention.view` | 导入 CLI 会话、作曲栏草稿、任务文件夹、正在看的任务 |
+
+订阅主题：`tasks`（任务列表和注意力）、`session:<id>`（时间线，按 `fromRev` 续传）。
 
 ## 多 Agent 边界
 
-会话管理器不持有 `CodexDirectory`。每种 Agent 注册一个 `SessionDirectory`：Codex 的 `list` 合并两份 `thread/list`，`archived: false` 与 `codex resume --all` 是同一份未归档列表，`archived: true` 不进入侧栏。会话协议未接入的种类不注册目录。侧边栏项目只来自工作台 `projects.json`。某个已注册项目下的会话，是这些目录里 cwd 对上该项目路径的并集，再加内存里已打开的会话，键是 `{agent}:{native_id}`。导入或移除项目只改工作台列表，不删除 Agent 的 rollout，也不改写 Agent 自己的项目列表。
+项目、任务、会话都以 daemon 的数据库为准，侧栏不扫描各 CLI 的目录。在终端里用 CLI 开的会话，从侧栏项目菜单「导入 CLI 会话」拉进来：适配器的 `import_list` 列出原生会话（Codex 是未归档的 `thread/list`，Claude Code 读 `~/.claude/projects`），按工作目录对上项目主目录。移除项目只改工作台列表，不删除 Agent 的 rollout，也不改写 Agent 自己的项目列表。
 
-`SessionContext` 只保留通用字段：工作目录、权限档位、要恢复的 native id，以及 `options`。Codex 从 `options.persist` 决定新线程是否写入官方 resume 列表；行协议留在 `agents/codex/`。
+`SessionContext` 只保留通用字段：工作目录、权限档位、要恢复的 native id，以及 `options`。Codex 从 `options.persist` 决定新线程是否写入官方 resume 列表；行协议留在 `crates/aiwb-agents/src/codex/`。
 
-适配器声明能力：`supports_slash`、`supports_resume`、`supports_questions`、`supports_tuning`、`supports_skills`、`supports_goals`、`supports_images`、`supports_queue`、`supports_fork`、`supports_archive`、`supports_delete`、`supports_rename`、`supports_plan`、`supports_review`、`supports_network_access`、`supports_writable_roots`、`supports_permission_profiles`、`supports_approve_for_me`、`supports_paged_history`、`supports_worktree`。变更单独放在 `changes`：`turn_diff`（回合统一 diff）、`per_file_patch`（`file-change` / `turn-changes`）、`git_scopes`（未提交 / 未暂存 / 已暂存）。前端作曲栏、斜杠菜单和变更卡读 `agent_profiles`，不比较 `agent === "codex-cli"`。`supports_worktree` 只在适配器能用自己的方式新建工作树时打开：Codex 在托管目录里检出并把该目录当作会话工作目录，Claude Code 传 `--worktree`。没有原生方式的 Agent 关闭。这和变更视图读取工作树文件不是同一个开关。会话结束时保留工作树。删除任务时，只清理工作台自己创建并记录过的工作树；干净就直接移除，Claude Code 还会删掉对应的 `worktree-` 分支。工作树里还有未提交改动或未合并提交时，先说明工作树里还有未保存的改动，让用户选择一起删除还是留下工作树。用户自己的工作树和主检出不动。启动失败时仍会撤掉半成品。Codex 官方在会话结束或删除时怎么清理，未观察。会话菜单同样只读当前会话的 `supports_rename`、`supports_archive`、`supports_delete`。`supports_archive` 只在适配器真有归档 RPC 时打开：Codex 是 `thread/archive` / `thread/unarchive`，Claude Code CLI 没有，保持关闭。置顶不走 Agent，是工作台本地记住的会话 id。分叉 RPC 还在，菜单里不再出现。提问卡片仍由 `SessionEventBody::Prompt` 驱动。斜杠命令表在 Codex 的 profile 里，含 `/mcp`、`/hooks`、`/goal`、`/worktree`，不在前端放一张全局表。
+适配器声明能力：`supports_slash`、`supports_resume`、`supports_questions`、`supports_tuning`、`supports_skills`、`supports_goals`、`supports_images`、`supports_queue`、`supports_cancel`、`supports_fork`、`supports_plan`、`supports_review`、`supports_network_access`、`supports_writable_roots`、`supports_permission_profiles`、`supports_approve_for_me`、`supports_paged_history`、`supports_subscription_usage`、`supports_context_handoff`。变更单独放在 `changes`：`turn_diff`（回合统一 diff）、`per_file_patch`（`file-change` / `turn-changes`）、`git_scopes`（未提交 / 未暂存 / 已暂存）。前端作曲栏、斜杠菜单和变更卡读 `agents.profiles`，不比较 `agent === "codex-cli"`。改名、归档、置顶、删除是任务层的事，由数据库处理，不要求 Agent 支持。工作树由任务层统一创建（分支 `aiwb/<id>`），Agent 只拿到 cwd。删除任务时，只清理工作台自己创建并记录过的工作树：干净就连目录和分支一起删；还有未提交改动或未合并提交时，先说明，让用户选择一起删除还是留下。用户自己的工作树和主检出不动。提问卡片由 `SessionEventBody::Prompt` 驱动。斜杠命令表在各 Agent 的 profile 里，不在前端放一张全局表。
 
-Codex 实现拆在 `agents/codex/`：`mod.rs` 只编排，`rpc` / `prompts` / `catalog` / `process` / `resume` 各管一块。
+Codex 实现拆在 `crates/aiwb-agents/src/codex/`：`mod.rs` 只编排，`rpc` / `prompts` / `catalog` / `process` / `resume` 各管一块。
 
 设置页从侧栏左下角头像菜单进入，列出 `AgentKind::all` 里的每一种。新建会话只能选 `installed && session_linked` 的 Agent。项目行上只装了一个能开会话的就直接用它；「新建会话」主按钮始终打开选择菜单，菜单里不出现未接入的项。一个都没有时选择器说明原因。工作台不代为安装。
 
@@ -138,7 +128,7 @@ Codex 实现拆在 `agents/codex/`：`mod.rs` 只编排，`rpc` / `prompts` / `c
 
 Gemini CLI 与 Antigravity 登记成一项，不做成两套会话。只找到停更的 `gemini` 时不在应用内更新。
 
-**Codex 和 Claude Code 的会话协议已接入。** 其余适配器只做安装探测和官方升级，`start_session()` 走 trait 默认实现，直接返回「未接入」错误。设置页仍显示「未安装」或「版本 · 未接入」；新建会话菜单不列出它们。接入时实现 `AgentSession`，在适配器里覆盖 `start_session` 和 `session_linked`，再注册 `SessionDirectory`；工作目录用 `ctx.project_path`。认证交给 CLI 自身，应用不保存密钥。Claude Code 的目录读 `~/.claude/projects` 里的 jsonl。
+**Codex 和 Claude Code 的会话协议已接入。** 其余适配器只做安装探测和官方升级，`start_session()` 走 trait 默认实现，直接返回「未接入」错误。设置页仍显示「未安装」或「版本 · 未接入」；新建会话菜单不列出它们。接入时实现 `AgentSession`，在适配器里覆盖 `start_session` 和 `session_linked`，要支持导入再实现 `import_list` / `import_history`；工作目录用 `ctx.project_path`。认证交给 CLI 自身，应用不保存密钥。Claude Code 的目录读 `~/.claude/projects` 里的 jsonl。
 
 右侧「打开文件」按目录逐层列出当前项目根下的文件，没有全局数量上限。点文件在当前这一页里预览，不会为每次点击新开标签。全文搜索直接读本机目录，分段返回。目录名正好是 `.git`、`node_modules`、`target`、`dist`、`Library`、`Temp` 的文件夹不进入目录树，也不进入全文搜索；其余文件和文件夹都会列出。
 

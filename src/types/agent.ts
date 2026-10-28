@@ -1,4 +1,4 @@
-// 与 `src-tauri/src/models/agent.rs` 对应。serde 用 kebab-case。
+// 与 `crates/aiwb-core/src/models/agent.rs` 对应。serde 用 kebab-case。
 
 export type AgentKind =
   | "codex-cli"

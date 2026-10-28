@@ -114,32 +114,8 @@ impl CodexDirectory {
         result
     }
 
-    pub async fn rename_thread(&self, native_id: &str, name: &str) -> Result<(), String> {
-        self.rpc(
-            "thread/name/set",
-            json!({ "threadId": native_id, "name": name }),
-        )
-        .await?;
-        self.invalidate().await;
-        Ok(())
-    }
-
     pub async fn delete_thread(&self, native_id: &str) -> Result<(), String> {
         self.rpc("thread/delete", json!({ "threadId": native_id }))
-            .await?;
-        self.invalidate().await;
-        Ok(())
-    }
-
-    pub async fn archive_thread(&self, native_id: &str) -> Result<(), String> {
-        self.rpc("thread/archive", json!({ "threadId": native_id }))
-            .await?;
-        self.invalidate().await;
-        Ok(())
-    }
-
-    pub async fn unarchive_thread(&self, native_id: &str) -> Result<(), String> {
-        self.rpc("thread/unarchive", json!({ "threadId": native_id }))
             .await?;
         self.invalidate().await;
         Ok(())
@@ -685,7 +661,7 @@ mod tests {
 
     #[tokio::test]
     #[ignore = "calls the local Codex CLI against _gap-lifecycle only"]
-    async fn gap_lifecycle_rename_fork_archive_delete() {
+    async fn gap_lifecycle_fork_delete() {
         use crate::codex::CodexCliAdapter;
         use crate::{AgentAdapter, SessionContext};
         use tokio::sync::mpsc;
@@ -695,14 +671,6 @@ mod tests {
         let _cleanup = GapCleanup {
             ids: Arc::clone(&ids),
         };
-        let name = format!(
-            "gap-lifecycle-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_millis())
-                .unwrap_or(0)
-        );
         let (tx, _rx) = mpsc::unbounded_channel();
         let session = CodexCliAdapter::new()
             .start_session(
@@ -721,10 +689,6 @@ mod tests {
         let _ = session.stop().await;
 
         let adapter = CodexCliAdapter::new();
-        adapter
-            .rename_thread(&id, &name)
-            .await
-            .expect("thread/name/set");
         let forked = adapter.fork_thread(&id).await.expect("thread/fork");
         ids.lock().unwrap().push(forked.native_id.clone());
 
@@ -742,14 +706,6 @@ mod tests {
             gap_key(),
             "fork left the gap project: {fork_cwd}"
         );
-
-        directory.invalidate().await;
-        let active = directory.list_threads().await.expect("active list");
-        let row = active
-            .iter()
-            .find(|thread| thread.native_id == id)
-            .expect("renamed thread missing");
-        assert_eq!(row.title, name);
 
         for native in [id, forked.native_id] {
             let cwd = directory

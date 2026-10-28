@@ -3,22 +3,20 @@
 import { CLI_TIMEOUT_MS, daemon } from "@/lib/daemon";
 import type { SessionOptions } from "@/features/tasks";
 import type {
-  DiffScope,
-  FileSearchResult,
-  PathFilter,
-  PreviewDocument,
-  PreviewImage,
-  TreeEntry,
-} from "@/lib/ipc";
-import type {
   AgentCatalog,
   AgentKind,
+  DiffScope,
+  FileSearchResult,
   PageAnnotation,
+  PathFilter,
   PermissionMenu,
+  PreviewDocument,
+  PreviewImage,
   PromptAnswer,
   ReviewStart,
   ReviewTargets,
   SubscriptionUsage,
+  TreeEntry,
 } from "@/types";
 
 /** 文件和差异读哪里：会话的工作目录，或者还没建会话时的项目主目录。 */

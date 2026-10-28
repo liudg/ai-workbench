@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { convertFileSrc } from "@tauri-apps/api/core";
 
-import { backend, isTauri } from "@/lib/ipc";
+import { isTauri } from "@/lib/daemon/endpoint";
+import { browserAnnotate, browserHide, browserReload, browserShow, onBrowserNotice } from "@/lib/native/browser";
 import type { PageAnnotation } from "@/types";
 import { pageTitleFromHtml } from "@/shared/html-title";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
@@ -75,7 +76,7 @@ export function useBrowserSession({
     if (!node || !isTauri) return;
     const rect = node.getBoundingClientRect();
     if (!target || rect.width < 8 || rect.height < 8) return;
-    await backend.browserShow(target, rect.left, rect.top, rect.width, rect.height);
+    await browserShow(target, rect.left, rect.top, rect.width, rect.height);
   }, []);
 
   const openTarget = useCallback(
@@ -87,7 +88,7 @@ export function useBrowserSession({
       if (!isTauri || !native) return;
       try {
         await placeNative(entry.target);
-        if (annotatingRef.current) await backend.browserAnnotate(true);
+        if (annotatingRef.current) await browserAnnotate(true);
       } catch (err) {
         setNative(false);
         setError(message(err, DESKTOP_ZH.browserOpenFailed));
@@ -144,7 +145,7 @@ export function useBrowserSession({
 
   useEffect(() => {
     if (!isTauri) return;
-    const unlisten = backend.onBrowserNotice((notice) => {
+    const unlisten = onBrowserNotice((notice) => {
       if (notice.kind === "title") {
         const title = tabTitleFromDocument(notice.value);
         if (title) {
@@ -157,7 +158,7 @@ export function useBrowserSession({
         if (next !== historyRef.current) commit(next);
         const target = currentEntry(historyRef.current)?.target ?? "";
         if (target) void placeNative(target).catch(() => setNative(false));
-        if (annotatingRef.current) void backend.browserAnnotate(true);
+        if (annotatingRef.current) void browserAnnotate(true);
       }
       if (notice.kind === "annotate") {
         setAnnotating(notice.value === "1");
@@ -217,7 +218,7 @@ export function useBrowserSession({
       observer.disconnect();
       window.cancelAnimationFrame(frame);
       window.removeEventListener("resize", sync);
-      void backend.browserHide();
+      void browserHide();
     };
   }, [native, placeNative]);
 
@@ -233,7 +234,7 @@ export function useBrowserSession({
     const next = !annotatingRef.current;
     setAnnotating(next);
     if (isTauri && native) {
-      void backend.browserAnnotate(next).catch(() => {
+      void browserAnnotate(next).catch(() => {
         setError(DESKTOP_ZH.browserAnnotateFailed);
       });
     }
@@ -281,7 +282,7 @@ export function useBrowserSession({
   };
 
   const reload = () => {
-    if (isTauri && native) void backend.browserReload();
+    if (isTauri && native) void browserReload();
     else setFrameKey((key) => key + 1);
   };
 

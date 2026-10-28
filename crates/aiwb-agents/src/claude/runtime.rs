@@ -9,7 +9,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, OnceLock, Weak};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use serde_json::{json, Value};
@@ -34,7 +34,6 @@ enum Intent {
     SetEffort(String),
     SetPermission(String),
     ContextUsage,
-    Rename,
     Interrupt,
 }
 
@@ -89,8 +88,6 @@ pub async fn open(
     access_mode: Option<String>,
     resume_native_id: Option<String>,
     writable_roots: Vec<String>,
-    worktree_name: Option<String>,
-    worktree_path: Option<String>,
     replay_history: bool,
     events: EventSink,
 ) -> Result<Arc<Shared>, AgentError> {
@@ -121,10 +118,8 @@ pub async fn open(
         model: None,
         effort: None,
         writable_roots: add_dirs.clone(),
-        worktree: worktree_name,
     });
     let mut child = process::spawn(&bin, &args, &project)?;
-    let _tracked = child.id().map(aiwb_git::note_start_child);
     let stdin = child
         .stdin
         .take()
@@ -179,15 +174,6 @@ pub async fn open(
         shared.shutdown();
         return Err(err);
     }
-    if let Some(path) = worktree_path.filter(|path| !path.is_empty()) {
-        if !std::path::Path::new(&path).is_dir() {
-            shared.shutdown();
-            return Err(AgentError::Runtime(
-                "工作树没有建出来。确认当前目录是有提交的 Git 仓库后再试。".into(),
-            ));
-        }
-    }
-    register(&shared);
     Ok(shared)
 }
 
@@ -586,19 +572,6 @@ impl Shared {
         Ok(())
     }
 
-    pub fn fire_rename(&self, title: &str) -> Result<(), AgentError> {
-        self.enqueue(
-            json!({
-                "subtype": "rename_session",
-                "title": title,
-                "source": "host",
-                "session_id": self.session_id,
-            }),
-            Some(Intent::Rename),
-        )?;
-        Ok(())
-    }
-
     pub fn shutdown(&self) {
         let first = !self.closed.swap(true, Ordering::SeqCst);
         self.outbound.lock().unwrap().take();
@@ -895,7 +868,7 @@ impl Shared {
 
     fn apply_intent(&self, intent: Intent, result: Result<Value, String>) {
         match (intent, result) {
-            (Intent::ContextUsage | Intent::Rename | Intent::Interrupt, Err(_)) => {}
+            (Intent::ContextUsage | Intent::Interrupt, Err(_)) => {}
             (_, Err(message)) => {
                 let _ = self.events.send(SessionEventBody::Error { message });
             }
@@ -921,7 +894,7 @@ impl Shared {
                     let _ = self.events.send(event);
                 }
             }
-            (Intent::Rename | Intent::Interrupt, Ok(_)) => {}
+            (Intent::Interrupt, Ok(_)) => {}
         }
     }
 
@@ -973,17 +946,6 @@ impl Shared {
             AgentError::Runtime(message)
         } else {
             AgentError::Runtime(format!("{message}\n{tail}"))
-        }
-    }
-}
-
-impl Drop for Shared {
-    fn drop(&mut self) {
-        let mut map = registry().lock().unwrap();
-        if let Some(weak) = map.get(&self.session_id) {
-            if weak.upgrade().is_none() {
-                map.remove(&self.session_id);
-            }
         }
     }
 }
@@ -1111,26 +1073,3 @@ fn answer_label(answer: &PromptAnswer) -> String {
     }
 }
 
-fn registry() -> &'static Mutex<HashMap<String, Weak<Shared>>> {
-    static REG: OnceLock<Mutex<HashMap<String, Weak<Shared>>>> = OnceLock::new();
-    REG.get_or_init(|| Mutex::new(HashMap::new()))
-}
-
-fn register(shared: &Arc<Shared>) {
-    registry()
-        .lock()
-        .unwrap()
-        .insert(shared.session_id.clone(), Arc::downgrade(shared));
-}
-
-pub fn live_session(session_id: &str) -> Option<Arc<Shared>> {
-    let mut map = registry().lock().unwrap();
-    let weak = map.get(session_id)?.clone();
-    match weak.upgrade() {
-        Some(shared) => Some(shared),
-        None => {
-            map.remove(session_id);
-            None
-        }
-    }
-}

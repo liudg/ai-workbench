@@ -1,4 +1,4 @@
-// 与 `src-tauri/src/models/catalog.rs` 对应。能力开关不比较 Agent 种类。
+// 与 `crates/aiwb-core/src/models/catalog.rs` 对应。能力开关不比较 Agent 种类。
 
 import type { AgentKind } from "./agent.ts";
 import type { SessionEvent } from "./event.ts";
@@ -128,10 +128,6 @@ export interface AgentCapabilities {
   /** 回合进行中可以中断。停止按钮只看这项和回合是否还在跑。 */
   supports_cancel?: boolean;
   supports_fork?: boolean;
-  /** `thread/archive` 与 `thread/unarchive`。没有这对接口时为 false。 */
-  supports_archive?: boolean;
-  supports_delete?: boolean;
-  supports_rename?: boolean;
   supports_plan?: boolean;
   changes: ChangeCapabilities;
   supports_review?: boolean;
@@ -147,8 +143,6 @@ export interface AgentCapabilities {
   supports_paged_history?: boolean;
   /** 账号订阅窗口。界面只在适配器声明这项时读取，不按 agent 名字分支。 */
   supports_subscription_usage?: boolean;
-  /** 新建会话可以在一个新的 Git 工作树里运行。 */
-  supports_worktree?: boolean;
   /** 会话中途可以换成别的 Agent 或从别的 Agent 换过来，前文交给新 Agent。 */
   supports_context_handoff?: boolean;
 }

@@ -179,59 +179,11 @@ impl AgentAdapter for CodexCliAdapter {
             .map_err(AgentError::Runtime)
     }
 
-    async fn rename_thread(&self, native_id: &str, name: &str) -> Result<(), AgentError> {
-        CodexDirectory::shared()
-            .rename_thread(native_id, name)
-            .await
-            .map_err(AgentError::Runtime)
-    }
-
     async fn delete_thread(&self, native_id: &str) -> Result<(), AgentError> {
         CodexDirectory::shared()
             .delete_thread(native_id)
             .await
             .map_err(AgentError::Runtime)
-    }
-
-    async fn set_archived(&self, native_id: &str, archived: bool) -> Result<(), AgentError> {
-        let directory = CodexDirectory::shared();
-        let result = if archived {
-            directory.archive_thread(native_id).await
-        } else {
-            directory.unarchive_thread(native_id).await
-        };
-        result.map_err(AgentError::Runtime)
-    }
-
-    fn prepare_worktree(
-        &self,
-        source: &std::path::Path,
-    ) -> Result<crate::PreparedWorktree, AgentError> {
-        let root = aiwb_git::codex_worktree_root();
-        let (base, sha) = aiwb_git::source_revision(source).map_err(AgentError::Runtime)?;
-        let checkout = aiwb_git::create_codex_checkout(source, &root)
-            .map_err(AgentError::Runtime)?;
-        if let Err(err) = aiwb_git::record_owned_worktree(
-            &checkout.cwd,
-            &aiwb_git::OwnedMarker {
-                root: checkout.root.clone(),
-                base: base.clone(),
-                sha: sha.clone(),
-                branch: None,
-            },
-        ) {
-            aiwb_git::remove_checkout(source, &checkout.root);
-            return Err(AgentError::Runtime(err));
-        }
-        Ok(crate::PreparedWorktree {
-            cwd: checkout.cwd.to_string_lossy().to_string(),
-            branch: None,
-            cli_name: None,
-            source: source.to_string_lossy().to_string(),
-            rollback_root: checkout.root.to_string_lossy().to_string(),
-            base,
-            sha,
-        })
     }
 
     async fn start_session(
@@ -258,7 +210,6 @@ impl AgentAdapter for CodexCliAdapter {
         let mut child = command.spawn().map_err(|e| {
             AgentError::Runtime(format!("无法启动 Codex CLI（{}）：{e}", bin.display()))
         })?;
-        let _tracked = child.id().map(aiwb_git::note_start_child);
         let stdin = child
             .stdin
             .take()

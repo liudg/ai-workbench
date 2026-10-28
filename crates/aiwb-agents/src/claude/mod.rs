@@ -17,7 +17,6 @@ mod history;
 mod images;
 mod mcp;
 mod messages;
-mod mutate;
 mod permission;
 mod process;
 mod queue;
@@ -177,46 +176,17 @@ impl AgentAdapter for ClaudeCodeAdapter {
         process::resolve_claude_bin().map(|_| ())
     }
 
-    fn prepare_worktree(
-        &self,
-        source: &std::path::Path,
-    ) -> Result<crate::PreparedWorktree, AgentError> {
-        let plan = aiwb_git::plan_claude_worktree(source).map_err(AgentError::Runtime)?;
-        let (base, sha) = aiwb_git::source_revision(source).map_err(AgentError::Runtime)?;
-        Ok(crate::PreparedWorktree {
-            cwd: plan.path.to_string_lossy().to_string(),
-            branch: Some(plan.branch),
-            cli_name: Some(plan.name),
-            source: source.to_string_lossy().to_string(),
-            rollback_root: plan.path.to_string_lossy().to_string(),
-            base,
-            sha,
-        })
-    }
-
     async fn start_session(
         &self,
         ctx: SessionContext,
         events: EventSink,
     ) -> Result<Arc<dyn AgentSession>, AgentError> {
         let replay_history = !ctx.flag("skip_history");
-        let worktree_name = ctx
-            .options
-            .get("worktree_name")
-            .and_then(|value| value.as_str())
-            .map(str::to_string);
-        let worktree_path = ctx
-            .options
-            .get("worktree_path")
-            .and_then(|value| value.as_str())
-            .map(str::to_string);
         let shared = runtime::open(
             ctx.project_path,
             ctx.access_mode,
             ctx.resume_native_id,
             command::roots_from_options(&ctx.options),
-            worktree_name,
-            worktree_path,
             replay_history,
             events,
         )
@@ -224,26 +194,4 @@ impl AgentAdapter for ClaudeCodeAdapter {
         Ok(Arc::new(ClaudeSession::new(shared)))
     }
 
-    async fn rename_thread(&self, native_id: &str, name: &str) -> Result<(), AgentError> {
-        if !history::is_uuid(native_id) {
-            return Err(AgentError::Runtime(format!("无效的会话 id：{native_id}")));
-        }
-        let title = name.trim();
-        if title.is_empty() {
-            return Err(AgentError::Runtime("标题不能为空".into()));
-        }
-        let file = history::find_session_file(native_id);
-        let live = runtime::live_session(native_id);
-        if file.is_some() {
-            mutate::append_custom_title(native_id, title).map_err(AgentError::Runtime)?;
-            if let Some(shared) = live {
-                let _ = shared.fire_rename(title);
-            }
-            return Ok(());
-        }
-        if let Some(shared) = live {
-            return shared.fire_rename(title);
-        }
-        Err(AgentError::Runtime(format!("找不到会话 {native_id}")))
-    }
 }

@@ -1,7 +1,7 @@
 import { useEffect, useRef, type MouseEvent as ReactMouseEvent } from "react";
 import { ChevronDown, ChevronRight, File } from "lucide-react";
 
-import type { TreeEntry } from "@/lib/ipc";
+import type { TreeEntry } from "@/types";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { cn } from "@/lib/utils";
 import { FileTreeList } from "./FileTreeList";

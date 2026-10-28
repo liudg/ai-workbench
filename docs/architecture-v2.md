@@ -20,7 +20,7 @@
 ┌──────────── Tauri 应用（壳） ─────────────┐        ┌────────────── aiwb-daemon ──────────────┐
 │ 窗口 / 托盘 / 系统通知 / 内置浏览器 webview │        │ RPC 服务（WebSocket JSON-RPC，回环 + token）│
 │ 启动或连接 daemon，把地址和 token 交给前端   │        │ 任务服务 / 会话服务 / Git / 终端 / 文件索引 │
-│ React 前端 ── WebSocket ───────────────────┼──────▶ │ Agent 适配器：Codex、Claude、通用 ACP      │
+│ React 前端 ── WebSocket ───────────────────┼──────▶ │ Agent 适配器：Codex、Claude               │
 └──────────────────────────────────────────┘        │ SQLite（唯一数据源）                       │
        网页预览：浏览器直接连 daemon，不再需要 mock    └────────────────────────────────────────┘
 ```
@@ -35,7 +35,7 @@
 |---|---|---|
 | `aiwb-core` | 领域模型、归一化事件、能力结构体、状态推导（纯逻辑，无 IO） | 由 `models/`、`features/agents/protocol/` 迁移 |
 | `aiwb-store` | SQLite（rusqlite）、迁移、读写事件日志和投影 | 新写 |
-| `aiwb-agents` | `AgentDriver` 实现：codex、claude、acp | 迁移 `features/agents/{codex,claude,mcp,install}` |
+| `aiwb-agents` | `AgentDriver` 实现：codex、claude | 迁移 `features/agents/{codex,claude,mcp,install}` |
 | `aiwb-git` | worktree、checkpoint、diff、stage/commit/push/PR | 迁移 `features/git`，补新功能 |
 | `aiwb-pty` | 终端（portable-pty），后端保存 scrollback | 新写 |
 | `aiwb-daemon` | RPC 服务、订阅、服务装配、文件索引和搜索 | 新写，迁移 `features/preview/{index,search,tree}` |
@@ -74,7 +74,7 @@
 - `Runtime`：`send`、`steer`、`interrupt`、`answer_prompt`、`set_options(model, effort, access, mode)`、`stop`，可选 `rollback_turns`、`fork`、`compact`。每一项都有对应的能力开关。
 - **去掉的**：`fork_thread`、`rename_thread`、`set_archived` 这类操作"原生线程目录"的方法。改名、归档、置顶是任务层的事，由数据库处理，不再要求每个 Agent 都支持。这样 Claude 现在缺的归档之类能力就不再是缺口。
 - **工作树由任务层统一创建**（`aiwb-git`），Agent 只拿到 cwd。不再分成 Codex 自建检出和 Claude 传 `--worktree` 两套。
-- **通用 ACP 驱动**：配置一条 `{kind, display_name, command, args, env}` 就能接入一个 Agent。Cursor、Gemini、Qwen、OpenCode、Kimi 等以注册表条目的形式加入，每一条都用真实 CLI 验证握手和能力后再启用。t3code 也是这么做的（`packages/provider-acp`、`provider-acp-registry`）。
+- **不做通用 ACP 驱动**（2026-10-28 用户确认）：只用 Codex 和 Claude，两者都走原生协议，功能接得比 ACP 深（额度、回退、原生分叉、审查）。t3code 也是主力 Agent 走原生、ACP 只接长尾（`apps/server/src/provider/builtInDrivers.ts`、`packages/provider-acp-registry`）。以后要用别的 Agent 或做扇出时再议。
 
 ## 前端结构
 - `app/`：外壳、主区视图（会话 / 看板 / 设置）、分屏布局。
@@ -103,7 +103,7 @@
    - 落地情况（2026-10-27，代码完成，桌面版还没逐项验证）：
      - daemon：迁移 3（项目置顶、去掉项目默认 Agent、任务可以不属于项目、`draft` 表）；`projects.create/update/setPinned`、`git.*`、`files.*`（按会话或项目读，没建会话时面板也能用）、`settings.taskFolder`、`tasks.setPinned/deletePreview`、`sessions.setGoal` 等、`agents.installations/upgrade/catalog`、`mcp.*`、`drafts.*`。任务工作树建时写记录，删除任务时可连目录和 `aiwb/` 分支一起删。`/health` 带上运行中的会话数，托盘退出前确认用。
      - 前端：`features/sidebar`、`features/settings`、`features/command-menu`、`features/updates` 用 v1 的组件，数据换成 daemon；`features/projects`、`features/tasks`、`features/agents` 是各自的数据入口；主区在 `features/workspace`（会话视图、新会话视图）。v1 作曲栏通过 `ComposerHost` 取数据（`chat/composer/host.ts`），已有会话和新会话各一份实现。导航、错误横幅这些纯界面状态在 `shared/shell`。
-     - 简版的 `features/task`、任务列表、项目列表已删。旧前端 store（`src/store` 里除 `session-usage`、`subscription-usage` 外）已经没人用，提前删了；第 8 步只剩 Rust 侧的 `SessionManager`、`dev_bridge` 和 `lib/ipc`。
+     - 简版的 `features/task`、任务列表、项目列表已删。旧前端 store（`src/store` 里除 `session-usage`、`subscription-usage` 外）已经没人用，提前删了；第 8 步处理 Rust 侧的 `SessionManager`、`dev_bridge` 和 `lib/ipc`。
      - 和清单的出入：「下一个需要处理的会话」随第 6 步、「分叉聊天」随第 5 步重做，第 3 步先从命令菜单拿掉；侧栏的「只读」标记去掉（理由见清单）。
 4. **Claude 迁入** ✅（2026-10-28）：标准同第 2 步，再加上"从 CLI 历史导入会话"（Codex 和 Claude 都要）。
    - 落地情况：daemon 的运行时本来就只认适配器，Claude 直接走同一套 `tasks.*` / `sessions.*`。Claude 适配器补上 `options.skip_history`：resume 时只读转录记下已见过的消息、上一轮差异和目标，不再把历史重放进时间线。
@@ -123,8 +123,11 @@
    - 界面：`shared/attention` 放药丸、看板列、注意力队列的规则；侧栏会话行和项目行用药丸（项目行取最要紧的一个），v1 本地存的「未读完成」删掉。`features/board` 是看板（四列 要你处理 / 运行中 / 已完成 / 空闲，照 orca `dashboard-card-bucket.ts`、`AgentKanbanBoard.tsx`；看过的完成和失败退到空闲，空闲最多摆 20 张），从侧栏顶上的「看板」（带等着你的数量）或命令菜单「打开看板」进；命令菜单「下一个需要处理的聊天」走注意力队列。
    - 应用壳：`src-tauri/src/attention.rs` 作为客户端订阅 `tasks`，未读从无到有时发系统通知（`tauri-plugin-notification`），窗口没焦点时闪任务栏；等着你的数量画成任务栏覆盖图标（Windows，16×16 自绘数字）或系统角标，托盘提示也带上。断线两秒后重连，重连后的第一份快照不当作变化。
    - 和设计的出入：投影写在 `put_event` 的同一事务里，但看过清未读是单独一次写。还没有通知开关、声音，点通知不跳到会话（桌面通知插件在 Windows 上不给点击回调）。
-7. **ACP 通用驱动**：先接一个能登录的 Agent 跑通完整对话，其他的只验证握手和能力。
-8. **清理**：删除旧的 `SessionManager` 和 `dev_bridge`（旧前端 store 第 3 步已删）；`lib/ipc` 只留应用壳的本机能力（内置浏览器、图片、选文件），其余删掉；更新 AGENTS.md 里的架构描述。
+7. **ACP 通用驱动**：不做（2026-10-28 用户确认，理由见「Agent 驱动接口」）。
+8. **清理** ✅（2026-10-28）：删除旧的 `SessionManager` 和 `dev_bridge`（旧前端 store 第 3 步已删）；`lib/ipc` 只留应用壳的本机能力（内置浏览器、图片、选文件），其余删掉；更新 AGENTS.md 里的架构描述。
+   - 应用壳：删掉 `features/sessions`、`features/ipc`、`features/chats`、`features/projects` 的项目存储和 `dev_bridge`（连同 `dev-bridge` feature 和二进制）；命令只剩 `daemon_endpoint`、聊天图片、本机打开（`open_path` / `reveal_folder` / `file_open_capabilities`）和内置浏览器。没人调的 `browser_bounds`、`browser_open_external`、`browser_page_title` 等一起删了。
+   - 前端：`lib/ipc` 和 `lib/transport.ts` 删掉，并进 `lib/native`（`browser.ts`、`open-path.ts`、`pick-files.ts`、`stage-image.ts`）；文件面板的数据类型搬到 `types/files.ts`；聊天里网页卡片的标题改走面板的数据来源（daemon）。Vite 的 `/__bridge` 代理删掉。
+   - 只给旧会话管理器用的适配器接口一起删：`rename_thread`、`set_archived`、`prepare_worktree`（Codex 自建托管检出、Claude `--worktree`），会话目录的并集函数，Claude 的改名写入和会话注册表；`aiwb-git` 的 `recorded` 模块和「新建会话」取消机制（`WorktreeStart`、`note_start_child`）；能力开关 `supports_archive` / `supports_rename` / `supports_delete` / `supports_worktree`（改名、归档、删除在任务层，工作树由任务层建，界面不读这几项）。
 
 ## 待确认
 - 无。

@@ -33,17 +33,9 @@ dependencies = [
 name = "ai-workbench"
 version = "0.2.84"
 dependencies = [
- "aiwb-agents",
  "aiwb-core",
  "aiwb-files",
- "aiwb-git",
- "aiwb-proc",
- "async-trait",
- "chrono",
- "diffy",
- "encoding_rs",
  "futures-util",
- "ignore",
  "png 0.17.16",
  "serde",
  "serde_json",
@@ -53,15 +45,11 @@ dependencies = [
  "tauri-plugin-notification",
  "tauri-plugin-process",
  "tauri-plugin-updater",
- "tempfile",
- "thiserror 2.0.21",
  "tokio",
  "tokio-tungstenite",
- "toml_edit 0.20.2",
  "uuid",
  "webview2-com",
  "windows",
- "winreg",
 ]
 
 [[package]]
@@ -135,7 +123,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
- "toml_edit 0.20.2",
  "uuid",
 ]
 

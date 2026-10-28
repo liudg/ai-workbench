@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { isTauri } from "@/lib/ipc";
+import { isTauri } from "@/lib/daemon/endpoint";
 import type { ImageSource } from "@/shared/markdown/markdown-images";
 import { resolveLocalChatImage } from "./local-image";
 

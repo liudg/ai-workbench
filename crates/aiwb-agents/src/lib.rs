@@ -17,7 +17,7 @@ mod protocol;
 
 pub use protocol::{
     fold_page_annotations, submit_annotation_as_attachment, AgentAdapter, AgentError, AgentSession,
-    EventSink, PreparedWorktree, SessionContext, TurnDelivery, UserTurn,
+    EventSink, SessionContext, TurnDelivery, UserTurn,
 };
 pub use protocol::{default_git_scopes, is_turn_scope, turn_scope, AnnotationSink, DiffScope, DiffScopeProvider};
 
@@ -29,10 +29,7 @@ use aiwb_core::models::{AgentInstallation, AgentKind, AgentProfile, McpSurface};
 pub use mcp::McpDriver;
 pub use install::UpgradeOutput;
 
-pub use directory::{
-    group_projects, project_folder_keys, project_matches_cwd, session_key,
-    sessions_for_project, DirectoryEntry, SessionDirectory, SourcedEntry,
-};
+pub use directory::{DirectoryEntry, SessionDirectory};
 
 /// 按类型取得适配器实例。
 pub fn adapter_for(kind: AgentKind) -> Arc<dyn AgentAdapter> {
@@ -110,14 +107,6 @@ pub fn require_mcp(kind: AgentKind) -> Result<Arc<dyn McpDriver>, String> {
     Err(mcp::unverified(kind, adapter.display_name(), installed)
         .unavailable_reason
         .unwrap_or_else(|| "暂无法管理 MCP。".into()))
-}
-
-/// 已注册的会话目录。只有会话协议已接入的 Agent 才有目录。
-pub fn session_directories() -> Vec<Arc<dyn SessionDirectory>> {
-    vec![
-        codex::CodexDirectory::shared(),
-        claude::ClaudeDirectory::shared(),
-    ]
 }
 
 #[cfg(test)]
@@ -215,7 +204,6 @@ mod tests {
                 kind.as_str()
             );
         }
-        assert_eq!(session_directories().len(), 2);
     }
 
     #[test]
@@ -223,13 +211,10 @@ mod tests {
         let caps = adapter_for(AgentKind::ClaudeCode).capabilities();
         assert!(caps.supports_plan);
         assert!(caps.supports_goals);
-        assert!(caps.supports_rename);
         assert!(caps.supports_resume);
         assert!(caps.supports_queue);
         assert!(caps.supports_cancel);
         assert!(caps.supports_fork);
-        assert!(!caps.supports_archive);
-        assert!(caps.supports_delete);
         assert!(!caps.supports_review);
         assert!(!caps.supports_network_access);
         assert!(caps.supports_writable_roots);
@@ -238,7 +223,6 @@ mod tests {
         assert!(caps.changes.turn_diff);
         assert!(caps.changes.git_scopes);
         assert!(caps.supports_subscription_usage);
-        assert!(caps.supports_worktree);
     }
 
     #[test]
@@ -255,25 +239,8 @@ mod tests {
     }
 
     #[test]
-    fn worktree_follows_native_cli_flags() {
-        for kind in AgentKind::all() {
-            let on = matches!(kind, AgentKind::CodexCli | AgentKind::ClaudeCode);
-            assert_eq!(
-                adapter_for(kind).capabilities().supports_worktree,
-                on,
-                "{}",
-                kind.as_str()
-            );
-        }
-    }
-
-    #[test]
-    fn codex_can_archive_because_the_cli_has_the_rpc() {
+    fn codex_capabilities_follow_the_native_cli() {
         let caps = adapter_for(AgentKind::CodexCli).capabilities();
-        assert!(caps.supports_archive);
-        assert!(caps.supports_rename);
-        assert!(caps.supports_delete);
-        assert!(caps.supports_worktree);
         assert!(caps.supports_subscription_usage);
         assert!(caps.supports_cancel);
         assert!(caps.supports_queue);

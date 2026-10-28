@@ -1,4 +1,4 @@
-// 与 `src-tauri/src/models/mcp.rs` 对应。界面只读这些字段。
+// 与 `crates/aiwb-core/src/models/mcp.rs` 对应。界面只读这些字段。
 
 import type { AgentKind } from "./agent";
 

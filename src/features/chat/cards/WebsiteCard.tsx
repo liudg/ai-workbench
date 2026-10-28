@@ -7,8 +7,7 @@ import { useWebsiteTitle } from "./useWebsiteTitle";
 
 export function WebsiteCard({ href, label }: { href: string; label: string }) {
   const preview = usePanelOptional();
-  const projectId = preview?.projectId ?? "";
-  const title = useWebsiteTitle(projectId, href, label || baseName(href));
+  const title = useWebsiteTitle(href, label || baseName(href));
   return (
     <div
       data-website-card

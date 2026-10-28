@@ -1,4 +1,4 @@
-// 与 `src-tauri/src/models/event.rs` 对应。`kind` 是判别标签。
+// 与 `crates/aiwb-core/src/models/event.rs` 对应。`kind` 是判别标签。
 
 import type { AgentKind } from "./agent.ts";
 import type { SessionStatus } from "./session.ts";
