@@ -24,10 +24,6 @@ export function isNewThreadChord(event: ChordEvent): boolean {
   return modified(event) && event.shiftKey && event.key.toLowerCase() === "o";
 }
 
-export function isArchiveChord(event: ChordEvent): boolean {
-  return modified(event) && event.shiftKey && event.key.toLowerCase() === "a";
-}
-
 export function isDeleteChord(event: ChordEvent): boolean {
   return modified(event) && event.shiftKey && (event.key === "Delete" || event.key === "Backspace");
 }

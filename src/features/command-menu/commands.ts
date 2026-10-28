@@ -136,7 +136,6 @@ function commandItems(input: PaletteInput): PaletteRow[] {
         "archive",
         active.archived ? COPY.unarchive : COPY.archive,
         "thread",
-        active.archived ? undefined : COPY.shortcutArchive,
       ),
     );
   }

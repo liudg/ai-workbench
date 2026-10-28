@@ -92,7 +92,7 @@ v1 的功能逐项标「沿用」「改进」「去掉」。改进写出处，�
 | 功能 | v1 位置 | 标记 | 说明 | v2 现状 |
 |---|---|---|---|---|
 | 命令菜单 Ctrl+K：新聊天、新独立聊天、打开文件夹、设置、搜索聊天、会话内查找、搜索文件、归档、重命名、置顶、删除、面板开关、侧栏开关、跳转文件 | `command-menu/*` | 沿用 | 动作走和界面同一组 daemon 方法；挂在会话视图的面板里。「下一个待处理」「分叉」见第 4 节 | 桌面已验 |
-| 快捷键：Ctrl+Shift+O 新聊天、Ctrl+Shift+A 归档、Ctrl+Shift+Delete 删除、Ctrl+Shift+B / Ctrl+Shift+F 面板 | `command-menu/copy.ts`、`shared/strings/desktop-zh.ts` | 沿用 | | 已接上 |
+| 快捷键：Ctrl+Shift+O 新聊天、Ctrl+Shift+Delete 删除、Ctrl+Shift+B / Ctrl+Shift+F 面板 | `command-menu/copy.ts`、`shared/strings/desktop-zh.ts` | 沿用 | | 已接上；归档快捷键已移除 |
 | 跳转面板 Ctrl+J | 无 | 改进（路线图 5） | orca `src/renderer/src/components/WorktreeJumpPalette.tsx` | — |
 | 自定义快捷键 | 无 | 改进（路线图 16） | t3code `packages/shared/src/keybindings.ts` | — |
 

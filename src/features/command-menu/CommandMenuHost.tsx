@@ -28,7 +28,6 @@ import { useCommandMenuState } from "./use-command-menu-state";
 import { fileRows } from "./file-rows";
 import {
   deleteShortcutMenu,
-  isArchiveChord,
   isDeleteChord,
   isNewThreadChord,
   isOpenChord,
@@ -265,12 +264,6 @@ export function CommandMenuHost() {
         event.preventDefault();
         event.stopPropagation();
         current.runCommand("new-thread");
-        return;
-      }
-      if (isArchiveChord(event) && visible("archive")) {
-        event.preventDefault();
-        event.stopPropagation();
-        current.runCommand("archive");
         return;
       }
       if (isDeleteChord(event) && visible("delete")) {

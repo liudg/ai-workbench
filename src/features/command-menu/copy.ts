@@ -52,7 +52,6 @@ export const COMMAND_MENU_COPY = {
   fileError: "无法列出文件",
   needSession: "先选择一个聊天",
   shortcutNew: "Ctrl+Shift+O",
-  shortcutArchive: "Ctrl+Shift+A",
   shortcutDelete: "Ctrl+Shift+Delete",
   renameTitle: "重命名",
   renameDescription: "保持简短且易于识别",

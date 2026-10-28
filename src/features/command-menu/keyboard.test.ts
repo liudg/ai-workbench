@@ -3,7 +3,6 @@ import { test } from "node:test";
 
 import {
   deleteShortcutMenu,
-  isArchiveChord,
   isDeleteChord,
   isNewThreadChord,
   isOpenChord,
@@ -46,7 +45,6 @@ test("sidebar and quick open use Ctrl or Cmd without Shift", () => {
 
 test("thread chords stay on the observed modifiers", () => {
   assert.equal(isNewThreadChord({ ...chord, ctrlKey: true, shiftKey: true, key: "o" }), true);
-  assert.equal(isArchiveChord({ ...chord, metaKey: true, shiftKey: true, key: "A" }), true);
   assert.equal(isDeleteChord({ ...chord, ctrlKey: true, shiftKey: true, key: "Delete" }), true);
   assert.equal(isDeleteChord({ ...chord, ctrlKey: true, shiftKey: true, key: "Backspace" }), true);
   assert.equal(isNewThreadChord({ ...chord, ctrlKey: true, key: "o" }), false);
