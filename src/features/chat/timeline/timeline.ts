@@ -145,7 +145,8 @@ export function isProcess(event: SessionEvent, answerId: string | null): boolean
   );
 }
 
-function elapsedMs(events: readonly SessionEvent[]): number {
+/** 从这一轮开始（用户消息或 Agent 自己开的回合）到最后一条过程或答复。 */
+function elapsedMs(startedAt: number, events: readonly SessionEvent[]): number {
   const timed = events.filter(
     (event) =>
       event.kind === "thinking" ||
@@ -154,8 +155,8 @@ function elapsedMs(events: readonly SessionEvent[]): number {
       event.kind === "prompt-resolved" ||
       event.kind === "agent-message",
   );
-  if (timed.length < 2) return 0;
-  return Math.max(0, timed[timed.length - 1].ts - timed[0].ts);
+  if (timed.length === 0) return 0;
+  return Math.max(0, timed[timed.length - 1].ts - startedAt);
 }
 
 function visibleEvents(events: readonly SessionEvent[]): SessionEvent[] {
@@ -174,7 +175,7 @@ function pushLive(blocks: TimelineNode[], events: readonly SessionEvent[]) {
   }
 }
 
-function pushSettled(blocks: TimelineNode[], events: readonly SessionEvent[]) {
+function pushSettled(blocks: TimelineNode[], startedAt: number, events: readonly SessionEvent[]) {
   const body = events.filter((_, index) => !hiddenInTimeline(events, index));
   const answer = pickAnswer(body, true);
   const answerId = answer?.id ?? null;
@@ -192,7 +193,7 @@ function pushSettled(blocks: TimelineNode[], events: readonly SessionEvent[]) {
   blocks.push({
     type: "turn",
     id: process[0].id,
-    durationMs: elapsedMs(events),
+    durationMs: elapsedMs(startedAt, events),
     events: body,
     answerId,
   });
@@ -229,18 +230,56 @@ function softenConnectionLost(events: readonly SessionEvent[]): readonly Session
   );
 }
 
+/** 时间线里看得见的 Agent 活动：不是用户消息，也不是只给作曲栏和状态用的事件。 */
+function isActivity(events: readonly SessionEvent[], index: number): boolean {
+  return events[index].kind !== "user-message" && !hiddenInTimeline(events, index);
+}
+
+/**
+ * 每一轮从哪条事件开始。用户消息总是开一轮。
+ * Agent 自己开的回合（目标续跑、宿主发的命令）没有用户消息，只有 `turn-anchor`：
+ * 前面这一轮已经有活动、后面在下一条用户消息之前也有活动，才算新的一轮。
+ * 紧挨着用户消息的锚点属于那条消息的回合，不另开。
+ */
+function turnStarts(events: readonly SessionEvent[]): number[] {
+  const starts: number[] = [];
+  let activitySinceStart = false;
+  for (let index = 0; index < events.length; index += 1) {
+    const event = events[index];
+    if (event.kind === "user-message") {
+      starts.push(index);
+      activitySinceStart = false;
+      continue;
+    }
+    if (event.kind === "turn-anchor" && activitySinceStart && activityAhead(events, index)) {
+      starts.push(index);
+      activitySinceStart = false;
+      continue;
+    }
+    if (isActivity(events, index)) activitySinceStart = true;
+  }
+  return starts;
+}
+
+function activityAhead(events: readonly SessionEvent[], from: number): boolean {
+  for (let index = from + 1; index < events.length; index += 1) {
+    if (events[index].kind === "user-message") return false;
+    if (isActivity(events, index)) return true;
+  }
+  return false;
+}
+
 export function buildTimeline(
   events: readonly SessionEvent[],
   status: SessionStatus,
 ): TimelineNode[] {
   events = softenConnectionLost(events);
   const blocks: TimelineNode[] = [];
-  let index = 0;
-  while (index < events.length && events[index].kind !== "user-message") {
+  const starts = turnStarts(events);
+  const prefixEnd = starts[0] ?? events.length;
+  for (let index = 0; index < prefixEnd; index += 1) {
+    if (hiddenInTimeline(events, index)) continue;
     const event = events[index];
-    const at = index;
-    index += 1;
-    if (hiddenInTimeline(events, at)) continue;
     blocks.push({
       type: "event",
       event,
@@ -248,30 +287,20 @@ export function buildTimeline(
     });
   }
 
-  const turns: SessionEvent[][] = [];
-  while (index < events.length) {
-    const turn: SessionEvent[] = [];
-    turn.push(events[index]);
-    index += 1;
-    while (index < events.length && events[index].kind !== "user-message") {
-      turn.push(events[index]);
-      index += 1;
-    }
-    turns.push(turn);
-  }
-
+  const turns = starts.map((start, turnIndex) => events.slice(start, starts[turnIndex + 1] ?? events.length));
   const liveStatus = status === "running" || status === "needs-input";
   turns.forEach((turn, turnIndex) => {
-    const user = turn[0];
-    blocks.push({ type: "event", event: user, showAgentLabel: false });
+    const leader = turn[0];
+    // Agent 自己开的回合没有用户气泡。
+    if (leader.kind === "user-message") blocks.push({ type: "event", event: leader, showAgentLabel: false });
     const rest = turn.slice(1);
     const last = turnIndex === turns.length - 1;
     if (status === "running" && last) {
-      blocks.push({ type: "live", id: `live-${user.id}`, events: visibleEvents(rest) });
+      blocks.push({ type: "live", id: `live-${leader.id}`, events: visibleEvents(rest) });
       return;
     }
     if (liveStatus && last) pushLive(blocks, rest);
-    else pushSettled(blocks, rest);
+    else pushSettled(blocks, leader.ts, rest);
   });
   if (status === "running" && !blocks.some((block) => block.type === "live")) {
     blocks.push({ type: "live", id: "live-current", events: [] });
