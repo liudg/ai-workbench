@@ -326,7 +326,7 @@ fn on_stream(state: &mut MapState, event: &Value, project: Option<&Path>) -> Vec
                 return Vec::new();
             };
             let input = serde_json::from_str::<Value>(&json).unwrap_or(Value::Null);
-            tool_events(state, &id, &name, &input, "", project)
+            tool_events(state, &id, &name, &input, "", false, project)
         }
         _ => Vec::new(),
     }
@@ -622,7 +622,7 @@ fn on_assistant(state: &mut MapState, value: &Value, project: Option<&Path>, liv
                     let id = block.get("id").and_then(Value::as_str).unwrap_or("");
                     let name = block.get("name").and_then(Value::as_str).unwrap_or("tool");
                     let input = block.get("input").cloned().unwrap_or(Value::Null);
-                    events.extend(tool_events(state, id, name, &input, "", project));
+                    events.extend(tool_events(state, id, name, &input, "", false, project));
                 }
                 _ => {}
             }
@@ -693,7 +693,8 @@ fn on_tool_result(state: &mut MapState, block: &Value, project: Option<&Path>) -
     };
     let reported = row.reported.clone();
     let input = row.input.clone();
-    tool_events(state, id, &reported, &input, &detail, project)
+    let failed = block.get("is_error").and_then(Value::as_bool).unwrap_or(false);
+    tool_events(state, id, &reported, &input, &detail, !failed, project)
 }
 
 fn on_result(state: &mut MapState, value: &Value, live: bool) -> Vec<SessionEventBody> {
@@ -919,6 +920,8 @@ fn tool_events(
     reported: &str,
     input: &Value,
     detail: &str,
+    // 工具已经成功跑完。被拒绝、被打断或还在等审批的改动不算进这一轮的变更。
+    applied: bool,
     project: Option<&Path>,
 ) -> Vec<SessionEventBody> {
     if id.is_empty() {
@@ -939,7 +942,7 @@ fn tool_events(
         stream_id: Some(id.to_string()),
         images: Vec::new(),
     }];
-    if state.turn_id.is_empty() {
+    if state.turn_id.is_empty() || !applied {
         return events;
     }
     let result = result_value(detail);

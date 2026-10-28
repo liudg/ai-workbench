@@ -296,7 +296,18 @@ fn stream_fixture_maps_bash_edit_usage_and_goal() {
         true,
         None,
     );
-    let diff = edit.events.iter().find_map(|event| match event {
+    // 还没跑（可能在等审批）的改动不算变更。
+    assert!(!edit
+        .events
+        .iter()
+        .any(|event| matches!(event, SessionEventBody::FileChange { .. })));
+    let applied = ingest_line(
+        &mut state,
+        r#"{"type":"user","uuid":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbc","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tool-2","content":"The file src/a.txt has been updated."}]}}"#,
+        true,
+        None,
+    );
+    let diff = applied.events.iter().find_map(|event| match event {
         SessionEventBody::FileChange { diff, path, .. } => Some((path.as_str(), diff.as_str())),
         _ => None,
     });
@@ -1389,4 +1400,40 @@ fn edit_input_does_not_need_a_cli_diff_event() {
     assert_eq!(changes.len(), 1);
     assert!(changes[0].diff.contains("+++ b/src/new.txt"));
     assert!(changes[0].diff.contains("+hello"));
+}
+
+#[test]
+fn rejected_edit_is_not_a_change() {
+    let mut state = MapState::default();
+    state.begin_turn("turn-1");
+    ingest_line(
+        &mut state,
+        r#"{"type":"assistant","uuid":"dddddddd-dddd-4ddd-8ddd-dddddddddddd","message":{"role":"assistant","content":[{"type":"tool_use","id":"tool-9","name":"Edit","input":{"file_path":"calc.py","old_string":"a","new_string":"b"}}]}}"#,
+        true,
+        None,
+    );
+    let rejected = ingest_line(
+        &mut state,
+        r#"{"type":"user","uuid":"eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tool-9","is_error":true,"content":"The user doesn't want to proceed with this tool use."}]}}"#,
+        true,
+        None,
+    );
+    assert!(!rejected.events.iter().any(|event| matches!(
+        event,
+        SessionEventBody::FileChange { .. } | SessionEventBody::TurnChanges { .. }
+    )));
+}
+
+#[test]
+fn counts_messages_absorbed_into_the_running_turn() {
+    let text = [
+        r#"{"type":"queue-operation","operation":"enqueue","content":"a"}"#,
+        r#"{"type":"queue-operation","operation":"dequeue"}"#,
+        r#"{"type":"queue-operation","operation":"enqueue","content":"b"}"#,
+        r#"{"type":"queue-operation","operation":"remove","content":"b","reason":"absorbed_mid_turn"}"#,
+        r#"{"type":"user","message":{"role":"user","content":"absorbed_mid_turn queue-operation"}}"#,
+    ]
+    .join("
+");
+    assert_eq!(super::runtime::count_absorbed(&text), 1);
 }

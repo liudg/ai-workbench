@@ -4,6 +4,7 @@
 //! 但不会注册 SDK 工具，ExitPlanMode / AskUserQuestion 就不会出现）。
 //! stdout 读取不在 `can_use_tool` 上等待；回复由 `answer_prompt` 稍后写回。
 //! 历史在 initialize 成功之后、`start_session` 返回之前写入通道，会话管理器用 `try_recv` 装上。
+//! `options.skip_history` 时宿主已经有时间线，只读转录记下状态，不写进通道。
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -73,10 +74,14 @@ pub struct Shared {
     user_results: AtomicU64,
     /// `arm_turn` 的次数。新回合已经挂上时，旧 result 不再另开一个锚点。
     armed_user_turns: AtomicU64,
+    /// 启动时转录里已有的 `absorbed_mid_turn` 条数。之后多出来的，是这次进程里被并进当前回合的写入。
+    absorbed_base: AtomicU64,
     /// 还没写进 stdin 的本地排队。
     pub(super) queue_state: Mutex<super::queue::QueueState>,
     /// 启动时写进 `--add-dir` 的目录。Claude 没有在运行中追加目录的控制请求。
     add_dirs: Mutex<Vec<String>>,
+    /// resume 时把转录里的历史写进通道。宿主已经存了时间线就不重放。
+    replay_history: bool,
 }
 
 pub async fn open(
@@ -86,6 +91,7 @@ pub async fn open(
     writable_roots: Vec<String>,
     worktree_name: Option<String>,
     worktree_path: Option<String>,
+    replay_history: bool,
     events: EventSink,
 ) -> Result<Arc<Shared>, AgentError> {
     let project = PathBuf::from(project_path.trim());
@@ -162,8 +168,10 @@ pub async fn open(
         user_writes: AtomicU64::new(0),
         user_results: AtomicU64::new(0),
         armed_user_turns: AtomicU64::new(0),
+        absorbed_base: AtomicU64::new(0),
         queue_state: Mutex::new(super::queue::QueueState::default()),
         add_dirs: Mutex::new(add_dirs),
+        replay_history,
     });
     start_io(&shared, stdin, stdout, stderr);
 
@@ -181,6 +189,20 @@ pub async fn open(
     }
     register(&shared);
     Ok(shared)
+}
+
+/// 转录里被并进进行中回合的用户消息条数。
+pub(super) fn count_absorbed(text: &str) -> u64 {
+    text.lines()
+        .filter(|line| line.contains("\"queue-operation\"") && line.contains("\"absorbed_mid_turn\""))
+        .filter(|line| {
+            serde_json::from_str::<Value>(line).is_ok_and(|entry| {
+                entry.get("type").and_then(Value::as_str) == Some("queue-operation")
+                    && entry.get("operation").and_then(Value::as_str) == Some("remove")
+                    && entry.get("reason").and_then(Value::as_str) == Some("absorbed_mid_turn")
+            })
+        })
+        .count() as u64
 }
 
 fn usage_delta(event: &SessionEventBody) -> bool {
@@ -244,6 +266,8 @@ impl Shared {
         let model_before = self.map.lock().unwrap().model.clone();
         if let Some(path) = history::find_session_file(&self.session_id) {
             if let Some(text) = history::read_session_text(&path) {
+                self.absorbed_base
+                    .store(count_absorbed(&text), Ordering::SeqCst);
                 let usage = {
                     let mut ledger = self.usage_ledger.lock().unwrap();
                     ledger.seed_transcript(&text);
@@ -259,6 +283,18 @@ impl Shared {
                 };
                 if !diff.is_empty() {
                     *self.last_diff.lock().unwrap() = diff;
+                }
+                // 不重放时也要读一遍：记下已见过的消息、上一轮差异和目标，实时回声才不会重复。
+                if !self.replay_history {
+                    if let Some(goal) = events
+                        .iter()
+                        .rev()
+                        .find(|event| matches!(event, SessionEventBody::Goal { .. }))
+                    {
+                        *self.goal.lock().unwrap() = Some(goal.clone());
+                    }
+                    self.mark_ready();
+                    return;
                 }
                 let mut older = events;
                 let start = older.len().saturating_sub(history::PAGE_SIZE);
@@ -686,6 +722,22 @@ impl Shared {
         }
     }
 
+    /// 还要等几个 result。回合进行中写进去的消息，CLI 可能直接并进当前回合
+    /// （2.1.312：转录记 `queue-operation` `remove`，`reason: absorbed_mid_turn`），这些不会再有自己的 result。
+    /// 只有写入多于已到的 result 时才去读转录。
+    fn expected_results(&self, seen: u64) -> u64 {
+        let written = self.user_writes.load(Ordering::SeqCst);
+        if written <= seen {
+            return written;
+        }
+        let absorbed = history::find_session_file(&self.session_id)
+            .and_then(|path| history::read_session_text(&path))
+            .map(|text| count_absorbed(&text))
+            .unwrap_or(0)
+            .saturating_sub(self.absorbed_base.load(Ordering::SeqCst));
+        written.saturating_sub(absorbed).max(seen)
+    }
+
     fn refresh_usage_snapshot(&self) {
         let Some(path) = history::find_session_file(&self.session_id) else {
             return;
@@ -714,7 +766,7 @@ impl Shared {
             return;
         }
         let seen = self.user_results.fetch_add(1, Ordering::SeqCst) + 1;
-        let written = self.user_writes.load(Ordering::SeqCst);
+        let written = self.expected_results(seen);
         if seen < written {
             self.busy.store(true, Ordering::SeqCst);
             if self.armed_user_turns.load(Ordering::SeqCst) <= seen {
@@ -745,9 +797,7 @@ impl Shared {
                 self.start_queued_item(item);
             }
             super::queue::ClosePlan::Finish => {
-                if self.busy.load(Ordering::SeqCst)
-                    && self.user_writes.load(Ordering::SeqCst) > seen
-                {
+                if self.busy.load(Ordering::SeqCst) && self.expected_results(seen) > seen {
                     return;
                 }
                 self.busy.store(false, Ordering::SeqCst);

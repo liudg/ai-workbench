@@ -5,8 +5,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use aiwb_agents::{
-    AgentAdapter, AgentError, AgentSession, AnnotationSink, DiffScopeProvider, EventSink,
-    SessionContext, TurnDelivery,
+    AgentAdapter, AgentError, AgentSession, AnnotationSink, DiffScopeProvider, DirectoryEntry,
+    EventSink, SessionContext, TurnDelivery,
 };
 use aiwb_core::models::{
     AgentCatalog, AgentCapabilities, AgentKind, PageAnnotation, PromptAnswer, SessionEventBody, SessionStatus,
@@ -21,6 +21,8 @@ use serde_json::{json, Value};
 struct Script {
     started: Mutex<Vec<SessionContext>>,
     stopped: Mutex<usize>,
+    /// CLI 里开过的会话，导入用。
+    listed: Mutex<Vec<DirectoryEntry>>,
 }
 
 struct FakeAdapter(Arc<Script>);
@@ -47,6 +49,33 @@ impl AgentAdapter for FakeAdapter {
 
     fn session_linked(&self) -> bool {
         true
+    }
+
+    async fn import_list(&self) -> Result<Vec<DirectoryEntry>, AgentError> {
+        Ok(self.0.listed.lock().unwrap().clone())
+    }
+
+    async fn import_history(&self, native_id: &str, _cwd: &str) -> Result<Vec<SessionEventBody>, AgentError> {
+        if native_id == "broken" {
+            return Err(AgentError::Runtime("转录读不了".into()));
+        }
+        Ok(vec![
+            SessionEventBody::StatusChanged {
+                status: SessionStatus::Running,
+            },
+            SessionEventBody::UserMessage {
+                text: format!("{native_id} 的问题"),
+                images: Vec::new(),
+                annotations: 0,
+            },
+            SessionEventBody::AgentMessage {
+                text: format!("{native_id} 的回答"),
+                stream_id: None,
+                phase: None,
+                mode: None,
+                dedupe_of: None,
+            },
+        ])
     }
 
     async fn start_session(
@@ -577,4 +606,94 @@ async fn probe_catalog_refreshes_a_stored_catalog_once_per_launch() {
         .unwrap();
     assert_eq!(again, probed);
     assert_eq!(script.started.lock().unwrap().len(), 1);
+}
+
+fn listed(native_id: &str, cwd: &str, title: &str, updated_at: i64) -> DirectoryEntry {
+    DirectoryEntry {
+        native_id: native_id.into(),
+        cwd: cwd.into(),
+        cwd_key: aiwb_core::models::cwd_key(cwd),
+        title: title.into(),
+        created_at: updated_at - 10,
+        updated_at,
+        status: SessionStatus::Completed,
+        ephemeral: false,
+        archived: false,
+    }
+}
+
+#[tokio::test]
+async fn imports_cli_sessions_of_the_project_and_resumes_them() {
+    let dir = tempfile::tempdir().unwrap();
+    let project_dir = tempfile::tempdir().unwrap();
+    let elsewhere = tempfile::tempdir().unwrap();
+    let path = project_dir.path().to_string_lossy().to_string();
+    let script = Arc::new(Script::default());
+    *script.listed.lock().unwrap() = vec![
+        listed("old", &path, "旧会话", 1_000),
+        listed("new", &path, "", 2_000),
+        listed("broken", &path, "坏的", 1_500),
+        listed("other", &elsewhere.path().to_string_lossy(), "别的目录", 3_000),
+    ];
+    let services = services(Arc::new(Store::open_in_memory().unwrap()), script.clone(), dir.path());
+    let project = services
+        .dispatch("projects.add", json!({ "path": path }))
+        .await
+        .unwrap();
+
+    // 只列工作目录是项目主目录的，新的在前。
+    let list = services
+        .dispatch("imports.list", json!({ "projectId": project["id"] }))
+        .await
+        .unwrap();
+    let ids: Vec<_> = list["items"].as_array().unwrap().iter().map(|i| i["nativeId"].as_str().unwrap()).collect();
+    assert_eq!(ids, ["new", "broken", "old"]);
+    assert!(list["errors"].as_array().unwrap().is_empty());
+
+    let result = services
+        .dispatch("imports.run", json!({ "projectId": project["id"], "items": list["items"] }))
+        .await
+        .unwrap();
+    assert_eq!(result["taskIds"].as_array().unwrap().len(), 2);
+    assert_eq!(result["failures"][0]["nativeId"], "broken");
+    assert_eq!(result["failures"][0]["message"], "转录读不了");
+
+    // 任务保留原来的时间；没有标题时取第一条用户消息；时间线照原样，状态是已完成。
+    let tasks = services.dispatch("tasks.list", Value::Null).await.unwrap();
+    let tasks = tasks.as_array().unwrap();
+    assert_eq!(tasks.len(), 2);
+    let new = tasks.iter().find(|t| t["sessions"][0]["nativeId"] == "new").unwrap();
+    assert_eq!(new["title"], "new 的问题");
+    assert_eq!(new["updatedAt"], 2_000);
+    assert_eq!(new["workspace"]["kind"], "root");
+    assert_eq!(new["sessions"][0]["status"], "completed");
+    let old = tasks.iter().find(|t| t["sessions"][0]["nativeId"] == "old").unwrap();
+    assert_eq!(old["title"], "旧会话");
+    let session_id = old["sessions"][0]["id"].as_str().unwrap().to_string();
+    let feed = services.snapshot(&format!("session:{session_id}"), &json!({})).unwrap();
+    let kinds: Vec<_> = events_of(&feed).iter().map(|e| e["kind"].as_str().unwrap().to_string()).collect();
+    assert_eq!(kinds, ["user-message", "agent-message"]);
+    assert!(script.started.lock().unwrap().is_empty(), "导入不起 CLI");
+
+    // 导入过的不再列出。
+    let again = services
+        .dispatch("imports.list", json!({ "projectId": project["id"] }))
+        .await
+        .unwrap();
+    let ids: Vec<_> = again["items"].as_array().unwrap().iter().map(|i| i["nativeId"].as_str().unwrap()).collect();
+    assert_eq!(ids, ["broken"]);
+
+    // 发消息用 resume 接回原线程，不重放历史。
+    services
+        .dispatch("sessions.send", json!({ "sessionId": session_id, "text": "接着说" }))
+        .await
+        .unwrap();
+    let feed = wait_for_answer(&services, &session_id, "收到：接着说").await;
+    let started = script.started.lock().unwrap();
+    assert_eq!(started[0].resume_native_id.as_deref(), Some("old"));
+    assert!(started[0].flag("skip_history"));
+    assert_eq!(
+        events_of(&feed).iter().filter(|e| e["kind"] == "user-message").count(),
+        2
+    );
 }

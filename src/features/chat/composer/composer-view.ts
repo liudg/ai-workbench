@@ -67,13 +67,17 @@ export function composerCaps(
   return catalog?.capabilities ?? profile?.capabilities;
 }
 
-/** 目录一到，斜杠命令只认这份目录，哪怕它是空的。 */
+/** 目录一到，斜杠命令只认这份目录，哪怕它是空的。`/plan` 由作曲栏自己处理，支持计划模式就列出。 */
 export function composerCommands(
   catalog: AgentCatalog | undefined,
   profile: AgentProfile | undefined,
 ): SlashCommand[] {
-  if (catalog) return [...catalog.commands];
-  return profile?.commands ? [...profile.commands] : [];
+  const listed = catalog ? [...catalog.commands] : profile?.commands ? [...profile.commands] : [];
+  const plan = composerCaps(catalog, profile)?.supports_plan;
+  if (plan && !listed.some((command) => command.name === "/plan")) {
+    listed.unshift({ name: "/plan", hint: "", takes_args: true });
+  }
+  return listed;
 }
 
 function pendingKindOf(events: readonly SessionEvent[], pendingId: string | null): string | null {

@@ -176,9 +176,11 @@ export function useNewComposer({
         switcher: {
           loadModels: (next) => agentsApi.probeCatalog(next, projectId).then((found) => found.models),
           onPick: (next, model) => {
+            const picked: SessionTuning = { model: model.id, effort: model.default_effort };
             rememberAgent(next);
+            rememberTuning(next, picked);
             // 权限是上一个 Agent 的，换了就不带过去。
-            patch({ agent: next, tuning: { model: model.id, effort: model.default_effort }, sandbox: null });
+            patch({ agent: next, tuning: picked, sandbox: null });
           },
         },
       },

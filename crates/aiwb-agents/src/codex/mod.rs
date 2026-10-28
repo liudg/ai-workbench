@@ -124,6 +124,18 @@ impl AgentAdapter for CodexCliAdapter {
         true
     }
 
+    /// `thread/list` 里没归档的线程，临时线程不能 resume，不算。
+    async fn import_list(&self) -> Result<Vec<crate::DirectoryEntry>, AgentError> {
+        let listed = CodexDirectory::shared()
+            .list_threads()
+            .await
+            .map_err(AgentError::Runtime)?;
+        Ok(listed
+            .into_iter()
+            .filter(|entry| !entry.archived && !entry.ephemeral)
+            .collect())
+    }
+
     fn mcp(&self) -> Option<Arc<dyn crate::mcp::McpDriver>> {
         Some(mcp::driver())
     }

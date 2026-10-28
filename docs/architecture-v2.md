@@ -105,11 +105,14 @@
      - 前端：`features/sidebar`、`features/settings`、`features/command-menu`、`features/updates` 用 v1 的组件，数据换成 daemon；`features/projects`、`features/tasks`、`features/agents` 是各自的数据入口；主区在 `features/workspace`（会话视图、新会话视图）。v1 作曲栏通过 `ComposerHost` 取数据（`chat/composer/host.ts`），已有会话和新会话各一份实现。导航、错误横幅这些纯界面状态在 `shared/shell`。
      - 简版的 `features/task`、任务列表、项目列表已删。旧前端 store（`src/store` 里除 `session-usage`、`subscription-usage` 外）已经没人用，提前删了；第 8 步只剩 Rust 侧的 `SessionManager`、`dev_bridge` 和 `lib/ipc`。
      - 和清单的出入：「下一个需要处理的会话」随第 6 步、「分叉聊天」随第 5 步重做，第 3 步先从命令菜单拿掉；侧栏的「只读」标记去掉（理由见清单）。
-4. **Claude 迁入**：标准同第 2 步，再加上"从 CLI 历史导入会话"（Codex 和 Claude 都要）。
+4. **Claude 迁入** ✅（2026-10-28）：标准同第 2 步，再加上"从 CLI 历史导入会话"（Codex 和 Claude 都要）。
+   - 落地情况：daemon 的运行时本来就只认适配器，Claude 直接走同一套 `tasks.*` / `sessions.*`。Claude 适配器补上 `options.skip_history`：resume 时只读转录记下已见过的消息、上一轮差异和目标，不再把历史重放进时间线。
+   - 导入：适配器新增 `import_list` / `import_history`。Codex 读 `thread/list`（未归档、非临时，和 `codex resume` 同一份列表，`codex exec` 开的不算），历史用 resume 接上读完所有页再关掉；Claude 直接读 `~/.claude/projects` 的转录，不起 CLI。daemon 新增 `imports.list` / `imports.run`：按项目列出工作目录就是项目主目录、还没导入的会话，导入时建任务（保留原来的标题和时间，没有标题取第一条用户消息），整段时间线写库，之后发消息用 resume 接回原线程。入口是侧栏项目菜单的「导入 CLI 会话」，可多选，失败的逐条写原因。出处：t3code `apps/server/src/project/AgentSessionImporter.ts`、`AgentSessionScanner.ts`（按项目根目录匹配、已导入的不再列出）；和 t3code 的出入：t3code 只导入文字消息、在新手引导里整批导入，这里导入完整的归一化时间线、按会话勾选。
+   - 真实 CLI 验证中修掉的问题（Claude Code 2.1.312、Codex 0.164.0）：新会话在合并选择器里选的模型没记住；审批或提问待答时排队报错（现在留在本地队列，答完再发）；被拒绝或被打断的 Edit 也算成「已编辑」（现在工具成功跑完才算变更）；Claude 不报 `/plan`，斜杠菜单按 `supports_plan` 补上；Agent 自己退出计划模式（批准退出计划）后 daemon 重启又回到计划模式（运行时把 `CollaborationMode` 记进会话选项）；回合进行中引导的消息被 CLI 并进当前回合（转录记 `absorbed_mid_turn`），不再单独出 result，回合一直停在运行中（现在按转录扣掉这些写入）。
 5. **跨 Agent 交接**：会话中途换 Agent 时，把之前的上下文交给新 Agent。照 t3code 的做法，不用 LLM 写摘要，而是按 token 预算（默认 16k）挑选历史消息；对方之前参与过的，只补它没看到的那段（t3code `apps/server/src/orchestration-v2/ContextHandoffService.ts`、`packages/provider-core/src/server/handoffBudget.ts`）。
 6. **看板和注意力**：注意力投影、看板、侧栏状态药丸、系统通知和任务栏角标（这一步把路线图阶段 1 的核心部分提前做了）。
 7. **ACP 通用驱动**：先接一个能登录的 Agent 跑通完整对话，其他的只验证握手和能力。
 8. **清理**：删除旧的 `SessionManager` 和 `dev_bridge`（旧前端 store 第 3 步已删）；`lib/ipc` 只留应用壳的本机能力（内置浏览器、图片、选文件），其余删掉；更新 AGENTS.md 里的架构描述。
 
 ## 待确认
-- 用来验证 Codex/Claude 的真实 CLI 在哪台机器上。
+- 无。

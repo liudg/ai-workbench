@@ -10,7 +10,7 @@ use crate::install::{self, CliRelease};
 use crate::mcp::McpDriver;
 use aiwb_core::models::{
     AgentCapabilities, AgentInstallation, AgentKind, AgentProfile, PermissionMenu,
-    SubscriptionUsage,
+    SessionEventBody, SubscriptionUsage,
 };
 
 use super::context::SessionContext;
@@ -119,6 +119,47 @@ pub trait AgentAdapter: Send + Sync {
         _events: EventSink,
     ) -> Result<Arc<dyn AgentSession>, AgentError> {
         Err(AgentError::NotLinked(self.kind().display_name()))
+    }
+
+    /// 在 CLI 里开过、可以导入工作台的会话。只有接入了会话协议的适配器覆盖它。
+    async fn import_list(&self) -> Result<Vec<DirectoryEntry>, AgentError> {
+        Err(AgentError::NotLinked(self.kind().display_name()))
+    }
+
+    /// 导入一条 CLI 里的历史会话：按时间顺序给出整段时间线，不改原生会话。
+    /// 默认用 resume 接上，把首屏和更早的页都读完再关掉；能直接读转录的适配器自己覆盖。
+    async fn import_history(
+        &self,
+        native_id: &str,
+        cwd: &str,
+    ) -> Result<Vec<SessionEventBody>, AgentError> {
+        let ctx = SessionContext {
+            project_path: cwd.to_string(),
+            access_mode: None,
+            resume_native_id: Some(native_id.to_string()),
+            options: serde_json::json!({ "persist": true }),
+        };
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let handle = self.start_session(ctx, tx).await?;
+        let mut latest = Vec::new();
+        while let Ok(body) = rx.try_recv() {
+            latest.push(body);
+        }
+        let mut pages = Vec::new();
+        let read = async {
+            loop {
+                let (page, exhausted) = handle.load_older_history().await?;
+                let empty = page.is_empty();
+                pages.push(page);
+                if exhausted || empty {
+                    return Ok::<_, AgentError>(());
+                }
+            }
+        }
+        .await;
+        let _ = handle.stop().await;
+        read?;
+        Ok(pages.into_iter().rev().flatten().chain(latest).collect())
     }
 
     /// 分叉聊天。历史由适配器复制。

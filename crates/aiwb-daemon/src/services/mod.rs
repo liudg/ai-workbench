@@ -4,6 +4,7 @@ mod agents;
 mod drafts;
 mod files;
 mod folders;
+mod imports;
 mod mcp;
 mod projects;
 mod sessions;
@@ -142,6 +143,8 @@ impl Services {
             "mcp.logout" => to_value(self.mcp_logout(parse(params)?).await?),
             "mcp.setEnabled" => to_value(self.mcp_set_enabled(parse(params)?).await?),
             "mcp.listTools" => to_value(self.mcp_list_tools(parse(params)?).await?),
+            "imports.list" => to_value(self.import_list(parse(params)?).await?),
+            "imports.run" => to_value(self.run_import(parse(params)?).await?),
             "tasks.list" => to_value(self.store.task_entries().map_err(|e| e.to_string())?),
             "tasks.create" => to_value(self.create_task(parse(params)?).await?),
             "tasks.rename" => to_value(self.rename_task(parse(params)?)?),

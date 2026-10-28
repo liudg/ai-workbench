@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState, type RefObject } from "react";
-import { ChevronRight, Ellipsis, Folder, Pin, PinOff, Settings, X } from "lucide-react";
+import { ChevronRight, Ellipsis, Folder, History, Pin, PinOff, Settings, X } from "lucide-react";
 
 import type { Project } from "@/features/projects";
 import { cn, displayPath } from "@/lib/utils";
@@ -9,6 +9,7 @@ import { partitionSidebarSessions } from "../sessions/session-partition";
 import { SessionList } from "../sessions/SessionList";
 import { aggregateStatus, type SidebarTask } from "../sidebar-task";
 import { EditProjectDialog } from "./EditProjectDialog";
+import { ImportSessionsDialog } from "./ImportSessionsDialog";
 import { projectMenuItems, removeConfirmLabel, type ProjectMenuAction } from "./project-menu";
 import { StatusDot } from "./StatusDot";
 import { useProjectBranch } from "./use-project-branch";
@@ -29,6 +30,7 @@ export function ProjectItem({
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const anchorRef = useRef<HTMLButtonElement>(null);
   const closeMenu = useCallback(() => {
@@ -122,6 +124,10 @@ export function ProjectItem({
                     closeMenu();
                     setEditing(true);
                   }}
+                  onImport={() => {
+                    closeMenu();
+                    setImporting(true);
+                  }}
                   onOpenFolder={() => {
                     closeMenu();
                     openFolder();
@@ -153,6 +159,7 @@ export function ProjectItem({
     {editing && (
       <EditProjectDialog project={project} sessionCount={tasks.length} onClose={() => setEditing(false)} />
     )}
+    {importing && <ImportSessionsDialog project={project} onClose={() => setImporting(false)} />}
     </>
   );
 }
@@ -166,6 +173,7 @@ function ProjectMenu({
   onClose,
   onPin,
   onEdit,
+  onImport,
   onOpenFolder,
   onRemove,
 }: {
@@ -177,6 +185,7 @@ function ProjectMenu({
   onClose: () => void;
   onPin: () => void;
   onEdit: () => void;
+  onImport: () => void;
   onOpenFolder: () => void;
   onRemove: () => void;
 }) {
@@ -224,6 +233,7 @@ function ProjectMenu({
               event.stopPropagation();
               if (entry.id === "pin") onPin();
               else if (entry.id === "edit") onEdit();
+              else if (entry.id === "import") onImport();
               else if (entry.id === "open-folder") onOpenFolder();
               else onRemove();
             }}
@@ -253,6 +263,7 @@ function MenuIcon({
     return <Icon className={className} aria-hidden="true" />;
   }
   if (id === "edit") return <Settings className={className} aria-hidden="true" />;
+  if (id === "import") return <History className={className} aria-hidden="true" />;
   if (id === "open-folder") return <Folder className={className} aria-hidden="true" />;
   return <X className={className} aria-hidden="true" />;
 }

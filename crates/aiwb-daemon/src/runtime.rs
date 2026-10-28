@@ -130,6 +130,9 @@ impl Runtimes {
                 Ok(((), serde_json::to_value(feed).map_err(|e| e.to_string())?))
             }),
             body => {
+                if let SessionEventBody::CollaborationMode { mode } = &body {
+                    self.keep_collaboration_mode(session_id, mode)?;
+                }
                 let status = matches!(body, SessionEventBody::StatusChanged { .. });
                 let title = match &body {
                     SessionEventBody::UserMessage {
@@ -140,40 +143,7 @@ impl Runtimes {
                     _ => None,
                 };
                 let activity = is_conversation_activity(&body);
-                let task_id = self.hub.publish_with(&topic, || -> RuntimeResult<_> {
-                    let mut logs = self.logs.lock().unwrap();
-                    let log = self.log_mut(&mut logs, session_id)?;
-                    let now = now_millis();
-                    let event = match merge_into(&mut log.events, &body, now) {
-                        Some(index) => log.events[index].clone(),
-                        None => {
-                            let event = SessionEvent {
-                                id: new_id(),
-                                session_id: session_id.to_string(),
-                                seq: log.next_seq,
-                                ts: now,
-                                body,
-                            };
-                            log.next_seq += 1;
-                            log.events.push(event.clone());
-                            event
-                        }
-                    };
-                    let stored = StoredEvent {
-                        event,
-                        rev: log.next_rev,
-                    };
-                    log.next_rev += 1;
-                    self.store
-                        .put_event(&log.task_id, &stored, activity)
-                        .map_err(|e| e.to_string())?;
-                    let feed = SessionFeed {
-                        events: vec![stored],
-                        ..Default::default()
-                    };
-                    let data = serde_json::to_value(feed).map_err(|e| e.to_string())?;
-                    Ok((log.task_id.clone(), data))
-                })?;
+                let task_id = self.append(session_id, body, activity)?;
                 let titled = match title {
                     Some(title) => self.adopt_title(&task_id, &title)?,
                     None => false,
@@ -184,6 +154,79 @@ impl Runtimes {
                 Ok(())
             }
         }
+    }
+
+    /// 并进时间线、写库、推给订阅者，返回任务 id。`activity` 时把任务的更新时间挪到现在。
+    fn append(&self, session_id: &str, body: SessionEventBody, activity: bool) -> RuntimeResult<String> {
+        let topic = session_topic(session_id);
+        self.hub.publish_with(&topic, || -> RuntimeResult<_> {
+            let mut logs = self.logs.lock().unwrap();
+            let log = self.log_mut(&mut logs, session_id)?;
+            let now = now_millis();
+            let event = match merge_into(&mut log.events, &body, now) {
+                Some(index) => log.events[index].clone(),
+                None => {
+                    let event = SessionEvent {
+                        id: new_id(),
+                        session_id: session_id.to_string(),
+                        seq: log.next_seq,
+                        ts: now,
+                        body,
+                    };
+                    log.next_seq += 1;
+                    log.events.push(event.clone());
+                    event
+                }
+            };
+            let stored = StoredEvent {
+                event,
+                rev: log.next_rev,
+            };
+            log.next_rev += 1;
+            self.store
+                .put_event(&log.task_id, &stored, activity)
+                .map_err(|e| e.to_string())?;
+            let feed = SessionFeed {
+                events: vec![stored],
+                ..Default::default()
+            };
+            let data = serde_json::to_value(feed).map_err(|e| e.to_string())?;
+            Ok((log.task_id.clone(), data))
+        })
+    }
+
+    /// 导入的历史：按原来的顺序写进时间线。不动任务的更新时间和标题，状态留在已完成。
+    pub(crate) fn import_events(&self, session_id: &str, history: Vec<SessionEventBody>) -> RuntimeResult<()> {
+        for body in history {
+            if matches!(
+                body,
+                SessionEventBody::StatusChanged { .. }
+                    | SessionEventBody::QueueChanged { .. }
+                    | SessionEventBody::NewThread { .. }
+            ) {
+                continue;
+            }
+            self.append(session_id, body, false)?;
+        }
+        Ok(())
+    }
+
+    /// Agent 自己切了计划模式（比如批准退出计划）。记进会话选项，重新接上时不再切回去。
+    fn keep_collaboration_mode(&self, session_id: &str, mode: &str) -> RuntimeResult<()> {
+        let Some(session) = self.store.session(session_id).map_err(|e| e.to_string())? else {
+            return Ok(());
+        };
+        let mode = (mode == "plan").then(|| "plan".to_string());
+        if session.options.collaboration_mode == mode {
+            return Ok(());
+        }
+        let options = SessionOptions {
+            collaboration_mode: mode,
+            ..session.options
+        };
+        self.store
+            .set_session_options(session_id, &options)
+            .map_err(|e| e.to_string())
     }
 
     /// 任务还没有标题时，用第一条用户消息。
@@ -535,5 +578,53 @@ async fn apply_options(handle: &dyn AgentSession, options: &SessionOptions) {
     }
     if let Some(mode) = options.follow_up_queue_mode.as_deref() {
         let _ = handle.set_follow_up_queue_mode(mode).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use aiwb_core::task::{Task, TaskSession};
+
+    #[test]
+    fn agent_leaving_plan_mode_is_kept_in_session_options() {
+        let store = Arc::new(Store::open_in_memory().unwrap());
+        let task = Task {
+            id: "t".into(),
+            project_id: None,
+            title: String::new(),
+            workspace: TaskWorkspace::Folder { path: "x".into() },
+            pinned: false,
+            archived_at: None,
+            created_at: 1,
+            updated_at: 1,
+        };
+        let session = TaskSession {
+            id: "s".into(),
+            task_id: "t".into(),
+            agent: AgentKind::ClaudeCode,
+            native_id: None,
+            status: SessionStatus::Completed,
+            options: SessionOptions {
+                collaboration_mode: Some("plan".into()),
+                model: Some("haiku".into()),
+                ..Default::default()
+            },
+            created_at: 1,
+            updated_at: 1,
+        };
+        store.insert_task(&task, &session).unwrap();
+        let runtimes = Runtimes::new(store.clone(), Arc::new(Hub::new()), Arc::new(aiwb_agents::adapter_for));
+        runtimes
+            .record("s", SessionEventBody::CollaborationMode { mode: "default".into() })
+            .unwrap();
+        let options = store.session("s").unwrap().unwrap().options;
+        assert_eq!(options.collaboration_mode, None);
+        assert_eq!(options.model.as_deref(), Some("haiku"));
+        runtimes
+            .record("s", SessionEventBody::CollaborationMode { mode: "plan".into() })
+            .unwrap();
+        let options = store.session("s").unwrap().unwrap().options;
+        assert_eq!(options.collaboration_mode.as_deref(), Some("plan"));
     }
 }

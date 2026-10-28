@@ -468,8 +468,14 @@ test("network and commands come from this session payload", () => {
     commands: [{ name: "/review", hint: "审查" }],
   };
   assert.equal(composerCaps(catalog, profile)?.supports_tuning, true);
-  assert.deepEqual(composerCommands(catalog, profile), []);
-  assert.equal(composerCommands(undefined, profile)[0]?.name, "/review");
+  const names = (list: { name: string }[]) => list.map((command) => command.name);
+  assert.ok(!names(composerCommands(catalog, profile)).includes("/review"));
+  assert.ok(names(composerCommands(undefined, profile)).includes("/review"));
+  // 目录里没报 /plan、但支持计划模式时补上；不支持就不列。
+  const bare = { ...catalog, commands: [], capabilities: { ...catalog.capabilities, supports_plan: true } };
+  assert.deepEqual(names(composerCommands(bare, profile)), ["/plan"]);
+  const noPlan = { ...catalog, commands: [], capabilities: { ...catalog.capabilities, supports_plan: false } };
+  assert.deepEqual(names(composerCommands(noPlan, profile)), []);
 });
 
 test("plan and goal chips are exclusive and the goal bar follows the goal", () => {

@@ -84,6 +84,31 @@ impl AgentAdapter for ClaudeCodeAdapter {
         permission::permission_menu(&active)
     }
 
+    async fn import_list(&self) -> Result<Vec<DirectoryEntry>, AgentError> {
+        use crate::SessionDirectory;
+        ClaudeDirectory::shared().list().await.map_err(AgentError::Runtime)
+    }
+
+    /// 直接读 `~/.claude/projects` 里的转录，不起 CLI。
+    async fn import_history(
+        &self,
+        native_id: &str,
+        cwd: &str,
+    ) -> Result<Vec<aiwb_core::models::SessionEventBody>, AgentError> {
+        if !history::is_uuid(native_id) {
+            return Err(AgentError::Runtime(format!("无效的会话 id：{native_id}")));
+        }
+        let path = history::find_session_file(native_id)
+            .ok_or_else(|| AgentError::Runtime(format!("找不到会话 {native_id}")))?;
+        let text = history::read_session_text(&path)
+            .ok_or_else(|| AgentError::Runtime(format!("读不了会话 {native_id}")))?;
+        let mut state = messages::MapState::default();
+        let mut events =
+            messages::events_from_transcript(&mut state, &text, Some(std::path::Path::new(cwd)));
+        events.extend(usage::snapshot_from_transcript(&text));
+        Ok(events)
+    }
+
     async fn discard_unsent_thread(&self, native_id: &str) -> Result<(), AgentError> {
         history::remove_session_file(native_id).map_err(AgentError::Runtime)
     }
@@ -174,6 +199,7 @@ impl AgentAdapter for ClaudeCodeAdapter {
         ctx: SessionContext,
         events: EventSink,
     ) -> Result<Arc<dyn AgentSession>, AgentError> {
+        let replay_history = !ctx.flag("skip_history");
         let worktree_name = ctx
             .options
             .get("worktree_name")
@@ -191,6 +217,7 @@ impl AgentAdapter for ClaudeCodeAdapter {
             command::roots_from_options(&ctx.options),
             worktree_name,
             worktree_path,
+            replay_history,
             events,
         )
         .await?;

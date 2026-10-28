@@ -5,6 +5,8 @@
 //! 会话 jsonl 记下 `queue-operation` enqueue，当前回合的 result 之后才 dequeue，
 //! 下一条 stdout 是新的一轮。所以未写入 stdin 之前，消息留在这里，可以改、可以删。
 //! 「引导」或队列模式为 steer 时立刻写入 stdin（Claude 排到下一轮，不打断当前结果）。
+//! 2026-10-28，2.1.312：回合还在调工具时写进去的消息会被并进当前回合，
+//! 转录记 `queue-operation` `remove`（`reason: absorbed_mid_turn`），不再单独出 result。
 //! 当前回合正常结束且用户没有按停止时，再把队首写给 Claude。
 //! 已经写进 stdin、结果还没到的条数在 `runtime` 里用 `user_writes` / `user_results` 计，
 //! 避免旧 result 把新开的回合标成结束。
@@ -123,13 +125,19 @@ impl Shared {
         if text.trim().is_empty() && images.is_empty() {
             return Err(AgentError::Runtime("消息不能为空".into()));
         }
-        self.ensure_writable()?;
+        if self.closed.load(Ordering::SeqCst) {
+            return Err(AgentError::Closed);
+        }
         let busy = self.busy.load(Ordering::SeqCst);
         let plan = if steer {
             plan_submit_now(busy)
         } else {
             plan_submit(busy, false)
         };
+        // 留在本地队列不碰 stdin，等提问答完、回合结束再发；要马上写进去的才得先答提问。
+        if plan != SubmitPlan::Hold {
+            self.ensure_writable()?;
+        }
         match plan {
             SubmitPlan::Hold => self.hold(text, images, client_id),
             SubmitPlan::WriteAhead => {

@@ -138,7 +138,6 @@ impl UsageLedger {
 
 /// 历史 jsonl → 一条快照。同一 `message.id` 只留文件里的最后一条。
 /// 有 assistant 记录就不加 `result`。没有 assistant 时才用 `result.usage`。
-#[cfg(test)]
 pub(super) fn snapshot_from_transcript(content: &str) -> Option<SessionEventBody> {
     let mut ledger = UsageLedger::default();
     ledger.seed_transcript(content);

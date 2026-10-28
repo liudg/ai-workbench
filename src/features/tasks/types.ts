@@ -61,3 +61,23 @@ export interface CreateTaskInput {
   goalStatus?: "paused" | "active";
 }
 
+
+/** CLI 里开过、可以导入的一条会话。 */
+export interface ImportCandidate {
+  agent: AgentKind;
+  nativeId: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ImportList {
+  items: ImportCandidate[];
+  /** 读不出列表的 Agent 和原因。其他 Agent 的照常列出。 */
+  errors: { agent: AgentKind; message: string }[];
+}
+
+export interface ImportResult {
+  taskIds: string[];
+  failures: (ImportCandidate & { message: string })[];
+}
