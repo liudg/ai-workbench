@@ -2,8 +2,6 @@ import { useRef, type RefObject } from "react";
 import { ArrowUp, ChevronDown, Plus, Shield, Target } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import type { AgentIdentity } from "@/shared/agent/identity";
-import { SessionAgentIcon } from "@/shared/agent/SessionAgentIcon";
 import { useElementWidth } from "@/shared/dom/useElementWidth";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import type { PermissionMenu, SessionSandbox } from "@/types";
@@ -25,7 +23,6 @@ export function ComposerBar({
   goalChip,
   showModel,
   modelReady,
-  agentIdentity,
   modelButton,
   modelName,
   effortLabel,
@@ -53,7 +50,6 @@ export function ComposerBar({
   showModel: boolean;
   /** 有模型目录，或者能在选择器里换 Agent。 */
   modelReady: boolean;
-  agentIdentity: AgentIdentity | null;
   modelButton: string;
   /** 选中模型的名字。和强度分开画，避免把强度截成半句。 */
   modelName?: string;
@@ -159,7 +155,6 @@ export function ComposerBar({
               onToggleMenu("model");
             }}
           >
-            {agentIdentity ? <SessionAgentIcon identity={agentIdentity} className="h-4 w-4 shrink-0" /> : null}
             {modelName ? (
               <span className="inline-flex min-w-0 items-center gap-1">
                 <span className="min-w-0 truncate">{modelName}</span>

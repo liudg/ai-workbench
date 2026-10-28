@@ -103,7 +103,8 @@ test("the model list sits beside an agent rail; another agent's model switches a
     },
   };
   const { host, root } = await mount(menu(agents, [model("gpt")]));
-  assert.match(host.textContent ?? "", /Codex CLI · GPT/);
+  assert.match(host.textContent ?? "", /GPT/);
+  assert.doesNotMatch(host.textContent ?? "", /Codex CLI/);
 
   await act(async () => click(host, "[data-model-trigger]"));
   const rail = [...host.querySelectorAll("[data-agent-rail] button")].map((button) => button.getAttribute("data-agent"));
@@ -113,7 +114,7 @@ test("the model list sits beside an agent rail; another agent's model switches a
   await act(async () => click(host, '[data-agent="claude-code"]'));
   assert.deepEqual(loaded, ["claude-code"]);
   const list = host.querySelector("[data-model-list]")?.textContent ?? "";
-  assert.match(list, /Claude Code/);
+  assert.doesNotMatch(list, /Claude Code/);
   assert.match(list, /SONNET/);
 
   await act(async () => click(host, '[data-model-list] [role="option"]'));

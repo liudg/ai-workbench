@@ -41,7 +41,6 @@ export function Composer({
   const catalogNotice = userFacingMessage(c.catalogNotice);
   const slashSelected = Math.min(c.slashIndex, Math.max(view.slashMatches.length - 1, 0));
   const agents = host.agentChoice;
-  const agentIdentity = agents?.options?.find((option) => option.kind === agents.selected)?.identity ?? null;
   // 有 Agent 竖栏时，没有模型也能打开选择器去换 Agent。
   const showModel = view.showModel || agents !== null;
   return (
@@ -177,7 +176,6 @@ export function Composer({
             goalChip={view.goalChip}
             showModel={showModel}
             modelReady={c.hasCatalog || agents !== null}
-            agentIdentity={agentIdentity}
             modelButton={view.modelButton}
             modelName={view.modelName}
             effortLabel={view.effortLabel}

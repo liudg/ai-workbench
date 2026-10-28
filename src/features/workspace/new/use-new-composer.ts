@@ -51,11 +51,21 @@ function useAgentCatalog(agent: AgentKind | null, projectId: ProjectScope) {
     setPermissionMenu(null);
     if (!agent) return;
     let cancelled = false;
+    let probed = false;
+    // 存下的目录先显示，现探的新目录到了再换掉。
+    void agentsApi.cachedCatalog(agent).then(
+      (stored) => {
+        if (!cancelled && !probed && stored) setCatalog(stored);
+      },
+      () => {},
+    );
     void agentsApi.probeCatalog(agent, projectId).then(
       (next) => {
+        probed = true;
         if (!cancelled) setCatalog(next);
       },
       () => {
+        probed = true;
         if (!cancelled) setMissing(true);
       },
     );

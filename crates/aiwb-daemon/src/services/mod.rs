@@ -116,7 +116,7 @@ impl Services {
             "projects.add" => to_value(self.add_project(parse(params)?)?),
             "projects.update" => to_value(self.update_project(parse(params)?)?),
             "projects.setPinned" => to_value(self.pin_project(parse(params)?)?),
-            "projects.remove" => to_value(self.remove_project(parse(params)?)?),
+            "projects.remove" => to_value(self.remove_project(parse(params)?).await?),
             "git.isRepo" => to_value(self.is_git_dir(parse(params)?).await?),
             "git.hasCommit" => to_value(self.has_commit(parse(params)?).await?),
             "git.branch" => to_value(self.current_branch(parse(params)?).await?),

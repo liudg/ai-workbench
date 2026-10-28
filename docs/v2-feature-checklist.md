@@ -19,7 +19,7 @@ v1 的功能逐项标「沿用」「改进」「去掉」。改进写出处，�
 | 编辑项目：名称、多个源文件夹 | `EditProjectDialog.tsx`，`update_project` | 沿用 | `projects.update` | 网页已验（改名） |
 | 置顶项目 | `project-menu.ts`、`project-sections.ts` | 沿用 | 存进数据库 | 网页已验 |
 | 在资源管理器中打开 | `project-menu.ts`，`open_project_folder` | 沿用 | 壳新增 `reveal_folder` | 桌面已验（命令没报错；窗口要人看一眼） |
-| 移除项目 | `project-menu.ts`，`remove_project` | 沿用 | | 已接上 |
+| 移除项目 | `project-menu.ts`，`remove_project` | 改进 | 项目下的会话（含侧栏不显示的已归档会话）一起删，先停掉它们的 Agent；磁盘目录和工作树不动。再点一次确认，确认文案写明删几个会话（t3code `apps/web/src/components/LegacySidebar.tsx` 的 `handleRemoveProject`，`force: true`） | 已接上（daemon 有测试） |
 | 分支显示、切换、新建 | `chat/composer/GitBranchControl.tsx`，`project_branch` / `project_checkout_branch` / `project_create_branch` / `project_git_branches` | 沿用 | `git.*`，按会话或项目 | 桌面已验（显示）；切换、新建已接上 |
 | 提交、推送、开 PR 的按钮 | 无 | 改进（路线图 8） | v1 没有。按仓库状态给出一个主操作，和分支控件并存（t3code `apps/web/src/components/GitActionsControl.logic.ts`） | — |
 

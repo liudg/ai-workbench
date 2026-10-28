@@ -9,7 +9,7 @@ import { partitionSidebarSessions } from "../sessions/session-partition";
 import { SessionList } from "../sessions/SessionList";
 import { aggregateStatus, type SidebarTask } from "../sidebar-task";
 import { EditProjectDialog } from "./EditProjectDialog";
-import { projectMenuItems, type ProjectMenuAction } from "./project-menu";
+import { projectMenuItems, removeConfirmLabel, type ProjectMenuAction } from "./project-menu";
 import { StatusDot } from "./StatusDot";
 import { useProjectBranch } from "./use-project-branch";
 import { useProjectItem } from "./use-project-item";
@@ -111,6 +111,7 @@ export function ProjectItem({
                   open={menuOpen}
                   anchorRef={anchorRef}
                   project={project}
+                  sessionCount={tasks.length}
                   confirming={confirming}
                   onClose={closeMenu}
                   onPin={() => {
@@ -149,7 +150,9 @@ export function ProjectItem({
         <SessionList tasks={grouped.active} activeTaskId={activeTaskId} />
       )}
     </div>
-    {editing && <EditProjectDialog project={project} onClose={() => setEditing(false)} />}
+    {editing && (
+      <EditProjectDialog project={project} sessionCount={tasks.length} onClose={() => setEditing(false)} />
+    )}
     </>
   );
 }
@@ -158,6 +161,7 @@ function ProjectMenu({
   open,
   anchorRef,
   project,
+  sessionCount,
   confirming,
   onClose,
   onPin,
@@ -168,6 +172,7 @@ function ProjectMenu({
   open: boolean;
   anchorRef: RefObject<HTMLButtonElement | null>;
   project: Project;
+  sessionCount: number;
   confirming: boolean;
   onClose: () => void;
   onPin: () => void;
@@ -177,7 +182,9 @@ function ProjectMenu({
 }) {
   const pinned = project.pinned;
   const entries = projectMenuItems({ path: project.path, pinned });
-  const wide = entries.some((entry) => entry.type === "action" && entry.id === "open-folder");
+  const wide =
+    (confirming && sessionCount > 0) ||
+    entries.some((entry) => entry.type === "action" && entry.id === "open-folder");
   return (
     <FixedMenu
       open={open}
@@ -202,7 +209,7 @@ function ProjectMenu({
             <div key={`sep-${index}`} role="separator" className="mx-2 my-1 border-t border-zinc-800" />
           );
         }
-        const label = entry.id === "remove" && confirming ? "确认移除？" : entry.label;
+        const label = entry.id === "remove" && confirming ? removeConfirmLabel(sessionCount) : entry.label;
         return (
           <button
             key={entry.id}

@@ -174,20 +174,22 @@ impl Services {
         })
     }
 
-    /// 还有任务的项目不移除，免得把任务记录一起删掉。
-    pub(crate) fn remove_project(&self, params: ProjectId) -> ServiceResult<bool> {
+    /// 连项目下的会话（含已归档）一起删，先停掉它们的 Agent。磁盘目录和工作树不动。
+    pub(crate) async fn remove_project(&self, params: ProjectId) -> ServiceResult<bool> {
         let tasks = self.store.list_tasks().map_err(|e| e.to_string())?;
-        let count = tasks
+        for task in tasks
             .iter()
             .filter(|task| task.project_id.as_deref() == Some(params.id.as_str()))
-            .count();
-        if count > 0 {
-            return Err(format!("这个项目下还有 {count} 个会话，先删掉它们再移除项目"));
+        {
+            self.stop_task_sessions(&task.id).await?;
         }
-        self.hub.publish_with(TOPIC_PROJECTS, || {
+        let removed: ServiceResult<bool> = self.hub.publish_with(TOPIC_PROJECTS, || {
             let removed = self.store.remove_project(&params.id).map_err(|e| e.to_string())?;
             Ok((removed, to_value(self.list_projects()?)?))
-        })
+        });
+        let removed = removed?;
+        self.runtimes.publish_tasks()?;
+        Ok(removed)
     }
 
     fn git_root(&self, scope: &GitScope) -> ServiceResult<PathBuf> {
@@ -363,6 +365,49 @@ mod tests {
         let pushed = rx.recv().await.unwrap();
         assert_eq!(pushed.topic, TOPIC_PROJECTS);
         assert_eq!(pushed.data, json!([]));
+    }
+
+    #[tokio::test]
+    async fn remove_deletes_the_projects_tasks_including_archived() {
+        use aiwb_core::models::{AgentKind, SessionStatus};
+        use aiwb_core::task::{SessionOptions, Task, TaskSession, TaskWorkspace};
+
+        let services = services();
+        let dir = tempfile::tempdir().unwrap();
+        let added = services
+            .dispatch("projects.add", json!({ "path": dir.path().to_string_lossy() }))
+            .await
+            .unwrap();
+        let id = added["id"].as_str().unwrap().to_string();
+        let task = Task {
+            id: "t1".into(),
+            project_id: Some(id.clone()),
+            title: "旧会话".into(),
+            workspace: TaskWorkspace::Root,
+            pinned: false,
+            archived_at: Some(5),
+            created_at: 1,
+            updated_at: 5,
+        };
+        let session = TaskSession {
+            id: "t1-s".into(),
+            task_id: "t1".into(),
+            agent: AgentKind::CodexCli,
+            native_id: None,
+            status: SessionStatus::Completed,
+            options: SessionOptions::default(),
+            created_at: 1,
+            updated_at: 1,
+        };
+        services.store.insert_task(&task, &session).unwrap();
+
+        let removed = services
+            .dispatch("projects.remove", json!({ "id": id }))
+            .await
+            .unwrap();
+        assert_eq!(removed, json!(true));
+        assert!(services.store.list_tasks().unwrap().is_empty());
+        assert!(services.list_projects().unwrap().is_empty());
     }
 
     #[tokio::test]

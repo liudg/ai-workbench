@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { projectMenuItems } from "./project-menu.ts";
+import { projectMenuItems, removeConfirmLabel } from "./project-menu.ts";
 
 function labels(path: string | null | undefined, pinned: boolean) {
   return projectMenuItems({ path, pinned }).map((item) => (item.type === "action" ? item.label : "—"));
@@ -38,4 +38,9 @@ test("没有本地路径时不显示在资源管理器中打开", () => {
       ["pin", "edit", "separator", "remove"],
     );
   }
+});
+
+test("移除确认写明会一起删掉几个会话", () => {
+  assert.equal(removeConfirmLabel(0), "确认移除？");
+  assert.equal(removeConfirmLabel(3), "删除 3 个会话并移除？");
 });

@@ -532,3 +532,49 @@ async fn probe_catalog_starts_a_threadless_cli_once_and_remembers_it() {
         .unwrap();
     assert_eq!(remembered, first);
 }
+
+#[tokio::test]
+async fn probe_catalog_refreshes_a_stored_catalog_once_per_launch() {
+    let dir = tempfile::tempdir().unwrap();
+    let chats = tempfile::tempdir().unwrap();
+    let store = Arc::new(Store::open_in_memory().unwrap());
+    let mut stale = AgentCatalog::empty();
+    stale.models.push(
+        serde_json::from_value(json!({
+            "id": "old-model",
+            "label": "Old",
+            "description": "",
+            "is_default": true,
+            "default_effort": "",
+            "efforts": [],
+        }))
+        .unwrap(),
+    );
+    store
+        .set_meta("catalog:codex-cli", &serde_json::to_string(&stale).unwrap())
+        .unwrap();
+    let script = Arc::new(Script::default());
+    let services = services(store, script.clone(), dir.path());
+    services
+        .dispatch("settings.setTaskFolder", json!({ "path": chats.path().to_string_lossy() }))
+        .await
+        .unwrap();
+    // 存下的旧目录先给界面用。
+    let cached = services
+        .dispatch("agents.catalog", json!({ "agent": "codex-cli" }))
+        .await
+        .unwrap();
+    assert_eq!(cached["models"][0]["id"], "old-model");
+
+    let probed = services
+        .dispatch("agents.probeCatalog", json!({ "agent": "codex-cli" }))
+        .await
+        .unwrap();
+    assert_eq!(probed["models"][0]["id"], "fake-model");
+    let again = services
+        .dispatch("agents.probeCatalog", json!({ "agent": "codex-cli" }))
+        .await
+        .unwrap();
+    assert_eq!(again, probed);
+    assert_eq!(script.started.lock().unwrap().len(), 1);
+}

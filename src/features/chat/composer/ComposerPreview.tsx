@@ -524,7 +524,6 @@ export default function ComposerPreview() {
               goalChip={view.goalChip}
               showModel
               modelReady
-              agentIdentity={null}
               modelButton={view.modelButton}
               modelName={view.modelName}
               effortLabel={view.effortLabel}

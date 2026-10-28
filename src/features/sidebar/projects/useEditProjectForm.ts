@@ -12,6 +12,7 @@ export function useEditProjectForm(project: Project, onClose: () => void) {
   const [folders, setFolders] = useState(() => projectFolders(project));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
 
   const removeFolder = (index: number) => {
     setFolders((current) => current.filter((_, item) => item !== index));
@@ -46,6 +47,10 @@ export function useEditProjectForm(project: Project, onClose: () => void) {
 
   const removeLocal = async () => {
     if (busy) return;
+    if (!confirmingRemove) {
+      setConfirmingRemove(true);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -68,6 +73,7 @@ export function useEditProjectForm(project: Project, onClose: () => void) {
     addFolder,
     submit,
     removeLocal,
+    confirmingRemove,
     error,
     busy,
     valid,

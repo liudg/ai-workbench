@@ -4,7 +4,7 @@
 //! 同一条流的覆盖沿用原来的 seq，换一个新的 rev。
 //! 会话按需接上：第一次发送、要目录或权限菜单时才启动 CLI；daemon 重启后用 resume 接回原线程。
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
 use aiwb_agents::{AgentAdapter, AgentError, AgentSession, SessionContext, TurnDelivery, UserTurn};
@@ -44,6 +44,8 @@ pub struct Runtimes {
     opening: tokio::sync::Mutex<()>,
     /// 同一时间只探一次目录。等锁的一方拿到锁后先看缓存。
     pub(crate) probing: tokio::sync::Mutex<()>,
+    /// 这次启动后拿到过新目录的 Agent。没拿到过的，存下的目录可能是旧的。
+    pub(crate) fresh_catalogs: Mutex<HashSet<AgentKind>>,
 }
 
 impl Runtimes {
@@ -56,6 +58,7 @@ impl Runtimes {
             live: Mutex::default(),
             opening: tokio::sync::Mutex::new(()),
             probing: tokio::sync::Mutex::new(()),
+            fresh_catalogs: Mutex::default(),
         }
     }
 

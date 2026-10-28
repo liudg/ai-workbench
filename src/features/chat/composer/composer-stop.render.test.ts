@@ -119,7 +119,6 @@ function bar(input: { stopMode: boolean; sendDisabled: boolean; onSend: () => vo
     goalChip: false,
     showModel: false,
     modelReady: false,
-    agentIdentity: null,
     modelButton: "",
     editing: false,
     onToggleMenu: () => undefined,

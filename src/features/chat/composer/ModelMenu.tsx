@@ -57,7 +57,6 @@ export function ModelMenu({
   const current = models.find((item) => item.id === modelId);
   const effortLabel = effortDisplay(current, shownEffort);
   const hasEfforts = sliderEfforts(current).length > 0;
-  const agentName = agents?.options?.find((option) => option.kind === agents.selected)?.name;
   return (
     <div
       ref={menuRef}
@@ -125,10 +124,7 @@ export function ModelMenu({
                     : "inline-flex max-w-full items-center gap-0.5 text-lg font-semibold leading-none text-blue-400"
                 }
               >
-                <span className="truncate">
-                  {agentName ? `${agentName} · ` : ""}
-                  {modelLabel || current?.label || DESKTOP_ZH.selectModel}
-                </span>
+                <span className="truncate">{modelLabel || current?.label || DESKTOP_ZH.selectModel}</span>
                 <ChevronRight className="h-3.5 w-3.5 shrink-0" />
               </span>
             </button>
@@ -340,11 +336,10 @@ function ModelPanel({
     };
   }, [railAgent, selected, switcher]);
 
-  const nameOf = (kind: AgentKind | undefined) => agents?.options?.find((option) => option.kind === kind)?.name;
   const loaded = other?.agent === railAgent ? other : null;
   const list = viewingOther ? (
     <ModelList
-      title={nameOf(railAgent)}
+      heading={!agents}
       models={loaded?.models ?? null}
       error={loaded?.error ?? null}
       onPick={(model) => {
@@ -352,7 +347,7 @@ function ModelPanel({
       }}
     />
   ) : (
-    <ModelList title={nameOf(selected)} models={models} error={null} modelId={modelId} onPick={onPick} />
+    <ModelList heading={!agents} models={models} error={null} modelId={modelId} onPick={onPick} />
   );
   if (!agents) return list;
   return (
@@ -391,13 +386,14 @@ function ModelPanel({
 }
 
 function ModelList({
-  title,
+  heading,
   models,
   error,
   modelId,
   onPick,
 }: {
-  title?: string;
+  /** 没有 Agent 竖栏时才有标题。 */
+  heading: boolean;
   /** null 表示还在读。 */
   models: AgentModelOption[] | null;
   error: string | null;
@@ -407,7 +403,7 @@ function ModelList({
   const sections = models ? modelSections(models) : [];
   return (
     <div data-model-list role="listbox" aria-label={DESKTOP_ZH.selectModel} className="max-h-80 overflow-y-auto py-2">
-      <p className="truncate px-3 pb-1 pt-1 text-sm font-medium text-zinc-100">{title || DESKTOP_ZH.selectModel}</p>
+      {heading ? <p className="px-3 pb-1 pt-1 text-sm font-medium text-zinc-100">{DESKTOP_ZH.selectModel}</p> : null}
       {error ? (
         <p className="break-words px-3 py-2 text-xs text-zinc-500">{error}</p>
       ) : models === null ? (

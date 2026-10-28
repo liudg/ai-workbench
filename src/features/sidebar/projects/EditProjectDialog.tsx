@@ -9,13 +9,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import type { Project } from "@/features/projects";
+import { removeConfirmLabel } from "./project-menu";
 import { useEditProjectForm } from "./useEditProjectForm";
 
 export function EditProjectDialog({
   project,
+  sessionCount,
   onClose,
 }: {
   project: Project;
+  sessionCount: number;
   onClose: () => void;
 }) {
   const {
@@ -26,6 +29,7 @@ export function EditProjectDialog({
     addFolder,
     submit,
     removeLocal,
+    confirmingRemove,
     error,
     busy,
     valid,
@@ -106,7 +110,7 @@ export function EditProjectDialog({
               disabled={busy}
               onClick={() => void removeLocal()}
             >
-              移除本地项目
+              {confirmingRemove ? removeConfirmLabel(sessionCount) : "移除本地项目"}
             </button>
             <div className="flex items-center gap-3">
               <Button

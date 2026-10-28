@@ -25,7 +25,7 @@ export function cachedCatalog(agent: AgentKind) {
   return daemon.call<AgentCatalog | null>("agents.catalog", { agent });
 }
 
-/** 没有上次的目录时，在新会话所在的目录里起一次 CLI 探出来。有就直接给。 */
+/** 这次启动后还没拿到过新目录时，在新会话所在的目录里起一次 CLI 探出来。探不到时退回上次的。 */
 export function probeCatalog(agent: AgentKind, projectId: string | null) {
   return daemon.call<AgentCatalog>("agents.probeCatalog", { agent, projectId }, CLI_TIMEOUT_MS);
 }
