@@ -57,7 +57,7 @@ pub fn fold_page_annotations(
             .map(|item| item.trim())
             .filter(|item| !item.is_empty())
         {
-            lines.push("附图为该区域所在页面的截图。".into());
+            lines.push("附图为该区域的截图。".into());
             if !images.iter().any(|item| item == path) {
                 images.push(path.to_string());
             }

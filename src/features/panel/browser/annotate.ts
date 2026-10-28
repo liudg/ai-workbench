@@ -43,7 +43,7 @@ export function foldPageAnnotations(
     lines.push(`区域：${note.x},${note.y} ${note.width}×${note.height}`);
     const shot = note.screenshot?.trim() ?? "";
     if (shot) {
-      lines.push("附图为该区域所在页面的截图。");
+      lines.push("附图为该区域的截图。");
       if (!images.includes(shot)) images.push(shot);
     }
     return lines.join("\n");

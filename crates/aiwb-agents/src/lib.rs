@@ -185,7 +185,7 @@ mod tests {
         assert!(text.contains("选择器：#bike"));
         assert!(text.contains("元素文本：虎豹"));
         assert!(text.contains("区域：10,20 30×40"));
-        assert!(text.contains("附图为该区域所在页面的截图。"));
+        assert!(text.contains("附图为该区域的截图。"));
         assert_eq!(images, vec!["C:/shot.png".to_string()]);
 
         let region = PageAnnotation {

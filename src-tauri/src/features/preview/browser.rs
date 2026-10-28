@@ -417,7 +417,7 @@ fn emit_annotation(app: &AppHandle, note: &PageAnnotation) {
 fn accept_annotation(app: AppHandle, note: PageAnnotation) {
     std::thread::spawn(move || {
         let mut note = normalize_note(note);
-        match capture_png(&app) {
+        match capture_png(&app).and_then(|bytes| crop_to_note(&app, &bytes, &note)) {
             Ok(bytes) => match stage_png(&app, &bytes) {
                 Ok(path) => note.screenshot = Some(path),
                 Err(_) => note.snapshot_failed = true,
@@ -670,6 +670,69 @@ fn capture_png(app: &AppHandle) -> Result<Vec<u8>, String> {
         rx.recv_timeout(Duration::from_secs(4))
             .map_err(|_| "截图超时".to_string())?
     }
+}
+
+/// 批注坐标是视口 CSS 像素，截图是整个视口的物理像素，按两者宽度比换算后裁出批注区域。
+fn crop_to_note(app: &AppHandle, bytes: &[u8], note: &PageAnnotation) -> Result<Vec<u8>, String> {
+    #[cfg(not(windows))]
+    {
+        let _ = (app, bytes, note);
+        Err("截图不可用".into())
+    }
+    #[cfg(windows)]
+    {
+        let webview = app.get_webview(LABEL).ok_or("没有浏览器")?;
+        let size = webview.size().map_err(|err| err.to_string())?;
+        let scale = webview
+            .window()
+            .scale_factor()
+            .map_err(|err| err.to_string())?;
+        let css_width = f64::from(size.width) / scale;
+        crop_png(bytes, (note.x, note.y, note.width, note.height), css_width)
+    }
+}
+
+#[cfg(windows)]
+fn crop_png(bytes: &[u8], rect: (i32, i32, i32, i32), css_width: f64) -> Result<Vec<u8>, String> {
+    let mut decoder = png::Decoder::new(bytes);
+    decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
+    let mut reader = decoder.read_info().map_err(|err| err.to_string())?;
+    let mut buf = vec![0u8; reader.output_buffer_size()];
+    let frame = reader.next_frame(&mut buf).map_err(|err| err.to_string())?;
+    let (img_w, img_h) = (frame.width, frame.height);
+    if img_w == 0 || img_h == 0 || !(css_width > 0.0) {
+        return Err("截图为空".into());
+    }
+    let ratio = f64::from(img_w) / css_width;
+    let (x, y, w, h) = rect;
+    let to_px = |value: i32, limit: u32| -> u32 {
+        (f64::from(value) * ratio).round().clamp(0.0, f64::from(limit)) as u32
+    };
+    let left = to_px(x, img_w);
+    let top = to_px(y, img_h);
+    let right = to_px(x.saturating_add(w.max(1)), img_w);
+    let bottom = to_px(y.saturating_add(h.max(1)), img_h);
+    if right <= left || bottom <= top {
+        return Err("批注区域在截图之外".into());
+    }
+    let channels = frame.line_size / img_w as usize;
+    let (out_w, out_h) = (right - left, bottom - top);
+    let mut pixels = Vec::with_capacity(out_w as usize * out_h as usize * channels);
+    for row in top..bottom {
+        let start = row as usize * frame.line_size + left as usize * channels;
+        pixels.extend_from_slice(&buf[start..start + out_w as usize * channels]);
+    }
+    let mut out = Vec::new();
+    {
+        let mut encoder = png::Encoder::new(&mut out, out_w, out_h);
+        encoder.set_color(frame.color_type);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder.write_header().map_err(|err| err.to_string())?;
+        writer
+            .write_image_data(&pixels)
+            .map_err(|err| err.to_string())?;
+    }
+    Ok(out)
 }
 
 #[cfg(windows)]
@@ -927,5 +990,32 @@ mod tests {
             Some("https://example.com/a")
         ));
         assert!(should_navigate("", "https://example.com/a", None));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn crop_keeps_only_the_note_region() {
+        let (w, h) = (8u32, 6u32);
+        let mut pixels = Vec::new();
+        for y in 0..h {
+            for x in 0..w {
+                pixels.extend_from_slice(&[x as u8, y as u8, 0, 255]);
+            }
+        }
+        let mut full = Vec::new();
+        {
+            let mut encoder = png::Encoder::new(&mut full, w, h);
+            encoder.set_color(png::ColorType::Rgba);
+            encoder.set_depth(png::BitDepth::Eight);
+            encoder.write_header().unwrap().write_image_data(&pixels).unwrap();
+        }
+        // 视口 4 个 CSS 像素宽，截图 8 像素宽：缩放 2 倍。
+        let cropped = crop_png(&full, (1, 1, 2, 1), 4.0).unwrap();
+        let mut reader = png::Decoder::new(cropped.as_slice()).read_info().unwrap();
+        let mut buf = vec![0u8; reader.output_buffer_size()];
+        let frame = reader.next_frame(&mut buf).unwrap();
+        assert_eq!((frame.width, frame.height), (4, 2));
+        assert_eq!(&buf[0..4], &[2, 2, 0, 255]);
+        assert!(crop_png(&full, (10, 10, 2, 2), 4.0).is_err());
     }
 }

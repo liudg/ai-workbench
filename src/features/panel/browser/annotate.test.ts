@@ -56,6 +56,6 @@ test("folded annotation matches the adapter turn text", () => {
   assert.match(folded.text, /选择器：#bike/);
   assert.match(folded.text, /元素文本：虎豹/);
   assert.match(folded.text, /区域：10,20 30×40/);
-  assert.match(folded.text, /附图为该区域所在页面的截图。/);
+  assert.match(folded.text, /附图为该区域的截图。/);
   assert.deepEqual(folded.images, ["C:/shot.png"]);
 });
