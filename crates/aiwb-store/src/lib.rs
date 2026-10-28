@@ -1,5 +1,6 @@
 //! SQLite 存储，工作台的唯一数据源。连接用一把锁串行化；调用方不要在持锁期间等待别的东西。
 
+mod attention;
 mod drafts;
 mod legacy;
 mod migrations;
@@ -108,6 +109,10 @@ mod tests {
         assert_eq!(store.list_projects().unwrap()[0].path, "/p");
         assert_eq!(store.task("t").unwrap().unwrap().project_id.as_deref(), Some("p"));
         assert!(store.session("s").unwrap().is_some());
+        // 已有会话补上注意力行，按状态，没有未读。
+        let attention = store.attention("s").unwrap().unwrap();
+        assert_eq!(attention.state, aiwb_core::attention::AttentionState::Done);
+        assert!(!attention.unread);
         // 外键重新打开了：删项目连带删任务和会话。
         store.remove_project("p").unwrap();
         assert!(store.session("s").unwrap().is_none());

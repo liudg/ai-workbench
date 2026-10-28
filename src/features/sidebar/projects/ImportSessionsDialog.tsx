@@ -11,7 +11,7 @@ import {
 import type { Project } from "@/features/projects";
 import { cn, displayPath } from "@/lib/utils";
 import { SessionAgentIcon } from "@/shared/agent/SessionAgentIcon";
-import { relativeSessionTime } from "../sessions/relative-time";
+import { relativeSessionTime } from "@/shared/format/relative-time";
 import { useImportSessions } from "./use-import-sessions";
 
 export function ImportSessionsDialog({ project, onClose }: { project: Project; onClose: () => void }) {

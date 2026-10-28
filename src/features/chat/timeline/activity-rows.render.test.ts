@@ -266,6 +266,41 @@ function assertOrder(html: string, markers: string[]) {
   }
 }
 
+test("generated images belong to the answer after all expanded activity, live and settled", async () => {
+  const generated = event("generated", {
+    kind: "tool-call", name: "image_generation", summary: "图片已生成",
+    images: ["https://example.com/dog.png"],
+  });
+  const events = [
+    event("note", { kind: "agent-message", text: "我会画一张骑行插画。", phase: "commentary" }),
+    generated,
+    event("check", { kind: "tool-call", name: "command", summary: "检查图片" }),
+    event("answer", { kind: "agent-message", text: "画好了。", phase: "final-answer" }),
+  ];
+  for (const component of ["TurnProcess", "LiveTurn"]) {
+    const mod = await server.ssrLoadModule(`/src/features/chat/timeline/${component}.tsx`);
+    for (const expanded of [true, false]) {
+      const html = renderInHost(createElement(mod[component], {
+        events, answerId: "answer", durationMs: 1000, session,
+        resolvedAnswers: new Map(), expanded, onToggle: () => {},
+      }));
+      assert.equal((html.match(/data-generated-images/g) ?? []).length, 1);
+      assert.equal((html.match(/src="https:\/\/example.com\/dog.png"/g) ?? []).length, 1);
+      assert.equal(html.includes("data-chat-image-open"), true);
+      assert.equal(html.includes("我会画一张骑行插画。"), expanded);
+      assert.equal(html.includes("已运行 1 条命令"), expanded);
+      assertOrder(html, expanded
+        ? ["data-turn-fold", "我会画一张骑行插画。", "已运行 1 条命令", "data-generated-images", "画好了。"]
+        : ["data-turn-fold", "data-generated-images", "画好了。"]);
+    }
+    const imageOnly = renderInHost(createElement(mod[component], {
+      events: events.slice(0, -1), answerId: null, durationMs: 1000, session,
+      resolvedAnswers: new Map(), expanded: true, onToggle: () => {},
+    }));
+    assertOrder(imageOnly, ["我会画一张骑行插画。", "已运行 1 条命令", "data-generated-images"]);
+  }
+});
+
 test("a settled turn keeps the status line as the first child", async () => {
   const mod = await server.ssrLoadModule("/src/features/chat/timeline/TurnProcess.tsx");
   const events: SessionEvent[] = [

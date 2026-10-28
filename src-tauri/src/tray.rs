@@ -7,6 +7,7 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
+pub const TRAY_ID: &str = "main-tray";
 const MENU_SHOW: &str = "show";
 const MENU_QUIT: &str = "quit";
 
@@ -15,7 +16,7 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     let quit = MenuItemBuilder::with_id(MENU_QUIT, "退出").build(app)?;
     let menu = MenuBuilder::new(app).items(&[&show, &quit]).build()?;
 
-    let mut builder = TrayIconBuilder::with_id("main-tray")
+    let mut builder = TrayIconBuilder::with_id(TRAY_ID)
         .menu(&menu)
         .show_menu_on_left_click(false)
         .tooltip("AI 工作台")

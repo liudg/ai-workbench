@@ -354,7 +354,7 @@ async fn restart_marks_running_sessions_stopped() {
     last.event.seq += 1;
     last.rev += 1;
     last.event.body = running;
-    store.put_event(task["id"].as_str().unwrap(), &last, false).unwrap();
+    store.put_event(task["id"].as_str().unwrap(), &last, false, None).unwrap();
 
     let second = services(Arc::new(store), script, dir.path());
     second.settle_interrupted().unwrap();

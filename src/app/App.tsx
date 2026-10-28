@@ -1,6 +1,7 @@
 import { lazy, Suspense, type ComponentType, type LazyExoticComponent } from "react";
 import { X } from "lucide-react";
 
+import { useViewingReport } from "@/features/board";
 import { NewProjectDialog, Sidebar } from "@/features/sidebar";
 import { UpdateDialog, useStartupUpdateCheck } from "@/features/updates";
 import { Workspace } from "@/features/workspace";
@@ -45,6 +46,7 @@ export default function App() {
 function WorkbenchApp() {
   const error = useErrorBanner();
   useStartupUpdateCheck();
+  useViewingReport();
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#0f0f0f] text-[#e8e8e8]">

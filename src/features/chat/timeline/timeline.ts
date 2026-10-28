@@ -1,5 +1,6 @@
 import type { SessionEvent, SessionStatus } from "../../../types";
 import { choiceHasSlot } from "../events/pending-plan-choice.ts";
+import { hasGeneratedImages } from "../events/generated-images.ts";
 
 /**
  * 时间线以事件日志里最后一次状态为准。
@@ -135,6 +136,7 @@ function hiddenInTimeline(events: readonly SessionEvent[], index: number): boole
 }
 
 export function isProcess(event: SessionEvent, answerId: string | null): boolean {
+  if (hasGeneratedImages(event)) return false;
   if (answerId != null && event.id === answerId) return false;
   if (choiceHasSlot(event)) return false;
   return (
@@ -361,7 +363,7 @@ export function contentChars(events: readonly SessionEvent[]): number {
         chars += event.text.length;
         break;
       case "tool-call":
-        chars += event.summary.length + (event.detail?.length ?? 0);
+        chars += event.summary.length + (event.detail?.length ?? 0) + (event.images?.length ?? 0);
         break;
       case "error":
         chars += event.message.length;

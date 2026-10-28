@@ -4,6 +4,7 @@ import { useAgentProfiles, useSessionAgents } from "@/features/agents";
 import { usePanelOptional } from "@/features/panel/core/PanelProvider";
 import { useProjects } from "@/features/projects";
 import { currentSession, useTasks } from "@/features/tasks";
+import { attentionQueue, nextInQueue } from "@/shared/attention";
 import { useNavigation } from "@/shared/shell/navigation";
 
 import type { ForkTarget, PaletteSession } from "./commands";
@@ -31,6 +32,10 @@ export function useCommandMenuState() {
     [tasks],
   );
   const task = view.kind === "task" ? (tasks.find((item) => item.id === view.taskId) ?? null) : null;
+  const nextAttention = useMemo(
+    () => nextInQueue(attentionQueue(tasks.filter((item) => !item.archivedAt)), task?.id ?? null),
+    [task, tasks],
+  );
   const projectId = view.kind === "none" ? null : view.projectId;
   const project = projectId ? (projects.find((item) => item.id === projectId) ?? null) : null;
   const current = task ? currentSession(task) : undefined;
@@ -64,6 +69,7 @@ export function useCommandMenuState() {
     project,
     panel,
     forkTargets,
+    nextAttention,
     changes: agent ? profiles[agent]?.capabilities.changes : undefined,
   };
 }

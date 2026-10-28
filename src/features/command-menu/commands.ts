@@ -35,7 +35,9 @@ export type PaletteCommandId =
   | "toggle-files"
   | "toggle-changes"
   | "toggle-sidebar"
-  | "quick-open";
+  | "quick-open"
+  | "board"
+  | "next-attention";
 
 export interface PaletteRow {
   key: string;
@@ -82,6 +84,8 @@ export interface PaletteInput {
   canSearchFiles: boolean;
   canFind: boolean;
   forkTargets: readonly ForkTarget[];
+  /** 注意力队列里还有下一个等着你的会话。 */
+  hasNextAttention: boolean;
 }
 
 const GROUP_ORDER: readonly CommandGroup[] = [
@@ -140,6 +144,8 @@ function commandItems(input: PaletteInput): PaletteRow[] {
     );
   }
   if (active) rows.push(command("delete", COPY.deleteChat, "thread", COPY.shortcutDelete));
+  if (input.hasNextAttention) rows.push(command("next-attention", COPY.nextAttention, "navigation"));
+  rows.push(command("board", COPY.board, "navigation"));
   rows.push(command("quick-open", COPY.quickOpen, "navigation", COPY.shortcutQuickOpen));
   rows.push(command("toggle-sidebar", COPY.toggleSidebar, "navigation", COPY.shortcutSidebar));
   if (input.canSearchFiles) rows.push(command("search-files", COPY.searchFiles, "navigation"));

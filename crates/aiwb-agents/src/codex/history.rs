@@ -318,6 +318,7 @@ pub(super) fn tool_view(item: &Value) -> Option<ToolView> {
         "commandExecution" => Some(command_view(item)),
         "mcpToolCall" => Some(mcp_view(item)),
         "webSearch" => Some(web_view(item)),
+        "imageGeneration" => Some(super::images::generation_view(item)),
         kind if image_item_kind(kind) => Some(image_view(item)),
         _ => None,
     }
@@ -329,11 +330,8 @@ pub(super) fn tool_event(view: ToolView, stream_id: Option<String>) -> SessionEv
         summary: view.summary,
         detail: take_chars(&view.detail, TOOL_DETAIL_CAP),
         stream_id,
-        images: view
-            .images
-            .into_iter()
-            .map(|image| take_chars(&image, TOOL_DETAIL_CAP))
-            .collect(),
+        // 图片可能是完整 data URL，不能按文本摘要截断。
+        images: view.images,
     }
 }
 
@@ -435,7 +433,7 @@ fn web_view(item: &Value) -> ToolView {
 fn image_item_kind(kind: &str) -> bool {
     matches!(
         kind.replace('_', "").to_ascii_lowercase().as_str(),
-        "image" | "imageview" | "imagegeneration" | "localimage"
+        "image" | "imageview" | "localimage"
     )
 }
 

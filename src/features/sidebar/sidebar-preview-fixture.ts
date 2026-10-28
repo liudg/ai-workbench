@@ -4,6 +4,7 @@ import { seedAgents } from "@/features/agents";
 import type { Project } from "@/features/projects";
 import type { TaskEntry } from "@/features/tasks";
 import { startPreview, TOPIC_PROJECTS, TOPIC_TASKS } from "@/lib/daemon";
+import type { Attention } from "@/shared/attention";
 import { openTask } from "@/shared/shell/navigation";
 import type { AgentInstallation, AgentKind, AgentProfile, SessionStatus } from "@/types";
 
@@ -64,8 +65,11 @@ function task(input: {
   updatedAt: number;
   archived?: boolean;
   pinned?: boolean;
+  unread?: boolean;
+  ask?: Attention["ask"];
 }): TaskEntry {
   const projectId = input.projectId ?? PROJECT_ID;
+  const status = input.status ?? "completed";
   return {
     id: input.id,
     projectId,
@@ -80,21 +84,35 @@ function task(input: {
         id: `${input.id}-s`,
         taskId: input.id,
         agent: input.agent,
-        status: input.status ?? "completed",
+        status,
         options: {},
         createdAt: input.updatedAt - 60_000,
         updatedAt: input.updatedAt,
       },
     ],
+    attention: {
+      state: ATTENTION_STATE[status],
+      unread: Boolean(input.unread),
+      ask: input.ask,
+      updatedAt: input.updatedAt,
+    },
   };
 }
+
+const ATTENTION_STATE: Record<SessionStatus, Attention["state"]> = {
+  running: "working",
+  "needs-input": "needs-input",
+  completed: "done",
+  failed: "failed",
+  stopped: "idle",
+};
 
 function previewTasks(now: number): TaskEntry[] {
   const day = 24 * 60 * 60_000;
   const head = [
     task({ id: "run-recent", agent: "codex-cli", title: "跑侧栏回归", status: "running", updatedAt: now }),
     task({ id: "pinned", agent: "claude-code", title: "补了一半的说明", updatedAt: now - 60_000, pinned: true }),
-    task({ id: "idle-codex", agent: "codex-cli", title: "整理发布说明", updatedAt: now - 2 * 60_000 }),
+    task({ id: "idle-codex", agent: "codex-cli", title: "整理发布说明", updatedAt: now - 2 * 60_000, unread: true }),
     task({ id: "idle-claude", agent: "claude-code", title: "看登录页文案", updatedAt: now - 5 * 60_000 }),
     task({ id: "codex-stopped", agent: "codex-cli", title: "查构建日志", status: "stopped", updatedAt: now - 20 * 60_000 }),
     task({
@@ -105,7 +123,14 @@ function previewTasks(now: number): TaskEntry[] {
       updatedAt: now - 40 * 60_000,
       archived: true,
     }),
-    task({ id: "claude-failed", agent: "claude-code", title: "中断了格式化", status: "failed", updatedAt: now - 50 * 60_000 }),
+    task({
+      id: "claude-failed",
+      agent: "claude-code",
+      title: "中断了格式化",
+      status: "failed",
+      updatedAt: now - 50 * 60_000,
+      unread: true,
+    }),
   ];
   const history = Array.from({ length: 210 }, (_, index) =>
     task({
@@ -132,7 +157,14 @@ function previewTasks(now: number): TaskEntry[] {
   return [
     ...head,
     ...history,
-    task({ id: "wait-delete", agent: "claude-code", title: "等你确认删除", status: "needs-input", updatedAt: now - 3 * day }),
+    task({
+      id: "wait-delete",
+      agent: "claude-code",
+      title: "等你确认删除",
+      status: "needs-input",
+      ask: "approval",
+      updatedAt: now - 3 * day,
+    }),
     task({ id: "run-old", agent: "codex-cli", title: "还在改虚拟列表", status: "running", updatedAt: now - 4 * day }),
     ...notes,
     ...chats,

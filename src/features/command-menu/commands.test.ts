@@ -33,6 +33,7 @@ const enabled: PaletteInput = {
   canSearchFiles: true,
   canFind: true,
   forkTargets: [],
+  hasNextAttention: false,
 };
 
 function ids(input: PaletteInput) {
@@ -143,4 +144,13 @@ test("fork rows follow the task's fork targets, one per agent", () => {
   );
   assert.equal(ids({ ...enabled, activeSessionId: null, forkTargets: [{ agent: "codex-cli", name: "Codex", same: true }] }).includes("fork"), false);
   assert.equal(ids(enabled).includes("fork"), false);
+});
+
+test("the board is always reachable; next-in-queue only when someone is waiting", () => {
+  assert.equal(ids(enabled).includes("board"), true);
+  assert.equal(ids(enabled).includes("next-attention"), false);
+  const waiting = buildPaletteRows({ ...enabled, hasNextAttention: true });
+  const next = waiting.find((row) => row.commandId === "next-attention");
+  assert.equal(next?.label, "下一个需要处理的聊天");
+  assert.equal(next?.group, "navigation");
 });

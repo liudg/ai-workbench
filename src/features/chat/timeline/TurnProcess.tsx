@@ -13,6 +13,7 @@ import { TurnFoldLine } from "./TurnFoldLine";
 import { SessionAgentIcon } from "@/shared/agent/SessionAgentIcon";
 import { AGENT_LABELS, type Session, type SessionEvent } from "@/types";
 import { agentTurnName, useAgentIdentity, useEventAgent } from "../events/use-agent-identity";
+import { hasGeneratedImages } from "../events/generated-images";
 
 /**
  * 一轮结束后的过程条。状态行是这块的第一个子节点，名称和用时在同一行。
@@ -44,7 +45,8 @@ export function TurnProcess({
   const answer = answerIndex >= 0 ? events[answerIndex] : null;
   const after = answerIndex >= 0 ? events.slice(answerIndex + 1) : [];
   const process = events.filter((event) => isProcess(event, answerId));
-  const chromeBefore = before.filter((event) => !isProcess(event, answerId));
+  const chromeBefore = before.filter((event) => !isProcess(event, answerId) && !hasGeneratedImages(event));
+  const answerImages = before.filter(hasGeneratedImages);
   const chromeAfter = after.filter((event) => !isProcess(event, answerId));
   const agent = useEventAgent(events[0], session);
   const identity = useAgentIdentity(agent);
@@ -87,6 +89,7 @@ export function TurnProcess({
           onInteract={onInteract}
         />
       ) : null}
+      {answerImages.map((event) => renderEvent(event, false))}
       {answer ? renderEvent(answer, false) : null}
       {chromeAfter.map((event) => renderEvent(event, false))}
       {changes ? <ChangeCard changes={changes} /> : null}

@@ -4,6 +4,7 @@
 //! 其余方法各开一个任务，慢请求不挡后面的消息。
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use aiwb_core::rpc::{Push, Request, Response};
@@ -18,9 +19,18 @@ use crate::services::Services;
 /// 主题 → 订阅时的推送序号。只转发比它新的推送。
 type Subscriptions = Arc<Mutex<HashMap<String, u64>>>;
 
+/// 连接编号。daemon 按连接记谁在看哪个任务，连接断了就不算在看。
+static NEXT_CONNECTION: AtomicU64 = AtomicU64::new(1);
+
 #[derive(Deserialize)]
 struct TopicParams {
     topic: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ViewParams {
+    task_id: Option<String>,
 }
 
 /// 订阅参数里除 `topic` 以外的部分（会话主题的 `fromRev`）。
@@ -36,6 +46,7 @@ pub(crate) async fn serve(socket: WebSocket, services: Arc<Services>) {
     let (mut sink, mut stream) = socket.split();
     let (out, mut outbox) = mpsc::unbounded_channel::<String>();
     let subs: Subscriptions = Arc::default();
+    let connection = NEXT_CONNECTION.fetch_add(1, Ordering::Relaxed);
 
     let writer = tokio::spawn(async move {
         while let Some(text) = outbox.recv().await {
@@ -79,6 +90,17 @@ pub(crate) async fn serve(socket: WebSocket, services: Arc<Services>) {
                 };
                 send(&out, &response);
             }
+            // 要知道是哪条连接，不走 dispatch。
+            "attention.view" => {
+                let response = match serde_json::from_value::<ViewParams>(request.params) {
+                    Ok(params) => match services.runtimes.set_viewing(connection, params.task_id) {
+                        Ok(()) => Response::ok(request.id, Value::Null),
+                        Err(err) => Response::err(request.id, err),
+                    },
+                    Err(err) => Response::err(request.id, format!("参数不对：{err}")),
+                };
+                send(&out, &response);
+            }
             _ => {
                 let services = services.clone();
                 let out = out.clone();
@@ -94,6 +116,7 @@ pub(crate) async fn serve(socket: WebSocket, services: Arc<Services>) {
     }
 
     forwarder.abort();
+    let _ = services.runtimes.set_viewing(connection, None);
     drop(out);
     let _ = writer.await;
 }

@@ -44,6 +44,9 @@ aiwb-core = { path = "../crates/aiwb-core" }
 aiwb-files = { path = "../crates/aiwb-files" }
 aiwb-git = { path = "../crates/aiwb-git" }
 aiwb-proc = { path = "../crates/aiwb-proc" }
+tauri-plugin-notification = "2"
+tokio-tungstenite = "0.24"
+futures-util = "0.3"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.56"

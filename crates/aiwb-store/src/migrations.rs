@@ -72,6 +72,25 @@ const MIGRATIONS: &[&str] = &[
         body       TEXT NOT NULL,
         updated_at INTEGER NOT NULL
     );",
+    // 4：注意力投影，每个会话一行。已有会话按状态补上，都当作看过了。
+    "CREATE TABLE attention (
+        session_id TEXT PRIMARY KEY REFERENCES session(id) ON DELETE CASCADE,
+        state      TEXT NOT NULL,
+        unread     INTEGER NOT NULL DEFAULT 0,
+        ask        TEXT,
+        preview    TEXT,
+        updated_at INTEGER NOT NULL
+    );
+    INSERT INTO attention (session_id, state, updated_at)
+    SELECT id,
+        CASE status
+            WHEN 'running' THEN 'working'
+            WHEN 'completed' THEN 'done'
+            WHEN 'stopped' THEN 'idle'
+            ELSE status
+        END,
+        updated_at
+    FROM session;",
 ];
 
 /// 调用时外键必须是关着的：重建表的迁移要先删旧表。

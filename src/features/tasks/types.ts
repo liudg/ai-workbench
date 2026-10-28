@@ -1,5 +1,6 @@
 // 与 crates/aiwb-core/src/task.rs 一致。
 
+import type { Attention } from "@/shared/attention";
 import type { AgentKind, SessionStatus } from "@/types";
 
 export type TaskWorkspace =
@@ -46,6 +47,8 @@ export interface TaskEntry {
   createdAt: number;
   updatedAt: number;
   sessions: TaskSession[];
+  /** 现在用的会话的注意力。 */
+  attention: Attention;
 }
 
 export interface CreateTaskInput {

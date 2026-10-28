@@ -850,7 +850,9 @@ impl Shared {
         if !view.name.is_empty() {
             buf.name = view.name.clone();
         }
-        if view.summary.trim().chars().count() >= buf.summary.trim().chars().count() {
+        if view.name == "image_generation"
+            || view.summary.trim().chars().count() >= buf.summary.trim().chars().count()
+        {
             buf.summary = std::mem::take(&mut view.summary);
         }
         if completed {

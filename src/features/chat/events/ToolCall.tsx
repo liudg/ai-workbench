@@ -9,6 +9,7 @@ import { activityStepTitle } from "./activity-fold";
 import { toolGlyph } from "./tool-line";
 import type { EventViewProps } from "./types";
 import { useSessionProjectPath } from "./use-session-project-path";
+import { hasGeneratedImages } from "./generated-images";
 
 const GLYPH = {
   command: Terminal,
@@ -23,6 +24,17 @@ export function ToolCall({ event, session }: EventViewProps) {
   const [open, setOpen] = useState(false);
   const projectPath = useSessionProjectPath(session);
   if (event.kind !== "tool-call") return null;
+  if (hasGeneratedImages(event)) {
+    return (
+      <div className="event-in min-w-0 px-6 py-3 pl-12" data-generated-images>
+        <EventImages
+          paths={event.images ?? []}
+          className="block max-h-[240px] w-auto max-w-[min(100%,280px)] rounded-xl object-contain"
+          frameClassName="flex min-w-0 flex-wrap items-start gap-3"
+        />
+      </div>
+    );
+  }
   const summary = relativizeDisplayText(event.summary, projectPath);
   const detail = relativizeDisplayText(event.detail ?? "", projectPath);
   const images = event.images ?? [];

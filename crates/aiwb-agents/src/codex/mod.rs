@@ -19,6 +19,7 @@ mod gap;
 mod git_diff;
 mod guardian;
 mod history;
+mod images;
 mod host;
 mod mcp;
 mod process;

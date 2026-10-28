@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::attention::Attention;
 use crate::models::{AgentKind, QueuedTurn, SessionEvent, SessionStatus};
 
 /// 任务在哪里干活：项目主目录、工作台建的工作树，或者独立聊天自己的文件夹。
@@ -88,13 +89,14 @@ pub struct TaskSession {
     pub updated_at: i64,
 }
 
-/// 任务列表里的一行：任务和它的会话。
+/// 任务列表里的一行：任务、它的会话，和现在用的会话的注意力。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskEntry {
     #[serde(flatten)]
     pub task: Task,
     pub sessions: Vec<TaskSession>,
+    pub attention: Attention,
 }
 
 /// 存进数据库的事件。`rev` 在会话内单调递增，事件被覆盖（流式输出）时也会换新的 `rev`，

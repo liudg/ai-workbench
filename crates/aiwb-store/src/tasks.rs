@@ -1,11 +1,15 @@
 //! 任务、会话和事件日志。
 
+use std::collections::HashMap;
+
+use aiwb_core::attention::Attention;
 use aiwb_core::models::{AgentKind, SessionEvent, SessionEventBody, SessionStatus};
 use aiwb_core::task::{SessionOptions, StoredEvent, Task, TaskEntry, TaskSession, TaskWorkspace};
 use rusqlite::{params, OptionalExtension, Row};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
+use crate::attention::put_attention;
 use crate::{Store, StoreError, StoreResult};
 
 fn to_text<T: Serialize>(value: &T) -> String {
@@ -13,7 +17,7 @@ fn to_text<T: Serialize>(value: &T) -> String {
 }
 
 /// 枚举存成不带引号的字符串，查询时好读。
-fn enum_text<T: Serialize>(value: &T) -> String {
+pub(crate) fn enum_text<T: Serialize>(value: &T) -> String {
     match serde_json::to_value(value).expect("serialize enum") {
         serde_json::Value::String(text) => text,
         other => other.to_string(),
@@ -30,7 +34,7 @@ fn from_text<T: DeserializeOwned>(column: &str, raw: &str) -> rusqlite::Result<T
     })
 }
 
-fn from_enum<T: DeserializeOwned>(column: &str, raw: &str) -> rusqlite::Result<T> {
+pub(crate) fn from_enum<T: DeserializeOwned>(column: &str, raw: &str) -> rusqlite::Result<T> {
     from_text(column, &serde_json::Value::String(raw.to_string()).to_string())
 }
 
@@ -117,9 +121,10 @@ impl Store {
         Ok(rows.collect::<Result<_, _>>()?)
     }
 
-    /// 任务列表主题的内容：每个任务带上它的会话。
+    /// 任务列表主题的内容：每个任务带上它的会话，和现在用的会话的注意力。
     pub fn task_entries(&self) -> StoreResult<Vec<TaskEntry>> {
         let mut sessions = self.list_sessions()?;
+        let mut attention: HashMap<String, Attention> = self.attention_rows()?.into_iter().collect();
         Ok(self
             .list_tasks()?
             .into_iter()
@@ -127,9 +132,16 @@ impl Store {
                 let (mine, rest): (Vec<_>, Vec<_>) =
                     sessions.drain(..).partition(|session| session.task_id == task.id);
                 sessions = rest;
+                let attention = match mine.last() {
+                    Some(current) => attention
+                        .remove(&current.id)
+                        .unwrap_or_else(|| Attention::from_status(current.status, current.updated_at)),
+                    None => Attention::from_status(SessionStatus::Stopped, task.updated_at),
+                };
                 TaskEntry {
                     task,
                     sessions: mine,
+                    attention,
                 }
             })
             .collect())
@@ -224,8 +236,15 @@ impl Store {
         Ok(())
     }
 
-    /// 写入（或覆盖）一条事件。状态事件同时改会话状态；对话内容同时刷新任务的更新时间。
-    pub fn put_event(&self, task_id: &str, stored: &StoredEvent, activity: bool) -> StoreResult<()> {
+    /// 写入（或覆盖）一条事件。状态事件同时改会话状态；对话内容同时刷新任务的更新时间；
+    /// 给了 `attention` 就在同一个事务里改注意力投影。
+    pub fn put_event(
+        &self,
+        task_id: &str,
+        stored: &StoredEvent,
+        activity: bool,
+        attention: Option<&Attention>,
+    ) -> StoreResult<()> {
         let event = &stored.event;
         let mut conn = self.conn();
         let tx = conn.transaction()?;
@@ -253,6 +272,9 @@ impl Store {
                 params![task_id, event.ts],
             )?;
         }
+        if let Some(attention) = attention {
+            put_attention(&tx, &event.session_id, attention)?;
+        }
         tx.commit()?;
         Ok(())
     }
@@ -268,6 +290,7 @@ impl Store {
     }
 }
 
+/// 会话和它的注意力行一起建。
 fn insert_session(conn: &rusqlite::Connection, session: &TaskSession) -> StoreResult<()> {
     conn.execute(
         "INSERT INTO session (id, task_id, agent, native_id, status, options, created_at, updated_at)
@@ -283,7 +306,11 @@ fn insert_session(conn: &rusqlite::Connection, session: &TaskSession) -> StoreRe
             session.updated_at
         ],
     )?;
-    Ok(())
+    put_attention(
+        conn,
+        &session.id,
+        &Attention::from_status(session.status, session.updated_at),
+    )
 }
 
 #[cfg(test)]
@@ -399,9 +426,9 @@ mod tests {
         let (a, sa) = task("t1", 5);
         store.insert_task(&a, &sa).unwrap();
         let text = |t: &str| SessionEventBody::System { text: t.into() };
-        store.put_event("t1", &stored(1, 1, text("一")), true).unwrap();
-        store.put_event("t1", &stored(2, 2, text("二")), false).unwrap();
-        store.put_event("t1", &stored(1, 3, text("一改")), false).unwrap();
+        store.put_event("t1", &stored(1, 1, text("一")), true, None).unwrap();
+        store.put_event("t1", &stored(2, 2, text("二")), false, None).unwrap();
+        store.put_event("t1", &stored(1, 3, text("一改")), false, None).unwrap();
 
         let all = store.events_since("t1-s", 0).unwrap();
         assert_eq!(all.len(), 2);
@@ -415,7 +442,40 @@ mod tests {
         let status = SessionEventBody::StatusChanged {
             status: SessionStatus::Completed,
         };
-        store.put_event("t1", &stored(3, 4, status), false).unwrap();
+        store.put_event("t1", &stored(3, 4, status), false, None).unwrap();
         assert_eq!(store.session("t1-s").unwrap().unwrap().status, SessionStatus::Completed);
+    }
+
+    #[test]
+    fn attention_follows_events_and_clears_when_read() {
+        use aiwb_core::attention::AttentionState;
+        let store = store_with_project();
+        let (a, sa) = task("t1", 5);
+        store.insert_task(&a, &sa).unwrap();
+        // 新会话按状态带一行，没有未读。
+        let first = store.attention("t1-s").unwrap().unwrap();
+        assert_eq!(first.state, AttentionState::Working);
+        assert!(!first.unread);
+
+        let done = Attention {
+            state: AttentionState::Done,
+            unread: true,
+            ask: None,
+            preview: Some("好了".into()),
+            updated_at: 20,
+        };
+        let status = SessionEventBody::StatusChanged {
+            status: SessionStatus::Completed,
+        };
+        store.put_event("t1", &stored(1, 1, status), false, Some(&done)).unwrap();
+        assert_eq!(store.attention("t1-s").unwrap().unwrap(), done);
+        assert_eq!(store.task_entries().unwrap()[0].attention, done);
+
+        assert!(store.mark_read("t1-s").unwrap());
+        assert!(!store.mark_read("t1-s").unwrap());
+        assert!(!store.attention("t1-s").unwrap().unwrap().unread);
+
+        store.remove_task("t1").unwrap();
+        assert!(store.attention("t1-s").unwrap().is_none());
     }
 }

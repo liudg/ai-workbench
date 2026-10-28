@@ -117,7 +117,12 @@
    - 界面：模型菜单的 Agent 竖栏在已有会话里也能换（两边都能交接、回合不在进行中）；时间线把各段接起来，每段的回答标它自己的 Agent，`handoff` 画成一条分隔（照 t3code `apps/web/src/components/chat/V2LifecycleRow.tsx` 的 `HandoffRow`）；作曲栏的目标、用量只看现在这段；顶栏 token 各段分开累计再相加。命令菜单接回「分叉聊天」，加「分叉到 <Agent>」。
    - 和 t3code 的出入：没有 `t3_thread_read` 这类回读工具，前文说明里不写回读方法；不做 merge-back（`prepareForkDelta`）。
    - 真实 CLI 验证（Codex 0.164.0、Claude Code 2.1.312）：`crates/aiwb-daemon/tests/handoff_cli.rs`（`--ignored`）走 Codex → Claude（全量）→ Codex（接回原线程，只补 Claude 那段）、原生分叉、分叉到 Claude，各段都答出之前记下的暗号；网页预览里走了一遍换 Agent 和分叉。验证中修掉：分叉把整条时间线抄进一个会话，前面的回答被标成新 Agent（现在逐段抄）；几段拼起来后用量按 seq 排序互相覆盖（现在分段累计）。
-6. **看板和注意力**：注意力投影、看板、侧栏状态药丸、系统通知和任务栏角标（这一步把路线图阶段 1 的核心部分提前做了）。
+6. **看板和注意力**（代码完成 2026-10-28，网页已验，桌面通知待验）：注意力投影、看板、侧栏状态药丸、系统通知和任务栏角标（这一步把路线图阶段 1 的核心部分提前做了）。
+   - 投影：迁移 4 建 `attention` 表（state / unread / ask / preview / updated_at，已有会话按状态补上、不算未读），新会话随建随有。状态推导在 `aiwb-core::attention`：会话状态变化时和事件同一个事务写；`unread` 只在进入待输入、完成、失败而没人在看这个任务时记上，进入运行或停止时清掉；在等输入时来了新提问换掉 `ask`（批准 / 回答）和预览。`tasks` 主题的每个任务带上现在用的会话的 `attention`。
+   - 谁在看：`attention.view {taskId}` 按连接记（connection.rs 里处理，连接断了自动清），看着就清未读。前端在窗口可见且有焦点、主区摆着这个会话（没被设置页或看板盖住）时报，重连后再报（`features/board/use-viewing.ts`）。照 orca `agent-attention-policy.ts`：正在看的照样换状态，但不记未读。
+   - 界面：`shared/attention` 放药丸、看板列、注意力队列的规则；侧栏会话行和项目行用药丸（项目行取最要紧的一个），v1 本地存的「未读完成」删掉。`features/board` 是看板（四列 要你处理 / 运行中 / 已完成 / 空闲，照 orca `dashboard-card-bucket.ts`、`AgentKanbanBoard.tsx`；看过的完成和失败退到空闲，空闲最多摆 20 张），从侧栏顶上的「看板」（带等着你的数量）或命令菜单「打开看板」进；命令菜单「下一个需要处理的聊天」走注意力队列。
+   - 应用壳：`src-tauri/src/attention.rs` 作为客户端订阅 `tasks`，未读从无到有时发系统通知（`tauri-plugin-notification`），窗口没焦点时闪任务栏；等着你的数量画成任务栏覆盖图标（Windows，16×16 自绘数字）或系统角标，托盘提示也带上。断线两秒后重连，重连后的第一份快照不当作变化。
+   - 和设计的出入：投影写在 `put_event` 的同一事务里，但看过清未读是单独一次写。还没有通知开关、声音，点通知不跳到会话（桌面通知插件在 Windows 上不给点击回调）。
 7. **ACP 通用驱动**：先接一个能登录的 Agent 跑通完整对话，其他的只验证握手和能力。
 8. **清理**：删除旧的 `SessionManager` 和 `dev_bridge`（旧前端 store 第 3 步已删）；`lib/ipc` 只留应用壳的本机能力（内置浏览器、图片、选文件），其余删掉；更新 AGENTS.md 里的架构描述。
 

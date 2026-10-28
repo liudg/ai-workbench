@@ -22,7 +22,8 @@ export function EventImages({
       key={image.path}
       type="button"
       data-chat-image-open
-      className="min-w-0 max-w-full cursor-zoom-in p-0"
+      aria-label={`预览图片：${image.name}`}
+      className="min-w-0 max-w-full cursor-zoom-in rounded-xl p-0 outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
       onClick={() => setOpened(index)}
     >
       <ChatThumb path={image.path} name={image.name} className={className} />

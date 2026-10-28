@@ -1,4 +1,5 @@
 import { AccountMenu } from "./account/AccountMenu";
+import { BoardEntry } from "./BoardEntry";
 import { BrandHeader } from "@/shared/brand/BrandHeader";
 import { SidebarPeek } from "./SidebarPeek";
 import { useSidebar } from "./use-sidebar";
@@ -34,6 +35,7 @@ function SidebarFrame() {
       className="flex h-full min-h-0 w-[260px] shrink-0 flex-col overflow-hidden border-r border-[#222] bg-[#141414]"
     >
       <BrandHeader />
+      <BoardEntry />
 
       <div
         data-sidebar-scroll

@@ -8,6 +8,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
 use aiwb_agents::{AgentAdapter, AgentError, AgentSession, SessionContext, TurnDelivery, UserTurn};
+use aiwb_core::attention::{self, Attention};
 use aiwb_core::models::{
     new_id, AgentCatalog, now_millis, AgentKind, PageAnnotation, QueuedTurn, SessionEvent, SessionEventBody,
     SessionStatus,
@@ -48,6 +49,8 @@ pub struct Runtimes {
     pub(crate) probing: tokio::sync::Mutex<()>,
     /// 这次启动后拿到过新目录的 Agent。没拿到过的，存下的目录可能是旧的。
     pub(crate) fresh_catalogs: Mutex<HashSet<AgentKind>>,
+    /// 每条连接正看着的任务。窗口没有焦点时界面会报空。
+    viewing: Mutex<HashMap<u64, String>>,
 }
 
 impl Runtimes {
@@ -61,6 +64,7 @@ impl Runtimes {
             opening: tokio::sync::Mutex::new(()),
             probing: tokio::sync::Mutex::new(()),
             fresh_catalogs: Mutex::default(),
+            viewing: Mutex::default(),
         }
     }
 
@@ -82,6 +86,59 @@ impl Runtimes {
             }
         }
         Ok(())
+    }
+
+    /// 一条连接报它正看着哪个任务（空表示没在看）。看着的任务清掉未读。
+    pub(crate) fn set_viewing(&self, connection: u64, task_id: Option<String>) -> RuntimeResult<()> {
+        {
+            let mut viewing = self.viewing.lock().unwrap();
+            match &task_id {
+                Some(id) => viewing.insert(connection, id.clone()),
+                None => viewing.remove(&connection),
+            };
+        }
+        let Some(task_id) = task_id else {
+            return Ok(());
+        };
+        let store_err = |e: aiwb_store::StoreError| e.to_string();
+        let Some(current) = self.store.task_sessions(&task_id).map_err(store_err)?.pop() else {
+            return Ok(());
+        };
+        if self.store.mark_read(&current.id).map_err(store_err)? {
+            self.publish_tasks()?;
+        }
+        Ok(())
+    }
+
+    fn is_viewed(&self, task_id: &str) -> bool {
+        self.viewing.lock().unwrap().values().any(|id| id == task_id)
+    }
+
+    /// 这条事件之后的注意力。状态变了按有没有人在看记未读；在等输入时来了新提问换掉预览。
+    fn next_attention(
+        &self,
+        session_id: &str,
+        task_id: &str,
+        body: &SessionEventBody,
+        events: &[SessionEvent],
+        now: i64,
+    ) -> RuntimeResult<Option<Attention>> {
+        let prev = || -> RuntimeResult<Attention> {
+            Ok(self
+                .store
+                .attention(session_id)
+                .map_err(|e| e.to_string())?
+                .unwrap_or_else(|| Attention::from_status(SessionStatus::Stopped, now)))
+        };
+        Ok(match body {
+            SessionEventBody::StatusChanged { status } => {
+                attention::on_status(&prev()?, *status, events, self.is_viewed(task_id), now)
+            }
+            SessionEventBody::Prompt { .. } | SessionEventBody::PromptResolved { .. } => {
+                attention::on_prompt(&prev()?, events)
+            }
+            _ => None,
+        })
     }
 
     pub(crate) fn publish_tasks(&self) -> RuntimeResult<()> {
@@ -145,12 +202,12 @@ impl Runtimes {
                     _ => None,
                 };
                 let activity = is_conversation_activity(&body);
-                let task_id = self.append(session_id, body, activity)?;
+                let (task_id, attention_changed) = self.append_at(session_id, body, activity, now_millis())?;
                 let titled = match title {
                     Some(title) => self.adopt_title(&task_id, &title)?,
                     None => false,
                 };
-                if status || titled {
+                if status || attention_changed || titled {
                     self.publish_tasks()?;
                 }
                 Ok(())
@@ -158,13 +215,15 @@ impl Runtimes {
         }
     }
 
-    /// 并进时间线、写库、推给订阅者，返回任务 id。`activity` 时把任务的更新时间挪到现在。
-    fn append(&self, session_id: &str, body: SessionEventBody, activity: bool) -> RuntimeResult<String> {
-        self.append_at(session_id, body, activity, now_millis())
-    }
-
-    /// 同 `append`，时间用给定的。分叉复制时间线时沿用原来的时间，回合用时才对得上。
-    fn append_at(&self, session_id: &str, body: SessionEventBody, activity: bool, now: i64) -> RuntimeResult<String> {
+    /// 并进时间线、写库、推给订阅者，返回任务 id 和注意力有没有变。`activity` 时把任务的更新时间挪到 `now`。
+    /// 状态事件的注意力和事件写在同一个事务里。分叉复制时间线时沿用原来的时间，回合用时才对得上。
+    fn append_at(
+        &self,
+        session_id: &str,
+        body: SessionEventBody,
+        activity: bool,
+        now: i64,
+    ) -> RuntimeResult<(String, bool)> {
         let topic = session_topic(session_id);
         self.hub.publish_with(&topic, || -> RuntimeResult<_> {
             let mut logs = self.logs.lock().unwrap();
@@ -184,20 +243,21 @@ impl Runtimes {
                     event
                 }
             };
+            let attention = self.next_attention(session_id, &log.task_id, &event.body, &log.events, now)?;
             let stored = StoredEvent {
                 event,
                 rev: log.next_rev,
             };
             log.next_rev += 1;
             self.store
-                .put_event(&log.task_id, &stored, activity)
+                .put_event(&log.task_id, &stored, activity, attention.as_ref())
                 .map_err(|e| e.to_string())?;
             let feed = SessionFeed {
                 events: vec![stored],
                 ..Default::default()
             };
             let data = serde_json::to_value(feed).map_err(|e| e.to_string())?;
-            Ok((log.task_id.clone(), data))
+            Ok(((log.task_id.clone(), attention.is_some()), data))
         })
     }
 
@@ -219,7 +279,7 @@ impl Runtimes {
             };
             log.next_rev += 1;
             self.store
-                .put_event(&log.task_id, &stored, false)
+                .put_event(&log.task_id, &stored, false, None)
                 .map_err(|e| e.to_string())?;
             let feed = SessionFeed {
                 events: vec![stored],
@@ -246,7 +306,7 @@ impl Runtimes {
             ) {
                 continue;
             }
-            self.append(session_id, body, false)?;
+            self.append_at(session_id, body, false, now_millis())?;
         }
         Ok(())
     }
@@ -663,6 +723,76 @@ async fn apply_options(handle: &dyn AgentSession, options: &SessionOptions) {
 mod tests {
     use super::*;
     use aiwb_core::task::{Task, TaskSession};
+
+    fn runtimes_with_task(status: SessionStatus) -> (Arc<Store>, Runtimes) {
+        let store = Arc::new(Store::open_in_memory().unwrap());
+        let task = Task {
+            id: "t".into(),
+            project_id: None,
+            title: String::new(),
+            workspace: TaskWorkspace::Folder { path: "x".into() },
+            pinned: false,
+            archived_at: None,
+            created_at: 1,
+            updated_at: 1,
+        };
+        let session = TaskSession {
+            id: "s".into(),
+            task_id: "t".into(),
+            agent: AgentKind::ClaudeCode,
+            native_id: None,
+            status,
+            options: SessionOptions::default(),
+            created_at: 1,
+            updated_at: 1,
+        };
+        store.insert_task(&task, &session).unwrap();
+        let runtimes = Runtimes::new(store.clone(), Arc::new(Hub::new()), Arc::new(aiwb_agents::adapter_for));
+        (store, runtimes)
+    }
+
+    fn status(status: SessionStatus) -> SessionEventBody {
+        SessionEventBody::StatusChanged { status }
+    }
+
+    #[test]
+    fn finishing_while_nobody_looks_is_unread_until_viewed() {
+        use aiwb_core::attention::AttentionState;
+        let (store, runtimes) = runtimes_with_task(SessionStatus::Completed);
+        runtimes.record("s", status(SessionStatus::Running)).unwrap();
+        runtimes
+            .record(
+                "s",
+                SessionEventBody::AgentMessage {
+                    text: "改完了".into(),
+                    stream_id: None,
+                    phase: None,
+                    mode: None,
+                    dedupe_of: None,
+                },
+            )
+            .unwrap();
+        runtimes.record("s", status(SessionStatus::Completed)).unwrap();
+        let done = store.attention("s").unwrap().unwrap();
+        assert_eq!(done.state, AttentionState::Done);
+        assert!(done.unread);
+        assert_eq!(done.preview.as_deref(), Some("改完了"));
+
+        // 看一眼清掉；看着的时候再跑完不记未读。
+        runtimes.set_viewing(7, Some("t".into())).unwrap();
+        assert!(!store.attention("s").unwrap().unwrap().unread);
+        runtimes.record("s", status(SessionStatus::Running)).unwrap();
+        runtimes.record("s", status(SessionStatus::Completed)).unwrap();
+        assert!(!store.attention("s").unwrap().unwrap().unread);
+
+        // 走开了（窗口失焦、连接断开）再跑完，又记上。
+        runtimes.set_viewing(7, None).unwrap();
+        runtimes.record("s", status(SessionStatus::Running)).unwrap();
+        runtimes.record("s", status(SessionStatus::Failed)).unwrap();
+        let failed = store.attention("s").unwrap().unwrap();
+        assert_eq!(failed.state, AttentionState::Failed);
+        assert!(failed.unread);
+    }
 
     #[test]
     fn agent_leaving_plan_mode_is_kept_in_session_options() {

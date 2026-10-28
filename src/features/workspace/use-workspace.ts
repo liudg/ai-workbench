@@ -2,9 +2,10 @@ import { useProjects } from "@/features/projects";
 import { currentSession, useTasks } from "@/features/tasks";
 import { useNavigation } from "@/shared/shell/navigation";
 
-/** 主区该看什么：设置、某个会话、某个项目的新会话，或者什么都没选。 */
+/** 主区该看什么：设置、看板、某个会话、某个项目的新会话，或者什么都没选。 */
 export function useWorkspace() {
   const settings = useNavigation((state) => state.settings);
+  const board = useNavigation((state) => state.board);
   const view = useNavigation((state) => state.view);
   const { projects, loading: projectsLoading } = useProjects();
   const { tasks, loading: tasksLoading } = useTasks();
@@ -13,6 +14,7 @@ export function useWorkspace() {
   const project = projectId ? projects.find((item) => item.id === projectId) : undefined;
   return {
     settings,
+    board,
     view,
     projects,
     project,

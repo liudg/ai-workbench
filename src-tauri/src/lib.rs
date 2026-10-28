@@ -8,6 +8,7 @@
 //! - `tray`                    系统托盘与常驻后台
 //! - `dev_bridge`              网页预览用的本机 HTTP 入口（`dev-bridge` feature）
 
+mod attention;
 mod daemon;
 mod features;
 mod tray;
@@ -143,6 +144,7 @@ pub const WEBVIEW2_BROWSER_ARGS: &str =
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
@@ -152,6 +154,7 @@ pub fn run() {
                 .map_err(|e| format!("无法定位应用数据目录: {e}"))?;
             manage_state(app.handle(), &data_dir)?;
             tray::setup(app.handle())?;
+            attention::start(app.handle(), data_dir);
             Ok(())
         })
         .on_window_event(|window, event| {

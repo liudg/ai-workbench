@@ -28,7 +28,7 @@ v1 的功能逐项标「沿用」「改进」「去掉」。改进写出处，�
 | 功能 | v1 位置 | 标记 | 说明 | v2 现状 |
 |---|---|---|---|---|
 | 「项目 → 会话」列表，按时间排序，虚拟滚动 | `sidebar/sessions/*` | 沿用 | 一个任务一行，显示任务现在用的会话 | 桌面已验 |
-| 会话状态点 | `SessionStatusDot.tsx`、`session-status.ts` | 改进（迁移第 6 步） | 换成状态药丸，颜色只用来提示「需要你看」（t3code `apps/web/src/components/Sidebar.logic.ts`） | 第 3 步沿用 v1 的点 |
+| 会话状态点 | `SessionStatusDot.tsx`、`session-status.ts` | 改进（迁移第 6 步） | 换成状态药丸，颜色只用来提示「需要你看」（t3code `apps/web/src/components/Sidebar.logic.ts`）：待批准、待回答、没看过的失败和完成；运行中是灰色呼吸点。未读由 daemon 记，替掉 v1 存在本地的「未读完成」 | 网页已验（2026-10-28，真实 Claude） |
 | 「只读」标记 | `SessionRow.tsx` | 去掉 | v1 读 CLI 历史文件时用来标被别的进程占着的会话；v2 由 daemon 独占会话，没有这个来源 | — |
 | 新建会话按钮和 Agent 菜单 | `NewSessionButton.tsx`、`lib/agents` 的 `newSessionMenu` | 改进 | 按钮只负责开新会话；Agent 和模型放到作曲栏里选（t3code `apps/web/src/components/chat/ModelPickerContent.tsx`） | 桌面已验 |
 | 独立聊天（不属于任何项目）和设置里的「无项目任务文件夹」 | `sidebar/chats/ChatGroup.tsx`，`task_folder` / `set_task_folder` | 沿用 | 2026-10-26 用户确认保留。做法见 architecture-v2.md「领域模型」 | 网页已验（建目录、建任务）；当天 Codex 连不上服务器，没跑完一轮对话 |
@@ -72,7 +72,7 @@ v1 的功能逐项标「沿用」「改进」「去掉」。改进写出处，�
 | 加载更早的记录 | `load_older_history` | 改进 | 时间线整份从数据库读，不再翻 CLI 的历史文件；分页等长会话再做 | 第 3 步不需要 |
 | 分叉会话 | 命令菜单「分叉聊天」，`fork_session` | 改进（迁移第 5 步） | 命令菜单「分叉聊天」和「分叉到 <Agent>」：同一个 Agent 用原生分叉，换 Agent 时新会话第一条消息带上全部前文（t3code `apps/server/src/orchestration-v2/Orchestrator.ts` 的 `thread.fork`：同 provider 走 native_fork，否则 portable_context） | 网页已验（2026-10-28，分叉到 Claude） |
 | 用量：会话 token、订阅额度 | `SessionUsageMeter.tsx`、`SubscriptionUsageMeter.tsx` | 沿用 | | 网页已验（token） |
-| 「下一个需要处理的会话」 | `attention/next-session.ts` | 改进（迁移第 6 步） | 换成注意力队列（路线图 1）。第 3 步先从命令菜单拿掉 | 第 6 步做 |
+| 「下一个需要处理的会话」 | `attention/next-session.ts` | 改进（迁移第 6 步） | 换成注意力队列（路线图 1）：命令菜单「下一个需要处理的聊天」按待批准 > 待回答 > 失败 > 完成、同级等得久的在前，到头绕回；没有等着你的会话时不出这一项 | 网页已验 |
 
 ## 5. 右侧面板
 | 功能 | v1 位置 | 标记 | 说明 | v2 现状 |
@@ -104,10 +104,10 @@ v1 的功能逐项标「沿用」「改进」「去掉」。改进写出处，�
 | 无项目任务文件夹 | `useTaskFolder.ts` | 沿用 | 记在数据库，首次启动搬旧版 `task-folder.json` | 桌面已验（显示）；更改要用系统对话框，桌面待验 |
 | 应用更新 | `updates/UpdateDialog.tsx`，`tauri-plugin-updater` | 沿用 | 网页预览里显示没有更新源，不再假装已是最新 | 桌面待验 |
 | 托盘：显示窗口、退出 | `src-tauri/src/tray.rs` | 改进 | 退出时还有会话在运行或等输入就二次确认（architecture-v2.md「进程结构」） | 桌面待验 |
-| 系统通知、任务栏角标 | 无 | 改进（迁移第 6 步） | orca `src/renderer/src/attention/agent-attention-policy.ts` | — |
+| 系统通知、任务栏角标 | 无 | 改进（迁移第 6 步） | 应用壳订阅 `tasks`，会话变成未读时发系统通知（要你处理 / 完成 / 失败），窗口没焦点时闪任务栏；等着你的会话数画进任务栏覆盖图标（Windows）或角标，托盘提示也带上。正在看的会话不提醒（orca `src/renderer/src/attention/agent-attention-policy.ts`、`src/main/notifications/notification-delivery-service.ts`）。还没有通知开关和声音 | 桌面待验（有单元测试） |
 
 ## 8. 开发用
 | 功能 | v1 位置 | 标记 | 说明 | v2 现状 |
 |---|---|---|---|---|
-| 网页预览里的界面样例页（`?preview=diff` 等） | `app/App.tsx`、`app/preview/*` | 沿用 | 17 个；注意力样例随第 6 步重做。侧栏、工作上下文样例用固定数据不连后台；文件类样例连 daemon 读真实目录 | 网页已验（侧栏、工作上下文） |
+| 网页预览里的界面样例页（`?preview=diff` 等） | `app/App.tsx`、`app/preview/*` | 沿用 | 17 个；v1 的注意力样例不再要，侧栏样例里带上各种药丸。侧栏、工作上下文样例用固定数据不连后台；文件类样例连 daemon 读真实目录 | 网页已验（侧栏、工作上下文） |
 | 网页预览连后端 | `src-tauri/src/dev_bridge.rs` | 去掉 | 网页预览直接连 daemon（architecture-v2.md「进程结构」）；`dev_bridge` 本身第 8 步删 | 有 |

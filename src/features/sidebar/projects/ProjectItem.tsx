@@ -3,15 +3,15 @@ import { ChevronRight, Ellipsis, Folder, History, Pin, PinOff, Settings, X } fro
 
 import type { Project } from "@/features/projects";
 import { cn, displayPath } from "@/lib/utils";
+import { AttentionPill, strongestPill } from "@/shared/attention";
 import { FixedMenu } from "../FixedMenu";
 import { NewSessionButton } from "../sessions/NewSessionButton";
 import { partitionSidebarSessions } from "../sessions/session-partition";
 import { SessionList } from "../sessions/SessionList";
-import { aggregateStatus, type SidebarTask } from "../sidebar-task";
+import type { SidebarTask } from "../sidebar-task";
 import { EditProjectDialog } from "./EditProjectDialog";
 import { ImportSessionsDialog } from "./ImportSessionsDialog";
 import { projectMenuItems, removeConfirmLabel, type ProjectMenuAction } from "./project-menu";
-import { StatusDot } from "./StatusDot";
 import { useProjectBranch } from "./use-project-branch";
 import { useProjectItem } from "./use-project-item";
 
@@ -39,7 +39,7 @@ export function ProjectItem({
   }, []);
 
   const grouped = partitionSidebarSessions(tasks);
-  const status = aggregateStatus(grouped.active);
+  const pill = strongestPill(grouped.active.map((task) => task.attention));
   const branch = useProjectBranch(project.id);
 
   const onHeaderClick = () => {
@@ -78,7 +78,9 @@ export function ProjectItem({
             !collapsed && "rotate-90",
           )}
         />
-        <StatusDot status={status} />
+        <span className="flex w-1.5 shrink-0 justify-center">
+          <AttentionPill pill={pill} compact />
+        </span>
         <span className="max-w-[9.5rem] shrink-0 truncate text-[12.5px] text-[#e8e8e8]">{project.name}</span>
         {branch ? (
           <span

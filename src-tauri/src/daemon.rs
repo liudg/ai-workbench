@@ -199,6 +199,11 @@ fn plain_detach(command: &mut Command) -> &mut Command {
     command
 }
 
+/// 上次拉起的 daemon 的地址和 token，不拉起也不检查。应用壳自己订阅注意力时用，连不上就重试。
+pub fn current_info(data_dir: &Path) -> Option<DaemonInfo> {
+    read_info(data_dir)
+}
+
 fn read_info(data_dir: &Path) -> Option<DaemonInfo> {
     let raw = std::fs::read(data_dir.join(DAEMON_INFO_FILE)).ok()?;
     serde_json::from_slice(&raw).ok()

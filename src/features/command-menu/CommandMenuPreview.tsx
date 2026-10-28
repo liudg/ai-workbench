@@ -46,6 +46,7 @@ export default function CommandMenuPreview() {
     canSearchFiles: params.get("caps") !== "off",
     canFind: params.get("find") !== "off",
     forkTargets: [{ agent: "codex-cli", name: "Codex", same: true }],
+    hasNextAttention: true,
   });
   const needle = query.trim().toLowerCase();
   const listed = PREVIEW_FILES.filter((path) => !needle || path.toLowerCase().includes(needle));

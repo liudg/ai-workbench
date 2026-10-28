@@ -16,12 +16,12 @@ import {
   type WorktreeDeletePreview,
 } from "@/lib/worktree-delete";
 import { cn } from "@/lib/utils";
+import { AttentionPill, attentionPill } from "@/shared/attention";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { SessionAgentIcon } from "@/shared/agent/SessionAgentIcon";
 import { FixedMenu } from "../FixedMenu";
 import type { SidebarTask } from "../sidebar-task";
-import { SessionStatusDot } from "./SessionStatusDot";
-import { relativeSessionTime } from "./relative-time";
+import { relativeSessionTime } from "@/shared/format/relative-time";
 import { DeleteSessionDialog } from "./DeleteSessionDialog";
 import { shouldSubmitRename } from "./rename-submit";
 import { sessionMenuItems, type SessionMenuAction } from "./session-menu";
@@ -37,7 +37,6 @@ export function SessionRow({
   now: number;
 }) {
   const row = useSessionRow(task);
-  const showUnread = row.unreadFinished && !active;
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
@@ -115,11 +114,8 @@ export function SessionRow({
         }}
       >
         <SessionAgentIcon identity={row.identity} />
-        <span className="flex min-w-0 flex-1 items-center gap-1">
-          <span className="min-w-0 truncate">{task.title}</span>
-          {showUnread && <UnreadFinishedMark />}
-        </span>
-        <SessionStatusDot status={task.status} />
+        <span className="min-w-0 flex-1 truncate">{task.title}</span>
+        <AttentionPill pill={attentionPill(task.attention)} />
         {task.pinned && <Pin className="h-3 w-3 shrink-0 text-[#8a8a8a]" aria-hidden="true" />}
         <span className="relative flex w-16 shrink-0 justify-end text-right tabular-nums">
           <span
@@ -220,16 +216,6 @@ export function SessionRow({
   );
 }
 
-function UnreadFinishedMark() {
-  return (
-    <span
-      data-unread-finished=""
-      title="未读"
-      aria-label="未读"
-      className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[#4f8dff]"
-    />
-  );
-}
 function MenuItem({
   action,
   label,

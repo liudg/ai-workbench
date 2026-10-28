@@ -11,6 +11,7 @@ import {
 import { showError } from "@/shared/shell/error-banner";
 import {
   leaveTask,
+  openBoard,
   openNewSession,
   openProjectDialog,
   openSettings,
@@ -49,7 +50,7 @@ export function CommandMenuHost() {
   const [deletePreview, setDeletePreview] = useState<WorktreeDeletePreview | null | undefined>(undefined);
   const [fileSearchOpen, setFileSearchOpen] = useState(false);
 
-  const { view, sessions, task, project, panel, changes, forkTargets } = useCommandMenuState();
+  const { view, sessions, task, project, panel, changes, forkTargets, nextAttention } = useCommandMenuState();
   const session = task ? (currentSession(task) ?? null) : null;
   const quickScope = session ? { sessionId: session.id } : project ? { projectId: project.id } : null;
 
@@ -64,6 +65,7 @@ export function CommandMenuHost() {
     canSearchFiles: Boolean(panel && quickScope),
     canFind: view.kind !== "none",
     forkTargets,
+    hasNextAttention: nextAttention !== null,
   };
   const filesOpen = open && drill === "files";
   const quick = useQuickOpen(quickScope, query, filesOpen);
@@ -107,6 +109,16 @@ export function CommandMenuHost() {
     }
     if (id === "settings") {
       openSettings();
+      close();
+      return;
+    }
+    if (id === "board") {
+      openBoard();
+      close();
+      return;
+    }
+    if (id === "next-attention" && nextAttention) {
+      openTask(nextAttention.id, nextAttention.projectId ?? null);
       close();
       return;
     }

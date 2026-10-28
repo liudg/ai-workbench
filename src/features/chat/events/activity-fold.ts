@@ -1,5 +1,6 @@
 import type { SessionEvent } from "../../../types/index.ts";
 import { DESKTOP_ZH } from "../../../shared/strings/desktop-zh.ts";
+import { hasGeneratedImages } from "./generated-images.ts";
 
 /**
  * 时间线展示层把相邻的工具调用收成一行。
@@ -49,6 +50,11 @@ export function foldActivity(events: readonly SessionEvent[]): ActivityPiece[] {
   };
 
   for (const event of events) {
+    if (hasGeneratedImages(event)) {
+      flushTools();
+      pieces.push({ type: "event", event });
+      continue;
+    }
     if (event.kind === "tool-call" && isViewedImages(event)) {
       flushTools();
       pieces.push(imagePiece(event));
@@ -108,7 +114,7 @@ export function activityStepTitle(name: string, summary: string): string {
   return clip(stripped);
 }
 
-const IMAGE_NAMES = new Set(["image", "imageview", "imagegeneration", "localimage"]);
+const IMAGE_NAMES = new Set(["image", "imageview", "localimage"]);
 
 export function isViewedImages(event: ToolCallEvent): boolean {
   return IMAGE_NAMES.has(event.name.replace(/[_-]/g, "").toLowerCase());

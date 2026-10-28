@@ -1,4 +1,4 @@
-// 主区看什么：某个会话、某个项目（或独立聊天）的新会话、设置页。只是界面状态，业务数据在 daemon。
+// 主区看什么：某个会话、某个项目（或独立聊天）的新会话、设置页、看板。只是界面状态，业务数据在 daemon。
 
 import { create } from "zustand";
 
@@ -15,6 +15,8 @@ export type ProjectDialog = "create" | "import";
 interface NavigationState {
   view: MainView;
   settings: boolean;
+  /** 看板盖在主区上，关掉回到原来的会话。 */
+  board: boolean;
   projectDialog: ProjectDialog | null;
   /** 每个项目上次看的会话。回到这个项目时先落在它上面。 */
   lastTask: Record<string, string>;
@@ -27,6 +29,7 @@ const scopeKey = (projectId: ProjectScope) => projectId ?? STANDALONE_KEY;
 const useNavigationStore = create<NavigationState>()(() => ({
   view: { kind: "none" },
   settings: false,
+  board: false,
   projectDialog: null,
   lastTask: {},
 }));
@@ -39,12 +42,13 @@ export function openTask(taskId: string, projectId: ProjectScope) {
   useNavigationStore.setState((state) => ({
     view: { kind: "task", taskId, projectId },
     settings: false,
+    board: false,
     lastTask: { ...state.lastTask, [scopeKey(projectId)]: taskId },
   }));
 }
 
 export function openNewSession(projectId: ProjectScope) {
-  useNavigationStore.setState({ view: { kind: "new", projectId }, settings: false });
+  useNavigationStore.setState({ view: { kind: "new", projectId }, settings: false, board: false });
 }
 
 /** 回到项目：上次看的会话还在就打开它，否则开新会话。 */
@@ -73,11 +77,25 @@ export function selectedProjectOf(view: MainView): ProjectScope | undefined {
 }
 
 export function openSettings() {
-  useNavigationStore.setState({ settings: true });
+  useNavigationStore.setState({ settings: true, board: false });
 }
 
 export function closeSettings() {
   useNavigationStore.setState({ settings: false });
+}
+
+export function openBoard() {
+  useNavigationStore.setState({ board: true, settings: false });
+}
+
+export function closeBoard() {
+  useNavigationStore.setState({ board: false });
+}
+
+/** 主区正摆着这个会话（没被设置页或看板盖住）时是它的 id。 */
+export function visibleTaskOf(state: Pick<NavigationState, "view" | "settings" | "board">): string | null {
+  if (state.settings || state.board || state.view.kind !== "task") return null;
+  return state.view.taskId;
 }
 
 export function openProjectDialog(mode: ProjectDialog) {
