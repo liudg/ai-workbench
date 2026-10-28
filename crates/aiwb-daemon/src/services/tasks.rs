@@ -186,12 +186,7 @@ impl Services {
                 }
             });
         }
-        self.store
-            .task_entries()
-            .map_err(|e| e.to_string())?
-            .into_iter()
-            .find(|entry| entry.task.id == task.id)
-            .ok_or_else(|| "任务没有建立".to_string())
+        self.task_entry(&task.id)
     }
 
     pub(crate) fn rename_task(&self, params: RenameTask) -> ServiceResult<bool> {
@@ -262,7 +257,7 @@ impl Services {
         Ok(removed)
     }
 
-    /// 工作树任务的（项目主目录，检出目录）。
+    /// 工作树任务的（项目主目录，检出目录）。分叉出来的任务还在用这个工作树时不算，目录不能删。
     fn task_worktree(&self, task_id: &str) -> ServiceResult<Option<(PathBuf, PathBuf)>> {
         let task = self
             .store
@@ -272,6 +267,9 @@ impl Services {
         let TaskWorkspace::Worktree { path, .. } = task.workspace else {
             return Ok(None);
         };
+        if self.worktree_shared(task_id, &path)? {
+            return Ok(None);
+        }
         let Some(project_id) = task.project_id else {
             return Ok(None);
         };

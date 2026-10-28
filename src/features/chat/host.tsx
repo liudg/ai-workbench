@@ -16,6 +16,8 @@ export interface ChatHost {
   loadOlderHistory?: (sessionId: string) => Promise<boolean>;
   /** 把聊天记录里的选区放进作曲栏。不支持的宿主不给，选区菜单就不出现。 */
   addTextSnippet?: (sessionId: string, draft: TextSnippetDraft) => void;
+  /** 时间线由几段会话接成时（中途换过 Agent），每段是哪个 Agent。只有一段的宿主不给。 */
+  agentOf?: (sessionId: string) => AgentKind | undefined;
 }
 
 const ChatHostContext = createContext<ChatHost | null>(null);

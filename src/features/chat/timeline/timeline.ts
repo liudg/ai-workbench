@@ -230,13 +230,18 @@ function softenConnectionLost(events: readonly SessionEvent[]): readonly Session
   );
 }
 
-/** 时间线里看得见的 Agent 活动：不是用户消息，也不是只给作曲栏和状态用的事件。 */
+/** 开新一段的事件：用户消息，或者换 Agent 的交接。 */
+function opensSegment(event: SessionEvent): boolean {
+  return event.kind === "user-message" || event.kind === "handoff";
+}
+
+/** 时间线里看得见的 Agent 活动：不是用户消息和交接，也不是只给作曲栏和状态用的事件。 */
 function isActivity(events: readonly SessionEvent[], index: number): boolean {
-  return events[index].kind !== "user-message" && !hiddenInTimeline(events, index);
+  return !opensSegment(events[index]) && !hiddenInTimeline(events, index);
 }
 
 /**
- * 每一轮从哪条事件开始。用户消息总是开一轮。
+ * 每一轮从哪条事件开始。用户消息总是开一轮。换 Agent 的交接也断开，不并进上一段的最后一轮。
  * Agent 自己开的回合（目标续跑、宿主发的命令）没有用户消息，只有 `turn-anchor`：
  * 前面这一轮已经有活动、后面在下一条用户消息之前也有活动，才算新的一轮。
  * 紧挨着用户消息的锚点属于那条消息的回合，不另开。
@@ -246,7 +251,7 @@ function turnStarts(events: readonly SessionEvent[]): number[] {
   let activitySinceStart = false;
   for (let index = 0; index < events.length; index += 1) {
     const event = events[index];
-    if (event.kind === "user-message") {
+    if (opensSegment(event)) {
       starts.push(index);
       activitySinceStart = false;
       continue;
@@ -263,7 +268,7 @@ function turnStarts(events: readonly SessionEvent[]): number[] {
 
 function activityAhead(events: readonly SessionEvent[], from: number): boolean {
   for (let index = from + 1; index < events.length; index += 1) {
-    if (events[index].kind === "user-message") return false;
+    if (opensSegment(events[index])) return false;
     if (isActivity(events, index)) return true;
   }
   return false;
@@ -292,7 +297,7 @@ export function buildTimeline(
   turns.forEach((turn, turnIndex) => {
     const leader = turn[0];
     // Agent 自己开的回合没有用户气泡。
-    if (leader.kind === "user-message") blocks.push({ type: "event", event: leader, showAgentLabel: false });
+    if (opensSegment(leader)) blocks.push({ type: "event", event: leader, showAgentLabel: false });
     const rest = turn.slice(1);
     const last = turnIndex === turns.length - 1;
     if (status === "running" && last) {
@@ -312,7 +317,7 @@ export type TimelineChunk =
   | { type: "events"; id: string; events: SessionEvent[]; labels: ReadonlyMap<string, boolean> }
   | { type: "block"; block: TimelineNode };
 
-/** 用户消息、已结束的一轮和进行中的一轮各自断开。中间的事件交给活动流。 */
+/** 用户消息、交接、已结束的一轮和进行中的一轮各自断开。中间的事件交给活动流。 */
 export function chunkTimeline(blocks: readonly TimelineNode[]): TimelineChunk[] {
   const chunks: TimelineChunk[] = [];
   let events: SessionEvent[] = [];
@@ -324,7 +329,7 @@ export function chunkTimeline(blocks: readonly TimelineNode[]): TimelineChunk[] 
     labels = new Map();
   };
   for (const block of blocks) {
-    if (block.type === "event" && block.event.kind !== "user-message") {
+    if (block.type === "event" && !opensSegment(block.event)) {
       events.push(block.event);
       labels.set(block.event.id, block.showAgentLabel);
       continue;

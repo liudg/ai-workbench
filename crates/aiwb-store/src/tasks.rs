@@ -174,6 +174,24 @@ impl Store {
         Ok(rows.collect::<Result<_, _>>()?)
     }
 
+    /// 一个任务的会话，按建立的先后。最后一个是现在用的，前面的是换 Agent 之前的。
+    pub fn task_sessions(&self, task_id: &str) -> StoreResult<Vec<TaskSession>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare("SELECT * FROM session WHERE task_id = ?1 ORDER BY created_at, id")?;
+        let rows = stmt.query_map([task_id], session_from_row)?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    /// 给已有任务添一个会话（中途换 Agent）。
+    pub fn add_session(&self, session: &TaskSession) -> StoreResult<()> {
+        insert_session(&self.conn(), session)
+    }
+
+    /// 删掉会话和它的时间线。
+    pub fn remove_session(&self, id: &str) -> StoreResult<bool> {
+        Ok(self.conn().execute("DELETE FROM session WHERE id = ?1", [id])? > 0)
+    }
+
     pub fn session(&self, id: &str) -> StoreResult<Option<TaskSession>> {
         Ok(self
             .conn()
@@ -185,6 +203,15 @@ impl Store {
         self.conn().execute(
             "UPDATE session SET native_id = ?2 WHERE id = ?1",
             params![id, native_id],
+        )?;
+        Ok(())
+    }
+
+    /// 还没说过话的会话直接换 Agent。
+    pub fn set_session_agent(&self, id: &str, agent: AgentKind, options: &SessionOptions) -> StoreResult<()> {
+        self.conn().execute(
+            "UPDATE session SET agent = ?2, options = ?3, native_id = NULL WHERE id = ?1",
+            params![id, enum_text(&agent), to_text(options)],
         )?;
         Ok(())
     }

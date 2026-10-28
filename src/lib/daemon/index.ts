@@ -1,6 +1,6 @@
 // 全应用共用一条 daemon 连接。界面通过各功能的 hook 用它，展示组件不直接引用。
 
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useRef, useSyncExternalStore } from "react";
 
 import { DaemonClient, type ConnectionStatus } from "./client";
 import { resolveEndpoint } from "./endpoint";
@@ -46,5 +46,27 @@ export function useSessionFeed(sessionId: string): SessionFeedState {
   daemon.start();
   const watch = useCallback((onChange: () => void) => feeds.watch(sessionId, onChange), [sessionId]);
   const read = useCallback(() => feeds.get(sessionId), [sessionId]);
+  return useSyncExternalStore(watch, read);
+}
+
+/** 几个会话的时间线，顺序同 `sessionIds`。任务换过 Agent 时，前面几段一起显示。 */
+export function useSessionFeeds(sessionIds: readonly string[]): SessionFeedState[] {
+  daemon.start();
+  const key = sessionIds.join(",");
+  const last = useRef<SessionFeedState[]>([]);
+  const watch = useCallback(
+    (onChange: () => void) => {
+      const stops = key ? key.split(",").map((id) => feeds.watch(id, onChange)) : [];
+      return () => stops.forEach((stop) => stop());
+    },
+    [key],
+  );
+  const read = useCallback(() => {
+    const next = key ? key.split(",").map((id) => feeds.get(id)) : [];
+    const prev = last.current;
+    if (prev.length === next.length && prev.every((state, index) => state === next[index])) return prev;
+    last.current = next;
+    return next;
+  }, [key]);
   return useSyncExternalStore(watch, read);
 }

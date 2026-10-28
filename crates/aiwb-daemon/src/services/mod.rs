@@ -4,6 +4,7 @@ mod agents;
 mod drafts;
 mod files;
 mod folders;
+mod handoff;
 mod imports;
 mod mcp;
 mod projects;
@@ -152,6 +153,8 @@ impl Services {
             "tasks.archive" => to_value(self.archive_task(parse(params)?).await?),
             "tasks.deletePreview" => to_value(self.delete_preview(parse(params)?).await?),
             "tasks.remove" => to_value(self.remove_task(parse(params)?).await?),
+            "tasks.switchAgent" => to_value(self.switch_agent(parse(params)?).await?),
+            "tasks.fork" => to_value(self.fork_task(parse(params)?).await?),
             "sessions.send" => to_value(self.send(parse(params)?).await?),
             "sessions.interrupt" => to_value(self.interrupt(parse(params)?).await?),
             "sessions.answer" => to_value(self.answer(parse(params)?).await?),

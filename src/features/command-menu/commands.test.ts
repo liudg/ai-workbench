@@ -32,6 +32,7 @@ const enabled: PaletteInput = {
   canStandalone: true,
   canSearchFiles: true,
   canFind: true,
+  forkTargets: [],
 };
 
 function ids(input: PaletteInput) {
@@ -122,4 +123,24 @@ test("a query drops the shortcut group and zero scores", () => {
   const settings = buildPaletteRows({ ...enabled, query: "设置" });
   assert.equal(settings.some((row) => row.commandId === "settings"), true);
   assert.equal(settings.some((row) => row.group === "suggested"), false);
+});
+
+test("fork rows follow the task's fork targets, one per agent", () => {
+  const rows = buildPaletteRows({
+    ...enabled,
+    forkTargets: [
+      { agent: "codex-cli", name: "Codex", same: true },
+      { agent: "claude-code", name: "Claude Code", same: false },
+    ],
+  });
+  const forks = rows.filter((row) => row.commandId === "fork");
+  assert.deepEqual(
+    forks.map((row) => [row.label, row.agent, row.key]),
+    [
+      [COPY.fork, "codex-cli", "fork:codex-cli"],
+      [`${COPY.forkTo}Claude Code`, "claude-code", "fork:claude-code"],
+    ],
+  );
+  assert.equal(ids({ ...enabled, activeSessionId: null, forkTargets: [{ agent: "codex-cli", name: "Codex", same: true }] }).includes("fork"), false);
+  assert.equal(ids(enabled).includes("fork"), false);
 });

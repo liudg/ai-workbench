@@ -1,6 +1,6 @@
 import { THREAD_FIND_COPY } from "../chat/find/copy.ts";
 import { showsFileChanges } from "../changes-model/capabilities.ts";
-import type { ChangeCapabilities } from "../../types/index.ts";
+import type { AgentKind, ChangeCapabilities } from "../../types/index.ts";
 import { COMMAND_MENU_COPY as COPY } from "./copy.ts";
 import { commandFilter } from "./fuzzy.ts";
 
@@ -30,6 +30,7 @@ export type PaletteCommandId =
   | "archive"
   | "rename"
   | "pin"
+  | "fork"
   | "delete"
   | "toggle-files"
   | "toggle-changes"
@@ -42,6 +43,8 @@ export interface PaletteRow {
   commandId?: PaletteCommandId;
   sessionId?: string;
   projectId?: string;
+  /** 分叉到哪个 Agent。 */
+  agent?: AgentKind;
   label: string;
   detail?: string;
   filePath?: string;
@@ -60,6 +63,13 @@ export interface PaletteSession {
 }
 
 
+/** 当前任务能分叉到的 Agent。`same` 是任务现在用的那个。 */
+export interface ForkTarget {
+  agent: AgentKind;
+  name: string;
+  same: boolean;
+}
+
 export interface PaletteInput {
   query: string;
   mode: "commands" | "chats";
@@ -71,6 +81,7 @@ export interface PaletteInput {
   canStandalone: boolean;
   canSearchFiles: boolean;
   canFind: boolean;
+  forkTargets: readonly ForkTarget[];
 }
 
 const GROUP_ORDER: readonly CommandGroup[] = [
@@ -110,6 +121,15 @@ function commandItems(input: PaletteInput): PaletteRow[] {
   // 改名、置顶、归档、删除记在工作台的数据库里，所有 Agent 都有。
   if (active) rows.push(command("rename", COPY.rename, "thread"));
   if (active) rows.push(command("pin", COPY.pin, "thread"));
+  if (active) {
+    for (const target of input.forkTargets) {
+      rows.push({
+        ...command("fork", target.same ? COPY.fork : `${COPY.forkTo}${target.name}`, "thread"),
+        key: `fork:${target.agent}`,
+        agent: target.agent,
+      });
+    }
+  }
   if (active) {
     rows.push(
       command(

@@ -44,7 +44,7 @@ v1 的功能逐项标「沿用」「改进」「去掉」。改进写出处，�
 | 功能 | v1 位置 | 标记 | 说明 | v2 现状 |
 |---|---|---|---|---|
 | 输入、Enter 发送、输入法保护 | `ComposerInput.tsx`、`composer-keys.ts` | 沿用 | 桌面已验 |
-| 选 Agent | 无（v1 在新建会话按钮里选） | 改进 | 新会话在作曲栏上方选，建好后锁定；中途换 Agent 在迁移第 5 步（t3code `apps/web/src/components/ChatView.tsx` 的 `modelPickerLockedProvider`、`ModelPickerSidebar.tsx`） | 桌面已验（显示和选择） |
+| 选 Agent | 无（v1 在新建会话按钮里选） | 改进 | 新会话在作曲栏上方选；会话中途在模型菜单的 Agent 竖栏换到别的 Agent，前文交给新 Agent（迁移第 5 步）。两边都声明 `supports_context_handoff` 且回合不在进行中才能换，否则锁定（t3code `apps/web/src/components/ChatView.tsx` 的 `modelPickerLockedProvider`、`ModelPickerSidebar.tsx`） | 桌面已验（显示和选择）；网页已验中途换（2026-10-28，Codex → Claude → Codex） |
 | 模型、强度、速度档 | `ModelMenu.tsx`、`model-picker.ts`，`set_session_tuning` / `set_session_service_tier` | 沿用 | 新会话用这个 Agent 上次拿到的模型目录（daemon 记下）；一次都没拿到过时提示用默认模型 | 网页已验（显示） |
 | 权限：预设、网络、可写目录、profile | `AccessMenu.tsx`、`access.ts`，`set_session_access` | 沿用 | 新会话默认用这个 Agent 上次的选择或它的默认档 | 桌面已验（显示） |
 | 主目录或新工作树 | `WorktreeChoice.tsx`、`worktree-option.ts` | 沿用 | 工作树由任务层建，不再看 Agent 能力，有提交就能选 | 桌面已验（开关）；在网络共享上的仓库里建工作树会被 git 以 safe.directory 拒绝，错误原样显示、不留残留 |
@@ -70,7 +70,7 @@ v1 的功能逐项标「沿用」「改进」「去掉」。改进写出处，�
 | 变更卡、网页卡、图片 | `chat/cards/*`、`EventImages.tsx` | 沿用 | | 已接上 |
 | 会话内查找 Ctrl+F | `chat/find/*` | 沿用 | | 已接上 |
 | 加载更早的记录 | `load_older_history` | 改进 | 时间线整份从数据库读，不再翻 CLI 的历史文件；分页等长会话再做 | 第 3 步不需要 |
-| 分叉会话 | 命令菜单「分叉聊天」，`fork_session` | 改进（迁移第 5 步） | 改成可以分叉到另一个 Agent（t3code `apps/server/src/orchestration-v2/ContextHandoffService.ts` 的 `prepareForkDelta`）。第 3 步先从命令菜单拿掉 | 第 5 步做 |
+| 分叉会话 | 命令菜单「分叉聊天」，`fork_session` | 改进（迁移第 5 步） | 命令菜单「分叉聊天」和「分叉到 <Agent>」：同一个 Agent 用原生分叉，换 Agent 时新会话第一条消息带上全部前文（t3code `apps/server/src/orchestration-v2/Orchestrator.ts` 的 `thread.fork`：同 provider 走 native_fork，否则 portable_context） | 网页已验（2026-10-28，分叉到 Claude） |
 | 用量：会话 token、订阅额度 | `SessionUsageMeter.tsx`、`SubscriptionUsageMeter.tsx` | 沿用 | | 网页已验（token） |
 | 「下一个需要处理的会话」 | `attention/next-session.ts` | 改进（迁移第 6 步） | 换成注意力队列（路线图 1）。第 3 步先从命令菜单拿掉 | 第 6 步做 |
 

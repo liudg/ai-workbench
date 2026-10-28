@@ -23,24 +23,36 @@ struct Script {
     stopped: Mutex<usize>,
     /// CLI 里开过的会话，导入用。
     listed: Mutex<Vec<DirectoryEntry>>,
+    /// 各 Agent 收到的消息原文。
+    sent: Mutex<Vec<(AgentKind, String)>>,
 }
 
-struct FakeAdapter(Arc<Script>);
+/// 按 Agent 区分的假适配器：Codex 的新线程叫 `thread-1`，Claude 的叫 `claude-1`。
+struct FakeAdapter(Arc<Script>, AgentKind);
 
 struct FakeSession {
     sink: EventSink,
     native: String,
+    kind: AgentKind,
     script: Arc<Script>,
 }
 
 #[async_trait]
 impl AgentAdapter for FakeAdapter {
     fn kind(&self) -> AgentKind {
-        AgentKind::CodexCli
+        self.1
     }
 
     fn capabilities(&self) -> AgentCapabilities {
-        AgentCapabilities::codex()
+        match self.1 {
+            AgentKind::ClaudeCode => AgentCapabilities::claude(),
+            AgentKind::CodexCli => AgentCapabilities::codex(),
+            _ => AgentCapabilities::none(),
+        }
+    }
+
+    async fn fork_thread(&self, native_id: &str) -> Result<DirectoryEntry, AgentError> {
+        Ok(listed(&format!("fork-of-{native_id}"), "", "", 1))
     }
 
     async fn detect(&self) -> Result<(), AgentError> {
@@ -52,6 +64,9 @@ impl AgentAdapter for FakeAdapter {
     }
 
     async fn import_list(&self) -> Result<Vec<DirectoryEntry>, AgentError> {
+        if self.1 != AgentKind::CodexCli {
+            return Ok(Vec::new());
+        }
         Ok(self.0.listed.lock().unwrap().clone())
     }
 
@@ -86,7 +101,10 @@ impl AgentAdapter for FakeAdapter {
         let native = ctx
             .resume_native_id
             .clone()
-            .unwrap_or_else(|| "thread-1".to_string());
+            .unwrap_or_else(|| match self.1 {
+                AgentKind::ClaudeCode => "claude-1".to_string(),
+                _ => "thread-1".to_string(),
+            });
         self.0.started.lock().unwrap().push(ctx);
         let _ = events.send(SessionEventBody::StatusChanged {
             status: SessionStatus::Completed,
@@ -94,6 +112,7 @@ impl AgentAdapter for FakeAdapter {
         Ok(Arc::new(FakeSession {
             sink: events,
             native,
+            kind: self.1,
             script: self.0.clone(),
         }))
     }
@@ -112,6 +131,7 @@ impl AnnotationSink for FakeSession {
 #[async_trait]
 impl AgentSession for FakeSession {
     async fn send_message(&self, text: String) -> Result<(), AgentError> {
+        self.script.sent.lock().unwrap().push((self.kind, text.clone()));
         let say = |body| {
             let _ = self.sink.send(body);
         };
@@ -190,7 +210,7 @@ fn services(store: Arc<Store>, script: Arc<Script>, data_dir: &std::path::Path) 
         port: 0,
         token: "t".into(),
     };
-    let factory: AdapterFactory = Arc::new(move |_| Arc::new(FakeAdapter(script.clone())));
+    let factory: AdapterFactory = Arc::new(move |agent| Arc::new(FakeAdapter(script.clone(), agent)));
     Services::with_adapters(store, info, data_dir.to_path_buf(), factory)
 }
 
@@ -757,4 +777,210 @@ async fn setting_a_goal_leaves_a_goal_command_in_the_timeline() {
         .any(|e| e["kind"] == "user-message" && e["text"] == "/goal 再加一条"));
     let tasks = services.dispatch("tasks.list", Value::Null).await.unwrap();
     assert_eq!(tasks[0]["title"], "测试全部通过", "已有标题不改");
+}
+
+/// 等到时间线里有 `count` 条回答、最后停在已完成。
+async fn wait_for_replies(services: &Services, session_id: &str, count: usize) -> Vec<Value> {
+    for _ in 0..100 {
+        let feed = services
+            .snapshot(&format!("session:{session_id}"), &json!({}))
+            .unwrap();
+        let events = events_of(&feed);
+        let replies = events.iter().filter(|e| e["kind"] == "agent-message").count();
+        if replies >= count && events.last().is_some_and(|event| event["status"] == "completed") {
+            return events;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    panic!("没等到第 {count} 条回答");
+}
+
+fn last_sent(script: &Script) -> (AgentKind, String) {
+    script.sent.lock().unwrap().last().cloned().expect("发过消息")
+}
+
+#[tokio::test]
+async fn switching_agents_hands_off_the_conversation() {
+    let dir = tempfile::tempdir().unwrap();
+    let project_dir = tempfile::tempdir().unwrap();
+    let script = Arc::new(Script::default());
+    let services = services(Arc::new(Store::open_in_memory().unwrap()), script.clone(), dir.path());
+    let project = services
+        .dispatch("projects.add", json!({ "path": project_dir.path().to_string_lossy() }))
+        .await
+        .unwrap();
+    let task = services
+        .dispatch(
+            "tasks.create",
+            json!({ "projectId": project["id"], "agent": "codex-cli", "prompt": "修登录", "options": { "model": "gpt" } }),
+        )
+        .await
+        .unwrap();
+    let task_id = task["id"].clone();
+    let codex = task["sessions"][0]["id"].as_str().unwrap().to_string();
+    wait_for_replies(&services, &codex, 1).await;
+
+    // 换成 Claude：新的一段，第一条消息带上全部前文，气泡只画用户写的。
+    let switched = services
+        .dispatch(
+            "tasks.switchAgent",
+            json!({ "taskId": task_id, "agent": "claude-code", "options": { "model": "opus" } }),
+        )
+        .await
+        .unwrap();
+    let sessions = switched["sessions"].as_array().unwrap();
+    assert_eq!(sessions.len(), 2);
+    assert_eq!(sessions[1]["agent"], "claude-code");
+    assert!(sessions[1].get("nativeId").is_none());
+    let claude = sessions[1]["id"].as_str().unwrap().to_string();
+    let feed = services.snapshot(&format!("session:{claude}"), &json!({})).unwrap();
+    let pending = &events_of(&feed)[0];
+    assert_eq!(pending["kind"], "handoff");
+    assert_eq!(pending["from_agent"], "codex-cli");
+    assert_eq!(pending["from_model"], "gpt");
+    assert_eq!(pending["to_model"], "opus");
+    assert_eq!(pending["strategy"], "full");
+    assert!(pending.get("delivered").is_none());
+
+    services
+        .dispatch("sessions.send", json!({ "sessionId": claude, "text": "继续" }))
+        .await
+        .unwrap();
+    let events = wait_for_replies(&services, &claude, 1).await;
+    let (agent, text) = last_sent(&script);
+    assert_eq!(agent, AgentKind::ClaudeCode);
+    assert!(text.starts_with("Context handoff (full_thread_summary):\nProvider context handoff."), "{text}");
+    assert!(text.contains("[Historical user; user_message; item="));
+    assert!(text.contains("\n修登录\n"), "{text}");
+    assert!(text.contains("\n收到：修登录"), "{text}");
+    assert!(text.ends_with("\n\nUser message:\n继续"), "{text}");
+    let bubble = events.iter().find(|e| e["kind"] == "user-message").unwrap();
+    assert_eq!(bubble["text"], "继续");
+    let delivered = events.iter().find(|e| e["kind"] == "handoff").unwrap();
+    assert_eq!(delivered["delivered"], true);
+    assert_eq!(delivered["selected"], 2);
+    assert!(delivered.get("omitted").is_none());
+
+    // 再发一条就不带前文了。
+    services
+        .dispatch("sessions.send", json!({ "sessionId": claude, "text": "还有吗" }))
+        .await
+        .unwrap();
+    wait_for_replies(&services, &claude, 2).await;
+    assert_eq!(last_sent(&script).1, "还有吗");
+
+    // 换回 Codex：接回原来的线程，只补 Claude 那段。
+    let back = services
+        .dispatch("tasks.switchAgent", json!({ "taskId": task_id, "agent": "codex-cli" }))
+        .await
+        .unwrap();
+    let sessions = back["sessions"].as_array().unwrap();
+    assert_eq!(sessions.len(), 3);
+    assert_eq!(sessions[2]["nativeId"], "thread-1");
+    let codex_again = sessions[2]["id"].as_str().unwrap().to_string();
+
+    // 没说话就又换走：这一段不留，回到前面那段 Claude。
+    let away = services
+        .dispatch("tasks.switchAgent", json!({ "taskId": task_id, "agent": "claude-code" }))
+        .await
+        .unwrap();
+    assert_eq!(away["sessions"].as_array().unwrap().len(), 2);
+    assert_eq!(away["sessions"][1]["id"].as_str(), Some(claude.as_str()));
+    assert!(services.snapshot(&format!("session:{codex_again}"), &json!({})).is_err());
+    let back = services
+        .dispatch("tasks.switchAgent", json!({ "taskId": task_id, "agent": "codex-cli" }))
+        .await
+        .unwrap();
+    assert_eq!(back["sessions"].as_array().unwrap().len(), 3);
+    assert_eq!(back["sessions"][1]["agent"], "claude-code");
+    let codex_again = back["sessions"][2]["id"].as_str().unwrap().to_string();
+
+    services
+        .dispatch("sessions.send", json!({ "sessionId": codex_again, "text": "收尾" }))
+        .await
+        .unwrap();
+    wait_for_replies(&services, &codex_again, 1).await;
+    let (agent, text) = last_sent(&script);
+    assert_eq!(agent, AgentKind::CodexCli);
+    assert!(text.starts_with("Context handoff (delta_since_target_last_seen):"), "{text}");
+    assert!(text.contains("From: Claude Code. To: Codex CLI."), "{text}");
+    assert!(text.contains("\n还有吗\n"), "{text}");
+    // Claude 那段的两问两答；Codex 自己那段不再补。
+    assert!(text.contains("Selected 4 intact items; omitted 0 items."), "{text}");
+    let started = script.started.lock().unwrap();
+    assert_eq!(started.last().unwrap().resume_native_id.as_deref(), Some("thread-1"));
+}
+
+#[tokio::test]
+async fn fork_copies_the_timeline_natively_or_hands_off_to_another_agent() {
+    let dir = tempfile::tempdir().unwrap();
+    let project_dir = tempfile::tempdir().unwrap();
+    let script = Arc::new(Script::default());
+    let services = services(Arc::new(Store::open_in_memory().unwrap()), script.clone(), dir.path());
+    let project = services
+        .dispatch("projects.add", json!({ "path": project_dir.path().to_string_lossy() }))
+        .await
+        .unwrap();
+    let task = services
+        .dispatch(
+            "tasks.create",
+            json!({ "projectId": project["id"], "agent": "codex-cli", "prompt": "修登录", "options": { "model": "gpt" } }),
+        )
+        .await
+        .unwrap();
+    let source = task["sessions"][0]["id"].as_str().unwrap().to_string();
+    let original = wait_for_replies(&services, &source, 1).await;
+
+    // 同一个 Agent：原生分叉，时间线照抄（时间不变），不用交接。
+    let forked = services
+        .dispatch("tasks.fork", json!({ "taskId": task["id"] }))
+        .await
+        .unwrap();
+    assert_ne!(forked["id"], task["id"]);
+    assert_eq!(forked["title"], "修登录");
+    assert_eq!(forked["workspace"], task["workspace"]);
+    assert_eq!(forked["sessions"][0]["nativeId"], "fork-of-thread-1");
+    assert_eq!(forked["sessions"][0]["options"]["model"], "gpt");
+    let copy = forked["sessions"][0]["id"].as_str().unwrap();
+    let copied = events_of(&services.snapshot(&format!("session:{copy}"), &json!({})).unwrap());
+    let kinds: Vec<_> = copied.iter().map(|e| e["kind"].as_str().unwrap()).collect();
+    assert_eq!(kinds, ["user-message", "agent-message"]);
+    let original_ts: Vec<_> = original
+        .iter()
+        .filter(|e| e["kind"] != "status-changed")
+        .map(|e| e["ts"].clone())
+        .collect();
+    assert_eq!(copied.iter().map(|e| e["ts"].clone()).collect::<Vec<_>>(), original_ts);
+
+    // 分叉到 Claude：新线程，第一条消息带上全部前文。
+    let forked = services
+        .dispatch("tasks.fork", json!({ "taskId": task["id"], "agent": "claude-code" }))
+        .await
+        .unwrap();
+    // 原来的一段照抄（还是 Codex，不接原线程），后面另起 Claude 的一段。
+    let sessions = forked["sessions"].as_array().unwrap();
+    assert_eq!(sessions.len(), 2);
+    assert_eq!(sessions[0]["agent"], "codex-cli");
+    assert!(sessions[0].get("nativeId").is_none());
+    let history = sessions[0]["id"].as_str().unwrap();
+    let copied = events_of(&services.snapshot(&format!("session:{history}"), &json!({})).unwrap());
+    assert_eq!(copied.len(), 2);
+    let session = &sessions[1];
+    assert_eq!(session["agent"], "claude-code");
+    assert!(session.get("nativeId").is_none());
+    assert!(session["options"].get("model").is_none());
+    let claude = session["id"].as_str().unwrap().to_string();
+    let events = events_of(&services.snapshot(&format!("session:{claude}"), &json!({})).unwrap());
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0]["kind"], "handoff");
+    services
+        .dispatch("sessions.send", json!({ "sessionId": claude, "text": "换个思路" }))
+        .await
+        .unwrap();
+    wait_for_replies(&services, &claude, 1).await;
+    let (agent, text) = last_sent(&script);
+    assert_eq!(agent, AgentKind::ClaudeCode);
+    assert!(text.starts_with("Context handoff (full_thread_summary):"), "{text}");
+    assert!(text.contains("\n修登录\n"), "{text}");
+    assert!(text.ends_with("User message:\n换个思路"), "{text}");
 }

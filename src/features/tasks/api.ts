@@ -2,7 +2,8 @@
 
 import { CLI_TIMEOUT_MS, daemon } from "@/lib/daemon";
 import type { WorktreeDeleteFlags, WorktreeDeletePreview } from "@/lib/worktree-delete";
-import type { CreateTaskInput, ImportCandidate, ImportList, ImportResult, TaskEntry } from "./types";
+import type { AgentKind } from "@/types";
+import type { CreateTaskInput, ImportCandidate, ImportList, ImportResult, SessionOptions, TaskEntry } from "./types";
 
 export function createTask(input: CreateTaskInput) {
   const { projectId, ...rest } = input;
@@ -27,6 +28,16 @@ export function deletePreview(id: string) {
 
 export function removeTask(id: string, options: WorktreeDeleteFlags) {
   return daemon.call<boolean>("tasks.remove", { id, ...options });
+}
+
+/** 任务换一个 Agent 接着做。前文在新 Agent 的第一条消息里交过去。 */
+export function switchAgent(taskId: string, agent: AgentKind, options: SessionOptions) {
+  return daemon.call<TaskEntry>("tasks.switchAgent", { taskId, agent, options }, CLI_TIMEOUT_MS);
+}
+
+/** 从任务现在的样子分出一个新任务。不给 Agent 时用原来的。 */
+export function forkTask(taskId: string, agent?: AgentKind) {
+  return daemon.call<TaskEntry>("tasks.fork", agent ? { taskId, agent } : { taskId }, CLI_TIMEOUT_MS);
 }
 
 /** 项目主目录下 CLI 里开过、还没导入的会话。要读各 Agent 的会话列表，可能要等一会儿。 */

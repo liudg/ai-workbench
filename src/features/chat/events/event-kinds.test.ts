@@ -15,6 +15,7 @@ const ALL: SessionEvent["kind"][] = [
   "system",
   "read-only",
   "error",
+  "handoff",
   "turn-anchor",
   "turn-diff",
   "file-change",

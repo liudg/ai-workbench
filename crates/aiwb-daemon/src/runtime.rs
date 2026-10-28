@@ -21,6 +21,8 @@ use tokio::sync::mpsc;
 
 use crate::hub::Hub;
 
+mod handoff;
+
 pub type AdapterFactory = Arc<dyn Fn(AgentKind) -> Arc<dyn AgentAdapter> + Send + Sync>;
 
 pub(crate) type RuntimeResult<T> = Result<T, String>;
@@ -158,11 +160,15 @@ impl Runtimes {
 
     /// 并进时间线、写库、推给订阅者，返回任务 id。`activity` 时把任务的更新时间挪到现在。
     fn append(&self, session_id: &str, body: SessionEventBody, activity: bool) -> RuntimeResult<String> {
+        self.append_at(session_id, body, activity, now_millis())
+    }
+
+    /// 同 `append`，时间用给定的。分叉复制时间线时沿用原来的时间，回合用时才对得上。
+    fn append_at(&self, session_id: &str, body: SessionEventBody, activity: bool, now: i64) -> RuntimeResult<String> {
         let topic = session_topic(session_id);
         self.hub.publish_with(&topic, || -> RuntimeResult<_> {
             let mut logs = self.logs.lock().unwrap();
             let log = self.log_mut(&mut logs, session_id)?;
-            let now = now_millis();
             let event = match merge_into(&mut log.events, &body, now) {
                 Some(index) => log.events[index].clone(),
                 None => {
@@ -193,6 +199,40 @@ impl Runtimes {
             let data = serde_json::to_value(feed).map_err(|e| e.to_string())?;
             Ok((log.task_id.clone(), data))
         })
+    }
+
+    /// 改写时间线里已有的一条：沿用 seq，换新的 rev。
+    fn rewrite(&self, session_id: &str, event_id: &str, body: SessionEventBody) -> RuntimeResult<()> {
+        let topic = session_topic(session_id);
+        self.hub.publish_with(&topic, || -> RuntimeResult<_> {
+            let mut logs = self.logs.lock().unwrap();
+            let log = self.log_mut(&mut logs, session_id)?;
+            let event = log
+                .events
+                .iter_mut()
+                .find(|event| event.id == event_id)
+                .ok_or_else(|| "时间线里没有这条事件".to_string())?;
+            event.body = body;
+            let stored = StoredEvent {
+                event: event.clone(),
+                rev: log.next_rev,
+            };
+            log.next_rev += 1;
+            self.store
+                .put_event(&log.task_id, &stored, false)
+                .map_err(|e| e.to_string())?;
+            let feed = SessionFeed {
+                events: vec![stored],
+                ..Default::default()
+            };
+            Ok(((), serde_json::to_value(feed).map_err(|e| e.to_string())?))
+        })
+    }
+
+    /// 会话删掉之前：停掉 CLI，丢掉这里的时间线副本。
+    pub(crate) async fn discard(&self, session_id: &str) {
+        self.stop(session_id).await;
+        self.logs.lock().unwrap().remove(session_id);
     }
 
     /// 导入的历史：按原来的顺序写进时间线。不动任务的更新时间和标题，状态留在已完成。
@@ -425,8 +465,10 @@ impl Runtimes {
             .await?;
             return Ok(TurnDelivery::Started);
         }
+        // 换 Agent 后的第一条消息带上前文。时间线里的用户气泡仍只画用户写的。
+        let handoff = self.prepare_handoff(session_id, &text, images.len())?;
         let turn = UserTurn {
-            text: text.clone(),
+            text: handoff.as_ref().map_or_else(|| text.clone(), |handoff| handoff.message(&text)),
             images: images.clone(),
             client_id: new_id(),
             annotations: Vec::new(),
@@ -443,6 +485,9 @@ impl Runtimes {
                 }
             })
             .await?;
+        if let Some(handoff) = handoff {
+            self.mark_delivered(session_id, handoff)?;
+        }
         if delivery == TurnDelivery::Started {
             self.record(
                 session_id,

@@ -149,6 +149,8 @@ export interface AgentCapabilities {
   supports_subscription_usage?: boolean;
   /** 新建会话可以在一个新的 Git 工作树里运行。 */
   supports_worktree?: boolean;
+  /** 会话中途可以换成别的 Agent 或从别的 Agent 换过来，前文交给新 Agent。 */
+  supports_context_handoff?: boolean;
 }
 
 /** 一个订阅用量窗口。已用和剩余至少有一个，重置时间可以没有。 */

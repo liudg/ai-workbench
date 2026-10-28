@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::agent::SessionId;
+use super::agent::{AgentKind, SessionId};
 use super::catalog::QueuedTurn;
 use super::session::SessionStatus;
 
@@ -260,6 +260,14 @@ pub struct FileChange {
     pub diff: String,
 }
 
+/// 交接带多少前文：新线程从头交全部，接回这个 Agent 原来的线程时只补它没看到的那段。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum HandoffStrategy {
+    Full,
+    Delta,
+}
+
 /// 会话事件体（时间线中的一条）。`kind` 字段作为判别标签。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
@@ -348,6 +356,24 @@ pub enum SessionEventBody {
     },
     Error {
         message: String,
+    },
+    /// 换 Agent 或分叉时把前文交给新 Agent。时间线画成一条分隔。
+    /// 首条消息发出前 `delivered` 为 false；发出时前文拼在那条消息前面，再记下挑了几条、省了几条。
+    /// 照 t3code `apps/server/src/orchestration-v2/ContextHandoffService.ts`。
+    Handoff {
+        from_agent: AgentKind,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        from_model: Option<String>,
+        to_agent: AgentKind,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        to_model: Option<String>,
+        strategy: HandoffStrategy,
+        #[serde(default, skip_serializing_if = "is_false")]
+        delivered: bool,
+        #[serde(default, skip_serializing_if = "is_zero")]
+        selected: u32,
+        #[serde(default, skip_serializing_if = "is_zero")]
+        omitted: u32,
     },
     /// 作曲栏排队列表。会话层拦截，不写入时间线。
     QueueChanged {

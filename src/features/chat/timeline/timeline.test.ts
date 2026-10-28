@@ -436,3 +436,31 @@ test("distinct message ids are both drawn", () => {
   assert.deepEqual(messageTexts(nodes, "user-message"), ["reply ok", write, "reply ok", write]);
   assert.deepEqual(messageTexts(nodes, "agent-message"), ["ok", "ok"]);
 });
+
+test("a handoff starts its own segment instead of joining the previous turn", () => {
+  const handoff: SessionEventBody = {
+    kind: "handoff",
+    from_agent: "codex-cli",
+    to_agent: "claude-code",
+    strategy: "full",
+  };
+  const events = [
+    event("u1", 0, { kind: "user-message", text: "修登录" }),
+    event("t2", 10, { kind: "tool-call", name: "Bash", summary: "ls" }),
+    event("a3", 20, { kind: "agent-message", text: "好了" }),
+    event("h4", 30, handoff),
+    event("u5", 40, { kind: "user-message", text: "继续" }),
+    event("a6", 50, { kind: "agent-message", text: "收到" }),
+  ];
+  const blocks = buildTimeline(events, "completed");
+  const turn = turnNode(blocks);
+  assert.deepEqual(
+    turn.events.map((item) => item.id),
+    ["t2", "a3"],
+  );
+  const order = blocks.map((block) => (block.type === "event" ? block.event.id : block.type));
+  assert.deepEqual(order, ["u1", "turn", "h4", "u5", "a6"]);
+  const chunks = chunkTimeline(blocks);
+  const handoffChunk = chunks.find((chunk) => chunk.type === "block" && chunk.block.type === "event" && chunk.block.event.id === "h4");
+  assert.ok(handoffChunk, "交接单独成块，不进活动流");
+});

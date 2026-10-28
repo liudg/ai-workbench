@@ -1,16 +1,18 @@
 // 已经建好的会话的作曲栏：选项写进 daemon，发送、排队、目标、审查都走 daemon。
+// 两边都能交接时，模型菜单的 Agent 竖栏可以换到别的 Agent，前文由 daemon 交过去。
 
 import { useMemo } from "react";
 
-import type { ComposerHost } from "@/features/chat/composer/host";
+import { agentsApi, useSessionAgents } from "@/features/agents";
+import type { AgentOption, ComposerHost } from "@/features/chat/composer/host";
 import { worktreeCaption } from "@/features/chat/composer/worktree-option";
 import type { Project } from "@/features/projects";
-import type { SessionOptions, TaskEntry, TaskSession } from "@/features/tasks";
+import { tasksApi, type SessionOptions, type TaskEntry, type TaskSession } from "@/features/tasks";
 import { agentIdentity } from "@/shared/agent/identity";
 import { showError } from "@/shared/shell/error-banner";
-import type { AgentProfile, QueuedTurn, Session, SessionSandbox, SessionTuning } from "@/types";
+import type { AgentKind, AgentProfile, QueuedTurn, Session, SessionSandbox, SessionTuning } from "@/types";
 import * as api from "./api";
-import { patchDraft, readDraft, type ComposerDraft } from "./composer-drafts";
+import { moveDraft, patchDraft, readDraft, type ComposerDraft } from "./composer-drafts";
 import { useSessionCatalog } from "./use-session-catalog";
 
 function toSandbox(options: SessionOptions): SessionSandbox | null {
@@ -38,7 +40,7 @@ export function useLiveComposer({
   queue,
   draft,
   project,
-  profile,
+  profiles,
 }: {
   task: TaskEntry;
   taskSession: TaskSession;
@@ -46,11 +48,13 @@ export function useLiveComposer({
   queue: QueuedTurn[];
   draft: ComposerDraft;
   project: Project | undefined;
-  profile: AgentProfile | undefined;
+  profiles: Partial<Record<AgentKind, AgentProfile>>;
 }): ComposerHost {
   const sessionId = session.id;
   const { catalog, notice, permissionMenu } = useSessionCatalog(sessionId, taskSession.agent);
   const options = taskSession.options;
+  const profile = profiles[taskSession.agent];
+  const agents = useSessionAgents();
 
   return useMemo<ComposerHost>(() => {
     const report = (error: unknown) => showError(error);
@@ -59,6 +63,17 @@ export function useLiveComposer({
     };
     const quiet = <T,>(work: Promise<T>) => work.then(() => undefined, report);
     const worktree = task.workspace.kind === "worktree" ? task.workspace : null;
+    const handsOff = (agent: AgentKind) => profiles[agent]?.capabilities.supports_context_handoff === true;
+    const idle = taskSession.status !== "running" && taskSession.status !== "needs-input";
+    const switchable = idle && handsOff(taskSession.agent);
+    const option = (agent: AgentKind, fallback: string): AgentOption => ({
+      kind: agent,
+      name: profiles[agent]?.display_name || fallback,
+      identity: agentIdentity(agent, profiles[agent]),
+    });
+    const others = switchable
+      ? (agents ?? []).filter((item) => item.kind !== taskSession.agent && handsOff(item.kind))
+      : [];
     return {
       draft: false,
       inputLocked: false,
@@ -89,14 +104,31 @@ export function useLiveComposer({
         : null,
       agentChoice: {
         options: [
-          {
-            kind: taskSession.agent,
-            name: profile?.display_name || taskSession.agent,
-            identity: agentIdentity(taskSession.agent, profile),
-          },
+          option(taskSession.agent, taskSession.agent),
+          ...others.map((item) => option(item.kind, item.display_name)),
         ],
         selected: taskSession.agent,
-        switcher: null,
+        switcher:
+          others.length > 0
+            ? {
+                loadModels: (agent) =>
+                  agentsApi.probeCatalog(agent, task.projectId ?? null).then((found) => found.models),
+                onPick: (agent, model) => {
+                  const next: SessionOptions = {
+                    model: model.id,
+                    effort: model.default_effort || undefined,
+                    followUpQueueMode: options.followUpQueueMode,
+                  };
+                  void tasksApi.switchAgent(task.id, agent, next).then((entry) => {
+                    // 没发出去的字和附件跟到新的一段。
+                    const target = entry.sessions[entry.sessions.length - 1]?.id;
+                    if (!target || target === sessionId) return;
+                    const { text, files, snippets } = readDraft(sessionId);
+                    moveDraft(sessionId, target, { text, files, snippets });
+                  }, report);
+                },
+              }
+            : null,
       },
 
       rememberText: (text) => {
@@ -152,5 +184,23 @@ export function useLiveComposer({
       filterPaths: (query) => api.filterPaths({ sessionId }, query),
       reportError: report,
     };
-  }, [catalog, draft, notice, options, permissionMenu, profile, project, queue, session.workdir, sessionId, task.workspace, taskSession.agent]);
+  }, [
+    agents,
+    catalog,
+    draft,
+    notice,
+    options,
+    permissionMenu,
+    profile,
+    profiles,
+    project,
+    queue,
+    session.workdir,
+    sessionId,
+    task.id,
+    task.projectId,
+    task.workspace,
+    taskSession.agent,
+    taskSession.status,
+  ]);
 }

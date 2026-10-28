@@ -23,6 +23,38 @@ interface Parts {
  * 没有 usage 事件就返回 null。上下文窗口事件不参与。
  */
 export function accumulateSessionUsage(events: readonly SessionEvent[]): SessionUsageView | null {
+  // 中途换过 Agent 的任务由几段会话接成，seq 各段从头算：各段分开累计再相加。
+  const segments = new Map<string, SessionEvent[]>();
+  for (const event of events) {
+    const list = segments.get(event.session_id);
+    if (list) list.push(event);
+    else segments.set(event.session_id, [event]);
+  }
+  let total: Parts | null = null;
+  for (const segment of segments.values()) {
+    const parts = accumulateSegment(segment);
+    if (parts) total = total ? merge(total, parts) : parts;
+  }
+  if (!total) return null;
+  if (
+    total.input === undefined &&
+    total.output === undefined &&
+    total.cacheRead === undefined &&
+    total.cacheWrite === undefined
+  ) {
+    return null;
+  }
+  const sum =
+    (total.input ?? 0) + (total.output ?? 0) + (total.cacheRead ?? 0) + (total.cacheWrite ?? 0);
+  const view: SessionUsageView = { total: sum };
+  if (total.input !== undefined) view.input = total.input;
+  if (total.output !== undefined) view.output = total.output;
+  if (total.cacheRead !== undefined) view.cacheRead = total.cacheRead;
+  if (total.cacheWrite !== undefined) view.cacheWrite = total.cacheWrite;
+  return view;
+}
+
+function accumulateSegment(events: readonly SessionEvent[]): Parts | null {
   const ordered = events
     .map((event, index) => ({ event, index }))
     .sort((left, right) => left.event.seq - right.event.seq || left.index - right.index);
@@ -46,22 +78,7 @@ export function accumulateSessionUsage(events: readonly SessionEvent[]): Session
   if (!baseline && deltas.size === 0) return null;
   let total = baseline ?? {};
   for (const parts of deltas.values()) total = merge(total, parts);
-  if (
-    total.input === undefined &&
-    total.output === undefined &&
-    total.cacheRead === undefined &&
-    total.cacheWrite === undefined
-  ) {
-    return null;
-  }
-  const sum =
-    (total.input ?? 0) + (total.output ?? 0) + (total.cacheRead ?? 0) + (total.cacheWrite ?? 0);
-  const view: SessionUsageView = { total: sum };
-  if (total.input !== undefined) view.input = total.input;
-  if (total.output !== undefined) view.output = total.output;
-  if (total.cacheRead !== undefined) view.cacheRead = total.cacheRead;
-  if (total.cacheWrite !== undefined) view.cacheWrite = total.cacheWrite;
-  return view;
+  return total;
 }
 
 function readParts(event: Extract<SessionEvent, { kind: "session-usage" }>): Parts | null {

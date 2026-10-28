@@ -9,13 +9,13 @@ import { CommandMenuHost } from "@/features/command-menu";
 import { SessionSplit } from "@/features/panel/core/SessionSplit";
 import type { Project } from "@/features/projects";
 import type { TaskEntry, TaskSession } from "@/features/tasks";
-import { useSessionFeed } from "@/lib/daemon";
 import type { PromptAnswer } from "@/types";
 import { answerPrompt } from "./api";
 import { chatSession } from "./chat-session";
 import { addDraftSnippet, useComposerDraft } from "./composer-drafts";
 import { SessionPanel } from "./SessionPanel";
 import { useLiveComposer } from "./use-live-composer";
+import { useTaskTimeline } from "./use-task-timeline";
 
 /** 一个建好的会话：时间线、作曲栏、右侧面板。 */
 export function SessionView({
@@ -30,6 +30,8 @@ export function SessionView({
   const profiles = useAgentProfiles();
   const session = useMemo(() => chatSession(task, taskSession), [task, taskSession]);
   const workdir = session.workdir?.trim() || project?.path || "";
+  const timeline = useTaskTimeline(task, taskSession);
+  const { agentOf } = timeline;
   const host = useMemo<ChatHost>(
     () => ({
       answerPrompt: (sessionId: string, promptId: string, answer: PromptAnswer) =>
@@ -40,10 +42,11 @@ export function SessionView({
       profiles,
       projectPath: workdir,
       addTextSnippet: addDraftSnippet,
+      agentOf,
     }),
-    [profiles, workdir],
+    [agentOf, profiles, workdir],
   );
-  const feed = useSessionFeed(session.id);
+  const feed = timeline.all;
   const { draft, loaded } = useComposerDraft(session.id);
   const profile = profiles[taskSession.agent];
   const composer = useLiveComposer({
@@ -53,7 +56,7 @@ export function SessionView({
     queue: feed.queue,
     draft,
     project,
-    profile,
+    profiles,
   });
   return (
     <ChatHostProvider host={host}>
@@ -72,7 +75,13 @@ export function SessionView({
               eventsReady={feed.ready}
               renderComposer={(anchorRef) =>
                 loaded ? (
-                  <Composer key={session.id} host={composer} session={session} events={feed.events} anchorRef={anchorRef} />
+                  <Composer
+                    key={session.id}
+                    host={composer}
+                    session={session}
+                    events={timeline.current.events}
+                    anchorRef={anchorRef}
+                  />
                 ) : null
               }
             />

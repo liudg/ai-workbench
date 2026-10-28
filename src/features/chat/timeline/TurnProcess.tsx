@@ -10,7 +10,7 @@ import { ActivityStream } from "./ActivityStream";
 import { TurnFoldLine } from "./TurnFoldLine";
 import { SessionAgentIcon } from "@/shared/agent/SessionAgentIcon";
 import { AGENT_LABELS, type Session, type SessionEvent } from "@/types";
-import { agentTurnName, useAgentIdentity } from "../events/use-agent-identity";
+import { agentTurnName, useAgentIdentity, useEventAgent } from "../events/use-agent-identity";
 
 /**
  * 一轮结束后的过程条。状态行是这块的第一个子节点，名称和用时在同一行。
@@ -44,9 +44,10 @@ export function TurnProcess({
   const process = events.filter((event) => isProcess(event, answerId));
   const chromeBefore = before.filter((event) => !isProcess(event, answerId));
   const chromeAfter = after.filter((event) => !isProcess(event, answerId));
-  const identity = useAgentIdentity(session.agent);
-  const agentName = agentTurnName(session.agent, identity) || AGENT_LABELS[session.agent];
-  const changeFlags = useChangeCapabilities(session.agent);
+  const agent = useEventAgent(events[0], session);
+  const identity = useAgentIdentity(agent);
+  const agentName = agentTurnName(agent, identity) || AGENT_LABELS[agent];
+  const changeFlags = useChangeCapabilities(agent);
   const changes = useMemo(
     () => (showsFileChanges(changeFlags) ? turnChanges(events) : null),
     [changeFlags, events],

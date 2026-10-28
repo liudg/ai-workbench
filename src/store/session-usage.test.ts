@@ -122,3 +122,11 @@ test("missing usage renders nothing and omitted buckets stay omitted", () => {
   assert.equal(partial && "input" in partial, false);
   assert.equal(JSON.stringify(partial).includes("cost"), false);
 });
+
+test("segments of a task that switched agents are summed, not replaced", () => {
+  const usage = accumulateSessionUsage([
+    event(1, { kind: "session-usage", scope: "snapshot", input_tokens: 100, output_tokens: 10 }),
+    { ...event(1, { kind: "session-usage", scope: "snapshot", input_tokens: 50, output_tokens: 5 }), id: "b1", session_id: "b" },
+  ]);
+  assert.deepEqual(usage, { total: 165, input: 150, output: 15 });
+});

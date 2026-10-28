@@ -18,6 +18,7 @@ import {
 } from "@/shared/shell/navigation";
 import { toggleSidebar } from "@/shared/shell/sidebar-open";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
+import type { AgentKind } from "@/types";
 
 import { buildPaletteRows, type PaletteCommandId } from "./commands";
 import { CommandMenu, type PaletteDrill } from "./CommandMenu";
@@ -49,7 +50,7 @@ export function CommandMenuHost() {
   const [deletePreview, setDeletePreview] = useState<WorktreeDeletePreview | null | undefined>(undefined);
   const [fileSearchOpen, setFileSearchOpen] = useState(false);
 
-  const { view, sessions, task, project, panel, changes } = useCommandMenuState();
+  const { view, sessions, task, project, panel, changes, forkTargets } = useCommandMenuState();
   const session = task ? (currentSession(task) ?? null) : null;
   const quickScope = session ? { sessionId: session.id } : project ? { projectId: project.id } : null;
 
@@ -63,6 +64,7 @@ export function CommandMenuHost() {
     canStandalone: true,
     canSearchFiles: Boolean(panel && quickScope),
     canFind: view.kind !== "none",
+    forkTargets,
   };
   const filesOpen = open && drill === "files";
   const quick = useQuickOpen(quickScope, query, filesOpen);
@@ -88,7 +90,7 @@ export function CommandMenuHost() {
     setFileNotice(null);
   };
 
-  const runCommand = (id: PaletteCommandId) => {
+  const runCommand = (id: PaletteCommandId, agent?: AgentKind) => {
     if (id === "new-thread" && project) {
       openNewSession(project.id);
       close();
@@ -150,6 +152,11 @@ export function CommandMenuHost() {
       close();
       return;
     }
+    if (id === "fork") {
+      close();
+      void tasksApi.forkTask(task.id, agent).then((entry) => openTask(entry.id, entry.projectId ?? null), showError);
+      return;
+    }
     if (id === "rename") {
       setRenameTitle(task.title);
       setRenameError(null);
@@ -200,7 +207,7 @@ export function CommandMenuHost() {
       close();
       return;
     }
-    if (row.commandId) runCommand(row.commandId);
+    if (row.commandId) runCommand(row.commandId, row.agent);
   };
 
   const actions = useRef({ input, runCommand, open, drill });

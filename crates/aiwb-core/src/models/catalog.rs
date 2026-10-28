@@ -154,6 +154,10 @@ pub struct AgentCapabilities {
     /// 新建会话可以在一个新的 Git 工作树里运行。和变更视图读取工作树文件不是同一个开关。
     #[serde(default)]
     pub supports_worktree: bool,
+    /// 会话中途换成别的 Agent，或者从别的 Agent 换过来：前文作为第一条消息的文字交过去。
+    /// 照 t3code 适配器的 `supportsProviderSwitchingViaHandoff`。
+    #[serde(default)]
+    pub supports_context_handoff: bool,
 }
 
 impl AgentCapabilities {
@@ -182,6 +186,7 @@ impl AgentCapabilities {
             supports_paged_history: false,
             supports_subscription_usage: false,
             supports_worktree: false,
+            supports_context_handoff: false,
         }
     }
 
@@ -214,6 +219,8 @@ impl AgentCapabilities {
             // 2026-10-18 openai/codex main：`codex --worktree` 由 codex-worktree 建托管检出，
             // `thread/start` 只把那个目录当作 cwd。没有单独的创建 RPC。
             supports_worktree: true,
+            // 交接只是第一条 `turn/start` 的文字输入。
+            supports_context_handoff: true,
         }
     }
 
@@ -263,6 +270,8 @@ impl AgentCapabilities {
             // 2026-10-18 Claude Code 文档：`--worktree <name>` / `-w` 在仓库
             // `.claude/worktrees/<name>` 建分支 `worktree-<name>`。
             supports_worktree: true,
+            // 交接只是第一条 stdin 用户消息的文字。
+            supports_context_handoff: true,
         }
     }
 

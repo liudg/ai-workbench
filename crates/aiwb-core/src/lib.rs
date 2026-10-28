@@ -2,6 +2,7 @@
 
 pub mod chat_slug;
 pub mod endpoint;
+pub mod handoff;
 pub mod models;
 pub mod project;
 pub mod rpc;

@@ -10,6 +10,7 @@ export const RENDERED_EVENT_KINDS = [
   "system",
   "read-only",
   "error",
+  "handoff",
   "plan-steps",
   "plan-text",
   "review-note",

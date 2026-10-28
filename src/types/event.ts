@@ -1,5 +1,6 @@
 // 与 `src-tauri/src/models/event.rs` 对应。`kind` 是判别标签。
 
+import type { AgentKind } from "./agent.ts";
 import type { SessionStatus } from "./session.ts";
 
 export type PromptKind = "approval" | "choice" | "free-text" | "questions" | "elicitation";
@@ -110,6 +111,18 @@ export type SessionEventBody =
   /** 线程被其他进程占用。历史已打开，输入框不可发送。 */
   | { kind: "read-only"; text: string }
   | { kind: "error"; message: string }
+  /** 换 Agent 或分叉时把前文交给新 Agent。第一条消息发出后 `delivered` 为 true。 */
+  | {
+      kind: "handoff";
+      from_agent: AgentKind;
+      from_model?: string;
+      to_agent: AgentKind;
+      to_model?: string;
+      strategy: "full" | "delta";
+      delivered?: boolean;
+      selected?: number;
+      omitted?: number;
+    }
   | { kind: "turn-anchor"; turn_id: string; mode?: string }
   | { kind: "turn-diff"; turn_id: string; diff: string }
   | {

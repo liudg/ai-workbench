@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 
 import { AgentMessage } from "./AgentMessage";
 import { ErrorNote, ReadOnlyNote, SystemNote } from "./StatusNotes";
+import { HandoffNote } from "./HandoffNote";
 import { PlanSteps, PlanText } from "./PlanBlocks";
 import { PromptEvent } from "./PromptCard";
 import { ReviewFindings, ReviewNote } from "./ReviewBlocks";
@@ -20,6 +21,7 @@ export const eventRenderers: Record<RenderedEventKind, ComponentType<EventViewPr
   system: SystemNote,
   "read-only": ReadOnlyNote,
   error: ErrorNote,
+  handoff: HandoffNote,
   "plan-steps": PlanSteps,
   "plan-text": PlanText,
   "review-note": ReviewNote,
