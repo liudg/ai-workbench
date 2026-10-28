@@ -7,6 +7,8 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 
+import { usePanelOptional } from "@/features/panel/core/PanelProvider";
+import { baseName } from "@/shared/path";
 import type { ReviewStart, Session, SessionEvent, SessionSandbox } from "@/types";
 import {
   addComposerDir,
@@ -20,6 +22,7 @@ import {
   setComposerNetwork,
 } from "./composer-access-run";
 import {
+  addComposerFiles,
   applyComposerSkill,
   applyComposerSlash,
   beginComposerEdit,
@@ -30,7 +33,6 @@ import {
   rememberCaret,
   removeComposerQueued,
   runComposerSubmit,
-  stageComposerBlobs,
   steerComposerQueued,
   type ComposerRun,
 } from "./composer-run";
@@ -40,6 +42,7 @@ import { toggleFollowUpQueueMode } from "./follow-up-queue-mode";
 import type { ComposerHost } from "./host";
 import { queueStripVisible } from "./queue-strip";
 import { useComposerMenu } from "./useComposerMenu";
+import { useFileDrop } from "./useFileDrop";
 import { collaborationMode } from "./collaboration-mode";
 import { useGoalDraft } from "./useGoalDraft";
 import { useMentionMenu } from "./useMentionMenu";
@@ -55,7 +58,6 @@ export function useComposerController(host: ComposerHost, session: Session, even
   const [skillIndex, setSkillIndex] = useState(0);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [dragOver, setDragOver] = useState(false);
   const submitFlight = useRef<SubmitFlight | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const reviewRootRef = useRef<HTMLDivElement>(null);
@@ -206,6 +208,14 @@ export function useComposerController(host: ComposerHost, session: Session, even
     holdUntilAccepted: host.draft,
   };
 
+  const dragOver = useFileDrop(reviewRootRef, !view.composerLocked, (paths) =>
+    addComposerFiles(
+      run,
+      paths.map((path) => ({ path, name: baseName(path) })),
+    ),
+  );
+  const panel = usePanelOptional();
+
   return {
     text,
     setText,
@@ -214,7 +224,6 @@ export function useComposerController(host: ComposerHost, session: Session, even
     reviewOpen,
     notice,
     dragOver,
-    setDragOver,
     editingId,
     textareaRef,
     reviewRootRef,
@@ -234,7 +243,6 @@ export function useComposerController(host: ComposerHost, session: Session, even
     slashIndex,
     rememberCaret: (element: HTMLTextAreaElement) => rememberCaret(setCaret, element),
     cancelEdit: () => cancelComposerEdit(run),
-    stageBlobs: (blobs: File[]) => stageComposerBlobs(run, blobs),
     applySlash: (command: Parameters<typeof applyComposerSlash>[1]) => applyComposerSlash(run, command),
     applySkill: (skill: Parameters<typeof applyComposerSkill>[1]) => applyComposerSkill(run, skill),
     submit: () => runComposerSubmit(run),
@@ -298,6 +306,8 @@ export function useComposerController(host: ComposerHost, session: Session, even
     chooseFast: (enabled: boolean) => chooseComposerFast(run, enabled),
     resetTuning: () => resetComposerTuning(run),
     removeFile: (path: string) => host.removeAttachment(path),
+    /** 非图片附件在右侧「打开文件」里预览。没有面板的宿主不给。 */
+    openFile: panel ? (path: string) => panel.openHref(path) : undefined,
     dismissSnippets: () => {
       host.clearTextSnippets();
       requestAnimationFrame(() => textareaRef.current?.focus());

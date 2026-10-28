@@ -2,7 +2,7 @@ import type { ClipboardEvent, KeyboardEvent as ReactKeyboardEvent, RefObject } f
 
 import { pickFiles } from "@/lib/native/pick-files";
 import { stageImage } from "@/lib/native/stage-image";
-import type { AgentCapabilities, AgentSkillOption, SessionSandbox, SlashCommand } from "@/types";
+import type { AgentCapabilities, AgentSkillOption, Attachment, SessionSandbox, SlashCommand } from "@/types";
 import { composerKeyIntent, stepIndex } from "./composer-keys";
 import { composerCtrlEnter, queueFlushIds, submitDelivery } from "./composer-now";
 import { decideSlash, decideSubmit } from "./composer-submit";
@@ -288,18 +288,15 @@ export function runComposerCtrlEnter(run: ComposerRun) {
 export async function pickComposerFiles(run: ComposerRun) {
   if (run.view.composerLocked) return;
   run.setMenu(null);
-  const picked = await pickFiles(run.view.imagesOn ? "选择图片" : "选择文件");
-  if (!picked.length) return;
-  if (run.view.imagesOn) {
-    const images = picked.filter((file) => isImagePath(file.path));
-    if (images.length !== picked.length) run.setNotice("只能附加图片");
-    if (images.length) {
-      run.setNotice(images.length === picked.length ? null : "只能附加图片");
-      run.host.addAttachments(images);
-    }
-    return;
-  }
-  run.host.addAttachments(picked);
+  addComposerFiles(run, await pickFiles(run.view.imagesOn ? "选择图片和文件" : "选择文件"));
+}
+
+/** 选的或拖进来的本机文件。图片走图像通道，其它文件发送时把路径写进消息。 */
+export function addComposerFiles(run: ComposerRun, files: Attachment[]) {
+  if (run.view.composerLocked || !files.length) return;
+  run.setNotice(null);
+  run.host.addAttachments(files);
+  run.textareaRef.current?.focus();
 }
 
 export function beginComposerEdit(

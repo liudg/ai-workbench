@@ -49,7 +49,7 @@ v1 的功能逐项标「沿用」「改进」「去掉」。改进写出处，�
 | 权限：预设、网络、可写目录、profile | `AccessMenu.tsx`、`access.ts`，`set_session_access` | 沿用 | 新会话默认用这个 Agent 上次的选择或它的默认档 | 桌面已验（显示） |
 | 主目录或新工作树 | `WorktreeChoice.tsx`、`worktree-option.ts` | 沿用 | 工作树由任务层建，不再看 Agent 能力，有提交就能选 | 桌面已验（开关）；在网络共享上的仓库里建工作树会被 git 以 safe.directory 拒绝，错误原样显示、不留残留 |
 | 空会话上方选项目 | `WorkContextPicker.tsx`、`useComposerWorkContext.ts` | 沿用 | 只在新会话上，换项目时草稿跟过去 | 网页已验（显示） |
-| 附件：文件、图片、粘贴和拖入图片 | `AttachMenu.tsx`、`Attachments.tsx`、`media.ts` | 沿用 | | 桌面待验 |
+| 附件：文件、图片、粘贴图片、从系统拖入文件 | `AttachMenu.tsx`、`Attachments.tsx`、`media.ts`、`useFileDrop.ts`、`lib/native/file-drop.ts` | 改 | 拖入走应用壳的拖放事件，拿真实路径，图片和文件都收（拖到作曲栏松手才收，orca `NativeChatPaneFileDropSurface.tsx`）；点缩略图放大看，多张左右切换（t3code `ExpandedImagePreview.tsx`）；点文件名在右侧「打开文件」里预览（t3code `ComposerFilePreviewDialog`，换成本项目已有的文件预览） | 桌面已验（模拟拖放事件、点开图片和文件）；真实鼠标拖放待验 |
 | `@` 提及文件 | `MentionMenu.tsx`、`mentions.ts` | 沿用 | 新会话按项目目录找 | 已接上 |
 | `$` 技能 | `SkillMenu.tsx`、`skills.ts` | 沿用 | | 已接上 |
 | `/` 斜杠命令 | `SlashMenu.tsx` | 沿用 | | 已接上 |

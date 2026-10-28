@@ -117,21 +117,9 @@ export function Composer({
           data-question-anchor
           className={cn(
             "min-w-0 rounded-[18px] border border-[#2a2a2a] bg-[#171717] transition-colors focus-within:border-[#3a3a3a]",
-            c.dragOver && view.imagesOn && "border-indigo-400/80",
+            c.dragOver && "border-indigo-400/80",
           )}
           onClick={() => c.textareaRef.current?.focus()}
-          onDragOver={(event) => {
-            if (!view.imagesOn || view.composerLocked) return;
-            event.preventDefault();
-            c.setDragOver(true);
-          }}
-          onDragLeave={() => c.setDragOver(false)}
-          onDrop={(event) => {
-            if (!view.imagesOn || view.composerLocked) return;
-            event.preventDefault();
-            c.setDragOver(false);
-            void c.stageBlobs(Array.from(event.dataTransfer.files));
-          }}
         >
           {c.queueStrip ? (
             <QueuedMessageList
@@ -147,7 +135,7 @@ export function Composer({
           ) : null}
           <div className="min-w-0 overflow-hidden px-3 pt-3">
           <TextSnippetChip snippets={c.snippets} onClear={c.dismissSnippets} />
-          <Attachments files={c.files} imagesOn={view.imagesOn} onRemove={c.removeFile} />
+          <Attachments files={c.files} imagesOn={view.imagesOn} onRemove={c.removeFile} onOpenFile={c.openFile} />
           <ComposerInput
             text={c.text}
             placeholder={view.placeholder}
