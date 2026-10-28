@@ -258,7 +258,7 @@ impl Runtimes {
         })
     }
 
-    fn live_handle(&self, session_id: &str) -> Option<Arc<dyn AgentSession>> {
+    pub(crate) fn live_handle(&self, session_id: &str) -> Option<Arc<dyn AgentSession>> {
         self.live.lock().unwrap().get(session_id).cloned()
     }
 

@@ -1,113 +1,61 @@
 import { diffLine, expandDiffLines, foldDiffLines, type DiffFoldRow } from "./fold.ts";
 
-/** 去掉只改空白的增删行。文件仍留在列表里，统计也不改。 */
-export function withoutWhitespaceChanges(diff: string): string {
-  const lines = diff.split(/\r?\n/);
-  const out: string[] = [];
-  let index = 0;
-  while (index < lines.length) {
-    const line = lines[index] ?? "";
-    if (!line.startsWith("@@")) {
-      out.push(line);
-      index += 1;
-      continue;
-    }
-    index += 1;
-    const body: string[] = [];
-    while (index < lines.length) {
-      const next = lines[index] ?? "";
-      if (next.startsWith("@@") || next.startsWith("diff --git ")) break;
-      body.push(next);
-      index += 1;
-    }
-    const filtered = filterWhitespaceHunk(body);
-    if (filtered.some((row) => row.length > 0)) out.push(line, ...filtered);
-  }
-  return out.join("\n");
-}
+type LineRow = Extract<DiffFoldRow, { kind: "line" }>;
 
 /**
- * 一行对一行：两边去掉空白后相同，才丢掉这一对。
- * 不能把整段增删拼起来比，否则拆行会把整个文件当成空白改动。
+ * 去掉只改空白的增删行。在已经编好行号的行上做，不改 diff 文本，行号不会错位。
+ * 一行对一行：两边去掉空白后相同，才丢掉这一对。不能把整段增删拼起来比，否则拆行会把整个文件当成空白改动。
  */
-function filterWhitespaceHunk(body: string[]): string[] {
-  const out: string[] = [];
+function withoutWhitespaceRows(rows: DiffFoldRow[]): DiffFoldRow[] {
+  const out: DiffFoldRow[] = [];
   let index = 0;
-  while (index < body.length) {
-    const line = body[index] ?? "";
-    if (!line.startsWith("-") && !line.startsWith("+")) {
-      out.push(line);
+  while (index < rows.length) {
+    if (!isEdit(rows[index])) {
+      out.push(rows[index]);
       index += 1;
       continue;
     }
-    const removed: string[] = [];
-    const added: string[] = [];
-    const notes: string[] = [];
-    while (index < body.length && ((body[index] ?? "").startsWith("-") || (body[index] ?? "").startsWith("\\"))) {
-      const row = body[index] ?? "";
-      if (row.startsWith("\\")) notes.push(row);
-      else removed.push(row.slice(1));
+    const run: DiffFoldRow[] = [];
+    while (index < rows.length && (isEdit(rows[index]) || isMeta(rows[index]))) {
+      run.push(rows[index]);
       index += 1;
     }
-    while (index < body.length && ((body[index] ?? "").startsWith("+") || (body[index] ?? "").startsWith("\\"))) {
-      const row = body[index] ?? "";
-      if (row.startsWith("\\")) notes.push(row);
-      else added.push(row.slice(1));
-      index += 1;
-    }
-    const kept = pairWhitespaceLines(removed, added);
-    for (const row of kept.removed) out.push(`-${row}`);
-    for (const row of kept.added) out.push(`+${row}`);
-    out.push(...notes);
+    out.push(...pairWhitespaceRows(run));
   }
   return out;
 }
 
-function pairWhitespaceLines(removed: string[], added: string[]): { removed: string[]; added: string[] } {
-  const used = new Set<number>();
-  const keptRemoved: string[] = [];
-  for (const row of removed) {
-    const collapsed = collapseSpace(row);
-    const match = added.findIndex((item, itemIndex) => !used.has(itemIndex) && collapseSpace(item) === collapsed);
-    if (match >= 0) {
-      used.add(match);
-      continue;
+function pairWhitespaceRows(run: DiffFoldRow[]): DiffFoldRow[] {
+  const dropped = new Set<DiffFoldRow>();
+  const added = run.filter((row): row is LineRow => row.kind === "line" && row.tone === "add");
+  for (const row of run) {
+    if (row.kind !== "line" || row.tone !== "del") continue;
+    const collapsed = collapseSpace(row.text);
+    const match = added.find((item) => !dropped.has(item) && collapseSpace(item.text) === collapsed);
+    if (match) {
+      dropped.add(match);
+      dropped.add(row);
     }
-    if (collapsed.length === 0) continue;
-    keptRemoved.push(row);
   }
-  const keptAdded: string[] = [];
-  added.forEach((item, itemIndex) => {
-    if (used.has(itemIndex) || collapseSpace(item).length === 0) return;
-    keptAdded.push(item);
+  return run.filter((row) => {
+    if (dropped.has(row)) return false;
+    return !(isEdit(row) && row.kind === "line" && collapseSpace(row.text).length === 0);
   });
-  return { removed: keptRemoved, added: keptAdded };
 }
 
 const IMPORT_LINE = /^(?:import\s|using\s|from\s+\S+\s+import\b|#include\s)/;
 
-/** 「隐藏导入内容」只拿掉 import / using 行，文件头和其余差异留着。 */
-export function withoutImportLines(diff: string): string {
-  return diff
-    .split(/\r?\n/)
-    .filter((line) => {
-      if (
-        !line ||
-        line.startsWith("diff ") ||
-        line.startsWith("index ") ||
-        line.startsWith("--- ") ||
-        line.startsWith("+++ ") ||
-        line.startsWith("@@") ||
-        line.startsWith("new file") ||
-        line.startsWith("deleted file") ||
-        line.startsWith("\\")
-      ) {
-        return true;
-      }
-      const body = line.startsWith("+") || line.startsWith("-") || line.startsWith(" ") ? line.slice(1).trim() : line.trim();
-      return !IMPORT_LINE.test(body);
-    })
-    .join("\n");
+/** 「隐藏导入内容」只拿掉 import / using 行，其余行和行号照旧。 */
+function withoutImportRows(rows: DiffFoldRow[]): DiffFoldRow[] {
+  return rows.filter((row) => row.kind !== "line" || row.tone === "meta" || !IMPORT_LINE.test(row.text.trim()));
+}
+
+function isEdit(row: DiffFoldRow | undefined): boolean {
+  return row?.kind === "line" && (row.tone === "add" || row.tone === "del");
+}
+
+function isMeta(row: DiffFoldRow | undefined): boolean {
+  return row?.kind === "line" && row.tone === "meta";
 }
 
 function collapseSpace(text: string): string {
@@ -134,30 +82,28 @@ export function diffBodyRows(input: {
   hideWhitespace: boolean;
   hideImports: boolean;
 }): DiffBody {
-  const original = input.hideImports ? withoutImportLines(input.diff) : input.diff;
-  const filtered = input.hideWhitespace ? withoutWhitespaceChanges(original) : original;
-  const folded = foldDiffLines(filtered);
-  const originalChanges = hasEdits(foldDiffLines(original));
+  const filter = (rows: DiffFoldRow[]) => {
+    const kept = input.hideImports ? withoutImportRows(rows) : rows;
+    return input.hideWhitespace ? withoutWhitespaceRows(kept) : kept;
+  };
+  const folded = foldDiffLines(input.diff);
   if (hasVisibleRows(folded)) {
-    if (input.loadFull && input.source != null && isUnifiedDiff(filtered)) {
-      return { rows: expandDiffLines(filtered, input.source), whitespaceHidden: false };
+    const expanded =
+      input.loadFull && input.source != null ? expandDiffLines(input.diff, input.source) : null;
+    const rows = filter(expanded ?? folded);
+    const before = input.hideImports ? withoutImportRows(folded) : folded;
+    if (input.hideWhitespace && hasEdits(before) && !hasEdits(rows)) {
+      return { rows: [], whitespaceHidden: true };
     }
-    return { rows: folded, whitespaceHidden: false };
-  }
-  if (input.hideWhitespace && originalChanges) {
-    return { rows: [], whitespaceHidden: true };
+    return { rows, whitespaceHidden: false };
   }
   const tone = rawTone(input.status, input.added, input.removed);
   if (tone) {
-    const lines = rawBodyLines(original, tone);
-    if (lines.length > 0) {
-      return {
-        rows: lines.map((text, index) =>
-          diffLine(tone, text, tone === "del" ? index + 1 : null, tone === "add" ? index + 1 : null),
-        ),
-        whitespaceHidden: false,
-      };
-    }
+    const rows = rawBodyLines(input.diff, tone).map((text, index) =>
+      diffLine(tone, text, tone === "del" ? index + 1 : null, tone === "add" ? index + 1 : null),
+    );
+    const kept = input.hideImports ? withoutImportRows(rows) : rows;
+    if (kept.length > 0) return { rows: kept, whitespaceHidden: false };
   }
   return { rows: [], whitespaceHidden: false };
 }

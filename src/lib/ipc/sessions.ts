@@ -12,7 +12,6 @@ import type {
 } from "@/types";
 import { invoke } from "./call";
 import type { Backend, CreateAndSendInput, CreateAndSendResult } from "./contract";
-import type { DiffScope } from "./dto";
 
 export const sessionCommands: Pick<
   Backend,
@@ -40,8 +39,6 @@ export const sessionCommands: Pick<
   | "sendMessage"
   | "sendMessageNow"
   | "submitAnnotation"
-  | "diffScopes"
-  | "diffForScope"
   | "updateQueuedTurn"
   | "removeQueuedTurn"
   | "steerQueuedTurn"
@@ -129,9 +126,6 @@ export const sessionCommands: Pick<
     }),
   submitAnnotation: (sessionId, note) =>
     invoke("submit_annotation", { sessionId, note }),
-  diffScopes: (sessionId) => invoke<DiffScope[]>("diff_scopes", { sessionId }),
-  diffForScope: (sessionId, scope, ignoreWhitespace) =>
-    invoke<string>("diff_for_scope", { sessionId, scope, ignoreWhitespace }),
   updateQueuedTurn: (sessionId, queuedId, text, images) =>
     invoke("update_queued_turn", {
       sessionId,

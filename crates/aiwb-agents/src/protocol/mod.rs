@@ -16,6 +16,6 @@ pub use context::SessionContext;
 pub use error::AgentError;
 pub use session::{submit_annotation_as_attachment, AgentSession, EventSink};
 pub use surface::{
-    default_git_scopes, turn_scope, AnnotationSink, DiffScope, DiffScopeProvider,
+    default_git_scopes, is_turn_scope, turn_scope, AnnotationSink, DiffScope, DiffScopeProvider,
 };
 pub use turn::{fold_page_annotations, TurnDelivery, UserTurn};

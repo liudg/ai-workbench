@@ -3,7 +3,6 @@
 use serde::Deserialize;
 use tauri::{AppHandle, Runtime, State};
 
-use aiwb_agents::DiffScope;
 use crate::features::chats::{self, TaskFolderStore};
 use crate::features::projects::ProjectStore;
 use crate::features::sessions::{
@@ -436,27 +435,6 @@ pub async fn submit_annotation(
     note: PageAnnotation,
 ) -> Result<(), String> {
     manager.submit_annotation(&session_id, note).await
-}
-
-#[tauri::command]
-pub async fn diff_scopes(
-    manager: State<'_, SessionManager>,
-    session_id: String,
-) -> Result<Vec<DiffScope>, String> {
-    manager.diff_scopes(&session_id).await
-}
-
-#[tauri::command]
-pub async fn diff_for_scope(
-    store: State<'_, ProjectStore>,
-    manager: State<'_, SessionManager>,
-    session_id: String,
-    scope: String,
-    ignore_whitespace: bool,
-) -> Result<String, String> {
-    manager
-        .diff_for_scope(&store, &session_id, &scope, ignore_whitespace)
-        .await
 }
 
 #[tauri::command]

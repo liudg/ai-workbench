@@ -4,7 +4,7 @@
  * - `turn-changes`：这一轮的完整文件列表，后来的覆盖先前的。
  * - `file-change`：没有汇总时，按路径合并逐条文件。
  *
- * 统一 diff 只用来拆 `diff_for_scope` 返回的 git 范围。
+ * 统一 diff 只用来拆 `files.diff` 返回的 git 范围。
  */
 import type { FileChange as EventFile, SessionEvent } from "../../types/index.ts";
 

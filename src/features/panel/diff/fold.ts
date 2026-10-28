@@ -105,10 +105,10 @@ export function foldDiffLines(diff: string): DiffFoldRow[] {
 }
 
 /**
- * 展开灰条。有全文时按新文件补上未改动行；没有全文时只留下差异块。
+ * 展开灰条：用全文补上块与块之间没出现的行，块内照 diff 原文。
+ * 全文和 diff 的新文件一侧对不上（文件之后又改过，或范围不是工作区）时返回 null，调用方退回折叠。
  */
-export function expandDiffLines(diff: string, source: string | null): DiffFoldRow[] {
-  if (source == null) return foldDiffLines(diff).filter((row) => row.kind !== "collapse");
+export function expandDiffLines(diff: string, source: string): DiffFoldRow[] | null {
   const src = sourceLines(source);
   const hunks = parseHunks(diff);
   const rows: DiffFoldRow[] = [];
@@ -122,6 +122,7 @@ export function expandDiffLines(diff: string, source: string | null): DiffFoldRo
     }
   };
   for (const hunk of hunks) {
+    if (hunk.newStart > src.length + 1) return null;
     emitUntil(hunk.newStart);
     let oldLine = hunk.oldStart;
     for (const line of hunk.lines) {
@@ -134,9 +135,9 @@ export function expandDiffLines(diff: string, source: string | null): DiffFoldRo
         oldLine += 1;
         continue;
       }
-      const text = cursor <= src.length ? (src[cursor - 1] ?? line.text) : line.text;
-      if (line.kind === "add") rows.push(diffLine("add", text, null, cursor));
-      else rows.push(diffLine("context", text, oldLine, cursor));
+      if (!sameLine(src[cursor - 1], line.text)) return null;
+      if (line.kind === "add") rows.push(diffLine("add", line.text, null, cursor));
+      else rows.push(diffLine("context", line.text, oldLine, cursor));
       if (line.kind === "context") oldLine += 1;
       cursor += 1;
     }
@@ -144,6 +145,10 @@ export function expandDiffLines(diff: string, source: string | null): DiffFoldRo
   }
   emitUntil(src.length + 1);
   return rows;
+}
+
+function sameLine(disk: string | undefined, text: string): boolean {
+  return disk !== undefined && disk.replace(/\r$/, "") === text.replace(/\r$/, "");
 }
 
 /** 差异里的新文件一侧，不含灰条外面的原文。渲染预览在读不到全文时用它。 */

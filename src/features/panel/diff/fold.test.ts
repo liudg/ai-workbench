@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { diffBodyRows, withoutImportLines, withoutWhitespaceChanges } from "./diff-body.ts";
+import { diffBodyRows } from "./diff-body.ts";
 import { expandDiffLines, foldDiffLines } from "./fold.ts";
 import { applyWordDiff } from "./word-diff.ts";
 
@@ -53,14 +53,14 @@ test("hunk rows keep old and new line numbers", () => {
 });
 
 test("whitespace-only edits drop out and expand fills the new file", () => {
-  const spaced = ["@@ -1 +1 @@", "-a b", "+a  b", " same"].join("\n");
-  assert.equal(withoutWhitespaceChanges(spaced).includes("+a  b"), false);
+  const spaced = ["@@ -1,2 +1,2 @@", "-a b", "+a  b", " same"].join("\n");
+  assert.equal(texts(body(spaced, { hideWhitespace: true })).includes("add:a  b"), false);
   const kept = ["@@ -1 +1 @@", "-old", "+new"].join("\n");
-  assert.equal(withoutWhitespaceChanges(kept).includes("+new"), true);
+  assert.equal(texts(body(kept, { hideWhitespace: true })).includes("add:new"), true);
 
   const source = ["one", "TWO", "three"].join("\n");
   const diff = ["@@ -2 +2 @@", "-two", "+TWO"].join("\n");
-  const rows = expandDiffLines(diff, source);
+  const rows = expandDiffLines(diff, source) ?? [];
   assert.equal(rows.some((row) => row.kind === "collapse"), false);
   assert.deepEqual(
     rows.map((row) => (row.kind === "line" ? `${row.tone}:${row.lineNo}:${row.text}` : "hide")),
@@ -73,11 +73,7 @@ test("whitespace-only edits drop out and expand fills the new file", () => {
 
 test("hiding imports drops import lines and keeps the rest of the diff", () => {
   const diff = ["@@ -1,3 +1,3 @@", "-import a", "+import b", " keep", "+added"].join("\n");
-  const next = withoutImportLines(diff);
-  assert.equal(next.includes("import"), false);
-  assert.equal(next.includes("keep"), true);
-  assert.equal(next.includes("+added"), true);
-  assert.equal(next.includes("@@"), true);
+  assert.deepEqual(texts(body(diff, { hideImports: true })), ["context:keep", "add:added"]);
 });
 
 test("add-only and delete-only file bodies render as inserts and deletions", () => {
@@ -128,11 +124,7 @@ test("add-only and delete-only file bodies render as inserts and deletions", () 
 
 test("hiding whitespace drops only lines that differ by spaces", () => {
   const split = ["@@ -1,2 +1,2 @@", "-ab", "-c", "+a", "+bc"].join("\n");
-  const kept = withoutWhitespaceChanges(split);
-  assert.equal(kept.includes("-ab"), true);
-  assert.equal(kept.includes("+a"), true);
-  assert.equal(kept.includes("+bc"), true);
-  const body = diffBodyRows({
+  const splitBody = diffBodyRows({
     diff: split,
     status: "M",
     added: 2,
@@ -142,9 +134,9 @@ test("hiding whitespace drops only lines that differ by spaces", () => {
     hideWhitespace: true,
     hideImports: false,
   });
-  assert.equal(body.whitespaceHidden, false);
+  assert.equal(splitBody.whitespaceHidden, false);
   assert.deepEqual(
-    body.rows.filter((row) => row.kind === "line").map((row) => (row.kind === "line" ? `${row.tone}:${row.text}` : "")),
+    splitBody.rows.filter((row) => row.kind === "line").map((row) => (row.kind === "line" ? `${row.tone}:${row.text}` : "")),
     ["del:ab", "del:c", "add:a", "add:bc"],
   );
 
@@ -225,3 +217,58 @@ test("hiding whitespace keeps a whitespace-only diff marked instead of empty of 
   assert.equal(kept.whitespaceHidden, false);
   assert.equal(kept.rows.some((row) => row.kind === "line" && row.tone === "add" && row.text === "new"), true);
 });
+
+const IMPORTED = [
+  "@@ -1,3 +1,4 @@",
+  "+import x from 'x';",
+  " const a = 1;",
+  "-const b = 2;",
+  "+const b = 3;",
+  " const c = 4;",
+].join("\n");
+
+test("hiding imports keeps the line numbers of the rows that stay", () => {
+  const expected = [
+    "1/2 context const a = 1;",
+    "2/. del const b = 2;",
+    "./3 add const b = 3;",
+    "3/4 context const c = 4;",
+  ];
+  assert.deepEqual(numbered(body(IMPORTED, { hideImports: true })), expected);
+  const source = "import x from 'x';\nconst a = 1;\nconst b = 3;\nconst c = 4;\n";
+  assert.deepEqual(numbered(body(IMPORTED, { hideImports: true, source, loadFull: true })), expected);
+});
+
+test("full text that no longer matches the diff falls back to the folded diff", () => {
+  const stale = "import x from 'x';\nconst a = 1;\nconst b = 99;\nconst c = 4;\n";
+  assert.equal(expandDiffLines(IMPORTED, stale), null);
+  const rows = numbered(body(IMPORTED, { source: stale, loadFull: true }));
+  assert.equal(rows.includes("./3 add const b = 3;"), true);
+  assert.equal(rows.some((row) => row.includes("99")), false);
+});
+
+function body(
+  diff: string,
+  options: { hideImports?: boolean; hideWhitespace?: boolean; source?: string; loadFull?: boolean },
+) {
+  return diffBodyRows({
+    diff,
+    status: "M",
+    added: 1,
+    removed: 1,
+    source: options.source ?? null,
+    loadFull: options.loadFull ?? false,
+    hideWhitespace: options.hideWhitespace ?? false,
+    hideImports: options.hideImports ?? false,
+  });
+}
+
+function texts(result: ReturnType<typeof diffBodyRows>): string[] {
+  return result.rows.flatMap((row) => (row.kind === "line" ? [`${row.tone}:${row.text}`] : []));
+}
+
+function numbered(result: ReturnType<typeof diffBodyRows>): string[] {
+  return result.rows.flatMap((row) =>
+    row.kind === "line" ? [`${row.oldNo ?? "."}/${row.newNo ?? "."} ${row.tone} ${row.text}`] : [],
+  );
+}

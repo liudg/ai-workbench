@@ -19,6 +19,7 @@ export function useDiffDocument(turnFiles: FileChange[]) {
   const [gitFiles, setGitFiles] = useState<FileChange[] | null>(null);
   const [gitError, setGitError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [reloadToken, setReloadToken] = useState(0);
   const [activePath, setActivePath] = useState("");
   const [openPaths, setOpenPaths] = useState<string[]>([]);
   const [wrap, setWrapState] = useState(diffView.wrap);
@@ -29,7 +30,6 @@ export function useDiffDocument(turnFiles: FileChange[]) {
   const scrollPath = useRef<string | null>(null);
   const [scrollTick, setScrollTick] = useState(0);
   const [sources, setSources] = useState<Record<string, string>>({});
-  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     let cancel = false;
@@ -44,7 +44,7 @@ export function useDiffDocument(turnFiles: FileChange[]) {
     return () => {
       cancel = true;
     };
-  }, [data, sessionId]);
+  }, [data, reloadToken, sessionId]);
 
   useEffect(() => {
     writeDiffMenuOptions(menuOptions, browserDiffMenuStorage());
@@ -74,7 +74,7 @@ export function useDiffDocument(turnFiles: FileChange[]) {
   const { loadFull, renderPreview, wordDiff, hideWhitespace: hideWs, hideImports } = menuOptions;
 
   const scopes = useMemo(() => diffScopeMenu(provided, changes), [changes, provided]);
-  const selected = scopes.find((item) => item.id === scope && !item.submenu) ?? scopes.find((item) => !item.submenu);
+  const selected = scopes.find((item) => item.id === scope) ?? scopes[0];
 
   useEffect(() => {
     if (!selected || selected.id === scope) return;
@@ -85,7 +85,7 @@ export function useDiffDocument(turnFiles: FileChange[]) {
     setActivePath("");
   }, [scope]);
 
-  const remote = Boolean(selected && selected.source !== "turn" && !selected.submenu);
+  const remote = Boolean(selected && selected.source !== "turn");
   useEffect(() => {
     if (!remote || !selected) {
       setGitFiles(null);

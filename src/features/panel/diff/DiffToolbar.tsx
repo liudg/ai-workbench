@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, ChevronRight, Ellipsis, FileSearch } from "lucide-react";
+import { Check, ChevronDown, Ellipsis, FileSearch } from "lucide-react";
 
-import { cn } from "@/lib/utils";
 import { IconButton, iconLabel, iconPressed, ToolbarGlyph } from "./DiffToolbarIcons";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { diffMenuEntries } from "./diff-menu";
@@ -107,6 +106,12 @@ export function DiffToolbar({
     }
   };
 
+  useEffect(() => {
+    if (!copyStatus) return;
+    const timer = window.setTimeout(() => setCopyStatus(""), 2500);
+    return () => window.clearTimeout(timer);
+  }, [copyStatus]);
+
   useDismissLayer(menu !== null, () => setMenu(null));
   useEffect(() => {
     if (!menu) return;
@@ -152,23 +157,15 @@ export function DiffToolbar({
                 key={item.id}
                 type="button"
                 role="menuitem"
-                disabled={item.submenu}
-                aria-disabled={item.submenu || undefined}
                 data-diff-scope-item={item.id}
-                data-submenu={item.submenu ? "true" : "false"}
-                className={cn(
-                  "flex w-full items-center gap-2 whitespace-nowrap px-3 py-1.5 text-left text-xs",
-                  item.submenu ? "cursor-default text-zinc-500" : "text-zinc-100 hover:bg-zinc-800",
-                )}
+                className="flex w-full items-center gap-2 whitespace-nowrap px-3 py-1.5 text-left text-xs text-zinc-100 hover:bg-zinc-800"
                 onClick={() => {
-                  if (item.submenu) return;
                   onScope(item.id);
                   setMenu(null);
                 }}
               >
                 <span className="min-w-0 flex-1">{item.label}</span>
                 {scope === item.id ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
-                {item.submenu ? <ChevronRight className="h-3.5 w-3.5 shrink-0 text-zinc-500" /> : null}
               </button>
             ))}
           </div>
@@ -176,6 +173,13 @@ export function DiffToolbar({
       </div> : null}
       <span className="shrink-0 whitespace-nowrap font-mono text-[12px] text-[#3fb950]">+{added}</span>
       <span className="shrink-0 whitespace-nowrap font-mono text-[12px] text-[#f85149]">-{removed}</span>
+      <p
+        role="status"
+        data-diff-copy-status={copyStatus || undefined}
+        className="min-w-0 truncate text-[12px] text-zinc-400"
+      >
+        {copyStatus}
+      </p>
       <div className="ml-auto flex shrink-0 items-center gap-0.5">
         {DIFF_TOOLBAR_ICON_IDS.map((id) => {
           if (id === "options") {
@@ -247,9 +251,6 @@ export function DiffToolbar({
           }}
         />
       ) : null}
-      <p className="sr-only" role="status" data-diff-copy-status={copyStatus || undefined}>
-        {copyStatus}
-      </p>
     </div>
   );
 }

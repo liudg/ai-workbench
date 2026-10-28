@@ -20,7 +20,7 @@ pub use protocol::{
     fold_page_annotations, submit_annotation_as_attachment, AgentAdapter, AgentError, AgentSession,
     EventSink, PreparedWorktree, SessionContext, TurnDelivery, UserTurn,
 };
-pub use protocol::{default_git_scopes, AnnotationSink, DiffScope, DiffScopeProvider};
+pub use protocol::{default_git_scopes, is_turn_scope, turn_scope, AnnotationSink, DiffScope, DiffScopeProvider};
 
 
 use std::sync::Arc;

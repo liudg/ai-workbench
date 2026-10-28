@@ -3,7 +3,7 @@
 
 use std::path::Path;
 
-use aiwb_agents::{default_git_scopes, DiffScope};
+use aiwb_agents::{default_git_scopes, is_turn_scope, turn_scope, DiffScope};
 use aiwb_files::{IndexedPaths, PathFilter, PreviewDocument, PreviewImage, SearchOutput, TreeEntry, QUICK_OPEN_LIMIT};
 use serde::Deserialize;
 
@@ -96,20 +96,29 @@ impl Services {
         blocking(move || aiwb_files::read_image_at(Path::new(&root), &params.path)).await?
     }
 
-    /// 差异面板的范围：会话还有 Agent 给的上一轮，项目只有 git 的几种。
+    /// 差异面板的范围：会话还有上一轮，项目只有 git 的几种。
+    /// Agent 已接上就问它；没接上不为看差异去启动 CLI，上一轮是否可用由前端按 Agent 的能力过滤。
     pub(crate) async fn diff_scopes(&self, scope: Scope) -> ServiceResult<Vec<DiffScope>> {
         let Some(session_id) = scope.session_id.as_deref() else {
             return Ok(default_git_scopes());
         };
-        let handle = self.runtimes.handle(session_id).await?;
-        handle.diff_scopes().await.map_err(|e| e.to_string())
+        if let Some(handle) = self.runtimes.live_handle(session_id) {
+            return handle.diff_scopes().await.map_err(|e| e.to_string());
+        }
+        let mut scopes = vec![turn_scope()];
+        scopes.extend(default_git_scopes());
+        Ok(scopes)
     }
 
+    /// git 的几种范围直接在工作目录上跑 git，不经过 Agent；只有上一轮要问 Agent。
     pub(crate) async fn diff(&self, params: Diff) -> ServiceResult<String> {
         let root = self.scope_dir(&params.scope)?;
-        let Some(session_id) = params.scope.session_id.as_deref() else {
-            return blocking(move || aiwb_git::git_diff_text(&root, &params.diff_scope, params.ignore_whitespace))
-                .await?;
+        let session_id = match params.scope.session_id.as_deref() {
+            Some(id) if is_turn_scope(&params.diff_scope) => id,
+            _ => {
+                return blocking(move || aiwb_git::git_diff_text(&root, &params.diff_scope, params.ignore_whitespace))
+                    .await?;
+            }
         };
         let handle = self.runtimes.handle(session_id).await?;
         handle

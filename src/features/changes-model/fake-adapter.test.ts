@@ -23,8 +23,8 @@ test("a non-native adapter's normalized events fill the change card, session fil
     FAKE_CAPABILITIES,
   );
   assert.deepEqual(
-    menu.map((item) => [item.label, item.submenu]),
-    [["上一轮", false]],
+    menu.map((item) => item.label),
+    ["上一轮"],
   );
   const shown = filesForScope(menu[0], card?.files ?? [], null);
   assert.equal(shown[0]?.path, FAKE_FILE.path);

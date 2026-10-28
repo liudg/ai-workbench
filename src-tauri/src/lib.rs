@@ -81,8 +81,6 @@ macro_rules! workbench_handler {
             $crate::features::ipc::sessions::send_message,
             $crate::features::ipc::sessions::send_message_now,
             $crate::features::ipc::sessions::submit_annotation,
-            $crate::features::ipc::sessions::diff_scopes,
-            $crate::features::ipc::sessions::diff_for_scope,
             $crate::features::ipc::sessions::update_queued_turn,
             $crate::features::ipc::sessions::remove_queued_turn,
             $crate::features::ipc::sessions::steer_queued_turn,

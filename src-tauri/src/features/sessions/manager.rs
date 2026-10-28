@@ -13,7 +13,7 @@ use tokio::sync::mpsc;
 
 use aiwb_agents::{
     adapter_for, project_matches_cwd, session_directories, session_key, sessions_for_project,
-    AgentSession, DiffScope, DirectoryEntry, EventSink, PreparedWorktree, SessionContext,
+    AgentSession, DirectoryEntry, EventSink, PreparedWorktree, SessionContext,
     SessionDirectory, SourcedEntry, TurnDelivery, UserTurn,
 };
 use aiwb_git::{self as git, Checkout};
@@ -950,36 +950,6 @@ impl SessionManager {
             )?;
         }
         Ok(())
-    }
-
-    pub async fn diff_scopes(&self, session_id: &str) -> Result<Vec<DiffScope>, String> {
-        let handle = self.agent_handle_ready(session_id).await?;
-        handle.diff_scopes().await.map_err(|err| err.to_string())
-    }
-
-    pub async fn diff_for_scope(
-        &self,
-        store: &ProjectStore,
-        session_id: &str,
-        scope: &str,
-        ignore_whitespace: bool,
-    ) -> Result<String, String> {
-        let project_id = self
-            .entries
-            .lock()
-            .unwrap()
-            .get(session_id)
-            .map(|entry| entry.meta.project_id.clone())
-            .ok_or_else(|| "会话不存在".to_string())?;
-        let project = self.resolve_project(store, &project_id)?;
-        let root = self
-            .work_root(&project, Some(session_id))
-            .unwrap_or_else(|_| std::path::PathBuf::from(&project.path));
-        let handle = self.agent_handle_ready(session_id).await?;
-        handle
-            .diff_for_scope(&root.to_string_lossy(), scope, ignore_whitespace)
-            .await
-            .map_err(|err| err.to_string())
     }
 
     pub async fn update_queued_turn(

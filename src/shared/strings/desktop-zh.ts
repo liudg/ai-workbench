@@ -64,8 +64,6 @@ export const DESKTOP_ZH = {
   closeGoal: "关闭目标",
   viewChanges: "查看变更",
   changesTab: "变更",
-  diffCommitted: "已提交",
-  diffBranch: "分支",
   editedFile: "已编辑 {name}",
   editedFiles: "已编辑 {count} 个文件",
   website: "网站",

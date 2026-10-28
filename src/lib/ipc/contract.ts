@@ -23,7 +23,6 @@ import type {
   BrowserNotice,
   CreateProjectInput,
   CreateProjectResult,
-  DiffScope,
   GitBranchMenu,
   FileSearchResult,
   ImportProjectInput,
@@ -149,13 +148,6 @@ export interface Backend {
   ): Promise<void>;
   /** 把一条页面批注交给当前会话的 AnnotationSink。 */
   submitAnnotation(sessionId: string, note: PageAnnotation): Promise<void>;
-  /** DiffScopeProvider：当前适配器提供的差异范围。 */
-  diffScopes(sessionId: string): Promise<DiffScope[]>;
-  diffForScope(
-    sessionId: string,
-    scope: string,
-    ignoreWhitespace: boolean,
-  ): Promise<string>;
   /**
    * 项目目录是不是 git 工作区。
    * 后端用 Codex 同一条探测：`git rev-parse --is-inside-work-tree`。

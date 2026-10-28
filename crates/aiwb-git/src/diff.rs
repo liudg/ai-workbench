@@ -1,4 +1,5 @@
 //! 工作树差异。范围只含未提交、未暂存、已暂存。
+//! 未提交和未暂存把未跟踪文件也算进来，Agent 新建的文件要看得到（t3code `GitVcsDriverCore.ts` 的 `prepareUntrackedReviewIndex`）。
 //! 还没有提交的仓库不能对 `HEAD` 做 diff，改和空树比较。
 
 use std::path::Path;
@@ -12,40 +13,24 @@ pub fn git_diff_text(root: &Path, scope: &str, ignore_whitespace: bool) -> Resul
     if !root.is_dir() {
         return Err("项目不存在".into());
     }
-    let mut args = vec![
-        "-c",
-        "core.quotepath=false",
-        "diff",
-        "--no-ext-diff",
-        "--no-color",
-    ];
-    if ignore_whitespace {
-        args.push("-w");
-    }
-    match scope {
+    let tracked = match scope {
         "uncommitted" => {
-            if !super::worktree::repo_has_commit(root)? {
-                return unborn_uncommitted_diff(root, ignore_whitespace);
-            }
-            args.push("HEAD");
+            let base = if super::worktree::repo_has_commit(root)? { "HEAD" } else { EMPTY_TREE };
+            diff_args(ignore_whitespace, &[base, "--"])
         }
-        "unstaged" => {}
-        "staged" => args.push("--cached"),
-        "committed" | "branch" => return Err("这个范围没有可用的差异".into()),
+        "unstaged" => diff_args(ignore_whitespace, &["--"]),
+        "staged" => diff_args(ignore_whitespace, &["--cached", "--"]),
         _ => return Err("不支持的差异范围".into()),
+    };
+    let mut combined = map_diff_output(&run_diff(root, &tracked)?)?;
+    if scope != "staged" {
+        append_untracked(root, ignore_whitespace, &mut combined)?;
     }
-    args.push("--");
-    map_diff_output(&run_diff(root, &args)?)
+    Ok(combined)
 }
 
-/// 还没有提交时，`git diff HEAD` 会报 `bad revision 'HEAD'`。
-/// 已进索引的内容对空树比较；未跟踪文件逐个对空设备做 `--no-index` 差异。
-fn unborn_uncommitted_diff(root: &Path, ignore_whitespace: bool) -> Result<String, String> {
-    let tracked = map_diff_output(&run_diff(
-        root,
-        &diff_args(ignore_whitespace, &[EMPTY_TREE, "--"]),
-    )?)?;
-    let mut combined = tracked;
+/// 未跟踪文件逐个对空设备做 `--no-index` 差异，接在已跟踪差异后面。
+fn append_untracked(root: &Path, ignore_whitespace: bool, combined: &mut String) -> Result<(), String> {
     let listed = super::git_output(root, &["ls-files", "--others", "--exclude-standard", "-z"])?;
     if !listed.status.success() {
         return Err(diff_stderr(&listed, "无法列出未跟踪文件"));
@@ -68,12 +53,12 @@ fn unborn_uncommitted_diff(root: &Path, ignore_whitespace: bool) -> Result<Strin
                     return Err(plain_diff_error(stderr));
                 }
             }
-            append_diff(&mut combined, &stdout)?;
+            append_diff(combined, &stdout)?;
             continue;
         }
         return Err(diff_stderr(&output, "git diff 失败"));
     }
-    Ok(combined)
+    Ok(())
 }
 
 fn diff_args<'a>(ignore_whitespace: bool, tail: &[&'a str]) -> Vec<&'a str> {
@@ -225,12 +210,9 @@ mod tests {
         assert!(git_diff_text(&root, "unstaged", false).unwrap().is_empty());
         let staged = git_diff_text(&root, "staged", false).unwrap();
         assert!(staged.contains("+two"), "{staged}");
-        assert!(git_diff_text(&root, "committed", false)
-            .unwrap_err()
-            .contains("没有可用"));
         assert!(git_diff_text(&root, "branch", false)
             .unwrap_err()
-            .contains("没有可用"));
+            .contains("不支持"));
 
         fs::write(root.join("note.txt"), "two \n").unwrap();
         assert!(run_git(&root, &["add", "note.txt"]));
@@ -245,7 +227,7 @@ mod tests {
     }
 
     #[test]
-    fn uncommitted_diff_lists_untracked_files_when_head_is_missing() {
+    fn working_tree_scopes_list_untracked_files() {
         let mut probe = Command::new("git");
         probe
             .arg("--version")
@@ -291,14 +273,13 @@ mod tests {
         fs::write(root.join("still-untracked.txt"), "hidden\n").unwrap();
         let committed = git_diff_text(&root, "uncommitted", false).unwrap();
         assert!(committed.contains("+changed"), "{committed}");
-        assert!(
-            !committed.contains("still-untracked.txt"),
-            "repos with commits keep ignoring untracked files: {committed}"
-        );
-        assert!(
-            !committed.contains("+hidden"),
-            "repos with commits keep ignoring untracked files: {committed}"
-        );
+        assert!(committed.contains("still-untracked.txt"), "{committed}");
+        assert!(committed.contains("+hidden"), "{committed}");
+        let unstaged = git_diff_text(&root, "unstaged", false).unwrap();
+        assert!(unstaged.contains("+changed"), "{unstaged}");
+        assert!(unstaged.contains("+hidden"), "{unstaged}");
+        let staged = git_diff_text(&root, "staged", false).unwrap();
+        assert!(!staged.contains("still-untracked.txt"), "{staged}");
         let _ = fs::remove_dir_all(root);
     }
 }
