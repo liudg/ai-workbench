@@ -52,6 +52,14 @@ export function HoverActions({ time, children }: { time: string; children?: Reac
   );
 }
 
+export function MessageFooter({ time, copyText }: { time: string; copyText?: string }) {
+  return (
+    <div data-message-footer>
+      <HoverActions time={time}>{copyText ? <CopyButton text={copyText} /> : null}</HoverActions>
+    </div>
+  );
+}
+
 export function Row({
   icon,
   title,
@@ -101,9 +109,7 @@ export function Row({
         <div className="min-w-0 cursor-text break-words pl-6">
           {children}
           {chrome === "below" ? (
-            <div data-message-footer>
-              <HoverActions time={time}>{copyText ? <CopyButton text={copyText} /> : null}</HoverActions>
-            </div>
+            <MessageFooter time={time} copyText={copyText} />
           ) : null}
         </div>
       </div>

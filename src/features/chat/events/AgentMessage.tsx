@@ -1,6 +1,6 @@
 import { SessionAgentIcon } from "@/shared/agent/SessionAgentIcon";
 import { AssistantAnswer } from "../answer/AssistantAnswer";
-import { CopyButton, HoverActions, Row } from "./chrome";
+import { MessageFooter, Row } from "./chrome";
 import type { EventViewProps } from "./types";
 import { agentTurnName, useAgentIdentity, useEventAgent } from "./use-agent-identity";
 
@@ -22,9 +22,7 @@ export function AgentMessage({
         <div className="min-w-0 pl-6">
           <AssistantAnswer text={event.text} />
           {footer ? (
-            <div data-message-footer>
-              <HoverActions time={time}>{event.text ? <CopyButton text={event.text} /> : null}</HoverActions>
-            </div>
+            <MessageFooter time={time} copyText={event.text} />
           ) : null}
         </div>
       </div>

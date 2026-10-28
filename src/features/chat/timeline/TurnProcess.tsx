@@ -1,10 +1,12 @@
 import { useMemo } from "react";
 
+import { formatMessageTime } from "@/lib/utils";
 import { showsFileChanges } from "@/features/changes-model/capabilities";
 import { turnChanges } from "@/features/changes-model/diff-parse";
 import { useChangeCapabilities } from "../use-change-capabilities";
 import { ChangeCard } from "../cards/ChangeCard";
 import { EventItem } from "../events/EventItem";
+import { MessageFooter } from "../events/chrome";
 import { collapsedTurnSummary, isProcess } from "./timeline";
 import { ActivityStream } from "./ActivityStream";
 import { TurnFoldLine } from "./TurnFoldLine";
@@ -15,7 +17,7 @@ import { agentTurnName, useAgentIdentity, useEventAgent } from "../events/use-ag
 /**
  * 一轮结束后的过程条。状态行是这块的第一个子节点，名称和用时在同一行。
  * 收起时过程收进这一行。展开后补上旁白，工具、命令、集成和查看图像各收成一行，再点开才看到步骤。
- * 结束后的思考不留条目。最终答复留在下面，时间和复制跟在答复末尾。
+ * 结束后的思考不留条目。最终答复留在下面，时间和复制放在所有内容（包括变更卡）之后。
  * 折叠行已经带了 Agent 名，答复不再重复。答复前的说明接在状态行下面。
  */
 export function TurnProcess({
@@ -53,7 +55,7 @@ export function TurnProcess({
     [changeFlags, events],
   );
 
-  const renderEvent = (event: SessionEvent, showAgentLabel: boolean, showMessageFooter = false) => (
+  const renderEvent = (event: SessionEvent, showAgentLabel: boolean) => (
     <EventItem
       key={event.id}
       event={event}
@@ -62,12 +64,12 @@ export function TurnProcess({
         event.kind === "prompt" ? (resolvedAnswers.get(event.prompt_id) ?? null) : null
       }
       showAgentLabel={showAgentLabel}
-      showMessageFooter={showMessageFooter}
+      showMessageFooter={false}
     />
   );
 
   return (
-    <div className="min-w-0">
+    <div className="group min-w-0">
       <TurnFoldLine
         summary={collapsedTurnSummary(agentName, durationMs)}
         expanded={expanded}
@@ -85,9 +87,16 @@ export function TurnProcess({
           onInteract={onInteract}
         />
       ) : null}
-      {answer ? renderEvent(answer, false, true) : null}
+      {answer ? renderEvent(answer, false) : null}
       {chromeAfter.map((event) => renderEvent(event, false))}
       {changes ? <ChangeCard changes={changes} /> : null}
+      {answer?.kind === "agent-message" && answer.text.trim() ? (
+        <div className="event-in min-w-0 px-6 py-1">
+          <div className="min-w-0 pl-6">
+            <MessageFooter time={formatMessageTime(answer.ts)} copyText={answer.text} />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

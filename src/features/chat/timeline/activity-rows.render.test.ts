@@ -285,7 +285,7 @@ test("a settled turn keeps the status line as the first child", async () => {
         onToggle: () => {},
       }),
     );
-    assert.equal(html.startsWith('<div class="min-w-0"><div class="event-in min-w-0 px-6 py-1"><button'), true);
+    assert.equal(html.startsWith('<div class="group min-w-0"><div class="event-in min-w-0 px-6 py-1"><button'), true);
     assertOrder(html, ['data-turn-summary="Codex CLI · 用时 0s"', "回合前提示", "目录里有 src"]);
     assert.equal(html.includes("已运行 1 条命令"), expanded);
   }
@@ -329,12 +329,22 @@ test("a running turn does not repeat the agent name or wedge the time before too
   assert.equal(between.includes("Claude Code"), false);
 });
 
-test("a settled answer keeps the time under the reply, after the tools", async () => {
+test("a settled answer keeps the time and copy action after all content and file changes", async () => {
   const mod = await server.ssrLoadModule("/src/features/chat/timeline/TurnProcess.tsx");
   const events: SessionEvent[] = [
     event("a1", { kind: "agent-message", text: "先看一下工作目录。", phase: "final-answer" }),
     event("k1", { kind: "tool-call", name: "command", summary: "rg --files" }),
     event("a2", { kind: "agent-message", text: "目录里有 src。", phase: "final-answer" }),
+    event("notice", { kind: "system", text: "答复后的提示" }),
+    event("change", {
+      kind: "file-change",
+      turn_id: "turn-1",
+      path: "src/app.ts",
+      status: "M",
+      added: 1,
+      removed: 1,
+      diff: "",
+    }),
   ];
   const html = renderInHost(
     createElement(mod.TurnProcess, {
@@ -354,11 +364,14 @@ test("a settled answer keeps the time under the reply, after the tools", async (
     "先看一下工作目录。",
     "已运行 1 条命令",
     "目录里有 src。",
+    "答复后的提示",
+    "data-change-card",
     "data-message-footer",
   ]);
   const between = html.slice(html.indexOf("先看一下工作目录。"), html.indexOf("已运行 1 条命令"));
   assert.equal(between.includes("data-message-footer"), false);
   const footer = html.slice(html.indexOf("data-message-footer"));
+  assert.equal((html.match(/data-message-footer/g) ?? []).length, 1);
   assert.match(footer, /星期/);
   assert.match(footer, /复制/);
 });
