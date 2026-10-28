@@ -131,7 +131,7 @@ pub fn cmd_invocation_line(bin: &Path, args: &[&str]) -> String {
     format!("\"{}\"", windows_cmd_line(bin, args))
 }
 
-fn tool_command(bin: &Path, args: &[&str], npm_quiet: bool) -> Command {
+pub(super) fn tool_command(bin: &Path, args: &[&str], npm_quiet: bool) -> Command {
     let mut command = script_command(bin, args);
     command
         .stdin(Stdio::null())
@@ -146,8 +146,6 @@ fn tool_command(bin: &Path, args: &[&str], npm_quiet: bool) -> Command {
         command.env("npm_config_fund", "false");
         command.env("npm_config_audit", "false");
         command.env("npm_config_yes", "true");
-    } else if args.len() == 1 && args[0] == "update" {
-        command.env("CODEX_NON_INTERACTIVE", "1");
     }
     command
 }
@@ -192,18 +190,6 @@ fn hide_console(command: &mut Command) {
     let _ = command;
 }
 
-pub(super) fn failure_text(captured: &Captured) -> String {
-    let stderr = captured.stderr.trim();
-    if !stderr.is_empty() {
-        return stderr.to_string();
-    }
-    let stdout = captured.stdout.trim();
-    if !stdout.is_empty() {
-        return stdout.to_string();
-    }
-    "没有输出".to_string()
-}
-
 #[cfg(any(windows, test))]
 fn quote_cmd_arg(arg: &str) -> String {
     if arg.is_empty() {
@@ -223,15 +209,5 @@ fn quote_cmd_arg(arg: &str) -> String {
         out.push(ch);
     }
     out.push('"');
-    out
-}
-
-pub(super) fn clip(text: &str, max: usize) -> String {
-    let count = text.chars().count();
-    if count <= max {
-        return text.to_string();
-    }
-    let mut out: String = text.chars().take(max).collect();
-    out.push('…');
     out
 }

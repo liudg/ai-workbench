@@ -9,12 +9,6 @@ pub async fn list_agent_installations() -> Vec<AgentInstallation> {
     agents::list_installations(true).await
 }
 
-/// 按该 Agent 声明的官方渠道升级，并返回刷新后的安装状态。
-#[tauri::command]
-pub async fn update_agent(kind: AgentKind) -> Result<AgentInstallation, String> {
-    agents::upgrade(kind).await.map_err(|err| err.to_string())
-}
-
 /// 当前 agent 的订阅额度。能力关闭时拒绝，界面不显示。
 #[tauri::command]
 pub async fn subscription_usage(kind: AgentKind) -> Result<SubscriptionUsage, String> {

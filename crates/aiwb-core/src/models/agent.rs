@@ -3,6 +3,24 @@ use serde::{Deserialize, Serialize};
 pub type ProjectId = String;
 pub type SessionId = String;
 
+/// 官方升级命令的执行状态；不推测升级后的版本。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AgentUpgrade {
+    pub kind: AgentKind,
+    pub status: UpgradeStatus,
+    pub output: String,
+    pub exit_code: Option<i32>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum UpgradeStatus {
+    Running,
+    Succeeded,
+    Failed,
+}
+
 /// 已注册的 Agent CLI。新种类可以先只有探测和更新，会话仍走桩。
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "kebab-case")]

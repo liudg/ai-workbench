@@ -152,13 +152,8 @@ mod tests {
         let adapter = ExternalCliAdapter::new(AgentKind::CursorAgent);
         let before = adapter.installation(true).await;
         assert!(before.installed, "{:?}", before);
-        let after = adapter.upgrade().await.expect("agent update");
-        eprintln!(
-            "cursor update before={:?} after={:?} available={} detail={:?}",
-            before.version, after.version, after.update_available, after.detail
-        );
-        assert!(after.installed);
-        assert!(!after.update_available, "{:?}", after.detail);
+        let code = adapter.upgrade(Arc::new(|text| eprint!("{text}"))).await.expect("agent update");
+        assert_eq!(code, Some(0));
     }
 
     #[test]

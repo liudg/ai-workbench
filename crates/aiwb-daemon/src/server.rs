@@ -40,6 +40,7 @@ async fn health(State(services): State<Arc<Services>>) -> impl IntoResponse {
         "build": info.build,
         "pid": info.pid,
         "running": services.running_sessions(),
+        "upgrading": services.running_upgrades(),
     }))
 }
 

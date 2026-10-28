@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ArrowLeft, RefreshCw } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import type { AgentInstallation } from "@/types";
+import type { AgentInstallation, AgentUpgrade } from "@/types";
 import { useAgentSettings } from "./useAgentSettings";
 import { useTaskFolder } from "./useTaskFolder";
 import { Button } from "@/components/ui/button";
@@ -27,12 +27,14 @@ function AgentCard({
   item,
   updating,
   updateLocked,
+  upgrade,
   error,
   onUpdate,
 }: {
   item: AgentInstallation;
   updating: boolean;
   updateLocked: boolean;
+  upgrade: AgentUpgrade | undefined;
   error: string | null;
   onUpdate: (kind: AgentInstallation["kind"]) => void;
 }) {
@@ -46,7 +48,9 @@ function AgentCard({
     >
       <div className="min-w-0 flex-1">
         <div className="text-sm font-medium text-zinc-100">{item.display_name}</div>
-        <StatusLine face={face} />
+        {upgrade?.status === "succeeded" ? (
+          <p className="mt-1 text-xs text-zinc-500">上次检测：{item.version ?? "已安装"}</p>
+        ) : <StatusLine face={face} />}
         {face.kind === "ready" && face.detail && (
           <div className="mt-1 text-xs leading-5 text-amber-200/90">{face.detail}</div>
         )}
@@ -55,8 +59,13 @@ function AgentCard({
             {error}
           </p>
         )}
+        {upgrade?.status === "succeeded" && <p className="mt-1 text-xs text-green-400" role="status">更新成功</p>}
+        {upgrade?.status === "failed" && <p className="mt-1 text-xs text-red-300" role="alert">{upgrade.error ?? "更新失败"}</p>}
+        {upgrade?.output && (
+          <pre aria-label={`${item.display_name} 更新输出`} className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs text-zinc-400">{upgrade.output}</pre>
+        )}
       </div>
-      {(face.kind === "ready" || face.kind === "unwired") && face.canUpdate && (
+      {(updating || ((face.kind === "ready" || face.kind === "unwired") && face.canUpdate)) && (
         <Button
           type="button"
           size="sm"
@@ -72,7 +81,7 @@ function AgentCard({
 }
 
 function AgentsPanel() {
-  const { installations, loading, error, updateErrors, updatingKind, refresh, updateInstallation } =
+  const { installations, loading, error, updateErrors, upgrades, starting, upgradesReady, refresh, updateInstallation } =
     useAgentSettings();
 
   return (
@@ -88,7 +97,7 @@ function AgentsPanel() {
           type="button"
           variant="outline"
           size="sm"
-          disabled={loading || updatingKind !== null}
+          disabled={loading}
           onClick={() => void refresh()}
         >
           <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
@@ -112,8 +121,9 @@ function AgentsPanel() {
             <AgentCard
               key={item.kind}
               item={item}
-              updating={updatingKind === item.kind}
-              updateLocked={updatingKind !== null}
+              updating={Boolean(starting[item.kind]) || upgrades?.some((entry) => entry.kind === item.kind && entry.status === "running") === true}
+              updateLocked={!upgradesReady || Boolean(starting[item.kind]) || upgrades?.some((entry) => entry.kind === item.kind && entry.status === "running") === true}
+              upgrade={upgrades?.find((entry) => entry.kind === item.kind)}
               error={updateErrors[item.kind] ?? null}
               onUpdate={updateInstallation}
             />

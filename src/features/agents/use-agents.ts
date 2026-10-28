@@ -8,9 +8,9 @@ import {
   loadInstallations,
   loadProfiles,
   refreshInstallations,
-  upgradeInstallation,
   useAgentState,
 } from "./agent-store";
+import { useAgentUpgrades } from "./use-upgrades";
 
 /** 各 Agent 的能力、斜杠命令、显示名和图标。 */
 export function useAgentProfiles(): Partial<Record<AgentKind, AgentProfile>> {
@@ -34,14 +34,13 @@ export function useAgentDetection(): { error: string | null; retry: () => void }
 /** 设置页：安装列表、检测和升级。 */
 export function useAgentInstallations() {
   useEffect(loadInstallationUpdates, []);
+  const upgrades = useAgentUpgrades();
   const state = useAgentState(
     useShallow((s) => ({
       installations: s.installations,
       loading: s.installationsLoading,
       error: s.installationError,
-      upgradeErrors: s.upgradeErrors,
-      upgrading: s.upgrading,
     })),
   );
-  return { ...state, refresh: () => refreshInstallations(true), upgrade: upgradeInstallation };
+  return { ...state, ...upgrades, refresh: () => refreshInstallations(true) };
 }

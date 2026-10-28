@@ -22,6 +22,15 @@ export const AGENT_LABELS: Record<AgentKind, string> = {
 /** 官方升级渠道。前端只展示，真正的命令留在适配器里。 */
 export type UpdateVia = "npm" | "cli";
 
+/** 官方升级命令的执行结果，独立于上一次安装检测。 */
+export interface AgentUpgrade {
+  kind: AgentKind;
+  status: "running" | "succeeded" | "failed";
+  output: string;
+  exit_code: number | null;
+  error: string | null;
+}
+
 /** 本机一次探测。设置页用完整列表；新建会话只取 installed。 */
 export interface AgentInstallation {
   kind: AgentKind;

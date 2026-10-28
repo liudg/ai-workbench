@@ -56,8 +56,10 @@ pub fn ensure_running(data_dir: &Path) -> Result<DaemonInfo, String> {
     let build = build_stamp(&source)?;
 
     if let Some(info) = read_info(data_dir) {
-        match health_build(info.port) {
-            Some(running) if running == build => return Ok(info),
+        match health(info.port) {
+            // 已有升级命令时继续用原来的 daemon，等命令结束后再替换程序。
+            Some(status) if status["build"].as_str() == Some(build.as_str())
+                || status["upgrading"].as_u64().unwrap_or(0) > 0 => return Ok(info),
             Some(_) => {
                 stop(&info);
                 wait_until(|| health_build(info.port).is_none().then_some(()))
@@ -217,9 +219,12 @@ fn wait_until<T>(mut check: impl FnMut() -> Option<T>) -> Option<T> {
 
 /// 正在运行的 daemon 的构建标识；连不上返回 None。
 fn health_build(port: u16) -> Option<String> {
+    health(port)?["build"].as_str().map(str::to_string)
+}
+
+fn health(port: u16) -> Option<serde_json::Value> {
     let body = http(port, "GET /health", None)?;
-    let value: serde_json::Value = serde_json::from_str(&body).ok()?;
-    value["build"].as_str().map(str::to_string)
+    serde_json::from_str(&body).ok()
 }
 
 fn stop(info: &DaemonInfo) {

@@ -120,7 +120,6 @@ export interface Backend {
   /** 本机 CLI 安装与官方更新状态。 */
   listAgentInstallations(): Promise<AgentInstallation[]>;
   /** 按该 Agent 的官方渠道升级，并返回刷新后的状态。 */
-  updateAgent(kind: AgentKind): Promise<AgentInstallation>;
   /** 当前会话 Agent 报告的模型、推理强度和技能。失败时可能带回缓存和一条提示。 */
   agentCatalog(sessionId: string): Promise<AgentCatalogRefresh>;
   setSessionTuning(

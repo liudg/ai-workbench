@@ -32,7 +32,6 @@ export const sessionCommands: Pick<
   | "agentProfiles"
   | "subscriptionUsage"
   | "listAgentInstallations"
-  | "updateAgent"
   | "agentCatalog"
   | "setSessionTuning"
   | "setSessionServiceTier"
@@ -103,7 +102,6 @@ export const sessionCommands: Pick<
     invoke<SubscriptionUsage>("subscription_usage", { kind }),
   listAgentInstallations: () =>
     invoke<AgentInstallation[]>("list_agent_installations"),
-  updateAgent: (kind) => invoke<AgentInstallation>("update_agent", { kind }),
   agentCatalog: (sessionId) =>
     invoke<AgentCatalogRefresh>("agent_catalog", { sessionId }),
   setSessionTuning: (sessionId, model, effort) =>

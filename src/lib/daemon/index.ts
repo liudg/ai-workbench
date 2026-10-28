@@ -8,7 +8,7 @@ import { SessionFeeds, type SessionFeedState } from "./session-feed";
 import { TopicCache } from "./topic-cache";
 
 export { DaemonClient, OFFLINE_MESSAGE, type ConnectionStatus, type DaemonEndpoint } from "./client";
-export { TOPIC_PROJECTS, TOPIC_TASKS } from "./topics";
+export { TOPIC_AGENT_UPGRADES, TOPIC_PROJECTS, TOPIC_TASKS } from "./topics";
 export type { SessionFeedState } from "./session-feed";
 
 /** 要等 Agent CLI 起来并回话的调用。CLI 启动或重连时会慢。 */

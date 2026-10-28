@@ -9,6 +9,7 @@ mod instance;
 mod runtime;
 mod server;
 mod services;
+mod upgrades;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -92,6 +93,7 @@ pub async fn run(config: Config) -> Result<(), String> {
         .with_graceful_shutdown(async move { shutdown.shutdown_requested().await })
         .await
         .map_err(|e| format!("服务出错：{e}"));
+    services.finish_upgrades().await;
     services.stop_agents().await;
     instance::remove_info(&config.data_dir, info.pid);
     eprintln!("daemon 已退出");

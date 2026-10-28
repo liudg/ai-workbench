@@ -14,6 +14,10 @@ type Socket =
     tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 
 async fn start() -> (u16, Arc<Services>) {
+    start_with_adapters(Arc::new(aiwb_agents::adapter_for)).await
+}
+
+async fn start_with_adapters(adapters: aiwb_daemon::AdapterFactory) -> (u16, Arc<Services>) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let info = DaemonInfo {
@@ -23,14 +27,70 @@ async fn start() -> (u16, Arc<Services>) {
         port,
         token: "secret".into(),
     };
-    let services = Arc::new(Services::new(
+    let services = Arc::new(Services::with_adapters(
         Arc::new(Store::open_in_memory().unwrap()),
         info,
         std::env::temp_dir(),
+        adapters,
     ));
     let app = router(services.clone());
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     (port, services)
+}
+
+struct UpgradeFixture {
+    kind: aiwb_core::models::AgentKind,
+    calls: Arc<std::sync::atomic::AtomicUsize>,
+    finish: Arc<tokio::sync::Semaphore>,
+}
+
+#[async_trait::async_trait]
+impl aiwb_agents::AgentAdapter for UpgradeFixture {
+    fn kind(&self) -> aiwb_core::models::AgentKind { self.kind }
+    fn capabilities(&self) -> aiwb_core::models::AgentCapabilities { aiwb_core::models::AgentCapabilities::none() }
+    async fn detect(&self) -> Result<(), aiwb_agents::AgentError> { panic!("must not probe after upgrade") }
+    async fn upgrade(&self, output: aiwb_agents::UpgradeOutput) -> Result<Option<i32>, aiwb_agents::AgentError> {
+        self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        output("installer running\n".into());
+        self.finish.acquire().await.unwrap().forget();
+        output("installer finished\n".into());
+        Ok(Some(0))
+    }
+}
+
+#[tokio::test]
+async fn upgrade_acknowledges_immediately_and_survives_client_disconnect() {
+    let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let finish = Arc::new(tokio::sync::Semaphore::new(0));
+    let (runs, permits) = (calls.clone(), finish.clone());
+    let (port, services) = start_with_adapters(Arc::new(move |kind| Arc::new(UpgradeFixture {
+        kind, calls: runs.clone(), finish: permits.clone(),
+    }))).await;
+    let mut actor = connect(port).await;
+    send(&mut actor, json!({ "id": 1, "method": "agents.upgrade", "params": { "agent": "codex-cli" } })).await;
+    assert_eq!(next(&mut actor).await["result"]["status"], "running");
+    actor.close(None).await.unwrap();
+
+    // 新连接获取已有状态，重复发起不会创建另一个安装器。
+    let mut watcher = connect(port).await;
+    send(&mut watcher, json!({ "id": 2, "method": "subscribe", "params": { "topic": "agents.upgrades" } })).await;
+    assert_eq!(next(&mut watcher).await["data"][0]["status"], "running");
+    assert_eq!(next(&mut watcher).await["id"], 2);
+    send(&mut watcher, json!({ "id": 3, "method": "agents.upgrade", "params": { "agent": "codex-cli" } })).await;
+    loop {
+        if next(&mut watcher).await["id"] == 3 { break; }
+    }
+    finish.add_permits(1);
+    loop {
+        let message = next(&mut watcher).await;
+        if message["data"][0]["status"] == "succeeded" {
+            assert_eq!(message["data"][0]["exit_code"], 0);
+            assert!(message["data"][0]["output"].as_str().unwrap().contains("installer finished"));
+            break;
+        }
+    }
+    assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+    services.request_shutdown();
 }
 
 async fn connect(port: u16) -> Socket {

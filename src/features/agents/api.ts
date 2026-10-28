@@ -1,7 +1,7 @@
 // Agent 的 daemon 调用：能力、安装检测、升级、模型目录（上次的或现探的）、新会话的权限菜单。
 
-import { CLI_TIMEOUT_MS, daemon } from "@/lib/daemon";
-import type { AgentCatalog, AgentInstallation, AgentKind, AgentProfile, PermissionMenu } from "@/types";
+import { CLI_TIMEOUT_MS, daemon, OFFLINE_MESSAGE } from "@/lib/daemon";
+import type { AgentCatalog, AgentInstallation, AgentKind, AgentProfile, AgentUpgrade, PermissionMenu } from "@/types";
 
 export function agentProfiles() {
   return daemon.call<AgentProfile[]>("agents.profiles");
@@ -17,7 +17,9 @@ export function agentInstallations(checkUpdates: boolean) {
 }
 
 export function upgradeAgent(agent: AgentKind) {
-  return daemon.call<AgentInstallation>("agents.upgrade", { agent });
+  // 更新只能在连接正常时主动发起，不把安装操作留在离线发送队列里。
+  if (daemon.getStatus() !== "online") return Promise.reject(new Error(OFFLINE_MESSAGE));
+  return daemon.call<AgentUpgrade>("agents.upgrade", { agent });
 }
 
 /** 这种 Agent 上一次拿到的模型目录。一次都没拿到过时为 null。 */

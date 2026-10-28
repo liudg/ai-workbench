@@ -26,7 +26,7 @@ function readyText(item: AgentInstallation): string {
 /**
  * 协议未接入时，状态行是「未安装 · 未接入」或「版本 · 未接入」。
  * 已经装上、并且官方更新还可用时，未接入的卡片也保留「更新」。
- * 官方确认当前版本后只收起按钮，状态行不再另写说明。
+ * 升级命令的执行结果独立展示，不改写上一次检测到的版本。
  */
 export function agentCardFace(item: AgentInstallation): AgentCardFace {
   if (!item.session_linked) {

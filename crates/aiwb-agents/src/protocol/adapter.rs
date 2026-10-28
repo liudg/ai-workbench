@@ -1,6 +1,6 @@
 //! Agent 适配器：一种 CLI 对应一个实现。会话列表属于 SessionManager。
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -95,20 +95,27 @@ pub trait AgentAdapter: Send + Sync {
         item
     }
 
-    /// 按适配器声明的官方渠道升级，然后重新探测。
-    async fn upgrade(&self) -> Result<AgentInstallation, AgentError> {
+    /// 同一份安装（包括命令别名）共用更新状态，不运行 CLI。
+    fn upgrade_key(&self) -> Option<PathBuf> {
+        let path = install::locate_release(&self.cli_release()?)?;
+        let path = std::fs::canonicalize(&path).unwrap_or(path);
+        if cfg!(windows) {
+            Some(PathBuf::from(path.to_string_lossy().to_lowercase()))
+        } else {
+            Some(path)
+        }
+    }
+
+    /// 执行官方升级命令，直接返回退出码，不在结束后启动 CLI 探测。
+    async fn upgrade(&self, output: crate::UpgradeOutput) -> Result<Option<i32>, AgentError> {
         let Some(release) = self.cli_release() else {
             return Err(AgentError::Runtime(format!(
                 "{} 没有官方更新入口",
                 self.display_name()
             )));
         };
-        install::upgrade_release(self.kind(), self.display_name(), &release)
+        install::upgrade_release(self.display_name(), &release, output)
             .await
-            .map(|mut item| {
-                item.session_linked = self.session_linked();
-                item
-            })
             .map_err(AgentError::Runtime)
     }
 

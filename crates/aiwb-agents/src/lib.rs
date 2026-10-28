@@ -14,7 +14,6 @@ mod external;
 mod install;
 mod mcp;
 mod protocol;
-mod settled;
 
 pub use protocol::{
     fold_page_annotations, submit_annotation_as_attachment, AgentAdapter, AgentError, AgentSession,
@@ -28,6 +27,7 @@ use std::sync::Arc;
 use aiwb_core::models::{AgentInstallation, AgentKind, AgentProfile, McpSurface};
 
 pub use mcp::McpDriver;
+pub use install::UpgradeOutput;
 
 pub use directory::{
     group_projects, project_folder_keys, project_matches_cwd, session_key,
@@ -77,10 +77,6 @@ pub async fn list_installations(check_updates: bool) -> Vec<AgentInstallation> {
         }
     }
     listed
-}
-
-pub async fn upgrade(kind: AgentKind) -> Result<AgentInstallation, AgentError> {
-    adapter_for(kind).upgrade().await
 }
 
 fn cli_present(adapter: &dyn AgentAdapter) -> bool {

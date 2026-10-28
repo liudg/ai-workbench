@@ -16,7 +16,7 @@ pub(crate) use folders::import_legacy_task_folder;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use aiwb_core::rpc::{TOPIC_PROJECTS, TOPIC_SESSION_PREFIX, TOPIC_TASKS};
+use aiwb_core::rpc::{TOPIC_AGENT_UPGRADES, TOPIC_PROJECTS, TOPIC_SESSION_PREFIX, TOPIC_TASKS};
 use aiwb_core::DaemonInfo;
 use aiwb_store::Store;
 use serde::de::DeserializeOwned;
@@ -32,6 +32,7 @@ pub struct Services {
     pub(crate) store: Arc<Store>,
     pub(crate) hub: Arc<Hub>,
     pub(crate) runtimes: Arc<Runtimes>,
+    pub(crate) upgrades: Arc<crate::upgrades::AgentUpgrades>,
     /// 文件路径索引和文件名筛选的序号。按工作目录共用。
     pub(crate) indexes: aiwb_files::IndexHub,
     pub(crate) filters: aiwb_files::FilterHub,
@@ -55,6 +56,7 @@ impl Services {
     ) -> Self {
         let hub = Arc::new(Hub::new());
         Self {
+            upgrades: crate::upgrades::AgentUpgrades::new(hub.clone(), adapters.clone()),
             runtimes: Arc::new(Runtimes::new(store.clone(), hub.clone(), adapters)),
             store,
             hub,
@@ -93,7 +95,12 @@ impl Services {
     }
 
     pub fn request_shutdown(&self) {
+        self.upgrades.begin_shutdown();
         self.shutdown.send_replace(true);
+    }
+
+    pub fn running_upgrades(&self) -> usize {
+        self.upgrades.running_count()
     }
 
     pub async fn shutdown_requested(&self) {
@@ -104,6 +111,10 @@ impl Services {
     /// 退出前关掉所有 Agent 进程。
     pub async fn stop_agents(&self) {
         self.runtimes.stop_all().await;
+    }
+
+    pub async fn finish_upgrades(&self) {
+        self.upgrades.wait().await;
     }
 
     pub async fn dispatch(&self, method: &str, params: Value) -> ServiceResult<Value> {
@@ -131,7 +142,7 @@ impl Services {
             "drafts.set" => to_value(self.set_draft(parse(params)?)?),
             "agents.profiles" => to_value(aiwb_agents::agent_profiles()),
             "agents.installations" => to_value(self.installations(parse(params)?).await),
-            "agents.upgrade" => to_value(self.upgrade_agent(parse(params)?).await?),
+            "agents.upgrade" => to_value(self.upgrades.start(parse::<agents::AgentParam>(params)?.agent)?),
             "agents.catalog" => to_value(self.cached_catalog(parse(params)?)?),
             "agents.probeCatalog" => to_value(self.probe_catalog(parse(params)?).await?),
             "agents.permissionMenu" => to_value(self.draft_permission_menu(parse(params)?)),
@@ -190,6 +201,7 @@ impl Services {
         match topic {
             TOPIC_PROJECTS => to_value(self.list_projects()?),
             TOPIC_TASKS => to_value(self.store.task_entries().map_err(|e| e.to_string())?),
+            TOPIC_AGENT_UPGRADES => to_value(self.upgrades.snapshot()),
             _ => match topic.strip_prefix(TOPIC_SESSION_PREFIX) {
                 Some(session_id) => {
                     let from_rev = params.get("fromRev").and_then(Value::as_u64).unwrap_or(0);

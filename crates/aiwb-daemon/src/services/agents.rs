@@ -38,10 +38,6 @@ impl Services {
         aiwb_agents::list_installations(params.check_updates).await
     }
 
-    pub(crate) async fn upgrade_agent(&self, params: AgentParam) -> ServiceResult<AgentInstallation> {
-        aiwb_agents::upgrade(params.agent).await.map_err(|e| e.to_string())
-    }
-
     /// 这种 Agent 上一次成功的模型目录。还没有任何会话拿到过时返回空。
     pub(crate) fn cached_catalog(&self, params: AgentParam) -> ServiceResult<Option<AgentCatalog>> {
         self.stored_catalog(params.agent)
