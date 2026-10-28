@@ -140,6 +140,17 @@ impl AgentSession for FakeSession {
         Ok(())
     }
 
+    async fn set_goal(&self, objective: &str) -> Result<(), AgentError> {
+        let _ = self.sink.send(SessionEventBody::Goal {
+            objective: Some(objective.to_string()),
+            status: Some("active".into()),
+            token_budget: None,
+            tokens_used: None,
+            time_used_seconds: None,
+        });
+        Ok(())
+    }
+
     async fn answer_prompt(&self, _id: &str, _answer: PromptAnswer) -> Result<(), AgentError> {
         Ok(())
     }
@@ -696,4 +707,54 @@ async fn imports_cli_sessions_of_the_project_and_resumes_them() {
         events_of(&feed).iter().filter(|e| e["kind"] == "user-message").count(),
         2
     );
+}
+
+#[tokio::test]
+async fn setting_a_goal_leaves_a_goal_command_in_the_timeline() {
+    let dir = tempfile::tempdir().unwrap();
+    let project_dir = tempfile::tempdir().unwrap();
+    let script = Arc::new(Script::default());
+    let services = services(Arc::new(Store::open_in_memory().unwrap()), script, dir.path());
+    let project = services
+        .dispatch("projects.add", json!({ "path": project_dir.path().to_string_lossy() }))
+        .await
+        .unwrap();
+    let task = services
+        .dispatch(
+            "tasks.create",
+            json!({ "projectId": project["id"], "agent": "codex-cli", "goal": "  测试全部通过  " }),
+        )
+        .await
+        .unwrap();
+    let session_id = task["sessions"][0]["id"].as_str().unwrap().to_string();
+    let topic = format!("session:{session_id}");
+    let mut bubbles = Vec::new();
+    for _ in 0..100 {
+        let feed = services.snapshot(&topic, &json!({})).unwrap();
+        bubbles = events_of(&feed)
+            .into_iter()
+            .filter(|e| e["kind"] == "user-message")
+            .map(|e| e["text"].as_str().unwrap().to_string())
+            .collect();
+        if !bubbles.is_empty() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    assert_eq!(bubbles, ["/goal 测试全部通过"]);
+    // 只有目标的任务用目标当标题。
+    let tasks = services.dispatch("tasks.list", Value::Null).await.unwrap();
+    assert_eq!(tasks[0]["title"], "测试全部通过");
+
+    // 会话里再设一次目标，同样记一条。
+    services
+        .dispatch("sessions.setGoal", json!({ "sessionId": session_id, "objective": "再加一条" }))
+        .await
+        .unwrap();
+    let feed = services.snapshot(&topic, &json!({})).unwrap();
+    assert!(events_of(&feed)
+        .iter()
+        .any(|e| e["kind"] == "user-message" && e["text"] == "/goal 再加一条"));
+    let tasks = services.dispatch("tasks.list", Value::Null).await.unwrap();
+    assert_eq!(tasks[0]["title"], "测试全部通过", "已有标题不改");
 }

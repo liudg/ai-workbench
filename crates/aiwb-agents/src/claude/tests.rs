@@ -1437,3 +1437,24 @@ fn counts_messages_absorbed_into_the_running_turn() {
 ");
     assert_eq!(super::runtime::count_absorbed(&text), 1);
 }
+
+#[test]
+fn history_writes_slash_commands_and_absorbed_messages_as_the_user_typed_them() {
+    let text = [
+        r#"{"type":"user","uuid":"10000000-0000-4000-8000-000000000001","parentUuid":null,"message":{"role":"user","content":"跑一下"}}"#,
+        r#"{"type":"attachment","uuid":"10000000-0000-4000-8000-000000000002","parentUuid":"10000000-0000-4000-8000-000000000001","attachment":{"type":"queued_command","prompt":"顺便加上 B"}}"#,
+        r#"{"type":"assistant","uuid":"10000000-0000-4000-8000-000000000003","parentUuid":"10000000-0000-4000-8000-000000000002","message":{"id":"m1","role":"assistant","content":[{"type":"text","text":"A B"}]}}"#,
+        r#"{"type":"user","uuid":"10000000-0000-4000-8000-000000000004","parentUuid":"10000000-0000-4000-8000-000000000003","message":{"role":"user","content":"<command-name>/goal</command-name>\n  <command-message>goal</command-message>\n  <command-args>测试都通过</command-args>"}}"#,
+    ]
+    .join("
+");
+    let mut state = MapState::default();
+    let users: Vec<String> = messages::events_from_transcript(&mut state, &text, None)
+        .into_iter()
+        .filter_map(|event| match event {
+            SessionEventBody::UserMessage { text, .. } => Some(text),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(users, ["跑一下", "顺便加上 B", "/goal 测试都通过"]);
+}

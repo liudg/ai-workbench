@@ -171,7 +171,15 @@ pub fn events_from_transcript(state: &mut MapState, content: &str, project: Opti
     let chain = conversation_chain(&entries);
     let mut events = Vec::new();
     // uuid 由 ingest 在发出之后记入 `seen`。这里先插入会让 skip_seen 把整段历史丢掉。
-    for entry in chain.into_iter().filter(|entry| is_visible_message(entry)) {
+    for entry in chain {
+        // 回合进行中写进去、被并进当前回合的消息不单独成一条 user 记录，只记成 `queued_command` 附件。
+        if let Some(prompt) = absorbed_prompt(&entry) {
+            events.push(user_event(prompt));
+            continue;
+        }
+        if !is_visible_message(&entry) {
+            continue;
+        }
         let kind = entry.get("type").and_then(Value::as_str).unwrap_or("");
         if kind == "user" {
             let text = message_text(entry.get("message").unwrap_or(&Value::Null));
@@ -184,6 +192,18 @@ pub fn events_from_transcript(state: &mut MapState, content: &str, project: Opti
         events.extend(ingested.events);
     }
     events
+}
+
+fn absorbed_prompt(entry: &Value) -> Option<String> {
+    if entry.get("type").and_then(Value::as_str) != Some("attachment") || flag(entry, "isSidechain") {
+        return None;
+    }
+    let attachment = entry.get("attachment")?;
+    if attachment.get("type").and_then(Value::as_str) != Some("queued_command") {
+        return None;
+    }
+    let prompt = attachment.get("prompt").and_then(Value::as_str)?.trim();
+    (!prompt.is_empty()).then(|| prompt.to_string())
 }
 
 pub fn permission_events(request_id: &str, request: &Value) -> Option<(Vec<SessionEventBody>, PermissionKind)> {
@@ -1067,10 +1087,25 @@ fn message_anchor(value: &Value) -> Option<&str> {
 
 fn user_event(text: String) -> SessionEventBody {
     SessionEventBody::UserMessage {
-        text,
+        text: slash_command_text(&text).unwrap_or(text),
         images: Vec::new(),
         annotations: 0,
     }
+}
+
+/// 转录把斜杠命令记成 `<command-name>/goal</command-name>…<command-args>…</command-args>`。
+/// 时间线里照用户输入的样子写回 `/goal …`。
+fn slash_command_text(text: &str) -> Option<String> {
+    let tag = |name: &str| {
+        let open = format!("<{name}>");
+        let close = format!("</{name}>");
+        let start = text.find(&open)? + open.len();
+        let end = start + text[start..].find(&close)?;
+        Some(text[start..end].trim().to_string())
+    };
+    let name = tag("command-name").filter(|name| name.starts_with('/'))?;
+    let args = tag("command-args").unwrap_or_default();
+    Some(if args.is_empty() { name } else { format!("{name} {args}") })
 }
 
 pub fn display_tool_name(reported: &str) -> String {

@@ -184,8 +184,7 @@ impl Services {
     }
 
     pub(crate) async fn set_goal(&self, params: Goal) -> ServiceResult<()> {
-        let handle = self.runtimes.handle(&params.session_id).await?;
-        handle.set_goal(&params.objective).await.map_err(|e| e.to_string())
+        self.runtimes.set_goal(&params.session_id, &params.objective).await
     }
 
     pub(crate) async fn clear_goal(&self, params: SessionId) -> ServiceResult<()> {

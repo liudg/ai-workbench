@@ -494,6 +494,39 @@ impl Runtimes {
         Ok(delivery)
     }
 
+    /// 设目标，时间线里记一条 `/goal …` 的用户消息：Agent 接着干的那一轮有个来由。
+    /// 照 t3code `apps/web/src/components/chat/useThreadLifecycle.tsx` 的 `sendStandaloneCommand`。
+    /// 只有目标的新任务用目标当标题，不用带斜杠的命令。
+    pub(crate) async fn set_goal(self: &Arc<Self>, session_id: &str, objective: &str) -> RuntimeResult<()> {
+        let objective = objective.trim().to_string();
+        if objective.is_empty() {
+            return Err("目标不能为空".into());
+        }
+        let handle = self.ensure_live(session_id).await?;
+        if handle.read_only() {
+            return Err("此会话正被其他进程占用，当前只读，不能发送。".into());
+        }
+        handle.set_goal(&objective).await.map_err(|e| e.to_string())?;
+        let session = self
+            .store
+            .session(session_id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "会话不存在".to_string())?;
+        if let Some(title) = title_from_user_message(&objective, 0, 0) {
+            if self.adopt_title(&session.task_id, &title)? {
+                self.publish_tasks()?;
+            }
+        }
+        self.record(
+            session_id,
+            SessionEventBody::UserMessage {
+                text: format!("/goal {objective}"),
+                images: Vec::new(),
+                annotations: 0,
+            },
+        )
+    }
+
     pub(crate) async fn interrupt(self: &Arc<Self>, session_id: &str) -> RuntimeResult<()> {
         // 没接上的会话没有在跑的回合。
         let Some(handle) = self.live_handle(session_id) else {

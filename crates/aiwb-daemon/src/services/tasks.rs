@@ -161,9 +161,9 @@ impl Services {
             tokio::spawn(async move {
                 let sent = async {
                     if let Some(goal) = goal {
-                        let handle = runtimes.handle(&session_id).await?;
-                        handle.set_goal(&goal).await.map_err(|e| e.to_string())?;
+                        runtimes.set_goal(&session_id, &goal).await?;
                         if paused {
+                            let handle = runtimes.handle(&session_id).await?;
                             handle.set_goal_status("paused").await.map_err(|e| e.to_string())?;
                         }
                     }
