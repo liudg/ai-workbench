@@ -5,7 +5,7 @@ import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { baseName } from "@/shared/path";
 import { ColumnSplitter } from "../core/ColumnSplitter";
 import { FILES_EXPANDED_WIDTH, nextDraggedListWidth, paneFileColumnWidth, pinnedColumnStyle } from "../core/layout";
-import { opensLocalHtmlInBrowser, resolvePreviewPath } from "../core/preview-kind";
+import { resolvePreviewPath } from "../core/preview-kind";
 import { useColumnGesture } from "../core/useColumnGesture";
 import { usePanel, usePanelData } from "../core/PanelProvider";
 import { FileContextMenu } from "./FileContextMenu";
@@ -39,7 +39,6 @@ export function OpenFilesView() {
     filesTreeOpen,
     toggleFilesTree,
     patchTabPayload,
-    openHref,
   } = usePanel();
   return (
     <OpenFilesScreen
@@ -52,7 +51,6 @@ export function OpenFilesView() {
       filesTreeOpen={filesTreeOpen}
       toggleFilesTree={toggleFilesTree}
       patchTabPayload={patchTabPayload}
-      openHref={openHref}
     />
   );
 }
@@ -67,7 +65,6 @@ export function OpenFilesScreen({
   filesTreeOpen,
   toggleFilesTree,
   patchTabPayload,
-  openHref,
 }: {
   tabs: readonly { id: string; viewerId: string; payload: unknown }[];
   projectId: string;
@@ -78,7 +75,6 @@ export function OpenFilesScreen({
   filesTreeOpen: boolean;
   toggleFilesTree: () => void;
   patchTabPayload: (tabId: string, patch: Record<string, unknown>) => void;
-  openHref: (href: string, line?: number) => void;
 }) {
   const panelData = usePanelData();
   const filesTab = tabs.find((tab) => tab.viewerId === "files");
@@ -110,10 +106,6 @@ export function OpenFilesScreen({
   const openFile = (path: string, _intent: { isPreview: true }, line?: number | null) => {
     const canonical = canonicalOpenPath(projectPath, path);
     if (!canonical) return;
-    if (opensLocalHtmlInBrowser(canonical, line)) {
-      openHref(canonical);
-      return;
-    }
     writePlace(openFileInPlace(place, canonical, line ?? null));
   };
 

@@ -23,7 +23,7 @@ export function FileSearchDialog({
 }) {
   const panelSessionId = usePanelOptional()?.sessionId;
   const [query, setQuery] = useState("");
-  const [mask, setMask] = useState<string>(DESKTOP_ZH.openFilesMaskDefault);
+  const [mask, setMask] = useState("");
   const [active, setActive] = useState(0);
   const queryRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -104,9 +104,10 @@ export function FileSearchDialog({
           <input
             value={mask}
             onChange={(event) => setMask(event.target.value)}
+            placeholder={DESKTOP_ZH.openFilesMaskPlaceholder}
             aria-label={DESKTOP_ZH.openFilesMask}
             data-file-search-mask
-            className="h-7 min-w-0 flex-1 rounded-md border border-zinc-700 bg-zinc-950 px-2 text-xs text-zinc-100 outline-none focus:border-zinc-500"
+            className="h-7 min-w-0 flex-1 rounded-md border border-zinc-700 bg-zinc-950 px-2 text-xs text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-zinc-500"
           />
         </label>
         {query.trim() ? (

@@ -73,7 +73,6 @@ function screen(path: string, treeOpen = true) {
       filesTreeOpen: treeOpen,
       toggleFilesTree: () => undefined,
       patchTabPayload: () => undefined,
-      openHref: () => undefined,
     })),
   );
 }

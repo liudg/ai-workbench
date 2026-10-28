@@ -1,8 +1,9 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { ImageOff } from "lucide-react";
 
 import { parseMessageContent, type ImageSource } from "@/shared/markdown/markdown-images";
 import { cn } from "@/lib/utils";
+import { ImageLightbox } from "./ImageLightbox";
 import { useChatImage } from "./useChatImage";
 
 export function MessageContent({
@@ -37,6 +38,7 @@ export function MessageContent({
 
 export function MessageImage({ alt, source }: { alt: string; source: ImageSource }) {
   const { state, fail } = useChatImage(source);
+  const [opened, setOpened] = useState(false);
   const label = alt.trim() || "图片";
   const detail = source.type === "local" ? source.path : source.url;
 
@@ -54,16 +56,22 @@ export function MessageImage({ alt, source }: { alt: string; source: ImageSource
   }
 
   return (
-    <img
-      src={state.src}
-      alt={label}
-      title={label}
-      data-chat-image={source.type}
-      data-chat-image-state="ready"
-      referrerPolicy="no-referrer"
-      className="my-2 block max-h-96 max-w-full rounded-md border border-white/10 bg-zinc-950/40 object-contain"
-      onError={() => fail("图片加载失败")}
-    />
+    <>
+      <img
+        src={state.src}
+        alt={label}
+        title={label}
+        data-chat-image={source.type}
+        data-chat-image-state="ready"
+        referrerPolicy="no-referrer"
+        className="my-2 block max-h-96 max-w-full cursor-zoom-in rounded-md border border-white/10 bg-zinc-950/40 object-contain"
+        onClick={() => setOpened(true)}
+        onError={() => fail("图片加载失败")}
+      />
+      {opened ? (
+        <ImageLightbox images={[{ path: detail, name: label }]} start={0} onClose={() => setOpened(false)} />
+      ) : null}
+    </>
   );
 }
 
