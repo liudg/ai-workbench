@@ -68,6 +68,7 @@ function render(
       highlight: null,
       tools: {},
       onSelect: () => {},
+      onRefresh: () => {},
       onAdd: () => true,
       onRemove: () => {},
       onLogin: () => {},
@@ -78,6 +79,20 @@ function render(
     }),
   );
 }
+
+test("claude rows show the failure reason, a refresh button, and keep the list while refreshing", () => {
+  const html = render({ surfaces: previewSurfaces, selected: "claude-code", rows: claudeRows, listing: true });
+  assert.equal(html.includes('data-mcp-refresh=""'), true);
+  assert.equal(html.includes('data-mcp-refreshing=""'), true);
+  assert.equal(html.includes('data-mcp-status="failed"'), true);
+  assert.equal(html.includes('data-mcp-status="connected"'), true);
+  assert.equal(html.includes('data-mcp-status="loggedOut"'), true);
+  assert.equal(html.includes("connection timed out after 30000ms"), true);
+  assert.equal(html.includes('data-mcp-row="claude.ai Claude Docs"'), true);
+
+  const form = render({ surfaces: previewSurfaces, selected: "claude-code", rows: [], initialMode: "new" });
+  assert.equal(form.includes('data-mcp-scope=""'), false);
+});
 
 test("list rows show transport, one status, and a single toggle", () => {
   const html = render({
@@ -267,7 +282,7 @@ test("detail is titled with the server name, masks secrets, and lists tools", ()
   assert.equal(loggedOut.includes("未登录"), true);
   assert.equal(loggedOut.includes("身份验证"), true);
   assert.equal(loggedOut.includes(SCOPES_PLACEHOLDER), false);
-  assert.equal(loggedOut.includes("取消认证"), true);
+  assert.equal(loggedOut.includes("取消认证"), false);
   assert.equal(loggedOut.includes('data-mcp-auth="'), false);
 
   const unsupported = render({

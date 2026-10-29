@@ -41,6 +41,7 @@ export default function McpPreview() {
             setTools({});
             setSelected(kind);
           }}
+          onRefresh={() => setFeedback(null)}
           onAdd={(spec: McpAddSpec) => {
             setFeedback({ tone: "success", text: MCP_PAGE.saved });
             setHighlight({ name: spec.name, token: Date.now() });

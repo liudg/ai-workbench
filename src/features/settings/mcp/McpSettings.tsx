@@ -1,20 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import * as api from "./api";
-import type { AgentKind, McpAddSpec, McpSurface } from "@/types";
+import type { AgentKind, McpAddSpec, McpServerRow, McpSurface } from "@/types";
 import {
   clearSuccess,
   visibleFeedback,
   writeFeedback,
   type McpFeedbackBook,
 } from "./feedbackState";
-import { emptyBook, finishList, startList, visibleList, type McpListBook } from "./listState";
+import { emptyBook, finishList, patchRows, startList, visibleList, type McpListBook } from "./listState";
 import { beginForm, beginRow, busyNames, emptyBusy, endForm, endRow, formBusy, type McpBusyBook } from "./busyState";
 import { McpPanel } from "./McpPanel";
 import {
   MCP_PAGE,
   failureTitle,
   parseToolList,
+  rowFromSpec,
   successText,
   type McpAction,
   type McpFeedback,
@@ -110,7 +111,13 @@ export function McpSettings() {
     if (surfaces) void loadList(kind, surfaces, false);
   }
 
-  async function run(action: McpAction, rowName: string | null, actionFn: () => Promise<string>): Promise<boolean> {
+  /** 成功后先用 `apply` 改本地行，再在后台刷新列表。Claude 的 list 要做健康检查，可能要几十秒。 */
+  async function run(
+    action: McpAction,
+    rowName: string | null,
+    actionFn: () => Promise<string>,
+    apply?: (rows: McpServerRow[]) => McpServerRow[],
+  ): Promise<boolean> {
     const kind = selected;
     if (!kind) return false;
     const ticket = nextTicket();
@@ -123,7 +130,8 @@ export function McpSettings() {
       if (feedbackEpoch.current === mark && action !== "tools") {
         setFeedbackBook((current) => writeFeedback(current, kind, { tone: "success", text: successText(action) }));
       }
-      if (surfaces) await loadList(kind, surfaces, true);
+      if (apply) setBook((current) => patchRows(current, kind, apply));
+      if (surfaces) void loadList(kind, surfaces, true);
       return true;
     } catch (err) {
       if (feedbackEpoch.current === mark) {
@@ -158,11 +166,17 @@ export function McpSettings() {
       highlight={highlight}
       tools={tools}
       onSelect={select}
+      onRefresh={() => {
+        if (selected && surfaces) void loadList(selected, surfaces, true);
+      }}
       onAdd={async (spec: McpAddSpec) => {
         const kind = selected;
         if (!kind) return false;
         const seen = viewEpoch.current;
-        const ok = await run("save", null, () => api.mcpAdd(kind, spec));
+        const ok = await run("save", null, () => api.mcpAdd(kind, spec), (rows) => [
+          ...rows.filter((row) => row.name !== spec.name),
+          rowFromSpec(spec),
+        ]);
         if (ok && selectedRef.current === kind && viewEpoch.current === seen) {
           setHighlight({ name: spec.name, token: Date.now() });
         }
@@ -170,7 +184,9 @@ export function McpSettings() {
       }}
       onRemove={(name, scope) => {
         if (!selected) return;
-        void run("remove", name, () => api.mcpRemove(selected, name, scope));
+        void run("remove", name, () => api.mcpRemove(selected, name, scope), (rows) =>
+          rows.filter((row) => row.name !== name),
+        );
       }}
       onLogin={(name, registration, scopes) => {
         if (!selected) return;
@@ -184,8 +200,11 @@ export function McpSettings() {
       }}
       onSetEnabled={(name, enabled) => {
         if (!selected) return;
-        void run(enabled ? "enable" : "disable", name, () =>
-          api.mcpSetEnabled(selected, name, enabled),
+        void run(
+          enabled ? "enable" : "disable",
+          name,
+          () => api.mcpSetEnabled(selected, name, enabled),
+          (rows) => rows.map((row) => (row.name === name ? { ...row, enabled, status_text: "" } : row)),
         );
       }}
       onListTools={(name) => {

@@ -146,10 +146,10 @@ pub struct McpServerRow {
     pub bearer_token_env_var: String,
     #[serde(default)]
     pub enabled: Option<bool>,
-    /// CLI 原值。桌面登录按钮只在 `notLoggedIn` 时出现。
+    /// CLI 原值。Codex CLI 是 `not_logged_in` 这类下划线写法，app-server 是 `notLoggedIn`。
     #[serde(default)]
     pub auth_status: String,
-    /// CLI 列表里的状态原文。没有就空着。
+    /// CLI 列表里的状态原文，Codex 是 `disabled_reason`。没有就空着。
     #[serde(default)]
     pub status_text: String,
     #[serde(default)]

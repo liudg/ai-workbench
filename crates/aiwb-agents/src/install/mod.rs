@@ -27,8 +27,9 @@ use command::{
 use version::version_from_output;
 pub use version::{extract_version, is_newer, parse_published_version};
 
-#[cfg(any(windows, test))]
-pub(crate) use command::cmd_invocation_line;
+pub(crate) use command::tool_command;
+#[cfg(test)]
+use command::cmd_invocation_line;
 #[cfg(test)]
 use command::windows_cmd_line;
 

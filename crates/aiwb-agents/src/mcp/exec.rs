@@ -1,13 +1,11 @@
 //! 拉起某个 Agent 自己的 CLI。不读、不写另一家的配置。
 
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
 use std::time::Duration;
 
-use tokio::process::Command;
 use tokio::time::timeout;
 
-use aiwb_proc::{apply_utf8_env, decode_child_bytes};
+use aiwb_proc::decode_child_bytes;
 
 #[derive(Debug)]
 pub struct Captured {
@@ -72,15 +70,8 @@ pub fn ensure_ok(captured: Captured) -> Result<String, String> {
 }
 
 pub async fn run_cli(bin: &Path, args: &[String], limit: Duration) -> Result<Captured, String> {
-    let mut command = script_command(bin, args);
-    command
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true)
-        .current_dir(std::env::temp_dir());
-    hide_console(&mut command);
-    apply_utf8_env(&mut command);
+    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let mut command = crate::install::tool_command(bin, &refs, false);
     command.env_remove("CLAUDECODE");
     let child = command
         .spawn()
@@ -99,41 +90,4 @@ pub async fn run_cli(bin: &Path, args: &[String], limit: Duration) -> Result<Cap
 pub fn require_bin(path: Option<PathBuf>, missing: &str) -> Result<PathBuf, String> {
     path.filter(|path| path.is_file())
         .ok_or_else(|| missing.to_string())
-}
-
-fn hide_console(command: &mut Command) {
-    #[cfg(windows)]
-    {
-        command.creation_flags(0x08000000);
-    }
-    let _ = command;
-}
-
-#[cfg(windows)]
-fn script_command(bin: &Path, args: &[String]) -> Command {
-    let ext = bin
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .unwrap_or("")
-        .to_ascii_lowercase();
-    if ext == "cmd" || ext == "bat" {
-        let refs: Vec<&str> = args.iter().map(String::as_str).collect();
-        let mut command = Command::new("cmd");
-        command.arg("/D").arg("/S").arg("/C");
-        command.raw_arg(crate::install::cmd_invocation_line(
-            bin, &refs,
-        ));
-        command
-    } else {
-        let mut command = Command::new(bin);
-        command.args(args);
-        command
-    }
-}
-
-#[cfg(not(windows))]
-fn script_command(bin: &Path, args: &[String]) -> Command {
-    let mut command = Command::new(bin);
-    command.args(args);
-    command
 }

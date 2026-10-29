@@ -46,6 +46,17 @@ export function startList(
   };
 }
 
+/** 操作成功后先改本地行，不等 CLI 列表。之后的刷新会整表替换。 */
+export function patchRows(
+  book: McpListBook,
+  kind: string,
+  patch: (rows: McpServerRow[]) => McpServerRow[],
+): McpListBook {
+  const current = book.agents[kind];
+  if (!current) return book;
+  return { agents: { ...book.agents, [kind]: { ...current, rows: patch(current.rows) } } };
+}
+
 export function finishList(
   book: McpListBook,
   kind: string,

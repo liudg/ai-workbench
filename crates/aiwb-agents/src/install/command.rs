@@ -131,7 +131,7 @@ pub fn cmd_invocation_line(bin: &Path, args: &[&str]) -> String {
     format!("\"{}\"", windows_cmd_line(bin, args))
 }
 
-pub(super) fn tool_command(bin: &Path, args: &[&str], npm_quiet: bool) -> Command {
+pub(crate) fn tool_command(bin: &Path, args: &[&str], npm_quiet: bool) -> Command {
     let mut command = script_command(bin, args);
     command
         .stdin(Stdio::null())

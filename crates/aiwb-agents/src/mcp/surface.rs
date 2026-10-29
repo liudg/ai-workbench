@@ -14,7 +14,7 @@ pub fn unverified(kind: AgentKind, display_name: &str, installed: bool) -> McpSu
         display_name: display_name.to_string(),
         installed,
         manageable: false,
-        unavailable_reason: Some(reason.into()),
+        unavailable_reason: Some(reason),
         verbs: McpVerbs::none(),
         transports: Vec::new(),
         scopes: Vec::new(),
@@ -83,7 +83,7 @@ pub fn codex(installed: bool) -> McpSurface {
         ],
         oauth_registration: registration(),
         login_rule: "status".into(),
-        login_statuses: vec!["notLoggedIn".into()],
+        login_statuses: vec!["not_logged_in".into(), "notLoggedIn".into()],
         logout_label: "取消认证".into(),
         scope_label: String::new(),
         tools_label: String::new(),
@@ -114,7 +114,7 @@ pub fn codex(installed: bool) -> McpSurface {
             ),
             note(
                 "Authenticate",
-                "桌面条件是 authStatus === \"notLoggedIn\"。隔离探测看到的 auth_status 是 unsupported 和 bearer_token。not_logged_in 未观察，不把下划线形式当成未登录。",
+                "桌面条件是 authStatus === \"notLoggedIn\"（app-server 协议）。codex 0.165 的 mcp list --json 用下划线：实测 unsupported、unknown、bearer_token，所以未登录是 not_logged_in。两种写法都认。",
             ),
             note(
                 "Deauthenticate",
@@ -159,11 +159,7 @@ pub fn claude(installed: bool) -> McpSurface {
             labeled("sse", "SSE"),
             labeled("http", "HTTP"),
         ],
-        scopes: vec![
-            labeled("local", "本地"),
-            labeled("user", "用户"),
-            labeled("project", "项目"),
-        ],
+        scopes: vec![labeled("user", "用户")],
         fields: vec![
             field("name", "名称", "MCP 服务器名称", "always", "text", true, "server-name"),
             field(
@@ -195,7 +191,7 @@ pub fn claude(installed: bool) -> McpSurface {
             ),
             note(
                 "Configuration scope",
-                "add 和 remove 有 -s/--scope，取值 local、user、project，默认 local。桌面表单没有 scope，控件和文案未观察。",
+                "add 和 remove 有 -s/--scope，取值 local、user、project，默认 local。local 和 project 跟着 CLI 的工作目录走，管理命令在临时目录里跑，写进去的服务器任何项目都用不上。所以只给 user，并显式传 -s user。",
             ),
             note(
                 "Bearer token env var",
@@ -219,7 +215,7 @@ pub fn claude(installed: bool) -> McpSurface {
             ),
             note(
                 "list",
-                "list 帮助没有 --json。按「名字: 命令 - 状态」解析。sse 行的形状未观察，以 http 开头的记为 http。",
+                "list 帮助没有 --json。claude 2.1.312 实测行是「名字: 命令 - ✔ Connected」，远程行在 URL 后标 (SSE) 或 (HTTP)，失败行是「✘ Failed to connect — 原因」。claude.ai 连接器的名字带空格。",
             ),
             note(
                 "remove",
@@ -383,7 +379,10 @@ mod tests {
         assert_eq!(secret.control, "secret");
         assert!(!secret.required);
         assert_eq!(surface.login_rule, "status");
-        assert_eq!(surface.login_statuses, vec!["notLoggedIn".to_string()]);
+        assert_eq!(
+            surface.login_statuses,
+            vec!["not_logged_in".to_string(), "notLoggedIn".to_string()]
+        );
         assert!(surface.notes.iter().any(|item| item.label == "Headers"));
     }
 
@@ -398,7 +397,10 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["stdio", "sse", "http"]
         );
-        assert_eq!(surface.scopes.len(), 3);
+        assert_eq!(
+            surface.scopes.iter().map(|item| item.id.as_str()).collect::<Vec<_>>(),
+            vec!["user"]
+        );
         assert_eq!(surface.scope_label, "配置 scope");
         assert_eq!(surface.logout_label, "清除已保存的 OAuth 凭据");
         let headers = surface.fields.iter().find(|field| field.id == "headers").unwrap();

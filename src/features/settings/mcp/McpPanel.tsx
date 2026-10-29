@@ -23,6 +23,7 @@ import {
   showAdd,
   showLoginScopes,
   showToggle,
+  statusIssue,
   toggleNextAllowed,
   transportTag,
   uninstallConfirmBody,
@@ -60,6 +61,7 @@ export interface McpPanelProps {
   initialOpen?: string | null;
   initialAuth?: string | null;
   onSelect: (kind: AgentKind) => void;
+  onRefresh: () => void;
   onAdd: (spec: McpAddSpec) => Promise<boolean> | boolean;
   onRemove: (name: string, scope: string) => void;
   onLogin: (name: string, registration: string, scopes: string) => void;
@@ -151,7 +153,7 @@ export function McpPanel(props: McpPanelProps) {
     setMenuFor(null);
     if (id === "login") {
       if (surface && loginLaunch(surface, row) === "options") {
-        setAuthFor(row.name);
+        setAuthFor((current) => (current === row.name ? null : row.name));
         return;
       }
       props.onLogin(row.name, "", "");
@@ -272,6 +274,7 @@ export function McpPanel(props: McpPanelProps) {
             setAuthFor(null);
             setMode("new");
           }}
+          onRefresh={props.onRefresh}
           onOpen={openDetail}
           onToggleMenu={(name) => {
             setAuthFor(null);
@@ -344,6 +347,7 @@ function ServerList(props: {
   menuFor: string | null;
   authFor: string | null;
   onAdd: () => void;
+  onRefresh: () => void;
   onOpen: (name: string) => void;
   onToggleMenu: (name: string) => void;
   onAction: (id: McpMenuId, row: McpServerRow) => void;
@@ -354,12 +358,32 @@ function ServerList(props: {
   return (
     <div className="mt-6">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-sm font-medium text-zinc-100">{MCP_PAGE.heading}</h3>
-        {showAdd(surface) && (
-          <button type="button" data-mcp-add="" className={quietButton} onClick={props.onAdd}>
-            {MCP_PAGE.add}
-          </button>
-        )}
+        <h3 className="flex items-center gap-2 text-sm font-medium text-zinc-100">
+          {MCP_PAGE.heading}
+          {props.listing && props.rows.length > 0 && (
+            <span className="text-xs font-normal text-zinc-500" role="status" data-mcp-refreshing="">
+              {MCP_PAGE.refreshing}
+            </span>
+          )}
+        </h3>
+        <div className="flex gap-2">
+          {surface.manageable && surface.verbs.list && (
+            <button
+              type="button"
+              data-mcp-refresh=""
+              className={quietButton}
+              disabled={props.listing}
+              onClick={props.onRefresh}
+            >
+              {MCP_PAGE.refresh}
+            </button>
+          )}
+          {showAdd(surface) && (
+            <button type="button" data-mcp-add="" className={quietButton} onClick={props.onAdd}>
+              {MCP_PAGE.add}
+            </button>
+          )}
+        </div>
       </div>
       {!surface.manageable && props.reason && (
         <p className="mt-4 text-sm leading-6 text-zinc-400" data-mcp-unavailable="">
@@ -467,14 +491,21 @@ function ServerList(props: {
   );
 }
 
-function StatusLine({ row, busy }: { row: McpServerRow; busy: boolean }) {
+/** 列表行带上一行原因；详情页另有完整的「问题」，这里不重复。 */
+function StatusLine({ row, busy, brief = true }: { row: McpServerRow; busy: boolean; brief?: boolean }) {
   const status = rowStatus(row);
+  const issue = brief ? statusIssue(row) : null;
   return (
-    <span className="mt-1 flex items-center gap-2 text-xs text-zinc-400">
-      <span className="inline-flex items-center gap-1.5" data-mcp-status={status.kind}>
+    <span className="mt-1 flex min-w-0 items-center gap-2 text-xs text-zinc-400">
+      <span className="inline-flex shrink-0 items-center gap-1.5" data-mcp-status={status.kind}>
         <span className={cn("h-1.5 w-1.5 rounded-full", STATUS_DOT[status.kind])} aria-hidden />
         {status.label}
       </span>
+      {issue && (
+        <span className="min-w-0 truncate text-zinc-500" title={issue} data-mcp-issue="">
+          {issue}
+        </span>
+      )}
       {busy && (
         <span data-mcp-busy={row.name} className="text-zinc-500">
           {MCP_PAGE.processing}
@@ -592,6 +623,7 @@ function ServerDetail(props: {
   const actions = menuActions(surface, row);
   const tag = transportTag(row.transport);
   const authMethod = authMethodLabel(row.auth_status);
+  const issue = statusIssue(row);
   return (
     <div className="mt-6" data-mcp-form="existing">
       <div className="flex items-center justify-between gap-3">
@@ -603,7 +635,7 @@ function ServerDetail(props: {
         </button>
       </div>
       <div className="mt-3">
-        <StatusLine row={row} busy={props.busy} />
+        <StatusLine row={row} busy={props.busy} brief={false} />
       </div>
       <div className="mt-4 flex flex-wrap items-center gap-2">
         {showToggle(surface, row) && (
@@ -644,6 +676,7 @@ function ServerDetail(props: {
         {row.env_headers.length > 0 && (
           <Readout label={MCP_PAGE.envHeaders} value={row.env_headers.map((pair) => `${pair.key}=${pair.value}`).join("\n")} />
         )}
+        {issue && <Readout label={MCP_PAGE.issue} value={issue} />}
         {authMethod && (
           <div data-mcp-auth={authMethod}>
             <Readout label={MCP_PAGE.authLabel} value={authMethod} />
@@ -664,7 +697,7 @@ function Readout({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <dt className="text-xs text-zinc-500">{label}</dt>
-      <dd className="mt-1 whitespace-pre-wrap text-zinc-100">{value}</dd>
+      <dd className="mt-1 whitespace-pre-wrap break-all text-zinc-100">{value}</dd>
     </div>
   );
 }

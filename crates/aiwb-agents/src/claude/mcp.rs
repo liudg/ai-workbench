@@ -22,13 +22,7 @@ impl McpDriver for ClaudeMcp {
 
     async fn list(&self) -> Result<Vec<McpServerRow>, String> {
         let text = run(args::claude_list(), exec::LIST_LIMIT).await?;
-        let mut rows = parse::parse_cli_list(&text);
-        for row in &mut rows {
-            if row.transport == "streamable_http" {
-                row.transport = "http".into();
-            }
-        }
-        Ok(rows)
+        Ok(parse::parse_cli_list(&text))
     }
 
     async fn add(&self, spec: &McpAddSpec) -> Result<String, String> {

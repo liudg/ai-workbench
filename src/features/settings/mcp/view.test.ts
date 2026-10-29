@@ -13,6 +13,7 @@ import {
   menuDismissKey,
   registrationAria,
   rowStatus,
+  statusIssue,
   showAdd,
   loginLaunch,
   showLogin,
@@ -60,7 +61,7 @@ function surface(patch: Partial<McpSurface>): McpSurface {
       { id: "dcr", label: "DCR" },
     ],
     login_rule: "status",
-    login_statuses: ["notLoggedIn"],
+    login_statuses: ["not_logged_in", "notLoggedIn"],
     logout_label: "Deauthenticate",
     scope_label: "",
     tools_label: "",
@@ -109,7 +110,7 @@ test("settings copy stays product Chinese and keeps protocol names", () => {
   assert.equal(MCP_PAGE.authLabel, "认证");
   assert.equal(MCP_PAGE.scopesPlaceholder, "要请求的 OAuth 权限范围，用逗号分隔");
   assert.equal(MCP_PAGE.loggedOut, "未登录");
-  assert.equal(MCP_PAGE.failed, "失败");
+  assert.equal(MCP_PAGE.failed, "连接失败");
   assert.equal(MCP_PAGE.disabled, "已禁用");
   assert.equal(registrationAria("auto"), "OAuth 客户端注册：自动");
   assert.equal(uninstallConfirmBody("demo"), "将移除「demo」。");
@@ -150,11 +151,23 @@ test("row status stays configured until the list explicitly says connected or re
     label: "已禁用",
   });
   assert.deepEqual(rowStatus(row({ auth_status: "notLoggedIn" })), { kind: "loggedOut", label: "未登录" });
-  assert.deepEqual(rowStatus(row({ auth_status: "not_logged_in" })), { kind: "configured", label: "已配置" });
+  assert.deepEqual(rowStatus(row({ auth_status: "not_logged_in" })), { kind: "loggedOut", label: "未登录" });
   assert.deepEqual(rowStatus(row({ enabled: null, status_text: "× Failed to connect", auth_status: "" })), {
     kind: "failed",
-    label: "失败",
+    label: "连接失败",
   });
+  // claude 2.1.312 实测的状态符号。
+  assert.deepEqual(rowStatus(row({ status_text: "✘ Failed to connect — ECONNRESET: closed - retry" })), {
+    kind: "failed",
+    label: "连接失败",
+  });
+  assert.deepEqual(rowStatus(row({ status_text: "✔ Connected" })), { kind: "connected", label: "已连接" });
+  assert.deepEqual(rowStatus(row({ status_text: "⚠ Needs authentication" })), { kind: "loggedOut", label: "未登录" });
+  assert.equal(statusIssue(row({ status_text: "✘ Failed to connect — ECONNRESET: closed - retry" })), "ECONNRESET: closed - retry");
+  assert.equal(statusIssue(row({ status_text: "✔ Connected" })), null);
+  assert.equal(statusIssue(row({ enabled: false, status_text: "startup failed" })), "startup failed");
+  assert.equal(statusIssue(row({ enabled: false, status_text: "disabled" })), null);
+  assert.equal(statusIssue(row({ enabled: true, status_text: "ready" })), null);
   assert.deepEqual(rowStatus(row({ enabled: null, status_text: "√ Connected", auth_status: "" })), {
     kind: "connected",
     label: "已连接",
@@ -166,6 +179,7 @@ test("row status stays configured until the list explicitly says connected or re
   assert.equal(authMethodLabel("unsupported"), "不支持");
   assert.equal(authMethodLabel("bearer_token"), "Bearer");
   assert.equal(authMethodLabel("oAuth"), "OAuth");
+  assert.equal(authMethodLabel("o_auth"), "OAuth");
   assert.equal(authMethodLabel("notLoggedIn"), null);
   assert.equal(authMethodLabel(""), null);
 });
@@ -217,7 +231,11 @@ test("toggle follows enabled and verbs, menu follows verbs", () => {
     menuActions(claude, row({ transport: "http", url: "https://example.invalid/mcp" })).map((item) => item.id),
     ["login", "logout", "remove"],
   );
-  assert.deepEqual(menuActions(claude, row({ transport: "stdio" })).map((item) => item.id), ["logout", "remove"]);
+  assert.deepEqual(menuActions(claude, row({ transport: "stdio" })).map((item) => item.id), ["remove"]);
+  assert.deepEqual(
+    menuActions(claude, row({ transport: "sse", url: "https://example.invalid/sse" })).map((item) => item.id),
+    ["login", "logout", "remove"],
+  );
   assert.equal(loginNeedsOptions(claude), false);
   assert.equal(loginNeedsOptions(codex), true);
 });
@@ -259,11 +277,11 @@ test("field visibility follows the transport token on the surface", () => {
   assert.equal(fieldVisible("http", "sse"), false);
 });
 
-test("authenticate follows the surface rule and ignores unseen status spellings", () => {
+test("authenticate follows the surface rule and both status spellings", () => {
   const codex = surface({});
   assert.equal(showLogin(codex, row({ auth_status: "unsupported" })), false);
   assert.equal(showLogin(codex, row({ auth_status: "bearer_token" })), false);
-  assert.equal(showLogin(codex, row({ auth_status: "not_logged_in" })), false);
+  assert.equal(showLogin(codex, row({ auth_status: "not_logged_in" })), true);
   assert.equal(showLogin(codex, row({ auth_status: "notLoggedIn" })), true);
   assert.equal(showLogin(codex, row({ auth_status: "unknown", transport: "stdio" })), false);
   assert.equal(
@@ -280,7 +298,13 @@ test("authenticate follows the surface rule and ignores unseen status spellings"
     menuActions(codex, row({ auth_status: "unknown", transport: "http", url: "https://example.invalid/mcp" })).map(
       (item) => item.label,
     ),
-    ["身份验证", "取消认证", "卸载"],
+    ["身份验证", "卸载"],
+  );
+  assert.deepEqual(
+    menuActions(codex, row({ auth_status: "o_auth", transport: "streamable_http", url: "https://example.invalid/mcp" })).map(
+      (item) => item.id,
+    ),
+    ["logout", "remove"],
   );
 
   const claude = surface({

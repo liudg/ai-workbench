@@ -2,7 +2,7 @@
 
 use aiwb_core::models::McpAddSpec;
 
-use super::parse::{env_arg, header_arg, require_name};
+use super::parse::{env_arg, header_arg, require_name, require_new_name};
 
 pub fn codex_list() -> Vec<String> {
     vec!["mcp".into(), "list".into(), "--json".into()]
@@ -30,7 +30,7 @@ pub fn codex_add(spec: &McpAddSpec) -> Result<Vec<String>, String> {
         &["stdio", "streamable_http"],
         &["scope", "headers", "callback_port"],
     )?;
-    let name = require_name(&spec.name)?;
+    let name = require_new_name(&spec.name)?;
     let mut args = vec!["mcp".into(), "add".into(), name];
     match spec.transport.as_str() {
         "stdio" => {
@@ -118,7 +118,7 @@ pub fn claude_add(spec: &McpAddSpec) -> Result<Vec<String>, String> {
     if !spec.oauth_resource.trim().is_empty() || !spec.oauth_registration.trim().is_empty() {
         return Err("Claude 的 add 没有 --oauth-resource 或 --oauth-client-registration。".into());
     }
-    let name = require_name(&spec.name)?;
+    let name = require_new_name(&spec.name)?;
     let transport = spec.transport.as_str();
     if !matches!(transport, "stdio" | "sse" | "http") {
         return Err(format!("Claude 不支持传输类型 {transport}。"));

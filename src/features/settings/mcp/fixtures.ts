@@ -70,14 +70,14 @@ export const codexSurface: McpSurface = {
     { id: "dcr", label: "DCR" },
   ],
   login_rule: "status",
-  login_statuses: ["notLoggedIn"],
+  login_statuses: ["not_logged_in", "notLoggedIn"],
   logout_label: "取消认证",
   scope_label: "",
   tools_label: "",
   notes: [
     { label: "Headers", reason: "codex mcp add 帮助没有 --header。不提供编辑。" },
     { label: "Enable", reason: "list JSON 和 config.toml 有 enabled。开关写配置里的 enabled。" },
-    { label: "Authenticate", reason: "只在 auth_status 为 notLoggedIn 时显示。not_logged_in 未观察。" },
+    { label: "Authenticate", reason: "auth_status 为 not_logged_in（CLI）或 notLoggedIn（app-server）时显示。" },
   ],
 };
 
@@ -93,11 +93,7 @@ export const claudeSurface: McpSurface = {
     { id: "sse", label: "SSE" },
     { id: "http", label: "HTTP" },
   ],
-  scopes: [
-    { id: "local", label: "本地" },
-    { id: "user", label: "用户" },
-    { id: "project", label: "项目" },
-  ],
+  scopes: [{ id: "user", label: "用户" }],
   fields: [
     { id: "name", label: "名称", placeholder: "MCP 服务器名称", when: "always", control: "text", required: true, rule: "server-name" },
     { id: "command", label: "启动命令", placeholder: "openai-dev-mcp serve-sqlite", when: "stdio", control: "text", required: true, rule: "command" },
@@ -116,7 +112,7 @@ export const claudeSurface: McpSurface = {
   tools_label: "",
   notes: [
     { label: "传输名", reason: "CLI 是 stdio、sse、http。桌面开关没有 sse。" },
-    { label: "Configuration scope", reason: "桌面表单没有 scope，文案未观察。" },
+    { label: "Configuration scope", reason: "管理命令在临时目录里跑，local 和 project 用不上，只给 user。" },
   ],
 };
 
@@ -187,7 +183,7 @@ export const loginRow: McpServerRow = row({
   transport: "streamable_http",
   url: "https://example.invalid/mcp",
   enabled: true,
-  auth_status: "notLoggedIn",
+  auth_status: "not_logged_in",
 });
 
 export const claudeRows: McpServerRow[] = [
@@ -195,14 +191,19 @@ export const claudeRows: McpServerRow[] = [
     name: "wb-mcp-probe",
     transport: "stdio",
     command: "cmd /c echo wb-mcp-probe",
-    status_text: "× Failed to connect",
+    status_text: '✘ Failed to connect — MCP server "wb-mcp-probe" connection timed out after 30000ms',
   }),
   row({
     name: "wb-mcp-http",
     transport: "http",
     url: "https://example.invalid/mcp",
-    command: "https://example.invalid/mcp",
-    status_text: "√ Connected",
+    status_text: "✔ Connected",
+  }),
+  row({
+    name: "claude.ai Claude Docs",
+    transport: "http",
+    url: "https://api.anthropic.com/v1/pages/mcp",
+    status_text: "⚠ Needs authentication",
   }),
 ];
 

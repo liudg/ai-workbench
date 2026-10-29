@@ -1,4 +1,4 @@
-import type { McpField, McpServerRow, McpSurface } from "@/types";
+import type { McpAddSpec, McpField, McpServerRow, McpSurface } from "@/types";
 
 /**
  * 设置页文案。能对上 Codex 桌面 zh-CN 的用桌面中文。
@@ -26,7 +26,10 @@ export const MCP_PAGE = {
   connected: "已连接",
   configured: "已配置",
   loggedOut: "未登录",
-  failed: "失败",
+  failed: "连接失败",
+  issue: "问题",
+  refresh: "刷新",
+  refreshing: "正在刷新…",
   authLabel: "认证",
   typeLabel: "类型",
   typeAria: "MCP 服务器类型",
@@ -74,6 +77,11 @@ export const MCP_PAGE = {
 export const MASKED_VALUE = "••••••";
 
 const DEV_REASON = /未观察|未验证|动词/;
+
+/** 列表状态原文开头的符号。Claude 2.1 用 ✔ ✘ ⚠ ⏸，旧版和 Cursor 用 √ × ✓ ✗。 */
+const STATUS_MARK = /^[✔✘✓✗√×⚠⏸!]\s*/u;
+const FAILED_MARK = /^[✘✗×]/u;
+const LOGGED_OUT = new Set(["notLoggedIn", "not_logged_in"]);
 
 const REGISTRATION_LONG: Record<string, string> = {
   auto: "自动",
@@ -164,23 +172,38 @@ export function registrationAria(id: string): string {
 
 export function rowStatus(row: McpServerRow): { kind: McpStatusKind; label: string } {
   if (row.enabled === false) return { kind: "disabled", label: MCP_PAGE.disabled };
-  if (row.auth_status === "notLoggedIn") return { kind: "loggedOut", label: MCP_PAGE.loggedOut };
+  if (LOGGED_OUT.has(row.auth_status) || /^needs auth/i.test(bareStatus(row.status_text))) {
+    return { kind: "loggedOut", label: MCP_PAGE.loggedOut };
+  }
   if (isFailedStatus(row.status_text)) return { kind: "failed", label: MCP_PAGE.failed };
   if (isConnectedStatus(row.status_text)) return { kind: "connected", label: MCP_PAGE.connected };
   return { kind: "configured", label: MCP_PAGE.configured };
 }
 
+/** 状态原文里的原因：Claude 失败行「✘ Failed to connect — 原因」，Codex 的 disabled_reason。 */
+export function statusIssue(row: McpServerRow): string | null {
+  const text = row.status_text.trim();
+  if (!text) return null;
+  const dash = text.indexOf(" — ");
+  if (dash >= 0) return text.slice(dash + 3).trim() || null;
+  if (row.enabled === false && !STATUS_MARK.test(text) && !/^disabled\b/i.test(text)) return text;
+  return null;
+}
+
+function bareStatus(text: string): string {
+  return text.trim().replace(STATUS_MARK, "");
+}
+
 function isFailedStatus(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed) return false;
-  if (/[×✗]/.test(trimmed)) return true;
-  const bare = trimmed.replace(/^[√×✓✗]\s*/, "");
-  return bare === "Failed to connect" || /^failed\b/i.test(bare);
+  if (FAILED_MARK.test(trimmed)) return true;
+  return /^failed\b/i.test(bareStatus(trimmed));
 }
 
 /** 只有列表原文写明已连接或就绪时才算连上。Codex 的 list 没有这项。 */
 function isConnectedStatus(text: string): boolean {
-  const bare = text.trim().replace(/^[√×✓✗]\s*/, "").toLowerCase();
+  const bare = bareStatus(text).toLowerCase();
   return bare === "connected" || bare === "ready";
 }
 
@@ -188,7 +211,7 @@ function isConnectedStatus(text: string): boolean {
 export function authMethodLabel(status: string): string | null {
   if (status === "unsupported") return "不支持";
   if (status === "bearer_token" || status === "bearerToken") return "Bearer";
-  if (status === "oauth" || status === "oAuth") return "OAuth";
+  if (status === "oauth" || status === "oAuth" || status === "o_auth") return "OAuth";
   return null;
 }
 
@@ -244,6 +267,13 @@ export function showLogin(surface: McpSurface, row: McpServerRow): boolean {
   return false;
 }
 
+/** 只在可能存着 OAuth 凭据的行上给取消认证。本地命令没有可清的凭据。 */
+export function showLogout(surface: McpSurface, row: McpServerRow): boolean {
+  if (!surface.manageable || !surface.verbs.logout || !surface.logout_label.trim()) return false;
+  if (surface.login_rule === "status") return authMethodLabel(row.auth_status) === "OAuth";
+  return isRemoteTransport(row);
+}
+
 /** 登录需要注册方式或 scope 时先打开选项，不直接发起。 */
 export function loginLaunch(surface: McpSurface, row: McpServerRow): "hidden" | "direct" | "options" {
   if (!showLogin(surface, row)) return "hidden";
@@ -275,14 +305,38 @@ export function loginNeedsOptions(surface: McpSurface): boolean {
 export function menuActions(surface: McpSurface, row: McpServerRow): McpMenuAction[] {
   const items: McpMenuAction[] = [];
   if (showLogin(surface, row)) items.push({ id: "login", label: MCP_PAGE.authMenu });
-  if (surface.manageable && surface.verbs.logout && surface.logout_label.trim()) {
-    items.push({ id: "logout", label: MCP_PAGE.logoutMenu });
-  }
+  if (showLogout(surface, row)) items.push({ id: "logout", label: MCP_PAGE.logoutMenu });
   if (surface.manageable && surface.verbs.list_tools && surface.tools_label.trim()) {
     items.push({ id: "tools", label: MCP_PAGE.toolsMenu });
   }
   if (showRemove(surface)) items.push({ id: "remove", label: MCP_PAGE.uninstall });
   return items;
+}
+
+/** 保存成功后先放进列表的行。CLI 列表回来后整表替换。 */
+export function rowFromSpec(spec: McpAddSpec): McpServerRow {
+  return {
+    name: spec.name,
+    transport: spec.transport,
+    command: spec.command,
+    args: spec.args,
+    url: spec.url,
+    bearer_token_env_var: spec.bearer_token_env_var,
+    enabled: null,
+    auth_status: "",
+    status_text: "",
+    scope: spec.scope,
+    cwd: "",
+    env: spec.env,
+    env_vars: [],
+    headers: spec.headers,
+    env_headers: [],
+  };
+}
+
+/** 有多个 scope 可选时才显示选择器。 */
+export function showScopePicker(surface: McpSurface): boolean {
+  return surface.scopes.length > 1 && surface.scope_label.trim().length > 0;
 }
 
 export function defaultTransport(surface: McpSurface): string {

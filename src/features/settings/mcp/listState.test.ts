@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import type { McpServerRow } from "@/types";
-import { emptyBook, finishList, startList, visibleList } from "./listState.ts";
+import { emptyBook, finishList, patchRows, startList, visibleList } from "./listState.ts";
 
 function row(name: string): McpServerRow {
   return {
@@ -61,4 +61,19 @@ test("an older response for the same agent is ignored", () => {
   book = finishList(book, "cursor-agent", 2, { error: "超时" });
   assert.equal(visibleList(book, "cursor-agent").error, "超时");
   assert.equal(visibleList(book, "cursor-agent").listing, false);
+});
+
+test("a local patch shows at once and a refresh started after it replaces it", () => {
+  let book = finishList(startList(emptyBook(), "claude-code", 1, false), "claude-code", 1, {
+    rows: [row("a"), row("b")],
+  });
+  book = startList(book, "claude-code", 2, true);
+  book = patchRows(book, "claude-code", (rows) => rows.filter((item) => item.name !== "a"));
+  book = startList(book, "claude-code", 3, true);
+  assert.deepEqual(visibleList(book, "claude-code").rows.map((item) => item.name), ["b"]);
+  book = finishList(book, "claude-code", 2, { rows: [row("a"), row("b")] });
+  assert.deepEqual(visibleList(book, "claude-code").rows.map((item) => item.name), ["b"]);
+  book = finishList(book, "claude-code", 3, { rows: [row("b"), row("c")] });
+  assert.deepEqual(visibleList(book, "claude-code").rows.map((item) => item.name), ["b", "c"]);
+  assert.equal(patchRows(emptyBook(), "codex-cli", () => []).agents["codex-cli"], undefined);
 });

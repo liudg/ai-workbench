@@ -14,7 +14,7 @@ import {
   validateDraft,
   type McpFormDraft,
 } from "./formDraft";
-import { MCP_PAGE, addLabel, registrationAria, showRegistration, visibleFields } from "./view";
+import { MCP_PAGE, addLabel, registrationAria, showRegistration, showScopePicker, visibleFields } from "./view";
 
 const inputClass =
   "w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-zinc-500";
@@ -221,7 +221,7 @@ export function McpForm(props: {
             </div>
           </div>
         )}
-        {surface.scopes.length > 0 && surface.scope_label && (
+        {showScopePicker(surface) && (
           <label className="block text-xs text-zinc-400">
             {surface.scope_label}
             <select
