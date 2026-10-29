@@ -3,8 +3,6 @@
 //! 设置页用 `session_linked = false` 表示未接入，不再附一长段说明。
 //! 更新参数都是已安装 CLI 自己的子命令，不跑安装脚本。
 
-use std::sync::Arc;
-
 use async_trait::async_trait;
 
 use crate::install::{AliasCheck, AliasRule, CliRelease};
@@ -31,11 +29,6 @@ impl ExternalCliAdapter {
 
 pub fn release_for(kind: AgentKind) -> CliRelease {
     match kind {
-        AgentKind::CursorAgent => {
-            let mut item = release(&["agent", "cursor-agent"], "", &["update"], &[], &[], "");
-            item.locate = Some(super::install::locate_cursor_agent);
-            item
-        }
         AgentKind::KimiCode => release(
             &["kimi"],
             "@moonshot-ai/kimi-code",
@@ -68,8 +61,8 @@ pub fn release_for(kind: AgentKind) -> CliRelease {
             }],
             GEMINI_NOTE,
         ),
-        AgentKind::CodexCli | AgentKind::ClaudeCode => {
-            panic!("Codex 和 Claude 不走外部桩适配器")
+        AgentKind::CodexCli | AgentKind::ClaudeCode | AgentKind::CursorAgent => {
+            panic!("Codex、Claude 和 Cursor 不走外部桩适配器")
         }
     }
 }
@@ -100,15 +93,11 @@ impl AgentAdapter for ExternalCliAdapter {
     }
 
     fn capabilities(&self) -> AgentCapabilities {
-        match self.kind {
-            AgentKind::CursorAgent => AgentCapabilities::cursor(),
-            _ => AgentCapabilities::none(),
-        }
+        AgentCapabilities::none()
     }
 
     fn icon_href(&self) -> Option<&'static str> {
         match self.kind {
-            AgentKind::CursorAgent => Some("/agent-icons/cursor-agent.svg"),
             AgentKind::KimiCode => Some("/agent-icons/kimi-code.svg"),
             AgentKind::QwenCode => Some("/agent-icons/qwen-code.svg"),
             AgentKind::OpenCode => Some("/agent-icons/opencode.svg"),
@@ -119,14 +108,6 @@ impl AgentAdapter for ExternalCliAdapter {
 
     fn cli_release(&self) -> Option<CliRelease> {
         Some(release_for(self.kind))
-    }
-
-    fn mcp(&self) -> Option<Arc<dyn crate::mcp::McpDriver>> {
-        if self.kind == AgentKind::CursorAgent {
-            Some(Arc::new(crate::mcp::CursorMcp))
-        } else {
-            None
-        }
     }
 
     async fn detect(&self) -> Result<(), AgentError> {
@@ -145,29 +126,6 @@ impl AgentAdapter for ExternalCliAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[tokio::test]
-    #[ignore]
-    async fn live_cursor_update_runs_agent_update() {
-        let adapter = ExternalCliAdapter::new(AgentKind::CursorAgent);
-        let before = adapter.installation(true).await;
-        assert!(before.installed, "{:?}", before);
-        let code = adapter.upgrade(Arc::new(|text| eprint!("{text}"))).await.expect("agent update");
-        assert_eq!(code, Some(0));
-    }
-
-    #[test]
-    fn cursor_update_is_the_official_subcommand() {
-        let release = release_for(AgentKind::CursorAgent);
-        assert_eq!(release.bins, ["agent", "cursor-agent"].as_slice());
-        assert_eq!(release.self_update, ["update"].as_slice());
-        assert!(release.npm_package.is_empty());
-        assert!(release.locate.is_some());
-        let found = (release.locate.unwrap())();
-        if let Some(path) = found {
-            assert!(path.ends_with("agent.cmd"));
-        }
-    }
 
     #[tokio::test]
     async fn external_agents_cannot_open_sessions() {
@@ -189,7 +147,7 @@ mod tests {
             .expect("no session for an unlinked agent");
         assert!(err.to_string().contains("未接入"), "{err}");
         for kind in AgentKind::all() {
-            if matches!(kind, AgentKind::CodexCli | AgentKind::ClaudeCode) {
+            if matches!(kind, AgentKind::CodexCli | AgentKind::ClaudeCode | AgentKind::CursorAgent) {
                 continue;
             }
             assert!(
@@ -203,7 +161,7 @@ mod tests {
     #[test]
     fn updates_are_cli_subcommands() {
         for kind in AgentKind::all() {
-            if matches!(kind, AgentKind::CodexCli | AgentKind::ClaudeCode) {
+            if matches!(kind, AgentKind::CodexCli | AgentKind::ClaudeCode | AgentKind::CursorAgent) {
                 continue;
             }
             let release = release_for(kind);

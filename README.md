@@ -1,6 +1,6 @@
 # AI 工作台（AI Workbench）
 
-一个**本地多项目 AI 编程工作台**：左侧管理多个本地项目，每个项目可并行开启多个 Agent 会话。Codex CLI 走本机 `codex app-server`，Claude Code 走本机 `claude` 的 stream-json 控制协议；其余 Agent 只做本机检测和官方更新，会话协议未接入，不能新建会话。右侧以时间线查看输出，并用同一套提问卡片处理审批、选择和问题。关闭窗口不会中断任何会话——应用驻留系统托盘，后台继续运行。
+一个**本地多项目 AI 编程工作台**：左侧管理多个本地项目，每个项目可并行开启多个 Agent 会话。Codex CLI 走本机 `codex app-server`，Claude Code 走本机 `claude` 的 stream-json 控制协议，Cursor Agent 走本机 `agent acp`（Agent Client Protocol）；其余 Agent 只做本机检测和官方更新，会话协议未接入，不能新建会话。右侧以时间线查看输出，并用同一套提问卡片处理审批、选择和问题。关闭窗口不会中断任何会话——应用驻留系统托盘，后台继续运行。
 
 ## 技术栈
 
@@ -66,7 +66,7 @@ pnpm dev                   # 打开 http://localhost:4573
 │ attention.rs  订阅注意力：系统通知、任务栏角标      │      │ services/   项目、任务、会话、文件、Git、导入… │
 │ tray.rs       托盘（显示主窗口 / 退出）            │      │ runtime     接上 Agent、归并事件、写库、推送   │
 │ features/     本机打开、内置浏览器、时间线图片      │      │ aiwb-store  SQLite（唯一数据源）               │
-└──────────────────────────────────────────────────┘      │ aiwb-agents Codex / Claude 适配器              │
+└──────────────────────────────────────────────────┘      │ aiwb-agents Codex / Claude / Cursor 适配器     │
 ┌──────────── 前端（src/）─────────────────────────┐      └──────────────────────────────────────────────┘
 │ lib/daemon    连接、RPC、订阅、主题缓存 ──────────┼── WebSocket ──▶
 │ lib/native    应用壳的本机能力（invoke）           │
@@ -116,11 +116,10 @@ Codex 实现拆在 `crates/aiwb-agents/src/codex/`：`mod.rs` 只编排，`rpc` 
 
 设置页从侧栏左下角头像菜单进入，列出 `AgentKind::all` 里的每一种。新建会话只能选 `installed && session_linked` 的 Agent。项目行上只装了一个能开会话的就直接用它；「新建会话」主按钮始终打开选择菜单，菜单里不出现未接入的项。一个都没有时选择器说明原因。工作台不代为安装。
 
-探测和更新都写在适配器的 `cli_release` 里。Codex 仍用自己的二进制查找，官方包是 npm 全局 `@openai/codex`，否则 `codex update`。Claude Code 若是 npm 全局安装则升级 `@anthropic-ai/claude-code`，否则执行 `claude update`。后加的种类在 `agents/external.rs`：
+探测和更新都写在适配器的 `cli_release` 里。Codex 仍用自己的二进制查找，官方包是 npm 全局 `@openai/codex`，否则 `codex update`。Claude Code 若是 npm 全局安装则升级 `@anthropic-ai/claude-code`，否则执行 `claude update`。Cursor Agent 认 `%LOCALAPPDATA%\cursor-agent\agent.cmd`（其次 PATH 上的 `agent`），更新走 `agent update`。其余种类在 `agents/external.rs`：
 
 | 种类 | 命令 | 官方更新 |
 | --- | --- | --- |
-| Cursor Agent | `agent`（别名 `cursor-agent`） | `agent update` |
 | Kimi Code | `kimi` | npm `@moonshot-ai/kimi-code`，或 `kimi upgrade -y` |
 | Qwen Code | `qwen` | npm `@qwen-code/qwen-code`，或 `qwen update` |
 | OpenCode | `opencode` | npm `opencode-ai`，或 `opencode upgrade` |
@@ -128,7 +127,7 @@ Codex 实现拆在 `crates/aiwb-agents/src/codex/`：`mod.rs` 只编排，`rpc` 
 
 Gemini CLI 与 Antigravity 登记成一项，不做成两套会话。只找到停更的 `gemini` 时不在应用内更新。
 
-**Codex 和 Claude Code 的会话协议已接入。** 其余适配器只做安装探测和官方升级，`start_session()` 走 trait 默认实现，直接返回「未接入」错误。设置页仍显示「未安装」或「版本 · 未接入」；新建会话菜单不列出它们。接入时实现 `AgentSession`，在适配器里覆盖 `start_session` 和 `session_linked`，要支持导入再实现 `import_list` / `import_history`；工作目录用 `ctx.project_path`。认证交给 CLI 自身，应用不保存密钥。Claude Code 的目录读 `~/.claude/projects` 里的 jsonl。
+**Codex、Claude Code 和 Cursor Agent 的会话协议已接入。** 其余适配器只做安装探测和官方升级，`start_session()` 走 trait 默认实现，直接返回「未接入」错误。设置页仍显示「未安装」或「版本 · 未接入」；新建会话菜单不列出它们。接入时实现 `AgentSession`，在适配器里覆盖 `start_session` 和 `session_linked`，要支持导入再实现 `import_list` / `import_history`；工作目录用 `ctx.project_path`。认证交给 CLI 自身，应用不保存密钥。Claude Code 的目录读 `~/.claude/projects` 里的 jsonl；Cursor Agent 读 `~/.cursor/acp-sessions/<id>/meta.json`，历史用 `session/load` 回放。
 
 右侧「打开文件」按目录逐层列出当前项目根下的文件，没有全局数量上限。点文件在当前这一页里预览，不会为每次点击新开标签。全文搜索直接读本机目录，分段返回。目录名正好是 `.git`、`node_modules`、`target`、`dist`、`Library`、`Temp` 的文件夹不进入目录树，也不进入全文搜索；其余文件和文件夹都会列出。
 

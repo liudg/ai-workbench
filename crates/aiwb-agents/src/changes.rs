@@ -196,6 +196,15 @@ pub fn parse_unified_files(diff: &str) -> Vec<FileChange> {
     files
 }
 
+/// 两段全文的统一 diff，文件头写 `a/<path>` / `b/<path>`。
+pub fn unified_diff(path: &str, old: &str, new: &str) -> String {
+    let raw = diffy::create_patch(old, new).to_string();
+    let old_header = format!("--- a/{path}");
+    let new_header = format!("+++ b/{path}");
+    raw.replacen("--- original", &old_header, 1)
+        .replacen("+++ modified", &new_header, 1)
+}
+
 pub fn push_file_change_events(
     bodies: &mut Vec<SessionEventBody>,
     turn_id: &str,

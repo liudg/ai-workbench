@@ -244,14 +244,49 @@ impl AgentCapabilities {
         }
     }
 
-    /// Cursor Agent 桩。会话协议未接入，这里不实现中断。
-    /// 停止按钮只看 `supports_cancel`；排队界面只看 `supports_queue`。
+    /// Cursor Agent 会话（`agent acp`）。证据来自 2026-10-29 本机 Cursor Agent 2026.10.22-27dcf5f。
     pub fn cursor() -> Self {
         Self {
-            // 排队没有接入。关闭，避免作曲栏画出队列。
+            // `available_commands_update` 给出斜杠命令和技能，正文里写 `/名字` 发出去。
+            supports_slash: true,
+            // `initialize` 回包 `loadSession: true`，`session/load` 回放整段历史。
+            supports_resume: true,
+            // 扩展方法 `cursor/ask_question`：选项题，可多选，没有自由文本。2026-10-29 实测服务端给 ACP 会话的
+            // 工具表里没有 AskQuestion，模型暂时不会发起；收到时照常画问题卡。
+            supports_questions: true,
+            // `cursor/list_available_models` 每个模型带 `thought_level` 参数，`session/set_config_option` 切换。
+            supports_tuning: true,
+            // 技能也在 `available_commands_update` 里，走斜杠菜单，没有单独的技能列表。
+            supports_skills: false,
+            supports_goals: false,
+            // `promptCapabilities.image = true`。
+            supports_images: true,
+            // ACP 一次只跑一个 `session/prompt`，没有排队或引导。
             supports_queue: false,
+            // `session/cancel`，这一轮以 `stopReason = cancelled` 收尾。
             supports_cancel: true,
-            ..Self::none()
+            // 没有分叉方法。
+            supports_fork: false,
+            // `session/set_mode` 的 `plan`，计划由 `cursor/create_plan` 交回。
+            supports_plan: true,
+            // 编辑工具结果带 `content[].type = diff`（原文和新文）。
+            changes: ChangeCapabilities {
+                turn_diff: true,
+                per_file_patch: true,
+                git_scopes: true,
+            },
+            supports_review: false,
+            supports_network_access: false,
+            // `--add-dir` 只是启动参数，ACP 会话里不能追加。
+            supports_writable_roots: false,
+            supports_permission_profiles: false,
+            // `--auto-review` 在 `agent acp` 里不生效（`src/acp` 不读这个选项）。
+            supports_approve_for_me: false,
+            supports_paged_history: false,
+            // `agent about` / `status` 只有账号，没有额度窗口。
+            supports_subscription_usage: false,
+            // 交接只是第一条 `session/prompt` 的文字。
+            supports_context_handoff: true,
         }
     }
 }

@@ -887,7 +887,7 @@ fn images_reject_remote_and_unknown_types() {
     let block = images::image_block("data:image/png;base64,aGk=").unwrap();
     assert_eq!(block["source"]["media_type"], "image/png");
     assert_eq!(block["source"]["data"], "aGk=");
-    assert_eq!(images::base64_encode(b"hi"), "aGk=");
+    assert_eq!(crate::image_input::base64_encode(b"hi"), "aGk=");
     let text = images::message_content("看图", &[]).unwrap();
     assert_eq!(text, json!("看图"));
 }

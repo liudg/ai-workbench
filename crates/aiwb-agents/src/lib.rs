@@ -9,8 +9,10 @@
 mod changes;
 mod claude;
 mod codex;
+mod cursor;
 mod directory;
 mod external;
+mod image_input;
 mod install;
 mod mcp;
 mod protocol;
@@ -36,8 +38,8 @@ pub fn adapter_for(kind: AgentKind) -> Arc<dyn AgentAdapter> {
     match kind {
         AgentKind::CodexCli => Arc::new(codex::CodexCliAdapter::new()),
         AgentKind::ClaudeCode => Arc::new(claude::ClaudeCodeAdapter::new()),
-        AgentKind::CursorAgent
-        | AgentKind::KimiCode
+        AgentKind::CursorAgent => Arc::new(cursor::CursorAgentAdapter::new()),
+        AgentKind::KimiCode
         | AgentKind::QwenCode
         | AgentKind::OpenCode
         | AgentKind::Antigravity => Arc::new(external::ExternalCliAdapter::new(kind)),
@@ -194,9 +196,12 @@ mod tests {
     }
 
     #[test]
-    fn linked_sessions_are_codex_and_claude() {
+    fn linked_sessions_are_codex_claude_and_cursor() {
         for kind in AgentKind::all() {
-            let linked = matches!(kind, AgentKind::CodexCli | AgentKind::ClaudeCode);
+            let linked = matches!(
+                kind,
+                AgentKind::CodexCli | AgentKind::ClaudeCode | AgentKind::CursorAgent
+            );
             assert_eq!(
                 adapter_for(kind).session_linked(),
                 linked,
@@ -255,6 +260,7 @@ mod tests {
         let cursor = adapter_for(AgentKind::CursorAgent).capabilities();
         assert!(cursor.supports_cancel);
         assert!(!cursor.supports_queue);
+        assert!(cursor.supports_resume && cursor.supports_tuning && cursor.supports_plan);
         for kind in [
             AgentKind::KimiCode,
             AgentKind::QwenCode,

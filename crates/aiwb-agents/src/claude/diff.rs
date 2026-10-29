@@ -11,6 +11,7 @@ use std::process::Command;
 
 use serde_json::Value;
 
+use crate::changes::unified_diff;
 use aiwb_core::models::{FileChange, FileStatus};
 
 const EDIT_TOOLS: &[&str] = &["Edit", "Write", "NotebookEdit", "MultiEdit"];
@@ -78,14 +79,6 @@ fn change_from_input(tool_name: &str, input: &Value) -> Option<FileChange> {
     };
     let patch = unified_diff(&path, &old, &new);
     Some(file_change(path, &patch))
-}
-
-pub fn unified_diff(path: &str, old: &str, new: &str) -> String {
-    let raw = diffy::create_patch(old, new).to_string();
-    let old_header = format!("--- a/{path}");
-    let new_header = format!("+++ b/{path}");
-    raw.replacen("--- original", &old_header, 1)
-        .replacen("+++ modified", &new_header, 1)
 }
 
 fn file_change(path: String, diff: &str) -> FileChange {

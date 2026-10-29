@@ -466,8 +466,9 @@ impl Runtimes {
                 return Err(message);
             }
         };
-        if session.native_id.is_none() {
-            if let Some(native) = handle.native_id().filter(|id| !id.is_empty()) {
+        // 适配器换了原生会话（例如 Cursor 没发过消息的空会话不能载入，只能新开）时跟着改。
+        if let Some(native) = handle.native_id().filter(|id| !id.is_empty()) {
+            if session.native_id.as_deref() != Some(native.as_str()) {
                 self.store
                     .set_session_native_id(session_id, &native)
                     .map_err(store_err)?;
