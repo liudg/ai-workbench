@@ -108,6 +108,18 @@ impl Services {
         let _ = rx.wait_for(|stop| *stop).await;
     }
 
+    /// 关掉空闲超过 `idle` 的已完成会话的 Agent 进程，返回关了几个。下次用到时再接上。
+    pub async fn release_idle_sessions(&self, idle: std::time::Duration) -> usize {
+        let idle_ms = i64::try_from(idle.as_millis()).unwrap_or(i64::MAX);
+        match self.runtimes.release_idle(aiwb_core::models::now_millis(), idle_ms).await {
+            Ok(released) => released,
+            Err(err) => {
+                eprintln!("释放空闲会话失败：{err}");
+                0
+            }
+        }
+    }
+
     /// 退出前关掉所有 Agent 进程。
     pub async fn stop_agents(&self) {
         self.runtimes.stop_all().await;

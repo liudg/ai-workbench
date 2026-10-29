@@ -984,3 +984,42 @@ async fn fork_copies_the_timeline_natively_or_hands_off_to_another_agent() {
     assert!(text.contains("\n修登录\n"), "{text}");
     assert!(text.ends_with("User message:\n换个思路"), "{text}");
 }
+
+#[tokio::test]
+async fn idle_session_is_released_and_resumed_on_next_send() {
+    let dir = tempfile::tempdir().unwrap();
+    let project_dir = tempfile::tempdir().unwrap();
+    let script = Arc::new(Script::default());
+    let services = services(Arc::new(Store::open_in_memory().unwrap()), script.clone(), dir.path());
+    let project = services
+        .dispatch("projects.add", json!({ "path": project_dir.path().to_string_lossy() }))
+        .await
+        .unwrap();
+    let task = services
+        .dispatch(
+            "tasks.create",
+            json!({ "projectId": project["id"], "agent": "codex-cli", "prompt": "看看登录" }),
+        )
+        .await
+        .unwrap();
+    let session_id = task["sessions"][0]["id"].as_str().unwrap().to_string();
+    wait_for_answer(&services, &session_id, "收到：看看登录").await;
+
+    assert_eq!(services.release_idle_sessions(Duration::from_secs(3600)).await, 0, "刚用过的不放");
+    assert_eq!(services.release_idle_sessions(Duration::ZERO).await, 1);
+    assert_eq!(*script.stopped.lock().unwrap(), 1);
+    let tasks = services.dispatch("tasks.list", Value::Null).await.unwrap();
+    assert_eq!(tasks[0]["sessions"][0]["status"], "completed");
+
+    services
+        .dispatch("sessions.send", json!({ "sessionId": session_id, "text": "继续" }))
+        .await
+        .unwrap();
+    let feed = wait_for_answer(&services, &session_id, "收到：继续").await;
+    let started = script.started.lock().unwrap();
+    assert_eq!(started.len(), 2);
+    assert_eq!(started[1].resume_native_id.as_deref(), Some("thread-1"));
+    assert!(started[1].flag("skip_history"));
+    let seqs: Vec<u64> = events_of(&feed).iter().map(|e| e["seq"].as_u64().unwrap()).collect();
+    assert_eq!(seqs, (1..=seqs.len() as u64).collect::<Vec<_>>(), "时间线从库里接着往后排");
+}

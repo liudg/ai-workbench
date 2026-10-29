@@ -13,6 +13,7 @@ mod upgrades;
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use aiwb_core::DaemonInfo;
 use aiwb_store::{import_legacy_projects, Store, DB_FILE};
@@ -41,6 +42,10 @@ impl Config {
 }
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// 已完成的会话空闲这么久、又没人在看，就关掉它的 Agent 进程。
+const IDLE_RELEASE: Duration = Duration::from_secs(30 * 60);
+const IDLE_SWEEP: Duration = Duration::from_secs(5 * 60);
 
 pub async fn run(config: Config) -> Result<(), String> {
     std::fs::create_dir_all(&config.data_dir)
@@ -81,6 +86,15 @@ pub async fn run(config: Config) -> Result<(), String> {
     }
     instance::write_info(&config.data_dir, &info)?;
     eprintln!("daemon {} 已启动，端口 {port}", info.version);
+
+    let sweeper = services.clone();
+    tokio::spawn(async move {
+        let mut tick = tokio::time::interval(IDLE_SWEEP);
+        loop {
+            tick.tick().await;
+            sweeper.release_idle_sessions(IDLE_RELEASE).await;
+        }
+    });
 
     let shutdown = services.clone();
     let ctrl_c = services.clone();

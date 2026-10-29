@@ -5,6 +5,7 @@
 //! 会话按需接上：第一次发送、要目录或权限菜单时才启动 CLI；daemon 重启后用 resume 接回原线程。
 
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use aiwb_agents::{AgentAdapter, AgentError, AgentSession, SessionContext, TurnDelivery, UserTurn};
@@ -37,12 +38,19 @@ struct Log {
     queue: Vec<QueuedTurn>,
 }
 
+/// 接上的 CLI。`muted` 置上后它报的事件不再进时间线；`used_at` 是最后一次用到它或它报事件的时间。
+struct Live {
+    handle: Arc<dyn AgentSession>,
+    muted: Arc<AtomicBool>,
+    used_at: Arc<AtomicI64>,
+}
+
 pub struct Runtimes {
     store: Arc<Store>,
     hub: Arc<Hub>,
     adapters: AdapterFactory,
     logs: Mutex<HashMap<String, Log>>,
-    live: Mutex<HashMap<String, Arc<dyn AgentSession>>>,
+    live: Mutex<HashMap<String, Live>>,
     /// 同一时间只打开一个会话，避免对同一线程起两个 CLI。
     opening: tokio::sync::Mutex<()>,
     /// 同一时间只探一次目录。等锁的一方拿到锁后先看缓存。
@@ -402,7 +410,10 @@ impl Runtimes {
     }
 
     pub(crate) fn live_handle(&self, session_id: &str) -> Option<Arc<dyn AgentSession>> {
-        self.live.lock().unwrap().get(session_id).cloned()
+        let live = self.live.lock().unwrap();
+        let entry = live.get(session_id)?;
+        entry.used_at.store(now_millis(), Ordering::SeqCst);
+        Some(entry.handle.clone())
     }
 
     /// 已接上的句柄；没有就启动 CLI。有原生 id 时 resume，不重放历史。
@@ -438,7 +449,9 @@ impl Runtimes {
             resume_native_id: resume,
         };
         let (tx, rx) = mpsc::unbounded_channel();
-        self.spawn_pump(session_id.to_string(), rx);
+        let muted = Arc::new(AtomicBool::new(false));
+        let used_at = Arc::new(AtomicI64::new(now_millis()));
+        self.spawn_pump(session_id.to_string(), rx, muted.clone(), used_at.clone());
         let handle = match self.adapter(session.agent).start_session(ctx, tx).await {
             Ok(handle) => handle,
             Err(err) => {
@@ -461,17 +474,31 @@ impl Runtimes {
             }
         }
         apply_options(handle.as_ref(), &session.options).await;
-        self.live
-            .lock()
-            .unwrap()
-            .insert(session_id.to_string(), handle.clone());
+        self.live.lock().unwrap().insert(
+            session_id.to_string(),
+            Live {
+                handle: handle.clone(),
+                muted,
+                used_at,
+            },
+        );
         Ok(handle)
     }
 
-    fn spawn_pump(self: &Arc<Self>, session_id: String, mut rx: mpsc::UnboundedReceiver<SessionEventBody>) {
+    fn spawn_pump(
+        self: &Arc<Self>,
+        session_id: String,
+        mut rx: mpsc::UnboundedReceiver<SessionEventBody>,
+        muted: Arc<AtomicBool>,
+        used_at: Arc<AtomicI64>,
+    ) {
         let runtimes = Arc::clone(self);
         tokio::spawn(async move {
             while let Some(body) = rx.recv().await {
+                if muted.load(Ordering::SeqCst) {
+                    continue;
+                }
+                used_at.store(now_millis(), Ordering::SeqCst);
                 if let Err(err) = runtimes.record(&session_id, body) {
                     eprintln!("记录会话 {session_id} 的事件失败：{err}");
                 }
@@ -656,10 +683,53 @@ impl Runtimes {
     }
 
     pub(crate) async fn stop(&self, session_id: &str) {
-        let handle = self.live.lock().unwrap().remove(session_id);
-        if let Some(handle) = handle {
-            let _ = handle.stop().await;
+        let entry = self.live.lock().unwrap().remove(session_id);
+        if let Some(entry) = entry {
+            let _ = entry.handle.stop().await;
         }
+    }
+
+    /// 已完成、空闲超过 `idle_ms`、没人在看、没有排队、能 resume 的会话：关掉 CLI，丢掉时间线副本。
+    /// 关之前先静音，适配器关进程时报的状态不进时间线，会话仍是已完成。下次用到时 `ensure_live` 接回。
+    pub(crate) async fn release_idle(&self, now: i64, idle_ms: i64) -> RuntimeResult<usize> {
+        let _opening = self.opening.lock().await;
+        let idle = |entry: &Live| now - entry.used_at.load(Ordering::SeqCst) >= idle_ms;
+        let candidates: Vec<String> = self
+            .live
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(_, entry)| idle(entry))
+            .map(|(id, _)| id.clone())
+            .collect();
+        let mut released = 0;
+        for session_id in candidates {
+            let Some(session) = self.store.session(&session_id).map_err(|e| e.to_string())? else {
+                continue;
+            };
+            let resumable = session.native_id.as_deref().is_some_and(|id| !id.is_empty());
+            if session.status != SessionStatus::Completed || !resumable || self.is_viewed(&session.task_id) {
+                continue;
+            }
+            let entry = {
+                let mut logs = self.logs.lock().unwrap();
+                if logs.get(&session_id).is_some_and(|log| !log.queue.is_empty()) {
+                    continue;
+                }
+                let mut live = self.live.lock().unwrap();
+                match live.get(&session_id) {
+                    Some(entry) if idle(entry) && !entry.handle.read_only() => {}
+                    _ => continue,
+                }
+                let entry = live.remove(&session_id).expect("entry just checked");
+                entry.muted.store(true, Ordering::SeqCst);
+                logs.remove(&session_id);
+                entry
+            };
+            let _ = entry.handle.stop().await;
+            released += 1;
+        }
+        Ok(released)
     }
 
     /// 不建线程起一次 CLI，只要模型目录，拿到就关掉。
@@ -682,7 +752,7 @@ impl Runtimes {
     }
 
     pub(crate) async fn stop_all(&self) {
-        let handles: Vec<_> = self.live.lock().unwrap().drain().map(|(_, h)| h).collect();
+        let handles: Vec<_> = self.live.lock().unwrap().drain().map(|(_, entry)| entry.handle).collect();
         for handle in handles {
             let _ = handle.stop().await;
         }
@@ -792,6 +862,127 @@ mod tests {
         let failed = store.attention("s").unwrap().unwrap();
         assert_eq!(failed.state, AttentionState::Failed);
         assert!(failed.unread);
+    }
+
+    /// 关进程时像 Codex 一样报「已停止」的假会话。
+    struct QuietlyStopped {
+        sink: mpsc::UnboundedSender<SessionEventBody>,
+        stopped: std::sync::atomic::AtomicUsize,
+    }
+
+    #[async_trait::async_trait]
+    impl aiwb_agents::DiffScopeProvider for QuietlyStopped {}
+
+    #[async_trait::async_trait]
+    impl aiwb_agents::AnnotationSink for QuietlyStopped {
+        async fn submit_annotation(&self, _note: PageAnnotation) -> Result<TurnDelivery, AgentError> {
+            Ok(TurnDelivery::Started)
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl AgentSession for QuietlyStopped {
+        async fn send_message(&self, _text: String) -> Result<(), AgentError> {
+            Ok(())
+        }
+
+        async fn answer_prompt(&self, _id: &str, _answer: aiwb_core::models::PromptAnswer) -> Result<(), AgentError> {
+            Ok(())
+        }
+
+        async fn stop(&self) -> Result<(), AgentError> {
+            self.stopped.fetch_add(1, Ordering::SeqCst);
+            let _ = self.sink.send(status(SessionStatus::Stopped));
+            Ok(())
+        }
+    }
+
+    /// 像 `ensure_live` 一样接上一个假会话，最后一次用到是 `used_at`。
+    fn attach(runtimes: &Arc<Runtimes>, used_at: i64) -> Arc<QuietlyStopped> {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let muted = Arc::new(AtomicBool::new(false));
+        let used = Arc::new(AtomicI64::new(used_at));
+        runtimes.spawn_pump("s".into(), rx, muted.clone(), used.clone());
+        let session = Arc::new(QuietlyStopped {
+            sink: tx,
+            stopped: Default::default(),
+        });
+        runtimes.live.lock().unwrap().insert(
+            "s".into(),
+            Live {
+                handle: session.clone(),
+                muted,
+                used_at: used,
+            },
+        );
+        session
+    }
+
+    fn resumable_runtimes() -> (Arc<Store>, Arc<Runtimes>) {
+        let (store, runtimes) = runtimes_with_task(SessionStatus::Completed);
+        store.set_session_native_id("s", "thread-1").unwrap();
+        (store, Arc::new(runtimes))
+    }
+
+    const MIN: i64 = 60_000;
+
+    #[tokio::test]
+    async fn idle_completed_session_is_released_without_changing_its_status() {
+        let (store, runtimes) = resumable_runtimes();
+        let session = attach(&runtimes, 0);
+        assert_eq!(runtimes.release_idle(30 * MIN, 30 * MIN).await.unwrap(), 1);
+        assert_eq!(session.stopped.load(Ordering::SeqCst), 1);
+        assert!(!runtimes.is_live("s"));
+        assert!(!runtimes.logs.lock().unwrap().contains_key("s"));
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        assert_eq!(store.session("s").unwrap().unwrap().status, SessionStatus::Completed);
+        assert!(store.events_since("s", 0).unwrap().is_empty(), "关进程时报的状态不进时间线");
+    }
+
+    #[tokio::test]
+    async fn sessions_in_use_are_kept() {
+        // 刚用过。
+        let (_store, runtimes) = resumable_runtimes();
+        attach(&runtimes, 10 * MIN);
+        assert_eq!(runtimes.release_idle(30 * MIN, 30 * MIN).await.unwrap(), 0);
+
+        // 有人正看着。
+        let (_store, runtimes) = resumable_runtimes();
+        attach(&runtimes, 0);
+        runtimes.set_viewing(1, Some("t".into())).unwrap();
+        assert_eq!(runtimes.release_idle(30 * MIN, 30 * MIN).await.unwrap(), 0);
+
+        // 还有排队。
+        let (_store, runtimes) = resumable_runtimes();
+        attach(&runtimes, 0);
+        runtimes
+            .record(
+                "s",
+                SessionEventBody::QueueChanged {
+                    items: vec![QueuedTurn {
+                        id: "q".into(),
+                        text: "下一条".into(),
+                        images: Vec::new(),
+                        client_id: String::new(),
+                    }],
+                },
+            )
+            .unwrap();
+        assert_eq!(runtimes.release_idle(30 * MIN, 30 * MIN).await.unwrap(), 0);
+
+        // 没跑完，或者没有原生 id 接不回去。
+        let (_store, runtimes) = runtimes_with_task(SessionStatus::Completed);
+        let runtimes = Arc::new(runtimes);
+        attach(&runtimes, 0);
+        assert_eq!(runtimes.release_idle(30 * MIN, 30 * MIN).await.unwrap(), 0);
+        for kept in [SessionStatus::Running, SessionStatus::NeedsInput, SessionStatus::Failed] {
+            let (store, runtimes) = runtimes_with_task(kept);
+            store.set_session_native_id("s", "thread-1").unwrap();
+            let runtimes = Arc::new(runtimes);
+            attach(&runtimes, 0);
+            assert_eq!(runtimes.release_idle(30 * MIN, 30 * MIN).await.unwrap(), 0);
+            assert!(runtimes.is_live("s"));
+        }
     }
 
     #[test]
