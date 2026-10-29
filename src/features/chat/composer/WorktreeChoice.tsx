@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { CARD_BG, CARD_BG_HOT, CARD_SHADOW } from "./context-card";
+import { CARD_BG, CARD_SHADOW } from "./context-card";
 
 export function WorktreeToggle({
   pressed,
@@ -15,8 +15,8 @@ export function WorktreeToggle({
       aria-pressed={pressed}
       className="inline-flex max-w-full items-center gap-1.5 rounded-[10px] border py-1 pl-2 pr-2.5 text-[13px] leading-5 text-[#ececef]"
       style={{
-        backgroundImage: pressed ? CARD_BG_HOT : CARD_BG,
-        borderColor: pressed ? "#3a3a42" : "#2e2e33",
+        background: pressed ? "#19365b" : CARD_BG,
+        borderColor: pressed ? "#5b9cf5" : "#2e2e33",
         boxShadow: CARD_SHADOW,
       }}
       onClick={(event) => {

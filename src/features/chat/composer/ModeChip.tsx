@@ -29,17 +29,17 @@ export function ModeChip({
       aria-label={dismissLabel}
       disabled={disabled}
       className={cn(
-        "group relative inline-flex h-8 shrink-0 items-center gap-1 rounded-full bg-zinc-100 text-sm text-zinc-950 disabled:cursor-not-allowed disabled:opacity-40",
-        iconOnly ? "w-8 justify-center px-0" : "px-2.5",
+        "group relative inline-flex h-8 shrink-0 items-center gap-1 rounded-full text-sm text-[#cfcfcf] hover:bg-zinc-800 hover:text-zinc-50 disabled:cursor-not-allowed disabled:opacity-40",
+        iconOnly ? "w-8 justify-center px-0" : "px-2",
       )}
       onClick={(event) => {
         event.stopPropagation();
         onDismiss();
       }}
     >
-      {icon}
+      <span className="inline-flex shrink-0 group-hover:hidden" aria-hidden>{icon}</span>
+      <X className="hidden h-3.5 w-3.5 shrink-0 group-hover:block" aria-hidden />
       {iconOnly ? null : <span>{label}</span>}
-      <X className="h-3 w-3 shrink-0" aria-hidden />
       <span
         role="tooltip"
         data-mode-tooltip={id}
