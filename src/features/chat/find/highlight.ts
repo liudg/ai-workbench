@@ -20,13 +20,16 @@ export function clearThreadMarks(root: ParentNode): void {
   });
 }
 
-export function scrollHitIntoView(hit: TextHit, container: HTMLElement): void {
-  const parent = hit.node.parentElement;
-  if (!parent) return;
-  const rect = parent.getBoundingClientRect();
+export function scrollCurrentHitIntoView(container: HTMLElement): boolean {
+  // 绘制高亮会替换原文字节点，定位必须使用绘制后仍在文档里的 mark。
+  const mark = container.querySelector<HTMLElement>('mark[data-thread-find-mark="current"]');
+  if (!mark) return false;
+  const rect = mark.getBoundingClientRect();
   const box = container.getBoundingClientRect();
-  if (rect.top >= box.top + 8 && rect.bottom <= box.bottom - 8) return;
-  parent.scrollIntoView({ block: "center", inline: "nearest" });
+  if (rect.top < box.top + 8 || rect.bottom > box.bottom - 8) {
+    mark.scrollIntoView({ behavior: "instant", block: "center", inline: "nearest" });
+  }
+  return true;
 }
 
 function paintMarks(hits: readonly TextHit[], current: number) {

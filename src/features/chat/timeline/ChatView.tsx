@@ -135,9 +135,10 @@ function ChatTimeline({
     onTimelineWheel,
     onPointerDown,
     pausePinForToggle,
+    holdScrollPosition,
     ...anchor
   } = useTimelineFollow(session.id, layoutKey);
-  const find = useThreadFind(scrollRef, layoutKey);
+  const find = useThreadFind(scrollRef, layoutKey, holdScrollPosition);
   const virtual = useTurnVirtualizer({
     sessionId: session.id,
     keys: trackedKeys,

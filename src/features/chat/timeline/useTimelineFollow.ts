@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, type WheelEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, type WheelEvent } from "react";
 
 import { useChatHost } from "../host";
 import {
@@ -17,6 +17,7 @@ export function useTimelineFollow(sessionId: string, layoutKey: string): Timelin
   onTimelineWheel: (event: WheelEvent<HTMLDivElement>) => void;
   onPointerDown: () => void;
   pausePinForToggle: () => void;
+  holdScrollPosition: () => void;
 } {
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -72,6 +73,19 @@ export function useTimelineFollow(sessionId: string, layoutKey: string): Timelin
     });
   };
   const applyScroll = (aboveDelta: number) => applyScrollRef.current(aboveDelta);
+
+  const holdScrollPosition = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    followRef.current = false;
+    anchorTopRef.current = el.scrollTop;
+    distanceRef.current = distanceFromBottom(el.scrollHeight, el.scrollTop, el.clientHeight);
+    // 查找的程序滚动不应被滚动监听器重新判成贴底，尤其命中就在底部时。
+    pinningRef.current = true;
+    requestAnimationFrame(() => {
+      pinningRef.current = false;
+    });
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -215,5 +229,6 @@ export function useTimelineFollow(sessionId: string, layoutKey: string): Timelin
     onTimelineWheel,
     onPointerDown,
     pausePinForToggle,
+    holdScrollPosition,
   };
 }

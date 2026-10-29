@@ -1,17 +1,22 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 
 import { isImeKey } from "../keyboard";
-import { clearThreadHighlights, clearThreadMarks, paintThreadHits, scrollHitIntoView } from "./highlight";
+import { clearThreadHighlights, clearThreadMarks, paintThreadHits, scrollCurrentHitIntoView } from "./highlight";
 import { collectTextHits, stepHit } from "./hits";
 import { isThreadFindChord } from "./keyboard";
 
 export const OPEN_THREAD_FIND = "ai-workbench:find-in-thread";
 
-export function useThreadFind(rootRef: RefObject<HTMLElement | null>, layoutKey: string) {
+export function useThreadFind(
+  rootRef: RefObject<HTMLElement | null>,
+  layoutKey: string,
+  onNavigate: () => void,
+) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
   const [count, setCount] = useState(0);
+  const [navigation, setNavigation] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const indexRef = useRef(0);
   const scrolledKey = useRef("");
@@ -27,11 +32,12 @@ export function useThreadFind(rootRef: RefObject<HTMLElement | null>, layoutKey:
     const onOpen = (event: Event) => {
       const detail = (event as CustomEvent<{ query?: string }>).detail;
       setOpen(true);
+      scrolledKey.current = "";
+      setNavigation((value) => value + 1);
       if (detail && typeof detail.query === "string") {
         indexRef.current = 0;
         setIndex(0);
         setQuery(detail.query);
-        scrolledKey.current = "";
       }
       focusInput();
     };
@@ -42,6 +48,8 @@ export function useThreadFind(rootRef: RefObject<HTMLElement | null>, layoutKey:
       event.preventDefault();
       event.stopPropagation();
       setOpen(true);
+      scrolledKey.current = "";
+      setNavigation((value) => value + 1);
       focusInput();
     };
     window.addEventListener(OPEN_THREAD_FIND, onOpen);
@@ -59,6 +67,7 @@ export function useThreadFind(rootRef: RefObject<HTMLElement | null>, layoutKey:
       setCount(0);
       return;
     }
+    let scrollFrame: number | undefined;
     const observer = new MutationObserver(() => scan(false));
     const scan = (scroll: boolean) => {
       observer.disconnect();
@@ -71,19 +80,25 @@ export function useThreadFind(rootRef: RefObject<HTMLElement | null>, layoutKey:
       }
       setCount((previous) => (previous === hits.length ? previous : hits.length));
       paintThreadHits(hits, hits.length === 0 ? -1 : bounded);
-      const key = `${query}\n${bounded}\n${hits.length}`;
+      const key = `${query}\n${bounded}`;
       if (scroll && hits[bounded] && scrolledKey.current !== key) {
-        scrolledKey.current = key;
-        scrollHitIntoView(hits[bounded], root);
+        // 等虚拟列表完成本轮布局；回调里取当前 mark，避免重扫后拿到旧节点。
+        scrollFrame = requestAnimationFrame(() => {
+          if (scrollCurrentHitIntoView(root)) {
+            scrolledKey.current = key;
+            onNavigate();
+          }
+        });
       }
       observer.observe(root, { subtree: true, childList: true, characterData: true });
     };
     scan(true);
     return () => {
       observer.disconnect();
+      if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame);
       clearThreadHighlights(root);
     };
-  }, [layoutKey, open, query, index, rootRef]);
+  }, [layoutKey, open, query, index, navigation, rootRef, onNavigate]);
 
   const close = () => {
     setOpen(false);
@@ -104,6 +119,8 @@ export function useThreadFind(rootRef: RefObject<HTMLElement | null>, layoutKey:
     indexRef.current = next;
     scrolledKey.current = "";
     setIndex(next);
+    // 一个结果时索引不会变，但每次导航仍要把它带回视口。
+    setNavigation((value) => value + 1);
   };
 
   return {
