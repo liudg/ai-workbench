@@ -8,6 +8,8 @@ use serde_json::{json, Value};
 use super::catalog;
 use super::process::version_key;
 use super::prompts::{self, Pending};
+use super::rpc::RpcError;
+use super::runtime::services_race;
 use super::updates::UpdateMap;
 use aiwb_core::models::{
     FileStatus, PromptAnswer, PromptKind, SessionEventBody, SessionStatus, ToolStatus,
@@ -23,6 +25,21 @@ fn map() -> UpdateMap {
 
 fn apply_all(map: &mut UpdateMap, updates: &[Value]) -> Vec<SessionEventBody> {
     updates.iter().flat_map(|update| map.apply(update)).collect()
+}
+
+/// 同时起几个 `agent acp` 时 `cursor/list_available_models` 的实际回包。
+#[test]
+fn concurrent_startup_error_is_retried_but_auth_is_not() {
+    let race = RpcError::from_value(&json!({
+        "code": -32603,
+        "message": "Internal error",
+        "data": {"message": "Failed to initialize ACP services"}
+    }));
+    assert!(services_race(&race));
+    let other = RpcError::from_value(&json!({"code": -32603, "message": "Internal error"}));
+    assert!(!services_race(&other));
+    let auth = RpcError::from_value(&json!({"code": -32000, "message": "Authentication required"}));
+    assert!(!services_race(&auth));
 }
 
 #[test]

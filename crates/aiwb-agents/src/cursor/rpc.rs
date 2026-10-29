@@ -14,6 +14,7 @@ use crate::AgentError;
 /// ACP 错误码。`-32000` 是 `authRequired`（`@agentclientprotocol/sdk` `RequestError.authRequired`）。
 pub const AUTH_REQUIRED: i64 = -32000;
 pub const METHOD_NOT_FOUND: i64 = -32601;
+pub const INTERNAL_ERROR: i64 = -32603;
 
 #[derive(Debug, Clone)]
 pub struct RpcError {

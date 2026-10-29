@@ -1,6 +1,8 @@
 //! `agent acp` 进程和一条 ACP 会话。
 //!
 //! 启动顺序：`initialize` → `cursor/list_available_models` → `session/new` 或 `session/load`。
+//! 几个 `agent acp` 同时起时，Cursor 的 `ensureSharedServices`（`3635.index.js`）会互相撞上，
+//! 报 `Failed to initialize ACP services`。失败不缓存，所以本进程里排队握手，撞上了再重试。
 //! 只探模型目录（不 `persist`、不 resume）时不建会话，免得在 `~/.cursor/acp-sessions` 留下空会话。
 //! `session/load` 先把整段历史以 `session/update` 推完再回包；宿主已有时间线（`skip_history`）时丢掉这些推送。
 //!
@@ -10,7 +12,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use serde_json::{json, Value};
@@ -31,6 +33,18 @@ use aiwb_core::models::{AgentCatalog, PromptAnswer, SessionEventBody, SessionSta
 const STDERR_CAP: usize = 4000;
 const HANDSHAKE: Duration = Duration::from_secs(60);
 const SETTING: Duration = Duration::from_secs(30);
+const SERVICES_RETRIES: u32 = 3;
+const SERVICES_BACKOFF: Duration = Duration::from_millis(500);
+
+/// 同一时刻只让一个 `agent acp` 走初始化。
+fn startup_gate() -> &'static tokio::sync::Mutex<()> {
+    static GATE: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+    GATE.get_or_init(|| tokio::sync::Mutex::new(()))
+}
+
+pub fn services_race(err: &RpcError) -> bool {
+    err.code == rpc::INTERNAL_ERROR && err.message.contains("Failed to initialize ACP services")
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Replay {
@@ -194,7 +208,12 @@ fn start_io(
 
 impl Shared {
     async fn call(&self, method: &str, params: Value, timeout: Option<Duration>) -> Result<Value, AgentError> {
-        match self.rpc.request(method, params, timeout).await {
+        let result = self.rpc.request(method, params, timeout).await;
+        self.settle(method, result)
+    }
+
+    fn settle(&self, method: &str, result: Result<Result<Value, RpcError>, AgentError>) -> Result<Value, AgentError> {
+        match result {
             Ok(Ok(value)) => Ok(value),
             Ok(Err(err)) => Err(self.rpc_error(method, err)),
             Err(AgentError::Closed) => Err(self.exited()),
@@ -224,6 +243,7 @@ impl Shared {
         persist: bool,
         replay_history: bool,
     ) -> Result<(), AgentError> {
+        let gate = startup_gate().lock().await;
         self.call(
             "initialize",
             json!({
@@ -238,9 +258,8 @@ impl Shared {
             Some(HANDSHAKE),
         )
         .await?;
-        let models = self
-            .call("cursor/list_available_models", json!({}), Some(HANDSHAKE))
-            .await?;
+        let models = self.list_models().await?;
+        drop(gate);
         catalog::apply_model_list(&mut self.catalog.lock().unwrap(), &models);
         let cwd = self.project.to_string_lossy().to_string();
         // 没发过消息的会话只有 meta.json，`session/load` 认不出来。里面没有历史，换一个新会话。
@@ -285,6 +304,22 @@ impl Shared {
             status: SessionStatus::Completed,
         });
         Ok(())
+    }
+
+    async fn list_models(&self) -> Result<Value, AgentError> {
+        const METHOD: &str = "cursor/list_available_models";
+        let mut attempt = 0;
+        loop {
+            let result = self.rpc.request(METHOD, json!({}), Some(HANDSHAKE)).await;
+            if let Ok(Err(err)) = &result {
+                if services_race(err) && attempt < SERVICES_RETRIES {
+                    attempt += 1;
+                    tokio::time::sleep(SERVICES_BACKOFF * attempt).await;
+                    continue;
+                }
+            }
+            return self.settle(METHOD, result);
+        }
     }
 
     /// `session/new` / `session/load` 回包里的模式和模型参数。
