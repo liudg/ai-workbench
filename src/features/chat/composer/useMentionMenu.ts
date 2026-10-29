@@ -7,7 +7,7 @@ import {
   insertMention,
   mentionPickText,
   mentionAddEnabled,
-  MENTION_ADD_ORDER,
+  mentionAddItems,
   type MentionAddId,
   type MentionFile,
 } from "./mentions";
@@ -46,7 +46,8 @@ export function useMentionMenu(input: {
   const searchQuery = input.mentionOpen && !hidden && input.mentionQuery ? input.mentionQuery : null;
   const search = useMentionSearch(input.host, searchQuery);
   const show = input.mentionOpen && !hidden;
-  const activeAdd = MENTION_ADD_ORDER[Math.min(index, MENTION_ADD_ORDER.length - 1)] ?? "files";
+  const addItems = mentionAddItems(input.goalSupport, input.planSupport);
+  const activeAdd = addItems[Math.min(index, addItems.length - 1)] ?? "files";
   const hasActive = show
     ? input.mentionAdd
       ? mentionAddEnabled(activeAdd, input.goalSupport, input.planSupport)
@@ -59,9 +60,9 @@ export function useMentionMenu(input: {
   }, [input.mentionQuery]);
 
   useEffect(() => {
-    const count = input.mentionAdd ? MENTION_ADD_ORDER.length : search.hits.length;
+    const count = input.mentionAdd ? addItems.length : search.hits.length;
     setIndex((current) => (count === 0 ? 0 : Math.min(current, count - 1)));
-  }, [input.mentionAdd, search.hits.length]);
+  }, [input.mentionAdd, addItems.length, search.hits.length]);
 
   const write = (next: { text: string; caret: number }) => {
     input.setText(next.text);
@@ -114,6 +115,7 @@ export function useMentionMenu(input: {
   return {
     show,
     index,
+    addItems,
     hits: search.hits,
     pending: search.pending,
     error: search.error,
@@ -123,7 +125,7 @@ export function useMentionMenu(input: {
       input.textareaRef.current?.focus();
     },
     move: (key: "ArrowDown" | "ArrowUp") => {
-      const count = input.mentionAdd ? MENTION_ADD_ORDER.length : search.hits.length;
+      const count = input.mentionAdd ? addItems.length : search.hits.length;
       setIndex((current) => stepIndex(current, count, key));
     },
     apply: () => {

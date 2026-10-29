@@ -64,6 +64,7 @@ export function Composer({
         {c.mentions.show && (
           <MentionMenu
             mode={view.mentionAdd ? "add" : "files"}
+            items={c.mentions.addItems}
             active={c.mentions.index}
             goalSupport={c.goalSupport}
             planSupport={view.planSupport}
@@ -75,7 +76,7 @@ export function Composer({
             onPick={c.mentions.pick}
           />
         )}
-        {view.skillOpen && (
+        {c.skillShown && (
           <SkillMenu
             matches={view.skillMatches}
             active={c.activeSkill}
@@ -88,7 +89,7 @@ export function Composer({
         {c.reviewOpen && (
           <ReviewMenu sessionId={session.id} loadTargets={loadTargets} onStart={c.startReview} />
         )}
-        {view.slashOpen && !c.reviewOpen && (
+        {c.slashShown && !c.reviewOpen && (
           <SlashMenu
             matches={view.slashMatches}
             selected={view.slashMatches.length === 0 ? -1 : slashSelected}

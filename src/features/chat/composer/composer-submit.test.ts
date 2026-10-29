@@ -37,6 +37,8 @@ test("plan and review commands never become a chat message", () => {
     text: "补齐回归",
   });
   assert.deepEqual(decideSubmit({ ...base, text: "/plan", goalDraft: true }).type, "toggle-plan");
+  assert.equal(decideSubmit({ ...base, text: "/goal ", supportsGoals: true }).type, "enter-goal");
+  assert.equal(decideSubmit({ ...base, text: "/goal ", supportsGoals: false }).type, "send-images");
   assert.equal(decideSubmit({ ...base, text: "补齐回归", goalDraft: true, supportsGoals: false }).type, "send-images");
   assert.equal(
     decideSubmit({ ...base, text: "改一下", goalDraft: true, editingId: "q1" }).type,
@@ -205,12 +207,12 @@ test("selected text stays out of the box until submit, and a removed snippet is 
 });
 
 test("slash menu and effort follow the same rules as the composer", () => {
-  assert.deepEqual(decideSlash({ name: "/review" }, { supports_review: true }, false), { type: "review" });
-  assert.deepEqual(decideSlash({ name: "/plan" }, { supports_plan: true }, true), {
-    type: "toggle-plan",
-    mode: "default",
-  });
-  assert.deepEqual(decideSlash({ name: "/help", takes_args: true }, {}, false), {
+  assert.deepEqual(decideSlash({ name: "/review" }, { supports_review: true }), { type: "review" });
+  // 和 `@` 菜单的「计划」「目标」同一个动作；Agent 不支持时只是普通命令。
+  assert.deepEqual(decideSlash({ name: "/plan", takes_args: true }, { supports_plan: true }), { type: "plan" });
+  assert.deepEqual(decideSlash({ name: "/goal", takes_args: true }, { supports_goals: true }), { type: "goal" });
+  assert.deepEqual(decideSlash({ name: "/goal", takes_args: true }, {}), { type: "fill", text: "/goal " });
+  assert.deepEqual(decideSlash({ name: "/help", takes_args: true }, {}), {
     type: "fill",
     text: "/help ",
   });

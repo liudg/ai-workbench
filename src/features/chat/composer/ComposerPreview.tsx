@@ -23,7 +23,7 @@ import { effortForModel } from "./composer-submit";
 import { fastTier, tuningForModel } from "./model-picker";
 import { useComposerMenu } from "./useComposerMenu";
 import { activeGoal } from "./goal";
-import { atToken, clearAtToken, insertMention, mentionFiles } from "./mentions";
+import { atToken, clearAtToken, insertMention, mentionAddItems, mentionFiles } from "./mentions";
 import { QueuedMessageList } from "./QueueStrip";
 import { toggleFollowUpQueueMode, type FollowUpQueueMode } from "./follow-up-queue-mode";
 
@@ -423,6 +423,7 @@ export default function ComposerPreview() {
         {view.mentionOpen && (
           <MentionMenu
             mode={query ? "files" : "add"}
+            items={mentionAddItems(view.goalSupport, view.planSupport)}
             active={0}
             goalSupport={view.goalSupport}
             planSupport={view.planSupport}

@@ -56,8 +56,6 @@ export const DESKTOP_ZH = {
   mentionPending: "正在搜索…",
   mentionEmpty: "没有匹配的文件",
   mentionLoadingCaps: "正在读取能力…",
-  mentionNoGoal: "这个 Agent 没有目标",
-  mentionNoPlan: "这个 Agent 没有计划模式",
   skillLoading: "正在读取技能…",
   skillNone: "没有可用技能",
   skillNoMatch: "没有匹配的技能",

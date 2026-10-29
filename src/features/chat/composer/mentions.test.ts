@@ -8,6 +8,7 @@ import {
   mentionPickText,
   highlightParts,
   insertMention,
+  mentionAddItems,
   mentionFiles,
   mentionSupport,
   quoteMentionPath,
@@ -63,4 +64,11 @@ test("goal and plan stay disabled until capabilities are known", () => {
   assert.equal(mentionSupport(false, false), "loading");
   assert.equal(mentionSupport(true, false), "unsupported");
   assert.equal(mentionSupport(true, true), "ready");
+});
+
+test("unsupported goal and plan are left out of the add menu", () => {
+  assert.deepEqual(mentionAddItems("ready", "ready"), ["files", "goal", "plan"]);
+  assert.deepEqual(mentionAddItems("unsupported", "ready"), ["files", "plan"]);
+  assert.deepEqual(mentionAddItems("unsupported", "unsupported"), ["files"]);
+  assert.deepEqual(mentionAddItems("loading", "loading"), ["files", "goal", "plan"]);
 });

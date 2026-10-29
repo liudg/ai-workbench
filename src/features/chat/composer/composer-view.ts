@@ -67,15 +67,20 @@ export function composerCaps(
   return catalog?.capabilities ?? profile?.capabilities;
 }
 
-/** 目录一到，斜杠命令只认这份目录，哪怕它是空的。`/plan` 由作曲栏自己处理，支持计划模式就列出。 */
+/** 目录一到，斜杠命令只认这份目录，哪怕它是空的。`/plan`、`/goal` 和 `@` 菜单里的「计划」「目标」是同一个入口，
+ *  Agent 支持就由作曲栏自己处理并列出，说明也和 `@` 菜单一致。 */
 export function composerCommands(
   catalog: AgentCatalog | undefined,
   profile: AgentProfile | undefined,
 ): SlashCommand[] {
-  const listed = catalog ? [...catalog.commands] : profile?.commands ? [...profile.commands] : [];
-  const plan = composerCaps(catalog, profile)?.supports_plan;
-  if (plan && !listed.some((command) => command.name === "/plan")) {
-    listed.unshift({ name: "/plan", hint: "", takes_args: true });
+  let listed = catalog ? [...catalog.commands] : profile?.commands ? [...profile.commands] : [];
+  const caps = composerCaps(catalog, profile);
+  const own: SlashCommand[] = [];
+  if (caps?.supports_plan) own.push({ name: "/plan", hint: DESKTOP_ZH.planOn, takes_args: true });
+  if (caps?.supports_goals) own.push({ name: "/goal", hint: DESKTOP_ZH.goalHint, takes_args: true });
+  for (const command of own) {
+    const index = listed.findIndex((item) => item.name === command.name);
+    listed = index < 0 ? [command, ...listed] : listed.map((item, at) => (at === index ? command : item));
   }
   return listed;
 }
@@ -104,7 +109,8 @@ export function deriveComposerView(input: ComposerViewInput) {
   const menusLocked = held || busy || dead || occupied;
   const token = caps?.supports_slash && !pendingId && !menusLocked ? slashToken(input.text) : null;
   const slashMatches = token ? filterSlash([...input.commands], token) : [];
-  const slashOpen = token !== null && (slashMatches.length > 0 || token.length > 1);
+  // 敲完命令名、开始写参数后菜单收起，回车就是发送。
+  const slashOpen = token !== null && !/\s/.test(input.text) && (slashMatches.length > 0 || token.length > 1);
   const mentionQuery =
     !pendingId && !menusLocked && !slashOpen ? atToken(input.text, input.caret) : null;
   const mentionOpen = mentionQuery !== null;

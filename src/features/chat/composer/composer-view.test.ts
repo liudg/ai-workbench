@@ -196,6 +196,7 @@ test("slash stays closed while a prompt is waiting or the turn is busy", () => {
   assert.equal(view({ text: "", snippetCount: 1, events: [prompt] }).sendDisabled, true);
   assert.equal(view({ text: "/review", status: "running" }).slashOpen, false);
   assert.equal(view({ text: "/review" }).slashOpen, true);
+  assert.equal(view({ text: "/review " }).slashOpen, false);
   assert.equal(view({ text: "  ", fileCount: 0 }).sendDisabled, true);
   assert.equal(view({ text: "", fileCount: 1 }).sendDisabled, false);
   assert.equal(view({ text: "", snippetCount: 1 }).sendDisabled, false);
@@ -476,6 +477,19 @@ test("network and commands come from this session payload", () => {
   assert.deepEqual(names(composerCommands(bare, profile)), ["/plan"]);
   const noPlan = { ...catalog, commands: [], capabilities: { ...catalog.capabilities, supports_plan: false } };
   assert.deepEqual(names(composerCommands(noPlan, profile)), []);
+  // Agent 自己也报了 /plan、/goal 时换成作曲栏自己的那条，说明和 `@` 菜单一致。
+  const own = {
+    ...catalog,
+    commands: [
+      { name: "/goal", hint: "set or view the goal", takes_args: true },
+      { name: "/plan", hint: "plan", takes_args: false },
+    ],
+    capabilities: { ...catalog.capabilities, supports_plan: true, supports_goals: true },
+  };
+  assert.deepEqual(composerCommands(own, profile), [
+    { name: "/goal", hint: "设置要持续追求的目标", takes_args: true },
+    { name: "/plan", hint: "开启计划模式", takes_args: true },
+  ]);
 });
 
 test("plan and goal chips are exclusive and the goal bar follows the goal", () => {

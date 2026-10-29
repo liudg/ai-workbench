@@ -56,6 +56,7 @@ export function useComposerController(host: ComposerHost, session: Session, even
   const [reviewOpen, setReviewOpen] = useState(false);
   const [slashIndex, setSlashIndex] = useState(0);
   const [skillIndex, setSkillIndex] = useState(0);
+  const [dismissedPopup, setDismissedPopup] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const submitFlight = useRef<SubmitFlight | null>(null);
@@ -99,6 +100,19 @@ export function useComposerController(host: ComposerHost, session: Session, even
     resumable: true,
   });
   const goalSupport = goal.publishError ? "unsupported" : view.goalSupport;
+  // `@` 菜单和斜杠命令共用这两个动作，进入的状态和最终发出的内容一致。
+  const enterGoal = () => {
+    if (collaborationMode(events) === "plan") void host.setCollaborationMode("default");
+    goal.enter();
+  };
+  const togglePlan = () => {
+    if (view.planOn) {
+      void host.setCollaborationMode("default");
+      return;
+    }
+    goal.dismiss();
+    void host.setCollaborationMode("plan");
+  };
   const mentions = useMentionMenu({
     host,
     text,
@@ -111,19 +125,14 @@ export function useComposerController(host: ComposerHost, session: Session, even
     mentionQuery: view.mentionQuery,
     goalSupport,
     planSupport: view.planSupport,
-    onGoal: () => {
-      if (collaborationMode(events) === "plan") void host.setCollaborationMode("default");
-      goal.enter();
-    },
-    onPlan: () => {
-      if (view.planOn) {
-        void host.setCollaborationMode("default");
-        return;
-      }
-      goal.dismiss();
-      void host.setCollaborationMode("plan");
-    },
+    onGoal: enterGoal,
+    onPlan: togglePlan,
   });
+  // Esc 收起的是这一个过滤词下的菜单，接着打字会重新出现。
+  const popupKey = view.slashOpen ? `slash:${view.token}` : view.skillOpen ? `skill:${view.skillQuery}` : null;
+  const popupHidden = popupKey !== null && popupKey === dismissedPopup;
+  const slashShown = view.slashOpen && !popupHidden;
+  const skillShown = view.skillOpen && !popupHidden;
   const activeSlash = view.slashMatches[Math.min(slashIndex, view.slashMatches.length - 1)];
   const activeSkill = view.skillMatches[Math.min(skillIndex, Math.max(view.skillMatches.length - 1, 0))];
 
@@ -191,11 +200,16 @@ export function useComposerController(host: ComposerHost, session: Session, even
     setReviewOpen,
     setSlashIndex,
     setSkillIndex,
+    slashShown,
+    skillShown,
+    dismissPopup: () => setDismissedPopup(popupKey),
     textareaRef,
     caps,
     view,
     goalDraft: goal.localGoal,
     exitGoal: goal.dismiss,
+    togglePlan,
+    enterGoal,
     supportsGoals,
     submitGoal: goal.submit,
     mentions,
@@ -241,6 +255,8 @@ export function useComposerController(host: ComposerHost, session: Session, even
     view,
     activeSkill,
     slashIndex,
+    slashShown,
+    skillShown,
     rememberCaret: (element: HTMLTextAreaElement) => rememberCaret(setCaret, element),
     cancelEdit: () => cancelComposerEdit(run),
     applySlash: (command: Parameters<typeof applyComposerSlash>[1]) => applyComposerSlash(run, command),

@@ -8,6 +8,7 @@ export type ComposerSubmit =
   | { type: "toggle-plan"; mode: "plan" | "default" }
   | ({ type: "plan-message"; text: string } & SnippetClear)
   | { type: "set-goal"; text: string }
+  | { type: "enter-goal" }
   | { type: "open-review" }
   | { type: "noop" }
   | ({ type: "update-queue"; id: string; text: string; images: string[] } & SnippetClear)
@@ -41,6 +42,7 @@ export function decideSubmit(input: {
     return { type: "plan-message", ...withSnippets(planRequest[1].trim(), snippets) };
   }
   if (input.supportsReview && value === "/review") return { type: "open-review" };
+  if (input.supportsGoals && value === "/goal") return { type: "enter-goal" };
 
   const imagePaths = imagePathsOf(input);
   const referenced = referencedFiles(input);
@@ -116,15 +118,14 @@ function attachmentBody(
   return `${value}\n\n附件：${label}`;
 }
 
+/** 从菜单选中命令。`/plan`、`/goal` 和 `@` 菜单的「计划」「目标」走同一个动作；其它命令补全。 */
 export function decideSlash(
   command: { name: string; takes_args?: boolean },
-  caps: { supports_review?: boolean; supports_plan?: boolean } | undefined,
-  planOn: boolean,
-): { type: "review" } | { type: "toggle-plan"; mode: "plan" | "default" } | { type: "fill"; text: string } {
+  caps: { supports_review?: boolean; supports_plan?: boolean; supports_goals?: boolean } | undefined,
+): { type: "review" } | { type: "plan" } | { type: "goal" } | { type: "fill"; text: string } {
   if (command.name === "/review" && caps?.supports_review) return { type: "review" };
-  if (command.name === "/plan" && caps?.supports_plan) {
-    return { type: "toggle-plan", mode: planOn ? "default" : "plan" };
-  }
+  if (command.name === "/plan" && caps?.supports_plan) return { type: "plan" };
+  if (command.name === "/goal" && caps?.supports_goals) return { type: "goal" };
   return { type: "fill", text: command.takes_args ? `${command.name} ` : command.name };
 }
 

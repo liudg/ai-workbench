@@ -12,51 +12,27 @@ const idle = {
   hasActiveSkill: false,
   slashOpen: false,
   hasActiveSlash: false,
-  token: null as string | null,
-  text: "你好",
-  skillQuery: null as string | null,
   mentionOpen: false,
   hasActiveMention: false,
 };
 
-test("composer keys complete a slash or skill before sending", () => {
+test("composer keys pick from an open menu instead of sending", () => {
   assert.equal(stepIndex(0, 3, "ArrowUp"), 2);
   assert.equal(stepIndex(2, 3, "ArrowDown"), 0);
   assert.deepEqual(composerKeyIntent({ ...idle, key: "Escape", editing: true }), { type: "cancel-edit" });
   assert.equal(composerKeyIntent({ ...idle, key: "Escape" }), null);
-  assert.deepEqual(
-    composerKeyIntent({
-      ...idle,
-      slashOpen: true,
-      hasActiveSlash: true,
-      token: "/re",
-      activeSlashName: "/review",
-      text: "/re",
-    }),
-    { type: "apply-slash" },
-  );
-  assert.deepEqual(
-    composerKeyIntent({
-      ...idle,
-      slashOpen: true,
-      hasActiveSlash: true,
-      token: "/review",
-      activeSlashName: "/review",
-      text: "/review now",
-    }),
-    { type: "submit" },
-  );
-  assert.deepEqual(
-    composerKeyIntent({
-      ...idle,
-      skillOpen: true,
-      hasActiveSkill: true,
-      skillQuery: "re",
-      activeSkillMention: "review",
-      text: "$re",
-    }),
-    { type: "apply-skill" },
-  );
+  const slash = { ...idle, slashOpen: true, hasActiveSlash: true };
+  assert.deepEqual(composerKeyIntent(slash), { type: "apply-slash", run: true });
+  assert.deepEqual(composerKeyIntent({ ...slash, key: "Tab" }), { type: "apply-slash", run: false });
+  assert.deepEqual(composerKeyIntent({ ...slash, key: "Escape" }), { type: "dismiss-popup" });
+  assert.deepEqual(composerKeyIntent({ ...slash, key: "ArrowDown" }), { type: "slash-move", key: "ArrowDown" });
+  assert.deepEqual(composerKeyIntent({ ...slash, hasActiveSlash: false }), { type: "submit" });
+  assert.equal(composerKeyIntent({ ...slash, shiftKey: true }), null);
+  const skill = { ...idle, skillOpen: true, hasActiveSkill: true };
+  assert.deepEqual(composerKeyIntent(skill), { type: "apply-skill" });
+  assert.deepEqual(composerKeyIntent({ ...skill, key: "Tab" }), { type: "apply-skill" });
+  assert.deepEqual(composerKeyIntent({ ...skill, key: "Escape" }), { type: "dismiss-popup" });
+  assert.deepEqual(composerKeyIntent({ ...skill, hasActiveSkill: false }), { type: "submit" });
   assert.equal(composerKeyIntent({ ...idle, key: "Enter", shiftKey: true }), null);
   assert.equal(composerKeyIntent({ ...idle, composing: true }), null);
   assert.deepEqual(composerKeyIntent(idle), { type: "submit" });
@@ -70,11 +46,11 @@ test("composer keys complete a slash or skill before sending", () => {
     type: "dismiss-mention",
   });
   assert.deepEqual(
-    composerKeyIntent({ ...idle, mentionOpen: true, hasActiveMention: true, text: "@" }),
+    composerKeyIntent({ ...idle, mentionOpen: true, hasActiveMention: true }),
     { type: "apply-mention" },
   );
   assert.deepEqual(
-    composerKeyIntent({ ...idle, mentionOpen: true, hasActiveMention: false, text: "@" }),
+    composerKeyIntent({ ...idle, mentionOpen: true, hasActiveMention: false }),
     { type: "mention-noop" },
   );
   assert.deepEqual(composerKeyIntent({ ...idle, key: "ArrowDown", mentionOpen: true }), {
@@ -94,7 +70,7 @@ test("ctrl enter sends now and leaves other chords alone", () => {
   assert.equal(isSendNowChord({ key: "p", shiftKey: false, ctrlKey: true }), false);
   assert.equal(isSendNowChord({ key: "f", shiftKey: false, ctrlKey: true }), false);
   assert.deepEqual(composerKeyIntent({ ...idle, ctrlKey: true }), { type: "submit-now" });
-  assert.deepEqual(composerKeyIntent({ ...idle, metaKey: true, text: "" }), { type: "submit-now" });
+  assert.deepEqual(composerKeyIntent({ ...idle, metaKey: true }), { type: "submit-now" });
   assert.equal(composerKeyIntent({ ...idle, ctrlKey: true, shiftKey: true }), null);
   assert.equal(composerKeyIntent({ ...idle, ctrlKey: true, altKey: true }), null);
   assert.deepEqual(composerKeyIntent({ ...idle, altKey: true }), { type: "submit" });
@@ -112,7 +88,6 @@ test("ctrl enter sends now and leaves other chords alone", () => {
       ctrlKey: true,
       mentionOpen: true,
       hasActiveMention: true,
-      text: "@",
     }),
     { type: "submit-now" },
   );
@@ -122,9 +97,6 @@ test("ctrl enter sends now and leaves other chords alone", () => {
       ctrlKey: true,
       slashOpen: true,
       hasActiveSlash: true,
-      token: "/re",
-      activeSlashName: "/review",
-      text: "/re",
     }),
     { type: "submit-now" },
   );
@@ -134,9 +106,6 @@ test("ctrl enter sends now and leaves other chords alone", () => {
       ctrlKey: true,
       skillOpen: true,
       hasActiveSkill: true,
-      skillQuery: "re",
-      activeSkillMention: "review",
-      text: "$re",
     }),
     { type: "submit-now" },
   );

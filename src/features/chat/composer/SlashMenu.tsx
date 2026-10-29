@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import type { SlashCommand } from "@/types";
+import { SuggestionList } from "./SuggestionList";
 
 export function SlashMenu({
   matches,
@@ -16,10 +17,16 @@ export function SlashMenu({
   onPick: (command: SlashCommand) => void;
 }) {
   return (
-    <div
-      role="listbox"
-      aria-label="斜杠命令"
-      className="absolute bottom-full left-0 right-0 z-20 mb-2 overflow-hidden rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
+    <SuggestionList
+      label="斜杠命令"
+      active={selected}
+      footer={
+        token === "/" ? (
+          <p className="border-t border-zinc-800 px-3 py-2 text-[11px] leading-4 text-zinc-600">
+            /vim、/theme 等终端命令可以输入，但不会发给模型。
+          </p>
+        ) : null
+      }
     >
       {matches.length === 0 && (
         <p className="px-3 py-2 text-xs text-zinc-500">这条斜杠命令不会发给模型。回车后会在时间线里说明。</p>
@@ -48,11 +55,6 @@ export function SlashMenu({
           </span>
         </button>
       ))}
-      {token === "/" && (
-        <p className="border-t border-zinc-800 px-3 py-2 text-[11px] leading-4 text-zinc-600">
-          /vim、/theme 等终端命令可以输入，但不会发给模型。
-        </p>
-      )}
-    </div>
+    </SuggestionList>
   );
 }

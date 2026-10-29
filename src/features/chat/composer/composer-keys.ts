@@ -12,10 +12,12 @@ export type ComposerKeyIntent =
   | { type: "mention-move"; key: "ArrowDown" | "ArrowUp" }
   | { type: "apply-mention" }
   | { type: "mention-noop" }
+  | { type: "dismiss-popup" }
   | { type: "skill-move"; key: "ArrowDown" | "ArrowUp" }
   | { type: "apply-skill" }
   | { type: "slash-move"; key: "ArrowDown" | "ArrowUp" }
-  | { type: "apply-slash" }
+  /** `run`：回车选中不带参数的命令时直接执行；Tab 只补全。 */
+  | { type: "apply-slash"; run: boolean }
   | { type: "submit" }
   | { type: "submit-now" };
 
@@ -50,11 +52,6 @@ export function composerKeyIntent(input: {
   hasActiveSkill: boolean;
   slashOpen: boolean;
   hasActiveSlash: boolean;
-  token: string | null;
-  activeSlashName?: string;
-  text: string;
-  skillQuery: string | null;
-  activeSkillMention?: string;
   mentionOpen: boolean;
   hasActiveMention: boolean;
   keyCode?: number;
@@ -81,31 +78,20 @@ export function composerKeyIntent(input: {
   if (input.mentionOpen && key === "Enter" && !input.shiftKey) {
     return input.hasActiveMention ? { type: "apply-mention" } : { type: "mention-noop" };
   }
+  if ((input.skillOpen || input.slashOpen) && key === "Escape") return { type: "dismiss-popup" };
   if (input.skillOpen && (key === "ArrowDown" || key === "ArrowUp")) {
     return { type: "skill-move", key };
   }
-  if (input.skillOpen && key === "Tab" && input.hasActiveSkill) {
+  // 菜单开着时回车和 Tab 都是选中，不会把半截命令或技能名发出去。
+  if (input.skillOpen && input.hasActiveSkill && (key === "Tab" || (key === "Enter" && !input.shiftKey))) {
     return { type: "apply-skill" };
   }
   if (input.slashOpen && (key === "ArrowDown" || key === "ArrowUp")) {
     return { type: "slash-move", key };
   }
-  if (input.slashOpen && key === "Tab" && input.hasActiveSlash) {
-    return { type: "apply-slash" };
+  if (input.slashOpen && input.hasActiveSlash && (key === "Tab" || (key === "Enter" && !input.shiftKey))) {
+    return { type: "apply-slash", run: key === "Enter" };
   }
-  if (key === "Enter" && !input.shiftKey) {
-    const completingSlash =
-      input.slashOpen &&
-      input.hasActiveSlash &&
-      input.token !== input.activeSlashName &&
-      !input.text.trim().includes(" ");
-    if (completingSlash) return { type: "apply-slash" };
-    const completingSkill =
-      input.skillOpen &&
-      input.hasActiveSkill &&
-      input.skillQuery !== (input.activeSkillMention ?? "").toLowerCase();
-    if (completingSkill) return { type: "apply-skill" };
-    return { type: "submit" };
-  }
+  if (key === "Enter" && !input.shiftKey) return { type: "submit" };
   return null;
 }

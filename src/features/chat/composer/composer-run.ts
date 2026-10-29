@@ -40,6 +40,9 @@ export interface ComposerRun {
   view: View;
   goalDraft: boolean;
   exitGoal: () => void;
+  /** 和 `@` 菜单「计划」「目标」同一个动作。 */
+  togglePlan: () => void;
+  enterGoal: () => void;
   supportsGoals: boolean;
   submitGoal: (text: string) => Promise<boolean>;
   mentions: {
@@ -49,6 +52,10 @@ export interface ComposerRun {
     move: (key: "ArrowUp" | "ArrowDown") => void;
     apply: () => void;
   };
+  /** 斜杠和技能菜单当前是否真的显示。按 Esc 收起后为 false，直到过滤词变化。 */
+  slashShown: boolean;
+  skillShown: boolean;
+  dismissPopup: () => void;
   activeSlash: SlashCommand | undefined;
   activeSkill: AgentSkillOption | undefined;
   sandbox: SessionSandbox | null;
@@ -87,21 +94,32 @@ export async function stageComposerBlobs(run: ComposerRun, blobs: File[]) {
   }
 }
 
-export function applyComposerSlash(run: ComposerRun, command: SlashCommand) {
-  const decision = decideSlash(command, run.caps, run.view.planOn);
+/** `execute`：不带参数的命令选中即执行，带参数的只补成「命令 」等用户写参数。 */
+export function applyComposerSlash(run: ComposerRun, command: SlashCommand, execute = false) {
+  const decision = decideSlash(command, run.caps);
   if (decision.type === "review") {
     run.setText("");
     run.setReviewOpen(true);
     return;
   }
-  if (decision.type === "toggle-plan") {
+  if (decision.type === "plan" || decision.type === "goal") {
     run.setText("");
-    if (decision.mode === "plan") run.exitGoal();
-    void run.host.setCollaborationMode(decision.mode);
+    run.setCaret(0);
+    if (decision.type === "plan") run.togglePlan();
+    else run.enterGoal();
+    run.textareaRef.current?.focus();
     return;
   }
   run.setText(decision.text);
-  run.textareaRef.current?.focus();
+  run.setCaret(decision.text.length);
+  if (execute && !command.takes_args) {
+    runComposerSubmit({ ...run, text: decision.text });
+    return;
+  }
+  requestAnimationFrame(() => {
+    run.textareaRef.current?.focus();
+    run.textareaRef.current?.setSelectionRange(decision.text.length, decision.text.length);
+  });
 }
 
 export function applyComposerSkill(run: ComposerRun, skill: AgentSkillOption) {
@@ -171,10 +189,11 @@ export function runComposerSubmit(run: ComposerRun, options?: { now?: boolean })
     run.textareaRef.current?.focus();
     return;
   }
-  if (decision.type === "toggle-plan") {
+  if (decision.type === "toggle-plan" || decision.type === "enter-goal") {
     run.setText("");
-    if (decision.mode === "plan") run.exitGoal();
-    void run.host.setCollaborationMode(decision.mode);
+    run.setCaret(0);
+    if (decision.type === "toggle-plan") run.togglePlan();
+    else run.enterGoal();
     return;
   }
   if (decision.type === "open-review") {
@@ -321,15 +340,10 @@ export function handleComposerKey(run: ComposerRun, event: ReactKeyboardEvent<HT
     composing: event.nativeEvent.isComposing,
     keyCode: event.nativeEvent.keyCode,
     editing: Boolean(run.editingId),
-    skillOpen: run.view.skillOpen,
+    skillOpen: run.skillShown,
     hasActiveSkill: Boolean(run.activeSkill),
-    slashOpen: run.view.slashOpen,
+    slashOpen: run.slashShown,
     hasActiveSlash: Boolean(run.activeSlash),
-    token: run.view.token,
-    activeSlashName: run.activeSlash?.name,
-    text: run.text,
-    skillQuery: run.view.skillQuery,
-    activeSkillMention: run.activeSkill?.mention,
     mentionOpen: run.mentions.show,
     hasActiveMention: run.mentions.hasActive,
   });
@@ -340,12 +354,13 @@ export function handleComposerKey(run: ComposerRun, event: ReactKeyboardEvent<HT
   else if (intent.type === "mention-move") run.mentions.move(intent.key);
   else if (intent.type === "apply-mention") run.mentions.apply();
   else if (intent.type === "mention-noop") return;
+  else if (intent.type === "dismiss-popup") run.dismissPopup();
   else if (intent.type === "skill-move") {
     run.setSkillIndex((current) => stepIndex(current, run.skillMatches, intent.key));
   } else if (intent.type === "slash-move") {
     run.setSlashIndex((current) => stepIndex(current, run.slashMatches, intent.key));
   } else if (intent.type === "apply-skill" && run.activeSkill) applyComposerSkill(run, run.activeSkill);
-  else if (intent.type === "apply-slash" && run.activeSlash) applyComposerSlash(run, run.activeSlash);
+  else if (intent.type === "apply-slash" && run.activeSlash) applyComposerSlash(run, run.activeSlash, intent.run);
   else if (intent.type === "submit") runComposerSubmit(run);
   else if (intent.type === "submit-now") runComposerCtrlEnter(run);
 }

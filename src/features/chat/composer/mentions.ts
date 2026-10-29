@@ -98,6 +98,11 @@ export function mentionAddEnabled(id: MentionAddId, goal: MentionSupport, plan: 
   return (id === "goal" ? goal : plan) === "ready";
 }
 
+/** `@` 添加菜单里要列出的项。Agent 不支持的不列；能力还没回来时先列出、不能选。 */
+export function mentionAddItems(goal: MentionSupport, plan: MentionSupport): MentionAddId[] {
+  return MENTION_ADD_ORDER.filter((id) => id === "files" || (id === "goal" ? goal : plan) !== "unsupported");
+}
+
 export function mentionSupport(known: boolean, supported: boolean): MentionSupport {
   if (!known) return "loading";
   return supported ? "ready" : "unsupported";

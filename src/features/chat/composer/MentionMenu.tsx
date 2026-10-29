@@ -4,11 +4,11 @@ import { cn } from "@/lib/utils";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import {
   highlightParts,
-  MENTION_ADD_ORDER,
   type MentionAddId,
   type MentionFile,
   type MentionSupport,
 } from "./mentions";
+import { SuggestionList } from "./SuggestionList";
 
 export type { MentionAddId };
 
@@ -19,13 +19,12 @@ const ADD_ITEMS: { id: MentionAddId; label: string; hint: string }[] = [
 ];
 
 function supportHint(support: MentionSupport, hint: string): string {
-  if (support === "loading") return DESKTOP_ZH.mentionLoadingCaps;
-  if (support === "unsupported") return hint === DESKTOP_ZH.goalHint ? DESKTOP_ZH.mentionNoGoal : DESKTOP_ZH.mentionNoPlan;
-  return hint;
+  return support === "loading" ? DESKTOP_ZH.mentionLoadingCaps : hint;
 }
 
 export function MentionMenu({
   mode,
+  items,
   active,
   goalSupport,
   planSupport,
@@ -37,6 +36,8 @@ export function MentionMenu({
   onPick,
 }: {
   mode: "add" | "files";
+  /** 添加菜单里列出的项，不支持的已去掉。 */
+  items: readonly MentionAddId[];
   active: number;
   goalSupport: MentionSupport;
   planSupport: MentionSupport;
@@ -48,16 +49,11 @@ export function MentionMenu({
   onPick: (id: MentionAddId | MentionFile) => void;
 }) {
   return (
-    <div
-      role="listbox"
-      aria-label={mode === "add" ? DESKTOP_ZH.addSection : "文件"}
-      data-mention-menu={mode}
-      className="absolute bottom-full left-0 right-0 z-20 mb-2 max-h-72 min-w-0 overflow-x-hidden overflow-y-auto rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
-    >
+    <SuggestionList label={mode === "add" ? DESKTOP_ZH.addSection : "文件"} active={active} data-mention-menu={mode}>
       {mode === "add" ? (
         <>
           <p className="px-3 pb-1 pt-1.5 text-xs text-zinc-500">{DESKTOP_ZH.addSection}</p>
-          {MENTION_ADD_ORDER.map((id, index) => {
+          {items.map((id, index) => {
             const item = ADD_ITEMS.find((entry) => entry.id === id);
             if (!item) return null;
             const support = item.id === "goal" ? goalSupport : item.id === "plan" ? planSupport : "ready";
@@ -143,7 +139,7 @@ export function MentionMenu({
           </button>
         ))
       )}
-    </div>
+    </SuggestionList>
   );
 }
 
