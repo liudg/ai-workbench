@@ -39,6 +39,7 @@ function AgentCard({
   onUpdate: (kind: AgentInstallation["kind"]) => void;
 }) {
   const face = agentCardFace(item);
+  const updateSucceeded = upgrade?.status === "succeeded";
   return (
     <li
       data-agent={item.kind}
@@ -48,8 +49,11 @@ function AgentCard({
     >
       <div className="min-w-0 flex-1">
         <div className="text-sm font-medium text-zinc-100">{item.display_name}</div>
-        {upgrade?.status === "succeeded" ? (
-          <p className="mt-1 text-xs text-zinc-500">上次检测：{item.version ?? "已安装"}</p>
+        {updateSucceeded ? (
+          <p className="mt-1 text-xs text-zinc-500">
+            上次检测：{item.version ?? "已安装"}
+            <span className="ml-2 text-green-400" role="status">更新成功</span>
+          </p>
         ) : <StatusLine face={face} />}
         {face.kind === "ready" && face.detail && (
           <div className="mt-1 text-xs leading-5 text-amber-200/90">{face.detail}</div>
@@ -59,13 +63,12 @@ function AgentCard({
             {error}
           </p>
         )}
-        {upgrade?.status === "succeeded" && <p className="mt-1 text-xs text-green-400" role="status">更新成功</p>}
         {upgrade?.status === "failed" && <p className="mt-1 text-xs text-red-300" role="alert">{upgrade.error ?? "更新失败"}</p>}
-        {upgrade?.output && (
+        {!updateSucceeded && upgrade?.output && (
           <pre aria-label={`${item.display_name} 更新输出`} className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs text-zinc-400">{upgrade.output}</pre>
         )}
       </div>
-      {(updating || ((face.kind === "ready" || face.kind === "unwired") && face.canUpdate)) && (
+      {!updateSucceeded && (updating || ((face.kind === "ready" || face.kind === "unwired") && face.canUpdate)) && (
         <Button
           type="button"
           size="sm"
