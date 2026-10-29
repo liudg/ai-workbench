@@ -3,7 +3,7 @@
 ## Context
 目前 AI Workbench 已经能把 Codex（app-server JSON-RPC）和 Claude Code（stream-json）接进同一个界面，对话、作曲栏、审批、diff 预览、浏览器、命令面板这些基础都有了。用户的反馈是：它"不像 AI 工作台，功能单一，bug 多"。本次参考三个同类热门项目，找出可以借鉴的功能，排好路线图，这一轮先不写代码。用户已确认可借鉴范围完全放开，Codex 桌面端没有的功能也可以纳入。
 
-已定的方向见 [architecture-v2.md](architecture-v2.md)「已定的方向」。参考项目源码在 `Z:\workbench`。
+参考项目源码在 `Z:\workbench`。
 
 ## 三个参考项目各自的长处
 | 项目 | 形态 | 核心思路 | 最值得借鉴 |
@@ -19,7 +19,7 @@
 ## 可借鉴功能清单与路线图
 
 ### 阶段 0：架构重构（替代原来的"稳定性"阶段）
-不先修零散 bug，也不做事件回放测试，直接按 [architecture-v2.md](architecture-v2.md) 重构：拆出后台 daemon，用 SQLite 做唯一数据源，引入任务模型，前端改成订阅后端投影。现在的 bug 大多来自状态来源不唯一，这一步会一起解决。
+已完成（2026-10-28，`v2` 分支）。不先修零散 bug，也不做事件回放测试，直接重构：拆出后台 daemon，用 SQLite 做唯一数据源，引入任务模型，前端改成订阅后端投影。现在的 bug 大多来自状态来源不唯一，这一步会一起解决。
 
 ### 阶段 1：让它像"工作台"（多会话并行的基础）
 1. **统一状态模型与注意力队列**（herdr + orca + t3code）
@@ -50,17 +50,17 @@
 
 ### 阶段 5：多 Agent 编排（本项目的差异点）
 17. **扇出**（orca / t3code 的 Shift 多选模型）：一个 prompt 发给多个 agent 或模型，每个各开一个 worktree；在一个对比视图里并排看结果和 diff，选中后合并。
-18. **跨 Agent 交接**（t3code `ContextHandoffService.ts`）：在会话中途换 agent。不用 LLM 写摘要，而是按 token 预算挑选历史消息，并附上被省略部分的引用。已提前到 architecture-v2.md 迁移步骤第 5 步。
-19. **Agent 互相驱动**（herdr `agent wait --until`，t3code Orchestrator MCP）：工作台提供一个本地 MCP，让一个 agent 能创建、等待、steer 其他 agent 的会话；目标处于 blocked 时拒绝注入输入。
+18. **跨 Agent 交接**（t3code `ContextHandoffService.ts`）：在会话中途换 agent。不用 LLM 写摘要，而是按 token 预算挑选历史消息，并附上被省略部分的引用。已完成（2026-10-28）。
+19. **Agent 互相驱动**（herdr `agent wait --until`，t3code Orchestrator MCP）：工作台提供一个本地 MCP，让一个 agent 能创建、等待、steer 其他 agent 的会话；目标处于 blocked 时拒绝注入输入。方案见 [agent-orchestration-mcp.md](agent-orchestration-mcp.md)（待确认）。Agent 自带子 Agent 的展示（含一个 Claude 子 Agent 回答混进主时间线的 bug）一起做，写在同一份文档里。
 20. **会话 snooze 与定时任务**（t3code `scheduledTasks/`）。
 
 ### 暂不建议做
 - 远程或手机端（herdr/orca/t3code 都有，但投入大）。
 - herdr 那种读屏状态检测：本项目走结构化协议，用不到。
 - 用量/费用页：已有用量计量，以后可以再扩展。
+- 通用 ACP 驱动（2026-10-28 用户确认不做）：只用 Codex 和 Claude，两者走原生协议，功能接得比 ACP 深（额度、回退、原生分叉、审查）。t3code 也是主力 Agent 走原生、ACP 只接长尾（`apps/server/src/provider/builtInDrivers.ts`、`packages/provider-acp-registry`）。以后要用别的 Agent 再议。
 
 ## 架构落点
-详见 [architecture-v2.md](architecture-v2.md)。
 - 新的状态、checkpoint、终端、扇出能力，都加进 `AgentCapabilities`（`src-tauri/src/models/catalog.rs`）和归一化事件（`models/event.rs`、`src/types/event.ts`），前端只读能力开关。
 - 新功能各自建模块（`features/terminal`、`features/checkpoints`、`features/dashboard`），展示组件通过 hook/service 取数据，不跨功能深层引用。
 - 借鉴 t3code 的"一个能力，所有入口"：每个动作写成一个 service 方法，同时挂到 UI、命令面板和快捷键上。
@@ -71,4 +71,4 @@
 - 运行 `pnpm tsc`、前端测试、`cargo test`。
 
 ## 下一步
-按 architecture-v2.md 的迁移步骤，在 `v2` 分支上开始重构。
+v2 重构已完成，后面按本路线图逐项做。
