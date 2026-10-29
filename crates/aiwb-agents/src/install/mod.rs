@@ -82,7 +82,6 @@ pub struct BinHit {
 pub struct ChosenBin {
     pub name: String,
     pub version: Option<String>,
-    pub also: Vec<String>,
     pub update_args: &'static [&'static str],
     pub can_update: bool,
 }
@@ -148,7 +147,6 @@ async fn discover(release: &CliRelease) -> Vec<FoundBin> {
 }
 
 pub fn choose_bin(release: &CliRelease, hits: &[BinHit]) -> Option<ChosenBin> {
-    let mut chosen: Option<ChosenBin> = None;
     for name in release.bins {
         let Some(hit) = hits.iter().find(|hit| hit.name == *name) else {
             continue;
@@ -157,23 +155,18 @@ pub fn choose_bin(release: &CliRelease, hits: &[BinHit]) -> Option<ChosenBin> {
         if !hit_accepted(rule, hit) {
             continue;
         }
-        if let Some(chosen) = chosen.as_mut() {
-            chosen.also.push((*name).to_string());
-            continue;
-        }
         let (update_args, can_update) = update_of(release, rule);
-        chosen = Some(ChosenBin {
+        return Some(ChosenBin {
             name: (*name).to_string(),
             version: hit
                 .version_text
                 .as_deref()
                 .and_then(|text| version_from_output(text, "")),
-            also: Vec::new(),
             update_args,
             can_update,
         });
     }
-    chosen
+    None
 }
 
 fn update_of(release: &CliRelease, rule: Option<&AliasRule>) -> (&'static [&'static str], bool) {
@@ -228,14 +221,10 @@ fn absent_with_note(kind: AgentKind, display_name: &str, note: &str) -> AgentIns
 
 fn detail_lines(
     note: &str,
-    also: &[String],
     version: &Option<String>,
     npm_note: Option<String>,
 ) -> Option<String> {
     let mut lines = Vec::new();
-    if !also.is_empty() {
-        lines.push(format!("同时发现 {}", also.join("、")));
-    }
     if !note.is_empty() {
         lines.push(note.to_string());
     }
@@ -281,7 +270,7 @@ pub async fn inspect_release(
             latest_version: None,
             update_available: false,
             update_via: None,
-            detail: detail_lines(release.note, &chosen.also, &chosen.version, None),
+            detail: detail_lines(release.note, &chosen.version, None),
             session_linked: false,
         };
     }
@@ -356,7 +345,7 @@ pub async fn inspect_release(
         latest_version,
         update_available,
         update_via,
-        detail: detail_lines(release.note, &chosen.also, &chosen.version, npm_note),
+        detail: detail_lines(release.note, &chosen.version, npm_note),
         session_linked: false,
     }
 }
@@ -492,7 +481,7 @@ mod tests {
     }
 
     #[test]
-    fn prefers_primary_binary_and_records_aliases() {
+    fn prefers_primary_binary_over_aliases() {
         let release = sample_release();
         let chosen = choose_bin(
             &release,
@@ -501,7 +490,6 @@ mod tests {
         .expect("agy");
         assert_eq!(chosen.name, "agy");
         assert_eq!(chosen.version.as_deref(), Some("1.2.0"));
-        assert_eq!(chosen.also, vec!["gemini".to_string()]);
         assert!(chosen.can_update);
         assert_eq!(chosen.update_args, &["update"]);
     }

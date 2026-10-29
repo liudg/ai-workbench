@@ -114,14 +114,14 @@ test("an installed linked agent keeps version, latest, and the update action", (
       update_available: true,
       update_via: "cli",
       session_linked: true,
-      detail: "同时发现 claude",
+      detail: "暂时无法查询官方最新版本。",
     }),
   );
   assert.equal(pending.kind, "ready");
   if (pending.kind !== "ready") return;
   assert.equal(pending.text, "2.1.200 · 可更新到 2.1.292 · 官方 CLI");
   assert.equal(pending.canUpdate, true);
-  assert.equal(pending.detail, "同时发现 claude");
+  assert.equal(pending.detail, "暂时无法查询官方最新版本。");
 });
 
 test("a linked agent that is not installed still says 未安装", () => {
