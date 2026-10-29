@@ -168,7 +168,7 @@ function chooseOption(
     return withChoice(state, index, {
       ...current,
       selectedIds,
-        selectedId: selectedIds.length > 0 ? selectedIds[selectedIds.length - 1] : null,
+      selectedId: selectedIds.length > 0 ? selectedIds[selectedIds.length - 1] : null,
     });
   }
   return withChoice(state, index, { ...current, selectedId: optionId });

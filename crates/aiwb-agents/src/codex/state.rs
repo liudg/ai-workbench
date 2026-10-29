@@ -12,6 +12,7 @@ use tokio::sync::{mpsc, oneshot, Mutex as AsyncMutex};
 use crate::EventSink;
 use aiwb_core::models::{
     FileChange, MessagePhase, PromptQuestion, QueuedTurn, SessionEventBody, SessionStatus,
+    ToolStatus,
     OCCUPIED_SESSION_NOTICE,
 };
 
@@ -105,6 +106,8 @@ pub(super) struct ActivityBuf {
     pub(super) summary: String,
     pub(super) detail: String,
     pub(super) images: Vec<String>,
+    pub(super) status: ToolStatus,
+    pub(super) exit_code: Option<i64>,
     pub(super) last_emit: Instant,
 }
 

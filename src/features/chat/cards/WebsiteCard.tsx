@@ -18,14 +18,16 @@ export function WebsiteCard({ href, label }: { href: string; label: string }) {
         <div className="truncate text-sm text-zinc-100">{title}</div>
         <div className="text-xs text-zinc-500">{DESKTOP_ZH.website}</div>
       </div>
-      <button
-        type="button"
-        data-open-with
-        className="shrink-0 rounded px-2 py-1 text-xs text-zinc-100 hover:bg-zinc-800"
-        onClick={() => preview?.openHref(href)}
-      >
-        {DESKTOP_ZH.openWith}
-      </button>
+      {preview ? (
+        <button
+          type="button"
+          data-open-with
+          className="shrink-0 rounded px-2 py-1 text-xs text-zinc-100 hover:bg-zinc-800"
+          onClick={() => preview.openHref(href)}
+        >
+          {DESKTOP_ZH.openWith}
+        </button>
+      ) : null}
     </div>
   );
 }

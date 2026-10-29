@@ -4,7 +4,7 @@ use tokio::time::timeout;
 
 use super::*;
 use crate::{TurnDelivery, UserTurn};
-use aiwb_core::models::{PromptAnswer, PromptKind, PromptQuestion};
+use aiwb_core::models::{PromptAnswer, PromptKind, PromptQuestion, ToolStatus};
 
 #[tokio::test]
 #[ignore = "calls the local Codex CLI"]
@@ -509,4 +509,79 @@ async fn review_plan_diff_in_gap_project() {
     if !problem.is_empty() {
         panic!("{problem}");
     }
+}
+
+/// 真实 Codex：命令开始时是进行中，结束时带退出码，非零退出算失败。
+#[tokio::test]
+#[ignore = "calls the local Codex CLI"]
+async fn live_command_status_and_exit_code() {
+    let adapter = CodexCliAdapter::new();
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let cwd = std::env::temp_dir();
+    let session = adapter
+        .start_session(
+            SessionContext {
+                project_path: cwd.to_string_lossy().to_string(),
+                access_mode: Some("full".into()),
+                resume_native_id: None,
+                options: serde_json::json!({ "persist": false }),
+            },
+            tx,
+        )
+        .await
+        .expect("start");
+    session
+        .send_message(
+            "Run these two shell commands one after the other, each as its own command: \
+             first `Start-Sleep -Seconds 3; Write-Output aiwb-ok`, then `exit 3`. \
+             Do not retry. Then reply done."
+                .into(),
+        )
+        .await
+        .expect("send");
+
+    let mut calls: Vec<(Option<String>, ToolStatus, Option<i64>, String)> = Vec::new();
+    let mut started = false;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(180);
+    while tokio::time::Instant::now() < deadline {
+        match timeout(Duration::from_secs(8), rx.recv()).await {
+            Ok(Some(SessionEventBody::ToolCall {
+                stream_id,
+                status,
+                exit_code,
+                summary,
+                ..
+            })) => calls.push((stream_id, status, exit_code, summary)),
+            Ok(Some(SessionEventBody::StatusChanged {
+                status: SessionStatus::Running,
+            })) => started = true,
+            Ok(Some(SessionEventBody::StatusChanged {
+                status: SessionStatus::Completed | SessionStatus::Failed,
+            })) if started => break,
+            Ok(Some(other)) => eprintln!("{other:?}"),
+            Ok(None) => break,
+            Err(_) => {}
+        }
+    }
+    let _ = session.stop().await;
+    eprintln!("{calls:#?}");
+    let last_of = |needle: &str| {
+        calls
+            .iter()
+            .rev()
+            .find(|(_, _, _, summary)| summary.contains(needle))
+            .cloned()
+            .unwrap_or_else(|| panic!("no call for {needle}: {calls:?}"))
+    };
+    let ok = last_of("aiwb-ok");
+    assert_eq!(ok.1, ToolStatus::Completed);
+    assert_eq!(ok.2, Some(0));
+    assert!(
+        calls.iter().any(|call| call.0 == ok.0 && call.1 == ToolStatus::Running),
+        "the sleeping command never showed as running"
+    );
+    let bad = last_of("exit 3");
+    assert_eq!(bad.1, ToolStatus::Failed);
+    assert_eq!(bad.2, Some(3));
+    assert!(!ok.3.contains('→'), "summary still carries the status: {}", ok.3);
 }

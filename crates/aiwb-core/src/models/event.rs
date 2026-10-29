@@ -117,6 +117,18 @@ pub enum MessagePhase {
     FinalAnswer,
 }
 
+/// 一条工具调用的进度。旧日志没有这个字段，按已结束读。
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ToolStatus {
+    /// 适配器已经报出开始，还没有结果。
+    Running,
+    #[default]
+    Completed,
+    /// 出错、非零退出、被拒绝。
+    Failed,
+}
+
 impl MessagePhase {
     /// 协议里的 phase 字符串。未知值保持缺省，交给时间线的兼容逻辑。
     pub fn parse(value: Option<&str>) -> Option<Self> {
@@ -314,6 +326,11 @@ pub enum SessionEventBody {
         /// 历史或生成结果里的图片。气泡用缩略图。
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         images: Vec<String>,
+        #[serde(default)]
+        status: ToolStatus,
+        /// 命令的退出码。协议没给就缺省。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        exit_code: Option<i64>,
     },
     /// Agent 发起的提问；在被 PromptResolved 覆盖前，会话处于 needs-input
     Prompt {

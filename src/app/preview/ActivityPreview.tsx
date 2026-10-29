@@ -15,9 +15,36 @@ function session(id: string, title: string, status: SessionStatus): Session {
   };
 }
 
+/** 预览里的时间从打开页面前一分多钟算起，进行中末行的计时才像真的。 */
+const START = Date.now() - 75_000;
+
 function event(sessionId: string, id: string, seq: number, ts: number, body: SessionEventBody): SessionEvent {
-  return { id, session_id: sessionId, seq, ts, ...body };
+  return { id, session_id: sessionId, seq, ts: START + ts, ...body };
 }
+
+const TEST_OUTPUT = Array.from({ length: 260 }, (_, index) =>
+  index % 40 === 39 ? `FAIL src/case-${index}.test.ts` : `ok ${index + 1} - case ${index + 1}`,
+).join("\n");
+
+const commandEvents: SessionEvent[] = [
+  event("activity-command", "user", 1, 1_000, { kind: "user-message", text: "跑一下测试，修掉失败的。" }),
+  event("activity-command", "lint", 2, 2_000, {
+    kind: "tool-call",
+    name: "command",
+    summary: "pnpm lint",
+    detail: "src/a.ts\n  3:7  error  'x' is assigned a value but never used",
+    status: "failed",
+    exit_code: 1,
+  }),
+  event("activity-command", "test", 3, 3_000, {
+    kind: "tool-call",
+    name: "command",
+    summary: "pnpm test --reporter=tap",
+    detail: TEST_OUTPUT,
+    status: "running",
+  }),
+  event("activity-command", "status", 4, 3_100, { kind: "status-changed", status: "running" }),
+];
 
 const liveEvents: SessionEvent[] = [
   event("activity-live", "user", 1, 1_000, { kind: "user-message", text: "按图片调整装备对比提示。" }),
@@ -117,13 +144,14 @@ function Frame({
   );
 }
 
-/** 开发预览：进行中末行「正在思考」，结束后不留思考条目。`?preview=activity` */
+/** 开发预览：进行中末行写此刻在做什么和用时，结束后不留。`?preview=activity` */
 export default function ActivityPreview() {
   return (
     <div className="h-screen w-screen overflow-auto bg-[#0f0f0f] text-[#e8e8e8]">
       <Frame id="activity-live" title="正在思考" status="running" events={liveEvents} />
       <Frame id="activity-done" title="思考已结束" status="completed" events={doneEvents} />
       <Frame id="activity-images" title="已查看图像" status="running" events={imageEvents} />
+      <Frame id="activity-command" title="命令进行中" status="running" events={commandEvents} />
     </div>
   );
 }

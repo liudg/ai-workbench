@@ -9,7 +9,7 @@ import {
 
 import { usePanelOptional } from "@/features/panel/core/PanelProvider";
 import { baseName } from "@/shared/path";
-import type { ReviewStart, Session, SessionEvent, SessionSandbox } from "@/types";
+import type { ReviewStart, Session, SessionEvent } from "@/types";
 import {
   addComposerDir,
   chooseComposerEffort,
@@ -248,7 +248,6 @@ export function useComposerController(host: ComposerHost, session: Session, even
     submit: () => runComposerSubmit(run),
     pickFiles: () => pickComposerFiles(run),
     beginEdit: (item: { id: string; text: string; images?: string[] }) => beginComposerEdit(run, item),
-    applySandbox: (next: SessionSandbox) => host.setSandbox(next),
     removeQueued: (id: string) => removeComposerQueued(run, id),
     queueStrip: queueStripVisible({ supportsQueue: view.queueOn, count: host.queue.length }),
     followUpQueueMode: host.followUpQueueMode,

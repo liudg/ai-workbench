@@ -464,3 +464,21 @@ test("a handoff starts its own segment instead of joining the previous turn", ()
   const handoffChunk = chunks.find((chunk) => chunk.type === "block" && chunk.block.type === "event" && chunk.block.event.id === "h4");
   assert.ok(handoffChunk, "交接单独成块，不进活动流");
 });
+
+test("the live block counts its time from the turn start, or from entering running", () => {
+  const nodes = buildTimeline(
+    [
+      event("u1", 1_000, { kind: "user-message", text: "跑测试" }),
+      event("s2", 1_100, { kind: "status-changed", status: "running" }),
+      event("k3", 2_000, { kind: "tool-call", name: "command", summary: "pnpm test", status: "running" }),
+    ],
+    "running",
+  );
+  const live = nodes.find((node) => node.type === "live");
+  assert.ok(live && live.type === "live");
+  assert.equal(live.startedAt, 1_000);
+  const bare = buildTimeline([event("s1", 5_000, { kind: "status-changed", status: "running" })], "running");
+  const current = bare.find((node) => node.type === "live");
+  assert.ok(current && current.type === "live");
+  assert.equal(current.startedAt, 5_000);
+});

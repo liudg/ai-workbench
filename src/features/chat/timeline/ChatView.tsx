@@ -15,7 +15,9 @@ import { ApprovalSurface } from "../events/ApprovalSurface";
 import { PlanChoiceSurface } from "../events/PlanChoiceSurface";
 import { QuestionPopup } from "../events/QuestionPopup";
 import { ActivityStream } from "./ActivityStream";
+import { LiveStatus } from "./LiveStatus";
 import { LiveTurn } from "./LiveTurn";
+import { liveActivityLabel } from "../events/tool-status";
 import { TurnProcess } from "./TurnProcess";
 import {
   buildTimeline,
@@ -99,6 +101,7 @@ function ChatTimeline({
     [events, session.status],
   );
   const blocks = useMemo(() => buildTimeline(events, status), [events, status]);
+  const liveBlock = useMemo(() => blocks.find((block) => block.type === "live") ?? null, [blocks]);
   const layoutKey = useMemo(
     () => `${events.length}:${contentChars(events)}:${status}`,
     [events, status],
@@ -249,6 +252,9 @@ function ChatTimeline({
             </div>
           )}
           {eventsReady && liveChanges ? <ChangeCard changes={liveChanges} defaultExpanded /> : null}
+          {eventsReady && liveBlock?.type === "live" ? (
+            <LiveStatus label={liveActivityLabel(liveBlock.events)} startedAt={liveBlock.startedAt} />
+          ) : null}
         </div>
       </div>
       <ChatSelectionMenu rootRef={scrollRef} sessionId={session.id} />

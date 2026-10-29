@@ -8,7 +8,7 @@ use tokio::sync::oneshot;
 use tokio::time::timeout;
 
 use crate::AgentError;
-use aiwb_core::models::{MessagePhase, PromptKind, SessionEventBody, SessionStatus};
+use aiwb_core::models::{MessagePhase, PromptKind, SessionEventBody, SessionStatus, ToolStatus};
 
 const RPC_TIMEOUT: Duration = Duration::from_secs(45);
 
@@ -831,6 +831,7 @@ impl Shared {
             return;
         };
         let id = item.get("id").and_then(Value::as_str).unwrap_or("");
+        view.status = settled_status(completed, view.status);
         if id.is_empty() {
             if completed && tool_visible(&view) {
                 emit(&self.events, tool_event(view, None));
@@ -845,10 +846,16 @@ impl Shared {
                 summary: String::new(),
                 detail: String::new(),
                 images: Vec::new(),
+                status: ToolStatus::Running,
+                exit_code: None,
                 last_emit: Instant::now() - Duration::from_secs(1),
             });
         if !view.name.is_empty() {
             buf.name = view.name.clone();
+        }
+        buf.status = view.status;
+        if view.exit_code.is_some() {
+            buf.exit_code = view.exit_code;
         }
         if view.name == "image_generation"
             || view.summary.trim().chars().count() >= buf.summary.trim().chars().count()
@@ -901,6 +908,8 @@ impl Shared {
                 summary: String::new(),
                 detail: String::new(),
                 images: Vec::new(),
+                status: ToolStatus::Running,
+                exit_code: None,
                 last_emit: Instant::now() - Duration::from_secs(1),
             });
         buf.detail.push_str(delta);
@@ -959,6 +968,55 @@ mod tests {
             bodies.push(body);
         }
         bodies
+    }
+
+    #[test]
+    fn command_status_follows_started_and_completed() {
+        let (shared, _out, mut events) = harness();
+        let command = |status: &str, exit: Value| {
+            json!({ "item": {
+                "type": "commandExecution",
+                "id": "cmd_1",
+                "command": "pnpm test",
+                "status": status,
+                "exitCode": exit,
+                "aggregatedOutput": "1 failed",
+            }})
+        };
+        shared.handle_notification("item/started", &command("inProgress", Value::Null));
+        shared.handle_notification(
+            "item/commandExecution/outputDelta",
+            &json!({ "itemId": "cmd_1", "delta": "running
+" }),
+        );
+        shared.handle_notification("item/completed", &command("completed", json!(1)));
+        let calls: Vec<_> = drain(&mut events)
+            .into_iter()
+            .filter_map(|body| match body {
+                SessionEventBody::ToolCall {
+                    summary,
+                    status,
+                    exit_code,
+                    ..
+                } => Some((summary, status, exit_code)),
+                _ => None,
+            })
+            .collect();
+        assert!(calls.len() >= 2, "{calls:?}");
+        assert!(calls[..calls.len() - 1]
+            .iter()
+            .all(|(_, status, _)| *status == ToolStatus::Running));
+        let (summary, status, exit_code) = calls.last().unwrap();
+        assert_eq!(summary, "pnpm test");
+        assert_eq!(*status, ToolStatus::Failed);
+        assert_eq!(*exit_code, Some(1));
+    }
+
+    #[test]
+    fn completed_without_status_is_not_left_running() {
+        assert_eq!(settled_status(true, ToolStatus::Running), ToolStatus::Completed);
+        assert_eq!(settled_status(false, ToolStatus::Completed), ToolStatus::Running);
+        assert_eq!(settled_status(true, ToolStatus::Failed), ToolStatus::Failed);
     }
 
     #[test]
@@ -1175,7 +1233,18 @@ fn activity_event(item_id: &str, buf: &ActivityBuf) -> SessionEventBody {
             summary: buf.summary.clone(),
             detail: buf.detail.clone(),
             images: buf.images.clone(),
+            status: buf.status,
+            exit_code: buf.exit_code,
         },
         Some(item_id.to_string()),
     )
+}
+
+/// `item/started` 一律算进行中；`item/completed` 里协议没给结束状态时按完成算。
+fn settled_status(completed: bool, reported: ToolStatus) -> ToolStatus {
+    match (completed, reported) {
+        (false, _) => ToolStatus::Running,
+        (true, ToolStatus::Running) => ToolStatus::Completed,
+        (true, status) => status,
+    }
 }

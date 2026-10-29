@@ -7,7 +7,7 @@ use std::collections::HashSet;
 
 use serde_json::Value;
 
-use aiwb_core::models::{MessagePhase, SessionEventBody};
+use aiwb_core::models::{MessagePhase, SessionEventBody, ToolStatus};
 
 const HISTORY_PAGE: u32 = 20;
 const TOOL_DETAIL_CAP: usize = 20_000;
@@ -306,21 +306,43 @@ fn push_history_item(
     }
 }
 
+#[derive(Default)]
 pub(super) struct ToolView {
     pub(super) name: String,
     pub(super) summary: String,
     pub(super) detail: String,
     pub(super) images: Vec<String>,
+    pub(super) status: ToolStatus,
+    pub(super) exit_code: Option<i64>,
 }
 
 pub(super) fn tool_view(item: &Value) -> Option<ToolView> {
-    match item.get("type").and_then(Value::as_str).unwrap_or("") {
-        "commandExecution" => Some(command_view(item)),
-        "mcpToolCall" => Some(mcp_view(item)),
-        "webSearch" => Some(web_view(item)),
-        "imageGeneration" => Some(super::images::generation_view(item)),
-        kind if image_item_kind(kind) => Some(image_view(item)),
-        _ => None,
+    let mut view = match item.get("type").and_then(Value::as_str).unwrap_or("") {
+        "commandExecution" => command_view(item),
+        "mcpToolCall" => mcp_view(item),
+        "webSearch" => web_view(item),
+        "imageGeneration" => super::images::generation_view(item),
+        kind if image_item_kind(kind) => image_view(item),
+        _ => return None,
+    };
+    view.exit_code = item.get("exitCode").and_then(Value::as_i64);
+    view.status = item_status(item, view.exit_code);
+    Some(view)
+}
+
+/// `status` 来自 app-server 的 `CommandExecutionStatus` / `McpToolCallStatus` 等：
+/// `inProgress`、`completed`、`failed`、`declined`。没有这个字段的条目按已结束算。
+fn item_status(item: &Value, exit_code: Option<i64>) -> ToolStatus {
+    let status = item.get("status").and_then(Value::as_str).unwrap_or("");
+    let failure = item
+        .get("error")
+        .or_else(|| item.get("failure"))
+        .is_some_and(|value| !value.is_null());
+    match status {
+        "inProgress" => ToolStatus::Running,
+        "failed" | "declined" => ToolStatus::Failed,
+        _ if failure || exit_code.is_some_and(|code| code != 0) => ToolStatus::Failed,
+        _ => ToolStatus::Completed,
     }
 }
 
@@ -332,6 +354,8 @@ pub(super) fn tool_event(view: ToolView, stream_id: Option<String>) -> SessionEv
         stream_id,
         // 图片可能是完整 data URL，不能按文本摘要截断。
         images: view.images,
+        status: view.status,
+        exit_code: view.exit_code,
     }
 }
 
@@ -345,22 +369,13 @@ fn command_view(item: &Value) -> ToolView {
         summary: command_summary(item),
         detail: command_output(item),
         images: Vec::new(),
+        ..ToolView::default()
     }
 }
 
+/// 状态和退出码另有字段，摘要只放命令本身。
 fn command_summary(item: &Value) -> String {
-    let command = item.get("command").and_then(Value::as_str).unwrap_or("");
-    let status = item.get("status").and_then(Value::as_str).unwrap_or("");
-    let exit = item
-        .get("exitCode")
-        .and_then(Value::as_i64)
-        .map(|code| format!("，退出码 {code}"))
-        .unwrap_or_default();
-    if status.is_empty() {
-        format!("{command}{exit}")
-    } else {
-        format!("{command} → {status}{exit}")
-    }
+    item.get("command").and_then(Value::as_str).unwrap_or("").to_string()
 }
 
 fn command_output(item: &Value) -> String {
@@ -406,6 +421,7 @@ fn mcp_view(item: &Value) -> ToolView {
         summary: format!("MCP {server} {tool}").trim().to_string(),
         detail: parts.join("\n\n"),
         images: Vec::new(),
+        ..ToolView::default()
     }
 }
 
@@ -427,6 +443,7 @@ fn web_view(item: &Value) -> ToolView {
         summary: query.to_string(),
         detail: parts.join("\n\n"),
         images: Vec::new(),
+        ..ToolView::default()
     }
 }
 
@@ -466,6 +483,7 @@ fn image_view(item: &Value) -> ToolView {
         summary,
         detail: String::new(),
         images,
+        ..ToolView::default()
     }
 }
 

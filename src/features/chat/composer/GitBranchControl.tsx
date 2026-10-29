@@ -21,14 +21,11 @@ import {
 } from "./git-branch";
 import type { ComposerHost, WorktreeLine } from "./host";
 import { useComposerMenu } from "./useComposerMenu";
+import { CARD_BG, CARD_BG_HOT, CARD_SHADOW } from "./context-card";
 import { useGitBranch } from "./useGitBranch";
 import { worktreeBranchMarker } from "./worktree-option";
 import { WorkContextPicker } from "./WorkContextPicker";
 import { WorktreeSessionLabel, WorktreeToggle } from "./WorktreeChoice";
-
-const CARD_SHADOW = "0 1px 2px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.04)";
-const CARD_BG = "linear-gradient(180deg, #1c1c1f 0%, #17171a 100%)";
-const CARD_BG_HOT = "linear-gradient(180deg, #242428 0%, #1e1e22 100%)";
 
 export function ComposerContextRow({
   workContext,

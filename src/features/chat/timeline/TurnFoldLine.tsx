@@ -30,14 +30,17 @@ export function TurnFoldLine({
         aria-expanded={expanded}
         title={summary}
         onClick={onToggle}
-        className="group inline-flex max-w-full min-w-0 flex-nowrap items-center gap-2 rounded py-0.5 text-left"
+        className="group/fold inline-flex max-w-full min-w-0 flex-nowrap items-center gap-2 rounded py-0.5 text-left"
       >
         {icon}
-        <span className="min-w-0 truncate text-[12.5px] text-[#8a8a8a] group-hover:text-[#bdbdbd]">
+        <span className="min-w-0 truncate text-[12.5px] text-[#8a8a8a] group-hover/fold:text-[#bdbdbd]">
           {summary}
         </span>
         {pulse ? (
-          <span data-turn-running className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[#4f8dff]" />
+          <span data-turn-running className="relative inline-flex h-1.5 w-1.5 shrink-0">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4f8dff] opacity-60 motion-reduce:hidden" />
+            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#4f8dff]" />
+          </span>
         ) : null}
         <ChevronRight
           className={cn(

@@ -199,7 +199,7 @@ export function QuestionPopup({
                   <ChevronLeft className="h-3.5 w-3.5" />
                 </button>
                 <span className="tabular-nums">
-                  {cursor.index + 1} of {questions.length}
+                  {cursor.index + 1} / {questions.length}
                 </span>
                 <button
                   type="button"
@@ -320,7 +320,7 @@ export function QuestionPopup({
 
 function freeformPlaceholder(surface: "request-input" | "async-reply", isOther: boolean): string {
   if (surface === "async-reply") return isOther ? "或自行撰写回复" : "回复…";
-  return isOther ? "否，并告诉 ChatGPT 应该如何做得不同" : "在此输入";
+  return isOther ? "否，并说明应该怎么做" : "在此输入";
 }
 
 function OptionRow({

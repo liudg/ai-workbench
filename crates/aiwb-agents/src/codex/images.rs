@@ -32,6 +32,7 @@ pub(super) fn generation_view(item: &Value) -> ToolView {
             .map(|value| value.as_str().map(str::to_string).unwrap_or_else(|| value.to_string()))
             .unwrap_or_default(),
         images: image.into_iter().collect(),
+        ..ToolView::default()
     }
 }
 

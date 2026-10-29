@@ -5,7 +5,6 @@ import {
   activityStepTitle,
   activitySummary,
   foldActivity,
-  isLiveThinking,
   viewedImagesLabel,
 } from "./activity-fold.ts";
 import type { SessionEvent, SessionEventBody } from "../../../types/index.ts";
@@ -114,18 +113,6 @@ test("thinking splits tool groups and leaves no thinking row", () => {
   assert.equal(commands.summary, "已运行 3 条命令");
   assert.ok(trailing && trailing.type === "tools");
   assert.equal(trailing.summary, "已运行 1 条命令");
-});
-
-test("live thinking is only while the latest visible event is still thinking", () => {
-  const thinking = event("t1", { kind: "thinking", text: "思考中…" });
-  const done = event("a1", { kind: "agent-message", text: "找到了入口。", phase: "commentary" });
-  assert.equal(isLiveThinking([done, thinking]), true);
-  assert.equal(isLiveThinking([thinking, done]), false);
-  assert.equal(
-    isLiveThinking([thinking, event("s1", { kind: "status-changed", status: "running" })]),
-    true,
-  );
-  assert.equal(isLiveThinking([done, event("s2", { kind: "status-changed", status: "completed" })]), false);
 });
 
 test("a prompt between tools starts a new group", () => {

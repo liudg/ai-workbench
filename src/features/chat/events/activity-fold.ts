@@ -27,16 +27,6 @@ export type ActivityPiece =
       steps: { id: string; title: string; event: ToolCallEvent }[];
     };
 
-/** 进行中的一轮，最后一条可见事件仍是思考时，末行显示「正在思考」。 */
-export function isLiveThinking(events: readonly SessionEvent[]): boolean {
-  for (let i = events.length - 1; i >= 0; i--) {
-    const kind = events[i].kind;
-    if (kind === "status-changed" || kind === "context-usage" || kind === "session-usage") continue;
-    return kind === "thinking";
-  }
-  return false;
-}
-
 const TITLE_LIMIT = 48;
 
 export function foldActivity(events: readonly SessionEvent[]): ActivityPiece[] {
@@ -182,7 +172,7 @@ function joinNames(names: readonly string[]): string {
   return `${names.slice(0, -1).join("、")} 和 ${names[names.length - 1]}`;
 }
 
-function isWebSearch(event: ToolCallEvent): boolean {
+export function isWebSearch(event: ToolCallEvent): boolean {
   return event.name.replace(/[_-]/g, "").toLowerCase() === "websearch";
 }
 
@@ -193,7 +183,8 @@ function integrationServer(event: ToolCallEvent): string | null {
   return parseCodedMcp(event.name)?.server ?? (line ? parseCodedMcp(stripStatus(line))?.server ?? null : null);
 }
 
-function titleFromName(name: string): string {
+/** 只看适配器写入的 name：MCP 取工具名，命令统称「命令」。 */
+export function titleFromName(name: string): string {
   const coded = parseCodedMcp(name);
   if (coded?.tool) return clip(coded.tool);
   if (name.trim() === "command") return DESKTOP_ZH.activityCommandStep;

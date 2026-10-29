@@ -235,6 +235,8 @@ mod tests {
                 detail: "a.txt".into(),
                 stream_id: None,
                 images: Vec::new(),
+                status: crate::models::ToolStatus::Completed,
+                exit_code: Some(0),
             },
         );
         let message = historical_message(&tool).unwrap();

@@ -11,13 +11,14 @@ export function ElicitationCard({ event, session, resolvedAnswer, answerPrompt }
   const [values, setValues] = useState<Record<string, string>>({});
   const [flags, setFlags] = useState<Record<string, boolean>>({});
   const interactive = promptInteractive(resolvedAnswer, session.status);
+  // 必填项没填时「接受」按钮不可点，而不是点了没反应。
+  const filled = elicitationContent(event.questions, values, flags);
 
   const submit = (action: "accept" | "decline" | "cancel") => {
     if (action !== "accept") {
       answerPrompt(session.id, event.prompt_id, { type: "elicitation", action });
       return;
     }
-    const filled = elicitationContent(event.questions, values, flags);
     if (!filled.ok) return;
     answerPrompt(session.id, event.prompt_id, {
       type: "elicitation",
@@ -107,7 +108,7 @@ export function ElicitationCard({ event, session, resolvedAnswer, answerPrompt }
             ))}
           </div>
           <div className="mt-3 flex min-w-0 flex-wrap gap-2">
-            <Button type="button" size="sm" className="h-8" onClick={() => submit("accept")}>
+            <Button type="button" size="sm" className="h-8" disabled={!filled.ok} onClick={() => submit("accept")}>
               {DESKTOP_ZH.elicitAccept}
             </Button>
             <Button type="button" size="sm" variant="outline" className="h-8" onClick={() => submit("decline")}>

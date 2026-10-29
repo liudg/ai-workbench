@@ -250,6 +250,10 @@ function EffortSlider({
         dragging.current = false;
         onLive(null);
       }}
+      onPointerCancel={() => {
+        dragging.current = false;
+        onLive(null);
+      }}
       onKeyDown={(event) => {
         const next =
           event.key === "ArrowRight" || event.key === "ArrowUp"

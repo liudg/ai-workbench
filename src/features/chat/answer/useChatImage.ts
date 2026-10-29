@@ -23,9 +23,11 @@ export function useChatImage(source: ImageSource): {
         : { status: "fallback", reason: "在桌面版中预览" },
   );
 
+  // 流式答复每次重新解析都会给出新的 source 对象，按地址判断，避免本机图片反复回到加载中。
+  const address = source.type === "https" ? source.url : source.path;
   useEffect(() => {
-    if (source.type === "https") {
-      setState({ status: "ready", src: source.url });
+    if (remote) {
+      setState({ status: "ready", src: address });
       return;
     }
     if (!isTauri) {
@@ -34,7 +36,7 @@ export function useChatImage(source: ImageSource): {
     }
     let cancelled = false;
     setState({ status: "loading" });
-    resolveLocalChatImage(source.path).then(
+    resolveLocalChatImage(address).then(
       (url) => {
         if (!cancelled) setState({ status: "ready", src: url });
       },
@@ -45,7 +47,7 @@ export function useChatImage(source: ImageSource): {
     return () => {
       cancelled = true;
     };
-  }, [source]);
+  }, [address, remote]);
 
   return {
     state,

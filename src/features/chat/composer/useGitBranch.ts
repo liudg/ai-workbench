@@ -128,18 +128,10 @@ export function useGitBranch(
 
   useEffect(() => {
     if (!menuActive || !projectId) return;
-    let cancel = false;
-    const load = () => {
-      void loadMenu().then(() => {
-        if (cancel) return;
-      });
-    };
+    const load = () => void loadMenu();
     load();
     const timer = window.setInterval(load, POLL_MS);
-    return () => {
-      cancel = true;
-      window.clearInterval(timer);
-    };
+    return () => window.clearInterval(timer);
   }, [menuActive, projectId, loadMenu]);
 
   const checkout = useCallback(

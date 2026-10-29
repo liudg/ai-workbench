@@ -84,11 +84,6 @@ export function turnHeights(
   });
 }
 
-/**
- * 视口上沿以上的高度差。
- * 向前插入和上方测量变高要加进 scrollTop；尾部新消息不算，避免把往上翻的视口拽下去。
- * 调用方在跟随底部时不用这个差值，直接保持距离为 0。
- */
 /** 高度变化之后，视口应保持的距底距离。跟随底部时为 0。 */
 export function distanceAfterHeightChange(input: {
   beforeDistance: number;
@@ -102,6 +97,11 @@ export function distanceAfterHeightChange(input: {
   return input.beforeDistance + (input.afterTotal - input.beforeTotal - input.aboveDelta);
 }
 
+/**
+ * 视口上沿以上的高度差。
+ * 向前插入和上方测量变高要加进 scrollTop；尾部新消息不算，避免把往上翻的视口拽下去。
+ * 调用方在跟随底部时不用这个差值，直接保持距离为 0。
+ */
 export function aboveViewportDelta(input: {
   before: readonly TurnMeasure[];
   after: readonly TurnMeasure[];

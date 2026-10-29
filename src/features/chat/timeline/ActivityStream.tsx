@@ -5,12 +5,12 @@ import { ActivityGroup } from "../events/ActivityGroup";
 import { foldActivity, type ActivityPiece } from "../events/activity-fold";
 import { activityOpenAfterSettle, toggleToolGroup, toolGroupOpen } from "../events/activity-open";
 import { EventItem } from "../events/EventItem";
-import { ThinkingStatus } from "../events/ThinkingStatus";
 import { ViewedImages } from "../events/ViewedImages";
 
 /**
  * 一段会话过程。旁白按原顺序留下，相邻工具收成一行，查看图像单独成行。
- * 思考正文不画。`thinking` 为真时，末行是进行中的「正在思考」。
+ * 思考正文不画。进行中的末行由 `LiveTurn` 画，这里不管。
+ * `live` 为真时，适配器报的进行中工具才转圈。
  * `settled` 为真时，进行中点开过的工具行收回去，默认只留一行摘要。
  */
 export function ActivityStream({
@@ -18,7 +18,7 @@ export function ActivityStream({
   session,
   resolvedAnswers,
   showAgentLabel,
-  thinking = false,
+  live = false,
   settled = false,
   onInteract,
 }: {
@@ -26,7 +26,7 @@ export function ActivityStream({
   session: Session;
   resolvedAnswers: ReadonlyMap<string, string>;
   showAgentLabel: (event: SessionEvent) => boolean;
-  thinking?: boolean;
+  live?: boolean;
   settled?: boolean;
   onInteract?: () => void;
 }) {
@@ -62,6 +62,7 @@ export function ActivityStream({
               piece={piece}
               session={session}
               open={toolGroupOpen(openGroups, piece.id)}
+              live={live}
               onToggle={() => {
                 onInteract?.();
                 setOpenGroups((prev) => toggleToolGroup(prev, piece.id));
@@ -84,7 +85,6 @@ export function ActivityStream({
           />
         );
       })}
-      {thinking ? <ThinkingStatus /> : null}
     </div>
   );
 }

@@ -163,6 +163,8 @@ export function useTimelineFollow(sessionId: string, layoutKey: string): Timelin
 
   const onTimelineWheel = (event: WheelEvent<HTMLDivElement>) => {
     if (event.deltaY >= 0) return;
+    // 工具输出框自己滚，滚轮不会带动时间线，也不该让时间线停止跟随。
+    if (event.target instanceof Element && event.target.closest("[data-own-scroll]")) return;
     const el = scrollRef.current;
     if (!el) return;
     if (el.scrollTop < 48) requestOlder();

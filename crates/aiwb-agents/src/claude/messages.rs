@@ -19,7 +19,7 @@ use super::control::{self, PermissionKind};
 use super::diff;
 use super::history::{conversation_chain, is_visible_message, transcript_entries};
 use aiwb_core::models::{
-    FileChange, MessagePhase, PromptKind, SessionEventBody, SessionStatus,
+    FileChange, MessagePhase, PromptKind, SessionEventBody, SessionStatus, ToolStatus,
 };
 
 #[derive(Default)]
@@ -346,7 +346,7 @@ fn on_stream(state: &mut MapState, event: &Value, project: Option<&Path>) -> Vec
                 return Vec::new();
             };
             let input = serde_json::from_str::<Value>(&json).unwrap_or(Value::Null);
-            tool_events(state, &id, &name, &input, "", false, project)
+            tool_events(state, &id, &name, &input, "", ToolStatus::Running, project)
         }
         _ => Vec::new(),
     }
@@ -642,7 +642,7 @@ fn on_assistant(state: &mut MapState, value: &Value, project: Option<&Path>, liv
                     let id = block.get("id").and_then(Value::as_str).unwrap_or("");
                     let name = block.get("name").and_then(Value::as_str).unwrap_or("tool");
                     let input = block.get("input").cloned().unwrap_or(Value::Null);
-                    events.extend(tool_events(state, id, name, &input, "", false, project));
+                    events.extend(tool_events(state, id, name, &input, "", ToolStatus::Running, project));
                 }
                 _ => {}
             }
@@ -713,8 +713,12 @@ fn on_tool_result(state: &mut MapState, block: &Value, project: Option<&Path>) -
     };
     let reported = row.reported.clone();
     let input = row.input.clone();
-    let failed = block.get("is_error").and_then(Value::as_bool).unwrap_or(false);
-    tool_events(state, id, &reported, &input, &detail, !failed, project)
+    let status = if block.get("is_error").and_then(Value::as_bool).unwrap_or(false) {
+        ToolStatus::Failed
+    } else {
+        ToolStatus::Completed
+    };
+    tool_events(state, id, &reported, &input, &detail, status, project)
 }
 
 fn on_result(state: &mut MapState, value: &Value, live: bool) -> Vec<SessionEventBody> {
@@ -940,8 +944,9 @@ fn tool_events(
     reported: &str,
     input: &Value,
     detail: &str,
-    // 工具已经成功跑完。被拒绝、被打断或还在等审批的改动不算进这一轮的变更。
-    applied: bool,
+    // `tool_use` 时进行中，`tool_result` 时按 `is_error` 分成功或失败。
+    // 只有成功跑完的工具才算进这一轮的变更；被拒绝、被打断或还在等审批的不算。
+    status: ToolStatus,
     project: Option<&Path>,
 ) -> Vec<SessionEventBody> {
     if id.is_empty() {
@@ -961,8 +966,10 @@ fn tool_events(
         detail: detail.to_string(),
         stream_id: Some(id.to_string()),
         images: Vec::new(),
+        status,
+        exit_code: None,
     }];
-    if state.turn_id.is_empty() || !applied {
+    if state.turn_id.is_empty() || status != ToolStatus::Completed {
         return events;
     }
     let result = result_value(detail);

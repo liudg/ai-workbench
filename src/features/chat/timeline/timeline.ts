@@ -45,7 +45,13 @@ export function runningTurnSummary(agentLabel: string): string {
 
 export type TimelineNode =
   | { type: "event"; event: SessionEvent; showAgentLabel: boolean }
-  | { type: "live"; id: string; events: SessionEvent[] }
+  | {
+      type: "live";
+      id: string;
+      events: SessionEvent[];
+      /** 这一轮从哪一刻算起。末行计时用；不知道就是 null。 */
+      startedAt: number | null;
+    }
   | {
       type: "turn";
       id: string;
@@ -276,6 +282,15 @@ function activityAhead(events: readonly SessionEvent[], from: number): boolean {
   return false;
 }
 
+/** 还没有任何一轮时，从最近一次进入运行的状态事件算起。 */
+function runningSince(events: readonly SessionEvent[]): number | null {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event.kind === "status-changed") return event.status === "running" ? event.ts : null;
+  }
+  return null;
+}
+
 export function buildTimeline(
   events: readonly SessionEvent[],
   status: SessionStatus,
@@ -303,14 +318,19 @@ export function buildTimeline(
     const rest = turn.slice(1);
     const last = turnIndex === turns.length - 1;
     if (status === "running" && last) {
-      blocks.push({ type: "live", id: `live-${leader.id}`, events: visibleEvents(rest) });
+      blocks.push({
+        type: "live",
+        id: `live-${leader.id}`,
+        events: visibleEvents(rest),
+        startedAt: leader.ts,
+      });
       return;
     }
     if (liveStatus && last) pushLive(blocks, rest);
     else pushSettled(blocks, leader.ts, rest);
   });
   if (status === "running" && !blocks.some((block) => block.type === "live")) {
-    blocks.push({ type: "live", id: "live-current", events: [] });
+    blocks.push({ type: "live", id: "live-current", events: [], startedAt: runningSince(events) });
   }
   return blocks;
 }

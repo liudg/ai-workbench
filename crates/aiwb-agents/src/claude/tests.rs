@@ -14,7 +14,7 @@ use super::images;
 use super::messages::{self, ingest_line, MapState};
 use super::permission::permission_menu;
 use super::process;
-use aiwb_core::models::{AgentKind, MessagePhase, PromptAnswer, SessionEventBody, SessionStatus};
+use aiwb_core::models::{AgentKind, MessagePhase, PromptAnswer, SessionEventBody, SessionStatus, ToolStatus};
 
 fn temp_dir(name: &str) -> PathBuf {
     let path = std::env::temp_dir().join(format!("claude-{name}-{}", std::process::id()));
@@ -1454,4 +1454,111 @@ fn history_writes_slash_commands_and_absorbed_messages_as_the_user_typed_them() 
         })
         .collect();
     assert_eq!(users, ["跑一下", "顺便加上 B", "/goal 测试都通过"]);
+}
+
+#[test]
+fn tool_status_follows_tool_use_and_tool_result() {
+    let mut state = MapState::default();
+    let status_of = |events: &[SessionEventBody]| match events.first() {
+        Some(SessionEventBody::ToolCall { status, .. }) => *status,
+        other => panic!("unexpected {other:?}"),
+    };
+    let started = ingest_line(
+        &mut state,
+        r#"{"type":"assistant","uuid":"cccccccc-cccc-4ccc-8ccc-cccccccccccc","message":{"role":"assistant","content":[{"type":"tool_use","id":"tool-ok","name":"Bash","input":{"command":"ls"}},{"type":"tool_use","id":"tool-bad","name":"Bash","input":{"command":"false"}}]}}"#,
+        true,
+        None,
+    );
+    assert!(started.events.iter().all(|event| matches!(
+        event,
+        SessionEventBody::ToolCall { status: ToolStatus::Running, .. }
+    )));
+    let ok = ingest_line(
+        &mut state,
+        r#"{"type":"user","uuid":"cccccccc-cccc-4ccc-8ccc-cccccccccccd","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tool-ok","content":"a.txt"}]}}"#,
+        true,
+        None,
+    );
+    assert_eq!(status_of(&ok.events), ToolStatus::Completed);
+    let bad = ingest_line(
+        &mut state,
+        r#"{"type":"user","uuid":"cccccccc-cccc-4ccc-8ccc-ccccccccccce","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tool-bad","is_error":true,"content":"Exit code 1"}]}}"#,
+        true,
+        None,
+    );
+    assert_eq!(status_of(&bad.events), ToolStatus::Failed);
+}
+
+/// 真实 Claude Code：`tool_use` 时进行中，`tool_result` 后成功或失败。
+#[tokio::test]
+#[ignore = "calls the local Claude Code CLI"]
+async fn live_tool_status_follows_the_result() {
+    use std::time::Duration;
+
+    use crate::{AgentAdapter, SessionContext};
+    use tokio::sync::mpsc;
+    use tokio::time::timeout;
+
+    let adapter = super::ClaudeCodeAdapter::new();
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let session = adapter
+        .start_session(
+            SessionContext {
+                project_path: std::env::temp_dir().to_string_lossy().to_string(),
+                access_mode: Some("full".into()),
+                resume_native_id: None,
+                options: serde_json::json!({}),
+            },
+            tx,
+        )
+        .await
+        .expect("start");
+    session
+        .send_message(
+            "Use the Bash tool twice, one call after the other: first `sleep 3; echo aiwb-ok`, \
+             then `exit 3`. Do not retry. Then reply done."
+                .into(),
+        )
+        .await
+        .expect("send");
+
+    let mut calls: Vec<(Option<String>, ToolStatus, String)> = Vec::new();
+    let mut started = false;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(180);
+    while tokio::time::Instant::now() < deadline {
+        match timeout(Duration::from_secs(8), rx.recv()).await {
+            Ok(Some(SessionEventBody::ToolCall {
+                stream_id,
+                status,
+                summary,
+                ..
+            })) => calls.push((stream_id, status, summary)),
+            Ok(Some(SessionEventBody::StatusChanged {
+                status: SessionStatus::Running,
+            })) => started = true,
+            Ok(Some(SessionEventBody::StatusChanged {
+                status: SessionStatus::Completed | SessionStatus::Failed,
+            })) if started => break,
+            Ok(Some(other)) => eprintln!("{other:?}"),
+            Ok(None) => break,
+            Err(_) => {}
+        }
+    }
+    let _ = session.stop().await;
+    eprintln!("{calls:#?}");
+    let last_of = |needle: &str| {
+        calls
+            .iter()
+            .rev()
+            .find(|(_, _, summary)| summary.contains(needle))
+            .cloned()
+            .unwrap_or_else(|| panic!("no call for {needle}: {calls:?}"))
+    };
+    let ok = last_of("aiwb-ok");
+    assert_eq!(ok.1, ToolStatus::Completed);
+    assert!(
+        calls.iter().any(|call| call.0 == ok.0 && call.1 == ToolStatus::Running),
+        "the sleeping command never showed as running"
+    );
+    assert_eq!(last_of("exit 3").1, ToolStatus::Failed);
 }

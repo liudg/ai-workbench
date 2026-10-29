@@ -4,6 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ReactElement } from "react";
 import { createServer, type ViteDevServer } from "vite";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import type { Session, SessionEvent, SessionEventBody } from "../../../types/index.ts";
@@ -100,7 +101,7 @@ test("a settled stream collapses tool rows and hides finished thinking", async (
   assert.equal(unity < command, true);
 });
 
-test("opening a settled row shows the calls in order with their output", async () => {
+test("opening a settled row lists the calls in order, each folded until clicked", async () => {
   const fold = await server.ssrLoadModule("/src/features/chat/events/activity-fold.ts");
   const group = await server.ssrLoadModule("/src/features/chat/events/ActivityGroup.tsx");
   const pieces = fold.foldActivity(settledEvents).filter((piece: { type: string }) => piece.type === "tools");
@@ -112,6 +113,7 @@ test("opening a settled row shows the calls in order with their output", async (
           piece,
           session,
           open: piece.id === pieces[0].id,
+          live: false,
           onToggle: () => {},
         }),
       ),
@@ -120,33 +122,106 @@ test("opening a settled row shows the calls in order with their output", async (
   const openRow = html.slice(0, html.indexOf("已运行 1 条命令"));
   assert.equal(openRow.includes('data-expanded="true"'), true);
   assert.equal(openRow.includes("data-activity-steps"), true);
-  assert.equal(openRow.includes("execute_code"), true);
-  assert.equal(openRow.includes("MCP unityMCP execute_code"), true);
-  assert.equal(openRow.includes("打开了宝石详情"), true);
+  assert.equal(openRow.includes('data-step-title="execute_code"'), true);
+  assert.equal(openRow.includes('aria-expanded="false"'), true);
+  assert.equal(openRow.includes("打开了宝石详情"), false);
   const closedRow = html.slice(html.indexOf("已运行 1 条命令"));
   assert.equal(closedRow.includes('data-expanded="false"'), true);
   assert.equal(closedRow.includes("data-activity-steps"), false);
   assert.equal(closedRow.includes("选中 1 行"), false);
 });
 
-test("a running stream still shows the thinking line and keeps tool rows collapsed", async () => {
-  const mod = await server.ssrLoadModule("/src/features/chat/timeline/ActivityStream.tsx");
-  const html = renderInHost(
-    createElement(mod.ActivityStream, {
-      events: settledEvents,
-      session,
-      resolvedAnswers: new Map(),
-      showAgentLabel: () => false,
-      thinking: true,
-      settled: false,
+const runningEvents: SessionEvent[] = [
+  event("k0", { kind: "tool-call", name: "command", summary: "pnpm lint", status: "failed", exit_code: 2 }),
+  event("k1", { kind: "tool-call", name: "command", summary: "pnpm test", status: "running" }),
+];
+
+test("a running step spins only while the turn is live, failures stay marked", async () => {
+  const fold = await server.ssrLoadModule("/src/features/chat/events/activity-fold.ts");
+  const group = await server.ssrLoadModule("/src/features/chat/events/ActivityGroup.tsx");
+  const [piece] = fold.foldActivity(runningEvents);
+  const render = (live: boolean) =>
+    renderInHost(createElement(group.ActivityGroup, { piece, session, open: true, live, onToggle: () => {} }));
+  const live = render(true);
+  assert.equal(live.includes('data-activity-running="true"'), true);
+  assert.equal(live.includes('data-step-state="running"'), true);
+  assert.equal(live.includes("animate-spin"), true);
+  assert.equal(live.includes("1 个失败"), true);
+  assert.equal(live.includes("退出码 2"), true);
+  const settled = render(false);
+  assert.equal(settled.includes("data-activity-running"), false);
+  assert.equal(settled.includes('data-step-state="running"'), false);
+  assert.equal(settled.includes("animate-spin"), false);
+  assert.equal(settled.includes('data-step-state="failed"'), true);
+});
+
+test("a live turn spins its running steps; the status row shows what it does and for how long", async () => {
+  const turn = await server.ssrLoadModule("/src/features/chat/timeline/LiveTurn.tsx");
+  for (const expanded of [true, false]) {
+    const html = renderInHost(
+      createElement(turn.LiveTurn, {
+        events: runningEvents,
+        session,
+        resolvedAnswers: new Map(),
+        expanded,
+        onToggle: () => {},
+      }),
+    );
+    assert.equal(html.includes("data-turn-running"), true);
+    assert.equal(html.includes("animate-spin"), expanded);
+    assert.equal(html.includes("data-live-status"), false);
+  }
+  const status = await server.ssrLoadModule("/src/features/chat/timeline/LiveStatus.tsx");
+  const tools = await server.ssrLoadModule("/src/features/chat/events/tool-status.ts");
+  const row = renderInHost(
+    createElement(status.LiveStatus, {
+      label: tools.liveActivityLabel(runningEvents),
+      startedAt: Date.now() - 65_000,
     }),
   );
-  assert.equal(html.includes('data-activity-settled="false"'), true);
-  assert.equal(html.includes("正在思考"), true);
-  assert.equal(html.includes("先看背包里的宝石"), false);
-  assert.equal(html.includes('data-expanded="false"'), true);
-  assert.equal(html.includes("data-activity-steps"), false);
-  assert.equal(html.includes("旁白按顺序留下"), true);
+  assert.equal(row.includes('data-live-label="正在运行 pnpm test"'), true);
+  assert.match(row, /data-live-elapsed[^>]*>1m 5s</);
+});
+
+test("the status row sits at the very bottom, after the live change card", () => {
+  const view = readFileSync(new URL("./ChatView.tsx", import.meta.url), "utf8");
+  const card = view.indexOf("<ChangeCard changes={liveChanges}");
+  const row = view.indexOf("<LiveStatus");
+  const columnEnd = view.indexOf("</div>", row);
+  assert.ok(card > 0 && row > card, "LiveStatus after the live ChangeCard");
+  assert.ok(view.indexOf("turn-virtual-list") < card, "both after the virtual list");
+  assert.ok(columnEnd > row);
+});
+
+test("tool output is boxed and keeps the tail of long output", async () => {
+  const mod = await server.ssrLoadModule("/src/features/chat/events/ToolOutput.tsx");
+  const output = Array.from({ length: 300 }, (_, index) => `line ${index}`).join("\n");
+  const html = renderInHost(
+    createElement(mod.ToolOutput, {
+      command: "pnpm test",
+      output,
+      images: [],
+      copyText: "pnpm test",
+      running: false,
+    }),
+  );
+  assert.equal(html.includes("max-h-64"), true);
+  assert.equal(html.includes("data-own-scroll"), true);
+  assert.equal(html.includes("已省略前 180 行"), true);
+  assert.equal(html.includes("line 179\n"), false);
+  assert.equal(html.includes("line 299"), true);
+  const long = renderInHost(
+    createElement(mod.ToolOutput, {
+      command: "a\nb\nc\nd",
+      output: "",
+      images: [],
+      copyText: "",
+      running: false,
+    }),
+  );
+  assert.equal(long.includes("line-clamp-3"), true);
+  assert.equal(long.includes("展开命令"), true);
+  assert.equal(long.includes("data-own-scroll"), false);
 });
 
 function commands(prefix: string, count: number): SessionEvent[] {
@@ -357,7 +432,6 @@ test("a running turn does not repeat the agent name or wedge the time before too
     "先看一下工作目录。",
     "已运行 1 条命令",
     "坦克大战可以做成 H5。",
-    "正在思考",
   ]);
   const between = html.slice(html.indexOf("先看一下工作目录。"), html.indexOf("已运行 1 条命令"));
   assert.equal(between.includes("data-message-footer"), false);

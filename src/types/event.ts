@@ -11,6 +11,9 @@ export type PromptKind = "approval" | "choice" | "free-text" | "questions" | "el
  */
 export type MessagePhase = "commentary" | "partial-answer" | "final-answer";
 
+/** 一条工具调用的进度。`running` 只在这一轮还在跑时才算真的在跑。 */
+export type ToolStatus = "running" | "completed" | "failed";
+
 /** 提问卡片的按钮和占位。适配器写入，界面不看 Agent 名字。 */
 export type QuestionSurface = "request-input" | "async-reply";
 
@@ -85,6 +88,10 @@ export type SessionEventBody =
       detail?: string;
       stream_id?: string;
       images?: string[];
+      /** 旧日志没有这个字段，按已结束读。 */
+      status?: ToolStatus;
+      /** 命令的退出码。协议没给就缺省。 */
+      exit_code?: number;
     }
   | {
       kind: "prompt";

@@ -42,7 +42,7 @@ export function ReviewMenu({
   return (
     <div
       role="menu"
-      aria-label={labels?.title ?? "review"}
+      aria-label={labels?.title ?? "审查"}
       className="absolute bottom-full left-0 right-0 z-20 mb-2 max-h-80 min-w-0 overflow-x-hidden overflow-y-auto rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
     >
       {error && <p className="px-3 py-2 text-xs text-red-300">{error}</p>}
