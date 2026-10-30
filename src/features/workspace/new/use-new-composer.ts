@@ -20,6 +20,7 @@ import type {
 } from "@/types";
 import { filterPaths } from "../session/api";
 import { moveDraft, patchDraft, readDraft, type ComposerDraft } from "../session/composer-drafts";
+import { beginSessionStart } from "../session/session-start";
 import { initialSandbox } from "@/lib/sandbox";
 import { rememberAgent, rememberSandbox, rememberTuning, stickyAgent, stickySandbox, stickyTuning } from "./sticky";
 
@@ -142,6 +143,7 @@ export function useNewComposer({
       draft: true,
       inputLocked: creating,
       initialText: readDraft(key).text,
+      initialFileRefs: readDraft(key).fileRefs ?? [],
       catalog,
       catalogNotice: notice,
       profile: profiles[agent],
@@ -188,6 +190,7 @@ export function useNewComposer({
       rememberText: (text) => {
         if (readDraft(key).text !== text) patch({ text });
       },
+      rememberFileRefs: (fileRefs) => patch({ fileRefs }),
       send: async (text, images) => {
         setCreating(true);
         try {
@@ -212,7 +215,10 @@ export function useNewComposer({
           rememberAgent(agent);
           const sessionId = created.sessions[created.sessions.length - 1]?.id;
           // 文字跟着发出去了；附件、片段、选项都清掉，新会话页回到空白。
-          if (sessionId) moveDraft(key, sessionId, {});
+          if (sessionId) {
+            moveDraft(key, sessionId, {});
+            if (text.trim() || images.length > 0) beginSessionStart(sessionId, { text, images });
+          }
           openTask(created.id, projectId);
           return true;
         } catch (error) {

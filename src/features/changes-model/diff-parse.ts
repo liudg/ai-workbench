@@ -7,6 +7,7 @@
  * 统一 diff 只用来拆 `files.diff` 返回的 git 范围。
  */
 import type { FileChange as EventFile, SessionEvent } from "../../types/index.ts";
+import { steerFlags } from "../../shared/session/steer.ts";
 
 export type FileStatus = "A" | "M" | "D" | "R";
 
@@ -112,11 +113,13 @@ export function lastSlice(events: readonly SessionEvent[]): SessionEvent[] {
   return slices[slices.length - 1] ?? [];
 }
 
+/** 按用户消息切成一轮一轮。回合进行中补进去的引导不切。 */
 function eventSlices(events: readonly SessionEvent[]): SessionEvent[][] {
   const slices: SessionEvent[][] = [];
+  const steers = steerFlags(events);
   let current: SessionEvent[] = [];
-  for (const event of events) {
-    if (event.kind === "user-message" && current.length > 0) {
+  for (const [index, event] of events.entries()) {
+    if (event.kind === "user-message" && !steers[index] && current.length > 0) {
       slices.push(current);
       current = [];
     }

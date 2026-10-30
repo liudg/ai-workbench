@@ -44,6 +44,7 @@ import { queueStripVisible } from "./queue-strip";
 import { useComposerMenu } from "./useComposerMenu";
 import { useFileDrop } from "./useFileDrop";
 import { collaborationMode } from "./collaboration-mode";
+import { composerTokens, liveFileRefs, type FileRef } from "./file-refs";
 import { useGoalDraft } from "./useGoalDraft";
 import { useMentionMenu } from "./useMentionMenu";
 import { releaseSubmitOnEdit, submitFingerprint, type SubmitFlight } from "./submit-flight";
@@ -51,6 +52,7 @@ import { useReviewDismiss } from "./useReviewDismiss";
 
 export function useComposerController(host: ComposerHost, session: Session, events: SessionEvent[]) {
   const [text, setText] = useState(() => host.initialText);
+  const [fileRefs, setFileRefs] = useState<FileRef[]>(() => liveFileRefs(host.initialText, host.initialFileRefs));
   const [caret, setCaret] = useState(0);
   const [menu, setMenu] = useState<null | "access" | "model" | "attach">(null);
   const [reviewOpen, setReviewOpen] = useState(false);
@@ -119,6 +121,8 @@ export function useComposerController(host: ComposerHost, session: Session, even
     setText,
     caret,
     setCaret,
+    fileRefs,
+    setFileRefs,
     textareaRef,
     mentionOpen: view.mentionOpen,
     mentionAdd: view.mentionAdd,
@@ -172,6 +176,14 @@ export function useComposerController(host: ComposerHost, session: Session, even
     // 同一会话里宿主每次渲染都是新的，只在字变了时写。
   }, [session.id, text]);
 
+  // 框里删掉的引用不再带着；还在的和文字一起存。
+  const live = liveFileRefs(text, fileRefs);
+  const liveKey = live.map((ref) => `${ref.label}\t${ref.path}`).join("\n");
+  useEffect(() => {
+    if (live.length !== fileRefs.length) setFileRefs(live);
+    host.rememberFileRefs(live);
+  }, [session.id, liveKey]);
+
   const snippetCount = host.snippets.length;
   const seenSnippets = useRef(snippetCount);
   useEffect(() => {
@@ -191,6 +203,7 @@ export function useComposerController(host: ComposerHost, session: Session, even
     flightKey: session.id,
     text,
     caret,
+    fileRefs: live,
     editingId,
     setText,
     setCaret,
@@ -233,6 +246,7 @@ export function useComposerController(host: ComposerHost, session: Session, even
   return {
     text,
     setText,
+    tokens: composerTokens(text, live, (host.catalog?.skills ?? []).map((skill) => skill.mention)),
     menu,
     setMenu,
     reviewOpen,

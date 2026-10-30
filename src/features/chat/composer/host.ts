@@ -18,6 +18,7 @@ import type {
   SessionSandbox,
   SessionTuning,
 } from "@/types";
+import type { FileRef } from "./file-refs";
 import type { FollowUpQueueMode } from "./follow-up-queue-mode";
 import type { PathPage } from "./mention-search";
 import type { WorkContextPicker } from "./WorkContextPicker";
@@ -61,6 +62,8 @@ export interface ComposerHost {
   /** 新会话正在创建，输入先锁住。 */
   inputLocked: boolean;
   initialText: string;
+  /** 框里 `@文件名` 对应的完整路径，和文字一起存。 */
+  initialFileRefs: FileRef[];
   catalog: AgentCatalog | undefined;
   catalogNotice: string | null;
   profile: AgentProfile | undefined;
@@ -81,6 +84,7 @@ export interface ComposerHost {
   agentChoice: AgentChoice | null;
 
   rememberText(text: string): void;
+  rememberFileRefs(refs: FileRef[]): void;
   /** 发出一条消息。`now` 时回合进行中也直接引导进去。失败时返回 false，输入还在。 */
   send(text: string, images: string[], now: boolean): Promise<boolean>;
   setCollaborationMode(mode: "plan" | "default"): Promise<void>;

@@ -23,7 +23,8 @@ import { effortForModel } from "./composer-submit";
 import { fastTier, tuningForModel } from "./model-picker";
 import { useComposerMenu } from "./useComposerMenu";
 import { activeGoal } from "./goal";
-import { atToken, clearAtToken, insertMention, mentionAddItems, mentionFiles } from "./mentions";
+import { atToken, clearAtToken, mentionAddItems, mentionFiles } from "./mentions";
+import { composerTokens, insertFileRefs, liveFileRefs, type FileRef } from "./file-refs";
 import { QueuedMessageList } from "./QueueStrip";
 import { toggleFollowUpQueueMode, type FollowUpQueueMode } from "./follow-up-queue-mode";
 
@@ -281,6 +282,7 @@ export default function ComposerPreview() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [text, setText] = useState(skillsOpen ? "$" : "");
   const [caret, setCaret] = useState(skillsOpen ? 1 : 0);
+  const [fileRefs, setFileRefs] = useState<FileRef[]>([]);
   const [planOn, setPlanOn] = useState(() => params.get("plan") === "1");
   const [sent, setSent] = useState(() => params.get("sent") === "1");
   const goalPreview = params.get("goal");
@@ -374,7 +376,8 @@ export default function ComposerPreview() {
 
   const choose = (target: "files" | "goal" | "plan" | { path: string }) => {
     if (typeof target !== "string") {
-      const next = insertMention(text, caret, [target.path]);
+      const next = insertFileRefs(text, caret, [target.path], liveFileRefs(text, fileRefs));
+      setFileRefs(next.refs);
       setText(next.text);
       setCaret(next.caret);
       return;
@@ -502,6 +505,7 @@ export default function ComposerPreview() {
             <TextSnippetChip snippets={snippets} onClear={() => setSnippets([])} />
             <ComposerInput
               text={text}
+              tokens={composerTokens(text, liveFileRefs(text, fileRefs), previewSkills.map((skill) => skill.mention))}
               placeholder={view.placeholder}
               disabled={false}
               textareaRef={textareaRef}

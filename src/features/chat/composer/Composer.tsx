@@ -139,6 +139,7 @@ export function Composer({
           <Attachments files={c.files} imagesOn={view.imagesOn} onRemove={c.removeFile} onOpenFile={c.openFile} />
           <ComposerInput
             text={c.text}
+            tokens={c.tokens}
             placeholder={view.placeholder}
             disabled={view.composerLocked}
             textareaRef={c.textareaRef}

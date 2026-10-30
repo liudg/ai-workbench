@@ -6,6 +6,7 @@ import type { AgentCapabilities, AgentSkillOption, Attachment, SessionSandbox, S
 import { composerKeyIntent, stepIndex } from "./composer-keys";
 import { composerCtrlEnter, queueFlushIds, submitDelivery } from "./composer-now";
 import { decideSlash, decideSubmit } from "./composer-submit";
+import { expandFileRefs, type FileRef } from "./file-refs";
 import {
   claimSubmit,
   settleSubmit,
@@ -26,6 +27,8 @@ export interface ComposerRun {
   flightKey: string;
   text: string;
   caret: number;
+  /** 框里 `@文件名` 对应的完整路径。发送时换回去。 */
+  fileRefs: FileRef[];
   editingId: string | null;
   setText: (value: string) => void;
   setCaret: (value: number) => void;
@@ -150,7 +153,7 @@ export function runComposerSubmit(run: ComposerRun, options?: { now?: boolean })
     snippetCount: snippets.length,
   });
   const decision = decideSubmit({
-    text: run.text,
+    text: expandFileRefs(run.text, run.fileRefs),
     supportsPlan: Boolean(run.caps?.supports_plan),
     supportsReview: Boolean(run.caps?.supports_review),
     planOn: run.view.planOn,

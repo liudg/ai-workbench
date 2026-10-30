@@ -14,6 +14,7 @@ import { answerPrompt } from "./api";
 import { chatSession } from "./chat-session";
 import { addDraftSnippet, useComposerDraft } from "./composer-drafts";
 import { SessionPanel } from "./SessionPanel";
+import { useSessionStart } from "./session-start";
 import { useLiveComposer } from "./use-live-composer";
 import { useTaskTimeline } from "./use-task-timeline";
 
@@ -47,6 +48,7 @@ export function SessionView({
     [agentOf, profiles, workdir],
   );
   const feed = timeline.all;
+  const starting = useSessionStart(session.id, timeline.current.events, timeline.current.ready);
   const { draft, loaded } = useComposerDraft(session.id);
   const profile = profiles[taskSession.agent];
   const composer = useLiveComposer({
@@ -73,6 +75,7 @@ export function SessionView({
               session={session}
               events={feed.events}
               eventsReady={feed.ready}
+              starting={starting}
               renderComposer={(anchorRef) =>
                 loaded ? (
                   <Composer

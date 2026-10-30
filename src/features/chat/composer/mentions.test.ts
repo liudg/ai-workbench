@@ -7,7 +7,6 @@ import {
   clearAtToken,
   mentionPickText,
   highlightParts,
-  insertMention,
   mentionAddItems,
   mentionFiles,
   mentionSupport,
@@ -35,14 +34,9 @@ test("mention pick uses the caret left after the file dialog", () => {
   assert.equal(caretAfterMentionPick(4, -2, 12), 0);
 });
 
-test("file mention replaces the token and quotes paths with spaces", () => {
+test("paths with spaces are quoted and the @ query can be cleared", () => {
   assert.equal(quoteMentionPath("Assets/a.png"), "Assets/a.png");
   assert.equal(quoteMentionPath("My Files/a.png"), '"My Files/a.png"');
-  const inserted = insertMention("看 @bao", 6, ["Assets/AB/icon.png"]);
-  assert.equal(inserted.text, "看 Assets/AB/icon.png ");
-  assert.equal(inserted.caret, inserted.text.length);
-  const spaced = insertMention("@q", 2, ["My Files/a.png"]);
-  assert.equal(spaced.text, '"My Files/a.png" ');
   assert.deepEqual(clearAtToken("看 @bao", 6), { text: "看 ", caret: 2 });
 });
 

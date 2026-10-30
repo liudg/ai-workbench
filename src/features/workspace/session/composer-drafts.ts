@@ -3,12 +3,15 @@
 
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 
+import type { FileRef } from "@/features/chat/composer/file-refs";
 import { daemon } from "@/lib/daemon";
 import { createTextSnippet, withTextSnippet, type TextSnippet, type TextSnippetDraft } from "@/shared/text-snippet";
 import type { AgentKind, Attachment, SessionSandbox, SessionTuning } from "@/types";
 
 export interface ComposerDraft {
   text: string;
+  /** 框里 `@文件名` 对应的完整路径。 */
+  fileRefs?: FileRef[];
   files: Attachment[];
   snippets: TextSnippet[];
   /** 下面这些只有还没建好的新会话用。 */

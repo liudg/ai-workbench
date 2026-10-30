@@ -17,6 +17,7 @@ import { QuestionPopup } from "../events/QuestionPopup";
 import { ActivityStream } from "./ActivityStream";
 import { LiveStatus } from "./LiveStatus";
 import { LiveTurn } from "./LiveTurn";
+import { StartingTurn, type StartingMessage } from "./StartingTurn";
 import { liveActivityLabel } from "../events/tool-status";
 import { TurnProcess } from "./TurnProcess";
 import {
@@ -43,12 +44,15 @@ export function ChatView({
   session,
   events,
   eventsReady = true,
+  starting = null,
   renderComposer,
 }: {
   session: Session;
   events: SessionEvent[];
   /** 选中会话的历史还没回来时为 false。预览直接给了事件，默认已就绪。 */
   eventsReady?: boolean;
+  /** 新会话的第一条消息已交出、Agent 还在启动。 */
+  starting?: StartingMessage | null;
   renderComposer: RenderComposer;
 }) {
   return (
@@ -57,6 +61,7 @@ export function ChatView({
         session={session}
         events={events}
         eventsReady={eventsReady}
+        starting={starting}
         renderComposer={renderComposer}
       />
     </ChatErrorBoundary>
@@ -67,11 +72,13 @@ function ChatTimeline({
   session,
   events,
   eventsReady,
+  starting,
   renderComposer,
 }: {
   session: Session;
   events: SessionEvent[];
   eventsReady: boolean;
+  starting: StartingMessage | null;
   renderComposer: RenderComposer;
 }) {
   const pendingId = useMemo(() => pendingPrompt(events), [events]);
@@ -137,7 +144,7 @@ function ChatTimeline({
     pausePinForToggle,
     holdScrollPosition,
     ...anchor
-  } = useTimelineFollow(session.id, layoutKey);
+  } = useTimelineFollow(session.id, starting ? `${layoutKey}:starting` : layoutKey);
   const find = useThreadFind(scrollRef, layoutKey, holdScrollPosition);
   const virtual = useTurnVirtualizer({
     sessionId: session.id,
@@ -228,7 +235,7 @@ function ChatTimeline({
         <div ref={contentRef} data-message-column className="mx-auto min-h-full w-full min-w-0 max-w-[760px]">
           {!eventsReady ? (
             <div className="min-h-full" data-history-pending />
-          ) : !hasVisibleEvent ? (
+          ) : !hasVisibleEvent && starting ? null : !hasVisibleEvent ? (
             <div className="flex h-full flex-col items-center justify-center gap-3 text-zinc-600">
               <MessageSquareDashed className="h-8 w-8" strokeWidth={1.5} />
               <p className="text-sm">发送第一条消息，开始这轮会话</p>
@@ -252,6 +259,7 @@ function ChatTimeline({
               })}
             </div>
           )}
+          {eventsReady && starting ? <StartingTurn message={starting} session={session} /> : null}
           {eventsReady && liveChanges ? <ChangeCard changes={liveChanges} defaultExpanded /> : null}
           {eventsReady && liveBlock?.type === "live" ? (
             <LiveStatus label={liveActivityLabel(liveBlock.events)} startedAt={liveBlock.startedAt} />

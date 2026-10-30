@@ -78,6 +78,7 @@ export function useLiveComposer({
       draft: false,
       inputLocked: false,
       initialText: readDraft(sessionId).text,
+      initialFileRefs: readDraft(sessionId).fileRefs ?? [],
       catalog,
       catalogNotice: notice,
       profile,
@@ -134,6 +135,7 @@ export function useLiveComposer({
       rememberText: (text) => {
         if (readDraft(sessionId).text !== text) patchDraft(sessionId, { text });
       },
+      rememberFileRefs: (fileRefs) => patchDraft(sessionId, { fileRefs }),
       send: (text, images, now) =>
         api.sendMessage(sessionId, text, images, now).then(
           () => true,

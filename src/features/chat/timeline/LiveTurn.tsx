@@ -2,7 +2,7 @@ import { SessionAgentIcon } from "@/shared/agent/SessionAgentIcon";
 import { AGENT_LABELS, type Session, type SessionEvent } from "@/types";
 import { agentTurnName, useAgentIdentity } from "../events/use-agent-identity";
 import { ActivityStream } from "./ActivityStream";
-import { pickAnswer, runningTurnSummary } from "./timeline";
+import { partAnswers, pickAnswer, runningTurnSummary, turnParts } from "./timeline";
 import { TurnFoldLine } from "./TurnFoldLine";
 import { hasGeneratedImages } from "../events/generated-images";
 import { EventItem } from "../events/EventItem";
@@ -37,6 +37,11 @@ export function LiveTurn({
   const isAnswerContent = (event: SessionEvent) => hasGeneratedImages(event) || event.id === answerId;
   const process = events.filter((event) => !isAnswerContent(event));
   const answerContent = events.filter(isAnswerContent);
+  // 收起时还要留着引导的话，和每次被引导打断前已经写出来的正文。
+  const earlier = partAnswers(turnParts(events, false).slice(0, -1));
+  const folded = events.filter(
+    (event) => isAnswerContent(event) || event.kind === "user-message" || earlier.has(event.id),
+  );
 
   return (
     <div className="min-w-0" data-live-turn>
@@ -58,7 +63,7 @@ export function LiveTurn({
           onInteract={onInteract}
         />
       ) : null}
-      {answerContent.map((event) => (
+      {(expanded ? answerContent : folded).map((event) => (
         <EventItem
           key={event.id}
           event={event}

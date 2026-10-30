@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { Fragment, useMemo } from "react";
 
 import { formatMessageTime } from "@/lib/utils";
 import { showsFileChanges } from "@/features/changes-model/capabilities";
@@ -7,7 +7,7 @@ import { useChangeCapabilities } from "../use-change-capabilities";
 import { ChangeCard } from "../cards/ChangeCard";
 import { EventItem } from "../events/EventItem";
 import { MessageFooter } from "../events/chrome";
-import { collapsedTurnSummary, isProcess } from "./timeline";
+import { collapsedTurnSummary, isProcess, turnParts, type TurnPart } from "./timeline";
 import { ActivityStream } from "./ActivityStream";
 import { TurnFoldLine } from "./TurnFoldLine";
 import { SessionAgentIcon } from "@/shared/agent/SessionAgentIcon";
@@ -40,14 +40,16 @@ export function TurnProcess({
   onToggle: () => void;
   onInteract?: () => void;
 }) {
-  const answerIndex = answerId == null ? -1 : events.findIndex((event) => event.id === answerId);
-  const before = answerIndex >= 0 ? events.slice(0, answerIndex) : events;
-  const answer = answerIndex >= 0 ? events[answerIndex] : null;
-  const after = answerIndex >= 0 ? events.slice(answerIndex + 1) : [];
-  const process = events.filter((event) => isProcess(event, answerId));
-  const chromeBefore = before.filter((event) => !isProcess(event, answerId) && !hasGeneratedImages(event));
-  const answerImages = before.filter(hasGeneratedImages);
-  const chromeAfter = after.filter((event) => !isProcess(event, answerId));
+  // 被引导切开的每一段各留自己的答复；引导的话是用户写的，收起时也留着。
+  // 最后一段的答复以这一轮定下的为准。
+  const parts = useMemo(
+    () =>
+      turnParts(events, true).map((part, index, all) =>
+        index === all.length - 1 ? { ...part, answerId } : part,
+      ),
+    [answerId, events],
+  );
+  const answer = answerId == null ? null : (events.find((event) => event.id === answerId) ?? null);
   const agent = useEventAgent(events[0], session);
   const identity = useAgentIdentity(agent);
   const agentName = agentTurnName(agent, identity) || AGENT_LABELS[agent];
@@ -70,6 +72,34 @@ export function TurnProcess({
     />
   );
 
+  /** 一段：答复前的说明，展开时的过程，生成的图，答复，答复后的说明。 */
+  const renderPart = (part: TurnPart) => {
+    const index = part.answerId == null ? -1 : part.events.findIndex((event) => event.id === part.answerId);
+    const before = index >= 0 ? part.events.slice(0, index) : part.events;
+    const after = index >= 0 ? part.events.slice(index + 1) : [];
+    const process = part.events.filter((event) => isProcess(event, part.answerId));
+    return (
+      <>
+        {before
+          .filter((event) => !isProcess(event, part.answerId) && !hasGeneratedImages(event))
+          .map((event) => renderEvent(event, false))}
+        {expanded && process.length > 0 ? (
+          <ActivityStream
+            events={process}
+            session={session}
+            resolvedAnswers={resolvedAnswers}
+            showAgentLabel={() => false}
+            settled
+            onInteract={onInteract}
+          />
+        ) : null}
+        {before.filter(hasGeneratedImages).map((event) => renderEvent(event, false))}
+        {index >= 0 ? renderEvent(part.events[index], false) : null}
+        {after.filter((event) => !isProcess(event, part.answerId)).map((event) => renderEvent(event, false))}
+      </>
+    );
+  };
+
   return (
     <div className="group min-w-0">
       <TurnFoldLine
@@ -78,20 +108,12 @@ export function TurnProcess({
         onToggle={onToggle}
         icon={<SessionAgentIcon identity={identity} className="h-4 w-4" />}
       />
-      {chromeBefore.map((event) => renderEvent(event, false))}
-      {expanded ? (
-        <ActivityStream
-          events={process}
-          session={session}
-          resolvedAnswers={resolvedAnswers}
-          showAgentLabel={() => false}
-          settled
-          onInteract={onInteract}
-        />
-      ) : null}
-      {answerImages.map((event) => renderEvent(event, false))}
-      {answer ? renderEvent(answer, false) : null}
-      {chromeAfter.map((event) => renderEvent(event, false))}
+      {parts.map((part) => (
+        <Fragment key={part.steer?.id ?? "first"}>
+          {part.steer ? renderEvent(part.steer, false) : null}
+          {renderPart(part)}
+        </Fragment>
+      ))}
       {changes ? <ChangeCard changes={changes} /> : null}
       {answer?.kind === "agent-message" && answer.text.trim() ? (
         <div className="event-in min-w-0 px-6 py-1">

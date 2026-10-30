@@ -33,22 +33,6 @@ export function clearAtToken(text: string, caret: number): { text: string; caret
   return { text: text.slice(0, start) + text.slice(caret), caret: start };
 }
 
-/** 用选中的路径换掉光标处的 `@查询`，并在末尾留一个空格。 */
-export function insertMention(
-  text: string,
-  caret: number,
-  paths: readonly string[],
-): { text: string; caret: number } {
-  const cleaned = paths.map((path) => path.trim()).filter(Boolean);
-  if (cleaned.length === 0) return clearAtToken(text, caret);
-  const insertion = `${cleaned.map(quoteMentionPath).join(" ")} `;
-  const upto = text.slice(0, Math.max(0, caret));
-  const match = upto.match(/(^|[\s\n])@([^@\s]*)$/);
-  const start = match && match.index != null ? match.index + match[1].length : caret;
-  const next = text.slice(0, start) + insertion + text.slice(caret);
-  return { text: next, caret: start + insertion.length };
-}
-
 export interface MentionFile {
   path: string;
   name: string;

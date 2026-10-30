@@ -13,6 +13,7 @@ import {
   pickAnswer,
   runningTurnSummary,
   timelineChunkKey,
+  turnParts,
   type TimelineNode,
 } from "./timeline.ts";
 import type { SessionEvent, SessionEventBody } from "../../../types/index.ts";
@@ -161,7 +162,7 @@ test("keeps an unknown-phase preamble folded and the last message as the answer"
   assert.equal(formatElapsed(turn.durationMs), "5s");
 });
 
-test("a turn cut short by a steered message still counts its time", () => {
+test("a steered message keeps the turn whole and its time runs to the answer", () => {
   const nodes = buildTimeline(
     [
       event("n1", 0, { kind: "turn-anchor", turn_id: "x" }),
@@ -172,7 +173,9 @@ test("a turn cut short by a steered message still counts its time", () => {
     ],
     "completed",
   );
-  assert.equal(formatElapsed(turnNode(nodes).durationMs), "6s");
+  assert.equal(nodes.filter((node) => node.type === "turn").length, 1);
+  assert.equal(formatElapsed(turnNode(nodes).durationMs), "20s");
+  assert.ok(turnNode(nodes).events.some((item) => item.id === "u2"));
 });
 
 test("a turn the agent starts on its own gets its own fold without a user bubble", () => {
@@ -481,4 +484,95 @@ test("the live block counts its time from the turn start, or from entering runni
   const current = bare.find((node) => node.type === "live");
   assert.ok(current && current.type === "live");
   assert.equal(current.startedAt, 5_000);
+});
+
+test("a message steered into a running turn stays in that turn under one header", () => {
+  const events = [
+    event("s1", 0, { kind: "status-changed", status: "running" }),
+    event("n1", 10, { kind: "turn-anchor", turn_id: "t1" }),
+    event("u1", 20, { kind: "user-message", text: "画个醒翻" }),
+    event("a1", 1_000, { kind: "agent-message", text: "我先查一下。", phase: "commentary" }),
+    event("u2", 8_000, { kind: "user-message", text: "多简单的是" }),
+    event("k1", 9_000, { kind: "tool-call", name: "image", summary: "生成图片" }),
+    event("a2", 48_000, { kind: "agent-message", text: "画好了。", phase: "final-answer" }),
+    event("s2", 48_100, { kind: "status-changed", status: "completed" }),
+    event("u3", 60_000, { kind: "user-message", text: "再来一张" }),
+    event("n2", 60_010, { kind: "turn-anchor", turn_id: "t2" }),
+    event("a3", 70_000, { kind: "agent-message", text: "好。", phase: "final-answer" }),
+  ];
+  const turns = buildTimeline(events, "completed").filter((node) => node.type === "turn");
+  assert.equal(turns.length, 1);
+  const first = turnNode(turns);
+  assert.deepEqual(
+    first.events.map((item) => item.id),
+    ["a1", "u2", "k1", "a2"],
+  );
+  assert.equal(first.durationMs, 48_000 - 20);
+  const bubbles = buildTimeline(events, "completed").filter(
+    (node) => node.type === "event" && node.event.kind === "user-message",
+  );
+  assert.deepEqual(
+    bubbles.map((node) => (node.type === "event" ? node.event.id : "")),
+    ["u1", "u3"],
+  );
+});
+
+test("a steered message while running stays inside the live turn", () => {
+  const events = [
+    event("n1", 0, { kind: "turn-anchor", turn_id: "t1" }),
+    event("u1", 10, { kind: "user-message", text: "写散文" }),
+    event("a1", 1_000, { kind: "agent-message", text: "秋天", phase: "final-answer" }),
+    event("u2", 2_000, { kind: "user-message", text: "再短一点" }),
+  ];
+  const live = buildTimeline(events, "running").filter((node) => node.type === "live");
+  assert.equal(live.length, 1);
+  assert.ok(live[0].type === "live");
+  assert.deepEqual(
+    live[0].events.map((item) => item.id),
+    ["a1", "u2"],
+  );
+});
+
+test("text written before a steer stays out of the folded process", () => {
+  const events = [
+    event("a1", 1_000, { kind: "agent-message", text: "检讨……我在", phase: "commentary" }),
+    event("u2", 2_000, { kind: "user-message", text: "不够真诚" }),
+    event("k1", 3_000, { kind: "tool-call", name: "command", summary: "查资料" }),
+    event("a2", 4_000, { kind: "agent-message", text: "对不起……", phase: "final-answer" }),
+  ];
+  const parts = turnParts(events, true);
+  assert.deepEqual(
+    parts.map((part) => [part.steer?.id ?? null, part.answerId]),
+    [
+      [null, "a1"],
+      ["u2", "a2"],
+    ],
+  );
+  const nodes = buildTimeline(
+    [
+      event("n1", 0, { kind: "turn-anchor", turn_id: "t1" }),
+      event("u1", 0, { kind: "user-message", text: "写检讨" }),
+      ...events,
+      event("s1", 4_100, { kind: "status-changed", status: "completed" }),
+    ],
+    "completed",
+  );
+  const turn = turnNode(nodes);
+  assert.equal(turn.answerId, "a2");
+  assert.equal(isProcess(events[0], new Set(parts.map((part) => part.answerId ?? ""))), false);
+});
+
+test("a live turn's last part has no answer until it settles", () => {
+  const parts = turnParts(
+    [
+      event("a1", 1_000, { kind: "agent-message", text: "写到一半", phase: "commentary" }),
+      event("u2", 2_000, { kind: "user-message", text: "改一下" }),
+      event("a2", 3_000, { kind: "agent-message", text: "在改", phase: "commentary" }),
+    ],
+    false,
+  );
+  assert.deepEqual(
+    parts.map((part) => part.answerId),
+    ["a1", null],
+  );
 });

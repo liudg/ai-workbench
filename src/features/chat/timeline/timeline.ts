@@ -1,6 +1,7 @@
 import type { SessionEvent, SessionStatus } from "../../../types";
 import { choiceHasSlot } from "../events/pending-plan-choice.ts";
 import { hasGeneratedImages } from "../events/generated-images.ts";
+import { steerFlags } from "../../../shared/session/steer.ts";
 
 /**
  * 时间线以事件日志里最后一次状态为准。
@@ -141,9 +142,9 @@ function hiddenInTimeline(events: readonly SessionEvent[], index: number): boole
   return skippedInTimeline(events[index]) || isSuppressedMessage(events, index);
 }
 
-export function isProcess(event: SessionEvent, answerId: string | null): boolean {
+export function isProcess(event: SessionEvent, answer: string | null | ReadonlySet<string>): boolean {
   if (hasGeneratedImages(event)) return false;
-  if (answerId != null && event.id === answerId) return false;
+  if (typeof answer === "string" ? event.id === answer : answer?.has(event.id)) return false;
   if (choiceHasSlot(event)) return false;
   return (
     event.kind === "thinking" ||
@@ -183,11 +184,41 @@ function pushLive(blocks: TimelineNode[], events: readonly SessionEvent[]) {
   }
 }
 
+/** 一轮里被引导切开的一段：开头的引导（第一段没有）、这段的事件、这段留在外面的答复。 */
+export interface TurnPart {
+  steer: SessionEvent | null;
+  events: SessionEvent[];
+  answerId: string | null;
+}
+
+/**
+ * 一轮按引导切成几段，每段各留自己的答复。被引导打断前已经写出来的正文是给用户看的，
+ * 收起过程时不能跟着折进去。只有最后一段在进行中时才按 `settled` 挑答复。
+ */
+export function turnParts(events: readonly SessionEvent[], settled: boolean): TurnPart[] {
+  const parts: TurnPart[] = [{ steer: null, events: [], answerId: null }];
+  for (const event of events) {
+    if (event.kind === "user-message") parts.push({ steer: event, events: [], answerId: null });
+    else parts[parts.length - 1].events.push(event);
+  }
+  const kept = parts[0].events.length > 0 ? parts : parts.slice(1);
+  return kept.map((part, index) => ({
+    ...part,
+    answerId: pickAnswer(part.events, settled || index < kept.length - 1)?.id ?? null,
+  }));
+}
+
+/** 各段答复的 id。 */
+export function partAnswers(parts: readonly TurnPart[]): ReadonlySet<string> {
+  return new Set(parts.flatMap((part) => (part.answerId ? [part.answerId] : [])));
+}
+
 function pushSettled(blocks: TimelineNode[], startedAt: number, events: readonly SessionEvent[]) {
   const body = events.filter((_, index) => !hiddenInTimeline(events, index));
-  const answer = pickAnswer(body, true);
-  const answerId = answer?.id ?? null;
-  const process = body.filter((event) => isProcess(event, answerId));
+  const parts = turnParts(body, true);
+  const answerId = parts[parts.length - 1]?.answerId ?? null;
+  const answers = partAnswers(parts);
+  const process = body.filter((event) => isProcess(event, answers));
   if (process.length === 0) {
     for (const event of body) {
       blocks.push({
@@ -198,6 +229,7 @@ function pushSettled(blocks: TimelineNode[], startedAt: number, events: readonly
     }
     return;
   }
+  // 最后一段的答复带时间和复制。
   blocks.push({
     type: "turn",
     id: process[0].id,
@@ -253,12 +285,16 @@ function isActivity(events: readonly SessionEvent[], index: number): boolean {
  * Agent 自己开的回合（目标续跑、宿主发的命令）没有用户消息，只有 `turn-anchor`：
  * 前面这一轮已经有活动、后面在下一条用户消息之前也有活动，才算新的一轮。
  * 紧挨着用户消息的锚点属于那条消息的回合，不另开。
+ * 回合进行中补进去的引导不开新的一轮，留在原来那轮里。
  */
 function turnStarts(events: readonly SessionEvent[]): number[] {
   const starts: number[] = [];
+  const steers = steerFlags(events);
   let activitySinceStart = false;
   for (let index = 0; index < events.length; index += 1) {
     const event = events[index];
+    // 引导的话跟着它所在的那一轮，不另起一轮。
+    if (steers[index]) continue;
     if (opensSegment(event)) {
       starts.push(index);
       activitySinceStart = false;

@@ -521,3 +521,27 @@ test("a running turn keeps the status line as the first child", async () => {
   assert.equal(collapsedHtml.includes("已运行 1 条命令"), false);
   assert.equal(collapsedHtml.includes("data-activity-stream"), false);
 });
+
+test("text written before a steer stays visible when the turn is folded", async () => {
+  const events: SessionEvent[] = [
+    event("first", { kind: "agent-message", text: "检讨：我在", phase: "commentary" }),
+    event("steer", { kind: "user-message", text: "不够真诚" }),
+    event("k1", { kind: "tool-call", name: "command", summary: "rg 醍醐" }),
+    event("answer", { kind: "agent-message", text: "对不起。", phase: "final-answer" }),
+  ];
+  for (const component of ["TurnProcess", "LiveTurn"]) {
+    const mod = await server.ssrLoadModule(`/src/features/chat/timeline/${component}.tsx`);
+    for (const expanded of [false, true]) {
+      const html = renderInHost(createElement(mod[component], {
+        events, answerId: "answer", durationMs: 1000, session,
+        resolvedAnswers: new Map(), expanded, onToggle: () => {},
+      }));
+      assert.equal((html.match(/data-turn-fold/g) ?? []).length, 1);
+      assert.equal(html.includes("已运行 1 条命令"), expanded);
+      // 进行中的一轮收起时，正在写的最后一段本来就不露出来。
+      const stillWriting = component === "LiveTurn" && !expanded;
+      assertOrder(html, stillWriting ? ["检讨：我在", "不够真诚"] : ["检讨：我在", "不够真诚", "对不起。"]);
+      assert.equal(html.includes("对不起。"), !stillWriting);
+    }
+  }
+});

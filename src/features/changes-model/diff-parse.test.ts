@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import type { SessionEvent, SessionEventBody } from "../../types/index.ts";
-import { parseUnifiedDiff, sessionChanges, turnChanges } from "./diff-parse.ts";
+import { lastSlice, parseUnifiedDiff, sessionChanges, turnChanges } from "./diff-parse.ts";
 
 function event(id: string, body: SessionEventBody): SessionEvent {
   return { id, session_id: "s", seq: 1, ts: 1, ...body };
@@ -146,4 +146,18 @@ test("session files keep the later edit of the same path", () => {
   assert.equal(files.length, 1);
   assert.equal(files[0]?.added, 2);
   assert.equal(files[0]?.status, "M");
+});
+
+test("a steered message does not drop the turn's earlier edits", () => {
+  const events = [
+    event("n1", { kind: "turn-anchor", turn_id: "t1" }),
+    event("u1", { kind: "user-message", text: "改" }),
+    event("f1", { kind: "file-change", turn_id: "t1", path: "a.ts", status: "M", added: 1, removed: 0, diff: "+a" }),
+    event("u2", { kind: "user-message", text: "顺便改 b" }),
+    event("f2", { kind: "file-change", turn_id: "t1", path: "b.ts", status: "M", added: 1, removed: 0, diff: "+b" }),
+  ];
+  assert.deepEqual(
+    turnChanges(lastSlice(events))?.files.map((file) => file.path),
+    ["a.ts", "b.ts"],
+  );
 });

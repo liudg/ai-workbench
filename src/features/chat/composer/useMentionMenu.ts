@@ -4,13 +4,13 @@ import type { MentionSupport } from "./mentions";
 import {
   caretAfterMentionPick,
   clearAtToken,
-  insertMention,
   mentionPickText,
   mentionAddEnabled,
   mentionAddItems,
   type MentionAddId,
   type MentionFile,
 } from "./mentions";
+import { insertFileRefs, type FileRef } from "./file-refs";
 import { pickFiles as pickLocalFiles } from "@/lib/native/pick-files";
 import { stepIndex } from "./composer-keys";
 import type { ComposerHost } from "./host";
@@ -30,6 +30,8 @@ export function useMentionMenu(input: {
   setText: Dispatch<SetStateAction<string>>;
   caret: number;
   setCaret: Dispatch<SetStateAction<number>>;
+  fileRefs: FileRef[];
+  setFileRefs: (refs: FileRef[]) => void;
   textareaRef: RefObject<HTMLTextAreaElement>;
   mentionOpen: boolean;
   mentionAdd: boolean;
@@ -71,7 +73,9 @@ export function useMentionMenu(input: {
   };
 
   const insertPaths = (paths: readonly string[]) => {
-    write(insertMention(input.text, input.caret, paths));
+    const next = insertFileRefs(input.text, input.caret, paths, input.fileRefs);
+    input.setFileRefs(next.refs);
+    write(next);
   };
 
   const clearToken = () => {
@@ -91,7 +95,8 @@ export function useMentionMenu(input: {
       placeCaret(input.textareaRef.current, caret);
       return;
     }
-    const next = insertMention(current, caret, picked.map((file) => file.path));
+    const next = insertFileRefs(current, caret, picked.map((file) => file.path), input.fileRefs);
+    input.setFileRefs(next.refs);
     input.setText(next.text);
     input.setCaret(next.caret);
     placeCaret(input.textareaRef.current, next.caret);
