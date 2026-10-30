@@ -1,5 +1,6 @@
 import { AccountMenu } from "./account/AccountMenu";
 import { BoardEntry } from "./BoardEntry";
+import { NewChatEntry } from "./NewChatEntry";
 import { BrandHeader } from "@/shared/brand/BrandHeader";
 import { SidebarPeek } from "./SidebarPeek";
 import { useSidebar } from "./use-sidebar";
@@ -36,6 +37,7 @@ function SidebarFrame() {
     >
       <BrandHeader />
       <BoardEntry />
+      <NewChatEntry />
 
       <div
         data-sidebar-scroll
