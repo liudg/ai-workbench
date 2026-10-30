@@ -930,7 +930,7 @@ mod tests {
     }
 
     #[test]
-    fn history_turn_diff_fills_only_empty_files() {
+    fn history_turn_diff_is_the_turn_total() {
         let turns = vec![json!({
             "id": "turn-blank",
             "diff": "diff --git a/kept.md b/kept.md\n--- a/kept.md\n+++ b/kept.md\n@@ -1 +1 @@\n-a\n+from-turn\ndiff --git a/blank.md b/blank.md\n--- a/blank.md\n+++ b/blank.md\n@@ -0,0 +1,2 @@\n+one\n+two\n",
@@ -953,10 +953,10 @@ mod tests {
             body,
             SessionEventBody::FileChange { path, added, removed, diff, .. }
                 if path == "kept.md"
-                    && *added == 2
+                    && *added == 1
                     && *removed == 1
-                    && diff.contains("+new-a")
-                    && !diff.contains("+from-turn")
+                    && diff.contains("+from-turn")
+                    && !diff.contains("+new-a")
         )));
         assert!(bodies.iter().any(|body| matches!(
             body,
@@ -973,9 +973,9 @@ mod tests {
                     && files.len() == 2
                     && files.iter().any(|file| {
                         file.path == "kept.md"
-                            && file.added == 2
+                            && file.added == 1
                             && file.removed == 1
-                            && file.diff.contains("+new-a")
+                            && file.diff.contains("+from-turn")
                     })
                     && files.iter().any(|file| {
                         file.path == "C:/proj/blank.md"

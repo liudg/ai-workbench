@@ -78,7 +78,7 @@ pub fn merge_file_change(existing: &FileChange, incoming: &FileChange) -> FileCh
     }
 }
 
-/// 逐文件补丁没有正文时，用回合统一 diff 补上 added/removed。
+/// 回合统一 diff 是这一轮的累计结果，覆盖逐次补丁：同一文件改了几次，逐次补丁只剩最后一次。
 pub fn overlay_unified_diff(files: &[FileChange], diff: &str) -> Vec<FileChange> {
     let parsed = parse_unified_files(diff);
     if parsed.is_empty() {
@@ -93,13 +93,11 @@ pub fn overlay_unified_diff(files: &[FileChange], diff: &str) -> Vec<FileChange>
             .iter_mut()
             .find(|item| same_file(&item.path, &file.path))
         {
-            if slot.diff.trim().is_empty() {
-                slot.added = file.added;
-                slot.removed = file.removed;
-                slot.diff = file.diff;
-                if slot.status == FileStatus::Modified {
-                    slot.status = file.status;
-                }
+            slot.added = file.added;
+            slot.removed = file.removed;
+            slot.diff = file.diff;
+            if slot.status == FileStatus::Modified {
+                slot.status = file.status;
             }
         } else {
             out.push(file);
@@ -597,6 +595,34 @@ rename to new-name.txt
             body,
             SessionEventBody::ToolCall { name, .. } if name == "apply_patch"
         )));
+    }
+
+    #[test]
+    fn turn_diff_overrides_the_last_single_patch() {
+        let files = vec![FileChange {
+            path: "src/app.ts".into(),
+            status: FileStatus::Modified,
+            added: 1,
+            removed: 0,
+            diff: "@@ -9,0 +10 @@\n+last\n".into(),
+        }];
+        let turn = "\
+diff --git a/src/app.ts b/src/app.ts
+--- a/src/app.ts
++++ b/src/app.ts
+@@ -1,2 +1,3 @@
+-one
++uno
++dos
+ keep
+@@ -9,0 +11,2 @@
++tres
++last
+";
+        let out = overlay_unified_diff(&files, turn);
+        assert_eq!(out.len(), 1);
+        assert_eq!((out[0].added, out[0].removed), (4, 1));
+        assert!(out[0].diff.contains("+uno"));
     }
 
     #[test]

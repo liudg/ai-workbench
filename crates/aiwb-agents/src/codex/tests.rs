@@ -585,3 +585,235 @@ async fn live_command_status_and_exit_code() {
     assert_eq!(bad.2, Some(3));
     assert!(!ok.3.contains('→'), "summary still carries the status: {}", ok.3);
 }
+
+/// 真实链路：回复正在流出时连着引导几次，回合要照常结束，引导的话都进时间线。
+#[tokio::test]
+#[ignore = "calls the local Codex CLI"]
+async fn rapid_steers_finish_the_turn() {
+    let adapter = CodexCliAdapter::new();
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let session = adapter
+        .start_session(
+            SessionContext {
+                project_path: std::env::temp_dir().to_string_lossy().to_string(),
+                access_mode: Some("read-only".into()),
+                resume_native_id: None,
+                options: serde_json::json!({ "persist": false }),
+            },
+            tx,
+        )
+        .await
+        .expect("start");
+    session
+        .deliver(UserTurn {
+            text: "不要用任何工具。用中文写一段大约 300 字的关于秋天的散文。".into(),
+            images: Vec::new(),
+            client_id: "rapid-0".into(),
+            annotations: Vec::new(),
+        })
+        .await
+        .expect("first turn");
+    let deadline = std::time::Instant::now() + Duration::from_secs(120);
+    let mut steered = 0;
+    let mut finished = false;
+    let mut log = Vec::new();
+    while std::time::Instant::now() < deadline {
+        let Ok(Some(body)) = timeout(Duration::from_millis(500), rx.recv()).await else {
+            continue;
+        };
+        let streaming = matches!(&body, SessionEventBody::AgentMessage { text, .. } if !text.is_empty());
+        log.push(format!("{body:?}").chars().take(120).collect::<String>());
+        if let SessionEventBody::Error { message } = &body {
+            panic!("codex turn failed: {message}");
+        }
+        if streaming && steered == 0 {
+            for index in 1..=4 {
+                let delivery = session
+                    .deliver_now(UserTurn {
+                        text: format!("补充{index}：结尾加一句「收到 {index}」。"),
+                        images: Vec::new(),
+                        client_id: format!("rapid-{index}"),
+                        annotations: Vec::new(),
+                    })
+                    .await;
+                eprintln!("steer {index}: {delivery:?}");
+                steered += 1;
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+        }
+        if steered > 0
+            && matches!(body, SessionEventBody::StatusChanged { status: aiwb_core::models::SessionStatus::Completed })
+        {
+            finished = true;
+            break;
+        }
+    }
+    let _ = session.stop().await;
+    for line in &log {
+        eprintln!("{line}");
+    }
+    assert_eq!(steered, 4);
+    assert!(finished, "turn never completed after steering");
+}
+
+/// 真实链路：命令还在跑时连着引导几次，回合要照常结束。
+#[tokio::test]
+#[ignore = "calls the local Codex CLI"]
+async fn steering_during_a_command_finishes_the_turn() {
+    let adapter = CodexCliAdapter::new();
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let session = adapter
+        .start_session(
+            SessionContext {
+                project_path: std::env::temp_dir().to_string_lossy().to_string(),
+                access_mode: Some("read-only".into()),
+                resume_native_id: None,
+                options: serde_json::json!({ "persist": false }),
+            },
+            tx,
+        )
+        .await
+        .expect("start");
+    session
+        .deliver(UserTurn {
+            text: "先运行命令 `ping -n 12 127.0.0.1`，等它结束后用一句话告诉我丢包率。".into(),
+            images: Vec::new(),
+            client_id: "rapid-0".into(),
+            annotations: Vec::new(),
+        })
+        .await
+        .expect("first turn");
+    let deadline = std::time::Instant::now() + Duration::from_secs(120);
+    let mut steered = 0;
+    let mut finished = false;
+    let mut log = Vec::new();
+    while std::time::Instant::now() < deadline {
+        let Ok(Some(body)) = timeout(Duration::from_millis(500), rx.recv()).await else {
+            continue;
+        };
+        let streaming = matches!(&body, SessionEventBody::ToolCall { .. });
+        log.push(format!("{body:?}").chars().take(120).collect::<String>());
+        if let SessionEventBody::Error { message } = &body {
+            panic!("codex turn failed: {message}");
+        }
+        if streaming && steered == 0 {
+            for index in 1..=4 {
+                let delivery = session
+                    .deliver_now(UserTurn {
+                        text: format!("补充{index}：结尾加一句「收到 {index}」。"),
+                        images: Vec::new(),
+                        client_id: format!("command-{index}"),
+                        annotations: Vec::new(),
+                    })
+                    .await;
+                eprintln!("steer {index}: {delivery:?}");
+                steered += 1;
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+        }
+        if steered > 0
+            && matches!(body, SessionEventBody::StatusChanged { status: aiwb_core::models::SessionStatus::Completed })
+        {
+            finished = true;
+            break;
+        }
+    }
+    let _ = session.stop().await;
+    for line in &log {
+        eprintln!("{line}");
+    }
+    assert_eq!(steered, 4);
+    assert!(finished, "turn never completed after steering");
+}
+
+/// 真实链路：回复流出时排了几条，再逐条点引导，回合要照常结束。
+#[tokio::test]
+#[ignore = "calls the local Codex CLI"]
+async fn steering_queued_rows_finishes_the_turn() {
+    let adapter = CodexCliAdapter::new();
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let session = adapter
+        .start_session(
+            SessionContext {
+                project_path: std::env::temp_dir().to_string_lossy().to_string(),
+                access_mode: Some("read-only".into()),
+                resume_native_id: None,
+                options: serde_json::json!({ "persist": true }),
+            },
+            tx,
+        )
+        .await
+        .expect("start");
+    session
+        .deliver(UserTurn {
+            text: "不要用任何工具。用中文写一段大约 300 字的关于秋天的散文。".into(),
+            images: Vec::new(),
+            client_id: "rapid-0".into(),
+            annotations: Vec::new(),
+        })
+        .await
+        .expect("first turn");
+    let deadline = std::time::Instant::now() + Duration::from_secs(120);
+    let mut steered = 0;
+    let mut finished = false;
+    let mut log = Vec::new();
+    while std::time::Instant::now() < deadline {
+        let Ok(Some(body)) = timeout(Duration::from_millis(500), rx.recv()).await else {
+            continue;
+        };
+        let streaming = matches!(&body, SessionEventBody::AgentMessage { text, .. } if !text.is_empty());
+        log.push(format!("{body:?}").chars().take(120).collect::<String>());
+        if let SessionEventBody::Error { message } = &body {
+            panic!("codex turn failed: {message}");
+        }
+        if streaming && steered == 0 {
+            for index in 1..=4 {
+                let delivery = session
+                    .deliver(UserTurn {
+                        text: format!("补充{index}：结尾加一句「收到 {index}」。"),
+                        images: Vec::new(),
+                        client_id: format!("queued-{index}"),
+                        annotations: Vec::new(),
+                    })
+                    .await;
+                eprintln!("queue {index}: {delivery:?}");
+            }
+            let mut rows = Vec::new();
+            let wait = std::time::Instant::now() + Duration::from_secs(10);
+            while rows.len() < 4 && std::time::Instant::now() < wait {
+                if let Ok(Some(SessionEventBody::QueueChanged { items })) =
+                    timeout(Duration::from_millis(200), rx.recv()).await
+                {
+                    rows = items;
+                }
+            }
+            eprintln!("queued rows: {}", rows.len());
+            let steers = rows.iter().map(|row| {
+                let session = session.clone();
+                let id = row.id.clone();
+                tokio::spawn(async move { (id.clone(), session.steer_queued(&id).await) })
+            });
+            for steer in steers.collect::<Vec<_>>() {
+                let (id, result) = steer.await.expect("steer task");
+                eprintln!("steer {id}: {result:?}");
+                steered += 1;
+            }
+        }
+        if steered > 0
+            && matches!(body, SessionEventBody::StatusChanged { status: aiwb_core::models::SessionStatus::Completed })
+        {
+            finished = true;
+            break;
+        }
+    }
+    let native = session.native_id();
+    let _ = session.stop().await;
+    if let Some(id) = native {
+        let _ = CodexCliAdapter::new().delete_thread(&id).await;
+    }
+    for line in &log {
+        eprintln!("{line}");
+    }
+    assert_eq!(steered, 4);
+    assert!(finished, "turn never completed after steering");
+}

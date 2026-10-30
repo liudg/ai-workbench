@@ -35,6 +35,8 @@ pub struct MapState {
     thinking_stream_id: String,
     stream_nonce: u64,
     pub files: Vec<FileChange>,
+    /// 这一轮每个文件被改之前的原文。`files` 里的累计 diff 拿它比。
+    baselines: diff::TurnBaselines,
     pub turn_diff: String,
     /// 上一轮非空 diff。`begin_turn` 会清掉当前轮，这里留下最近一次。
     saved_diff: String,
@@ -79,6 +81,7 @@ impl MapState {
         self.thinking.clear();
         self.partials.clear();
         self.files.clear();
+        self.baselines.clear();
         self.turn_diff.clear();
         self.text_stream_id.clear();
         self.thinking_stream_id.clear();
@@ -346,7 +349,7 @@ fn on_stream(state: &mut MapState, event: &Value, project: Option<&Path>) -> Vec
                 return Vec::new();
             };
             let input = serde_json::from_str::<Value>(&json).unwrap_or(Value::Null);
-            tool_events(state, &id, &name, &input, "", ToolStatus::Running, project)
+            tool_events(state, &id, &name, &input, "", None, ToolStatus::Running, project)
         }
         _ => Vec::new(),
     }
@@ -642,7 +645,7 @@ fn on_assistant(state: &mut MapState, value: &Value, project: Option<&Path>, liv
                     let id = block.get("id").and_then(Value::as_str).unwrap_or("");
                     let name = block.get("name").and_then(Value::as_str).unwrap_or("tool");
                     let input = block.get("input").cloned().unwrap_or(Value::Null);
-                    events.extend(tool_events(state, id, name, &input, "", ToolStatus::Running, project));
+                    events.extend(tool_events(state, id, name, &input, "", None, ToolStatus::Running, project));
                 }
                 _ => {}
             }
@@ -678,13 +681,15 @@ fn on_user(state: &mut MapState, value: &Value, live: bool, project: Option<&Pat
     }
     let message = value.get("message").unwrap_or(&Value::Null);
     let content = message.get("content").unwrap_or(&Value::Null);
+    // 直播是 `tool_use_result`，会话记录里是 `toolUseResult`。
+    let structured = value.get("tool_use_result").or_else(|| value.get("toolUseResult"));
     let mut events = Vec::new();
     if let Some(blocks) = content.as_array() {
         let mut text = String::new();
         for block in blocks {
             let block_type = block.get("type").and_then(Value::as_str).unwrap_or("");
             if block_type == "tool_result" {
-                events.extend(on_tool_result(state, block, project));
+                events.extend(on_tool_result(state, block, structured, project));
             } else if block_type == "text" {
                 text.push_str(block.get("text").and_then(Value::as_str).unwrap_or(""));
             }
@@ -705,7 +710,12 @@ fn on_user(state: &mut MapState, value: &Value, live: bool, project: Option<&Pat
     events
 }
 
-fn on_tool_result(state: &mut MapState, block: &Value, project: Option<&Path>) -> Vec<SessionEventBody> {
+fn on_tool_result(
+    state: &mut MapState,
+    block: &Value,
+    structured: Option<&Value>,
+    project: Option<&Path>,
+) -> Vec<SessionEventBody> {
     let id = block.get("tool_use_id").and_then(Value::as_str).unwrap_or("");
     let detail = tool_result_text(block);
     let Some(row) = state.tools.get(id) else {
@@ -718,7 +728,7 @@ fn on_tool_result(state: &mut MapState, block: &Value, project: Option<&Path>) -
     } else {
         ToolStatus::Completed
     };
-    tool_events(state, id, &reported, &input, &detail, status, project)
+    tool_events(state, id, &reported, &input, &detail, structured, status, project)
 }
 
 fn on_result(state: &mut MapState, value: &Value, live: bool) -> Vec<SessionEventBody> {
@@ -944,6 +954,8 @@ fn tool_events(
     reported: &str,
     input: &Value,
     detail: &str,
+    // 工具结果的结构化部分，带 `originalFile`。
+    structured: Option<&Value>,
     // `tool_use` 时进行中，`tool_result` 时按 `is_error` 分成功或失败。
     // 只有成功跑完的工具才算进这一轮的变更；被拒绝、被打断或还在等审批的不算。
     status: ToolStatus,
@@ -977,8 +989,12 @@ fn tool_events(
     if changes.is_empty() {
         return events;
     }
+    let total = state.baselines.turn_change(reported, input, structured);
     for change in &changes {
-        upsert_file(&mut state.files, change.clone());
+        match &total {
+            Some(total) if same_target(total, change) => upsert_total(&mut state.files, total.clone()),
+            _ => upsert_file(&mut state.files, change.clone()),
+        }
         events.push(SessionEventBody::FileChange {
             turn_id: state.turn_id.clone(),
             path: change.path.clone(),
@@ -1021,12 +1037,26 @@ fn result_value(detail: &str) -> Option<Value> {
     })
 }
 
+/// 没有原文可比时，用这次工具调用自己的 diff。
 fn upsert_file(files: &mut Vec<FileChange>, change: FileChange) {
     if let Some(existing) = files.iter_mut().find(|file| file.path == change.path) {
         *existing = change;
     } else {
         files.push(change);
     }
+}
+
+/// 拿这一轮原文比出来的累计变更。改回原样的文件不再列。
+fn upsert_total(files: &mut Vec<FileChange>, total: FileChange) {
+    if total.added == 0 && total.removed == 0 {
+        files.retain(|file| file.path != total.path);
+    } else {
+        upsert_file(files, total);
+    }
+}
+
+fn same_target(total: &FileChange, change: &FileChange) -> bool {
+    crate::changes::same_file(&total.path, &change.path)
 }
 
 fn text_event(state: &mut MapState, phase: MessagePhase, message_id: Option<&str>) -> Vec<SessionEventBody> {

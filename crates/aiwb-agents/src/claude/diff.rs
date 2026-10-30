@@ -5,7 +5,12 @@
 //! 2. `Edit` 的 `old_string`/`new_string`，或 `Write` 的 `content`，用 diffy 拼统一 diff。
 //! 3. 只有路径、没有正文时，对该路径做 `git diff -- <path>`。不做整仓 diff，
 //!    避免把与这一轮无关的脏文件算进来。git 范围（未提交/未暂存/已暂存）仍走协议层的 git。
+//!
+//! 一轮的累计 diff 照 Codex `core/src/turn_diff_tracker.rs`：文件这一轮第一次被改时记下原文，
+//! 之后每次都拿原文和改后的全文比。原文和改后全文都从工具结果的 `originalFile` 推出来，
+//! 回放历史时磁盘早已变了也算得对。
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
 
@@ -40,6 +45,83 @@ pub fn changes_for_tool(
         return Vec::new();
     };
     git_file_change(project, &path).into_iter().collect()
+}
+
+/// 这一轮里每个文件第一次被改之前的全文。`None` 是这一轮新建的文件。
+#[derive(Default)]
+pub struct TurnBaselines {
+    files: HashMap<String, Option<String>>,
+}
+
+impl TurnBaselines {
+    pub fn clear(&mut self) {
+        self.files.clear();
+    }
+
+    /// 这一轮到目前为止这个文件的累计变更。工具结果里没有原文、或改后全文推不出来时为 `None`。
+    pub fn turn_change(&mut self, tool_name: &str, input: &Value, structured: Option<&Value>) -> Option<FileChange> {
+        let structured = structured?;
+        let path = tool_path(input)?;
+        // 一条消息里有几个工具结果时，结构化结果只对得上其中一个。路径对不上就不用。
+        if let Some(reported) = structured.get("filePath").and_then(Value::as_str) {
+            if !same_path(reported, &path) {
+                return None;
+            }
+        }
+        let before = match structured.get("originalFile")? {
+            Value::String(text) => Some(text.clone()),
+            Value::Null => None,
+            _ => return None,
+        };
+        let after = content_after(tool_name, input, structured, before.as_deref())?;
+        let baseline = self.files.entry(path.clone()).or_insert(before).clone();
+        let patch = unified_diff(&path, baseline.as_deref().unwrap_or(""), &after);
+        let (added, removed) = count_hunks(&patch);
+        let status = match (&baseline, after.is_empty()) {
+            (None, _) => FileStatus::Added,
+            (Some(_), true) => FileStatus::Deleted,
+            _ => FileStatus::Modified,
+        };
+        Some(FileChange {
+            path,
+            status,
+            added,
+            removed,
+            diff: patch,
+        })
+    }
+}
+
+fn same_path(left: &str, right: &str) -> bool {
+    let norm = |path: &str| path.replace('\\', "/").to_lowercase();
+    norm(left) == norm(right)
+}
+
+/// 这次工具调用之后的全文。`Write` 结果直接带；`Edit` / `MultiEdit` 在原文上照做一遍替换。
+fn content_after(tool_name: &str, input: &Value, structured: &Value, before: Option<&str>) -> Option<String> {
+    if tool_name == "Write" {
+        return structured
+            .get("content")
+            .or_else(|| input.get("content"))
+            .and_then(Value::as_str)
+            .map(str::to_string);
+    }
+    let mut text = before?.to_string();
+    let edits: Vec<&Value> = match input.get("edits").and_then(Value::as_array) {
+        Some(edits) if tool_name == "MultiEdit" => edits.iter().collect(),
+        _ if tool_name == "Edit" => vec![input],
+        _ => return None,
+    };
+    for edit in edits {
+        let old = edit.get("old_string").and_then(Value::as_str)?;
+        let new = edit.get("new_string").and_then(Value::as_str)?;
+        if old.is_empty() || !text.contains(old) {
+            return None;
+        }
+        let all = edit.get("replace_all").and_then(Value::as_bool).unwrap_or(false);
+        text = if all { text.replace(old, new) } else { text.replacen(old, new, 1) };
+    }
+    Some(text)
 }
 
 fn change_from_result(tool_name: &str, input: &Value, result: &Value) -> Option<FileChange> {
@@ -228,3 +310,94 @@ fn git_diff(project: &Path, args: &[&str]) -> String {
     }
     String::from_utf8_lossy(&output.stdout).to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    const EIGHT: &str = "line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\n";
+
+    #[test]
+    fn two_edits_in_one_turn_diff_against_the_first_original() {
+        let mut baselines = TurnBaselines::default();
+        let path = "C:/p/a.txt";
+        let first = baselines
+            .turn_change(
+                "Edit",
+                &json!({ "file_path": path, "old_string": "line2", "new_string": "TWO" }),
+                Some(&json!({ "originalFile": EIGHT })),
+            )
+            .expect("first edit");
+        assert_eq!((first.added, first.removed), (1, 1));
+        let second = baselines
+            .turn_change(
+                "Edit",
+                &json!({ "file_path": path, "old_string": "line7", "new_string": "SEVEN" }),
+                Some(&json!({ "originalFile": EIGHT.replace("line2", "TWO") })),
+            )
+            .expect("second edit");
+        assert_eq!(second.status, FileStatus::Modified);
+        assert_eq!((second.added, second.removed), (2, 2));
+        assert!(second.diff.contains("-line2\n+TWO"));
+        assert!(second.diff.contains("-line7\n+SEVEN"));
+    }
+
+    #[test]
+    fn a_file_written_then_edited_stays_added() {
+        let mut baselines = TurnBaselines::default();
+        baselines
+            .turn_change(
+                "Write",
+                &json!({ "file_path": "new.txt", "content": "a\nb\n" }),
+                Some(&json!({ "type": "create", "content": "a\nb\n", "originalFile": null })),
+            )
+            .expect("write");
+        let edited = baselines
+            .turn_change(
+                "Edit",
+                &json!({ "file_path": "new.txt", "old_string": "b", "new_string": "c" }),
+                Some(&json!({ "originalFile": "a\nb\n" })),
+            )
+            .expect("edit");
+        assert_eq!(edited.status, FileStatus::Added);
+        assert_eq!((edited.added, edited.removed), (2, 0));
+        assert!(edited.diff.contains("+c"));
+    }
+
+    #[test]
+    fn a_change_back_to_the_original_leaves_an_empty_diff() {
+        let mut baselines = TurnBaselines::default();
+        let input = |old: &str, new: &str| json!({ "file_path": "x.txt", "old_string": old, "new_string": new });
+        baselines.turn_change("Edit", &input("a", "b"), Some(&json!({ "originalFile": "a\n" })));
+        let back = baselines
+            .turn_change("Edit", &input("b", "a"), Some(&json!({ "originalFile": "b\n" })))
+            .expect("revert");
+        assert_eq!((back.added, back.removed), (0, 0));
+    }
+
+    #[test]
+    fn multi_edit_applies_every_replacement() {
+        let mut baselines = TurnBaselines::default();
+        let change = baselines
+            .turn_change(
+                "MultiEdit",
+                &json!({ "file_path": "m.txt", "edits": [
+                    { "old_string": "line1", "new_string": "ONE" },
+                    { "old_string": "line8", "new_string": "EIGHT" }
+                ] }),
+                Some(&json!({ "originalFile": EIGHT })),
+            )
+            .expect("multi edit");
+        assert_eq!((change.added, change.removed), (2, 2));
+    }
+
+    #[test]
+    fn missing_original_falls_back() {
+        let mut baselines = TurnBaselines::default();
+        let input = json!({ "file_path": "x.txt", "old_string": "a", "new_string": "b" });
+        assert!(baselines.turn_change("Edit", &input, None).is_none());
+        assert!(baselines.turn_change("Edit", &input, Some(&json!({}))).is_none());
+    }
+}
+
