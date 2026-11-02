@@ -6,7 +6,7 @@ import type { ViewerViewProps } from "../core/registry";
 import { useTerminal, type TerminalPayload } from "./useTerminal";
 
 export function TerminalView({ tabId, payload, sessionId }: ViewerViewProps<TerminalPayload>) {
-  const { patchTabPayload } = usePanel();
+  const { patchTabPayload, data } = usePanel();
   const patchPayload = useCallback(
     (patch: Partial<TerminalPayload>) => patchTabPayload(tabId, patch),
     [patchTabPayload, tabId],
@@ -15,6 +15,7 @@ export function TerminalView({ tabId, payload, sessionId }: ViewerViewProps<Term
     tabId,
     sessionId,
     terminalId: payload?.terminalId,
+    open: data.openTerminal,
     patchPayload,
   });
   const notice = error ?? (exited ? exitNotice(exitCode) : null);

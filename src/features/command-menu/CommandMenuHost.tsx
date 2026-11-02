@@ -64,6 +64,7 @@ export function CommandMenuHost() {
     canNewThread: Boolean(project),
     canStandalone: true,
     canSearchFiles: Boolean(panel && quickScope),
+    hasPanel: Boolean(panel),
     canFind: view.kind !== "none",
     forkTargets,
     hasNextAttention: nextAttention !== null,
@@ -151,6 +152,14 @@ export function CommandMenuHost() {
       close();
       return;
     }
+    if (id === "toggle-terminal" && panel) {
+      const terminalShown =
+        panel.layout !== "chat" && panel.tabs.find((tab) => tab.id === panel.activeId)?.viewerId === "terminal";
+      if (terminalShown) panel.hidePanel();
+      else panel.openTerminal();
+      close();
+      return;
+    }
     if (!task) return;
     if (id === "pin") {
       void tasksApi.setTaskPinned(task.id, !task.pinned).catch(showError);
@@ -191,13 +200,6 @@ export function CommandMenuHost() {
       const showing = panel.layout !== "chat" && activeTab?.viewerId === "files";
       if (showing) panel.hidePanel();
       else panel.openFiles();
-      close();
-      return;
-    }
-    if (id === "toggle-terminal") {
-      const showing = panel.layout !== "chat" && activeTab?.viewerId === "terminal";
-      if (showing) panel.hidePanel();
-      else panel.openTerminal();
       close();
       return;
     }

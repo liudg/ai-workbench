@@ -36,6 +36,27 @@ function stub(id: string, match: PanelViewer["match"], load?: PanelViewer["load"
 }
 
 describe("panel viewers", { concurrency: 1 }, () => {
+  test("the new-chat panel moves to the created session and tells each viewer", async () => {
+    const moved: Array<[unknown, string]> = [];
+    const undo = registerViewer({
+      ...stub("mover", (target) => (target.kind === "custom" && target.type === "mover" ? 50 : 0)),
+      move: (payload, sessionId) => moved.push([payload, sessionId]),
+    });
+    try {
+      const store = testStore();
+      await store.getState().panelOpenTarget("new:project-1", { kind: "custom", type: "mover", data: { title: "t" } }, ctx);
+      store.getState().panelSetPreviewWidth("new:project-1", 420);
+      store.getState().panelMoveSession("new:project-1", "session-1");
+      const state = store.getState();
+      assert.equal(state.panelBySession["new:project-1"], undefined);
+      assert.equal(state.panelBySession["session-1"]?.tabs[0]?.viewerId, "mover");
+      assert.equal(state.previewWidthBySession["session-1"], 420);
+      assert.deepEqual(moved, [[{ title: "t" }, "session-1"]]);
+    } finally {
+      undo();
+    }
+  });
+
   test("a fake viewer registers and opens without editing core", async () => {
     const seen: OpenTarget[] = [];
     const undo = registerViewer({

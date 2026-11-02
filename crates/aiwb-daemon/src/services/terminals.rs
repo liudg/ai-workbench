@@ -1,4 +1,4 @@
-//! 终端的对外方法。新终端开在会话的工作目录里，没有会话时开在项目主目录。
+//! 终端的对外方法。新终端开在会话的工作目录里，还没建会话时开在项目主目录。
 
 use serde::Deserialize;
 
@@ -19,6 +19,13 @@ pub(crate) struct TerminalId {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AdoptTerminal {
+    id: String,
+    session_id: String,
+}
+
+#[derive(Deserialize)]
 pub(crate) struct ResizeTerminal {
     id: String,
     cols: u16,
@@ -28,7 +35,12 @@ pub(crate) struct ResizeTerminal {
 impl Services {
     pub(crate) fn open_terminal(&self, params: OpenTerminal) -> ServiceResult<OpenedTerminal> {
         let cwd = self.scope_dir(&params.scope)?;
-        self.terminals.open(&cwd, params.cols, params.rows)
+        let owner = params.scope.session_id.clone();
+        self.terminals.open(&cwd, owner, params.cols, params.rows)
+    }
+
+    pub(crate) fn adopt_terminal(&self, params: AdoptTerminal) -> ServiceResult<()> {
+        self.terminals.adopt(&params.id, &params.session_id)
     }
 
     pub(crate) fn resize_terminal(&self, params: ResizeTerminal) -> ServiceResult<()> {

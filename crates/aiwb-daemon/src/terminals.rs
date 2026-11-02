@@ -1,7 +1,7 @@
 //! 终端：每个终端一个伪终端里的 shell。输出攒成小段推到 `terminal:<id>` 主题，
 //! 订阅时先给一份完整回滚内容（`reset`），之后只推新增的部分。
 //!
-//! 终端一直活到界面关掉它、shell 自己退出，或 daemon 退出。
+//! 终端属于开它的会话，一直活到界面关掉它、会话被删、shell 自己退出，或 daemon 退出。
 //! 看过它的连接都断开（比如界面刷新，标签没了）又过了一阵没人再订阅，也关掉。
 
 use std::collections::{HashMap, HashSet};
@@ -43,6 +43,8 @@ struct Screen {
 }
 
 struct Terminal {
+    /// 所属会话。新会话还没发第一条消息时为空，建好后由界面认领。
+    owner: Mutex<Option<String>>,
     master: Mutex<Option<Box<dyn MasterPty + Send>>>,
     writer: Mutex<Option<Box<dyn Write + Send>>>,
     killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
@@ -70,7 +72,7 @@ impl Terminals {
         }
     }
 
-    pub fn open(&self, cwd: &Path, cols: u16, rows: u16) -> Result<OpenedTerminal, String> {
+    pub fn open(&self, cwd: &Path, owner: Option<String>, cols: u16, rows: u16) -> Result<OpenedTerminal, String> {
         if !cwd.is_dir() {
             return Err(format!("工作目录不存在：{}", cwd.display()));
         }
@@ -93,6 +95,7 @@ impl Terminals {
 
         let id = uuid::Uuid::new_v4().simple().to_string();
         let terminal = Arc::new(Terminal {
+            owner: Mutex::new(owner),
             killer: Mutex::new(child.clone_killer()),
             master: Mutex::new(Some(pair.master)),
             writer: Mutex::new(Some(writer)),
@@ -136,6 +139,34 @@ impl Terminals {
         match master.as_ref() {
             Some(master) => master.resize(size(cols, rows)).map_err(|e| e.to_string()),
             None => Ok(()),
+        }
+    }
+
+    /// 新会话发出第一条消息后，把它开着的终端归到建好的会话。
+    pub fn adopt(&self, id: &str, session_id: &str) -> Result<(), String> {
+        *self.get(id)?.owner.lock().unwrap() = Some(session_id.to_string());
+        Ok(())
+    }
+
+    /// 会话删掉时，关掉它的终端。
+    pub fn close_owned(&self, sessions: &[String]) {
+        let ids: Vec<String> = self
+            .open
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(_, terminal)| {
+                terminal
+                    .owner
+                    .lock()
+                    .unwrap()
+                    .as_ref()
+                    .is_some_and(|owner| sessions.contains(owner))
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in ids {
+            self.close(&id);
         }
     }
 

@@ -35,6 +35,7 @@ const previewPanelData: PanelData = {
   attachFile: () => {},
   addTextSnippet: () => {},
   isGit: async () => false,
+  openTerminal: NO_FILES,
   subscriptionUsage: NO_FILES,
 };
 

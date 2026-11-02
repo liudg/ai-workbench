@@ -44,6 +44,8 @@ export interface PanelSlice {
   panelOpenFiles(sessionId: string): void;
   /** 打开或聚焦终端标签。 */
   panelOpenTerminal(sessionId: string): void;
+  /** 新会话发出第一条消息后，面板（标签、布局、宽度）整个搬到建好的会话上。 */
+  panelMoveSession(from: string, to: string): void;
   /** 收起侧栏。标签还在，标记改成打开的标签数。 */
   panelHide(sessionId: string): void;
   /** 没有标签时打开内置浏览器新标签页，否则只把侧栏展开。 */
@@ -191,6 +193,30 @@ export function createPanelSlice(set: PanelSet, get: PanelGet): PanelSlice {
 
     panelOpenTerminal(sessionId) {
       void openPanelTarget(host, sessionId, { kind: "custom", type: "terminal" }, emptyCtx(), 0);
+    },
+
+    panelMoveSession(from, to) {
+      const moving = get().panelBySession[from];
+      if (moving) {
+        for (const tab of moving.tabs) viewerById(tab.viewerId)?.move?.(tab.payload, to);
+      }
+      for (const [key, value] of loads) {
+        if (key.startsWith(`${from}\0`)) loads.set(`${to}${key.slice(from.length)}`, value);
+      }
+      set((state) => {
+        const take = <T,>(record: Record<string, T>): Record<string, T> => {
+          if (!(from in record)) return record;
+          const { [from]: value, ...rest } = record;
+          return { ...rest, [to]: value };
+        };
+        return {
+          panelBySession: take(state.panelBySession),
+          previewWidthBySession: take(state.previewWidthBySession),
+          diffFilesWidthBySession: take(state.diffFilesWidthBySession),
+          filesTreeWidthBySession: take(state.filesTreeWidthBySession),
+          diffViewBySession: take(state.diffViewBySession),
+        };
+      });
     },
 
     panelHide(sessionId) {

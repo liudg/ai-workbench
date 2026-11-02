@@ -32,6 +32,7 @@ function panelData(scope: api.FileScope, workdir: string): PanelData {
     attachFile: (sessionId, file) => addDraftAttachments(sessionId, [file]),
     addTextSnippet: addDraftSnippet,
     isGit: () => api.isGitScope(scope),
+    openTerminal: (cols, rows) => api.openTerminal(scope, cols, rows),
     subscriptionUsage: api.subscriptionUsage,
   };
 }

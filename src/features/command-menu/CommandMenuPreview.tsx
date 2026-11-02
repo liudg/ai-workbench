@@ -44,6 +44,7 @@ export default function CommandMenuPreview() {
     canNewThread: true,
     canStandalone: true,
     canSearchFiles: params.get("caps") !== "off",
+    hasPanel: true,
     canFind: params.get("find") !== "off",
     forkTargets: [{ agent: "codex-cli", name: "Codex", same: true }],
     hasNextAttention: true,

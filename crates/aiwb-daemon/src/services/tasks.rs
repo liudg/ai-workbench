@@ -249,10 +249,19 @@ impl Services {
                 blocking(move || aiwb_git::discard_confirmed_worktree(&project, &cwd, force)).await?;
             }
         }
+        let sessions: Vec<String> = self
+            .store
+            .list_sessions()
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .filter(|session| session.task_id == params.id)
+            .map(|session| session.id)
+            .collect();
         let removed = self
             .store
             .remove_task(&params.id)
             .map_err(|e| e.to_string())?;
+        self.terminals.close_owned(&sessions);
         self.runtimes.publish_tasks()?;
         Ok(removed)
     }

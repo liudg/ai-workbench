@@ -3,7 +3,6 @@ import type { Terminal } from "@xterm/xterm";
 
 import {
   closeTerminal,
-  openTerminal,
   resizeTerminal,
   watchTerminal,
   writeTerminal,
@@ -34,11 +33,14 @@ export function useTerminal({
   tabId,
   sessionId,
   terminalId,
+  open,
   patchPayload,
 }: {
   tabId: string;
   sessionId: string;
   terminalId: string | undefined;
+  /** 在面板的工作目录里开 shell。 */
+  open: (cols: number, rows: number) => Promise<string>;
   patchPayload: (patch: Partial<TerminalPayload>) => void;
 }): TerminalState {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -48,6 +50,8 @@ export function useTerminal({
   const [error, setError] = useState<string | null>(null);
   const patchRef = useRef(patchPayload);
   patchRef.current = patchPayload;
+  const openRef = useRef(open);
+  openRef.current = open;
 
   useEffect(() => {
     const host = hostRef.current;
@@ -68,7 +72,7 @@ export function useTerminal({
     const key = `${sessionId}/${tabId}`;
     let pending = opening.get(key);
     if (!pending) {
-      pending = openTerminal({ sessionId }, term.cols, term.rows).then((opened) => opened.id);
+      pending = openRef.current(term.cols, term.rows);
       opening.set(key, pending);
       void pending.finally(() => opening.delete(key)).catch(() => {});
     }
@@ -90,6 +94,9 @@ export function useTerminal({
     if (!terminalId || !term) return;
     let attached = false;
     let ended = false;
+    // 重放回滚内容时，里面旧的查询（比如光标位置 ESC[6n）会让 xterm 再回答一次。
+    // 这些回答不能当成输入送进 shell，否则 shell 会吞掉后面的按键。
+    let replaying = 0;
     const flushRuns = () => {
       if (!attached || ended) return;
       for (const command of takeTerminalRuns(sessionId)) {
@@ -97,8 +104,15 @@ export function useTerminal({
       }
     };
     const stopWatch = watchTerminal(terminalId, (push) => {
-      if (push.reset) term.reset();
-      if (push.data) term.write(push.data);
+      if (push.reset) {
+        term.reset();
+        replaying += 1;
+        term.write(push.data ?? "", () => {
+          replaying -= 1;
+        });
+      } else if (push.data) {
+        term.write(push.data);
+      }
       ended = Boolean(push.exited) || (ended && !push.reset);
       if (push.reset || push.exited) {
         setExited(ended);
@@ -112,7 +126,7 @@ export function useTerminal({
     });
     const stopRuns = watchTerminalRuns(sessionId, flushRuns);
     const input = term.onData((data) => {
-      if (!ended) void writeTerminal(terminalId, data).catch(() => {});
+      if (!ended && replaying === 0) void writeTerminal(terminalId, data).catch(() => {});
     });
     const resize = term.onResize(({ cols, rows }) => {
       if (!ended) void resizeTerminal(terminalId, cols, rows).catch(() => {});

@@ -67,6 +67,8 @@ export interface PanelData {
   /** 预览里选中的文字放进作曲栏，发送时作为引用。 */
   addTextSnippet(sessionId: string, draft: TextSnippetDraft): void;
   isGit(projectId: string, sessionId: string): Promise<boolean>;
+  /** 在面板的工作目录里开一个终端，返回终端 id。 */
+  openTerminal(cols: number, rows: number): Promise<string>;
   subscriptionUsage(agent: AgentKind): Promise<SubscriptionUsage>;
 }
 

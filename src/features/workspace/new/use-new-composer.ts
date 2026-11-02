@@ -20,6 +20,7 @@ import type {
 } from "@/types";
 import { filterPaths } from "../session/api";
 import { moveDraft, patchDraft, readDraft, type ComposerDraft } from "../session/composer-drafts";
+import { usePanelStore } from "@/features/panel/state/store";
 import { beginSessionStart } from "../session/session-start";
 import { initialSandbox } from "@/lib/sandbox";
 import { rememberAgent, rememberSandbox, rememberTuning, stickyAgent, stickySandbox, stickyTuning } from "./sticky";
@@ -217,6 +218,7 @@ export function useNewComposer({
           // 文字跟着发出去了；附件、片段、选项都清掉，新会话页回到空白。
           if (sessionId) {
             moveDraft(key, sessionId, {});
+            usePanelStore.getState().panelMoveSession(key, sessionId);
             if (text.trim() || images.length > 0) beginSessionStart(sessionId, { text, images });
           }
           openTask(created.id, projectId);

@@ -31,6 +31,7 @@ const enabled: PaletteInput = {
   canNewThread: true,
   canStandalone: true,
   canSearchFiles: true,
+  hasPanel: true,
   canFind: true,
   forkTargets: [],
   hasNextAttention: false,
@@ -153,4 +154,11 @@ test("the board is always reachable; next-in-queue only when someone is waiting"
   const next = waiting.find((row) => row.commandId === "next-attention");
   assert.equal(next?.label, "下一个需要处理的聊天");
   assert.equal(next?.group, "navigation");
+});
+
+test("the terminal toggle follows the panel, not the active chat", () => {
+  const draft = buildPaletteRows({ ...enabled, activeSessionId: null, hasPanel: true });
+  assert.equal(draft.find((row) => row.commandId === "toggle-terminal")?.shortcut, COPY.shortcutTerminal);
+  const none = buildPaletteRows({ ...enabled, activeSessionId: null, hasPanel: false });
+  assert.equal(none.some((row) => row.commandId === "toggle-terminal"), false);
 });

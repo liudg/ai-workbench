@@ -98,6 +98,10 @@ export function diffForScope(scope: FileScope, diffScope: string, ignoreWhitespa
   return daemon.call<string>("files.diff", { ...scope, scope: diffScope, ignoreWhitespace });
 }
 
+export function openTerminal(scope: FileScope, cols: number, rows: number) {
+  return daemon.call<{ id: string }>("terminals.open", { ...scope, cols, rows }).then((opened) => opened.id);
+}
+
 export function readFile(scope: FileScope, path: string) {
   return daemon.call<PreviewDocument>("files.readFile", { ...scope, path });
 }

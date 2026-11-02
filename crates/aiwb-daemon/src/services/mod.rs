@@ -211,6 +211,7 @@ impl Services {
             "sessions.reviewTargets" => to_value(self.review_targets(parse(params)?).await?),
             "sessions.startReview" => to_value(self.start_review(parse(params)?).await?),
             "terminals.open" => to_value(self.open_terminal(parse(params)?)?),
+            "terminals.adopt" => to_value(self.adopt_terminal(parse(params)?)?),
             "terminals.resize" => to_value(self.resize_terminal(parse(params)?)?),
             "terminals.close" => to_value(self.close_terminal(parse(params)?)?),
             _ => Err(format!("没有这个方法：{method}")),

@@ -83,6 +83,8 @@ export interface PaletteInput {
   canNewThread: boolean;
   canStandalone: boolean;
   canSearchFiles: boolean;
+  /** 有右侧面板（建好的会话或项目里的新会话）。 */
+  hasPanel: boolean;
   canFind: boolean;
   forkTargets: readonly ForkTarget[];
   /** 注意力队列里还有下一个等着你的会话。 */
@@ -154,7 +156,7 @@ function commandItems(input: PaletteInput): PaletteRow[] {
   if (active && showsFileChanges(input.changes)) {
     rows.push(command("toggle-changes", COPY.toggleChanges, "panels"));
   }
-  if (active) rows.push(command("toggle-terminal", COPY.toggleTerminal, "panels", COPY.shortcutTerminal));
+  if (input.hasPanel) rows.push(command("toggle-terminal", COPY.toggleTerminal, "panels", COPY.shortcutTerminal));
   rows.push(command("open-folder", COPY.openFolder, "workspace"));
   rows.push(command("settings", COPY.settings, "settings"));
   return rows;
