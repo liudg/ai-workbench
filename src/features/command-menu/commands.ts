@@ -34,6 +34,7 @@ export type PaletteCommandId =
   | "delete"
   | "toggle-files"
   | "toggle-changes"
+  | "toggle-terminal"
   | "toggle-sidebar"
   | "quick-open"
   | "board"
@@ -153,6 +154,7 @@ function commandItems(input: PaletteInput): PaletteRow[] {
   if (active && showsFileChanges(input.changes)) {
     rows.push(command("toggle-changes", COPY.toggleChanges, "panels"));
   }
+  if (active) rows.push(command("toggle-terminal", COPY.toggleTerminal, "panels", COPY.shortcutTerminal));
   rows.push(command("open-folder", COPY.openFolder, "workspace"));
   rows.push(command("settings", COPY.settings, "settings"));
   return rows;

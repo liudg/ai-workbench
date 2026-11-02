@@ -34,6 +34,7 @@ import {
   isOpenChord,
   isQuickOpenChord,
   isSidebarChord,
+  isTerminalChord,
 } from "./keyboard";
 import { useQuickOpen } from "./useQuickOpen";
 
@@ -193,6 +194,13 @@ export function CommandMenuHost() {
       close();
       return;
     }
+    if (id === "toggle-terminal") {
+      const showing = panel.layout !== "chat" && activeTab?.viewerId === "terminal";
+      if (showing) panel.hidePanel();
+      else panel.openTerminal();
+      close();
+      return;
+    }
     if (id === "toggle-changes") {
       const showing = panel.layout !== "chat" && activeTab?.viewerId === "diff";
       if (showing) panel.hidePanel();
@@ -272,6 +280,12 @@ export function CommandMenuHost() {
       }
       const visible = (id: PaletteCommandId) =>
         buildPaletteRows({ ...current.input, mode: "commands", query: "" }).some((row) => row.commandId === id);
+      if (isTerminalChord(event) && visible("toggle-terminal")) {
+        event.preventDefault();
+        event.stopPropagation();
+        current.runCommand("toggle-terminal");
+        return;
+      }
       if (isNewThreadChord(event) && visible("new-thread")) {
         event.preventDefault();
         event.stopPropagation();

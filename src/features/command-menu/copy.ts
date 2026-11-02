@@ -41,6 +41,8 @@ export const COMMAND_MENU_COPY = {
   deleteChat: "删除聊天",
   toggleFiles: "显示/隐藏导航面板",
   toggleChanges: "显示/隐藏“变更”面板",
+  toggleTerminal: "显示/隐藏终端",
+  shortcutTerminal: DESKTOP_ZH.terminalShortcut,
   toggleSidebar: "显示/隐藏侧边栏",
   quickOpen: "跳转文件",
   /** v1 `attention/next-session.ts` 的说法。 */

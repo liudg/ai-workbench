@@ -21,6 +21,13 @@ pub fn session_topic(session_id: &str) -> String {
     format!("{TOPIC_SESSION_PREFIX}{session_id}")
 }
 
+/// 主题前缀：一个终端的输出。订阅时先给完整回滚内容（`reset`），之后只推新增的部分。
+pub const TOPIC_TERMINAL_PREFIX: &str = "terminal:";
+
+pub fn terminal_topic(terminal_id: &str) -> String {
+    format!("{TOPIC_TERMINAL_PREFIX}{terminal_id}")
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Request {
     pub id: u64,

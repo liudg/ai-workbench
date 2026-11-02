@@ -55,6 +55,8 @@ export interface PanelViewer<P = unknown> {
   load?(target: OpenTarget, ctx: ViewerContext): Promise<P>;
   View: ComponentType<ViewerViewProps<P>>;
   menu?: MenuItem[];
+  /** 标签关掉时释放它占着的东西，比如终端进程。 */
+  dispose?(payload: P): void;
 }
 
 /** 服务端判定不能当文本打开。不要改走 diff。 */

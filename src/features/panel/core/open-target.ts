@@ -78,6 +78,7 @@ export function initialPayload(target: OpenTarget): unknown {
       if (target.type === "open-files") {
         return { title: DESKTOP_ZH.openFiles, type: target.type, path: "", line: null, filter: "", tabs: [] };
       }
+      if (target.type === "terminal") return { title: DESKTOP_ZH.terminal };
       return target.data && typeof target.data === "object" ? { ...(target.data as object) } : { type: target.type };
     default:
       return {};

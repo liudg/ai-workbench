@@ -38,6 +38,10 @@ export function matchDiff(target: OpenTarget): number {
   return target.kind === "diff" ? 100 : 0;
 }
 
+export function matchTerminal(target: OpenTarget): number {
+  return target.kind === "custom" && target.type === "terminal" ? 100 : 0;
+}
+
 export function matchOpenFiles(target: OpenTarget): number {
   return target.kind === "custom" && target.type === "open-files" ? 100 : 0;
 }

@@ -41,6 +41,11 @@ export function isQuickOpenChord(event: ChordEvent): boolean {
   return modified(event) && !event.shiftKey && event.key.toLowerCase() === "p";
 }
 
+/** 按物理键位认反引号，中文输入法下 key 可能不是 `。 */
+export function isTerminalChord(event: ChordEvent & { code?: string }): boolean {
+  return modified(event) && !event.shiftKey && (event.key === "`" || event.code === "Backquote");
+}
+
 export function moveCursor(index: number, count: number, key: "ArrowDown" | "ArrowUp"): number {
   if (count <= 0) return 0;
   if (key === "ArrowDown") return Math.min(count - 1, index + 1);

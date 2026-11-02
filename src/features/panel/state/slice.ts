@@ -16,7 +16,7 @@ import {
   withPreviewRail,
 } from "../core/layout.ts";
 import { targetFromHref } from "../core/open-target.ts";
-import type { OpenTarget, ViewerContext } from "../core/registry.ts";
+import { viewerById, type OpenTarget, type ViewerContext } from "../core/registry.ts";
 import { openPanelTarget } from "./panel-load.ts";
 import {
   blankSession,
@@ -42,6 +42,8 @@ export interface PanelSlice {
   panelOpenBlank(sessionId: string): void;
   /** 打开或聚焦「打开文件」标签。 */
   panelOpenFiles(sessionId: string): void;
+  /** 打开或聚焦终端标签。 */
+  panelOpenTerminal(sessionId: string): void;
   /** 收起侧栏。标签还在，标记改成打开的标签数。 */
   panelHide(sessionId: string): void;
   /** 没有标签时打开内置浏览器新标签页，否则只把侧栏展开。 */
@@ -132,6 +134,8 @@ export function createPanelSlice(set: PanelSet, get: PanelGet): PanelSlice {
 
     panelCloseTab(sessionId, id) {
       loads.delete(loadKey(sessionId, id));
+      const closing = read(sessionId).tabs.find((tab) => tab.id === id);
+      if (closing) viewerById(closing.viewerId)?.dispose?.(closing.payload);
       mutate(sessionId, (session) => dropTab(session, id));
     },
 
@@ -183,6 +187,10 @@ export function createPanelSlice(set: PanelSet, get: PanelGet): PanelSlice {
       mutate(sessionId, (session) =>
         session.filesSidebarOpen ? null : { ...session, filesSidebarOpen: true },
       );
+    },
+
+    panelOpenTerminal(sessionId) {
+      void openPanelTarget(host, sessionId, { kind: "custom", type: "terminal" }, emptyCtx(), 0);
     },
 
     panelHide(sessionId) {

@@ -374,6 +374,34 @@ button.answer-cite:hover {
   font-size: 12.5px;
   line-height: 1.6;
 }
+.answer-command {
+  position: relative;
+}
+.answer-command .answer-pre {
+  padding-right: 4.5rem;
+  color: #86efac;
+}
+.answer-command-actions {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.45rem;
+  display: flex;
+  gap: 0.15rem;
+}
+.answer-command-button {
+  display: inline-flex;
+  height: 1.6rem;
+  width: 1.6rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.4rem;
+  color: #a1a1aa;
+  cursor: pointer;
+}
+.answer-command-button:hover {
+  background: rgb(39 39 42);
+  color: #f4f4f5;
+}
 .answer-table-wrap {
   max-width: 100%;
   overflow-x: auto;

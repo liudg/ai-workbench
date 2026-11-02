@@ -9,6 +9,7 @@ mod instance;
 mod runtime;
 mod server;
 mod services;
+mod terminals;
 mod upgrades;
 
 use std::path::PathBuf;
@@ -109,6 +110,7 @@ pub async fn run(config: Config) -> Result<(), String> {
         .map_err(|e| format!("服务出错：{e}"));
     services.finish_upgrades().await;
     services.stop_agents().await;
+    services.terminals.close_all();
     instance::remove_info(&config.data_dir, info.pid);
     eprintln!("daemon 已退出");
     result

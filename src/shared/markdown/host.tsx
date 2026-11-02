@@ -8,6 +8,8 @@ export type MarkdownHostApi = {
   openHref: (href: string, line?: number) => void;
   renderImage: (alt: string, source: ImageSource) => ReactNode;
   renderWebsite: (href: string, label: string) => ReactNode;
+  /** 有终端时，终端命令代码块可以直接运行。 */
+  runCommand?: (command: string) => void;
 };
 
 const MarkdownHostContext = createContext<MarkdownHostApi | null>(null);

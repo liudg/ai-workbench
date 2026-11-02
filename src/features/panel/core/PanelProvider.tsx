@@ -36,6 +36,7 @@ import {
 import { defaultDiffViewPrefs, type DiffViewPrefs } from "../diff/view-prefs";
 import { sessionChanges, type FileChange } from "@/features/changes-model/diff-parse";
 import type { PanelSlice } from "../state/slice";
+import { queueTerminalRun } from "../terminal/terminal-runs";
 import type { PanelTab } from "./registry";
 
 const EMPTY_TABS: PanelTab[] = [];
@@ -93,6 +94,9 @@ interface PanelApi {
   openHref: (href: string, line?: number) => void;
   openBlank: () => void;
   openFiles: () => void;
+  openTerminal: () => void;
+  /** 打开终端并执行命令。终端还没开好时先排着。 */
+  runInTerminal: (command: string) => void;
   projectPath: string;
   sessionTitle: string;
   agent: AgentKind | null;
@@ -217,6 +221,16 @@ export function PanelHost({
   const openFiles = useCallback(() => {
     state.get().panelOpenFiles(sessionId);
   }, [sessionId, state]);
+  const openTerminal = useCallback(() => {
+    state.get().panelOpenTerminal(sessionId);
+  }, [sessionId, state]);
+  const runInTerminal = useCallback(
+    (command: string) => {
+      queueTerminalRun(sessionId, command);
+      state.get().panelOpenTerminal(sessionId);
+    },
+    [sessionId, state],
+  );
   const hidePanel = useCallback(() => {
     state.get().panelHide(sessionId);
   }, [sessionId, state]);
@@ -275,6 +289,8 @@ export function PanelHost({
       openHref,
       openBlank,
       openFiles,
+      openTerminal,
+      runInTerminal,
       projectPath,
       sessionTitle,
       agent,
@@ -314,6 +330,8 @@ export function PanelHost({
       openHref,
       openBlank,
       openFiles,
+      openTerminal,
+      runInTerminal,
       projectPath,
       sessionTitle,
       agent,

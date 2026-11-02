@@ -1,5 +1,5 @@
-import { useMemo, useState, type ReactNode } from "react";
-import { ChevronRight, File } from "lucide-react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Check, ChevronRight, Copy, File, Play } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { baseName } from "@/shared/path";
@@ -15,6 +15,9 @@ import {
 import { visibleFileCiteCount } from "./file-cites";
 import { fileLineRef, isFileHref, isHtmlHref, stripFileLocation } from "./file-href";
 import { useMarkdownHost } from "./host";
+import { isShellLang } from "./shell-lang";
+import { writeClipboardText } from "@/shared/clipboard";
+import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import type { ImageSource } from "./markdown-images";
 
 export function MarkdownBody({ text }: { text: string }) {
@@ -65,7 +68,11 @@ function BlockView({ block }: { block: AnswerBlock }) {
     case "code":
       return (
         <MaybeCollapsed meta={block.meta}>
-          <CodeView text={block.text} />
+          {isShellLang(block.lang) ? (
+            <CommandView text={block.text} run={host?.runCommand} />
+          ) : (
+            <CodeView text={block.text} />
+          )}
         </MaybeCollapsed>
       );
     case "quote":
@@ -245,6 +252,46 @@ function CodeView({ text }: { text: string }) {
         ))}
       </code>
     </pre>
+  );
+}
+
+/** 终端命令：右上角运行和复制。 */
+function CommandView({ text, run }: { text: string; run?: (command: string) => void }) {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(timer);
+  }, [copied]);
+  const copy = () => {
+    void writeClipboardText(text).then(() => setCopied(true), () => {});
+  };
+  return (
+    <div className="answer-command" data-answer-block="command">
+      <CodeView text={text} />
+      <div className="answer-command-actions">
+        {run ? (
+          <button
+            type="button"
+            className="answer-command-button"
+            title={DESKTOP_ZH.codeRun}
+            aria-label={DESKTOP_ZH.codeRun}
+            onClick={() => run(text)}
+          >
+            <Play className="h-3.5 w-3.5" />
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className="answer-command-button"
+          title={copied ? DESKTOP_ZH.codeCopied : DESKTOP_ZH.codeCopy}
+          aria-label={copied ? DESKTOP_ZH.codeCopied : DESKTOP_ZH.codeCopy}
+          onClick={copy}
+        >
+          {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+        </button>
+      </div>
+    </div>
   );
 }
 

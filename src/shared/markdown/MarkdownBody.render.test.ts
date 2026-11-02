@@ -27,7 +27,7 @@ after(async () => {
   await server?.close();
 });
 
-function render(text: string): string {
+function render(text: string, runCommand?: (command: string) => void): string {
   return renderToStaticMarkup(
     createElement(MarkdownHost, {
       api: {
@@ -35,6 +35,7 @@ function render(text: string): string {
         openHref: () => undefined,
         renderImage: () => null,
         renderWebsite: () => null,
+        runCommand,
       },
       children: createElement(MarkdownBody, { text }),
     }),
@@ -79,4 +80,20 @@ test("four file refs stay visible without a show-more control", () => {
   assert.equal(html.match(/data-answer-cite/g)?.length, 4);
   assert.equal(html.includes("data-show-more"), false);
   assert.equal(html.includes("data-answer-disclosure"), false);
+});
+
+test("a shell block gets run and copy when a terminal is available", () => {
+  const html = render("```bash\npnpm tauri:dev\n```", () => undefined);
+  assert.match(html, /data-answer-block="command"/);
+  assert.match(html, /aria-label="在终端中运行"/);
+  assert.match(html, /aria-label="复制"/);
+  assert.match(html, /pnpm tauri:dev/);
+});
+
+test("a shell block without a terminal only copies, other code stays plain", () => {
+  const shell = render("```sh\nls\n```");
+  assert.match(shell, /aria-label="复制"/);
+  assert.equal(shell.includes("在终端中运行"), false);
+  const code = render("```ts\nconst a = 1;\n```", () => undefined);
+  assert.equal(code.includes('data-answer-block="command"'), false);
 });

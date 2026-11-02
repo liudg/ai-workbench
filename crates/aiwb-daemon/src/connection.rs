@@ -1,13 +1,13 @@
 //! 一条 WebSocket 连接：收请求、回响应、转发已订阅主题的推送。
 //!
 //! `subscribe` / `unsubscribe` 在读循环里同步处理，保证快照先于后续推送进入发送队列。
-//! 其余方法各开一个任务，慢请求不挡后面的消息。
+//! 终端输入也在读循环里写，按键不会乱序。其余方法各开一个任务，慢请求不挡后面的消息。
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use aiwb_core::rpc::{Push, Request, Response};
+use aiwb_core::rpc::{Push, Request, Response, TOPIC_TERMINAL_PREFIX};
 use axum::extract::ws::{Message, WebSocket};
 use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
@@ -25,6 +25,12 @@ static NEXT_CONNECTION: AtomicU64 = AtomicU64::new(1);
 #[derive(Deserialize)]
 struct TopicParams {
     topic: String,
+}
+
+#[derive(Deserialize)]
+struct TerminalInput {
+    id: String,
+    data: String,
 }
 
 #[derive(Deserialize)]
@@ -77,7 +83,7 @@ pub(crate) async fn serve(socket: WebSocket, services: Arc<Services>) {
         };
         match request.method.as_str() {
             "subscribe" => {
-                let response = subscribe(&services, &subs, &out, request.id, request.params);
+                let response = subscribe(&services, &subs, &out, connection, request.id, request.params);
                 send(&out, &response);
             }
             "unsubscribe" => {
@@ -87,6 +93,16 @@ pub(crate) async fn serve(socket: WebSocket, services: Arc<Services>) {
                         Response::ok(request.id, Value::Null)
                     }
                     Err(err) => Response::err(request.id, err),
+                };
+                send(&out, &response);
+            }
+            "terminals.write" => {
+                let response = match serde_json::from_value::<TerminalInput>(request.params) {
+                    Ok(input) => match services.terminals.write(&input.id, &input.data) {
+                        Ok(()) => Response::ok(request.id, Value::Null),
+                        Err(err) => Response::err(request.id, err),
+                    },
+                    Err(err) => Response::err(request.id, format!("参数不对：{err}")),
                 };
                 send(&out, &response);
             }
@@ -117,6 +133,7 @@ pub(crate) async fn serve(socket: WebSocket, services: Arc<Services>) {
 
     forwarder.abort();
     let _ = services.runtimes.set_viewing(connection, None);
+    services.terminals.forget(connection);
     drop(out);
     let _ = writer.await;
 }
@@ -131,6 +148,7 @@ fn subscribe(
     services: &Services,
     subs: &Subscriptions,
     out: &mpsc::UnboundedSender<String>,
+    connection: u64,
     id: u64,
     params: Value,
 ) -> Response {
@@ -139,6 +157,9 @@ fn subscribe(
         Ok(topic) => topic,
         Err(err) => return Response::err(id, err),
     };
+    if let Some(terminal_id) = topic.strip_prefix(TOPIC_TERMINAL_PREFIX) {
+        services.terminals.watch(terminal_id, connection);
+    }
     let result = services.hub().snapshot_with(
         || services.snapshot(&topic, &extra),
         |seq, data| {

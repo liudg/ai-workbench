@@ -14,6 +14,7 @@ export function AnswerMarkdownHost({ children }: { children: ReactNode }) {
       openHref: (href, line) => preview?.openHref(href, line),
       renderImage: (alt, source) => <MessageImage alt={alt} source={source} />,
       renderWebsite: (href, label) => <WebsiteCard href={href} label={label} />,
+      runCommand: preview ? (command) => preview.runInTerminal(command) : undefined,
     }),
     [preview],
   );

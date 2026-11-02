@@ -10,13 +10,16 @@ mod mcp;
 mod projects;
 mod sessions;
 mod tasks;
+mod terminals;
 
 pub(crate) use folders::import_legacy_task_folder;
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use aiwb_core::rpc::{TOPIC_AGENT_UPGRADES, TOPIC_PROJECTS, TOPIC_SESSION_PREFIX, TOPIC_TASKS};
+use aiwb_core::rpc::{
+    TOPIC_AGENT_UPGRADES, TOPIC_PROJECTS, TOPIC_SESSION_PREFIX, TOPIC_TASKS, TOPIC_TERMINAL_PREFIX,
+};
 use aiwb_core::DaemonInfo;
 use aiwb_store::Store;
 use serde::de::DeserializeOwned;
@@ -25,6 +28,7 @@ use tokio::sync::watch;
 
 use crate::hub::Hub;
 use crate::runtime::{AdapterFactory, Runtimes};
+use crate::terminals::Terminals;
 
 pub type ServiceResult<T> = Result<T, String>;
 
@@ -33,6 +37,7 @@ pub struct Services {
     pub(crate) hub: Arc<Hub>,
     pub(crate) runtimes: Arc<Runtimes>,
     pub(crate) upgrades: Arc<crate::upgrades::AgentUpgrades>,
+    pub(crate) terminals: Arc<Terminals>,
     /// 文件路径索引和文件名筛选的序号。按工作目录共用。
     pub(crate) indexes: aiwb_files::IndexHub,
     pub(crate) filters: aiwb_files::FilterHub,
@@ -58,6 +63,7 @@ impl Services {
         Self {
             upgrades: crate::upgrades::AgentUpgrades::new(hub.clone(), adapters.clone()),
             runtimes: Arc::new(Runtimes::new(store.clone(), hub.clone(), adapters)),
+            terminals: Arc::new(Terminals::new(hub.clone())),
             store,
             hub,
             indexes: aiwb_files::IndexHub::default(),
@@ -204,6 +210,9 @@ impl Services {
             "sessions.submitAnnotation" => to_value(self.submit_annotation(parse(params)?).await?),
             "sessions.reviewTargets" => to_value(self.review_targets(parse(params)?).await?),
             "sessions.startReview" => to_value(self.start_review(parse(params)?).await?),
+            "terminals.open" => to_value(self.open_terminal(parse(params)?)?),
+            "terminals.resize" => to_value(self.resize_terminal(parse(params)?)?),
+            "terminals.close" => to_value(self.close_terminal(parse(params)?)?),
             _ => Err(format!("没有这个方法：{method}")),
         }
     }
@@ -214,6 +223,9 @@ impl Services {
             TOPIC_PROJECTS => to_value(self.list_projects()?),
             TOPIC_TASKS => to_value(self.store.task_entries().map_err(|e| e.to_string())?),
             TOPIC_AGENT_UPGRADES => to_value(self.upgrades.snapshot()),
+            _ if topic.starts_with(TOPIC_TERMINAL_PREFIX) => {
+                Ok(self.terminals.snapshot(&topic[TOPIC_TERMINAL_PREFIX.len()..]))
+            }
             _ => match topic.strip_prefix(TOPIC_SESSION_PREFIX) {
                 Some(session_id) => {
                     let from_rev = params.get("fromRev").and_then(Value::as_u64).unwrap_or(0);
