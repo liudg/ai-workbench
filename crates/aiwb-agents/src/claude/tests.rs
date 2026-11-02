@@ -28,6 +28,7 @@ fn cli_args_follow_the_sdk_and_require_print() {
     let args = command::cli_args(&Launch {
         session_id: "abc".into(),
         resume: true,
+        side_of: None,
         permission_mode: "bypassPermissions".into(),
         model: Some("sonnet".into()),
         effort: Some("high".into()),
@@ -59,6 +60,7 @@ fn cli_args_follow_the_sdk_and_require_print() {
     let fresh = command::cli_args(&Launch {
         session_id: "id-1".into(),
         resume: false,
+        side_of: None,
         permission_mode: "default".into(),
         model: None,
         effort: Some("  ".into()),
@@ -76,6 +78,7 @@ fn add_dir_is_a_launch_argument() {
     let args = command::cli_args(&Launch {
         session_id: "id-1".into(),
         resume: false,
+        side_of: None,
         permission_mode: "default".into(),
         model: None,
         effort: None,
@@ -84,6 +87,26 @@ fn add_dir_is_a_launch_argument() {
     let pos = args.iter().position(|arg| arg == "--add-dir").expect("add-dir");
     assert_eq!(args[pos + 1], r"D:\extra");
     assert_eq!(args[pos + 2], "--input-format");
+}
+
+#[test]
+fn side_chat_forks_the_parent_without_a_transcript() {
+    let args = command::cli_args(&Launch {
+        session_id: "side-1".into(),
+        resume: false,
+        side_of: Some("parent-1".into()),
+        permission_mode: "default".into(),
+        model: None,
+        effort: None,
+        writable_roots: Vec::new(),
+    });
+    let at = args.iter().position(|arg| arg == "--resume=parent-1").expect("resume parent");
+    assert_eq!(args[at + 1], "--fork-session");
+    assert_eq!(args[at + 2], "--session-id=side-1");
+    assert_eq!(args[at + 3], "--no-session-persistence");
+    assert_eq!(args[at + 4], "--append-system-prompt");
+    assert!(args[at + 5].starts_with("You are in a side conversation, not the main thread."));
+    assert!(!args.iter().any(|arg| arg == "--resume=side-1"));
 }
 
 /// `Path` 只在 Windows 上把 `C:\work` 当成绝对路径。

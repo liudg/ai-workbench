@@ -182,10 +182,12 @@ impl AgentAdapter for ClaudeCodeAdapter {
         events: EventSink,
     ) -> Result<Arc<dyn AgentSession>, AgentError> {
         let replay_history = !ctx.flag("skip_history");
+        let side_of = ctx.side_of();
         let shared = runtime::open(
             ctx.project_path,
             ctx.access_mode,
             ctx.resume_native_id,
+            side_of,
             command::roots_from_options(&ctx.options),
             replay_history,
             events,

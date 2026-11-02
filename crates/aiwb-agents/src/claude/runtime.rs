@@ -87,6 +87,7 @@ pub async fn open(
     project_path: String,
     access_mode: Option<String>,
     resume_native_id: Option<String>,
+    side_of: Option<String>,
     writable_roots: Vec<String>,
     replay_history: bool,
     events: EventSink,
@@ -95,6 +96,11 @@ pub async fn open(
     if project.as_os_str().is_empty() {
         return Err(AgentError::Runtime("没有项目目录".into()));
     }
+    if let Some(parent) = side_of.as_deref().filter(|id| !history::is_uuid(id)) {
+        return Err(AgentError::Runtime(format!("无效的会话 id：{parent}")));
+    }
+    // 侧边聊天分出来的是新会话，id 由这里定。
+    let resume_native_id = if side_of.is_some() { None } else { resume_native_id };
     let (session_id, resume) = match resume_native_id
         .as_deref()
         .map(str::trim)
@@ -114,6 +120,7 @@ pub async fn open(
     let args = command::cli_args(&Launch {
         session_id: session_id.clone(),
         resume,
+        side_of,
         permission_mode: permission_mode.to_string(),
         model: None,
         effort: None,

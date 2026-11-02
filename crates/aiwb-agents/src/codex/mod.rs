@@ -10,7 +10,7 @@
 //!
 //! `options.persist == true` 时新线程写入官方 resume 列表。
 //! `resume_native_id` 走 `thread/resume`。`options.skip_history == true` 时不重放历史：
-//! 调用方自己保存了时间线，只需要接上线程。
+//! 调用方自己保存了时间线，只需要接上线程。`options.side_of` 是侧边聊天，见 `side.rs`。
 
 mod approval;
 mod catalog;
@@ -37,6 +37,7 @@ mod turn;
 mod usage;
 
 mod session;
+mod side;
 
 use session::CodexCliSession;
 
@@ -372,7 +373,12 @@ impl AgentAdapter for CodexCliAdapter {
         }
         let _ = shared.notify("initialized", json!({}));
 
-        if let Some(thread_id) = ctx.resume_native_id.clone().filter(|id| !id.is_empty()) {
+        if let Some(parent) = ctx.side_of() {
+            if let Err(err) = shared.start_side(&parent).await {
+                shared.stop();
+                return Err(err);
+            }
+        } else if let Some(thread_id) = ctx.resume_native_id.clone().filter(|id| !id.is_empty()) {
             shared.restore_thread(&thread_id, !ctx.flag("skip_history")).await;
         } else if ctx.flag("persist") {
             if let Err(err) = shared.ensure_thread().await {

@@ -3,11 +3,11 @@ import { useMemo } from "react";
 import { useAgentProfiles, useSessionAgents } from "@/features/agents";
 import { usePanelOptional } from "@/features/panel/core/PanelProvider";
 import { useProjects } from "@/features/projects";
-import { currentSession, useTasks } from "@/features/tasks";
+import { currentSession, forkTargets as forkTargetsOf, useTasks, type ForkTarget } from "@/features/tasks";
 import { attentionQueue, nextInQueue } from "@/shared/attention";
 import { useNavigation } from "@/shared/shell/navigation";
 
-import type { ForkTarget, PaletteSession } from "./commands";
+import type { PaletteSession } from "./commands";
 
 const UNTITLED = "";
 
@@ -41,26 +41,10 @@ export function useCommandMenuState() {
   const current = task ? currentSession(task) : undefined;
   const agent = current?.agent;
   const agents = useSessionAgents();
-  const forkTargets = useMemo<ForkTarget[]>(() => {
-    if (!current || current.status === "running" || current.status === "needs-input") return [];
-    const caps = (kind: typeof current.agent) => profiles[kind]?.capabilities;
-    const handsOff = (kind: typeof current.agent) => caps(kind)?.supports_context_handoff === true;
-    const name = (kind: typeof current.agent, fallback: string) => profiles[kind]?.display_name || fallback;
-    const targets: ForkTarget[] = [];
-    // 同一个 Agent：有原生线程时原生分叉，否则和换 Agent 一样交前文。
-    const native = Boolean(current.nativeId) && caps(current.agent)?.supports_fork === true;
-    if (native || handsOff(current.agent)) {
-      targets.push({ agent: current.agent, name: name(current.agent, current.agent), same: true });
-    }
-    if (handsOff(current.agent)) {
-      for (const item of agents ?? []) {
-        if (item.kind !== current.agent && handsOff(item.kind)) {
-          targets.push({ agent: item.kind, name: name(item.kind, item.display_name), same: false });
-        }
-      }
-    }
-    return targets;
-  }, [agents, current, profiles]);
+  const forkTargets = useMemo<ForkTarget[]>(
+    () => forkTargetsOf(current, profiles, agents),
+    [agents, current, profiles],
+  );
   return {
     view,
     tasks,

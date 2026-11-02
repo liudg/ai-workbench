@@ -49,6 +49,8 @@ export interface TaskEntry {
   sessions: TaskSession[];
   /** 现在用的会话的注意力。 */
   attention: Attention;
+  /** 开着的侧边聊天。不算任务的会话段。 */
+  side?: TaskSession;
 }
 
 export interface CreateTaskInput {

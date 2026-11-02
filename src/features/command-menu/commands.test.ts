@@ -32,6 +32,7 @@ const enabled: PaletteInput = {
   canStandalone: true,
   canSearchFiles: true,
   hasPanel: true,
+  canSideChat: false,
   canFind: true,
   forkTargets: [],
   hasNextAttention: false,
@@ -161,4 +162,11 @@ test("the terminal toggle follows the panel, not the active chat", () => {
   assert.equal(draft.find((row) => row.commandId === "toggle-terminal")?.shortcut, COPY.shortcutTerminal);
   const none = buildPaletteRows({ ...enabled, activeSessionId: null, hasPanel: false });
   assert.equal(none.some((row) => row.commandId === "toggle-terminal"), false);
+});
+
+test("the side chat toggle shows only when the chat can open one", () => {
+  const off = buildPaletteRows(enabled);
+  assert.equal(off.some((row) => row.commandId === "toggle-side-chat"), false);
+  const on = buildPaletteRows({ ...enabled, canSideChat: true });
+  assert.equal(on.find((row) => row.commandId === "toggle-side-chat")?.shortcut, COPY.shortcutSideChat);
 });

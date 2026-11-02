@@ -101,6 +101,8 @@ export interface ComposerHost {
   updateQueued(id: string, text: string, images: string[]): Promise<void>;
   removeQueued(id: string): Promise<void>;
   steerQueued(id: string): Promise<void>;
+  /** 把一条排队消息挪到侧边聊天里问。没有侧边聊天的宿主不给。 */
+  openInSideChat?: (item: QueuedTurn) => void;
   /** 按给定顺序逐条引导。 */
   flushQueued(ids: string[]): Promise<void>;
   setFollowUpQueueMode(mode: FollowUpQueueMode): void;

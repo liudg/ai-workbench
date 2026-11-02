@@ -32,6 +32,8 @@ pub(crate) type RuntimeResult<T> = Result<T, String>;
 /// 这次 daemon 运行期间碰过的会话的时间线。数据库仍是唯一来源，这份只为了归并流式覆盖。
 struct Log {
     task_id: String,
+    /// 侧边聊天：不改任务的更新时间和标题。
+    side: bool,
     events: Vec<SessionEvent>,
     next_seq: u64,
     next_rev: u64,
@@ -210,10 +212,10 @@ impl Runtimes {
                     _ => None,
                 };
                 let activity = is_conversation_activity(&body);
-                let (task_id, attention_changed) = self.append_at(session_id, body, activity, now_millis())?;
+                let (task_id, side, attention_changed) = self.append_at(session_id, body, activity, now_millis())?;
                 let titled = match title {
-                    Some(title) => self.adopt_title(&task_id, &title)?,
-                    None => false,
+                    Some(title) if !side => self.adopt_title(&task_id, &title)?,
+                    _ => false,
                 };
                 if status || attention_changed || titled {
                     self.publish_tasks()?;
@@ -223,7 +225,8 @@ impl Runtimes {
         }
     }
 
-    /// 并进时间线、写库、推给订阅者，返回任务 id 和注意力有没有变。`activity` 时把任务的更新时间挪到 `now`。
+    /// 并进时间线、写库、推给订阅者，返回任务 id、是不是侧边聊天、注意力有没有变。
+    /// `activity` 时把任务的更新时间挪到 `now`，侧边聊天不挪。
     /// 状态事件的注意力和事件写在同一个事务里。分叉复制时间线时沿用原来的时间，回合用时才对得上。
     fn append_at(
         &self,
@@ -231,7 +234,7 @@ impl Runtimes {
         body: SessionEventBody,
         activity: bool,
         now: i64,
-    ) -> RuntimeResult<(String, bool)> {
+    ) -> RuntimeResult<(String, bool, bool)> {
         let topic = session_topic(session_id);
         self.hub.publish_with(&topic, || -> RuntimeResult<_> {
             let mut logs = self.logs.lock().unwrap();
@@ -258,14 +261,14 @@ impl Runtimes {
             };
             log.next_rev += 1;
             self.store
-                .put_event(&log.task_id, &stored, activity, attention.as_ref())
+                .put_event(&log.task_id, &stored, activity && !log.side, attention.as_ref())
                 .map_err(|e| e.to_string())?;
             let feed = SessionFeed {
                 events: vec![stored],
                 ..Default::default()
             };
             let data = serde_json::to_value(feed).map_err(|e| e.to_string())?;
-            Ok(((log.task_id.clone(), attention.is_some()), data))
+            Ok(((log.task_id.clone(), log.side, attention.is_some()), data))
         })
     }
 
@@ -301,6 +304,27 @@ impl Runtimes {
     pub(crate) async fn discard(&self, session_id: &str) {
         self.stop(session_id).await;
         self.logs.lock().unwrap().remove(session_id);
+    }
+
+    /// 关掉侧边聊天：停进程，删会话、时间线和没发的草稿。
+    /// 等正在接的 CLI 接完再关，免得刚分出来的进程没人管。
+    pub(crate) async fn discard_side(&self, session_id: &str) -> RuntimeResult<()> {
+        let _opening = self.opening.lock().await;
+        self.remove_side(session_id).await
+    }
+
+    /// 调用方拿着 `opening`。
+    async fn remove_side(&self, session_id: &str) -> RuntimeResult<()> {
+        let entry = self.live.lock().unwrap().remove(session_id);
+        if let Some(entry) = entry {
+            entry.muted.store(true, Ordering::SeqCst);
+            let _ = entry.handle.stop().await;
+        }
+        self.logs.lock().unwrap().remove(session_id);
+        let store_err = |e: aiwb_store::StoreError| e.to_string();
+        self.store.remove_session(session_id).map_err(store_err)?;
+        self.store.set_draft(session_id, None, now_millis()).map_err(store_err)?;
+        self.publish_tasks()
     }
 
     /// 导入的历史：按原来的顺序写进时间线。不动任务的更新时间和标题，状态留在已完成。
@@ -365,10 +389,15 @@ impl Runtimes {
                 .map_err(|e| e.to_string())?;
             let next_seq = stored.iter().map(|item| item.event.seq).max().unwrap_or(0) + 1;
             let next_rev = stored.iter().map(|item| item.rev).max().unwrap_or(0) + 1;
+            let side = self
+                .store
+                .is_side_session(session_id)
+                .map_err(|e| e.to_string())?;
             logs.insert(
                 session_id.to_string(),
                 Log {
                     task_id: session.task_id,
+                    side,
                     events: stored.into_iter().map(|item| item.event).collect(),
                     next_seq,
                     next_rev,
@@ -435,8 +464,16 @@ impl Runtimes {
             .map_err(store_err)?
             .ok_or_else(|| "会话不存在".to_string())?;
         let cwd = self.workdir_of_task(&session.task_id)?;
+        let side_of = if self.store.is_side_session(session_id).map_err(store_err)? {
+            Some(self.side_parent(&session)?)
+        } else {
+            None
+        };
         let resume = session.native_id.clone().filter(|id| !id.is_empty());
-        let mut options = json!({ "persist": true, "skip_history": resume.is_some() });
+        let mut options = match &side_of {
+            Some(parent) => json!({ "persist": false, "side_of": parent }),
+            None => json!({ "persist": true, "skip_history": resume.is_some() }),
+        };
         if let Some(access) = session.options.access.as_ref() {
             if !access.writable_roots.is_empty() {
                 options["writable_roots"] = json!(access.writable_roots);
@@ -446,7 +483,7 @@ impl Runtimes {
             project_path: cwd,
             access_mode: session.options.access.as_ref().map(|access| access.mode.clone()),
             options,
-            resume_native_id: resume,
+            resume_native_id: if side_of.is_some() { None } else { resume },
         };
         let (tx, rx) = mpsc::unbounded_channel();
         let muted = Arc::new(AtomicBool::new(false));
@@ -484,6 +521,20 @@ impl Runtimes {
             },
         );
         Ok(handle)
+    }
+
+    /// 侧边聊天从任务现在这段的原生会话分出来。分出来的会话不落盘，CLI 退出后接不回去。
+    fn side_parent(&self, side: &aiwb_core::task::TaskSession) -> RuntimeResult<String> {
+        if side.native_id.as_deref().is_some_and(|id| !id.is_empty()) {
+            return Err("侧边聊天已断开，关掉后重新打开".into());
+        }
+        self.store
+            .task_sessions(&side.task_id)
+            .map_err(|e| e.to_string())?
+            .pop()
+            .and_then(|current| current.native_id)
+            .filter(|id| !id.is_empty())
+            .ok_or_else(|| "主对话发出第一条消息后才能开侧边聊天".to_string())
     }
 
     fn spawn_pump(
@@ -645,7 +696,8 @@ impl Runtimes {
             .session(session_id)
             .map_err(|e| e.to_string())?
             .ok_or_else(|| "会话不存在".to_string())?;
-        if let Some(title) = title_from_user_message(&objective, 0, 0) {
+        let side = self.store.is_side_session(session_id).map_err(|e| e.to_string())?;
+        if let Some(title) = title_from_user_message(&objective, 0, 0).filter(|_| !side) {
             if self.adopt_title(&session.task_id, &title)? {
                 self.publish_tasks()?;
             }
@@ -692,6 +744,7 @@ impl Runtimes {
 
     /// 已完成、空闲超过 `idle_ms`、没人在看、没有排队、能 resume 的会话：关掉 CLI，丢掉时间线副本。
     /// 关之前先静音，适配器关进程时报的状态不进时间线，会话仍是已完成。下次用到时 `ensure_live` 接回。
+    /// 侧边聊天接不回去：同样条件下直接关掉（界面重载后没有标签再关它）。
     pub(crate) async fn release_idle(&self, now: i64, idle_ms: i64) -> RuntimeResult<usize> {
         let _opening = self.opening.lock().await;
         let idle = |entry: &Live| now - entry.used_at.load(Ordering::SeqCst) >= idle_ms;
@@ -708,8 +761,22 @@ impl Runtimes {
             let Some(session) = self.store.session(&session_id).map_err(|e| e.to_string())? else {
                 continue;
             };
-            let resumable = session.native_id.as_deref().is_some_and(|id| !id.is_empty());
+            let side = self.store.is_side_session(&session_id).map_err(|e| e.to_string())?;
+            let resumable = side || session.native_id.as_deref().is_some_and(|id| !id.is_empty());
             if session.status != SessionStatus::Completed || !resumable || self.is_viewed(&session.task_id) {
+                continue;
+            }
+            if side {
+                let queued = self
+                    .logs
+                    .lock()
+                    .unwrap()
+                    .get(&session_id)
+                    .is_some_and(|log| !log.queue.is_empty());
+                if !queued {
+                    self.remove_side(&session_id).await?;
+                    released += 1;
+                }
                 continue;
             }
             let entry = {

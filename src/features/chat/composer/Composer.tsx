@@ -127,7 +127,8 @@ export function Composer({
               items={c.queue}
               mode={c.followUpQueueMode}
               editingId={c.editingId}
-              canOpenSideChat={false}
+              canOpenSideChat={Boolean(host.openInSideChat)}
+              onOpenSideChat={host.openInSideChat}
               onSteer={c.steerQueued}
               onRemove={c.removeQueued}
               onEdit={c.beginEdit}

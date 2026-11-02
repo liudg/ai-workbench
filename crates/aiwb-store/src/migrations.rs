@@ -91,6 +91,8 @@ const MIGRATIONS: &[&str] = &[
         END,
         updated_at
     FROM session;",
+    // 5：侧边聊天。挂在任务下，不算任务的会话段。
+    "ALTER TABLE session ADD COLUMN side INTEGER NOT NULL DEFAULT 0;",
 ];
 
 /// 调用时外键必须是关着的：重建表的迁移要先删旧表。

@@ -98,13 +98,16 @@ impl AgentAdapter for FakeAdapter {
         ctx: SessionContext,
         events: EventSink,
     ) -> Result<Arc<dyn AgentSession>, AgentError> {
-        let native = ctx
-            .resume_native_id
-            .clone()
-            .unwrap_or_else(|| match self.1 {
-                AgentKind::ClaudeCode => "claude-1".to_string(),
-                _ => "thread-1".to_string(),
-            });
+        let native = match ctx.side_of() {
+            Some(parent) => format!("side-of-{parent}"),
+            None => ctx
+                .resume_native_id
+                .clone()
+                .unwrap_or_else(|| match self.1 {
+                    AgentKind::ClaudeCode => "claude-1".to_string(),
+                    _ => "thread-1".to_string(),
+                }),
+        };
         self.0.started.lock().unwrap().push(ctx);
         let _ = events.send(SessionEventBody::StatusChanged {
             status: SessionStatus::Completed,
@@ -1022,4 +1025,126 @@ async fn idle_session_is_released_and_resumed_on_next_send() {
     assert!(started[1].flag("skip_history"));
     let seqs: Vec<u64> = events_of(&feed).iter().map(|e| e["seq"].as_u64().unwrap()).collect();
     assert_eq!(seqs, (1..=seqs.len() as u64).collect::<Vec<_>>(), "时间线从库里接着往后排");
+}
+
+#[tokio::test]
+async fn side_chat_forks_the_current_thread_and_leaves_the_task_alone() {
+    let dir = tempfile::tempdir().unwrap();
+    let project_dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("db.sqlite");
+    let script = Arc::new(Script::default());
+    let services_a = services(Arc::new(Store::open(&db).unwrap()), script.clone(), dir.path());
+    let project = services_a
+        .dispatch("projects.add", json!({ "path": project_dir.path().to_string_lossy() }))
+        .await
+        .unwrap();
+    let task = services_a
+        .dispatch(
+            "tasks.create",
+            json!({ "projectId": project["id"], "agent": "codex-cli", "options": { "model": "m1", "collaborationMode": "plan" } }),
+        )
+        .await
+        .unwrap();
+    let task_id = task["id"].as_str().unwrap().to_string();
+    let main_id = task["sessions"][0]["id"].as_str().unwrap().to_string();
+
+    // 主对话还没说过话：没有原生会话可分。
+    let early = services_a.dispatch("tasks.openSide", json!({ "taskId": task_id })).await;
+    assert!(early.unwrap_err().contains("第一条消息"));
+
+    services_a
+        .dispatch("sessions.send", json!({ "sessionId": main_id, "text": "修登录" }))
+        .await
+        .unwrap();
+    wait_for_answer(&services_a, &main_id, "收到：修登录").await;
+    let before = services_a.dispatch("tasks.list", Value::Null).await.unwrap()[0].clone();
+
+    let side = services_a.dispatch("tasks.openSide", json!({ "taskId": task_id })).await.unwrap();
+    let side_id = side["id"].as_str().unwrap().to_string();
+    assert_eq!(side["options"]["model"], "m1");
+    assert!(side["options"].get("collaborationMode").is_none(), "计划模式不带进侧边聊天");
+    // 再开一次还是同一个。
+    let again = services_a.dispatch("tasks.openSide", json!({ "taskId": task_id })).await.unwrap();
+    assert_eq!(again["id"], side["id"]);
+
+    services_a
+        .dispatch("sessions.send", json!({ "sessionId": side_id, "text": "这是什么意思" }))
+        .await
+        .unwrap();
+    wait_for_answer(&services_a, &side_id, "收到：这是什么意思").await;
+    {
+        let started = script.started.lock().unwrap();
+        let ctx = started.last().unwrap();
+        assert_eq!(ctx.side_of().as_deref(), Some("thread-1"));
+        assert!(ctx.resume_native_id.is_none());
+        assert!(!ctx.flag("persist"));
+    }
+
+    // 任务还是一段会话，标题和更新时间没被侧边聊天动过，侧边聊天挂在 `side` 上。
+    let entry = services_a.dispatch("tasks.list", Value::Null).await.unwrap()[0].clone();
+    assert_eq!(entry["sessions"].as_array().unwrap().len(), 1);
+    assert_eq!(entry["title"], before["title"]);
+    assert_eq!(entry["updatedAt"], before["updatedAt"]);
+    assert_eq!(entry["side"]["id"], side["id"]);
+    assert_eq!(entry["side"]["nativeId"], "side-of-thread-1");
+    let main_feed = services_a.snapshot(&format!("session:{main_id}"), &json!({})).unwrap();
+    assert!(!events_of(&main_feed).iter().any(|e| e["text"] == "这是什么意思"));
+
+    // 关掉：停进程，连时间线一起删。
+    let stopped = *script.stopped.lock().unwrap();
+    assert_eq!(
+        services_a.dispatch("tasks.closeSide", json!({ "taskId": task_id })).await.unwrap(),
+        json!(true)
+    );
+    assert_eq!(*script.stopped.lock().unwrap(), stopped + 1);
+    let entry = services_a.dispatch("tasks.list", Value::Null).await.unwrap()[0].clone();
+    assert!(entry.get("side").is_none());
+    assert!(services_a.snapshot(&format!("session:{side_id}"), &json!({})).is_err());
+
+    // 关掉时它没发的草稿一起删。
+    let side = services_a.dispatch("tasks.openSide", json!({ "taskId": task_id })).await.unwrap();
+    let side_id = side["id"].as_str().unwrap().to_string();
+    services_a
+        .dispatch("drafts.set", json!({ "key": side_id, "body": { "text": "没发的" } }))
+        .await
+        .unwrap();
+    services_a.dispatch("tasks.closeSide", json!({ "taskId": task_id })).await.unwrap();
+    assert_eq!(services_a.dispatch("drafts.get", json!({ "key": side_id })).await.unwrap(), Value::Null);
+
+    // 没人看着、空闲了：接不回去，直接关掉。
+    let side = services_a.dispatch("tasks.openSide", json!({ "taskId": task_id })).await.unwrap();
+    let side_id = side["id"].as_str().unwrap().to_string();
+    services_a
+        .dispatch("sessions.send", json!({ "sessionId": side_id, "text": "再问一句" }))
+        .await
+        .unwrap();
+    wait_for_answer(&services_a, &side_id, "收到：再问一句").await;
+    services_a.release_idle_sessions(Duration::ZERO).await;
+    let entry = services_a.dispatch("tasks.list", Value::Null).await.unwrap()[0].clone();
+    assert!(entry.get("side").is_none());
+
+    // 换 Agent：侧边聊天是从换下去的那段分出来的，跟着关掉。
+    services_a.dispatch("tasks.openSide", json!({ "taskId": task_id })).await.unwrap();
+    services_a
+        .dispatch(
+            "tasks.switchAgent",
+            json!({ "taskId": task_id, "agent": "claude-code", "options": {} }),
+        )
+        .await
+        .unwrap();
+    let entry = services_a.dispatch("tasks.list", Value::Null).await.unwrap()[0].clone();
+    assert!(entry.get("side").is_none());
+
+    // daemon 重启后，上次没关的侧边聊天接不回去，清掉。
+    // 换回 Codex：还没在 Claude 说过话，接回原来的线程，又能开了。
+    services_a
+        .dispatch("tasks.switchAgent", json!({ "taskId": task_id, "agent": "codex-cli", "options": {} }))
+        .await
+        .unwrap();
+    services_a.dispatch("tasks.openSide", json!({ "taskId": task_id })).await.unwrap();
+    drop(services_a);
+    let services_b = services(Arc::new(Store::open(&db).unwrap()), script.clone(), dir.path());
+    services_b.settle_interrupted().unwrap();
+    let entry = services_b.dispatch("tasks.list", Value::Null).await.unwrap()[0].clone();
+    assert!(entry.get("side").is_none());
 }

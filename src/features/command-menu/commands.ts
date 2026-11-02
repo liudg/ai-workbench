@@ -1,6 +1,7 @@
 import { THREAD_FIND_COPY } from "../chat/find/copy.ts";
 import { showsFileChanges } from "../changes-model/capabilities.ts";
 import type { AgentKind, ChangeCapabilities } from "../../types/index.ts";
+import type { ForkTarget } from "../tasks/fork-targets.ts";
 import { COMMAND_MENU_COPY as COPY } from "./copy.ts";
 import { commandFilter } from "./fuzzy.ts";
 
@@ -35,6 +36,7 @@ export type PaletteCommandId =
   | "toggle-files"
   | "toggle-changes"
   | "toggle-terminal"
+  | "toggle-side-chat"
   | "toggle-sidebar"
   | "quick-open"
   | "board"
@@ -66,13 +68,6 @@ export interface PaletteSession {
 }
 
 
-/** 当前任务能分叉到的 Agent。`same` 是任务现在用的那个。 */
-export interface ForkTarget {
-  agent: AgentKind;
-  name: string;
-  same: boolean;
-}
-
 export interface PaletteInput {
   query: string;
   mode: "commands" | "chats";
@@ -85,6 +80,8 @@ export interface PaletteInput {
   canSearchFiles: boolean;
   /** 有右侧面板（建好的会话或项目里的新会话）。 */
   hasPanel: boolean;
+  /** 当前会话能开侧边聊天。 */
+  canSideChat: boolean;
   canFind: boolean;
   forkTargets: readonly ForkTarget[];
   /** 注意力队列里还有下一个等着你的会话。 */
@@ -157,6 +154,9 @@ function commandItems(input: PaletteInput): PaletteRow[] {
     rows.push(command("toggle-changes", COPY.toggleChanges, "panels"));
   }
   if (input.hasPanel) rows.push(command("toggle-terminal", COPY.toggleTerminal, "panels", COPY.shortcutTerminal));
+  if (input.canSideChat) {
+    rows.push(command("toggle-side-chat", COPY.toggleSideChat, "panels", COPY.shortcutSideChat));
+  }
   rows.push(command("open-folder", COPY.openFolder, "workspace"));
   rows.push(command("settings", COPY.settings, "settings"));
   return rows;

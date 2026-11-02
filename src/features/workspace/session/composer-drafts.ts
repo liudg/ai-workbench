@@ -108,6 +108,13 @@ export function moveDraft(from: string, to: string, keep: Partial<ComposerDraft>
   scheduleSave(to);
 }
 
+/** 会话不在了（侧边聊天关掉），它没发的东西一起丢掉。 */
+export function dropDraft(key: string) {
+  if (!drafts.delete(key)) return;
+  emit();
+  scheduleSave(key);
+}
+
 export function addDraftAttachments(key: string, added: readonly Attachment[]) {
   void ensureLoaded(key).then(() => {
     const current = readDraft(key).files;

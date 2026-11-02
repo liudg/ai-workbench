@@ -723,13 +723,13 @@ impl Shared {
         let text = match action {
             GoalAction::View => {
                 let value = self
-                    .request("thread/goal/get", json!({ "threadId": thread_id }))
+                    .goal_request("thread/goal/get", json!({ "threadId": thread_id }))
                     .await?;
                 emit(&self.events, goal_snapshot_event(value.get("goal")));
                 render_goal(value.get("goal"))
             }
             GoalAction::Clear => {
-                self.request(
+                self.goal_request(
                     "thread/goal/clear",
                     json!({ "threadId": thread_id, "origin": "user" }),
                 )
@@ -740,7 +740,7 @@ impl Shared {
             GoalAction::Set { objective, status } => {
                 let objective = if objective.is_empty() {
                     let current = self
-                        .request("thread/goal/get", json!({ "threadId": thread_id }))
+                        .goal_request("thread/goal/get", json!({ "threadId": thread_id }))
                         .await?;
                     current
                         .pointer("/goal/objective")
@@ -813,7 +813,7 @@ impl Shared {
         status: &str,
     ) -> Result<(), AgentError> {
         let recorded = self
-            .request(
+            .goal_request(
                 "thread/goal/set",
                 json!({
                     "threadId": thread_id,
@@ -843,12 +843,38 @@ impl Shared {
         let Some(thread_id) = thread_id else {
             return Ok(());
         };
-        let value = self
+        // 侧边聊天是临时线程，Codex 不给它存目标，读不到就是没有。
+        let value = match self
             .request("thread/goal/get", json!({ "threadId": thread_id }))
-            .await?;
+            .await
+        {
+            Err(err) if is_ephemeral_goal_error(&err) => return Ok(()),
+            other => other?,
+        };
         emit(&self.events, goal_snapshot_event(value.get("goal")));
         Ok(())
     }
+
+    /// 目标相关的请求。临时线程报的错换成一句能看懂的话。
+    async fn goal_request(&self, method: &str, params: Value) -> Result<Value, AgentError> {
+        self.request(method, params).await.map_err(|err| {
+            if is_ephemeral_goal_error(&err) {
+                AgentError::Runtime(EPHEMERAL_GOAL_MESSAGE.into())
+            } else {
+                err
+            }
+        })
+    }
+}
+
+/// Codex `codex-rs/tui/src/app/thread_goal_actions.rs` `EPHEMERAL_THREAD_GOAL_ERROR_MESSAGE` 的意思。
+const EPHEMERAL_GOAL_MESSAGE: &str = "侧边聊天是临时会话，不能设目标。";
+
+/// 同 `is_ephemeral_thread_goal_error`。
+fn is_ephemeral_goal_error(err: &AgentError) -> bool {
+    let message = err.to_string();
+    message.contains("ephemeral thread does not support goals")
+        || message.contains("thread goals require a persisted thread; this thread is ephemeral")
 }
 
 /// `thread/goal/get`、`thread/goal/set` 和 `thread/goal/updated` 共用这一份快照。

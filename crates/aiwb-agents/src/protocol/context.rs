@@ -20,4 +20,14 @@ impl SessionContext {
             .and_then(serde_json::Value::as_bool)
             .unwrap_or(false)
     }
+
+    /// 侧边聊天要从哪个原生会话分出来。只有声明 `supports_side_chat` 的适配器读它。
+    pub fn side_of(&self) -> Option<String> {
+        self.options
+            .get("side_of")
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|id| !id.is_empty())
+            .map(str::to_string)
+    }
 }

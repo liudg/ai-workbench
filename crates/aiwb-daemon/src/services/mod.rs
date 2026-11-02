@@ -9,6 +9,7 @@ mod imports;
 mod mcp;
 mod projects;
 mod sessions;
+mod side;
 mod tasks;
 mod terminals;
 
@@ -82,8 +83,9 @@ impl Services {
         &self.hub
     }
 
-    /// 启动时调用一次：上次退出时没跑完的会话记成已停止。
+    /// 启动时调用一次：上次退出时没跑完的会话记成已停止，接不回去的侧边聊天删掉。
     pub fn settle_interrupted(&self) -> ServiceResult<()> {
+        self.drop_stale_sides()?;
         self.runtimes.settle_interrupted()
     }
 
@@ -184,6 +186,8 @@ impl Services {
             "tasks.remove" => to_value(self.remove_task(parse(params)?).await?),
             "tasks.switchAgent" => to_value(self.switch_agent(parse(params)?).await?),
             "tasks.fork" => to_value(self.fork_task(parse(params)?).await?),
+            "tasks.openSide" => to_value(self.open_side(parse(params)?).await?),
+            "tasks.closeSide" => to_value(self.close_side(parse(params)?).await?),
             "sessions.send" => to_value(self.send(parse(params)?).await?),
             "sessions.interrupt" => to_value(self.interrupt(parse(params)?).await?),
             "sessions.answer" => to_value(self.answer(parse(params)?).await?),

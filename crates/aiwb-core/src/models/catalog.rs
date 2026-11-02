@@ -146,6 +146,9 @@ pub struct AgentCapabilities {
     /// 照 t3code 适配器的 `supportsProviderSwitchingViaHandoff`。
     #[serde(default)]
     pub supports_context_handoff: bool,
+    /// 侧边聊天：从当前对话临时分出一条，不进历史，关掉就丢。
+    #[serde(default)]
+    pub supports_side_chat: bool,
 }
 
 impl AgentCapabilities {
@@ -171,6 +174,7 @@ impl AgentCapabilities {
             supports_paged_history: false,
             supports_subscription_usage: false,
             supports_context_handoff: false,
+            supports_side_chat: false,
         }
     }
 
@@ -199,6 +203,9 @@ impl AgentCapabilities {
             supports_subscription_usage: true,
             // 交接只是第一条 `turn/start` 的文字输入。
             supports_context_handoff: true,
+            // 2026-11-02 本机 Codex CLI 0.165.0：父线程回合进行中，另一个 app-server 进程
+            // `thread/fork { ephemeral: true }` + `thread/inject_items` 后能接着问，`thread/list` 里没有它。
+            supports_side_chat: true,
         }
     }
 
@@ -241,6 +248,9 @@ impl AgentCapabilities {
             supports_subscription_usage: true,
             // 交接只是第一条 stdin 用户消息的文字。
             supports_context_handoff: true,
+            // 2026-11-02 本机 Claude Code 2.1.312：父会话回合进行中，
+            // `--resume=<父> --fork-session --session-id=<新> --no-session-persistence` 能连着问多轮，转录不落盘。
+            supports_side_chat: true,
         }
     }
 
@@ -287,6 +297,8 @@ impl AgentCapabilities {
             supports_subscription_usage: false,
             // 交接只是第一条 `session/prompt` 的文字。
             supports_context_handoff: true,
+            // 没有分叉方法，分不出带着前文的临时会话。
+            supports_side_chat: false,
         }
     }
 }

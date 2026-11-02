@@ -7,6 +7,7 @@ import { PanelHost, type PanelData, type PanelStateSource } from "@/features/pan
 import { usePanelStore } from "@/features/panel/state/store";
 import { openPath, prepareBrowserPath } from "@/lib/native/open-path";
 import { accumulateSessionUsage } from "@/store/session-usage";
+import type { OpenTarget } from "@/features/panel/core/registry";
 import type { AgentProfile, Session, SessionEvent } from "@/types";
 import * as api from "./api";
 import { addDraftAttachments, addDraftSnippet } from "./composer-drafts";
@@ -43,6 +44,7 @@ export function SessionPanel({
   workdir,
   events,
   profile,
+  sideChat = null,
   children,
 }: {
   session: Session;
@@ -50,6 +52,8 @@ export function SessionPanel({
   workdir: string;
   events: SessionEvent[];
   profile: AgentProfile | undefined;
+  /** 能开侧边聊天时给出它的标签目标。 */
+  sideChat?: OpenTarget | null;
   children: ReactNode;
 }) {
   const usage = useMemo(() => accumulateSessionUsage(events), [events]);
@@ -69,6 +73,7 @@ export function SessionPanel({
       agent={session.agent}
       events={events}
       usage={usage}
+      sideChat={sideChat}
     >
       {children}
     </PanelHost>

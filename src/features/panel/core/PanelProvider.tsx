@@ -37,7 +37,8 @@ import { defaultDiffViewPrefs, type DiffViewPrefs } from "../diff/view-prefs";
 import { sessionChanges, type FileChange } from "@/features/changes-model/diff-parse";
 import type { PanelSlice } from "../state/slice";
 import { queueTerminalRun } from "../terminal/terminal-runs";
-import type { PanelTab } from "./registry";
+import { emptyCtx } from "../state/panel-session";
+import type { OpenTarget, PanelTab } from "./registry";
 
 const EMPTY_TABS: PanelTab[] = [];
 const EMPTY_HISTORIES: Record<string, BrowserHistory> = {};
@@ -99,6 +100,8 @@ interface PanelApi {
   openTerminal: () => void;
   /** 打开终端并执行命令。终端还没开好时先排着。 */
   runInTerminal: (command: string) => void;
+  /** 打开或聚焦侧边聊天。这个会话开不了时为 null。 */
+  openSideChat: (() => void) | null;
   projectPath: string;
   sessionTitle: string;
   agent: AgentKind | null;
@@ -143,6 +146,8 @@ interface PanelProps {
   agent: AgentKind | null;
   events: readonly SessionEvent[];
   usage: SessionUsageView | null;
+  /** 侧边聊天标签的打开目标。宿主判断这个会话能不能开，开不了时不给。 */
+  sideChat?: OpenTarget | null;
   children: ReactNode;
 }
 
@@ -159,6 +164,7 @@ export function PanelHost({
   agent,
   events,
   usage,
+  sideChat = null,
   children,
 }: PanelProps & {
   state: PanelStateSource;
@@ -233,6 +239,10 @@ export function PanelHost({
     },
     [sessionId, state],
   );
+  const openSideChat = useMemo(
+    () => (sideChat ? () => void state.get().panelOpenTarget(sessionId, sideChat, emptyCtx()) : null),
+    [sessionId, sideChat, state],
+  );
   const hidePanel = useCallback(() => {
     state.get().panelHide(sessionId);
   }, [sessionId, state]);
@@ -293,6 +303,7 @@ export function PanelHost({
       openFiles,
       openTerminal,
       runInTerminal,
+      openSideChat,
       projectPath,
       sessionTitle,
       agent,
@@ -334,6 +345,7 @@ export function PanelHost({
       openFiles,
       openTerminal,
       runInTerminal,
+      openSideChat,
       projectPath,
       sessionTitle,
       agent,

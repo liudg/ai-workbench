@@ -97,6 +97,9 @@ pub struct TaskEntry {
     pub task: Task,
     pub sessions: Vec<TaskSession>,
     pub attention: Attention,
+    /// 开着的侧边聊天。不算任务的会话段，不进时间线。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub side: Option<TaskSession>,
 }
 
 /// 存进数据库的事件。`rev` 在会话内单调递增，事件被覆盖（流式输出）时也会换新的 `rev`，

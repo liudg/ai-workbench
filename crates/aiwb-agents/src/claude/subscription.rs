@@ -31,6 +31,7 @@ pub async fn fetch() -> Result<SubscriptionUsage, AgentError> {
     let args = command::cli_args(&Launch {
         session_id: session_id.clone(),
         resume: false,
+        side_of: None,
         permission_mode: "default".into(),
         model: None,
         effort: None,

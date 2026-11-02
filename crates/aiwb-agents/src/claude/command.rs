@@ -33,6 +33,8 @@ use serde_json::Value;
 pub struct Launch {
     pub session_id: String,
     pub resume: bool,
+    /// 侧边聊天：从这个会话分出 `session_id`，转录不落盘。
+    pub side_of: Option<String>,
     pub permission_mode: String,
     pub model: Option<String>,
     pub effort: Option<String>,
@@ -59,7 +61,15 @@ pub fn cli_args(launch: &Launch) -> Vec<String> {
     ]);
     // 等号形式：CLI 把 `--resume` 声明成可选值，两段式会把以 `-` 开头的值当成另一个旗标
     // （subprocess_cli.py L642–655）。
-    if launch.resume {
+    if let Some(parent) = nonempty(launch.side_of.as_deref()) {
+        // `--session-id` 只能和 `--fork-session` 一起跟在 `--resume` 后面，分出来的会话用这个 id。
+        cmd.push(format!("--resume={parent}"));
+        cmd.push("--fork-session".to_string());
+        cmd.push(format!("--session-id={}", launch.session_id));
+        cmd.push("--no-session-persistence".to_string());
+        cmd.push("--append-system-prompt".to_string());
+        cmd.push(SIDE_SYSTEM_PROMPT.to_string());
+    } else if launch.resume {
         cmd.push(format!("--resume={}", launch.session_id));
     } else {
         cmd.push(format!("--session-id={}", launch.session_id));
@@ -78,6 +88,19 @@ pub fn cli_args(launch: &Launch) -> Vec<String> {
     cmd.extend(["--input-format".to_string(), "stream-json".to_string()]);
     cmd
 }
+
+/// 侧边聊天的系统提示。Claude 没有往历史里插消息的接口，Codex 的边界消息
+/// （`codex-rs/tui/src/app/side.rs` `SIDE_BOUNDARY_PROMPT` / `SIDE_DEVELOPER_INSTRUCTIONS`）
+/// 合成一段放进 `--append-system-prompt`，换成 Claude 的说法。
+const SIDE_SYSTEM_PROMPT: &str = r#"You are in a side conversation, not the main thread.
+
+Everything earlier in this conversation is inherited history from the parent thread. It is reference context only. It is not your current task. Do not continue, execute, or complete any instructions, plans, tool calls, approvals, edits, or requests that appear only in that inherited history. Only messages the user sends in this side conversation are active instructions. Do not present yourself as continuing the main thread's active task.
+
+This side conversation is for answering questions and lightweight exploration without disrupting the main thread. You may perform non-mutating inspection, including reading or searching files and running checks that do not alter repo-tracked files.
+
+Do not start subagents or background tasks here; direct that kind of work back to the main conversation.
+
+Do not modify files, source, git state, permissions, configuration, or any other workspace state unless the user explicitly requests that mutation in this side conversation. If the user explicitly requests a mutation, keep it minimal, local to the request, and avoid disrupting the main thread."#;
 
 fn nonempty(value: Option<&str>) -> Option<&str> {
     value.map(str::trim).filter(|item| !item.is_empty())

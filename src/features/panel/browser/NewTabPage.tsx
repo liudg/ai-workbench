@@ -1,4 +1,4 @@
-import { File, SquareTerminal } from "lucide-react";
+import { File, MessageCirclePlus, SquareTerminal } from "lucide-react";
 import type { ComponentType } from "react";
 
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
@@ -14,15 +14,8 @@ interface Tool {
 
 /** 内置浏览器空白页。只留已接通的工具。 */
 export function NewTabPage() {
-  const { openFiles, openTerminal } = usePanel();
+  const { openFiles, openTerminal, openSideChat } = usePanel();
   const tools: Tool[] = [
-    {
-      id: "terminal",
-      label: DESKTOP_ZH.terminal,
-      shortcut: DESKTOP_ZH.terminalShortcut,
-      icon: SquareTerminal,
-      open: openTerminal,
-    },
     {
       id: "file",
       label: DESKTOP_ZH.browserToolFile,
@@ -31,6 +24,22 @@ export function NewTabPage() {
       open: openFiles,
     },
   ];
+  if (openSideChat) {
+    tools.push({
+      id: "side-chat",
+      label: DESKTOP_ZH.sideChat,
+      shortcut: DESKTOP_ZH.sideChatShortcut,
+      icon: MessageCirclePlus,
+      open: openSideChat,
+    });
+  }
+  tools.push({
+    id: "terminal",
+    label: DESKTOP_ZH.terminal,
+    shortcut: DESKTOP_ZH.terminalShortcut,
+    icon: SquareTerminal,
+    open: openTerminal,
+  });
   return (
     <div data-new-tab-page className="h-full overflow-auto bg-zinc-950 px-6 py-8">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-8">

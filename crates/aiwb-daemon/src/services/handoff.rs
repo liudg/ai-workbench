@@ -44,6 +44,8 @@ impl Services {
             return Err("这一轮还没结束，停下后再换 Agent".into());
         }
         self.ensure_handoff(current.agent, params.agent)?;
+        // 侧边聊天是从换下去的这段分出来的，跟着关掉。
+        self.discard_side(&params.task_id).await?;
 
         // 刚换过来、还没说过话的会话不留：删掉它，从前一段接着换。
         if !self.has_spoken(&current.id)? {
@@ -221,7 +223,7 @@ impl Services {
     }
 
     /// 会话里有没交出去的前文。
-    fn has_pending_handoff(&self, session_id: &str) -> ServiceResult<bool> {
+    pub(super) fn has_pending_handoff(&self, session_id: &str) -> ServiceResult<bool> {
         let events = self
             .store
             .events_since(session_id, 0)

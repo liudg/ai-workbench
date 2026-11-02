@@ -34,6 +34,7 @@ import {
   isOpenChord,
   isQuickOpenChord,
   isSidebarChord,
+  isSideChatChord,
   isTerminalChord,
 } from "./keyboard";
 import { useQuickOpen } from "./useQuickOpen";
@@ -65,6 +66,7 @@ export function CommandMenuHost() {
     canStandalone: true,
     canSearchFiles: Boolean(panel && quickScope),
     hasPanel: Boolean(panel),
+    canSideChat: Boolean(panel?.openSideChat),
     canFind: view.kind !== "none",
     forkTargets,
     hasNextAttention: nextAttention !== null,
@@ -157,6 +159,14 @@ export function CommandMenuHost() {
         panel.layout !== "chat" && panel.tabs.find((tab) => tab.id === panel.activeId)?.viewerId === "terminal";
       if (terminalShown) panel.hidePanel();
       else panel.openTerminal();
+      close();
+      return;
+    }
+    if (id === "toggle-side-chat" && panel?.openSideChat) {
+      const sideShown =
+        panel.layout !== "chat" && panel.tabs.find((tab) => tab.id === panel.activeId)?.viewerId === "side-chat";
+      if (sideShown) panel.hidePanel();
+      else panel.openSideChat();
       close();
       return;
     }
@@ -286,6 +296,12 @@ export function CommandMenuHost() {
         event.preventDefault();
         event.stopPropagation();
         current.runCommand("toggle-terminal");
+        return;
+      }
+      if (isSideChatChord(event) && visible("toggle-side-chat")) {
+        event.preventDefault();
+        event.stopPropagation();
+        current.runCommand("toggle-side-chat");
         return;
       }
       if (isNewThreadChord(event) && visible("new-thread")) {

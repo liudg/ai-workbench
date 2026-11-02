@@ -288,7 +288,9 @@ impl Services {
         Ok(Some((PathBuf::from(project.path), PathBuf::from(path))))
     }
 
+    /// 停掉任务的 Agent 进程。侧边聊天接不回去，一起关掉。
     pub(crate) async fn stop_task_sessions(&self, task_id: &str) -> ServiceResult<()> {
+        self.discard_side(task_id).await?;
         let sessions = self.store.list_sessions().map_err(|e| e.to_string())?;
         for session in sessions.iter().filter(|session| session.task_id == task_id) {
             self.runtimes.stop(&session.id).await;

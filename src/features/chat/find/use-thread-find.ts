@@ -7,6 +7,17 @@ import { isThreadFindChord } from "./keyboard";
 
 export const OPEN_THREAD_FIND = "ai-workbench:find-in-thread";
 
+/** 同屏有几段聊天时（比如侧边聊天），各自包在一个 `data-chat-scope` 里，查找只在焦点所在的那段打开。 */
+export const CHAT_SCOPE_ATTR = "data-chat-scope";
+
+function scopeOf(node: Element | null | undefined): Element | null {
+  return node?.closest(`[${CHAT_SCOPE_ATTR}]`) ?? null;
+}
+
+function ownsFocus(root: HTMLElement | null): boolean {
+  return scopeOf(root) === scopeOf(document.activeElement);
+}
+
 export function useThreadFind(
   rootRef: RefObject<HTMLElement | null>,
   layoutKey: string,
@@ -30,6 +41,7 @@ export function useThreadFind(
 
   useEffect(() => {
     const onOpen = (event: Event) => {
+      if (!ownsFocus(rootRef.current)) return;
       const detail = (event as CustomEvent<{ query?: string }>).detail;
       setOpen(true);
       scrolledKey.current = "";
@@ -44,6 +56,7 @@ export function useThreadFind(
     const onKey = (event: KeyboardEvent) => {
       if (isImeKey({ composing: event.isComposing, keyCode: event.keyCode })) return;
       if (!isThreadFindChord(event)) return;
+      if (!ownsFocus(rootRef.current)) return;
       if (document.querySelector("[data-command-menu], [data-file-search]")) return;
       event.preventDefault();
       event.stopPropagation();

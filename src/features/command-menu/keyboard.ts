@@ -46,6 +46,23 @@ export function isTerminalChord(event: ChordEvent & { code?: string }): boolean 
   return modified(event) && !event.shiftKey && (event.key === "`" || event.code === "Backquote");
 }
 
+/**
+ * Ctrl+Alt+S（macOS 上 Cmd+Option+S）。Option 会改掉 key，按物理键位认。
+ * Windows 上 AltGr 也报成 Ctrl+Alt，波兰语等布局 AltGr+S 是在打字，不算。
+ */
+export function isSideChatChord(
+  event: ChordEvent & { code?: string; getModifierState?: (key: string) => boolean },
+): boolean {
+  return (
+    !event.getModifierState?.("AltGraph") &&
+    event.altKey &&
+    !event.shiftKey &&
+    !event.repeat &&
+    (event.ctrlKey || event.metaKey) &&
+    (event.code === "KeyS" || event.key.toLowerCase() === "s")
+  );
+}
+
 export function moveCursor(index: number, count: number, key: "ArrowDown" | "ArrowUp"): number {
   if (count <= 0) return 0;
   if (key === "ArrowDown") return Math.min(count - 1, index + 1);

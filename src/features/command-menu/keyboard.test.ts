@@ -7,6 +7,7 @@ import {
   isNewThreadChord,
   isOpenChord,
   isQuickOpenChord,
+  isSideChatChord,
   isSidebarChord,
   jumpSection,
   moveCursor,
@@ -64,4 +65,16 @@ test("tab jumps to the next section and wraps", () => {
   assert.equal(jumpSection(starts, 0, 1), 2);
   assert.equal(jumpSection(starts, 3, 1), 0);
   assert.equal(jumpSection(starts, 0, -1), 3);
+});
+
+test("ctrl+alt+s opens the side chat, by physical key", () => {
+  const base = { ...chord, key: "s", code: "KeyS", ctrlKey: true, altKey: true };
+  assert.equal(isSideChatChord(base), true);
+  // macOS 上 Option 把 key 改成别的字符。
+  assert.equal(isSideChatChord({ ...base, ctrlKey: false, metaKey: true, key: "ß" }), true);
+  assert.equal(isSideChatChord({ ...base, altKey: false }), false);
+  assert.equal(isSideChatChord({ ...base, shiftKey: true }), false);
+  assert.equal(isSideChatChord({ ...base, ctrlKey: false }), false);
+  // AltGr+S 在波兰语布局里打出 ś。
+  assert.equal(isSideChatChord({ ...base, key: "ś", getModifierState: (key) => key === "AltGraph" }), false);
 });

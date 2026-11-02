@@ -145,6 +145,8 @@ export interface AgentCapabilities {
   supports_subscription_usage?: boolean;
   /** 会话中途可以换成别的 Agent 或从别的 Agent 换过来，前文交给新 Agent。 */
   supports_context_handoff?: boolean;
+  /** 侧边聊天：从当前对话临时分出一条来问。 */
+  supports_side_chat?: boolean;
 }
 
 /** 一个订阅用量窗口。已用和剩余至少有一个，重置时间可以没有。 */

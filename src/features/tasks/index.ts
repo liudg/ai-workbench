@@ -1,5 +1,6 @@
 export * as tasksApi from "./api";
 export { currentSession } from "./current-session";
+export { forkTargets, type ForkTarget } from "./fork-targets";
 export { useTasks } from "./use-tasks";
 export type {
   CreateTaskInput,

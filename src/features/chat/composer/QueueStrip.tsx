@@ -13,7 +13,7 @@ const MORE_LABEL = "更多";
 /**
  * 排队列表在输入框上方，一行一条。
  * 适配器还没有 `thread/queue/reorder`，所以没有拖动手柄。
- * 工作台没有侧边聊天，也没有中断队列的「继续」。
+ * 工作台没有中断队列的「继续」。
  */
 export function QueuedMessageList({
   items,

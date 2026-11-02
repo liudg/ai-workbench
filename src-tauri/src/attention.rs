@@ -279,6 +279,7 @@ mod tests {
                 preview: Some("改好了".into()),
                 updated_at: 1,
             },
+            side: None,
         }
     }
 

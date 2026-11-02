@@ -124,6 +124,11 @@ impl Store {
     /// 任务列表主题的内容：每个任务带上它的会话，和现在用的会话的注意力。
     pub fn task_entries(&self) -> StoreResult<Vec<TaskEntry>> {
         let mut sessions = self.list_sessions()?;
+        let mut sides: HashMap<String, TaskSession> = self
+            .side_sessions()?
+            .into_iter()
+            .map(|session| (session.task_id.clone(), session))
+            .collect();
         let mut attention: HashMap<String, Attention> = self.attention_rows()?.into_iter().collect();
         Ok(self
             .list_tasks()?
@@ -139,6 +144,7 @@ impl Store {
                     None => Attention::from_status(SessionStatus::Stopped, task.updated_at),
                 };
                 TaskEntry {
+                    side: sides.remove(&task.id),
                     task,
                     sessions: mine,
                     attention,
@@ -179,9 +185,10 @@ impl Store {
         Ok(self.conn().execute("DELETE FROM task WHERE id = ?1", [id])? > 0)
     }
 
+    /// 任务的会话段，不含侧边聊天。
     pub fn list_sessions(&self) -> StoreResult<Vec<TaskSession>> {
         let conn = self.conn();
-        let mut stmt = conn.prepare("SELECT * FROM session ORDER BY created_at, id")?;
+        let mut stmt = conn.prepare("SELECT * FROM session WHERE side = 0 ORDER BY created_at, id")?;
         let rows = stmt.query_map([], session_from_row)?;
         Ok(rows.collect::<Result<_, _>>()?)
     }
@@ -189,7 +196,8 @@ impl Store {
     /// 一个任务的会话，按建立的先后。最后一个是现在用的，前面的是换 Agent 之前的。
     pub fn task_sessions(&self, task_id: &str) -> StoreResult<Vec<TaskSession>> {
         let conn = self.conn();
-        let mut stmt = conn.prepare("SELECT * FROM session WHERE task_id = ?1 ORDER BY created_at, id")?;
+        let mut stmt =
+            conn.prepare("SELECT * FROM session WHERE task_id = ?1 AND side = 0 ORDER BY created_at, id")?;
         let rows = stmt.query_map([task_id], session_from_row)?;
         Ok(rows.collect::<Result<_, _>>()?)
     }
@@ -197,6 +205,51 @@ impl Store {
     /// 给已有任务添一个会话（中途换 Agent）。
     pub fn add_session(&self, session: &TaskSession) -> StoreResult<()> {
         insert_session(&self.conn(), session)
+    }
+
+    /// 给任务开侧边聊天。一个任务同时只有一个。
+    pub fn add_side_session(&self, session: &TaskSession) -> StoreResult<()> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let open: bool = tx.query_row(
+            "SELECT EXISTS (SELECT 1 FROM session WHERE task_id = ?1 AND side = 1)",
+            [&session.task_id],
+            |row| row.get(0),
+        )?;
+        if open {
+            return Err(StoreError::Invalid("这个任务已经开着侧边聊天".into()));
+        }
+        insert_session(&tx, session)?;
+        tx.execute("UPDATE session SET side = 1 WHERE id = ?1", [&session.id])?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// 任务开着的侧边聊天。
+    pub fn side_session(&self, task_id: &str) -> StoreResult<Option<TaskSession>> {
+        Ok(self
+            .conn()
+            .query_row(
+                "SELECT * FROM session WHERE task_id = ?1 AND side = 1",
+                [task_id],
+                session_from_row,
+            )
+            .optional()?)
+    }
+
+    pub fn side_sessions(&self) -> StoreResult<Vec<TaskSession>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare("SELECT * FROM session WHERE side = 1 ORDER BY created_at, id")?;
+        let rows = stmt.query_map([], session_from_row)?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    pub fn is_side_session(&self, id: &str) -> StoreResult<bool> {
+        Ok(self
+            .conn()
+            .query_row("SELECT side FROM session WHERE id = ?1", [id], |row| row.get(0))
+            .optional()?
+            .unwrap_or(false))
     }
 
     /// 删掉会话和它的时间线。
@@ -477,5 +530,31 @@ mod tests {
 
         store.remove_task("t1").unwrap();
         assert!(store.attention("t1-s").unwrap().is_none());
+    }
+
+    #[test]
+    fn side_session_hangs_off_the_task_without_becoming_a_segment() {
+        let store = store_with_project();
+        let (a, sa) = task("t1", 5);
+        store.insert_task(&a, &sa).unwrap();
+        let side = TaskSession {
+            id: "t1-side".into(),
+            created_at: 7,
+            ..sa.clone()
+        };
+        store.add_side_session(&side).unwrap();
+        assert!(store.add_side_session(&TaskSession { id: "t1-side2".into(), ..side.clone() }).is_err());
+
+        assert_eq!(store.task_sessions("t1").unwrap(), vec![sa.clone()]);
+        assert_eq!(store.list_sessions().unwrap(), vec![sa.clone()]);
+        assert_eq!(store.side_session("t1").unwrap(), Some(side.clone()));
+        assert!(store.is_side_session("t1-side").unwrap());
+        assert!(!store.is_side_session("t1-s").unwrap());
+        let entry = &store.task_entries().unwrap()[0];
+        assert_eq!(entry.sessions, vec![sa]);
+        assert_eq!(entry.side, Some(side));
+
+        store.remove_session("t1-side").unwrap();
+        assert!(store.task_entries().unwrap()[0].side.is_none());
     }
 }
