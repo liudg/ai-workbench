@@ -10,6 +10,8 @@ export interface SidebarTask {
   id: string;
   projectId: string | null;
   agent: AgentKind | undefined;
+  /** 现在这段的原生会话。有它才能原生分叉。 */
+  nativeId?: string;
   title: string;
   status: SessionStatus | undefined;
   attention: Attention;
@@ -24,6 +26,7 @@ export function sidebarTask(task: TaskEntry): SidebarTask {
     id: task.id,
     projectId: task.projectId ?? null,
     agent: session?.agent,
+    nativeId: session?.nativeId,
     title: task.title.trim() || UNTITLED_SESSION,
     status: session?.status,
     attention: task.attention,

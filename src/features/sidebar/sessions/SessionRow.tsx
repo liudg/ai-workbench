@@ -26,6 +26,7 @@ import { DeleteSessionDialog } from "./DeleteSessionDialog";
 import { shouldSubmitRename } from "./rename-submit";
 import { sessionMenuItems, type SessionMenuAction } from "./session-menu";
 import { useSessionRow } from "./use-session-row";
+import type { AgentKind } from "@/types";
 
 export function SessionRow({
   task,
@@ -47,10 +48,14 @@ export function SessionRow({
   const [deletePreview, setDeletePreview] = useState<WorktreeDeletePreview | null>(null);
   const anchorRef = useRef<HTMLButtonElement>(null);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
-  const items = sessionMenuItems({ pinned: task.pinned, archived: task.archived });
+  const items = sessionMenuItems({ pinned: task.pinned, archived: task.archived, forks: row.forks });
 
-  const run = (action: SessionMenuAction) => {
+  const run = (action: SessionMenuAction, agent?: AgentKind) => {
     closeMenu();
+    if (action === "fork") {
+      row.fork(agent);
+      return;
+    }
     if (action === "rename") {
       setTitle(task.title);
       setRenameError(null);
@@ -155,11 +160,11 @@ export function SessionRow({
       >
         {items.map((item) => (
           <MenuItem
-            key={item.id}
+            key={item.key}
             action={item.id}
             label={item.label}
             danger={item.danger}
-            onSelect={() => run(item.id)}
+            onSelect={() => run(item.id, item.agent)}
           />
         ))}
       </FixedMenu>

@@ -1,16 +1,23 @@
-import { useAgentProfiles } from "@/features/agents";
-import { tasksApi } from "@/features/tasks";
+import { useAgentProfiles, useSessionAgents } from "@/features/agents";
+import { forkTargets, tasksApi } from "@/features/tasks";
 import type { WorktreeDeleteFlags } from "@/lib/worktree-delete";
 import { agentIdentity } from "@/shared/agent/identity";
 import { showError } from "@/shared/shell/error-banner";
 import { leaveTask, openTask } from "@/shared/shell/navigation";
+import type { AgentKind } from "@/types";
 import type { SidebarTask } from "../sidebar-task";
 import { showSidebarNotice } from "../sidebar-notice";
 
 export function useSessionRow(task: SidebarTask) {
   const profiles = useAgentProfiles();
+  const agents = useSessionAgents();
+  const current = task.agent && task.status ? { agent: task.agent, status: task.status, nativeId: task.nativeId } : undefined;
   return {
     identity: task.agent ? agentIdentity(task.agent, profiles[task.agent]) : null,
+    forks: forkTargets(current, profiles, agents),
+    /** 分出一个新任务并打开它。 */
+    fork: (agent: AgentKind | undefined) =>
+      void tasksApi.forkTask(task.id, agent).then((entry) => openTask(entry.id, entry.projectId ?? null), showError),
     select: () => openTask(task.id, task.projectId),
     rename: (title: string) => tasksApi.renameTask(task.id, title).then(() => true, () => false),
     togglePinned: () => void tasksApi.setTaskPinned(task.id, !task.pinned).catch(showError),
