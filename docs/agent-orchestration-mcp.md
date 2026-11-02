@@ -1,8 +1,36 @@
-# Agent 驱动工作台：本地 MCP 方案
+# 嵌套任务：Agent 把活拆给子任务
 
-路线图第 19 项「Agent 互相驱动」。让会话里的 Agent 能在工作台里开新会话、给别的会话发消息、等它跑完、打断它。同时补上 Agent 自带子 Agent 的展示，修掉一个相关的 bug（见「Agent 自带子 Agent」一节），两件事一起做。状态：方案待确认，未动代码。
+路线图第 19 项「Agent 互相驱动」。第一期做嵌套任务：会话里的 Agent 能开出挂在自己下面的子任务，子任务可以换 Agent、开自己的工作树，跑完把结果交回父任务，父任务接着往下做。同时补上 Agent 自带子 Agent 的展示，修掉一个相关的 bug（见「Agent 自带子 Agent」一节）。状态：方案已确认，未动代码。
 
-## 参考项目怎么做的
+## 要解决的问题
+- 一件事能拆成几块并行做，但都塞在一个会话里，就只能一块接一块地做，过程还把上下文撑满。
+- 拆出去的活要能看见、能插手：在侧栏和看板上照常显示，用户随时点进去引导或打断。
+- 子任务可以用别的 Agent，比如 Claude 拆出去让 Codex 写，再拿回来审。
+
+不解决的：Agent 操控和自己无关的平级任务，比如去催别的任务、给别的任务发消息。这类跨任务协作等真有需求再放开，底层和本方案共用。
+
+### 和 Agent 自带子 Agent 的分工
+| | Agent 自带子 Agent | 嵌套任务 |
+|---|---|---|
+| 在哪跑 | 父 Agent 进程里 | 工作台里的独立任务 |
+| 用户能否插手 | 只能看 | 能单独打开、引导、打断 |
+| 检出 | 和父 Agent 共用 | 可以开自己的工作树 |
+| Agent | 和父 Agent 相同 | 可以换 |
+| 开销 | 小 | 每个子任务都是完整会话，启动时重新加载上下文 |
+
+工具描述里要写明：轻量的活交给 Agent 自带的子 Agent；只有需要单独的工作树、需要用户插手，或者要换一个 Agent 来做时，才开嵌套任务。
+
+## 参考
+
+### Claude Code 桌面版：嵌套会话
+2026-10-14 的桌面版更新加入。桌面版不开源，以下出处是产品行为和公开报道，不是源码。
+- 会话可以开子会话，侧栏把子会话挂在父会话下面。可以一次开多个，开之前能改环境、模型、工作树和权限。
+- 发起分三种：用户点名要做的任务，先弹卡片让用户选「另开」还是「就在这做」；用户明确说要开的，直接开；Agent 自己觉得该另开的，只能留一张卡片，等用户点。
+- 上下文可选：`fork` 带上父会话的整段对话，`fresh` 只带一份简短说明。
+- 父会话不用一直等着，可以先结束自己的回合。所有子会话都停下、父会话也空闲时，应用把父会话叫醒，附上各子会话最新报告的前 400 字左右。父会话里只留结果，不留过程。
+- 回报只是对方的说法，告诉用户完成之前要自己看结果或 diff。
+- 写代码的子会话各用自己的工作树和分支，合到一起前先问用户，不推送这些分支。
+- 只能开 Claude，看不到 Codex 等别的 Agent。
 
 ### t3code：Orchestrator MCP
 - **入口**：服务端在自己的 HTTP 端口挂 `/mcp`（`apps/server/src/mcp/McpHttpServer.ts`），工具定义在 `apps/server/src/mcp/toolkits/orchestrator/tools.ts`，实现在 `apps/server/src/mcp/OrchestratorMcpService.ts`。
@@ -10,33 +38,20 @@
 - **注入给 Agent**：
   - Codex 在 `thread/start` 的 `config` 里加 `mcp_servers.t3-code = {url, http_headers: {Authorization}, tool_timeout_sec: 3900}`，只覆盖自己这一项，用户配的 MCP 不受影响（`orchestration-v2/Adapters/CodexAdapterV2.ts` 的 `codexThreadRuntimeParams`）。
   - Claude 在 `mcpServers` 里加 `{type: "http", url, headers}`，同时把 `mcp__t3-code__*` 加进 `allowedTools`，不再弹审批（`ClaudeAdapterV2.ts`）。
-  - 超时设成 65 分钟，比最长等待（60 分钟）长，让服务端自己的超时先到。
-- **工具**（和本方案相关的部分）：
-  - `orchestrator_capabilities`：列出能用的 Agent、模型，以及调用方自己的设置。
-  - `create_threads`：开一批普通的顶层会话，和调用方同一个项目、同一个检出。描述里要求「用户明确要另开会话时才用」。
-  - `t3_thread_list` / `t3_thread_read`：列会话、分页读时间线（默认只读用户消息、回答、计划）。
-  - `t3_thread_send`：给会话发消息。`mode` 取 `auto` / `queue` / `steer` / `restart`；`auto` 在空闲时开新回合，回合进行中能引导就引导，否则排队。
-  - `t3_thread_wait`：等最新一轮跑到终态。默认 10 分钟，最长 60 分钟；超时不打断对方。
-  - `t3_thread_interrupt`：打断正在跑的回合。
-  - 还有一些不在本方案第一期：`delegate_task` / `task_status` / `task_cancel`（子任务，跑完自动唤醒父会话）、`schedule_task` 等定时任务、`request_secret`。
+- **子任务**：`delegate_task` / `task_status` / `task_cancel`，子任务跑完自动唤醒父会话（完成投递见 `DelegatedCompletionDelivery`）。
 - **安全规则**：
   - 权限不能升级：目标会话的权限档位不能比调用方宽（`resolveRuntimeMode`，报 `runtime_mode_escalation_denied`）；计划模式同理（`resolveInteractionMode`）。
-  - 调用方必须活着：动别的会话时，调用方自己得有正在跑的回合（`assertLiveCaller`，报 `parent_not_active`），防止进程退出后旧 token 还能操作。
+  - 调用方必须活着：调用方自己得有正在跑的回合（`assertLiveCaller`，报 `parent_not_active`），防止进程退出后旧 token 还能操作。
   - 重试幂等：`clientRequestId` 生成稳定的命令 id，重试不会重复建会话、重复发消息。
 - **界面**：别的 Agent 发来的消息在时间线里折成一行，标出是哪个会话发的，可以展开（`apps/web/src/components/chat/TimelineUserMessageRow.tsx`，`createdBy: "agent"` + `senderThreadId`）。
 
-### herdr：`herdr agent` 命令行 + skill
-- herdr 不做 MCP：它给 Agent 一个 `herdr` 命令行，再配一份 skill 说明怎么用（`skills/herdr/SKILL.md`）。命令走本地 socket 发到 herdr 服务。
-- **状态**：`idle` / `working` / `blocked`（等审批或回答）/ `done` / `unknown`（`src/api/schema/common.rs` 的 `AgentStatus`）。
-- **`agent wait`**：默认等到 `idle`、`done`、`blocked` 中的任意一个，也可以用 `--until` 指定（`src/api/wait.rs` 的 `agent_wait_statuses`）。它订阅事件，不靠轮询。
-- **`agent prompt --wait`**：
-  - 目标正卡在审批或提问上时，直接拒绝（`agent_blocked`），不往里塞输入。skill 要求先看一眼再问用户。
-  - 发出后 5 秒内没看到 `working` 或 `blocked`，就返回 `agent_prompt_stalled`，避免把旧的 `done` 当成这次的结果。
-  - 超时或卡住都不代表没发出去，skill 要求先读状态，不要盲目重发。
+### herdr：卡在审批时不塞输入
+- herdr 给 Agent 一个 `herdr` 命令行加一份 skill（`skills/herdr/SKILL.md`），不做 MCP。
+- `agent prompt` 遇到目标正卡在审批或提问上时直接拒绝（`agent_blocked`），不往里塞输入。本方案给子任务追加消息时照这条做。
 
 ## 本项目现有的底子
-- daemon 已有的 RPC：`tasks.create`（项目、Agent、选项、工作树、首条消息）、`tasks.list`（每个任务带现在用的会话的 `attention`）、`sessions.send`（`now` 表示引导，否则排队）、`sessions.interrupt`，时间线也都在数据库里。
-- 注意力状态 `aiwb-core::attention`：`needs-input`（附带 `ask` 区分批准和回答）/ `working` / `done` / `failed` / `idle`，和 herdr 的状态一一对应。状态变化时 hub 会广播 `tasks` 主题，等待可以直接订阅它。
+- daemon 已有的 RPC：`tasks.create`（项目、Agent、选项、工作树、首条消息）、`tasks.list`（每个任务带现在用的会话的 `attention`）、`sessions.send`（`now` 表示引导，否则排队）、`sessions.interrupt`（`crates/aiwb-daemon/src/services/mod.rs`），时间线也都在数据库里。
+- 注意力状态 `aiwb-core::attention`：`needs-input`（附带 `ask` 区分批准和回答）/ `working` / `done` / `failed` / `idle`。状态变化时 hub 广播 `tasks` 主题，结果回报直接订阅它。
 - 权限档位是工作台统一的：`read-only` / `ask` / `approve-for-me` / `full`（`aiwb-core::models::catalog`），可以直接排出宽窄。
 - 注入点：
   - Codex 的 `thread/start` 已经在拼 `config`（`aiwb-agents/src/codex/sandbox.rs`）。
@@ -46,47 +61,80 @@
 
 ### 入口与凭证（照 t3code）
 - daemon 的 axum 路由加 `/mcp`，走 MCP Streamable HTTP，只听回环地址，和 `/ws` 共用端口。协议层用官方 Rust SDK `rmcp`，不自己手写。
-- 运行时每次拉起 Agent 进程时，给这个会话发一个 token：内存里存哈希到会话 id 的映射，会话停止时撤销。daemon 重启后旧 token 全部失效，resume 时重新发。
+- 每次拉起 Agent 进程时，给这个会话发一个 token：内存里存哈希到会话 id 的映射，会话停止时撤销。daemon 重启后旧 token 全部失效，resume 时重新发。
 - `SessionContext` 加 `workbench_mcp: Option<{url, token}>`，适配器负责注入：
-  - Codex：`thread/start` 和 resume 时的 `config` 里加 `mcp_servers.aiwb`，`tool_timeout_sec` 设 3900。
+  - Codex：`thread/start` 和 resume 时的 `config` 里加 `mcp_servers.aiwb`。
   - Claude：加 `--mcp-config` 传 `{"mcpServers":{"aiwb":{"type":"http","url":…,"headers":{…}}}}`，再用 `--allowedTools mcp__aiwb__*` 免审批。
 - Codex 和 Claude 原生都支持 HTTP MCP，两个都实现，不加能力开关。
+- 工具调用都很快返回，不在工具调用里长时间等待，不需要拉长 `tool_timeout_sec`。
+
+### 父子关系
+- 任务加 `parentTaskId`，存进 SQLite。子任务和父任务同一个项目。
+- 一个任务里可能换过 Agent，有多个会话；父子关系挂在任务上，回报投给父任务现在用的会话。
+- 只允许一层：子任务不能再开子任务。等用顺了再看要不要放开。
+- 侧栏把子任务挂在父任务下面，可以折叠。看板、注意力、通知照常工作。
 
 ### 工具（第一期）
-所有工具都按调用方的会话来定作用范围；省略项目时，默认用调用方所在的项目。
+所有工具都按调用方的会话来定作用范围，只能看到、动到自己的子任务。
 
 | 工具 | 做什么 | 对应 RPC | 出处 |
 |---|---|---|---|
 | `aiwb_capabilities` | 列出能用的 Agent 和模型目录，以及调用方自己的 Agent、模型、权限档位 | `agents.catalog`、`sessions.catalog` | t3code `orchestrator_capabilities` |
-| `aiwb_task_list` | 列项目里的任务：标题、Agent、注意力状态、最后一条预览 | `tasks.list` | t3code `t3_thread_list` |
-| `aiwb_task_read` | 分页读一个任务的时间线，默认只有用户消息、回答和计划 | 事件表 | t3code `t3_thread_read` |
-| `aiwb_task_create` | 开新任务：Agent、模型、选项、是否开工作树、首条消息。描述里写明「用户要求另开会话时才用」 | `tasks.create` | t3code `create_threads` |
-| `aiwb_session_send` | 给任务发消息，`mode` 取 `auto` / `queue` / `steer` | `sessions.send` | t3code `t3_thread_send` |
-| `aiwb_session_wait` | 等到指定状态，返回状态和最后一条回答的预览 | 订阅 `tasks` | herdr `agent wait`、t3code `t3_thread_wait` |
-| `aiwb_session_interrupt` | 打断正在跑的回合 | `sessions.interrupt` | t3code `t3_thread_interrupt` |
+| `aiwb_subtask_create` | 开一个或一批子任务：Agent、模型、选项、是否开工作树、首条消息。立刻返回，不等跑完 | `tasks.create` | Claude Code 嵌套会话、t3code `delegate_task` |
+| `aiwb_subtask_list` | 列自己的子任务：标题、Agent、注意力状态、最后一条预览 | `tasks.list` | t3code `task_status` |
+| `aiwb_subtask_read` | 分页读一个子任务的时间线，默认只有用户消息、回答和计划 | 事件表 | t3code `t3_thread_read` |
+| `aiwb_subtask_send` | 给子任务追加消息，`mode` 取 `auto` / `queue` / `steer` | `sessions.send` | t3code `t3_thread_send` |
+| `aiwb_subtask_interrupt` | 打断子任务正在跑的回合 | `sessions.interrupt` | t3code `task_cancel` |
 
-`aiwb_session_send` 的规则：
-- 目标正在等审批或回答（`needs-input`）时拒绝，报 `blocked`，不替用户答（herdr `agent_blocked`；t3code 也不授予审批权）。
-- 返回这条消息的 `seq`。`aiwb_session_wait` 带上 `afterSeq` 后，只认这条消息之后的状态，不会把上一轮的 `done` 当成这次的结果（对应 herdr 的 stall 检查）。
+`aiwb_subtask_create` 的规则：
+- 首条消息要写成能单独看懂的说明：要做什么、涉及哪些文件、做到什么算完。子任务不带父任务的对话。
+- 工具描述里写明上文「分工」一节的取舍。
 
-`aiwb_session_wait` 的规则：
-- 默认等到 `done` / `failed` / `needs-input` / `idle` 中的任意一个（照 herdr 的默认值，`failed` 在我们这里是单独的状态）。
-- 超时默认 10 分钟，最长 60 分钟；超时只返回 `timedOut`，不打断对方（照 t3code）。
+`aiwb_subtask_send` 的规则：
+- 子任务正在等审批或回答（`needs-input`）时拒绝，报 `blocked`，不替用户回答（herdr `agent_blocked`）。
+
+### 用户同意（照 Claude Code 嵌套会话）
+`aiwb_subtask_create` 带 `initiation` 参数，由 Agent 按下面的规则自己声明，工具描述里写清楚：
+
+| `initiation` | 什么时候用 | 怎么开 |
+|---|---|---|
+| `user_asked` | 用户原话里要求另开、拆出去、后台跑，或者让它现在就开 | 直接开 |
+| `offer` | 用户最新一条消息点了要做的事，但没说要另开 | 先在父任务时间线出卡片，用户选「另开」才开，选「就在这做」就告诉 Agent 在这里做；卡片先出，Agent 等用户选完再往下走 |
+| `own_initiative` | 用户没让做、Agent 自己发现或提议的事 | 只出一张卡片，Agent 不等，接着做自己的；用户点了才开，一周没点就过期 |
+
+- 用户让做的事一律不能声明成 `own_initiative`。
+- 卡片列出要开的子任务：Agent、标题、首条消息摘要、是否开工作树。
+- `own_initiative` 一个回合最多 3 张卡片，同一件事不重复提议。
+- 卡片的结果按回报的路子送回父会话：用户点了「另开」，就回报子任务已开出；点了「就在这做」，就告诉 Agent 自己做。
+
+### 结果回报（照 Claude Code 嵌套会话、t3code 完成投递）
+- 父任务开完子任务可以接着干别的，也可以直接结束这一回合，不用一直挂着等。
+- daemon 订阅 `tasks` 主题。子任务每结束一个回合（包括父任务追加消息后开的回合）都记一条待回报。等父任务的所有子任务都不在 `working`、父会话也空闲时，daemon 用 `sessions.send` 把待回报一次发给父会话，父会话就此开一个新回合。
+- 回报一条消息里汇总所有待回报的子任务，每个子任务给：标题、状态（`done` / `failed` / `needs-input`）、最后一条回答的前 400 字左右、工作树分支。
+- 父会话连续被回报叫醒多次、中间用户一条消息都没发时，后面的回报不再叫醒，留到用户下一次发消息时一起带上，防止父子来回空转。
+- 以下回合的结果也不叫醒父会话，留到用户下一次发消息时带上：用户自己在子任务里发消息开的回合，以及被打断或失败的回合。
+- 子任务停在 `needs-input` 时也回报，父任务据此告诉用户去处理，自己不替用户回答。
+- 回报只是子任务的说法：工具描述要求父任务告诉用户「完成了」之前，先读子任务的结果或看 diff。
+- 用户在父会话里正在打字或者刚发了消息时，回报排队，不打断用户。
+- 时间线里回报折成一行，标出「来自 <子任务标题>」，点开看全文，点标题跳过去（照 t3code `TimelineUserMessageRow.tsx`）。为此用户消息事件加 `sender: {taskId}` 字段。
+
+### 工作树与合并
+- 开了工作树的子任务，改动在自己的分支上。回报里带上分支名。
+- 工具描述里写明：要把几个子任务的改动合到一起，先问用户，用户同意才合；不推送这些分支。
 
 ### 安全规则（照 t3code）
-- **权限不升级**：新任务的权限档位缺省继承调用方；指定的档位比调用方宽就拒绝（`read-only` < `ask` < `approve-for-me` < `full`）。调用方在计划模式时，新任务也只能是计划模式。给别的任务发消息时，目标的档位比调用方宽也拒绝。
-- **调用方必须活着**：动别的任务前，确认调用方的会话正处在一个回合里。
+- **权限不升级**：子任务的权限档位缺省继承父任务；指定的档位比父任务宽就拒绝（`read-only` < `ask` < `approve-for-me` < `full`）。父任务在计划模式时，子任务也只能是计划模式。
+- **调用方必须活着**：调用工具时，确认调用方的会话正处在一个回合里。
 - **重试幂等**：可以带 `clientRequestId`，daemon 在内存里记一段时间，重试时直接返回上次的结果。
-
-### 界面
-- 时间线里，别的 Agent 发来的用户消息折成一行，标出「来自 <任务标题>」，点开看全文，点标题跳过去（照 t3code `TimelineUserMessageRow.tsx`）。为此用户消息事件要加 `sender: {taskId}` 字段。
-- Agent 开出来的任务在侧栏和普通任务一样显示，注意力、看板、通知都照常工作，不另做界面。
+- **只能动自己的子任务**：list、read、send、interrupt 都只认 `parentTaskId` 是调用方任务的子任务。
 
 ### 不在第一期
-- 子任务：`delegate_task`，子任务跑完自动唤醒父会话。要做父子关系和完成投递（t3code `DelegatedCompletionDelivery`），等第一期用顺了再说。
+- 带上父任务对话开子任务（Claude Code 的 `fork`）。
+- 子任务再开子任务。
+- 操控平级任务：开普通顶层任务、给无关任务发消息或打断。
 - 替用户回答审批或提问。
 - 定时任务（路线图第 20 项）。
-- 给外部客户端用的 MCP（t3code 的 `McpClientCaller`）。第一期只给工作台自己拉起的会话用。
+- 给外部客户端用的 MCP（t3code 的 `McpClientCaller`）。只给工作台自己拉起的会话用。
 
 ## Agent 自带子 Agent
 Codex、Claude 都能自己派出子 Agent。v1 没做这块；v2 的适配器从 v1 搬过来，也没处理。下面是已知的 bug 和照 t3code 补展示的方案。
@@ -120,17 +168,21 @@ Codex、Claude 都能自己派出子 Agent。v1 没做这块；v2 的适配器�
 - **归一化**：`aiwb-core` 加子 Agent 事件（开始、更新、结束，带父工具调用 id、描述、模型、状态、结果、用量），子 Agent 的消息带上所属子 Agent 的 id。两个适配器各自转换，界面不按 Agent 名字区分。
 
 ## 验证
-- 单元测试：token 的发放、解析和撤销；权限宽窄比较；`afterSeq` 等待的边界情况。
+- 单元测试：token 的发放、解析和撤销；权限宽窄比较；只能动自己的子任务；回报的触发条件（所有子任务停下、父会话空闲、用户在打字时排队、连续叫醒后留到用户下一条消息）。
 - 真实 CLI（Codex、Claude 各一遍，`--ignored` 集成测试）：
-  - A 会话开一个 B 任务并发出首条消息，等到 `done`，读出 B 的回答。
-  - B 卡在审批时，A 发消息被拒绝。
-  - A 要求比自己宽的权限被拒绝。
-  - A 打断 B。
-- 桌面上走一遍：侧栏出现 B，B 的时间线里能看到折叠的「来自 A」，看板和通知都正常。
+  - Claude 父任务开一个 Codex 子任务，反过来再来一遍。子任务跑完，父会话收到回报并开新回合，读出子任务的回答。
+  - 一次开两个子任务，两个都停下后只回报一次，里面有两个结果。
+  - 子任务卡在审批时，父任务收到 `needs-input` 回报；父任务追加消息被拒绝。
+  - 子任务要求比父任务宽的权限被拒绝。
+  - 父任务打断子任务。
+  - `offer` 出卡片，选「另开」开出子任务，选「就在这做」父任务自己做；`own_initiative` 出卡片且父任务不等；`user_asked` 直接开。
+  - 父任务给子任务追加消息，子任务这一回合结束后父会话再被叫醒；用户自己在子任务里发的消息不叫醒父会话。
+- 桌面上走一遍：侧栏里子任务挂在父任务下面，父任务时间线里能看到折叠的「来自 <子任务>」，看板和通知都正常。
 - 子 Agent：
   - 单元测试：Claude 实时流里带 `parent_tool_use_id` 的消息不进主时间线；`task_*` 事件转成子 Agent 事件；Codex 的两种 item 转成同一组事件。
   - 真实 CLI（Codex、Claude 各一遍）：派一个子 Agent，再并行派两个。卡片的状态、结果、用量要对；关掉窗口再打开、daemon 重启后 resume，时间线和刚才一致。
 
-## 待确认
-1. 第一期的工具范围是否就这 7 个。
-2. Agent 开任务要不要先经你同意：现在的方案是只靠工具描述约束，加上权限不升级；也可以改成每次开任务都弹一张审批卡。
+## 已确认
+1. 第一期只允许一层嵌套。
+2. 开子任务要不要用户同意，照 Claude Code 分 `user_asked` / `offer` / `own_initiative` 三种，由 Agent 声明。
+3. 回报照 Claude Code：等所有子任务都停下、父会话空闲时一起发。
