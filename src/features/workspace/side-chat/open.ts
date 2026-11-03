@@ -4,7 +4,7 @@ import type { OpenTarget } from "@/features/panel/core/registry";
 import { usePanelStore } from "@/features/panel/state/store";
 import { tasksApi, type TaskEntry } from "@/features/tasks";
 import { showError } from "@/shared/shell/error-banner";
-import type { AgentProfile, QueuedTurn } from "@/types";
+import type { QueuedTurn } from "@/types";
 import { removeQueued, sendMessage } from "../session/api";
 
 export const SIDE_CHAT_VIEWER = "side-chat";
@@ -20,12 +20,6 @@ export function sideChatTarget(taskId: string): OpenTarget {
   return { kind: "custom", type: SIDE_CHAT_VIEWER, data: { taskId } satisfies SideChatPayload };
 }
 
-/** Agent 能分出侧边聊天，主对话也已经有原生会话可分。 */
-export function canOpenSideChat(task: TaskEntry, profile: AgentProfile | undefined): boolean {
-  const current = task.sessions[task.sessions.length - 1];
-  return Boolean(profile?.capabilities.supports_side_chat && current?.nativeId);
-}
-
 const NO_CONTEXT = { projectId: "", projectPath: "", sessionFiles: [] };
 
 export function openSideChatTab(mainSessionId: string, taskId: string) {
@@ -33,21 +27,21 @@ export function openSideChatTab(mainSessionId: string, taskId: string) {
 }
 
 /**
- * 排队消息挪到侧边聊天里发出去。先从主对话的队列拿掉，免得主回合恰好结束时两边都发；
- * 侧边聊天没发出去就排回主对话（Codex `restore_side_user_message`）。
+ * 排队消息挪到侧边聊天里发出去。侧边聊天开好了才从主对话的队列拿掉，开不了就原样留在队列里；
+ * 发之前先拿掉，免得主回合恰好结束时两边都发；侧边聊天没发出去就排回主对话（Codex `restore_side_user_message`）。
  */
 export function askInSideChat(mainSessionId: string, taskId: string, item: QueuedTurn) {
   const images = item.images ?? [];
   openSideChatTab(mainSessionId, taskId);
-  void removeQueued(mainSessionId, item.id)
-    .then(() =>
-      tasksApi
-        .openSide(taskId)
-        .then((side) => sendMessage(side.id, item.text, images))
-        .catch((error: unknown) => {
+  void tasksApi
+    .openSide(taskId)
+    .then((side) =>
+      removeQueued(mainSessionId, item.id).then(() =>
+        sendMessage(side.id, item.text, images).catch((error: unknown) => {
           showError(error);
           return sendMessage(mainSessionId, item.text, images);
         }),
+      ),
     )
     .catch(showError);
 }

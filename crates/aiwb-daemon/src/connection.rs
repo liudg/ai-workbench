@@ -39,6 +39,12 @@ struct ViewParams {
     task_id: Option<String>,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SideTabsParams {
+    task_ids: Vec<String>,
+}
+
 /// 订阅参数里除 `topic` 以外的部分（会话主题的 `fromRev`）。
 fn snapshot_params(params: &Value) -> Value {
     let mut rest = params.clone();
@@ -117,6 +123,17 @@ pub(crate) async fn serve(socket: WebSocket, services: Arc<Services>) {
                 };
                 send(&out, &response);
             }
+            // 同上，记在这条连接名下，断开时清掉。
+            "tasks.sideTabs" => {
+                let response = match serde_json::from_value::<SideTabsParams>(request.params) {
+                    Ok(params) => {
+                        services.runtimes.set_side_tabs(connection, params.task_ids);
+                        Response::ok(request.id, Value::Null)
+                    }
+                    Err(err) => Response::err(request.id, format!("参数不对：{err}")),
+                };
+                send(&out, &response);
+            }
             _ => {
                 let services = services.clone();
                 let out = out.clone();
@@ -133,6 +150,7 @@ pub(crate) async fn serve(socket: WebSocket, services: Arc<Services>) {
 
     forwarder.abort();
     let _ = services.runtimes.set_viewing(connection, None);
+    services.runtimes.set_side_tabs(connection, Vec::new());
     services.terminals.forget(connection);
     drop(out);
     let _ = writer.await;

@@ -3,6 +3,7 @@ import { ChevronDown, FilePen, Globe, Shield, Terminal } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { sameChatScope } from "../chat-scope";
 import { approvalKeyAction, releaseOwnedApproval, takeApproval, type ApprovalGate } from "./approval-keys";
 import { useAnswerPrompt } from "./useAnswerPrompt";
 import { approvalSlots, type ApprovalPrompt } from "./pending-approval";
@@ -24,6 +25,7 @@ export function ApprovalSurface({
 }) {
   const answerPrompt = useAnswerPrompt();
   const slots = approvalSlots(event.options);
+  const rootRef = useRef<HTMLElement>(null);
   const primaryRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLPreElement>(null);
@@ -62,13 +64,18 @@ export function ApprovalSurface({
     const typing =
       active instanceof Element &&
       active.closest("input, textarea, [contenteditable]:not([contenteditable='false'])") != null;
-    if (!typing) primaryRef.current?.focus();
+    // 焦点在另一段聊天里（侧边聊天和主对话同屏）时不抢过来。
+    if (!typing && sameChatScope(rootRef.current, active)) {
+      primaryRef.current?.focus();
+    }
   }, [event.prompt_id]);
 
   useEffect(() => {
     const onKeyDown = (keyEvent: KeyboardEvent) => {
       const target = keyEvent.target;
       if (!(target instanceof Element)) return;
+      // 同屏两段聊天都在等审批时，只答焦点所在的那段。
+      if (!sameChatScope(rootRef.current, target)) return;
       const action = approvalKeyAction({
         key: keyEvent.key,
         composing: keyEvent.isComposing,
@@ -115,6 +122,7 @@ export function ApprovalSurface({
 
   return (
     <section
+      ref={rootRef}
       data-codex-approval-surface
       className="@container/approval-card mb-2 overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 shadow-sm"
     >

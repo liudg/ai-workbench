@@ -13,7 +13,7 @@ import { showError } from "@/shared/shell/error-banner";
 import type { AgentKind, AgentProfile, QueuedTurn, Session, SessionSandbox, SessionTuning } from "@/types";
 import * as api from "./api";
 import { moveDraft, patchDraft, readDraft, type ComposerDraft } from "./composer-drafts";
-import { askInSideChat, canOpenSideChat } from "../side-chat/open";
+import { askInSideChat } from "../side-chat/open";
 import { useSessionCatalog } from "./use-session-catalog";
 
 function toSandbox(options: SessionOptions): SessionSandbox | null {
@@ -43,6 +43,7 @@ export function useLiveComposer({
   project,
   profiles,
   side = false,
+  canOpenSide = false,
 }: {
   task: TaskEntry;
   taskSession: TaskSession;
@@ -51,8 +52,10 @@ export function useLiveComposer({
   draft: ComposerDraft;
   project: Project | undefined;
   profiles: Partial<Record<AgentKind, AgentProfile>>;
-  /** 侧边聊天的作曲栏：不换 Agent，排队消息也不再往侧边聊天挪。 */
+  /** 侧边聊天的作曲栏：不换 Agent。 */
   side?: boolean;
+  /** 主对话现在能开侧边聊天，排队消息可以挪过去问。 */
+  canOpenSide?: boolean;
 }): ComposerHost {
   const sessionId = session.id;
   const { catalog, notice, permissionMenu } = useSessionCatalog(sessionId, taskSession.agent);
@@ -70,7 +73,6 @@ export function useLiveComposer({
     const handsOff = (agent: AgentKind) => profiles[agent]?.capabilities.supports_context_handoff === true;
     const idle = taskSession.status !== "running" && taskSession.status !== "needs-input";
     const switchable = !side && idle && handsOff(taskSession.agent);
-    const sideChat = !side && canOpenSideChat(task, profile);
     const option = (agent: AgentKind, fallback: string): AgentOption => ({
       kind: agent,
       name: profiles[agent]?.display_name || fallback,
@@ -181,7 +183,7 @@ export function useLiveComposer({
       updateQueued: (id, text, images) => quiet(api.updateQueued(sessionId, id, text, images)),
       removeQueued: (id) => quiet(api.removeQueued(sessionId, id)),
       steerQueued: (id) => quiet(api.steerQueued(sessionId, id)),
-      openInSideChat: sideChat ? (item) => askInSideChat(sessionId, task.id, item) : undefined,
+      openInSideChat: canOpenSide ? (item) => askInSideChat(sessionId, task.id, item) : undefined,
       flushQueued: (ids) => quiet(api.flushQueued(sessionId, ids)),
       setFollowUpQueueMode: (mode) => writeOptions({ followUpQueueMode: mode }),
       interrupt: () => void api.interruptTurn(sessionId).catch(report),
@@ -206,7 +208,7 @@ export function useLiveComposer({
     session.workdir,
     sessionId,
     side,
-    task,
+    canOpenSide,
     task.id,
     task.projectId,
     task.workspace,

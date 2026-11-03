@@ -2,6 +2,7 @@ import { useMemo } from "react";
 
 import { useAgentProfiles } from "@/features/agents";
 import { AnswerMarkdownHost } from "@/features/chat/answer/AnswerMarkdownHost";
+import { CHAT_SCOPE_ATTR } from "@/features/chat/chat-scope";
 import { Composer } from "@/features/chat/composer/Composer";
 import { ChatHostProvider, type ChatHost } from "@/features/chat/host";
 import { ChatView } from "@/features/chat/timeline/ChatView";
@@ -67,7 +68,7 @@ function SideChat({ task, side }: { task: TaskEntry; side: TaskSession }) {
   );
   return (
     <ChatHostProvider host={host}>
-      <div data-side-chat data-chat-scope className="flex h-full min-h-0 flex-col bg-[#0f0f0f]">
+      <div data-side-chat {...{ [CHAT_SCOPE_ATTR]: "" }} className="flex h-full min-h-0 flex-col bg-[#0f0f0f]">
         <MainStatus main={currentSession(task)} side={side} />
         <div className="flex min-h-0 flex-1 flex-col">
           <AnswerMarkdownHost>

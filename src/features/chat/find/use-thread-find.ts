@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 
+import { sameChatScope } from "../chat-scope";
 import { isImeKey } from "../keyboard";
 import { clearThreadHighlights, clearThreadMarks, paintThreadHits, scrollCurrentHitIntoView } from "./highlight";
 import { collectTextHits, stepHit } from "./hits";
@@ -7,15 +8,9 @@ import { isThreadFindChord } from "./keyboard";
 
 export const OPEN_THREAD_FIND = "ai-workbench:find-in-thread";
 
-/** 同屏有几段聊天时（比如侧边聊天），各自包在一个 `data-chat-scope` 里，查找只在焦点所在的那段打开。 */
-export const CHAT_SCOPE_ATTR = "data-chat-scope";
-
-function scopeOf(node: Element | null | undefined): Element | null {
-  return node?.closest(`[${CHAT_SCOPE_ATTR}]`) ?? null;
-}
-
+/** 同屏有几段聊天时，查找只在焦点所在的那段打开。 */
 function ownsFocus(root: HTMLElement | null): boolean {
-  return scopeOf(root) === scopeOf(document.activeElement);
+  return sameChatScope(root, document.activeElement);
 }
 
 export function useThreadFind(

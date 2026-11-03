@@ -34,8 +34,13 @@ impl Services {
         if !adapter.capabilities().supports_side_chat {
             return Err(format!("{} 不支持侧边聊天", current.agent.display_name()));
         }
+        // 没说过话时原生会话可能还没落盘（Codex 起线程时就有 id，第一条消息后才有 rollout），分不出来；
         // 还没交出去的前文不在原生会话里，分出来的侧边聊天会看不到它。
-        if current.native_id.as_deref().is_none_or(str::is_empty) || self.has_pending_handoff(&current.id)? {
+        // 界面上的入口按同样的条件显示（`side-chat/can-open.ts`）。
+        if current.native_id.as_deref().is_none_or(str::is_empty)
+            || !self.has_spoken(&current.id)?
+            || self.has_pending_handoff(&current.id)?
+        {
             return Err(NOT_STARTED.into());
         }
         let now = now_millis();

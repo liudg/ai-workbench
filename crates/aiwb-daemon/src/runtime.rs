@@ -61,6 +61,8 @@ pub struct Runtimes {
     pub(crate) fresh_catalogs: Mutex<HashSet<AgentKind>>,
     /// 每条连接正看着的任务。窗口没有焦点时界面会报空。
     viewing: Mutex<HashMap<u64, String>>,
+    /// 每条连接的面板里开着侧边聊天标签的任务。有标签就不空闲回收。
+    side_tabs: Mutex<HashMap<u64, HashSet<String>>>,
 }
 
 impl Runtimes {
@@ -75,6 +77,7 @@ impl Runtimes {
             probing: tokio::sync::Mutex::new(()),
             fresh_catalogs: Mutex::default(),
             viewing: Mutex::default(),
+            side_tabs: Mutex::default(),
         }
     }
 
@@ -122,6 +125,20 @@ impl Runtimes {
 
     fn is_viewed(&self, task_id: &str) -> bool {
         self.viewing.lock().unwrap().values().any(|id| id == task_id)
+    }
+
+    /// 一条连接报它的面板里哪些任务开着侧边聊天标签。连接断开时报空。
+    pub(crate) fn set_side_tabs(&self, connection: u64, task_ids: Vec<String>) {
+        let mut tabs = self.side_tabs.lock().unwrap();
+        if task_ids.is_empty() {
+            tabs.remove(&connection);
+        } else {
+            tabs.insert(connection, task_ids.into_iter().collect());
+        }
+    }
+
+    fn has_side_tab(&self, task_id: &str) -> bool {
+        self.side_tabs.lock().unwrap().values().any(|ids| ids.contains(task_id))
     }
 
     /// 这条事件之后的注意力。状态变了按有没有人在看记未读；在等输入时来了新提问换掉预览。
@@ -744,7 +761,8 @@ impl Runtimes {
 
     /// 已完成、空闲超过 `idle_ms`、没人在看、没有排队、能 resume 的会话：关掉 CLI，丢掉时间线副本。
     /// 关之前先静音，适配器关进程时报的状态不进时间线，会话仍是已完成。下次用到时 `ensure_live` 接回。
-    /// 侧边聊天接不回去：同样条件下直接关掉（界面重载后没有标签再关它）。
+    /// 侧边聊天接不回去：哪条连接的面板里都没有它的标签时，已完成、空闲、没有排队就直接关掉
+    /// （界面关了或重载后标签没了）。有标签时窗口没焦点、在看别的任务也留着。
     pub(crate) async fn release_idle(&self, now: i64, idle_ms: i64) -> RuntimeResult<usize> {
         let _opening = self.opening.lock().await;
         let idle = |entry: &Live| now - entry.used_at.load(Ordering::SeqCst) >= idle_ms;
@@ -761,12 +779,13 @@ impl Runtimes {
             let Some(session) = self.store.session(&session_id).map_err(|e| e.to_string())? else {
                 continue;
             };
-            let side = self.store.is_side_session(&session_id).map_err(|e| e.to_string())?;
-            let resumable = side || session.native_id.as_deref().is_some_and(|id| !id.is_empty());
-            if session.status != SessionStatus::Completed || !resumable || self.is_viewed(&session.task_id) {
+            if session.status != SessionStatus::Completed {
                 continue;
             }
-            if side {
+            if self.store.is_side_session(&session_id).map_err(|e| e.to_string())? {
+                if self.has_side_tab(&session.task_id) {
+                    continue;
+                }
                 let queued = self
                     .logs
                     .lock()
@@ -777,6 +796,10 @@ impl Runtimes {
                     self.remove_side(&session_id).await?;
                     released += 1;
                 }
+                continue;
+            }
+            let resumable = session.native_id.as_deref().is_some_and(|id| !id.is_empty());
+            if !resumable || self.is_viewed(&session.task_id) {
                 continue;
             }
             let entry = {
@@ -1051,6 +1074,32 @@ mod tests {
             assert_eq!(runtimes.release_idle(30 * MIN, 30 * MIN).await.unwrap(), 0);
             assert!(runtimes.is_live("s"));
         }
+    }
+
+    /// 任务 `t` 的主对话是 `m`，侧边聊天是 `s`。
+    fn side_runtimes() -> (Arc<Store>, Arc<Runtimes>) {
+        let (store, runtimes) = runtimes_with_task(SessionStatus::Completed);
+        let main = store.session("s").unwrap().unwrap();
+        store.remove_session("s").unwrap();
+        store.add_session(&TaskSession { id: "m".into(), ..main.clone() }).unwrap();
+        store.add_side_session(&TaskSession { created_at: 2, ..main }).unwrap();
+        (store, Arc::new(runtimes))
+    }
+
+    #[tokio::test]
+    async fn side_chat_with_a_tab_survives_idle_release() {
+        // 面板里有标签：窗口没焦点、没人看着也留着。
+        let (store, runtimes) = side_runtimes();
+        attach(&runtimes, 0);
+        runtimes.set_side_tabs(1, vec!["t".into()]);
+        assert_eq!(runtimes.release_idle(30 * MIN, 30 * MIN).await.unwrap(), 0);
+        assert!(store.side_session("t").unwrap().is_some());
+
+        // 那条连接关了标签（或断开）：接不回去，直接关掉；有人看着这个任务也一样。
+        runtimes.set_side_tabs(1, Vec::new());
+        runtimes.set_viewing(2, Some("t".into())).unwrap();
+        assert_eq!(runtimes.release_idle(30 * MIN, 30 * MIN).await.unwrap(), 1);
+        assert!(store.side_session("t").unwrap().is_none());
     }
 
     #[test]

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/utils";
+import { sameChatScope } from "../chat-scope";
 import type { Session } from "@/types";
 import { approvalKeyAction, releaseOwnedApproval, takeApproval, type ApprovalGate } from "./approval-keys";
 import { ChoiceCard } from "./ApprovalCard";
@@ -20,6 +21,7 @@ export function PlanChoiceSurface({
 }) {
   const answerPrompt = useAnswerPrompt();
   const [busy, setBusy] = useState(false);
+  const rootRef = useRef<HTMLElement>(null);
   const gate = useRef<ApprovalGate>({ busy: false });
   const choose = (id: string | undefined) => {
     const owned = gate.current;
@@ -48,6 +50,7 @@ export function PlanChoiceSurface({
     const onKeyDown = (keyEvent: KeyboardEvent) => {
       const target = keyEvent.target;
       if (!(target instanceof Element)) return;
+      if (!sameChatScope(rootRef.current, target)) return;
       const action = approvalKeyAction({
         key: keyEvent.key,
         composing: keyEvent.isComposing,
@@ -67,6 +70,7 @@ export function PlanChoiceSurface({
 
   return (
     <section
+      ref={rootRef}
       data-plan-choice-surface
       aria-busy={busy}
       className="mb-2 overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-4 shadow-sm"

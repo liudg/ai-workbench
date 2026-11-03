@@ -5,11 +5,13 @@ import { CommandMenuHost } from "@/features/command-menu";
 import { NoProjectSelected } from "./empty/EmptyState";
 import { NewSessionView } from "./new/NewSessionView";
 import { SessionView } from "./session/SessionView";
+import { useSideTabsReport } from "./side-chat/use-side-tabs-report";
 import { SettingsView } from "@/features/settings";
 import { useWorkspace } from "./use-workspace";
 
 export function Workspace() {
   const { settings, board, view, projects, project, task, taskSession, loading } = useWorkspace();
+  useSideTabsReport();
 
   if (settings) return <WithMenu><SettingsView /></WithMenu>;
   if (board) return <WithMenu><BoardView /></WithMenu>;

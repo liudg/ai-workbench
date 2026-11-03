@@ -234,7 +234,7 @@ impl Services {
     }
 
     /// 会话里发过消息没有。
-    fn has_spoken(&self, session_id: &str) -> ServiceResult<bool> {
+    pub(super) fn has_spoken(&self, session_id: &str) -> ServiceResult<bool> {
         let events = self
             .store
             .events_since(session_id, 0)

@@ -898,6 +898,10 @@ async fn switching_agents_hands_off_the_conversation() {
     assert_eq!(back["sessions"][1]["agent"], "claude-code");
     let codex_again = back["sessions"][2]["id"].as_str().unwrap().to_string();
 
+    // 接回了原线程，但前文还没交出去：分出来的侧边聊天看不到 Claude 那段，不能开。
+    let early = services.dispatch("tasks.openSide", json!({ "taskId": task_id })).await;
+    assert!(early.unwrap_err().contains("第一条消息"));
+
     services
         .dispatch("sessions.send", json!({ "sessionId": codex_again, "text": "收尾" }))
         .await
@@ -910,8 +914,13 @@ async fn switching_agents_hands_off_the_conversation() {
     assert!(text.contains("\n还有吗\n"), "{text}");
     // Claude 那段的两问两答；Codex 自己那段不再补。
     assert!(text.contains("Selected 4 intact items; omitted 0 items."), "{text}");
-    let started = script.started.lock().unwrap();
-    assert_eq!(started.last().unwrap().resume_native_id.as_deref(), Some("thread-1"));
+    assert_eq!(
+        script.started.lock().unwrap().last().unwrap().resume_native_id.as_deref(),
+        Some("thread-1")
+    );
+
+    // 前文交出去了，侧边聊天能开。
+    services.dispatch("tasks.openSide", json!({ "taskId": task_id })).await.unwrap();
 }
 
 #[tokio::test]

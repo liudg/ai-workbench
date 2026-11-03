@@ -66,3 +66,8 @@ export function openSide(taskId: string) {
 export function closeSide(taskId: string) {
   return daemon.call<boolean>("tasks.closeSide", { taskId }, CLI_TIMEOUT_MS);
 }
+
+/** 告诉 daemon 面板里哪些任务开着侧边聊天标签。有标签的不会因为空闲被关掉。 */
+export function reportSideTabs(taskIds: string[]) {
+  return daemon.call<null>("tasks.sideTabs", { taskIds });
+}
