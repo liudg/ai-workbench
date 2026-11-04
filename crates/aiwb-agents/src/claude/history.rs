@@ -206,6 +206,11 @@ fn next_session_key(text: &str) -> Option<(usize, usize)> {
     }
 }
 
+/// 会话的子 Agent 转录目录：`<会话 id>.jsonl` 旁边的 `<会话 id>/subagents`。
+pub fn subagent_dir(session_file: &Path) -> PathBuf {
+    session_file.with_extension("").join("subagents")
+}
+
 pub fn read_session_text(path: &Path) -> Option<String> {
     let bytes = std::fs::read(path).ok()?;
     if bytes.is_empty() {
@@ -846,7 +851,7 @@ fn unescape(raw: &str) -> String {
     serde_json::from_str::<String>(&format!("\"{raw}\"")).unwrap_or_else(|_| raw.to_string())
 }
 
-fn parse_millis(stamp: &str) -> Option<i64> {
+pub(super) fn parse_millis(stamp: &str) -> Option<i64> {
     let normalized = if stamp.ends_with('Z') {
         format!("{}+00:00", &stamp[..stamp.len() - 1])
     } else {

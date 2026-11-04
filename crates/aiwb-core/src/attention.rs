@@ -6,7 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::models::{PromptKind, SessionEvent, SessionEventBody, SessionStatus};
+use crate::models::{PromptKind, SessionEvent, SessionEventBody, SessionStatus, SubagentStatus};
 
 /// 预览最多留多少个字。
 const PREVIEW_CHARS: usize = 200;
@@ -76,7 +76,11 @@ pub fn on_status(
     viewed: bool,
     now: i64,
 ) -> Option<Attention> {
-    let state = state_of(status);
+    let mut state = state_of(status);
+    // 主回合结束了，后台的子 Agent 还在跑：仍算在做。
+    if state == AttentionState::Done && subagent_running(events) {
+        state = AttentionState::Working;
+    }
     if state == prev.state {
         return None;
     }
@@ -93,6 +97,21 @@ pub fn on_status(
         ask,
         preview: preview(state, events).or_else(|| prev.preview.clone()),
         updated_at: now,
+    })
+}
+
+/// 子 Agent 卡片变了：按会话最后的状态重算。后台子 Agent 跑完时从「在做」变成「完成」。
+pub fn on_subagent(prev: &Attention, events: &[SessionEvent], viewed: bool, now: i64) -> Option<Attention> {
+    let status = events.iter().rev().find_map(|event| match &event.body {
+        SessionEventBody::StatusChanged { status } => Some(*status),
+        _ => None,
+    })?;
+    on_status(prev, status, events, viewed, now)
+}
+
+fn subagent_running(events: &[SessionEvent]) -> bool {
+    events.iter().any(|event| {
+        matches!(&event.body, SessionEventBody::Subagent(card) if card.status == SubagentStatus::Running)
     })
 }
 
@@ -293,6 +312,26 @@ mod tests {
         assert_eq!(failed.preview.as_deref(), Some("连接断开"));
         let no_error = on_status(&working(), SessionStatus::Failed, &events[..3], false, 4).unwrap();
         assert_eq!(no_error.preview.as_deref(), Some("上一轮的回答"));
+    }
+
+    /// 主回合完了，后台子 Agent 还在跑：仍算在做。子 Agent 结束后才算完成、记未读。
+    #[test]
+    fn running_background_subagent_keeps_the_session_working() {
+        use crate::models::SubagentCard;
+        let mut card = SubagentCard::new("toolu_B", "后台");
+        card.background = true;
+        let running = [
+            user(1, "派个后台子 Agent"),
+            event(2, SessionEventBody::Subagent(card.clone())),
+            event(3, SessionEventBody::StatusChanged { status: SessionStatus::Completed }),
+        ];
+        assert!(on_status(&working(), SessionStatus::Completed, &running, false, 3).is_none());
+        card.finish(SubagentStatus::Completed, Some(4));
+        let mut finished = running.to_vec();
+        finished[1] = event(2, SessionEventBody::Subagent(card));
+        let done = on_subagent(&working(), &finished, false, 4).unwrap();
+        assert_eq!(done.state, AttentionState::Done);
+        assert!(done.unread);
     }
 
     #[test]

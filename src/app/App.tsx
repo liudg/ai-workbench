@@ -23,6 +23,7 @@ const PREVIEWS: Record<string, LazyExoticComponent<ComponentType>> | null = impo
       "plan-choice": lazy(() => import("@/app/preview/PlanChoicePreview")),
       questions: lazy(() => import("@/app/preview/QuestionPreview")),
       sidebar: lazy(() => import("@/features/sidebar/SidebarPreview")),
+      subagents: lazy(() => import("@/app/preview/SubagentsPreview")),
       subtasks: lazy(() => import("@/app/preview/SubtasksPreview")),
       "thread-find": lazy(() => import("@/app/preview/ThreadFindPreview")),
       usage: lazy(() => import("@/app/preview/UsagePreview")),

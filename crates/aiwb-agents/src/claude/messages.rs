@@ -11,15 +11,16 @@
 //! 这条消息收束前一直复用，下一回合或下一条消息再换新的。
 
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
 use super::control::{self, PermissionKind};
 use super::diff;
+use super::subagents;
 use super::history::{conversation_chain, is_visible_message, transcript_entries};
 use aiwb_core::models::{
-    FileChange, MessagePhase, PromptKind, SessionEventBody, SessionStatus, ToolStatus,
+    now_millis, FileChange, MessagePhase, PromptKind, SessionEventBody, SessionStatus, SubagentCard, ToolStatus,
 };
 
 #[derive(Default)]
@@ -48,6 +49,16 @@ pub struct MapState {
     turn_failure_noted: bool,
     /// 用户按下了停止。紧跟着的流中止不是断线，不画红条。
     stop_requested: bool,
+    /// 正在映射的这条记录的时间：实时是收到的时刻，历史是记录里的 `timestamp`。
+    pub(super) clock: Option<i64>,
+    /// 子 Agent 卡片，按派它的工具调用 id。
+    pub(super) subagents: HashMap<String, SubagentCard>,
+    /// `task_id` → 派它的工具调用 id。
+    pub(super) subagent_tasks: HashMap<String, String>,
+    /// 每个子 Agent 自己的映射状态，按派它的工具调用 id。
+    pub(super) children: HashMap<String, MapState>,
+    /// 读历史时子 Agent 转录所在的目录（`<会话 id>/subagents`）。
+    pub subagent_dir: Option<PathBuf>,
 }
 
 pub(super) struct ToolRow {
@@ -115,6 +126,14 @@ pub fn ingest_line(state: &mut MapState, line: &str, live: bool, project: Option
 }
 
 pub fn ingest_value(state: &mut MapState, value: &Value, live: bool, project: Option<&Path>) -> Ingest {
+    state.clock = if live {
+        Some(now_millis())
+    } else {
+        value
+            .get("timestamp")
+            .and_then(Value::as_str)
+            .and_then(super::history::parse_millis)
+    };
     let kind = value.get("type").and_then(Value::as_str).unwrap_or("");
     match kind {
         "control_response" => {
@@ -371,6 +390,9 @@ fn on_system(state: &mut MapState, value: &Value, live: bool) -> Vec<SessionEven
     if retry_notice(subtype, value) {
         return retry_note(state, value);
     }
+    if subtype.starts_with("task_") {
+        return subagents::on_task(state, subtype, value);
+    }
     if subtype == "error" || subtype == "api_error" || value.get("error").is_some() {
         if quiet_user_stop(state.stop_requested, value) {
             return Vec::new();
@@ -623,13 +645,25 @@ fn on_assistant(state: &mut MapState, value: &Value, project: Option<&Path>, liv
     if skip_seen(state, value) || flag(value, "isMeta") {
         return Vec::new();
     }
-    // 旁路不进时间线。实时用量仍按 message.id 记，历史由 jsonl 快照覆盖。
+    // 旁路不进主时间线，挂到它的子 Agent 下面。实时用量仍按 message.id 记，历史由 jsonl 快照覆盖。
     if sidechain(value) {
         if !live {
             return Vec::new();
         }
-        return super::usage::apply_assistant(&mut state.usage, value).into_iter().collect();
+        let mut events = subagents::live_step(state, value, project);
+        events.extend(super::usage::apply_assistant(&mut state.usage, value));
+        return events;
     }
+    assistant_body(state, value, project, live)
+}
+
+/// 一条助手消息的正文、思考和工具。子 Agent 用它自己的状态走同一条路。
+pub(super) fn assistant_body(
+    state: &mut MapState,
+    value: &Value,
+    project: Option<&Path>,
+    live: bool,
+) -> Vec<SessionEventBody> {
     let message = value.get("message").unwrap_or(&Value::Null);
     let content = message.get("content").unwrap_or(&Value::Null);
     let mut events = Vec::new();
@@ -676,9 +710,20 @@ fn on_assistant(state: &mut MapState, value: &Value, project: Option<&Path>, liv
 }
 
 fn on_user(state: &mut MapState, value: &Value, live: bool, project: Option<&Path>) -> Vec<SessionEventBody> {
-    if skip_seen(state, value) || flag(value, "isMeta") || sidechain(value) {
+    if skip_seen(state, value) || flag(value, "isMeta") {
         return Vec::new();
     }
+    if sidechain(value) {
+        return if live { subagents::live_step(state, value, project) } else { Vec::new() };
+    }
+    if let Some(events) = subagents::notification_message(state, value) {
+        return events;
+    }
+    user_body(state, value, live, project)
+}
+
+/// 一条用户消息里的工具结果和正文。
+pub(super) fn user_body(state: &mut MapState, value: &Value, live: bool, project: Option<&Path>) -> Vec<SessionEventBody> {
     let message = value.get("message").unwrap_or(&Value::Null);
     let content = message.get("content").unwrap_or(&Value::Null);
     // 直播是 `tool_use_result`，会话记录里是 `toolUseResult`。
@@ -723,6 +768,9 @@ fn on_tool_result(
     };
     let reported = row.reported.clone();
     let input = row.input.clone();
+    if subagents::is_agent_tool(&reported) {
+        return subagents::returned(state, id, block, structured, &detail);
+    }
     let status = if block.get("is_error").and_then(Value::as_bool).unwrap_or(false) {
         ToolStatus::Failed
     } else {
@@ -971,6 +1019,9 @@ fn tool_events(
             input: input.clone(),
         },
     );
+    if subagents::is_agent_tool(reported) {
+        return subagents::spawned(state, id, input);
+    }
     let summary = tool_summary(reported, input);
     let mut events = vec![SessionEventBody::ToolCall {
         name: display_tool_name(reported),

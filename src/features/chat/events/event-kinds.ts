@@ -16,9 +16,10 @@ export const RENDERED_EVENT_KINDS = [
   "review-note",
   "review-findings",
   "subtask-offer",
+  "subagent",
 ] as const satisfies readonly SessionEvent["kind"][];
 
-/** 进日志但不进时间线的事件。 */
+/** 进日志但不进时间线的事件。子 Agent 的步骤画在它的卡片里。 */
 export const SILENT_EVENT_KINDS = [
   "prompt-resolved",
   "status-changed",
@@ -30,6 +31,7 @@ export const SILENT_EVENT_KINDS = [
   "goal",
   "context-usage",
   "session-usage",
+  "subagent-step",
 ] as const satisfies readonly SessionEvent["kind"][];
 
 export type RenderedEventKind = (typeof RENDERED_EVENT_KINDS)[number];

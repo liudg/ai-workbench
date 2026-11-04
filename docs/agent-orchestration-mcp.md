@@ -1,6 +1,6 @@
 # 嵌套任务：Agent 把活拆给子任务
 
-路线图第 19 项「Agent 互相驱动」。第一期做嵌套任务：会话里的 Agent 能开出挂在自己下面的子任务，子任务可以换 Agent、开自己的工作树，跑完把结果交回父任务，父任务接着往下做。同时补上 Agent 自带子 Agent 的展示，修掉一个相关的 bug（见「Agent 自带子 Agent」一节）。状态：嵌套任务和 Claude 子 Agent 混进主时间线的 bug 已实现；Agent 自带子 Agent 的展示还没做。
+路线图第 19 项「Agent 互相驱动」。第一期做嵌套任务：会话里的 Agent 能开出挂在自己下面的子任务，子任务可以换 Agent、开自己的工作树，跑完把结果交回父任务，父任务接着往下做。同时补上 Agent 自带子 Agent 的展示，修掉一个相关的 bug（见「Agent 自带子 Agent」一节）。状态：嵌套任务、Agent 自带子 Agent 的展示和两个相关 bug 都已实现（2026-11-04）。
 
 ## 要解决的问题
 - 一件事能拆成几块并行做，但都塞在一个会话里，就只能一块接一块地做，过程还把上下文撑满。
@@ -150,7 +150,7 @@
 - 给外部客户端用的 MCP（t3code 的 `McpClientCaller`）。只给工作台自己拉起的会话用。
 
 ## Agent 自带子 Agent
-Codex、Claude 都能自己派出子 Agent。v1 没做这块；v2 的适配器从 v1 搬过来，也没处理。下面是已知的 bug 和照 t3code 补展示的方案。
+Codex、Claude 都能自己派出子 Agent。v1 没做这块；v2 的适配器从 v1 搬过来，也没处理。下面是当时的 bug、丢掉的原生事件和照 t3code 补的展示，都已实现。
 
 ### Bug：Claude 子 Agent 的回答混进主时间线
 - 现象：Claude 派出子 Agent 后，子 Agent 说的话在时间线里显示成主 Agent 的回答。
@@ -173,12 +173,23 @@ Codex、Claude 都能自己派出子 Agent。v1 没做这块；v2 的适配器�
 
   子 Agent 是 Codex 里的独立原生线程（`receiverThreadIds`）。
 
+  实测 codex-cli 0.165.0（2026-11-04，`multi_agent` 和 `multi_agent_v2` 各跑一遍，报法一样）：派出只报 `subAgentActivity`（`kind = started`，`id` 是那次调用），没有 `spawnAgent` 的 `collabAgentToolCall`；结束是另一条 `subAgentActivity`（`kind = completed`，`id = subagent-completed-<子线程回合 id>`）；`collabAgentToolCall` 只出现了 `wait`，`receiverThreadIds` 和 `agentsStates` 都是空的。子线程不带派给它的说明。
+- **Bug：Codex 子线程混进主会话**。子线程的 `item/*`、`turn/*`、`thread/status/changed` 也走同一条连接，`threadId` 是子线程。适配器除了用量和线程状态以外都不看 `threadId`，于是子 Agent 的命令和回答画进了主时间线，子线程的 `turn/completed` 还会把主回合的 `turn_id` 清掉、把回合标成已结束。修法：本会话有线程 id 之后，别的线程的通知一律不按主线程处理，已知的子线程归到它的卡片下面（`crates/aiwb-agents/src/codex/subagents.rs` 的 `route_foreign_thread`）。
+
 ### 展示方案（照 t3code）
 - **时间线**：派子 Agent 的那次工具调用画成一行子 Agent 卡片，显示描述、Agent 类型、模型、状态（运行中 / 完成 / 失败 / 已停止）和用时。同一轮里派出多个时归成一组，组头汇总各个状态。出处：t3code `apps/web/src/components/chat/TimelineV2EventRow.tsx` 的 `V2SubagentGroup`、`packages/client-runtime/src/state/subagent-display.ts` 的 `subagentGroupSummary` / `summarizeSubagentStatuses`。
 - **展开看过程**：点开卡片，看子 Agent 自己的消息和工具调用，也就是现在被挡在主时间线外的那些（Claude 按 `parent_tool_use_id` 归，Codex 按子线程 id 归）。t3code 把子 Agent 做成能单独打开的子会话，顶上有一条显示 Agent、模型、状态的栏，可以跳回父会话（`apps/web/src/components/chat/ProviderSubagentBar.tsx`）。我们先做卡片内展开，不另开会话。
 - **结果**：完成时卡片里显示 `summary`（Claude）或子线程的最后一条回答（Codex），以及用量。
 - **注意力**：子 Agent 在跑时，主会话算运行中。Claude 后台子 Agent 还没完时，主回合已经结束了，这时看板和侧栏仍然显示运行中，不算完成。
 - **归一化**：`aiwb-core` 加子 Agent 事件（开始、更新、结束，带父工具调用 id、描述、模型、状态、结果、用量），子 Agent 的消息带上所属子 Agent 的 id。两个适配器各自转换，界面不按 Agent 名字区分。
+
+### 实现
+- **事件**：`subagent` 是一张卡片（`SubagentCard`），同一个 `subagent_id` 整条替换，适配器每次发全量；`subagent-step` 包着子 Agent 自己的一条回答、思考或工具调用，只和同一个子 Agent 的步骤按原规则覆盖（`crates/aiwb-core/src/timeline.rs`）。步骤是单独的事件，主时间线、交接、注意力预览都不会把它当成主 Agent 的话。卡片 id：Claude 用派它的工具调用 id，Codex 用子线程 id。交接时卡片按「Subagent: 描述 + 结果」带上，步骤不带。
+- **Claude**（`crates/aiwb-agents/src/claude/subagents.rs`）：`Agent` / `Task` 工具调用画成卡片，不再是工具行。`task_started`（只认 `task_type = local_agent`）、`task_progress`、`task_updated`、`task_notification` 改卡片；前台的结果、模型、用量取工具结果的 `tool_use_result`，后台的工具结果只是 `async_launched`。带 `parent_tool_use_id` 的消息用子 Agent 自己的映射状态转成步骤；不用工具的子 Agent，CLI 不一定把它的回答推到 stdout，这时只有卡片上的结果。读转录时卡片来自主链，步骤读 `<会话 id>/subagents/agent-<agentId>.jsonl`，后台子 Agent 结束时那条 `origin.kind = task-notification` 的用户消息改卡片，不画气泡。
+- **Codex**（`crates/aiwb-agents/src/codex/subagents.rs`）：主线程的 `subAgentActivity` 和 `collabAgentToolCall` 改卡片，标题取 `agentPath` 最后一段；子线程的完成条目转成步骤（不做流式），最后一条回答当结果，`turn/completed` 失败或中断时改状态，`thread/tokenUsage/updated` 记用量。读历史时卡片留在原位置，再用 `thread/read` 读每个子线程补步骤、结果和 `agentRole` / `agentNickname`。
+- **停掉**：进程退出或被停时还在跑的卡片记成已停止；daemon 启动时，上次没跑完的会话和主回合已完成但还有后台子 Agent 的会话也这样记（`settle_interrupted`）。
+- **注意力**：会话状态是已完成但还有卡片在跑时算「在做」，卡片变了按最后的状态重算（`crates/aiwb-core/src/attention.rs` 的 `on_subagent`）。空闲回收不收这样的会话。
+- **界面**（`src/features/chat/events/SubagentGroup.tsx`、`subagent-display.ts`）：相邻的卡片收成一组，组头是「N 个子 Agent · 各状态个数」。卡片不算过程，回合收起时也留在外面。点开看说明、步骤（和过程一样相邻工具收成一行）、结果和用量；结果和最后一句回答相同时不重复。开发预览 `?preview=subagents`。
 
 ## 验证
 已有：`cargo test -p aiwb-daemon --test subtasks`（假适配器走真实 HTTP）；`--test subtasks_cli -- --ignored`（真实 CLI，Claude 开 Codex、Codex 开 Claude，2026-11-04 通过）。下面的清单里没写进测试的，靠这两份覆盖或留到后面。
@@ -194,8 +205,8 @@ Codex、Claude 都能自己派出子 Agent。v1 没做这块；v2 的适配器�
   - 父任务给子任务追加消息，子任务这一回合结束后父会话再被叫醒；用户自己在子任务里发的消息不叫醒父会话。
 - 桌面上走一遍：侧栏里子任务挂在父任务下面，父任务时间线里能看到折叠的「来自 <子任务>」，看板和通知都正常。
 - 子 Agent：
-  - 单元测试：Claude 实时流里带 `parent_tool_use_id` 的消息不进主时间线；`task_*` 事件转成子 Agent 事件；Codex 的两种 item 转成同一组事件。
-  - 真实 CLI（Codex、Claude 各一遍）：派一个子 Agent，再并行派两个。卡片的状态、结果、用量要对；关掉窗口再打开、daemon 重启后 resume，时间线和刚才一致。
+  - 单元测试（报文从实录截取）：Claude 实时流里带 `parent_tool_use_id` 的消息挂到卡片下、不进主时间线；前台、后台两种 `Agent` 调用和 `task_*` 事件转成卡片；读转录恢复卡片和子 Agent 自己的步骤；Codex 子线程的条目和回合不进主会话、不收主回合，历史里卡片留在原位置；步骤只在同一个子 Agent 里合并；后台子 Agent 在跑时会话算在做。
+  - 真实 CLI：`cargo test -p aiwb-daemon --test subagents_cli -- --ignored --nocapture --test-threads=1`。Claude、Codex 各并行派两个，卡片都完成、结果是 PING 和 PONG、跑命令的那个有命令步骤、主时间线里没有子 Agent 的话；Claude 派一个后台的，主回合完了任务仍是在做，跑完变成完成，换一个 daemon 打开同一个库卡片不变。2026-11-04 通过（Claude Code 2.1.312，codex-cli 0.165.0）。
 
 ## 已确认
 1. 第一期只允许一层嵌套。

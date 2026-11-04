@@ -250,6 +250,92 @@ fn is_zero(value: &u32) -> bool {
     *value == 0
 }
 
+/// Agent 自带的子 Agent 跑到哪了。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum SubagentStatus {
+    Running,
+    Completed,
+    Failed,
+    Stopped,
+}
+
+/// 时间线里的一张子 Agent 卡片。同一个 `subagent_id` 的后一条整条替换前一条，适配器每次发全量。
+/// 照 t3code `packages/client-runtime/src/state/subagent-display.ts`。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SubagentCard {
+    /// 派它的那次工具调用 id（Claude）或子线程 id（Codex）。子 Agent 自己的步骤用它归属。
+    pub subagent_id: String,
+    /// 任务描述，没有就用 Agent 的名字。
+    pub title: String,
+    /// 子 Agent 的类型或名字。
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub agent_type: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort: Option<String>,
+    /// 派给它的说明。
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub prompt: String,
+    pub status: SubagentStatus,
+    /// 在后台跑，主回合不等它。
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub background: bool,
+    /// 正在做什么，一句话。结束后不再显示。
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub activity: String,
+    /// 交回来的结果。
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub result: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tokens: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_uses: Option<i64>,
+    /// 原生报的用时。没报时界面用 `started_at` 到 `ended_at` 算。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<i64>,
+    /// 毫秒时间戳。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ended_at: Option<i64>,
+}
+
+impl SubagentCard {
+    pub fn new(subagent_id: impl Into<String>, title: impl Into<String>) -> Self {
+        Self {
+            subagent_id: subagent_id.into(),
+            title: title.into(),
+            agent_type: String::new(),
+            model: None,
+            effort: None,
+            prompt: String::new(),
+            status: SubagentStatus::Running,
+            background: false,
+            activity: String::new(),
+            result: String::new(),
+            tokens: None,
+            tool_uses: None,
+            duration_ms: None,
+            started_at: None,
+            ended_at: None,
+        }
+    }
+
+    /// 换成结束状态。已经结束的不再改。
+    pub fn finish(&mut self, status: SubagentStatus, at: Option<i64>) {
+        if self.status != SubagentStatus::Running {
+            return;
+        }
+        self.status = status;
+        self.activity.clear();
+        if self.ended_at.is_none() {
+            self.ended_at = at;
+        }
+    }
+}
+
 /// 归一化文件状态：新增 / 修改 / 删除 / 重命名。
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum FileStatus {
@@ -517,6 +603,14 @@ pub enum SessionEventBody {
         expires_at: Option<i64>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         resolution: Option<OfferResolution>,
+    },
+    /// Agent 自带的子 Agent。同一个 `subagent_id` 整条替换。
+    Subagent(SubagentCard),
+    /// 子 Agent 自己的一步（回答、思考、工具调用）。不进主时间线，挂在对应卡片下面。
+    /// 同一个子 Agent 里按里面那条的规则覆盖。
+    SubagentStep {
+        subagent_id: String,
+        step: Box<SessionEventBody>,
     },
     /// 适配器请求宿主在同一项目里开一个新会话（`/new`、`/clear`、计划的「清空上下文后实施」）。
     /// 会话管理器不把它写进时间线，而是转给前端去新建、命名并发出首条消息。

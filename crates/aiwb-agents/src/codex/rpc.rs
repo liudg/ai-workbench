@@ -59,6 +59,7 @@ impl Shared {
             let _ = child.start_kill();
         }
         self.fail_waiters("已停止");
+        self.stop_subagents();
         emit_status(&self.events, SessionStatus::Stopped);
     }
 
@@ -117,6 +118,7 @@ impl Shared {
         if self.user_stop.load(Ordering::SeqCst) || self.closed.swap(true, Ordering::SeqCst) {
             return;
         }
+        self.stop_subagents();
         self.turn_open.store(false, Ordering::SeqCst);
         // 只读打开的进程如果随后退出，历史还在。不要改写成「会话失败」。
         if self.read_only() {
@@ -397,6 +399,10 @@ impl Shared {
     }
 
     pub(super) fn handle_notification(&self, method: &str, params: &Value) {
+        // 子 Agent 的线程也走这条连接，不能当成本会话的回合和条目。
+        if self.route_foreign_thread(method, params) {
+            return;
+        }
         match method {
             "turn/started" => {
                 self.turn_open.store(true, Ordering::SeqCst);
@@ -559,6 +565,9 @@ impl Shared {
     }
 
     pub(super) fn handle_item(&self, completed: bool, item: &Value) {
+        if self.on_subagent_item(item) {
+            return;
+        }
         if item.get("type").and_then(Value::as_str) == Some("fileChange") {
             if let Some(id) = item.get("id").and_then(Value::as_str).filter(|id| !id.is_empty()) {
                 self.file_items

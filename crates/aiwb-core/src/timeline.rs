@@ -2,23 +2,53 @@
 //!
 //! 流式输出（同一 `stream_id` 的助手消息、思考、工具调用、计划正文）和按回合覆盖的
 //! 差异、文件变更、计划步骤，都改写已有那条并沿用原来的 id 和 seq。
+//! 子 Agent 卡片按 `subagent_id` 覆盖；子 Agent 的步骤只和同一个子 Agent 的步骤比。
 
 use crate::models::{SessionEvent, SessionEventBody};
 
 /// 能覆盖时改写 `events` 里的那一条，返回它的下标；否则返回 None，调用方追加。
 pub fn merge_into(events: &mut [SessionEvent], body: &SessionEventBody, now: i64) -> Option<usize> {
-    if let Some(index) = replace_keyed(events, body) {
-        events[index].body = body.clone();
-        events[index].ts = now;
-        return Some(index);
-    }
-    let index = replace_stream(events, body)?;
+    let index = match body {
+        SessionEventBody::SubagentStep { subagent_id, step } => {
+            let owned: Vec<usize> = events
+                .iter()
+                .enumerate()
+                .filter(|(_, event)| {
+                    matches!(&event.body, SessionEventBody::SubagentStep { subagent_id: id, .. } if id == subagent_id)
+                })
+                .map(|(index, _)| index)
+                .collect();
+            let mut steps: Vec<&mut SessionEventBody> = events
+                .iter_mut()
+                .filter_map(|event| match &mut event.body {
+                    SessionEventBody::SubagentStep { subagent_id: id, step } if id == subagent_id => {
+                        Some(step.as_mut())
+                    }
+                    _ => None,
+                })
+                .collect();
+            owned[merge_body(&mut steps, step)?]
+        }
+        _ => {
+            let mut bodies: Vec<&mut SessionEventBody> = events.iter_mut().map(|event| &mut event.body).collect();
+            merge_body(&mut bodies, body)?
+        }
+    };
     events[index].ts = now;
     Some(index)
 }
 
-fn replace_keyed(events: &[SessionEvent], body: &SessionEventBody) -> Option<usize> {
-    events.iter().rposition(|event| match (&event.body, body) {
+/// 在 `bodies` 里找能被 `body` 覆盖的那条并改写，返回下标。
+fn merge_body(bodies: &mut [&mut SessionEventBody], body: &SessionEventBody) -> Option<usize> {
+    if let Some(index) = replace_keyed(bodies, body) {
+        *bodies[index] = body.clone();
+        return Some(index);
+    }
+    replace_stream(bodies, body)
+}
+
+fn replace_keyed(bodies: &[&mut SessionEventBody], body: &SessionEventBody) -> Option<usize> {
+    bodies.iter().rposition(|existing| match (&**existing, body) {
         (
             SessionEventBody::TurnDiff {
                 turn_id: existing, ..
@@ -65,12 +95,15 @@ fn replace_keyed(events: &[SessionEvent], body: &SessionEventBody) -> Option<usi
                 ..
             },
         ) => existing == stream_id,
+        (SessionEventBody::Subagent(existing), SessionEventBody::Subagent(card)) => {
+            existing.subagent_id == card.subagent_id
+        }
         _ => false,
     })
 }
 
 /// 同一 `stream_id` 的助手消息或思考：正文换成新的，阶段、模式、去重标记只在新值有内容时更新。
-fn replace_stream(events: &mut [SessionEvent], body: &SessionEventBody) -> Option<usize> {
+fn replace_stream(bodies: &mut [&mut SessionEventBody], body: &SessionEventBody) -> Option<usize> {
     let (text, stream_id, thinking, phase, mode, dedupe_of) = match body {
         SessionEventBody::AgentMessage {
             text,
@@ -92,7 +125,7 @@ fn replace_stream(events: &mut [SessionEvent], body: &SessionEventBody) -> Optio
         } => (text, stream_id, true, None, None, None),
         _ => return None,
     };
-    let index = events.iter().rposition(|event| match &event.body {
+    let index = bodies.iter().rposition(|existing| match &**existing {
         SessionEventBody::AgentMessage {
             stream_id: Some(id),
             ..
@@ -103,7 +136,7 @@ fn replace_stream(events: &mut [SessionEvent], body: &SessionEventBody) -> Optio
         } if thinking => id == stream_id,
         _ => false,
     })?;
-    match &mut events[index].body {
+    match &mut *bodies[index] {
         SessionEventBody::AgentMessage {
             text: slot,
             phase: slot_phase,
@@ -144,6 +177,8 @@ pub fn is_conversation_activity(body: &SessionEventBody) -> bool {
             | SessionEventBody::TurnDiff { .. }
             | SessionEventBody::FileChange { .. }
             | SessionEventBody::TurnChanges { .. }
+            | SessionEventBody::Subagent(_)
+            | SessionEventBody::SubagentStep { .. }
     )
 }
 
@@ -212,6 +247,39 @@ mod tests {
             stream_id: Some("x".into()),
         };
         assert!(merge_into(&mut events, &thinking, 1).is_none());
+    }
+
+    fn step(subagent: &str, body: SessionEventBody) -> SessionEventBody {
+        SessionEventBody::SubagentStep {
+            subagent_id: subagent.into(),
+            step: Box::new(body),
+        }
+    }
+
+    /// 子 Agent 的步骤只和同一个子 Agent 的步骤合并；卡片按 id 整条替换。
+    #[test]
+    fn subagent_steps_merge_within_their_subagent() {
+        let mut events = vec![
+            event(1, message("主线", "m1", None)),
+            event(2, step("a", message("子", "m1", None))),
+            event(3, step("b", message("另一个", "m1", None))),
+        ];
+        let index = merge_into(&mut events, &step("a", message("子回答", "m1", None)), 7).unwrap();
+        assert_eq!(index, 1);
+        match &events[1].body {
+            SessionEventBody::SubagentStep { step, .. } => {
+                assert!(matches!(&**step, SessionEventBody::AgentMessage { text, .. } if text == "子回答"))
+            }
+            other => panic!("{other:?}"),
+        }
+        assert!(matches!(&events[0].body, SessionEventBody::AgentMessage { text, .. } if text == "主线"));
+        assert!(merge_into(&mut events, &step("c", message("新", "m1", None)), 7).is_none());
+
+        let mut card = crate::models::SubagentCard::new("a", "查一下");
+        events.push(event(4, SessionEventBody::Subagent(card.clone())));
+        card.result = "查完了".into();
+        assert_eq!(merge_into(&mut events, &SessionEventBody::Subagent(card), 8), Some(3));
+        assert!(matches!(&events[3].body, SessionEventBody::Subagent(card) if card.result == "查完了"));
     }
 
     #[test]

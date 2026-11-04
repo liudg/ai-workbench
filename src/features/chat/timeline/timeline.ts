@@ -96,7 +96,8 @@ function skippedInTimeline(event: SessionEvent): boolean {
     event.kind === "collaboration-mode" ||
     event.kind === "goal" ||
     event.kind === "context-usage" ||
-    event.kind === "session-usage"
+    event.kind === "session-usage" ||
+    event.kind === "subagent-step"
   );
 }
 
@@ -439,6 +440,12 @@ export function contentChars(events: readonly SessionEvent[]): number {
       case "plan-text":
       case "review-note":
         chars += event.text.length;
+        break;
+      case "subagent":
+        chars += event.title.length + (event.activity?.length ?? 0) + (event.result?.length ?? 0);
+        break;
+      case "subagent-step":
+        chars += contentChars([{ ...event, ...event.step }]) + 1;
         break;
       case "review-findings": {
         const findings = Array.isArray(event.findings) ? event.findings : [];

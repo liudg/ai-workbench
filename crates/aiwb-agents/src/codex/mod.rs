@@ -30,6 +30,7 @@ mod rpc;
 mod sandbox;
 mod state;
 mod status;
+mod subagents;
 mod subscription;
 mod thread_status;
 mod tokens;
@@ -291,6 +292,7 @@ impl AgentAdapter for CodexCliAdapter {
             review_output: Mutex::new(None),
             history_cursor: Mutex::new(None),
             activity: Mutex::new(HashMap::new()),
+            subagents: Mutex::new(HashMap::new()),
             denials: Mutex::new(guardian::RecentDenials::default()),
             status_known: AtomicBool::new(false),
             token_info: Mutex::new(None),

@@ -25,6 +25,7 @@ pub fn chronological_turns(pages_newest_first: &[Vec<Value>]) -> Vec<Value> {
 
 pub fn bodies_from_turns(turns: &[Value]) -> Vec<SessionEventBody> {
     let mut bodies = Vec::new();
+    let mut subagents = std::collections::HashMap::new();
     for turn in turns {
         let turn_id = turn
             .get("id")
@@ -42,6 +43,10 @@ pub fn bodies_from_turns(turns: &[Value]) -> Vec<SessionEventBody> {
         let mut review: Option<(String, String)> = None;
         let mut files = Vec::new();
         for item in items {
+            if let Some(cards) = super::subagents::apply_item(&mut subagents, item, None) {
+                bodies.extend(cards);
+                continue;
+            }
             let kind = item.get("type").and_then(Value::as_str).unwrap_or("");
             if kind == "userMessage" && !anchored && !turn_id.is_empty() {
                 push_history_item(&mut bodies, &turn_id, plan, &mut files, item);

@@ -270,8 +270,10 @@ impl Shared {
                 };
                 let (events, diff) = {
                     let mut map = self.map.lock().unwrap();
+                    map.subagent_dir = Some(history::subagent_dir(&path));
                     let events =
                         messages::events_from_transcript(&mut map, &text, Some(&self.project_path));
+                    map.subagent_dir = None;
                     let diff = map.latest_diff();
                     map.model = model_before;
                     (events, diff)
@@ -925,6 +927,10 @@ impl Shared {
         self.outbound.lock().unwrap().take();
         let message = self.stderr_message("Claude Code 已退出");
         self.fail_waiters(message.clone());
+        // 进程没了，还在跑的子 Agent 也跟着停了。
+        for card in self.map.lock().unwrap().stop_subagents() {
+            let _ = self.events.send(card);
+        }
         if first && !self.user_stopped.load(Ordering::SeqCst) {
             let _ = self.events.send(SessionEventBody::Error { message });
             let _ = self.events.send(SessionEventBody::StatusChanged {

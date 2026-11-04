@@ -39,8 +39,10 @@ export function LiveTurn({
   const answerContent = events.filter(isAnswerContent);
   // 收起时还要留着引导的话，和每次被引导打断前已经写出来的正文。
   const earlier = partAnswers(turnParts(events, false).slice(0, -1));
+  // 子 Agent 卡片收起时也留着。
   const folded = events.filter(
-    (event) => isAnswerContent(event) || event.kind === "user-message" || earlier.has(event.id),
+    (event) =>
+      isAnswerContent(event) || event.kind === "user-message" || event.kind === "subagent" || earlier.has(event.id),
   );
 
   return (

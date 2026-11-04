@@ -9,10 +9,10 @@ use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use aiwb_agents::{AgentAdapter, AgentError, AgentSession, SessionContext, TurnDelivery, UserTurn};
-use aiwb_core::attention::{self, Attention};
+use aiwb_core::attention::{self, Attention, AttentionState};
 use aiwb_core::models::{
     new_id, AgentCatalog, now_millis, AgentKind, MessageSender, PageAnnotation, QueuedTurn, SessionEvent,
-    SessionEventBody, SessionStatus,
+    SessionEventBody, SessionStatus, SubagentStatus,
 };
 use aiwb_core::rpc::{session_topic, TOPIC_TASKS};
 use aiwb_core::task::{SessionFeed, SessionOptions, StoredEvent, TaskWorkspace};
@@ -131,16 +131,40 @@ impl Runtimes {
     }
 
     /// 上次退出时还在跑或在等输入的会话，那一轮已经断了。记一条停止状态。
+    /// 还在跑的子 Agent（包括主回合已完成的后台子 Agent）也跟着停了。
     pub(crate) fn settle_interrupted(&self) -> RuntimeResult<()> {
         let sessions = self.store.list_sessions().map_err(|e| e.to_string())?;
         for session in sessions {
-            if matches!(session.status, SessionStatus::Running | SessionStatus::NeedsInput) {
+            let interrupted = matches!(session.status, SessionStatus::Running | SessionStatus::NeedsInput);
+            let working = self
+                .store
+                .attention(&session.id)
+                .map_err(|e| e.to_string())?
+                .is_some_and(|attention| attention.state == AttentionState::Working);
+            if interrupted || working {
+                self.stop_subagents(&session.id)?;
+            }
+            if interrupted {
                 self.record(
                     &session.id,
                     SessionEventBody::StatusChanged {
                         status: SessionStatus::Stopped,
                     },
                 )?;
+            }
+        }
+        Ok(())
+    }
+
+    fn stop_subagents(&self, session_id: &str) -> RuntimeResult<()> {
+        let events = self.store.events_since(session_id, 0).map_err(|e| e.to_string())?;
+        let now = now_millis();
+        for stored in events {
+            if let SessionEventBody::Subagent(mut card) = stored.event.body {
+                if card.status == SubagentStatus::Running {
+                    card.finish(SubagentStatus::Stopped, Some(now));
+                    self.record(session_id, SessionEventBody::Subagent(card))?;
+                }
             }
         }
         Ok(())
@@ -209,6 +233,7 @@ impl Runtimes {
             SessionEventBody::Prompt { .. } | SessionEventBody::PromptResolved { .. } => {
                 attention::on_prompt(&prev()?, events)
             }
+            SessionEventBody::Subagent(_) => attention::on_subagent(&prev()?, events, self.is_viewed(task_id), now),
             _ => None,
         })
     }
@@ -867,6 +892,15 @@ impl Runtimes {
                 continue;
             };
             if session.status != SessionStatus::Completed {
+                continue;
+            }
+            // 主回合完了，后台的子 Agent 还在跑。
+            let working = self
+                .store
+                .attention(&session_id)
+                .map_err(|e| e.to_string())?
+                .is_some_and(|attention| attention.state == AttentionState::Working);
+            if working {
                 continue;
             }
             if self.store.is_side_session(&session_id).map_err(|e| e.to_string())? {

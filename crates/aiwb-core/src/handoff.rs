@@ -28,7 +28,8 @@ pub struct HistoricalMessage {
     pub item: String,
 }
 
-/// 能交接的事件：用户消息、回复、工具调用、报错、计划、审查结果。思考、提问卡、状态不带。
+/// 能交接的事件：用户消息、回复、工具调用、子 Agent 的结果、报错、计划、审查结果。
+/// 思考、提问卡、状态和子 Agent 自己的步骤不带。
 pub fn historical_message(event: &SessionEvent) -> Option<HistoricalMessage> {
     let (role, kind, text) = match &event.body {
         SessionEventBody::UserMessage { text, .. } => (Role::User, "user_message", text.clone()),
@@ -44,6 +45,14 @@ pub fn historical_message(event: &SessionEvent) -> Option<HistoricalMessage> {
                 text.push_str(detail);
             }
             (Role::Assistant, "tool_call", text)
+        }
+        SessionEventBody::Subagent(card) => {
+            let mut text = format!("Subagent: {}", card.title);
+            if !card.result.trim().is_empty() {
+                text.push('\n');
+                text.push_str(&card.result);
+            }
+            (Role::Assistant, "subagent", text)
         }
         SessionEventBody::Error { message } => (Role::Assistant, "error", message.clone()),
         SessionEventBody::PlanText { text, .. } => (Role::Assistant, "proposed_plan", text.clone()),

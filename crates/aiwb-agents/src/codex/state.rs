@@ -12,7 +12,7 @@ use tokio::sync::{mpsc, oneshot, Mutex as AsyncMutex};
 use crate::EventSink;
 use aiwb_core::models::{
     FileChange, MessagePhase, PromptQuestion, QueuedTurn, SessionEventBody, SessionStatus,
-    ToolStatus,
+    SubagentCard, ToolStatus,
     OCCUPIED_SESSION_NOTICE,
 };
 
@@ -172,6 +172,8 @@ pub(super) struct Shared {
     pub(super) history_cursor: Mutex<Option<String>>,
     /// 流式命令输出和补丁正文。键是 item id。
     pub(super) activity: Mutex<HashMap<String, ActivityBuf>>,
+    /// 子 Agent 卡片，按子线程 id。
+    pub(super) subagents: Mutex<HashMap<String, SubagentCard>>,
     /// 本线程最近的自动审查拒绝，`/approve` 从这里选。
     pub(super) denials: Mutex<super::guardian::RecentDenials>,
     /// 已经从 app-server 拿到过线程状态。
@@ -316,6 +318,7 @@ impl Shared {
             review_output: Mutex::new(None),
             history_cursor: Mutex::new(None),
             activity: Mutex::new(HashMap::new()),
+            subagents: Mutex::new(HashMap::new()),
             denials: Mutex::new(super::guardian::RecentDenials::default()),
             status_known: AtomicBool::new(false),
             token_info: Mutex::new(None),

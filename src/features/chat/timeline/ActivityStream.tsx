@@ -5,6 +5,7 @@ import { ActivityGroup } from "../events/ActivityGroup";
 import { foldActivity, type ActivityPiece } from "../events/activity-fold";
 import { activityOpenAfterSettle, toggleToolGroup, toolGroupOpen } from "../events/activity-open";
 import { EventItem } from "../events/EventItem";
+import { SubagentGroup } from "../events/SubagentGroup";
 import { ViewedImages } from "../events/ViewedImages";
 
 /**
@@ -54,6 +55,9 @@ export function ActivityStream({
               }}
             />
           );
+        }
+        if (piece.type === "subagents") {
+          return <SubagentGroup key={piece.id} cards={piece.cards} session={session} />;
         }
         if (piece.type === "tools") {
           return (

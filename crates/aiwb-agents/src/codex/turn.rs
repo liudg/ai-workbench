@@ -261,6 +261,7 @@ impl Shared {
                     self.note_replayed(&body);
                     emit(&self.events, body);
                 }
+                self.load_subagents(&turns).await;
             }
             Err(err) => {
                 emit(

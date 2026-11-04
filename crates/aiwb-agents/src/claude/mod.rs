@@ -22,9 +22,12 @@ mod process;
 mod queue;
 mod runtime;
 mod session;
+mod subagents;
 mod subscription;
 mod usage;
 
+#[cfg(test)]
+mod subagent_tests;
 #[cfg(test)]
 mod tests;
 
@@ -102,6 +105,7 @@ impl AgentAdapter for ClaudeCodeAdapter {
         let text = history::read_session_text(&path)
             .ok_or_else(|| AgentError::Runtime(format!("读不了会话 {native_id}")))?;
         let mut state = messages::MapState::default();
+        state.subagent_dir = Some(history::subagent_dir(&path));
         let mut events =
             messages::events_from_transcript(&mut state, &text, Some(std::path::Path::new(cwd)));
         events.extend(usage::snapshot_from_transcript(&text));

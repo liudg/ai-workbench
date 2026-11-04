@@ -14,6 +14,35 @@ export type MessagePhase = "commentary" | "partial-answer" | "final-answer";
 /** 一条工具调用的进度。`running` 只在这一轮还在跑时才算真的在跑。 */
 export type ToolStatus = "running" | "completed" | "failed";
 
+/** Agent 自带的子 Agent 跑到哪了。 */
+export type SubagentStatus = "running" | "completed" | "failed" | "stopped";
+
+/** 时间线里的一张子 Agent 卡片。同一个 `subagent_id` 的后一条整条替换前一条。 */
+export interface SubagentCard {
+  /** 派它的工具调用 id 或子线程 id。子 Agent 自己的步骤用它归属。 */
+  subagent_id: string;
+  /** 任务描述，可能为空。 */
+  title: string;
+  agent_type?: string;
+  model?: string;
+  effort?: string;
+  /** 派给它的说明。 */
+  prompt?: string;
+  status: SubagentStatus;
+  /** 在后台跑，主回合不等它。 */
+  background?: boolean;
+  /** 正在做什么，一句话。 */
+  activity?: string;
+  /** 交回来的结果。 */
+  result?: string;
+  tokens?: number;
+  tool_uses?: number;
+  /** 原生报的用时。没报时用起止时间算。 */
+  duration_ms?: number;
+  started_at?: number;
+  ended_at?: number;
+}
+
 /** 提问卡片的按钮和占位。适配器写入，界面不看 Agent 名字。 */
 export type QuestionSurface = "request-input" | "async-reply";
 
@@ -175,6 +204,10 @@ export type SessionEventBody =
       expires_at?: number;
       resolution?: { kind: "accepted"; task_ids: string[] } | { kind: "declined" };
     }
+  /** Agent 自带的子 Agent。同一个 `subagent_id` 整条替换。 */
+  | ({ kind: "subagent" } & SubagentCard)
+  /** 子 Agent 自己的一步。不进主时间线，挂在对应卡片下面。 */
+  | { kind: "subagent-step"; subagent_id: string; step: SessionEventBody }
   /** 线程目标。objective 为空表示已清除。用量字段来自 `thread/goal`，没有就不编。 */
   | {
       kind: "goal";

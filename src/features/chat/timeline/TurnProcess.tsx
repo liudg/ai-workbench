@@ -14,6 +14,8 @@ import { SessionAgentIcon } from "@/shared/agent/SessionAgentIcon";
 import { AGENT_LABELS, type Session, type SessionEvent } from "@/types";
 import { agentTurnName, useAgentIdentity, useEventAgent } from "../events/use-agent-identity";
 import { hasGeneratedImages } from "../events/generated-images";
+import { foldActivity } from "../events/activity-fold";
+import { SubagentGroup } from "../events/SubagentGroup";
 
 /**
  * 一轮结束后的过程条。状态行是这块的第一个子节点，名称和用时在同一行。
@@ -72,6 +74,13 @@ export function TurnProcess({
     />
   );
 
+  /** 留在折叠线外面的事件。相邻的子 Agent 卡片收成一组。 */
+  const renderLoose = (loose: SessionEvent[]) =>
+    foldActivity(loose).map((piece) => {
+      if (piece.type === "subagents") return <SubagentGroup key={piece.id} cards={piece.cards} session={session} />;
+      return piece.type === "event" ? renderEvent(piece.event, false) : null;
+    });
+
   /** 一段：答复前的说明，展开时的过程，生成的图，答复，答复后的说明。 */
   const renderPart = (part: TurnPart) => {
     const index = part.answerId == null ? -1 : part.events.findIndex((event) => event.id === part.answerId);
@@ -80,9 +89,7 @@ export function TurnProcess({
     const process = part.events.filter((event) => isProcess(event, part.answerId));
     return (
       <>
-        {before
-          .filter((event) => !isProcess(event, part.answerId) && !hasGeneratedImages(event))
-          .map((event) => renderEvent(event, false))}
+        {renderLoose(before.filter((event) => !isProcess(event, part.answerId) && !hasGeneratedImages(event)))}
         {expanded && process.length > 0 ? (
           <ActivityStream
             events={process}
@@ -95,7 +102,7 @@ export function TurnProcess({
         ) : null}
         {before.filter(hasGeneratedImages).map((event) => renderEvent(event, false))}
         {index >= 0 ? renderEvent(part.events[index], false) : null}
-        {after.filter((event) => !isProcess(event, part.answerId)).map((event) => renderEvent(event, false))}
+        {renderLoose(after.filter((event) => !isProcess(event, part.answerId)))}
       </>
     );
   };
