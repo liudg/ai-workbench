@@ -20,6 +20,14 @@ pub struct DirectoryEntry {
     pub archived: bool,
 }
 
+/// 某个项目目录下的一页原生会话，从新到旧。还有更早的就给 `next_cursor`，原样传回取下一页。
+/// 一页可能不满，甚至是空的，只要有游标就还有。
+#[derive(Debug, Clone, Default)]
+pub struct DirectoryPage {
+    pub entries: Vec<DirectoryEntry>,
+    pub next_cursor: Option<String>,
+}
+
 /// 列出 / 失效一个 Agent 的原生会话。
 #[async_trait]
 pub trait SessionDirectory: Send + Sync {

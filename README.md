@@ -106,7 +106,7 @@ pnpm dev                   # 打开 http://localhost:4573
 
 ## 多 Agent 边界
 
-项目、任务、会话都以 daemon 的数据库为准，侧栏不扫描各 CLI 的目录。在终端里用 CLI 开的会话，从侧栏项目菜单「导入 CLI 会话」拉进来：适配器的 `import_list` 列出原生会话（Codex 是未归档的 `thread/list`，Claude Code 读 `~/.claude/projects`），按工作目录对上项目主目录。移除项目只改工作台列表，不删除 Agent 的 rollout，也不改写 Agent 自己的项目列表。
+项目、任务、会话都以 daemon 的数据库为准，侧栏不扫描各 CLI 的目录。在终端里用 CLI 开的会话，从侧栏项目菜单「导入 CLI 会话」拉进来：按 Agent 分标签，滚到底部再取下一页。适配器的 `import_page` 只列工作目录是项目主目录的原生会话（Codex 是带 `cwd` 的未归档 `thread/list`，Claude Code 只读 `~/.claude/projects` 下这个项目的目录），已经导入过的不再列出。移除项目只改工作台列表，不删除 Agent 的 rollout，也不改写 Agent 自己的项目列表。
 
 `SessionContext` 只保留通用字段：工作目录、权限档位、要恢复的 native id，以及 `options`。Codex 从 `options.persist` 决定新线程是否写入官方 resume 列表；行协议留在 `crates/aiwb-agents/src/codex/`。
 

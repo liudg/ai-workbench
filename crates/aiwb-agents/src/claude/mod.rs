@@ -12,7 +12,6 @@ mod catalog;
 mod command;
 mod control;
 mod diff;
-mod directory;
 mod history;
 mod images;
 mod mcp;
@@ -31,8 +30,6 @@ mod subagent_tests;
 #[cfg(test)]
 mod tests;
 
-pub use directory::ClaudeDirectory;
-
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -41,7 +38,8 @@ use session::ClaudeSession;
 
 use crate::install::CliRelease;
 use crate::{
-    AgentAdapter, AgentError, AgentSession, DirectoryEntry, EventSink, SessionContext,
+    AgentAdapter, AgentError, AgentSession, DirectoryEntry, DirectoryPage, EventSink,
+    SessionContext,
 };
 use aiwb_core::models::{cwd_key, AgentCapabilities, AgentKind, AgentProfile, SessionStatus};
 
@@ -86,9 +84,19 @@ impl AgentAdapter for ClaudeCodeAdapter {
         permission::permission_menu(&active)
     }
 
-    async fn import_list(&self) -> Result<Vec<DirectoryEntry>, AgentError> {
-        use crate::SessionDirectory;
-        ClaudeDirectory::shared().list().await.map_err(AgentError::Runtime)
+    /// 只读 `~/.claude/projects` 下这个项目的目录，不起 CLI。
+    async fn import_page(
+        &self,
+        cwd: &str,
+        cursor: Option<&str>,
+        limit: usize,
+    ) -> Result<DirectoryPage, AgentError> {
+        let page =
+            history::list_project_page(cwd, cursor, limit).map_err(AgentError::Runtime)?;
+        Ok(DirectoryPage {
+            entries: page.sessions.into_iter().map(listed_entry).collect(),
+            next_cursor: page.next_cursor,
+        })
     }
 
     /// 直接读 `~/.claude/projects` 里的转录，不起 CLI。
@@ -119,18 +127,9 @@ impl AgentAdapter for ClaudeCodeAdapter {
     /// `--fork-session` 不带提示词会失败（CLI：`No deferred tool marker found... Provide a prompt`）。
     /// 带一条占位提示会多出用户没写的回合。分叉就是把转录复制成新的 session id。
     async fn fork_thread(&self, native_id: &str) -> Result<DirectoryEntry, AgentError> {
-        let listed = history::fork_session_file(native_id).map_err(AgentError::Runtime)?;
-        Ok(DirectoryEntry {
-            native_id: listed.session_id,
-            cwd: listed.cwd.clone(),
-            cwd_key: cwd_key(&listed.cwd),
-            title: listed.title,
-            created_at: listed.created_at,
-            updated_at: listed.updated_at,
-            status: SessionStatus::Completed,
-            ephemeral: false,
-            archived: false,
-        })
+        history::fork_session_file(native_id)
+            .map(listed_entry)
+            .map_err(AgentError::Runtime)
     }
 
     /// 没有按会话删除的子命令。`purge` 删整个项目，`rm` 删后台会话。
@@ -205,4 +204,18 @@ impl AgentAdapter for ClaudeCodeAdapter {
         Ok(Arc::new(ClaudeSession::new(shared)))
     }
 
+}
+
+fn listed_entry(listed: history::ListedSession) -> DirectoryEntry {
+    DirectoryEntry {
+        native_id: listed.session_id,
+        cwd_key: cwd_key(&listed.cwd),
+        cwd: listed.cwd,
+        title: listed.title,
+        created_at: listed.created_at,
+        updated_at: listed.updated_at,
+        status: SessionStatus::Completed,
+        ephemeral: false,
+        archived: false,
+    }
 }

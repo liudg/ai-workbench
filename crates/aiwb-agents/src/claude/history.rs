@@ -42,52 +42,98 @@ pub fn projects_dir() -> PathBuf {
     }
 }
 
-pub fn list_sessions() -> Vec<ListedSession> {
-    list_sessions_under(&projects_dir())
+/// 一页会话和下一页的游标。游标是这页最后一个文件的 `修改时间:会话 id`。
+#[derive(Debug, Default)]
+pub struct ListedPage {
+    pub sessions: Vec<ListedSession>,
+    pub next_cursor: Option<String>,
 }
 
-pub fn list_sessions_under(projects: &Path) -> Vec<ListedSession> {
-    let mut listed = Vec::new();
-    let entries = match std::fs::read_dir(projects) {
-        Ok(entries) => entries,
-        Err(_) => return listed,
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_dir() {
-            continue;
-        }
-        listed.extend(list_project_dir(&path));
-    }
-    listed.sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
-    listed
+pub fn list_project_page(cwd: &str, cursor: Option<&str>, limit: usize) -> Result<ListedPage, String> {
+    list_project_page_under(&projects_dir(), cwd, cursor, limit)
 }
 
-pub fn list_project_dir(project_dir: &Path) -> Vec<ListedSession> {
-    let mut listed = Vec::new();
-    let entries = match std::fs::read_dir(project_dir) {
-        Ok(entries) => entries,
-        Err(_) => return listed,
-    };
-    for entry in entries.flatten() {
+/// 只读 `cwd` 对应的项目目录，按文件修改时间从新到旧取 `limit` 个文件，只解析这些文件的头尾。
+/// 一页里按消息时间排序。解析不出标题的、sidechain 的文件也占名额，所以一页可能不满。
+pub fn list_project_page_under(
+    projects: &Path,
+    cwd: &str,
+    cursor: Option<&str>,
+    limit: usize,
+) -> Result<ListedPage, String> {
+    let after = cursor.map(parse_cursor).transpose()?;
+    let mut files = Vec::new();
+    let entries = project_dir(projects, cwd).and_then(|dir| std::fs::read_dir(dir).ok());
+    for entry in entries.into_iter().flatten().flatten() {
         let path = entry.path();
-        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+        let Some(session_id) = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .and_then(|name| name.strip_suffix(".jsonl"))
+            .filter(|id| is_uuid(id))
+            .map(str::to_string)
+        else {
             continue;
         };
-        let Some(session_id) = name.strip_suffix(".jsonl") else {
-            continue;
-        };
-        if !is_uuid(session_id) {
-            continue;
-        }
-        let Some(lite) = read_lite(&path) else {
-            continue;
-        };
-        if let Some(info) = parse_lite(session_id, &lite) {
-            listed.push(info);
-        }
+        let mtime = entry
+            .metadata()
+            .ok()
+            .and_then(|meta| meta.modified().ok())
+            .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|duration| duration.as_millis() as i64)
+            .unwrap_or(0);
+        files.push((mtime, session_id, path));
     }
-    listed
+    files.sort_by(|left, right| (right.0, &right.1).cmp(&(left.0, &left.1)));
+    if let Some((mtime, id)) = &after {
+        files.retain(|file| (file.0, &file.1) < (*mtime, id));
+    }
+    let more = files.len() > limit;
+    files.truncate(limit);
+    let next_cursor = more
+        .then(|| files.last().map(|(mtime, id, _)| format!("{mtime}:{id}")))
+        .flatten();
+    let mut sessions: Vec<ListedSession> = files
+        .iter()
+        .filter_map(|(_, id, path)| parse_lite(id, &read_lite(path)?))
+        .collect();
+    sessions.sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
+    Ok(ListedPage {
+        sessions,
+        next_cursor,
+    })
+}
+
+/// 照 `sessions.py` `_find_project_dir`：先找完整的目录名；超长路径的哈希后缀
+/// CLI（`Bun.hash`）和 SDK 算法不同，只按前 200 个字符加 `-` 的前缀找第一个。
+fn project_dir(projects: &Path, cwd: &str) -> Option<PathBuf> {
+    let name = sanitize_path(cwd);
+    let exact = projects.join(&name);
+    if exact.is_dir() {
+        return Some(exact);
+    }
+    if name.len() <= MAX_SANITIZED_LENGTH {
+        return None;
+    }
+    let prefix = format!("{}-", &name[..MAX_SANITIZED_LENGTH]);
+    std::fs::read_dir(projects)
+        .ok()?
+        .flatten()
+        .map(|entry| entry.path())
+        .find(|path| {
+            path.is_dir()
+                && path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.starts_with(&prefix))
+        })
+}
+
+fn parse_cursor(cursor: &str) -> Result<(i64, String), String> {
+    cursor
+        .split_once(':')
+        .and_then(|(mtime, id)| Some((mtime.parse().ok()?, id.to_string())))
+        .ok_or_else(|| format!("无效的游标：{cursor}"))
 }
 
 pub fn find_session_file(session_id: &str) -> Option<PathBuf> {
@@ -898,6 +944,12 @@ mod tests {
         path
     }
 
+    fn listed(root: &Path) -> Vec<ListedSession> {
+        list_project_page_under(root, "/workspace/demo", None, usize::MAX)
+            .unwrap()
+            .sessions
+    }
+
     fn touch(path: &Path, secs: u64) {
         let file = std::fs::File::options().write(true).open(path).unwrap();
         file.set_modified(SystemTime::UNIX_EPOCH + Duration::from_secs(secs))
@@ -919,7 +971,7 @@ mod tests {
     }
 
     fn listed_at(root: &Path, id: &str) -> i64 {
-        list_sessions_under(root)
+        listed(root)
             .into_iter()
             .find(|item| item.session_id == id)
             .unwrap()
@@ -967,7 +1019,7 @@ mod tests {
         touch(&path, 1_800_000_000);
         assert_eq!(listed_at(&root, OLDER), expected);
         assert_eq!(
-            list_sessions_under(&root)
+            listed(&root)
                 .into_iter()
                 .find(|item| item.session_id == OLDER)
                 .unwrap()
@@ -1050,7 +1102,7 @@ mod tests {
         let newer_path = write_session(&root, NEWER, &newer_body);
         touch(&older_path, 1_900_000_000);
         touch(&newer_path, 1_600_000_000);
-        let listed = list_sessions_under(&root);
+        let listed = listed(&root);
         assert_eq!(listed[0].session_id, NEWER);
         assert_eq!(listed[1].session_id, OLDER);
         let _ = std::fs::remove_dir_all(&root);
@@ -1103,6 +1155,38 @@ mod tests {
         let path = write_session(&root, OLDER, &body);
         touch(&path, 123_456);
         assert_eq!(listed_at(&root, OLDER), 123_456_000);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn pages_follow_file_mtime_and_skip_other_projects() {
+        let root = scratch("pages");
+        let ids = [OLDER, NEWER, "cccccccc-cccc-4ccc-8ccc-cccccccccccc"];
+        for (index, id) in ids.iter().enumerate() {
+            let body = user_line("11111111-1111-4111-8111-111111111111", "2020-01-01T00:00:00Z", id);
+            touch(&write_session(&root, id, &body), 1_600_000_000 + index as u64);
+        }
+        let elsewhere = root.join("-workspace-other");
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        std::fs::write(
+            elsewhere.join("dddddddd-dddd-4ddd-8ddd-dddddddddddd.jsonl"),
+            user_line("11111111-1111-4111-8111-111111111111", "2020-01-01T00:00:00Z", "别的项目"),
+        )
+        .unwrap();
+
+        let first = list_project_page_under(&root, "/workspace/demo", None, 2).unwrap();
+        let names: Vec<_> = first.sessions.iter().map(|item| item.session_id.as_str()).collect();
+        assert_eq!(names.len(), 2);
+        assert!(names.contains(&ids[2]) && names.contains(&NEWER));
+        let cursor = first.next_cursor.expect("还有下一页");
+        let second = list_project_page_under(&root, "/workspace/demo", Some(&cursor), 2).unwrap();
+        assert_eq!(second.sessions.len(), 1);
+        assert_eq!(second.sessions[0].session_id, OLDER);
+        assert!(second.next_cursor.is_none());
+        assert!(list_project_page_under(&root, "/workspace/missing", None, 2)
+            .unwrap()
+            .sessions
+            .is_empty());
         let _ = std::fs::remove_dir_all(&root);
     }
 }

@@ -78,10 +78,11 @@ export interface ImportCandidate {
   updatedAt: number;
 }
 
-export interface ImportList {
+/** 一个 Agent 的一页，从新到旧。 */
+export interface ImportPage {
   items: ImportCandidate[];
-  /** 读不出列表的 Agent 和原因。其他 Agent 的照常列出。 */
-  errors: { agent: AgentKind; message: string }[];
+  /** 还有更早的会话时给，原样传回取下一页。 */
+  nextCursor: string | null;
 }
 
 export interface ImportResult {

@@ -31,7 +31,7 @@ use aiwb_core::models::{AgentInstallation, AgentKind, AgentProfile, McpSurface};
 pub use mcp::McpDriver;
 pub use install::UpgradeOutput;
 
-pub use directory::{DirectoryEntry, SessionDirectory};
+pub use directory::{DirectoryEntry, DirectoryPage, SessionDirectory};
 
 /// 按类型取得适配器实例。
 pub fn adapter_for(kind: AgentKind) -> Arc<dyn AgentAdapter> {

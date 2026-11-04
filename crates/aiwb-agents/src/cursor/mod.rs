@@ -24,8 +24,10 @@ use async_trait::async_trait;
 use session::CursorSession;
 
 use crate::install::{locate_cursor_agent, CliRelease};
-use crate::{AgentAdapter, AgentError, AgentSession, DirectoryEntry, EventSink, SessionContext};
-use aiwb_core::models::{AgentCapabilities, AgentKind, AgentProfile, SessionEventBody};
+use crate::{
+    AgentAdapter, AgentError, AgentSession, DirectoryPage, EventSink, SessionContext,
+};
+use aiwb_core::models::{cwd_key, AgentCapabilities, AgentKind, AgentProfile, SessionEventBody};
 
 pub struct CursorAgentAdapter;
 
@@ -118,8 +120,29 @@ impl AgentAdapter for CursorAgentAdapter {
         Ok(Arc::new(CursorSession::new(shared)))
     }
 
-    async fn import_list(&self) -> Result<Vec<DirectoryEntry>, AgentError> {
-        Ok(directory::list())
+    /// 每条会话只有一个 `meta.json`，整份读出来再分页。游标是下一页的起点。
+    async fn import_page(
+        &self,
+        cwd: &str,
+        cursor: Option<&str>,
+        limit: usize,
+    ) -> Result<DirectoryPage, AgentError> {
+        let start = match cursor {
+            Some(cursor) => cursor
+                .parse::<usize>()
+                .map_err(|_| AgentError::Runtime(format!("无效的游标：{cursor}")))?,
+            None => 0,
+        };
+        let key = cwd_key(cwd);
+        let listed: Vec<_> = directory::list()
+            .into_iter()
+            .filter(|entry| entry.cwd_key == key)
+            .collect();
+        let end = (start + limit).min(listed.len());
+        Ok(DirectoryPage {
+            next_cursor: (end < listed.len()).then(|| end.to_string()),
+            entries: listed.into_iter().skip(start).take(limit).collect(),
+        })
     }
 
     /// `session/load` 一次推完整段历史，不分页。

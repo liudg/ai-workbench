@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use crate::directory::DirectoryEntry;
+use crate::directory::{DirectoryEntry, DirectoryPage};
 use crate::install::{self, CliRelease};
 use crate::mcp::McpDriver;
 use aiwb_core::models::{
@@ -118,8 +118,14 @@ pub trait AgentAdapter: Send + Sync {
         Err(AgentError::NotLinked(self.kind().display_name()))
     }
 
-    /// 在 CLI 里开过、可以导入工作台的会话。只有接入了会话协议的适配器覆盖它。
-    async fn import_list(&self) -> Result<Vec<DirectoryEntry>, AgentError> {
+    /// 在 CLI 里以 `cwd` 为工作目录开过、可以导入工作台的会话，一页最多 `limit` 条。
+    /// 只有接入了会话协议的适配器覆盖它。
+    async fn import_page(
+        &self,
+        _cwd: &str,
+        _cursor: Option<&str>,
+        _limit: usize,
+    ) -> Result<DirectoryPage, AgentError> {
         Err(AgentError::NotLinked(self.kind().display_name()))
     }
 

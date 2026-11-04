@@ -25,7 +25,7 @@ use tokio::time::timeout;
 
 use async_trait::async_trait;
 
-use crate::directory::{DirectoryEntry, SessionDirectory};
+use crate::directory::{DirectoryEntry, DirectoryPage, SessionDirectory};
 use aiwb_core::models::cwd_key;
 #[cfg(test)]
 use aiwb_core::models::SessionEventBody;
@@ -112,6 +112,44 @@ impl CodexDirectory {
             }
         }
         result
+    }
+
+    /// 工作目录是 `cwd` 的一页交互、未归档线程，从新到旧。
+    /// `thread/list` 的 `cwd` 自己会对齐大小写、斜杠方向和末尾斜杠（codex-cli 0.165.0 实测）。
+    pub async fn list_project_page(
+        &self,
+        cwd: &str,
+        cursor: Option<&str>,
+        limit: usize,
+    ) -> Result<DirectoryPage, String> {
+        let mut params = json!({
+            "archived": false,
+            "cwd": cwd,
+            "limit": limit,
+            "sortKey": "updated_at",
+            "sortDirection": "desc",
+        });
+        if let Some(cursor) = cursor {
+            params["cursor"] = json!(cursor);
+        }
+        let page = self.rpc("thread/list", params).await?;
+        let entries = page
+            .get("data")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(parse_thread)
+            .filter(|thread| !thread.ephemeral && !thread.archived)
+            .collect();
+        let next_cursor = page
+            .get("nextCursor")
+            .and_then(Value::as_str)
+            .filter(|cursor| !cursor.is_empty())
+            .map(str::to_string);
+        Ok(DirectoryPage {
+            entries,
+            next_cursor,
+        })
     }
 
     pub async fn delete_thread(&self, native_id: &str) -> Result<(), String> {

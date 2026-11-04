@@ -375,7 +375,7 @@ async fn live_acp_session_opens_and_replaces_an_empty_placeholder() {
     assert!(catalog.thread_model.is_some());
     handle.stop().await.unwrap();
     assert!(super::directory::is_placeholder(&first));
-    assert!(adapter.import_list().await.unwrap().iter().any(|entry| entry.native_id == first));
+    assert!(adapter.import_page(&cwd, None, 100).await.unwrap().entries.iter().any(|entry| entry.native_id == first));
 
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
     let handle = adapter.start_session(ctx(Some(first.clone())), tx).await.expect("reopen");
@@ -384,7 +384,7 @@ async fn live_acp_session_opens_and_replaces_an_empty_placeholder() {
     assert_ne!(first, second);
     assert!(!super::directory::is_placeholder(&first));
     adapter.delete_thread(&second).await.unwrap();
-    assert!(!adapter.import_list().await.unwrap().iter().any(|entry| entry.native_id == second));
+    assert!(!adapter.import_page(&cwd, None, 100).await.unwrap().entries.iter().any(|entry| entry.native_id == second));
 }
 
 /// 真实 CLI：载入一条已经聊过的会话，回放成时间线。`CURSOR_REPLAY_ID` / `CURSOR_REPLAY_CWD` 指定会话。

@@ -725,7 +725,7 @@ fn history_chain_skips_sidechain_and_custom_title_wins() {
     file.push_str(&json!({"type":"custom-title","customTitle":"自定义","sessionId":id,"aiTitle":"不要用这个"}).to_string());
     file.push('\n');
     std::fs::write(&path, file).unwrap();
-    let listed = history::list_sessions_under(&root);
+    let listed = history::list_project_page_under(&root, "/workspace/demo", None, usize::MAX).unwrap().sessions;
     let found = listed.iter().find(|item| item.session_id == id).expect("listed");
     assert_eq!(found.title, "自定义");
     assert_eq!(found.cwd, "/workspace/demo");
@@ -733,7 +733,7 @@ fn history_chain_skips_sidechain_and_custom_title_wins() {
     renamed.push_str(&json!({"type":"custom-title","customTitle":"再次改名","sessionId":id}).to_string());
     renamed.push('\n');
     std::fs::write(&path, renamed).unwrap();
-    let listed = history::list_sessions_under(&root);
+    let listed = history::list_project_page_under(&root, "/workspace/demo", None, usize::MAX).unwrap().sessions;
     assert_eq!(listed.iter().find(|item| item.session_id == id).unwrap().title, "再次改名");
 
     let side_id = "55555555-5555-4555-8555-555555555555";
@@ -742,7 +742,7 @@ fn history_chain_skips_sidechain_and_custom_title_wins() {
         "{\"type\":\"user\",\"uuid\":\"66666666-6666-4666-8666-666666666666\",\"isSidechain\":true,\"message\":{\"role\":\"user\",\"content\":\"hidden\"}}\n",
     )
     .unwrap();
-    assert!(history::list_sessions_under(&root).iter().all(|item| item.session_id != side_id));
+    assert!(history::list_project_page_under(&root, "/workspace/demo", None, usize::MAX).unwrap().sessions.iter().all(|item| item.session_id != side_id));
 
     let source = project.join(format!("{id}.jsonl"));
     let mut with_echo = std::fs::read_to_string(&source).unwrap();

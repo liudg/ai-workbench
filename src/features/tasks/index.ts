@@ -5,7 +5,7 @@ export { useTasks } from "./use-tasks";
 export type {
   CreateTaskInput,
   ImportCandidate,
-  ImportList,
+  ImportPage,
   ImportResult,
   SessionAccess,
   SessionOptions,

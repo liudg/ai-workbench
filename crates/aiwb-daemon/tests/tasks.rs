@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use aiwb_agents::{
     AgentAdapter, AgentError, AgentSession, AnnotationSink, DiffScopeProvider, DirectoryEntry,
-    EventSink, SessionContext, TurnDelivery,
+    DirectoryPage, EventSink, SessionContext, TurnDelivery,
 };
 use aiwb_core::models::{
     AgentCatalog, AgentCapabilities, AgentKind, PageAnnotation, PromptAnswer, SessionEventBody, SessionStatus,
@@ -63,11 +63,23 @@ impl AgentAdapter for FakeAdapter {
         true
     }
 
-    async fn import_list(&self) -> Result<Vec<DirectoryEntry>, AgentError> {
+    /// 每页只给两条，不管 `cwd` 和 `limit`：daemon 自己过滤、自己凑满一页。
+    async fn import_page(
+        &self,
+        _cwd: &str,
+        cursor: Option<&str>,
+        _limit: usize,
+    ) -> Result<DirectoryPage, AgentError> {
         if self.1 != AgentKind::CodexCli {
-            return Ok(Vec::new());
+            return Ok(DirectoryPage::default());
         }
-        Ok(self.0.listed.lock().unwrap().clone())
+        let listed = self.0.listed.lock().unwrap().clone();
+        let start: usize = cursor.map_or(0, |cursor| cursor.parse().unwrap());
+        let end = (start + 2).min(listed.len());
+        Ok(DirectoryPage {
+            entries: listed[start..end].to_vec(),
+            next_cursor: (end < listed.len()).then(|| end.to_string()),
+        })
     }
 
     async fn import_history(&self, native_id: &str, _cwd: &str) -> Result<Vec<SessionEventBody>, AgentError> {
@@ -676,14 +688,17 @@ async fn imports_cli_sessions_of_the_project_and_resumes_them() {
         .await
         .unwrap();
 
-    // 只列工作目录是项目主目录的，新的在前。
+    let sources = services.dispatch("imports.sources", Value::Null).await.unwrap();
+    assert!(sources.as_array().unwrap().contains(&json!("codex-cli")));
+
+    // 只列工作目录是项目主目录的，新的在前。Agent 一页给得少，daemon 接着取完。
     let list = services
-        .dispatch("imports.list", json!({ "projectId": project["id"] }))
+        .dispatch("imports.list", json!({ "projectId": project["id"], "agent": "codex-cli" }))
         .await
         .unwrap();
     let ids: Vec<_> = list["items"].as_array().unwrap().iter().map(|i| i["nativeId"].as_str().unwrap()).collect();
     assert_eq!(ids, ["new", "broken", "old"]);
-    assert!(list["errors"].as_array().unwrap().is_empty());
+    assert!(list["nextCursor"].is_null());
 
     let result = services
         .dispatch("imports.run", json!({ "projectId": project["id"], "items": list["items"] }))
@@ -712,7 +727,7 @@ async fn imports_cli_sessions_of_the_project_and_resumes_them() {
 
     // 导入过的不再列出。
     let again = services
-        .dispatch("imports.list", json!({ "projectId": project["id"] }))
+        .dispatch("imports.list", json!({ "projectId": project["id"], "agent": "codex-cli" }))
         .await
         .unwrap();
     let ids: Vec<_> = again["items"].as_array().unwrap().iter().map(|i| i["nativeId"].as_str().unwrap()).collect();
@@ -731,6 +746,45 @@ async fn imports_cli_sessions_of_the_project_and_resumes_them() {
         events_of(&feed).iter().filter(|e| e["kind"] == "user-message").count(),
         2
     );
+}
+
+#[tokio::test]
+async fn import_list_fills_a_page_then_hands_back_the_cursor() {
+    let dir = tempfile::tempdir().unwrap();
+    let project_dir = tempfile::tempdir().unwrap();
+    let path = project_dir.path().to_string_lossy().to_string();
+    let script = Arc::new(Script::default());
+    *script.listed.lock().unwrap() = (0..35)
+        .map(|index| listed(&format!("s{index}"), &path, "会话", 10_000 - index))
+        .collect();
+    let services = services(Arc::new(Store::open_in_memory().unwrap()), script.clone(), dir.path());
+    let project = services
+        .dispatch("projects.add", json!({ "path": path }))
+        .await
+        .unwrap();
+
+    let first = services
+        .dispatch("imports.list", json!({ "projectId": project["id"], "agent": "codex-cli" }))
+        .await
+        .unwrap();
+    assert_eq!(first["items"].as_array().unwrap().len(), 30);
+    assert_eq!(first["nextCursor"], "30");
+    let second = services
+        .dispatch(
+            "imports.list",
+            json!({ "projectId": project["id"], "agent": "codex-cli", "cursor": first["nextCursor"] }),
+        )
+        .await
+        .unwrap();
+    let ids: Vec<_> = second["items"].as_array().unwrap().iter().map(|i| i["nativeId"].as_str().unwrap()).collect();
+    assert_eq!(ids, ["s30", "s31", "s32", "s33", "s34"]);
+    assert!(second["nextCursor"].is_null());
+
+    let empty = services
+        .dispatch("imports.list", json!({ "projectId": project["id"], "agent": "claude-code" }))
+        .await
+        .unwrap();
+    assert!(empty["items"].as_array().unwrap().is_empty());
 }
 
 #[tokio::test]

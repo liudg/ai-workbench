@@ -6,7 +6,7 @@ import type { AgentKind } from "@/types";
 import type {
   CreateTaskInput,
   ImportCandidate,
-  ImportList,
+  ImportPage,
   ImportResult,
   SessionOptions,
   TaskEntry,
@@ -53,9 +53,14 @@ export function forkTask(taskId: string, agent?: AgentKind) {
   return daemon.call<TaskEntry>("tasks.fork", agent ? { taskId, agent } : { taskId }, CLI_TIMEOUT_MS);
 }
 
-/** 项目主目录下 CLI 里开过、还没导入的会话。要读各 Agent 的会话列表，可能要等一会儿。 */
-export function importList(projectId: string) {
-  return daemon.call<ImportList>("imports.list", { projectId }, CLI_TIMEOUT_MS);
+/** 能导入会话的 Agent。 */
+export function importSources() {
+  return daemon.call<AgentKind[]>("imports.sources");
+}
+
+/** 项目主目录下某个 Agent 在 CLI 里开过、还没导入的会话，一次一页。 */
+export function importList(projectId: string, agent: AgentKind, cursor: string | null) {
+  return daemon.call<ImportPage>("imports.list", { projectId, agent, cursor }, CLI_TIMEOUT_MS);
 }
 
 export function runImport(projectId: string, items: ImportCandidate[]) {

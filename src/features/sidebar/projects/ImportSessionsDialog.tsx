@@ -1,3 +1,4 @@
+import { useEffect, useRef, type ReactNode } from "react";
 import { Check } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -19,8 +20,17 @@ export function ImportSessionsDialog({ project, onClose }: { project: Project; o
     loading,
     loadError,
     retry,
+    tabs,
+    active,
+    pick,
+    activeName,
     rows,
-    sourceErrors,
+    pageLoading,
+    pageLoaded,
+    pageError,
+    retryPage,
+    hasMore,
+    loadMore,
     selected,
     toggle,
     allSelected,
@@ -45,20 +55,7 @@ export function ImportSessionsDialog({ project, onClose }: { project: Project; o
 
         {loading && <p className="py-8 text-center text-sm text-zinc-500">正在读取会话…</p>}
 
-        {loadError && (
-          <div className="flex items-center justify-between gap-3 rounded-md border border-red-500/25 bg-red-500/[0.06] px-3 py-2 text-xs text-red-300">
-            <span className="min-w-0 break-words">{loadError}</span>
-            <button type="button" className="shrink-0 text-zinc-300 hover:text-zinc-100" onClick={retry}>
-              重试
-            </button>
-          </div>
-        )}
-
-        {sourceErrors.map((message) => (
-          <p key={message} className="rounded-md bg-zinc-800/60 px-3 py-2 text-xs text-zinc-400">
-            {message}
-          </p>
-        ))}
+        {loadError && <ErrorLine message={loadError} onRetry={retry} />}
 
         {imported > 0 && <p className="text-xs text-zinc-400">已导入 {imported} 个会话。</p>}
         {failures.length > 0 && (
@@ -71,7 +68,43 @@ export function ImportSessionsDialog({ project, onClose }: { project: Project; o
           </div>
         )}
 
-        {!loading && !loadError && rows.length === 0 && (
+        {tabs.length > 0 && (
+          <div className="-mb-1 flex flex-wrap gap-1.5" role="tablist" aria-label="Agent">
+            {tabs.map((tab) => {
+              const isActive = tab.agent === active;
+              return (
+                <button
+                  key={tab.agent}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  data-import-agent={tab.agent}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm",
+                    isActive ? "bg-zinc-800 text-zinc-50" : "text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-100",
+                  )}
+                  onClick={() => pick(tab.agent)}
+                >
+                  <SessionAgentIcon identity={tab.identity} className="h-4 w-4" />
+                  <span>{tab.name}</span>
+                  {tab.failed ? (
+                    <span className="text-xs text-red-400">!</span>
+                  ) : (
+                    tab.count !== null && <span className="text-xs text-zinc-500">{tab.count}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {active && !pageLoaded && pageLoading && (
+          <p className="py-8 text-center text-sm text-zinc-500">正在读取会话…</p>
+        )}
+
+        {active && !pageLoaded && pageError && <ErrorLine message={pageError} onRetry={retryPage} />}
+
+        {active && pageLoaded && rows.length === 0 && !hasMore && (
           <p className="py-8 text-center text-sm text-zinc-500">这个目录下没有可以导入的会话</p>
         )}
 
@@ -86,7 +119,7 @@ export function ImportSessionsDialog({ project, onClose }: { project: Project; o
               <Checkbox checked={allSelected} />
               全选（{rows.length}）
             </button>
-            <div className="min-h-0 overflow-y-auto" role="listbox" aria-multiselectable aria-label="可导入的会话">
+            <ScrollList onEnd={loadMore} watch={`${active}:${rows.length}`} label={`${activeName} 可导入的会话`}>
               {rows.map((row) => {
                 const checked = selected.has(row.key);
                 return (
@@ -101,10 +134,9 @@ export function ImportSessionsDialog({ project, onClose }: { project: Project; o
                       "flex w-full min-w-0 items-center gap-2.5 px-3 py-2 text-left hover:bg-zinc-800/60",
                       checked && "bg-zinc-800/40",
                     )}
-                    onClick={() => toggle(row.key)}
+                    onClick={() => toggle(row)}
                   >
                     <Checkbox checked={checked} />
-                    <SessionAgentIcon identity={row.identity} className="h-4 w-4" />
                     <span className="min-w-0 flex-1 truncate text-sm text-zinc-200" title={row.item.title}>
                       {row.item.title.trim() || "无标题"}
                     </span>
@@ -114,7 +146,13 @@ export function ImportSessionsDialog({ project, onClose }: { project: Project; o
                   </button>
                 );
               })}
-            </div>
+              {pageLoading && <p className="px-3 py-2 text-center text-xs text-zinc-500">正在加载…</p>}
+              {pageError && (
+                <div className="px-3 py-2">
+                  <ErrorLine message={pageError} onRetry={retryPage} />
+                </div>
+              )}
+            </ScrollList>
           </div>
         )}
 
@@ -139,6 +177,56 @@ export function ImportSessionsDialog({ project, onClose }: { project: Project; o
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ErrorLine({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-md border border-red-500/25 bg-red-500/[0.06] px-3 py-2 text-xs text-red-300">
+      <span className="min-w-0 break-words">{message}</span>
+      <button type="button" className="shrink-0 text-zinc-300 hover:text-zinc-100" onClick={onRetry}>
+        重试
+      </button>
+    </div>
+  );
+}
+
+/** 滚到底部附近就要下一页。读回来以后底部还在视野里会接着要，直到填满或者没有了。 */
+function ScrollList({
+  onEnd,
+  watch,
+  label,
+  children,
+}: {
+  onEnd: () => void;
+  watch: string;
+  label: string;
+  children: ReactNode;
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const endRef = useRef<HTMLDivElement>(null);
+  const onEndRef = useRef(onEnd);
+  onEndRef.current = onEnd;
+
+  useEffect(() => {
+    const root = rootRef.current;
+    const end = endRef.current;
+    if (!root || !end) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) onEndRef.current();
+      },
+      { root, rootMargin: "120px" },
+    );
+    observer.observe(end);
+    return () => observer.disconnect();
+  }, [watch]);
+
+  return (
+    <div ref={rootRef} className="min-h-0 overflow-y-auto" role="listbox" aria-multiselectable aria-label={label}>
+      {children}
+      <div ref={endRef} aria-hidden className="h-px" />
+    </div>
   );
 }
 

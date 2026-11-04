@@ -1,4 +1,4 @@
-//! 从 CLI 历史导入会话。按项目列出工作目录就是项目主目录的原生会话，导入时建任务、
+//! 从 CLI 历史导入会话。按 Agent 分页列出工作目录就是项目主目录的原生会话，导入时建任务、
 //! 把整段时间线写进数据库，之后发消息用 resume 接回原线程。
 //! 照 t3code `apps/server/src/project/AgentSessionImporter.ts`、`AgentSessionScanner.ts`：
 //! 按项目根目录匹配，已经导入过的不再列出。
@@ -14,10 +14,15 @@ use aiwb_agents::AgentError;
 
 use super::{ServiceResult, Services};
 
+/// 一页至少凑够这么多条，除非这个 Agent 没有更早的了。
+const PAGE_SIZE: usize = 30;
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct ProjectParam {
+pub(crate) struct PageParams {
     project_id: String,
+    agent: AgentKind,
+    cursor: Option<String>,
 }
 
 /// 可以导入的一条原生会话。
@@ -31,19 +36,12 @@ pub(crate) struct ImportCandidate {
     updated_at: i64,
 }
 
-/// 某个 Agent 的列表没读出来。其他 Agent 的照常给。
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct ImportSourceError {
-    agent: AgentKind,
-    message: String,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct ImportList {
+pub(crate) struct ImportPage {
     items: Vec<ImportCandidate>,
-    errors: Vec<ImportSourceError>,
+    /// 还有更早的会话就给，原样传回取下一页。
+    next_cursor: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -71,48 +69,62 @@ pub(crate) struct ImportResult {
 }
 
 impl Services {
-    pub(crate) async fn import_list(&self, params: ProjectParam) -> ServiceResult<ImportList> {
+    /// 能导入会话的 Agent，同一个适配器只列一次。
+    pub(crate) fn import_sources(&self) -> Vec<AgentKind> {
+        let mut sources = Vec::new();
+        for kind in AgentKind::all() {
+            let adapter = self.runtimes.adapter(kind);
+            if adapter.session_linked() && !sources.contains(&adapter.kind()) {
+                sources.push(adapter.kind());
+            }
+        }
+        sources
+    }
+
+    /// 一个 Agent 的一页，已经导入过的跳过。Agent 给的页被跳空了就接着往后取，凑够一页或者取完为止。
+    pub(crate) async fn import_list(&self, params: PageParams) -> ServiceResult<ImportPage> {
         let project = self
             .store
             .project(&params.project_id)
             .map_err(|e| e.to_string())?
             .ok_or_else(|| "项目不存在".to_string())?;
+        let adapter = self.runtimes.adapter(params.agent);
+        if !adapter.session_linked() {
+            return Err(format!("{} 还不能在工作台里对话", params.agent.display_name()));
+        }
+        let agent = adapter.kind();
         let key = cwd_key(&project.path);
         let imported = self.imported_keys()?;
         let mut items = Vec::new();
-        let mut errors = Vec::new();
-        let mut seen = HashSet::new();
-        for kind in AgentKind::all() {
-            let adapter = self.runtimes.adapter(kind);
-            if !adapter.session_linked() {
-                continue;
-            }
-            let agent = adapter.kind();
-            if !seen.insert(agent) {
-                continue;
-            }
-            match adapter.import_list().await {
-                Ok(listed) => items.extend(
-                    listed
-                        .into_iter()
-                        .filter(|entry| entry.cwd_key == key)
-                        .filter(|entry| !imported.contains(&(agent, entry.native_id.clone())))
-                        .map(|entry| ImportCandidate {
-                            agent,
-                            native_id: entry.native_id,
-                            title: entry.title,
-                            created_at: entry.created_at,
-                            updated_at: entry.updated_at,
-                        }),
-                ),
-                Err(err) => errors.push(ImportSourceError {
-                    agent,
-                    message: reason(err),
-                }),
+        let mut cursor = params.cursor;
+        loop {
+            let page = adapter
+                .import_page(&project.path, cursor.as_deref(), PAGE_SIZE)
+                .await
+                .map_err(reason)?;
+            items.extend(
+                page.entries
+                    .into_iter()
+                    .filter(|entry| entry.cwd_key == key)
+                    .filter(|entry| !imported.contains(&(agent, entry.native_id.clone())))
+                    .map(|entry| ImportCandidate {
+                        agent,
+                        native_id: entry.native_id,
+                        title: entry.title,
+                        created_at: entry.created_at,
+                        updated_at: entry.updated_at,
+                    }),
+            );
+            cursor = page.next_cursor;
+            if items.len() >= PAGE_SIZE || cursor.is_none() {
+                break;
             }
         }
         items.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
-        Ok(ImportList { items, errors })
+        Ok(ImportPage {
+            items,
+            next_cursor: cursor,
+        })
     }
 
     /// 一条一条导入。某条失败不影响其他的，失败原因随结果返回。
