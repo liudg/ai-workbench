@@ -71,6 +71,8 @@ pub fn cli_args(launch: &Launch) -> Vec<String> {
         cmd.push("--no-session-persistence".to_string());
         cmd.push("--append-system-prompt".to_string());
         cmd.push(SIDE_SYSTEM_PROMPT.to_string());
+        cmd.push("--disallowedTools".to_string());
+        cmd.push(SIDE_DISALLOWED_TOOLS.join(","));
     } else if launch.resume {
         cmd.push(format!("--resume={}", launch.session_id));
     } else {
@@ -120,6 +122,11 @@ This side conversation is for answering questions and lightweight exploration wi
 Do not start subagents or background tasks here; direct that kind of work back to the main conversation.
 
 Do not modify files, source, git state, permissions, configuration, or any other workspace state unless the user explicitly requests that mutation in this side conversation. If the user explicitly requests a mutation, keep it minimal, local to the request, and avoid disrupting the main thread."#;
+
+/// 侧边聊天拿掉的工具：子 Agent 和挂到后台、之后再回来的那些，提示词里只是叮嘱。
+/// `Agent` 连旧名 `Task` 一起去掉（2.1.312 实测 init 的 `tools` 里不再有 `Task`）。
+/// 后台跑的 Bash 是同一个工具的参数，拦不了，靠提示词。
+const SIDE_DISALLOWED_TOOLS: [&str; 4] = ["Agent", "CronCreate", "ScheduleWakeup", "Monitor"];
 
 fn nonempty(value: Option<&str>) -> Option<&str> {
     value.map(str::trim).filter(|item| !item.is_empty())

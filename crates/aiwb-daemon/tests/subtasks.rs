@@ -616,7 +616,7 @@ async fn offer_cards_wait_for_the_user() {
     assert_eq!(card["resolution"]["kind"], "accepted");
     // 用户选完马上告诉父会话，不等子任务跑完。
     for _ in 0..200 {
-        if h.sent_to(&parent_native).iter().any(|text| text.contains("用户同意另开")) {
+        if h.sent_to(&parent_native).iter().any(|text| text.contains("The user chose to split this off")) {
             return;
         }
         tokio::time::sleep(Duration::from_millis(10)).await;

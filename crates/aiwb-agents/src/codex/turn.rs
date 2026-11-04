@@ -19,6 +19,8 @@ use super::state::{emit, Pending, Shared};
 /// `/init` 的提示原文，逐字取自 openai/codex rust-v0.162.1
 /// `codex-rs/tui/assets/prompt_for_init_command.md`（tag 提交 092d3acd，文件 sha256 70dfe903…）。
 /// 提示本身要求 AGENTS.md 已存在时不覆盖、不修改。
+/// app-server 没有触发原生 `/init` 的方法，只能照抄；升级参考版本时对一下原文。
+/// 2026-11-04 核过：codex-cli 0.165.0 二进制里的原文去掉 `\r` 后和这份逐字一致。
 ///
 /// 工作区如果被检出成 CRLF，`include_bytes!` 会带上 `\r`。发出去之前去掉，
 /// 让字节和官方 LF 资产一致。`.gitattributes` 里这条资产也固定 `eol=lf`。

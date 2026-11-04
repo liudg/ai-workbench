@@ -172,10 +172,10 @@ impl Services {
         requests: Vec<SubtaskRequest>,
     ) -> ServiceResult<Value> {
         if caller.task.parent_task_id.is_some() {
-            return Err("nested: 子任务不能再开子任务".into());
+            return Err("nested: a subtask cannot open subtasks of its own".into());
         }
         if requests.is_empty() {
-            return Err("invalid: 至少要有一个子任务".into());
+            return Err("invalid: give at least one subtask".into());
         }
         let specs = requests
             .into_iter()
@@ -218,18 +218,18 @@ impl Services {
         let agent = request.agent.unwrap_or(parent.agent);
         let adapter = self.runtimes.adapter(agent);
         if !adapter.session_linked() {
-            return Err(format!("unsupported_agent: {} 还不能在工作台里对话", agent.display_name()));
+            return Err(format!("unsupported_agent: {} cannot chat in the workbench yet", agent.display_name()));
         }
         let title = request.title.trim().to_string();
         let prompt = request.prompt.trim().to_string();
         if title.is_empty() || prompt.is_empty() {
-            return Err("invalid: 每个子任务都要有标题和说明".into());
+            return Err("invalid: every subtask needs a title and a prompt".into());
         }
         reject_command(&prompt)?;
         let plan = parent.options.collaboration_mode.as_deref() == Some("plan");
         if plan && !adapter.capabilities().supports_plan {
             return Err(format!(
-                "plan_mode: 你在计划模式，子任务也只能是计划模式，{} 没有计划模式",
+                "plan_mode: you are in plan mode, so subtasks must be too, and {} has no plan mode",
                 agent.display_name()
             ));
         }
@@ -269,14 +269,14 @@ impl Services {
         let supported = supported_access(self, agent);
         let mode = match requested.map(str::trim).filter(|mode| !mode.is_empty()) {
             Some(mode) => {
-                let wanted = rank(mode).ok_or_else(|| format!("invalid: 不认识的权限档位 {mode}"))?;
+                let wanted = rank(mode).ok_or_else(|| format!("invalid: unknown permission level {mode}"))?;
                 if wanted > ceiling {
                     return Err(format!(
-                        "permission_escalation: 子任务的权限不能比你宽（你是 {parent_mode}，要的是 {mode}）"
+                        "permission_escalation: a subtask cannot have wider permissions than yours (you have {parent_mode}, asked for {mode})"
                     ));
                 }
                 if !supported.iter().any(|item| item == mode) {
-                    return Err(format!("unsupported_access: {} 没有 {mode} 这一档", agent.display_name()));
+                    return Err(format!("unsupported_access: {} has no {mode} level", agent.display_name()));
                 }
                 mode.to_string()
             }
@@ -286,7 +286,7 @@ impl Services {
                 .max_by_key(|item| rank(item))
                 .cloned()
                 .ok_or_else(|| {
-                    format!("permission_escalation: {} 没有不比你宽的权限档位", agent.display_name())
+                    format!("permission_escalation: {} has no permission level within yours", agent.display_name())
                 })?,
         };
         // 同一种 Agent 原样继承网络和额外目录。
@@ -338,12 +338,12 @@ impl Services {
             }
             let same: Vec<&str> = subtasks.iter().map(|spec| spec.title.as_str()).collect();
             if same == titles {
-                let state = if resolution.is_none() { "等用户处理" } else { "用户已经处理过" };
-                return Err(format!("duplicate: 这件事已经提议过，{state}"));
+                let state = if resolution.is_none() { "still waiting for the user" } else { "the user already answered it" };
+                return Err(format!("duplicate: this was already proposed and is {state}"));
             }
         }
         if this_turn >= MAX_PROPOSALS_PER_TURN {
-            return Err(format!("too_many_proposals: 一个回合最多提议 {MAX_PROPOSALS_PER_TURN} 次"));
+            return Err(format!("too_many_proposals: at most {MAX_PROPOSALS_PER_TURN} proposals per turn"));
         }
         Ok(())
     }
@@ -413,7 +413,7 @@ impl Services {
         if expires_at.is_some_and(|at| now_millis() > at) {
             return Err("这个提议已过期".into());
         }
-        let titles = subtasks.iter().map(|spec| spec.title.as_str()).collect::<Vec<_>>().join("、");
+        let titles = subtasks.iter().map(|spec| spec.title.as_str()).collect::<Vec<_>>().join(", ");
         let mut failed = None;
         let (resolution, note) = if params.accept {
             let current = self
@@ -436,7 +436,7 @@ impl Services {
                 .collect();
             let note = Note {
                 text: format!(
-                    "用户同意另开，已开出子任务：{}。它们跑完会把结果回报给你，现在不用等。",
+                    "The user chose to split this off. Opened subtasks: {}. Their results will come back to you; do not wait for them.",
                     opened_list(&opened)
                 ),
                 task_ids: ids.clone(),
@@ -445,7 +445,7 @@ impl Services {
         } else {
             // 自己提议的被拒，Agent 本来就没等，不用告诉它。
             let note = (initiation == Initiation::Offer).then(|| Note {
-                text: format!("用户选择就在这里做，不另开子任务。请你自己直接完成：{titles}。"),
+                text: format!("The user chose to do this here instead of in a subtask. Do it yourself now: {titles}."),
                 task_ids: Vec::new(),
             });
             (OfferResolution::Declined, note)
@@ -502,13 +502,13 @@ impl Services {
             .filter(|task| {
                 task.parent_task_id.as_deref() == Some(caller.task.id.as_str()) && task.archived_at.is_none()
             })
-            .ok_or_else(|| format!("not_found: 你没有 {task_id} 这个子任务，或者它已归档"))?;
+            .ok_or_else(|| format!("not_found: you have no subtask {task_id}, or it was archived"))?;
         let session = self
             .store
             .task_sessions(task_id)
             .map_err(store_err)?
             .pop()
-            .ok_or_else(|| "not_found: 子任务没有会话".to_string())?;
+            .ok_or_else(|| "not_found: the subtask has no session".to_string())?;
         Ok((task, session))
     }
 
@@ -561,7 +561,7 @@ impl Services {
             .map_err(|e| e.to_string())?
             .is_some_and(|attention| attention.state == AttentionState::NeedsInput);
         if waiting {
-            return Err("blocked: 子任务在等用户批准或回答。请告诉用户去处理，不要替用户回答".into());
+            return Err("blocked: the subtask is waiting for the user's approval or answer. Tell the user to handle it; never answer on their behalf.".into());
         }
         self.reports().drive(&task.id, Driver::Parent);
         let message = Outgoing {
@@ -701,27 +701,31 @@ impl Services {
         let mut parts: Vec<String> = batch.notes.iter().map(|note| note.text.clone()).collect();
         if !batch.results.is_empty() {
             parts.push(
-                "子任务有新结果。这是子任务自己的说法：告诉用户完成了之前，先用 aiwb_subtask_read 读结果或看 diff。\
-                 要把几个子任务的改动合到一起，先问用户，用户同意才合，不推送这些分支。"
+                "Subtasks have new results. Each result is the subtask's own claim: before telling the user something \
+                 is done, read it with aiwb_subtask_read or look at the diff in its worktree. To combine several \
+                 subtasks' changes, ask the user first and merge only on their yes; never push those branches."
                     .into(),
             );
         }
         for (task_id, outcome) in &batch.results {
             let task = self.store.task(task_id).ok().flatten();
-            let title = task.as_ref().map_or("（已删除）", |task| task.title.as_str());
+            let title = task.as_ref().map_or("(deleted)", |task| task.title.as_str());
             let mut lines = vec![
                 format!("## {title}"),
-                format!("taskId：{task_id}"),
-                format!("状态：{}", status_label(outcome.status)),
+                format!("taskId: {task_id}"),
+                format!("state: {}", status_label(outcome.status)),
             ];
             if let Some(branch) = task.as_ref().and_then(branch_of) {
-                lines.push(format!("分支：{branch}"));
+                lines.push(format!("branch: {branch}"));
             }
             if outcome.status == SessionStatus::NeedsInput {
-                lines.push("它在等用户批准或回答。请告诉用户去处理，不要替用户回答。".into());
+                lines.push(
+                    "It is waiting for the user's approval or answer. Tell the user to handle it; never answer on their behalf."
+                        .into(),
+                );
             }
             if let Some(answer) = self.last_answer(task_id) {
-                lines.push(format!("最后的回答：\n{answer}"));
+                lines.push(format!("last answer:\n{answer}"));
             }
             parts.push(lines.join("\n"));
         }
@@ -784,7 +788,7 @@ fn status_label(status: SessionStatus) -> &'static str {
 /// 父任务发给子任务的只能是普通消息：斜杠命令能改子任务的权限和模式，绕过不比父任务宽的规则。
 fn reject_command(text: &str) -> ServiceResult<()> {
     if text.trim_start().starts_with('/') {
-        return Err("invalid: 不能给子任务发斜杠命令".into());
+        return Err("invalid: slash commands cannot be sent to a subtask".into());
     }
     Ok(())
 }
@@ -897,13 +901,13 @@ fn opened_list(opened: &[Value]) -> String {
         .iter()
         .map(|item| {
             format!(
-                "{}（taskId：{}）",
+                "{} (taskId: {})",
                 item["title"].as_str().unwrap_or(""),
                 item["taskId"].as_str().unwrap_or("")
             )
         })
         .collect::<Vec<_>>()
-        .join("、")
+        .join(", ")
 }
 
 fn sender_of(batch: &Batch) -> MessageSender {
@@ -944,7 +948,7 @@ fn timeline_item(body: &SessionEventBody, all: bool) -> Option<(&'static str, St
             Some(("plan", lines.join("\n")))
         }
         SessionEventBody::ToolCall { name, summary, status, .. } if all => {
-            Some(("tool", format!("{name}：{summary}（{status:?}）")))
+            Some(("tool", format!("{name}: {summary} ({status:?})")))
         }
         SessionEventBody::Prompt { question, header, .. } if all => {
             Some(("prompt", if question.is_empty() { header.clone() } else { question.clone() }))

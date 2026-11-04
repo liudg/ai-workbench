@@ -146,7 +146,7 @@ impl Runtimes {
         let messages: Vec<_> = covered.iter().filter_map(historical_message).collect();
         let total = messages.len();
         let room = budget(DEFAULT_TOKEN_CAP, user_text, images, usage);
-        let selection = select_history(messages, &coverage(&target.task_id, &from, target.agent, &covered), room);
+        let selection = select_history(messages, &coverage(&from, target.agent), room);
         let selected = selection.messages.len() as u32;
         Ok(Some(PreparedHandoff {
             event_id: pending.id,

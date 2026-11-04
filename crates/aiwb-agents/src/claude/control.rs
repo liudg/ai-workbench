@@ -106,6 +106,10 @@ pub enum PermissionKind {
     },
 }
 
+/// CLI 自己界面上拒绝工具调用时回给模型的话（`utils/messages.ts` `REJECT_MESSAGE`，
+/// 2.1.312 二进制里原文）。审批、计划、提问被拒或跳过都用它：只说「被拒」时模型会换个办法再试。
+pub(super) const REJECT_MESSAGE: &str = "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.";
+
 pub fn permission_result(
     kind: &PermissionKind,
     answer: &PromptAnswer,
@@ -118,18 +122,13 @@ pub fn permission_result(
             if is_allow(value) {
                 Ok(json!({ "behavior": "allow", "updatedInput": input }))
             } else {
-                let message = if matches!(kind, PermissionKind::ExitPlan { .. }) {
-                    "用户拒绝了计划"
-                } else {
-                    "用户拒绝了这次操作"
-                };
-                Ok(json!({ "behavior": "deny", "message": message }))
+                Ok(json!({ "behavior": "deny", "message": REJECT_MESSAGE }))
             }
         }
         PermissionKind::Questions { input, questions } => match answer {
             PromptAnswer::Questions { skipped: true, .. } => Ok(json!({
                 "behavior": "deny",
-                "message": "用户跳过了提问",
+                "message": REJECT_MESSAGE,
             })),
             PromptAnswer::Questions {
                 answers,

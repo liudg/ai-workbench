@@ -136,6 +136,8 @@ fn side_chat_forks_the_parent_without_a_transcript() {
     assert_eq!(args[at + 3], "--no-session-persistence");
     assert_eq!(args[at + 4], "--append-system-prompt");
     assert!(args[at + 5].starts_with("You are in a side conversation, not the main thread."));
+    assert_eq!(args[at + 6], "--disallowedTools");
+    assert_eq!(args[at + 7], "Agent,CronCreate,ScheduleWakeup,Monitor");
     assert!(!args.iter().any(|arg| arg == "--resume=side-1"));
 }
 
@@ -238,7 +240,7 @@ fn permission_allow_deny_and_question_answers_use_question_text() {
     )
     .unwrap();
     assert_eq!(skipped["behavior"], "deny");
-    assert_eq!(skipped["message"], "用户跳过了提问");
+    assert_eq!(skipped["message"], control::REJECT_MESSAGE);
 
     let approval = PermissionKind::Approval { input: json!({"command": "ls"}) };
     let allow = control::permission_result(&approval, &PromptAnswer::Single { value: "approve".into() }).unwrap();
@@ -246,6 +248,7 @@ fn permission_allow_deny_and_question_answers_use_question_text() {
     assert_eq!(allow["updatedInput"]["command"], "ls");
     let deny = control::permission_result(&approval, &PromptAnswer::Single { value: "reject".into() }).unwrap();
     assert_eq!(deny["behavior"], "deny");
+    assert!(deny["message"].as_str().unwrap().contains("STOP what you are doing"));
     assert!(deny.get("updatedInput").is_none());
 }
 

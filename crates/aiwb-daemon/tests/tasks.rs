@@ -907,8 +907,11 @@ async fn switching_agents_hands_off_the_conversation() {
     let events = wait_for_replies(&services, &claude, 1).await;
     let (agent, text) = last_sent(&script);
     assert_eq!(agent, AgentKind::ClaudeCode);
-    assert!(text.starts_with("Context handoff (full_thread_summary):\nProvider context handoff."), "{text}");
-    assert!(text.contains("[Historical user; user_message; item="));
+    assert!(
+        text.starts_with("Context handoff (earlier conversation in this task):\nHanded over from Codex CLI to Claude Code."),
+        "{text}"
+    );
+    assert!(text.contains("[Historical user; user_message]\n修登录"), "{text}");
     assert!(text.contains("\n修登录\n"), "{text}");
     assert!(text.contains("\n收到：修登录"), "{text}");
     assert!(text.ends_with("\n\nUser message:\n继续"), "{text}");
@@ -964,8 +967,8 @@ async fn switching_agents_hands_off_the_conversation() {
     wait_for_replies(&services, &codex_again, 1).await;
     let (agent, text) = last_sent(&script);
     assert_eq!(agent, AgentKind::CodexCli);
-    assert!(text.starts_with("Context handoff (delta_since_target_last_seen):"), "{text}");
-    assert!(text.contains("From: Claude Code. To: Codex CLI."), "{text}");
+    assert!(text.starts_with("Context handoff (what happened in this task since your last turn):"), "{text}");
+    assert!(text.contains("Handed over from Claude Code to Codex CLI."), "{text}");
     assert!(text.contains("\n还有吗\n"), "{text}");
     // Claude 那段的两问两答；Codex 自己那段不再补。
     assert!(text.contains("Selected 4 intact items; omitted 0 items."), "{text}");
@@ -1047,7 +1050,7 @@ async fn fork_copies_the_timeline_natively_or_hands_off_to_another_agent() {
     wait_for_replies(&services, &claude, 1).await;
     let (agent, text) = last_sent(&script);
     assert_eq!(agent, AgentKind::ClaudeCode);
-    assert!(text.starts_with("Context handoff (full_thread_summary):"), "{text}");
+    assert!(text.starts_with("Context handoff (earlier conversation in this task):"), "{text}");
     assert!(text.contains("\n修登录\n"), "{text}");
     assert!(text.ends_with("User message:\n换个思路"), "{text}");
 }

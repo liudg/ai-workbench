@@ -86,19 +86,19 @@ impl FromContextPart<ToolCallContext<'_, server::WorkbenchServer>> for Caller {
 
 /// 调用方必须正处在一个回合里：进程退了、回合结束后，留下的凭证不能再动东西（照 t3code `assertLiveCaller`）。
 fn caller(services: &Services, session_id: Option<&str>) -> Result<Caller, String> {
-    let session_id = session_id.ok_or_else(|| "unauthorized: 没有认出调用方".to_string())?;
+    let session_id = session_id.ok_or_else(|| "unauthorized: the caller was not recognized".to_string())?;
     let session = services
         .store
         .session(session_id)
         .map_err(|e| e.to_string())?
-        .ok_or_else(|| "unauthorized: 会话不存在".to_string())?;
+        .ok_or_else(|| "unauthorized: no such session".to_string())?;
     if session.status != SessionStatus::Running || !services.runtimes.is_live(&session.id) {
-        return Err("parent_not_active: 调用方会话不在回合里".into());
+        return Err("parent_not_active: the calling session is not in a turn".into());
     }
     let task = services
         .store
         .task(&session.task_id)
         .map_err(|e| e.to_string())?
-        .ok_or_else(|| "unauthorized: 任务不存在".to_string())?;
+        .ok_or_else(|| "unauthorized: no such task".to_string())?;
     Ok(Caller { session, task })
 }

@@ -7,6 +7,9 @@
 //!   （`src/acp/interaction-handlers/ask-question-handler.ts`）。没有自由文本。
 //! - `cursor/create_plan`：`{toolCallId, name, overview, plan, todos}`，回包 `accepted` / `rejected` / `cancelled`
 //!   （`create-plan-handler.ts`）。
+//!
+//! 拒绝和跳过不带 `reason`：Cursor 自己补上原生的 `User rejected plan` / `User skipped questions`
+//! 交给模型（cursor-agent 2026.10.22 `createPlan` / `askQuestion` 回包）。
 
 use serde_json::{json, Value};
 
@@ -290,14 +293,14 @@ pub fn response(pending: &Pending, answer: &PromptAnswer) -> Result<(Value, Stri
                 Ok((json!({ "outcome": { "outcome": "accepted" } }), "实施".into()))
             } else {
                 Ok((
-                    json!({ "outcome": { "outcome": "rejected", "reason": "用户没有采纳这个计划" } }),
+                    json!({ "outcome": { "outcome": "rejected" } }),
                     "不实施".into(),
                 ))
             }
         }
         Pending::Questions { questions } => match answer {
             PromptAnswer::Questions { skipped: true, .. } => Ok((
-                json!({ "outcome": { "outcome": "skipped", "reason": "用户跳过了提问" } }),
+                json!({ "outcome": { "outcome": "skipped" } }),
                 "已跳过".into(),
             )),
             PromptAnswer::Questions { answers, .. } => {

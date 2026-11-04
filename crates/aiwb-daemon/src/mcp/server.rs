@@ -47,7 +47,7 @@ impl WorkbenchServer {
             match replays.get(&key) {
                 Some((_, Some(reply))) => return Ok(reply.clone()),
                 Some((_, None)) => {
-                    return Err("in_progress: 同一个 clientRequestId 的上一次调用还没做完，稍后用它再试".into())
+                    return Err("in_progress: the previous call with this clientRequestId has not finished; retry with it later".into())
                 }
                 None => {
                     replays.insert(key.clone(), (Instant::now(), None));

@@ -27,7 +27,7 @@ const events: SessionEvent[] = [
   event("s1", 3, { kind: "status-changed", status: "completed" }),
   event("r1", 4, {
     kind: "user-message",
-    text: "子任务有新结果。\n\n## 改登录页文案\n状态：done\n分支：aiwb/login-copy\n最后的回答：\n改好了三处文案。",
+    text: "Subtasks have new results.\n\n## 改登录页文案\ntaskId: sub-write\nstate: done\nbranch: aiwb/login-copy\nlast answer:\n改好了三处文案。",
     sender: { task_ids: ["sub-write", "sub-test"] },
   }),
   event("a2", 5, { kind: "agent-message", text: "两个子任务都完成了。我先看一下 diff 再告诉你。", phase: "final-answer" }),

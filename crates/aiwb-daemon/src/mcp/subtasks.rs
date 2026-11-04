@@ -126,7 +126,7 @@ initiation — declare it honestly from the user's words:
 - offer: the user's latest message asks for this work but did not say to split it off. A card asks the user. End your turn right after this call; you will get a message with the user's choice (opened, or do it here yourself).
 - own_initiative: work you noticed or propose that the user did not ask for. A card the user may start later; do not wait, continue your own work. At most 3 per turn, never the same thing twice. Never use it for work the user asked for.
 
-A subtask inherits your permission level and plan mode and can never be wider than yours. Subtasks cannot open subtasks of their own. To combine several subtasks' worktree changes, ask the user first and merge only on their yes; never push those branches.")]
+A subtask inherits your permission level and plan mode and can never be wider than yours. Subtasks cannot open subtasks of their own.")]
     async fn aiwb_subtask_create(&self, caller: Caller, Parameters(params): Parameters<CreateParams>) -> Reply {
         let initiation = match params.initiation {
             InitiationParam::UserAsked => Initiation::UserAsked,
@@ -141,7 +141,7 @@ A subtask inherits your permission level and plan mode and can never be wider th
                     .agent
                     .map(|agent| {
                         serde_json::from_value::<AgentKind>(Value::String(agent.clone()))
-                            .map_err(|_| format!("invalid: 不认识的 Agent {agent}"))
+                            .map_err(|_| format!("invalid: unknown agent {agent}"))
                     })
                     .transpose()?;
                 Ok(SubtaskRequest {
@@ -170,7 +170,7 @@ A subtask inherits your permission level and plan mode and can never be wider th
     }
 
     #[tool(
-        description = "Read one of your subtasks' timeline, one page at a time from the newest. By default only messages, answers and plans. A subtask's report is its own claim: before telling the user something is done, read its result here or look at the diff in its worktree."
+        description = "Read one of your subtasks' timeline, one page at a time from the newest. By default only messages, answers and plans."
     )]
     async fn aiwb_subtask_read(&self, caller: Caller, Parameters(params): Parameters<ReadParams>) -> Reply {
         json(self.services.read_subtask(
@@ -183,7 +183,7 @@ A subtask inherits your permission level and plan mode and can never be wider th
     }
 
     #[tool(
-        description = "Send a follow-up message to one of your subtasks. Refused with `blocked` while the subtask waits for the user's approval or answer: tell the user to handle it and never answer on their behalf. When the turn you started ends, its result comes back to you like the first one."
+        description = "Send a follow-up message to one of your subtasks. Refused with `blocked` while the subtask waits for the user's approval or answer. When the turn you started ends, its result comes back to you like the first one."
     )]
     async fn aiwb_subtask_send(&self, caller: Caller, Parameters(params): Parameters<SendParams>) -> Reply {
         let steer = matches!(params.mode, Some(SendMode::Steer));
