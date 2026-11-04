@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { fixedMenuPosition } from "./fixed-menu-position.ts";
+import { fixedMenuPosition, submenuPosition } from "./fixed-menu-position.ts";
 
 test("a menu anchored at the sidebar edge stays inside the viewport", () => {
   const placed = fixedMenuPosition({
@@ -38,4 +38,28 @@ test("a menu that would fall off the bottom flips above the trigger", () => {
   });
   assert.equal(placed.left, 40);
   assert.equal(placed.top, 700 - 120 - 6);
+});
+
+test("a submenu opens to the right of its item and flips left when there is no room", () => {
+  const right = submenuPosition({
+    item: { left: 100, right: 276, top: 200, bottom: 232 },
+    menu: { width: 180, height: 100 },
+    viewport: { width: 1280, height: 800 },
+  });
+  assert.deepEqual(right, { left: 280, top: 196 });
+  const flipped = submenuPosition({
+    item: { left: 1000, right: 1176, top: 200, bottom: 232 },
+    menu: { width: 180, height: 100 },
+    viewport: { width: 1280, height: 800 },
+  });
+  assert.equal(flipped.left, 1000 - 180 - 4);
+});
+
+test("a submenu near the bottom is pulled up into the viewport", () => {
+  const placed = submenuPosition({
+    item: { left: 100, right: 276, top: 760, bottom: 792 },
+    menu: { width: 180, height: 120 },
+    viewport: { width: 1280, height: 800 },
+  });
+  assert.equal(placed.top, 800 - 120 - 8);
 });

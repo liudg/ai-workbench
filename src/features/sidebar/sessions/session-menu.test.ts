@@ -18,7 +18,22 @@ test("pin and archive labels flip when the session is already in that state", ()
   assert.equal(items.find((item) => item.id === "archive")?.label, "取消归档");
 });
 
-test("fork targets sit between pin and archive, one per agent", () => {
+test("a single fork target is a plain item between pin and archive", () => {
+  const items = sessionMenuItems({
+    pinned: false,
+    archived: false,
+    forks: [{ agent: "codex-cli", name: "Codex", same: true }],
+  });
+  assert.deepEqual(
+    items.map((item) => item.label),
+    ["重命名", "置顶", "分叉", "归档", "删除"],
+  );
+  const fork = items.find((item) => item.id === "fork");
+  assert.equal(fork?.agent, "codex-cli");
+  assert.equal(fork?.children, undefined);
+});
+
+test("several fork targets fold into one 分叉 submenu, one entry per agent", () => {
   const items = sessionMenuItems({
     pinned: false,
     archived: false,
@@ -29,13 +44,15 @@ test("fork targets sit between pin and archive, one per agent", () => {
   });
   assert.deepEqual(
     items.map((item) => item.label),
-    ["重命名", "置顶", "分叉", "分叉到 Claude Code", "归档", "删除"],
+    ["重命名", "置顶", "分叉", "归档", "删除"],
   );
+  const fork = items.find((item) => item.id === "fork");
+  assert.equal(fork?.agent, undefined);
   assert.deepEqual(
-    items.filter((item) => item.id === "fork").map((item) => [item.key, item.agent]),
+    fork?.children?.map((item) => [item.key, item.label, item.agent]),
     [
-      ["fork:codex-cli", "codex-cli"],
-      ["fork:claude-code", "claude-code"],
+      ["fork:codex-cli", "Codex（当前）", "codex-cli"],
+      ["fork:claude-code", "Claude Code", "claude-code"],
     ],
   );
 });

@@ -25,6 +25,7 @@ import { relativeSessionTime } from "@/shared/format/relative-time";
 import { DeleteSessionDialog } from "./DeleteSessionDialog";
 import { shouldSubmitRename } from "./rename-submit";
 import { sessionMenuItems, type SessionMenuAction } from "./session-menu";
+import { SubmenuItem } from "./SubmenuItem";
 import { useSessionRow } from "./use-session-row";
 import type { AgentKind } from "@/types";
 
@@ -184,15 +185,19 @@ export function SessionRow({
         label="聊天操作"
         className="w-44 rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
       >
-        {items.map((item) => (
-          <MenuItem
-            key={item.key}
-            action={item.id}
-            label={item.label}
-            danger={item.danger}
-            onSelect={() => run(item.id, item.agent)}
-          />
-        ))}
+        {items.map((item) =>
+          item.children ? (
+            <SubmenuItem key={item.key} item={item} onSelect={run} />
+          ) : (
+            <MenuItem
+              key={item.key}
+              action={item.id}
+              label={item.label}
+              danger={item.danger}
+              onSelect={() => run(item.id, item.agent)}
+            />
+          ),
+        )}
       </FixedMenu>
 
       <Dialog open={renameOpen} onOpenChange={setRenameOpen}>

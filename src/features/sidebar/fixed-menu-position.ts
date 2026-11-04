@@ -39,3 +39,24 @@ export function fixedMenuPosition(input: {
   top = Math.min(Math.max(margin, top), maxTop);
   return { top, left, maxWidth, maxHeight };
 }
+
+/** 二级菜单贴着父菜单项向右展开，右边放不下就翻到左边；上下也收进视口。 */
+export function submenuPosition(input: {
+  item: MenuRect;
+  menu: MenuSize;
+  viewport: { width: number; height: number };
+  margin?: number;
+  gap?: number;
+}): { top: number; left: number } {
+  const margin = input.margin ?? 8;
+  const gap = input.gap ?? 4;
+  const { width, height } = input.menu;
+  let left = input.item.right + gap;
+  if (left + width > input.viewport.width - margin) left = input.item.left - width - gap;
+  left = Math.min(Math.max(margin, left), Math.max(margin, input.viewport.width - width - margin));
+  const top = Math.min(
+    Math.max(margin, input.item.top - 4),
+    Math.max(margin, input.viewport.height - height - margin),
+  );
+  return { top, left };
+}
