@@ -1,6 +1,6 @@
 # 嵌套任务：Agent 把活拆给子任务
 
-路线图第 19 项「Agent 互相驱动」。第一期做嵌套任务：会话里的 Agent 能开出挂在自己下面的子任务，子任务可以换 Agent、开自己的工作树，跑完把结果交回父任务，父任务接着往下做。同时补上 Agent 自带子 Agent 的展示，修掉一个相关的 bug（见「Agent 自带子 Agent」一节）。状态：方案已确认，未动代码。
+路线图第 19 项「Agent 互相驱动」。第一期做嵌套任务：会话里的 Agent 能开出挂在自己下面的子任务，子任务可以换 Agent、开自己的工作树，跑完把结果交回父任务，父任务接着往下做。同时补上 Agent 自带子 Agent 的展示，修掉一个相关的 bug（见「Agent 自带子 Agent」一节）。状态：嵌套任务和 Claude 子 Agent 混进主时间线的 bug 已实现；Agent 自带子 Agent 的展示还没做。
 
 ## 要解决的问题
 - 一件事能拆成几块并行做，但都塞在一个会话里，就只能一块接一块地做，过程还把上下文撑满。
@@ -66,6 +66,9 @@
   - Codex：`thread/start` 和 resume 时的 `config` 里加 `mcp_servers.aiwb`。
   - Claude：加 `--mcp-config` 传 `{"mcpServers":{"aiwb":{"type":"http","url":…,"headers":{…}}}}`，再用 `--allowedTools mcp__aiwb__*` 免审批。
 - Codex 和 Claude 原生都支持 HTTP MCP，两个都实现，不加能力开关。
+- 无状态：`rmcp` 关掉会话模式、回 JSON，每个请求单独处理，daemon 重启不用恢复 MCP 会话。
+- 只发给项目里的顶层任务（`mcp::serves`）：子任务不能再开子任务，独立聊天没有项目，侧边聊天不发。
+- 代码：`crates/aiwb-daemon/src/mcp/`（路由、凭证、调用方、各组工具），规则和数据在 `services/subtasks.rs`。新的一组工具加一个文件，在 `mcp/server.rs` 里加上它的路由。
 - 工具调用都很快返回，不在工具调用里长时间等待，不需要拉长 `tool_timeout_sec`。
 
 ### 父子关系
@@ -83,7 +86,7 @@
 | `aiwb_subtask_create` | 开一个或一批子任务：Agent、模型、选项、是否开工作树、首条消息。立刻返回，不等跑完 | `tasks.create` | Claude Code 嵌套会话、t3code `delegate_task` |
 | `aiwb_subtask_list` | 列自己的子任务：标题、Agent、注意力状态、最后一条预览 | `tasks.list` | t3code `task_status` |
 | `aiwb_subtask_read` | 分页读一个子任务的时间线，默认只有用户消息、回答和计划 | 事件表 | t3code `t3_thread_read` |
-| `aiwb_subtask_send` | 给子任务追加消息，`mode` 取 `auto` / `queue` / `steer` | `sessions.send` | t3code `t3_thread_send` |
+| `aiwb_subtask_send` | 给子任务追加消息，`mode` 取 `auto` / `steer` | `sessions.send` | t3code `t3_thread_send` |
 | `aiwb_subtask_interrupt` | 打断子任务正在跑的回合 | `sessions.interrupt` | t3code `task_cancel` |
 
 `aiwb_subtask_create` 的规则：
@@ -91,6 +94,7 @@
 - 工具描述里写明上文「分工」一节的取舍。
 
 `aiwb_subtask_send` 的规则：
+- `auto` 跟着子任务自己的「回合中再发消息」设置（排队或引导），`steer` 立刻引导。适配器没有强制排队的接口，不单列 `queue`。
 - 子任务正在等审批或回答（`needs-input`）时拒绝，报 `blocked`，不替用户回答（herdr `agent_blocked`）。
 
 ### 用户同意（照 Claude Code 嵌套会话）
@@ -109,14 +113,15 @@
 
 ### 结果回报（照 Claude Code 嵌套会话、t3code 完成投递）
 - 父任务开完子任务可以接着干别的，也可以直接结束这一回合，不用一直挂着等。
-- daemon 订阅 `tasks` 主题。子任务每结束一个回合（包括父任务追加消息后开的回合）都记一条待回报。等父任务的所有子任务都不在 `working`、父会话也空闲时，daemon 用 `sessions.send` 把待回报一次发给父会话，父会话就此开一个新回合。
+- daemon 接会话状态变化（`Runtimes` 的状态通知，只在注意力状态真的变了时发）。子任务每结束一个回合（包括父任务追加消息后开的回合）都记一条待回报。等父任务的所有子任务都不在 `working`、父会话也空闲时，daemon 用 `sessions.send` 把待回报一次发给父会话，父会话就此开一个新回合。
 - 回报一条消息里汇总所有待回报的子任务，每个子任务给：标题、状态（`done` / `failed` / `needs-input`）、最后一条回答的前 400 字左右、工作树分支。
 - 父会话连续被回报叫醒多次、中间用户一条消息都没发时，后面的回报不再叫醒，留到用户下一次发消息时一起带上，防止父子来回空转。
 - 以下回合的结果也不叫醒父会话，留到用户下一次发消息时带上：用户自己在子任务里发消息开的回合，以及被打断或失败的回合。
 - 子任务停在 `needs-input` 时也回报，父任务据此告诉用户去处理，自己不替用户回答。
 - 回报只是子任务的说法：工具描述要求父任务告诉用户「完成了」之前，先读子任务的结果或看 diff。
-- 用户在父会话里正在打字或者刚发了消息时，回报排队，不打断用户。
-- 时间线里回报折成一行，标出「来自 <子任务标题>」，点开看全文，点标题跳过去（照 t3code `TimelineUserMessageRow.tsx`）。为此用户消息事件加 `sender: {taskId}` 字段。
+- 用户在父会话里正在打字（30 秒内改过有字的草稿）或者刚发了消息时，回报排队，不打断用户：留到用户发消息时一起带上，或者下一次状态变化再看。
+- 待回报只在内存里：daemon 重启后会话都记成已停止，没送出的回报不再送。
+- 时间线里回报折成一行，标出「来自 <子任务标题>」，点开看全文，点标题跳过去（照 t3code `TimelineUserMessageRow.tsx`）。为此用户消息事件加 `sender: {task_ids}` 字段（一次回报可能汇总几个子任务）。用户发消息时带上的回报单独记一行，用户气泡只画用户写的。
 
 ### 工作树与合并
 - 开了工作树的子任务，改动在自己的分支上。回报里带上分支名。
@@ -127,6 +132,14 @@
 - **调用方必须活着**：调用工具时，确认调用方的会话正处在一个回合里。
 - **重试幂等**：可以带 `clientRequestId`，daemon 在内存里记一段时间，重试时直接返回上次的结果。
 - **只能动自己的子任务**：list、read、send、interrupt 都只认 `parentTaskId` 是调用方任务的子任务。
+
+### 已知的取舍
+- 谁让子任务这一回合跑的按最后一次发消息的人算：用户在父任务开的回合里引导一句，这一回合就算用户的，不叫醒父会话；反过来也一样。
+- Claude 的凭证在 `--mcp-config` 的命令行参数里，同一用户的进程看得到。凭证只能动调用方自己的子任务，且只在它的回合里有效；「子任务不能再开子任务」是工作台的规则，不是安全边界。
+- 权限上限按父会话存下的档位算。Codex 里用 `/permissions` 临时改的档位不写回会话选项，作曲栏里改的才算。
+- 父任务给子任务发的只能是普通消息，斜杠命令（能改权限和模式）一律拒绝。
+- 适配器用 `takes_workbench_mcp` 声明会注入工作台 MCP。现在是 Codex 和 Claude；Cursor 原生也有 MCP，还没用真实 CLI 验证能否按会话注入，先不发凭证。
+- 父任务发给子任务的消息（第一条说明、追加的消息）带 `sender`，子任务时间线里折成「来自 <父任务>」。按子任务自己的设置排进队列的那条，等真正发出时由适配器记，不带 `sender`。
 
 ### 不在第一期
 - 带上父任务对话开子任务（Claude Code 的 `fork`）。
@@ -168,6 +181,8 @@ Codex、Claude 都能自己派出子 Agent。v1 没做这块；v2 的适配器�
 - **归一化**：`aiwb-core` 加子 Agent 事件（开始、更新、结束，带父工具调用 id、描述、模型、状态、结果、用量），子 Agent 的消息带上所属子 Agent 的 id。两个适配器各自转换，界面不按 Agent 名字区分。
 
 ## 验证
+已有：`cargo test -p aiwb-daemon --test subtasks`（假适配器走真实 HTTP）；`--test subtasks_cli -- --ignored`（真实 CLI，Claude 开 Codex、Codex 开 Claude，2026-11-04 通过）。下面的清单里没写进测试的，靠这两份覆盖或留到后面。
+
 - 单元测试：token 的发放、解析和撤销；权限宽窄比较；只能动自己的子任务；回报的触发条件（所有子任务停下、父会话空闲、用户在打字时排队、连续叫醒后留到用户下一条消息）。
 - 真实 CLI（Codex、Claude 各一遍，`--ignored` 集成测试）：
   - Claude 父任务开一个 Codex 子任务，反过来再来一遍。子任务跑完，父会话收到回报并开新回合，读出子任务的回答。

@@ -38,6 +38,11 @@ export function removeTask(id: string, options: WorktreeDeleteFlags) {
   return daemon.call<boolean>("tasks.remove", { id, ...options });
 }
 
+/** 开子任务卡片上的选择：另开，或者不另开。 */
+export function resolveOffer(sessionId: string, offerId: string, accept: boolean) {
+  return daemon.call<null>("tasks.resolveOffer", { sessionId, offerId, accept }, CLI_TIMEOUT_MS);
+}
+
 /** 任务换一个 Agent 接着做。前文在新 Agent 的第一条消息里交过去。 */
 export function switchAgent(taskId: string, agent: AgentKind, options: SessionOptions) {
   return daemon.call<TaskEntry>("tasks.switchAgent", { taskId, agent, options }, CLI_TIMEOUT_MS);

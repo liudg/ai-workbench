@@ -19,7 +19,7 @@ mod protocol;
 
 pub use protocol::{
     fold_page_annotations, submit_annotation_as_attachment, AgentAdapter, AgentError, AgentSession,
-    EventSink, SessionContext, TurnDelivery, UserTurn,
+    EventSink, SessionContext, TurnDelivery, UserTurn, WorkbenchMcp,
 };
 pub use protocol::{default_git_scopes, is_turn_scope, turn_scope, AnnotationSink, DiffScope, DiffScopeProvider};
 

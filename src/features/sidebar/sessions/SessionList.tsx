@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import type { SidebarTask } from "../sidebar-task";
 import { SessionRows } from "./SessionRows";
+import { nestLines, splitSubtasks } from "./session-nesting";
 import { revealMoreSessions, SESSION_PREVIEW_LIMIT, sidebarSessionWindow } from "./session-order";
 
 const rowButtonClass =
@@ -15,12 +16,20 @@ export function SessionList({
   activeTaskId: string | null;
 }) {
   const [visibleLimit, setVisibleLimit] = useState(SESSION_PREVIEW_LIMIT);
-  const pinnedIds = tasks.filter((task) => task.pinned).map((task) => task.id);
-  const { visible, canRevealMore, canCollapse } = sidebarSessionWindow(tasks, visibleLimit, pinnedIds);
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
+  const { roots, childrenOf } = splitSubtasks(tasks);
+  const pinnedIds = roots.filter((task) => task.pinned).map((task) => task.id);
+  const { visible, canRevealMore, canCollapse } = sidebarSessionWindow(roots, visibleLimit, pinnedIds);
+  const toggle = (id: string) =>
+    setCollapsed((current) => {
+      const next = new Set(current);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
 
   return (
     <div className="mt-0.5">
-      <SessionRows tasks={visible} activeTaskId={activeTaskId} />
+      <SessionRows lines={nestLines(visible, childrenOf, collapsed)} activeTaskId={activeTaskId} onToggle={toggle} />
       {(canRevealMore || canCollapse) && (
         <div className="pt-0.5">
           {canRevealMore && (

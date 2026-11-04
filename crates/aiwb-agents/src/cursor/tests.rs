@@ -364,6 +364,7 @@ async fn live_acp_session_opens_and_replaces_an_empty_placeholder() {
         project_path: cwd.clone(),
         access_mode: Some("ask".into()),
         resume_native_id: resume,
+        workbench_mcp: None,
         options: json!({ "persist": true, "skip_history": true }),
     };
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
@@ -480,6 +481,7 @@ async fn live_acp_turns_with_approval_plan_and_cancel() {
                 project_path: cwd.clone(),
                 access_mode: Some("ask".into()),
                 resume_native_id: None,
+                workbench_mcp: None,
                 options: json!({ "persist": true }),
             },
             tx,

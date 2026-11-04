@@ -18,6 +18,8 @@ export interface SidebarTask {
   updatedAt: number;
   pinned: boolean;
   archived: boolean;
+  /** 开出这个子任务的任务。 */
+  parentTaskId: string | null;
 }
 
 export function sidebarTask(task: TaskEntry): SidebarTask {
@@ -33,5 +35,6 @@ export function sidebarTask(task: TaskEntry): SidebarTask {
     updatedAt: task.updatedAt,
     pinned: task.pinned,
     archived: Boolean(task.archivedAt),
+    parentTaskId: task.parentTaskId ?? null,
   };
 }

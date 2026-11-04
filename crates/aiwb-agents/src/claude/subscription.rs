@@ -36,6 +36,7 @@ pub async fn fetch() -> Result<SubscriptionUsage, AgentError> {
         model: None,
         effort: None,
         writable_roots: Vec::new(),
+        workbench_mcp: None,
     });
     let mut child = process::spawn(&bin, &args, &cwd)?;
     let result = talk(&mut child).await;

@@ -11,6 +11,24 @@ pub struct SessionContext {
     pub resume_native_id: Option<String>,
     /// 适配器扩展。是否写入可 resume 的会话列表由各适配器读取 `persist`。
     pub options: serde_json::Value,
+    /// 工作台自己的 MCP 服务。有值时适配器把它加进这个会话的 MCP 列表，不动用户配的。
+    pub workbench_mcp: Option<WorkbenchMcp>,
+}
+
+/// 工作台 MCP 的地址和这个会话专用的凭证。凭证随 Agent 进程发放，进程停掉就作废。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkbenchMcp {
+    pub url: String,
+    pub token: String,
+}
+
+impl WorkbenchMcp {
+    /// 在 Agent 里注册的服务名。工具名形如 `mcp__aiwb__…`。
+    pub const SERVER_NAME: &'static str = "aiwb";
+
+    pub fn authorization(&self) -> String {
+        format!("Bearer {}", self.token)
+    }
 }
 
 impl SessionContext {

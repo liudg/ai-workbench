@@ -283,6 +283,7 @@ impl Shared {
             text: item.text.clone(),
             images: item.images.clone(),
             annotations: 0,
+            sender: None,
         });
     }
 

@@ -35,6 +35,7 @@ mod thread_status;
 mod tokens;
 mod turn;
 mod usage;
+mod workbench;
 
 mod session;
 mod side;
@@ -123,6 +124,10 @@ impl AgentAdapter for CodexCliAdapter {
     }
 
     fn session_linked(&self) -> bool {
+        true
+    }
+
+    fn takes_workbench_mcp(&self) -> bool {
         true
     }
 
@@ -293,6 +298,7 @@ impl AgentAdapter for CodexCliAdapter {
             instruction_sources: Mutex::new(Vec::new()),
             thread_effort: Mutex::new(None),
             thread_name: Mutex::new(None),
+            workbench_mcp: ctx.workbench_mcp.clone(),
         });
         {
             let refresher = Arc::clone(&shared);

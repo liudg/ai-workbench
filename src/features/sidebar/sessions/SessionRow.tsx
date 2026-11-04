@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import { Ellipsis, Pin } from "lucide-react";
+import { ChevronDown, ChevronRight, Ellipsis, Pin } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -32,10 +32,20 @@ export function SessionRow({
   task,
   active,
   now,
+  depth,
+  subtasks,
+  collapsed,
+  onToggle,
 }: {
   task: SidebarTask;
   active: boolean;
   now: number;
+  /** 1 是挂在父任务下的子任务。 */
+  depth: 0 | 1;
+  /** 下面挂着几个子任务。有子任务时可以折叠。 */
+  subtasks: number;
+  collapsed: boolean;
+  onToggle: () => void;
 }) {
   const row = useSessionRow(task);
 
@@ -104,8 +114,10 @@ export function SessionRow({
         data-active={active ? "true" : "false"}
         data-pinned={task.pinned ? "true" : "false"}
         data-archived={task.archived ? "true" : "false"}
+        data-subtask={depth === 1 ? "true" : undefined}
         className={cn(
-          "group flex h-full w-full items-center gap-1.5 rounded-md pl-9 pr-2 text-left text-[11.5px] leading-none",
+          "group relative flex h-full w-full items-center gap-1.5 rounded-md pr-2 text-left text-[11.5px] leading-none",
+          depth === 1 ? "pl-[52px]" : "pl-9",
           active
             ? "bg-[#222] text-[#f3f3f3]"
             : "text-[#bdbdbd] hover:bg-white/[0.04] hover:text-[#e8e8e8]",
@@ -118,6 +130,20 @@ export function SessionRow({
           }
         }}
       >
+        {subtasks > 0 && (
+          <button
+            type="button"
+            className="absolute left-4 flex h-4 w-4 items-center justify-center rounded text-[#777] hover:text-[#e8e8e8]"
+            aria-label={collapsed ? `展开 ${subtasks} 个子任务` : "收起子任务"}
+            aria-expanded={!collapsed}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggle();
+            }}
+          >
+            {collapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+          </button>
+        )}
         <SessionAgentIcon identity={row.identity} />
         <span className="min-w-0 flex-1 truncate">{task.title}</span>
         <AttentionPill pill={attentionPill(task.attention)} />

@@ -18,6 +18,16 @@ export interface ChatHost {
   addTextSnippet?: (sessionId: string, draft: TextSnippetDraft) => void;
   /** 时间线由几段会话接成时（中途换过 Agent），每段是哪个 Agent。只有一段的宿主不给。 */
   agentOf?: (sessionId: string) => AgentKind | undefined;
+  /** 子任务的标题和跳转、开子任务卡片的选择。不支持的宿主不给，卡片就不能点。 */
+  subtasks?: SubtaskHost;
+}
+
+export interface SubtaskHost {
+  /** 任务列表里还没有它时没有。 */
+  title(taskId: string): string | undefined;
+  open(taskId: string): void;
+  /** 失败时宿主自己报错，卡片重新可点。 */
+  resolveOffer(sessionId: string, offerId: string, accept: boolean): Promise<void>;
 }
 
 const ChatHostContext = createContext<ChatHost | null>(null);

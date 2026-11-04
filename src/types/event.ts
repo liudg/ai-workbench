@@ -67,7 +67,14 @@ export interface PromptOption {
 
 /** 事件体（对应 Rust 的 SessionEventBody；适配器只产生这一层） */
 export type SessionEventBody =
-  | { kind: "user-message"; text: string; images?: string[]; annotations?: number }
+  | {
+      kind: "user-message";
+      text: string;
+      images?: string[];
+      annotations?: number;
+      /** 工作台替子任务送来的回报或卡片结果，不是用户打的字。 */
+      sender?: MessageSender;
+    }
   | {
       kind: "agent-message";
       text: string;
@@ -158,6 +165,16 @@ export type SessionEventBody =
       raw: string;
     }
   | { kind: "collaboration-mode"; mode: string }
+  /** Agent 提议开子任务，等用户在卡片上选。选过之后带 `resolution`。 */
+  | {
+      kind: "subtask-offer";
+      offer_id: string;
+      initiation: "offer" | "own_initiative";
+      subtasks: SubtaskSpec[];
+      /** 过了这个时间（毫秒）就不能再点。 */
+      expires_at?: number;
+      resolution?: { kind: "accepted"; task_ids: string[] } | { kind: "declined" };
+    }
   /** 线程目标。objective 为空表示已清除。用量字段来自 `thread/goal`，没有就不编。 */
   | {
       kind: "goal";
@@ -189,6 +206,18 @@ export type SessionEventBody =
       cache_read_tokens?: number | null;
       cache_write_tokens?: number | null;
     };
+
+/** 工作台消息说的是哪些子任务。 */
+export interface MessageSender {
+  task_ids: string[];
+}
+
+export interface SubtaskSpec {
+  agent: AgentKind;
+  title: string;
+  prompt: string;
+  worktree?: boolean;
+}
 
 export type FileStatus = "A" | "M" | "D" | "R";
 

@@ -167,6 +167,7 @@ impl Services {
                         text,
                         images,
                         annotations,
+                        ..
                     } => title_from_user_message(text, images.len(), *annotations),
                     _ => None,
                 })
@@ -182,6 +183,7 @@ impl Services {
             archived_at: None,
             created_at,
             updated_at,
+            parent_task_id: None,
         };
         let session = TaskSession {
             id: new_id(),

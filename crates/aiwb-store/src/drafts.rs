@@ -14,6 +14,17 @@ impl Store {
         Ok(raw.and_then(|raw| serde_json::from_str(&raw).ok()))
     }
 
+    /// 草稿和它最后写入的时间。
+    pub fn draft_entry(&self, key: &str) -> StoreResult<Option<(Value, i64)>> {
+        let row: Option<(String, i64)> = self
+            .conn()
+            .query_row("SELECT body, updated_at FROM draft WHERE key = ?1", [key], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
+            .optional()?;
+        Ok(row.and_then(|(raw, at)| serde_json::from_str(&raw).ok().map(|body| (body, at))))
+    }
+
     /// `None` 删掉这份草稿。
     pub fn set_draft(&self, key: &str, body: Option<&Value>, now: i64) -> StoreResult<()> {
         match body {

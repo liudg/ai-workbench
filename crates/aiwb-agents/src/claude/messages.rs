@@ -140,7 +140,7 @@ pub fn ingest_value(state: &mut MapState, value: &Value, live: bool, project: Op
         }
         "stream_event" => {
             let event = value.get("event").unwrap_or(&Value::Null);
-            let mut events = on_stream(state, event, project);
+            let mut events = if sidechain(value) { Vec::new() } else { on_stream(state, event, project) };
             if live {
                 if let Some(body) = super::usage::apply_stream(&mut state.usage, event) {
                     events.push(body);
@@ -624,7 +624,7 @@ fn on_assistant(state: &mut MapState, value: &Value, project: Option<&Path>, liv
         return Vec::new();
     }
     // 旁路不进时间线。实时用量仍按 message.id 记，历史由 jsonl 快照覆盖。
-    if flag(value, "isSidechain") {
+    if sidechain(value) {
         if !live {
             return Vec::new();
         }
@@ -676,7 +676,7 @@ fn on_assistant(state: &mut MapState, value: &Value, project: Option<&Path>, liv
 }
 
 fn on_user(state: &mut MapState, value: &Value, live: bool, project: Option<&Path>) -> Vec<SessionEventBody> {
-    if skip_seen(state, value) || flag(value, "isMeta") || flag(value, "isSidechain") {
+    if skip_seen(state, value) || flag(value, "isMeta") || sidechain(value) {
         return Vec::new();
     }
     let message = value.get("message").unwrap_or(&Value::Null);
@@ -1127,6 +1127,7 @@ fn user_event(text: String) -> SessionEventBody {
         text: slash_command_text(&text).unwrap_or(text),
         images: Vec::new(),
         annotations: 0,
+        sender: None,
     }
 }
 
@@ -1252,6 +1253,16 @@ fn skip_seen(state: &mut MapState, value: &Value) -> bool {
     }
     state.seen.insert(uuid.to_string());
     false
+}
+
+/// 子 Agent 的消息。转录里标 `isSidechain`；实时流不带它，只带派它的那次工具调用的 `parent_tool_use_id`。
+/// 照 t3code `apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts` 按 `parent_tool_use_id` 区分主线。
+fn sidechain(value: &Value) -> bool {
+    flag(value, "isSidechain")
+        || value
+            .get("parent_tool_use_id")
+            .and_then(Value::as_str)
+            .is_some_and(|id| !id.is_empty())
 }
 
 fn flag(value: &Value, key: &str) -> bool {

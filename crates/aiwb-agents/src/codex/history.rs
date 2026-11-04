@@ -254,6 +254,7 @@ fn push_history_item(
                     text: take_chars(&text, 20_000),
                     images,
                     annotations: 0,
+                    sender: None,
                 });
             }
         }
@@ -1176,6 +1177,7 @@ mod tests {
                 text: "写数字".into(),
                 images: Vec::new(),
                 annotations: 0,
+                sender: None,
             },
             SessionEventBody::AgentMessage {
                 text: "1 2 3".into(),
@@ -1188,6 +1190,7 @@ mod tests {
                 text: "写数字".into(),
                 images: Vec::new(),
                 annotations: 0,
+                sender: None,
             },
             SessionEventBody::AgentMessage {
                 text: "1 2 3".into(),

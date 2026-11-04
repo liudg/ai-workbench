@@ -261,6 +261,7 @@ mod tests {
                 archived_at: archived.then_some(1),
                 created_at: 1,
                 updated_at: 1,
+                parent_task_id: None,
             },
             sessions: vec![TaskSession {
                 id: format!("{id}-s"),

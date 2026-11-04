@@ -10,10 +10,19 @@ mod mcp;
 mod projects;
 mod sessions;
 mod side;
+mod subtasks;
 mod tasks;
 mod terminals;
 
 pub(crate) use folders::import_legacy_task_folder;
+pub(crate) use subtasks::SubtaskRequest;
+
+/// 代表某个会话来调用的一方（工作台 MCP 的工具调用）：调用方的会话和它的任务。
+/// 作用范围按它来定。
+pub(crate) struct Caller {
+    pub(crate) session: aiwb_core::task::TaskSession,
+    pub(crate) task: aiwb_core::task::Task,
+}
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -44,6 +53,8 @@ pub struct Services {
     pub(crate) filters: aiwb_files::FilterHub,
     /// 任务工作树放在这里，每个任务一个子目录。
     pub(crate) worktree_root: PathBuf,
+    /// 嵌套任务在内存里的状态：待回报、正在处理的卡片和回报。
+    pub(crate) subtasks: subtasks::SubtaskState,
     info: DaemonInfo,
     shutdown: watch::Sender<bool>,
 }
@@ -61,9 +72,14 @@ impl Services {
         adapters: AdapterFactory,
     ) -> Self {
         let hub = Arc::new(Hub::new());
+        let runtimes = Runtimes::new(store.clone(), hub.clone(), adapters.clone());
+        if info.port != 0 {
+            runtimes.mcp.set_url(format!("http://127.0.0.1:{}/mcp", info.port));
+        }
         Self {
-            upgrades: crate::upgrades::AgentUpgrades::new(hub.clone(), adapters.clone()),
-            runtimes: Arc::new(Runtimes::new(store.clone(), hub.clone(), adapters)),
+            upgrades: crate::upgrades::AgentUpgrades::new(hub.clone(), adapters),
+            runtimes: Arc::new(runtimes),
+            subtasks: Default::default(),
             terminals: Arc::new(Terminals::new(hub.clone())),
             store,
             hub,
@@ -188,6 +204,7 @@ impl Services {
             "tasks.fork" => to_value(self.fork_task(parse(params)?).await?),
             "tasks.openSide" => to_value(self.open_side(parse(params)?).await?),
             "tasks.closeSide" => to_value(self.close_side(parse(params)?).await?),
+            "tasks.resolveOffer" => to_value(self.resolve_offer(parse(params)?).await?),
             "sessions.send" => to_value(self.send(parse(params)?).await?),
             "sessions.interrupt" => to_value(self.interrupt(parse(params)?).await?),
             "sessions.answer" => to_value(self.answer(parse(params)?).await?),

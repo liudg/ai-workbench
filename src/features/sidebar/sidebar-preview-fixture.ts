@@ -114,6 +114,14 @@ function previewTasks(now: number): TaskEntry[] {
     task({ id: "pinned", agent: "claude-code", title: "补了一半的说明", updatedAt: now - 60_000, pinned: true }),
     task({ id: "idle-codex", agent: "codex-cli", title: "整理发布说明", updatedAt: now - 2 * 60_000, unread: true }),
     task({ id: "idle-claude", agent: "claude-code", title: "看登录页文案", updatedAt: now - 5 * 60_000 }),
+    {
+      ...task({ id: "sub-write", agent: "codex-cli", title: "改登录页文案", status: "running", updatedAt: now - 3 * 60_000 }),
+      parentTaskId: "idle-claude",
+    },
+    {
+      ...task({ id: "sub-test", agent: "claude-code", title: "补登录页测试", updatedAt: now - 4 * 60_000 }),
+      parentTaskId: "idle-claude",
+    },
     task({ id: "codex-stopped", agent: "codex-cli", title: "查构建日志", status: "stopped", updatedAt: now - 20 * 60_000 }),
     task({
       id: "codex-failed",

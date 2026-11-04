@@ -24,6 +24,7 @@ const ALL: SessionEvent["kind"][] = [
   "plan-text",
   "review-note",
   "review-findings",
+  "subtask-offer",
   "collaboration-mode",
   "goal",
   "context-usage",

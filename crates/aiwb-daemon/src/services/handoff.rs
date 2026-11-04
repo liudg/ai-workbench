@@ -147,6 +147,7 @@ impl Services {
             archived_at: None,
             created_at: now,
             updated_at: now,
+            parent_task_id: None,
         };
         // 按原来的分段抄，每段还是原来的 Agent。原生分叉时最后一段接上分出来的线程；
         // 否则另起一段，第一条消息带上全部前文。

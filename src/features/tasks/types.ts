@@ -42,6 +42,8 @@ export interface TaskEntry {
   projectId?: string;
   title: string;
   workspace: TaskWorkspace;
+  /** 开出这个子任务的任务。 */
+  parentTaskId?: string;
   pinned: boolean;
   archivedAt?: number;
   createdAt: number;

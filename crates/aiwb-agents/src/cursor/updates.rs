@@ -104,6 +104,7 @@ impl UpdateMap {
             text,
             images: Vec::new(),
             annotations: 0,
+            sender: None,
         });
         events.push(SessionEventBody::TurnAnchor {
             turn_id,

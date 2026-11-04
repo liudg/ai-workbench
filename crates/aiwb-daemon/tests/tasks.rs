@@ -82,6 +82,7 @@ impl AgentAdapter for FakeAdapter {
                 text: format!("{native_id} 的问题"),
                 images: Vec::new(),
                 annotations: 0,
+                sender: None,
             },
             SessionEventBody::AgentMessage {
                 text: format!("{native_id} 的回答"),

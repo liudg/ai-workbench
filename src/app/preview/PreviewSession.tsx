@@ -98,16 +98,18 @@ export function PreviewSession({
   events,
   profiles = {},
   panel = true,
+  subtasks,
 }: {
   session: Session;
   events: SessionEvent[];
   profiles?: Partial<Record<AgentKind, AgentProfile>>;
   /** 带右侧面板。 */
   panel?: boolean;
+  subtasks?: ChatHost["subtasks"];
 }) {
   const chatHost = useMemo<ChatHost>(
-    () => ({ answerPrompt: async () => true, profiles, projectPath: "", addTextSnippet: () => {} }),
-    [profiles],
+    () => ({ answerPrompt: async () => true, profiles, projectPath: "", addTextSnippet: () => {}, subtasks }),
+    [profiles, subtasks],
   );
   const composer = useMemo(() => previewComposerHost({ profile: profiles[session.agent] }), [profiles, session.agent]);
   const usage = useMemo(() => accumulateSessionUsage(events), [events]);

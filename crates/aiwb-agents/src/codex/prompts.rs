@@ -88,6 +88,7 @@ impl Shared {
                 text: if shown.is_empty() { body.clone() } else { shown },
                 images: Vec::new(),
                 annotations: 0,
+                sender: None,
             },
         );
         self.begin_turn(body).await

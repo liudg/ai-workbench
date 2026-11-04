@@ -43,7 +43,7 @@ impl Services {
         self.stored_catalog(params.agent)
     }
 
-    fn stored_catalog(&self, agent: AgentKind) -> ServiceResult<Option<AgentCatalog>> {
+    pub(crate) fn stored_catalog(&self, agent: AgentKind) -> ServiceResult<Option<AgentCatalog>> {
         let raw = self
             .store
             .meta(&catalog_key(agent))

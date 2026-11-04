@@ -32,6 +32,9 @@ pub struct Task {
     pub project_id: Option<String>,
     pub title: String,
     pub workspace: TaskWorkspace,
+    /// 开出这个子任务的任务。只有一层：子任务不再有子任务。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_task_id: Option<String>,
     pub pinned: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub archived_at: Option<i64>,
@@ -123,4 +126,39 @@ pub struct SessionFeed {
     /// 排队消息的完整列表。没有变化的推送不带这一项。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub queue: Option<Vec<QueuedTurn>>,
+}
+
+/// 开子任务要不要先问用户，由 Agent 按用户的原话声明。照 Claude Code 桌面版嵌套会话。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Initiation {
+    /// 用户要求另开或放到后台：直接开。
+    UserAsked,
+    /// 用户让做这件事，但没说另开：出卡片，Agent 等用户选。
+    Offer,
+    /// Agent 自己提议的：出卡片，Agent 不等。
+    OwnInitiative,
+}
+
+/// 要开的一个子任务。跟着时间线事件走，字段和事件一样用下划线。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SubtaskSpec {
+    pub agent: AgentKind,
+    pub title: String,
+    /// 子任务的第一条消息。子任务不带父任务的对话。
+    pub prompt: String,
+    #[serde(default)]
+    pub worktree: bool,
+    #[serde(default)]
+    pub options: SessionOptions,
+}
+
+/// 用户在卡片上的选择。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum OfferResolution {
+    /// 另开：开出了这些子任务。
+    Accepted { task_ids: Vec<String> },
+    /// 就在这做，或者不要了。
+    Declined,
 }

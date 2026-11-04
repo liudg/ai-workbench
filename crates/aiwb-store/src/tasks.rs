@@ -45,6 +45,7 @@ fn task_from_row(row: &Row<'_>) -> rusqlite::Result<Task> {
         project_id: row.get("project_id")?,
         title: row.get("title")?,
         workspace: from_text::<TaskWorkspace>("workspace", &workspace)?,
+        parent_task_id: row.get("parent_task_id")?,
         pinned: row.get("pinned")?,
         archived_at: row.get("archived_at")?,
         created_at: row.get("created_at")?,
@@ -93,13 +94,14 @@ impl Store {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
         tx.execute(
-            "INSERT INTO task (id, project_id, title, workspace, pinned, archived_at, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT INTO task (id, project_id, title, workspace, parent_task_id, pinned, archived_at, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 task.id,
                 task.project_id,
                 task.title,
                 to_text(&task.workspace),
+                task.parent_task_id,
                 task.pinned,
                 task.archived_at,
                 task.created_at,
@@ -403,6 +405,7 @@ mod tests {
             archived_at: None,
             created_at: 1,
             updated_at,
+            parent_task_id: None,
         };
         let session = TaskSession {
             id: format!("{id}-s"),

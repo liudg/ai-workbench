@@ -67,6 +67,11 @@ pub trait AgentAdapter: Send + Sync {
         false
     }
 
+    /// 会读 `SessionContext::workbench_mcp`，把工作台 MCP 注入 Agent。
+    fn takes_workbench_mcp(&self) -> bool {
+        false
+    }
+
     /// 探测安装版本。`check_updates` 时再对照官方来源看有没有更新，要走网络。
     async fn installation(&self, check_updates: bool) -> AgentInstallation {
         let mut item = match self.cli_release() {
@@ -129,6 +134,7 @@ pub trait AgentAdapter: Send + Sync {
             project_path: cwd.to_string(),
             access_mode: None,
             resume_native_id: Some(native_id.to_string()),
+            workbench_mcp: None,
             options: serde_json::json!({ "persist": true }),
         };
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();

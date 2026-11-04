@@ -132,6 +132,7 @@ impl AgentAdapter for CursorAgentAdapter {
             project_path: cwd.to_string(),
             access_mode: None,
             resume_native_id: Some(native_id.to_string()),
+            workbench_mcp: None,
             options: serde_json::json!({ "persist": true }),
         };
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();

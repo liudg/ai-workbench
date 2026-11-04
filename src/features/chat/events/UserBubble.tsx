@@ -7,12 +7,14 @@ import { annotationCountLabel, annotationCountOf } from "./annotation-count";
 import { CopyButton, HoverActions } from "./chrome";
 import { EventImages } from "./EventImages";
 import { QuestionReplyCard } from "./QuestionReplyCard";
+import { SubtaskReport } from "./SubtaskReport";
 import { parseQuestionReply } from "./question-reply";
 import type { EventViewProps } from "./types";
 import { userBubbleModel } from "./user-image-layout";
 
 export function UserBubble({ event, time }: EventViewProps) {
   if (event.kind !== "user-message") return null;
+  if (event.sender) return <SubtaskReport text={event.text} taskIds={event.sender.task_ids} time={time} />;
   const text = event.text;
   const images = event.images ?? [];
   const replies = parseQuestionReply(text);

@@ -388,6 +388,7 @@ mod tests {
             archived_at: Some(5),
             created_at: 1,
             updated_at: 5,
+            parent_task_id: None,
         };
         let session = TaskSession {
             id: "t1-s".into(),

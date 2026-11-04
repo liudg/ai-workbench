@@ -95,6 +95,7 @@ impl Shared {
                 text: text.clone(),
                 images: Vec::new(),
                 annotations: 0,
+                sender: None,
             },
         );
         self.begin_turn(text).await
@@ -207,16 +208,12 @@ impl Shared {
         } else {
             self.refresh_queue().await;
         }
-        match self
-            .request(
-                "thread/resume",
-                json!({
-                    "threadId": thread_id,
-                    "excludeTurns": true,
-                }),
-            )
-            .await
-        {
+        let mut params = json!({
+            "threadId": thread_id,
+            "excludeTurns": true,
+        });
+        super::workbench::attach(&mut params, self.workbench_mcp.as_ref());
+        match self.request("thread/resume", params).await {
             Ok(result) => {
                 if let Some(model) = result.get("model").and_then(Value::as_str) {
                     *self.model.lock().unwrap() = model.to_string();
@@ -381,6 +378,7 @@ impl Shared {
             "threadSource": "user",
         });
         merge_json(&mut params, access.thread_permissions(wire));
+        super::workbench::attach(&mut params, self.workbench_mcp.as_ref());
         let result = self.request("thread/start", params).await?;
         let thread_id = result
             .pointer("/thread/id")

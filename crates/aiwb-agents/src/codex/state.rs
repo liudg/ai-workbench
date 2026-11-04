@@ -185,6 +185,8 @@ pub(super) struct Shared {
     /// 线程回包里的 `reasoningEffort`；作曲栏改了推理强度时以 `effort` 为准。
     pub(super) thread_effort: Mutex<Option<String>>,
     pub(super) thread_name: Mutex<Option<String>>,
+    /// 工作台 MCP。新建和恢复线程时写进 `config`。
+    pub(super) workbench_mcp: Option<crate::WorkbenchMcp>,
 }
 
 /// `thread/resume` 撞上 active writer 之后的打开状态。
@@ -321,6 +323,7 @@ impl Shared {
             instruction_sources: Mutex::new(Vec::new()),
             thread_effort: Mutex::new(None),
             thread_name: Mutex::new(None),
+            workbench_mcp: None,
         }
     }
 }

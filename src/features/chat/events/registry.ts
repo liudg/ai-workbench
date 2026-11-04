@@ -6,6 +6,7 @@ import { HandoffNote } from "./HandoffNote";
 import { PlanSteps, PlanText } from "./PlanBlocks";
 import { PromptEvent } from "./PromptCard";
 import { ReviewFindings, ReviewNote } from "./ReviewBlocks";
+import { SubtaskOfferCard } from "./SubtaskOfferCard";
 import { ThinkingBlock } from "./ThinkingBlock";
 import { ToolCall } from "./ToolCall";
 import { UserBubble } from "./UserBubble";
@@ -26,4 +27,5 @@ export const eventRenderers: Record<RenderedEventKind, ComponentType<EventViewPr
   "plan-text": PlanText,
   "review-note": ReviewNote,
   "review-findings": ReviewFindings,
+  "subtask-offer": SubtaskOfferCard,
 };

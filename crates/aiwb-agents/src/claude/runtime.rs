@@ -90,6 +90,7 @@ pub async fn open(
     side_of: Option<String>,
     writable_roots: Vec<String>,
     replay_history: bool,
+    workbench_mcp: Option<crate::WorkbenchMcp>,
     events: EventSink,
 ) -> Result<Arc<Shared>, AgentError> {
     let project = PathBuf::from(project_path.trim());
@@ -125,6 +126,7 @@ pub async fn open(
         model: None,
         effort: None,
         writable_roots: add_dirs.clone(),
+        workbench_mcp,
     });
     let mut child = process::spawn(&bin, &args, &project)?;
     let stdin = child

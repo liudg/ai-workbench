@@ -11,8 +11,8 @@ use std::sync::{Arc, Mutex};
 use aiwb_agents::{AgentAdapter, AgentError, AgentSession, SessionContext, TurnDelivery, UserTurn};
 use aiwb_core::attention::{self, Attention};
 use aiwb_core::models::{
-    new_id, AgentCatalog, now_millis, AgentKind, PageAnnotation, QueuedTurn, SessionEvent, SessionEventBody,
-    SessionStatus,
+    new_id, AgentCatalog, now_millis, AgentKind, MessageSender, PageAnnotation, QueuedTurn, SessionEvent,
+    SessionEventBody, SessionStatus,
 };
 use aiwb_core::rpc::{session_topic, TOPIC_TASKS};
 use aiwb_core::task::{SessionFeed, SessionOptions, StoredEvent, TaskWorkspace};
@@ -63,10 +63,47 @@ pub struct Runtimes {
     viewing: Mutex<HashMap<u64, String>>,
     /// 每条连接的面板里开着侧边聊天标签的任务。有标签就不空闲回收。
     side_tabs: Mutex<HashMap<u64, HashSet<String>>>,
+    /// 工作台 MCP 的凭证。随 Agent 进程发放和撤销。
+    pub(crate) mcp: crate::mcp::Credentials,
+    /// 会话状态变化。子任务回报从这里接。
+    status_tx: mpsc::UnboundedSender<StatusNote>,
+    status_rx: Mutex<Option<mpsc::UnboundedReceiver<StatusNote>>>,
+}
+
+/// 一个会话换了状态。
+#[derive(Debug, Clone)]
+pub(crate) struct StatusNote {
+    pub(crate) task_id: String,
+    pub(crate) status: SessionStatus,
+}
+
+/// 要发给 Agent 的一条消息。
+pub(crate) struct Outgoing {
+    pub(crate) text: String,
+    pub(crate) images: Vec<String>,
+    /// 回合进行中也立刻送进去（引导），不排队。
+    pub(crate) now: bool,
+    /// 工作台替子任务送的，不是用户打的字。
+    pub(crate) sender: Option<MessageSender>,
+    /// 放在正文前面一起送给 Agent 的工作台消息。时间线里单独折成一行，用户气泡仍只画用户写的。
+    pub(crate) preface: Option<(String, MessageSender)>,
+}
+
+impl Outgoing {
+    pub(crate) fn user(text: String, images: Vec<String>, now: bool) -> Self {
+        Self {
+            text,
+            images,
+            now,
+            sender: None,
+            preface: None,
+        }
+    }
 }
 
 impl Runtimes {
     pub fn new(store: Arc<Store>, hub: Arc<Hub>, adapters: AdapterFactory) -> Self {
+        let (status_tx, status_rx) = mpsc::unbounded_channel();
         Self {
             store,
             hub,
@@ -78,7 +115,15 @@ impl Runtimes {
             fresh_catalogs: Mutex::default(),
             viewing: Mutex::default(),
             side_tabs: Mutex::default(),
+            mcp: crate::mcp::Credentials::default(),
+            status_tx,
+            status_rx: Mutex::new(Some(status_rx)),
         }
+    }
+
+    /// 状态变化的接收端。只能取一次。
+    pub(crate) fn take_status_notes(&self) -> Option<mpsc::UnboundedReceiver<StatusNote>> {
+        self.status_rx.lock().unwrap().take()
     }
 
     pub(crate) fn adapter(&self, agent: AgentKind) -> Arc<dyn AgentAdapter> {
@@ -219,12 +264,17 @@ impl Runtimes {
                 if let SessionEventBody::CollaborationMode { mode } = &body {
                     self.keep_collaboration_mode(session_id, mode)?;
                 }
-                let status = matches!(body, SessionEventBody::StatusChanged { .. });
+                let status = match &body {
+                    SessionEventBody::StatusChanged { status } => Some(*status),
+                    _ => None,
+                };
+                // 工作台替子任务送来的消息不当标题。
                 let title = match &body {
                     SessionEventBody::UserMessage {
                         text,
                         images,
                         annotations,
+                        sender: None,
                     } => title_from_user_message(text, images.len(), *annotations),
                     _ => None,
                 };
@@ -234,8 +284,12 @@ impl Runtimes {
                     Some(title) if !side => self.adopt_title(&task_id, &title)?,
                     _ => false,
                 };
-                if status || attention_changed || titled {
+                if status.is_some() || attention_changed || titled {
                     self.publish_tasks()?;
+                }
+                // 状态事件的注意力变了，才是真换了状态（新会话接上时报的「已完成」不算）。
+                if let Some(status) = status.filter(|_| attention_changed && !side) {
+                    let _ = self.status_tx.send(StatusNote { task_id, status });
                 }
                 Ok(())
             }
@@ -290,7 +344,7 @@ impl Runtimes {
     }
 
     /// 改写时间线里已有的一条：沿用 seq，换新的 rev。
-    fn rewrite(&self, session_id: &str, event_id: &str, body: SessionEventBody) -> RuntimeResult<()> {
+    pub(crate) fn rewrite(&self, session_id: &str, event_id: &str, body: SessionEventBody) -> RuntimeResult<()> {
         let topic = session_topic(session_id);
         self.hub.publish_with(&topic, || -> RuntimeResult<_> {
             let mut logs = self.logs.lock().unwrap();
@@ -496,11 +550,22 @@ impl Runtimes {
                 options["writable_roots"] = json!(access.writable_roots);
             }
         }
+        let task = self
+            .store
+            .task(&session.task_id)
+            .map_err(store_err)?
+            .ok_or_else(|| "任务不存在".to_string())?;
+        let workbench_mcp = (side_of.is_none()
+            && crate::mcp::serves(&task)
+            && self.adapter(session.agent).takes_workbench_mcp())
+            .then(|| self.mcp.issue(session_id))
+            .flatten();
         let ctx = SessionContext {
             project_path: cwd,
             access_mode: session.options.access.as_ref().map(|access| access.mode.clone()),
             options,
             resume_native_id: if side_of.is_some() { None } else { resume },
+            workbench_mcp,
         };
         let (tx, rx) = mpsc::unbounded_channel();
         let muted = Arc::new(AtomicBool::new(false));
@@ -509,6 +574,7 @@ impl Runtimes {
         let handle = match self.adapter(session.agent).start_session(ctx, tx).await {
             Ok(handle) => handle,
             Err(err) => {
+                self.mcp.revoke(session_id);
                 let message = err.to_string();
                 self.record(session_id, SessionEventBody::Error { message: message.clone() })?;
                 self.record(
@@ -578,6 +644,7 @@ impl Runtimes {
     /// 进程已经退出的句柄扔掉，下次用到时重新接上。
     fn forget(&self, session_id: &str) {
         self.live.lock().unwrap().remove(session_id);
+        self.mcp.revoke(session_id);
     }
 
     /// 跑一个要句柄的操作。CLI 已经退出时重新接上再试一次。
@@ -597,14 +664,15 @@ impl Runtimes {
         }
     }
 
-    /// 发一条用户消息。斜杠命令不画用户气泡；排队的消息等真正发出时由适配器记。
-    pub(crate) async fn send(
-        self: &Arc<Self>,
-        session_id: &str,
-        text: String,
-        images: Vec<String>,
-        now: bool,
-    ) -> RuntimeResult<TurnDelivery> {
+    /// 发一条消息。斜杠命令不画用户气泡；排队的消息等真正发出时由适配器记。
+    pub(crate) async fn send_message(self: &Arc<Self>, session_id: &str, message: Outgoing) -> RuntimeResult<TurnDelivery> {
+        let Outgoing {
+            text,
+            images,
+            now,
+            sender,
+            preface,
+        } = message;
         if text.trim().is_empty() && images.is_empty() {
             return Err("消息不能为空".into());
         }
@@ -612,7 +680,7 @@ impl Runtimes {
         if handle.read_only() {
             return Err("此会话正被其他进程占用，当前只读，不能发送。".into());
         }
-        if text.starts_with('/') && images.is_empty() {
+        if text.starts_with('/') && images.is_empty() && preface.is_none() {
             let text = text.clone();
             self.with_handle(session_id, move |handle| {
                 let text = text.clone();
@@ -623,8 +691,12 @@ impl Runtimes {
         }
         // 换 Agent 后的第一条消息带上前文。时间线里的用户气泡仍只画用户写的。
         let handoff = self.prepare_handoff(session_id, &text, images.len())?;
+        let body = match &preface {
+            Some((preface, _)) => format!("{preface}\n\n{text}"),
+            None => text.clone(),
+        };
         let turn = UserTurn {
-            text: handoff.as_ref().map_or_else(|| text.clone(), |handoff| handoff.message(&text)),
+            text: handoff.as_ref().map_or_else(|| body.clone(), |handoff| handoff.message(&body)),
             images: images.clone(),
             client_id: new_id(),
             annotations: Vec::new(),
@@ -645,12 +717,24 @@ impl Runtimes {
             self.mark_delivered(session_id, handoff)?;
         }
         if delivery == TurnDelivery::Started {
+            if let Some((preface, from)) = preface {
+                self.record(
+                    session_id,
+                    SessionEventBody::UserMessage {
+                        text: preface,
+                        images: Vec::new(),
+                        annotations: 0,
+                        sender: Some(from),
+                    },
+                )?;
+            }
             self.record(
                 session_id,
                 SessionEventBody::UserMessage {
                     text,
                     images,
                     annotations: 0,
+                    sender,
                 },
             )?;
         }
@@ -689,6 +773,7 @@ impl Runtimes {
                     text: comment,
                     images,
                     annotations: 1,
+                    sender: None,
                 },
             )?;
         }
@@ -725,6 +810,7 @@ impl Runtimes {
                 text: format!("/goal {objective}"),
                 images: Vec::new(),
                 annotations: 0,
+                sender: None,
             },
         )
     }
@@ -753,6 +839,7 @@ impl Runtimes {
     }
 
     pub(crate) async fn stop(&self, session_id: &str) {
+        self.mcp.revoke(session_id);
         let entry = self.live.lock().unwrap().remove(session_id);
         if let Some(entry) = entry {
             let _ = entry.handle.stop().await;
@@ -813,6 +900,7 @@ impl Runtimes {
                     _ => continue,
                 }
                 let entry = live.remove(&session_id).expect("entry just checked");
+                self.mcp.revoke(&session_id);
                 entry.muted.store(true, Ordering::SeqCst);
                 logs.remove(&session_id);
                 entry
@@ -829,6 +917,7 @@ impl Runtimes {
             project_path: cwd,
             access_mode: None,
             resume_native_id: None,
+            workbench_mcp: None,
             options: json!({}),
         };
         let (tx, _rx) = mpsc::unbounded_channel();
@@ -843,7 +932,16 @@ impl Runtimes {
     }
 
     pub(crate) async fn stop_all(&self) {
-        let handles: Vec<_> = self.live.lock().unwrap().drain().map(|(_, entry)| entry.handle).collect();
+        let handles: Vec<_> = self
+            .live
+            .lock()
+            .unwrap()
+            .drain()
+            .map(|(id, entry)| {
+                self.mcp.revoke(&id);
+                entry.handle
+            })
+            .collect();
         for handle in handles {
             let _ = handle.stop().await;
         }
@@ -896,6 +994,7 @@ mod tests {
             archived_at: None,
             created_at: 1,
             updated_at: 1,
+            parent_task_id: None,
         };
         let session = TaskSession {
             id: "s".into(),
@@ -1114,6 +1213,7 @@ mod tests {
             archived_at: None,
             created_at: 1,
             updated_at: 1,
+            parent_task_id: None,
         };
         let session = TaskSession {
             id: "s".into(),

@@ -33,6 +33,7 @@ fn cli_args_follow_the_sdk_and_require_print() {
         model: Some("sonnet".into()),
         effort: Some("high".into()),
         writable_roots: Vec::new(),
+        workbench_mcp: None,
     });
     assert_eq!(
         args,
@@ -65,6 +66,7 @@ fn cli_args_follow_the_sdk_and_require_print() {
         model: None,
         effort: Some("  ".into()),
         writable_roots: Vec::new(),
+        workbench_mcp: None,
     });
     assert!(fresh.iter().any(|arg| arg == "--session-id=id-1"));
     assert!(!fresh.iter().any(|arg| arg == "--model" || arg == "--effort"));
@@ -83,10 +85,37 @@ fn add_dir_is_a_launch_argument() {
         model: None,
         effort: None,
         writable_roots: vec![r"D:\extra".into()],
+        workbench_mcp: None,
     });
     let pos = args.iter().position(|arg| arg == "--add-dir").expect("add-dir");
     assert_eq!(args[pos + 1], r"D:\extra");
     assert_eq!(args[pos + 2], "--input-format");
+}
+
+#[test]
+fn workbench_mcp_is_added_beside_user_servers_and_preapproved() {
+    let args = command::cli_args(&Launch {
+        session_id: "id-1".into(),
+        resume: false,
+        side_of: None,
+        permission_mode: "default".into(),
+        model: None,
+        effort: None,
+        writable_roots: Vec::new(),
+        workbench_mcp: Some(crate::WorkbenchMcp {
+            url: "http://127.0.0.1:9/mcp".into(),
+            token: "t".into(),
+        }),
+    });
+    assert!(!args.iter().any(|arg| arg == "--strict-mcp-config"));
+    let pos = args.iter().position(|arg| arg == "--mcp-config").expect("mcp-config");
+    let config: serde_json::Value = serde_json::from_str(&args[pos + 1]).unwrap();
+    let server = &config["mcpServers"]["aiwb"];
+    assert_eq!(server["type"], "http");
+    assert_eq!(server["headers"]["Authorization"], "Bearer t");
+    let pos = args.iter().position(|arg| arg == "--allowedTools").expect("allowedTools");
+    assert_eq!(args[pos + 1], "mcp__aiwb");
+    assert!(args[pos + 2].starts_with("--"), "变长参数后面紧跟下一个旗标");
 }
 
 #[test]
@@ -99,6 +128,7 @@ fn side_chat_forks_the_parent_without_a_transcript() {
         model: None,
         effort: None,
         writable_roots: Vec::new(),
+        workbench_mcp: None,
     });
     let at = args.iter().position(|arg| arg == "--resume=parent-1").expect("resume parent");
     assert_eq!(args[at + 1], "--fork-session");
@@ -648,6 +678,45 @@ fn thinking_stream_id(events: &[SessionEventBody]) -> String {
             _ => None,
         })
         .expect("thinking stream")
+}
+
+/// 实时流里子 Agent 的消息不带 `isSidechain`，只带 `parent_tool_use_id`：回答、工具和流式碎片都不进主时间线，用量照记。
+#[test]
+fn live_subagent_messages_stay_out_of_the_main_timeline() {
+    let mut state = MapState::default();
+    let reply = ingest_line(
+        &mut state,
+        r#"{"type":"assistant","parent_tool_use_id":"toolu_1","uuid":"aaaaaaaa-1111-4aaa-8aaa-aaaaaaaaaaaa","message":{"id":"msg_sub","role":"assistant","content":[{"type":"text","text":"PONG"},{"type":"tool_use","id":"toolu_2","name":"Bash","input":{"command":"ls"}}],"usage":{"input_tokens":5,"output_tokens":1}}}"#,
+        true,
+        None,
+    );
+    assert!(
+        reply.events.iter().all(|event| matches!(event, SessionEventBody::SessionUsage { .. })),
+        "{:?}",
+        reply.events
+    );
+    assert!(!reply.events.is_empty(), "用量照记");
+    let result = ingest_line(
+        &mut state,
+        r#"{"type":"user","parent_tool_use_id":"toolu_1","uuid":"aaaaaaaa-2222-4aaa-8aaa-aaaaaaaaaaaa","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_2","content":"a.txt"}]}}"#,
+        true,
+        None,
+    );
+    assert!(result.events.is_empty(), "{:?}", result.events);
+    let delta = ingest_line(
+        &mut state,
+        r#"{"type":"stream_event","parent_tool_use_id":"toolu_1","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"PO"}}}"#,
+        true,
+        None,
+    );
+    assert!(delta.events.iter().all(|event| !matches!(event, SessionEventBody::AgentMessage { .. })));
+    let main = ingest_line(
+        &mut state,
+        r#"{"type":"assistant","parent_tool_use_id":null,"uuid":"aaaaaaaa-3333-4aaa-8aaa-aaaaaaaaaaaa","message":{"id":"msg_main","role":"assistant","content":[{"type":"text","text":"子 Agent 回了 PONG"}]}}"#,
+        true,
+        None,
+    );
+    assert!(main.events.iter().any(|event| matches!(event, SessionEventBody::AgentMessage { text, .. } if text == "子 Agent 回了 PONG")));
 }
 
 #[test]
@@ -1530,6 +1599,7 @@ async fn live_tool_status_follows_the_result() {
                 project_path: std::env::temp_dir().to_string_lossy().to_string(),
                 access_mode: Some("full".into()),
                 resume_native_id: None,
+                workbench_mcp: None,
                 options: serde_json::json!({}),
             },
             tx,

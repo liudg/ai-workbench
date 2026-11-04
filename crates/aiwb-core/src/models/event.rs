@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use super::agent::{AgentKind, SessionId};
 use super::catalog::QueuedTurn;
 use super::session::SessionStatus;
+use crate::task::{Initiation, OfferResolution, SubtaskSpec};
 
 /// 需要用户输入的提问类型。
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -292,6 +293,9 @@ pub enum SessionEventBody {
         /// 浏览器批注条数。大于 0 时时间线显示「N 条注释」，正文仍只给 Agent。
         #[serde(default, skip_serializing_if = "is_zero")]
         annotations: u32,
+        /// 不是用户打的字，是工作台替子任务送来的回报或卡片结果。时间线折成一行。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        sender: Option<MessageSender>,
     },
     AgentMessage {
         text: String,
@@ -503,6 +507,17 @@ pub enum SessionEventBody {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         cache_write_tokens: Option<i64>,
     },
+    /// Agent 提议开子任务，等用户在卡片上选。用户选过之后同一条改写成带 `resolution` 的。
+    SubtaskOffer {
+        offer_id: String,
+        initiation: Initiation,
+        subtasks: Vec<SubtaskSpec>,
+        /// 过了这个时间（毫秒）就不能再点。用户在等着选的卡片不过期。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        expires_at: Option<i64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        resolution: Option<OfferResolution>,
+    },
     /// 适配器请求宿主在同一项目里开一个新会话（`/new`、`/clear`、计划的「清空上下文后实施」）。
     /// 会话管理器不把它写进时间线，而是转给前端去新建、命名并发出首条消息。
     NewThread {
@@ -514,6 +529,13 @@ pub enum SessionEventBody {
         #[serde(default, skip_serializing_if = "is_false")]
         worktree: bool,
     },
+}
+
+/// 工作台消息说的是哪些子任务。卡片结果「就在这做」没有子任务。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MessageSender {
+    #[serde(default)]
+    pub task_ids: Vec<String>,
 }
 
 /// 打开已被其他进程持有写锁的 Codex 线程时，给时间线和发送拒绝用的同一句说明。

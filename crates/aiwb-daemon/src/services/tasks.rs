@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use aiwb_core::models::{new_id, AgentKind, SessionStatus};
-use aiwb_core::task::{SessionOptions, Task, TaskEntry, TaskSession, TaskWorkspace};
+use aiwb_core::task::{SessionOptions, SubtaskSpec, Task, TaskEntry, TaskSession, TaskWorkspace};
 use serde::{Deserialize, Serialize};
 
 use super::{blocking, now_millis, ServiceResult, Services};
@@ -32,6 +32,27 @@ pub(crate) struct CreateTask {
     /// `paused` 时目标设好后先暂停。
     #[serde(default)]
     goal_status: Option<String>,
+    /// 开出这个子任务的任务。只由 Agent 经工作台 MCP 开子任务时设，界面不传。
+    #[serde(skip)]
+    parent_task_id: Option<String>,
+}
+
+impl CreateTask {
+    /// 父任务下的子任务：同一个项目，第一条消息就是说明。
+    pub(super) fn subtask(parent: &Task, spec: &SubtaskSpec) -> Self {
+        Self {
+            project_id: parent.project_id.clone(),
+            title: spec.title.clone(),
+            prompt: spec.prompt.clone(),
+            images: Vec::new(),
+            agent: spec.agent,
+            worktree: spec.worktree,
+            options: spec.options.clone(),
+            goal: None,
+            goal_status: None,
+            parent_task_id: Some(parent.id.clone()),
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -127,6 +148,7 @@ impl Services {
             project_id,
             title: params.title.trim().to_string(),
             workspace,
+            parent_task_id: params.parent_task_id.clone(),
             pinned: false,
             archived_at: None,
             created_at: now,
@@ -157,6 +179,11 @@ impl Services {
         if !params.prompt.trim().is_empty() || !params.images.is_empty() || goal.is_some() {
             let runtimes = self.runtimes.clone();
             let session_id = session.id.clone();
+            // 子任务的第一条消息是父任务写的。
+            let sender = task.parent_task_id.clone().map(|parent| aiwb_core::models::MessageSender {
+                task_ids: vec![parent],
+            });
+            let subtask = sender.is_some();
             let paused = params.goal_status.as_deref() == Some("paused");
             tokio::spawn(async move {
                 let sent = async {
@@ -170,10 +197,11 @@ impl Services {
                     if params.prompt.trim().is_empty() && params.images.is_empty() {
                         return Ok(());
                     }
-                    runtimes
-                        .send(&session_id, params.prompt, params.images, false)
-                        .await
-                        .map(|_| ())
+                    let message = crate::runtime::Outgoing {
+                        sender,
+                        ..crate::runtime::Outgoing::user(params.prompt, params.images, false)
+                    };
+                    runtimes.send_message(&session_id, message).await.map(|_| ())
                 }
                 .await;
                 if let Err(message) = sent {
@@ -182,6 +210,15 @@ impl Services {
                             &session_id,
                             aiwb_core::models::SessionEventBody::Error { message },
                         );
+                        // 子任务的说明没发出去：记成失败，父任务不用一直等它。
+                        if subtask {
+                            let _ = runtimes.record(
+                                &session_id,
+                                aiwb_core::models::SessionEventBody::StatusChanged {
+                                    status: SessionStatus::Failed,
+                                },
+                            );
+                        }
                     }
                 }
             });
@@ -215,6 +252,9 @@ impl Services {
     pub(crate) async fn archive_task(&self, params: ArchiveTask) -> ServiceResult<bool> {
         if params.archived {
             self.stop_task_sessions(&params.id).await?;
+            self.forget_subtask(&params.id).await;
+        } else {
+            self.revive_subtask(&params.id);
         }
         let now = now_millis();
         let changed = self
@@ -257,6 +297,7 @@ impl Services {
             .filter(|session| session.task_id == params.id)
             .map(|session| session.id)
             .collect();
+        self.forget_subtask(&params.id).await;
         let removed = self
             .store
             .remove_task(&params.id)

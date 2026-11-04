@@ -194,7 +194,7 @@ mod tests {
     }
 
     fn user(seq: u64, text: &str) -> SessionEvent {
-        event(seq, SessionEventBody::UserMessage { text: text.into(), images: vec![], annotations: 0 })
+        event(seq, SessionEventBody::UserMessage { text: text.into(), images: vec![], annotations: 0, sender: None })
     }
 
     fn agent(seq: u64, text: &str) -> SessionEvent {

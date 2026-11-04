@@ -19,6 +19,7 @@ import { registerSideChatViewer } from "../side-chat/viewer";
 import { SessionPanel } from "./SessionPanel";
 import { useSessionStart } from "./session-start";
 import { useLiveComposer } from "./use-live-composer";
+import { useSubtaskHost } from "./use-subtask-host";
 import { useTaskTimeline } from "./use-task-timeline";
 
 registerSideChatViewer();
@@ -38,6 +39,7 @@ export function SessionView({
   const workdir = session.workdir?.trim() || project?.path || "";
   const timeline = useTaskTimeline(task, taskSession);
   const { agentOf } = timeline;
+  const subtasks = useSubtaskHost();
   const host = useMemo<ChatHost>(
     () => ({
       answerPrompt: (sessionId: string, promptId: string, answer: PromptAnswer) =>
@@ -49,8 +51,9 @@ export function SessionView({
       projectPath: workdir,
       addTextSnippet: addDraftSnippet,
       agentOf,
+      subtasks,
     }),
-    [agentOf, profiles, workdir],
+    [agentOf, profiles, subtasks, workdir],
   );
   const feed = timeline.all;
   const starting = useSessionStart(session.id, timeline.current.events, timeline.current.ready);

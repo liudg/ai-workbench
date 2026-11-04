@@ -15,6 +15,7 @@ export const RENDERED_EVENT_KINDS = [
   "plan-text",
   "review-note",
   "review-findings",
+  "subtask-offer",
 ] as const satisfies readonly SessionEvent["kind"][];
 
 /** 进日志但不进时间线的事件。 */

@@ -40,6 +40,8 @@ pub struct Launch {
     pub effort: Option<String>,
     /// 启动时的 `--add-dir`。运行中没有对应的控制请求。
     pub writable_roots: Vec<String>,
+    /// 工作台 MCP。`--mcp-config` 和用户配的 MCP 叠加，不加 `--strict-mcp-config`。
+    pub workbench_mcp: Option<crate::WorkbenchMcp>,
 }
 
 pub fn cli_args(launch: &Launch) -> Vec<String> {
@@ -84,6 +86,23 @@ pub fn cli_args(launch: &Launch) -> Vec<String> {
     for dir in &launch.writable_roots {
         cmd.push("--add-dir".to_string());
         cmd.push(dir.clone());
+    }
+    // 工具都只作用于这个会话自己的子任务，免审批（照 t3code `ClaudeAdapterV2.ts` 的 `allowedTools`）。
+    if let Some(mcp) = &launch.workbench_mcp {
+        let name = crate::WorkbenchMcp::SERVER_NAME;
+        let config = serde_json::json!({
+            "mcpServers": {
+                name: {
+                    "type": "http",
+                    "url": mcp.url,
+                    "headers": { "Authorization": mcp.authorization() },
+                }
+            }
+        });
+        cmd.push("--mcp-config".to_string());
+        cmd.push(config.to_string());
+        cmd.push("--allowedTools".to_string());
+        cmd.push(format!("mcp__{name}"));
     }
     cmd.extend(["--input-format".to_string(), "stream-json".to_string()]);
     cmd

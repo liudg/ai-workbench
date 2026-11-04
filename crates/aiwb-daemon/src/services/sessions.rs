@@ -107,10 +107,8 @@ pub(crate) struct Sent {
 
 impl Services {
     pub(crate) async fn send(&self, params: Send) -> ServiceResult<Sent> {
-        let delivery = self
-            .runtimes
-            .send(&params.session_id, params.text, params.images, params.now)
-            .await?;
+        let message = crate::runtime::Outgoing::user(params.text, params.images, params.now);
+        let delivery = self.send_from_user(&params.session_id, message).await?;
         Ok(Sent {
             queued: delivery == TurnDelivery::Queued,
         })

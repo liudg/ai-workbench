@@ -6,6 +6,7 @@
 mod connection;
 mod hub;
 mod instance;
+mod mcp;
 mod runtime;
 mod server;
 mod services;
@@ -85,6 +86,8 @@ pub async fn run(config: Config) -> Result<(), String> {
     if let Err(err) = services.settle_interrupted() {
         eprintln!("整理上次没跑完的会话失败：{err}");
     }
+    // 整理时记的「已停止」不算子任务的回合结束，接在它后面。
+    services.start_subtask_reports();
     instance::write_info(&config.data_dir, &info)?;
     eprintln!("daemon {} 已启动，端口 {port}", info.version);
 

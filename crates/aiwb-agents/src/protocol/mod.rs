@@ -12,7 +12,7 @@ mod surface;
 mod turn;
 
 pub use adapter::AgentAdapter;
-pub use context::SessionContext;
+pub use context::{SessionContext, WorkbenchMcp};
 pub use error::AgentError;
 pub use session::{submit_annotation_as_attachment, AgentSession, EventSink};
 pub use surface::{

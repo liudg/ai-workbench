@@ -156,6 +156,10 @@ impl AgentAdapter for ClaudeCodeAdapter {
         true
     }
 
+    fn takes_workbench_mcp(&self) -> bool {
+        true
+    }
+
     fn mcp(&self) -> Option<Arc<dyn crate::mcp::McpDriver>> {
         Some(mcp::driver())
     }
@@ -190,6 +194,7 @@ impl AgentAdapter for ClaudeCodeAdapter {
             side_of,
             command::roots_from_options(&ctx.options),
             replay_history,
+            ctx.workbench_mcp,
             events,
         )
         .await?;

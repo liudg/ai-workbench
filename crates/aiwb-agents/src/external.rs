@@ -138,6 +138,7 @@ mod tests {
                     project_path: std::env::temp_dir().to_string_lossy().to_string(),
                     access_mode: None,
                     resume_native_id: None,
+                    workbench_mcp: None,
                     options: serde_json::Value::Null,
                 },
                 tx,

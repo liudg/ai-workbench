@@ -1,4 +1,4 @@
-//! HTTP 入口：`/ws` 给客户端，`/health` 和 `/shutdown` 给应用壳管理进程。
+//! HTTP 入口：`/ws` 给客户端，`/health` 和 `/shutdown` 给应用壳管理进程，`/mcp` 给工作台拉起的 Agent。
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -18,6 +18,7 @@ pub fn router(services: Arc<Services>) -> Router {
         .route("/ws", get(ws))
         .route("/health", get(health))
         .route("/shutdown", post(shutdown))
+        .merge(crate::mcp::router(services.clone()))
         .with_state(services)
 }
 
