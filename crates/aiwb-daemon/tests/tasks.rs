@@ -525,6 +525,247 @@ async fn diff_file_and_git_follow_the_task_worktree() {
     assert!(!worktree.exists());
 }
 
+fn git_out(dir: &std::path::Path, args: &[&str]) -> String {
+    let output = std::process::Command::new("git").args(args).current_dir(dir).output().expect("git");
+    String::from_utf8_lossy(&output.stdout).trim().to_string()
+}
+
+/// 照 Codex：超出保留个数的旧工作树存快照后清掉，用到时在原路径恢复；归档也会清；删任务丢快照。
+#[tokio::test]
+async fn old_worktrees_are_shelved_and_come_back_on_use() {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = tempfile::tempdir().unwrap();
+    git(repo.path(), &["init", "-q", "-b", "main"]);
+    git(repo.path(), &["config", "core.autocrlf", "false"]);
+    std::fs::write(repo.path().join("calc.py"), "a + b\n").unwrap();
+    git(repo.path(), &["add", "."]);
+    git(
+        repo.path(),
+        &["-c", "user.email=t@t", "-c", "user.name=t", "-c", "commit.gpgsign=false", "commit", "-qm", "init"],
+    );
+    let script = Arc::new(Script::default());
+    let services = services(Arc::new(Store::open_in_memory().unwrap()), script.clone(), dir.path());
+    let settings = services
+        .dispatch("settings.setWorktrees", json!({ "keepCount": 1 }))
+        .await
+        .unwrap();
+    assert_eq!(settings["keepCount"], 1);
+    assert_eq!(settings["autoCleanup"], true);
+    let project = services
+        .dispatch("projects.add", json!({ "path": repo.path().to_string_lossy() }))
+        .await
+        .unwrap();
+    let create = || {
+        services.dispatch("tasks.create", json!({ "projectId": project["id"], "agent": "codex-cli", "worktree": true }))
+    };
+    let old = create().await.unwrap();
+    let new = create().await.unwrap();
+    let old_path = std::path::PathBuf::from(old["workspace"]["path"].as_str().unwrap());
+    let new_path = std::path::PathBuf::from(new["workspace"]["path"].as_str().unwrap());
+    std::fs::write(old_path.join("calc.py"), "a - b\n").unwrap();
+    std::fs::write(old_path.join("draft.txt"), "draft\n").unwrap();
+    let new_session = new["sessions"][0]["id"].as_str().unwrap().to_string();
+    services
+        .dispatch("sessions.send", json!({ "sessionId": new_session, "text": "新的" }))
+        .await
+        .unwrap();
+    wait_for_answer(&services, &new_session, "收到：新的").await;
+
+    services.sweep_worktrees().await;
+    assert!(!old_path.exists(), "超出个数的旧工作树应被清掉");
+    assert!(new_path.exists());
+    let tasks = services.dispatch("tasks.list", Value::Null).await.unwrap();
+    let find = |tasks: &Value, id: &Value| tasks.as_array().unwrap().iter().find(|t| t["id"] == *id).unwrap().clone();
+    let shelved = find(&tasks, &old["id"])["workspace"]["shelved"].clone();
+    let reference = shelved["reference"].as_str().unwrap().to_string();
+    assert!(!git_out(repo.path(), &["rev-parse", "--verify", "--quiet", &reference]).is_empty());
+
+    // 用到时放回原路径，没提交的改动也回来。
+    let old_session = old["sessions"][0]["id"].as_str().unwrap().to_string();
+    services
+        .dispatch("sessions.send", json!({ "sessionId": old_session, "text": "接着改" }))
+        .await
+        .unwrap();
+    wait_for_answer(&services, &old_session, "收到：接着改").await;
+    assert_eq!(std::fs::read_to_string(old_path.join("calc.py")).unwrap(), "a - b\n");
+    assert_eq!(std::fs::read_to_string(old_path.join("draft.txt")).unwrap(), "draft\n");
+    let started = script.started.lock().unwrap().last().unwrap().project_path.clone();
+    assert_eq!(std::path::PathBuf::from(started), old_path);
+    let tasks = services.dispatch("tasks.list", Value::Null).await.unwrap();
+    assert!(find(&tasks, &old["id"])["workspace"].get("shelved").is_none());
+    assert!(git_out(repo.path(), &["rev-parse", "--verify", "--quiet", &reference]).is_empty());
+
+    // 置顶的不清，哪怕超出个数。
+    services.dispatch("tasks.setPinned", json!({ "id": new["id"], "pinned": true })).await.unwrap();
+    services.sweep_worktrees().await;
+    assert!(old_path.exists() && new_path.exists());
+
+    // 归档就清；删掉任务时快照引用一起删。
+    services.dispatch("tasks.archive", json!({ "id": old["id"], "archived": true })).await.unwrap();
+    services.sweep_worktrees().await;
+    assert!(!old_path.exists());
+    let tasks = services.dispatch("tasks.list", Value::Null).await.unwrap();
+    let reference = find(&tasks, &old["id"])["workspace"]["shelved"]["reference"].as_str().unwrap().to_string();
+    // 只剩快照时删除前按有改动提醒；确认连工作树一起删才丢快照。
+    let preview = services.dispatch("tasks.deletePreview", json!({ "id": old["id"] })).await.unwrap();
+    assert_eq!(preview, json!({ "owned": true, "dirty": true }));
+    services
+        .dispatch("tasks.remove", json!({ "id": old["id"], "discardWorktree": true, "forceWorktree": true }))
+        .await
+        .unwrap();
+    assert!(git_out(repo.path(), &["rev-parse", "--verify", "--quiet", &reference]).is_empty());
+
+    // 关掉自动清理就不动。
+    services.dispatch("tasks.setPinned", json!({ "id": new["id"], "pinned": false })).await.unwrap();
+    services.dispatch("settings.setWorktrees", json!({ "autoCleanup": false })).await.unwrap();
+    services.dispatch("tasks.archive", json!({ "id": new["id"], "archived": true })).await.unwrap();
+    services.sweep_worktrees().await;
+    assert!(new_path.exists());
+    assert!(services.dispatch("settings.setWorktrees", json!({ "keepCount": 0 })).await.is_err());
+    std::fs::create_dir_all(repo.path().join("wt")).unwrap();
+    let inside = services
+        .dispatch("settings.setWorktrees", json!({ "root": repo.path().join("wt").to_string_lossy() }))
+        .await
+        .unwrap_err();
+    assert!(inside.contains("不能放在项目"), "{inside}");
+}
+
+/// 照 Codex 的 Hand off：分支和改动挪到项目目录，会话跟着换目录；再交回工作树。
+#[tokio::test]
+async fn worktree_task_hands_off_to_the_project_and_back() {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = tempfile::tempdir().unwrap();
+    git(repo.path(), &["init", "-q", "-b", "main"]);
+    git(repo.path(), &["config", "core.autocrlf", "false"]);
+    std::fs::write(repo.path().join("calc.py"), "a + b\n").unwrap();
+    std::fs::create_dir_all(repo.path().join("sub")).unwrap();
+    std::fs::write(repo.path().join("sub").join("keep.txt"), "x\n").unwrap();
+    git(repo.path(), &["add", "."]);
+    git(
+        repo.path(),
+        &["-c", "user.email=t@t", "-c", "user.name=t", "-c", "commit.gpgsign=false", "commit", "-qm", "init"],
+    );
+    let script = Arc::new(Script::default());
+    let services = services(Arc::new(Store::open_in_memory().unwrap()), script.clone(), dir.path());
+    let project = services
+        .dispatch("projects.add", json!({ "path": repo.path().to_string_lossy() }))
+        .await
+        .unwrap();
+    let task = services
+        .dispatch("tasks.create", json!({ "projectId": project["id"], "agent": "codex-cli", "worktree": true }))
+        .await
+        .unwrap();
+    let worktree = std::path::PathBuf::from(task["workspace"]["path"].as_str().unwrap());
+    assert!(task["workspace"].get("branch").is_none(), "新工作树是分离头指针");
+    std::fs::write(worktree.join("calc.py"), "a - b\n").unwrap();
+    let session = task["sessions"][0]["id"].as_str().unwrap().to_string();
+    let send = |text: &'static str| services.dispatch("sessions.send", json!({ "sessionId": session, "text": text }));
+
+    let missing = services.dispatch("tasks.handOff", json!({ "id": task["id"], "to": "local" })).await;
+    assert!(missing.unwrap_err().contains("分支名"));
+    let moved = services
+        .dispatch("tasks.handOff", json!({ "id": task["id"], "to": "local", "branch": "aiwb/calc" }))
+        .await
+        .unwrap();
+    assert_eq!(moved["workspace"]["local"]["branch"], "aiwb/calc");
+    assert_eq!(moved["workspace"]["local"]["previousBranch"], "main");
+    assert_eq!(git_out(repo.path(), &["branch", "--show-current"]), "aiwb/calc");
+    assert_eq!(std::fs::read_to_string(repo.path().join("calc.py")).unwrap(), "a - b\n");
+    send("在本地").await.unwrap();
+    wait_for_answer(&services, &session, "收到：在本地").await;
+    let started = script.started.lock().unwrap().last().unwrap().project_path.clone();
+    assert_eq!(
+        std::fs::canonicalize(started).unwrap(),
+        std::fs::canonicalize(repo.path()).unwrap(),
+        "交给项目目录后会话在项目目录里跑"
+    );
+    let feed = services.snapshot(&format!("session:{session}"), &json!({})).unwrap();
+    assert!(events_of(&feed).iter().any(|e| e["text"] == "已交给项目目录，分支 aiwb/calc"));
+
+    // 项目目录不干净时交不回去以外，正常交回：项目目录回到 main，改动回到工作树。
+    let back = services
+        .dispatch("tasks.handOff", json!({ "id": task["id"], "to": "worktree" }))
+        .await
+        .unwrap();
+    assert!(back["workspace"].get("local").is_none());
+    assert_eq!(git_out(repo.path(), &["branch", "--show-current"]), "main");
+    assert_eq!(std::fs::read_to_string(repo.path().join("calc.py")).unwrap(), "a + b\n");
+    assert_eq!(git_out(&worktree, &["branch", "--show-current"]), "aiwb/calc");
+    assert_eq!(std::fs::read_to_string(worktree.join("calc.py")).unwrap(), "a - b\n");
+    send("回工作树").await.unwrap();
+    wait_for_answer(&services, &session, "收到：回工作树").await;
+    let started = script.started.lock().unwrap().last().unwrap().project_path.clone();
+    assert_eq!(std::path::PathBuf::from(started), worktree);
+
+    // 不能换目录接着会话的 Agent 不能交接（假适配器只给 Codex、Claude 这项能力）。
+    let cursor = services
+        .dispatch("tasks.create", json!({ "projectId": project["id"], "agent": "cursor-agent", "worktree": true }))
+        .await
+        .unwrap();
+    let refused = services
+        .dispatch("tasks.handOff", json!({ "id": cursor["id"], "to": "local", "branch": "aiwb/cursor" }))
+        .await
+        .unwrap_err();
+    assert!(refused.contains("换目录"), "{refused}");
+
+    // 同一个仓库里的子目录项目也算同一个项目目录：一次只接一个任务。
+    let sub = services
+        .dispatch("projects.add", json!({ "path": repo.path().join("sub").to_string_lossy() }))
+        .await
+        .unwrap();
+    let sub_task = services
+        .dispatch("tasks.create", json!({ "projectId": sub["id"], "agent": "codex-cli", "worktree": true }))
+        .await
+        .unwrap();
+
+    // 同一个项目目录一次只接一个任务。
+    let other = services
+        .dispatch("tasks.create", json!({ "projectId": project["id"], "agent": "codex-cli", "worktree": true }))
+        .await
+        .unwrap();
+    services
+        .dispatch("tasks.handOff", json!({ "id": task["id"], "to": "local" }))
+        .await
+        .unwrap();
+    let second = services
+        .dispatch("tasks.handOff", json!({ "id": other["id"], "to": "local", "branch": "aiwb/other" }))
+        .await
+        .unwrap_err();
+    assert!(second.contains("先把它交回工作树"), "{second}");
+    let from_sub = services
+        .dispatch("tasks.handOff", json!({ "id": sub_task["id"], "to": "local", "branch": "aiwb/sub" }))
+        .await
+        .unwrap_err();
+    assert!(from_sub.contains("先把它交回工作树"), "{from_sub}");
+    // 交过去的任务归档了也还占着项目目录。
+    services.dispatch("tasks.archive", json!({ "id": task["id"], "archived": true })).await.unwrap();
+    let still = services
+        .dispatch("tasks.handOff", json!({ "id": other["id"], "to": "local", "branch": "aiwb/other" }))
+        .await
+        .unwrap_err();
+    assert!(still.contains("先把它交回工作树"), "{still}");
+    services.dispatch("tasks.archive", json!({ "id": task["id"], "archived": false })).await.unwrap();
+
+    // 项目目录切走（去合并）以后也能交回，项目目录不动。
+    git(repo.path(), &["switch", "-q", "main"]);
+    let back = services
+        .dispatch("tasks.handOff", json!({ "id": task["id"], "to": "worktree" }))
+        .await
+        .unwrap();
+    assert!(back["workspace"].get("local").is_none());
+    assert_eq!(git_out(repo.path(), &["branch", "--show-current"]), "main");
+    assert_eq!(git_out(&worktree, &["branch", "--show-current"]), "aiwb/calc");
+
+    // 项目目录有没提交的改动时拒绝，什么都不动。
+    std::fs::write(repo.path().join("calc.py"), "dirty\n").unwrap();
+    let refused = services
+        .dispatch("tasks.handOff", json!({ "id": task["id"], "to": "local" }))
+        .await
+        .unwrap_err();
+    assert!(refused.contains("calc.py"), "{refused}");
+    assert_eq!(git_out(&worktree, &["branch", "--show-current"]), "aiwb/calc");
+}
+
 #[tokio::test]
 async fn standalone_chat_gets_a_dated_folder_under_the_task_folder() {
     let dir = tempfile::tempdir().unwrap();

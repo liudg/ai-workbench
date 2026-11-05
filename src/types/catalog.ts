@@ -145,6 +145,8 @@ export interface AgentCapabilities {
   supports_subscription_usage?: boolean;
   /** 会话中途可以换成别的 Agent 或从别的 Agent 换过来，前文交给新 Agent。 */
   supports_context_handoff?: boolean;
+  /** 换工作目录后能接着原来的会话。任务交给项目目录、交回工作树要用。 */
+  supports_workdir_move?: boolean;
   /** 侧边聊天：从当前对话临时分出一条来问。 */
   supports_side_chat?: boolean;
 }

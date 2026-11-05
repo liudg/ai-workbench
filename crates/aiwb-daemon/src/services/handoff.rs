@@ -4,7 +4,7 @@ use aiwb_core::models::{new_id, AgentKind, HandoffStrategy, SessionEventBody, Se
 use aiwb_core::task::{SessionOptions, Task, TaskEntry, TaskSession, TaskWorkspace};
 use serde::Deserialize;
 
-use super::{now_millis, ServiceResult, Services};
+use super::{now_millis, session_busy, ServiceResult, Services};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -27,10 +27,6 @@ pub(crate) struct ForkTask {
     options: Option<SessionOptions>,
 }
 
-fn busy(session: &TaskSession) -> bool {
-    matches!(session.status, SessionStatus::Running | SessionStatus::NeedsInput)
-}
-
 impl Services {
     /// 任务换一个 Agent 接着做。现在的会话留作前面的一段，新会话第一条消息带上前文。
     /// 这个 Agent 在任务里用过时接回它原来的线程，只补它没看到的那段。
@@ -40,10 +36,19 @@ impl Services {
             .task_sessions(&params.task_id)
             .map_err(|e| e.to_string())?;
         let current = sessions.last().cloned().ok_or_else(|| "任务没有会话".to_string())?;
-        if busy(&current) {
+        if session_busy(&current) {
             return Err("这一轮还没结束，停下后再换 Agent".into());
         }
         self.ensure_handoff(current.agent, params.agent)?;
+        // 交给了项目目录的任务以后还要交回工作树，换上去的 Agent 得能换目录接着会话。
+        let handed_off = self
+            .store
+            .task(&params.task_id)
+            .map_err(|e| e.to_string())?
+            .is_some_and(|task| matches!(task.workspace, TaskWorkspace::Worktree { local: Some(_), .. }));
+        if handed_off && !self.runtimes.adapter(params.agent).capabilities().supports_workdir_move {
+            return Err(format!("{} 还不能换目录接着会话，先把任务交回工作树再换", params.agent.display_name()));
+        }
         // 侧边聊天是从换下去的这段分出来的，跟着关掉。
         self.discard_side(&params.task_id).await?;
 
@@ -101,17 +106,15 @@ impl Services {
     /// 从任务现在的样子分出一个新任务，在同一个目录里。
     /// 同一个 Agent 用它原生的分叉；换 Agent 或原生分叉不了时，新会话第一条消息带上全部前文。
     pub(crate) async fn fork_task(&self, params: ForkTask) -> ServiceResult<TaskEntry> {
-        let source = self
-            .store
-            .task(&params.task_id)
-            .map_err(|e| e.to_string())?
-            .ok_or_else(|| "任务不存在".to_string())?;
+        // 正在清理或交接源任务的工作树时，等它做完再照着它现在的样子分。
+        let _worktrees = self.runtimes.worktrees.lock().await;
+        let source = self.load_task(&params.task_id)?;
         let sessions = self
             .store
             .task_sessions(&source.id)
             .map_err(|e| e.to_string())?;
         let current = sessions.last().cloned().ok_or_else(|| "任务没有会话".to_string())?;
-        if busy(&current) {
+        if session_busy(&current) {
             return Err("这一轮还没结束，停下后再分叉".into());
         }
         let agent = params.agent.unwrap_or(current.agent);
@@ -142,7 +145,11 @@ impl Services {
             id: new_id(),
             project_id: source.project_id.clone(),
             title: source.title.clone(),
-            workspace: source.workspace.clone(),
+            // 交给了项目目录的任务在项目目录里干活，分出来的也在项目目录，不共用那份交接记录。
+            workspace: match &source.workspace {
+                TaskWorkspace::Worktree { local: Some(_), .. } => TaskWorkspace::Root,
+                other => other.clone(),
+            },
             pinned: false,
             archived_at: None,
             created_at: now,
@@ -246,19 +253,23 @@ impl Services {
     }
 
     pub(crate) fn task_entry(&self, task_id: &str) -> ServiceResult<TaskEntry> {
-        self.store
+        let mut entry = self
+            .store
             .task_entries()
             .map_err(|e| e.to_string())?
             .into_iter()
             .find(|entry| entry.task.id == task_id)
-            .ok_or_else(|| "任务不存在".to_string())
+            .ok_or_else(|| "任务不存在".to_string())?;
+        entry.branch = crate::runtime::task_branch(&entry.task);
+        Ok(entry)
     }
 
-    /// 另一个任务也在这个工作树里（分叉出来的）。删任务时不连目录一起删。
-    pub(crate) fn worktree_shared(&self, task_id: &str, path: &str) -> ServiceResult<bool> {
+    /// 另一个任务也在这个工作树里（分叉出来的）。`live_only` 时只算没归档的。
+    pub(crate) fn worktree_shared(&self, task_id: &str, path: &str, live_only: bool) -> ServiceResult<bool> {
         let tasks = self.store.list_tasks().map_err(|e| e.to_string())?;
         Ok(tasks.iter().any(|task| {
             task.id != task_id
+                && !(live_only && task.archived_at.is_some())
                 && matches!(&task.workspace, TaskWorkspace::Worktree { path: other, .. } if other == path)
         }))
     }

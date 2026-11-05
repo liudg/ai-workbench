@@ -130,7 +130,8 @@ export function useNewComposer({
   return useMemo<ComposerHost>(() => {
     const patch = (next: Partial<ComposerDraft>) => patchDraft(key, next);
     const retarget = (target: ProjectScope) => {
-      moveDraft(key, newSessionKey(target), readDraft(key));
+      // 起点分支是这个项目的，换项目就不带过去。
+      moveDraft(key, newSessionKey(target), { ...readDraft(key), worktreeBase: null, carryChanges: false });
       openNewSession(target);
     };
     const options: AgentOption[] | null =
@@ -172,6 +173,11 @@ export function useNewComposer({
         onToggle: () => patch({ worktree: !draft.worktree }),
         liveLabel: "",
         liveTitle: "",
+        start: {
+          base: draft.worktreeBase ?? null,
+          carry: Boolean(draft.carryChanges),
+          onPick: (worktreeBase, carryChanges) => patch({ worktreeBase, carryChanges }),
+        },
       },
       agentChoice: {
         options,
@@ -202,6 +208,9 @@ export function useNewComposer({
             prompt: text,
             images,
             worktree: Boolean(projectId) && Boolean(current.worktree),
+            ...(projectId && current.worktree
+              ? { worktreeBase: current.worktreeBase ?? undefined, carryChanges: Boolean(current.carryChanges) }
+              : {}),
             options: {
               model: tuning?.model,
               effort: tuning?.model ? tuning.effort : undefined,

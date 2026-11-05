@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use aiwb_core::attention::{AskKind, AttentionState};
 use aiwb_core::models::{now_millis, AgentKind, MessageSender, SessionEventBody, SessionStatus};
 use aiwb_core::task::{
-    Initiation, OfferResolution, SessionAccess, SessionOptions, SubtaskSpec, Task, TaskSession, TaskWorkspace,
+    Initiation, OfferResolution, SessionAccess, SessionOptions, SubtaskSpec, Task, TaskSession,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -17,7 +17,7 @@ use serde_json::{json, Value};
 use super::tasks::CreateTask;
 use super::{ServiceResult, Services};
 use super::Caller;
-use crate::runtime::{Outgoing, StatusNote};
+use crate::runtime::{task_branch, Outgoing, StatusNote};
 
 use reports::{Batch, Driver, Note, Reports};
 
@@ -368,7 +368,7 @@ impl Services {
                 "taskId": entry.task.id,
                 "title": entry.task.title,
                 "agent": spec.agent,
-                "branch": branch_of(&entry.task),
+                "branch": task_branch(&entry.task),
             }));
         }
         (opened, None)
@@ -481,7 +481,7 @@ impl Services {
                 let current = entry.sessions.last()?;
                 Some(SubtaskRow {
                     task_id: entry.task.id.clone(),
-                    branch: branch_of(&entry.task),
+                    branch: task_branch(&entry.task),
                     title: entry.task.title,
                     agent: current.agent,
                     state: entry.attention.state,
@@ -545,7 +545,7 @@ impl Services {
             "taskId": task.id,
             "title": task.title,
             "state": state,
-            "branch": branch_of(&task),
+            "branch": task_branch(&task),
             "items": items[start..],
             "nextBefore": next_before,
         }))
@@ -715,7 +715,7 @@ impl Services {
                 format!("taskId: {task_id}"),
                 format!("state: {}", status_label(outcome.status)),
             ];
-            if let Some(branch) = task.as_ref().and_then(branch_of) {
+            if let Some(branch) = task.as_ref().and_then(task_branch) {
                 lines.push(format!("branch: {branch}"));
             }
             if outcome.status == SessionStatus::NeedsInput {
@@ -766,13 +766,6 @@ fn rank(mode: &str) -> Option<usize> {
 
 fn nonempty(value: Option<String>) -> Option<String> {
     value.map(|value| value.trim().to_string()).filter(|value| !value.is_empty())
-}
-
-fn branch_of(task: &Task) -> Option<String> {
-    match &task.workspace {
-        TaskWorkspace::Worktree { branch, .. } => Some(branch.clone()),
-        _ => None,
-    }
 }
 
 fn status_label(status: SessionStatus) -> &'static str {

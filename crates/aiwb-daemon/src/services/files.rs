@@ -120,6 +120,10 @@ impl Services {
                     .await?;
             }
         };
+        // 工作树清理掉了不为看上一轮差异把它建回来。
+        if self.shelved_agent(session_id)?.is_some() {
+            return Err("工作树已清理，恢复后再看上一轮的改动".into());
+        }
         let handle = self.runtimes.handle(session_id).await?;
         handle
             .diff_for_scope(&root.to_string_lossy(), &params.diff_scope, params.ignore_whitespace)

@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import type { AgentInstallation, AgentUpgrade } from "@/types";
 import { useAgentSettings } from "./useAgentSettings";
 import { useTaskFolder } from "./useTaskFolder";
+import { useWorktreeSettings } from "./useWorktreeSettings";
 import { Button } from "@/components/ui/button";
 import { agentCardFace, statusLabel, type AgentCardFace } from "./agent-card";
 import { McpSettings } from "./mcp/McpSettings";
@@ -162,6 +163,112 @@ function GeneralPanel() {
         >
           更改
         </button>
+      </div>
+      {error && (
+        <p className="mt-3 text-sm text-red-300" role="alert">
+          {error}
+        </p>
+      )}
+      <WorktreePanel />
+    </section>
+  );
+}
+
+function KeepCountInput({ value, disabled, onCommit }: { value: number; disabled: boolean; onCommit: (count: number) => void }) {
+  const [text, setText] = useState(String(value));
+  const [synced, setSynced] = useState(value);
+  if (synced !== value) {
+    setSynced(value);
+    setText(String(value));
+  }
+  const commit = () => {
+    const count = Number.parseInt(text, 10);
+    if (Number.isInteger(count) && count >= 1 && count !== value) onCommit(count);
+    else setText(String(value));
+  };
+  return (
+    <input
+      type="number"
+      min={1}
+      data-worktree-keep-count=""
+      aria-label="保留的工作树个数"
+      value={text}
+      disabled={disabled}
+      onChange={(event) => setText(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") event.currentTarget.blur();
+      }}
+      className="h-8 w-20 rounded-lg border border-zinc-700 bg-zinc-950 px-2 text-sm text-zinc-100 outline-none focus:border-zinc-500 disabled:opacity-50"
+    />
+  );
+}
+
+function WorktreePanel() {
+  const { settings, error, busy, changeRoot, resetRoot, setAutoCleanup, setKeepCount } = useWorktreeSettings();
+  const custom = settings && settings.root !== settings.defaultRoot;
+  return (
+    <section data-settings-panel="worktrees" className="mt-10">
+      <h2 className="text-base font-medium text-zinc-100">工作树</h2>
+      <p className="mt-1 max-w-lg text-sm leading-6 text-zinc-500">
+        新工作树放在哪里，旧的什么时候清理。
+      </p>
+      <div className="mt-6 divide-y divide-zinc-800 rounded-xl border border-zinc-800 bg-[#161616]">
+        <div className="flex items-center justify-between gap-4 px-4 py-3">
+          <div className="min-w-0">
+            <div className="text-sm text-zinc-100">工作树目录</div>
+            <div data-worktree-root="" title={settings?.root ?? ""} className="mt-0.5 truncate text-xs text-zinc-500">
+              {settings?.root ?? "正在读取…"}
+            </div>
+          </div>
+          <div className="flex shrink-0 gap-2">
+            {custom ? (
+              <button
+                type="button"
+                disabled={busy}
+                className="rounded-lg px-3 py-1.5 text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 disabled:opacity-50"
+                onClick={() => void resetRoot()}
+              >
+                恢复默认
+              </button>
+            ) : null}
+            <button
+              type="button"
+              data-worktree-root-change=""
+              disabled={busy || !settings}
+              className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-100 hover:bg-zinc-800 disabled:opacity-50"
+              onClick={() => void changeRoot()}
+            >
+              更改
+            </button>
+          </div>
+        </div>
+        <label className="flex items-center justify-between gap-4 px-4 py-3">
+          <div className="min-w-0">
+            <div className="text-sm text-zinc-100">自动清理旧工作树</div>
+            <div className="mt-0.5 text-xs leading-5 text-zinc-500">
+              超出保留个数时清理最久没用的，置顶和运行中的不清理。清理后可以在任务里恢复。
+            </div>
+          </div>
+          <input
+            type="checkbox"
+            data-worktree-auto-cleanup=""
+            checked={settings?.autoCleanup ?? true}
+            disabled={busy || !settings}
+            onChange={(event) => void setAutoCleanup(event.target.checked)}
+            className="h-4 w-4 shrink-0 accent-zinc-100"
+          />
+        </label>
+        <div className="flex items-center justify-between gap-4 px-4 py-3">
+          <div className="text-sm text-zinc-100">保留个数</div>
+          {settings ? (
+            <KeepCountInput
+              value={settings.keepCount}
+              disabled={busy || !settings.autoCleanup}
+              onCommit={(count) => void setKeepCount(count)}
+            />
+          ) : null}
+        </div>
       </div>
       {error && (
         <p className="mt-3 text-sm text-red-300" role="alert">

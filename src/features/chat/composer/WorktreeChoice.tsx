@@ -33,6 +33,39 @@ export function WorktreeToggle({
   );
 }
 
+export function WorktreeShelvedLabel({
+  title,
+  restoring,
+  onRestore,
+}: {
+  title: string;
+  restoring: boolean;
+  onRestore: () => void;
+}) {
+  return (
+    <span
+      data-worktree-shelved=""
+      title={title}
+      className="inline-flex max-w-full min-w-0 items-center gap-2 rounded-[10px] border border-[#2e2e33] py-1 pl-2.5 pr-1 text-[13px] leading-5 text-[#a1a1aa]"
+      style={{ backgroundImage: CARD_BG, boxShadow: CARD_SHADOW }}
+    >
+      <span className="truncate">工作树已清理，发消息时自动恢复</span>
+      <button
+        type="button"
+        data-worktree-restore=""
+        disabled={restoring}
+        className="shrink-0 rounded-md px-2 text-[#ececef] hover:bg-white/[0.08] disabled:opacity-60"
+        onClick={(event) => {
+          event.stopPropagation();
+          onRestore();
+        }}
+      >
+        {restoring ? "正在恢复…" : "恢复"}
+      </button>
+    </span>
+  );
+}
+
 export function WorktreeSessionLabel({ label, title }: { label: string; title: string }) {
   return (
     <span

@@ -1,31 +1,18 @@
-import { useCallback, useEffect, useRef, useState, type ComponentProps } from "react";
-import { Check, GitBranch, Plus, Search } from "lucide-react";
+import { useCallback, useEffect, useState, type ComponentProps } from "react";
+import { Plus } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { userFacingMessage } from "@/lib/user-facing";
-import { cn } from "@/lib/utils";
 
-import {
-  branchNameError,
-  branchSearchPlaceholder,
-  filterBranchNames,
-  uncommittedFileLabel,
-} from "./git-branch";
+import { BranchMenu, BranchRow } from "./BranchMenu";
+import { BranchNameDialog } from "./BranchNameDialog";
+import { uncommittedFileLabel } from "./git-branch";
 import type { ComposerHost, WorktreeLine } from "./host";
-import { useComposerMenu } from "./useComposerMenu";
-import { CARD_BG, CARD_BG_HOT, CARD_SHADOW } from "./context-card";
 import { useGitBranch } from "./useGitBranch";
-import { worktreeBranchMarker } from "./worktree-option";
+import { WORKTREE_BRANCH_PREFIX, worktreeBranchMarker } from "./worktree-option";
 import { WorkContextPicker } from "./WorkContextPicker";
-import { WorktreeSessionLabel, WorktreeToggle } from "./WorktreeChoice";
+import { WorktreeHandOff } from "./WorktreeHandOff";
+import { WorktreeStartPicker } from "./WorktreeStartPicker";
+import { WorktreeSessionLabel, WorktreeShelvedLabel, WorktreeToggle } from "./WorktreeChoice";
 
 export function ComposerContextRow({
   workContext,
@@ -47,8 +34,13 @@ export function ComposerContextRow({
         sha: worktree.sha,
       })
     : null;
-  const showBranch = Boolean(git) && (worktree?.liveTitle ? Boolean(worktreeLabel) : branch.visible);
-  if (!workContext && !showBranch && !worktree?.showToggle && !worktree?.liveLabel) return null;
+  const shelved = worktree?.shelved ?? null;
+  // 新任务开了工作树时选起点，不切换项目目录的分支。
+  const start = worktree?.pressed && worktree.start && branch.visible ? worktree.start : null;
+  const showBranch =
+    Boolean(git) && !shelved && !start && (worktree?.liveTitle ? Boolean(worktreeLabel) : branch.visible);
+  const handOff = !shelved ? (worktree?.handOff ?? null) : null;
+  if (!workContext && !showBranch && !start && !handOff && !worktree?.showToggle && !worktree?.liveLabel) return null;
   return (
     <div
       className="mb-2 flex min-w-0 flex-wrap items-center gap-2 px-1"
@@ -59,8 +51,22 @@ export function ComposerContextRow({
       {worktree?.showToggle ? (
         <WorktreeToggle pressed={worktree.pressed} onToggle={worktree.onToggle} />
       ) : null}
-      {worktree?.liveLabel ? (
+      {shelved && worktree ? (
+        <WorktreeShelvedLabel title={worktree.liveTitle} restoring={shelved.restoring} onRestore={shelved.onRestore} />
+      ) : worktree?.liveLabel ? (
         <WorktreeSessionLabel label={worktree.liveLabel} title={worktree.liveTitle} />
+      ) : null}
+      {handOff ? <WorktreeHandOff handOff={handOff} hasBranch={Boolean(branch.current)} branchKnown={branch.visible} /> : null}
+      {start && git ? (
+        <WorktreeStartPicker
+          start={start}
+          projectName={git.projectName}
+          current={branch.current}
+          branches={branch.branches}
+          dirtyFiles={branch.dirtyFiles}
+          listError={branch.listError}
+          onMenuActive={branch.setMenuActive}
+        />
       ) : null}
       {showBranch && git ? (
         <GitBranchChrome
@@ -74,6 +80,7 @@ export function ComposerContextRow({
           onMenuActive={branch.setMenuActive}
           onCheckout={branch.checkout}
           onCreate={branch.create}
+          createPrefix={worktree?.liveTitle && !branch.current ? WORKTREE_BRANCH_PREFIX : ""}
         />
       ) : null}
     </div>
@@ -89,6 +96,7 @@ export function GitBranchChrome({
   listError,
   initialOpen = false,
   initialCreate = false,
+  createPrefix = "",
   onMenuActive,
   onCheckout,
   onCreate,
@@ -101,49 +109,36 @@ export function GitBranchChrome({
   listError: string | null;
   initialOpen?: boolean;
   initialCreate?: boolean;
+  /** 新分支名预填的前缀。 */
+  createPrefix?: string;
   onMenuActive?: (open: boolean) => void;
   onCheckout: (name: string) => Promise<void>;
   onCreate: (name: string) => Promise<void>;
 }) {
   const [open, setOpen] = useState(initialOpen);
-  const [hot, setHot] = useState(false);
-  const [query, setQuery] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [createOpen, setCreateOpen] = useState(initialCreate);
-  const [createName, setCreateName] = useState("");
   const [createError, setCreateError] = useState<string | null>(null);
-  const anchorRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const close = useCallback(() => {
-    setOpen(false);
+  const setMenuOpen = useCallback((next: boolean) => {
+    setOpen(next);
     setActionError(null);
   }, []);
   useEffect(() => {
     onMenuActive?.(open);
   }, [open, onMenuActive]);
-  useComposerMenu(open, anchorRef, menuRef, close, `${query}:${branches.length}:${listError ?? ""}`);
-  const lifted = open || hot;
-  const shown = filterBranchNames(branches, query);
-  const loading = open && branches.length === 0 && !listError;
-
-  const toggle = () => {
-    setActionError(null);
-    setQuery("");
-    setOpen((value) => !value);
-  };
 
   const checkout = async (name: string) => {
     if (busy) return;
     if (name === current) {
-      close();
+      setMenuOpen(false);
       return;
     }
     setBusy(true);
     setActionError(null);
     try {
       await onCheckout(name);
-      close();
+      setMenuOpen(false);
     } catch (error) {
       setActionError(userFacingMessage(error) ?? "无法切换分支");
     } finally {
@@ -151,19 +146,13 @@ export function GitBranchChrome({
     }
   };
 
-  const submitCreate = async () => {
-    const failure = branchNameError(createName);
-    if (failure) {
-      setCreateError(failure);
-      return;
-    }
+  const submitCreate = async (name: string) => {
     setBusy(true);
     setCreateError(null);
     try {
-      await onCreate(createName);
+      await onCreate(name);
       setCreateOpen(false);
-      setCreateName("");
-      close();
+      setMenuOpen(false);
     } catch (error) {
       setCreateError(userFacingMessage(error) ?? "无法创建分支");
     } finally {
@@ -173,94 +162,41 @@ export function GitBranchChrome({
 
   return (
     <>
-      <button
-        ref={anchorRef}
-        type="button"
-        className="inline-flex max-w-[14rem] items-center gap-1.5 rounded-[10px] border py-1 pl-2 pr-2.5 text-[13px] leading-5 text-[#ececef]"
-        style={{
-          backgroundImage: lifted ? CARD_BG_HOT : CARD_BG,
-          borderColor: lifted ? "#3a3a42" : "#2e2e33",
-          boxShadow: CARD_SHADOW,
-        }}
-        aria-label={`分支：${label}`}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        data-git-branch={label}
-        onMouseEnter={() => setHot(true)}
-        onMouseLeave={() => setHot(false)}
-        onClick={(event) => {
-          event.stopPropagation();
-          toggle();
-        }}
-      >
-        <GitBranch className="h-3.5 w-3.5 shrink-0 text-[#d2d2d6]" strokeWidth={1.75} />
-        <span className="min-w-0 truncate">{label}</span>
-      </button>
-      {open && (
-        <div
-          ref={menuRef}
-          role="menu"
-          aria-label="分支"
-          data-git-branch-menu=""
-          className="fixed z-50 flex w-[300px] max-h-[min(24rem,calc(100vh-2rem))] flex-col overflow-hidden rounded-[10px] border border-[#2e2e33] py-1"
-          style={{ top: -9999, left: 8, backgroundImage: CARD_BG, boxShadow: CARD_SHADOW }}
-          onClick={(event) => event.stopPropagation()}
-        >
-          <div className="flex items-center gap-2 border-b border-zinc-800 px-3 py-2">
-            <Search className="h-4 w-4 shrink-0 text-zinc-500" />
-            <input
-              autoFocus
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder={branchSearchPlaceholder(projectName)}
-              aria-label={branchSearchPlaceholder(projectName)}
-              className="w-full bg-transparent text-sm text-zinc-100 outline-none placeholder:text-zinc-500"
-            />
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <p className="px-3 pb-1 pt-2 text-xs text-zinc-500">分支</p>
-            {actionError ? (
-              <p role="alert" className="px-3 pb-1 text-xs text-red-300">
-                {actionError}
-              </p>
-            ) : null}
-            {listError ? <p className="px-3 py-2 text-xs text-red-300">{listError}</p> : null}
-            {loading ? <p className="px-3 py-2 text-xs text-zinc-500">正在读取分支…</p> : null}
-            {!loading && !listError && shown.length === 0 ? (
-              <p className="px-3 py-2 text-xs text-zinc-500">没有匹配的分支</p>
-            ) : null}
-            {shown.map((name) => {
-              const selected = name === current;
-              const subtitle = selected ? uncommittedFileLabel(dirtyFiles) : null;
-              return (
-                <button
-                  key={name}
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={selected}
-                  data-git-branch-name={name}
-                  disabled={busy}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-zinc-100 hover:bg-white/[0.06] disabled:opacity-60"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    void checkout(name);
-                  }}
-                >
-                  <GitBranch className="h-4 w-4 shrink-0 text-zinc-400" strokeWidth={1.75} />
-                  <span className="min-w-0 flex-1">
-                    <span className={cn("block truncate text-sm", selected && "font-semibold")}>{name}</span>
-                    {subtitle ? (
-                      <span data-git-dirty-files={dirtyFiles} className="block truncate text-xs text-zinc-500">
-                        {subtitle}
-                      </span>
-                    ) : null}
-                  </span>
-                  {selected ? <Check className="h-4 w-4 shrink-0 text-zinc-200" strokeWidth={2} /> : null}
-                </button>
-              );
-            })}
-          </div>
-          <div className="border-t border-zinc-800" />
+      <BranchMenu
+        name="分支"
+        label={label}
+        chipAttrs={{ "data-git-branch": label }}
+        menuAttrs={{ "data-git-branch-menu": "" }}
+        projectName={projectName}
+        branches={branches}
+        listError={listError}
+        actionError={actionError}
+        open={open}
+        onOpenChange={setMenuOpen}
+        renderRows={(shown) =>
+          shown.map((name) => {
+            const selected = name === current;
+            const subtitle = selected ? uncommittedFileLabel(dirtyFiles) : null;
+            return (
+              <BranchRow
+                key={name}
+                name={name}
+                selected={selected}
+                disabled={busy}
+                attrs={{ "data-git-branch-name": name }}
+                subtitle={
+                  subtitle ? (
+                    <span data-git-dirty-files={dirtyFiles ?? undefined} className="block truncate text-xs text-zinc-500">
+                      {subtitle}
+                    </span>
+                  ) : null
+                }
+                onPick={() => void checkout(name)}
+              />
+            );
+          })
+        }
+        footer={
           <button
             type="button"
             role="menuitem"
@@ -269,7 +205,6 @@ export function GitBranchChrome({
             className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-zinc-100 hover:bg-white/[0.06] disabled:opacity-60"
             onClick={(event) => {
               event.stopPropagation();
-              setCreateName("");
               setCreateError(null);
               setCreateOpen(true);
             }}
@@ -277,67 +212,23 @@ export function GitBranchChrome({
             <Plus className="h-4 w-4 shrink-0" />
             创建并检出新分支…
           </button>
-        </div>
-      )}
-      <Dialog
+        }
+      />
+      <BranchNameDialog
         open={createOpen}
-        onOpenChange={(next) => {
-          if (busy) return;
-          setCreateOpen(next);
-          if (!next) setCreateError(null);
+        title="创建并检出新分支"
+        initialName={createPrefix}
+        submitLabel="创建"
+        busyLabel="正在创建…"
+        busy={busy}
+        error={createError}
+        dataAttr="data-git-branch-dialog"
+        onCancel={() => {
+          setCreateOpen(false);
+          setCreateError(null);
         }}
-      >
-        <DialogContent data-git-branch-dialog="">
-          <DialogHeader>
-            <DialogTitle>创建并检出新分支</DialogTitle>
-            <DialogDescription className="sr-only">输入分支名</DialogDescription>
-          </DialogHeader>
-          <form
-            className="grid gap-3"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void submitCreate();
-            }}
-          >
-            <label className="grid gap-1.5 text-sm text-zinc-300" htmlFor="git-branch-name">
-              分支名
-              <input
-                id="git-branch-name"
-                autoFocus
-                value={createName}
-                onChange={(event) => {
-                  setCreateName(event.target.value);
-                  if (createError) setCreateError(null);
-                }}
-                className="h-9 rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none focus:border-zinc-500"
-              />
-            </label>
-            {createError ? (
-              <p role="alert" className="text-xs text-red-300">
-                {createError}
-              </p>
-            ) : null}
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="ghost"
-                className="text-zinc-400 hover:bg-transparent hover:text-zinc-200"
-                disabled={busy}
-                onClick={() => setCreateOpen(false)}
-              >
-                取消
-              </Button>
-              <Button
-                type="submit"
-                disabled={busy}
-                className="rounded-lg bg-zinc-100 px-4 text-zinc-950 shadow-none hover:bg-white"
-              >
-                {busy ? "正在创建…" : "创建"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+        onSubmit={(name) => void submitCreate(name)}
+      />
     </>
   );
 }

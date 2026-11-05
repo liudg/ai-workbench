@@ -2,20 +2,42 @@
 
 mod branch;
 mod diff;
+mod handoff;
+mod include;
+mod snapshot;
 mod worktree;
 
 pub use diff::git_diff_text;
+pub use handoff::{hand_back_to_worktree, hand_off_to_local, list_files};
+pub use snapshot::{drop_snapshot, remove_shelved_worktree, restore_worktree, snapshot_worktree};
 
 pub use branch::{
     checkout_local_branch, create_and_checkout_branch, local_branch_menu, GitBranchMenu,
 };
 pub use worktree::{
     bind_codex_thread, create_task_worktree, delete_preview, discard_confirmed_worktree,
-    repo_has_commit, DeletePreview, TaskWorktree,
+    is_owned_worktree, repo_has_commit, repository_root, DeletePreview, NewWorktree, TaskWorktree,
 };
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+
+/// 检出现在所在的分支。直接读 HEAD 文件，不起 git 进程，列任务时每个工作树读一次也不慢。
+/// `cwd` 可以在检出的子目录里。目录不在、分离头指针或读不出时为空。
+pub fn checked_out_branch(cwd: &Path) -> Option<String> {
+    let checkout = cwd.ancestors().find(|dir| dir.join(".git").exists())?;
+    let dot_git = checkout.join(".git");
+    let git_dir = if dot_git.is_dir() {
+        dot_git
+    } else {
+        // 工作树的 `.git` 是一个文件：`gitdir: <管理目录>`。
+        let text = std::fs::read_to_string(&dot_git).ok()?;
+        let dir = PathBuf::from(text.trim().strip_prefix("gitdir:")?.trim());
+        checkout.join(dir)
+    };
+    let head = std::fs::read_to_string(git_dir.join("HEAD")).ok()?;
+    head.trim().strip_prefix("ref: refs/heads/").map(str::to_string)
+}
 
 /// 当前分支名。不是仓库、分离头指针或空输出时返回 `None`。
 /// `git branch --show-current` 在分离头指针时成功但没有名字。

@@ -1,14 +1,15 @@
 // 已经建好的会话的作曲栏：选项写进 daemon，发送、排队、目标、审查都走 daemon。
 // 两边都能交接时，模型菜单的 Agent 竖栏可以换到别的 Agent，前文由 daemon 交过去。
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { agentsApi, useSessionAgents } from "@/features/agents";
 import type { AgentOption, ComposerHost } from "@/features/chat/composer/host";
-import { worktreeCaption } from "@/features/chat/composer/worktree-option";
-import type { Project } from "@/features/projects";
+import { suggestedBranchName, worktreeCaption } from "@/features/chat/composer/worktree-option";
+import { projectsApi, type Project } from "@/features/projects";
 import { tasksApi, type SessionOptions, type TaskEntry, type TaskSession } from "@/features/tasks";
 import { agentIdentity } from "@/shared/agent/identity";
+import { rememberProjectBranch } from "@/shared/project-branch";
 import { showError } from "@/shared/shell/error-banner";
 import type { AgentKind, AgentProfile, QueuedTurn, Session, SessionSandbox, SessionTuning } from "@/types";
 import * as api from "./api";
@@ -62,6 +63,13 @@ export function useLiveComposer({
   const options = taskSession.options;
   const profile = profiles[taskSession.agent];
   const agents = useSessionAgents();
+  const [restoring, setRestoring] = useState(false);
+  const [handingOff, setHandingOff] = useState(false);
+  // 换到别的任务时不带着上一个任务的“恢复中”“交接中”。
+  useEffect(() => {
+    setRestoring(false);
+    setHandingOff(false);
+  }, [task.id]);
 
   return useMemo<ComposerHost>(() => {
     const report = (error: unknown) => showError(error);
@@ -70,6 +78,33 @@ export function useLiveComposer({
     };
     const quiet = <T,>(work: Promise<T>) => work.then(() => undefined, report);
     const worktree = task.workspace.kind === "worktree" ? task.workspace : null;
+    const localBranch = worktree?.local?.branch ?? null;
+    // 侧边聊天里不交接：交接要停掉任务的会话，侧边聊天会跟着丢掉。
+    const canMove = profiles[taskSession.agent]?.capabilities.supports_workdir_move === true;
+    const moveTask = async (branch?: string) => {
+      setHandingOff(true);
+      const projectId = task.projectId;
+      try {
+        await tasksApi.handOff(task.id, localBranch ? "worktree" : "local", branch);
+      } finally {
+        setHandingOff(false);
+      }
+      // 交接换了项目目录的分支，侧栏跟着刷新。
+      if (projectId) {
+        void projectsApi
+          .currentBranch({ projectId })
+          .then((name) => rememberProjectBranch(projectId, name), () => undefined);
+      }
+    };
+    const handOff = worktree && !side && canMove
+      ? {
+          localBranch,
+          suggestedBranch: suggestedBranchName(task.title, task.id),
+          busy: handingOff,
+          onHandOff: () => void quiet(moveTask()),
+          onHandOffAs: (branch: string) => moveTask(branch),
+        }
+      : null;
     const handsOff = (agent: AgentKind) => profiles[agent]?.capabilities.supports_context_handoff === true;
     const idle = taskSession.status !== "running" && taskSession.status !== "needs-input";
     const switchable = !side && idle && handsOff(taskSession.agent);
@@ -78,8 +113,13 @@ export function useLiveComposer({
       name: profiles[agent]?.display_name || fallback,
       identity: agentIdentity(agent, profiles[agent]),
     });
+    // 交给了项目目录的任务以后还要交回工作树，只能换到能换目录接着会话的 Agent。
+    const movable = (agent: AgentKind) =>
+      !worktree?.local || profiles[agent]?.capabilities.supports_workdir_move === true;
     const others = switchable
-      ? (agents ?? []).filter((item) => item.kind !== taskSession.agent && handsOff(item.kind))
+      ? (agents ?? []).filter(
+          (item) => item.kind !== taskSession.agent && handsOff(item.kind) && movable(item.kind),
+        )
       : [];
     return {
       draft: false,
@@ -99,7 +139,9 @@ export function useLiveComposer({
       followUpQueueMode: options.followUpQueueMode === "steer" ? "steer" : "queue",
       git: project ? { projectId: project.id, projectName: project.name, sessionId } : null,
       workContext: null,
-      worktree: worktree
+      worktree: worktree?.local
+        ? { showToggle: false, pressed: false, onToggle: () => {}, liveLabel: "", liveTitle: "", handOff }
+        : worktree
         ? {
             showToggle: false,
             pressed: false,
@@ -108,6 +150,19 @@ export function useLiveComposer({
             liveTitle: worktree.path,
             base: worktree.baseRef ?? null,
             sha: worktree.baseSha,
+            shelved: worktree.shelved
+              ? {
+                  restoring,
+                  onRestore: () => {
+                    setRestoring(true);
+                    void tasksApi
+                      .restoreWorktree(task.id)
+                      .catch(report)
+                      .finally(() => setRestoring(false));
+                  },
+                }
+              : null,
+            handOff,
           }
         : null,
       agentChoice: {
@@ -205,11 +260,14 @@ export function useLiveComposer({
     profiles,
     project,
     queue,
+    restoring,
+    handingOff,
     session.workdir,
     sessionId,
     side,
     canOpenSide,
     task.id,
+    task.title,
     task.projectId,
     task.workspace,
     taskSession.agent,

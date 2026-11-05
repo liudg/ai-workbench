@@ -5,7 +5,8 @@ use aiwb_core::models::{
     AgentCatalog, PageAnnotation, PermissionMenu, PromptAnswer, ReviewStart, ReviewTargets,
     SubscriptionUsage,
 };
-use aiwb_core::task::SessionOptions;
+use aiwb_core::models::AgentKind;
+use aiwb_core::task::{SessionOptions, TaskWorkspace};
 use serde::Deserialize;
 
 use super::agents::AgentParam;
@@ -173,6 +174,9 @@ impl Services {
 
     /// 模型、推理强度、技能。要接上 CLI 才拿得到。拿到了就记下来，给这种 Agent 的新会话用。
     pub(crate) async fn catalog(&self, params: SessionId) -> ServiceResult<AgentCatalog> {
+        if let Some(agent) = self.shelved_agent(&params.session_id)? {
+            return Ok(self.stored_catalog(agent)?.unwrap_or_else(AgentCatalog::empty));
+        }
         let handle = self.runtimes.handle(&params.session_id).await?;
         let catalog = handle.catalog().await.map_err(|e| e.to_string())?;
         if let Some(session) = self.store.session(&params.session_id).map_err(|e| e.to_string())? {
@@ -197,11 +201,18 @@ impl Services {
 
     /// 把当前目标再推给 Agent 一次。
     pub(crate) async fn publish_goal(&self, params: SessionId) -> ServiceResult<()> {
+        // 打开会话时会推一次。工作树清理掉了就先不推，等恢复后再接上。
+        if self.shelved_agent(&params.session_id)?.is_some() {
+            return Ok(());
+        }
         let handle = self.runtimes.handle(&params.session_id).await?;
         handle.publish_goal().await.map_err(|e| e.to_string())
     }
 
     pub(crate) async fn permission_menu(&self, params: SessionId) -> ServiceResult<PermissionMenu> {
+        if let Some(agent) = self.shelved_agent(&params.session_id)? {
+            return Ok(self.runtimes.adapter(agent).draft_permission_menu());
+        }
         let handle = self.runtimes.handle(&params.session_id).await?;
         handle.permission_menu().await.map_err(|e| e.to_string())
     }
@@ -213,6 +224,23 @@ impl Services {
             .subscription_usage()
             .await
             .map_err(|e| e.to_string())
+    }
+
+    /// 工作树已被清理、CLI 也没接着时是会话的 Agent。照 Codex，打开任务只给「恢复」，
+    /// 不为了读模型、权限菜单和目标把工作树建回来；发消息或点恢复时才建。
+    pub(crate) fn shelved_agent(&self, session_id: &str) -> ServiceResult<Option<AgentKind>> {
+        if self.runtimes.is_live(session_id) {
+            return Ok(None);
+        }
+        let Some(session) = self.store.session(session_id).map_err(|e| e.to_string())? else {
+            return Ok(None);
+        };
+        let task = self.store.task(&session.task_id).map_err(|e| e.to_string())?;
+        let shelved = matches!(
+            task.map(|task| task.workspace),
+            Some(TaskWorkspace::Worktree { shelved: Some(_), local: None, .. })
+        );
+        Ok(shelved.then_some(session.agent))
     }
 
     /// 还没有任务时的权限菜单，不启动 CLI。

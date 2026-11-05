@@ -129,20 +129,33 @@ pub fn linked_checkout(project: &Path, cwd: &Path) -> Result<Option<Checkout>, S
 /// 任务工作树的分支前缀。
 const TASK_BRANCH_PREFIX: &str = "aiwb/";
 
-/// 任务的工作树。任务层统一创建，Agent 只拿到 `cwd`。
+/// 任务的工作树。任务层统一创建，Agent 只拿到 `cwd`。照 Codex 是分离头指针，要用时再建分支。
 #[derive(Debug, Clone)]
 pub struct TaskWorktree {
     pub cwd: PathBuf,
     pub root: PathBuf,
-    pub branch: String,
-    /// 创建时源目录所在的分支。分离头指针时为空。
+    /// 起点分支。从分离头指针的源目录建时为空。
     pub base: Option<String>,
     pub sha: String,
 }
 
-/// 从源目录当前提交新建分支 `aiwb/<id>` 和它的工作树，放在 `managed_root/<仓库名>-<id>`。
+/// 新工作树从哪里开始。
+#[derive(Debug, Clone, Default)]
+pub struct NewWorktree {
+    /// 起点分支。为空时用源目录现在的提交。
+    pub base: Option<String>,
+    /// 把源目录里没提交的改动一起带过去。只在起点就是源目录当前所在时有效。
+    pub carry_changes: bool,
+}
+
+/// 照 Codex 桌面版：在 `managed_root/<仓库名>-<id>` 建一个分离头指针的工作树，
+/// 按需带上源目录没提交的改动，再按 `.worktreeinclude` 复制被忽略的本地文件。
 /// 源目录在仓库子目录里时，`cwd` 保留相对位置。失败时不留半成品。
-pub fn create_task_worktree(source: &Path, managed_root: &Path) -> Result<TaskWorktree, String> {
+pub fn create_task_worktree(
+    source: &Path,
+    managed_root: &Path,
+    options: &NewWorktree,
+) -> Result<TaskWorktree, String> {
     if !managed_root.is_absolute() {
         return Err("工作树目录必须是绝对路径".into());
     }
@@ -153,18 +166,38 @@ pub fn create_task_worktree(source: &Path, managed_root: &Path) -> Result<TaskWo
         .ok_or_else(|| "仓库没有目录名".to_string())?
         .to_string_lossy()
         .to_string();
-    let (base, sha) = source_revision(&source)?;
+    let (current, head) = source_revision(&source)?;
+    let requested = options.base.as_deref().map(str::trim).filter(|name| !name.is_empty());
+    // 只有起点就是源目录当前所在时才带改动（起点是别的分支时，哪怕提交相同也不带）。
+    let (base, sha, on_current) = match requested {
+        Some(name) if current.as_deref() != Some(name) => {
+            let spec = format!("refs/heads/{name}^{{commit}}");
+            let sha = git_stdout(&repo, &["rev-parse", "--verify", "--quiet", &spec])
+                .map_err(|_| format!("找不到分支 {name}"))?;
+            (Some(name.to_string()), sha, false)
+        }
+        _ => (current, head.clone(), true),
+    };
+    let carried = if options.carry_changes && on_current {
+        crate::snapshot::changes_commit(&repo, &head)?
+    } else {
+        None
+    };
     fs::create_dir_all(managed_root).map_err(|err| format!("无法创建工作树目录: {err}"))?;
     let id = uuid::Uuid::new_v4().simple().to_string()[..8].to_string();
-    let branch = format!("{TASK_BRANCH_PREFIX}{id}");
     let root = managed_root.join(format!("{repo_name}-{id}"));
     let root_arg = root.to_string_lossy().to_string();
-    git_status(&repo, &["worktree", "add", "-b", &branch, &root_arg, &sha])?;
+    git_status(&repo, &["worktree", "add", "--detach", &root_arg, &sha])?;
     let undo = |err: String| {
         remove_checkout(&repo, &root);
-        let _ = git_status(&repo, &["branch", "-D", &branch]);
         err
     };
+    if let Some(commit) = &carried {
+        git_status(&root, &["read-tree", "-u", "--reset", commit])
+            .and_then(|()| git_status(&root, &["reset", "-q"]))
+            .map_err(undo)?;
+    }
+    crate::include::copy_included(&repo, &root);
     let relative = relative_checkout(&repo, &source).map_err(undo)?;
     let cwd = root.join(&relative);
     if !cwd.is_dir() {
@@ -172,18 +205,17 @@ pub fn create_task_worktree(source: &Path, managed_root: &Path) -> Result<TaskWo
     }
     let cwd = dunce_or_canonicalize(&cwd).map_err(undo)?;
     let root = dunce_or_canonicalize(&root).map_err(undo)?;
-    // 删除任务时靠这份记录认出是工作台建的工作树，才会连目录和分支一起清掉。
+    // 删除任务时靠这份记录认出是工作台建的工作树，才会连目录一起清掉。
     let marker = OwnedMarker {
         root: root.clone(),
         base: base.clone(),
         sha: sha.clone(),
-        branch: Some(branch.clone()),
+        branch: None,
     };
     record_owned_worktree(&cwd, &marker).map_err(undo)?;
     Ok(TaskWorktree {
         cwd,
         root,
-        branch,
         base,
         sha,
     })
@@ -304,6 +336,11 @@ pub fn session_worktree(project: &Path, cwd: &Path) -> Option<SessionWorktree> {
     })
 }
 
+/// 是不是工作台建的工作树。只读记录，不查改动，比 `delete_preview` 便宜。
+pub fn is_owned_worktree(project: &Path, cwd: &Path) -> bool {
+    session_worktree(project, cwd).is_some_and(|info| info.owned)
+}
+
 pub fn delete_preview(project: &Path, cwd: &Path) -> DeletePreview {
     let Some(info) = session_worktree(project, cwd) else {
         return DeletePreview {
@@ -341,6 +378,8 @@ pub fn remove_owned_worktree(project: &Path, cwd: &Path, force: bool) -> Result<
     else {
         return Ok(false);
     };
+    // 删之前记下检出的提交：记录里的分支只有还指着它时才删，往前走过（交接后在项目目录里提交过）就留着。
+    let head = head_sha(&checkout.root).ok();
     let root_arg = checkout.root.to_string_lossy().to_string();
     let mut git_error =
         git_worktree_remove(project, &checkout, &root_arg, if force { 1 } else { 0 });
@@ -362,7 +401,7 @@ pub fn remove_owned_worktree(project: &Path, cwd: &Path, force: bool) -> Result<
                 let _ = git_status(project, &["worktree", "prune"]);
             }
             if !checkout_still_registered(project, &checkout) {
-                delete_recorded_branch(project, marker.branch.as_deref(), marker.base.as_deref());
+                delete_recorded_branch(project, marker.branch.as_deref(), marker.base.as_deref(), head.as_deref());
                 return Ok(true);
             }
         }
@@ -372,7 +411,7 @@ pub fn remove_owned_worktree(project: &Path, cwd: &Path, force: bool) -> Result<
     if !checkout.root.exists() {
         let _ = git_status(project, &["worktree", "prune"]);
     }
-    delete_recorded_branch(project, marker.branch.as_deref(), marker.base.as_deref());
+    delete_recorded_branch(project, marker.branch.as_deref(), marker.base.as_deref(), head.as_deref());
     Ok(true)
 }
 
@@ -526,7 +565,7 @@ fn pause_before_dir_remove_retry(attempt: u32) {
     std::thread::sleep(Duration::from_millis(step * u64::from(attempt + 1)));
 }
 
-fn remove_worktree_tree(path: &Path) {
+pub(crate) fn remove_worktree_tree(path: &Path) {
     let attempts = worktree_dir_remove_attempts();
     for attempt in 0..attempts {
         #[cfg(test)]
@@ -566,10 +605,18 @@ fn remove_dir_all_worktree(path: &Path) -> std::io::Result<()> {
 /// 工作树根删掉之后，清掉因此变空的外壳。
 /// 只到上一级（Codex 的四位目录，或 `.claude/worktrees`），外加因此变空的 `.claude`。
 /// 不删仓库本身，也不顺着托管根往上删到 `.codex`。
-fn remove_empty_worktree_containers(removed: &Path, repo: &Path) {
+pub(crate) fn remove_empty_worktree_containers(removed: &Path, repo: &Path) {
     let Some(parent) = removed.parent() else {
         return;
     };
+    // 只收 Codex 的四位桶和 .claude/worktrees。工作台的工作树直接放在工作树目录下，那是用户选的目录，不删。
+    let name = parent.file_name().and_then(|name| name.to_str()).unwrap_or("");
+    let codex_bucket = name.len() == 4 && name.bytes().all(|byte| byte.is_ascii_hexdigit());
+    let claude_worktrees = name == "worktrees"
+        && parent.parent().and_then(|dir| dir.file_name()).and_then(|name| name.to_str()) == Some(".claude");
+    if !(codex_bucket || claude_worktrees) {
+        return;
+    }
     if !can_remove_empty_container(parent, repo) || !remove_empty_dir_retry(parent) {
         return;
     }
@@ -669,7 +716,7 @@ fn unmerged_count(cwd: &Path, base: Option<&str>, project: &Path) -> Result<u32,
     text.parse::<u32>().map_err(|_| "无法比较提交".to_string())
 }
 
-fn delete_recorded_branch(repo: &Path, branch: Option<&str>, base: Option<&str>) {
+fn delete_recorded_branch(repo: &Path, branch: Option<&str>, base: Option<&str>, head: Option<&str>) {
     let Some(branch) = branch
         .map(str::trim)
         .filter(|name| name.starts_with("worktree-") || name.starts_with(TASK_BRANCH_PREFIX))
@@ -682,6 +729,11 @@ fn delete_recorded_branch(repo: &Path, branch: Option<&str>, base: Option<&str>)
     if branch_name(repo).ok().flatten().as_deref() == Some(branch) {
         return;
     }
+    let spec = format!("refs/heads/{branch}");
+    let tip = git_stdout(repo, &["rev-parse", "--verify", "--quiet", &spec]).ok();
+    if head.is_none() || tip.as_deref() != head {
+        return;
+    }
     let _ = git_status(repo, &["branch", "-D", branch]);
 }
 
@@ -690,7 +742,7 @@ pub(crate) fn read_marker_file(path: &Path) -> Option<OwnedMarker> {
     parse_marker_json(&raw)
 }
 
-fn read_marker(cwd: &Path) -> Option<OwnedMarker> {
+pub(crate) fn read_marker(cwd: &Path) -> Option<OwnedMarker> {
     let path = marker_path(cwd).ok()?;
     read_marker_file(&path)
 }
@@ -736,7 +788,7 @@ fn marker_path(cwd: &Path) -> Result<PathBuf, String> {
     owned_git_file(cwd, MARKER_NAME)
 }
 
-fn owned_git_file(cwd: &Path, name: &str) -> Result<PathBuf, String> {
+pub(crate) fn owned_git_file(cwd: &Path, name: &str) -> Result<PathBuf, String> {
     let text = git_stdout(
         cwd,
         &["rev-parse", "--path-format=absolute", "--git-path", name],
@@ -744,11 +796,11 @@ fn owned_git_file(cwd: &Path, name: &str) -> Result<PathBuf, String> {
     Ok(resolve_git_path(cwd, &text))
 }
 
-fn head_sha(cwd: &Path) -> Result<String, String> {
+pub(crate) fn head_sha(cwd: &Path) -> Result<String, String> {
     git_stdout(cwd, &["rev-parse", "--verify", "HEAD^{commit}"])
 }
 
-fn same_path(left: &Path, right: &Path) -> bool {
+pub(crate) fn same_path(left: &Path, right: &Path) -> bool {
     match (dunce_or_canonicalize(left), dunce_or_canonicalize(right)) {
         (Ok(left), Ok(right)) => left == right,
         _ => left == right,
@@ -829,7 +881,7 @@ fn windows_absolute(text: &str) -> bool {
         && (bytes[2] == b'\\' || bytes[2] == b'/')
 }
 
-fn branch_name(cwd: &Path) -> Result<Option<String>, String> {
+pub(crate) fn branch_name(cwd: &Path) -> Result<Option<String>, String> {
     let output = git_output(cwd, &["branch", "--show-current"])?;
     if !output.status.success() {
         let stderr = aiwb_proc::decode_child_bytes(&output.stderr);
@@ -854,6 +906,21 @@ fn branch_name(cwd: &Path) -> Result<Option<String>, String> {
 /// 也不继承调用方的 `GIT_DIR` / `GIT_WORK_TREE`。
 fn isolated_git(cwd: &Path) -> Command {
     let hooks = if cfg!(windows) { "NUL" } else { "/dev/null" };
+    let mut command = plain_git(cwd);
+    command
+        .arg("-c")
+        .arg(format!("core.hooksPath={hooks}"))
+        .arg("-c")
+        .arg("core.fsmonitor=")
+        .arg("-c")
+        .arg("core.attributesFile=")
+        .env("GIT_LFS_SKIP_SMUDGE", "1");
+    command
+}
+
+/// 只隔开调用方的 git 环境变量。钩子、LFS、属性照用户自己的配置：
+/// 交接时改的是用户的检出，LFS 文件要还原成真内容，不能留下指针。
+fn plain_git(cwd: &Path) -> Command {
     let mut command = Command::new("git");
     for name in [
         "GIT_ALTERNATE_OBJECT_DIRECTORIES",
@@ -879,13 +946,6 @@ fn isolated_git(cwd: &Path) -> Command {
         .current_dir(cwd)
         .arg("-c")
         .arg("safe.bareRepository=explicit")
-        .arg("-c")
-        .arg(format!("core.hooksPath={hooks}"))
-        .arg("-c")
-        .arg("core.fsmonitor=")
-        .arg("-c")
-        .arg("core.attributesFile=")
-        .env("GIT_LFS_SKIP_SMUDGE", "1")
         .env("GIT_TERMINAL_PROMPT", "0");
     #[cfg(unix)]
     {
@@ -897,11 +957,43 @@ fn isolated_git(cwd: &Path) -> Command {
     command
 }
 
-fn git_output(root: &Path, args: &[&str]) -> Result<std::process::Output, String> {
+/// 用用户自己的 git 配置跑一条会改检出的命令（切分支、铺文件、清理），单条有时限。
+pub(crate) fn user_git_status(cwd: &Path, args: &[&str]) -> Result<(), String> {
+    if !cwd.is_dir() {
+        return Err("项目不存在".into());
+    }
+    let mut command = plain_git(cwd);
+    command
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let child = command
+        .spawn()
+        .map_err(|err| format!("无法运行 git: {err}"))?;
+    let output = capture_git(child)?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(git_failure(&output, "git 失败"))
+    }
+}
+
+pub(crate) fn git_output(root: &Path, args: &[&str]) -> Result<std::process::Output, String> {
+    git_output_env(root, args, &[])
+}
+
+/// `envs` 在隔离之后再设，用来指定临时 index 或提交者。
+fn git_output_env(
+    root: &Path,
+    args: &[&str],
+    envs: &[(&str, &std::ffi::OsStr)],
+) -> Result<std::process::Output, String> {
     if !root.is_dir() {
         return Err("项目不存在".into());
     }
     let mut command = isolated_git(root);
+    command.envs(envs.iter().copied());
     command
         .args(args)
         .stdin(Stdio::null())
@@ -951,8 +1043,12 @@ fn read_pipe(pipe: Option<impl Read>) -> Vec<u8> {
     buf
 }
 
-fn git_stdout(cwd: &Path, args: &[&str]) -> Result<String, String> {
-    let output = git_output(cwd, args)?;
+pub(crate) fn git_stdout(cwd: &Path, args: &[&str]) -> Result<String, String> {
+    git_stdout_env(cwd, args, &[])
+}
+
+pub(crate) fn git_stdout_env(cwd: &Path, args: &[&str], envs: &[(&str, &std::ffi::OsStr)]) -> Result<String, String> {
+    let output = git_output_env(cwd, args, envs)?;
     if !output.status.success() {
         return Err(git_failure(&output, "git 失败"));
     }
@@ -964,15 +1060,19 @@ fn git_stdout(cwd: &Path, args: &[&str]) -> Result<String, String> {
     Ok(text.to_string())
 }
 
-fn git_status(cwd: &Path, args: &[&str]) -> Result<(), String> {
-    let output = git_output(cwd, args)?;
+pub(crate) fn git_status(cwd: &Path, args: &[&str]) -> Result<(), String> {
+    git_status_env(cwd, args, &[])
+}
+
+pub(crate) fn git_status_env(cwd: &Path, args: &[&str], envs: &[(&str, &std::ffi::OsStr)]) -> Result<(), String> {
+    let output = git_output_env(cwd, args, envs)?;
     if output.status.success() {
         return Ok(());
     }
     Err(git_failure(&output, "git 失败"))
 }
 
-fn git_failure(output: &std::process::Output, fallback: &str) -> String {
+pub(crate) fn git_failure(output: &std::process::Output, fallback: &str) -> String {
     let stderr = aiwb_proc::decode_child_bytes(&output.stderr);
     let stderr = stderr.trim();
     if stderr.is_empty() {
@@ -982,7 +1082,7 @@ fn git_failure(output: &std::process::Output, fallback: &str) -> String {
     }
 }
 
-fn dunce_or_canonicalize(path: &Path) -> Result<PathBuf, String> {
+pub(crate) fn dunce_or_canonicalize(path: &Path) -> Result<PathBuf, String> {
     path.canonicalize()
         .map(|item| {
             let text = item.to_string_lossy();
@@ -1047,7 +1147,7 @@ mod tests {
     }
 
     #[test]
-    fn task_worktree_gets_its_own_branch_and_keeps_subdir() {
+    fn task_worktree_is_detached_and_keeps_subdir() {
         if !git_ok() {
             return;
         }
@@ -1059,12 +1159,13 @@ mod tests {
         run_git(&repo, &["-c", "commit.gpgsign=false", "commit", "-m", "app"]);
         let managed = scratch("task-managed");
 
-        let made = create_task_worktree(&repo.join("app"), &managed).unwrap();
-        assert!(made.branch.starts_with("aiwb/"));
+        let made = create_task_worktree(&repo.join("app"), &managed, &NewWorktree::default()).unwrap();
         assert_eq!(made.base.as_deref(), Some("main"));
         assert!(made.cwd.join("main.rs").is_file());
         assert!(made.cwd.ends_with("app"));
-        assert_eq!(current_branch(&made.cwd).unwrap().as_deref(), Some(made.branch.as_str()));
+        assert_eq!(current_branch(&made.cwd).unwrap(), None);
+        assert_eq!(crate::checked_out_branch(&made.cwd), None);
+        assert_eq!(crate::checked_out_branch(&repo.join("app")).as_deref(), Some("main"));
 
         remove_checkout(&repo, &made.root);
         let _ = fs::remove_dir_all(managed);
@@ -1072,13 +1173,13 @@ mod tests {
     }
 
     #[test]
-    fn task_worktree_is_owned_and_removed_with_its_branch() {
+    fn task_worktree_is_owned_and_removed() {
         if !git_ok() {
             return;
         }
         let repo = repo_with_commit("task-owned");
         let managed = scratch("task-owned-managed");
-        let made = create_task_worktree(&repo, &managed).unwrap();
+        let made = create_task_worktree(&repo, &managed, &NewWorktree::default()).unwrap();
         assert_eq!(
             delete_preview(&repo, &made.cwd),
             DeletePreview { owned: true, dirty: false }
@@ -1088,8 +1189,6 @@ mod tests {
 
         discard_confirmed_worktree(&repo, &made.cwd, true);
         assert!(!made.root.exists());
-        let branches = git_output(&repo, &["branch", "--list", &made.branch]).unwrap();
-        assert!(branches.stdout.is_empty());
         let _ = fs::remove_dir_all(managed);
         let _ = fs::remove_dir_all(repo);
     }
@@ -1113,11 +1212,11 @@ mod tests {
         }
         let repo = repo_with_commit("linked");
         let managed = scratch("managed");
-        let made = create_task_worktree(&repo, &managed).unwrap();
+        let made = create_task_worktree(&repo, &managed, &NewWorktree::default()).unwrap();
         assert!(made.cwd.starts_with(dunce_or_canonicalize(&managed).unwrap()));
         assert!(made.cwd.join("note.txt").is_file());
         let linked = linked_checkout(&repo, &made.cwd).unwrap().unwrap();
-        assert_eq!(linked.branch.as_deref(), Some(made.branch.as_str()));
+        assert_eq!(linked.branch, None);
         assert!(linked_checkout(&repo, &repo).unwrap().is_none());
 
         bind_codex_thread(&made.cwd, "thread-1").unwrap();
@@ -1139,7 +1238,7 @@ mod tests {
         let (base, sha) = source_revision(&repo).unwrap();
         assert_eq!(base.as_deref(), Some("main"));
         let managed = scratch("owned-managed");
-        let checkout = create_task_worktree(&repo, &managed).unwrap();
+        let checkout = create_task_worktree(&repo, &managed, &NewWorktree::default()).unwrap();
         let described = session_worktree(&repo, &checkout.cwd).unwrap();
         assert!(described.owned);
         assert_eq!(described.base.as_deref(), Some("main"));
@@ -1497,6 +1596,23 @@ mod tests {
     }
 
     #[test]
+    fn a_recorded_branch_that_moved_on_is_kept() {
+        if !git_ok() {
+            return;
+        }
+        let (repo, path, branch) = owned_claude("moved-on");
+        // 分支被交到别处、又提交过：工作树停在旧提交上，分支往前走了。
+        run_git(&path, &["switch", "-q", "--detach"]);
+        let tree = git_stdout(&repo, &["rev-parse", "HEAD^{tree}"]).unwrap();
+        let head = git_stdout(&repo, &["rev-parse", "HEAD"]).unwrap();
+        let ahead = git_stdout(&repo, &["commit-tree", &tree, "-p", &head, "-m", "later"]).unwrap();
+        run_git(&repo, &["update-ref", &format!("refs/heads/{branch}"), &ahead]);
+        assert!(remove_owned_worktree(&repo, &path, true).unwrap());
+        assert!(branch_listed(&repo, &branch), "分支上有工作树之外的提交，不能删");
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
     fn non_force_remove_failure_retries_with_force() {
         if !git_ok() {
             return;
@@ -1730,7 +1846,7 @@ mod tests {
         );
         let managed = scratch("hooks-managed");
         let started = std::time::Instant::now();
-        let checkout = create_task_worktree(&repo, &managed).unwrap();
+        let checkout = create_task_worktree(&repo, &managed, &NewWorktree::default()).unwrap();
         assert!(
             started.elapsed() < std::time::Duration::from_secs(10),
             "checkout waited on a hook or fsmonitor"
@@ -1744,6 +1860,65 @@ mod tests {
         let _ = fs::remove_dir_all(repo);
         let _ = fs::remove_dir_all(managed);
         let _ = fs::remove_dir_all(mark);
+    }
+
+    #[test]
+    fn task_worktree_starts_from_the_chosen_branch_or_carries_local_changes() {
+        if !git_ok() {
+            return;
+        }
+        let repo = repo_with_commit("start");
+        run_git(&repo, &["config", "core.autocrlf", "false"]);
+        run_git(&repo, &["branch", "feature"]);
+        run_git(&repo, &["switch", "-q", "feature"]);
+        fs::write(repo.join("note.txt"), "feature\n").unwrap();
+        run_git(&repo, &["-c", "commit.gpgsign=false", "commit", "-qam", "feature"]);
+        run_git(&repo, &["switch", "-q", "main"]);
+        fs::write(repo.join("note.txt"), "local edit\n").unwrap();
+        fs::write(repo.join("new.txt"), "untracked\n").unwrap();
+        let managed = scratch("start-managed");
+
+        let plain = create_task_worktree(&repo, &managed, &NewWorktree::default()).unwrap();
+        assert_eq!(fs::read_to_string(plain.cwd.join("note.txt")).unwrap(), "one\n");
+        assert!(!plain.cwd.join("new.txt").exists());
+
+        let carried = create_task_worktree(
+            &repo,
+            &managed,
+            &NewWorktree { base: Some("main".into()), carry_changes: true },
+        )
+        .unwrap();
+        assert_eq!(fs::read_to_string(carried.cwd.join("note.txt")).unwrap(), "local edit\n");
+        assert_eq!(fs::read_to_string(carried.cwd.join("new.txt")).unwrap(), "untracked\n");
+        assert_eq!(head_sha(&carried.cwd).unwrap(), plain.sha, "带过去的改动不提交");
+        assert_eq!(
+            fs::read_to_string(repo.join("note.txt")).unwrap(),
+            "local edit\n",
+            "源目录不受影响"
+        );
+        assert!(git_output(&repo, &["stash", "list"]).unwrap().stdout.is_empty());
+
+        let feature = create_task_worktree(
+            &repo,
+            &managed,
+            &NewWorktree { base: Some("feature".into()), carry_changes: true },
+        )
+        .unwrap();
+        assert_eq!(feature.base.as_deref(), Some("feature"));
+        assert_eq!(fs::read_to_string(feature.cwd.join("note.txt")).unwrap(), "feature\n");
+        assert!(!feature.cwd.join("new.txt").exists(), "别的分支不带本地改动");
+        assert!(create_task_worktree(
+            &repo,
+            &managed,
+            &NewWorktree { base: Some("missing".into()), carry_changes: false },
+        )
+        .is_err());
+
+        for made in [plain, carried, feature] {
+            remove_checkout(&repo, &made.root);
+        }
+        let _ = fs::remove_dir_all(managed);
+        let _ = fs::remove_dir_all(repo);
     }
 
     fn relative_checkout(root: &Path, source: &Path) -> Result<PathBuf, String> {

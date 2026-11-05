@@ -47,7 +47,7 @@ export function useBoard() {
         pill: attentionPill(task.attention),
         identity: agent ? agentIdentity(agent, profiles[agent]) : null,
         place: task.projectId ? (names.get(task.projectId) ?? null) : null,
-        branch: task.workspace.kind === "worktree" ? task.workspace.branch : null,
+        branch: task.branch ?? null,
       };
     });
     return buildBoard(cards);

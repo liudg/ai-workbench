@@ -1,4 +1,5 @@
 //! 任务：新建（主目录、工作树，或不属于项目的独立聊天）、改名、置顶、归档、删除。
+//! 工作树的保留和清理在 `worktrees`。
 
 use std::path::{Path, PathBuf};
 
@@ -24,6 +25,12 @@ pub(crate) struct CreateTask {
     agent: AgentKind,
     #[serde(default)]
     worktree: bool,
+    /// 工作树的起点分支。为空时用项目目录现在的提交。
+    #[serde(default)]
+    worktree_base: Option<String>,
+    /// 把项目目录里没提交的改动带进工作树。
+    #[serde(default)]
+    carry_changes: bool,
     #[serde(default)]
     options: SessionOptions,
     /// 首发前先设好的目标。
@@ -47,6 +54,8 @@ impl CreateTask {
             images: Vec::new(),
             agent: spec.agent,
             worktree: spec.worktree,
+            worktree_base: None,
+            carry_changes: false,
             options: spec.options.clone(),
             goal: None,
             goal_status: None,
@@ -115,14 +124,22 @@ impl Services {
                     .ok_or_else(|| "项目不存在".to_string())?;
                 let workspace = if params.worktree {
                     let source = project.path.clone();
-                    let root = self.worktree_root.clone();
-                    let made =
-                        blocking(move || aiwb_git::create_task_worktree(Path::new(&source), &root)).await??;
+                    let root = self.worktree_root()?;
+                    let options = aiwb_git::NewWorktree {
+                        base: params.worktree_base.clone(),
+                        carry_changes: params.carry_changes,
+                    };
+                    let made = blocking(move || {
+                        aiwb_git::create_task_worktree(Path::new(&source), &root, &options)
+                    })
+                    .await??;
                     TaskWorkspace::Worktree {
                         path: made.cwd.to_string_lossy().into_owned(),
-                        branch: made.branch,
+                        branch: None,
                         base_ref: made.base,
                         base_sha: made.sha,
+                        shelved: None,
+                        local: None,
                     }
                 } else {
                     TaskWorkspace::Root
@@ -171,6 +188,9 @@ impl Services {
             return Err(err.to_string());
         }
         self.runtimes.publish_tasks()?;
+        if matches!(task.workspace, TaskWorkspace::Worktree { .. }) {
+            self.request_worktree_sweep();
+        }
 
         let goal = params
             .goal
@@ -262,11 +282,21 @@ impl Services {
             .set_task_archived(&params.id, params.archived.then_some(now), now)
             .map_err(|e| e.to_string())?;
         self.runtimes.publish_tasks()?;
+        if params.archived {
+            self.request_worktree_sweep();
+        }
         Ok(changed)
     }
 
     /// 工作树任务才有可删的目录。主目录和独立聊天的文件夹不动。
     pub(crate) async fn delete_preview(&self, params: TaskId) -> ServiceResult<DeletePreview> {
+        // 清理掉的工作树只剩快照，删了就找不回来，按有改动提醒。
+        if self.task_snapshot_only(&params.id)? {
+            return Ok(DeletePreview {
+                owned: true,
+                dirty: true,
+            });
+        }
         let Some((project, cwd)) = self.task_worktree(&params.id)? else {
             return Ok(DeletePreview {
                 owned: false,
@@ -282,6 +312,8 @@ impl Services {
 
     /// 删除任务和它的时间线。要求时连工作树一起删；工作树删不干净也照样删任务。
     pub(crate) async fn remove_task(&self, params: RemoveTask) -> ServiceResult<bool> {
+        // 正在清理、恢复或交接这个工作树时，等它做完再删，不留半个工作树或没人管的快照。
+        let _worktrees = self.runtimes.worktrees.lock().await;
         self.stop_task_sessions(&params.id).await?;
         if params.discard_worktree {
             if let Some((project, cwd)) = self.task_worktree(&params.id)? {
@@ -298,6 +330,9 @@ impl Services {
             .map(|session| session.id)
             .collect();
         self.forget_subtask(&params.id).await;
+        if params.discard_worktree {
+            self.drop_task_snapshot(&params.id).await?;
+        }
         let removed = self
             .store
             .remove_task(&params.id)
@@ -307,26 +342,28 @@ impl Services {
         Ok(removed)
     }
 
+    /// 工作树清理掉了、只剩快照，并且没有分叉任务共用。
+    fn task_snapshot_only(&self, task_id: &str) -> ServiceResult<bool> {
+        let task = self.load_task(task_id)?;
+        let TaskWorkspace::Worktree { path, shelved: Some(_), .. } = &task.workspace else {
+            return Ok(false);
+        };
+        Ok(!self.worktree_shared(task_id, path, false)?)
+    }
+
     /// 工作树任务的（项目主目录，检出目录）。分叉出来的任务还在用这个工作树时不算，目录不能删。
     fn task_worktree(&self, task_id: &str) -> ServiceResult<Option<(PathBuf, PathBuf)>> {
-        let task = self
-            .store
-            .task(task_id)
-            .map_err(|e| e.to_string())?
-            .ok_or_else(|| "任务不存在".to_string())?;
+        let task = self.load_task(task_id)?;
         let TaskWorkspace::Worktree { path, .. } = task.workspace else {
             return Ok(None);
         };
-        if self.worktree_shared(task_id, &path)? {
+        if self.worktree_shared(task_id, &path, false)? {
             return Ok(None);
         }
-        let Some(project_id) = task.project_id else {
+        let Some(project) = self.project_path(task.project_id.as_deref())? else {
             return Ok(None);
         };
-        let Some(project) = self.store.project(&project_id).map_err(|e| e.to_string())? else {
-            return Ok(None);
-        };
-        Ok(Some((PathBuf::from(project.path), PathBuf::from(path))))
+        Ok(Some((project, PathBuf::from(path))))
     }
 
     /// 停掉任务的 Agent 进程。侧边聊天接不回去，一起关掉。

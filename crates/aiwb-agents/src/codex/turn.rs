@@ -210,9 +210,12 @@ impl Shared {
         } else {
             self.refresh_queue().await;
         }
+        // 任务换了目录（Hand off、工作树恢复）时线程跟着换。codex-cli 0.165.0 实测：
+        // 在别的目录 resume 后记忆还在，命令在新目录里跑。
         let mut params = json!({
             "threadId": thread_id,
             "excludeTurns": true,
+            "cwd": self.cwd,
         });
         super::workbench::attach(&mut params, self.workbench_mcp.as_ref());
         match self.request("thread/resume", params).await {

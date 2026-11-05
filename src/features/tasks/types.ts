@@ -5,9 +5,33 @@ import type { AgentKind, SessionStatus } from "@/types";
 
 export type TaskWorkspace =
   | { kind: "root" }
-  | { kind: "worktree"; path: string; branch: string; baseRef?: string; baseSha: string }
+  | {
+      kind: "worktree";
+      path: string;
+      /** 旧版的任务分支。新工作树是分离头指针，没有这个字段。 */
+      branch?: string;
+      baseRef?: string;
+      baseSha: string;
+      /** 工作树已被清理。下次用到时在原路径恢复。 */
+      shelved?: WorktreeSnapshot;
+      /** 交给了项目目录。会话在项目目录里干活。 */
+      local?: LocalHandoff;
+    }
   /** 独立聊天自己的文件夹。 */
   | { kind: "folder"; path: string };
+
+export interface LocalHandoff {
+  branch: string;
+  previousBranch?: string;
+  previousHead: string;
+}
+
+export interface WorktreeSnapshot {
+  reference: string;
+  head: string;
+  branch?: string;
+  root: string;
+}
 
 export interface SessionAccess {
   mode: string;
@@ -53,6 +77,8 @@ export interface TaskEntry {
   attention: Attention;
   /** 开着的侧边聊天。不算任务的会话段。 */
   side?: TaskSession;
+  /** 工作树任务现在的分支。 */
+  branch?: string;
 }
 
 export interface CreateTaskInput {
@@ -62,6 +88,9 @@ export interface CreateTaskInput {
   prompt: string;
   images: string[];
   worktree: boolean;
+  /** 工作树的起点分支。不给时用项目目录现在的提交。 */
+  worktreeBase?: string;
+  carryChanges?: boolean;
   options: SessionOptions;
   /** 首发前先设好的目标。 */
   goal?: string;

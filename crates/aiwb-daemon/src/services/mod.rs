@@ -13,6 +13,8 @@ mod side;
 mod subtasks;
 mod tasks;
 mod terminals;
+mod worktree_handoff;
+mod worktrees;
 
 pub(crate) use folders::import_legacy_task_folder;
 pub(crate) use subtasks::SubtaskRequest;
@@ -30,6 +32,8 @@ use std::sync::Arc;
 use aiwb_core::rpc::{
     TOPIC_AGENT_UPGRADES, TOPIC_PROJECTS, TOPIC_SESSION_PREFIX, TOPIC_TASKS, TOPIC_TERMINAL_PREFIX,
 };
+use aiwb_core::models::SessionStatus;
+use aiwb_core::task::{Task, TaskSession};
 use aiwb_core::DaemonInfo;
 use aiwb_store::Store;
 use serde::de::DeserializeOwned;
@@ -51,8 +55,10 @@ pub struct Services {
     /// 文件路径索引和文件名筛选的序号。按工作目录共用。
     pub(crate) indexes: aiwb_files::IndexHub,
     pub(crate) filters: aiwb_files::FilterHub,
-    /// 任务工作树放在这里，每个任务一个子目录。
+    /// 默认的工作树目录，每个任务一个子目录。设置里可以换。
     pub(crate) worktree_root: PathBuf,
+    /// 叫醒后台的工作树清理。
+    worktree_sweep: tokio::sync::Notify,
     /// 嵌套任务在内存里的状态：待回报、正在处理的卡片和回报。
     pub(crate) subtasks: subtasks::SubtaskState,
     info: DaemonInfo,
@@ -86,6 +92,7 @@ impl Services {
             indexes: aiwb_files::IndexHub::default(),
             filters: aiwb_files::FilterHub::default(),
             worktree_root: data_dir.join("worktrees"),
+            worktree_sweep: tokio::sync::Notify::new(),
             info,
             shutdown: watch::channel(false).0,
         }
@@ -174,6 +181,8 @@ impl Services {
             "git.createBranch" => to_value(self.create_branch(parse(params)?).await?),
             "settings.taskFolder" => to_value(self.task_folder()?),
             "settings.setTaskFolder" => to_value(self.set_task_folder(parse(params)?)?),
+            "settings.worktrees" => to_value(self.worktree_settings()?),
+            "settings.setWorktrees" => to_value(self.set_worktree_settings(parse(params)?).await?),
             "drafts.get" => to_value(self.draft(parse(params)?)?),
             "drafts.set" => to_value(self.set_draft(parse(params)?)?),
             "agents.profiles" => to_value(aiwb_agents::agent_profiles()),
@@ -194,13 +203,15 @@ impl Services {
             "imports.sources" => to_value(self.import_sources()),
             "imports.list" => to_value(self.import_list(parse(params)?).await?),
             "imports.run" => to_value(self.run_import(parse(params)?).await?),
-            "tasks.list" => to_value(self.store.task_entries().map_err(|e| e.to_string())?),
+            "tasks.list" => to_value(self.runtimes.task_entries()?),
             "tasks.create" => to_value(self.create_task(parse(params)?).await?),
             "tasks.rename" => to_value(self.rename_task(parse(params)?)?),
             "tasks.setPinned" => to_value(self.pin_task(parse(params)?)?),
             "tasks.archive" => to_value(self.archive_task(parse(params)?).await?),
             "tasks.deletePreview" => to_value(self.delete_preview(parse(params)?).await?),
             "tasks.remove" => to_value(self.remove_task(parse(params)?).await?),
+            "tasks.restoreWorktree" => to_value(self.restore_task_worktree(parse(params)?).await?),
+            "tasks.handOff" => to_value(self.hand_off_task(parse(params)?).await?),
             "tasks.switchAgent" => to_value(self.switch_agent(parse(params)?).await?),
             "tasks.fork" => to_value(self.fork_task(parse(params)?).await?),
             "tasks.openSide" => to_value(self.open_side(parse(params)?).await?),
@@ -244,7 +255,7 @@ impl Services {
     pub fn snapshot(&self, topic: &str, params: &Value) -> ServiceResult<Value> {
         match topic {
             TOPIC_PROJECTS => to_value(self.list_projects()?),
-            TOPIC_TASKS => to_value(self.store.task_entries().map_err(|e| e.to_string())?),
+            TOPIC_TASKS => to_value(self.runtimes.task_entries()?),
             TOPIC_AGENT_UPGRADES => to_value(self.upgrades.snapshot()),
             _ if topic.starts_with(TOPIC_TERMINAL_PREFIX) => {
                 Ok(self.terminals.snapshot(&topic[TOPIC_TERMINAL_PREFIX.len()..]))
@@ -286,6 +297,30 @@ impl Services {
             .ok_or_else(|| "项目不存在".to_string())?;
         Ok(PathBuf::from(project.path))
     }
+
+    pub(crate) fn load_task(&self, id: &str) -> ServiceResult<Task> {
+        self.store
+            .task(id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "任务不存在".to_string())
+    }
+
+    /// 任务所属项目的主目录。没有项目或项目已删时为空。
+    pub(crate) fn project_path(&self, project_id: Option<&str>) -> ServiceResult<Option<PathBuf>> {
+        let Some(project_id) = project_id else {
+            return Ok(None);
+        };
+        Ok(self
+            .store
+            .project(project_id)
+            .map_err(|e| e.to_string())?
+            .map(|project| PathBuf::from(project.path)))
+    }
+}
+
+/// 会话正在跑一轮，或在等用户回答。
+pub(crate) fn session_busy(session: &TaskSession) -> bool {
+    matches!(session.status, SessionStatus::Running | SessionStatus::NeedsInput)
 }
 
 /// 文件索引和筛选按这个键共用：会话按会话，项目按项目。

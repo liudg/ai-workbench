@@ -45,6 +45,26 @@ export interface AgentSwitcher {
   onPick: (agent: AgentKind, model: AgentModelOption) => void;
 }
 
+/** 新工作树的起点。`base` 为空表示项目目录现在所在的分支。 */
+export interface WorktreeStart {
+  base: string | null;
+  carry: boolean;
+  onPick: (base: string | null, carry: boolean) => void;
+}
+
+/** 工作树任务在工作树和项目目录之间交接。 */
+export interface WorktreeHandOffLine {
+  /** 已交给项目目录时是挪过去的分支。 */
+  localBranch: string | null;
+  /** 工作树还没有分支时预填的分支名。 */
+  suggestedBranch: string;
+  busy: boolean;
+  /** 交给项目目录或交回工作树，失败时自己报错。 */
+  onHandOff: () => void;
+  /** 先给工作树建分支再交给项目目录。失败时 reject，错误显示在起名对话框里。 */
+  onHandOffAs: (branch: string) => Promise<void>;
+}
+
 /** 新会话的工作树开关，或已有会话所在的工作树。 */
 export interface WorktreeLine {
   showToggle: boolean;
@@ -54,6 +74,11 @@ export interface WorktreeLine {
   liveTitle: string;
   base?: string | null;
   sha?: string | null;
+  /** 工作树已被清理。发消息时自动恢复，也可以点按钮先恢复。 */
+  shelved?: { restoring: boolean; onRestore: () => void } | null;
+  /** 新任务打开了工作树时，选起点。 */
+  start?: WorktreeStart | null;
+  handOff?: WorktreeHandOffLine | null;
 }
 
 export interface ComposerHost {

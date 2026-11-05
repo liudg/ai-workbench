@@ -112,7 +112,7 @@ fn dirty_file_count(root: &Path) -> Result<Option<u32>, String> {
     if !output.status.success() {
         return Ok(None);
     }
-    Ok(Some(count_status_records(&output.stdout)))
+    Ok(Some(status_paths(&output.stdout).len() as u32))
 }
 
 fn run_switch(root: &Path, args: &[&str], fallback: &str) -> Result<(), String> {
@@ -220,30 +220,21 @@ fn translate_git_failure(stderr: &str, fallback: &str) -> String {
     fallback.to_string()
 }
 
-/// `git status --porcelain=v1 -z` 的记录数。重命名带第二条路径，仍算一个文件。
-fn count_status_records(bytes: &[u8]) -> u32 {
-    let mut count = 0u32;
-    let mut index = 0;
-    while index < bytes.len() {
-        let Some(end) = bytes[index..].iter().position(|byte| *byte == 0) else {
+/// `git status --porcelain=v1 -z` 里的文件，一条记录一个。改名、复制后面跟着的原路径不单算。
+pub(crate) fn status_paths(bytes: &[u8]) -> Vec<String> {
+    let text = aiwb_proc::decode_child_bytes(bytes);
+    let mut paths = Vec::new();
+    let mut entries = text.split('\0');
+    while let Some(entry) = entries.next() {
+        let (Some(status), Some(path)) = (entry.get(..2), entry.get(3..)) else {
             break;
         };
-        if end < 3 {
-            break;
+        paths.push(path.to_string());
+        if status.contains(['R', 'C']) {
+            entries.next();
         }
-        let status_x = bytes[index];
-        let status_y = bytes[index + 1];
-        index += end + 1;
-        if matches!(status_x, b'R' | b'C') || matches!(status_y, b'R' | b'C') {
-            let Some(second) = bytes[index..].iter().position(|byte| *byte == 0) else {
-                count += 1;
-                break;
-            };
-            index += second + 1;
-        }
-        count += 1;
     }
-    count
+    paths
 }
 
 #[cfg(test)]
@@ -347,13 +338,13 @@ mod tests {
     }
 
     #[test]
-    fn status_records_count_renames_once() {
-        assert_eq!(count_status_records(b""), 0);
-        assert_eq!(count_status_records(b" M a.txt\0?? b.txt\0"), 2);
-        assert_eq!(count_status_records(b"RM renamed.txt\0note.txt\0"), 1);
+    fn status_paths_count_renames_once() {
+        assert!(status_paths(b"").is_empty());
+        assert_eq!(status_paths(b" M a.txt\0?? b.txt\0"), ["a.txt", "b.txt"]);
+        assert_eq!(status_paths(b"RM renamed.txt\0note.txt\0"), ["renamed.txt"]);
         assert_eq!(
-            count_status_records(b"RM renamed.txt\0note.txt\0?? extra.txt\0"),
-            2
+            status_paths(b"RM renamed.txt\0note.txt\0?? extra.txt\0"),
+            ["renamed.txt", "extra.txt"]
         );
     }
 

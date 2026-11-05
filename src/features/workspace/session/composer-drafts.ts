@@ -22,6 +22,10 @@ export interface ComposerDraft {
   goal?: string | null;
   goalStatus?: "paused" | "active" | null;
   worktree?: boolean;
+  /** 工作树的起点分支。为空时用项目目录现在所在的分支。 */
+  worktreeBase?: string | null;
+  /** 把项目目录里没提交的改动带进工作树。 */
+  carryChanges?: boolean;
   followUpQueueMode?: "queue" | "steer";
 }
 

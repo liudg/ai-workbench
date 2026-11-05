@@ -150,6 +150,7 @@ impl Store {
                     task,
                     sessions: mine,
                     attention,
+                    branch: None,
                 }
             })
             .collect())
@@ -180,6 +181,22 @@ impl Store {
         Ok(self.conn().execute(
             "UPDATE task SET archived_at = ?2, updated_at = ?3 WHERE id = ?1",
             params![id, archived_at, now],
+        )? > 0)
+    }
+
+    /// 只换工作区（清理、恢复工作树时），不算任务的更新。
+    pub fn set_task_workspace(&self, id: &str, workspace: &TaskWorkspace) -> StoreResult<bool> {
+        Ok(self.conn().execute(
+            "UPDATE task SET workspace = ?2 WHERE id = ?1",
+            params![id, to_text(workspace)],
+        )? > 0)
+    }
+
+    /// 记一次活动：最后活动时间往后挪，不往前。
+    pub fn touch_task(&self, id: &str, now: i64) -> StoreResult<bool> {
+        Ok(self.conn().execute(
+            "UPDATE task SET updated_at = MAX(updated_at, ?2) WHERE id = ?1",
+            params![id, now],
         )? > 0)
     }
 
@@ -397,9 +414,11 @@ mod tests {
             title: "修登录".into(),
             workspace: TaskWorkspace::Worktree {
                 path: "/wt".into(),
-                branch: "aiwb/x".into(),
+                branch: Some("aiwb/x".into()),
                 base_ref: Some("main".into()),
                 base_sha: "abc".into(),
+                shelved: None,
+                local: None,
             },
             pinned: false,
             archived_at: None,

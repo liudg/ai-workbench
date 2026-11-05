@@ -24,6 +24,9 @@ use tokio::sync::mpsc;
 use crate::hub::Hub;
 
 mod handoff;
+mod worktrees;
+
+pub(crate) use worktrees::task_branch;
 
 pub type AdapterFactory = Arc<dyn Fn(AgentKind) -> Arc<dyn AgentAdapter> + Send + Sync>;
 
@@ -55,6 +58,8 @@ pub struct Runtimes {
     live: Mutex<HashMap<String, Live>>,
     /// 同一时间只打开一个会话，避免对同一线程起两个 CLI。
     opening: tokio::sync::Mutex<()>,
+    /// 清理和恢复工作树一次只做一件，免得一边删一边恢复。
+    pub(crate) worktrees: tokio::sync::Mutex<()>,
     /// 同一时间只探一次目录。等锁的一方拿到锁后先看缓存。
     pub(crate) probing: tokio::sync::Mutex<()>,
     /// 这次启动后拿到过新目录的 Agent。没拿到过的，存下的目录可能是旧的。
@@ -111,6 +116,7 @@ impl Runtimes {
             logs: Mutex::default(),
             live: Mutex::default(),
             opening: tokio::sync::Mutex::new(()),
+            worktrees: tokio::sync::Mutex::new(()),
             probing: tokio::sync::Mutex::new(()),
             fresh_catalogs: Mutex::default(),
             viewing: Mutex::default(),
@@ -240,7 +246,7 @@ impl Runtimes {
 
     pub(crate) fn publish_tasks(&self) -> RuntimeResult<()> {
         self.hub.publish_with(TOPIC_TASKS, || {
-            let entries = self.store.task_entries().map_err(|e| e.to_string())?;
+            let entries = self.task_entries()?;
             Ok(((), serde_json::to_value(entries).map_err(|e| e.to_string())?))
         })
     }
@@ -522,8 +528,9 @@ impl Runtimes {
             .map_err(store_err)?
             .ok_or_else(|| "任务不存在".to_string())?;
         Ok(match task.workspace {
-            TaskWorkspace::Worktree { path, .. } | TaskWorkspace::Folder { path } => path,
-            TaskWorkspace::Root => {
+            TaskWorkspace::Worktree { local: None, path, .. } | TaskWorkspace::Folder { path } => path,
+            // 交给了项目目录的工作树任务，在项目目录里干活。
+            TaskWorkspace::Worktree { local: Some(_), .. } | TaskWorkspace::Root => {
                 let project_id = task.project_id.ok_or_else(|| "项目不存在".to_string())?;
                 self.store
                     .project(&project_id)
@@ -548,6 +555,23 @@ impl Runtimes {
     ) -> RuntimeResult<Arc<dyn AgentSession>> {
         if let Some(handle) = self.live_handle(session_id) {
             return Ok(handle);
+        }
+        // 工作树任务从拿到目录到 CLI 接上一直拿着工作树锁：清理、交接要么等它接上（之后能停掉它），
+        // 要么做完了它再按新状态接上。被清理过的先放回来，CLI 才有目录可进；交给了项目目录的不用。
+        let mut restored = false;
+        let mut _worktree_guard = None;
+        if let Some(session) = self.store.session(session_id).map_err(|e| e.to_string())? {
+            let task = self.store.task(&session.task_id).map_err(|e| e.to_string())?;
+            if matches!(task.as_ref().map(|task| &task.workspace), Some(TaskWorkspace::Worktree { .. })) {
+                _worktree_guard = Some(self.worktrees.lock().await);
+                let task = self.store.task(&session.task_id).map_err(|e| e.to_string())?;
+                if matches!(
+                    task.map(|task| task.workspace),
+                    Some(TaskWorkspace::Worktree { local: None, .. })
+                ) {
+                    restored = self.restore_worktree_locked(&session.task_id).await?;
+                }
+            }
         }
         let _opening = self.opening.lock().await;
         if let Some(handle) = self.live_handle(session_id) {
@@ -620,6 +644,10 @@ impl Runtimes {
             }
         }
         apply_options(handle.as_ref(), &session.options).await;
+        // 打开会话时那次推目标因为工作树清理掉了被跳过，恢复后补上。
+        if restored {
+            let _ = handle.publish_goal().await;
+        }
         self.live.lock().unwrap().insert(
             session_id.to_string(),
             Live {

@@ -146,6 +146,10 @@ pub struct AgentCapabilities {
     /// 照 t3code 适配器的 `supportsProviderSwitchingViaHandoff`。
     #[serde(default)]
     pub supports_context_handoff: bool,
+    /// 换工作目录后 resume 原来的会话（任务交给项目目录、交回工作树时用）。
+    /// Claude 2.1.312、codex-cli 0.165.0 实测过；Cursor 按 ACP 协议打开，还没用真实 CLI 实测。
+    #[serde(default)]
+    pub supports_workdir_move: bool,
     /// 侧边聊天：从当前对话临时分出一条，不进历史，关掉就丢。
     #[serde(default)]
     pub supports_side_chat: bool,
@@ -174,6 +178,7 @@ impl AgentCapabilities {
             supports_paged_history: false,
             supports_subscription_usage: false,
             supports_context_handoff: false,
+            supports_workdir_move: false,
             supports_side_chat: false,
         }
     }
@@ -203,6 +208,8 @@ impl AgentCapabilities {
             supports_subscription_usage: true,
             // 交接只是第一条 `turn/start` 的文字输入。
             supports_context_handoff: true,
+            // 2026-11-04 codex-cli 0.165.0：换目录 resume 后记忆还在，命令在新目录里跑；`thread/resume` 带 `cwd`。
+            supports_workdir_move: true,
             // 2026-11-02 本机 Codex CLI 0.165.0：父线程回合进行中，另一个 app-server 进程
             // `thread/fork { ephemeral: true }` + `thread/inject_items` 后能接着问，`thread/list` 里没有它。
             supports_side_chat: true,
@@ -248,6 +255,8 @@ impl AgentCapabilities {
             supports_subscription_usage: true,
             // 交接只是第一条 stdin 用户消息的文字。
             supports_context_handoff: true,
+            // 2026-11-04 本机 Claude Code 2.1.312：在别的目录 `--resume` 记忆还在，工作目录是新目录。
+            supports_workdir_move: true,
             // 2026-11-02 本机 Claude Code 2.1.312：父会话回合进行中，
             // `--resume=<父> --fork-session --session-id=<新> --no-session-persistence` 能连着问多轮，转录不落盘。
             supports_side_chat: true,
@@ -297,6 +306,9 @@ impl AgentCapabilities {
             supports_subscription_usage: false,
             // 交接只是第一条 `session/prompt` 的文字。
             supports_context_handoff: true,
+            // ACP 的 `session/load` 本来就带 `cwd`，适配器换目录接着会话时传新目录。
+            // 本机没有 Cursor CLI，换目录这条还没用真实 CLI 实测过（docs/worktree-lifecycle.md）。
+            supports_workdir_move: true,
             // 没有分叉方法，分不出带着前文的临时会话。
             supports_side_chat: false,
         }

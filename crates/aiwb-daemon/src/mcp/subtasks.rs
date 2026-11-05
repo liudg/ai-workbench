@@ -31,7 +31,7 @@ struct SubtaskParam {
     /// Agent id from aiwb_capabilities. Defaults to your own agent.
     #[serde(default)]
     agent: Option<String>,
-    /// Give the subtask its own git worktree and branch. Use it for subtasks that write code in parallel.
+    /// Give the subtask its own git worktree (detached; it can create a branch there). Use it for subtasks that write code in parallel.
     #[serde(default)]
     worktree: bool,
     /// Model id from that agent's catalog in aiwb_capabilities. Omit for the agent's default.

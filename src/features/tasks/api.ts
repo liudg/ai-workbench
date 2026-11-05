@@ -38,6 +38,16 @@ export function removeTask(id: string, options: WorktreeDeleteFlags) {
   return daemon.call<boolean>("tasks.remove", { id, ...options });
 }
 
+/** 把清理掉的工作树放回原路径。 */
+export function restoreWorktree(id: string) {
+  return daemon.call<null>("tasks.restoreWorktree", { id }, CLI_TIMEOUT_MS);
+}
+
+/** 工作树任务交给项目目录，或交回工作树。工作树没有分支时要给分支名。 */
+export function handOff(id: string, to: "local" | "worktree", branch?: string) {
+  return daemon.call<TaskEntry>("tasks.handOff", branch ? { id, to, branch } : { id, to }, CLI_TIMEOUT_MS);
+}
+
 /** 开子任务卡片上的选择：另开，或者不另开。 */
 export function resolveOffer(sessionId: string, offerId: string, accept: boolean) {
   return daemon.call<null>("tasks.resolveOffer", { sessionId, offerId, accept }, CLI_TIMEOUT_MS);
