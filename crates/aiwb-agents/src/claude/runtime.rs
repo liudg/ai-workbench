@@ -102,15 +102,7 @@ pub async fn open(
     }
     // 侧边聊天分出来的是新会话，id 由这里定。
     let resume_native_id = if side_of.is_some() { None } else { resume_native_id };
-    let (session_id, resume) = match resume_native_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|id| !id.is_empty())
-    {
-        Some(id) if history::is_uuid(id) => (id.to_string(), true),
-        Some(id) => return Err(AgentError::Runtime(format!("无效的会话 id：{id}"))),
-        None => (uuid::Uuid::new_v4().to_string(), false),
-    };
+    let (session_id, resume) = launch_target(resume_native_id.as_deref(), &history::projects_dir())?;
     let permission_mode = command::permission_mode_for_access(access_mode.as_deref());
     let access = match access_mode.as_deref().unwrap_or("full") {
         "full" => "full",
@@ -184,6 +176,26 @@ pub async fn open(
         return Err(err);
     }
     Ok(shared)
+}
+
+/// 这次启动用的会话 id，以及是不是 `--resume`。
+///
+/// 2026-11-05，Claude Code 2.1.312：只做过 initialize / get_settings、没发过消息的会话不写
+/// `<id>.jsonl`，之后 `--resume=<id>` 退出码 1，stderr 是 `No conversation found with session ID: <id>`。
+/// 找不到转录就没有可接的历史，开一个新会话；新 id 经 `native_id()` 报回，由 runtime 跟着改记录。
+pub(super) fn launch_target(
+    resume_native_id: Option<&str>,
+    projects: &std::path::Path,
+) -> Result<(String, bool), AgentError> {
+    match resume_native_id.map(str::trim).filter(|id| !id.is_empty()) {
+        Some(id) if !history::is_uuid(id) => {
+            Err(AgentError::Runtime(format!("无效的会话 id：{id}")))
+        }
+        Some(id) if history::find_session_file_under(projects, id).is_some() => {
+            Ok((id.to_string(), true))
+        }
+        _ => Ok((uuid::Uuid::new_v4().to_string(), false)),
+    }
 }
 
 /// 转录里被并进进行中回合的用户消息条数。

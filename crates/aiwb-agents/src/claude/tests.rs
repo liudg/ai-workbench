@@ -141,6 +141,47 @@ fn side_chat_forks_the_parent_without_a_transcript() {
     assert!(!args.iter().any(|arg| arg == "--resume=side-1"));
 }
 
+/// 没发过消息的会话没有 `<id>.jsonl`，`--resume` 会报 `No conversation found`。这时开新会话。
+#[test]
+fn unsent_session_without_a_transcript_starts_fresh() {
+    let projects = temp_dir("unsent-resume");
+    let unsent = "9a0f3c52-7f1e-4f0b-8d0e-2f6a1b9c4d11";
+    let sent = "3b5e8d27-1c4a-4e9f-a2d6-7f0c9e1b5a33";
+    let project = projects.join("C--work-demo");
+    std::fs::create_dir_all(&project).unwrap();
+    std::fs::write(
+        project.join(format!("{sent}.jsonl")),
+        format!(
+            "{}\n",
+            json!({"type": "user", "sessionId": sent, "uuid": "u1", "message": {"role": "user", "content": "hi"}})
+        ),
+    )
+    .unwrap();
+
+    let (id, resume) = super::runtime::launch_target(Some(sent), &projects).unwrap();
+    assert_eq!((id.as_str(), resume), (sent, true));
+
+    let (id, resume) = super::runtime::launch_target(Some(unsent), &projects).unwrap();
+    assert!(!resume);
+    assert_ne!(id, unsent);
+    assert!(history::is_uuid(&id));
+    let args = command::cli_args(&Launch {
+        session_id: id.clone(),
+        resume,
+        side_of: None,
+        permission_mode: "default".into(),
+        model: None,
+        effort: None,
+        writable_roots: Vec::new(),
+        workbench_mcp: None,
+    });
+    assert!(args.contains(&format!("--session-id={id}")));
+    assert!(!args.iter().any(|arg| arg.starts_with("--resume")));
+
+    assert!(super::runtime::launch_target(Some("not-a-uuid"), &projects).is_err());
+    let _ = std::fs::remove_dir_all(&projects);
+}
+
 /// `Path` 只在 Windows 上把 `C:\work` 当成绝对路径。
 #[test]
 #[cfg(windows)]
@@ -1618,4 +1659,36 @@ async fn live_tool_status_follows_the_result() {
         "the sleeping command never showed as running"
     );
     assert_eq!(last_of("exit 3").1, ToolStatus::Failed);
+}
+
+/// 真实 Claude Code：起过但没发消息的会话，进程回收后再打开，换成新会话而不是报 `No conversation found`。
+#[tokio::test]
+#[ignore = "calls the local Claude Code CLI"]
+async fn live_unsent_session_reopens_as_a_new_session() {
+    use crate::{AgentAdapter, SessionContext};
+    use tokio::sync::mpsc;
+
+    let adapter = super::ClaudeCodeAdapter::new();
+    let ctx = |resume: Option<String>| SessionContext {
+        project_path: std::env::temp_dir().to_string_lossy().to_string(),
+        access_mode: Some("full".into()),
+        resume_native_id: resume,
+        workbench_mcp: None,
+        options: serde_json::json!({ "persist": true }),
+    };
+    let (tx, _rx) = mpsc::unbounded_channel();
+    let first = adapter.start_session(ctx(None), tx).await.expect("start");
+    let unsent = first.native_id().expect("native id");
+    first.stop().await.unwrap();
+    drop(first);
+    assert!(history::find_session_file(&unsent).is_none());
+
+    let (tx, _rx) = mpsc::unbounded_channel();
+    let reopened = adapter
+        .start_session(ctx(Some(unsent.clone())), tx)
+        .await
+        .expect("reopen");
+    let fresh = reopened.native_id().expect("native id");
+    assert_ne!(fresh, unsent);
+    reopened.stop().await.unwrap();
 }
