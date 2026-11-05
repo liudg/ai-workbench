@@ -10,6 +10,7 @@ export function FilePreviewColumn({
   quotePath,
   onQuote,
   markdownMode = null,
+  onToggleMarkdown,
 }: {
   projectId: string;
   previewPath: string;
@@ -17,6 +18,7 @@ export function FilePreviewColumn({
   quotePath?: string;
   onQuote: (draft: SelectionDraft) => void;
   markdownMode?: MarkdownViewMode | null;
+  onToggleMarkdown?: () => void;
 }) {
   return (
     <div data-file-preview-column className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -30,6 +32,7 @@ export function FilePreviewColumn({
             quotePath={quotePath}
             onQuote={onQuote}
             markdownMode={markdownMode}
+            onToggleMarkdown={onToggleMarkdown}
           />
         ) : (
           <PreviewEmpty />

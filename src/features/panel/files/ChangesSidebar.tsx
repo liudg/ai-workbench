@@ -7,7 +7,7 @@ import { pinnedColumnStyle } from "../core/layout";
 import { resolvePreviewPath } from "../core/preview-kind";
 import { usePanel } from "../core/PanelProvider";
 import { filterFiles, useFileFilter } from "../core/file-filter";
-import { FileContextMenu } from "./FileContextMenu";
+import { ContextMenu } from "../core/ContextMenu";
 import { FileTreeList } from "./FileTreeList";
 import { buildFileTree } from "./file-tree";
 import { baseName } from "@/shared/path";
@@ -100,14 +100,19 @@ export function ChangesSidebar({
         )}
       </div>
       {contextMenu ? (
-        <FileContextMenu
+        <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
-          onAdd={() => {
-            const absolute = resolvePreviewPath(projectPath, contextMenu.path);
-            if (absolute) attachFile(absolute, baseName(absolute));
-            setContextMenu(null);
-          }}
+          items={[
+            {
+              id: "add-to-chat",
+              label: DESKTOP_ZH.addToChat,
+              onSelect: () => {
+                const absolute = resolvePreviewPath(projectPath, contextMenu.path);
+                if (absolute) attachFile(absolute, baseName(absolute));
+              },
+            },
+          ]}
           onClose={() => setContextMenu(null)}
         />
       ) : null}

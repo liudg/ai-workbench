@@ -1,3 +1,4 @@
+import { Fragment, useLayoutEffect, type MouseEvent as ReactMouseEvent } from "react";
 import { ChevronRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -5,11 +6,42 @@ import type { FileChange } from "@/features/changes-model/diff-parse";
 import { previewKindForPath } from "@/features/panel/core/preview-kind";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { MarkdownBody } from "@/shared/markdown/MarkdownBody";
+import type { TextSnippetDraft } from "@/shared/text-snippet";
+import {
+  boxBelow,
+  commentRowOf,
+  commentRowProps,
+  CommentPlus,
+  LineCommentBox,
+  spanCovers,
+  type LineComments,
+} from "../viewers/line-comments";
 import { diffBodyRows } from "./diff-body";
+import { canCommentLine, diffCommentScope, diffSpanDraft, type DiffCommentLine } from "./diff-comments";
 import { foldDiffLines, previewTextFromDiff, unmodifiedLinesLabel } from "./fold";
 import { toSplitRows, type DiffPresentation, type SplitCell } from "./split-rows";
 import { applyWordDiff, type DiffDisplayRow, type WordPart } from "./word-diff";
 import { diffFileDisclosureClass } from "./diff-disclosure";
+
+/** 按 scope 取几行的引用。选区和右键都用它，引用总是整行、只取一栏。 */
+export type SpanDrafts = Map<string, (start: number, end: number) => TextSnippetDraft | null>;
+
+interface DiffComments {
+  comments: LineComments;
+  /** 引用里写的路径，一般是绝对路径。 */
+  quotePath: string;
+  onAdd: (draft: TextSnippetDraft) => void;
+  spans: SpanDrafts;
+}
+
+/** 右键点中的那一行。 */
+export interface DiffLineHit {
+  scope: string;
+  row: number;
+  draft: TextSnippetDraft | null;
+}
+
+const PICKED = "shadow-[inset_3px_0_0_#2f81f7]";
 
 export function DiffFileSection({
   file,
@@ -25,6 +57,9 @@ export function DiffFileSection({
   loadFull,
   active,
   onSelect,
+  onActivate,
+  comment,
+  onLineMenu,
 }: {
   file: FileChange;
   open: boolean;
@@ -39,6 +74,9 @@ export function DiffFileSection({
   loadFull: boolean;
   active: boolean;
   onSelect: () => void;
+  onActivate: () => void;
+  comment: DiffComments;
+  onLineMenu: (event: ReactMouseEvent, hit: DiffLineHit) => void;
 }) {
   const markdown = previewKindForPath(file.path) === "markdown";
   const display = diffBodyRows({
@@ -52,6 +90,48 @@ export function DiffFileSection({
     hideImports,
   });
   const rows = wordDiff ? applyWordDiff(display.rows) : display.rows.map(withEmptyParts);
+  const split = presentation === "split" ? toSplitRows(rows) : null;
+  const unifiedScope = diffCommentScope(file.path, "unified");
+  const leftScope = diffCommentScope(file.path, "left");
+  const rightScope = diffCommentScope(file.path, "right");
+  const linesFor = (scope: string): (DiffCommentLine | null)[] => {
+    if (scope === unifiedScope) return rows.map((row) => (row.kind === "collapse" ? null : row));
+    if (!split) return [];
+    if (scope === leftScope) return split.map((row) => (row.kind === "pair" ? row.left : null));
+    if (scope === rightScope) return split.map((row) => (row.kind === "pair" ? row.right : null));
+    return [];
+  };
+  const spanDraft = (scope: string, start: number, end: number) =>
+    diffSpanDraft(linesFor(scope), start, end, comment.quotePath);
+  const { comments, spans } = comment;
+  useLayoutEffect(() => {
+    const scopes = split ? [leftScope, rightScope] : [unifiedScope];
+    for (const scope of scopes) spans.set(scope, (start, end) => spanDraft(scope, start, end));
+    return () => {
+      for (const scope of scopes) spans.delete(scope);
+    };
+  });
+  const openSpan = comments.editing && comments.span ? comments.span : null;
+  const mine = openSpan && [unifiedScope, leftScope, rightScope].includes(openSpan.scope) ? openSpan : null;
+  const boxDraft = mine ? (comments.draft ?? spanDraft(mine.scope, mine.start, mine.end)) : null;
+  const box =
+    mine && boxDraft ? (
+      <LineCommentBox
+        key={`${mine.scope}:${mine.start}:${mine.end}`}
+        draft={boxDraft}
+        onSubmit={(draft) => {
+          comment.onAdd(draft);
+          comments.close();
+        }}
+        onCancel={comments.close}
+      />
+    ) : null;
+  const rowMenu = (event: ReactMouseEvent) => {
+    const hit = commentRowOf(event.target instanceof Node ? event.target : null);
+    if (!hit) return;
+    event.stopPropagation();
+    onLineMenu(event, { ...hit, draft: spanDraft(hit.scope, hit.row, hit.row) });
+  };
   return (
     <section
       className={cn(
@@ -62,7 +142,8 @@ export function DiffFileSection({
       data-diff-open={open ? "true" : "false"}
       data-diff-active={active ? "true" : "false"}
       data-diff-presentation={presentation}
-      onClick={onSelect}
+      onClick={onActivate}
+      onContextMenu={rowMenu}
     >
       <header
         className="flex min-w-0 cursor-pointer flex-nowrap items-center gap-2 px-3 py-2 text-xs"
@@ -105,12 +186,29 @@ export function DiffFileSection({
           </p>
         ) : rows.length === 0 ? (
           <p className="px-3 py-2 text-xs text-zinc-500">没有可显示的差异文本。</p>
-        ) : presentation === "split" ? (
-          <SplitBody rows={rows} wrap={wrap} />
+        ) : split ? (
+          <div className="min-w-0 pb-2 font-mono text-xs leading-5" data-diff-split-body>
+            {split.map((row, index) =>
+              row.kind === "collapse" ? (
+                <CollapseBar key={index} count={row.count} />
+              ) : (
+                <Fragment key={index}>
+                  <div className={cn("grid grid-cols-2", wrap ? "min-w-0" : "min-w-max")}>
+                    <SplitCellView cell={row.left} wrap={wrap} edge="left" scope={leftScope} row={index} comments={comments} />
+                    <SplitCellView cell={row.right} wrap={wrap} edge="right" scope={rightScope} row={index} comments={comments} />
+                  </div>
+                  {boxBelow(comments, leftScope, index) || boxBelow(comments, rightScope, index) ? box : null}
+                </Fragment>
+              ),
+            )}
+          </div>
         ) : (
           <div className="min-w-0 pb-2 font-mono text-xs leading-5">
             {rows.map((row, index) => (
-              <DiffRowView key={index} row={row} wrap={wrap} />
+              <Fragment key={index}>
+                <DiffRowView row={row} wrap={wrap} scope={unifiedScope} index={index} comments={comments} />
+                {boxBelow(comments, unifiedScope, index) ? box : null}
+              </Fragment>
             ))}
           </div>
         )
@@ -124,57 +222,74 @@ function withEmptyParts(row: ReturnType<typeof foldDiffLines>[number]): DiffDisp
   return { ...row, parts: null };
 }
 
-function SplitBody({ rows, wrap }: { rows: DiffDisplayRow[]; wrap: boolean }) {
-  return (
-    <div className="min-w-0 pb-2 font-mono text-xs leading-5" data-diff-split-body>
-      {toSplitRows(rows).map((row, index) =>
-        row.kind === "collapse" ? (
-          <CollapseBar key={index} count={row.count} />
-        ) : (
-          <div key={index} className={cn("grid grid-cols-2", wrap ? "min-w-0" : "min-w-max")}>
-            <SplitCellView cell={row.left} wrap={wrap} edge="left" />
-            <SplitCellView cell={row.right} wrap={wrap} edge="right" />
-          </div>
-        ),
-      )}
-    </div>
-  );
-}
-
-function SplitCellView({ cell, wrap, edge }: { cell: SplitCell; wrap: boolean; edge: "left" | "right" }) {
+function SplitCellView({
+  cell,
+  wrap,
+  edge,
+  scope,
+  row,
+  comments,
+}: {
+  cell: SplitCell;
+  wrap: boolean;
+  edge: "left" | "right";
+  scope: string;
+  row: number;
+  comments: LineComments;
+}) {
+  const commentable = canCommentLine(cell);
   return (
     <div
       data-diff-split-cell={edge}
       data-diff-tone={cell.tone}
+      {...(commentable ? commentRowProps(scope, row) : {})}
       className={cn(
-        "flex min-w-0",
+        "group relative flex min-w-0",
         edge === "left" && "border-r border-[#222]",
         cell.tone === "add" && "bg-[#173324] text-[#b7ebc6]",
         cell.tone === "del" && "bg-[#3a1f24] text-[#f0b4b4]",
         cell.tone === "context" && "text-[#d4d4d4]",
         cell.tone === "meta" && "text-zinc-500",
         cell.tone === "pad" && "bg-zinc-950/30",
+        spanCovers(comments, scope, row) && PICKED,
       )}
     >
+      {commentable ? <CommentPlus scope={scope} row={row} comments={comments} className="left-0.5" /> : null}
       <span className="w-10 shrink-0 select-none px-2 text-right text-zinc-500">{cell.lineNo ?? ""}</span>
       <LineText text={cell.text} parts={cell.parts} wrap={wrap} />
     </div>
   );
 }
 
-function DiffRowView({ row, wrap }: { row: DiffDisplayRow; wrap: boolean }) {
+function DiffRowView({
+  row,
+  wrap,
+  scope,
+  index,
+  comments,
+}: {
+  row: DiffDisplayRow;
+  wrap: boolean;
+  scope: string;
+  index: number;
+  comments: LineComments;
+}) {
   if (row.kind === "collapse") return <CollapseBar count={row.count} />;
+  const commentable = canCommentLine(row);
   return (
     <div
       data-diff-tone={row.tone}
+      {...(commentable ? commentRowProps(scope, index) : {})}
       className={cn(
-        "flex min-w-0 flex-nowrap",
+        "group relative flex min-w-0 flex-nowrap",
         row.tone === "add" && "bg-[#173324] text-[#b7ebc6]",
         row.tone === "del" && "bg-[#3a1f24] text-[#f0b4b4]",
         row.tone === "context" && "text-[#d4d4d4]",
         row.tone === "meta" && "text-zinc-500",
+        spanCovers(comments, scope, index) && PICKED,
       )}
     >
+      {commentable ? <CommentPlus scope={scope} row={index} comments={comments} className="left-0.5" /> : null}
       <span data-diff-old-line className="w-9 shrink-0 select-none px-1 text-right text-[#6a6a6a]">
         {row.oldNo ?? ""}
       </span>

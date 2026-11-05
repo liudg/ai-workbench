@@ -1,16 +1,11 @@
-import { useRef } from "react";
 import { Folder } from "lucide-react";
 
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { previewKindForPath } from "../core/preview-kind";
 import { ImageFrame } from "../viewers/image";
-import { MarkdownPreview } from "../viewers/MarkdownPreview";
-import { SourceView } from "../viewers/SourceView";
-import { TextPreview } from "../viewers/TextPreview";
-import { SelectionMenu } from "@/shared/selection/SelectionMenu";
-import { fileSelectionDraft } from "../viewers/file-selection";
+import { FileContent } from "../viewers/FileContent";
 import type { SelectionDraft } from "../viewers/selection-quote";
-import type { MarkdownViewMode } from "../viewers/markdown-mode";
+import { markdownModeButtonLabel, type MarkdownViewMode } from "../viewers/markdown-mode";
 import { isUnsupportedPreviewPath, previewShellStatus, type PreviewShellStatus } from "./file-preview-nav";
 import { usePreviewFile } from "./usePreviewFile";
 import { usePreviewImage } from "./usePreviewImage";
@@ -38,6 +33,7 @@ export function FilePreview({
   quotePath,
   onQuote,
   markdownMode = null,
+  onToggleMarkdown,
 }: {
   projectId: string;
   path: string;
@@ -45,13 +41,13 @@ export function FilePreview({
   quotePath?: string;
   onQuote: (draft: SelectionDraft) => void;
   markdownMode?: MarkdownViewMode | null;
+  onToggleMarkdown?: () => void;
 }) {
   const extensionImage = previewKindForPath(path) === "image";
   const unsupported = isUnsupportedPreviewPath(path);
   const state = usePreviewFile(projectId, extensionImage || unsupported ? "" : path);
   const image = extensionImage || (!unsupported && state.status === "ready" && state.kind === "image");
   const picture = usePreviewImage(projectId, image ? path : "");
-  const rootRef = useRef<HTMLDivElement>(null);
   const phase = image
     ? picture.status === "error"
       ? "error"
@@ -73,7 +69,6 @@ export function FilePreview({
 
   return (
     <div
-      ref={rootRef}
       data-open-files-preview
       data-preview-path={path}
       data-preview-line={line ?? ""}
@@ -103,17 +98,14 @@ export function FilePreview({
             text={readyText.text}
             kind={readyText.kind}
             line={line}
+            path={path}
+            quotePath={quotePath || path}
+            onQuote={onQuote}
             markdownMode={markdownMode}
+            onToggleMarkdown={onToggleMarkdown}
           />
         ) : null}
       </div>
-      {shell === "ready" && readyText ? (
-        <SelectionMenu
-          rootRef={rootRef}
-          readDraft={(root) => fileSelectionDraft(root, quotePath || path)}
-          onAdd={onQuote}
-        />
-      ) : null}
     </div>
   );
 }
@@ -122,37 +114,43 @@ function PreviewContent({
   text,
   kind,
   line,
+  path,
+  quotePath,
+  onQuote,
   markdownMode,
+  onToggleMarkdown,
 }: {
   text: string;
   kind: string;
   line: number | null;
+  path: string;
+  quotePath: string;
+  onQuote: (draft: SelectionDraft) => void;
   markdownMode: MarkdownViewMode | null;
+  onToggleMarkdown?: () => void;
 }) {
-  if (kind === "markdown" && markdownMode !== "source") {
-    return (
-      <div data-content-viewer="markdown" data-markdown-view="preview" className="h-full min-h-0">
-        <MarkdownPreview text={text} truncated={false} />
-      </div>
-    );
-  }
-  if (line != null) {
-    return (
-      <div data-content-viewer="text" data-markdown-view={kind === "markdown" ? "source" : undefined} className="h-full min-h-0">
-        <SourceView text={text} line={line} />
-      </div>
-    );
-  }
-  if (kind === "markdown") {
-    return (
-      <div data-content-viewer="markdown" data-markdown-view="source" className="h-full min-h-0">
-        <TextPreview text={text} truncated={false} />
-      </div>
-    );
-  }
+  const markdown = kind === "markdown";
+  const view = markdown && markdownMode !== "source" ? "markdown" : "source";
   return (
-    <div data-content-viewer="text" className="h-full min-h-0">
-      <TextPreview text={text} truncated={false} />
+    <div
+      data-content-viewer={view === "markdown" || (markdown && line == null) ? "markdown" : "text"}
+      data-markdown-view={markdown ? (view === "markdown" ? "preview" : "source") : undefined}
+      className="h-full min-h-0"
+    >
+      <FileContent
+        view={view}
+        text={text}
+        line={view === "source" ? line : null}
+        quotePath={quotePath}
+        copyPath={path}
+        commentable={!markdown}
+        markdown={
+          markdown && markdownMode && onToggleMarkdown
+            ? { label: markdownModeButtonLabel(markdownMode), onToggle: onToggleMarkdown }
+            : null
+        }
+        onAdd={onQuote}
+      />
     </div>
   );
 }

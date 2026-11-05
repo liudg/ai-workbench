@@ -6,6 +6,11 @@ export function fileSelectionDraft(root: HTMLElement, path: string): SelectionDr
   if (!selection || selection.isCollapsed || selection.rangeCount === 0) return null;
   const range = selection.getRangeAt(0);
   if (!root.contains(range.commonAncestorContainer)) return null;
+  const host =
+    range.commonAncestorContainer instanceof Element
+      ? range.commonAncestorContainer
+      : range.commonAncestorContainer.parentElement;
+  if (host?.closest("input, textarea") || document.activeElement?.closest("input, textarea")) return null;
   const text = selection.toString();
   if (!text.trim()) return null;
   const lines = lineNumbers(root, range, text);

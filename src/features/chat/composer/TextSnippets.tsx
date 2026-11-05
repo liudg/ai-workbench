@@ -13,12 +13,20 @@ export function TextSnippetPreview({ snippets }: { snippets: readonly TextSnippe
       className="absolute bottom-full left-0 right-0 z-10 mb-2 max-h-40 space-y-2 overflow-hidden rounded-xl border border-[#3a3a3a] bg-[#1c1c1c] px-3 py-2.5 shadow-lg shadow-black/40"
     >
       {shown.map((snippet) => (
-        <p
-          key={snippet.id}
-          className="whitespace-pre-wrap break-words text-[13px] leading-5 text-[#d4d4d4]"
-        >
-          {textSnippetPreview(snippet.body)}
-        </p>
+        <div key={snippet.id} data-text-snippet-note={snippet.note ? "" : undefined}>
+          {snippet.note ? (
+            <p className="whitespace-pre-wrap break-words text-[13px] leading-5 text-[#e8e8e8]">{snippet.note}</p>
+          ) : null}
+          <p
+            className={
+              snippet.note
+                ? "whitespace-pre-wrap break-words border-l-2 border-[#3a3a3a] pl-2 font-mono text-[12px] leading-5 text-[#a1a1aa]"
+                : "whitespace-pre-wrap break-words text-[13px] leading-5 text-[#d4d4d4]"
+            }
+          >
+            {textSnippetPreview(snippet.body)}
+          </p>
+        </div>
       ))}
     </div>
   );

@@ -180,6 +180,11 @@ export function useDiffDocument(turnFiles: FileChange[]) {
     queueScroll(file.path);
   }, [queueScroll]);
 
+  /** 点在差异正文里只换当前文件，不滚动，免得选字、评论时跳走。 */
+  const activateFile = useCallback((file: FileChange) => {
+    setActivePath(file.path);
+  }, []);
+
   const rememberOpen = useCallback((next: readonly string[]) => {
     const available = shownRef.current.map((item) => item.path);
     patchDiffView({ fileOpen: modeForPaths(next, available), openPaths: [...next] });
@@ -241,6 +246,7 @@ export function useDiffDocument(turnFiles: FileChange[]) {
     sources,
     patch,
     selectFile,
+    activateFile,
     revealFile,
     reload: () => {
       triedSource.current.clear();

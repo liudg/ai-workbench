@@ -12,7 +12,7 @@ const PATH = "src/features/panel/viewers/SourceView.tsx";
 
 const FILES: FileTreeFile[] = [
   { path: PATH, added: 0, removed: 0 },
-  { path: "src/features/panel/viewers/TextPreview.tsx", added: 0, removed: 0 },
+  { path: "src/features/panel/viewers/line-comments.tsx", added: 0, removed: 0 },
   { path: "src/features/panel/viewers/highlight.ts", added: 0, removed: 0 },
   { path: "src/features/panel/files/FilePreview.tsx", added: 0, removed: 0 },
 ];

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  commentedDraft,
   createTextSnippet,
   mergeSnippetText,
   textSnippetChipLabel,
@@ -62,4 +63,11 @@ test("chip label and preview stay short", () => {
   assert.equal(textSnippetChipLabel(3), "3 个已选文本片");
   assert.equal(textSnippetPreview("one\ntwo"), "one\ntwo");
   assert.equal(textSnippetPreview("1\n2\n3\n4\n5"), "1\n2\n3\n4...");
+});
+
+test("a comment rides after the quote and is kept for display", () => {
+  const draft = commentedDraft({ path: "a.cs", body: "one", start: 3, end: 3, quote: "```3:3:a.cs\none\n```" }, "  rename this  ");
+  assert.equal(draft?.quote, "```3:3:a.cs\none\n```\n评论：rename this");
+  assert.equal(createTextSnippet(draft!, "c")?.note, "rename this");
+  assert.equal(commentedDraft({ path: "a.cs", body: "one", start: 3, end: 3, quote: "q" }, "   "), null);
 });

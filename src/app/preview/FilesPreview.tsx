@@ -4,7 +4,7 @@ import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { textSnippetChipLabel, textSnippetPreview } from "@/shared/text-snippet";
 import { usePanel } from "@/features/panel/core/PanelProvider";
 import { resolvePreviewPath } from "@/features/panel/core/preview-kind";
-import { FileContextMenu } from "@/features/panel/files/FileContextMenu";
+import { ContextMenu } from "@/features/panel/core/ContextMenu";
 import { FilePreviewColumn } from "@/features/panel/files/FilePreview";
 import { PreviewChrome } from "@/features/panel/files/PreviewChrome";
 import { useFilePreviewChrome } from "@/features/panel/files/use-file-preview-chrome";
@@ -81,6 +81,7 @@ function FilesBody({ root, projectId }: { root: string; projectId: string }) {
           previewPath={path}
           previewLine={line}
           markdownMode={chrome.markdownMode}
+          onToggleMarkdown={chrome.chromeProps.onToggleMarkdown}
           quotePath={path ? joinRoot(root, path) : ""}
           onQuote={(draft) => panel.data.addTextSnippet(panel.sessionId, draft)}
         />
@@ -141,14 +142,19 @@ function FilesBody({ root, projectId }: { root: string; projectId: string }) {
       </div>
       {chrome.searchDialog}
       {contextMenu ? (
-        <FileContextMenu
+        <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
-          onAdd={() => {
-            const absolute = resolvePreviewPath(root, contextMenu.path);
-            if (absolute) attachFile(absolute, baseName(absolute));
-            setContextMenu(null);
-          }}
+          items={[
+            {
+              id: "add-to-chat",
+              label: DESKTOP_ZH.addToChat,
+              onSelect: () => {
+                const absolute = resolvePreviewPath(root, contextMenu.path);
+                if (absolute) attachFile(absolute, baseName(absolute));
+              },
+            },
+          ]}
           onClose={() => setContextMenu(null)}
         />
       ) : null}

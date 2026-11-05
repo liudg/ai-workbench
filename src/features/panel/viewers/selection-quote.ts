@@ -60,3 +60,10 @@ function normalizeLine(line: number | null): number | null {
   if (line == null || !Number.isFinite(line) || line < 1) return null;
   return Math.floor(line);
 }
+
+/** 复制给 Agent 或终端用的位置：`src/a.ts:12`、`src/a.ts:12-18`。没有行号就只有路径。 */
+export function pathWithLines(path: string, start: number | null, end: number | null): string {
+  const span = lineSpan(start, end ?? start);
+  if (!span) return path;
+  return span.end > span.start ? `${path}:${span.start}-${span.end}` : `${path}:${span.start}`;
+}

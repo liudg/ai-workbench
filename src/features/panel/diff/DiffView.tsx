@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 
 import { cn } from "@/lib/utils";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
@@ -10,8 +10,14 @@ import { useColumnGesture } from "../core/useColumnGesture";
 import { usePanel } from "../core/PanelProvider";
 import { ChangesSidebar } from "../files/ChangesSidebar";
 import { relativizeFiles } from "@/shared/path";
+import { SelectionMenu } from "@/shared/selection/SelectionMenu";
+import type { TextSnippetDraft } from "@/shared/text-snippet";
+import { ContextMenu, type ContextMenuItem } from "../core/ContextMenu";
+import { resolvePreviewPath } from "../core/preview-kind";
+import { clipboardItems, copyPathItem, snippetItems } from "../viewers/content-menu";
+import { commentRowOf, useLineComments, type CommentSpan } from "../viewers/line-comments";
 import { setFileFilter } from "../core/file-filter";
-import { DiffFileSection } from "./DiffFileSection";
+import { DiffFileSection, type DiffLineHit, type SpanDrafts } from "./DiffFileSection";
 import { DiffToolbar } from "./DiffToolbar";
 import { copyApplyState } from "./git-apply";
 import { jumpSelection, visibleJumpFiles } from "./jump-files";
@@ -22,12 +28,25 @@ import { useGitWorkTree } from "./useGitWorkTree";
 const SPLITTER_WIDTH = 6;
 
 export function DiffView({ files }: { files: FileChange[] }) {
-  const { diffFilesWidth, setDiffFilesWidth, projectId, projectPath, sessionId, diffView, patchDiffView } =
-    usePanel();
+  const {
+    diffFilesWidth,
+    setDiffFilesWidth,
+    projectId,
+    projectPath,
+    sessionId,
+    diffView,
+    patchDiffView,
+    data,
+    openHref,
+  } = usePanel();
   const displayFiles = useMemo(() => relativizeFiles(files, projectPath), [files, projectPath]);
   const doc = useDiffDocument(displayFiles);
   const frameRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const comments = useLineComments();
+  const spans = useRef<SpanDrafts>(new Map()).current;
+  const [menu, setMenu] = useState<{ x: number; y: number; items: ContextMenuItem[] } | null>(null);
   const paneWidth = useElementWidth(frameRef);
   const contentWidth = useElementWidth(contentRef);
   const [epoch, setEpoch] = useState(0);
@@ -57,6 +76,47 @@ export function DiffView({ files }: { files: FileChange[] }) {
     setPendingJump(null);
     doc.revealFile(file);
   }, [doc.revealFile, doc.shown, pendingJump]);
+
+  // 统一和并排的行序号不一样，换布局时收起没写完的评论。
+  const closeComment = comments.close;
+  useEffect(() => closeComment(), [closeComment, presentation]);
+
+  const quotePathOf = (path: string) => resolvePreviewPath(projectPath, path) ?? path;
+  const addSnippet = (draft: TextSnippetDraft) => data.addTextSnippet(sessionId, draft);
+  /** 选区按整行引用，只取一份文件的一栏；跨了文件或左右栏就不给引用。 */
+  const readSelection = (root: HTMLElement) => {
+    const span = selectedSpan(root);
+    return span ? (spans.get(span.scope)?.(span.start, span.end) ?? null) : null;
+  };
+  const showMenu = (event: ReactMouseEvent, hit: DiffLineHit | null) => {
+    const root = scrollRef.current;
+    if (!root) return;
+    event.preventDefault();
+    const pickedSpan = selectedSpan(root);
+    const picked = pickedSpan ? (spans.get(pickedSpan.scope)?.(pickedSpan.start, pickedSpan.end) ?? null) : null;
+    const span = picked ? pickedSpan : hit ? { scope: hit.scope, start: hit.row, end: hit.row } : null;
+    const target = picked ?? hit?.draft ?? null;
+    const path = span ? pathOfScope(span.scope) : "";
+    const file = doc.shown.find((item) => item.path === path);
+    const items: ContextMenuItem[] = [
+      ...snippetItems(target, addSnippet, () => {
+        if (span) comments.open(span, null);
+      }),
+      { id: "sep-clipboard", separator: true },
+      ...clipboardItems(root),
+      { id: "sep-path", separator: true },
+      copyPathItem(path, target?.start ?? null, target?.end ?? null),
+      {
+        id: "open-in-files",
+        label: DESKTOP_ZH.openInFiles,
+        disabled: !file || file.status === "D",
+        onSelect: () => {
+          if (file) openHref(quotePathOf(file.path), target?.start ?? undefined);
+        },
+      },
+    ];
+    setMenu({ x: event.clientX, y: event.clientY, items });
+  };
 
   const jumpTo = (path: string) => {
     if (!jumpSelection(doc.shown, path)) return;
@@ -127,6 +187,8 @@ export function DiffView({ files }: { files: FileChange[] }) {
       <div data-diff-split className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
         <div ref={contentRef} className="flex min-h-0 w-0 min-w-0 flex-1 basis-0 flex-col overflow-hidden">
           <div
+            ref={scrollRef}
+            onContextMenu={(event) => showMenu(event, null)}
             className={cn(
               "min-h-0 min-w-0 flex-1 overflow-y-auto",
               doc.wrap ? "overflow-x-hidden" : "overflow-x-auto",
@@ -154,9 +216,22 @@ export function DiffView({ files }: { files: FileChange[] }) {
                 loadFull={doc.loadFull}
                 active={file.path === doc.active?.path}
                 onSelect={() => doc.selectFile(file)}
+                onActivate={() => doc.activateFile(file)}
+                comment={{ comments, quotePath: quotePathOf(file.path), onAdd: addSnippet, spans }}
+                onLineMenu={showMenu}
               />
             ))}
           </div>
+          <SelectionMenu
+            rootRef={scrollRef}
+            readDraft={readSelection}
+            onAdd={addSnippet}
+            onComment={() => {
+              const root = scrollRef.current;
+              const span = root ? selectedSpan(root) : null;
+              if (span) comments.open(span, null);
+            }}
+          />
         </div>
         {listWidth !== null ? (
           <ColumnSplitter
@@ -185,6 +260,26 @@ export function DiffView({ files }: { files: FileChange[] }) {
           />
         ) : null}
       </div>
+      {menu ? <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} /> : null}
     </div>
   );
+}
+
+/** 评论栏的 scope 里带着文件路径，见 diffCommentScope。 */
+function pathOfScope(scope: string): string {
+  const at = scope.indexOf(":");
+  return at < 0 ? "" : scope.slice(at + 1);
+}
+
+/** 选区首尾落在哪几行。首尾不在同一份文件的同一栏就不算。选到下一行行首时不把那一行算进去。 */
+function selectedSpan(root: HTMLElement): CommentSpan | null {
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0) return null;
+  const range = selection.getRangeAt(0);
+  if (!root.contains(range.commonAncestorContainer)) return null;
+  const start = commentRowOf(range.startContainer);
+  const end = commentRowOf(range.endContainer);
+  if (!start || !end || start.scope !== end.scope) return null;
+  const last = range.endOffset === 0 && end.row > start.row ? end.row - 1 : end.row;
+  return { scope: start.scope, start: Math.min(start.row, last), end: Math.max(start.row, last) };
 }

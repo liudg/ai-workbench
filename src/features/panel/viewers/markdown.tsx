@@ -1,12 +1,10 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { FileText } from "lucide-react";
 
-import { baseName } from "@/shared/path";
-import { usePanelData } from "../core/PanelProvider";
-import { SelectionMenu } from "@/shared/selection/SelectionMenu";
-import { fileSelectionDraft } from "./file-selection";
+import { baseName, relativeToProject } from "@/shared/path";
+import { usePanel } from "../core/PanelProvider";
 import { payloadTitle, type PanelViewer, type ViewerViewProps } from "../core/registry";
-import { MarkdownPreview } from "./MarkdownPreview";
+import { FileContent } from "./FileContent";
 import {
   markdownModeButtonLabel,
   markdownViewMode,
@@ -16,7 +14,6 @@ import {
 } from "./markdown-mode";
 import { readPreviewDocument, reopenIfDifferent } from "./document";
 import { PreviewFailed, PreviewPending } from "./frame";
-import { TextPreview } from "./TextPreview";
 import { matchMarkdown } from "./kinds";
 
 interface MarkdownPayload {
@@ -28,8 +25,7 @@ interface MarkdownPayload {
 }
 
 function MarkdownViewerBody({ payload, status, sessionId }: ViewerViewProps<MarkdownPayload>) {
-  const data = usePanelData();
-  const rootRef = useRef<HTMLDivElement>(null);
+  const panel = usePanel();
   const path = payload.path ?? "";
   const [modeState, setModeState] = useState<{ path: string; mode: MarkdownViewMode }>(() => ({
     path,
@@ -39,12 +35,23 @@ function MarkdownViewerBody({ payload, status, sessionId }: ViewerViewProps<Mark
     setModeState({ path, mode: markdownViewMode(path) });
   }
   const shown = modeState.path === path ? modeState.mode : markdownViewMode(path);
-  let body =
-    shown === "source" ? (
-      <TextPreview text={payload.text ?? ""} truncated={Boolean(payload.truncated)} />
-    ) : (
-      <MarkdownPreview text={payload.text ?? ""} truncated={Boolean(payload.truncated)} />
-    );
+  const toggle = () => {
+    const next = nextMarkdownViewMode(shown);
+    rememberMarkdownViewMode(path, next);
+    setModeState({ path, mode: next });
+  };
+  let body = (
+    <FileContent
+      view={shown === "source" ? "source" : "markdown"}
+      text={payload.text ?? ""}
+      truncated={Boolean(payload.truncated)}
+      quotePath={path}
+      copyPath={relativeToProject(path, panel.projectPath)}
+      commentable={false}
+      markdown={{ label: markdownModeButtonLabel(shown), onToggle: toggle }}
+      onAdd={(draft) => panel.data.addTextSnippet(sessionId, draft)}
+    />
+  );
   if (status === "loading") body = <PreviewPending />;
   else if (status === "error") body = <PreviewFailed message={payload.error ?? ""} />;
   const title = payloadTitle(payload) || baseName(path);
@@ -58,27 +65,12 @@ function MarkdownViewerBody({ payload, status, sessionId }: ViewerViewProps<Mark
           type="button"
           data-markdown-mode-toggle
           className="inline-flex h-7 shrink-0 items-center rounded-full border border-[#3a3a3a] bg-[#2a2a2a] px-3 text-[12px] leading-5 text-[#f3f3f3] hover:bg-[#333]"
-          onClick={() => {
-            const next = nextMarkdownViewMode(shown);
-            rememberMarkdownViewMode(path, next);
-            setModeState({ path, mode: next });
-          }}
+          onClick={toggle}
         >
           {markdownModeButtonLabel(shown)}
         </button>
       </div>
-      <div ref={rootRef} className="min-h-0 flex-1">
-        {body}
-        {status === "ready" && path ? (
-          <SelectionMenu
-            rootRef={rootRef}
-            readDraft={(root) => fileSelectionDraft(root, path)}
-            onAdd={(draft) => {
-              data.addTextSnippet(sessionId, draft);
-            }}
-          />
-        ) : null}
-      </div>
+      <div className="min-h-0 flex-1">{body}</div>
     </div>
   );
 }

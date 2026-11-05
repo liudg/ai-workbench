@@ -7,6 +7,8 @@ export interface TextSnippetDraft {
   start: number | null;
   end: number | null;
   quote: string;
+  /** 评论的话。引用里已经带上，这里留着给界面显示。 */
+  note?: string;
 }
 
 /** 会话上的一条已选文本。和文件附件分开，不进输入框。 */
@@ -17,6 +19,7 @@ export interface TextSnippet {
   end: number | null;
   body: string;
   quote: string;
+  note?: string;
 }
 
 const PREVIEW_LINES = 4;
@@ -39,7 +42,15 @@ export function createTextSnippet(draft: TextSnippetDraft, id?: string): TextSni
     end: span?.end ?? null,
     body,
     quote,
+    ...(draft.note?.trim() ? { note: draft.note.trim() } : {}),
   };
+}
+
+/** 选区加上一句评论。评论接在引用后面，和页面批注的写法一致。 */
+export function commentedDraft(draft: TextSnippetDraft, note: string): TextSnippetDraft | null {
+  const text = note.trim();
+  if (!text || !draft.quote.trim()) return null;
+  return { ...draft, note: text, quote: `${draft.quote.trim()}\n评论：${text}` };
 }
 
 export function withTextSnippet(list: readonly TextSnippet[], snippet: TextSnippet): TextSnippet[] {

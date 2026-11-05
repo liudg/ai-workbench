@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { formatSelectionQuote, lineRangeFromOffsets, selectionDraft } from "./selection-quote.ts";
+import { formatSelectionQuote, lineRangeFromOffsets, pathWithLines, selectionDraft } from "./selection-quote.ts";
 
 test("selection quote keeps the path and line range", () => {
   const quote = formatSelectionQuote(
@@ -34,4 +34,11 @@ test("selection draft keeps the body out of the fence", () => {
   assert.equal(ranged?.start, 2);
   assert.equal(ranged?.end, 4);
   assert.equal(selectionDraft("a.cs", "   \n", 1, 1), null);
+});
+
+test("copied location is path plus one line or a line range", () => {
+  assert.equal(pathWithLines("src/a.ts", 12, 12), "src/a.ts:12");
+  assert.equal(pathWithLines("src/a.ts", 18, 12), "src/a.ts:12-18");
+  assert.equal(pathWithLines("src/a.ts", 7, null), "src/a.ts:7");
+  assert.equal(pathWithLines("src/a.ts", null, null), "src/a.ts");
 });

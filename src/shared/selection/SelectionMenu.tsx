@@ -16,20 +16,25 @@ interface MenuBox {
   draft: TextSnippetDraft;
 }
 
-/** 选中文字后只提供「添加到对话」。复制走浏览器自己的选区。 */
+/** 选中文字后提供「添加到对话」；能按行评论的视图再加「添加评论」。复制走浏览器自己的选区。 */
 export function SelectionMenu({
   rootRef,
   readDraft,
   onAdd,
+  onComment,
 }: {
   rootRef: RefObject<HTMLElement | null>;
   readDraft: (root: HTMLElement) => TextSnippetDraft | null;
   onAdd: (draft: TextSnippetDraft) => void;
+  /** 选区有行号时才出现。 */
+  onComment?: (draft: TextSnippetDraft) => void;
 }) {
   const readDraftRef = useRef(readDraft);
   readDraftRef.current = readDraft;
   const onAddRef = useRef(onAdd);
   onAddRef.current = onAdd;
+  const onCommentRef = useRef(onComment);
+  onCommentRef.current = onComment;
   const menuRef = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState<MenuBox | null>(null);
   const [place, setPlace] = useState<{ top: number; left: number } | null>(null);
@@ -176,7 +181,7 @@ export function SelectionMenu({
       ref={menuRef}
       role="menu"
       data-selection-menu
-      className="fixed z-[80] rounded-lg border border-[#2a2a2a] bg-[#1b1b1b] px-1 py-1 shadow-lg"
+      className="fixed z-[80] flex items-center rounded-lg border border-[#2a2a2a] bg-[#1b1b1b] px-1 py-1 shadow-lg"
       style={{
         top: place?.top ?? -9999,
         left: place?.left ?? 0,
@@ -197,6 +202,24 @@ export function SelectionMenu({
       >
         {DESKTOP_ZH.addSelectionToChat}
       </button>
+      {onComment && box.draft.end != null ? (
+        <>
+          <span className="mx-0.5 h-3.5 w-px bg-[#333]" />
+          <button
+            type="button"
+            role="menuitem"
+            data-add-comment
+            className="rounded-md px-2.5 py-1 text-xs text-[#e8e8e8] hover:bg-white/10"
+            onClick={() => {
+              onCommentRef.current?.(box.draft);
+              setBox(null);
+              window.getSelection()?.removeAllRanges();
+            }}
+          >
+            {DESKTOP_ZH.addComment}
+          </button>
+        </>
+      ) : null}
     </div>,
     document.body,
   );

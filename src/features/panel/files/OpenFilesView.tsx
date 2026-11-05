@@ -8,7 +8,7 @@ import { FILES_EXPANDED_WIDTH, nextDraggedListWidth, paneFileColumnWidth, pinned
 import { resolvePreviewPath } from "../core/preview-kind";
 import { useColumnGesture } from "../core/useColumnGesture";
 import { usePanel, usePanelData } from "../core/PanelProvider";
-import { FileContextMenu } from "./FileContextMenu";
+import { ContextMenu } from "../core/ContextMenu";
 import { FilePreviewColumn } from "./FilePreview";
 import { useFilePreviewChrome } from "./use-file-preview-chrome";
 import { FileTabs } from "./FileTabs";
@@ -144,7 +144,6 @@ export function OpenFilesScreen({
     const absolute = resolvePreviewPath(projectPath, path);
     if (!absolute) return;
     attachFile(absolute, baseName(absolute));
-    setContextMenu(null);
   };
 
   return (
@@ -162,6 +161,7 @@ export function OpenFilesScreen({
           previewPath={place.path}
           previewLine={place.line}
           markdownMode={chrome.markdownMode}
+          onToggleMarkdown={chrome.chromeProps.onToggleMarkdown}
           quotePath={place.path ? resolvePreviewPath(projectPath, place.path) || place.path : ""}
           onQuote={(draft) => panelData.addTextSnippet(sessionId, draft)}
         />
@@ -213,10 +213,10 @@ export function OpenFilesScreen({
         ) : null}
       </div>
       {contextMenu ? (
-        <FileContextMenu
+        <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
-          onAdd={() => addToChat(contextMenu.path)}
+          items={[{ id: "add-to-chat", label: DESKTOP_ZH.addToChat, onSelect: () => addToChat(contextMenu.path) }]}
           onClose={() => setContextMenu(null)}
         />
       ) : null}
