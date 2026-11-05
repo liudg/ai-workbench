@@ -1,11 +1,17 @@
 // 作曲栏还没发出的东西：文字、附件、引用片段，新会话还有 Agent 和各项选项。
 // 按会话 id（新会话是 `new:<项目>`）记在内存里，同时存进 daemon，切会话、重启都不丢。
 
-import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 
 import type { FileRef } from "@/features/chat/composer/file-refs";
 import { daemon } from "@/lib/daemon";
-import { createTextSnippet, withTextSnippet, type TextSnippet, type TextSnippetDraft } from "@/shared/text-snippet";
+import {
+  createTextSnippet,
+  withoutTextSnippet,
+  withTextSnippet,
+  type TextSnippet,
+  type TextSnippetDraft,
+} from "@/shared/text-snippet";
 import type { AgentKind, Attachment, SessionSandbox, SessionTuning } from "@/types";
 
 export interface ComposerDraft {
@@ -135,17 +141,26 @@ export function addDraftSnippet(key: string, draft: TextSnippetDraft) {
   });
 }
 
+export function removeDraftSnippet(key: string, id: string) {
+  const current = readDraft(key).snippets;
+  const next = withoutTextSnippet(current, id);
+  if (next !== current) patchDraft(key, { snippets: next });
+}
+
+/** 任何草稿变了都会通知。 */
+export function subscribeDrafts(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
 /** 这份草稿和它是否已经从 daemon 读回来。没读回来之前不挂作曲栏，免得把存下的字盖掉。 */
 export function useComposerDraft(key: string): { draft: ComposerDraft; loaded: boolean } {
   useEffect(() => {
     void ensureLoaded(key);
   }, [key]);
-  const subscribe = useCallback((listener: () => void) => {
-    listeners.add(listener);
-    return () => {
-      listeners.delete(listener);
-    };
-  }, []);
+  const subscribe = subscribeDrafts;
   const draft = useSyncExternalStore(subscribe, () => readDraft(key));
   const loaded = useSyncExternalStore(subscribe, () => drafts.has(key));
   return { draft, loaded };

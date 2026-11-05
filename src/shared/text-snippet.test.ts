@@ -5,7 +5,7 @@ import {
   commentedDraft,
   createTextSnippet,
   mergeSnippetText,
-  textSnippetChipLabel,
+  textSnippetBadge,
   textSnippetPreview,
   withTextSnippet,
   withoutTextSnippet,
@@ -58,9 +58,12 @@ test("submit merge keeps the user's words and drops a removed snippet", () => {
   assert.equal(mergeSnippetText("", []), "");
 });
 
-test("chip label and preview stay short", () => {
-  assert.equal(textSnippetChipLabel(1), "1 个已选文本片");
-  assert.equal(textSnippetChipLabel(3), "3 个已选文本片");
+test("card badge and preview stay short", () => {
+  assert.equal(textSnippetBadge({ path: "src/a.cs", start: 3, end: 3 }), "a.cs:3");
+  assert.equal(textSnippetBadge({ path: "src/a.cs", start: 3, end: 5 }), "a.cs:3-5");
+  assert.equal(textSnippetBadge({ path: "src/a.cs", start: null, end: null }), "a.cs");
+  assert.equal(textSnippetBadge({ path: "对话", start: null, end: null }), "摘录");
+  assert.equal(textSnippetBadge({ path: "src/a.cs", start: 3, end: 3, note: "why" }), "评论");
   assert.equal(textSnippetPreview("one\ntwo"), "one\ntwo");
   assert.equal(textSnippetPreview("1\n2\n3\n4\n5"), "1\n2\n3\n4...");
 });

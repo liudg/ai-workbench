@@ -7,7 +7,7 @@ import { registerBuiltinViewers } from "../viewers/register";
 import { viewerById } from "./registry";
 import { Hint } from "./Hint";
 import { SidebarToggle } from "./SidebarToggle";
-import { useDismissLayer } from "./useDismissLayer";
+import { useDismissLayer } from "@/shared/menu/useDismissLayer";
 import { usePanel } from "./PanelProvider";
 import { SessionUsageCluster } from "./SubscriptionUsageMeter";
 

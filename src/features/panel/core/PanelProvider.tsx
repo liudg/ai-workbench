@@ -24,7 +24,7 @@ import type {
   SubscriptionUsage,
   TreeEntry,
 } from "@/types";
-import type { TextSnippetDraft } from "@/shared/text-snippet";
+import type { TextSnippet, TextSnippetDraft } from "@/shared/text-snippet";
 import type { BrowserHistory } from "../browser/browser";
 import { useCloseBrowserOnUnmount } from "../browser/use-browser-host";
 import { showsFileChanges } from "@/features/changes-model/capabilities";
@@ -67,6 +67,12 @@ export interface PanelData {
   attachFile(sessionId: string, file: Attachment): void;
   /** 预览里选中的文字放进作曲栏，发送时作为引用。 */
   addTextSnippet(sessionId: string, draft: TextSnippetDraft): void;
+  /** 作曲栏里还没发出的文本片。评论在文件里留着显示，直到发出或移除。 */
+  textSnippets: {
+    subscribe(listener: () => void): () => void;
+    read(sessionId: string): readonly TextSnippet[];
+  };
+  removeTextSnippet(sessionId: string, id: string): void;
   isGit(projectId: string, sessionId: string): Promise<boolean>;
   /** 在面板的工作目录里开一个终端，返回终端 id。 */
   openTerminal(cols: number, rows: number): Promise<string>;

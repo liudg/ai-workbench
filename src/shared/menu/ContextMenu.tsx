@@ -5,10 +5,13 @@ import { cn } from "@/lib/utils";
 import { useDismissLayer } from "./useDismissLayer";
 
 export type ContextMenuItem =
-  | { id: string; label: string; onSelect: () => void; disabled?: boolean }
+  | { id: string; label: string; onSelect: () => void; disabled?: boolean; shortcut?: string }
   | { id: string; separator: true };
 
-/** 面板里的右键菜单：文件树、变更树和文件内容共用。选中一项后自己关掉。 */
+/**
+ * 右键菜单：文件树、文件内容、聊天消息和输入框共用。选中一项后自己关掉。
+ * 打开时不选中任何一项，焦点留在原处；按上下键才开始在菜单里移动。
+ */
 export function ContextMenu({
   x,
   y,
@@ -30,17 +33,35 @@ export function ContextMenu({
       onCloseRef.current();
     };
     const onBlur = () => onCloseRef.current();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+      const menu = menuRef.current;
+      if (!menu) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const buttons = [...menu.querySelectorAll<HTMLButtonElement>("[role=menuitem]:not(:disabled)")];
+      if (buttons.length === 0) return;
+      const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
+      const next =
+        at < 0
+          ? event.key === "ArrowDown"
+            ? 0
+            : buttons.length - 1
+          : (at + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length;
+      buttons[next]?.focus();
+    };
     window.addEventListener("mousedown", onPointer);
     window.addEventListener("blur", onBlur);
+    window.addEventListener("keydown", onKey, true);
     return () => {
       window.removeEventListener("mousedown", onPointer);
       window.removeEventListener("blur", onBlur);
+      window.removeEventListener("keydown", onKey, true);
     };
   }, []);
   useLayoutEffect(() => {
     const menu = menuRef.current;
     if (!menu) return;
-    menu.querySelector<HTMLButtonElement>("[role=menuitem]:not(:disabled)")?.focus();
     const width = menu.offsetWidth;
     const height = menu.offsetHeight;
     const left = Math.min(Math.max(8, x), window.innerWidth - width - 8);
@@ -57,17 +78,7 @@ export function ContextMenu({
       data-context-menu
       className="fixed z-[80] min-w-40 rounded-xl border border-zinc-700 bg-zinc-900 py-1 shadow-lg"
       style={{ top: -9999, left: 8 }}
-      onContextMenu={(event) => event.preventDefault()}
       onMouseDown={(event) => event.preventDefault()}
-      onKeyDown={(event) => {
-        if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-        event.preventDefault();
-        const buttons = [...(menuRef.current?.querySelectorAll<HTMLButtonElement>("[role=menuitem]:not(:disabled)") ?? [])];
-        if (buttons.length === 0) return;
-        const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
-        const step = event.key === "ArrowDown" ? 1 : -1;
-        buttons[(at + step + buttons.length) % buttons.length]?.focus();
-      }}
     >
       {items.map((item) =>
         "separator" in item ? (
@@ -77,18 +88,20 @@ export function ContextMenu({
             key={item.id}
             type="button"
             role="menuitem"
+            tabIndex={-1}
             data-menu-item={item.id}
             disabled={item.disabled}
             className={cn(
-              "flex w-full items-center whitespace-nowrap px-3 py-1.5 text-left text-xs text-zinc-100 outline-none",
-              "hover:bg-zinc-800 focus:bg-zinc-800 disabled:text-zinc-600 disabled:hover:bg-transparent",
+              "flex w-full items-center gap-6 whitespace-nowrap px-3 py-1.5 text-left text-xs text-zinc-100 outline-none",
+              "hover:bg-zinc-800 focus-visible:bg-zinc-800 disabled:text-zinc-600 disabled:hover:bg-transparent",
             )}
             onClick={() => {
               onCloseRef.current();
               item.onSelect();
             }}
           >
-            {item.label}
+            <span className="min-w-0 flex-1">{item.label}</span>
+            {item.shortcut ? <span className="text-[11px] text-zinc-500">{item.shortcut}</span> : null}
           </button>
         ),
       )}

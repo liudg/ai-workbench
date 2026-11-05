@@ -4,8 +4,10 @@ import type { OpenTarget } from "@/features/panel/core/registry";
 import { usePanelStore } from "@/features/panel/state/store";
 import { tasksApi, type TaskEntry } from "@/features/tasks";
 import { showError } from "@/shared/shell/error-banner";
+import type { TextSnippetDraft } from "@/shared/text-snippet";
 import type { QueuedTurn } from "@/types";
 import { removeQueued, sendMessage } from "../session/api";
+import { addDraftSnippet } from "../session/composer-drafts";
 
 export const SIDE_CHAT_VIEWER = "side-chat";
 
@@ -43,6 +45,15 @@ export function askInSideChat(mainSessionId: string, taskId: string, item: Queue
         }),
       ),
     )
+    .catch(showError);
+}
+
+/** 主对话里选中的一段带进侧边聊天：开好后放进它的作曲栏，不直接发出（Claude 桌面端 `openWithContext`）。 */
+export function startSideChatWith(mainSessionId: string, taskId: string, draft: TextSnippetDraft) {
+  openSideChatTab(mainSessionId, taskId);
+  void tasksApi
+    .openSide(taskId)
+    .then((side) => addDraftSnippet(side.id, draft))
     .catch(showError);
 }
 

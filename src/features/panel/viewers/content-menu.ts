@@ -1,7 +1,8 @@
 import { writeClipboardText } from "@/shared/clipboard";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import type { TextSnippetDraft } from "@/shared/text-snippet";
-import type { ContextMenuItem } from "../core/ContextMenu";
+import type { ContextMenuItem } from "@/shared/menu/ContextMenu";
+import type { SelectionAction } from "@/shared/selection/SelectionMenu";
 import { pathWithLines } from "./selection-quote";
 
 /** 右键点中的那一行。行上带 data-source-line。 */
@@ -52,6 +53,20 @@ export function snippetItems(
     });
   }
   return items;
+}
+
+/** 选中文字后浮出的「添加到对话」；能按行评论、选区又有行号时再加「添加评论」。 */
+export function snippetSelectionActions(
+  onAdd: (draft: TextSnippetDraft) => void,
+  onComment: ((draft: TextSnippetDraft) => void) | null,
+): (draft: TextSnippetDraft) => SelectionAction[] {
+  return (draft) => {
+    const actions: SelectionAction[] = [{ id: "add", label: DESKTOP_ZH.addSelectionToChat, onSelect: onAdd }];
+    if (onComment && draft.end != null) {
+      actions.push({ id: "comment", label: DESKTOP_ZH.addComment, onSelect: onComment });
+    }
+    return actions;
+  };
 }
 
 /** 只读内容区通用的几项：复制、全选。 */

@@ -16,6 +16,8 @@ export interface ChatHost {
   loadOlderHistory?: (sessionId: string) => Promise<boolean>;
   /** 把聊天记录里的选区放进作曲栏。不支持的宿主不给，选区菜单就不出现。 */
   addTextSnippet?: (sessionId: string, draft: TextSnippetDraft) => void;
+  /** 选中的一段带进侧边聊天，放在它的作曲栏里。这个会话开不了侧边聊天时不给。 */
+  startSideChat?: (draft: TextSnippetDraft) => void;
   /** 时间线由几段会话接成时（中途换过 Agent），每段是哪个 Agent。只有一段的宿主不给。 */
   agentOf?: (sessionId: string) => AgentKind | undefined;
   /** 子任务的标题和跳转、开子任务卡片的选择。不支持的宿主不给，卡片就不能点。 */

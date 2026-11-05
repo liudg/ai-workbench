@@ -24,3 +24,21 @@ export async function writeClipboardText(text: string): Promise<void> {
   area.remove();
   if (!copied) throw new Error(DESKTOP_ZH.diffCopyFailed);
 }
+
+/** 同时放纯文本和 HTML，贴进富文本编辑器时保留格式。写不了 HTML 时只放纯文本。 */
+export async function writeClipboardRich(text: string, html: string): Promise<void> {
+  if (typeof navigator !== "undefined" && navigator.clipboard?.write && typeof ClipboardItem !== "undefined") {
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "text/plain": new Blob([text], { type: "text/plain" }),
+          "text/html": new Blob([html], { type: "text/html" }),
+        }),
+      ]);
+      return;
+    } catch {
+      // 退回纯文本。
+    }
+  }
+  await writeClipboardText(text);
+}

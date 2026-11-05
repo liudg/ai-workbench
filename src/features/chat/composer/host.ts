@@ -123,6 +123,7 @@ export interface ComposerHost {
   clearAttachments(): void;
   replaceAttachments(files: Attachment[]): void;
   clearTextSnippets(): void;
+  removeTextSnippet(id: string): void;
   updateQueued(id: string, text: string, images: string[]): Promise<void>;
   removeQueued(id: string): Promise<void>;
   steerQueued(id: string): Promise<void>;

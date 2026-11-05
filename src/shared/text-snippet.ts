@@ -1,4 +1,8 @@
+import { baseName } from "./path.ts";
 import { DESKTOP_ZH } from "./strings/desktop-zh.ts";
+
+/** 对话里摘出来的文本片用这个当来源名。对话不是文件，界面不显示这个名字。 */
+export const CHAT_SNIPPET_PATH = "对话";
 
 /** 选区在发送前的形状。围栏留到真正发出去再拼。 */
 export interface TextSnippetDraft {
@@ -73,8 +77,14 @@ export function mergeSnippetText(userText: string, snippets: readonly { quote: s
   return head ? `${head}\n\n${tail}` : tail;
 }
 
-export function textSnippetChipLabel(count: number): string {
-  return DESKTOP_ZH.textSnippetChip.replace("{count}", String(count));
+/** 作曲栏卡片角上的标签：评论、对话摘录，或者文件名加行号。 */
+export function textSnippetBadge(snippet: Pick<TextSnippet, "path" | "start" | "end" | "note">): string {
+  if (snippet.note) return DESKTOP_ZH.snippetComment;
+  if (snippet.path === CHAT_SNIPPET_PATH) return DESKTOP_ZH.snippetExcerpt;
+  const name = baseName(snippet.path);
+  if (snippet.start == null) return name;
+  const end = snippet.end ?? snippet.start;
+  return end === snippet.start ? `${name}:${snippet.start}` : `${name}:${snippet.start}-${end}`;
 }
 
 /** 预览只露正文前几行，发送仍用完整围栏。 */

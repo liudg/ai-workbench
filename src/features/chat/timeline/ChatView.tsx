@@ -30,6 +30,7 @@ import {
 } from "./timeline";
 import { FindBar } from "../find/FindBar";
 import { useThreadFind } from "../find/use-thread-find";
+import { MessageMenuProvider } from "../message-menu";
 import { ChatSelectionMenu } from "./ChatSelectionMenu";
 import { ChatErrorBoundary } from "./ChatErrorBoundary";
 import { useHistoryEnter } from "./useHistoryEnter";
@@ -59,13 +60,15 @@ export function ChatView({
   return (
     <ChatErrorBoundary resetKey={session.id}>
       <SubagentStepsProvider events={events}>
-        <ChatTimeline
-          session={session}
-          events={events}
-          eventsReady={eventsReady}
-          starting={starting}
-          renderComposer={renderComposer}
-        />
+        <MessageMenuProvider sessionId={session.id}>
+          <ChatTimeline
+            session={session}
+            events={events}
+            eventsReady={eventsReady}
+            starting={starting}
+            renderComposer={renderComposer}
+          />
+        </MessageMenuProvider>
       </SubagentStepsProvider>
     </ChatErrorBoundary>
   );

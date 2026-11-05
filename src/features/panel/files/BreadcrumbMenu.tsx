@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { useAnchoredLayer } from "../core/useAnchoredLayer";
-import { useDismissLayer } from "../core/useDismissLayer";
+import { useDismissLayer } from "@/shared/menu/useDismissLayer";
 import { dropdownTreeQuery } from "./file-preview-nav";
 import { WorkspaceTree } from "./WorkspaceTree";
 

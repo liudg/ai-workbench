@@ -14,7 +14,7 @@ import { answerPrompt } from "./api";
 import { chatSession } from "./chat-session";
 import { addDraftSnippet, useComposerDraft } from "./composer-drafts";
 import { canOpenSideChat } from "../side-chat/can-open";
-import { closeOrphanSideChat, sideChatTarget } from "../side-chat/open";
+import { closeOrphanSideChat, sideChatTarget, startSideChatWith } from "../side-chat/open";
 import { registerSideChatViewer } from "../side-chat/viewer";
 import { SessionPanel } from "./SessionPanel";
 import { useSessionStart } from "./session-start";
@@ -40,6 +40,8 @@ export function SessionView({
   const timeline = useTaskTimeline(task, taskSession);
   const { agentOf } = timeline;
   const subtasks = useSubtaskHost();
+  const profile = profiles[taskSession.agent];
+  const sideChatOpen = canOpenSideChat(task, profile, timeline.current.events);
   const host = useMemo<ChatHost>(
     () => ({
       answerPrompt: (sessionId: string, promptId: string, answer: PromptAnswer) =>
@@ -50,16 +52,15 @@ export function SessionView({
       profiles,
       projectPath: workdir,
       addTextSnippet: addDraftSnippet,
+      startSideChat: sideChatOpen ? (draft) => startSideChatWith(session.id, task.id, draft) : undefined,
       agentOf,
       subtasks,
     }),
-    [agentOf, profiles, subtasks, workdir],
+    [agentOf, profiles, session.id, sideChatOpen, subtasks, task.id, workdir],
   );
   const feed = timeline.all;
   const starting = useSessionStart(session.id, timeline.current.events, timeline.current.ready);
   const { draft, loaded } = useComposerDraft(session.id);
-  const profile = profiles[taskSession.agent];
-  const sideChatOpen = canOpenSideChat(task, profile, timeline.current.events);
   // 只在打开会话时看一次：之后打开的侧边聊天，标签总在 daemon 建好它之前放上。
   useEffect(() => closeOrphanSideChat(session.id, task), [session.id]);
   const sideChat = useMemo(() => (sideChatOpen ? sideChatTarget(task.id) : null), [sideChatOpen, task.id]);

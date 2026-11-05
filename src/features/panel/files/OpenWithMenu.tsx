@@ -2,7 +2,7 @@ import { useEffect, useRef, type RefObject } from "react";
 import { createPortal } from "react-dom";
 
 import { useAnchoredLayer } from "../core/useAnchoredLayer";
-import { useDismissLayer } from "../core/useDismissLayer";
+import { useDismissLayer } from "@/shared/menu/useDismissLayer";
 import type { OpenWithAction, OpenWithItem } from "./open-with";
 
 /** 「打开」胶囊的下拉。定位和点外面关掉都只属于这个菜单。 */
