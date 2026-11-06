@@ -74,6 +74,16 @@ export function isHtmlHref(href: string): boolean {
   return /\.html?$/i.test(bare);
 }
 
+/** 行内代码中的单个 HTML 文件；命令、通配符和外链仍按代码展示。 */
+export function inlineHtmlPath(text: string): string | null {
+  const path = text.trim();
+  if (!isHtmlHref(path) || !isFileHref(path)) return null;
+  if (/[\r\n"'`<>|*]/.test(path)) return null;
+  // 有空格时须明确以路径开头，避免把 `start index.html` 当成文件名。
+  if (/\s/.test(path) && !/^(?:[A-Za-z]:[\\/]|file:\/|[\\/]|\.\.?[\\/])/i.test(path)) return null;
+  return path;
+}
+
 function unwrapAngles(value: string): string {
   if (value.length >= 2 && value.startsWith("<") && value.endsWith(">")) {
     return value.slice(1, -1).trim();

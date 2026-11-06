@@ -13,7 +13,7 @@ import {
   type Inline,
 } from "./answer-markdown";
 import { visibleFileCiteCount } from "./file-cites";
-import { fileLineRef, isFileHref, isHtmlHref, stripFileLocation } from "./file-href";
+import { fileLineRef, inlineHtmlPath, isFileHref, isHtmlHref, stripFileLocation } from "./file-href";
 import { useMarkdownHost } from "./host";
 import { isShellLang } from "./shell-lang";
 import { writeClipboardText } from "@/shared/clipboard";
@@ -295,17 +295,17 @@ function CommandView({ text, run }: { text: string; run?: (command: string) => v
   );
 }
 
-function Inlines({ nodes }: { nodes: Inline[] }) {
+function Inlines({ nodes, inLink = false }: { nodes: Inline[]; inLink?: boolean }) {
   return (
     <>
       {nodes.map((node, index) => (
-        <InlineView key={index} node={node} />
+        <InlineView key={index} node={node} inLink={inLink} />
       ))}
     </>
   );
 }
 
-function InlineView({ node }: { node: Inline }) {
+function InlineView({ node, inLink = false }: { node: Inline; inLink?: boolean }) {
   switch (node.type) {
     case "text":
       return node.text;
@@ -314,17 +314,17 @@ function InlineView({ node }: { node: Inline }) {
     case "strong":
       return (
         <strong>
-          <Inlines nodes={node.inlines} />
+          <Inlines nodes={node.inlines} inLink={inLink} />
         </strong>
       );
     case "em":
       return (
         <em>
-          <Inlines nodes={node.inlines} />
+          <Inlines nodes={node.inlines} inLink={inLink} />
         </em>
       );
     case "code":
-      return <CodeSpan node={node} />;
+      return <CodeSpan node={node} inLink={inLink} />;
     case "path":
       return (
         <span className="answer-path" title={node.full}>
@@ -349,16 +349,17 @@ function HostImage({ alt, source }: { alt: string; source: ImageSource }) {
   return <span className="answer-path">{source.path}</span>;
 }
 
-function CodeSpan({ node }: { node: Extract<Inline, { type: "code" }> }) {
+function CodeSpan({ node, inLink }: { node: Extract<Inline, { type: "code" }>; inLink: boolean }) {
   const host = useMarkdownHost();
   const ref = fileLineRef(node.text);
-  if (ref && host?.canOpen && isFileHref(ref.path)) {
+  const path = ref?.path ?? inlineHtmlPath(node.text);
+  if (!inLink && path && host?.canOpen && isFileHref(path)) {
     return (
       <CitationPill
-        path={ref.path}
-        line={ref.line}
-        title={ref.path}
-        onOpen={() => host.openHref(ref.path, ref.line)}
+        path={path}
+        line={ref?.line}
+        title={path}
+        onOpen={() => host.openHref(path, ref?.line)}
       />
     );
   }
@@ -375,7 +376,7 @@ function LinkView({ node }: { node: Extract<Inline, { type: "link" }> }) {
   if (/^https?:\/\//i.test(node.href) && !isHtmlHref(node.href)) {
     return (
       <a href={node.href} title={node.title} target="_blank" rel="noreferrer noopener">
-        <Inlines nodes={node.inlines} />
+        <Inlines nodes={node.inlines} inLink />
       </a>
     );
   }
