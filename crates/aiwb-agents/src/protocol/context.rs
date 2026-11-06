@@ -26,17 +26,15 @@ impl WorkbenchMcp {
     /// 在 Agent 里注册的服务名。工具名形如 `mcp__aiwb__…`。
     pub const SERVER_NAME: &'static str = "aiwb";
 
-    /// 拿到工作台 MCP 的会话额外收到的说明：什么时候开子任务，而不是用自带子 Agent 或 shell 跑别的 CLI。
+    /// 拿到工作台 MCP 的会话额外收到的说明：什么样的工作要开子任务，开不了时不擅自换路。按工作需要什么来写，不列用户的原话。
+    /// 开出来之后怎么做写在工具描述里。三家开场都看不到工具描述（2026-11-06 实测）。
     /// 各适配器按自己的通道送（Codex `additionalContext`、Claude `--append-system-prompt`、Cursor 首条提示）。
     /// 照 t3code `packages/provider-core/src/server/orchestrationInstructions.ts`。
     pub const INSTRUCTIONS: &'static str = "## AI Workbench subtasks
 
-You run inside AI Workbench. Its MCP server `aiwb` gives you `aiwb_subtask_create`, which opens a subtask: a separate agent session the user can open, watch and steer from your timeline.
+`aiwb_subtask_create` opens a separate agent session in the user's timeline, where they can watch, steer and stop it. Use it when the work needs that: another agent, its own worktree, or a session the user wants to follow or run on its own. Splitting work up or doing it in parallel is not a reason by itself: use your built-in subagents for that.
 
-- Call `aiwb_subtask_create` when the user asks for a nested, separate or background session or task (\"开个嵌套会话\", \"另开一个会话\", \"后台做\"), or names another agent (Codex, Claude, Cursor) to do something such as a review. Do not use your built-in subagents for that.
-- \"Subagent\" (\"子 Agent\") and \"in parallel\" without another agent named mean your own built-in subagents: use your native subagent tool, not `aiwb_subtask_create`.
-- Never run another agent's CLI (codex, claude, cursor-agent, agent) from the shell or a background command.
-- After opening subtasks, end your turn. Their results come back to you as a message; do not poll.";
+If the agent or model the user named is unavailable, or `aiwb_subtask_create` fails, say so. Do not switch agents, or fall back to your built-in subagents or a CLI, unasked.";
 
     pub fn authorization(&self) -> String {
         format!("Bearer {}", self.token)

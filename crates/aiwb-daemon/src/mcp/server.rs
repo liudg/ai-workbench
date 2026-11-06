@@ -89,9 +89,5 @@ impl ServerHandler for WorkbenchServer {
     fn get_info(&self) -> ServerConfig {
         ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new("aiwb", crate::VERSION))
-            .with_instructions(
-                "AI Workbench tools. They act only on the calling session's own task: \
-                 split work into subtasks that run as separate workbench tasks, check on them, and steer them.",
-            )
     }
 }
