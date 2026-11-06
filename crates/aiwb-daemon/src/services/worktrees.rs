@@ -286,6 +286,10 @@ impl Services {
             .filter(|entry| busy_of(entry))
             .map(|entry| entry.task.id.as_str())
             .collect();
+        let parents: HashMap<&str, &str> = entries
+            .iter()
+            .filter_map(|entry| Some((entry.task.id.as_str(), entry.task.parent_task_id.as_deref()?)))
+            .collect();
         let mut groups: HashMap<String, Group> = HashMap::new();
         for entry in &entries {
             let TaskWorkspace::Worktree {
@@ -304,11 +308,7 @@ impl Services {
                 continue;
             };
             let busy = busy_of(entry);
-            let parent_busy = entry
-                .task
-                .parent_task_id
-                .as_deref()
-                .is_some_and(|parent| busy_tasks.contains(parent));
+            let ancestor_busy = aiwb_core::task::ancestors(&parents, &entry.task.id).any(|id| busy_tasks.contains(id));
             let active_at = entry
                 .sessions
                 .iter()
@@ -335,7 +335,7 @@ impl Services {
                     .extend(entry.sessions.iter().map(|session| session.id.clone()));
             }
             // 交给了项目目录的任务在别处跑，不拦着清理工作树。
-            group.protected |= entry.task.pinned || parent_busy || (busy && local.is_none());
+            group.protected |= entry.task.pinned || ancestor_busy || (busy && local.is_none());
             group.archived &= entry.task.archived_at.is_some();
             group.active_at = group.active_at.max(active_at);
             group.live += usize::from(entry.task.archived_at.is_none());

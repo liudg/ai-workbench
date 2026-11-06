@@ -117,6 +117,16 @@ impl Reports {
             .is_some_and(|inbox| !inbox.notes.is_empty() || !inbox.results.is_empty())
     }
 
+    /// 这个任务手上还有事：它开的子任务还没起来，或者有结果等着叫醒它。它的状态这时可能是「已完成」，
+    /// 但它很快还会做一轮，上面的任务不能当它停下了。
+    pub(crate) fn expecting(&self, task: &str) -> bool {
+        self.inboxes.get(task).is_some_and(|inbox| {
+            !inbox.starting.is_empty()
+                || inbox.holding > 0
+                || (inbox.wakes < MAX_WAKES && inbox.results.iter().any(|(_, outcome)| outcome.wake))
+        })
+    }
+
     /// 子任务的回合停下了。还在跑的状态不用记。
     pub(crate) fn turn_ended(&mut self, parent: &str, child: &str, status: SessionStatus) {
         if status == SessionStatus::Running || self.gone.contains(child) {
@@ -142,10 +152,10 @@ impl Reports {
         self.inboxes.entry(parent.to_string()).or_default().notes.push(note);
     }
 
-    /// 父会话空闲了，看要不要叫醒它。`children_working`：还有子任务在跑。
-    pub(crate) fn take_for_wake(&mut self, parent: &str, children_working: bool) -> Option<Batch> {
+    /// 父会话空闲了，看要不要叫醒它。`descendants_working`：下面还有任务没做完。
+    pub(crate) fn take_for_wake(&mut self, parent: &str, descendants_working: bool) -> Option<Batch> {
         let inbox = self.inboxes.get_mut(parent)?;
-        let wake = !children_working
+        let wake = !descendants_working
             && inbox.starting.is_empty()
             && inbox.holding == 0
             && inbox.wakes < MAX_WAKES
@@ -200,6 +210,18 @@ mod tests {
 
     fn ids(batch: &Batch) -> Vec<&str> {
         batch.results.iter().map(|(id, _)| id.as_str()).collect()
+    }
+
+    #[test]
+    fn a_task_with_results_on_the_way_is_not_stopped() {
+        let mut reports = Reports::default();
+        assert!(!reports.expecting("mid"));
+        reports.opened("mid", "leaf");
+        assert!(reports.expecting("mid"), "孙任务还没起来");
+        reports.turn_ended("mid", "leaf", SessionStatus::Completed);
+        assert!(reports.expecting("mid"), "结果等着叫醒它");
+        assert!(reports.take_for_wake("mid", false).is_some());
+        assert!(!reports.expecting("mid"));
     }
 
     #[test]

@@ -1,4 +1,4 @@
-import { File, MessageCirclePlus, SquareTerminal } from "lucide-react";
+import { Bot, File, MessageCirclePlus, SquareTerminal } from "lucide-react";
 import type { ComponentType } from "react";
 
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
@@ -14,7 +14,7 @@ interface Tool {
 
 /** 内置浏览器空白页。只留已接通的工具。 */
 export function NewTabPage({ tabId }: { tabId: string }) {
-  const { openFiles, openTerminal, openSideChat } = usePanel();
+  const { openFiles, openTerminal, openSideChat, openSubagents } = usePanel();
   const tools: Tool[] = [
     {
       id: "file",
@@ -31,6 +31,14 @@ export function NewTabPage({ tabId }: { tabId: string }) {
       shortcut: DESKTOP_ZH.sideChatShortcut,
       icon: MessageCirclePlus,
       open: () => openSideChat(tabId),
+    });
+  }
+  if (openSubagents) {
+    tools.push({
+      id: "subagents",
+      label: DESKTOP_ZH.subagents,
+      icon: Bot,
+      open: () => openSubagents(tabId),
     });
   }
   tools.push({

@@ -208,6 +208,8 @@ export type SessionEventBody =
   | ({ kind: "subagent" } & SubagentCard)
   /** 子 Agent 自己的一步。不进主时间线，挂在对应卡片下面。 */
   | { kind: "subagent-step"; subagent_id: string; step: SessionEventBody }
+  /** 子 Agent 结束的那一刻。宿主在卡片结束时记，排在结束时的位置。 */
+  | { kind: "subagent-ended"; subagent_id: string; title: string; status: SubagentStatus }
   /** 线程目标。objective 为空表示已清除。用量字段来自 `thread/goal`，没有就不编。 */
   | {
       kind: "goal";

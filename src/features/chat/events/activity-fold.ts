@@ -1,14 +1,12 @@
 import type { SessionEvent } from "../../../types/index.ts";
 import { DESKTOP_ZH } from "../../../shared/strings/desktop-zh.ts";
 import { hasGeneratedImages } from "./generated-images.ts";
-import type { SubagentEvent } from "./subagent-display.ts";
 
 /**
  * 时间线展示层把相邻的工具调用收成一行。
  * 只读当前事件的 name / summary / images，不改协议，也不查 MCP 目录。
  * 旁白或思考一插进来就拆组。思考正文不画出来。
  * 查看图像单独成行，不并进命令摘要。
- * 相邻的子 Agent 卡片收成一组。
  */
 
 export type ToolCallEvent = Extract<SessionEvent, { kind: "tool-call" }>;
@@ -27,34 +25,21 @@ export type ActivityPiece =
       summary: string;
       webSearch: boolean;
       steps: { id: string; title: string; event: ToolCallEvent }[];
-    }
-  | { type: "subagents"; id: string; cards: SubagentEvent[] };
+    };
 
 const TITLE_LIMIT = 48;
 
 export function foldActivity(events: readonly SessionEvent[]): ActivityPiece[] {
   const pieces: ActivityPiece[] = [];
   let tools: ToolCallEvent[] = [];
-  let subagents: SubagentEvent[] = [];
 
   const flushTools = () => {
     if (tools.length === 0) return;
     pieces.push(toolPiece(tools));
     tools = [];
   };
-  const flushSubagents = () => {
-    if (subagents.length === 0) return;
-    pieces.push({ type: "subagents", id: subagents[0].id, cards: subagents });
-    subagents = [];
-  };
 
   for (const event of events) {
-    if (event.kind === "subagent") {
-      flushTools();
-      subagents.push(event);
-      continue;
-    }
-    if (event.kind !== "thinking") flushSubagents();
     if (hasGeneratedImages(event)) {
       flushTools();
       pieces.push({ type: "event", event });
@@ -74,7 +59,6 @@ export function foldActivity(events: readonly SessionEvent[]): ActivityPiece[] {
     pieces.push({ type: "event", event });
   }
   flushTools();
-  flushSubagents();
   return pieces;
 }
 

@@ -2,12 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import type { SessionEvent, SessionEventBody } from "../../../types/index.ts";
-import { buildTimeline } from "../timeline/timeline.ts";
+import { buildTimeline, foldedEvents } from "../timeline/timeline.ts";
 import { foldActivity } from "./activity-fold.ts";
 import {
   subagentDetail,
   subagentElapsed,
-  subagentGroupSummary,
   subagentMeta,
   subagentResultShown,
   subagentSteps,
@@ -72,31 +71,32 @@ test("the result is not repeated when it is the last answer in the steps", () =>
   assert.equal(subagentResultShown(card("a", { result: "PING" }), []), "PING");
 });
 
-test("group summary counts each status", () => {
-  const summary = subagentGroupSummary([
-    card("a", { status: "completed" }),
-    card("b", { status: "running" }),
-    card("c", { status: "completed" }),
-  ], "Codex");
-  assert.equal(summary, "3 个 Codex 子 Agent · 1 个运行中 · 2 个完成");
-  assert.equal(subagentGroupSummary([card("a", { status: "running" })], "Cursor"), "Cursor 子 Agent · 运行中");
-});
-
-test("adjacent cards fold into one group; thinking does not split it", () => {
+test("subagent lines sit where they happened and split tool groups", () => {
   const pieces = foldActivity([
+    event("k1", 1, { kind: "tool-call", name: "command", summary: "ls" }),
     card("a"),
-    event("t", 2, { kind: "thinking", text: "想" }),
-    card("b"),
-    event("m", 3, { kind: "agent-message", text: "等它们" }),
-    card("c"),
+    event("k2", 2, { kind: "tool-call", name: "command", summary: "pwd" }),
+    event("end", 3, { kind: "subagent-ended", subagent_id: "a", title: "审查", status: "completed" }),
   ]);
-  assert.deepEqual(
-    pieces.map((piece) => (piece.type === "subagents" ? piece.cards.map((item) => item.subagent_id) : piece.type)),
-    [["a", "b"], "event", ["c"]],
-  );
+  assert.deepEqual(pieces.map((piece) => piece.type), ["tools", "event", "tools", "event"]);
 });
 
-test("subagent steps stay out of the main timeline and cards stay outside the folded process", () => {
+test("an ended card from before end events gets its end right after it", () => {
+  const blocks = buildTimeline(
+    [
+      event("u", 1, { kind: "user-message", text: "派一个" }),
+      card("a", { id: "ca", ts: 2, status: "failed" }),
+      event("m", 5, { kind: "agent-message", text: "结束了", phase: "final-answer" }),
+      event("done", 6, { kind: "status-changed", status: "completed" }),
+    ],
+    "completed",
+  );
+  const turn = blocks.find((block) => block.type === "turn");
+  assert.ok(turn && turn.type === "turn");
+  assert.deepEqual(turn.events.map((item) => item.kind), ["subagent", "subagent-ended", "agent-message"]);
+});
+
+test("subagent steps stay out of the main timeline and lines fold with the process", () => {
   const events = [
     event("u", 1, { kind: "user-message", text: "派两个" }),
     card("a", { id: "ca", ts: 2, status: "completed" }),
@@ -111,6 +111,7 @@ test("subagent steps stay out of the main timeline and cards stay outside the fo
   assert.ok(!turn.events.some((item) => item.kind === "subagent-step"));
   assert.ok(turn.events.some((item) => item.kind === "subagent"));
   assert.equal(turn.answerId, "m");
+  assert.deepEqual(foldedEvents(turn.events, true).map((item) => item.id), ["m"]);
 });
 
 test("opening a subagent shows its prompt as the first message, its steps, and the result once", () => {

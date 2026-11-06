@@ -47,6 +47,7 @@ export function SessionPanel({
   events,
   profile,
   sideChat = null,
+  subagents = null,
   children,
 }: {
   session: Session;
@@ -56,6 +57,8 @@ export function SessionPanel({
   profile: AgentProfile | undefined;
   /** 能开侧边聊天时给出它的标签目标。 */
   sideChat?: OpenTarget | null;
+  /** 子智能体面板的标签目标。 */
+  subagents?: OpenTarget | null;
   children: ReactNode;
 }) {
   const usage = useMemo(() => accumulateSessionUsage(events), [events]);
@@ -76,6 +79,7 @@ export function SessionPanel({
       events={events}
       usage={usage}
       sideChat={sideChat}
+      subagents={subagents}
     >
       {children}
     </PanelHost>

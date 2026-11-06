@@ -17,6 +17,7 @@ export const RENDERED_EVENT_KINDS = [
   "review-findings",
   "subtask-offer",
   "subagent",
+  "subagent-ended",
 ] as const satisfies readonly SessionEvent["kind"][];
 
 /** 进日志但不进时间线的事件。子 Agent 的步骤画在它的卡片里。 */

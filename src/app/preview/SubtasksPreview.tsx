@@ -78,7 +78,6 @@ const SUBTASKS: SubtaskHost = {
   title: (taskId) => TITLES[taskId],
   useSubtask: (taskId) => VIEWS[taskId],
   open: () => {},
-  openBeside: () => {},
   resolveOffer: async () => {},
 };
 

@@ -29,6 +29,15 @@ test("subtasks follow their parent and fold away with it", () => {
   assert.equal(folded[1].collapsed, true);
 });
 
+test("nested sessions lie flat under the top task, however deep", () => {
+  const { roots, childrenOf } = splitSubtasks([row("leaf", "mid"), row("mid", "top"), row("top")]);
+  assert.deepEqual(roots.map((task) => task.id), ["top"]);
+  assert.deepEqual(
+    nestLines(roots, childrenOf, new Set()).map((line) => [line.task.id, line.depth]),
+    [["top", 0], ["leaf", 1], ["mid", 1]],
+  );
+});
+
 test("a subtask whose parent is not in the list stands on its own", () => {
   const { roots, childrenOf } = splitSubtasks([row("c", "gone")]);
   assert.deepEqual(

@@ -16,7 +16,7 @@ mod tokens;
 use std::sync::Arc;
 
 use aiwb_core::models::SessionStatus;
-use aiwb_core::task::Task;
+
 use axum::extract::{Request, State};
 use axum::http::request::Parts;
 use axum::http::StatusCode;
@@ -31,12 +31,6 @@ use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, Stream
 use crate::services::{Caller, Services};
 
 pub(crate) use tokens::Credentials;
-
-/// 哪些会话拿到工作台 MCP。现在只有子任务工具：顶层任务都有，项目里的和独立聊天一样；
-/// 子任务不能再开子任务。侧边聊天在拉起时就不发（`Runtimes` 按 `side_of` 判断）。
-pub(crate) fn serves(task: &Task) -> bool {
-    task.parent_task_id.is_none()
-}
 
 pub(crate) fn router(services: Arc<Services>) -> Router<Arc<Services>> {
     let server = server::WorkbenchServer::new(services.clone());

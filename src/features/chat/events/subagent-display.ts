@@ -3,17 +3,22 @@ import { formatTokens } from "../../../shared/format/tokens.ts";
 
 /**
  * Agent 自带子 Agent 的展示数据。卡片和步骤都来自适配器写的 `subagent` / `subagent-step`，
- * 这里不看 Agent 种类。分组摘要照 t3code
- * `packages/client-runtime/src/state/subagent-display.ts` 的 `subagentGroupSummary` / `summarizeSubagentStatuses`。
+ * 这里不看 Agent 种类。
  */
 
 export type SubagentEvent = Extract<SessionEvent, { kind: "subagent" }>;
 
-const STATUS_ORDER: readonly SubagentStatus[] = ["running", "failed", "stopped", "completed"];
-
 export const SUBAGENT_STATUS_LABELS: Record<SubagentStatus, string> = {
   running: "运行中",
   completed: "完成",
+  failed: "失败",
+  stopped: "已停止",
+};
+
+/** 时间线里结束那一行接在标题后面的字。 */
+export const SUBAGENT_END_LABELS: Record<SubagentStatus, string> = {
+  running: "运行中",
+  completed: "已完成",
   failed: "失败",
   stopped: "已停止",
 };
@@ -109,28 +114,7 @@ export function subagentUsage(card: SubagentEvent): string {
   return parts.join(" · ");
 }
 
-/** 一组里各状态的个数，运行中、失败、已停止、完成依次排。 */
-export function summarizeSubagentStatuses(cards: readonly SubagentEvent[]): { status: SubagentStatus; count: number }[] {
-  return STATUS_ORDER.map((status) => ({
-    status,
-    count: cards.filter((card) => card.status === status).length,
-  })).filter((item) => item.count > 0);
-}
-
-/**
- * 组头，写明是哪个 Agent 的子 Agent：一个时 `Codex 子 Agent · 运行中`，
- * 几个时 `3 个 Codex 子 Agent · 1 个运行中 · 2 个完成`。
- */
-export function subagentGroupSummary(cards: readonly SubagentEvent[], agentName: string): string {
-  const who = `${agentName} 子 Agent`;
-  if (cards.length === 1) return `${who} · ${SUBAGENT_STATUS_LABELS[cards[0].status]}`;
-  const counts = summarizeSubagentStatuses(cards).map(
-    (item) => `${item.count} 个${SUBAGENT_STATUS_LABELS[item.status]}`,
-  );
-  return [`${cards.length} 个 ${who}`, ...counts].join(" · ");
-}
-
-/** 行里第二行：在跑时是它正在做什么，结束了是结果的第一句。都没有时为空。 */
+/** 列表里第二行：在跑时是它正在做什么，结束了是结果的第一句。都没有时为空。 */
 export function subagentDetail(card: SubagentEvent): string {
   const text = card.status === "running" ? card.activity : card.result;
   return text?.replace(/\s+/g, " ").trim() ?? "";

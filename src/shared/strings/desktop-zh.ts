@@ -116,6 +116,7 @@ export const DESKTOP_ZH = {
   terminal: "终端",
   terminalShortcut: "Ctrl+`",
   sideChat: "侧边聊天",
+  subagents: "子智能体",
   sideChatShortcut: "Ctrl+Alt+S",
   terminalExited: "终端已退出",
   terminalExitedWithCode: "终端已退出（退出码 {code}）",

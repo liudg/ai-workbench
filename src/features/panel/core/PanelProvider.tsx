@@ -108,6 +108,7 @@ interface PanelApi {
   runInTerminal: (command: string) => void;
   /** 打开或聚焦侧边聊天。这个会话开不了时为 null。 */
   openSideChat: ((replaceTabId?: string) => void) | null;
+  openSubagents: ((replaceTabId?: string) => void) | null;
   projectPath: string;
   sessionTitle: string;
   agent: AgentKind | null;
@@ -154,6 +155,8 @@ interface PanelProps {
   usage: SessionUsageView | null;
   /** 侧边聊天标签的打开目标。宿主判断这个会话能不能开，开不了时不给。 */
   sideChat?: OpenTarget | null;
+  /** 子智能体面板的打开目标。没有建好的会话时不给。 */
+  subagents?: OpenTarget | null;
   children: ReactNode;
 }
 
@@ -171,6 +174,7 @@ export function PanelHost({
   events,
   usage,
   sideChat = null,
+  subagents = null,
   children,
 }: PanelProps & {
   state: PanelStateSource;
@@ -249,6 +253,10 @@ export function PanelHost({
     () => (sideChat ? (replaceTabId?: string) => void state.get().panelOpenTarget(sessionId, sideChat, emptyCtx(), replaceTabId) : null),
     [sessionId, sideChat, state],
   );
+  const openSubagents = useMemo(
+    () => (subagents ? (replaceTabId?: string) => void state.get().panelOpenTarget(sessionId, subagents, emptyCtx(), replaceTabId) : null),
+    [sessionId, subagents, state],
+  );
   const hidePanel = useCallback(() => {
     state.get().panelHide(sessionId);
   }, [sessionId, state]);
@@ -310,6 +318,7 @@ export function PanelHost({
       openTerminal,
       runInTerminal,
       openSideChat,
+      openSubagents,
       projectPath,
       sessionTitle,
       agent,
@@ -352,6 +361,7 @@ export function PanelHost({
       openTerminal,
       runInTerminal,
       openSideChat,
+      openSubagents,
       projectPath,
       sessionTitle,
       agent,

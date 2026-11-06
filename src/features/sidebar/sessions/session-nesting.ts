@@ -1,4 +1,4 @@
-// 子任务挂在开出它的任务下面。父任务不在这一组里（归档了、删了）时，子任务自己算一行。
+// 子任务不管隔了几层，都平铺在顶层任务下面。上面的任务不在这一组里（归档了、删了）时，从断开的地方自己算一行。
 
 export interface Nestable {
   id: string;
@@ -9,30 +9,38 @@ export interface SessionLine<T> {
   task: T;
   /** 1 是子任务。 */
   depth: 0 | 1;
-  /** 父任务下的子任务数。 */
+  /** 顶层任务下的后代数。 */
   subtasks: number;
   collapsed: boolean;
 }
 
-/** 顶层的行，和每个父任务下的子任务（保持原来的顺序）。 */
+/** 顶层的行，和每个顶层任务下的所有后代（保持原来的顺序）。 */
 export function splitSubtasks<T extends Nestable>(tasks: readonly T[]): { roots: T[]; childrenOf: Map<string, T[]> } {
-  const ids = new Set(tasks.map((task) => task.id));
+  const byId = new Map(tasks.map((task) => [task.id, task]));
+  const rootOf = (task: T): T => {
+    let top = task;
+    for (;;) {
+      const parent = top.parentTaskId ? byId.get(top.parentTaskId) : undefined;
+      if (!parent) return top;
+      top = parent;
+    }
+  };
   const roots: T[] = [];
   const childrenOf = new Map<string, T[]>();
   for (const task of tasks) {
-    const parent = task.parentTaskId;
-    if (parent && ids.has(parent)) {
-      const list = childrenOf.get(parent);
-      if (list) list.push(task);
-      else childrenOf.set(parent, [task]);
-    } else {
+    const root = rootOf(task);
+    if (root === task) {
       roots.push(task);
+      continue;
     }
+    const list = childrenOf.get(root.id);
+    if (list) list.push(task);
+    else childrenOf.set(root.id, [task]);
   }
   return { roots, childrenOf };
 }
 
-/** 顶层行展开成一列：没折叠的父任务后面跟着它的子任务。 */
+/** 顶层行展开成一列：没折叠的顶层任务后面跟着它的后代。 */
 export function nestLines<T extends Nestable>(
   roots: readonly T[],
   childrenOf: ReadonlyMap<string, readonly T[]>,

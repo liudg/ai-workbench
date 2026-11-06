@@ -5,11 +5,10 @@ import { ActivityGroup } from "../events/ActivityGroup";
 import { foldActivity, type ActivityPiece } from "../events/activity-fold";
 import { activityOpenAfterSettle, toggleToolGroup, toolGroupOpen } from "../events/activity-open";
 import { EventItem } from "../events/EventItem";
-import { SubagentGroup } from "../events/SubagentGroup";
 import { ViewedImages } from "../events/ViewedImages";
 
 /**
- * 一段会话过程。旁白按原顺序留下，相邻工具收成一行，查看图像单独成行。
+ * 一段会话的事件，按发生顺序画。相邻工具收成一行，查看图像单独成行。
  * 思考正文不画。进行中的末行由 `LiveTurn` 画，这里不管。
  * `live` 为真时，适配器报的进行中工具才转圈。
  * `settled` 为真时，进行中点开过的工具行收回去，默认只留一行摘要。
@@ -55,9 +54,6 @@ export function ActivityStream({
               }}
             />
           );
-        }
-        if (piece.type === "subagents") {
-          return <SubagentGroup key={piece.id} cards={piece.cards} session={session} />;
         }
         if (piece.type === "tools") {
           return (

@@ -4,7 +4,7 @@
 //! 差异、文件变更、计划步骤，都改写已有那条并沿用原来的 id 和 seq。
 //! 子 Agent 卡片按 `subagent_id` 覆盖；子 Agent 的步骤只和同一个子 Agent 的步骤比。
 
-use crate::models::{SessionEvent, SessionEventBody};
+use crate::models::{SessionEvent, SessionEventBody, SubagentStatus};
 
 /// 能覆盖时改写 `events` 里的那一条，返回它的下标；否则返回 None，调用方追加。
 pub fn merge_into(events: &mut [SessionEvent], body: &SessionEventBody, now: i64) -> Option<usize> {
@@ -36,6 +36,28 @@ pub fn merge_into(events: &mut [SessionEvent], body: &SessionEventBody, now: i64
     };
     events[index].ts = now;
     Some(index)
+}
+
+/// 这条事件让一张还在跑的卡片结束时，返回要接着记的结束事件。在 `merge_into` 之前调用。
+/// 第一次出现就已结束的卡片（分叉复制的时间线）不算：结束事件会跟着一起复制。
+pub fn subagent_ended(events: &[SessionEvent], body: &SessionEventBody) -> Option<SessionEventBody> {
+    let SessionEventBody::Subagent(card) = body else {
+        return None;
+    };
+    if card.status == SubagentStatus::Running {
+        return None;
+    }
+    let was_running = events.iter().rev().find_map(|event| match &event.body {
+        SessionEventBody::Subagent(existing) if existing.subagent_id == card.subagent_id => {
+            Some(existing.status == SubagentStatus::Running)
+        }
+        _ => None,
+    })?;
+    was_running.then(|| SessionEventBody::SubagentEnded {
+        subagent_id: card.subagent_id.clone(),
+        title: card.title.clone(),
+        status: card.status,
+    })
 }
 
 /// 在 `bodies` 里找能被 `body` 覆盖的那条并改写，返回下标。
@@ -179,6 +201,7 @@ pub fn is_conversation_activity(body: &SessionEventBody) -> bool {
             | SessionEventBody::TurnChanges { .. }
             | SessionEventBody::Subagent(_)
             | SessionEventBody::SubagentStep { .. }
+            | SessionEventBody::SubagentEnded { .. }
     )
 }
 
@@ -257,6 +280,23 @@ mod tests {
     }
 
     /// 子 Agent 的步骤只和同一个子 Agent 的步骤合并；卡片按 id 整条替换。
+    #[test]
+    fn a_card_ending_is_reported_once() {
+        let mut card = crate::models::SubagentCard::new("a", "查一下");
+        let mut events = vec![event(1, SessionEventBody::Subagent(card.clone()))];
+        assert!(subagent_ended(&events, &SessionEventBody::Subagent(card.clone())).is_none());
+        card.finish(SubagentStatus::Failed, Some(2));
+        let body = SessionEventBody::Subagent(card.clone());
+        assert!(matches!(
+            subagent_ended(&events, &body),
+            Some(SessionEventBody::SubagentEnded { status: SubagentStatus::Failed, .. })
+        ));
+        merge_into(&mut events, &body, 3);
+        assert!(subagent_ended(&events, &body).is_none());
+        // 复制过来的时间线里，第一次见到就已结束。
+        assert!(subagent_ended(&[], &body).is_none());
+    }
+
     #[test]
     fn subagent_steps_merge_within_their_subagent() {
         let mut events = vec![

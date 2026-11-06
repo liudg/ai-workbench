@@ -613,6 +613,13 @@ pub enum SessionEventBody {
         subagent_id: String,
         step: Box<SessionEventBody>,
     },
+    /// 子 Agent 结束的那一刻。卡片留在派出它的位置，结束单独记一条，时间线才能按发生顺序画。
+    /// 适配器不发，宿主在卡片从运行中变成结束时记（`timeline::subagent_ended`）。
+    SubagentEnded {
+        subagent_id: String,
+        title: String,
+        status: SubagentStatus,
+    },
     /// 适配器请求宿主在同一项目里开一个新会话（`/new`、`/clear`、计划的「清空上下文后实施」）。
     /// 会话管理器不把它写进时间线，而是转给前端去新建、命名并发出首条消息。
     NewThread {

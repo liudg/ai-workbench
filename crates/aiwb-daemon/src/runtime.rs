@@ -16,7 +16,7 @@ use aiwb_core::models::{
 };
 use aiwb_core::rpc::{session_topic, TOPIC_TASKS};
 use aiwb_core::task::{SessionFeed, SessionOptions, StoredEvent, TaskWorkspace};
-use aiwb_core::timeline::{is_conversation_activity, merge_into, title_from_user_message};
+use aiwb_core::timeline::{is_conversation_activity, merge_into, subagent_ended, title_from_user_message};
 use aiwb_store::Store;
 use serde_json::{json, Value};
 use tokio::sync::mpsc;
@@ -338,9 +338,11 @@ impl Runtimes {
         now: i64,
     ) -> RuntimeResult<(String, bool, bool)> {
         let topic = session_topic(session_id);
-        self.hub.publish_with(&topic, || -> RuntimeResult<_> {
+        let mut ended = None;
+        let appended = self.hub.publish_with(&topic, || -> RuntimeResult<_> {
             let mut logs = self.logs.lock().unwrap();
             let log = self.log_mut(&mut logs, session_id)?;
+            ended = subagent_ended(&log.events, &body);
             let event = match merge_into(&mut log.events, &body, now) {
                 Some(index) => log.events[index].clone(),
                 None => {
@@ -371,7 +373,11 @@ impl Runtimes {
             };
             let data = serde_json::to_value(feed).map_err(|e| e.to_string())?;
             Ok(((log.task_id.clone(), log.side, attention.is_some()), data))
-        })
+        })?;
+        if let Some(ended) = ended {
+            self.append_at(session_id, ended, activity, now)?;
+        }
+        Ok(appended)
     }
 
     /// 改写时间线里已有的一条：沿用 seq，换新的 rev。
@@ -599,14 +605,8 @@ impl Runtimes {
                 options["writable_roots"] = json!(access.writable_roots);
             }
         }
-        let task = self
-            .store
-            .task(&session.task_id)
-            .map_err(store_err)?
-            .ok_or_else(|| "任务不存在".to_string())?;
-        let workbench_mcp = (side_of.is_none()
-            && crate::mcp::serves(&task)
-            && self.adapter(session.agent).takes_workbench_mcp())
+        // 工作台 MCP 现在只有子任务工具：哪个会话都发，层数不限；侧边聊天不发。
+        let workbench_mcp = (side_of.is_none() && self.adapter(session.agent).takes_workbench_mcp())
             .then(|| self.mcp.issue(session_id))
             .flatten();
         let ctx = SessionContext {

@@ -143,16 +143,28 @@ function hiddenInTimeline(events: readonly SessionEvent[], index: number): boole
   return skippedInTimeline(events[index]) || isSuppressedMessage(events, index);
 }
 
-export function isProcess(event: SessionEvent, answer: string | null | ReadonlySet<string>): boolean {
-  if (hasGeneratedImages(event)) return false;
-  if (typeof answer === "string" ? event.id === answer : answer?.has(event.id)) return false;
-  if (choiceHasSlot(event)) return false;
+/**
+ * 收起一轮时跟着折起来的事件。其余的还看得见：答复、用户的话、生成的图、错误、计划、审查、等人选的卡片。
+ * 这只决定看不看得见，事件的位置始终是发生的顺序。
+ */
+export function isFoldable(event: SessionEvent, answers: ReadonlySet<string>): boolean {
+  if (hasGeneratedImages(event) || answers.has(event.id) || choiceHasSlot(event)) return false;
+  if (event.kind === "subtask-offer") return event.resolution != null;
   return (
     event.kind === "thinking" ||
     event.kind === "tool-call" ||
     event.kind === "prompt" ||
-    event.kind === "agent-message"
+    event.kind === "agent-message" ||
+    event.kind === "subagent" ||
+    event.kind === "subagent-ended"
   );
+}
+
+/** 收起时还看得见的事件。进行中的一轮，最后一段的答复还在写，先不露出来；已经出了图时跟着图留下。 */
+export function foldedEvents(events: readonly SessionEvent[], settled: boolean): SessionEvent[] {
+  const parts = turnParts(events, settled);
+  const answers = partAnswers(settled || events.some(hasGeneratedImages) ? parts : parts.slice(0, -1));
+  return events.filter((event) => !isFoldable(event, answers));
 }
 
 /** 从这一轮开始（用户消息或 Agent 自己开的回合）到最后一条过程或答复。 */
@@ -185,7 +197,7 @@ function pushLive(blocks: TimelineNode[], events: readonly SessionEvent[]) {
   }
 }
 
-/** 一轮里被引导切开的一段：开头的引导（第一段没有）、这段的事件、这段留在外面的答复。 */
+/** 一轮里被引导切开的一段：开头的引导（第一段没有）、这段的事件、这段收起时留下的答复。 */
 export interface TurnPart {
   steer: SessionEvent | null;
   events: SessionEvent[];
@@ -219,7 +231,7 @@ function pushSettled(blocks: TimelineNode[], startedAt: number, events: readonly
   const parts = turnParts(body, true);
   const answerId = parts[parts.length - 1]?.answerId ?? null;
   const answers = partAnswers(parts);
-  const process = body.filter((event) => isProcess(event, answers));
+  const process = body.filter((event) => isFoldable(event, answers));
   if (process.length === 0) {
     for (const event of body) {
       blocks.push({
@@ -244,7 +256,7 @@ function pushSettled(blocks: TimelineNode[], startedAt: number, events: readonly
  * 把事件日志分成可渲染的块。
  * 正在跑的一轮收成一块，对话里用折叠行标「正在处理」。
  * 停在提问时保持展开，方便回答。
- * 已结束的一轮把旁白、思考和工具调用收成一块，答复单独留在下面。
+ * 已结束的一轮也收成一块，事件顺序不动，收起时只隐藏过程。
  * 相邻工具再收成一行是展示层的事，这里仍按事件留下。
  * 阶段来自任意适配器写入的 `phase`，这里不看 AgentKind。
  */
@@ -328,11 +340,36 @@ function runningSince(events: readonly SessionEvent[]): number | null {
   return null;
 }
 
+/** 记结束事件之前的会话里，已结束的卡片后面没有结束那一条。紧接着卡片补上。 */
+function withSubagentEnds(events: readonly SessionEvent[]): readonly SessionEvent[] {
+  const ended = new Set<string>();
+  for (const event of events) {
+    if (event.kind === "subagent-ended") ended.add(event.subagent_id);
+  }
+  return events.flatMap((event) =>
+    event.kind === "subagent" && event.status !== "running" && !ended.has(event.subagent_id)
+      ? [
+          event,
+          {
+            id: `${event.id}:ended`,
+            session_id: event.session_id,
+            seq: event.seq,
+            ts: event.ts,
+            kind: "subagent-ended",
+            subagent_id: event.subagent_id,
+            title: event.title,
+            status: event.status,
+          } satisfies SessionEvent,
+        ]
+      : [event],
+  );
+}
+
 export function buildTimeline(
   events: readonly SessionEvent[],
   status: SessionStatus,
 ): TimelineNode[] {
-  events = softenConnectionLost(events);
+  events = withSubagentEnds(softenConnectionLost(events));
   const blocks: TimelineNode[] = [];
   const starts = turnStarts(events);
   const prefixEnd = starts[0] ?? events.length;
@@ -443,6 +480,9 @@ export function contentChars(events: readonly SessionEvent[]): number {
         break;
       case "subagent":
         chars += event.title.length + (event.activity?.length ?? 0) + (event.result?.length ?? 0);
+        break;
+      case "subagent-ended":
+        chars += event.title.length;
         break;
       case "subagent-step":
         chars += contentChars([{ ...event, ...event.step }]) + 1;

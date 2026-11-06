@@ -3,15 +3,14 @@ import { useMemo } from "react";
 import type { SubtaskHost, SubtaskView } from "@/features/chat/host";
 import { currentSession, tasksApi, useTasks } from "@/features/tasks";
 import { showError } from "@/shared/shell/error-banner";
-import { openTask } from "@/shared/shell/navigation";
-import { openSubtaskBeside } from "../subtask-panel/open";
+import { openSubagentPanel } from "../subagent-panel/open";
 
 /**
- * 时间线里子任务的标题、状态、跳转和开子任务卡片的选择。
+ * 时间线里子任务的标题、状态、打开和开子任务卡片的选择。点开落在 `owner` 这个主会话的子智能体面板里。
  * 任务列表每次状态变化都会推一份新的，宿主只在标题或归属变了时才换，免得整条时间线跟着重画；
  * 每行自己用 `useSubtask` 跟着任务列表变。
  */
-export function useSubtaskHost(sessionId: string): SubtaskHost {
+export function useSubtaskHost(owner: string): SubtaskHost {
   const { tasks } = useTasks();
   const key = tasks.map((task) => `${task.id}\u0000${task.title}\u0000${task.projectId ?? ""}`).join("\n");
   return useMemo(() => {
@@ -19,16 +18,12 @@ export function useSubtaskHost(sessionId: string): SubtaskHost {
     return {
       title: (taskId) => byId.get(taskId)?.title.trim() || undefined,
       useSubtask,
-      open: (taskId) => {
-        const task = byId.get(taskId);
-        if (task) openTask(task.id, task.projectId ?? null);
-      },
-      openBeside: (taskId) => openSubtaskBeside(sessionId, taskId),
+      open: (taskId) => openSubagentPanel(owner, { kind: "task", taskId }),
       resolveOffer: (sessionId, offerId, accept) =>
         tasksApi.resolveOffer(sessionId, offerId, accept).then(() => undefined, showError),
     };
     // 只看 key 里的字段；tasks 本身每次都是新数组。
-  }, [key, sessionId]);
+  }, [key, owner]);
 }
 
 /** 一个子任务现在的样子。只有它自己的字段变了才换新对象。 */

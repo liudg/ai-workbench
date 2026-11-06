@@ -128,7 +128,7 @@ initiation — declare it honestly from the user's words:
 - offer: the user's latest message asks for this work but did not say to split it off. A card asks the user. End your turn right after this call; you will get a message with the user's choice (opened, or do it here yourself).
 - own_initiative: work you noticed or propose that the user did not ask for. A card the user may start later; do not wait, continue your own work. At most 3 per turn, never the same thing twice. Never use it for work the user asked for.
 
-A subtask inherits your permission level and plan mode and can never be wider than yours. Subtasks cannot open subtasks of their own.")]
+A subtask inherits your permission level and plan mode and can never be wider than yours.")]
     async fn aiwb_subtask_create(&self, caller: Caller, Parameters(params): Parameters<CreateParams>) -> Reply {
         let initiation = match params.initiation {
             InitiationParam::UserAsked => Initiation::UserAsked,

@@ -1,5 +1,5 @@
 //! 嵌套任务：会话里的 Agent 经工作台 MCP 开出挂在自己任务下的子任务，跑完把结果交回来。
-//! 方案见 `docs/agent-orchestration-mcp.md`。工具层在 `crate::mcp::subtasks`，这里是规则和数据。
+//! 见 `docs/agent-orchestration.md`。工具层在 `crate::mcp::subtasks`，这里是规则和数据。
 
 mod reports;
 
@@ -86,29 +86,35 @@ impl Services {
         tokio::spawn(async move {
             while let Some(note) = notes.recv().await {
                 // 结果按顺序记；送回报各个父任务分开跑，一个父会话起得慢不耽误别的。
-                let Some(parent) = services.note_status(&note) else {
-                    continue;
-                };
-                let services = Arc::clone(&services);
-                tokio::spawn(async move { services.flush_reports(&parent).await });
+                for target in services.note_status(&note) {
+                    let services = Arc::clone(&services);
+                    tokio::spawn(async move { services.flush_reports(&target).await });
+                }
             }
         });
     }
 
-    /// 记下子任务回合的结果，返回有东西要送的父任务。
-    fn note_status(&self, note: &StatusNote) -> Option<String> {
-        let task = self.store.task(&note.task_id).ok().flatten()?;
-        if task.archived_at.is_some() {
-            return None;
-        }
-        let parent = match task.parent_task_id {
-            Some(parent) => {
-                self.reports().turn_ended(&parent, &task.id, note.status);
-                parent
-            }
-            None => task.id,
+    /// 记下子任务回合的结果，返回有东西要送的任务：它自己（中间层既是子任务也是父任务，空下来时要收
+    /// 自己子任务的回报）和往上的每一层（它们可能正等着下面停下）。
+    fn note_status(&self, note: &StatusNote) -> Vec<String> {
+        let Some(task) = self.store.task(&note.task_id).ok().flatten() else {
+            return Vec::new();
         };
-        self.reports().pending(&parent).then_some(parent)
+        if task.archived_at.is_some() {
+            return Vec::new();
+        }
+        if let Some(parent) = &task.parent_task_id {
+            self.reports().turn_ended(parent, &task.id, note.status);
+        }
+        let mut targets = vec![task.id];
+        let mut above = task.parent_task_id;
+        while let Some(id) = above {
+            above = self.store.task(&id).ok().flatten().and_then(|task| task.parent_task_id);
+            targets.push(id);
+        }
+        let reports = self.reports();
+        targets.retain(|id| reports.pending(id));
+        targets
     }
 
     fn reports(&self) -> std::sync::MutexGuard<'_, Reports> {
@@ -171,9 +177,6 @@ impl Services {
         initiation: Initiation,
         requests: Vec<SubtaskRequest>,
     ) -> ServiceResult<Value> {
-        if caller.task.parent_task_id.is_some() {
-            return Err("nested: a subtask cannot open subtasks of its own".into());
-        }
         if requests.is_empty() {
             return Err("invalid: give at least one subtask".into());
         }
@@ -679,8 +682,8 @@ impl Services {
         if self.typing(&session.id) {
             return;
         }
-        let children_working = self.children_working(parent_id);
-        let Some(batch) = self.reports().take_for_wake(parent_id, children_working) else {
+        let descendants_working = self.descendants_working(parent_id);
+        let Some(batch) = self.reports().take_for_wake(parent_id, descendants_working) else {
             return;
         };
         // 立刻送：父会话这时空着就开一个回合；刚好有回合开起来时引导进去，不排进队列变成用户的消息。
@@ -702,13 +705,25 @@ impl Services {
         has_text && now_millis() - at < TYPING_MS
     }
 
-    fn children_working(&self, parent_id: &str) -> bool {
-        self.store.task_entries().is_ok_and(|entries| {
-            entries.iter().any(|entry| {
-                entry.task.parent_task_id.as_deref() == Some(parent_id)
-                    && entry.task.archived_at.is_none()
-                    && entry.attention.state == AttentionState::Working
-            })
+    /// 下面哪一层还没做完就先不叫醒：孙任务跑完，子任务还会接着做一轮。在等用户的不算，父任务要知道这件事。
+    fn descendants_working(&self, parent_id: &str) -> bool {
+        let Ok(entries) = self.store.task_entries() else {
+            return false;
+        };
+        let parents: HashMap<&str, &str> = entries
+            .iter()
+            .filter_map(|entry| Some((entry.task.id.as_str(), entry.task.parent_task_id.as_deref()?)))
+            .collect();
+        let reports = self.reports();
+        entries.iter().any(|entry| {
+            let unfinished = match entry.attention.state {
+                AttentionState::Working => true,
+                AttentionState::NeedsInput => false,
+                _ => reports.expecting(&entry.task.id),
+            };
+            unfinished
+                && entry.task.archived_at.is_none()
+                && aiwb_core::task::ancestors(&parents, &entry.task.id).any(|id| id == parent_id)
         })
     }
 

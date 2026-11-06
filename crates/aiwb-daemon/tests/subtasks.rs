@@ -14,7 +14,7 @@ use aiwb_agents::{
 };
 use aiwb_core::models::{
     AgentCapabilities, AgentKind, PageAnnotation, PermissionMenu, PermissionProfileOption, PromptAnswer, PromptKind,
-    SessionEventBody, SessionStatus,
+    SessionEventBody, SessionStatus, SubagentCard, SubagentStatus,
 };
 use aiwb_core::DaemonInfo;
 use aiwb_daemon::{router, AdapterFactory, Services};
@@ -428,16 +428,6 @@ async fn subtasks_open_run_and_report_back_once() {
     let codex_child = children.iter().find(|child| child["title"] == "写代码").unwrap();
     assert_eq!(codex_child["sessions"][0]["agent"], "codex-cli");
 
-    // 子任务没有工作台 MCP：不能再开子任务。
-    let started = h.script.started.lock().unwrap();
-    let child_contexts: Vec<_> = started
-        .iter()
-        .filter(|(native, _)| *native != parent_native)
-        .collect();
-    assert_eq!(child_contexts.len(), 2);
-    assert!(child_contexts.iter().all(|(_, ctx)| ctx.workbench_mcp.is_none()));
-    drop(started);
-
     let list = h.tool(&token, "aiwb_subtask_list", json!({})).await.unwrap();
     assert_eq!(list.as_array().unwrap().len(), 2);
     let read = h
@@ -474,6 +464,106 @@ async fn subtasks_open_run_and_report_back_once() {
     // 回合结束后旧凭证不能再动东西。
     let late = h.tool(&token, "aiwb_subtask_list", json!({})).await.unwrap_err();
     assert!(late.starts_with("parent_not_active"), "{late}");
+}
+
+/// 子任务也能开子任务：回报一层层往上，下面还有人在做时不叫醒上面。
+#[tokio::test]
+async fn subtasks_nest_and_report_up_one_level_at_a_time() {
+    let h = harness().await;
+    let root = h.create("claude-code", "[hold] 顶层", json!({})).await;
+    let root_id = root["id"].as_str().unwrap().to_string();
+    h.wait_state(&root_id, "working").await;
+    let root_native = h.native_of("顶层");
+    let root_token = h.mcp_of(&root_native).unwrap().token;
+
+    let opened = |title: &'static str, prompt: &'static str| {
+        json!({ "initiation": "user_asked", "subtasks": [{ "title": title, "prompt": prompt }] })
+    };
+    h.tool(&root_token, "aiwb_subtask_create", opened("中间层", "[hold] 中间层的活")).await.unwrap();
+    let middle = h.children(&root_id).await.remove(0);
+    let middle_id = middle["id"].as_str().unwrap().to_string();
+    h.wait_state(&middle_id, "working").await;
+    let middle_native = h.native_of("中间层的活");
+    let middle_token = h.mcp_of(&middle_native).expect("子任务也拿到工作台 MCP").token;
+
+    h.tool(&middle_token, "aiwb_subtask_create", opened("孙任务", "[hold] 孙任务的活")).await.unwrap();
+    let leaf = h.children(&middle_id).await.remove(0);
+    let leaf_id = leaf["id"].as_str().unwrap().to_string();
+    h.wait_state(&leaf_id, "working").await;
+    let leaf_native = h.native_of("孙任务的活");
+
+    // 中间层先结束，孙任务还在做：顶层先不叫醒。
+    h.finish(&root_native);
+    h.wait_state(&root_id, "done").await;
+    h.finish(&middle_native);
+    h.wait_state(&middle_id, "done").await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(h.sent_to(&root_native).len(), 1, "孙任务还在做，不回报");
+
+    // 孙任务结束：先报给中间层，中间层这一轮结束后才报给顶层。
+    h.finish(&leaf_native);
+    let mut middle_report = None;
+    for _ in 0..200 {
+        let sent = h.sent_to(&middle_native);
+        if sent.len() > 1 {
+            middle_report = Some(sent);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    let sent = middle_report.expect("中间层收到孙任务的回报");
+    assert!(sent[1].contains("孙任务"), "{}", sent[1]);
+    let mut root_report = None;
+    for _ in 0..200 {
+        let sent = h.sent_to(&root_native);
+        if sent.len() > 1 {
+            root_report = Some(sent);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    let sent = root_report.expect("顶层收到中间层的回报");
+    assert!(sent[1].contains("中间层"), "{}", sent[1]);
+}
+
+/// 子 Agent 结束单独记一条，排在结束时的位置；卡片留在派出它的位置。
+#[tokio::test]
+async fn a_subagent_ending_is_recorded_where_it_happened() {
+    let h = harness().await;
+    let task = h.create("claude-code", "[hold] 派子 Agent", json!({})).await;
+    let task_id = task["id"].as_str().unwrap().to_string();
+    let session = h.wait_state(&task_id, "working").await;
+    let native = h.native_of("派子 Agent");
+    let mut card = SubagentCard::new("a", "审查");
+    {
+        let sinks = h.script.sinks.lock().unwrap();
+        let sink = &sinks[&native];
+        let _ = sink.send(SessionEventBody::Subagent(card.clone()));
+        let _ = sink.send(SessionEventBody::AgentMessage {
+            text: "我先看别的".into(),
+            stream_id: None,
+            phase: None,
+            mode: None,
+            dedupe_of: None,
+        });
+        card.finish(SubagentStatus::Completed, Some(1));
+        let _ = sink.send(SessionEventBody::Subagent(card));
+    }
+    let mut kinds = Vec::new();
+    for _ in 0..200 {
+        kinds = h
+            .timeline(&session)
+            .await
+            .iter()
+            .map(|event| event["kind"].as_str().unwrap().to_string())
+            .filter(|kind| kind.starts_with("subagent") || kind == "agent-message")
+            .collect();
+        if kinds.len() >= 3 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert_eq!(kinds, ["subagent", "agent-message", "subagent-ended"]);
 }
 
 #[tokio::test]
@@ -683,5 +773,5 @@ async fn standalone_chats_open_subtasks_in_their_own_folder() {
     h.wait_state(child["id"].as_str().unwrap(), "done").await;
     // 子任务自己不再拿工作台 MCP。
     let child_native = h.native_of("审查一下");
-    assert!(h.mcp_of(&child_native).is_none());
+    assert!(h.mcp_of(&child_native).is_some(), "子任务也能开子任务");
 }

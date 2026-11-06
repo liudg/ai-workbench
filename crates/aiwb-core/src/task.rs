@@ -1,5 +1,7 @@
 //! 任务和挂在任务下的 Agent 会话。任务是工作台的核心单位，聊天只是任务里的一个视图。
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::attention::Attention;
@@ -126,6 +128,11 @@ pub struct TaskSession {
     pub options: SessionOptions,
     pub created_at: i64,
     pub updated_at: i64,
+}
+
+/// 从父任务往上一路走到顶层。`parents` 是子任务 id 到父任务 id 的映射。
+pub fn ancestors<'a>(parents: &'a HashMap<&'a str, &'a str>, id: &'a str) -> impl Iterator<Item = &'a str> + 'a {
+    std::iter::successors(parents.get(id).copied(), |id| parents.get(id).copied())
 }
 
 /// 任务列表里的一行：任务、它的会话，和现在用的会话的注意力。

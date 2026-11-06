@@ -8,7 +8,8 @@ import {
   contentChars,
   formatElapsed,
   isCliConnectionLostAnswer,
-  isProcess,
+  foldedEvents,
+  isFoldable,
   isSuppressedMessage,
   pickAnswer,
   runningTurnSummary,
@@ -334,7 +335,7 @@ test("a pinned plan choice is not folded into the finished turn", () => {
     ],
     questions: [],
   });
-  assert.equal(isProcess(prompt, "a1"), false);
+  assert.equal(isFoldable(prompt, new Set(["a1"])), false);
   const nodes = buildTimeline(
     [
       event("u1", 0, { kind: "user-message", text: "做一个贪吃蛇" }),
@@ -559,7 +560,19 @@ test("text written before a steer stays out of the folded process", () => {
   );
   const turn = turnNode(nodes);
   assert.equal(turn.answerId, "a2");
-  assert.equal(isProcess(events[0], new Set(parts.map((part) => part.answerId ?? ""))), false);
+  assert.equal(isFoldable(events[0], new Set(parts.map((part) => part.answerId ?? ""))), false);
+});
+
+test("folding only hides events: what stays keeps its place", () => {
+  const events = [
+    event("note", 1_000, { kind: "agent-message", text: "先看", phase: "commentary" }),
+    event("sys", 2_000, { kind: "system", text: "已切换模型" }),
+    event("k1", 3_000, { kind: "tool-call", name: "command", summary: "ls" }),
+    event("err", 4_000, { kind: "error", message: "出错了" }),
+    event("answer", 5_000, { kind: "agent-message", text: "好了", phase: "final-answer" }),
+    event("k2", 6_000, { kind: "tool-call", name: "command", summary: "pwd" }),
+  ];
+  assert.deepEqual(foldedEvents(events, true).map((item) => item.id), ["sys", "err", "answer"]);
 });
 
 test("a live turn's last part has no answer until it settles", () => {

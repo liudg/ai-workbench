@@ -278,7 +278,6 @@ test("a collapsed process keeps only the header and hides child activity", async
     assert.equal(html.includes(`data-turn-summary="${header}"`), true);
     assert.equal(html.includes('data-expanded="false"'), true);
     assert.equal(html.includes('data-expanded="true"'), false);
-    assert.equal(html.includes("data-activity-stream"), false);
     assert.equal(html.includes("data-activity-group"), false);
     assert.equal(html.includes("data-viewed-images"), false);
     assert.equal(html.includes("已运行"), false);
@@ -341,7 +340,7 @@ function assertOrder(html: string, markers: string[]) {
   }
 }
 
-test("generated images belong to the answer after all expanded activity, live and settled", async () => {
+test("generated images stay where they were made and survive folding, live and settled", async () => {
   const generated = event("generated", {
     kind: "tool-call", name: "image_generation", summary: "图片已生成",
     images: ["https://example.com/dog.png"],
@@ -365,14 +364,14 @@ test("generated images belong to the answer after all expanded activity, live an
       assert.equal(html.includes("我会画一张骑行插画。"), expanded);
       assert.equal(html.includes("已运行 1 条命令"), expanded);
       assertOrder(html, expanded
-        ? ["data-turn-fold", "我会画一张骑行插画。", "已运行 1 条命令", "data-generated-images", "画好了。"]
+        ? ["data-turn-fold", "我会画一张骑行插画。", "data-generated-images", "已运行 1 条命令", "画好了。"]
         : ["data-turn-fold", "data-generated-images", "画好了。"]);
     }
     const imageOnly = renderInHost(createElement(mod[component], {
       events: events.slice(0, -1), answerId: null, durationMs: 1000, session,
       resolvedAnswers: new Map(), expanded: true, onToggle: () => {},
     }));
-    assertOrder(imageOnly, ["我会画一张骑行插画。", "已运行 1 条命令", "data-generated-images"]);
+    assertOrder(imageOnly, ["我会画一张骑行插画。", "data-generated-images", "已运行 1 条命令"]);
   }
 });
 
@@ -519,7 +518,6 @@ test("a running turn keeps the status line as the first child", async () => {
   assert.equal(collapsedHtml.includes('data-turn-summary="Codex CLI · 运行中"'), true);
   assert.equal(collapsedHtml.includes("我会查看目录。"), false);
   assert.equal(collapsedHtml.includes("已运行 1 条命令"), false);
-  assert.equal(collapsedHtml.includes("data-activity-stream"), false);
 });
 
 test("text written before a steer stays visible when the turn is folded", async () => {

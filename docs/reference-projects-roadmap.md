@@ -51,7 +51,7 @@
 ### 阶段 5：多 Agent 编排（本项目的差异点）
 17. **扇出**（orca / t3code 的 Shift 多选模型）：一个 prompt 发给多个 agent 或模型，每个各开一个 worktree；在一个对比视图里并排看结果和 diff，选中后合并。
 18. **跨 Agent 交接**（t3code `ContextHandoffService.ts`）：在会话中途换 agent。不用 LLM 写摘要，而是按 token 预算挑选历史消息，并附上被省略部分的引用。已完成（2026-10-28）。
-19. **Agent 互相驱动**（herdr `agent wait --until`，t3code Orchestrator MCP）：工作台提供一个本地 MCP，让一个 agent 能创建、等待、steer 其他 agent 的会话；目标处于 blocked 时拒绝注入输入。方案见 [agent-orchestration-mcp.md](agent-orchestration-mcp.md)（待确认）。Agent 自带子 Agent 的展示（含 Claude、Codex 子 Agent 混进主时间线的 bug）一起做，写在同一份文档里，已完成（2026-11-04）。
+19. **Agent 互相驱动**（herdr `agent wait --until`，t3code Orchestrator MCP）：工作台提供一个本地 MCP，让一个 agent 能创建、等待、steer 其他 agent 的会话；目标处于 blocked 时拒绝注入输入。已实现，见 [agent-orchestration.md](agent-orchestration.md)。
 20. **会话 snooze 与定时任务**（t3code `scheduledTasks/`）。
 
 ### 暂不建议做

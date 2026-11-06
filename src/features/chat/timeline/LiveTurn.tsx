@@ -1,18 +1,17 @@
+import { useMemo } from "react";
+
 import { SessionAgentIcon } from "@/shared/agent/SessionAgentIcon";
 import { AGENT_LABELS, type Session, type SessionEvent } from "@/types";
 import { agentTurnName, useAgentIdentity } from "../events/use-agent-identity";
 import { ActivityStream } from "./ActivityStream";
-import { partAnswers, pickAnswer, runningTurnSummary, turnParts } from "./timeline";
+import { foldedEvents, runningTurnSummary } from "./timeline";
 import { TurnFoldLine } from "./TurnFoldLine";
-import { hasGeneratedImages } from "../events/generated-images";
-import { EventItem } from "../events/EventItem";
 
 /**
- * 进行中的一轮。状态行是这块的第一个子节点，已经写出来的过程接在下面。
+ * 进行中的一轮，和结束的一轮一样按发生顺序一条流画到底，收起只隐藏过程。
  * 折叠行已经写了 Agent 和运行态，正文不再重复同一行名字。
  * 时间留到这一轮结束，放在所有内容（包括变更卡）之后。
  * 相邻工具收成一行，还在跑的工具转圈。
- * 生成的图片和答复留在过程之后，收起过程仍然可见。
  * 此刻在做什么和用时的那一行由 `ChatView` 放在时间线最底下（变更卡之后）。
  */
 export function LiveTurn({
@@ -32,18 +31,7 @@ export function LiveTurn({
 }) {
   const identity = useAgentIdentity(session.agent);
   const agentName = agentTurnName(session.agent, identity) || AGENT_LABELS[session.agent];
-  const hasImages = events.some(hasGeneratedImages);
-  const answerId = hasImages ? pickAnswer(events, false)?.id : null;
-  const isAnswerContent = (event: SessionEvent) => hasGeneratedImages(event) || event.id === answerId;
-  const process = events.filter((event) => !isAnswerContent(event));
-  const answerContent = events.filter(isAnswerContent);
-  // 收起时还要留着引导的话，和每次被引导打断前已经写出来的正文。
-  const earlier = partAnswers(turnParts(events, false).slice(0, -1));
-  // 子 Agent 卡片收起时也留着。
-  const folded = events.filter(
-    (event) =>
-      isAnswerContent(event) || event.kind === "user-message" || event.kind === "subagent" || earlier.has(event.id),
-  );
+  const visible = useMemo(() => (expanded ? events : foldedEvents(events, false)), [events, expanded]);
 
   return (
     <div className="min-w-0" data-live-turn>
@@ -54,27 +42,15 @@ export function LiveTurn({
         icon={<SessionAgentIcon identity={identity} className="h-4 w-4" />}
         pulse
       />
-      {expanded ? (
-        <ActivityStream
-          events={process}
-          session={session}
-          resolvedAnswers={resolvedAnswers}
-          showAgentLabel={() => false}
-          live
-          settled={false}
-          onInteract={onInteract}
-        />
-      ) : null}
-      {(expanded ? answerContent : folded).map((event) => (
-        <EventItem
-          key={event.id}
-          event={event}
-          session={session}
-          resolvedAnswer={null}
-          showAgentLabel={false}
-          showMessageFooter={false}
-        />
-      ))}
+      <ActivityStream
+        events={visible}
+        session={session}
+        resolvedAnswers={resolvedAnswers}
+        showAgentLabel={() => false}
+        live
+        settled={false}
+        onInteract={onInteract}
+      />
     </div>
   );
 }

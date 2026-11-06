@@ -23,7 +23,7 @@ export interface ChatHost {
   agentOf?: (sessionId: string) => AgentKind | undefined;
   /** 子任务的标题和跳转、开子任务卡片的选择。不支持的宿主不给，卡片就不能点。 */
   subtasks?: SubtaskHost;
-  /** 打开 Agent 自带子 Agent 的视图。不支持的宿主不给，子 Agent 的行就不能点。 */
+  /** 在子智能体面板里打开 Agent 自带的子 Agent。不支持的宿主不给，子 Agent 的行就不能点。 */
   openSubagent?: (sessionId: string, subagentId: string) => void;
 }
 
@@ -41,9 +41,8 @@ export interface SubtaskHost {
   title(taskId: string): string | undefined;
   /** 子任务现在的样子，跟着任务列表变。任务列表里还没有它时没有。 */
   useSubtask(taskId: string): SubtaskView | undefined;
+  /** 在子智能体面板里打开。 */
   open(taskId: string): void;
-  /** 放到右侧面板，和现在的会话并排看。 */
-  openBeside(taskId: string): void;
   /** 失败时宿主自己报错，卡片重新可点。 */
   resolveOffer(sessionId: string, offerId: string, accept: boolean): Promise<void>;
 }
