@@ -25,9 +25,10 @@ use super::directory;
 use super::process;
 use super::prompts::{self, Pending};
 use super::rpc::{self, Incoming, Rpc, RpcError};
+use super::subagents::Subagents;
 use super::updates::UpdateMap;
 use aiwb_proc::decode_child_bytes;
-use crate::{AgentError, EventSink, TurnDelivery};
+use crate::{AgentError, EventSink, TurnDelivery, WorkbenchMcp};
 use aiwb_core::models::{AgentCatalog, PromptAnswer, SessionEventBody, SessionStatus};
 
 const STDERR_CAP: usize = 4000;
@@ -72,6 +73,7 @@ pub struct Shared {
     session_id: Mutex<Option<String>>,
     pub catalog: Mutex<AgentCatalog>,
     map: Mutex<UpdateMap>,
+    subagents: Mutex<Subagents>,
     replay: Mutex<Replay>,
     prompts: Mutex<HashMap<String, (Value, Pending)>>,
     busy: AtomicBool,
@@ -82,6 +84,8 @@ pub struct Shared {
     /// 会话里 Cursor 报回的当前参数，以及当前模式是不是 plan。
     config: Mutex<ModelConfig>,
     applied_plan: AtomicBool,
+    /// 有工作台 MCP 时还没送出的说明。ACP 没有系统提示字段，跟着这个进程的第一条提示走。
+    instructions: Mutex<Option<&'static str>>,
 }
 
 pub struct Open {
@@ -90,6 +94,7 @@ pub struct Open {
     pub resume: Option<String>,
     pub persist: bool,
     pub replay_history: bool,
+    pub workbench_mcp: Option<WorkbenchMcp>,
 }
 
 pub async fn open(options: Open, events: EventSink) -> Result<Arc<Shared>, AgentError> {
@@ -130,6 +135,7 @@ pub async fn open(options: Open, events: EventSink) -> Result<Arc<Shared>, Agent
     let shared = Arc::new(Shared {
         events,
         map: Mutex::new(UpdateMap::new(&project)),
+        subagents: Mutex::new(Subagents::new(&project)),
         project,
         rpc: Rpc::new(tx),
         child: Mutex::new(Some(child)),
@@ -146,10 +152,12 @@ pub async fn open(options: Open, events: EventSink) -> Result<Arc<Shared>, Agent
         wanted: Mutex::new(Wanted::default()),
         config: Mutex::new(ModelConfig::default()),
         applied_plan: AtomicBool::new(false),
+        instructions: Mutex::new(options.workbench_mcp.as_ref().map(|_| WorkbenchMcp::INSTRUCTIONS)),
     });
     start_io(&shared, stdin, stdout, stderr, rx);
+    let mcp_servers = mcp_servers(options.workbench_mcp.as_ref());
     let opened = shared
-        .startup(resume, options.persist, options.replay_history)
+        .startup(resume, options.persist, options.replay_history, mcp_servers)
         .await;
     if let Err(err) = opened {
         shared.shutdown();
@@ -242,6 +250,7 @@ impl Shared {
         resume: Option<String>,
         persist: bool,
         replay_history: bool,
+        mcp_servers: Value,
     ) -> Result<(), AgentError> {
         let gate = startup_gate().lock().await;
         self.call(
@@ -251,7 +260,7 @@ impl Shared {
                 "clientCapabilities": {
                     "fs": { "readTextFile": false, "writeTextFile": false },
                     "terminal": false,
-                    "_meta": { "parameterizedModelPicker": true },
+                    "_meta": { "parameterizedModelPicker": true, "subagents": true },
                 },
                 "clientInfo": { "name": "ai-workbench", "version": env!("CARGO_PKG_VERSION") },
             }),
@@ -271,7 +280,7 @@ impl Shared {
             let loaded = self
                 .call(
                     "session/load",
-                    json!({ "sessionId": id, "cwd": cwd, "mcpServers": [] }),
+                    json!({ "sessionId": id, "cwd": cwd, "mcpServers": mcp_servers }),
                     Some(HANDSHAKE),
                 )
                 .await;
@@ -287,7 +296,7 @@ impl Shared {
             self.adopt_session(&loaded);
         } else if persist {
             let created = self
-                .call("session/new", json!({ "cwd": cwd, "mcpServers": [] }), Some(HANDSHAKE))
+                .call("session/new", json!({ "cwd": cwd, "mcpServers": mcp_servers }), Some(HANDSHAKE))
                 .await?;
             let id = created
                 .get("sessionId")
@@ -373,6 +382,13 @@ impl Shared {
         if replay == Replay::Drop {
             return;
         }
+        let session = params.get("sessionId").and_then(Value::as_str).unwrap_or("");
+        if let Some(events) = self.subagents.lock().unwrap().apply(session, update) {
+            for event in events {
+                let _ = self.events.send(event);
+            }
+            return;
+        }
         let events = self.map.lock().unwrap().apply(update);
         if let Some(mode) = events.iter().find_map(|event| match event {
             SessionEventBody::CollaborationMode { mode } => Some(mode == "plan"),
@@ -391,7 +407,8 @@ impl Shared {
     fn on_request(&self, id: Value, method: &str, params: &Value) {
         match method {
             "session/request_permission" => {
-                if self.access.lock().unwrap().as_str() == "full" {
+                // 工作台的工具只作用于这个会话自己的子任务，免审批（同 Claude 的 `--allowedTools mcp__aiwb`）。
+                if self.access.lock().unwrap().as_str() == "full" || prompts::workbench_tool(params) {
                     if let Some(option) = prompts::allow_once(params) {
                         let _ = self.rpc.respond(
                             &id,
@@ -446,9 +463,12 @@ impl Shared {
                     let _ = self.events.send(event);
                 }
             }
-            // 子 Agent 的说明。工具卡已经由 tool_call 画出来。
+            // 子 Agent 跑完：补上用时和模型。
             "cursor/task" => {
                 let _ = self.rpc.respond(&id, json!({}));
+                for event in self.subagents.lock().unwrap().task_done(params) {
+                    let _ = self.events.send(event);
+                }
             }
             _ => {
                 let _ = self
@@ -509,10 +529,21 @@ impl Shared {
     }
 
     /// 开一轮。图片已经折成 ACP 的 `image` 块。
-    pub fn submit(self: &Arc<Self>, blocks: Vec<Value>) -> Result<TurnDelivery, AgentError> {
+    pub fn submit(self: &Arc<Self>, mut blocks: Vec<Value>) -> Result<TurnDelivery, AgentError> {
         let session_id = self
             .session_id()
             .ok_or_else(|| AgentError::Runtime("Cursor Agent 会话还没有建立".into()))?;
+        // 斜杠命令得在提示开头，说明留到下一条普通消息（照 t3code `t3AcpPromptWithInstructions`）。
+        let command = blocks
+            .first()
+            .and_then(|block| block.get("text"))
+            .and_then(Value::as_str)
+            .is_some_and(|text| text.trim_start().starts_with('/'));
+        if !command {
+            if let Some(text) = self.instructions.lock().unwrap().take() {
+                blocks.insert(0, json!({ "type": "text", "text": super::updates::wrap_instructions(text) }));
+            }
+        }
         {
             let _guard = self.status_lock.lock().unwrap();
             if self.closed.load(Ordering::SeqCst) {
@@ -624,6 +655,8 @@ impl Shared {
                 answer: "已结束".into(),
             });
         }
+        // 回合以 `Error: …` 收尾：Cursor 当成回答发出来的后端报错，算失败。
+        let backend_error = self.map.lock().unwrap().take_error();
         let status = match result {
             Ok(Ok(reply)) => match reply.get("stopReason").and_then(Value::as_str).unwrap_or("") {
                 "cancelled" => SessionStatus::Stopped,
@@ -646,6 +679,12 @@ impl Shared {
                     SessionStatus::Failed
                 }
                 _ if stopped => SessionStatus::Stopped,
+                _ if backend_error.is_some() => {
+                    let _ = self.events.send(SessionEventBody::Error {
+                        message: super::updates::error_message(backend_error.as_deref().unwrap_or("")),
+                    });
+                    SessionStatus::Failed
+                }
                 _ => SessionStatus::Completed,
             },
             Ok(Err(_)) if stopped => SessionStatus::Stopped,
@@ -662,6 +701,11 @@ impl Shared {
                 SessionStatus::Failed
             }
         };
+        if status != SessionStatus::Completed {
+            for event in self.subagents.lock().unwrap().stop_all() {
+                let _ = self.events.send(event);
+            }
+        }
         let _ = self.events.send(SessionEventBody::StatusChanged { status });
     }
 
@@ -739,6 +783,9 @@ impl Shared {
     }
 
     pub fn shutdown(&self) {
+        for event in self.subagents.lock().unwrap().stop_all() {
+            let _ = self.events.send(event);
+        }
         self.closed.store(true, Ordering::SeqCst);
         self.rpc.close();
         if let Some(mut child) = self.child.lock().unwrap().take() {
@@ -755,5 +802,19 @@ impl Shared {
             let _ = child.start_kill();
             let _ = tokio::time::timeout(Duration::from_secs(5), child.wait()).await;
         }
+    }
+}
+
+/// 工作台 MCP 按 ACP 的 `McpServerHttp` 写进 `session/new` / `session/load`。Cursor 声明了
+/// `mcpCapabilities.http`，按会话加载，不动用户自己配的 MCP（`3635.index.js` 里 `mcpServers` 的解析）。
+fn mcp_servers(mcp: Option<&WorkbenchMcp>) -> Value {
+    match mcp {
+        Some(mcp) => json!([{
+            "name": WorkbenchMcp::SERVER_NAME,
+            "type": "http",
+            "url": mcp.url,
+            "headers": [{ "name": "Authorization", "value": mcp.authorization() }],
+        }]),
+        None => json!([]),
     }
 }

@@ -194,11 +194,11 @@ export type SessionEventBody =
       raw: string;
     }
   | { kind: "collaboration-mode"; mode: string }
-  /** Agent 提议开子任务，等用户在卡片上选。选过之后带 `resolution`。 */
+  /** Agent 开的子任务。`user_asked` 直接开出，带着 `accepted`；另外两种等用户在卡片上选，选过之后带 `resolution`。 */
   | {
       kind: "subtask-offer";
       offer_id: string;
-      initiation: "offer" | "own_initiative";
+      initiation: "user_asked" | "offer" | "own_initiative";
       subtasks: SubtaskSpec[];
       /** 过了这个时间（毫秒）就不能再点。 */
       expires_at?: number;

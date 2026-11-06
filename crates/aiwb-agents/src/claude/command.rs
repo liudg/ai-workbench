@@ -105,6 +105,9 @@ pub fn cli_args(launch: &Launch) -> Vec<String> {
         cmd.push(config.to_string());
         cmd.push("--allowedTools".to_string());
         cmd.push(format!("mcp__{name}"));
+        // 侧边聊天不拿工作台 MCP，不会和上面侧边聊天的系统提示撞上。
+        cmd.push("--append-system-prompt".to_string());
+        cmd.push(crate::WorkbenchMcp::INSTRUCTIONS.to_string());
     }
     cmd.extend(["--input-format".to_string(), "stream-json".to_string()]);
     cmd

@@ -30,6 +30,11 @@ export function interruptTurn(sessionId: string) {
   return daemon.call<null>("sessions.interrupt", { sessionId }, CLI_TIMEOUT_MS);
 }
 
+/** 单独停掉 Agent 自带的一个子 Agent。 */
+export function stopSubagent(sessionId: string, subagentId: string) {
+  return daemon.call<null>("sessions.stopSubagent", { sessionId, subagentId }, CLI_TIMEOUT_MS);
+}
+
 export function answerPrompt(sessionId: string, promptId: string, answer: PromptAnswer) {
   return daemon.call<null>("sessions.answer", { sessionId, promptId, answer }, CLI_TIMEOUT_MS);
 }

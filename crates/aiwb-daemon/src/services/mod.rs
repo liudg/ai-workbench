@@ -219,6 +219,7 @@ impl Services {
             "tasks.resolveOffer" => to_value(self.resolve_offer(parse(params)?).await?),
             "sessions.send" => to_value(self.send(parse(params)?).await?),
             "sessions.interrupt" => to_value(self.interrupt(parse(params)?).await?),
+            "sessions.stopSubagent" => to_value(self.stop_subagent(parse(params)?).await?),
             "sessions.answer" => to_value(self.answer(parse(params)?).await?),
             "sessions.updateQueued" => to_value(self.update_queued(parse(params)?).await?),
             "sessions.removeQueued" => to_value(self.remove_queued(parse(params)?).await?),

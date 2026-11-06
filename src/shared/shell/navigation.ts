@@ -7,8 +7,14 @@ export type ProjectScope = string | null;
 
 export type MainView =
   | { kind: "none" }
-  | { kind: "task"; taskId: string; projectId: ProjectScope }
+  | { kind: "task"; taskId: string; projectId: ProjectScope; subagent?: SubagentRef }
   | { kind: "new"; projectId: ProjectScope };
+
+/** 会话里 Agent 自带的一个子 Agent：写下它的那段会话和卡片 id。 */
+export interface SubagentRef {
+  sessionId: string;
+  subagentId: string;
+}
 
 export type ProjectDialog = "create" | "import";
 
@@ -49,6 +55,20 @@ export function openTask(taskId: string, projectId: ProjectScope) {
 
 export function openNewSession(projectId: ProjectScope) {
   useNavigationStore.setState({ view: { kind: "new", projectId }, settings: false, board: false });
+}
+
+/** 在这个会话里打开它自带的一个子 Agent 的视图。 */
+export function openSubagent(taskId: string, projectId: ProjectScope, subagent: SubagentRef) {
+  openTask(taskId, projectId);
+  useNavigationStore.setState({ view: { kind: "task", taskId, projectId, subagent } });
+}
+
+/** 从子 Agent 的视图回到它所在的会话。 */
+export function closeSubagent() {
+  const view = useNavigationStore.getState().view;
+  if (view.kind === "task" && view.subagent) {
+    useNavigationStore.setState({ view: { kind: "task", taskId: view.taskId, projectId: view.projectId } });
+  }
 }
 
 /** 回到项目：上次看的会话还在就打开它，否则开新会话。 */

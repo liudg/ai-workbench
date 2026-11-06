@@ -294,6 +294,8 @@ impl AgentAdapter for CodexCliAdapter {
             history_cursor: Mutex::new(None),
             activity: Mutex::new(HashMap::new()),
             subagents: Mutex::new(HashMap::new()),
+            subagent_turns: Mutex::new(HashMap::new()),
+            foreign: Mutex::new(Default::default()),
             denials: Mutex::new(guardian::RecentDenials::default()),
             status_known: AtomicBool::new(false),
             token_info: Mutex::new(None),

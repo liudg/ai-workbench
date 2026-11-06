@@ -153,6 +153,9 @@ pub struct AgentCapabilities {
     /// 侧边聊天：从当前对话临时分出一条，不进历史，关掉就丢。
     #[serde(default)]
     pub supports_side_chat: bool,
+    /// 单独停掉 Agent 自带的一个子 Agent，主回合接着跑。
+    #[serde(default)]
+    pub supports_subagent_stop: bool,
 }
 
 impl AgentCapabilities {
@@ -180,6 +183,7 @@ impl AgentCapabilities {
             supports_context_handoff: false,
             supports_workdir_move: false,
             supports_side_chat: false,
+            supports_subagent_stop: false,
         }
     }
 
@@ -213,6 +217,8 @@ impl AgentCapabilities {
             // 2026-11-02 本机 Codex CLI 0.165.0：父线程回合进行中，另一个 app-server 进程
             // `thread/fork { ephemeral: true }` + `thread/inject_items` 后能接着问，`thread/list` 里没有它。
             supports_side_chat: true,
+            // 子 Agent 是同一连接上的子线程：`turn/interrupt` 带子线程 id 和它的回合 id。
+            supports_subagent_stop: true,
         }
     }
 
@@ -260,6 +266,8 @@ impl AgentCapabilities {
             // 2026-11-02 本机 Claude Code 2.1.312：父会话回合进行中，
             // `--resume=<父> --fork-session --session-id=<新> --no-session-persistence` 能连着问多轮，转录不落盘。
             supports_side_chat: true,
+            // stdin 控制请求 `{"subtype":"stop_task","task_id":…}`（Claude Code 2.1.312 的 control 协议）。
+            supports_subagent_stop: true,
         }
     }
 
@@ -311,6 +319,9 @@ impl AgentCapabilities {
             supports_workdir_move: true,
             // 没有分叉方法，分不出带着前文的临时会话。
             supports_side_chat: false,
+            // `session/cancel` 只认主会话（`3635.index.js` 的 `cancel` 查 `this.sessions`），
+            // 子 Agent 只能跟着主回合一起停。
+            supports_subagent_stop: false,
         }
     }
 }

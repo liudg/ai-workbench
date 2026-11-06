@@ -149,6 +149,8 @@ export interface AgentCapabilities {
   supports_workdir_move?: boolean;
   /** 侧边聊天：从当前对话临时分出一条来问。 */
   supports_side_chat?: boolean;
+  /** 单独停掉 Agent 自带的一个子 Agent。 */
+  supports_subagent_stop?: boolean;
 }
 
 /** 一个订阅用量窗口。已用和剩余至少有一个，重置时间可以没有。 */

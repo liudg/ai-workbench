@@ -281,6 +281,7 @@ mod tests {
                 updated_at: 1,
             },
             side: None,
+            branch: None,
         }
     }
 

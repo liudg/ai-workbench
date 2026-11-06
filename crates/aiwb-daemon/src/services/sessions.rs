@@ -20,6 +20,13 @@ pub(crate) struct SessionId {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct SubagentId {
+    session_id: String,
+    subagent_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct Send {
     session_id: String,
     #[serde(default)]
@@ -128,6 +135,14 @@ impl Services {
 
     pub(crate) async fn interrupt(&self, params: SessionId) -> ServiceResult<()> {
         self.runtimes.interrupt(&params.session_id).await
+    }
+
+    /// 单独停掉 Agent 自带的一个子 Agent。会话没接上时它也不在跑。
+    pub(crate) async fn stop_subagent(&self, params: SubagentId) -> ServiceResult<()> {
+        let Some(handle) = self.runtimes.live_handle(&params.session_id) else {
+            return Ok(());
+        };
+        handle.stop_subagent(&params.subagent_id).await.map_err(|e| e.to_string())
     }
 
     pub(crate) async fn answer(&self, params: Answer) -> ServiceResult<()> {

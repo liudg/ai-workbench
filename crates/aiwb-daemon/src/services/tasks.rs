@@ -42,11 +42,18 @@ pub(crate) struct CreateTask {
     /// 开出这个子任务的任务。只由 Agent 经工作台 MCP 开子任务时设，界面不传。
     #[serde(skip)]
     parent_task_id: Option<String>,
+    /// 独立聊天的子任务用父聊天的文件夹，不另建。界面不传。
+    #[serde(skip)]
+    folder: Option<String>,
 }
 
 impl CreateTask {
-    /// 父任务下的子任务：同一个项目，第一条消息就是说明。
+    /// 父任务下的子任务：同一个项目，独立聊天下的用同一个文件夹；第一条消息就是说明。
     pub(super) fn subtask(parent: &Task, spec: &SubtaskSpec) -> Self {
+        let folder = match &parent.workspace {
+            TaskWorkspace::Folder { path } => Some(path.clone()),
+            _ => None,
+        };
         Self {
             project_id: parent.project_id.clone(),
             title: spec.title.clone(),
@@ -60,6 +67,7 @@ impl CreateTask {
             goal: None,
             goal_status: None,
             parent_task_id: Some(parent.id.clone()),
+            folder,
         }
     }
 }
@@ -150,13 +158,11 @@ impl Services {
                 if params.worktree {
                     return Err("独立聊天没有仓库，不能建工作树".into());
                 }
-                let dir = self.allocate_chat_dir(&params.prompt)?;
-                (
-                    None,
-                    TaskWorkspace::Folder {
-                        path: dir.to_string_lossy().into_owned(),
-                    },
-                )
+                let path = match &params.folder {
+                    Some(path) => path.clone(),
+                    None => self.allocate_chat_dir(&params.prompt)?.to_string_lossy().into_owned(),
+                };
+                (None, TaskWorkspace::Folder { path })
             }
         };
         let now = now_millis();
@@ -182,7 +188,8 @@ impl Services {
             updated_at: now,
         };
         if let Err(err) = self.store.insert_task(&task, &session) {
-            if let TaskWorkspace::Folder { path } = &task.workspace {
+            // 只删这次新建的空文件夹，借用父聊天的不动。
+            if let (TaskWorkspace::Folder { path }, None) = (&task.workspace, &params.folder) {
                 let _ = std::fs::remove_dir(path);
             }
             return Err(err.to_string());

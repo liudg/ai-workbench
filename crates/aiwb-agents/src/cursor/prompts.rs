@@ -52,6 +52,17 @@ pub fn allow_once(params: &Value) -> Option<String> {
     })
 }
 
+/// 工作台自己 MCP 的工具调用。Cursor 的审批标题是「服务名: 工具名」（`3635.index.js` 的 `formatOperation`）。
+pub fn workbench_tool(params: &Value) -> bool {
+    let tool = params.get("toolCall").unwrap_or(&Value::Null);
+    let title = tool.get("title").and_then(Value::as_str).unwrap_or("");
+    tool.get("kind").and_then(Value::as_str) == Some("other")
+        && title
+            .strip_prefix(crate::WorkbenchMcp::SERVER_NAME)
+            .and_then(|rest| rest.strip_prefix(": "))
+            .is_some_and(|name| name.starts_with("aiwb_"))
+}
+
 pub fn permission_prompt(prompt_id: &str, params: &Value) -> (SessionEventBody, Pending) {
     let tool = params.get("toolCall").unwrap_or(&Value::Null);
     let kind = tool.get("kind").and_then(Value::as_str).unwrap_or("");

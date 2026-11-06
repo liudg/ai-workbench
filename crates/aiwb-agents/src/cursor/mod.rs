@@ -12,10 +12,13 @@ mod prompts;
 mod rpc;
 mod runtime;
 mod session;
+mod subagents;
 mod updates;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod subagent_tests;
 
 use std::sync::Arc;
 
@@ -101,6 +104,10 @@ impl AgentAdapter for CursorAgentAdapter {
         true
     }
 
+    fn takes_workbench_mcp(&self) -> bool {
+        true
+    }
+
     async fn start_session(
         &self,
         ctx: SessionContext,
@@ -113,6 +120,7 @@ impl AgentAdapter for CursorAgentAdapter {
                 project_path: ctx.project_path,
                 access_mode: ctx.access_mode,
                 resume: ctx.resume_native_id,
+                workbench_mcp: ctx.workbench_mcp,
             },
             events,
         )

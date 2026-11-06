@@ -177,17 +177,27 @@ impl Services {
         if requests.is_empty() {
             return Err("invalid: give at least one subtask".into());
         }
+        // 独立聊天没有仓库：子任务和它共用同一个文件夹。
+        if caller.task.project_id.is_none() && requests.iter().any(|request| request.worktree) {
+            return Err("invalid: this chat has no git repository, so subtasks cannot get a worktree; they work in the chat's own folder".into());
+        }
         let specs = requests
             .into_iter()
             .map(|request| self.subtask_spec(&caller.session, request))
             .collect::<ServiceResult<Vec<_>>>()?;
         match initiation {
             // 开到一半失败也算一个结果，按 clientRequestId 重试时直接给它，不再重开。
-            Initiation::UserAsked => match self.open_subtasks(&caller.task, &specs).await {
-                (opened, None) => Ok(json!({ "status": "opened", "subtasks": opened })),
-                (opened, Some(err)) if opened.is_empty() => Err(err),
-                (opened, Some(err)) => Ok(json!({ "status": "partly_opened", "subtasks": opened, "error": err })),
-            },
+            Initiation::UserAsked => {
+                let (opened, error) = self.open_subtasks(&caller.task, &specs).await;
+                if !opened.is_empty() {
+                    self.record_opened(&caller.session.id, specs, &opened)?;
+                }
+                match (opened, error) {
+                    (opened, None) => Ok(json!({ "status": "opened", "subtasks": opened })),
+                    (opened, Some(err)) if opened.is_empty() => Err(err),
+                    (opened, Some(err)) => Ok(json!({ "status": "partly_opened", "subtasks": opened, "error": err })),
+                }
+            }
             Initiation::Offer | Initiation::OwnInitiative => {
                 if initiation == Initiation::OwnInitiative {
                     self.check_proposal(&caller.session, &specs)?;
@@ -211,6 +221,25 @@ impl Services {
                 Ok(json!({ "status": "waiting_for_user", "offerId": offer_id, "next": next }))
             }
         }
+    }
+
+    /// 直接开出的子任务也在父时间线里留一条，和选过「另开」的卡片一样画成子任务行。
+    fn record_opened(&self, session_id: &str, specs: Vec<SubtaskSpec>, opened: &[Value]) -> ServiceResult<()> {
+        let task_ids = opened
+            .iter()
+            .filter_map(|item| item["taskId"].as_str().map(str::to_string))
+            .collect();
+        self.runtimes.record(
+            session_id,
+            SessionEventBody::SubtaskOffer {
+                offer_id: aiwb_core::models::new_id(),
+                initiation: Initiation::UserAsked,
+                subtasks: specs,
+                expires_at: None,
+                resolution: Some(OfferResolution::Accepted { task_ids }),
+            },
+        )?;
+        Ok(())
     }
 
     /// 按父任务补全：Agent 缺省和父任务一样，权限缺省继承且不能更宽，父任务在计划模式时子任务也是。

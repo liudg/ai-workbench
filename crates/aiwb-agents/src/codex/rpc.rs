@@ -53,14 +53,17 @@ impl Shared {
             return;
         }
         self.closed.store(true, Ordering::SeqCst);
-        self.turn_open.store(false, Ordering::SeqCst);
+        let was_running = self.turn_open.swap(false, Ordering::SeqCst);
         let _ = self.write_turn_interrupt();
         if let Some(child) = self.child.lock().unwrap().as_mut() {
             let _ = child.start_kill();
         }
         self.fail_waiters("已停止");
         self.stop_subagents();
-        emit_status(&self.events, SessionStatus::Stopped);
+        // 空闲时关进程（daemon 退出、空闲回收）不改状态：已经完成的回合仍是完成。
+        if was_running {
+            emit_status(&self.events, SessionStatus::Stopped);
+        }
     }
 
     /// 进程被停掉或自己退出时，正在等的 `thread/start` 要马上失败，不能再干等超时。

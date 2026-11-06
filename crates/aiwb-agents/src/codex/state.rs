@@ -174,6 +174,10 @@ pub(super) struct Shared {
     pub(super) activity: Mutex<HashMap<String, ActivityBuf>>,
     /// 子 Agent 卡片，按子线程 id。
     pub(super) subagents: Mutex<HashMap<String, SubagentCard>>,
+    /// 子线程正在跑的回合 id，单独停一个子 Agent 时用。
+    pub(super) subagent_turns: Mutex<HashMap<String, String>>,
+    /// 还认不出来的别的线程的通知。子线程的通知可能比主线程的 `subAgentActivity` 先到，先存着。
+    pub(super) foreign: Mutex<super::subagents::Foreign>,
     /// 本线程最近的自动审查拒绝，`/approve` 从这里选。
     pub(super) denials: Mutex<super::guardian::RecentDenials>,
     /// 已经从 app-server 拿到过线程状态。
@@ -319,6 +323,8 @@ impl Shared {
             history_cursor: Mutex::new(None),
             activity: Mutex::new(HashMap::new()),
             subagents: Mutex::new(HashMap::new()),
+            subagent_turns: Mutex::new(HashMap::new()),
+            foreign: Mutex::new(Default::default()),
             denials: Mutex::new(super::guardian::RecentDenials::default()),
             status_known: AtomicBool::new(false),
             token_info: Mutex::new(None),

@@ -7,6 +7,9 @@
 //! - 命令结果在 `rawOutput.exitCode/stdout/stderr`；编辑结果是 `content[].type = diff`。
 //! - 新建文件的 diff 是 `oldText = "-- /dev/null"`，`newText` 首行带 `++ b/<路径>`。
 //! - 回放里用户消息是 `user_message_chunk`，工具 id 是 `replay-<回合>-<序号>`。
+//! - 后端出错时 Cursor 不报错，而是发一段 `\n\nError: …` 的回答文字，`session/prompt` 照常 `end_turn`
+//!   （`agent-session.ts` 的 ``sendAgentMessageChunk(`\n\nError: ${String(e)}`)``）。这段先压着：
+//!   后面还有内容就照常算回答，回合就此结束就算失败（[`UpdateMap::take_error`]）。
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -59,7 +62,12 @@ pub struct UpdateMap {
     todos: Vec<(String, String, String)>,
     /// 最近一轮有变更时的统一 diff。
     pub last_diff: String,
+    /// 压着没发的 `\n\nError: …` 回答块。
+    error_tail: Option<String>,
 }
+
+/// Cursor 把后端异常当回答文字发出时的开头。
+const ERROR_TAIL: &str = "\n\nError: ";
 
 impl UpdateMap {
     pub fn new(project: &Path) -> Self {
@@ -73,9 +81,53 @@ impl UpdateMap {
         self.turn_id = turn_id.to_string();
         self.message = None;
         self.thought = None;
+        self.error_tail = None;
         self.tools.clear();
         self.files.clear();
         self.todos.clear();
+    }
+
+    /// 回合结束时还压着的报错：这一回合以它收尾，算失败。返回去掉 `Error: ` 的报错正文。
+    pub fn take_error(&mut self) -> Option<String> {
+        let tail = self.error_tail.take()?;
+        Some(tail[ERROR_TAIL.len()..].trim().to_string())
+    }
+
+    /// 压着的报错后面还有内容：它只是回答的一部分，照常写出。
+    fn release_error_tail(&mut self, events: &mut Vec<SessionEventBody>) {
+        if let Some(text) = self.error_tail.take() {
+            self.push_message(&text, events);
+        }
+    }
+
+    fn push_message(&mut self, text: &str, events: &mut Vec<SessionEventBody>) {
+        if self.message.is_none() {
+            let id = self.next_id("msg");
+            self.message = Some(Segment { id, text: String::new() });
+        }
+        let segment = self.message.as_mut().unwrap();
+        segment.text.push_str(text);
+        events.push(SessionEventBody::AgentMessage {
+            text: segment.text.clone(),
+            stream_id: Some(segment.id.clone()),
+            phase: None,
+            mode: self.mode(),
+            dedupe_of: None,
+        });
+    }
+
+    /// 回放里一个回合收尾：以报错结束的记成失败。
+    fn close_replay_turn(&mut self, events: &mut Vec<SessionEventBody>) {
+        let status = match self.take_error() {
+            Some(message) => {
+                events.push(SessionEventBody::Error {
+                    message: error_message(&message),
+                });
+                SessionStatus::Failed
+            }
+            None => SessionStatus::Completed,
+        };
+        events.push(SessionEventBody::StatusChanged { status });
     }
 
     fn next_id(&mut self, prefix: &str) -> String {
@@ -92,10 +144,9 @@ impl UpdateMap {
         let Some(text) = self.user.take() else {
             return;
         };
+        let text = strip_instructions(&text);
         if self.replay_turns > 0 {
-            events.push(SessionEventBody::StatusChanged {
-                status: SessionStatus::Completed,
-            });
+            self.close_replay_turn(events);
         }
         self.replay_turns += 1;
         let turn_id = format!("replay-{}", uuid::Uuid::new_v4());
@@ -117,9 +168,7 @@ impl UpdateMap {
         let mut events = Vec::new();
         self.flush_user(&mut events);
         if self.replay_turns > 0 {
-            events.push(SessionEventBody::StatusChanged {
-                status: SessionStatus::Completed,
-            });
+            self.close_replay_turn(&mut events);
         }
         self.replay_turns = 0;
         events
@@ -134,7 +183,16 @@ impl UpdateMap {
         if kind != "user_message_chunk" {
             self.flush_user(&mut events);
         }
+        let text = content_text(update.get("content"));
+        let error = kind == "agent_message_chunk" && text.as_deref().is_some_and(|text| text.starts_with(ERROR_TAIL));
+        if !error && matches!(kind, "agent_message_chunk" | "agent_thought_chunk" | "tool_call" | "tool_call_update" | "plan") {
+            self.release_error_tail(&mut events);
+        }
         match kind {
+            "agent_message_chunk" if error => {
+                self.thought = None;
+                self.error_tail = text;
+            }
             "user_message_chunk" => {
                 if let Some(text) = content_text(update.get("content")) {
                     self.user.get_or_insert_with(String::new).push_str(&text);
@@ -142,20 +200,8 @@ impl UpdateMap {
             }
             "agent_message_chunk" => {
                 self.thought = None;
-                if let Some(text) = content_text(update.get("content")) {
-                    if self.message.is_none() {
-                        let id = self.next_id("msg");
-                        self.message = Some(Segment { id, text: String::new() });
-                    }
-                    let segment = self.message.as_mut().unwrap();
-                    segment.text.push_str(&text);
-                    events.push(SessionEventBody::AgentMessage {
-                        text: segment.text.clone(),
-                        stream_id: Some(segment.id.clone()),
-                        phase: None,
-                        mode: self.mode(),
-                        dedupe_of: None,
-                    });
+                if let Some(text) = text {
+                    self.push_message(&text, &mut events);
                 }
             }
             "agent_thought_chunk" => {
@@ -470,6 +516,27 @@ impl UpdateMap {
         });
         events
     }
+}
+
+const INSTRUCTIONS_OPEN: &str = "<aiwb_instructions>\n";
+const INSTRUCTIONS_CLOSE: &str = "\n</aiwb_instructions>";
+
+/// 跟着第一条提示送给 Cursor 的工作台说明，单独一块。
+pub fn wrap_instructions(text: &str) -> String {
+    format!("{INSTRUCTIONS_OPEN}{text}{INSTRUCTIONS_CLOSE}")
+}
+
+/// 回放的用户消息里去掉工作台说明，只留用户写的。
+fn strip_instructions(text: &str) -> String {
+    match text.strip_prefix(INSTRUCTIONS_OPEN).and_then(|rest| rest.split_once(INSTRUCTIONS_CLOSE)) {
+        Some((_, user)) => user.trim_start().to_string(),
+        None => text.to_string(),
+    }
+}
+
+/// 时间线里的报错文案。
+pub fn error_message(detail: &str) -> String {
+    format!("Cursor 后端出错：{detail}")
 }
 
 fn relative(project: &Path, path: &str) -> String {

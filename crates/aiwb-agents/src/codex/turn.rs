@@ -195,6 +195,7 @@ impl Shared {
             };
         }
         self.attach_plan_mode(&mut params)?;
+        super::workbench::attach_instructions(&mut params, self.workbench_mcp.as_ref());
         self.turn_open.store(true, Ordering::SeqCst);
         if !self.write_method("turn/start", params) {
             self.turn_open.store(false, Ordering::SeqCst);

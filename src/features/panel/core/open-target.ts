@@ -36,7 +36,7 @@ export function tabIdFor(target: OpenTarget): string {
     case "diff":
       return target.id;
     case "custom":
-      return `custom:${target.type}`;
+      return target.key ? `custom:${target.type}:${target.key}` : `custom:${target.type}`;
     default:
       return "tab:unknown";
   }

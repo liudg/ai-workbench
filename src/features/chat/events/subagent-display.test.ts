@@ -5,11 +5,13 @@ import type { SessionEvent, SessionEventBody } from "../../../types/index.ts";
 import { buildTimeline } from "../timeline/timeline.ts";
 import { foldActivity } from "./activity-fold.ts";
 import {
+  subagentDetail,
   subagentElapsed,
   subagentGroupSummary,
   subagentMeta,
   subagentResultShown,
   subagentSteps,
+  subagentTimeline,
   subagentTitle,
   subagentUsage,
   type SubagentEvent,
@@ -75,8 +77,9 @@ test("group summary counts each status", () => {
     card("a", { status: "completed" }),
     card("b", { status: "running" }),
     card("c", { status: "completed" }),
-  ]);
-  assert.equal(summary, "3 个子 Agent · 1 个运行中 · 2 个完成");
+  ], "Codex");
+  assert.equal(summary, "3 个 Codex 子 Agent · 1 个运行中 · 2 个完成");
+  assert.equal(subagentGroupSummary([card("a", { status: "running" })], "Cursor"), "Cursor 子 Agent · 运行中");
 });
 
 test("adjacent cards fold into one group; thinking does not split it", () => {
@@ -108,4 +111,27 @@ test("subagent steps stay out of the main timeline and cards stay outside the fo
   assert.ok(!turn.events.some((item) => item.kind === "subagent-step"));
   assert.ok(turn.events.some((item) => item.kind === "subagent"));
   assert.equal(turn.answerId, "m");
+});
+
+test("opening a subagent shows its prompt as the first message, its steps, and the result once", () => {
+  const steps = [...(subagentSteps([
+    event("a1", 2, { kind: "subagent-step", subagent_id: "a", step: { kind: "tool-call", name: "command", summary: "echo PING" } }),
+    event("a2", 3, { kind: "subagent-step", subagent_id: "a", step: { kind: "agent-message", text: "PING" } }),
+  ]).get("a") ?? [])];
+  const done = card("a", { prompt: "Run echo PING", status: "completed", result: "PING", started_at: 1, ended_at: 9 });
+  const kinds = subagentTimeline(done, steps).map((item) => item.kind);
+  assert.deepEqual(kinds, ["user-message", "turn-anchor", "tool-call", "agent-message", "status-changed"]);
+
+  // 没有步骤时结果补成最后一句回答；还在跑时不收尾。
+  const running = card("b", { prompt: "", status: "running", result: "" });
+  assert.deepEqual(subagentTimeline(running, []).map((item) => item.kind), ["turn-anchor"]);
+  const bare = card("c", { status: "failed", result: "boom" });
+  const tail = subagentTimeline(bare, []).slice(-2);
+  assert.equal(tail[0]?.kind, "agent-message");
+  assert.deepEqual(tail[1], { ...tail[1], kind: "status-changed", status: "failed" });
+});
+
+test("a row's second line is what it is doing while running and its result after", () => {
+  assert.equal(subagentDetail(card("a", { status: "running", activity: "Read  src/a.ts", result: "x" })), "Read src/a.ts");
+  assert.equal(subagentDetail(card("a", { status: "completed", activity: "", result: "done\nnext" })), "done next");
 });

@@ -137,6 +137,11 @@ impl AgentSession for CodexCliSession {
         self.shared.write_turn_interrupt()
     }
 
+    async fn stop_subagent(&self, subagent_id: &str) -> Result<(), AgentError> {
+        self.shared.ensure_open()?;
+        self.shared.stop_subagent(subagent_id)
+    }
+
     #[cfg(test)]
     async fn discard_thread(&self) -> Result<(), AgentError> {
         let Some(thread_id) = self.shared.thread_id.lock().unwrap().clone() else {

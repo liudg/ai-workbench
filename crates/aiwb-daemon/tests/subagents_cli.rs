@@ -1,6 +1,6 @@
-//! 真实 CLI 跑 Agent 自带的子 Agent：并行派两个，卡片状态、结果、步骤要对，子 Agent 的话不进主时间线；
+//! 真实 CLI 跑 Agent 自带的子 Agent：Claude、Codex、Cursor 各并行派两个，卡片状态、结果、步骤要对，子 Agent 的话不进主时间线；
 //! Claude 再派一个后台的，主回合完了会话仍算在做，子 Agent 跑完才算完成；换一个 daemon 打开同一个库，时间线不变。
-//! 要本机装好并登录 Codex 和 Claude Code，会花一点额度：
+//! 要本机装好并登录 Codex、Claude Code 和 Cursor Agent，会花一点额度：
 //! `cargo test -p aiwb-daemon --test subagents_cli -- --ignored --nocapture --test-threads=1`
 
 use std::path::Path;
@@ -130,6 +130,13 @@ async fn claude_parallel_subagents() {
 #[ignore]
 async fn codex_parallel_subagents() {
     parallel("codex-cli", None).await;
+}
+
+/// Cursor 在 `initialize` 声明 `_meta.subagents` 后才报子 Agent。
+#[tokio::test]
+#[ignore]
+async fn cursor_parallel_subagents() {
+    parallel("cursor-agent", None).await;
 }
 
 /// Claude 后台子 Agent：主回合先完，会话仍在做；子 Agent 跑完后完成。换个 daemon 打开同一个库，卡片不变。

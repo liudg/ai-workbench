@@ -79,6 +79,10 @@ impl AgentSession for ClaudeSession {
         self.shared.interrupt()
     }
 
+    async fn stop_subagent(&self, subagent_id: &str) -> Result<(), AgentError> {
+        self.shared.stop_subagent(subagent_id)
+    }
+
     async fn answer_prompt(&self, prompt_id: &str, answer: PromptAnswer) -> Result<(), AgentError> {
         self.shared.answer_prompt(prompt_id, &answer)
     }

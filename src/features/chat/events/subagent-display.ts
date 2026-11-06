@@ -1,4 +1,4 @@
-import type { SessionEvent, SubagentStatus } from "../../../types/index.ts";
+import type { SessionEvent, SessionStatus, SubagentStatus } from "../../../types/index.ts";
 import { formatTokens } from "../../../shared/format/tokens.ts";
 
 /**
@@ -63,6 +63,44 @@ export function subagentResultShown(card: SubagentEvent, steps: readonly Session
   return result;
 }
 
+const SESSION_STATUS: Record<SubagentStatus, SessionStatus> = {
+  running: "running",
+  completed: "completed",
+  failed: "failed",
+  stopped: "stopped",
+};
+
+/** 子 Agent 的状态当成一条会话的状态，单独打开它时时间线按这个分回合。 */
+export function subagentSessionStatus(card: SubagentEvent): SessionStatus {
+  return SESSION_STATUS[card.status];
+}
+
+/**
+ * 单独打开子 Agent 时的时间线：派给它的说明当作第一条消息，接着是它自己的步骤；
+ * 卡片上另写的结果和最后一句回答不同时补在最后；结束了就收尾。照 t3code 把子 Agent 投影成子线程
+ * （`packages/provider-core/src/server/subagentProjection.ts`）。
+ */
+export function subagentTimeline(card: SubagentEvent, steps: readonly SessionEvent[]): SessionEvent[] {
+  const base = { session_id: card.session_id, seq: card.seq };
+  const start = card.started_at ?? card.ts;
+  const events: SessionEvent[] = [];
+  const prompt = card.prompt?.trim() ?? "";
+  if (prompt) {
+    events.push({ ...base, id: `${card.subagent_id}:prompt`, ts: start, kind: "user-message", text: prompt });
+  }
+  events.push({ ...base, id: `${card.subagent_id}:turn`, ts: start, kind: "turn-anchor", turn_id: card.subagent_id });
+  events.push(...steps);
+  const result = subagentResultShown(card, steps);
+  const end = card.ended_at ?? card.ts;
+  if (result) {
+    events.push({ ...base, id: `${card.subagent_id}:result`, ts: end, kind: "agent-message", text: result });
+  }
+  if (card.status !== "running") {
+    events.push({ ...base, id: `${card.subagent_id}:end`, ts: end, kind: "status-changed", status: subagentSessionStatus(card) });
+  }
+  return events;
+}
+
 /** 用量一行：`36.2K tokens · 1 次工具`。都没有时为空。 */
 export function subagentUsage(card: SubagentEvent): string {
   const parts: string[] = [];
@@ -79,10 +117,21 @@ export function summarizeSubagentStatuses(cards: readonly SubagentEvent[]): { st
   })).filter((item) => item.count > 0);
 }
 
-/** 组头：`3 个子 Agent · 2 个完成 · 1 个运行中`。 */
-export function subagentGroupSummary(cards: readonly SubagentEvent[]): string {
+/**
+ * 组头，写明是哪个 Agent 的子 Agent：一个时 `Codex 子 Agent · 运行中`，
+ * 几个时 `3 个 Codex 子 Agent · 1 个运行中 · 2 个完成`。
+ */
+export function subagentGroupSummary(cards: readonly SubagentEvent[], agentName: string): string {
+  const who = `${agentName} 子 Agent`;
+  if (cards.length === 1) return `${who} · ${SUBAGENT_STATUS_LABELS[cards[0].status]}`;
   const counts = summarizeSubagentStatuses(cards).map(
     (item) => `${item.count} 个${SUBAGENT_STATUS_LABELS[item.status]}`,
   );
-  return [`${cards.length} 个子 Agent`, ...counts].join(" · ");
+  return [`${cards.length} 个 ${who}`, ...counts].join(" · ");
+}
+
+/** 行里第二行：在跑时是它正在做什么，结束了是结果的第一句。都没有时为空。 */
+export function subagentDetail(card: SubagentEvent): string {
+  const text = card.status === "running" ? card.activity : card.result;
+  return text?.replace(/\s+/g, " ").trim() ?? "";
 }

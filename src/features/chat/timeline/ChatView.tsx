@@ -8,7 +8,6 @@ import { pendingPrompt } from "@/lib/utils";
 import { type Session, type SessionEvent } from "@/types";
 import { ChangeCard } from "../cards/ChangeCard";
 import { EventItem } from "../events/EventItem";
-import { SubagentStepsProvider } from "../events/subagent-steps";
 import { pendingQuestionEvent } from "../events/pending-question";
 import { pendingApprovalEvent } from "../events/pending-approval";
 import { pendingPlanChoice } from "../events/pending-plan-choice";
@@ -58,15 +57,13 @@ export function ChatView({
 }) {
   return (
     <ChatErrorBoundary resetKey={session.id}>
-      <SubagentStepsProvider events={events}>
-        <ChatTimeline
-          session={session}
-          events={events}
-          eventsReady={eventsReady}
-          starting={starting}
-          renderComposer={renderComposer}
-        />
-      </SubagentStepsProvider>
+      <ChatTimeline
+        session={session}
+        events={events}
+        eventsReady={eventsReady}
+        starting={starting}
+        renderComposer={renderComposer}
+      />
     </ChatErrorBoundary>
   );
 }

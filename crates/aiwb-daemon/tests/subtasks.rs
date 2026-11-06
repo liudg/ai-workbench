@@ -411,6 +411,17 @@ async fn subtasks_open_run_and_report_back_once() {
 
     let children = h.children(&parent_id).await;
     assert_eq!(children.len(), 2);
+    // 直接开出的也在父时间线里留一条，界面画成子任务行。
+    let opened: Vec<Value> = h
+        .timeline(&parent_session)
+        .await
+        .into_iter()
+        .filter(|event| event["kind"] == "subtask-offer")
+        .collect();
+    assert_eq!(opened.len(), 1, "重试不再记一条");
+    assert_eq!(opened[0]["initiation"], "user_asked");
+    assert_eq!(opened[0]["resolution"]["kind"], "accepted");
+    assert_eq!(opened[0]["resolution"]["task_ids"].as_array().unwrap().len(), 2);
     for child in &children {
         h.wait_state(child["id"].as_str().unwrap(), "done").await;
     }
@@ -626,4 +637,51 @@ async fn offer_cards_wait_for_the_user() {
 
 fn rand_id() -> String {
     uuid::Uuid::new_v4().simple().to_string()[..6].to_string()
+}
+
+/// 独立聊天也拿到工作台 MCP：子任务挂在聊天下面，用同一个文件夹，不能要工作树。
+#[tokio::test]
+async fn standalone_chats_open_subtasks_in_their_own_folder() {
+    let h = harness().await;
+    let chat = h
+        .services
+        .dispatch("tasks.create", json!({ "agent": "codex-cli", "prompt": "[hold] 开个嵌套会话做", "options": {} }))
+        .await
+        .unwrap();
+    let chat_id = chat["id"].as_str().unwrap().to_string();
+    assert!(chat["projectId"].is_null());
+    let folder = chat["workspace"]["path"].as_str().unwrap().to_string();
+    h.wait_state(&chat_id, "working").await;
+    let native = h.native_of("开个嵌套会话做");
+    let token = h.mcp_of(&native).expect("独立聊天拿到工作台 MCP").token;
+
+    let refused = h
+        .tool(
+            &token,
+            "aiwb_subtask_create",
+            json!({ "initiation": "user_asked", "subtasks": [{ "title": "x", "prompt": "y", "worktree": true }] }),
+        )
+        .await
+        .unwrap_err();
+    assert!(refused.starts_with("invalid: this chat has no git repository"), "{refused}");
+
+    let created = h
+        .tool(
+            &token,
+            "aiwb_subtask_create",
+            json!({ "initiation": "user_asked", "subtasks": [{ "title": "审查", "prompt": "审查一下", "agent": "claude-code" }] }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(created["status"], "opened");
+    let children = h.children(&chat_id).await;
+    assert_eq!(children.len(), 1);
+    let child = &children[0];
+    assert!(child["projectId"].is_null());
+    assert_eq!(child["workspace"]["kind"], "folder");
+    assert_eq!(child["workspace"]["path"], folder.as_str(), "和聊天同一个文件夹");
+    h.wait_state(child["id"].as_str().unwrap(), "done").await;
+    // 子任务自己不再拿工作台 MCP。
+    let child_native = h.native_of("审查一下");
+    assert!(h.mcp_of(&child_native).is_none());
 }

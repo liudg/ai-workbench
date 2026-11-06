@@ -115,9 +115,11 @@ impl WorkbenchServer {
         json(self.services.subtask_capabilities(&caller)?)
     }
 
-    #[tool(description = "Open one or more subtasks under your current task. Each subtask is a separate workbench task with a full agent session of its own: it may use a different agent and can get its own git worktree, and the user can open, steer or stop it from the sidebar. The call returns at once; do not wait or poll. When all your subtasks have stopped and you are idle, the workbench sends you one message with their results.
+    #[tool(description = "Open one or more subtasks under your current task. Each subtask is a separate workbench task with a full agent session of its own: it may use a different agent and can get its own git worktree, and the user can open, steer or stop it from your timeline and the sidebar. The call returns at once; do not wait or poll. When all your subtasks have stopped and you are idle, the workbench sends you one message with their results.
 
-Prefer your own built-in subagents for lightweight work. Open a subtask only when the work needs its own worktree, needs the user to be able to step in, or should be done by a different agent. Every subtask starts a full session and reloads context.
+This is the only way to have another agent (Codex, Claude, Cursor, …) do something: never run another agent's CLI (codex, claude, cursor-agent, agent, …) from the shell or a background command, since the user cannot see or steer that. Also use this, not your built-in subagents, when the user asks for a nested, separate or background session or task.
+
+Prefer your own built-in subagents for other lightweight work. Open a subtask only when the work needs its own worktree, needs the user to be able to step in, or should be done by a different agent. Every subtask starts a full session and reloads context.
 
 Subtasks do not see this conversation: write each prompt as a self-contained brief (what to do, which files, what done looks like).
 

@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import { GitBranch, Split } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -6,22 +6,28 @@ import { SessionAgentIcon } from "@/shared/agent/SessionAgentIcon";
 import type { SubtaskSpec } from "@/types";
 import { useChatHost } from "../host";
 import { offerLabels, offerState } from "./subtask-offer";
+import { SubtaskRows } from "./SubtaskRows";
 import type { EventViewProps } from "./types";
 import { agentTurnName, useAgentIdentity } from "./use-agent-identity";
 
-/** Agent 提议开的子任务：列出要开的，等用户选另开还是不开。照 Claude Code 桌面版嵌套会话的卡片。 */
+/**
+ * Agent 开的子任务。直接开的和选了「另开」的画成子任务行；还没选的是一张卡片，等用户选另开还是不开。
+ * 照 Claude Code 桌面版嵌套会话的卡片。
+ */
 export function SubtaskOfferCard({ event }: EventViewProps) {
   const subtasks = useChatHost().subtasks;
   const [busy, setBusy] = useState(false);
   if (event.kind !== "subtask-offer") return null;
   const state = offerState(event, Date.now());
+  if (event.resolution?.kind === "accepted") {
+    return <SubtaskRows taskIds={event.resolution.task_ids} specs={event.subtasks} />;
+  }
   const labels = offerLabels(event.initiation);
   const choose = (accept: boolean) => {
     if (!subtasks || busy) return;
     setBusy(true);
     void subtasks.resolveOffer(event.session_id, event.offer_id, accept).finally(() => setBusy(false));
   };
-  const opened = event.resolution?.kind === "accepted" ? event.resolution.task_ids : [];
   return (
     <div className="event-in min-w-0 px-6 py-2" data-subtask-offer={state}>
       <div className="min-w-0 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2.5">
@@ -47,23 +53,6 @@ export function SubtaskOfferCard({ event }: EventViewProps) {
           ) : null}
           {state === "expired" ? <span>已过期</span> : null}
           {state === "declined" ? <span>{labels.declined}</span> : null}
-          {state === "accepted" ? (
-            <span className="flex min-w-0 flex-wrap items-center gap-x-1">
-              <span>已另开</span>
-              {opened.map((id, index) => (
-                <Fragment key={id}>
-                  {index > 0 ? <span>、</span> : null}
-                  <button
-                    type="button"
-                    className="max-w-[16rem] truncate font-medium text-zinc-400 hover:text-zinc-200 hover:underline"
-                    onClick={() => subtasks?.open(id)}
-                  >
-                    {subtasks?.title(id) ?? "子任务"}
-                  </button>
-                </Fragment>
-              ))}
-            </span>
-          ) : null}
         </div>
       </div>
     </div>

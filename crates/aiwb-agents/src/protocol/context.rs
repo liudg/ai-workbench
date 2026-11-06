@@ -26,6 +26,18 @@ impl WorkbenchMcp {
     /// 在 Agent 里注册的服务名。工具名形如 `mcp__aiwb__…`。
     pub const SERVER_NAME: &'static str = "aiwb";
 
+    /// 拿到工作台 MCP 的会话额外收到的说明：什么时候开子任务，而不是用自带子 Agent 或 shell 跑别的 CLI。
+    /// 各适配器按自己的通道送（Codex `additionalContext`、Claude `--append-system-prompt`、Cursor 首条提示）。
+    /// 照 t3code `packages/provider-core/src/server/orchestrationInstructions.ts`。
+    pub const INSTRUCTIONS: &'static str = "## AI Workbench subtasks
+
+You run inside AI Workbench. Its MCP server `aiwb` gives you `aiwb_subtask_create`, which opens a subtask: a separate agent session the user can open, watch and steer from your timeline.
+
+- Call `aiwb_subtask_create` when the user asks for a nested, separate or background session or task (\"开个嵌套会话\", \"另开一个会话\", \"后台做\"), or names another agent (Codex, Claude, Cursor) to do something such as a review. Do not use your built-in subagents for that.
+- \"Subagent\" (\"子 Agent\") and \"in parallel\" without another agent named mean your own built-in subagents: use your native subagent tool, not `aiwb_subtask_create`.
+- Never run another agent's CLI (codex, claude, cursor-agent, agent) from the shell or a background command.
+- After opening subtasks, end your turn. Their results come back to you as a message; do not poll.";
+
     pub fn authorization(&self) -> String {
         format!("Bearer {}", self.token)
     }

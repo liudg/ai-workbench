@@ -2,6 +2,7 @@
 
 import { createContext, useContext, type ReactNode } from "react";
 
+import type { Attention } from "@/shared/attention";
 import type { TextSnippetDraft } from "@/shared/text-snippet";
 import type { AgentKind, AgentProfile, PromptAnswer } from "@/types";
 
@@ -20,12 +21,27 @@ export interface ChatHost {
   agentOf?: (sessionId: string) => AgentKind | undefined;
   /** 子任务的标题和跳转、开子任务卡片的选择。不支持的宿主不给，卡片就不能点。 */
   subtasks?: SubtaskHost;
+  /** 打开 Agent 自带子 Agent 的视图。不支持的宿主不给，子 Agent 的行就不能点。 */
+  openSubagent?: (sessionId: string, subagentId: string) => void;
+}
+
+/** 时间线里一行子任务要画的。 */
+export interface SubtaskView {
+  title: string;
+  agent: AgentKind;
+  attention: Attention;
+  /** 现在这一回合开始的时间（毫秒），运行中时用来计时。 */
+  since: number;
 }
 
 export interface SubtaskHost {
   /** 任务列表里还没有它时没有。 */
   title(taskId: string): string | undefined;
+  /** 子任务现在的样子，跟着任务列表变。任务列表里还没有它时没有。 */
+  useSubtask(taskId: string): SubtaskView | undefined;
   open(taskId: string): void;
+  /** 放到右侧面板，和现在的会话并排看。 */
+  openBeside(taskId: string): void;
   /** 失败时宿主自己报错，卡片重新可点。 */
   resolveOffer(sessionId: string, offerId: string, accept: boolean): Promise<void>;
 }

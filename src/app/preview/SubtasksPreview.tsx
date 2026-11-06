@@ -1,4 +1,4 @@
-import type { SubtaskHost } from "@/features/chat/host";
+import type { SubtaskHost, SubtaskView } from "@/features/chat/host";
 import type { Session, SessionEvent, SessionEventBody } from "@/types";
 import { PreviewSession } from "./PreviewSession";
 
@@ -21,8 +21,33 @@ function event(id: string, seq: number, body: SessionEventBody): SessionEvent {
 
 const TITLES: Record<string, string> = { "sub-write": "改登录页文案", "sub-test": "补登录页测试" };
 
+const VIEWS: Record<string, SubtaskView> = {
+  "sub-write": {
+    title: TITLES["sub-write"],
+    agent: "codex-cli",
+    attention: { state: "working", unread: false, preview: "正在改 src/login/copy.ts", updatedAt: Date.now() },
+    since: Date.now() - 95_000,
+  },
+  "sub-test": {
+    title: TITLES["sub-test"],
+    agent: "claude-code",
+    attention: { state: "needs-input", ask: "approval", unread: true, preview: "要运行 pnpm test", updatedAt: Date.now() },
+    since: Date.now() - 30_000,
+  },
+};
+
 const events: SessionEvent[] = [
   event("u1", 1, { kind: "user-message", text: "把登录页文案改了，另开两个子任务并行做，测试交给 Claude。" }),
+  event("x1", 2, {
+    kind: "subtask-offer",
+    offer_id: "opened-1",
+    initiation: "user_asked",
+    subtasks: [
+      { agent: "codex-cli", title: "改登录页文案", prompt: "把登录页三处文案换成新版。" },
+      { agent: "claude-code", title: "补登录页测试", prompt: "给登录页补上表单校验的测试。" },
+    ],
+    resolution: { kind: "accepted", task_ids: ["sub-write", "sub-test"] },
+  }),
   event("a1", 2, { kind: "agent-message", text: "已开出两个子任务，跑完我再看结果。", phase: "final-answer" }),
   event("s1", 3, { kind: "status-changed", status: "completed" }),
   event("r1", 4, {
@@ -51,7 +76,9 @@ const events: SessionEvent[] = [
 
 const SUBTASKS: SubtaskHost = {
   title: (taskId) => TITLES[taskId],
+  useSubtask: (taskId) => VIEWS[taskId],
   open: () => {},
+  openBeside: () => {},
   resolveOffer: async () => {},
 };
 

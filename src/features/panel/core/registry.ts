@@ -10,7 +10,8 @@ export type OpenTarget =
   | { kind: "file"; path: string; line: number | null; viewerId?: string }
   | { kind: "blocked"; href: string; line: number | null; message: string }
   | { kind: "diff"; id: string; title: string; files: FileChange[] }
-  | { kind: "custom"; type: string; data?: unknown };
+  /** `key` 区分同一种标签的几个实例（比如不同的子任务），不给时这种标签只开一个。 */
+  | { kind: "custom"; type: string; key?: string; data?: unknown };
 
 export interface ViewerContext {
   projectId: string;

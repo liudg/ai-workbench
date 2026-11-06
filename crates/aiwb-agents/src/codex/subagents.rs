@@ -5,8 +5,11 @@
 //! `collabAgentToolCall` 是派发、等待、发消息、关闭这些协作调用（带 `receiverThreadIds`、`prompt`、
 //! `agentsStates`）。子线程自己的 `item/*`、`turn/*` 通知也从这条连接来，`threadId` 是子线程，
 //! 不能进主时间线。卡片以子线程 id 为准。实测 codex-cli 0.165.0（2026-11-04）。
+//!
+//! 子线程的通知可能比主线程的 `subAgentActivity started` 先到（2026-11-05 实测：子线程的
+//! `thread/status/changed` 早 1ms），认不出来的先存在 [`Foreign`] 里，卡片出现时再补上。
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 use serde_json::{json, Value};
 
@@ -158,8 +161,43 @@ pub(super) fn cards_from_turns(turns: &[Value]) -> Vec<SubagentCard> {
     order.into_iter().filter_map(|id| cards.remove(&id)).collect()
 }
 
+/// 存着的别的线程的通知。最多存这么多条线程、每条这么多通知，再多就丢最早的。
+const FOREIGN_THREADS: usize = 16;
+const FOREIGN_PER_THREAD: usize = 256;
+
+#[derive(Default)]
+pub(super) struct Foreign {
+    threads: VecDeque<(String, Vec<(String, Value)>)>,
+}
+
+impl Foreign {
+    fn keep(&mut self, thread: &str, method: &str, params: &Value) {
+        let slot = match self.threads.iter().position(|(id, _)| id == thread) {
+            Some(index) => index,
+            None => {
+                if self.threads.len() >= FOREIGN_THREADS {
+                    self.threads.pop_front();
+                }
+                self.threads.push_back((thread.to_string(), Vec::new()));
+                self.threads.len() - 1
+            }
+        };
+        let list = &mut self.threads[slot].1;
+        if list.len() < FOREIGN_PER_THREAD {
+            list.push((method.to_string(), params.clone()));
+        }
+    }
+
+    fn take(&mut self, thread: &str) -> Vec<(String, Value)> {
+        match self.threads.iter().position(|(id, _)| id == thread) {
+            Some(index) => self.threads.remove(index).map(|(_, list)| list).unwrap_or_default(),
+            None => Vec::new(),
+        }
+    }
+}
+
 impl Shared {
-    /// 不是本会话线程的通知。已知的子线程归到它的卡片下面，别的线程直接丢掉。
+    /// 不是本会话线程的通知。已知的子线程归到它的卡片下面，认不出来的先存着。
     /// 还没有自己的线程 id 时不拦。
     pub(super) fn route_foreign_thread(&self, method: &str, params: &Value) -> bool {
         let Some(thread) = params.get("threadId").and_then(Value::as_str) else {
@@ -171,24 +209,53 @@ impl Shared {
         }
         if self.subagents.lock().unwrap().contains_key(thread) {
             self.on_subagent_thread(thread, method, params);
+        } else {
+            self.foreign.lock().unwrap().keep(thread, method, params);
         }
         true
     }
 
-    /// 主线程上的子 Agent item。是的话发卡片并返回 true。
+    /// 主线程上的子 Agent item。是的话发卡片并返回 true。新认出来的子线程补上它先到的通知。
     pub(super) fn on_subagent_item(&self, item: &Value) -> bool {
         let changed = apply_item(&mut self.subagents.lock().unwrap(), item, Some(now_millis()));
         let Some(changed) = changed else {
             return false;
         };
+        let mut threads = Vec::new();
         for body in changed {
+            if let SessionEventBody::Subagent(card) = &body {
+                threads.push(card.subagent_id.clone());
+            }
             emit(&self.events, body);
+        }
+        for thread in threads {
+            let early = self.foreign.lock().unwrap().take(&thread);
+            for (method, params) in early {
+                self.on_subagent_thread(&thread, &method, &params);
+            }
         }
         true
     }
 
+    /// 单独停一个子 Agent：打断子线程正在跑的回合。
+    pub(super) fn stop_subagent(&self, thread: &str) -> Result<(), crate::AgentError> {
+        let turn = self.subagent_turns.lock().unwrap().get(thread).cloned();
+        let Some(turn) = turn else {
+            return Err(crate::AgentError::Runtime("这个子 Agent 没有在跑".into()));
+        };
+        if !self.write_method("turn/interrupt", json!({ "threadId": thread, "turnId": turn })) {
+            return Err(crate::AgentError::Runtime("无法向 Codex CLI 写入消息".into()));
+        }
+        Ok(())
+    }
+
     fn on_subagent_thread(&self, thread: &str, method: &str, params: &Value) {
         match method {
+            "turn/started" => {
+                if let Some(turn) = params.pointer("/turn/id").and_then(Value::as_str) {
+                    self.subagent_turns.lock().unwrap().insert(thread.to_string(), turn.to_string());
+                }
+            }
             "item/started" | "item/completed" => {
                 let completed = method == "item/completed";
                 let Some(item) = params.get("item") else { return };
@@ -207,6 +274,7 @@ impl Shared {
                 );
             }
             "turn/completed" => {
+                self.subagent_turns.lock().unwrap().remove(thread);
                 let status = match params.pointer("/turn/status").and_then(Value::as_str) {
                     Some("failed") => SubagentStatus::Failed,
                     Some("interrupted") => SubagentStatus::Stopped,
@@ -407,6 +475,40 @@ mod tests {
         assert_eq!(card.status, SubagentStatus::Completed);
         assert_eq!(card.result, "PING");
         assert_eq!(card.model.as_deref(), Some("gpt-6-astra"), "结束那条没带模型，不清掉");
+    }
+
+    /// 子线程的通知比主线程的 `subAgentActivity started` 先到（2026-11-05 实录里 `thread/status/changed`
+    /// 早 1ms）：先存着，卡片出现时补上，不丢步骤；之后能按子线程的回合单独停它。
+    #[test]
+    fn early_child_notifications_are_kept_until_the_card_appears() {
+        let (events_tx, mut events) = tokio::sync::mpsc::unbounded_channel();
+        let (out_tx, mut out) = tokio::sync::mpsc::unbounded_channel();
+        let shared = Shared::for_test(events_tx, out_tx);
+        *shared.thread_id.lock().unwrap() = Some(MAIN.into());
+        shared.handle_notification(
+            "turn/started",
+            &json!({ "threadId": PING, "turn": { "id": "turn-ping", "status": "inProgress" } }),
+        );
+        shared.handle_notification(
+            "item/completed",
+            &json!({ "threadId": PING, "turnId": "turn-ping", "item": {
+                "type": "agentMessage", "id": "msg_p", "text": "PING", "phase": "final_answer"
+            }}),
+        );
+        assert!(drain(&mut events).is_empty(), "还认不出来时什么都不发");
+        shared.handle_notification("item/started", &activity("started", "call_3e8a"));
+        let bodies = drain(&mut events);
+        assert!(matches!(bodies.first(), Some(SessionEventBody::Subagent(card)) if card.subagent_id == PING), "{bodies:?}");
+        assert!(bodies.iter().any(|body| matches!(body,
+            SessionEventBody::SubagentStep { subagent_id, step } if subagent_id == PING
+                && matches!(&**step, SessionEventBody::AgentMessage { text, .. } if text == "PING"))));
+
+        while out.try_recv().is_ok() {}
+        shared.stop_subagent(PING).unwrap();
+        let sent: Value = serde_json::from_str(&out.try_recv().expect("写出了打断")).unwrap();
+        assert_eq!(sent["method"], "turn/interrupt");
+        assert_eq!(sent["params"]["threadId"], PING);
+        assert_eq!(sent["params"]["turnId"], "turn-ping");
     }
 
     /// 没登记过的别的线程直接丢掉；本会话自己的照常处理。

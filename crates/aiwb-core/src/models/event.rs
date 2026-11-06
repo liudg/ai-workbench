@@ -593,7 +593,8 @@ pub enum SessionEventBody {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         cache_write_tokens: Option<i64>,
     },
-    /// Agent 提议开子任务，等用户在卡片上选。用户选过之后同一条改写成带 `resolution` 的。
+    /// Agent 开的子任务。`user_asked` 直接开出，记下时就带着 `Accepted`；另外两种先等用户在卡片上选，
+    /// 用户选过之后同一条改写成带 `resolution` 的。
     SubtaskOffer {
         offer_id: String,
         initiation: Initiation,

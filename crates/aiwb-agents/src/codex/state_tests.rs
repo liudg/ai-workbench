@@ -33,3 +33,22 @@ fn occupied_after_open_announces_immediately() {
     assert!(occupancy.block());
     assert!(!occupancy.block());
 }
+
+/// 空闲时关进程（daemon 退出、空闲回收）不把完成的会话改成已停止；回合还开着时才记停止。
+#[test]
+fn stopping_an_idle_session_keeps_its_status() {
+    use aiwb_core::models::{SessionEventBody, SessionStatus};
+    use std::sync::atomic::Ordering;
+
+    let stopped = |open: bool| {
+        let (events_tx, mut events) = tokio::sync::mpsc::unbounded_channel();
+        let (out_tx, _out) = tokio::sync::mpsc::unbounded_channel();
+        let shared = Shared::for_test(events_tx, out_tx);
+        shared.turn_open.store(open, Ordering::SeqCst);
+        shared.stop();
+        std::iter::from_fn(|| events.try_recv().ok())
+            .any(|body| matches!(body, SessionEventBody::StatusChanged { status: SessionStatus::Stopped }))
+    };
+    assert!(!stopped(false));
+    assert!(stopped(true));
+}

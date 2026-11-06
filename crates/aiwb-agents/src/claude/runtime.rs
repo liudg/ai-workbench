@@ -505,6 +505,23 @@ impl Shared {
         Ok(())
     }
 
+    /// `stop_task` 认的是 `task_started` 报的任务 id，卡片 id 是派它的工具调用 id，按记下的对应关系找。
+    pub fn stop_subagent(&self, subagent_id: &str) -> Result<(), AgentError> {
+        if self.closed.load(Ordering::SeqCst) {
+            return Err(AgentError::Closed);
+        }
+        let task = self
+            .map
+            .lock()
+            .unwrap()
+            .subagent_tasks
+            .iter()
+            .find(|(_, card)| card.as_str() == subagent_id)
+            .map(|(task, _)| task.clone())
+            .ok_or_else(|| AgentError::Runtime("这个子 Agent 没有在跑".into()))?;
+        self.enqueue(json!({ "subtype": "stop_task", "task_id": task }), None)
+    }
+
     pub fn current_access(&self) -> String {
         self.access_mode.lock().unwrap().clone()
     }
