@@ -1,8 +1,7 @@
 //! `agent acp` 进程和一条 ACP 会话。
 //!
 //! 启动顺序：`initialize` → `cursor/list_available_models` → `session/new` 或 `session/load`。
-//! 几个 `agent acp` 同时起时，Cursor 的 `ensureSharedServices`（`3635.index.js`）会互相撞上，
-//! 报 `Failed to initialize ACP services`。失败不缓存，所以本进程里排队握手，撞上了再重试。
+//! 冷启动要联网取模型目录，本进程里排队握手。取不到时怎么重试见 [`super::retry`]。
 //! 只探模型目录（不 `persist`、不 resume）时不建会话，免得在 `~/.cursor/acp-sessions` 留下空会话。
 //! `session/load` 先把整段历史以 `session/update` 推完再回包；宿主已有时间线（`skip_history`）时丢掉这些推送。
 //!
@@ -10,7 +9,7 @@
 //! 「完全访问」不靠 `--force` 重启进程：审批请求到了就替用户选「允许一次」，中途切换档位立刻生效。
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
@@ -22,8 +21,9 @@ use tokio::sync::mpsc;
 
 use super::catalog::{self, ModelConfig, FAST_CONFIG, FAST_TIER, MODEL_CONFIG};
 use super::directory;
-use super::process;
+use super::process::{self, Launcher};
 use super::prompts::{self, Pending};
+use super::retry::{self, Miss};
 use super::rpc::{self, Incoming, Rpc, RpcError};
 use super::subagents::Subagents;
 use super::updates::UpdateMap;
@@ -34,8 +34,6 @@ use aiwb_core::models::{AgentCatalog, PromptAnswer, SessionEventBody, SessionSta
 const STDERR_CAP: usize = 4000;
 const HANDSHAKE: Duration = Duration::from_secs(60);
 const SETTING: Duration = Duration::from_secs(30);
-const SERVICES_RETRIES: u32 = 3;
-const SERVICES_BACKOFF: Duration = Duration::from_millis(500);
 
 /// 同一时刻只让一个 `agent acp` 走初始化。
 fn startup_gate() -> &'static tokio::sync::Mutex<()> {
@@ -43,7 +41,7 @@ fn startup_gate() -> &'static tokio::sync::Mutex<()> {
     GATE.get_or_init(|| tokio::sync::Mutex::new(()))
 }
 
-pub fn services_race(err: &RpcError) -> bool {
+pub fn services_unavailable(err: &RpcError) -> bool {
     err.code == rpc::INTERNAL_ERROR && err.message.contains("Failed to initialize ACP services")
 }
 
@@ -114,7 +112,26 @@ pub async fn open(options: Open, events: EventSink) -> Result<Arc<Shared>, Agent
         }
     }
     let launcher = process::resolve()?;
-    let mut child = process::spawn(&launcher, &project)?;
+    let shared = retry::with_restarts(|| launch(&launcher, &project, &options, &events)).await?;
+    let mcp_servers = mcp_servers(options.workbench_mcp.as_ref());
+    let opened = shared
+        .startup(resume, options.persist, options.replay_history, mcp_servers)
+        .await;
+    if let Err(err) = opened {
+        shared.shutdown();
+        return Err(err);
+    }
+    Ok(shared)
+}
+
+/// 起一个 `agent acp`，握手并取到模型目录。没取到就关掉这个进程。
+async fn launch(
+    launcher: &Launcher,
+    project: &Path,
+    options: &Open,
+    events: &EventSink,
+) -> Result<Arc<Shared>, Miss> {
+    let mut child = process::spawn(launcher, project)?;
     let stdin = child
         .stdin
         .take()
@@ -133,10 +150,10 @@ pub async fn open(options: Open, events: EventSink) -> Result<Arc<Shared>, Agent
         _ => "ask",
     };
     let shared = Arc::new(Shared {
-        events,
-        map: Mutex::new(UpdateMap::new(&project)),
-        subagents: Mutex::new(Subagents::new(&project)),
-        project,
+        events: events.clone(),
+        map: Mutex::new(UpdateMap::new(project)),
+        subagents: Mutex::new(Subagents::new(project)),
+        project: project.to_path_buf(),
         rpc: Rpc::new(tx),
         child: Mutex::new(Some(child)),
         stderr: Arc::new(Mutex::new(String::new())),
@@ -155,15 +172,20 @@ pub async fn open(options: Open, events: EventSink) -> Result<Arc<Shared>, Agent
         instructions: Mutex::new(options.workbench_mcp.as_ref().map(|_| WorkbenchMcp::INSTRUCTIONS)),
     });
     start_io(&shared, stdin, stdout, stderr, rx);
-    let mcp_servers = mcp_servers(options.workbench_mcp.as_ref());
-    let opened = shared
-        .startup(resume, options.persist, options.replay_history, mcp_servers)
-        .await;
-    if let Err(err) = opened {
-        shared.shutdown();
-        return Err(err);
+    let models = {
+        let _gate = startup_gate().lock().await;
+        shared.handshake().await
+    };
+    match models {
+        Ok(models) => {
+            catalog::apply_model_list(&mut shared.catalog.lock().unwrap(), &models);
+            Ok(shared)
+        }
+        Err(miss) => {
+            shared.shutdown_and_wait().await;
+            Err(miss)
+        }
     }
-    Ok(shared)
 }
 
 fn start_io(
@@ -245,14 +267,7 @@ impl Shared {
         }
     }
 
-    async fn startup(
-        &self,
-        resume: Option<String>,
-        persist: bool,
-        replay_history: bool,
-        mcp_servers: Value,
-    ) -> Result<(), AgentError> {
-        let gate = startup_gate().lock().await;
+    async fn handshake(&self) -> Result<Value, Miss> {
         self.call(
             "initialize",
             json!({
@@ -267,9 +282,35 @@ impl Shared {
             Some(HANDSHAKE),
         )
         .await?;
-        let models = self.list_models().await?;
-        drop(gate);
-        catalog::apply_model_list(&mut self.catalog.lock().unwrap(), &models);
+        retry::refetch(|| self.fetch_models()).await
+    }
+
+    async fn fetch_models(&self) -> Result<Value, Miss> {
+        const METHOD: &str = "cursor/list_available_models";
+        let reply = tokio::time::timeout(HANDSHAKE, self.rpc.request(METHOD, json!({}), None));
+        let Ok(result) = reply.await else {
+            return Err(Miss::Stalled);
+        };
+        if let Ok(Err(err)) = &result {
+            if services_unavailable(err) {
+                return Err(Miss::Services(err.message.clone()));
+            }
+        }
+        let models = self.settle(METHOD, result)?;
+        if catalog::has_models(&models) {
+            Ok(models)
+        } else {
+            Err(Miss::Empty)
+        }
+    }
+
+    async fn startup(
+        &self,
+        resume: Option<String>,
+        persist: bool,
+        replay_history: bool,
+        mcp_servers: Value,
+    ) -> Result<(), AgentError> {
         let cwd = self.project.to_string_lossy().to_string();
         // 没发过消息的会话只有 meta.json，`session/load` 认不出来。里面没有历史，换一个新会话。
         let placeholder = resume.as_deref().filter(|id| directory::is_placeholder(id)).map(str::to_string);
@@ -313,22 +354,6 @@ impl Shared {
             status: SessionStatus::Completed,
         });
         Ok(())
-    }
-
-    async fn list_models(&self) -> Result<Value, AgentError> {
-        const METHOD: &str = "cursor/list_available_models";
-        let mut attempt = 0;
-        loop {
-            let result = self.rpc.request(METHOD, json!({}), Some(HANDSHAKE)).await;
-            if let Ok(Err(err)) = &result {
-                if services_race(err) && attempt < SERVICES_RETRIES {
-                    attempt += 1;
-                    tokio::time::sleep(SERVICES_BACKOFF * attempt).await;
-                    continue;
-                }
-            }
-            return self.settle(METHOD, result);
-        }
     }
 
     /// `session/new` / `session/load` 回包里的模式和模型参数。

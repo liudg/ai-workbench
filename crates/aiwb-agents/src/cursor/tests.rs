@@ -2,15 +2,21 @@
 
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
 
 use serde_json::{json, Value};
+use tokio::time::Instant;
 
 use super::catalog;
+use super::directory;
 use super::process::version_key;
 use super::prompts::{self, Pending};
+use super::retry::{self, Miss};
 use super::rpc::RpcError;
-use super::runtime::services_race;
+use super::runtime::{self, services_unavailable};
 use super::updates::UpdateMap;
+use crate::AgentError;
 use aiwb_core::models::{
     FileStatus, PromptAnswer, PromptKind, SessionEventBody, SessionStatus, ToolStatus,
 };
@@ -27,19 +33,141 @@ fn apply_all(map: &mut UpdateMap, updates: &[Value]) -> Vec<SessionEventBody> {
     updates.iter().flat_map(|update| map.apply(update)).collect()
 }
 
-/// 同时起几个 `agent acp` 时 `cursor/list_available_models` 的实际回包。
+/// 服务初始化时断网，`cursor/list_available_models` 的实际回包。
 #[test]
-fn concurrent_startup_error_is_retried_but_auth_is_not() {
-    let race = RpcError::from_value(&json!({
+fn services_error_is_retried_but_auth_is_not() {
+    let services = RpcError::from_value(&json!({
         "code": -32603,
         "message": "Internal error",
         "data": {"message": "Failed to initialize ACP services"}
     }));
-    assert!(services_race(&race));
+    assert!(services_unavailable(&services));
     let other = RpcError::from_value(&json!({"code": -32603, "message": "Internal error"}));
-    assert!(!services_race(&other));
+    assert!(!services_unavailable(&other));
     let auth = RpcError::from_value(&json!({"code": -32000, "message": "Authentication required"}));
-    assert!(!services_race(&auth));
+    assert!(!services_unavailable(&auth));
+}
+
+#[test]
+fn an_empty_or_blank_model_list_does_not_count() {
+    assert!(catalog::has_models(&json!({"models":[{"value":"gpt-5.5","name":"GPT-5.5"}]})));
+    assert!(!catalog::has_models(&json!({"models":[]})));
+    assert!(!catalog::has_models(&json!({"models":[{"value":"  "}]})));
+    assert!(!catalog::has_models(&json!({})));
+}
+
+/// 按顺序吐出 `script` 里的结果，返回 `(结果, 调用次数)`。
+fn scripted(script: Vec<Result<&'static str, Miss>>) -> (impl FnMut() -> std::future::Ready<Result<&'static str, Miss>>, Arc<AtomicU32>) {
+    let calls = Arc::new(AtomicU32::new(0));
+    let counter = calls.clone();
+    let mut script = script.into_iter();
+    let next = move || {
+        counter.fetch_add(1, Ordering::SeqCst);
+        std::future::ready(script.next().expect("多取了一次"))
+    };
+    (next, calls)
+}
+
+#[tokio::test(start_paused = true)]
+async fn empty_replies_are_fetched_again_in_the_same_process() {
+    let (fetch, calls) = scripted(vec![
+        Err(Miss::Empty),
+        Err(Miss::Services("Failed to initialize ACP services".into())),
+        Ok("models"),
+    ]);
+    let started = Instant::now();
+    assert_eq!(retry::refetch(fetch).await.unwrap(), "models");
+    assert_eq!(calls.load(Ordering::SeqCst), 3);
+    assert_eq!(started.elapsed(), retry::REFETCH_WAIT * 3);
+}
+
+#[tokio::test(start_paused = true)]
+async fn refetching_stops_at_the_limit() {
+    let script = (0..=retry::REFETCHES).map(|_| Err(Miss::Empty)).collect();
+    let (fetch, calls) = scripted(script);
+    assert!(matches!(retry::refetch(fetch).await, Err(Miss::Empty)));
+    assert_eq!(calls.load(Ordering::SeqCst), retry::REFETCHES + 1);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_stalled_process_is_not_asked_again() {
+    let (fetch, calls) = scripted(vec![Err(Miss::Stalled)]);
+    assert!(matches!(retry::refetch(fetch).await, Err(Miss::Stalled)));
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_new_process_recovers_from_a_stall() {
+    let (launch, calls) = scripted(vec![Err(Miss::Stalled), Ok("session")]);
+    assert_eq!(retry::with_restarts(launch).await.unwrap(), "session");
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test(start_paused = true)]
+async fn restarts_stop_at_the_limit_with_a_clear_error() {
+    let script = (0..retry::PROCESSES).map(|_| Err(Miss::Stalled)).collect();
+    let (launch, calls) = scripted(script);
+    let message = retry::with_restarts(launch).await.unwrap_err().to_string();
+    assert_eq!(calls.load(Ordering::SeqCst), retry::PROCESSES);
+    assert!(message.contains("cursor/list_available_models 一直没有回应"), "{message}");
+    assert!(message.contains("请检查网络或代理"), "{message}");
+
+    let script = (0..retry::PROCESSES).map(|_| Err(Miss::Empty)).collect();
+    let (launch, _) = scripted(script);
+    let message = retry::with_restarts(launch).await.unwrap_err().to_string();
+    assert!(message.contains("回复一直是空的"), "{message}");
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_fatal_error_is_reported_without_restarting() {
+    let login = "Cursor Agent 还没有登录。请在终端运行 `agent login` 后再试。";
+    let (launch, calls) = scripted(vec![Err(Miss::Fatal(AgentError::Runtime(login.into())))]);
+    let message = retry::with_restarts(launch).await.unwrap_err().to_string();
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert!(message.contains(login), "{message}");
+}
+
+/// 连起十次会话，每次都要拿到模型目录。`HTTPS_PROXY` 指向故障代理就能验证重试。
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "calls the local Cursor Agent CLI"]
+async fn cold_starts_always_get_the_model_catalog() {
+    let project = std::env::temp_dir().join(format!("aiwb-cursor-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&project).unwrap();
+    let mut failures = Vec::new();
+    for round in 1..=10 {
+        let started = std::time::Instant::now();
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let opened = runtime::open(
+            runtime::Open {
+                project_path: project.to_string_lossy().to_string(),
+                access_mode: None,
+                resume: None,
+                persist: true,
+                replay_history: true,
+                workbench_mcp: None,
+            },
+            tx,
+        )
+        .await;
+        match opened {
+            Ok(shared) => {
+                let models = shared.catalog.lock().unwrap().models.len();
+                println!("#{round} models={models} {:?}", started.elapsed());
+                if models == 0 {
+                    failures.push(format!("#{round} 模型目录是空的"));
+                }
+                shared.shutdown_and_wait().await;
+                let id = shared.session_id().expect("persist 时有会话 id");
+                directory::remove(&id).unwrap();
+            }
+            Err(err) => {
+                println!("#{round} {err} {:?}", started.elapsed());
+                failures.push(format!("#{round} {err}"));
+            }
+        }
+    }
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(failures.is_empty(), "{failures:?}");
 }
 
 #[test]

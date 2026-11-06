@@ -157,7 +157,7 @@
 另查了 ACP 有没有对应 Cursor SDK `enableAgentRetries` 的开关：没有。print 和交互模式按动作类型打开重试，ACP 的 `session/prompt` 请求里不带这个字段，可重试的后端错误在 ACP 里不重试。
 
 ## 后续
-- Cursor 冷启动时 `cursor/list_available_models` 偶尔回空列表（作曲栏显示「暂无模型」）或 60 秒不回（会话起不来，记「Cursor Agent 没有回应 cursor/list_available_models」）。真实 CLI 测试里约十次启动遇到两次，重跑就过；不声明 `_meta.subagents` 也复现，和这次的改动无关。适配器可以在回空或超时时重开进程再试。
+- 验收时遇到的 Cursor 冷启动取不到模型目录（回空或 60 秒不回）已修：原因是网络抖动，和子 Agent、MCP 无关。适配器现在同一进程再取、卡住就换进程，到上限报清楚的错误（`crates/aiwb-agents/src/cursor/retry.rs`）。
 
 ## 已定（2026-11-05）
 1. 原生子 Agent 改成点开单独视图（P1 第 6 条），替掉现在的原地展开。
