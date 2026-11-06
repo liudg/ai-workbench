@@ -94,7 +94,7 @@ pub(crate) struct PinTask {
 
 #[derive(Deserialize)]
 pub(crate) struct TaskId {
-    id: String,
+    pub(super) id: String,
 }
 
 #[derive(Deserialize)]

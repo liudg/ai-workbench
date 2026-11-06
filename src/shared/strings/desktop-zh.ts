@@ -91,6 +91,8 @@ export const DESKTOP_ZH = {
   noFileChanges: "没有文件变更",
   noFileMatch: "没有匹配的文件",
   closeTab: "关闭",
+  closeOtherTabs: "关闭其他标签页",
+  closeAllTabs: "关闭所有标签页",
   imagePreviewClose: "关闭图片预览",
   imagePreviewPrevious: "上一张",
   imagePreviewNext: "下一张",

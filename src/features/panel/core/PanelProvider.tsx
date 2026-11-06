@@ -99,15 +99,15 @@ interface PanelApi {
   changes: ChangeCapabilities | undefined;
   selectTab: (id: string) => void;
   closeTab: (id: string) => void;
-  openDiff: (id: string, title: string, files: FileChange[]) => void;
+  openDiff: (id: string, title: string, files: FileChange[], focusPath?: string) => void;
   openHref: (href: string, line?: number) => void;
   openBlank: () => void;
-  openFiles: () => void;
-  openTerminal: () => void;
+  openFiles: (replaceTabId?: string) => void;
+  openTerminal: (replaceTabId?: string) => void;
   /** 打开终端并执行命令。终端还没开好时先排着。 */
   runInTerminal: (command: string) => void;
   /** 打开或聚焦侧边聊天。这个会话开不了时为 null。 */
-  openSideChat: (() => void) | null;
+  openSideChat: ((replaceTabId?: string) => void) | null;
   projectPath: string;
   sessionTitle: string;
   agent: AgentKind | null;
@@ -211,8 +211,8 @@ export function PanelHost({
     [sessionId, state],
   );
   const openDiff = useCallback(
-    (id: string, title: string, files: FileChange[]) => {
-      state.get().panelOpenDiff(sessionId, id, title, files);
+    (id: string, title: string, files: FileChange[], focusPath?: string) => {
+      state.get().panelOpenDiff(sessionId, id, title, files, focusPath);
     },
     [sessionId, state],
   );
@@ -232,11 +232,11 @@ export function PanelHost({
   const openBlank = useCallback(() => {
     state.get().panelOpenBlank(sessionId);
   }, [sessionId, state]);
-  const openFiles = useCallback(() => {
-    state.get().panelOpenFiles(sessionId);
+  const openFiles = useCallback((replaceTabId?: string) => {
+    state.get().panelOpenFiles(sessionId, replaceTabId);
   }, [sessionId, state]);
-  const openTerminal = useCallback(() => {
-    state.get().panelOpenTerminal(sessionId);
+  const openTerminal = useCallback((replaceTabId?: string) => {
+    state.get().panelOpenTerminal(sessionId, replaceTabId);
   }, [sessionId, state]);
   const runInTerminal = useCallback(
     (command: string) => {
@@ -246,7 +246,7 @@ export function PanelHost({
     [sessionId, state],
   );
   const openSideChat = useMemo(
-    () => (sideChat ? () => void state.get().panelOpenTarget(sessionId, sideChat, emptyCtx()) : null),
+    () => (sideChat ? (replaceTabId?: string) => void state.get().panelOpenTarget(sessionId, sideChat, emptyCtx(), replaceTabId) : null),
     [sessionId, sideChat, state],
   );
   const hidePanel = useCallback(() => {

@@ -13,7 +13,7 @@ interface Tool {
 }
 
 /** 内置浏览器空白页。只留已接通的工具。 */
-export function NewTabPage() {
+export function NewTabPage({ tabId }: { tabId: string }) {
   const { openFiles, openTerminal, openSideChat } = usePanel();
   const tools: Tool[] = [
     {
@@ -21,7 +21,7 @@ export function NewTabPage() {
       label: DESKTOP_ZH.browserToolFile,
       shortcut: DESKTOP_ZH.browserToolFileShortcut,
       icon: File,
-      open: openFiles,
+      open: () => openFiles(tabId),
     },
   ];
   if (openSideChat) {
@@ -30,7 +30,7 @@ export function NewTabPage() {
       label: DESKTOP_ZH.sideChat,
       shortcut: DESKTOP_ZH.sideChatShortcut,
       icon: MessageCirclePlus,
-      open: openSideChat,
+      open: () => openSideChat(tabId),
     });
   }
   tools.push({
@@ -38,7 +38,7 @@ export function NewTabPage() {
     label: DESKTOP_ZH.terminal,
     shortcut: DESKTOP_ZH.terminalShortcut,
     icon: SquareTerminal,
-    open: openTerminal,
+    open: () => openTerminal(tabId),
   });
   return (
     <div data-new-tab-page className="h-full overflow-auto bg-zinc-950 px-6 py-8">

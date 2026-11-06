@@ -81,6 +81,11 @@ export function SessionRow({
       row.toggleArchived();
       return;
     }
+    if (action === "copy-markdown" || action === "copy-workdir") {
+      row.copy(action === "copy-markdown" ? "markdown" : "workdir");
+      return;
+    }
+    if (action !== "delete") return;
     setDeleteError(null);
     setDeletePreview(null);
     void row.loadDeletePreview().then((preview) => {
@@ -124,6 +129,11 @@ export function SessionRow({
             : "text-[#bdbdbd] hover:bg-white/[0.04] hover:text-[#e8e8e8]",
         )}
         onClick={row.select}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setMenuOpen(true);
+        }}
         onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();

@@ -5,7 +5,7 @@ import {
   tabIdFor,
 } from "../core/open-target.ts";
 import { opensLocalHtmlInBrowser } from "../core/preview-kind.ts";
-import { ReopenAs, resolveViewer, type OpenTarget, type ViewerContext } from "../core/registry.ts";
+import { ReopenAs, resolveViewer, viewerById, type OpenTarget, type ViewerContext } from "../core/registry.ts";
 import { sessionAfterSharedFileOpen } from "./open-shared-file.ts";
 import { errorText, focusTab, placeTab, type SessionPanel } from "./panel-session.ts";
 
@@ -23,7 +23,15 @@ export async function openPanelTarget(
   target: OpenTarget,
   ctx: ViewerContext,
   depth: number,
+  replaceTabId?: string,
 ): Promise<void> {
+  const releaseReplacedTab = (targetId: string) => {
+    if (!replaceTabId || replaceTabId === targetId) return;
+    const replaced = host.read(sessionId).tabs.find((tab) => tab.id === replaceTabId);
+    if (!replaced) return;
+    host.invalidate(sessionId, replaceTabId);
+    viewerById(replaced.viewerId)?.dispose?.(replaced.payload);
+  };
   if (target.kind === "file" && !opensInAppBrowser(target)) {
     host.mutate(sessionId, (session) =>
       sessionAfterSharedFileOpen(session, ctx.projectPath, target.path, target.line),
@@ -59,19 +67,20 @@ export async function openPanelTarget(
       return;
     }
 
+    releaseReplacedTab(id);
     const existing = host.read(sessionId).tabs.find((tab) => tab.id === id);
     if (existing && target.kind === "url" && existing.status !== "error") {
-      host.mutate(sessionId, (session) => focusTab(session, id));
+      host.mutate(sessionId, (session) => focusTab(session, id, replaceTabId));
       return;
     }
     if (
       existing &&
       target.kind === "custom" &&
-      !viewer.load &&
+      (!viewer.load || Boolean(replaceTabId)) &&
       existing.viewerId === viewer.id &&
       existing.status !== "error"
     ) {
-      host.mutate(sessionId, (session) => focusTab(session, id));
+      host.mutate(sessionId, (session) => focusTab(session, id, replaceTabId));
       return;
     }
 
@@ -82,7 +91,7 @@ export async function openPanelTarget(
     const status = blocked ? "error" : willLoad ? "loading" : "ready";
     const moveToEnd = target.kind === "diff";
     host.mutate(sessionId, (session) =>
-      placeTab(session, { id, viewerId: viewer.id, payload, status }, moveToEnd, true),
+      placeTab(session, { id, viewerId: viewer.id, payload, status }, moveToEnd, true, replaceTabId),
     );
     if (!willLoad || !viewer.load) return;
 

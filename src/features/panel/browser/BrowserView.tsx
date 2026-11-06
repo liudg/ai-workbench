@@ -55,7 +55,7 @@ export function BrowserView({
         <p className="shrink-0 px-3 py-1 text-[11px] text-amber-200/90">{DESKTOP_ZH.browserSnapshotFailed}</p>
       ) : null}
       <div ref={session.viewport} className="relative min-h-0 min-w-0 flex-1 bg-zinc-950" data-browser-viewport>
-        {!session.frameTarget ? <NewTabPage /> : null}
+        {!session.frameTarget ? <NewTabPage tabId={tabId} /> : null}
         {!session.native && session.frameTarget ? (
           <iframe
             title={session.shown || DESKTOP_ZH.browserNewTab}

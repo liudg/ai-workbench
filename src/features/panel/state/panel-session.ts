@@ -34,21 +34,35 @@ export function placeTab(
   tab: PanelTab,
   moveToEnd: boolean,
   activate: boolean,
+  replaceTabId?: string,
 ): SessionPanel {
   const index = session.tabs.findIndex((item) => item.id === tab.id);
   let tabs: PanelTab[];
-  if (index < 0 || moveToEnd) {
+  const replacing = replaceTabId !== tab.id && session.tabs.some((item) => item.id === replaceTabId);
+  if (replacing) {
+    tabs = session.tabs.flatMap((item) => {
+      if (item.id === replaceTabId) return [tab];
+      return item.id === tab.id ? [] : [item];
+    });
+  } else if (index < 0 || moveToEnd) {
     tabs = [...session.tabs.filter((item) => item.id !== tab.id), tab];
   } else {
     tabs = session.tabs.slice();
     tabs[index] = tab;
   }
   const layout = activate ? layoutAfterOpen(session.layout) : session.layout;
-  return { ...session, tabs, activeId: activate ? tab.id : session.activeId, layout };
+  let histories = session.histories;
+  if (replacing && replaceTabId && replaceTabId in histories) {
+    histories = { ...histories };
+    delete histories[replaceTabId];
+  }
+  return { ...session, tabs, histories, activeId: activate ? tab.id : session.activeId, layout };
 }
 
 /** 已有标签再次打开：只聚焦并展开侧栏，不换掉 payload。 */
-export function focusTab(session: SessionPanel, id: string): SessionPanel | null {
+export function focusTab(session: SessionPanel, id: string, replaceTabId?: string): SessionPanel | null {
+  const tab = session.tabs.find((item) => item.id === id);
+  if (tab && replaceTabId && replaceTabId !== id) return placeTab(session, tab, false, true, replaceTabId);
   const layout = layoutAfterOpen(session.layout);
   if (session.activeId === id && session.layout === layout) return null;
   return { ...session, activeId: id, layout };

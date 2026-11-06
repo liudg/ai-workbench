@@ -6,7 +6,7 @@ import type { FileChange, FileStatus, TurnChanges } from "@/features/changes-mod
 import { usePanelOptional } from "@/features/panel/core/PanelProvider";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { fileStatusTone } from "@/features/changes-model/status-tone";
-import { baseName, relativeToProject } from "@/shared/path";
+import { relativeToProject } from "@/shared/path";
 import { useChatHost } from "../host";
 import { canShowMore, editedFilesLabel, visibleChangeFiles } from "./card-text";
 
@@ -85,7 +85,7 @@ export function ChangeCard({
                     root={root}
                     onOpen={
                       preview
-                        ? () => preview.openDiff(`diff:${changes.id}:${file.path}`, baseName(file.path), [file])
+                        ? () => preview.openDiff(`diff:${changes.id}`, DESKTOP_ZH.changesTab, changes.files, file.path)
                         : undefined
                     }
                   />

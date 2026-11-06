@@ -38,12 +38,12 @@ export interface PanelSlice {
   /** 改标签载荷，不切换活动标签，也不改侧栏开合。 */
   panelPatchTabPayload(sessionId: string, tabId: string, patch: Record<string, unknown>): void;
   panelOpenHref(sessionId: string, href: string, line: number | undefined, ctx: ViewerContext): Promise<void>;
-  panelOpenDiff(sessionId: string, id: string, title: string, files: FileChange[]): void;
+  panelOpenDiff(sessionId: string, id: string, title: string, files: FileChange[], focusPath?: string): void;
   panelOpenBlank(sessionId: string): void;
   /** 打开或聚焦「打开文件」标签。 */
-  panelOpenFiles(sessionId: string): void;
+  panelOpenFiles(sessionId: string, replaceTabId?: string): void;
   /** 打开或聚焦终端标签。 */
-  panelOpenTerminal(sessionId: string): void;
+  panelOpenTerminal(sessionId: string, replaceTabId?: string): void;
   /** 新会话发出第一条消息后，面板（标签、布局、宽度）整个搬到建好的会话上。 */
   panelMoveSession(from: string, to: string): void;
   /** 收起侧栏。标签还在，标记改成打开的标签数。 */
@@ -51,7 +51,7 @@ export interface PanelSlice {
   /** 没有标签时打开内置浏览器新标签页，否则只把侧栏展开。 */
   panelShow(sessionId: string): void;
   panelToggleFull(sessionId: string): void;
-  panelOpenTarget(sessionId: string, target: OpenTarget, ctx: ViewerContext): Promise<void>;
+  panelOpenTarget(sessionId: string, target: OpenTarget, ctx: ViewerContext, replaceTabId?: string): Promise<void>;
   panelRememberHistory(sessionId: string, tabId: string, history: BrowserHistory): void;
   panelToggleFiles(sessionId: string): void;
   panelToggleFilesSidebar(sessionId: string): void;
@@ -176,23 +176,23 @@ export function createPanelSlice(set: PanelSet, get: PanelGet): PanelSlice {
       await openPanelTarget(host, sessionId, targetFromHref(ctx.projectPath, href, line), ctx, 0);
     },
 
-    panelOpenDiff(sessionId, id, title, files) {
-      void openPanelTarget(host, sessionId, { kind: "diff", id, title, files }, emptyCtx(), 0);
+    panelOpenDiff(sessionId, id, title, files, focusPath) {
+      void openPanelTarget(host, sessionId, { kind: "diff", id, title, files, focusPath }, emptyCtx(), 0);
     },
 
     panelOpenBlank(sessionId) {
       void openPanelTarget(host, sessionId, { kind: "blank" }, emptyCtx(), 0);
     },
 
-    panelOpenFiles(sessionId) {
-      void openPanelTarget(host, sessionId, { kind: "custom", type: "open-files" }, emptyCtx(), 0);
+    panelOpenFiles(sessionId, replaceTabId) {
+      void openPanelTarget(host, sessionId, { kind: "custom", type: "open-files" }, emptyCtx(), 0, replaceTabId);
       mutate(sessionId, (session) =>
         session.filesSidebarOpen ? null : { ...session, filesSidebarOpen: true },
       );
     },
 
-    panelOpenTerminal(sessionId) {
-      void openPanelTarget(host, sessionId, { kind: "custom", type: "terminal" }, emptyCtx(), 0);
+    panelOpenTerminal(sessionId, replaceTabId) {
+      void openPanelTarget(host, sessionId, { kind: "custom", type: "terminal" }, emptyCtx(), 0, replaceTabId);
     },
 
     panelMoveSession(from, to) {
@@ -249,8 +249,8 @@ export function createPanelSlice(set: PanelSet, get: PanelGet): PanelSlice {
       mutate(sessionId, (current) => ({ ...current, layout: layoutAfterFullToggle(current.layout) }));
     },
 
-    async panelOpenTarget(sessionId, target, ctx) {
-      await openPanelTarget(host, sessionId, target, ctx, 0);
+    async panelOpenTarget(sessionId, target, ctx, replaceTabId) {
+      await openPanelTarget(host, sessionId, target, ctx, 0, replaceTabId);
     },
 
     panelRememberHistory(sessionId, tabId, history) {

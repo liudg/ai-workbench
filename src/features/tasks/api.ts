@@ -22,6 +22,14 @@ export function renameTask(id: string, title: string) {
   return daemon.call<boolean>("tasks.rename", { id, title });
 }
 
+export function taskWorkdir(id: string) {
+  return daemon.call<string>("tasks.workdir", { id });
+}
+
+export function exportMarkdown(id: string) {
+  return daemon.call<string>("tasks.exportMarkdown", { id });
+}
+
 export function setTaskPinned(id: string, pinned: boolean) {
   return daemon.call<boolean>("tasks.setPinned", { id, pinned });
 }

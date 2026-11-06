@@ -27,7 +27,11 @@ import { useGitWorkTree } from "./useGitWorkTree";
 
 const SPLITTER_WIDTH = 6;
 
-export function DiffView({ files }: { files: FileChange[] }) {
+export function DiffView({ files, focus, onFocusHandled }: {
+  files: FileChange[];
+  focus?: { path: string };
+  onFocusHandled?: () => void;
+}) {
   const {
     diffFilesWidth,
     setDiffFilesWidth,
@@ -40,7 +44,7 @@ export function DiffView({ files }: { files: FileChange[] }) {
     openHref,
   } = usePanel();
   const displayFiles = useMemo(() => relativizeFiles(files, projectPath), [files, projectPath]);
-  const doc = useDiffDocument(displayFiles);
+  const doc = useDiffDocument(displayFiles, focus, onFocusHandled);
   const frameRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);

@@ -9,12 +9,14 @@ import { Hint } from "./Hint";
 import { PanelLayoutControls } from "./PanelChrome";
 import { usePanel } from "./PanelProvider";
 import { SessionUsageCluster } from "./SubscriptionUsageMeter";
+import { useTabContextMenu } from "./useTabContextMenu";
 
 registerBuiltinViewers();
 
 export function PanelTabs() {
   const { tabs, activeId, selectTab, closeTab, openBlank, setTabTitle, projectId, sessionId, layout, sessionTitle } =
     usePanel();
+  const tabMenu = useTabContextMenu(tabs.map((tab) => tab.id), (ids) => ids.forEach(closeTab));
   const active = tabs.find((tab) => tab.id === activeId) ?? tabs[tabs.length - 1];
   if (!active) return null;
   const menu = viewerById(active.viewerId)?.menu;
@@ -39,6 +41,7 @@ export function PanelTabs() {
             return (
               <div
                 key={tab.id}
+                onContextMenu={(event) => tabMenu.open(event, tab.id)}
                 className={cn(
                   "my-1.5 flex min-w-0 max-w-[180px] items-center rounded-md",
                   selected ? "bg-[#1c1c1c] text-[#e8e8e8]" : "text-[#8d8d8d] hover:bg-white/[0.04]",
@@ -110,6 +113,7 @@ export function PanelTabs() {
           onTitle={setTabTitle}
         />
       </div>
+      {tabMenu.menu}
     </section>
   );
 }

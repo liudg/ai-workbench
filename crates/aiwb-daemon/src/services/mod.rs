@@ -12,6 +12,7 @@ mod sessions;
 mod side;
 mod subtasks;
 mod tasks;
+mod task_copy;
 mod terminals;
 mod worktree_handoff;
 mod worktrees;
@@ -206,6 +207,8 @@ impl Services {
             "tasks.list" => to_value(self.runtimes.task_entries()?),
             "tasks.create" => to_value(self.create_task(parse(params)?).await?),
             "tasks.rename" => to_value(self.rename_task(parse(params)?)?),
+            "tasks.workdir" => to_value(self.task_workdir(parse(params)?)?),
+            "tasks.exportMarkdown" => to_value(self.export_task_markdown(parse(params)?).await?),
             "tasks.setPinned" => to_value(self.pin_task(parse(params)?)?),
             "tasks.archive" => to_value(self.archive_task(parse(params)?).await?),
             "tasks.deletePreview" => to_value(self.delete_preview(parse(params)?).await?),

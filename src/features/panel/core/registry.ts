@@ -9,7 +9,7 @@ export type OpenTarget =
   | { kind: "url"; url: string }
   | { kind: "file"; path: string; line: number | null; viewerId?: string }
   | { kind: "blocked"; href: string; line: number | null; message: string }
-  | { kind: "diff"; id: string; title: string; files: FileChange[] }
+  | { kind: "diff"; id: string; title: string; files: FileChange[]; focusPath?: string }
   /** `key` 区分同一种标签的几个实例（比如不同的子任务），不给时这种标签只开一个。 */
   | { kind: "custom"; type: string; key?: string; data?: unknown };
 

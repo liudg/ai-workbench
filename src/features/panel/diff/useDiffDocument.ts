@@ -1,19 +1,20 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { DiffScope } from "@/types";
+import { relativeToProject } from "@/shared/path";
 import { parseUnifiedDiff, type FileChange } from "@/features/changes-model/diff-parse";
 import { usePanel } from "@/features/panel/core/PanelProvider";
-import { filterFiles, useFileFilter } from "../core/file-filter";
+import { filterFiles, setFileFilter, useFileFilter } from "../core/file-filter";
 import { browserDiffMenuStorage, writeDiffMenuOptions, type DiffMenuOptions } from "./diff-menu-options";
 import { patchFromFiles } from "./git-apply";
 import { pathsWithFileOpen, scrollDiffFileIntoView } from "./reveal-file";
 import { diffScopeMenu, filesForScope } from "./scope";
 import { modeForPaths, pathsForFileOpen } from "./view-prefs";
 
-export function useDiffDocument(turnFiles: FileChange[]) {
-  const { projectId, sessionId, changes, diffView, patchDiffView, data } = usePanel();
+export function useDiffDocument(turnFiles: FileChange[], focus?: { path: string }, onFocusHandled?: () => void) {
+  const { projectId, projectPath, sessionId, changes, diffView, patchDiffView, data } = usePanel();
   const [filter] = useFileFilter(sessionId);
-  const [scope, setScopeState] = useState(() => diffView.scope || "turn");
+  const [scope, setScopeState] = useState(() => focus ? "turn" : diffView.scope || "turn");
   const [menuOptions, setMenuOptions] = useState(diffView.menu);
   const [provided, setProvided] = useState<DiffScope[]>([]);
   const [gitFiles, setGitFiles] = useState<FileChange[] | null>(null);
@@ -81,7 +82,7 @@ export function useDiffDocument(turnFiles: FileChange[]) {
     setScope(selected.id);
   }, [scope, selected]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setActivePath("");
   }, [scope]);
 
@@ -200,6 +201,33 @@ export function useDiffDocument(turnFiles: FileChange[]) {
     }
     queueScroll(file.path);
   }, [queueScroll, rememberOpen]);
+
+  const appliedFocus = useRef<typeof focus>();
+  useLayoutEffect(() => {
+    if (!focus || appliedFocus.current === focus) return;
+    const turnScope = scopes.find((item) => item.source === "turn")?.id ?? "turn";
+    if (scope !== turnScope) {
+      setScope(turnScope);
+      return;
+    }
+    if (filter) {
+      setFileFilter(sessionId, "");
+      return;
+    }
+    if (remote) return;
+    const path = relativeToProject(focus.path, projectPath);
+    const file = shown.find((item) => relativeToProject(item.path, projectPath) === path);
+    if (!file) return;
+    appliedFocus.current = focus;
+    const next = [file.path];
+    openPathsRef.current = next;
+    setOpenPaths(next);
+    rememberOpen(next);
+    selectFile(file);
+    setScope(turnScope);
+    // 定位只消费一次；标签卸载再挂载时保留用户后续选择的范围、筛选和展开状态。
+    onFocusHandled?.();
+  }, [filter, focus, onFocusHandled, projectPath, remote, rememberOpen, scope, scopes, selectFile, sessionId, setScope, shown]);
 
   return {
     scope: selected?.id ?? scope,

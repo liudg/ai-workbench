@@ -2,6 +2,7 @@ import { useAgentProfiles, useSessionAgents } from "@/features/agents";
 import { forkTargets, tasksApi } from "@/features/tasks";
 import type { WorktreeDeleteFlags } from "@/lib/worktree-delete";
 import { agentIdentity } from "@/shared/agent/identity";
+import { writeClipboardText } from "@/shared/clipboard";
 import { showError } from "@/shared/shell/error-banner";
 import { leaveTask, openTask } from "@/shared/shell/navigation";
 import type { AgentKind } from "@/types";
@@ -20,6 +21,12 @@ export function useSessionRow(task: SidebarTask) {
       void tasksApi.forkTask(task.id, agent).then((entry) => openTask(entry.id, entry.projectId ?? null), showError),
     select: () => openTask(task.id, task.projectId),
     rename: (title: string) => tasksApi.renameTask(task.id, title).then(() => true, () => false),
+    copy: (format: "markdown" | "workdir") => {
+      const read = format === "markdown" ? tasksApi.exportMarkdown : tasksApi.taskWorkdir;
+      void read(task.id)
+        .then(writeClipboardText)
+        .then(() => showSidebarNotice(format === "markdown" ? "已复制为 Markdown" : "已复制工作目录"), showError);
+    },
     togglePinned: () => void tasksApi.setTaskPinned(task.id, !task.pinned).catch(showError),
     toggleArchived: () => {
       if (!task.archived) leaveTask(task.id);

@@ -28,7 +28,7 @@ export function WorkspaceTree({
   projectId: string;
   filter: string;
   activePath: string;
-  onSelectFile: (path: string, intent: { isPreview: true }) => void;
+  onSelectFile: (path: string, intent: { isPreview: boolean }) => void;
   onContextMenu?: (path: string, event: ReactMouseEvent) => void;
   surface?: TreeSurface;
   directoryPath?: string;
@@ -52,10 +52,10 @@ export function WorkspaceTree({
     activeRef.current?.scrollIntoView({ block: "nearest" });
   }, [revealSelectedPath, rootReady, activePath, tree.expanded]);
 
-  const openFile = (path: string, kind?: string) => {
+  const openFile = (path: string, kind?: string, isPreview = true) => {
     const selected = previewSelection(path, kind);
     if (!selected) return;
-    onSelectFile(selected.path, { isPreview: true });
+    onSelectFile(selected.path, { isPreview });
   };
 
   return (
@@ -91,7 +91,7 @@ function FilterTree({
 }: {
   tree: ReturnType<typeof useWorkspaceTree>;
   activePath: string;
-  onSelectFile: (path: string, kind?: string) => void;
+  onSelectFile: (path: string, kind?: string, isPreview?: boolean) => void;
   onContextMenu?: (path: string, event: ReactMouseEvent) => void;
 }) {
   if (tree.filterError) {
@@ -118,6 +118,7 @@ function FilterTree({
         showStats={false}
         onToggle={tree.toggleFilter}
         onSelect={(file) => onSelectFile(file.path, "file")}
+        onKeepOpen={(file) => onSelectFile(file.path, "file", false)}
         onContextMenu={
           onContextMenu
             ? (file, event) => {
@@ -150,7 +151,7 @@ function DirectoryTree({
   surface: TreeSurface;
   activePath: string;
   activeRef: { current: HTMLButtonElement | null };
-  onSelectFile: (path: string, kind?: string) => void;
+  onSelectFile: (path: string, kind?: string, isPreview?: boolean) => void;
   onContextMenu?: (path: string, event: ReactMouseEvent) => void;
 }) {
   if (tree.rootError) {
@@ -222,7 +223,7 @@ function TreeRows({
   activePath: string;
   activeRef: { current: HTMLButtonElement | null };
   onToggle: (dir: string) => void;
-  onSelectFile: (path: string, kind?: string) => void;
+  onSelectFile: (path: string, kind?: string, isPreview?: boolean) => void;
   onContextMenu?: (path: string, event: ReactMouseEvent) => void;
 }) {
   const pad = { paddingLeft: 4 + depth * 12 };
@@ -309,6 +310,7 @@ function TreeRows({
           active ? "bg-[#2a2a2a]" : "hover:bg-white/[0.04]",
         )}
         onClick={() => onSelectFile(entry.path, entry.kind)}
+        onDoubleClick={() => onSelectFile(entry.path, entry.kind, false)}
         onContextMenu={
           onContextMenu
             ? (event) => {

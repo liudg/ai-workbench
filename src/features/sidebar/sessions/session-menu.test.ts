@@ -3,12 +3,16 @@ import { test } from "node:test";
 
 import { sessionMenuItems } from "./session-menu.ts";
 
-test("without fork targets every session gets the same four items, delete last and marked danger", () => {
+test("every session has a copy submenu, with delete last and marked danger", () => {
   const items = sessionMenuItems({ pinned: false, archived: false, forks: [] });
   assert.deepEqual(
     items.map((item) => item.label),
-    ["重命名", "置顶", "归档", "删除"],
+    ["重命名", "置顶", "复制", "归档", "删除"],
   );
+  assert.deepEqual(items.find((item) => item.id === "copy")?.children?.map((item) => [item.id, item.label]), [
+    ["copy-markdown", "复制为 Markdown"],
+    ["copy-workdir", "复制工作目录"],
+  ]);
   assert.equal(items[items.length - 1]?.danger, true);
 });
 
@@ -26,7 +30,7 @@ test("a single fork target is a plain item between pin and archive", () => {
   });
   assert.deepEqual(
     items.map((item) => item.label),
-    ["重命名", "置顶", "分叉", "归档", "删除"],
+    ["重命名", "置顶", "分叉", "复制", "归档", "删除"],
   );
   const fork = items.find((item) => item.id === "fork");
   assert.equal(fork?.agent, "codex-cli");
@@ -44,7 +48,7 @@ test("several fork targets fold into one 分叉 submenu, one entry per agent", (
   });
   assert.deepEqual(
     items.map((item) => item.label),
-    ["重命名", "置顶", "分叉", "归档", "删除"],
+    ["重命名", "置顶", "分叉", "复制", "归档", "删除"],
   );
   const fork = items.find((item) => item.id === "fork");
   assert.equal(fork?.agent, undefined);

@@ -73,7 +73,12 @@ export function initialPayload(target: OpenTarget): unknown {
         error: target.message,
       };
     case "diff":
-      return { title: target.title, files: target.files };
+      return {
+        title: target.title,
+        files: target.files,
+        // 每次打开都是独立的定位请求，重复点击同一文件也重新展开并滚动。
+        focus: target.focusPath ? { path: target.focusPath } : undefined,
+      };
     case "custom":
       if (target.type === "open-files") {
         return { title: DESKTOP_ZH.openFiles, type: target.type, path: "", line: null, filter: "", tabs: [] };

@@ -24,7 +24,7 @@ export function BreadcrumbMenu({
   segmentPath: string;
   last: boolean;
   workspaceRoot: string;
-  onSelectFile: (path: string, intent: { isPreview: true }) => void;
+  onSelectFile: (path: string, intent: { isPreview: boolean }) => void;
   onClose: () => void;
 }) {
   const popoverRef = useRef<HTMLDivElement>(null);

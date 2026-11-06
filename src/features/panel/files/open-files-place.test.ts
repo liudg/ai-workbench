@@ -5,6 +5,7 @@ import {
   canonicalOpenPath,
   clearOpenFilesOnScope,
   closeOpenFile,
+  keepOpenFile,
   openFileInPlace,
   openFilesPlace,
   selectOpenFile,
@@ -78,4 +79,43 @@ test("switching projects in one session clears the open-files preview", () => {
     clearOpenFilesOnScope({ projectId: "a", sessionId: "s" }, { projectId: "a", sessionId: "s" }),
     false,
   );
+});
+
+test("the first file stays open and subsequent files share one preview slot", () => {
+  let place = openFileInPlace(openFilesPlace(null), "a.ts", 3);
+  assert.deepEqual(place.tabs, [{ path: "a.ts", line: 3 }]);
+  place = openFileInPlace(place, "b.ts", 7);
+  assert.deepEqual(place.tabs[1], { path: "b.ts", line: 7, preview: true });
+  place = selectOpenFile(place, "a.ts");
+  place = openFileInPlace(place, "c.ts", 9);
+  assert.deepEqual(place.tabs, [
+    { path: "a.ts", line: 3 }, { path: "c.ts", line: 9, preview: true },
+  ]);
+  place = openFilesPlace(place);
+  assert.equal(place.tabs[1].preview, true);
+  place = keepOpenFile(place, "C.ts");
+  assert.deepEqual(place.tabs[1], { path: "c.ts", line: 9 });
+  place = openFileInPlace(place, "d.ts", null);
+  place = openFileInPlace(place, "c.ts", 12);
+  assert.equal(place.tabs.length, 3);
+  assert.equal(place.tabs[1].preview, undefined);
+  assert.equal(place.tabs[1].line, 12);
+  place = openFileInPlace(place, "e.ts", null);
+  assert.deepEqual(place.tabs.map((tab) => tab.path), ["a.ts", "c.ts", "e.ts"]);
+  assert.equal(place.tabs[2].preview, true);
+  place = openFileInPlace(place, "e.ts", null, false);
+  assert.equal(place.tabs[2].preview, undefined);
+  place = openFileInPlace(place, "f.ts", null);
+  assert.equal(place.tabs.length, 4);
+});
+
+test("closing previews and all files leaves no stale preview slot", () => {
+  let place = openFileInPlace(openFilesPlace(null), "a.ts", null);
+  place = openFileInPlace(place, "b.ts", null);
+  place = closeOpenFile(place, "b.ts");
+  place = openFileInPlace(place, "c.ts", null);
+  assert.deepEqual(place.tabs.map((tab) => tab.path), ["a.ts", "c.ts"]);
+  place = closeOpenFile(closeOpenFile(place, "a.ts"), "c.ts");
+  place = openFileInPlace(place, "d.ts", null);
+  assert.deepEqual(place.tabs, [{ path: "d.ts", line: null }]);
 });

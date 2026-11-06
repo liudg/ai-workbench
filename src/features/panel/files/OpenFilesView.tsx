@@ -17,6 +17,7 @@ import {
   canonicalOpenPath,
   clearOpenFilesOnScope,
   closeOpenFile,
+  keepOpenFile,
   openFileInPlace,
   openFilesPlace,
   selectOpenFile,
@@ -103,18 +104,18 @@ export function OpenFilesScreen({
     patchTabPayload(filesTab.id, { path: next.path, line: next.line, tabs: next.tabs, filter: next.filter });
   };
 
-  const openFile = (path: string, _intent: { isPreview: true }, line?: number | null) => {
+  const openFile = (path: string, intent: { isPreview: boolean }, line?: number | null) => {
     const canonical = canonicalOpenPath(projectPath, path);
     if (!canonical) return;
-    writePlace(openFileInPlace(place, canonical, line ?? null));
+    writePlace(openFileInPlace(place, canonical, line ?? null, intent.isPreview));
   };
 
   const selectFile = (path: string) => {
     writePlace(selectOpenFile(place, path));
   };
 
-  const closeFile = (path: string) => {
-    writePlace(closeOpenFile(place, path));
+  const closeFiles = (paths: readonly string[]) => {
+    writePlace(paths.reduce((next, path) => closeOpenFile(next, path), place));
   };
 
   const addFile = () => {
@@ -153,7 +154,14 @@ export function OpenFilesScreen({
       data-file-tree={listWidth !== null ? "visible" : "hidden"}
       className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden"
     >
-      <FileTabs tabs={place.tabs} activePath={place.path} onSelect={selectFile} onClose={closeFile} onAdd={addFile} />
+      <FileTabs
+        tabs={place.tabs}
+        activePath={place.path}
+        onSelect={selectFile}
+        onKeepOpen={(path) => writePlace(keepOpenFile(place, path))}
+        onClose={closeFiles}
+        onAdd={addFile}
+      />
       <PreviewChrome {...chrome.chromeProps} />
       <div data-open-files-split className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
         <FilePreviewColumn

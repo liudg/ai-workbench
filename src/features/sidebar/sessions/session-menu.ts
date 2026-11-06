@@ -3,7 +3,7 @@
 import type { ForkTarget } from "../../tasks/fork-targets.ts";
 import type { AgentKind } from "../../../types/index.ts";
 
-export type SessionMenuAction = "rename" | "pin" | "fork" | "archive" | "delete";
+export type SessionMenuAction = "rename" | "pin" | "fork" | "copy" | "copy-markdown" | "copy-workdir" | "archive" | "delete";
 
 export interface SessionMenuItem {
   key: string;
@@ -25,6 +25,15 @@ export function sessionMenuItems(input: {
     { key: "rename", id: "rename", label: "重命名" },
     { key: "pin", id: "pin", label: input.pinned ? "取消置顶" : "置顶" },
     ...forkItems(input.forks),
+    {
+      key: "copy",
+      id: "copy",
+      label: "复制",
+      children: [
+        { key: "copy-markdown", id: "copy-markdown", label: "复制为 Markdown" },
+        { key: "copy-workdir", id: "copy-workdir", label: "复制工作目录" },
+      ],
+    },
     { key: "archive", id: "archive", label: input.archived ? "取消归档" : "归档" },
     { key: "delete", id: "delete", label: "删除", danger: true },
   ];

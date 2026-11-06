@@ -177,7 +177,7 @@ export function DiffFileSection({
       </header>
       {open ? (
         renderPreview && markdown ? (
-          <div className="px-4 py-3">
+          <div className="select-text px-4 py-3">
             <MarkdownBody text={source && source.length > 0 ? source : previewTextFromDiff(file.diff)} />
           </div>
         ) : display.whitespaceHidden ? (
@@ -321,7 +321,7 @@ function LineText({ text, parts, wrap }: { text: string; parts: WordPart[] | nul
   return (
     <span
       className={cn(
-        "min-w-0 flex-1 px-2",
+        "min-w-0 flex-1 cursor-text select-text px-2",
         wrap ? "overflow-hidden whitespace-pre-wrap break-all" : "overflow-x-auto whitespace-pre",
       )}
     >

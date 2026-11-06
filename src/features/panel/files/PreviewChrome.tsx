@@ -32,7 +32,7 @@ export function PreviewChrome({
   projectId: string;
   treeOpen: boolean;
   onToggleTree: () => void;
-  onSelectFile: (path: string, intent: { isPreview: true }) => void;
+  onSelectFile: (path: string, intent: { isPreview: boolean }) => void;
   onSearch: () => void;
   searchEnabled: boolean;
   markdownLabel?: string | null;

@@ -12,6 +12,7 @@ export function FileTreeList<T extends FileTreeFile>({
   showStats,
   onToggle,
   onSelect,
+  onKeepOpen,
   onContextMenu,
 }: {
   nodes: readonly FileTreeNode<T>[];
@@ -21,6 +22,7 @@ export function FileTreeList<T extends FileTreeFile>({
   showStats: boolean;
   onToggle: (id: string) => void;
   onSelect: (file: T) => void;
+  onKeepOpen?: (file: T) => void;
   onContextMenu?: (file: T, event: React.MouseEvent) => void;
 }) {
   return (
@@ -36,6 +38,7 @@ export function FileTreeList<T extends FileTreeFile>({
           showStats={showStats}
           onToggle={onToggle}
           onSelect={onSelect}
+          onKeepOpen={onKeepOpen}
           onContextMenu={onContextMenu}
         />
       ))}
@@ -58,6 +61,7 @@ function TreeRows<T extends FileTreeFile>({
   showStats,
   onToggle,
   onSelect,
+  onKeepOpen,
   onContextMenu,
 }: {
   node: FileTreeNode<T>;
@@ -68,6 +72,7 @@ function TreeRows<T extends FileTreeFile>({
   showStats: boolean;
   onToggle: (id: string) => void;
   onSelect: (file: T) => void;
+  onKeepOpen?: (file: T) => void;
   onContextMenu?: (file: T, event: React.MouseEvent) => void;
 }) {
   const pad = { paddingLeft: 4 + depth * 12 };
@@ -102,6 +107,7 @@ function TreeRows<T extends FileTreeFile>({
                 showStats={showStats}
                 onToggle={onToggle}
                 onSelect={onSelect}
+                onKeepOpen={onKeepOpen}
                 onContextMenu={onContextMenu}
               />
             ))}
@@ -126,6 +132,7 @@ function TreeRows<T extends FileTreeFile>({
           active ? "bg-[#2a2a2a]" : "hover:bg-white/[0.04]",
         )}
         onClick={() => onSelect(file)}
+        onDoubleClick={onKeepOpen ? () => onKeepOpen(file) : undefined}
         onContextMenu={
           onContextMenu
             ? (event) => {

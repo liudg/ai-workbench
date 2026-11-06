@@ -27,7 +27,7 @@ export function useFilePreviewChrome({
   previewPath: string;
   treeOpen: boolean;
   onToggleTree: () => void;
-  onSelectFile: (path: string, intent: { isPreview: true }, line?: number | null) => void;
+  onSelectFile: (path: string, intent: { isPreview: boolean }, line?: number | null) => void;
 }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const markdown = Boolean(previewPath) && previewKindForPath(previewPath) === "markdown";
@@ -50,7 +50,7 @@ export function useFilePreviewChrome({
       onToggleTree,
       searchEnabled: Boolean(projectId),
       onSearch: () => setSearchOpen(true),
-      onSelectFile: (path: string, intent: { isPreview: true }) => onSelectFile(path, intent, null),
+      onSelectFile: (path: string, intent: { isPreview: boolean }) => onSelectFile(path, intent, null),
       markdownLabel: markdownMode ? markdownModeButtonLabel(markdownMode) : null,
       onToggleMarkdown: markdownMode
         ? () => {

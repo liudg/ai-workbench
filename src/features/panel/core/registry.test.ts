@@ -36,6 +36,79 @@ function stub(id: string, match: PanelViewer["match"], load?: PanelViewer["load"
 }
 
 describe("panel viewers", { concurrency: 1 }, () => {
+  for (const tool of ["open-files", "terminal", "side-chat"]) {
+    test(`the new-tab ${tool} tool replaces its tab in place and preserves an existing tool`, async () => {
+      let loads = 0;
+      const undo = [
+        registerViewer(stub("html", matchHtml)),
+        registerViewer(stub(tool, (target) => target.kind === "custom" && target.type === tool ? 100 : 0,
+          tool === "side-chat" ? async () => { loads += 1; return { sideId: "side-1" }; } : undefined)),
+      ];
+      try {
+        const store = testStore();
+        const api = store.getState();
+        const open = async (replaceTabId?: string) => {
+          if (tool === "open-files") api.panelOpenFiles("s", replaceTabId);
+          else if (tool === "terminal") api.panelOpenTerminal("s", replaceTabId);
+          else await api.panelOpenTarget("s", { kind: "custom", type: tool }, ctx, replaceTabId);
+        };
+        api.panelOpenBlank("s");
+        const left = store.getState().panelBySession.s!.activeId;
+        api.panelOpenBlank("s");
+        const blank = store.getState().panelBySession.s!.activeId;
+        api.panelOpenBlank("s");
+        const right = store.getState().panelBySession.s!.activeId;
+        api.panelSelectTab("s", blank);
+        api.panelRememberHistory("s", blank, { entries: [], index: -1 });
+        await open(blank);
+        const id = `custom:${tool}`;
+        let session = store.getState().panelBySession.s!;
+        assert.deepEqual(session.tabs.map((tab) => tab.id), [left, id, right]);
+        assert.equal(session.activeId, id);
+        assert.equal(session.layout, "split");
+        assert.equal(blank in session.histories, false);
+        api.panelPatchTabPayload("s", id, { retained: "terminal/session/file state" });
+        const payload = store.getState().panelBySession.s!.tabs[1].payload;
+        api.panelOpenBlank("s");
+        const secondBlank = store.getState().panelBySession.s!.activeId;
+        await open(secondBlank);
+        session = store.getState().panelBySession.s!;
+        assert.deepEqual(session.tabs.map((tab) => tab.id), [left, right, id]);
+        assert.equal(session.tabs[2].payload, payload);
+        assert.equal(session.activeId, id);
+        assert.equal(loads, tool === "side-chat" ? 1 : 0);
+      } finally {
+        for (const release of undo) release();
+      }
+    });
+  }
+
+  test("an asynchronously loaded tool occupies the new-tab slot immediately", async () => {
+    let finish!: (payload: unknown) => void;
+    const undo = [
+      registerViewer(stub("html", matchHtml)),
+      registerViewer(stub("async-tool", (target) => target.kind === "custom" && target.type === "async-tool" ? 100 : 0,
+        () => new Promise((resolve) => { finish = resolve; }))),
+    ];
+    try {
+      const store = testStore();
+      const api = store.getState();
+      api.panelOpenBlank("s");
+      const blank = store.getState().panelBySession.s!.activeId;
+      const opening = api.panelOpenTarget("s", { kind: "custom", type: "async-tool" }, ctx, blank);
+      const session = store.getState().panelBySession.s!;
+      assert.equal(session.tabs.length, 1);
+      assert.equal(session.tabs[0].status, "loading");
+      assert.equal(session.activeId, "custom:async-tool");
+      finish({ title: "Ready", sessionId: "side-1" });
+      await opening;
+      assert.equal(store.getState().panelBySession.s!.tabs[0].status, "ready");
+      assert.equal(store.getState().panelBySession.s!.tabs.length, 1);
+    } finally {
+      for (const release of undo) release();
+    }
+  });
+
   test("the new-chat panel moves to the created session and tells each viewer", async () => {
     const moved: Array<[unknown, string]> = [];
     const undo = registerViewer({

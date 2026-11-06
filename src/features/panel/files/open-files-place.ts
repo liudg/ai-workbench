@@ -6,6 +6,8 @@ import { resolvePreviewPath } from "../core/preview-kind.ts";
 export interface OpenFileTab {
   path: string;
   line: number | null;
+  /** 只有临时预览带此标记；同一组文件最多保留一个。 */
+  preview?: true;
 }
 
 export interface OpenFilesPlace {
@@ -47,19 +49,33 @@ export function openFilesPlace(payload: unknown): OpenFilesPlace {
   return { path, line, filter, tabs: readTabs(record.tabs, path, line) };
 }
 
-/** 打开或聚焦一个文件。再次打开会换掉行号。 */
-export function openFileInPlace(place: OpenFilesPlace, path: string, line: number | null): OpenFilesPlace {
+/** 首个文件常驻；单击复用预览位，已常驻的文件不会退回预览。 */
+export function openFileInPlace(
+  place: OpenFilesPlace,
+  path: string,
+  line: number | null,
+  isPreview = true,
+): OpenFilesPlace {
   const nextPath = path.trim();
   if (!nextPath) return place;
   const tabs = place.tabs.slice();
   const index = tabs.findIndex((tab) => sameOpenPath(tab.path, nextPath));
-  if (index >= 0) tabs[index] = { path: nextPath, line };
-  else tabs.push({ path: nextPath, line });
+  const preview = isPreview && (index >= 0 ? tabs[index].preview === true : tabs.length > 0);
+  const next: OpenFileTab = { path: nextPath, line, ...(preview ? { preview: true } : {}) };
+  const previewIndex = preview ? tabs.findIndex((tab) => tab.preview) : -1;
+  if (index >= 0) tabs[index] = next;
+  else if (previewIndex >= 0) tabs[previewIndex] = next;
+  else tabs.push(next);
   if (place.path === nextPath && place.line === line && index >= 0 && tabs.length === place.tabs.length) {
     const previous = place.tabs[index];
-    if (previous && previous.path === nextPath && previous.line === line) return place;
+    if (previous && previous.path === nextPath && previous.line === line && previous.preview === next.preview) return place;
   }
   return { ...place, path: nextPath, line, tabs };
+}
+
+export function keepOpenFile(place: OpenFilesPlace, path: string): OpenFilesPlace {
+  const tab = place.tabs.find((item) => sameOpenPath(item.path, path));
+  return tab ? openFileInPlace(place, tab.path, tab.line, false) : place;
 }
 
 export function selectOpenFile(place: OpenFilesPlace, path: string): OpenFilesPlace {
@@ -91,7 +107,8 @@ function readTabs(value: unknown, path: string, line: number | null): OpenFileTa
     if (!item || typeof item !== "object") continue;
     const tabPath = typeof (item as { path?: unknown }).path === "string" ? (item as { path: string }).path : "";
     if (!tabPath) continue;
-    tabs.push({ path: tabPath, line: lineOf((item as { line?: unknown }).line) });
+    const preview = (item as { preview?: unknown }).preview === true;
+    tabs.push({ path: tabPath, line: lineOf((item as { line?: unknown }).line), ...(preview ? { preview: true } : {}) });
   }
   if (path && !tabs.some((tab) => sameOpenPath(tab.path, path))) tabs.push({ path, line });
   return tabs;

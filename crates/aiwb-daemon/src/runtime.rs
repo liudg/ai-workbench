@@ -520,7 +520,7 @@ impl Runtimes {
         self.workdir_of_task(&session.task_id)
     }
 
-    fn workdir_of_task(&self, task_id: &str) -> RuntimeResult<String> {
+    pub(crate) fn workdir_of_task(&self, task_id: &str) -> RuntimeResult<String> {
         let store_err = |e: aiwb_store::StoreError| e.to_string();
         let task = self
             .store
