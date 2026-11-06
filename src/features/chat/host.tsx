@@ -41,7 +41,7 @@ export interface SubtaskHost {
   title(taskId: string): string | undefined;
   /** 子任务现在的样子，跟着任务列表变。任务列表里还没有它时没有。 */
   useSubtask(taskId: string): SubtaskView | undefined;
-  /** 在子智能体面板里打开。 */
+  /** 直接跳转到对应会话。 */
   open(taskId: string): void;
   /** 失败时宿主自己报错，卡片重新可点。 */
   resolveOffer(sessionId: string, offerId: string, accept: boolean): Promise<void>;

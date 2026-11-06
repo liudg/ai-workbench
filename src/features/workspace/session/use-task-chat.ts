@@ -29,7 +29,7 @@ export function useTaskChat(
   const timeline = useTaskTimeline(task, taskSession);
   const { agentOf } = timeline;
   const owner = panelOwner ?? session.id;
-  const subtasks = useSubtaskHost(owner);
+  const subtasks = useSubtaskHost();
   const taskId = task.id;
   const host = useMemo<ChatHost>(
     () => ({

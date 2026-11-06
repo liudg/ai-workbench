@@ -6,11 +6,12 @@ import { turnChanges } from "@/features/changes-model/diff-parse";
 import { useChangeCapabilities } from "../use-change-capabilities";
 import { ChangeCard } from "../cards/ChangeCard";
 import { MessageFooter } from "../events/chrome";
+import { SubtaskRows } from "../events/SubtaskRows";
 import { collapsedTurnSummary, foldedEvents } from "./timeline";
 import { ActivityStream } from "./ActivityStream";
 import { TurnFoldLine } from "./TurnFoldLine";
 import { SessionAgentIcon } from "@/shared/agent/SessionAgentIcon";
-import { AGENT_LABELS, type Session, type SessionEvent } from "@/types";
+import { AGENT_LABELS, type Session, type SessionEvent, type SubtaskSpec } from "@/types";
 import { agentTurnName, useAgentIdentity, useEventAgent } from "../events/use-agent-identity";
 
 /**
@@ -39,6 +40,16 @@ export function TurnProcess({
 }) {
   const visible = useMemo(() => (expanded ? events : foldedEvents(events, true)), [events, expanded]);
   const answer = answerId == null ? null : (events.find((event) => event.id === answerId) ?? null);
+  const subtasks = useMemo(() => {
+    const created = new Map<string, SubtaskSpec>();
+    for (const event of events) {
+      if (event.kind !== "subtask-offer" || event.resolution?.kind !== "accepted") continue;
+      event.resolution.task_ids.forEach((id, index) => {
+        created.set(id, event.subtasks[index]);
+      });
+    }
+    return { taskIds: [...created.keys()], specs: [...created.values()] };
+  }, [events]);
   const agent = useEventAgent(events[0], session);
   const identity = useAgentIdentity(agent);
   const agentName = agentTurnName(agent, identity) || AGENT_LABELS[agent];
@@ -64,6 +75,7 @@ export function TurnProcess({
         settled
         onInteract={onInteract}
       />
+      {answer?.kind === "agent-message" ? <SubtaskRows {...subtasks} /> : null}
       {changes ? <ChangeCard changes={changes} /> : null}
       {answer?.kind === "agent-message" && answer.text.trim() ? (
         <div className="event-in min-w-0 px-6 py-1">
