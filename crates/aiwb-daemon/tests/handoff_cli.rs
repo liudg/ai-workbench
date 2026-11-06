@@ -57,6 +57,41 @@ fn last_session(entry: &Value) -> (String, Value) {
     (last["id"].as_str().unwrap().to_string(), last)
 }
 
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "calls the local Codex and Claude Code CLIs"]
+async fn multiple_temporary_chats_with_native_clis() {
+    let data = tempfile::tempdir().unwrap();
+    let project_dir = tempfile::tempdir().unwrap();
+    let services = Services::new(
+        Arc::new(Store::open(&data.path().join("db.sqlite")).unwrap()),
+        DaemonInfo { version: "cli".into(), build: String::new(), pid: 1, port: 0, token: "t".into() },
+        data.path().to_path_buf(),
+    );
+    let project = services.dispatch("projects.add", json!({ "path": project_dir.path().to_string_lossy() })).await.unwrap();
+    for agent in ["codex-cli", "claude-code"] {
+        let task = services.dispatch("tasks.create", json!({ "projectId": project["id"], "agent": agent })).await.unwrap();
+        let (main, _) = last_session(&task);
+        ask(&services, &main, "Remember the code PLUM-42. Reply OK only. Do not use tools.").await;
+        let (a, b) = tokio::join!(
+            services.dispatch("tasks.openSide", json!({ "taskId": task["id"] })),
+            services.dispatch("tasks.openSide", json!({ "taskId": task["id"] }))
+        );
+        let (a, b) = (a.unwrap(), b.unwrap());
+        assert_ne!(a["id"], b["id"]);
+        let (aid, bid) = (a["id"].as_str().unwrap(), b["id"].as_str().unwrap());
+        let (answer_a, answer_b) = tokio::join!(
+            ask(&services, aid, "What code did I ask you to remember? Reply only the code. Do not use tools."),
+            ask(&services, bid, "What code did I ask you to remember? Reply only the code. Do not use tools.")
+        );
+        assert!(answer_a.contains("PLUM-42"), "{agent}: {answer_a}");
+        assert!(answer_b.contains("PLUM-42"), "{agent}: {answer_b}");
+        services.dispatch("tasks.closeSide", json!({ "sessionId": aid })).await.unwrap();
+        assert!(services.snapshot(&format!("session:{bid}"), &json!({})).is_ok());
+        services.dispatch("tasks.closeSide", json!({ "sessionId": bid })).await.unwrap();
+        services.stop_agents().await;
+    }
+}
+
 fn handoff_of(services: &Services, session_id: &str) -> Value {
     events_of(&services.snapshot(&format!("session:{session_id}"), &json!({})).unwrap())
         .into_iter()

@@ -1371,9 +1371,9 @@ async fn side_chat_forks_the_current_thread_and_leaves_the_task_alone() {
     let side_id = side["id"].as_str().unwrap().to_string();
     assert_eq!(side["options"]["model"], "m1");
     assert!(side["options"].get("collaborationMode").is_none(), "计划模式不带进侧边聊天");
-    // 再开一次还是同一个。
+    // 再开一次得到独立的会话。
     let again = services_a.dispatch("tasks.openSide", json!({ "taskId": task_id })).await.unwrap();
-    assert_eq!(again["id"], side["id"]);
+    assert_ne!(again["id"], side["id"]);
 
     services_a
         .dispatch("sessions.send", json!({ "sessionId": side_id, "text": "这是什么意思" }))
@@ -1388,25 +1388,27 @@ async fn side_chat_forks_the_current_thread_and_leaves_the_task_alone() {
         assert!(!ctx.flag("persist"));
     }
 
-    // 任务还是一段会话，标题和更新时间没被侧边聊天动过，侧边聊天挂在 `side` 上。
+    // 主会话仍只有一段，侧边聊天分别挂在 `sides` 上。
     let entry = services_a.dispatch("tasks.list", Value::Null).await.unwrap()[0].clone();
     assert_eq!(entry["sessions"].as_array().unwrap().len(), 1);
     assert_eq!(entry["title"], before["title"]);
     assert_eq!(entry["updatedAt"], before["updatedAt"]);
-    assert_eq!(entry["side"]["id"], side["id"]);
-    assert_eq!(entry["side"]["nativeId"], "side-of-thread-1");
+    assert_eq!(entry["sides"].as_array().unwrap().iter().find(|s| s["id"] == side["id"]).unwrap()["id"], side["id"]);
+    assert_eq!(entry["sides"].as_array().unwrap().iter().find(|s| s["id"] == side["id"]).unwrap()["nativeId"], "side-of-thread-1");
     let main_feed = services_a.snapshot(&format!("session:{main_id}"), &json!({})).unwrap();
     assert!(!events_of(&main_feed).iter().any(|e| e["text"] == "这是什么意思"));
 
     // 关掉：停进程，连时间线一起删。
     let stopped = *script.stopped.lock().unwrap();
     assert_eq!(
-        services_a.dispatch("tasks.closeSide", json!({ "taskId": task_id })).await.unwrap(),
+        services_a.dispatch("tasks.closeSide", json!({ "sessionId": side_id })).await.unwrap(),
         json!(true)
     );
     assert_eq!(*script.stopped.lock().unwrap(), stopped + 1);
     let entry = services_a.dispatch("tasks.list", Value::Null).await.unwrap()[0].clone();
-    assert!(entry.get("side").is_none());
+    assert_eq!(entry["sides"].as_array().unwrap().len(), 1);
+    assert_eq!(entry["sides"][0]["id"], again["id"]);
+    services_a.dispatch("tasks.closeSide", json!({ "sessionId": again["id"] })).await.unwrap();
     assert!(services_a.snapshot(&format!("session:{side_id}"), &json!({})).is_err());
 
     // 关掉时它没发的草稿一起删。
@@ -1416,7 +1418,7 @@ async fn side_chat_forks_the_current_thread_and_leaves_the_task_alone() {
         .dispatch("drafts.set", json!({ "key": side_id, "body": { "text": "没发的" } }))
         .await
         .unwrap();
-    services_a.dispatch("tasks.closeSide", json!({ "taskId": task_id })).await.unwrap();
+    services_a.dispatch("tasks.closeSide", json!({ "sessionId": side_id })).await.unwrap();
     assert_eq!(services_a.dispatch("drafts.get", json!({ "key": side_id })).await.unwrap(), Value::Null);
 
     // 没人看着、空闲了：接不回去，直接关掉。
@@ -1429,7 +1431,7 @@ async fn side_chat_forks_the_current_thread_and_leaves_the_task_alone() {
     wait_for_answer(&services_a, &side_id, "收到：再问一句").await;
     services_a.release_idle_sessions(Duration::ZERO).await;
     let entry = services_a.dispatch("tasks.list", Value::Null).await.unwrap()[0].clone();
-    assert!(entry.get("side").is_none());
+    assert!(entry["sides"].as_array().unwrap().is_empty());
 
     // 换 Agent：侧边聊天是从换下去的那段分出来的，跟着关掉。
     services_a.dispatch("tasks.openSide", json!({ "taskId": task_id })).await.unwrap();
@@ -1441,7 +1443,7 @@ async fn side_chat_forks_the_current_thread_and_leaves_the_task_alone() {
         .await
         .unwrap();
     let entry = services_a.dispatch("tasks.list", Value::Null).await.unwrap()[0].clone();
-    assert!(entry.get("side").is_none());
+    assert!(entry["sides"].as_array().unwrap().is_empty());
 
     // daemon 重启后，上次没关的侧边聊天接不回去，清掉。
     // 换回 Codex：还没在 Claude 说过话，接回原来的线程，又能开了。
@@ -1454,5 +1456,5 @@ async fn side_chat_forks_the_current_thread_and_leaves_the_task_alone() {
     let services_b = services(Arc::new(Store::open(&db).unwrap()), script.clone(), dir.path());
     services_b.settle_interrupted().unwrap();
     let entry = services_b.dispatch("tasks.list", Value::Null).await.unwrap()[0].clone();
-    assert!(entry.get("side").is_none());
+    assert!(entry["sides"].as_array().unwrap().is_empty());
 }

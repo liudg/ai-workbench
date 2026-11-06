@@ -93,6 +93,7 @@ interface PanelApi {
   subscriptionSupported: boolean;
   tabs: PanelTab[];
   activeId: string;
+  recentTabIds?: string[];
   projectId: string;
   sessionId: string;
   sessionFiles: FileChange[];
@@ -106,7 +107,7 @@ interface PanelApi {
   openTerminal: (replaceTabId?: string) => void;
   /** 打开终端并执行命令。终端还没开好时先排着。 */
   runInTerminal: (command: string) => void;
-  /** 打开或聚焦侧边聊天。这个会话开不了时为 null。 */
+  /** 新建一个侧边聊天。这个会话开不了时为 null。 */
   openSideChat: ((replaceTabId?: string) => void) | null;
   openSubagents: ((replaceTabId?: string) => void) | null;
   projectPath: string;
@@ -154,7 +155,7 @@ interface PanelProps {
   events: readonly SessionEvent[];
   usage: SessionUsageView | null;
   /** 侧边聊天标签的打开目标。宿主判断这个会话能不能开，开不了时不给。 */
-  sideChat?: OpenTarget | null;
+  sideChat?: (() => OpenTarget) | null;
   /** 子智能体面板的打开目标。没有建好的会话时不给。 */
   subagents?: OpenTarget | null;
   children: ReactNode;
@@ -186,6 +187,7 @@ export function PanelHost({
   useCloseBrowserOnUnmount();
   const tabs = state.use((s) => s.panelBySession[sessionId]?.tabs ?? EMPTY_TABS);
   const activeId = state.use((s) => s.panelBySession[sessionId]?.activeId ?? "");
+  const recentTabIds = state.use((s) => s.panelBySession[sessionId]?.recentTabIds);
   const layout = state.use((s) => s.panelBySession[sessionId]?.layout ?? "chat");
   const previewWidth = state.use((s) => s.previewWidthBySession[sessionId] ?? null);
   const diffFilesWidth = state.use((s) => s.diffFilesWidthBySession[sessionId] ?? null);
@@ -250,7 +252,7 @@ export function PanelHost({
     [sessionId, state],
   );
   const openSideChat = useMemo(
-    () => (sideChat ? (replaceTabId?: string) => void state.get().panelOpenTarget(sessionId, sideChat, emptyCtx(), replaceTabId) : null),
+    () => (sideChat ? (replaceTabId?: string) => void state.get().panelOpenTarget(sessionId, sideChat(), emptyCtx(), replaceTabId) : null),
     [sessionId, sideChat, state],
   );
   const openSubagents = useMemo(
@@ -305,6 +307,7 @@ export function PanelHost({
       subscriptionSupported,
       tabs,
       activeId,
+      recentTabIds,
       projectId,
       sessionId,
       sessionFiles,
@@ -348,6 +351,7 @@ export function PanelHost({
       subscriptionSupported,
       tabs,
       activeId,
+      recentTabIds,
       projectId,
       sessionId,
       sessionFiles,

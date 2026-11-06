@@ -12,7 +12,8 @@ import {
   type TextSnippet,
   type TextSnippetDraft,
 } from "@/shared/text-snippet";
-import type { AgentKind, Attachment, SessionSandbox, SessionTuning } from "@/types";
+import type { AgentKind, Attachment, QueuedTurn, SessionSandbox, SessionTuning } from "@/types";
+import { withQueuedDraft } from "./queued-draft";
 
 export interface ComposerDraft {
   text: string;
@@ -100,6 +101,12 @@ function ensureLoaded(key: string): Promise<void> {
 
 export function readDraft(key: string): ComposerDraft {
   return drafts.get(key) ?? EMPTY;
+}
+
+export async function appendQueuedDraft(key: string, item: QueuedTurn, remove: () => Promise<unknown>) {
+  await ensureLoaded(key);
+  await remove();
+  patchDraft(key, withQueuedDraft(readDraft(key), item));
 }
 
 export function patchDraft(key: string, patch: Partial<ComposerDraft>) {

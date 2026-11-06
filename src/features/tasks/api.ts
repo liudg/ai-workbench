@@ -85,17 +85,17 @@ export function runImport(projectId: string, items: ImportCandidate[]) {
   return daemon.call<ImportResult>("imports.run", { projectId, items }, CLI_TIMEOUT_MS);
 }
 
-/** 开着的侧边聊天，没开就从任务现在这段分出一个。 */
+/** 从当前对话新建一个独立的侧边聊天。 */
 export function openSide(taskId: string) {
   return daemon.call<TaskSession>("tasks.openSide", { taskId }, CLI_TIMEOUT_MS);
 }
 
 /** 关掉侧边聊天，它的对话一起丢掉。 */
-export function closeSide(taskId: string) {
-  return daemon.call<boolean>("tasks.closeSide", { taskId }, CLI_TIMEOUT_MS);
+export function closeSide(sessionId: string) {
+  return daemon.call<boolean>("tasks.closeSide", { sessionId }, CLI_TIMEOUT_MS);
 }
 
-/** 告诉 daemon 面板里哪些任务开着侧边聊天标签。有标签的不会因为空闲被关掉。 */
-export function reportSideTabs(taskIds: string[]) {
-  return daemon.call<null>("tasks.sideTabs", { taskIds });
+/** 上报有标签的侧边会话，按会话保护它们不被空闲回收。 */
+export function reportSideTabs(sessionIds: string[]) {
+  return daemon.call<null>("tasks.sideTabs", { sessionIds });
 }

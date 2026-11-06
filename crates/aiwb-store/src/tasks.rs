@@ -126,11 +126,10 @@ impl Store {
     /// 任务列表主题的内容：每个任务带上它的会话，和现在用的会话的注意力。
     pub fn task_entries(&self) -> StoreResult<Vec<TaskEntry>> {
         let mut sessions = self.list_sessions()?;
-        let mut sides: HashMap<String, TaskSession> = self
-            .side_sessions()?
-            .into_iter()
-            .map(|session| (session.task_id.clone(), session))
-            .collect();
+        let mut sides: HashMap<String, Vec<TaskSession>> = HashMap::new();
+        for session in self.side_sessions()? {
+            sides.entry(session.task_id.clone()).or_default().push(session);
+        }
         let mut attention: HashMap<String, Attention> = self.attention_rows()?.into_iter().collect();
         Ok(self
             .list_tasks()?
@@ -146,7 +145,7 @@ impl Store {
                     None => Attention::from_status(SessionStatus::Stopped, task.updated_at),
                 };
                 TaskEntry {
-                    side: sides.remove(&task.id),
+                    sides: sides.remove(&task.id).unwrap_or_default(),
                     task,
                     sessions: mine,
                     attention,
@@ -226,18 +225,10 @@ impl Store {
         insert_session(&self.conn(), session)
     }
 
-    /// 给任务开侧边聊天。一个任务同时只有一个。
+    /// 给任务增加一个独立的侧边聊天。
     pub fn add_side_session(&self, session: &TaskSession) -> StoreResult<()> {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
-        let open: bool = tx.query_row(
-            "SELECT EXISTS (SELECT 1 FROM session WHERE task_id = ?1 AND side = 1)",
-            [&session.task_id],
-            |row| row.get(0),
-        )?;
-        if open {
-            return Err(StoreError::Invalid("这个任务已经开着侧边聊天".into()));
-        }
         insert_session(&tx, session)?;
         tx.execute("UPDATE session SET side = 1 WHERE id = ?1", [&session.id])?;
         tx.commit()?;
@@ -245,15 +236,11 @@ impl Store {
     }
 
     /// 任务开着的侧边聊天。
-    pub fn side_session(&self, task_id: &str) -> StoreResult<Option<TaskSession>> {
-        Ok(self
-            .conn()
-            .query_row(
-                "SELECT * FROM session WHERE task_id = ?1 AND side = 1",
-                [task_id],
-                session_from_row,
-            )
-            .optional()?)
+    pub fn task_side_sessions(&self, task_id: &str) -> StoreResult<Vec<TaskSession>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare("SELECT * FROM session WHERE task_id = ?1 AND side = 1 ORDER BY created_at, id")?;
+        let rows = stmt.query_map([task_id], session_from_row)?;
+        Ok(rows.collect::<Result<_, _>>()?)
     }
 
     pub fn side_sessions(&self) -> StoreResult<Vec<TaskSession>> {
@@ -565,18 +552,19 @@ mod tests {
             ..sa.clone()
         };
         store.add_side_session(&side).unwrap();
-        assert!(store.add_side_session(&TaskSession { id: "t1-side2".into(), ..side.clone() }).is_err());
+        let second = TaskSession { id: "t1-side2".into(), ..side.clone() };
+        store.add_side_session(&second).unwrap();
 
         assert_eq!(store.task_sessions("t1").unwrap(), vec![sa.clone()]);
         assert_eq!(store.list_sessions().unwrap(), vec![sa.clone()]);
-        assert_eq!(store.side_session("t1").unwrap(), Some(side.clone()));
+        assert_eq!(store.task_side_sessions("t1").unwrap(), vec![side.clone(), second.clone()]);
         assert!(store.is_side_session("t1-side").unwrap());
         assert!(!store.is_side_session("t1-s").unwrap());
         let entry = &store.task_entries().unwrap()[0];
         assert_eq!(entry.sessions, vec![sa]);
-        assert_eq!(entry.side, Some(side));
+        assert_eq!(entry.sides, vec![side, second.clone()]);
 
         store.remove_session("t1-side").unwrap();
-        assert!(store.task_entries().unwrap()[0].side.is_none());
+        assert_eq!(store.task_entries().unwrap()[0].sides, vec![second]);
     }
 }

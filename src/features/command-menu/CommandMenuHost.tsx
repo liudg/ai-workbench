@@ -166,7 +166,15 @@ export function CommandMenuHost() {
       const sideShown =
         panel.layout !== "chat" && panel.tabs.find((tab) => tab.id === panel.activeId)?.viewerId === "side-chat";
       if (sideShown) panel.hidePanel();
-      else panel.openSideChat();
+      else {
+        const recent = [panel.activeId, ...(panel.recentTabIds ?? []), ...panel.tabs.map((tab) => tab.id).reverse()]
+          .map((id) => panel.tabs.find((tab) => tab.id === id && tab.viewerId === "side-chat" && tab.status !== "error"))
+          .find(Boolean);
+        if (recent) {
+          panel.selectTab(recent.id);
+          panel.showPanel();
+        } else panel.openSideChat();
+      }
       close();
       return;
     }

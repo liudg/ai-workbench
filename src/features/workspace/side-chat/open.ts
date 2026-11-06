@@ -1,66 +1,91 @@
-// 侧边聊天在右侧面板里是一个标签。打开它、把排队消息挪过去问，都从这里走。
-
 import type { OpenTarget } from "@/features/panel/core/registry";
 import { usePanelStore } from "@/features/panel/state/store";
-import { tasksApi, type TaskEntry } from "@/features/tasks";
+import { tasksApi, type TaskEntry, type TaskSession } from "@/features/tasks";
 import { showError } from "@/shared/shell/error-banner";
 import type { TextSnippetDraft } from "@/shared/text-snippet";
 import type { QueuedTurn } from "@/types";
-import { removeQueued, sendMessage } from "../session/api";
-import { addDraftSnippet } from "../session/composer-drafts";
+import { removeQueued } from "../session/api";
+import { addDraftSnippet, appendQueuedDraft, dropDraft } from "../session/composer-drafts";
+import { recentSideTab } from "./selection";
 
 export const SIDE_CHAT_VIEWER = "side-chat";
-
 export interface SideChatPayload {
   taskId: string;
-  /** 分出来的侧边聊天会话。加载完才有，关标签时用它清掉没发的草稿。 */
+  key: string;
+  title: string;
   sideId?: string;
   error?: string;
 }
-
-export function sideChatTarget(taskId: string): OpenTarget {
-  return { kind: "custom", type: SIDE_CHAT_VIEWER, data: { taskId } satisfies SideChatPayload };
-}
-
+const opening = new Map<string, { promise: Promise<TaskSession>; closed: boolean }>();
 const NO_CONTEXT = { projectId: "", projectPath: "", sessionFiles: [] };
 
-export function openSideChatTab(mainSessionId: string, taskId: string) {
-  void usePanelStore.getState().panelOpenTarget(mainSessionId, sideChatTarget(taskId), NO_CONTEXT);
+export function sideChatTarget(taskId: string): OpenTarget {
+  const tabs = Object.values(usePanelStore.getState().panelBySession).flatMap((panel) => panel.tabs);
+  const numbers = tabs.filter((tab) => tab.viewerId === SIDE_CHAT_VIEWER && (tab.payload as SideChatPayload).taskId === taskId)
+    .map((tab) => Number((tab.payload as SideChatPayload).title?.split(" ").slice(-1)[0]) || 0);
+  const key = crypto.randomUUID();
+  return { kind: "custom", type: SIDE_CHAT_VIEWER, key, data: { taskId, key, title: `侧边聊天 ${Math.max(0, ...numbers) + 1}` } satisfies SideChatPayload };
 }
 
-/**
- * 排队消息挪到侧边聊天里发出去。侧边聊天开好了才从主对话的队列拿掉，开不了就原样留在队列里；
- * 发之前先拿掉，免得主回合恰好结束时两边都发；侧边聊天没发出去就排回主对话（Codex `restore_side_user_message`）。
- */
+export async function loadSideChat(payload: SideChatPayload): Promise<SideChatPayload> {
+  const entry = { promise: tasksApi.openSide(payload.taskId), closed: false };
+  opening.set(payload.key, entry);
+  try {
+    const side = await entry.promise;
+    if (entry.closed) await tasksApi.closeSide(side.id);
+    return { ...payload, sideId: side.id };
+  } finally {
+    opening.delete(payload.key);
+  }
+}
+
+export function disposeSideChat(payload: SideChatPayload) {
+  const entry = opening.get(payload.key);
+  if (entry) entry.closed = true;
+  if (payload.sideId) {
+    dropDraft(payload.sideId);
+    void tasksApi.closeSide(payload.sideId).catch(showError);
+  }
+}
+
+async function recentSideChat(mainSessionId: string, taskId: string): Promise<string> {
+  const state = usePanelStore.getState();
+  const panel = state.panelBySession[mainSessionId];
+  let tab = recentSideTab(panel);
+  let sideId: string | undefined;
+  if (!tab) {
+    const target = sideChatTarget(taskId);
+    await state.panelOpenTarget(mainSessionId, target, NO_CONTEXT);
+    tab = usePanelStore.getState().panelBySession[mainSessionId]?.tabs.find((item) => (item.payload as SideChatPayload)?.key === (target.kind === "custom" ? target.key : ""));
+  } else {
+    state.panelSelectTab(mainSessionId, tab.id);
+    state.panelShow(mainSessionId);
+    const payload = tab.payload as SideChatPayload;
+    sideId = (await opening.get(payload.key)?.promise)?.id;
+    tab = usePanelStore.getState().panelBySession[mainSessionId]?.tabs.find((item) => item.id === tab?.id);
+  }
+  const payload = tab?.payload as SideChatPayload | undefined;
+  sideId = payload?.sideId ?? sideId;
+  if (!tab || !sideId || tab.status === "error") throw new Error(payload?.error ?? "侧边聊天已关闭");
+  return sideId;
+}
+
 export function askInSideChat(mainSessionId: string, taskId: string, item: QueuedTurn) {
-  const images = item.images ?? [];
-  openSideChatTab(mainSessionId, taskId);
-  void tasksApi
-    .openSide(taskId)
-    .then((side) =>
-      removeQueued(mainSessionId, item.id).then(() =>
-        sendMessage(side.id, item.text, images).catch((error: unknown) => {
-          showError(error);
-          return sendMessage(mainSessionId, item.text, images);
-        }),
-      ),
-    )
-    .catch(showError);
+  return recentSideChat(mainSessionId, taskId).then(async (sideId) => {
+    await appendQueuedDraft(sideId, item, () => removeQueued(mainSessionId, item.id));
+  }).catch(showError);
 }
 
-/** 主对话里选中的一段带进侧边聊天：开好后放进它的作曲栏，不直接发出（Claude 桌面端 `openWithContext`）。 */
 export function startSideChatWith(mainSessionId: string, taskId: string, draft: TextSnippetDraft) {
-  openSideChatTab(mainSessionId, taskId);
-  void tasksApi
-    .openSide(taskId)
-    .then((side) => addDraftSnippet(side.id, draft))
-    .catch(showError);
+  return recentSideChat(mainSessionId, taskId).then((sideId) => addDraftSnippet(sideId, draft)).catch(showError);
 }
 
-/** 界面重载后面板标签没了，daemon 里的侧边聊天还开着：没有标签就关掉它。 */
 export function closeOrphanSideChat(mainSessionId: string, task: TaskEntry) {
-  if (!task.side) return;
   const tabs = usePanelStore.getState().panelBySession[mainSessionId]?.tabs ?? [];
-  if (tabs.some((tab) => tab.viewerId === SIDE_CHAT_VIEWER)) return;
-  void tasksApi.closeSide(task.id).catch(() => {});
+  if (tabs.some((tab) => tab.viewerId === SIDE_CHAT_VIEWER && tab.status === "loading")) return;
+  for (const side of task.sides ?? []) {
+    if (!tabs.some((tab) => tab.viewerId === SIDE_CHAT_VIEWER && (tab.payload as SideChatPayload).sideId === side.id)) {
+      void tasksApi.closeSide(side.id).catch(showError);
+    }
+  }
 }

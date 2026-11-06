@@ -202,18 +202,18 @@ impl Runtimes {
         self.viewing.lock().unwrap().values().any(|id| id == task_id)
     }
 
-    /// 一条连接报它的面板里哪些任务开着侧边聊天标签。连接断开时报空。
-    pub(crate) fn set_side_tabs(&self, connection: u64, task_ids: Vec<String>) {
+    /// 一条连接报它的面板里哪些侧边会话有标签。连接断开时报空。
+    pub(crate) fn set_side_tabs(&self, connection: u64, session_ids: Vec<String>) {
         let mut tabs = self.side_tabs.lock().unwrap();
-        if task_ids.is_empty() {
+        if session_ids.is_empty() {
             tabs.remove(&connection);
         } else {
-            tabs.insert(connection, task_ids.into_iter().collect());
+            tabs.insert(connection, session_ids.into_iter().collect());
         }
     }
 
-    fn has_side_tab(&self, task_id: &str) -> bool {
-        self.side_tabs.lock().unwrap().values().any(|ids| ids.contains(task_id))
+    fn has_side_tab(&self, session_id: &str) -> bool {
+        self.side_tabs.lock().unwrap().values().any(|ids| ids.contains(session_id))
     }
 
     /// 这条事件之后的注意力。状态变了按有没有人在看记未读；在等输入时来了新提问换掉预览。
@@ -932,7 +932,7 @@ impl Runtimes {
                 continue;
             }
             if self.store.is_side_session(&session_id).map_err(|e| e.to_string())? {
-                if self.has_side_tab(&session.task_id) {
+                if self.has_side_tab(&session_id) {
                     continue;
                 }
                 let queued = self
@@ -1252,15 +1252,15 @@ mod tests {
         // 面板里有标签：窗口没焦点、没人看着也留着。
         let (store, runtimes) = side_runtimes();
         attach(&runtimes, 0);
-        runtimes.set_side_tabs(1, vec!["t".into()]);
+        runtimes.set_side_tabs(1, vec!["s".into()]);
         assert_eq!(runtimes.release_idle(30 * MIN, 30 * MIN).await.unwrap(), 0);
-        assert!(store.side_session("t").unwrap().is_some());
+        assert!(!store.task_side_sessions("t").unwrap().is_empty());
 
         // 那条连接关了标签（或断开）：接不回去，直接关掉；有人看着这个任务也一样。
         runtimes.set_side_tabs(1, Vec::new());
         runtimes.set_viewing(2, Some("t".into())).unwrap();
         assert_eq!(runtimes.release_idle(30 * MIN, 30 * MIN).await.unwrap(), 1);
-        assert!(store.side_session("t").unwrap().is_none());
+        assert!(store.task_side_sessions("t").unwrap().is_empty());
     }
 
     #[test]

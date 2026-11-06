@@ -279,7 +279,7 @@ impl Services {
     /// 还在磁盘上的工作树，按目录合并用着它的任务。
     fn worktree_groups(&self) -> ServiceResult<Vec<Group>> {
         let entries = self.store.task_entries().map_err(|e| e.to_string())?;
-        let busy_of = |entry: &TaskEntry| entry.sessions.iter().chain(entry.side.iter()).any(session_busy);
+        let busy_of = |entry: &TaskEntry| entry.sessions.iter().chain(entry.sides.iter()).any(session_busy);
         // 父任务还在跑的子任务，父任务可能还要看它工作树里的改动。
         let busy_tasks: HashSet<&str> = entries
             .iter()

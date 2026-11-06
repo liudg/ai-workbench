@@ -56,7 +56,7 @@ export function SessionPanel({
   events: SessionEvent[];
   profile: AgentProfile | undefined;
   /** 能开侧边聊天时给出它的标签目标。 */
-  sideChat?: OpenTarget | null;
+  sideChat?: (() => OpenTarget) | null;
   /** 子智能体面板的标签目标。 */
   subagents?: OpenTarget | null;
   children: ReactNode;

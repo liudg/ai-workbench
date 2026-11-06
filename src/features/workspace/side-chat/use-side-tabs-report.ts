@@ -5,14 +5,14 @@ import { tasksApi } from "@/features/tasks";
 import { useConnectionStatus } from "@/lib/daemon";
 import { SIDE_CHAT_VIEWER, type SideChatPayload } from "./open";
 
-/** 所有面板里开着侧边聊天标签的任务，排好序拼成一个键，内容不变时不重报。 */
+/** 所有面板里开着标签的侧边会话，排好序拼成一个键，内容不变时不重报。 */
 function sideTabKey(state: ReturnType<typeof usePanelStore.getState>): string {
   const ids = new Set<string>();
   for (const panel of Object.values(state.panelBySession)) {
     for (const tab of panel.tabs) {
       if (tab.viewerId !== SIDE_CHAT_VIEWER) continue;
-      const taskId = (tab.payload as Partial<SideChatPayload> | undefined)?.taskId;
-      if (typeof taskId === "string" && taskId) ids.add(taskId);
+      const sideId = (tab.payload as Partial<SideChatPayload> | undefined)?.sideId;
+      if (typeof sideId === "string" && sideId) ids.add(sideId);
     }
   }
   return [...ids].sort().join("\n");

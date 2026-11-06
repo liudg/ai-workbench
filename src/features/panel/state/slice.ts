@@ -25,6 +25,7 @@ import {
   patchPayload,
   placeTab,
   readTitle,
+  selectTab,
   type SessionPanel,
 } from "./panel-session.ts";
 
@@ -131,7 +132,7 @@ export function createPanelSlice(set: PanelSet, get: PanelGet): PanelSlice {
     diffViewBySession: {},
 
     panelSelectTab(sessionId, id) {
-      mutate(sessionId, (session) => (session.activeId === id ? null : { ...session, activeId: id }));
+      mutate(sessionId, (session) => (session.activeId === id ? null : selectTab(session, id)));
     },
 
     panelCloseTab(sessionId, id) {

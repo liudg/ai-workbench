@@ -76,7 +76,7 @@ export interface TaskEntry {
   /** 现在用的会话的注意力。 */
   attention: Attention;
   /** 开着的侧边聊天。不算任务的会话段。 */
-  side?: TaskSession;
+  sides?: TaskSession[];
   /** 工作树任务现在的分支。 */
   branch?: string;
 }

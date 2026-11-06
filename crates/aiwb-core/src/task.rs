@@ -144,8 +144,8 @@ pub struct TaskEntry {
     pub sessions: Vec<TaskSession>,
     pub attention: Attention,
     /// 开着的侧边聊天。不算任务的会话段，不进时间线。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub side: Option<TaskSession>,
+    #[serde(default)]
+    pub sides: Vec<TaskSession>,
     /// 工作树任务现在的分支：交给项目目录时是交过去的分支，否则以工作树的检出为准，
     /// 清理掉了就是清理时的分支。要读磁盘，存储层不填，由 daemon 发出去前填上。
     #[serde(default, skip_serializing_if = "Option::is_none")]

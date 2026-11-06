@@ -10,6 +10,7 @@ import type { PanelTab, ViewerContext } from "../core/registry.ts";
 export interface SessionPanel {
   tabs: PanelTab[];
   activeId: string;
+  recentTabIds?: string[];
   histories: Record<string, BrowserHistory>;
   /** chat 收起侧栏但保留标签；split 并排；full 内容铺满、聊天让开。 */
   layout: PanelLayoutMode;
@@ -56,7 +57,12 @@ export function placeTab(
     histories = { ...histories };
     delete histories[replaceTabId];
   }
-  return { ...session, tabs, histories, activeId: activate ? tab.id : session.activeId, layout };
+  const next = { ...session, tabs, histories, layout };
+  return activate ? selectTab(next, tab.id) : next;
+}
+
+export function selectTab(session: SessionPanel, id: string): SessionPanel {
+  return { ...session, activeId: id, recentTabIds: [id, ...(session.recentTabIds ?? []).filter((key) => key !== id && session.tabs.some((tab) => tab.id === key))] };
 }
 
 /** 已有标签再次打开：只聚焦并展开侧栏，不换掉 payload。 */
@@ -65,7 +71,7 @@ export function focusTab(session: SessionPanel, id: string, replaceTabId?: strin
   if (tab && replaceTabId && replaceTabId !== id) return placeTab(session, tab, false, true, replaceTabId);
   const layout = layoutAfterOpen(session.layout);
   if (session.activeId === id && session.layout === layout) return null;
-  return { ...session, activeId: id, layout };
+  return selectTab({ ...session, layout }, id);
 }
 
 export function patchPayload(current: unknown, patch: Record<string, unknown>): unknown | null {

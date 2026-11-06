@@ -42,7 +42,7 @@ struct ViewParams {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SideTabsParams {
-    task_ids: Vec<String>,
+    session_ids: Vec<String>,
 }
 
 /// 订阅参数里除 `topic` 以外的部分（会话主题的 `fromRev`）。
@@ -127,7 +127,7 @@ pub(crate) async fn serve(socket: WebSocket, services: Arc<Services>) {
             "tasks.sideTabs" => {
                 let response = match serde_json::from_value::<SideTabsParams>(request.params) {
                     Ok(params) => {
-                        services.runtimes.set_side_tabs(connection, params.task_ids);
+                        services.runtimes.set_side_tabs(connection, params.session_ids);
                         Response::ok(request.id, Value::Null)
                     }
                     Err(err) => Response::err(request.id, format!("参数不对：{err}")),

@@ -1,10 +1,7 @@
 import { MessageCirclePlus } from "lucide-react";
 
 import { registerViewer, type OpenTarget, type PanelViewer } from "@/features/panel/core/registry";
-import { tasksApi } from "@/features/tasks";
-import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
-import { dropDraft } from "../session/composer-drafts";
-import { SIDE_CHAT_VIEWER, type SideChatPayload } from "./open";
+import { SIDE_CHAT_VIEWER, loadSideChat, disposeSideChat, type SideChatPayload } from "./open";
 import { SideChatTab } from "./SideChatView";
 
 function taskIdOf(target: OpenTarget): string | null {
@@ -13,22 +10,17 @@ function taskIdOf(target: OpenTarget): string | null {
   return typeof data?.taskId === "string" ? data.taskId : null;
 }
 
-/** 打开标签就分叉（开着的直接接上）；关掉标签就关掉侧边聊天，对话和没发的字一起丢掉。 */
+/** 每个标签分出独立会话；关闭只清理这个标签对应的聊天和草稿。 */
 const sideChatViewer: PanelViewer<SideChatPayload> = {
   id: SIDE_CHAT_VIEWER,
   match: (target) => (taskIdOf(target) ? 100 : 0),
   icon: MessageCirclePlus,
-  title: () => DESKTOP_ZH.sideChat,
+  title: (payload) => payload.title,
   load: async (target) => {
-    const taskId = taskIdOf(target) ?? "";
-    const side = await tasksApi.openSide(taskId);
-    return { taskId, sideId: side.id };
+    return loadSideChat((target as Extract<OpenTarget, { kind: "custom" }>).data as SideChatPayload);
   },
   View: SideChatTab,
-  dispose: (payload) => {
-    void tasksApi.closeSide(payload.taskId).catch(() => {});
-    if (payload.sideId) dropDraft(payload.sideId);
-  },
+  dispose: disposeSideChat,
 };
 
 let registered = false;

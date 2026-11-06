@@ -8,14 +8,13 @@ import { ChatHostProvider, type ChatHost } from "@/features/chat/host";
 import { ChatView } from "@/features/chat/timeline/ChatView";
 import type { ViewerViewProps } from "@/features/panel/core/registry";
 import { useProjects } from "@/features/projects";
-import { currentSession, useTasks, type TaskEntry, type TaskSession } from "@/features/tasks";
+import { useTasks, type TaskEntry, type TaskSession } from "@/features/tasks";
 import { useSessionFeeds, type SessionFeedState } from "@/lib/daemon";
 import type { PromptAnswer } from "@/types";
 import { answerPrompt } from "../session/api";
 import { chatSession } from "../session/chat-session";
 import { addDraftSnippet, useComposerDraft } from "../session/composer-drafts";
 import { useLiveComposer } from "../session/use-live-composer";
-import { mainStatusNote, SIDE_COPY } from "./main-status";
 import type { SideChatPayload } from "./open";
 
 const NOT_READY: SessionFeedState = { ready: false, events: [], queue: [] };
@@ -24,9 +23,10 @@ const NOT_READY: SessionFeedState = { ready: false, events: [], queue: [] };
 export function SideChatTab({ payload, status }: ViewerViewProps<SideChatPayload>) {
   const { tasks } = useTasks();
   const task = tasks.find((item) => item.id === payload.taskId);
-  if (status === "error") return <Notice text={payload.error ?? SIDE_COPY.closed} tone="error" />;
-  if (task?.side) return <SideChat task={task} side={task.side} />;
-  return status === "loading" ? null : <Notice text={SIDE_COPY.closed} />;
+  if (status === "error") return <Notice text={payload.error ?? "侧边聊天已关闭"} tone="error" />;
+  const side = task?.sides?.find((item) => item.id === payload.sideId);
+  if (task && side) return <SideChat task={task} side={side} />;
+  return status === "loading" ? null : <Notice text="侧边聊天已关闭" />;
 }
 
 function Notice({ text, tone }: { text: string; tone?: "error" }) {
@@ -69,7 +69,6 @@ function SideChat({ task, side }: { task: TaskEntry; side: TaskSession }) {
   return (
     <ChatHostProvider host={host}>
       <div data-side-chat {...{ [CHAT_SCOPE_ATTR]: "" }} className="flex h-full min-h-0 flex-col bg-[#0f0f0f]">
-        <MainStatus main={currentSession(task)} side={side} />
         <div className="flex min-h-0 flex-1 flex-col">
           <AnswerMarkdownHost>
             <ChatView
@@ -86,21 +85,5 @@ function SideChat({ task, side }: { task: TaskEntry; side: TaskSession }) {
         </div>
       </div>
     </ChatHostProvider>
-  );
-}
-
-/** 主对话现在这段在侧边聊天打开之后有没有变过状态，看它的更新时间。 */
-function MainStatus({ main, side }: { main: TaskSession | undefined; side: TaskSession }) {
-  const note = main ? mainStatusNote(main.status, main.updatedAt > side.createdAt) : null;
-  return (
-    <div className="flex h-8 shrink-0 items-center gap-1.5 border-b border-[#222] px-4 text-xs text-zinc-500">
-      <span>{SIDE_COPY.fromMain}</span>
-      {note ? (
-        <>
-          <span aria-hidden>·</span>
-          <span className={main?.status === "needs-input" ? "text-amber-300" : "text-zinc-400"}>{note}</span>
-        </>
-      ) : null}
-    </div>
   );
 }

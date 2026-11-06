@@ -44,7 +44,7 @@ export function SessionView({
   );
   // 只在打开会话时看一次：之后打开的侧边聊天，标签总在 daemon 建好它之前放上。
   useEffect(() => closeOrphanSideChat(session.id, task), [session.id]);
-  const sideChat = useMemo(() => (sideChatOpen ? sideChatTarget(task.id) : null), [sideChatOpen, task.id]);
+  const sideChat = useMemo(() => (sideChatOpen ? () => sideChatTarget(task.id) : null), [sideChatOpen, task.id]);
   const composer = useLiveComposer({
     task,
     taskSession,
