@@ -19,7 +19,7 @@ import type {
   SessionTuning,
 } from "@/types";
 import { filterPaths } from "../session/api";
-import { moveDraft, patchDraft, readDraft, type ComposerDraft } from "../session/composer-drafts";
+import { moveDraft, patchDraft, readDraft, removeDraftSnippet, type ComposerDraft } from "../session/composer-drafts";
 import { usePanelStore } from "@/features/panel/state/store";
 import { beginSessionStart } from "../session/session-start";
 import { initialSandbox } from "@/lib/sandbox";
@@ -263,6 +263,7 @@ export function useNewComposer({
       clearAttachments: () => patch({ files: [] }),
       replaceAttachments: (files) => patch({ files }),
       clearTextSnippets: () => patch({ snippets: [] }),
+      removeTextSnippet: (id) => removeDraftSnippet(key, id),
       updateQueued: async () => {},
       removeQueued: async () => {},
       steerQueued: async () => {},

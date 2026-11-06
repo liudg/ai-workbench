@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArrowUp, Plus } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { ArrowUp, Plus, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
-import { commentedDraft, type TextSnippetDraft } from "@/shared/text-snippet";
+import { commentedDraft, type TextSnippet, type TextSnippetDraft } from "@/shared/text-snippet";
+import { usePanelOptional } from "../core/PanelProvider";
 
 /** 一段要评论的行。scope 区分同一视图里的不同文件或差异的左右两栏，start/end 是行序号。 */
 export interface CommentSpan {
@@ -103,6 +104,62 @@ function commentRangeLabel(start: number, end: number): string {
   return DESKTOP_ZH.commentLines.replace("{start}", String(start)).replace("{end}", String(end));
 }
 
+const NO_SNIPPETS: readonly TextSnippet[] = [];
+const noSubscribe = () => () => {};
+
+export interface SavedComments {
+  /** 按被评论的最后一行（行号）分好。 */
+  byLine: ReadonlyMap<number, readonly TextSnippet[]>;
+  remove: (id: string) => void;
+}
+
+/** 这份文件里已经写好、还在作曲栏里等着发的评论。发出去或移除后就不显示了。 */
+export function useSavedComments(path: string): SavedComments | null {
+  const panel = usePanelOptional();
+  const source = panel?.data.textSnippets;
+  const sessionId = panel?.sessionId ?? "";
+  const snippets = useSyncExternalStore(source?.subscribe ?? noSubscribe, () =>
+    source ? source.read(sessionId) : NO_SNIPPETS,
+  );
+  return useMemo(() => {
+    if (!panel || !path) return null;
+    const byLine = new Map<number, TextSnippet[]>();
+    for (const snippet of snippets) {
+      if (!snippet.note || snippet.path !== path || snippet.end == null) continue;
+      const list = byLine.get(snippet.end) ?? [];
+      list.push(snippet);
+      byLine.set(snippet.end, list);
+    }
+    return { byLine, remove: (id: string) => panel.data.removeTextSnippet(sessionId, id) };
+  }, [panel, path, sessionId, snippets]);
+}
+
+/** 写好的评论留在被评论的行下面。悬停出现移除。 */
+export function SavedComment({ snippet, onRemove }: { snippet: TextSnippet; onRemove: () => void }) {
+  const label = snippet.start == null ? "" : commentRangeLabel(snippet.start, snippet.end ?? snippet.start);
+  return (
+    <div
+      data-saved-comment={snippet.id}
+      className="group/comment relative mx-3 my-1.5 rounded-lg border border-[#2e2e2e] bg-[#161616] px-3 py-2 font-sans"
+      onMouseDown={(event) => event.stopPropagation()}
+      onClick={(event) => event.stopPropagation()}
+    >
+      {label ? <p className="text-[12px] leading-5 text-[#8a8a8a]">{label}</p> : null}
+      <p className="mt-0.5 whitespace-pre-wrap break-words text-[13px] leading-5 text-[#e8e8e8]">{snippet.note}</p>
+      <button
+        type="button"
+        data-saved-comment-remove
+        aria-label={DESKTOP_ZH.textSnippetRemove}
+        title={DESKTOP_ZH.textSnippetRemove}
+        className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded text-[#8a8a8a] opacity-0 hover:bg-white/10 hover:text-white group-hover/comment:opacity-100 focus-visible:opacity-100"
+        onClick={onRemove}
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
+
 /** 鼠标移到行上时出现在行号栏里。行要有 group 和 relative。 */
 export function CommentPlus({
   scope,
@@ -176,7 +233,7 @@ export function LineCommentBox({
     <div
       ref={boxRef}
       data-line-comment-box
-      className="mx-3 my-1.5 rounded-lg border border-[#2f81f7] bg-[#161616] px-3 py-2 font-sans"
+      className="mx-3 my-1.5 rounded-lg border border-[#3a3a3a] bg-[#161616] px-3 py-2 font-sans focus-within:border-[#2f81f7]"
       onMouseDown={(event) => event.stopPropagation()}
       onClick={(event) => event.stopPropagation()}
       onContextMenu={(event) => event.stopPropagation()}

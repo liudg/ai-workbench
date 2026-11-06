@@ -1,7 +1,6 @@
-import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 
-import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import type { TextSnippetDraft } from "@/shared/text-snippet";
 import {
   selectionMenuPoint,
@@ -16,25 +15,26 @@ interface MenuBox {
   draft: TextSnippetDraft;
 }
 
-/** 选中文字后提供「添加到对话」；能按行评论的视图再加「添加评论」。复制走浏览器自己的选区。 */
+export interface SelectionAction {
+  id: string;
+  label: string;
+  /** range 是点下去那一刻的选区，菜单收起后选区就清掉了。 */
+  onSelect: (draft: TextSnippetDraft, range: Range | null) => void;
+}
+
+/** 选中文字后浮出的一排操作，由各个视图给出。复制走浏览器自己的选区。 */
 export function SelectionMenu({
   rootRef,
   readDraft,
-  onAdd,
-  onComment,
+  actions,
 }: {
   rootRef: RefObject<HTMLElement | null>;
   readDraft: (root: HTMLElement) => TextSnippetDraft | null;
-  onAdd: (draft: TextSnippetDraft) => void;
-  /** 选区有行号时才出现。 */
-  onComment?: (draft: TextSnippetDraft) => void;
+  /** 一项都没有时不出菜单。 */
+  actions: (draft: TextSnippetDraft) => readonly SelectionAction[];
 }) {
   const readDraftRef = useRef(readDraft);
   readDraftRef.current = readDraft;
-  const onAddRef = useRef(onAdd);
-  onAddRef.current = onAdd;
-  const onCommentRef = useRef(onComment);
-  onCommentRef.current = onComment;
   const menuRef = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState<MenuBox | null>(null);
   const [place, setPlace] = useState<{ top: number; left: number } | null>(null);
@@ -175,7 +175,8 @@ export function SelectionMenu({
     };
   }, [rootRef]);
 
-  if (!box || typeof document === "undefined") return null;
+  const items = box ? actions(box.draft) : [];
+  if (!box || items.length === 0 || typeof document === "undefined") return null;
   return createPortal(
     <div
       ref={menuRef}
@@ -189,37 +190,26 @@ export function SelectionMenu({
       }}
       onMouseDown={(event) => event.preventDefault()}
     >
-      <button
-        type="button"
-        role="menuitem"
-        data-add-selection
-        className="rounded-md px-2.5 py-1 text-xs text-[#e8e8e8] hover:bg-white/10"
-        onClick={() => {
-          onAddRef.current(box.draft);
-          setBox(null);
-          window.getSelection()?.removeAllRanges();
-        }}
-      >
-        {DESKTOP_ZH.addSelectionToChat}
-      </button>
-      {onComment && box.draft.end != null ? (
-        <>
-          <span className="mx-0.5 h-3.5 w-px bg-[#333]" />
+      {items.map((item, index) => (
+        <Fragment key={item.id}>
+          {index > 0 ? <span className="mx-0.5 h-3.5 w-px bg-[#333]" /> : null}
           <button
             type="button"
             role="menuitem"
-            data-add-comment
+            data-selection-action={item.id}
             className="rounded-md px-2.5 py-1 text-xs text-[#e8e8e8] hover:bg-white/10"
             onClick={() => {
-              onCommentRef.current?.(box.draft);
+              const selection = window.getSelection();
+              const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0).cloneRange() : null;
               setBox(null);
-              window.getSelection()?.removeAllRanges();
+              selection?.removeAllRanges();
+              item.onSelect(box.draft, range);
             }}
           >
-            {DESKTOP_ZH.addComment}
+            {item.label}
           </button>
-        </>
-      ) : null}
+        </Fragment>
+      ))}
     </div>,
     document.body,
   );

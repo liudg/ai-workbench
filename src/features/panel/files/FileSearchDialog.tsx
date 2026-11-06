@@ -5,7 +5,7 @@ import type { FileSearchHit } from "@/types";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { cn } from "@/lib/utils";
 import { usePanelOptional } from "../core/PanelProvider";
-import { useDismissLayer } from "../core/useDismissLayer";
+import { useDismissLayer } from "@/shared/menu/useDismissLayer";
 import { highlightParts, moveSearchCursor } from "./file-search";
 import { useProjectFileSearch } from "./useProjectFileSearch";
 

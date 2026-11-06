@@ -2,7 +2,7 @@ import { useEffect, useMemo } from "react";
 
 import { AnswerMarkdownHost } from "@/features/chat/answer/AnswerMarkdownHost";
 import { Composer } from "@/features/chat/composer/Composer";
-import { ChatHostProvider } from "@/features/chat/host";
+import { ChatHostProvider, type ChatHost } from "@/features/chat/host";
 import type { SubagentEvent } from "@/features/chat/events/subagent-display";
 import { SubagentView } from "@/features/chat/subagent/SubagentView";
 import { ChatView } from "@/features/chat/timeline/ChatView";
@@ -15,7 +15,7 @@ import { closeSubagent, useNavigation, type SubagentRef } from "@/shared/shell/n
 import type { SessionEvent } from "@/types";
 import { stopSubagent } from "./api";
 import { canOpenSideChat } from "../side-chat/can-open";
-import { closeOrphanSideChat, sideChatTarget } from "../side-chat/open";
+import { closeOrphanSideChat, sideChatTarget, startSideChatWith } from "../side-chat/open";
 import { registerSideChatViewer } from "../side-chat/viewer";
 import { registerSubtaskViewer } from "../subtask-panel/viewer";
 import { RunningWork } from "./RunningWork";
@@ -41,6 +41,14 @@ export function SessionView({
   const { session, timeline, profile, profiles } = chat;
   const feed = timeline.all;
   const sideChatOpen = canOpenSideChat(task, profile, timeline.current.events);
+  // 侧边聊天开在这个会话的面板里，面板里并排看的子任务不带这一项。
+  const host = useMemo<ChatHost>(
+    () => ({
+      ...chat.host,
+      startSideChat: sideChatOpen ? (draft) => startSideChatWith(session.id, task.id, draft) : undefined,
+    }),
+    [chat.host, session.id, sideChatOpen, task.id],
+  );
   // 只在打开会话时看一次：之后打开的侧边聊天，标签总在 daemon 建好它之前放上。
   useEffect(() => closeOrphanSideChat(session.id, task), [session.id]);
   const sideChat = useMemo(() => (sideChatOpen ? sideChatTarget(task.id) : null), [sideChatOpen, task.id]);
@@ -64,7 +72,7 @@ export function SessionView({
   }, [feed.ready, subagent, subagentRef]);
   const canStopSubagent = Boolean(profile?.capabilities.supports_subagent_stop) && subagent?.session_id === taskSession.id;
   return (
-    <ChatHostProvider host={chat.host}>
+    <ChatHostProvider host={host}>
       <SessionPanel
         session={session}
         scope={{ sessionId: session.id }}

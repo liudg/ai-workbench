@@ -13,7 +13,7 @@ import { rememberProjectBranch } from "@/shared/project-branch";
 import { showError } from "@/shared/shell/error-banner";
 import type { AgentKind, AgentProfile, QueuedTurn, Session, SessionSandbox, SessionTuning } from "@/types";
 import * as api from "./api";
-import { moveDraft, patchDraft, readDraft, type ComposerDraft } from "./composer-drafts";
+import { moveDraft, patchDraft, readDraft, removeDraftSnippet, type ComposerDraft } from "./composer-drafts";
 import { askInSideChat } from "../side-chat/open";
 import { useSessionCatalog } from "./use-session-catalog";
 
@@ -235,6 +235,7 @@ export function useLiveComposer({
       clearAttachments: () => patchDraft(sessionId, { files: [] }),
       replaceAttachments: (files) => patchDraft(sessionId, { files }),
       clearTextSnippets: () => patchDraft(sessionId, { snippets: [] }),
+      removeTextSnippet: (id) => removeDraftSnippet(sessionId, id),
       updateQueued: (id, text, images) => quiet(api.updateQueued(sessionId, id, text, images)),
       removeQueued: (id) => quiet(api.removeQueued(sessionId, id)),
       steerQueued: (id) => quiet(api.steerQueued(sessionId, id)),

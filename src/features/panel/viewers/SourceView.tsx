@@ -9,8 +9,10 @@ import {
   commentRowProps,
   CommentPlus,
   LineCommentBox,
+  SavedComment,
   spanCovers,
   type LineComments,
+  type SavedComments,
 } from "./line-comments";
 import { selectionDraft } from "./selection-quote";
 import { TruncatedNote } from "./TruncatedNote";
@@ -21,6 +23,8 @@ export const SOURCE_SCOPE = "source";
 interface SourceComments {
   path: string;
   comments: LineComments;
+  /** 写好还没发的评论，留在行下面。 */
+  saved: SavedComments | null;
   onAdd: (draft: TextSnippetDraft) => void;
 }
 
@@ -74,6 +78,9 @@ export function SourceView({
                 <HighlightedText text={content} />
               </span>
             </div>
+            {comment?.saved?.byLine.get(number)?.map((snippet) => (
+              <SavedComment key={snippet.id} snippet={snippet} onRemove={() => comment.saved?.remove(snippet.id)} />
+            ))}
             {comment && comments && span && boxDraft && boxBelow(comments, SOURCE_SCOPE, index) ? (
               <LineCommentBox
                 key={`${span.start}:${span.end}`}

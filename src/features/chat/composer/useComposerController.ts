@@ -337,10 +337,7 @@ export function useComposerController(host: ComposerHost, session: Session, even
     removeFile: (path: string) => host.removeAttachment(path),
     /** 非图片附件在右侧「打开文件」里预览。没有面板的宿主不给。 */
     openFile: panel ? (path: string) => panel.openHref(path) : undefined,
-    dismissSnippets: () => {
-      host.clearTextSnippets();
-      requestAnimationFrame(() => textareaRef.current?.focus());
-    },
+    removeSnippet: (id: string) => host.removeTextSnippet(id),
     onKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => handleComposerKey(run, event),
     onPaste: (event: ClipboardEvent<HTMLTextAreaElement>) => pasteComposerImages(run, event),
   };

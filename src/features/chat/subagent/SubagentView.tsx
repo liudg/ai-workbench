@@ -15,6 +15,7 @@ import {
   type SubagentEvent,
 } from "../events/subagent-display";
 import { agentTurnName, useAgentIdentity } from "../events/use-agent-identity";
+import { ChatHostProvider, useChatHost, type ChatHost } from "../host";
 import { ChatView } from "../timeline/ChatView";
 import { formatElapsed } from "../timeline/timeline";
 import { useElapsedSince } from "../timeline/useElapsedSince";
@@ -50,15 +51,23 @@ export function SubagentView({
     }),
     [parent, card],
   );
+  // 这里的会话 id 是拼出来的。附加到作曲栏的内容落到父会话，回去就能看到。
+  const outer = useChatHost();
+  const host = useMemo<ChatHost>(() => {
+    const add = outer.addTextSnippet;
+    return { ...outer, addTextSnippet: add ? (_, draft) => add(parent.id, draft) : undefined };
+  }, [outer, parent.id]);
   return (
     <div data-subagent-view={card.subagent_id} className="flex h-full min-h-0 flex-col">
-      <AnswerMarkdownHost>
-        <ChatView
-          session={session}
-          events={timeline}
-          renderComposer={() => <SubagentBar card={card} agent={parent.agent} onBack={onBack} onStop={onStop} />}
-        />
-      </AnswerMarkdownHost>
+      <ChatHostProvider host={host}>
+        <AnswerMarkdownHost>
+          <ChatView
+            session={session}
+            events={timeline}
+            renderComposer={() => <SubagentBar card={card} agent={parent.agent} onBack={onBack} onStop={onStop} />}
+          />
+        </AnswerMarkdownHost>
+      </ChatHostProvider>
     </div>
   );
 }

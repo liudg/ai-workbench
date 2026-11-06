@@ -8,7 +8,7 @@ import { AttachMenu } from "./AttachMenu";
 import { Attachments } from "./Attachments";
 import { ComposerBar } from "./ComposerBar";
 import { ComposerInput } from "./ComposerInput";
-import { TextSnippetChip, TextSnippetPreview } from "./TextSnippets";
+import { TextSnippetCards } from "./TextSnippets";
 import { ModelMenu } from "./ModelMenu";
 import { QueuedMessageList } from "./QueueStrip";
 import { ReviewMenu } from "./ReviewMenu";
@@ -112,7 +112,6 @@ export function Composer({
           git={host.git}
           worktree={host.worktree}
         />
-        <TextSnippetPreview snippets={c.snippets} />
         <div
           ref={anchorRef}
           data-question-anchor
@@ -136,7 +135,7 @@ export function Composer({
             />
           ) : null}
           <div className="min-w-0 overflow-hidden px-3 pt-3">
-          <TextSnippetChip snippets={c.snippets} onClear={c.dismissSnippets} />
+          <TextSnippetCards snippets={c.snippets} onRemove={c.removeSnippet} />
           <Attachments files={c.files} imagesOn={view.imagesOn} onRemove={c.removeFile} onOpenFile={c.openFile} />
           <ComposerInput
             text={c.text}

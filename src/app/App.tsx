@@ -5,6 +5,7 @@ import { useViewingReport } from "@/features/board";
 import { NewProjectDialog, Sidebar } from "@/features/sidebar";
 import { UpdateDialog, useStartupUpdateCheck } from "@/features/updates";
 import { Workspace } from "@/features/workspace";
+import { NativeMenuGuard } from "@/shared/menu/NativeMenuGuard";
 import { clearError, useErrorBanner } from "@/shared/shell/error-banner";
 
 /** 开发样例页，`?preview=<名字>`。只在开发构建里有。 */
@@ -35,14 +36,18 @@ const PREVIEWS: Record<string, LazyExoticComponent<ComponentType>> | null = impo
 export default function App() {
   const name = new URLSearchParams(window.location.search).get("preview");
   const Preview = name ? PREVIEWS?.[name] : undefined;
-  if (Preview) {
-    return (
-      <Suspense fallback={null}>
-        <Preview />
-      </Suspense>
-    );
-  }
-  return <WorkbenchApp />;
+  return (
+    <>
+      {Preview ? (
+        <Suspense fallback={null}>
+          <Preview />
+        </Suspense>
+      ) : (
+        <WorkbenchApp />
+      )}
+      <NativeMenuGuard />
+    </>
+  );
 }
 
 function WorkbenchApp() {

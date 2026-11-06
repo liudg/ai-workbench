@@ -13,7 +13,7 @@ import type { TextSnippet } from "@/shared/text-snippet";
 import { AccessMenu } from "./AccessMenu";
 import { ComposerBar } from "./ComposerBar";
 import { ComposerInput } from "./ComposerInput";
-import { TextSnippetChip, TextSnippetPreview } from "./TextSnippets";
+import { TextSnippetCards } from "./TextSnippets";
 import { MentionMenu } from "./MentionMenu";
 import { ModelMenu } from "./ModelMenu";
 import { SkillMenu } from "./SkillMenu";
@@ -464,14 +464,7 @@ export default function ComposerPreview() {
             }}
           />
         ) : null}
-        {snippets.length > 0 ? (
-          <div className="mb-2">
-            <p className="px-2 text-sm text-[#bdbdbd]">先看这个入口。</p>
-            <div className="h-28" />
-          </div>
-        ) : null}
         <div className="relative min-w-0">
-        <TextSnippetPreview snippets={snippets} />
         <div className="min-w-0 rounded-[18px] border border-[#2a2a2a] bg-[#171717]">
           {showQueue && queued.length > 0 ? (
             <QueuedMessageList
@@ -502,7 +495,10 @@ export default function ComposerPreview() {
             />
           ) : null}
           <div className="min-w-0 overflow-hidden px-3 pt-3">
-            <TextSnippetChip snippets={snippets} onClear={() => setSnippets([])} />
+            <TextSnippetCards
+              snippets={snippets}
+              onRemove={(id) => setSnippets((current) => current.filter((item) => item.id !== id))}
+            />
             <ComposerInput
               text={text}
               tokens={composerTokens(text, liveFileRefs(text, fileRefs), previewSkills.map((skill) => skill.mention))}

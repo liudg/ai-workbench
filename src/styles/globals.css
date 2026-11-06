@@ -522,3 +522,8 @@ mark[data-thread-find-mark="current"] {
   background-color: #f0a04a;
   color: #1a1208;
 }
+
+/* 正在回复的那段选区，回复框开着时一直标着。 */
+::highlight(chat-reply) {
+  background-color: rgb(47 129 247 / 0.35);
+}

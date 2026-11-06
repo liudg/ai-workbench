@@ -3,10 +3,10 @@ import { useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { SelectionMenu } from "@/shared/selection/SelectionMenu";
 import type { TextSnippetDraft } from "@/shared/text-snippet";
 import { sourceLines } from "../core/source-lines";
-import { ContextMenu, type ContextMenuItem } from "../core/ContextMenu";
-import { clipboardItems, copyPathItem, snippetItems, sourceLineAt } from "./content-menu";
+import { ContextMenu, type ContextMenuItem } from "@/shared/menu/ContextMenu";
+import { clipboardItems, copyPathItem, snippetItems, snippetSelectionActions, sourceLineAt } from "./content-menu";
 import { fileSelectionDraft } from "./file-selection";
-import { useLineComments } from "./line-comments";
+import { useLineComments, useSavedComments } from "./line-comments";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { selectionDraft } from "./selection-quote";
 import { SOURCE_SCOPE, SourceView } from "./SourceView";
@@ -48,6 +48,7 @@ export function FileContent({
   const [menu, setMenu] = useState<{ x: number; y: number; items: ContextMenuItem[] } | null>(null);
   const source = view === "source";
   const canComment = source && commentable && Boolean(quotePath);
+  const saved = useSavedComments(canComment ? quotePath : "");
 
   const openComment = (draft: TextSnippetDraft) => {
     if (draft.start == null || draft.end == null) return;
@@ -87,7 +88,7 @@ export function FileContent({
           text={text}
           line={line}
           truncated={truncated}
-          comment={canComment ? { path: quotePath, comments, onAdd } : null}
+          comment={canComment ? { path: quotePath, comments, saved, onAdd } : null}
         />
       ) : (
         <MarkdownPreview text={text} truncated={truncated} />
@@ -96,8 +97,7 @@ export function FileContent({
         <SelectionMenu
           rootRef={rootRef}
           readDraft={(root) => fileSelectionDraft(root, quotePath)}
-          onAdd={onAdd}
-          onComment={canComment ? openComment : undefined}
+          actions={snippetSelectionActions(onAdd, canComment ? openComment : null)}
         />
       ) : null}
       {menu ? <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} /> : null}

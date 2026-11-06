@@ -1,7 +1,4 @@
-import type { TextSnippetDraft } from "@/shared/text-snippet";
-
-/** 文本片要有来源名。对话不是文件，界面不显示这个名字。 */
-const CHAT_SOURCE = "对话";
+import { CHAT_SNIPPET_PATH, type TextSnippetDraft } from "../../../shared/text-snippet.ts";
 
 /** 对话里的选区没有文件。引用块进文本片，不写成代码围栏。 */
 export function chatSelectionDraft(text: string): TextSnippetDraft | null {
@@ -12,7 +9,7 @@ export function chatSelectionDraft(text: string): TextSnippetDraft | null {
     .map((line) => `> ${line}`)
     .join("\n");
   return {
-    path: CHAT_SOURCE,
+    path: CHAT_SNIPPET_PATH,
     body,
     start: null,
     end: null,

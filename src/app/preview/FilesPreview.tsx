@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
-import { textSnippetChipLabel, textSnippetPreview } from "@/shared/text-snippet";
+import { textSnippetBadge, textSnippetPreview } from "@/shared/text-snippet";
 import { usePanel } from "@/features/panel/core/PanelProvider";
 import { resolvePreviewPath } from "@/features/panel/core/preview-kind";
-import { ContextMenu } from "@/features/panel/core/ContextMenu";
+import { ContextMenu } from "@/shared/menu/ContextMenu";
 import { FilePreviewColumn } from "@/features/panel/files/FilePreview";
 import { PreviewChrome } from "@/features/panel/files/PreviewChrome";
 import { useFilePreviewChrome } from "@/features/panel/files/use-file-preview-chrome";
@@ -89,15 +89,13 @@ function FilesBody({ root, projectId }: { root: string; projectId: string }) {
           <span className="mb-1 block text-xs text-zinc-500">对话</span>
           {snippets.length > 0 ? (
             <div data-preview-snippets={snippets.length} className="mb-2">
-              <p className="text-xs text-zinc-300">{textSnippetChipLabel(snippets.length)}</p>
               {snippets.map((snippet) => (
-                <pre
-                  key={snippet.id}
-                  data-preview-snippet
-                  className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap text-xs text-zinc-400"
-                >
-                  {textSnippetPreview(snippet.body)}
-                </pre>
+                <div key={snippet.id} data-preview-snippet className="mt-1">
+                  <p className="text-xs text-zinc-300">{textSnippetBadge(snippet)}</p>
+                  <pre className="max-h-24 overflow-auto whitespace-pre-wrap text-xs text-zinc-400">
+                    {textSnippetPreview(snippet.note ?? snippet.body)}
+                  </pre>
+                </div>
               ))}
             </div>
           ) : null}

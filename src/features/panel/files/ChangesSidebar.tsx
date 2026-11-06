@@ -7,7 +7,7 @@ import { pinnedColumnStyle } from "../core/layout";
 import { resolvePreviewPath } from "../core/preview-kind";
 import { usePanel } from "../core/PanelProvider";
 import { filterFiles, useFileFilter } from "../core/file-filter";
-import { ContextMenu } from "../core/ContextMenu";
+import { ContextMenu } from "@/shared/menu/ContextMenu";
 import { FileTreeList } from "./FileTreeList";
 import { buildFileTree } from "./file-tree";
 import { baseName } from "@/shared/path";

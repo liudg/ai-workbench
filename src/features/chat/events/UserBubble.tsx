@@ -3,6 +3,7 @@ import { MessageSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 import { MessageContent } from "../answer/MessageContent";
+import { useMessageMenu } from "../message-menu";
 import { annotationCountLabel, annotationCountOf } from "./annotation-count";
 import { CopyButton, HoverActions } from "./chrome";
 import { EventImages } from "./EventImages";
@@ -13,6 +14,7 @@ import type { EventViewProps } from "./types";
 import { userBubbleModel } from "./user-image-layout";
 
 export function UserBubble({ event, time }: EventViewProps) {
+  const onContextMenu = useMessageMenu(event.kind === "user-message" && !event.sender ? event.text : "");
   if (event.kind !== "user-message") return null;
   if (event.sender) return <SubtaskReport text={event.text} taskIds={event.sender.task_ids} time={time} />;
   const text = event.text;
@@ -42,7 +44,7 @@ export function UserBubble({ event, time }: EventViewProps) {
           {replies ? (
             <QuestionReplyCard rows={replies} />
           ) : model.showTextBubble ? (
-            <div data-user-text className={model.textBubbleClass}>
+            <div data-user-text data-message-body className={model.textBubbleClass} onContextMenu={onContextMenu}>
               {text ? <MessageContent text={text} /> : null}
             </div>
           ) : null}

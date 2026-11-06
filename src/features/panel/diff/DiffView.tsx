@@ -12,9 +12,9 @@ import { ChangesSidebar } from "../files/ChangesSidebar";
 import { relativizeFiles } from "@/shared/path";
 import { SelectionMenu } from "@/shared/selection/SelectionMenu";
 import type { TextSnippetDraft } from "@/shared/text-snippet";
-import { ContextMenu, type ContextMenuItem } from "../core/ContextMenu";
+import { ContextMenu, type ContextMenuItem } from "@/shared/menu/ContextMenu";
 import { resolvePreviewPath } from "../core/preview-kind";
-import { clipboardItems, copyPathItem, snippetItems } from "../viewers/content-menu";
+import { clipboardItems, copyPathItem, snippetItems, snippetSelectionActions } from "../viewers/content-menu";
 import { commentRowOf, useLineComments, type CommentSpan } from "../viewers/line-comments";
 import { setFileFilter } from "../core/file-filter";
 import { DiffFileSection, type DiffLineHit, type SpanDrafts } from "./DiffFileSection";
@@ -225,12 +225,11 @@ export function DiffView({ files }: { files: FileChange[] }) {
           <SelectionMenu
             rootRef={scrollRef}
             readDraft={readSelection}
-            onAdd={addSnippet}
-            onComment={() => {
+            actions={snippetSelectionActions(addSnippet, (_draft) => {
               const root = scrollRef.current;
               const span = root ? selectedSpan(root) : null;
               if (span) comments.open(span, null);
-            }}
+            })}
           />
         </div>
         {listWidth !== null ? (

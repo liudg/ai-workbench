@@ -7,7 +7,7 @@ import { diffMenuEntries } from "./diff-menu";
 import { JumpPopover } from "./DiffJumpPopover";
 import { OptionsMenu } from "./DiffOptionsMenu";
 import { writeClipboardText } from "@/shared/clipboard";
-import { useDismissLayer } from "../core/useDismissLayer";
+import { useDismissLayer } from "@/shared/menu/useDismissLayer";
 import type { JumpFile } from "./jump-files";
 import type { DiffScopeItem } from "./scope";
 import { DIFF_TOOLBAR_ICON_IDS } from "./toolbar-actions";

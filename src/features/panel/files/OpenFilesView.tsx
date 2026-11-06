@@ -8,7 +8,7 @@ import { FILES_EXPANDED_WIDTH, nextDraggedListWidth, paneFileColumnWidth, pinned
 import { resolvePreviewPath } from "../core/preview-kind";
 import { useColumnGesture } from "../core/useColumnGesture";
 import { usePanel, usePanelData } from "../core/PanelProvider";
-import { ContextMenu } from "../core/ContextMenu";
+import { ContextMenu } from "@/shared/menu/ContextMenu";
 import { FilePreviewColumn } from "./FilePreview";
 import { useFilePreviewChrome } from "./use-file-preview-chrome";
 import { FileTabs } from "./FileTabs";

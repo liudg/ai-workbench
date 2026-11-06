@@ -10,7 +10,7 @@ import { accumulateSessionUsage } from "@/store/session-usage";
 import type { OpenTarget } from "@/features/panel/core/registry";
 import type { AgentProfile, Session, SessionEvent } from "@/types";
 import * as api from "./api";
-import { addDraftAttachments, addDraftSnippet } from "./composer-drafts";
+import { addDraftAttachments, addDraftSnippet, readDraft, removeDraftSnippet, subscribeDrafts } from "./composer-drafts";
 
 const panelState: PanelStateSource = {
   use: (select) => usePanelStore(select),
@@ -32,6 +32,8 @@ function panelData(scope: api.FileScope, workdir: string): PanelData {
     submitAnnotation: (sessionId, note) => api.submitAnnotation(sessionId, note).then(() => undefined),
     attachFile: (sessionId, file) => addDraftAttachments(sessionId, [file]),
     addTextSnippet: addDraftSnippet,
+    textSnippets: { subscribe: subscribeDrafts, read: (sessionId) => readDraft(sessionId).snippets },
+    removeTextSnippet: removeDraftSnippet,
     isGit: () => api.isGitScope(scope),
     openTerminal: (cols, rows) => api.openTerminal(scope, cols, rows),
     subscriptionUsage: api.subscriptionUsage,
