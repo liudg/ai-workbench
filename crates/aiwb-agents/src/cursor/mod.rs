@@ -9,6 +9,7 @@ mod directory;
 mod permission;
 mod process;
 mod prompts;
+mod retry;
 mod rpc;
 mod runtime;
 mod session;

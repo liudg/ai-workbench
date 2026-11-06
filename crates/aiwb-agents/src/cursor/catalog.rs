@@ -33,6 +33,13 @@ pub fn apply_model_list(catalog: &mut AgentCatalog, payload: &Value) {
     catalog.models = models.iter().filter_map(model_option).collect();
 }
 
+pub fn has_models(payload: &Value) -> bool {
+    payload
+        .get("models")
+        .and_then(Value::as_array)
+        .is_some_and(|models| models.iter().any(|model| model_option(model).is_some()))
+}
+
 fn model_option(model: &Value) -> Option<AgentModelOption> {
     let id = model.get("value").and_then(Value::as_str)?.trim();
     if id.is_empty() {
