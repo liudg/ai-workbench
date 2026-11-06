@@ -28,7 +28,7 @@ use super::rpc::{self, Incoming, Rpc, RpcError};
 use super::subagents::Subagents;
 use super::updates::UpdateMap;
 use aiwb_proc::decode_child_bytes;
-use crate::{AgentError, EventSink, TurnDelivery, WorkbenchMcp};
+use crate::{AgentError, EventSink, WorkbenchMcp};
 use aiwb_core::models::{AgentCatalog, PromptAnswer, SessionEventBody, SessionStatus};
 
 const STDERR_CAP: usize = 4000;
@@ -54,36 +54,37 @@ enum Replay {
 
 /// 用户想要的模型参数。空字符串表示不覆盖，用 Cursor 自己记住的。
 #[derive(Default)]
-struct Wanted {
+pub(super) struct Wanted {
     model: String,
     effort: String,
     fast: Option<bool>,
-    plan: bool,
+    pub(super) plan: bool,
 }
 
 pub struct Shared {
-    events: EventSink,
+    pub(super) events: EventSink,
     project: PathBuf,
-    rpc: Rpc,
+    pub(super) rpc: Rpc,
     child: Mutex<Option<Child>>,
     stderr: Arc<Mutex<String>>,
-    closed: AtomicBool,
+    pub(super) closed: AtomicBool,
     session_id: Mutex<Option<String>>,
     pub catalog: Mutex<AgentCatalog>,
-    map: Mutex<UpdateMap>,
+    pub(super) map: Mutex<UpdateMap>,
     subagents: Mutex<Subagents>,
     replay: Mutex<Replay>,
-    prompts: Mutex<HashMap<String, (Value, Pending)>>,
-    busy: AtomicBool,
-    user_stopped: AtomicBool,
-    status_lock: Mutex<()>,
+    pub(super) prompts: Mutex<HashMap<String, (Value, Pending)>>,
+    pub(super) queue: Mutex<super::queue::QueueState>,
+    pub(super) busy: AtomicBool,
+    pub(super) user_stopped: AtomicBool,
+    pub(super) status_lock: Mutex<()>,
     access: Mutex<String>,
-    wanted: Mutex<Wanted>,
+    pub(super) wanted: Mutex<Wanted>,
     /// 会话里 Cursor 报回的当前参数，以及当前模式是不是 plan。
     config: Mutex<ModelConfig>,
     applied_plan: AtomicBool,
     /// 有工作台 MCP 时还没送出的说明。ACP 没有系统提示字段，跟着这个进程的第一条提示走。
-    instructions: Mutex<Option<&'static str>>,
+    pub(super) instructions: Mutex<Option<&'static str>>,
 }
 
 pub struct Open {
@@ -162,6 +163,7 @@ async fn launch(
         catalog: Mutex::new(catalog::empty_catalog()),
         replay: Mutex::new(Replay::Live),
         prompts: Mutex::new(HashMap::new()),
+        queue: Mutex::new(super::queue::QueueState::default()),
         busy: AtomicBool::new(false),
         user_stopped: AtomicBool::new(false),
         status_lock: Mutex::new(()),
@@ -414,6 +416,7 @@ impl Shared {
             }
             return;
         }
+        let _guard = self.status_lock.lock().unwrap();
         let events = self.map.lock().unwrap().apply(update);
         if let Some(mode) = events.iter().find_map(|event| match event {
             SessionEventBody::CollaborationMode { mode } => Some(mode == "plan"),
@@ -427,11 +430,27 @@ impl Shared {
         for event in events {
             let _ = self.events.send(event);
         }
+        if matches!(update.get("sessionUpdate").and_then(Value::as_str),
+            Some("agent_message_chunk" | "agent_thought_chunk" | "tool_call" | "tool_call_update")) {
+            let mut queue = self.queue.lock().unwrap();
+            if queue.in_flight { queue.observed = true; }
+            drop(queue);
+            let _ = self.cancel_for_steering();
+        }
     }
 
     fn on_request(&self, id: Value, method: &str, params: &Value) {
-        match method {
-            "session/request_permission" => {
+        if matches!(method, "session/request_permission" | "cursor/ask_question" | "cursor/create_plan") {
+            let _guard = self.status_lock.lock().unwrap();
+            let mut queue = self.queue.lock().unwrap();
+            if queue.in_flight { queue.observed = true; }
+            drop(queue);
+            let _ = self.cancel_for_steering();
+            if self.user_stopped.load(Ordering::SeqCst) || self.queue.lock().unwrap().cancelling {
+                let _ = self.rpc.respond(&id, prompts::cancelled());
+                return;
+            }
+            if method == "session/request_permission" {
                 // 工作台的工具只作用于这个会话自己的子任务，免审批（同 Claude 的 `--allowedTools mcp__aiwb`）。
                 if self.access.lock().unwrap().as_str() == "full" || prompts::workbench_tool(params) {
                     if let Some(option) = prompts::allow_once(params) {
@@ -442,6 +461,10 @@ impl Shared {
                         return;
                     }
                 }
+            }
+        }
+        match method {
+            "session/request_permission" => {
                 let prompt_id = prompts::prompt_id(&id);
                 let (event, pending) = prompts::permission_prompt(&prompt_id, params);
                 self.raise(id, prompt_id, pending, vec![event]);
@@ -505,6 +528,10 @@ impl Shared {
 
     fn raise(&self, rpc_id: Value, prompt_id: String, pending: Pending, events: Vec<SessionEventBody>) {
         let _guard = self.status_lock.lock().unwrap();
+        if self.user_stopped.load(Ordering::SeqCst) || self.queue.lock().unwrap().cancelling {
+            let _ = self.rpc.respond(&rpc_id, prompts::cancelled());
+            return;
+        }
         self.prompts
             .lock()
             .unwrap()
@@ -553,71 +580,8 @@ impl Shared {
         Ok(())
     }
 
-    /// 开一轮。图片已经折成 ACP 的 `image` 块。
-    pub fn submit(self: &Arc<Self>, mut blocks: Vec<Value>) -> Result<TurnDelivery, AgentError> {
-        let session_id = self
-            .session_id()
-            .ok_or_else(|| AgentError::Runtime("Cursor Agent 会话还没有建立".into()))?;
-        // 斜杠命令得在提示开头，说明留到下一条普通消息（照 t3code `t3AcpPromptWithInstructions`）。
-        let command = blocks
-            .first()
-            .and_then(|block| block.get("text"))
-            .and_then(Value::as_str)
-            .is_some_and(|text| text.trim_start().starts_with('/'));
-        if !command {
-            if let Some(text) = self.instructions.lock().unwrap().take() {
-                blocks.insert(0, json!({ "type": "text", "text": super::updates::wrap_instructions(text) }));
-            }
-        }
-        {
-            let _guard = self.status_lock.lock().unwrap();
-            if self.closed.load(Ordering::SeqCst) {
-                return Err(AgentError::Closed);
-            }
-            if !self.prompts.lock().unwrap().is_empty() {
-                return Err(AgentError::PendingPrompt);
-            }
-            if self.busy.swap(true, Ordering::SeqCst) {
-                return Err(AgentError::Busy);
-            }
-            self.user_stopped.store(false, Ordering::SeqCst);
-            let turn_id = uuid::Uuid::new_v4().to_string();
-            let plan = self.wanted.lock().unwrap().plan;
-            {
-                let mut map = self.map.lock().unwrap();
-                map.begin_turn(&turn_id);
-                map.plan_mode = plan;
-            }
-            let _ = self.events.send(SessionEventBody::StatusChanged {
-                status: SessionStatus::Running,
-            });
-            let _ = self.events.send(SessionEventBody::TurnAnchor {
-                turn_id,
-                mode: plan.then(|| "plan".to_string()),
-            });
-        }
-        let shared = self.clone();
-        tokio::spawn(async move {
-            if let Err(err) = shared.apply_settings(&session_id).await {
-                let _ = shared.events.send(SessionEventBody::Error {
-                    message: err.to_string(),
-                });
-            }
-            let result = shared
-                .rpc
-                .request(
-                    "session/prompt",
-                    json!({ "sessionId": session_id, "prompt": blocks }),
-                    None,
-                )
-                .await;
-            shared.finish(result);
-        });
-        Ok(TurnDelivery::Started)
-    }
-
     /// 发消息前把模式、模型、强度和 Fast 对齐到用户的选择。只发有变化的项。
-    async fn apply_settings(&self, session_id: &str) -> Result<(), AgentError> {
+    pub(super) async fn apply_settings(&self, session_id: &str) -> Result<(), AgentError> {
         let (plan, model, effort, fast) = {
             let wanted = self.wanted.lock().unwrap();
             (wanted.plan, wanted.model.clone(), wanted.effort.clone(), wanted.fast)
@@ -669,10 +633,8 @@ impl Shared {
         Ok(())
     }
 
-    fn finish(&self, result: Result<Result<Value, RpcError>, AgentError>) {
-        let _guard = self.status_lock.lock().unwrap();
-        self.busy.store(false, Ordering::SeqCst);
-        let stopped = self.user_stopped.swap(false, Ordering::SeqCst);
+    pub(super) fn finish_status(&self, result: Result<Result<Value, RpcError>, AgentError>) -> SessionStatus {
+        let stopped = self.user_stopped.load(Ordering::SeqCst);
         let left: Vec<String> = self.prompts.lock().unwrap().drain().map(|(id, _)| id).collect();
         for id in left {
             let _ = self.events.send(SessionEventBody::PromptResolved {
@@ -727,45 +689,14 @@ impl Shared {
             }
         };
         if status != SessionStatus::Completed {
+            for event in self.map.lock().unwrap().stop_tools() {
+                let _ = self.events.send(event);
+            }
             for event in self.subagents.lock().unwrap().stop_all() {
                 let _ = self.events.send(event);
             }
         }
-        let _ = self.events.send(SessionEventBody::StatusChanged { status });
-    }
-
-    /// `session/cancel`。Cursor 会把这一轮的 `session/prompt` 以 `stopReason = cancelled` 收尾。
-    /// 没回答的审批要先回 `cancelled`（ACP 规定）。
-    pub fn interrupt(&self) -> Result<(), AgentError> {
-        if self.closed.load(Ordering::SeqCst) {
-            return Err(AgentError::Closed);
-        }
-        let Some(session_id) = self.session_id() else {
-            return Ok(());
-        };
-        {
-            let _guard = self.status_lock.lock().unwrap();
-            if !self.busy.load(Ordering::SeqCst) {
-                return Ok(());
-            }
-            self.user_stopped.store(true, Ordering::SeqCst);
-            let pending: Vec<(String, Value)> = self
-                .prompts
-                .lock()
-                .unwrap()
-                .drain()
-                .map(|(id, (rpc_id, _))| (id, rpc_id))
-                .collect();
-            for (id, rpc_id) in pending {
-                let _ = self.rpc.respond(&rpc_id, prompts::cancelled());
-                let _ = self.events.send(SessionEventBody::PromptResolved {
-                    prompt_id: id,
-                    answer: "已中断".into(),
-                });
-            }
-        }
-        self.rpc
-            .notify("session/cancel", json!({ "sessionId": session_id }))
+        status
     }
 
     pub fn last_turn_diff(&self) -> Result<String, AgentError> {
@@ -843,3 +774,7 @@ fn mcp_servers(mcp: Option<&WorkbenchMcp>) -> Value {
         None => json!([]),
     }
 }
+
+#[cfg(test)]
+#[path = "queue_tests.rs"]
+mod queue_tests;

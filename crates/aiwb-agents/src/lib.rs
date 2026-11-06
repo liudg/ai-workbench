@@ -259,7 +259,7 @@ mod tests {
         assert!(claude.supports_cancel && claude.supports_queue);
         let cursor = adapter_for(AgentKind::CursorAgent).capabilities();
         assert!(cursor.supports_cancel);
-        assert!(!cursor.supports_queue);
+        assert!(cursor.supports_queue);
         assert!(cursor.supports_resume && cursor.supports_tuning && cursor.supports_plan);
         for kind in [
             AgentKind::KimiCode,

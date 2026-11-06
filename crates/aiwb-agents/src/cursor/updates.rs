@@ -87,6 +87,41 @@ impl UpdateMap {
         self.todos.clear();
     }
 
+    /// 引导继续同一个工作台回合：回答重新分段，文件差异仍从本回合最早原文累计。
+    pub fn continue_turn(&mut self) {
+        self.message = None;
+        self.thought = None;
+        self.error_tail = None;
+    }
+
+    /// 已确认取消后，把没有终态的工具卡片收尾。
+    pub fn stop_tools(&mut self) -> Vec<SessionEventBody> {
+        let mut ids = Vec::new();
+        for (id, tool) in &mut self.tools {
+            if tool.status == ToolStatus::Running {
+                tool.status = ToolStatus::Failed;
+                if !tool.detail.is_empty() { tool.detail.push('\n'); }
+                tool.detail.push_str("已中断");
+                ids.push(id.clone());
+            }
+        }
+        ids.iter().map(|id| self.tool_event(id)).collect()
+    }
+
+    /// 取消的原生请求不会进入 Cursor 的下一轮上下文，保留已观察到的回答和工具结果。
+    pub fn interrupted_context(&self) -> String {
+        let mut parts = Vec::new();
+        if let Some(message) = &self.message {
+            parts.push(format!("Partial assistant response:\n{}", message.text));
+        }
+        let mut tools: Vec<_> = self.tools.iter().collect();
+        tools.sort_by_key(|(id, _)| *id);
+        for (_, tool) in tools {
+            parts.push(format!("Observed tool: {}\nStatus: {:?}\n{}", self.tool_summary(tool), tool.status, tool.detail));
+        }
+        parts.join("\n\n")
+    }
+
     /// 回合结束时还压着的报错：这一回合以它收尾，算失败。返回去掉 `Error: ` 的报错正文。
     pub fn take_error(&mut self) -> Option<String> {
         let tail = self.error_tail.take()?;
@@ -145,6 +180,7 @@ impl UpdateMap {
             return;
         };
         let text = strip_instructions(&text);
+        let text = super::context::user_text(&text).to_string();
         if self.replay_turns > 0 {
             self.close_replay_turn(events);
         }

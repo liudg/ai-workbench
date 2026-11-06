@@ -106,6 +106,26 @@ impl Rpc {
         params: Value,
         timeout: Option<Duration>,
     ) -> Result<Result<Value, RpcError>, AgentError> {
+        let (id, rx) = self.start_request(method, params)?;
+        let reply = match timeout {
+            Some(limit) => match tokio::time::timeout(limit, rx).await {
+                Ok(reply) => reply,
+                Err(_) => {
+                    self.waiters.lock().unwrap().remove(&id);
+                    return Err(AgentError::Runtime(format!("Cursor Agent 没有回应 {method}")));
+                }
+            },
+            None => rx.await,
+        };
+        reply.map_err(|_| AgentError::Closed)
+    }
+
+    /// 同步入写队列，保证随后发出的 cancel 一定排在 prompt 后面。
+    pub(super) fn start_request(
+        &self,
+        method: &str,
+        params: Value,
+    ) -> Result<(u64, oneshot::Receiver<Result<Value, RpcError>>), AgentError> {
         let id = self.next.fetch_add(1, Ordering::SeqCst);
         let (tx, rx) = oneshot::channel();
         self.waiters.lock().unwrap().insert(id, tx);
@@ -119,17 +139,7 @@ impl Rpc {
             self.waiters.lock().unwrap().remove(&id);
             return Err(err);
         }
-        let reply = match timeout {
-            Some(limit) => match tokio::time::timeout(limit, rx).await {
-                Ok(reply) => reply,
-                Err(_) => {
-                    self.waiters.lock().unwrap().remove(&id);
-                    return Err(AgentError::Runtime(format!("Cursor Agent 没有回应 {method}")));
-                }
-            },
-            None => rx.await,
-        };
-        reply.map_err(|_| AgentError::Closed)
+        Ok((id, rx))
     }
 
     pub fn notify(&self, method: &str, params: Value) -> Result<(), AgentError> {

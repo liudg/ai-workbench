@@ -6,11 +6,12 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 
 use super::super::protocol::{
-    default_git_scopes, fold_page_annotations, submit_annotation_as_attachment, turn_scope,
+    default_git_scopes, submit_annotation_as_attachment, turn_scope,
     AnnotationSink, DiffScopeProvider, TurnDelivery, UserTurn,
 };
 use super::permission;
 use super::runtime::Shared;
+use super::queue::Input;
 use crate::image_input;
 use crate::{AgentError, AgentSession};
 use aiwb_core::models::{AgentCatalog, PageAnnotation, PermissionMenu, PromptAnswer};
@@ -50,13 +51,35 @@ pub fn prompt_blocks(text: &str, images: &[String]) -> Result<Vec<Value>, AgentE
 #[async_trait]
 impl AgentSession for CursorSession {
     async fn send_message(&self, text: String) -> Result<(), AgentError> {
-        self.shared.submit(prompt_blocks(&text, &[])?).map(|_| ())
+        self.deliver(UserTurn { text, images: Vec::new(), client_id: String::new(), annotations: Vec::new() }).await.map(|_| ())
     }
 
     async fn deliver(&self, turn: UserTurn) -> Result<TurnDelivery, AgentError> {
-        let mut images = turn.images;
-        let text = fold_page_annotations(&turn.text, &mut images, &turn.annotations);
-        self.shared.submit(prompt_blocks(&text, &images)?)
+        self.shared.submit(Input::new(turn)?, false)
+    }
+
+    async fn deliver_now(&self, turn: UserTurn) -> Result<TurnDelivery, AgentError> {
+        self.shared.submit(Input::new(turn)?, true)
+    }
+
+    async fn update_queued(&self, id: &str, turn: UserTurn) -> Result<(), AgentError> {
+        self.shared.update_queued(id, Input::new(turn)?)
+    }
+
+    async fn remove_queued(&self, id: &str) -> Result<(), AgentError> {
+        self.shared.remove_queued(id)
+    }
+
+    async fn steer_queued(&self, id: &str) -> Result<(), AgentError> {
+        self.shared.flush_queued(vec![id.to_string()])
+    }
+
+    async fn flush_queued(&self, ids: Vec<String>) -> Result<(), AgentError> {
+        self.shared.flush_queued(ids)
+    }
+
+    async fn set_follow_up_queue_mode(&self, mode: &str) -> Result<(), AgentError> {
+        self.shared.set_follow_up_queue_mode(mode)
     }
 
     async fn interrupt(&self) -> Result<(), AgentError> {

@@ -5,10 +5,12 @@
 //! 和 2026-10-29 的实际收发。认证留在 CLI（`agent login`），这里不碰密钥。
 
 mod catalog;
+mod context;
 mod directory;
 mod permission;
 mod process;
 mod prompts;
+mod queue;
 mod retry;
 mod rpc;
 mod runtime;
@@ -20,6 +22,8 @@ mod updates;
 mod tests;
 #[cfg(test)]
 mod subagent_tests;
+#[cfg(test)]
+mod live_steering_tests;
 
 use std::sync::Arc;
 

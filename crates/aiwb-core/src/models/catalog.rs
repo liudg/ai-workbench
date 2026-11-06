@@ -288,8 +288,8 @@ impl AgentCapabilities {
             supports_goals: false,
             // `promptCapabilities.image = true`。
             supports_images: true,
-            // ACP 一次只跑一个 `session/prompt`，没有排队或引导。
-            supports_queue: false,
+            // 本地排队；引导用 ACP cancel 收尾后在同一 session 继续 prompt。
+            supports_queue: true,
             // `session/cancel`，这一轮以 `stopReason = cancelled` 收尾。
             supports_cancel: true,
             // 没有分叉方法。
