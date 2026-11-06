@@ -6,7 +6,7 @@ import { HandoffNote } from "./HandoffNote";
 import { PlanSteps, PlanText } from "./PlanBlocks";
 import { PromptEvent } from "./PromptCard";
 import { ReviewFindings, ReviewNote } from "./ReviewBlocks";
-import { SubagentEndLine, SubagentStartLine } from "./SubagentLine";
+import { SubagentLine } from "./SubagentLine";
 import { SubtaskOfferCard } from "./SubtaskOfferCard";
 import { ThinkingBlock } from "./ThinkingBlock";
 import { ToolCall } from "./ToolCall";
@@ -29,6 +29,5 @@ export const eventRenderers: Record<RenderedEventKind, ComponentType<EventViewPr
   "review-note": ReviewNote,
   "review-findings": ReviewFindings,
   "subtask-offer": SubtaskOfferCard,
-  subagent: SubagentStartLine,
-  "subagent-ended": SubagentEndLine,
+  subagent: SubagentLine,
 };

@@ -15,9 +15,9 @@ export const SUBAGENT_STATUS_LABELS: Record<SubagentStatus, string> = {
   stopped: "已停止",
 };
 
-/** 时间线里结束那一行接在标题后面的字。 */
-export const SUBAGENT_END_LABELS: Record<SubagentStatus, string> = {
-  running: "运行中",
+/** 时间线条目接在标题后面的当前状态。 */
+export const SUBAGENT_LINE_LABELS: Record<SubagentStatus, string> = {
+  running: "开始工作",
   completed: "已完成",
   failed: "失败",
   stopped: "已停止",

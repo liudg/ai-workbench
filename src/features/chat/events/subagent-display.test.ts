@@ -71,17 +71,16 @@ test("the result is not repeated when it is the last answer in the steps", () =>
   assert.equal(subagentResultShown(card("a", { result: "PING" }), []), "PING");
 });
 
-test("subagent lines sit where they happened and split tool groups", () => {
+test("subagent cards split tool groups", () => {
   const pieces = foldActivity([
     event("k1", 1, { kind: "tool-call", name: "command", summary: "ls" }),
     card("a"),
     event("k2", 2, { kind: "tool-call", name: "command", summary: "pwd" }),
-    event("end", 3, { kind: "subagent-ended", subagent_id: "a", title: "审查", status: "completed" }),
   ]);
-  assert.deepEqual(pieces.map((piece) => piece.type), ["tools", "event", "tools", "event"]);
+  assert.deepEqual(pieces.map((piece) => piece.type), ["tools", "event", "tools"]);
 });
 
-test("an ended card from before end events gets its end right after it", () => {
+test("an ended card without an end event remains a single line", () => {
   const blocks = buildTimeline(
     [
       event("u", 1, { kind: "user-message", text: "派一个" }),
@@ -93,7 +92,36 @@ test("an ended card from before end events gets its end right after it", () => {
   );
   const turn = blocks.find((block) => block.type === "turn");
   assert.ok(turn && turn.type === "turn");
-  assert.deepEqual(turn.events.map((item) => item.kind), ["subagent", "subagent-ended", "agent-message"]);
+  assert.deepEqual(turn.events.map((item) => item.kind), ["subagent", "agent-message"]);
+});
+
+test("subagent completion updates the original rows without adding end markers", () => {
+  const build = card("build", { id: "build-card", ts: 2 });
+  const review = card("review", { id: "review-card", ts: 3 });
+  const events = [
+    event("u", 1, { kind: "user-message", text: "开始" }),
+    build,
+    review,
+    event("m", 4, { kind: "agent-message", text: "进度" }),
+  ];
+  const visible = (input: SessionEvent[], status: "running" | "completed") =>
+    buildTimeline(input, status).flatMap((block) => block.type === "event" ? [block.event] : block.events);
+  const before = visible(events, "running");
+  for (const status of ["completed", "failed", "stopped"] as const) {
+    const updated = [
+      events[0],
+      { ...build, status },
+      review,
+      events[3],
+      event("end", 5, { kind: "subagent-ended", subagent_id: "build", title: build.title, status }),
+    ];
+    for (const sessionStatus of ["running", "completed"] as const) {
+      const after = visible(updated, sessionStatus);
+      assert.deepEqual(after.map((item) => item.id), before.map((item) => item.id));
+      assert.equal(after[1].kind === "subagent" && after[1].status, status);
+      assert.equal(after[2].kind === "subagent" && after[2].status, "running");
+    }
+  }
 });
 
 test("subagent steps stay out of the main timeline and lines fold with the process", () => {

@@ -6,7 +6,7 @@ import type { Session } from "@/types";
 import { useChatHost } from "../host";
 import { HoverCard } from "./HoverCard";
 import {
-  SUBAGENT_END_LABELS,
+  SUBAGENT_LINE_LABELS,
   SUBAGENT_STATUS_LABELS,
   subagentMeta,
   subagentTitle,
@@ -16,27 +16,17 @@ import {
 import type { EventViewProps } from "./types";
 import { useAgentIdentity, useEventAgent } from "./use-agent-identity";
 
-/** Agent 自带子 Agent 在时间线里的两行：开始工作和结束，各在发生的位置，跟着过程一起折叠。点开看它自己的过程。 */
-export function SubagentStartLine({ event, session }: EventViewProps) {
+/** 子 Agent 在原位置更新状态，点开看它自己的过程。 */
+export function SubagentLine({ event, session }: EventViewProps) {
   if (event.kind !== "subagent") return null;
   const title = subagentTitle(event);
   return (
-    <Line event={event} session={session} subagentId={event.subagent_id} state="started">
-      <HoverCard content={<SubagentDetails card={event} />}>
-        <span className="min-w-0 truncate">{title}开始工作</span>
-      </HoverCard>
-    </Line>
-  );
-}
-
-export function SubagentEndLine({ event, session }: EventViewProps) {
-  if (event.kind !== "subagent-ended") return null;
-  return (
     <Line event={event} session={session} subagentId={event.subagent_id} state={event.status}>
-      <span className={cn("min-w-0 truncate", event.status === "failed" && "text-red-400/90")}>
-        {event.title.trim() || "子 Agent"}
-        {SUBAGENT_END_LABELS[event.status]}
-      </span>
+      <HoverCard content={<SubagentDetails card={event} />}>
+        <span className={cn("min-w-0 truncate", event.status === "failed" && "text-red-400/90")}>
+          {title}{SUBAGENT_LINE_LABELS[event.status]}
+        </span>
+      </HoverCard>
     </Line>
   );
 }

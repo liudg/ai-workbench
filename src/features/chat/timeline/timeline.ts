@@ -97,7 +97,8 @@ function skippedInTimeline(event: SessionEvent): boolean {
     event.kind === "goal" ||
     event.kind === "context-usage" ||
     event.kind === "session-usage" ||
-    event.kind === "subagent-step"
+    event.kind === "subagent-step" ||
+    event.kind === "subagent-ended"
   );
 }
 
@@ -155,8 +156,7 @@ export function isFoldable(event: SessionEvent, answers: ReadonlySet<string>): b
     event.kind === "tool-call" ||
     event.kind === "prompt" ||
     event.kind === "agent-message" ||
-    event.kind === "subagent" ||
-    event.kind === "subagent-ended"
+    event.kind === "subagent"
   );
 }
 
@@ -340,36 +340,11 @@ function runningSince(events: readonly SessionEvent[]): number | null {
   return null;
 }
 
-/** 记结束事件之前的会话里，已结束的卡片后面没有结束那一条。紧接着卡片补上。 */
-function withSubagentEnds(events: readonly SessionEvent[]): readonly SessionEvent[] {
-  const ended = new Set<string>();
-  for (const event of events) {
-    if (event.kind === "subagent-ended") ended.add(event.subagent_id);
-  }
-  return events.flatMap((event) =>
-    event.kind === "subagent" && event.status !== "running" && !ended.has(event.subagent_id)
-      ? [
-          event,
-          {
-            id: `${event.id}:ended`,
-            session_id: event.session_id,
-            seq: event.seq,
-            ts: event.ts,
-            kind: "subagent-ended",
-            subagent_id: event.subagent_id,
-            title: event.title,
-            status: event.status,
-          } satisfies SessionEvent,
-        ]
-      : [event],
-  );
-}
-
 export function buildTimeline(
   events: readonly SessionEvent[],
   status: SessionStatus,
 ): TimelineNode[] {
-  events = withSubagentEnds(softenConnectionLost(events));
+  events = softenConnectionLost(events);
   const blocks: TimelineNode[] = [];
   const starts = turnStarts(events);
   const prefixEnd = starts[0] ?? events.length;
