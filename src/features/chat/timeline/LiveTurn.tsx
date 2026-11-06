@@ -21,6 +21,7 @@ export function LiveTurn({
   expanded,
   onToggle,
   onInteract,
+  starting = false,
 }: {
   events: SessionEvent[];
   session: Session;
@@ -28,6 +29,7 @@ export function LiveTurn({
   expanded: boolean;
   onToggle: () => void;
   onInteract?: () => void;
+  starting?: boolean;
 }) {
   const identity = useAgentIdentity(session.agent);
   const agentName = agentTurnName(session.agent, identity) || AGENT_LABELS[session.agent];
@@ -36,7 +38,7 @@ export function LiveTurn({
   return (
     <div className="min-w-0" data-live-turn>
       <TurnFoldLine
-        summary={runningTurnSummary(agentName)}
+        summary={starting ? `${agentName} · 正在启动` : runningTurnSummary(agentName)}
         expanded={expanded}
         onToggle={onToggle}
         icon={<SessionAgentIcon identity={identity} className="h-4 w-4" />}

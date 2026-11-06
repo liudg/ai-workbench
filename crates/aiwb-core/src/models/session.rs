@@ -6,6 +6,10 @@ use super::agent::{AgentKind, ProjectId, SessionId};
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum SessionStatus {
+    /// 已接收首条消息，正在准备 Agent。
+    Starting,
+    /// 尚未开始回合。
+    Idle,
     /// Agent 正在处理（流式输出中）
     Running,
     /// 等待用户输入（审批 / 回答问题）

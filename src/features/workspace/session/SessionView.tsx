@@ -72,7 +72,6 @@ export function SessionView({
               session={session}
               events={feed.events}
               eventsReady={feed.ready}
-              starting={chat.starting}
               renderComposer={(anchorRef) =>
                 chat.loaded ? (
                   <Composer

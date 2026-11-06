@@ -3,6 +3,8 @@
 import type { AgentKind } from "./agent.ts";
 
 export type SessionStatus =
+  | "starting"
+  | "idle"
   | "running"
   | "needs-input"
   | "completed"
@@ -54,6 +56,8 @@ export function aggregateStatus(sessions: Session[]): SessionStatus | null {
   const rank: Record<SessionStatus, number> = {
     "needs-input": 5,
     running: 4,
+    starting: 4,
+    idle: 0,
     failed: 3,
     completed: 2,
     stopped: 1,

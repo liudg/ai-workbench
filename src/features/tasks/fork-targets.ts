@@ -18,7 +18,7 @@ export function forkTargets(
   profiles: Partial<Record<AgentKind, AgentProfile>>,
   agents: readonly { kind: AgentKind; display_name: string }[] | null,
 ): ForkTarget[] {
-  if (!current || current.status === "running" || current.status === "needs-input") return [];
+  if (!current || current.status === "starting" || current.status === "running" || current.status === "needs-input") return [];
   const caps = (kind: AgentKind) => profiles[kind]?.capabilities;
   const handsOff = (kind: AgentKind) => caps(kind)?.supports_context_handoff === true;
   const name = (kind: AgentKind, fallback: string) => profiles[kind]?.display_name || fallback;

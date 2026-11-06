@@ -30,6 +30,9 @@ struct Script {
     sinks: Mutex<HashMap<String, EventSink>>,
     /// 每个原生会话收到的消息原文。
     sent: Mutex<Vec<(String, String)>>,
+    startup_gate: Mutex<Option<Arc<tokio::sync::Semaphore>>>,
+    fail_start: std::sync::atomic::AtomicBool,
+    stopped: Mutex<Vec<String>>,
 }
 
 struct FakeAdapter(Arc<Script>, AgentKind);
@@ -96,6 +99,11 @@ impl AgentAdapter for FakeAdapter {
         let _ = events.send(SessionEventBody::StatusChanged {
             status: SessionStatus::Completed,
         });
+        let gate = self.0.startup_gate.lock().unwrap().clone();
+        if let Some(gate) = gate { gate.acquire().await.unwrap().forget(); }
+        if self.0.fail_start.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(AgentError::Closed);
+        }
         Ok(Arc::new(FakeSession {
             native,
             sink: events,
@@ -163,6 +171,7 @@ impl AgentSession for FakeSession {
     }
 
     async fn stop(&self) -> Result<(), AgentError> {
+        self.script.stopped.lock().unwrap().push(self.native.clone());
         Ok(())
     }
 
@@ -464,6 +473,114 @@ async fn subtasks_open_run_and_report_back_once() {
     // 回合结束后旧凭证不能再动东西。
     let late = h.tool(&token, "aiwb_subtask_list", json!({})).await.unwrap_err();
     assert!(late.starts_with("parent_not_active"), "{late}");
+}
+
+#[tokio::test]
+async fn cold_subtasks_publish_instructions_before_start_and_never_complete_early() {
+    let h = harness().await;
+    let parent = h.create("claude-code", "[hold] parent", json!({})).await;
+    let parent_id = parent["id"].as_str().unwrap();
+    h.wait_state(parent_id, "working").await;
+    let token = h.mcp_of(&h.native_of("parent")).unwrap().token;
+    let gate = Arc::new(tokio::sync::Semaphore::new(0));
+    *h.script.startup_gate.lock().unwrap() = Some(gate.clone());
+    h.tool(&token, "aiwb_subtask_create", json!({ "initiation": "user_asked", "subtasks": [
+        { "title": "one", "prompt": "[hold] first", "agent": "codex-cli" },
+        { "title": "two", "prompt": "[hold] second", "agent": "claude-code" }
+    ] })).await.unwrap();
+    let children = h.children(parent_id).await;
+    assert_eq!(children.len(), 2);
+    // Allow the native idle event to reach the pump while start_session is blocked.
+    tokio::time::sleep(Duration::from_millis(30)).await;
+    let mut ids = Vec::new();
+    for child in &children {
+        let id = child["id"].as_str().unwrap();
+        let session = h.wait_state(id, "starting").await;
+        let snapshot = h.timeline(&session).await;
+        assert_eq!(snapshot.len(), 1, "startup idle must not appear as completed");
+        assert_eq!(snapshot[0]["kind"], "user-message");
+        assert_eq!(snapshot[0]["sender"]["task_ids"][0], parent_id);
+        assert!(snapshot[0]["text"].as_str().unwrap().starts_with("[hold]"));
+        // A new subscription / refresh receives the same persisted message.
+        assert_eq!(snapshot, h.timeline(&session).await);
+        let reopened = Store::open(&h._dirs.0.path().join("db.sqlite")).unwrap();
+        assert_eq!(reopened.events_since(&session, 0).unwrap()[0].event.id, snapshot[0]["id"].as_str().unwrap());
+        ids.push(snapshot[0]["id"].clone());
+    }
+    assert_eq!(h.script.sent.lock().unwrap().len(), 1);
+    gate.add_permits(2);
+    for (index, child) in children.iter().enumerate() {
+        let session = h.wait_state(child["id"].as_str().unwrap(), "working").await;
+        let events = h.timeline(&session).await;
+        let messages: Vec<_> = events.iter().filter(|e| e["kind"] == "user-message").collect();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0]["id"], ids[index]);
+        assert!(!events.iter().any(|e| e["status"] == "completed"));
+    }
+    assert_eq!(h.script.sent.lock().unwrap().len(), 3, "one delivery per child");
+}
+
+#[tokio::test]
+async fn cancelling_cold_start_prevents_late_delivery_and_keeps_stopped() {
+    let h = harness().await;
+    let gate = Arc::new(tokio::sync::Semaphore::new(0));
+    *h.script.startup_gate.lock().unwrap() = Some(gate.clone());
+    let task = h.create("codex-cli", "must not be sent", json!({})).await;
+    let id = task["id"].as_str().unwrap();
+    let session = h.wait_state(id, "starting").await;
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while h.script.started.lock().unwrap().is_empty() { tokio::task::yield_now().await; }
+    }).await.unwrap();
+    h.services.dispatch("sessions.interrupt", json!({ "sessionId": session })).await.unwrap();
+    h.wait_state(id, "idle").await;
+    gate.add_permits(1);
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while h.script.stopped.lock().unwrap().is_empty() { tokio::task::yield_now().await; }
+    }).await.unwrap();
+    assert!(h.script.sent.lock().unwrap().is_empty());
+    assert_eq!(h.task(id).await["sessions"][0]["status"], "stopped");
+    assert_eq!(h.timeline(&session).await.iter().filter(|e| e["kind"] == "user-message").count(), 1);
+}
+
+#[tokio::test]
+async fn failed_cold_start_keeps_instructions_and_records_failure() {
+    let h = harness().await;
+    h.script.fail_start.store(true, std::sync::atomic::Ordering::SeqCst);
+    let task = h.create("codex-cli", "keep this instruction", json!({})).await;
+    let session = h.wait_state(task["id"].as_str().unwrap(), "failed").await;
+    let events = h.timeline(&session).await;
+    assert_eq!(events[0]["text"], "keep this instruction");
+    assert_eq!(events.iter().filter(|e| e["kind"] == "error").count(), 1);
+    assert!(h.script.sent.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn cancelling_a_start_waiting_for_the_opening_lock_never_launches_it() {
+    let h = harness().await;
+    let gate = Arc::new(tokio::sync::Semaphore::new(0));
+    *h.script.startup_gate.lock().unwrap() = Some(gate.clone());
+    let first = h.create("codex-cli", "[hold] first", json!({})).await;
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while h.script.started.lock().unwrap().is_empty() { tokio::task::yield_now().await; }
+    }).await.unwrap();
+    let second = h.create("claude-code", "cancel before launch", json!({})).await;
+    let session = second["sessions"][0]["id"].as_str().unwrap();
+    h.services.dispatch("sessions.interrupt", json!({ "sessionId": session })).await.unwrap();
+    gate.add_permits(2);
+    h.wait_state(first["id"].as_str().unwrap(), "working").await;
+    tokio::time::sleep(Duration::from_millis(30)).await;
+    assert_eq!(h.script.started.lock().unwrap().len(), 1);
+    assert_eq!(h.script.sent.lock().unwrap().len(), 1);
+    assert_eq!(h.task(second["id"].as_str().unwrap()).await["sessions"][0]["status"], "stopped");
+}
+
+#[tokio::test]
+async fn empty_task_is_not_completed_and_does_not_start_an_agent() {
+    let h = harness().await;
+    let task = h.create("codex-cli", "", json!({})).await;
+    assert_eq!(task["sessions"][0]["status"], "idle");
+    assert_eq!(task["attention"]["state"], "new");
+    assert!(h.script.started.lock().unwrap().is_empty());
 }
 
 /// 子任务也能开子任务：回报一层层往上，下面还有人在做时不叫醒上面。

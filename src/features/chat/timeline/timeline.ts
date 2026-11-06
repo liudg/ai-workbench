@@ -359,14 +359,14 @@ export function buildTimeline(
   }
 
   const turns = starts.map((start, turnIndex) => events.slice(start, starts[turnIndex + 1] ?? events.length));
-  const liveStatus = status === "running" || status === "needs-input";
+  const liveStatus = status === "starting" || status === "running" || status === "needs-input";
   turns.forEach((turn, turnIndex) => {
     const leader = turn[0];
     // Agent 自己开的回合没有用户气泡。
     if (opensSegment(leader)) blocks.push({ type: "event", event: leader, showAgentLabel: false });
     const rest = turn.slice(1);
     const last = turnIndex === turns.length - 1;
-    if (status === "running" && last) {
+    if ((status === "starting" || status === "running") && last) {
       blocks.push({
         type: "live",
         id: `live-${leader.id}`,
@@ -378,7 +378,7 @@ export function buildTimeline(
     if (liveStatus && last) pushLive(blocks, rest);
     else pushSettled(blocks, leader.ts, rest);
   });
-  if (status === "running" && !blocks.some((block) => block.type === "live")) {
+  if ((status === "starting" || status === "running") && !blocks.some((block) => block.type === "live")) {
     blocks.push({ type: "live", id: "live-current", events: [], startedAt: runningSince(events) });
   }
   return blocks;

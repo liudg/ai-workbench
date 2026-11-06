@@ -71,6 +71,13 @@ test("nested session cards remain in the reply and both copies navigate to their
       }
     }
     await act(async () => publishTasks(tasks.map((task) => ({
+      ...task, attention: { ...task.attention, state: "starting" },
+      sessions: task.sessions.map((session) => ({ ...session, status: "starting" })),
+    }))));
+    assert.equal(container.querySelectorAll('[data-subtask-state="starting"]').length, 4);
+    assert.ok(container.textContent.includes("正在启动"));
+    assert.ok(!container.textContent.includes("完成"));
+    await act(async () => publishTasks(tasks.map((task) => ({
       ...task, attention: { ...task.attention, state: "done" },
     }))));
     assert.equal(container.querySelectorAll('[data-subtask-state="done"]').length, 4);

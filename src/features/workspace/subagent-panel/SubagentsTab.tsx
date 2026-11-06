@@ -193,7 +193,6 @@ function TaskDetail({
             session={chat.session}
             events={feed.events}
             eventsReady={feed.ready}
-            starting={chat.starting}
             renderComposer={(anchorRef) =>
               chat.loaded ? (
                 <Composer

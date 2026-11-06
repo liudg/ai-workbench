@@ -18,8 +18,12 @@ pub enum AttentionState {
     NeedsInput,
     Failed,
     Working,
+    /// 首条说明已接收，Agent 尚未开始处理。
+    Starting,
+    /// 尚未开始回合。
+    New,
     Done,
-    /// 还没开始，或者被停掉了。
+    /// 已停止。
     Idle,
 }
 
@@ -59,6 +63,8 @@ impl Attention {
 
 pub fn state_of(status: SessionStatus) -> AttentionState {
     match status {
+        SessionStatus::Starting => AttentionState::Starting,
+        SessionStatus::Idle => AttentionState::New,
         SessionStatus::Running => AttentionState::Working,
         SessionStatus::NeedsInput => AttentionState::NeedsInput,
         SessionStatus::Completed => AttentionState::Done,
@@ -86,7 +92,7 @@ pub fn on_status(
     }
     let unread = match state {
         AttentionState::NeedsInput | AttentionState::Done | AttentionState::Failed => !viewed,
-        AttentionState::Working | AttentionState::Idle => false,
+        AttentionState::Starting | AttentionState::New | AttentionState::Working | AttentionState::Idle => false,
     };
     let ask = (state == AttentionState::NeedsInput)
         .then(|| pending_prompt(events).map(|(kind, _)| kind))

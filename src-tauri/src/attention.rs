@@ -115,7 +115,7 @@ fn waits_for_you(attention: &Attention) -> bool {
     match attention.state {
         AttentionState::NeedsInput => true,
         AttentionState::Done | AttentionState::Failed => attention.unread,
-        AttentionState::Working | AttentionState::Idle => false,
+        AttentionState::Starting | AttentionState::New | AttentionState::Working | AttentionState::Idle => false,
     }
 }
 
@@ -280,9 +280,23 @@ mod tests {
                 preview: Some("改好了".into()),
                 updated_at: 1,
             },
-            side: None,
+            sides: Vec::new(),
             branch: None,
         }
+    }
+
+    #[test]
+    fn startup_never_notifies_or_increments_the_badge() {
+        let mut watcher = Watcher::default();
+        watcher.update(&[]);
+        for state in [AttentionState::New, AttentionState::Starting, AttentionState::Working] {
+            let update = watcher.update(&[entry("a", state, false, false)]);
+            assert!(update.notices.is_empty());
+            assert_eq!(update.waiting, 0);
+        }
+        let completed = watcher.update(&[entry("a", AttentionState::Done, true, false)]);
+        assert_eq!(completed.waiting, 1);
+        assert_eq!(completed.notices.len(), 1);
     }
 
     #[test]

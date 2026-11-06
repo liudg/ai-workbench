@@ -1,6 +1,6 @@
 // 注意力：daemon 的投影（crates/aiwb-core/src/attention.rs）怎么画、怎么排。侧栏、看板、命令菜单共用。
 
-export type AttentionState = "needs-input" | "failed" | "working" | "done" | "idle";
+export type AttentionState = "starting" | "new" | "needs-input" | "failed" | "working" | "done" | "idle";
 
 export interface Attention {
   state: AttentionState;
@@ -34,12 +34,15 @@ export function attentionPill(attention: Attention | undefined): AttentionPillVi
       return attention.ask === "approval"
         ? pill("approval", "待批准", "text-[#f0a04a]", "bg-[#f0a04a]")
         : pill("input", "待回答", "text-[#9aa2ff]", "bg-[#9aa2ff]");
+    case "starting":
+      return { ...pill("working", "正在启动", "text-[#9a9a9a]", "bg-[#9a9a9a]"), pulse: true };
     case "working":
       return { ...pill("working", "运行中", "text-[#9a9a9a]", "bg-[#9a9a9a]"), pulse: true };
     case "failed":
       return attention.unread ? pill("failed", "失败", "text-red-400", "bg-red-400") : null;
     case "done":
       return attention.unread ? pill("done", "已完成", "text-emerald-400", "bg-emerald-400") : null;
+    case "new":
     case "idle":
       return null;
   }
@@ -97,10 +100,12 @@ export function boardColumn(attention: Attention): BoardColumn {
       return "needs-you";
     case "failed":
       return attention.unread ? "needs-you" : "idle";
+    case "starting":
     case "working":
       return "working";
     case "done":
       return attention.unread ? "done" : "idle";
+    case "new":
     case "idle":
       return "idle";
   }

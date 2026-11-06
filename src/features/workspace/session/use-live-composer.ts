@@ -106,7 +106,7 @@ export function useLiveComposer({
         }
       : null;
     const handsOff = (agent: AgentKind) => profiles[agent]?.capabilities.supports_context_handoff === true;
-    const idle = taskSession.status !== "running" && taskSession.status !== "needs-input";
+    const idle = taskSession.status !== "starting" && taskSession.status !== "running" && taskSession.status !== "needs-input";
     const switchable = !side && idle && handsOff(taskSession.agent);
     const option = (agent: AgentKind, fallback: string): AgentOption => ({
       kind: agent,

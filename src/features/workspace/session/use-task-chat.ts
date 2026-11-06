@@ -9,7 +9,6 @@ import { answerPrompt } from "./api";
 import { openSubagentPanel } from "../subagent-panel/open";
 import { chatSession } from "./chat-session";
 import { addDraftSnippet, useComposerDraft } from "./composer-drafts";
-import { useSessionStart } from "./session-start";
 import { useSubtaskHost } from "./use-subtask-host";
 import { useTaskTimeline } from "./use-task-timeline";
 
@@ -48,7 +47,6 @@ export function useTaskChat(
     }),
     [agentOf, owner, profiles, subtasks, taskId, workdir],
   );
-  const starting = useSessionStart(session.id, timeline.current.events, timeline.current.ready);
   const { draft, loaded } = useComposerDraft(session.id);
   return {
     profiles,
@@ -57,7 +55,6 @@ export function useTaskChat(
     workdir,
     timeline,
     host,
-    starting,
     draft,
     loaded,
   };

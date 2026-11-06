@@ -46,7 +46,7 @@ struct Inbox {
     notes: Vec<Note>,
     /// 每个子任务只留最新一个结果。
     results: Vec<(String, Outcome)>,
-    /// 刚开出、第一个回合还没结束的子任务。CLI 起来之前它的状态还是「已完成」，不能当成停下了。
+    /// 刚开出、第一个回合还没结束的子任务。创建到首轮结束之间不能当成停下了。
     starting: Vec<String>,
     /// 正在开的批数。开完之前不叫醒。
     holding: u32,
@@ -129,7 +129,7 @@ impl Reports {
 
     /// 子任务的回合停下了。还在跑的状态不用记。
     pub(crate) fn turn_ended(&mut self, parent: &str, child: &str, status: SessionStatus) {
-        if status == SessionStatus::Running || self.gone.contains(child) {
+        if matches!(status, SessionStatus::Starting | SessionStatus::Idle | SessionStatus::Running) || self.gone.contains(child) {
             return;
         }
         let by_parent = self.drivers.get(child) != Some(&Driver::User);

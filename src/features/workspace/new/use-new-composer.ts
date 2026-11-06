@@ -21,7 +21,6 @@ import type {
 import { filterPaths } from "../session/api";
 import { moveDraft, patchDraft, readDraft, removeDraftSnippet, type ComposerDraft } from "../session/composer-drafts";
 import { usePanelStore } from "@/features/panel/state/store";
-import { beginSessionStart } from "../session/session-start";
 import { initialSandbox } from "@/lib/sandbox";
 import { rememberAgent, rememberSandbox, rememberTuning, stickyAgent, stickySandbox, stickyTuning } from "./sticky";
 
@@ -228,7 +227,6 @@ export function useNewComposer({
           if (sessionId) {
             moveDraft(key, sessionId, {});
             usePanelStore.getState().panelMoveSession(key, sessionId);
-            if (text.trim() || images.length > 0) beginSessionStart(sessionId, { text, images });
           }
           openTask(created.id, projectId);
           return true;

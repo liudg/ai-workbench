@@ -6,8 +6,10 @@ import { useChatHost } from "../host";
 import { HoverActions, CopyButton } from "./chrome";
 
 /** 子任务送回来的结果折成一行，标出来自哪些子任务，点开看全文，点标题跳过去。照 t3code `TimelineUserMessageRow.tsx`。 */
-export function SubtaskReport({ text, taskIds, time }: { text: string; taskIds: string[]; time: string }) {
-  const [open, setOpen] = useState(false);
+export function SubtaskReport({ text, taskIds, time, defaultOpen = false }: {
+  text: string; taskIds: string[]; time: string; defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
   const subtasks = useChatHost().subtasks;
   return (
     <div className="event-in group min-w-0 px-6 py-1.5" data-subtask-report="">

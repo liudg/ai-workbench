@@ -24,6 +24,7 @@ use tokio::sync::mpsc;
 use crate::hub::Hub;
 
 mod handoff;
+mod startup;
 mod worktrees;
 
 pub(crate) use worktrees::task_branch;
@@ -56,6 +57,8 @@ pub struct Runtimes {
     adapters: AdapterFactory,
     logs: Mutex<HashMap<String, Log>>,
     live: Mutex<HashMap<String, Live>>,
+    /// 首轮启动的取消令牌；可见状态和首条说明始终保存在 SQLite。
+    starting: Mutex<HashMap<String, Arc<AtomicBool>>>,
     /// 同一时间只打开一个会话，避免对同一线程起两个 CLI。
     opening: tokio::sync::Mutex<()>,
     /// 清理和恢复工作树一次只做一件，免得一边删一边恢复。
@@ -115,6 +118,7 @@ impl Runtimes {
             adapters,
             logs: Mutex::default(),
             live: Mutex::default(),
+            starting: Mutex::default(),
             opening: tokio::sync::Mutex::new(()),
             worktrees: tokio::sync::Mutex::new(()),
             probing: tokio::sync::Mutex::new(()),
@@ -141,7 +145,7 @@ impl Runtimes {
     pub(crate) fn settle_interrupted(&self) -> RuntimeResult<()> {
         let sessions = self.store.list_sessions().map_err(|e| e.to_string())?;
         for session in sessions {
-            let interrupted = matches!(session.status, SessionStatus::Running | SessionStatus::NeedsInput);
+            let interrupted = matches!(session.status, SessionStatus::Starting | SessionStatus::Running | SessionStatus::NeedsInput);
             let working = self
                 .store
                 .attention(&session.id)
@@ -580,6 +584,7 @@ impl Runtimes {
             }
         }
         let _opening = self.opening.lock().await;
+        if self.initial_cancelled(session_id) { return Err("启动已取消".into()); }
         if let Some(handle) = self.live_handle(session_id) {
             return Ok(handle);
         }
@@ -624,17 +629,18 @@ impl Runtimes {
             Ok(handle) => handle,
             Err(err) => {
                 self.mcp.revoke(session_id);
+                if self.initial_cancelled(session_id) { return Err("启动已取消".into()); }
                 let message = err.to_string();
-                self.record(session_id, SessionEventBody::Error { message: message.clone() })?;
-                self.record(
-                    session_id,
-                    SessionEventBody::StatusChanged {
-                        status: SessionStatus::Failed,
-                    },
-                )?;
+                self.record_initial_failure(session_id, message.clone())?;
                 return Err(message);
             }
         };
+        if self.initial_cancelled(session_id) {
+            muted.store(true, Ordering::SeqCst);
+            self.mcp.revoke(session_id);
+            let _ = handle.stop().await;
+            return Err("启动已取消".into());
+        }
         // 适配器换了原生会话（例如 Cursor 没发过消息的空会话不能载入，只能新开）时跟着改。
         if let Some(native) = handle.native_id().filter(|id| !id.is_empty()) {
             if session.native_id.as_deref() != Some(native.as_str()) {
@@ -681,8 +687,20 @@ impl Runtimes {
         used_at: Arc<AtomicI64>,
     ) {
         let runtimes = Arc::clone(self);
+        let cancelled = self.starting.lock().unwrap().get(&session_id).cloned();
+        let mut awaiting_turn = self.store.session(&session_id).ok().flatten()
+            .is_some_and(|s| matches!(s.status, SessionStatus::Starting | SessionStatus::Idle));
         tokio::spawn(async move {
             while let Some(body) = rx.recv().await {
+                let _starting = cancelled.as_ref().map(|_| runtimes.starting.lock().unwrap());
+                if cancelled.as_ref().is_some_and(|c| c.load(Ordering::SeqCst)) { continue; }
+                if let SessionEventBody::StatusChanged { status } = &body {
+                    // 原生进程接通时的 idle 不是首轮完成；直到真正开始回合才接收完成状态。
+                    if awaiting_turn && *status == SessionStatus::Completed { continue; }
+                    if matches!(status, SessionStatus::Running | SessionStatus::NeedsInput | SessionStatus::Failed) {
+                        awaiting_turn = false;
+                    }
+                }
                 if muted.load(Ordering::SeqCst) {
                     continue;
                 }
@@ -719,6 +737,9 @@ impl Runtimes {
 
     /// 发一条消息。斜杠命令不画用户气泡；排队的消息等真正发出时由适配器记。
     pub(crate) async fn send_message(self: &Arc<Self>, session_id: &str, message: Outgoing) -> RuntimeResult<TurnDelivery> {
+        if self.starting.lock().unwrap().contains_key(session_id) {
+            return Err("会话正在准备，请稍后再发送。".into());
+        }
         let Outgoing {
             text,
             images,
@@ -869,6 +890,11 @@ impl Runtimes {
     }
 
     pub(crate) async fn interrupt(self: &Arc<Self>, session_id: &str) -> RuntimeResult<()> {
+        if self.cancel_initial(session_id) {
+            self.record(session_id, SessionEventBody::StatusChanged { status: SessionStatus::Stopped })?;
+            self.stop(session_id).await;
+            return Ok(());
+        }
         // 没接上的会话没有在跑的回合。
         let Some(handle) = self.live_handle(session_id) else {
             return Ok(());
@@ -892,9 +918,14 @@ impl Runtimes {
     }
 
     pub(crate) async fn stop(&self, session_id: &str) {
+        let cancelled = self.cancel_initial(session_id);
+        if cancelled && self.store.session(session_id).ok().flatten().is_some_and(|s| s.status != SessionStatus::Stopped) {
+            let _ = self.record(session_id, SessionEventBody::StatusChanged { status: SessionStatus::Stopped });
+        }
         self.mcp.revoke(session_id);
         let entry = self.live.lock().unwrap().remove(session_id);
         if let Some(entry) = entry {
+            if cancelled { entry.muted.store(true, Ordering::SeqCst); }
             let _ = entry.handle.stop().await;
         }
     }
@@ -1075,6 +1106,22 @@ mod tests {
 
     fn status(status: SessionStatus) -> SessionEventBody {
         SessionEventBody::StatusChanged { status }
+    }
+
+    #[test]
+    fn restart_stops_starting_sessions_without_losing_the_accepted_message() {
+        let (store, runtimes) = runtimes_with_task(SessionStatus::Starting);
+        runtimes.record("s", SessionEventBody::UserMessage {
+            text: "accepted before launch".into(), images: vec![], annotations: 0, sender: None,
+        }).unwrap();
+        let first = store.events_since("s", 0).unwrap()[0].event.clone();
+        // A new runtime has no in-memory startup state.
+        let restarted = Runtimes::new(store.clone(), Arc::new(Hub::new()), Arc::new(aiwb_agents::adapter_for));
+        restarted.settle_interrupted().unwrap();
+        assert_eq!(store.session("s").unwrap().unwrap().status, SessionStatus::Stopped);
+        assert_eq!(store.attention("s").unwrap().unwrap().state, AttentionState::Idle);
+        assert_eq!(store.events_since("s", 0).unwrap()[0].event.id, first.id);
+        assert_eq!(store.events_since("s", 0).unwrap().len(), 2);
     }
 
     #[test]

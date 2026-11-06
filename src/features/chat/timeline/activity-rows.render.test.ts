@@ -55,6 +55,22 @@ const session: Session = {
   updated_at: 1,
 };
 
+test("initial parent instructions are expanded and startup is not labelled running", async () => {
+  const { UserBubble } = await server.ssrLoadModule("/src/features/chat/events/UserBubble.tsx");
+  const instruction = event("first", { kind: "user-message", text: "制作中文页面", images: [], sender: { task_ids: ["parent"] } });
+  const bubble = (seq: number) => renderInHost(createElement(UserBubble, {
+    event: { ...instruction, seq }, session: { ...session, status: "starting" }, time: "",
+  }));
+  assert.match(bubble(1), /制作中文页面/);
+  assert.doesNotMatch(bubble(2), /制作中文页面/);
+  const { LiveTurn } = await server.ssrLoadModule("/src/features/chat/timeline/LiveTurn.tsx");
+  const html = renderInHost(createElement(LiveTurn, {
+    session, events: [], resolvedAnswers: new Map(), expanded: true, onToggle: () => {}, starting: true,
+  }));
+  assert.match(html, /正在启动/);
+  assert.doesNotMatch(html, /运行中/);
+});
+
 const settledEvents: SessionEvent[] = [
   event("note", { kind: "agent-message", text: "旁白按顺序留下。", phase: "commentary" }),
   event("t1", { kind: "thinking", text: "先看背包里的宝石。" }),

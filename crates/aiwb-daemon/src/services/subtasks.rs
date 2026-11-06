@@ -625,7 +625,7 @@ impl Services {
         let command = message.text.trim_start().starts_with('/');
         let mut taken = None;
         if let (Some(session), Some(task)) = (&session, &main) {
-            let idle = !matches!(session.status, SessionStatus::Running | SessionStatus::NeedsInput);
+            let idle = !matches!(session.status, SessionStatus::Starting | SessionStatus::Running | SessionStatus::NeedsInput);
             // 斜杠命令照原样发，回报留到下一条普通消息。
             if idle && !message.now && !command {
                 taken = self.reports().take_for_user(&task.id);
@@ -676,7 +676,7 @@ impl Services {
         let Ok(Some(session)) = self.store.task_sessions(parent_id).map(|mut sessions| sessions.pop()) else {
             return;
         };
-        if matches!(session.status, SessionStatus::Running | SessionStatus::NeedsInput) {
+        if matches!(session.status, SessionStatus::Starting | SessionStatus::Running | SessionStatus::NeedsInput) {
             return;
         }
         if self.typing(&session.id) {
@@ -717,7 +717,7 @@ impl Services {
         let reports = self.reports();
         entries.iter().any(|entry| {
             let unfinished = match entry.attention.state {
-                AttentionState::Working => true,
+                AttentionState::Starting | AttentionState::Working => true,
                 AttentionState::NeedsInput => false,
                 _ => reports.expecting(&entry.task.id),
             };
@@ -814,6 +814,8 @@ fn nonempty(value: Option<String>) -> Option<String> {
 
 fn status_label(status: SessionStatus) -> &'static str {
     match status {
+        SessionStatus::Starting => "starting",
+        SessionStatus::Idle => "idle",
         SessionStatus::Completed => "done",
         SessionStatus::Failed => "failed",
         SessionStatus::NeedsInput => "needs-input",

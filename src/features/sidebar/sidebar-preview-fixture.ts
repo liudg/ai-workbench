@@ -100,6 +100,8 @@ function task(input: {
 }
 
 const ATTENTION_STATE: Record<SessionStatus, Attention["state"]> = {
+  starting: "starting",
+  idle: "new",
   running: "working",
   "needs-input": "needs-input",
   completed: "done",

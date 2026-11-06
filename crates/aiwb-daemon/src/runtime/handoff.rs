@@ -88,7 +88,7 @@ impl Runtimes {
             .session(session_id)
             .map_err(store_err)?
             .ok_or_else(|| "会话不存在".to_string())?;
-        if matches!(target.status, SessionStatus::Running | SessionStatus::NeedsInput) {
+        if matches!(target.status, SessionStatus::Starting | SessionStatus::Running | SessionStatus::NeedsInput) {
             return Ok(None);
         }
         let own = self.store.events_since(session_id, 0).map_err(store_err)?;

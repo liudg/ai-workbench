@@ -620,3 +620,12 @@ test("context usage events do not become a composer strip", () => {
   assert.equal(rendered.includes("本回合"), false);
   assert.equal(rendered.includes("grok-4.7"), false);
 });
+
+
+test("cold startup locks submission and offers cancellation before capabilities arrive", () => {
+  const starting = view({ status: "starting", caps: undefined, text: "draft" });
+  assert.equal(starting.composerLocked, true);
+  assert.equal(starting.menusLocked, true);
+  assert.equal(starting.stopMode, true);
+  assert.equal(starting.sendDisabled, false);
+});

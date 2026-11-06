@@ -589,3 +589,14 @@ test("a live turn's last part has no answer until it settles", () => {
     ["a1", null],
   );
 });
+
+
+test("persisted initial message remains visible during startup and after cancellation", () => {
+  const message = event("first", 100, { kind: "user-message", text: "创建页面", images: [] });
+  const starting = buildTimeline([message], "starting");
+  assert.equal(starting.filter((node) => node.type === "event" && node.event.id === "first").length, 1);
+  assert.ok(starting.some((node) => node.type === "live" && node.startedAt === 100));
+  const stopped = buildTimeline([message, event("stop", 200, { kind: "status-changed", status: "stopped" })], "stopped");
+  assert.equal(stopped.filter((node) => node.type === "event" && node.event.id === "first").length, 1);
+  assert.ok(!stopped.some((node) => node.type === "live"));
+});

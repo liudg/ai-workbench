@@ -45,7 +45,7 @@ export function taskRow(task: TaskEntry, agent: AgentKind): SubagentRow {
     status: status.label,
     statusClass: status.textClass,
     detail: subtaskDetail(task.attention),
-    active: task.attention.state === "working" || task.attention.state === "needs-input",
+    active: task.attention.state === "starting" || task.attention.state === "working" || task.attention.state === "needs-input",
     since: task.createdAt,
   };
 }

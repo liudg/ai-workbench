@@ -88,6 +88,11 @@ fn event_from_row(row: &Row<'_>) -> rusqlite::Result<StoredEvent> {
 impl Store {
     /// 新建任务和它的第一个会话，在同一个事务里。
     pub fn insert_task(&self, task: &Task, session: &TaskSession) -> StoreResult<()> {
+        self.insert_task_with_messages(task, session, &[])
+    }
+
+    /// 创建和已接收的消息一起提交，订阅者不会看见缺少说明的任务。
+    pub fn insert_task_with_messages(&self, task: &Task, session: &TaskSession, messages: &[SessionEventBody]) -> StoreResult<()> {
         if session.task_id != task.id {
             return Err(StoreError::Invalid("会话不属于这个任务".into()));
         }
@@ -109,6 +114,13 @@ impl Store {
             ],
         )?;
         insert_session(&tx, session)?;
+        for (index, body) in messages.iter().enumerate() {
+            let seq = (index + 1) as i64;
+            tx.execute(
+                "INSERT INTO event (session_id, seq, rev, id, ts, body) VALUES (?1, ?2, ?2, ?3, ?4, ?5)",
+                params![session.id, seq, aiwb_core::models::new_id(), session.created_at, to_text(body)],
+            )?;
+        }
         tx.commit()?;
         Ok(())
     }

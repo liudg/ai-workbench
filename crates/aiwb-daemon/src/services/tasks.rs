@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
-use aiwb_core::models::{new_id, AgentKind, SessionStatus};
+use aiwb_core::models::{new_id, AgentKind, MessageSender, SessionEventBody, SessionStatus};
 use aiwb_core::task::{SessionOptions, SubtaskSpec, Task, TaskEntry, TaskSession, TaskWorkspace};
 use serde::{Deserialize, Serialize};
 
@@ -166,10 +166,17 @@ impl Services {
             }
         };
         let now = now_millis();
+        let goal = params.goal.map(|g| g.trim().to_string()).filter(|g| !g.is_empty());
         let task = Task {
             id: new_id(),
             project_id,
-            title: params.title.trim().to_string(),
+            title: if params.title.trim().is_empty() {
+                aiwb_core::timeline::title_from_user_message(
+                    goal.as_deref().unwrap_or(&params.prompt), params.images.len(), 0,
+                ).unwrap_or_default()
+            } else {
+                params.title.trim().to_string()
+            },
             workspace,
             parent_task_id: params.parent_task_id.clone(),
             pinned: false,
@@ -177,78 +184,59 @@ impl Services {
             created_at: now,
             updated_at: now,
         };
+        let sender = task.parent_task_id.clone().map(|parent| MessageSender { task_ids: vec![parent] });
+        let has_message = !params.prompt.trim().is_empty() || !params.images.is_empty();
+        let starting = has_message || goal.is_some();
+        let mut messages = Vec::new();
+        if let Some(goal) = &goal {
+            messages.push(SessionEventBody::UserMessage {
+                text: format!("/goal {goal}"),
+                images: Vec::new(),
+                annotations: 0,
+                sender: None,
+            });
+        }
+        if has_message {
+            messages.push(SessionEventBody::UserMessage {
+                text: params.prompt.clone(),
+                images: params.images.clone(),
+                annotations: 0,
+                sender,
+            });
+        }
         let session = TaskSession {
             id: new_id(),
             task_id: task.id.clone(),
             agent,
             native_id: None,
-            status: SessionStatus::Completed,
+            status: if starting { SessionStatus::Starting } else { SessionStatus::Idle },
             options: params.options,
             created_at: now,
             updated_at: now,
         };
-        if let Err(err) = self.store.insert_task(&task, &session) {
+        if let Err(err) = self.store.insert_task_with_messages(&task, &session, &messages) {
             // 只删这次新建的空文件夹，借用父聊天的不动。
             if let (TaskWorkspace::Folder { path }, None) = (&task.workspace, &params.folder) {
                 let _ = std::fs::remove_dir(path);
             }
             return Err(err.to_string());
         }
+        if starting {
+            self.runtimes.start_initial(
+                session.id.clone(),
+                has_message.then(|| aiwb_agents::UserTurn {
+                    text: params.prompt,
+                    images: params.images,
+                    client_id: new_id(),
+                    annotations: Vec::new(),
+                }),
+                goal,
+                params.goal_status.as_deref() == Some("paused"),
+            );
+        }
         self.runtimes.publish_tasks()?;
         if matches!(task.workspace, TaskWorkspace::Worktree { .. }) {
             self.request_worktree_sweep();
-        }
-
-        let goal = params
-            .goal
-            .map(|goal| goal.trim().to_string())
-            .filter(|goal| !goal.is_empty());
-        if !params.prompt.trim().is_empty() || !params.images.is_empty() || goal.is_some() {
-            let runtimes = self.runtimes.clone();
-            let session_id = session.id.clone();
-            // 子任务的第一条消息是父任务写的。
-            let sender = task.parent_task_id.clone().map(|parent| aiwb_core::models::MessageSender {
-                task_ids: vec![parent],
-            });
-            let subtask = sender.is_some();
-            let paused = params.goal_status.as_deref() == Some("paused");
-            tokio::spawn(async move {
-                let sent = async {
-                    if let Some(goal) = goal {
-                        runtimes.set_goal(&session_id, &goal).await?;
-                        if paused {
-                            let handle = runtimes.handle(&session_id).await?;
-                            handle.set_goal_status("paused").await.map_err(|e| e.to_string())?;
-                        }
-                    }
-                    if params.prompt.trim().is_empty() && params.images.is_empty() {
-                        return Ok(());
-                    }
-                    let message = crate::runtime::Outgoing {
-                        sender,
-                        ..crate::runtime::Outgoing::user(params.prompt, params.images, false)
-                    };
-                    runtimes.send_message(&session_id, message).await.map(|_| ())
-                }
-                .await;
-                if let Err(message) = sent {
-                    if runtimes.is_live(&session_id) {
-                        let _ = runtimes.record(
-                            &session_id,
-                            aiwb_core::models::SessionEventBody::Error { message },
-                        );
-                        // 子任务的说明没发出去：记成失败，父任务不用一直等它。
-                        if subtask {
-                            let _ = runtimes.record(
-                                &session_id,
-                                aiwb_core::models::SessionEventBody::StatusChanged {
-                                    status: SessionStatus::Failed,
-                                },
-                            );
-                        }
-                    }
-                }
-            });
         }
         self.task_entry(&task.id)
     }

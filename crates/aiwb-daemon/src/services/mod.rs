@@ -120,7 +120,7 @@ impl Services {
             .map(|sessions| {
                 sessions
                     .iter()
-                    .filter(|s| matches!(s.status, aiwb_core::models::SessionStatus::Running | aiwb_core::models::SessionStatus::NeedsInput))
+                    .filter(|s| matches!(s.status, aiwb_core::models::SessionStatus::Starting | aiwb_core::models::SessionStatus::Running | aiwb_core::models::SessionStatus::NeedsInput))
                     .count()
             })
             .unwrap_or(0)
@@ -324,7 +324,7 @@ impl Services {
 
 /// 会话正在跑一轮，或在等用户回答。
 pub(crate) fn session_busy(session: &TaskSession) -> bool {
-    matches!(session.status, SessionStatus::Running | SessionStatus::NeedsInput)
+    matches!(session.status, SessionStatus::Starting | SessionStatus::Running | SessionStatus::NeedsInput)
 }
 
 /// 文件索引和筛选按这个键共用：会话按会话，项目按项目。
