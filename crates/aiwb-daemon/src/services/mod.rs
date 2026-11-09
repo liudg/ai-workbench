@@ -1,5 +1,6 @@
 //! 所有对外能力都是这里的方法。界面、命令面板、快捷键、以后的本地 MCP 都走 [`Services::dispatch`]。
 
+mod agent_sessions;
 mod agents;
 mod drafts;
 mod files;
@@ -18,7 +19,7 @@ mod worktree_handoff;
 mod worktrees;
 
 pub(crate) use folders::import_legacy_task_folder;
-pub(crate) use subtasks::SubtaskRequest;
+pub(crate) use agent_sessions::SessionRequest;
 
 /// 代表某个会话来调用的一方（工作台 MCP 的工具调用）：调用方的会话和它的任务。
 /// 作用范围按它来定。
@@ -60,8 +61,9 @@ pub struct Services {
     pub(crate) worktree_root: PathBuf,
     /// 叫醒后台的工作树清理。
     worktree_sweep: tokio::sync::Notify,
-    /// 嵌套任务在内存里的状态：待回报、正在处理的卡片和回报。
+    /// 嵌套任务在内存里的状态：待回报和正在送的回报。
     pub(crate) subtasks: subtasks::SubtaskState,
+    pub(crate) resolving_offers: agent_sessions::ResolvingOffers,
     info: DaemonInfo,
     shutdown: watch::Sender<bool>,
 }
@@ -87,6 +89,7 @@ impl Services {
             upgrades: crate::upgrades::AgentUpgrades::new(hub.clone(), adapters),
             runtimes: Arc::new(runtimes),
             subtasks: Default::default(),
+            resolving_offers: Default::default(),
             terminals: Arc::new(Terminals::new(hub.clone())),
             store,
             hub,

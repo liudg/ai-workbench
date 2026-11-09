@@ -386,7 +386,9 @@ async fn subtasks_open_run_and_report_back_once() {
         .iter()
         .map(|tool| tool["name"].as_str().unwrap())
         .collect();
-    assert!(names.contains(&"aiwb_subtask_create") && names.contains(&"aiwb_capabilities"), "{names:?}");
+    for tool in ["aiwb_subtask_create", "aiwb_session_create", "aiwb_capabilities"] {
+        assert!(names.contains(&tool), "{names:?}");
+    }
 
     let capabilities = h.tool(&token, "aiwb_capabilities", json!({})).await.unwrap();
     assert_eq!(capabilities["you"]["agent"], "claude-code");
@@ -842,8 +844,144 @@ async fn offer_cards_wait_for_the_user() {
     panic!("父会话没收到卡片结果：{:?}", h.sent_to(&parent_native));
 }
 
+/// 独立会话：顶层、同一个项目、受调用方权限限制，父任务管不到它，结果也不回来。
+#[tokio::test]
+async fn detached_sessions_open_at_the_top_level_and_never_report_back() {
+    let h = harness().await;
+    let origin = h.create("codex-cli", "[hold] 另起一条", json!({ "access": { "mode": "ask" } })).await;
+    let origin_id = origin["id"].as_str().unwrap().to_string();
+    h.wait_state(&origin_id, "working").await;
+    let native = h.native_of("另起一条");
+    let token = h.mcp_of(&native).unwrap().token;
+
+    let refused = h
+        .tool(
+            &token,
+            "aiwb_session_create",
+            json!({ "initiation": "user_asked", "sessions": [{ "title": "x", "prompt": "y", "access": "full" }] }),
+        )
+        .await
+        .unwrap_err();
+    assert!(refused.starts_with("permission_escalation"), "{refused}");
+
+    let created = h
+        .tool(
+            &token,
+            "aiwb_session_create",
+            json!({ "initiation": "user_asked", "sessions": [{ "title": "独立活", "prompt": "独立的活" }] }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(created["status"], "opened");
+    let task_id = created["sessions"][0]["taskId"].as_str().unwrap().to_string();
+    assert!(h.children(&origin_id).await.is_empty(), "不挂在发起的任务下面");
+    let detached = h.task(&task_id).await;
+    assert!(detached["parentTaskId"].is_null());
+    assert_eq!(detached["projectId"], h.project_id.as_str());
+    let session = h.wait_state(&task_id, "done").await;
+    let first = h.timeline(&session).await.into_iter().find(|event| event["kind"] == "user-message").unwrap();
+    assert_eq!(first["sender"]["task_ids"][0], origin_id.as_str(), "时间线里看得出是谁开的");
+
+    let foreign = h.tool(&token, "aiwb_subtask_read", json!({ "taskId": task_id })).await.unwrap_err();
+    assert!(foreign.starts_with("not_found"), "{foreign}");
+    assert!(h.tool(&token, "aiwb_subtask_list", json!({})).await.unwrap().as_array().unwrap().is_empty());
+
+    h.finish(&native);
+    h.wait_state(&origin_id, "done").await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(h.sent_to(&native).len(), 1, "结果不回来：{:?}", h.sent_to(&native));
+}
+
+/// 没给任务的独立会话只是开好等用户；卡片上选了之后 Agent 知道它开了，结果同样不回来。
+#[tokio::test]
+async fn detached_session_cards_and_empty_sessions() {
+    let h = harness().await;
+    let origin = h.create("claude-code", "[hold] 新开一个", json!({})).await;
+    let origin_id = origin["id"].as_str().unwrap().to_string();
+    let session = h.wait_state(&origin_id, "working").await;
+    let native = h.native_of("新开一个");
+    let token = h.mcp_of(&native).unwrap().token;
+
+    let empty = h
+        .tool(&token, "aiwb_session_create", json!({ "initiation": "user_asked", "sessions": [{ "title": "新会话" }] }))
+        .await
+        .unwrap();
+    let empty_id = empty["sessions"][0]["taskId"].as_str().unwrap();
+    assert_eq!(h.task(empty_id).await["attention"]["state"], "new");
+    assert_eq!(h.script.started.lock().unwrap().len(), 1, "空会话不拉起 Agent");
+
+    let missing = h
+        .tool(&token, "aiwb_subtask_create", json!({ "initiation": "user_asked", "subtasks": [{ "title": "没说明" }] }))
+        .await
+        .unwrap_err();
+    assert!(missing.starts_with("invalid: every subtask needs"), "{missing}");
+
+    let offered = h
+        .tool(
+            &token,
+            "aiwb_session_create",
+            json!({ "initiation": "offer", "sessions": [{ "title": "问一下", "prompt": "问过再开" }] }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(offered["status"], "waiting_for_user");
+    h.finish(&native);
+    h.wait_state(&origin_id, "done").await;
+    let offer_id = offered["offerId"].as_str().unwrap();
+    h.services
+        .dispatch("tasks.resolveOffer", json!({ "sessionId": session, "offerId": offer_id, "accept": true }))
+        .await
+        .unwrap();
+    assert!(h.children(&origin_id).await.is_empty());
+    let card = h.timeline(&session).await.into_iter().find(|event| event["offer_id"] == offer_id).unwrap();
+    assert_eq!(card["link"], "detached");
+    assert_eq!(card["resolution"]["kind"], "accepted");
+    for _ in 0..200 {
+        if h.sent_to(&native).iter().any(|text| text.contains("nothing will come back to you")) {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    panic!("发起的会话没收到卡片结果：{:?}", h.sent_to(&native));
+}
+
+/// 落库的旧卡片没有 `link`，读出来是子任务。
+#[test]
+fn stored_cards_without_a_link_are_children() {
+    let body: SessionEventBody = serde_json::from_value(json!({
+        "kind": "subtask-offer",
+        "offer_id": "o",
+        "initiation": "offer",
+        "subtasks": [],
+    }))
+    .unwrap();
+    let SessionEventBody::SubtaskOffer { link, .. } = body else { panic!() };
+    assert_eq!(link, aiwb_core::task::SessionLink::Child);
+}
+
 fn rand_id() -> String {
     uuid::Uuid::new_v4().simple().to_string()[..6].to_string()
+}
+
+/// 独立聊天开的独立会话有自己的文件夹，不和聊天共用。
+#[tokio::test]
+async fn standalone_chats_open_detached_sessions_in_a_new_folder() {
+    let h = harness().await;
+    let chat = h
+        .services
+        .dispatch("tasks.create", json!({ "agent": "codex-cli", "prompt": "[hold] 换个地方做", "options": {} }))
+        .await
+        .unwrap();
+    let chat_id = chat["id"].as_str().unwrap().to_string();
+    h.wait_state(&chat_id, "working").await;
+    let token = h.mcp_of(&h.native_of("换个地方做")).unwrap().token;
+    let created = h
+        .tool(&token, "aiwb_session_create", json!({ "initiation": "user_asked", "sessions": [{ "title": "别处", "prompt": "别处的活" }] }))
+        .await
+        .unwrap();
+    let detached = h.task(created["sessions"][0]["taskId"].as_str().unwrap()).await;
+    assert_eq!(detached["workspace"]["kind"], "folder");
+    assert_ne!(detached["workspace"]["path"], chat["workspace"]["path"]);
 }
 
 /// 独立聊天也拿到工作台 MCP：子任务挂在聊天下面，用同一个文件夹，不能要工作树。

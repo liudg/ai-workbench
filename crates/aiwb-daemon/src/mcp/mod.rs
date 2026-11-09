@@ -10,7 +10,7 @@
 //! 照 t3code `apps/server/src/mcp/McpHttpServer.ts`、`McpSessionRegistry.ts`。
 
 mod server;
-mod subtasks;
+mod sessions;
 mod tokens;
 
 use std::sync::Arc;

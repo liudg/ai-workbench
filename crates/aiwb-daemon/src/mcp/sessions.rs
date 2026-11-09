@@ -1,9 +1,9 @@
-//! 子任务工具：开、列、读、追加消息、打断。只认调用方任务下的子任务。
-//! 规则在 `services::subtasks`，这里只把参数和结果转成 MCP 的样子。
+//! 会话工具：开子任务或独立会话；列、读、追加消息、打断只认调用方任务下的子任务。
+//! 规则在 `services::agent_sessions` 和 `services::subtasks`，这里只把参数和结果转成 MCP 的样子。
 //! 照 t3code `apps/server/src/mcp/toolkits/orchestrator/tools.ts`，工具描述里写明什么时候该用。
 
 use aiwb_core::models::AgentKind;
-use aiwb_core::task::Initiation;
+use aiwb_core::task::{Initiation, SessionLink};
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::schemars::{self, JsonSchema};
 use rmcp::{tool, tool_router};
@@ -11,7 +11,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use super::server::WorkbenchServer;
-use crate::services::{Caller, SubtaskRequest};
+use crate::services::{Caller, SessionRequest};
 
 #[derive(Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -23,15 +23,16 @@ enum InitiationParam {
 
 #[derive(Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
-struct SubtaskParam {
+struct SessionParam {
     /// Short title shown in the sidebar.
     title: String,
-    /// The subtask's first message. It does not see your conversation: say what to do, which files are involved, and what done looks like.
+    /// The first message. The session does not see your conversation: say what to do, which files are involved, and what done looks like. Required for a subtask; a top-level session may leave it empty to wait for the user.
+    #[serde(default)]
     prompt: String,
     /// Agent id from aiwb_capabilities. Defaults to your own agent.
     #[serde(default)]
     agent: Option<String>,
-    /// Give the subtask its own git worktree (detached; it can create a branch there). Use it for subtasks that write code in parallel.
+    /// Give the session its own git worktree (detached; it can create a branch there). Use it for sessions that write code in parallel.
     #[serde(default)]
     worktree: bool,
     /// Model id from that agent's catalog in aiwb_capabilities. Omit for the agent's default.
@@ -47,10 +48,21 @@ struct SubtaskParam {
 
 #[derive(Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
-struct CreateParams {
+struct CreateSubtasks {
     /// Who wants this split off. See the tool description.
     initiation: InitiationParam,
-    subtasks: Vec<SubtaskParam>,
+    subtasks: Vec<SessionParam>,
+    /// Optional id that makes retries safe: the same id returns the first result instead of opening again.
+    #[serde(default)]
+    client_request_id: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct CreateSessions {
+    /// Who wants this opened. See the tool description.
+    initiation: InitiationParam,
+    sessions: Vec<SessionParam>,
     /// Optional id that makes retries safe: the same id returns the first result instead of opening again.
     #[serde(default)]
     client_request_id: Option<String>,
@@ -106,33 +118,21 @@ fn json(value: impl serde::Serialize) -> Reply {
     serde_json::to_string_pretty(&value).map_err(|e| e.to_string())
 }
 
-#[tool_router(router = subtask_tools, vis = "pub(super)")]
 impl WorkbenchServer {
-    #[tool(
-        description = "List the agents you can give subtasks, with their models, reasoning efforts, permission levels and plan-mode support, plus your own agent, model, permission level and plan mode."
-    )]
-    async fn aiwb_capabilities(&self, caller: Caller, _: Parameters<NoParams>) -> Reply {
-        json(self.services.subtask_capabilities(&caller)?)
-    }
-
-    #[tool(description = "Open one or more subtasks under your current task. Each subtask is a separate workbench task with a full agent session of its own: it may use a different agent and can get its own git worktree, and the user can open, steer or stop it from your timeline and the sidebar. The call returns at once; do not wait or poll. When all your subtasks have stopped and you are idle, the workbench sends you one message with their results.
-
-Every subtask starts a full session and reloads context, and does not see this conversation: write each prompt as a self-contained brief (what to do, which files, what done looks like).
-
-initiation — declare it honestly from the user's words:
-- user_asked: the user explicitly asked to split this off, run it separately or in the background, or start it now. Opens right away.
-- offer: the user's latest message asks for this work but did not say to split it off. A card asks the user. End your turn right after this call; you will get a message with the user's choice (opened, or do it here yourself).
-- own_initiative: work you noticed or propose that the user did not ask for. A card the user may start later; do not wait, continue your own work. At most 3 per turn, never the same thing twice. Never use it for work the user asked for.
-
-A subtask inherits your permission level and plan mode and can never be wider than yours.")]
-    async fn aiwb_subtask_create(&self, caller: Caller, Parameters(params): Parameters<CreateParams>) -> Reply {
-        let initiation = match params.initiation {
+    async fn create(
+        &self,
+        caller: Caller,
+        link: SessionLink,
+        initiation: InitiationParam,
+        sessions: Vec<SessionParam>,
+        client_request_id: Option<String>,
+    ) -> Reply {
+        let initiation = match initiation {
             InitiationParam::UserAsked => Initiation::UserAsked,
             InitiationParam::Offer => Initiation::Offer,
             InitiationParam::OwnInitiative => Initiation::OwnInitiative,
         };
-        let requests = params
-            .subtasks
+        let requests = sessions
             .into_iter()
             .map(|item| {
                 let agent = item
@@ -142,7 +142,7 @@ A subtask inherits your permission level and plan mode and can never be wider th
                             .map_err(|_| format!("invalid: unknown agent {agent}"))
                     })
                     .transpose()?;
-                Ok(SubtaskRequest {
+                Ok(SessionRequest {
                     agent,
                     title: item.title,
                     prompt: item.prompt,
@@ -153,11 +153,53 @@ A subtask inherits your permission level and plan mode and can never be wider th
                 })
             })
             .collect::<Result<Vec<_>, String>>()?;
-        let scope = format!("create\n{}", caller.task.id);
-        self.once(&scope, params.client_request_id.as_deref(), async {
-            json(self.services.create_subtasks(&caller, initiation, requests).await?)
+        let scope = format!("create\n{link:?}\n{}", caller.task.id);
+        self.once(&scope, client_request_id.as_deref(), async {
+            json(self.services.create_sessions(&caller, link, initiation, requests).await?)
         })
         .await
+    }
+}
+
+/// 两个开会话的工具都要声明 `initiation`，含义一样。工具是按需加载的，所以各自写全。
+macro_rules! initiation_rules {
+    () => {
+        "initiation — declare it honestly from the user's words:
+- user_asked: the user explicitly asked to split this off, run it separately or in the background, or start it now. Opens right away.
+- offer: the user's latest message asks for this work but did not say to split it off. A card asks the user. End your turn right after this call; you will get a message with the user's choice (opened, or do it here yourself).
+- own_initiative: work you noticed or propose that the user did not ask for. A card the user may start later; do not wait, continue your own work. At most 3 per turn, never the same thing twice. Never use it for work the user asked for."
+    };
+}
+
+#[tool_router(router = session_tools, vis = "pub(super)")]
+impl WorkbenchServer {
+    #[tool(
+        description = "List the agents you can open sessions with, with their models, reasoning efforts, permission levels and plan-mode support, plus your own agent, model, permission level and plan mode."
+    )]
+    async fn aiwb_capabilities(&self, caller: Caller, _: Parameters<NoParams>) -> Reply {
+        json(self.services.agent_capabilities(&caller)?)
+    }
+
+    #[tool(description = concat!("Open one or more subtasks under your current task. Each subtask is a separate workbench task with a full agent session of its own: it may use a different agent and can get its own git worktree, and the user can open, steer or stop it from your timeline and the sidebar. The call returns at once; do not wait or poll. When all your subtasks have stopped and you are idle, the workbench sends you one message with their results.
+
+Every subtask starts a full session and reloads context, and does not see this conversation: write each prompt as a self-contained brief (what to do, which files, what done looks like).
+
+", initiation_rules!(), "
+
+A subtask inherits your permission level and plan mode and can never be wider than yours."))]
+    async fn aiwb_subtask_create(&self, caller: Caller, Parameters(params): Parameters<CreateSubtasks>) -> Reply {
+        self.create(caller, SessionLink::Child, params.initiation, params.subtasks, params.client_request_id).await
+    }
+
+    #[tool(description = concat!("Open one or more new top-level workbench sessions in your project. Each is independent of this conversation: it appears on its own in the sidebar, you cannot read, message or stop it, and its result does not come back to you.
+
+A session does not see this conversation: write the prompt as a self-contained brief, or leave it empty to open a session that waits for the user.
+
+", initiation_rules!(), "
+
+A session inherits your permission level and plan mode and can never be wider than yours."))]
+    async fn aiwb_session_create(&self, caller: Caller, Parameters(params): Parameters<CreateSessions>) -> Reply {
+        self.create(caller, SessionLink::Detached, params.initiation, params.sessions, params.client_request_id).await
     }
 
     #[tool(

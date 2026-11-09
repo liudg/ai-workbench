@@ -175,7 +175,7 @@ pub struct SessionFeed {
     pub queue: Option<Vec<QueuedTurn>>,
 }
 
-/// 开子任务要不要先问用户，由 Agent 按用户的原话声明。照 Claude Code 桌面版嵌套会话。
+/// Agent 开会话要不要先问用户，由 Agent 按用户的原话声明。照 Claude Code 桌面版嵌套会话。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Initiation {
@@ -187,12 +187,23 @@ pub enum Initiation {
     OwnInitiative,
 }
 
-/// 要开的一个子任务。跟着时间线事件走，字段和事件一样用下划线。
+/// Agent 开的会话和发起它的任务是什么关系。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionLink {
+    /// 挂在发起的任务下面，结果回报给它。
+    #[default]
+    Child,
+    /// 独立的顶层会话，结果不回来。
+    Detached,
+}
+
+/// 要开的一个会话。跟着时间线事件走，字段和事件一样用下划线。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SubtaskSpec {
+pub struct SessionSpec {
     pub agent: AgentKind,
     pub title: String,
-    /// 子任务的第一条消息。子任务不带父任务的对话。
+    /// 第一条消息。新会话不带发起任务的对话。独立会话可以为空，等用户自己发。
     pub prompt: String,
     #[serde(default)]
     pub worktree: bool,
@@ -204,7 +215,7 @@ pub struct SubtaskSpec {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum OfferResolution {
-    /// 另开：开出了这些子任务。
+    /// 另开：开出了这些会话。
     Accepted { task_ids: Vec<String> },
     /// 就在这做，或者不要了。
     Declined,

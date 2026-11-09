@@ -43,7 +43,8 @@ test("nested session cards remain in the reply and both copies navigate to their
     const session: Session = { id: "parent", native_id: "parent", project_id: "parent-project", agent: "codex-cli",
       title: "parent", status: "completed", created_at: 1, updated_at: 1 };
     const events: SessionEvent[] = [
-      { id: "offer", session_id: "parent", seq: 1, ts: 1, kind: "subtask-offer", offer_id: "offer",
+      { id: "offer", session_id: "parent", seq: 1, ts: 1, kind: "subtask-offer",
+      link: "child", offer_id: "offer",
         initiation: "own_initiative", subtasks: tasks.map((task) => ({ agent: "codex-cli", title: task.title, prompt: "创建页面" })),
         resolution: { kind: "accepted", task_ids: tasks.map((task) => task.id) } },
       { id: "answer", session_id: "parent", seq: 2, ts: 2, kind: "agent-message", phase: "final-answer", text: "会话已开启。" },

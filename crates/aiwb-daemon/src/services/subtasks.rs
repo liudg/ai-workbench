@@ -1,47 +1,27 @@
-//! 嵌套任务：会话里的 Agent 经工作台 MCP 开出挂在自己任务下的子任务，跑完把结果交回来。
-//! 见 `docs/agent-orchestration.md`。工具层在 `crate::mcp::subtasks`，这里是规则和数据。
+//! 嵌套任务开出来之后的事：回报父任务，父任务读、发消息、打断自己的子任务。开出来的那一步在 `agent_sessions`。
+//! 见 `docs/agent-orchestration.md`。工具层在 `crate::mcp::sessions`，这里是规则和数据。
 
 mod reports;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use aiwb_core::attention::{AskKind, AttentionState};
 use aiwb_core::models::{now_millis, AgentKind, MessageSender, SessionEventBody, SessionStatus};
-use aiwb_core::task::{
-    Initiation, OfferResolution, SessionAccess, SessionOptions, SubtaskSpec, Task, TaskSession,
-};
-use serde::{Deserialize, Serialize};
+use aiwb_core::task::{Task, TaskSession};
+use serde::Serialize;
 use serde_json::{json, Value};
 
-use super::tasks::CreateTask;
 use super::{ServiceResult, Services};
 use super::Caller;
 use crate::runtime::{task_branch, Outgoing, StatusNote};
 
 use reports::{Batch, Driver, Note, Reports};
 
-/// 工作台统一的权限档位，从窄到宽。
-const ACCESS_ORDER: [&str; 4] = ["read-only", "ask", "approve-for-me", "full"];
 /// 回报里每个子任务的回答留多少字。
 const ANSWER_CHARS: usize = 400;
-/// 自己提议的卡片一个回合最多几张。
-const MAX_PROPOSALS_PER_TURN: usize = 3;
-/// 自己提议的卡片多久没点就过期。
-const PROPOSAL_TTL_MS: i64 = 7 * 24 * 60 * 60 * 1000;
 /// 父会话的草稿这么久内改过，算用户正在打字，回报晚点再送。
 const TYPING_MS: i64 = 30_000;
-
-/// Agent 要开的一个子任务，还没按父任务的规则补全。
-pub(crate) struct SubtaskRequest {
-    pub(crate) agent: Option<AgentKind>,
-    pub(crate) title: String,
-    pub(crate) prompt: String,
-    pub(crate) worktree: bool,
-    pub(crate) model: Option<String>,
-    pub(crate) effort: Option<String>,
-    pub(crate) access: Option<String>,
-}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -62,18 +42,8 @@ pub(crate) struct SubtaskRow {
 #[derive(Default)]
 pub(crate) struct SubtaskState {
     reports: Mutex<Reports>,
-    /// 正在开子任务的卡片。两个窗口同时点也只开一次。
-    resolving: Mutex<HashSet<String>>,
     /// 正在送回报的父任务 → 期间又有新结果要看。
     flushing: Mutex<HashMap<String, bool>>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct ResolveOffer {
-    session_id: String,
-    offer_id: String,
-    accept: bool,
 }
 
 impl Services {
@@ -121,383 +91,20 @@ impl Services {
         self.subtasks.reports.lock().unwrap_or_else(|p| p.into_inner())
     }
 
-    /// 能用的 Agent 和它们的目录，以及调用方自己现在的设置。
-    pub(crate) fn subtask_capabilities(&self, caller: &Caller) -> ServiceResult<Value> {
-        let options = &caller.session.options;
-        let agents: Vec<Value> = AgentKind::all()
-            .into_iter()
-            .filter(|kind| self.runtimes.adapter(*kind).session_linked())
-            .map(|kind| {
-                let adapter = self.runtimes.adapter(kind);
-                let models: Vec<Value> = self
-                    .stored_catalog(kind)
-                    .ok()
-                    .flatten()
-                    .map(|catalog| {
-                        catalog
-                            .models
-                            .iter()
-                            .filter(|model| model.show_in_picker)
-                            .map(|model| {
-                                json!({
-                                    "id": model.id,
-                                    "label": model.label,
-                                    "isDefault": model.is_default,
-                                    "efforts": model.efforts.iter().map(|effort| effort.id.clone()).collect::<Vec<_>>(),
-                                })
-                            })
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                json!({
-                    "agent": kind,
-                    "name": adapter.display_name(),
-                    "models": models,
-                    "access": supported_access(self, kind),
-                    "planMode": adapter.capabilities().supports_plan,
-                })
-            })
-            .collect();
-        Ok(json!({
-            "you": {
-                "agent": caller.session.agent,
-                "model": options.model,
-                "effort": options.effort,
-                "access": self.access_mode_of(&caller.session),
-                "planMode": options.collaboration_mode.as_deref() == Some("plan"),
-            },
-            "agents": agents,
-        }))
+    /// 这个父任务正在开一批子任务，开完之前不叫醒它。放手时自动放开。
+    pub(super) fn hold_reports(&self, parent: &str) -> Held<'_> {
+        Held::new(self, parent)
     }
 
-    /// 开子任务。`user_asked` 直接开；另外两种先在调用方的时间线里出卡片。
-    pub(crate) async fn create_subtasks(
-        &self,
-        caller: &Caller,
-        initiation: Initiation,
-        requests: Vec<SubtaskRequest>,
-    ) -> ServiceResult<Value> {
-        if requests.is_empty() {
-            return Err("invalid: give at least one subtask".into());
-        }
-        // 独立聊天没有仓库：子任务和它共用同一个文件夹。
-        if caller.task.project_id.is_none() && requests.iter().any(|request| request.worktree) {
-            return Err("invalid: this chat has no git repository, so subtasks cannot get a worktree; they work in the chat's own folder".into());
-        }
-        let specs = requests
-            .into_iter()
-            .map(|request| self.subtask_spec(&caller.session, request))
-            .collect::<ServiceResult<Vec<_>>>()?;
-        match initiation {
-            // 开到一半失败也算一个结果，按 clientRequestId 重试时直接给它，不再重开。
-            Initiation::UserAsked => {
-                let (opened, error) = self.open_subtasks(&caller.task, &specs).await;
-                if !opened.is_empty() {
-                    self.record_opened(&caller.session.id, specs, &opened)?;
-                }
-                match (opened, error) {
-                    (opened, None) => Ok(json!({ "status": "opened", "subtasks": opened })),
-                    (opened, Some(err)) if opened.is_empty() => Err(err),
-                    (opened, Some(err)) => Ok(json!({ "status": "partly_opened", "subtasks": opened, "error": err })),
-                }
-            }
-            Initiation::Offer | Initiation::OwnInitiative => {
-                if initiation == Initiation::OwnInitiative {
-                    self.check_proposal(&caller.session, &specs)?;
-                }
-                let offer_id = aiwb_core::models::new_id();
-                self.runtimes.record(
-                    &caller.session.id,
-                    SessionEventBody::SubtaskOffer {
-                        offer_id: offer_id.clone(),
-                        initiation,
-                        subtasks: specs,
-                        expires_at: (initiation == Initiation::OwnInitiative).then(|| now_millis() + PROPOSAL_TTL_MS),
-                        resolution: None,
-                    },
-                )?;
-                let next = if initiation == Initiation::Offer {
-                    "A card now asks the user. End your turn now and wait; you will get a message with the user's choice."
-                } else {
-                    "A card was shown to the user. Do not wait for it; continue your own work."
-                };
-                Ok(json!({ "status": "waiting_for_user", "offerId": offer_id, "next": next }))
-            }
-        }
+    /// 开出了一个子任务，它的结果要回报给父任务。
+    pub(super) fn expect_report(&self, parent: &str, task_id: &str) {
+        self.reports().opened(parent, task_id);
     }
 
-    /// 直接开出的子任务也在父时间线里留一条，和选过「另开」的卡片一样画成子任务行。
-    fn record_opened(&self, session_id: &str, specs: Vec<SubtaskSpec>, opened: &[Value]) -> ServiceResult<()> {
-        let task_ids = opened
-            .iter()
-            .filter_map(|item| item["taskId"].as_str().map(str::to_string))
-            .collect();
-        self.runtimes.record(
-            session_id,
-            SessionEventBody::SubtaskOffer {
-                offer_id: aiwb_core::models::new_id(),
-                initiation: Initiation::UserAsked,
-                subtasks: specs,
-                expires_at: None,
-                resolution: Some(OfferResolution::Accepted { task_ids }),
-            },
-        )?;
-        Ok(())
-    }
-
-    /// 按父任务补全：Agent 缺省和父任务一样，权限缺省继承且不能更宽，父任务在计划模式时子任务也是。
-    fn subtask_spec(&self, parent: &TaskSession, request: SubtaskRequest) -> ServiceResult<SubtaskSpec> {
-        let agent = request.agent.unwrap_or(parent.agent);
-        let adapter = self.runtimes.adapter(agent);
-        if !adapter.session_linked() {
-            return Err(format!("unsupported_agent: {} cannot chat in the workbench yet", agent.display_name()));
-        }
-        let title = request.title.trim().to_string();
-        let prompt = request.prompt.trim().to_string();
-        if title.is_empty() || prompt.is_empty() {
-            return Err("invalid: every subtask needs a title and a prompt".into());
-        }
-        reject_command(&prompt)?;
-        let plan = parent.options.collaboration_mode.as_deref() == Some("plan");
-        if plan && !adapter.capabilities().supports_plan {
-            return Err(format!(
-                "plan_mode: you are in plan mode, so subtasks must be too, and {} has no plan mode",
-                agent.display_name()
-            ));
-        }
-        Ok(SubtaskSpec {
-            agent,
-            title,
-            prompt,
-            worktree: request.worktree,
-            options: SessionOptions {
-                model: nonempty(request.model),
-                effort: nonempty(request.effort),
-                access: Some(self.subtask_access(parent, agent, request.access.as_deref())?),
-                collaboration_mode: plan.then(|| "plan".to_string()),
-                ..Default::default()
-            },
-        })
-    }
-
-    /// 会话现在的权限档位。没选过时是适配器的缺省。
-    fn access_mode_of(&self, session: &TaskSession) -> String {
-        session
-            .options
-            .access
-            .as_ref()
-            .map(|access| access.mode.clone())
-            .filter(|mode| !mode.is_empty())
-            .or_else(|| self.runtimes.adapter(session.agent).profile().default_access)
-            .unwrap_or_else(|| "full".into())
-    }
-
-    /// 照 t3code `resolveRuntimeMode`：指定的档位比父任务宽就拒绝（`runtime_mode_escalation_denied`）。
-    /// 没指定时继承父任务的；子任务的 Agent 没有这一档时取它有的、不比父任务宽的最宽一档。
-    fn subtask_access(&self, parent: &TaskSession, agent: AgentKind, requested: Option<&str>) -> ServiceResult<SessionAccess> {
-        let parent_mode = self.access_mode_of(parent);
-        // 具名配置档排不出宽窄，按询问批准算。
-        let ceiling = rank(&parent_mode).unwrap_or(1);
-        let supported = supported_access(self, agent);
-        let mode = match requested.map(str::trim).filter(|mode| !mode.is_empty()) {
-            Some(mode) => {
-                let wanted = rank(mode).ok_or_else(|| format!("invalid: unknown permission level {mode}"))?;
-                if wanted > ceiling {
-                    return Err(format!(
-                        "permission_escalation: a subtask cannot have wider permissions than yours (you have {parent_mode}, asked for {mode})"
-                    ));
-                }
-                if !supported.iter().any(|item| item == mode) {
-                    return Err(format!("unsupported_access: {} has no {mode} level", agent.display_name()));
-                }
-                mode.to_string()
-            }
-            None => supported
-                .iter()
-                .filter(|item| rank(item).is_some_and(|value| value <= ceiling))
-                .max_by_key(|item| rank(item))
-                .cloned()
-                .ok_or_else(|| {
-                    format!("permission_escalation: {} has no permission level within yours", agent.display_name())
-                })?,
-        };
-        // 同一种 Agent 原样继承网络和额外目录。
-        if agent == parent.agent && mode == parent_mode {
-            if let Some(access) = parent.options.access.clone() {
-                return Ok(access);
-            }
-        }
-        Ok(SessionAccess {
-            mode,
-            ..Default::default()
-        })
-    }
-
-    /// 卡片可能放了好几天：开之前按父任务现在的权限和计划模式再看一遍。
-    fn still_within(&self, parent: &TaskSession, spec: &SubtaskSpec) -> ServiceResult<()> {
-        let ceiling = rank(&self.access_mode_of(parent)).unwrap_or(1);
-        let mode = spec.options.access.as_ref().map_or("full", |access| access.mode.as_str());
-        let plan = parent.options.collaboration_mode.as_deref() == Some("plan");
-        if rank(mode).is_none_or(|wanted| wanted > ceiling)
-            || (plan && spec.options.collaboration_mode.as_deref() != Some("plan"))
-        {
-            return Err("父任务的权限已经收窄，这张卡片不能再开".into());
-        }
-        Ok(())
-    }
-
-    /// 自己提议的卡片：一个回合最多几张，同一件事不重复提。
-    fn check_proposal(&self, session: &TaskSession, specs: &[SubtaskSpec]) -> ServiceResult<()> {
-        let events = self.store.events_since(&session.id, 0).map_err(|e| e.to_string())?;
-        let turn_start = events
-            .iter()
-            .rposition(|stored| matches!(stored.event.body, SessionEventBody::UserMessage { .. }))
-            .unwrap_or(0);
-        let titles: Vec<&str> = specs.iter().map(|spec| spec.title.as_str()).collect();
-        let mut this_turn = 0;
-        for (index, stored) in events.iter().enumerate() {
-            let SessionEventBody::SubtaskOffer {
-                initiation,
-                subtasks,
-                resolution,
-                ..
-            } = &stored.event.body
-            else {
-                continue;
-            };
-            if *initiation == Initiation::OwnInitiative && index >= turn_start {
-                this_turn += 1;
-            }
-            let same: Vec<&str> = subtasks.iter().map(|spec| spec.title.as_str()).collect();
-            if same == titles {
-                let state = if resolution.is_none() { "still waiting for the user" } else { "the user already answered it" };
-                return Err(format!("duplicate: this was already proposed and is {state}"));
-            }
-        }
-        if this_turn >= MAX_PROPOSALS_PER_TURN {
-            return Err(format!("too_many_proposals: at most {MAX_PROPOSALS_PER_TURN} proposals per turn"));
-        }
-        Ok(())
-    }
-
-    /// 开出子任务，第一条消息由 `create_task` 在后台发出。中途失败时返回已经开出的和错误。
-    /// 开的过程中父任务的回报先压着，一批里先跑完的不会单独回报。
-    /// 调用中途被丢掉（客户端断开）时靠守卫放开。
-    async fn open_subtasks(&self, parent: &Task, specs: &[SubtaskSpec]) -> (Vec<Value>, Option<String>) {
-        let _held = Held::new(self, &parent.id);
-        self.open_each(parent, specs).await
-    }
-
-    async fn open_each(&self, parent: &Task, specs: &[SubtaskSpec]) -> (Vec<Value>, Option<String>) {
-        let mut opened = Vec::new();
-        for spec in specs {
-            let entry = match self.create_task(CreateTask::subtask(parent, spec)).await {
-                Ok(entry) => entry,
-                Err(err) => return (opened, Some(err)),
-            };
-            self.reports().opened(&parent.id, &entry.task.id);
-            opened.push(json!({
-                "taskId": entry.task.id,
-                "title": entry.task.title,
-                "agent": spec.agent,
-                "branch": task_branch(&entry.task),
-            }));
-        }
-        (opened, None)
-    }
-
-    /// 用户在卡片上选了。
-    pub(crate) async fn resolve_offer(&self, params: ResolveOffer) -> ServiceResult<()> {
-        let store_err = |e: aiwb_store::StoreError| e.to_string();
-        let session = self
-            .store
-            .session(&params.session_id)
-            .map_err(store_err)?
-            .ok_or_else(|| "会话不存在".to_string())?;
-        let task = self
-            .store
-            .task(&session.task_id)
-            .map_err(store_err)?
-            .ok_or_else(|| "任务不存在".to_string())?;
-        if task.archived_at.is_some() {
-            return Err("任务已归档".into());
-        }
-        let _resolving = Resolving::claim(&self.subtasks.resolving, &params.offer_id)?;
-        let stored = self
-            .store
-            .events_since(&session.id, 0)
-            .map_err(store_err)?
-            .into_iter()
-            .find(|stored| {
-                matches!(&stored.event.body, SessionEventBody::SubtaskOffer { offer_id, .. } if *offer_id == params.offer_id)
-            })
-            .ok_or_else(|| "没有这张卡片".to_string())?;
-        let SessionEventBody::SubtaskOffer {
-            offer_id,
-            initiation,
-            subtasks,
-            expires_at,
-            resolution: None,
-        } = stored.event.body
-        else {
-            return Err("这张卡片已经处理过了".into());
-        };
-        if expires_at.is_some_and(|at| now_millis() > at) {
-            return Err("这个提议已过期".into());
-        }
-        let titles = subtasks.iter().map(|spec| spec.title.as_str()).collect::<Vec<_>>().join(", ");
-        let mut failed = None;
-        let (resolution, note) = if params.accept {
-            let current = self
-                .store
-                .task_sessions(&task.id)
-                .map_err(store_err)?
-                .pop()
-                .ok_or_else(|| "任务没有会话".to_string())?;
-            for spec in &subtasks {
-                self.still_within(&current, spec)?;
-            }
-            let (opened, error) = self.open_subtasks(&task, &subtasks).await;
-            if opened.is_empty() {
-                return Err(error.unwrap_or_else(|| "没有开出子任务".into()));
-            }
-            failed = error.map(|err| partly_opened(err, &opened));
-            let ids: Vec<String> = opened
-                .iter()
-                .filter_map(|item| item["taskId"].as_str().map(str::to_string))
-                .collect();
-            let note = Note {
-                text: format!(
-                    "The user chose to split this off. Opened subtasks: {}. Their results will come back to you; do not wait for them.",
-                    opened_list(&opened)
-                ),
-                task_ids: ids.clone(),
-            };
-            (OfferResolution::Accepted { task_ids: ids }, Some(note))
-        } else {
-            // 自己提议的被拒，Agent 本来就没等，不用告诉它。
-            let note = (initiation == Initiation::Offer).then(|| Note {
-                text: format!("The user chose to do this here instead of in a subtask. Do it yourself now: {titles}."),
-                task_ids: Vec::new(),
-            });
-            (OfferResolution::Declined, note)
-        };
-        self.runtimes.rewrite(
-            &session.id,
-            &stored.event.id,
-            SessionEventBody::SubtaskOffer {
-                offer_id,
-                initiation,
-                subtasks,
-                expires_at,
-                resolution: Some(resolution),
-            },
-        )?;
-        if let Some(note) = note {
-            self.reports().note(&task.id, note);
-            self.flush_reports(&task.id).await;
-        }
-        failed.map_or(Ok(()), Err)
+    /// 给会话留一条消息（卡片的结果），空闲时送出。
+    pub(super) async fn send_note(&self, task_id: &str, text: String, task_ids: Vec<String>) {
+        self.reports().note(task_id, Note { text, task_ids });
+        self.flush_reports(task_id).await;
     }
 
     pub(crate) fn list_subtasks(&self, caller: &Caller) -> ServiceResult<Vec<SubtaskRow>> {
@@ -791,27 +398,6 @@ impl Services {
     }
 }
 
-/// 子任务的 Agent 有的、工作台排得出宽窄的权限档位。
-fn supported_access(services: &Services, agent: AgentKind) -> Vec<String> {
-    services
-        .runtimes
-        .adapter(agent)
-        .draft_permission_menu()
-        .presets
-        .into_iter()
-        .filter(|preset| preset.disabled_reason.is_none() && rank(&preset.id).is_some())
-        .map(|preset| preset.id)
-        .collect()
-}
-
-fn rank(mode: &str) -> Option<usize> {
-    ACCESS_ORDER.iter().position(|item| *item == mode)
-}
-
-fn nonempty(value: Option<String>) -> Option<String> {
-    value.map(|value| value.trim().to_string()).filter(|value| !value.is_empty())
-}
-
 fn status_label(status: SessionStatus) -> &'static str {
     match status {
         SessionStatus::Starting => "starting",
@@ -825,7 +411,7 @@ fn status_label(status: SessionStatus) -> &'static str {
 }
 
 /// 父任务发给子任务的只能是普通消息：斜杠命令能改子任务的权限和模式，绕过不比父任务宽的规则。
-fn reject_command(text: &str) -> ServiceResult<()> {
+pub(super) fn reject_command(text: &str) -> ServiceResult<()> {
     if text.trim_start().starts_with('/') {
         return Err("invalid: slash commands cannot be sent to a subtask".into());
     }
@@ -882,7 +468,7 @@ impl Drop for Flushing<'_> {
 }
 
 /// 正在给这个父任务开一批子任务，开完之前不叫醒它。放手时自动放开。
-struct Held<'a> {
+pub(super) struct Held<'a> {
     services: &'a Services,
     parent: String,
 }
@@ -901,52 +487,6 @@ impl Drop for Held<'_> {
     fn drop(&mut self) {
         self.services.reports().release(&self.parent);
     }
-}
-
-/// 一批子任务开到一半失败：说明哪些已经开了，免得重试再开一遍。
-fn partly_opened(err: String, opened: &[Value]) -> String {
-    if opened.is_empty() {
-        return err;
-    }
-    format!("{err}（已开出：{}，不要重开）", opened_list(opened))
-}
-
-/// 一张卡片正在开子任务。放手时自动移除。
-struct Resolving<'a> {
-    offers: &'a Mutex<HashSet<String>>,
-    offer_id: String,
-}
-
-impl<'a> Resolving<'a> {
-    fn claim(offers: &'a Mutex<HashSet<String>>, offer_id: &str) -> ServiceResult<Self> {
-        if !offers.lock().unwrap_or_else(|p| p.into_inner()).insert(offer_id.to_string()) {
-            return Err("这张卡片正在处理".into());
-        }
-        Ok(Self {
-            offers,
-            offer_id: offer_id.to_string(),
-        })
-    }
-}
-
-impl Drop for Resolving<'_> {
-    fn drop(&mut self) {
-        self.offers.lock().unwrap_or_else(|p| p.into_inner()).remove(&self.offer_id);
-    }
-}
-
-fn opened_list(opened: &[Value]) -> String {
-    opened
-        .iter()
-        .map(|item| {
-            format!(
-                "{} (taskId: {})",
-                item["title"].as_str().unwrap_or(""),
-                item["taskId"].as_str().unwrap_or("")
-            )
-        })
-        .collect::<Vec<_>>()
-        .join(", ")
 }
 
 fn sender_of(batch: &Batch) -> MessageSender {

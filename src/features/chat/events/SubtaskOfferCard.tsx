@@ -3,7 +3,7 @@ import { GitBranch, Split } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { SessionAgentIcon } from "@/shared/agent/SessionAgentIcon";
-import type { SubtaskSpec } from "@/types";
+import type { SessionSpec } from "@/types";
 import { useChatHost } from "../host";
 import { offerLabels, offerState } from "./subtask-offer";
 import { SubtaskRows } from "./SubtaskRows";
@@ -22,7 +22,7 @@ export function SubtaskOfferCard({ event }: EventViewProps) {
   if (event.resolution?.kind === "accepted") {
     return <SubtaskRows taskIds={event.resolution.task_ids} specs={event.subtasks} />;
   }
-  const labels = offerLabels(event.initiation);
+  const labels = offerLabels(event.initiation, event.link);
   const choose = (accept: boolean) => {
     if (!subtasks || busy) return;
     setBusy(true);
@@ -59,7 +59,7 @@ export function SubtaskOfferCard({ event }: EventViewProps) {
   );
 }
 
-function OfferItem({ spec }: { spec: SubtaskSpec }) {
+function OfferItem({ spec }: { spec: SessionSpec }) {
   const identity = useAgentIdentity(spec.agent);
   return (
     <li className="min-w-0">
@@ -74,7 +74,9 @@ function OfferItem({ spec }: { spec: SubtaskSpec }) {
           </span>
         ) : null}
       </div>
-      <p className="mt-0.5 line-clamp-2 min-w-0 break-words pl-5 text-xs leading-5 text-zinc-500">{spec.prompt}</p>
+      {spec.prompt ? (
+        <p className="mt-0.5 line-clamp-2 min-w-0 break-words pl-5 text-xs leading-5 text-zinc-500">{spec.prompt}</p>
+      ) : null}
     </li>
   );
 }

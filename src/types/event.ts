@@ -198,8 +198,9 @@ export type SessionEventBody =
   | {
       kind: "subtask-offer";
       offer_id: string;
+      link: "child" | "detached";
       initiation: "user_asked" | "offer" | "own_initiative";
-      subtasks: SubtaskSpec[];
+      subtasks: SessionSpec[];
       /** 过了这个时间（毫秒）就不能再点。 */
       expires_at?: number;
       resolution?: { kind: "accepted"; task_ids: string[] } | { kind: "declined" };
@@ -247,7 +248,7 @@ export interface MessageSender {
   task_ids: string[];
 }
 
-export interface SubtaskSpec {
+export interface SessionSpec {
   agent: AgentKind;
   title: string;
   prompt: string;

@@ -4,7 +4,7 @@
 use std::path::{Path, PathBuf};
 
 use aiwb_core::models::{new_id, AgentKind, MessageSender, SessionEventBody, SessionStatus};
-use aiwb_core::task::{SessionOptions, SubtaskSpec, Task, TaskEntry, TaskSession, TaskWorkspace};
+use aiwb_core::task::{SessionLink, SessionOptions, SessionSpec, Task, TaskEntry, TaskSession, TaskWorkspace};
 use serde::{Deserialize, Serialize};
 
 use super::{blocking, now_millis, ServiceResult, Services};
@@ -42,20 +42,25 @@ pub(crate) struct CreateTask {
     /// 开出这个子任务的任务。只由 Agent 经工作台 MCP 开子任务时设，界面不传。
     #[serde(skip)]
     parent_task_id: Option<String>,
+    /// 第一条消息是哪个任务发来的。Agent 经工作台 MCP 开会话时设，界面不传。
+    #[serde(skip)]
+    sender_task_id: Option<String>,
     /// 独立聊天的子任务用父聊天的文件夹，不另建。界面不传。
     #[serde(skip)]
     folder: Option<String>,
 }
 
 impl CreateTask {
-    /// 父任务下的子任务：同一个项目，独立聊天下的用同一个文件夹；第一条消息就是说明。
-    pub(super) fn subtask(parent: &Task, spec: &SubtaskSpec) -> Self {
-        let folder = match &parent.workspace {
-            TaskWorkspace::Folder { path } => Some(path.clone()),
+    /// Agent 开的会话：和发起的任务同一个项目，第一条消息就是说明。
+    /// 独立聊天下的子任务用同一个文件夹，独立会话自己建。
+    pub(super) fn from_agent(origin: &Task, link: SessionLink, spec: &SessionSpec) -> Self {
+        let child = link == SessionLink::Child;
+        let folder = match &origin.workspace {
+            TaskWorkspace::Folder { path } if child => Some(path.clone()),
             _ => None,
         };
         Self {
-            project_id: parent.project_id.clone(),
+            project_id: origin.project_id.clone(),
             title: spec.title.clone(),
             prompt: spec.prompt.clone(),
             images: Vec::new(),
@@ -66,7 +71,8 @@ impl CreateTask {
             options: spec.options.clone(),
             goal: None,
             goal_status: None,
-            parent_task_id: Some(parent.id.clone()),
+            parent_task_id: child.then(|| origin.id.clone()),
+            sender_task_id: Some(origin.id.clone()),
             folder,
         }
     }
@@ -184,7 +190,7 @@ impl Services {
             created_at: now,
             updated_at: now,
         };
-        let sender = task.parent_task_id.clone().map(|parent| MessageSender { task_ids: vec![parent] });
+        let sender = params.sender_task_id.clone().map(|origin| MessageSender { task_ids: vec![origin] });
         let has_message = !params.prompt.trim().is_empty() || !params.images.is_empty();
         let starting = has_message || goal.is_some();
         let mut messages = Vec::new();

@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use super::agent::{AgentKind, SessionId};
 use super::catalog::QueuedTurn;
 use super::session::SessionStatus;
-use crate::task::{Initiation, OfferResolution, SubtaskSpec};
+use crate::task::{Initiation, OfferResolution, SessionLink, SessionSpec};
 
 /// 需要用户输入的提问类型。
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -593,12 +593,15 @@ pub enum SessionEventBody {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         cache_write_tokens: Option<i64>,
     },
-    /// Agent 开的子任务。`user_asked` 直接开出，记下时就带着 `Accepted`；另外两种先等用户在卡片上选，
-    /// 用户选过之后同一条改写成带 `resolution` 的。
+    /// Agent 开的会话，子任务和独立会话都是这一条。`user_asked` 直接开出，记下时就带着 `Accepted`；
+    /// 另外两种先等用户在卡片上选，用户选过之后同一条改写成带 `resolution` 的。
     SubtaskOffer {
         offer_id: String,
+        /// 早先落库的卡片没有这个字段，都是子任务。
+        #[serde(default)]
+        link: SessionLink,
         initiation: Initiation,
-        subtasks: Vec<SubtaskSpec>,
+        subtasks: Vec<SessionSpec>,
         /// 过了这个时间（毫秒）就不能再点。用户在等着选的卡片不过期。
         #[serde(default, skip_serializing_if = "Option::is_none")]
         expires_at: Option<i64>,

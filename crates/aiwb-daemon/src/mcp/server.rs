@@ -27,7 +27,7 @@ impl WorkbenchServer {
         Self {
             services,
             replays: Arc::default(),
-            tool_router: Self::subtask_tools(),
+            tool_router: Self::session_tools(),
         }
     }
 

@@ -2,7 +2,7 @@ import { ChevronRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { agentIdentity } from "@/shared/agent/identity";
-import type { SubtaskSpec } from "@/types";
+import type { SessionSpec } from "@/types";
 import { useChatHost, type ChatHost, type SubtaskHost } from "../host";
 import { AgentAvatar } from "./AgentAvatar";
 import { HoverCard } from "./HoverCard";
@@ -10,7 +10,7 @@ import { subtaskDetail, subtaskStatus } from "./subtask-row";
 import { agentTurnName } from "./use-agent-identity";
 
 /** 时间线里开出的嵌套会话，一个一张卡：Agent 图标、标题、状态；点开直接进入会话。照 Claude 桌面端的会话卡片。 */
-export function SubtaskRows({ taskIds, specs }: { taskIds: readonly string[]; specs: readonly SubtaskSpec[] }) {
+export function SubtaskRows({ taskIds, specs }: { taskIds: readonly string[]; specs: readonly SessionSpec[] }) {
   const { subtasks, profiles } = useChatHost();
   if (!subtasks || taskIds.length === 0) return null;
   return (
@@ -33,7 +33,7 @@ function SubtaskRow({
   profiles,
 }: {
   taskId: string;
-  spec: SubtaskSpec | undefined;
+  spec: SessionSpec | undefined;
   host: SubtaskHost;
   profiles: ChatHost["profiles"];
 }) {

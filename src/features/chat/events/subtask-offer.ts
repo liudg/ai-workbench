@@ -11,8 +11,9 @@ export function offerState(event: OfferEvent, now: number): OfferState {
 }
 
 /** 卡片上的字：标题、两个按钮、选过之后的结果。 */
-export function offerLabels(initiation: OfferEvent["initiation"]) {
+export function offerLabels(initiation: OfferEvent["initiation"], link: OfferEvent["link"]) {
+  const noun = link === "child" ? "子任务" : "新会话";
   return initiation === "offer"
-    ? { title: "另开子任务？", accept: "另开", decline: "就在这做", declined: "在这里做" }
-    : { title: "建议另开子任务", accept: "开始", decline: "不用了", declined: "已忽略" };
+    ? { title: `另开${noun}？`, accept: "另开", decline: "就在这做", declined: "在这里做" }
+    : { title: `建议另开${noun}`, accept: "开始", decline: "不用了", declined: "已忽略" };
 }

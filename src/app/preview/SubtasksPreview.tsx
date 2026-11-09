@@ -40,6 +40,7 @@ const events: SessionEvent[] = [
   event("u1", 1, { kind: "user-message", text: "把登录页文案改了，另开两个子任务并行做，测试交给 Claude。" }),
   event("x1", 2, {
     kind: "subtask-offer",
+    link: "child",
     offer_id: "opened-1",
     initiation: "user_asked",
     subtasks: [
@@ -58,6 +59,7 @@ const events: SessionEvent[] = [
   event("a2", 5, { kind: "agent-message", text: "两个子任务都完成了。我先看一下 diff 再告诉你。", phase: "final-answer" }),
   event("o1", 6, {
     kind: "subtask-offer",
+    link: "child",
     offer_id: "offer-1",
     initiation: "offer",
     subtasks: [
@@ -66,6 +68,7 @@ const events: SessionEvent[] = [
   }),
   event("o2", 7, {
     kind: "subtask-offer",
+    link: "child",
     offer_id: "offer-2",
     initiation: "own_initiative",
     subtasks: [{ agent: "claude-code", title: "清理旧样式", prompt: "删掉 login.css 里不再用的选择器。" }],

@@ -26,15 +26,19 @@ impl WorkbenchMcp {
     /// 在 Agent 里注册的服务名。工具名形如 `mcp__aiwb__…`。
     pub const SERVER_NAME: &'static str = "aiwb";
 
-    /// 拿到工作台 MCP 的会话额外收到的说明：什么样的工作要开子任务，开不了时不擅自换路。按工作需要什么来写，不列用户的原话。
+    /// 拿到工作台 MCP 的会话额外收到的说明：工作交给谁，开不了时不擅自换路。按结果归谁、工作放在哪来写，不列用户的原话。
     /// 开出来之后怎么做写在工具描述里。三家开场都看不到工具描述（2026-11-06 实测）。
     /// 各适配器按自己的通道送（Codex `additionalContext`、Claude `--append-system-prompt`、Cursor 首条提示）。
     /// 照 t3code `packages/provider-core/src/server/orchestrationInstructions.ts`。
-    pub const INSTRUCTIONS: &'static str = "## AI Workbench subtasks
+    pub const INSTRUCTIONS: &'static str = "## AI Workbench sessions
 
-`aiwb_subtask_create` opens a separate agent session in the user's timeline, where they can watch, steer and stop it. Use it when the work needs that: another agent, its own worktree, or a session the user wants to follow or run on its own. Splitting work up or doing it in parallel is not a reason by itself: use your built-in subagents for that.
+Work handed off goes to one of three places. Choose by who gets the result and who manages the work:
 
-If the agent or model the user named is unavailable, or `aiwb_subtask_create` fails, say so. Do not switch agents, or fall back to your built-in subagents or a CLI, unasked.";
+- Your built-in subagents: workers inside this conversation. The result comes to you and the user does not manage them. This is the default for handing off work.
+- `aiwb_subtask_create`: a session under this conversation that the user can open and steer. The result also comes back to you. Use it when the work needs what a subagent cannot give: a different agent product, its own worktree, or a session the user will follow.
+- `aiwb_session_create`: a new top-level session, not connected to this one. The result never comes back to you. Use it when the user wants a new conversation of its own.
+
+If the agent or model the user named is unavailable, or the place you chose fails, say so. Do not switch agents or use another place unasked.";
 
     pub fn authorization(&self) -> String {
         format!("Bearer {}", self.token)

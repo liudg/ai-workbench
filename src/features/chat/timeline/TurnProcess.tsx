@@ -11,7 +11,7 @@ import { collapsedTurnSummary, foldedEvents } from "./timeline";
 import { ActivityStream } from "./ActivityStream";
 import { TurnFoldLine } from "./TurnFoldLine";
 import { SessionAgentIcon } from "@/shared/agent/SessionAgentIcon";
-import { AGENT_LABELS, type Session, type SessionEvent, type SubtaskSpec } from "@/types";
+import { AGENT_LABELS, type Session, type SessionEvent, type SessionSpec } from "@/types";
 import { agentTurnName, useAgentIdentity, useEventAgent } from "../events/use-agent-identity";
 
 /**
@@ -41,7 +41,7 @@ export function TurnProcess({
   const visible = useMemo(() => (expanded ? events : foldedEvents(events, true)), [events, expanded]);
   const answer = answerId == null ? null : (events.find((event) => event.id === answerId) ?? null);
   const subtasks = useMemo(() => {
-    const created = new Map<string, SubtaskSpec>();
+    const created = new Map<string, SessionSpec>();
     for (const event of events) {
       if (event.kind !== "subtask-offer" || event.resolution?.kind !== "accepted") continue;
       event.resolution.task_ids.forEach((id, index) => {

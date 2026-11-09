@@ -1,5 +1,5 @@
 //! 真实 CLI 跑嵌套任务：父任务经工作台 MCP 开一个换了 Agent 的子任务，子任务跑完父会话收到回报。
-//! 独立聊天也一样，子任务挂在聊天下面、用同一个文件夹；用户只说一句大白话时 Agent 要自己选这个工具，不需要它时也不开。
+//! 独立聊天也一样，子任务挂在聊天下面、用同一个文件夹；用户只说一句大白话时 Agent 要自己分清交给子 Agent、子任务还是独立会话。
 //! 要本机装好并登录 Codex、Claude Code 和 Cursor Agent，会花一点额度：
 //! `cargo test -p aiwb-daemon --test subtasks_cli -- --ignored --nocapture --test-threads=1`
 
@@ -239,19 +239,45 @@ async fn codex_asks_cursor_for_a_review_through_a_subtask() {
     .await;
 }
 
-/// 用户的说法和要不要开子任务。说法不能和注入说明里的词重复，否则测的只是 Agent 读到了这个词。
-const ROUTING: &[(&str, bool, &str)] = &[
-    ("要盯着", true, "这件事单独拎出去跑，我待会要自己进去盯着：只回复 PONG 这个词，不要运行任何工具。"),
-    ("要插手", true, "给这件事单开一条线，别占着你这边，我想随时插手：只回复 PONG 这个词。"),
-    ("英文", true, "Spin this off on its own so I can keep an eye on it and step in: reply with just PONG."),
-    ("要隔离", true, "这个改动要和当前目录隔开，单独用一个工作树来做：只回复 PONG 这个词。"),
-    ("子 Agent", false, "用子 Agent 分头算一下：17*23 和 19*29，汇总结果给我。"),
-    ("并行", false, "同时算这两个，算完告诉我：17*23、19*29。"),
-    ("普通问题", false, "17*23 等于多少？直接告诉我。"),
+/// 一句话之后工作去了哪里。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Route {
+    /// 自带的子 Agent。
+    Native,
+    /// 挂在当前任务下面的子任务。
+    Subtask,
+    /// 独立的顶层会话。
+    Session,
+    /// 没交给别人，自己回答。
+    Here,
+    /// 没交给别人，自己建了工作树在里面做。
+    OwnWorktree,
+}
+
+use Route::{Here, Native, OwnWorktree, Session, Subtask};
+
+/// 用户的说法和该去的地方。说法不能和注入说明里的词重复，否则测的只是 Agent 读到了这个词。
+const ROUTING: &[(&str, &[Route], &str)] = &[
+    // 这三句只说要能进去看，没说结果要不要回来：子任务和独立会话都满足，就地做不满足。
+    // 要盯着和要隔离得是真有活：只回一个词时 Agent 直接答也说得过去，测不出分流。
+    ("要盯着", &[Subtask, Session], "这件事单独拎出去跑，我待会要自己进去盯着：看看这个目录里有哪些文件。"),
+    ("要插手", &[Subtask, Session], "给这件事单开一条线，别占着你这边，我想随时插手：只回复 PONG 这个词。"),
+    ("英文", &[Subtask, Session], "Spin this off on its own so I can keep an eye on it and step in: reply with just PONG."),
+    ("要隔离", &[Subtask, OwnWorktree], "这个改动要和当前目录隔开，单独用一个工作树来做：新建 notes.txt，写一行 hello。"),
+    ("嵌套", &[Subtask], "开个嵌套会话，只回复 PONG 这个词。"),
+    ("裸子 Agent", &[Native], "开个子agent看一下这个目录里有什么文件。"),
+    ("英文 subagent", &[Native], "用 subagent 帮我看一下这个目录里有什么文件。"),
+    ("叫个 Agent", &[Native], "叫个 agent 帮我看下这个目录里有啥。"),
+    ("分头", &[Native], "用子 Agent 分头算一下：17*23 和 19*29，汇总结果给我。"),
+    ("新开", &[Session], "新开会话"),
+    ("独立", &[Session], "新建一个独立会话，让它只回复 PONG 这个词。"),
+    ("另起", &[Session], "另起一条全新的对话处理这个，跟这边不用有关系：只回复 PONG 这个词。"),
+    ("并行", &[Here, Native], "同时算这两个，算完告诉我：17*23、19*29。"),
+    ("普通问题", &[Here], "17*23 等于多少？直接告诉我。"),
 ];
 
-/// 给一句话，看 Agent 选没选子任务。回合出错算没有判断，不算选错。
-async fn opens_subtask(agent: &str, prompt: &str) -> Result<bool, String> {
+/// 给一句话，看 Agent 把工作交给了哪里。回合出错算没有判断，不算选错。
+async fn route_of(agent: &str, prompt: &str) -> Result<Route, String> {
     let live = live().await;
     let project = live._dirs.1.path();
     for args in [
@@ -273,10 +299,17 @@ async fn opens_subtask(agent: &str, prompt: &str) -> Result<bool, String> {
         let tasks = live.tasks().await;
         let task = tasks.iter().find(|task| task["id"] == parent_id).unwrap();
         let events = live.events(task).await;
-        if tasks.iter().any(|task| task["parentTaskId"] == parent_id)
-            || events.iter().any(|event| event["kind"] == "subtask-offer")
-        {
-            break Ok(true);
+        if let Some(card) = events.iter().find(|event| event["kind"] == "subtask-offer") {
+            break Ok(if card["link"] == "detached" { Session } else { Subtask });
+        }
+        if events.iter().any(|event| event["kind"] == "subagent") {
+            break Ok(Native);
+        }
+        if tasks.iter().any(|task| task["parentTaskId"] == parent_id) {
+            break Ok(Subtask);
+        }
+        if tasks.len() > 1 {
+            break Ok(Session);
         }
         if events.iter().any(|event| event["kind"] == "error") {
             break Err(format!("回合出错：{events:#?}"));
@@ -284,7 +317,9 @@ async fn opens_subtask(agent: &str, prompt: &str) -> Result<bool, String> {
         // 刚起来时状态还是「已完成」，要有回答、并且稳定几次才算这一轮结束。
         settled = if task["attention"]["state"] == "done" && !answers(&events).is_empty() { settled + 1 } else { 0 };
         if settled >= 3 {
-            break Ok(false);
+            eprintln!("{agent} 自己回答：{:?}", answers(&events).last());
+            let worktrees = std::process::Command::new("git").args(["worktree", "list"]).current_dir(project).output().unwrap();
+            break Ok(if String::from_utf8_lossy(&worktrees.stdout).lines().count() > 1 { OwnWorktree } else { Here });
         }
     };
     live.services.stop_agents().await;
@@ -294,13 +329,13 @@ async fn opens_subtask(agent: &str, prompt: &str) -> Result<bool, String> {
 /// 全部跑完再报，一次看到这个 Agent 所有选错的说法。
 async fn routes(agent: &str, other: &str) {
     let named = format!("让 {other} 帮忙看看这句话有没有错别字：「今天天汽很好」。");
-    let mut cases: Vec<(&str, bool, &str)> = ROUTING.to_vec();
-    cases.push(("点名别的 Agent", true, &named));
+    let mut cases: Vec<(&str, &[Route], &str)> = ROUTING.to_vec();
+    cases.push(("点名别的 Agent", &[Subtask], &named));
     let mut wrong = Vec::new();
     for (name, expected, prompt) in cases {
-        let verdict = opens_subtask(agent, prompt).await;
-        eprintln!("{agent} {name}：该开 {expected}，结果 {verdict:?}");
-        if verdict != Ok(expected) {
+        let verdict = route_of(agent, prompt).await;
+        eprintln!("{agent} {name}：该去 {expected:?}，结果 {verdict:?}");
+        if !verdict.is_ok_and(|route| expected.contains(&route)) {
             wrong.push(name);
         }
     }
