@@ -9,7 +9,7 @@ use aiwb_core::models::{now_millis, AgentKind, SessionEventBody};
 use aiwb_core::task::{
     Initiation, OfferResolution, SessionAccess, SessionLink, SessionOptions, SessionSpec, Task, TaskSession,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use super::subtasks::reject_command;
@@ -50,6 +50,15 @@ pub(crate) struct ResolveOffer {
 /// 正在开会话的卡片。两个窗口同时点也只开一次。
 #[derive(Default)]
 pub(crate) struct ResolvingOffers(Mutex<HashSet<String>>);
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OpenedSession {
+    task_id: String,
+    title: String,
+    agent: AgentKind,
+    branch: Option<String>,
+}
 
 impl Services {
     /// 能用的 Agent 和它们的目录，以及调用方自己现在的设置。
@@ -124,7 +133,7 @@ impl Services {
         match initiation {
             // 开到一半失败也算一个结果，按 clientRequestId 重试时直接给它，不再重开。
             Initiation::UserAsked => {
-                let (opened, error) = self.open_sessions(&caller.task, link, &specs).await;
+                let (opened, error) = self.open_sessions(&caller.task, &caller.session.id, link, &specs).await;
                 if !opened.is_empty() {
                     self.record_opened(&caller.session.id, link, specs, &opened)?;
                 }
@@ -170,7 +179,7 @@ impl Services {
         session_id: &str,
         link: SessionLink,
         specs: Vec<SessionSpec>,
-        opened: &[Value],
+        opened: &[OpenedSession],
     ) -> ServiceResult<()> {
         self.runtimes.record(
             session_id,
@@ -343,7 +352,13 @@ impl Services {
 
     /// 开出会话，第一条消息由 `create_task` 在后台发出。中途失败时返回已经开出的和错误。
     /// 挂在下面的开完之前先压着回报，一批里先跑完的不会单独回报；调用中途被丢掉（客户端断开）时靠守卫放开。
-    async fn open_sessions(&self, origin: &Task, link: SessionLink, specs: &[SessionSpec]) -> (Vec<Value>, Option<String>) {
+    async fn open_sessions(
+        &self,
+        origin: &Task,
+        origin_session_id: &str,
+        link: SessionLink,
+        specs: &[SessionSpec],
+    ) -> (Vec<OpenedSession>, Option<String>) {
         let child = link == SessionLink::Child;
         let _held = child.then(|| self.hold_reports(&origin.id));
         let notes = match child.then(|| self.session_notes_folder(origin)).transpose() {
@@ -353,7 +368,7 @@ impl Services {
         let mut opened = Vec::new();
         for spec in specs {
             let result = if spec.fork {
-                self.fork_for_agent(origin, link, spec, notes.clone()).await
+                self.fork_for_agent(origin, origin_session_id, link, spec, notes.clone()).await
             } else {
                 self.create_task(CreateTask::from_agent(origin, link, spec, notes.clone())).await
             };
@@ -364,12 +379,12 @@ impl Services {
             if child {
                 self.expect_report(&origin.id, &entry.task.id);
             }
-            opened.push(json!({
-                "taskId": entry.task.id,
-                "title": entry.task.title,
-                "agent": spec.agent,
-                "branch": task_branch(&entry.task),
-            }));
+            opened.push(OpenedSession {
+                branch: task_branch(&entry.task),
+                task_id: entry.task.id,
+                title: entry.task.title,
+                agent: spec.agent,
+            });
         }
         (opened, None)
     }
@@ -422,10 +437,13 @@ impl Services {
                 .map_err(store_err)?
                 .pop()
                 .ok_or_else(|| "任务没有会话".to_string())?;
+            if current.id != session.id && subtasks.iter().any(|spec| spec.fork) {
+                return Err("发起分叉的会话已切换，请重新发起分叉".into());
+            }
             for spec in &subtasks {
                 self.still_within(&current, spec)?;
             }
-            let (opened, error) = self.open_sessions(&task, link, &subtasks).await;
+            let (opened, error) = self.open_sessions(&task, &session.id, link, &subtasks).await;
             if opened.is_empty() {
                 return Err(error.unwrap_or_else(|| "没有开出会话".into()));
             }
@@ -479,11 +497,31 @@ impl Services {
         Ok(folder.to_string_lossy().into_owned())
     }
 
-    /// 最上面的任务删掉时，这组的笔记也不要了。
-    pub(super) fn remove_session_notes(&self, task_id: &str) -> ServiceResult<()> {
-        let folder = self.session_notes_root.join(task_id);
-        if folder.is_dir() {
-            std::fs::remove_dir_all(&folder).map_err(|e| format!("无法删除笔记目录：{e}"))?;
+    /// 删除任务前保留候选目录；引用随时间线一起删除后，再检查其他会话是否仍在用。
+    pub(super) fn task_session_notes(&self, task_id: &str) -> ServiceResult<Vec<String>> {
+        let mut folders = self.store.task_note_folders(task_id).map_err(|e| e.to_string())?;
+        folders.push(self.session_notes_root.join(task_id).to_string_lossy().into_owned());
+        folders.sort();
+        folders.dedup();
+        Ok(folders)
+    }
+
+    pub(super) fn remove_unused_session_notes(&self, folders: &[String]) -> ServiceResult<()> {
+        for folder in folders {
+            let path = std::path::Path::new(folder);
+            // 只清理工作台自己的笔记目录，历史消息中的外部路径不动。
+            if path.parent() != Some(self.session_notes_root.as_path()) || !path.is_dir() {
+                continue;
+            }
+            let Some(owner) = path.file_name().and_then(|name| name.to_str()) else {
+                continue;
+            };
+            if self.store.task(owner).map_err(|e| e.to_string())?.is_some()
+                || self.store.session_notes_in_use(folder).map_err(|e| e.to_string())?
+            {
+                continue;
+            }
+            std::fs::remove_dir_all(path).map_err(|e| format!("无法删除笔记目录：{e}"))?;
         }
         Ok(())
     }
@@ -525,7 +563,7 @@ pub(super) fn with_notes(mut options: SessionOptions, notes: Option<&str>) -> Se
 }
 
 /// 用户选了另开之后告诉 Agent 什么。独立会话的结果不回来，自己提议的 Agent 本来就没等，不用告诉它。
-fn accepted_note(link: SessionLink, initiation: Initiation, opened: &[Value]) -> Option<String> {
+fn accepted_note(link: SessionLink, initiation: Initiation, opened: &[OpenedSession]) -> Option<String> {
     match (link, initiation) {
         (SessionLink::Child, _) => Some(format!(
             "The user chose to split this off. Opened subtasks: {}. Their results will come back to you; do not wait for them.",
@@ -539,7 +577,7 @@ fn accepted_note(link: SessionLink, initiation: Initiation, opened: &[Value]) ->
     }
 }
 
-fn opened_reply(status: &str, link: SessionLink, opened: Vec<Value>) -> Value {
+fn opened_reply(status: &str, link: SessionLink, opened: Vec<OpenedSession>) -> Value {
     match link {
         SessionLink::Child => json!({ "status": status, "subtasks": opened }),
         SessionLink::Detached => json!({
@@ -572,10 +610,7 @@ fn nonempty(value: Option<String>) -> Option<String> {
 }
 
 /// 一批会话开到一半失败：说明哪些已经开了，免得重试再开一遍。
-fn partly_opened(err: String, opened: &[Value]) -> String {
-    if opened.is_empty() {
-        return err;
-    }
+fn partly_opened(err: String, opened: &[OpenedSession]) -> String {
     format!("{err}（已开出：{}，不要重开）", opened_list(opened))
 }
 
@@ -603,23 +638,17 @@ impl Drop for Resolving<'_> {
     }
 }
 
-fn opened_ids(opened: &[Value]) -> Vec<String> {
+fn opened_ids(opened: &[OpenedSession]) -> Vec<String> {
     opened
         .iter()
-        .filter_map(|item| item["taskId"].as_str().map(str::to_string))
+        .map(|item| item.task_id.clone())
         .collect()
 }
 
-fn opened_list(opened: &[Value]) -> String {
+fn opened_list(opened: &[OpenedSession]) -> String {
     opened
         .iter()
-        .map(|item| {
-            format!(
-                "{} (taskId: {})",
-                item["title"].as_str().unwrap_or(""),
-                item["taskId"].as_str().unwrap_or("")
-            )
-        })
+        .map(|item| format!("{} (taskId: {})", item.title, item.task_id))
         .collect::<Vec<_>>()
         .join(", ")
 }

@@ -215,6 +215,29 @@ impl Store {
         Ok(self.conn().execute("DELETE FROM task WHERE id = ?1", [id])? > 0)
     }
 
+    /// 共享笔记的引用以消息为准，换 Agent、归档和分叉复制的历史也算。
+    pub fn task_note_folders(&self, task_id: &str) -> StoreResult<Vec<String>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "SELECT DISTINCT json_extract(e.body, '$.sender.notes')
+             FROM event e JOIN session s ON s.id = e.session_id
+             WHERE s.task_id = ?1 AND json_extract(e.body, '$.kind') = 'user-message'
+               AND json_type(e.body, '$.sender.notes') = 'text'",
+        )?;
+        let rows = stmt.query_map([task_id], |row| row.get(0))?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    pub fn session_notes_in_use(&self, folder: &str) -> StoreResult<bool> {
+        Ok(self.conn().query_row(
+            "SELECT EXISTS(SELECT 1 FROM event
+             WHERE json_extract(body, '$.kind') = 'user-message'
+               AND json_extract(body, '$.sender.notes') = ?1)",
+            [folder],
+            |row| row.get(0),
+        )?)
+    }
+
     /// 任务的会话段，不含侧边聊天。
     pub fn list_sessions(&self) -> StoreResult<Vec<TaskSession>> {
         let conn = self.conn();

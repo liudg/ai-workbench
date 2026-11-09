@@ -1095,3 +1095,157 @@ async fn a_fork_carries_the_conversation_and_fresh_needs_background() {
     assert_eq!(task["text"], "接着做");
     assert_eq!(task["sender"]["task_ids"][0], parent_id.as_str());
 }
+
+/// 卡片所属的会话段换掉后，整批都拒绝，不能先开 fresh 再发现 fork 过期。
+#[tokio::test]
+async fn fork_offers_refuse_a_changed_source_even_after_switching_back() {
+    let h = harness().await;
+    let parent = h.create("claude-code", "[hold] original", json!({ "access": { "mode": "ask" } })).await;
+    let pid = parent["id"].as_str().unwrap();
+    let sid = h.wait_state(pid, "working").await;
+    let native = h.native_of("original");
+    let token = h.mcp_of(&native).unwrap().token;
+    let offer = h.tool(&token, "aiwb_subtask_create", json!({
+        "initiation": "offer",
+        "subtasks": [
+            { "title": "fresh", "prompt": "fresh task", "background": BACKGROUND },
+            { "title": "Claude fork", "prompt": "do it", "context": "fork" }
+        ]
+    })).await.unwrap();
+    h.finish(&native);
+    h.wait_state(pid, "done").await;
+
+    for agent in ["codex-cli", "claude-code"] {
+        let switched = h.services.dispatch("tasks.switchAgent", json!({
+            "taskId": pid, "agent": agent, "options": { "access": { "mode": "ask" } }
+        })).await.unwrap();
+        let next = switched["sessions"].as_array().unwrap().last().unwrap()["id"].as_str().unwrap();
+        h.services.dispatch("sessions.send", json!({ "sessionId": next, "text": "continue" })).await.unwrap();
+        h.wait_state(pid, "done").await;
+        let err = h.services.dispatch("tasks.resolveOffer", json!({
+            "sessionId": sid, "offerId": offer["offerId"], "accept": true
+        })).await.unwrap_err();
+        assert!(err.contains("会话已切换"), "{err}");
+        assert!(h.children(pid).await.is_empty());
+    }
+    // 失效的卡片仍可拒绝。
+    h.services.dispatch("tasks.resolveOffer", json!({
+        "sessionId": sid, "offerId": offer["offerId"], "accept": false
+    })).await.unwrap();
+}
+
+/// 删除父任务不停止子任务；归档的会话和独立分叉中的历史也仍然引用共享笔记。
+#[tokio::test]
+async fn shared_notes_survive_until_the_last_referencing_task_is_removed() {
+    let h = harness().await;
+    let parent = h.create("claude-code", "[hold] root", json!({})).await;
+    let pid = parent["id"].as_str().unwrap();
+    h.wait_state(pid, "working").await;
+    let token = h.mcp_of(&h.native_of("root")).unwrap().token;
+    let opened = h.tool(&token, "aiwb_subtask_create", json!({
+        "initiation": "user_asked",
+        "subtasks": [
+            { "title": "live", "prompt": "[hold] child", "background": BACKGROUND },
+            { "title": "done", "prompt": "finished child", "background": BACKGROUND }
+        ]
+    })).await.unwrap();
+    let live_id = opened["subtasks"][0]["taskId"].as_str().unwrap();
+    let done_id = opened["subtasks"][1]["taskId"].as_str().unwrap();
+    let sid = h.wait_state(live_id, "working").await;
+    h.wait_state(done_id, "done").await;
+    let events = h.timeline(&sid).await;
+    let folder = events.iter().find_map(|e| e["sender"]["notes"].as_str()).unwrap();
+    let note = std::path::Path::new(folder).join("findings.txt");
+    std::fs::write(&note, "Important findings").unwrap();
+    let fork = h.services.dispatch("tasks.fork", json!({ "taskId": done_id })).await.unwrap();
+    h.services.dispatch("tasks.archive", json!({ "id": done_id, "archived": true })).await.unwrap();
+
+    h.services.dispatch("tasks.remove", json!({ "id": pid })).await.unwrap();
+    assert_eq!(h.task(live_id).await["attention"]["state"], "working");
+    assert!(note.exists(), "正在运行的子任务仍需笔记");
+    h.services.dispatch("tasks.remove", json!({ "id": live_id })).await.unwrap();
+    assert!(note.exists(), "归档和独立分叉的会话仍需笔记");
+    h.services.dispatch("tasks.remove", json!({ "id": done_id })).await.unwrap();
+    assert!(note.exists(), "独立分叉的历史仍引用笔记");
+    h.services.dispatch("tasks.remove", json!({ "id": fork["id"] })).await.unwrap();
+    assert!(!std::path::Path::new(folder).exists(), "最后一个引用删除后清理目录");
+}
+
+#[tokio::test]
+async fn deleting_the_last_child_keeps_notes_while_the_owner_exists() {
+    let h = harness().await;
+    let parent = h.create("claude-code", "[hold] owner", json!({})).await;
+    let pid = parent["id"].as_str().unwrap();
+    h.wait_state(pid, "working").await;
+    let token = h.mcp_of(&h.native_of("owner")).unwrap().token;
+    let opened = h.tool(&token, "aiwb_subtask_create", json!({
+        "initiation": "user_asked",
+        "subtasks": [{ "title": "child", "prompt": "[hold] child", "background": BACKGROUND }]
+    })).await.unwrap();
+    let cid = opened["subtasks"][0]["taskId"].as_str().unwrap();
+    let sid = h.wait_state(cid, "working").await;
+    let events = h.timeline(&sid).await;
+    let folder = events.iter().find_map(|e| e["sender"]["notes"].as_str()).unwrap();
+    h.services.dispatch("tasks.remove", json!({ "id": cid })).await.unwrap();
+    assert!(std::path::Path::new(folder).is_dir());
+    h.services.dispatch("tasks.remove", json!({ "id": pid })).await.unwrap();
+    assert!(!std::path::Path::new(folder).exists());
+}
+
+#[tokio::test]
+async fn a_fork_starts_only_its_current_segment() {
+    let h = harness().await;
+    let parent = h.create("claude-code", "first segment", json!({})).await;
+    let pid = parent["id"].as_str().unwrap();
+    h.wait_state(pid, "done").await;
+    let switched = h.services.dispatch("tasks.switchAgent", json!({ "taskId": pid, "agent": "codex-cli" })).await.unwrap();
+    let next = switched["sessions"].as_array().unwrap().last().unwrap()["id"].as_str().unwrap();
+    h.services.dispatch("sessions.send", json!({ "sessionId": next, "text": "[hold] second segment" })).await.unwrap();
+    h.wait_state(pid, "working").await;
+    let token = h.mcp_of(&h.native_of("second segment")).unwrap().token;
+    let gate = Arc::new(tokio::sync::Semaphore::new(0));
+    *h.script.startup_gate.lock().unwrap() = Some(gate.clone());
+    let offered = h.tool(&token, "aiwb_subtask_create", json!({
+        "initiation": "offer",
+        "subtasks": [{ "title": "fork", "prompt": "done", "context": "fork" }]
+    })).await.unwrap();
+    h.services.dispatch("tasks.resolveOffer", json!({
+        "sessionId": next, "offerId": offered["offerId"], "accept": true
+    })).await.unwrap();
+    let created = h.children(pid).await.remove(0);
+    let cid = created["id"].as_str().unwrap();
+    let child = h.task(cid).await;
+    assert_eq!(child["sessions"][0]["status"], "completed");
+    assert_eq!(child["sessions"][1]["status"], "starting");
+    gate.add_permits(1);
+    h.wait_state(cid, "done").await;
+    assert!(h.task(cid).await["sessions"].as_array().unwrap().iter().all(|s| s["status"] == "completed"));
+}
+
+#[tokio::test]
+async fn removing_a_task_never_deletes_notes_outside_the_managed_folder() {
+    let h = harness().await;
+    let task = h.create("claude-code", "", json!({})).await;
+    let tid = task["id"].as_str().unwrap();
+    let sid = task["sessions"][0]["id"].as_str().unwrap();
+    let external = h._dirs.1.path();
+    let note = external.join("keep.txt");
+    std::fs::write(&note, "External notes").unwrap();
+    // 模拟历史消息里保存的外部目录；清理不得把它当作工作台管理的目录。
+    let store = Store::open(&h._dirs.0.path().join("db.sqlite")).unwrap();
+    store.put_event(tid, &aiwb_core::task::StoredEvent {
+        event: aiwb_core::models::SessionEvent {
+            id: "external-notes".into(), session_id: sid.into(), seq: 1, ts: 1,
+            body: SessionEventBody::UserMessage {
+                text: "read notes".into(), images: Vec::new(), annotations: 0,
+                sender: Some(aiwb_core::models::MessageSender {
+                    notes: Some(external.to_string_lossy().into_owned()),
+                    ..Default::default()
+                }),
+            },
+        },
+        rev: 1,
+    }, false, None).unwrap();
+    h.services.dispatch("tasks.remove", json!({ "id": tid })).await.unwrap();
+    assert_eq!(std::fs::read_to_string(note).unwrap(), "External notes");
+}

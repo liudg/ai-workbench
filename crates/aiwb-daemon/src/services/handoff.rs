@@ -168,6 +168,7 @@ impl Services {
     pub(super) async fn fork_for_agent(
         &self,
         origin: &Task,
+        origin_session_id: &str,
         link: SessionLink,
         spec: &SessionSpec,
         notes: Option<String>,
@@ -175,6 +176,9 @@ impl Services {
         let _worktrees = self.runtimes.worktrees.lock().await;
         let sessions = self.store.task_sessions(&origin.id).map_err(|e| e.to_string())?;
         let current = sessions.last().cloned().ok_or_else(|| "任务没有会话".to_string())?;
+        if current.id != origin_session_id || current.agent != spec.agent {
+            return Err("发起分叉的会话已切换，请重新发起分叉".into());
+        }
         let adapter = self.runtimes.adapter(current.agent);
         let native = current
             .native_id
@@ -286,12 +290,18 @@ impl Services {
     ) -> ServiceResult<TaskSession> {
         let current = sessions.last().cloned().ok_or_else(|| "任务没有会话".to_string())?;
         let now = task.created_at;
+        let target_index = if native.is_some() { sessions.len() - 1 } else { sessions.len() };
         let segment = |index: usize, agent: AgentKind, native_id: Option<String>, options: SessionOptions| TaskSession {
             id: new_id(),
             task_id: task.id.clone(),
             agent,
             native_id,
-            status,
+            // 复制的历史段不会启动进程，只有当前目标段使用启动状态。
+            status: if index == target_index {
+                status
+            } else {
+                SessionStatus::Completed
+            },
             options,
             created_at: now + index as i64,
             updated_at: now + index as i64,

@@ -330,6 +330,7 @@ impl Services {
         // 正在清理、恢复或交接这个工作树时，等它做完再删，不留半个工作树或没人管的快照。
         let _worktrees = self.runtimes.worktrees.lock().await;
         self.stop_task_sessions(&params.id).await?;
+        let notes = self.task_session_notes(&params.id)?;
         if params.discard_worktree {
             if let Some((project, cwd)) = self.task_worktree(&params.id)? {
                 let force = params.force_worktree;
@@ -345,7 +346,6 @@ impl Services {
             .map(|session| session.id)
             .collect();
         self.forget_subtask(&params.id).await;
-        self.remove_session_notes(&params.id)?;
         if params.discard_worktree {
             self.drop_task_snapshot(&params.id).await?;
         }
@@ -355,6 +355,10 @@ impl Services {
             .map_err(|e| e.to_string())?;
         self.terminals.close_owned(&sessions);
         self.runtimes.publish_tasks()?;
+        // 任务已经删除；笔记清理失败不能把这次删除报告成失败。
+        if let Err(err) = self.remove_unused_session_notes(&notes) {
+            eprintln!("清理会话笔记失败：{err}");
+        }
         Ok(removed)
     }
 
