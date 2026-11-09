@@ -41,6 +41,7 @@ export function SessionRows({
             active={line.task.id === activeTaskId}
             now={now}
             depth={line.depth}
+            last={line.last}
             subtasks={line.subtasks}
             collapsed={line.collapsed}
             onToggle={() => onToggle(line.task.id)}

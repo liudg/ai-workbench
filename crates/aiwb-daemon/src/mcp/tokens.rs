@@ -29,7 +29,7 @@ impl Credentials {
         let mut sessions = self.sessions.lock().unwrap();
         sessions.retain(|_, owner| owner != session_id);
         sessions.insert(digest(&token), session_id.to_string());
-        Some(WorkbenchMcp { url, token })
+        Some(WorkbenchMcp { url, token, child: false })
     }
 
     pub(crate) fn resolve(&self, token: &str) -> Option<String> {

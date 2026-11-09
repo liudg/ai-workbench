@@ -51,7 +51,7 @@ impl AgentAdapter for FakeAdapter {
         }
     }
 
-    async fn fork_thread(&self, native_id: &str) -> Result<DirectoryEntry, AgentError> {
+    async fn fork_thread(&self, native_id: &str, _cwd: Option<&str>) -> Result<DirectoryEntry, AgentError> {
         Ok(listed(&format!("fork-of-{native_id}"), "", "", 1))
     }
 

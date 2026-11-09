@@ -126,8 +126,8 @@ impl AgentAdapter for ClaudeCodeAdapter {
 
     /// `--fork-session` 不带提示词会失败（CLI：`No deferred tool marker found... Provide a prompt`）。
     /// 带一条占位提示会多出用户没写的回合。分叉就是把转录复制成新的 session id。
-    async fn fork_thread(&self, native_id: &str) -> Result<DirectoryEntry, AgentError> {
-        history::fork_session_file(native_id)
+    async fn fork_thread(&self, native_id: &str, cwd: Option<&str>) -> Result<DirectoryEntry, AgentError> {
+        history::fork_session_file(native_id, cwd)
             .map(listed_entry)
             .map_err(AgentError::Runtime)
     }

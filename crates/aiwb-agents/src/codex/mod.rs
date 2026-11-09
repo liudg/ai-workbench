@@ -180,9 +180,9 @@ impl AgentAdapter for CodexCliAdapter {
         resolve_codex_bin().map(|_| ())
     }
 
-    async fn fork_thread(&self, native_id: &str) -> Result<DirectoryEntry, AgentError> {
+    async fn fork_thread(&self, native_id: &str, cwd: Option<&str>) -> Result<DirectoryEntry, AgentError> {
         CodexDirectory::shared()
-            .fork_thread(native_id)
+            .fork_thread(native_id, cwd)
             .await
             .map_err(AgentError::Runtime)
     }

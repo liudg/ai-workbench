@@ -79,6 +79,7 @@ const events: SessionEvent[] = [
 
 const SUBTASKS: SubtaskHost = {
   title: (taskId) => TITLES[taskId],
+  agent: (taskId) => VIEWS[taskId]?.agent,
   useSubtask: (taskId) => VIEWS[taskId],
   open: () => {},
   resolveOffer: async () => {},

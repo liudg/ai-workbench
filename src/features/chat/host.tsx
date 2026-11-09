@@ -39,6 +39,8 @@ export interface SubtaskView {
 export interface SubtaskHost {
   /** 任务列表里还没有它时没有。 */
   title(taskId: string): string | undefined;
+  /** 这个任务现在用的 Agent。任务列表里还没有它时没有。 */
+  agent(taskId: string): AgentKind | undefined;
   /** 子任务现在的样子，跟着任务列表变。任务列表里还没有它时没有。 */
   useSubtask(taskId: string): SubtaskView | undefined;
   /** 直接跳转到对应会话。 */

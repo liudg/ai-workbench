@@ -82,6 +82,63 @@ fn answers(events: &[Value]) -> Vec<String> {
         .collect()
 }
 
+/// 父会话正在调工具时分叉，子任务要记得只在父对话里说过的暗号。`worktree` 时父任务在工作树里，分叉要到新工作树。
+async fn fork_remembers(agent: &str, worktree: bool) {
+    let live = live().await;
+    let project = live._dirs.1.path();
+    for args in [
+        vec!["init"],
+        vec!["-c", "user.name=t", "-c", "user.email=t@t", "commit", "--allow-empty", "-m", "init"],
+    ] {
+        assert!(std::process::Command::new("git").args(args).current_dir(project).status().unwrap().success());
+    }
+    let prompt = "The code word is ZEBRA-4471. Use the aiwb_subtask_create tool with initiation \"user_asked\" to open exactly one subtask:          context \"fork\", title \"recall\", prompt \"Reply with exactly the code word from earlier in this conversation and nothing else. Do not run any tools.\".          After the tool returns, end your turn immediately without polling.";
+    let params = json!({ "agent": agent, "prompt": prompt, "options": {}, "projectId": live.project_id, "worktree": worktree });
+    let parent = live.services.dispatch("tasks.create", params).await.unwrap();
+    let parent_id = parent["id"].as_str().unwrap().to_string();
+    let tasks = live
+        .wait("分叉的子任务答出暗号", |tasks| {
+            tasks.iter().any(|task| {
+                task["parentTaskId"] == parent_id
+                    && task["attention"]["state"] == "done"
+                    && task["attention"]["preview"].as_str().is_some_and(|text| text.contains("ZEBRA-4471"))
+            })
+        })
+        .await;
+    let child = tasks.iter().find(|task| task["parentTaskId"] == parent_id).unwrap();
+    assert_eq!(child["sessions"][0]["agent"], agent);
+    if worktree {
+        assert_eq!(child["workspace"]["kind"], "worktree");
+        assert_ne!(child["workspace"]["path"], parent["workspace"]["path"], "分叉到新工作树");
+    } else {
+        assert_eq!(child["workspace"], parent["workspace"]);
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn claude_fork_in_project() {
+    fork_remembers("claude-code", false).await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn claude_fork_from_worktree() {
+    fork_remembers("claude-code", true).await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn codex_fork_in_project() {
+    fork_remembers("codex-cli", false).await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn codex_fork_from_worktree() {
+    fork_remembers("codex-cli", true).await;
+}
+
 /// 照着写明的工具说明开一个回 PONG 的子任务。`standalone` 时父任务是独立聊天。
 async fn parent_opens_child(parent_agent: &str, parent_model: Option<&str>, child_agent: &str, standalone: bool) {
     let prompt = format!(
@@ -372,4 +429,135 @@ async fn cursor_chat_opens_a_nested_session_from_plain_words() {
         "开个嵌套会话做这个任务：只回复 PONG 这个词，不要运行任何工具。开出来就结束你这一轮，结果回来后只回复它的答案。",
     )
     .await;
+}
+
+/// Agent 第二轮把活交出去时，选了什么带上下文的方式。
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Carry {
+    Fork,
+    /// 没分叉，背景里写全了要用的事实。
+    FreshWithFacts,
+    FreshWithoutFacts,
+    /// 没开子任务。
+    Other(String),
+}
+
+/// 第一轮聊的、第二轮要做的、要带到新会话的事实、该不该分叉。说法里不出现分叉和上下文这类词。
+const CARRYING: &[(&str, &str, &str, &[&str], bool)] = &[
+    ("发布方案", "这次发布我们定了：代号青鸟-7，窗口周四 22:00，阿明负责回滚，灰度先放 5% 再放 30%。先别动手，回复“记下了”就行。",
+     "开个嵌套会话，把我们定的这些整理成 release-plan.md。", &["青鸟-7", "阿明"], true),
+    ("登录方案", "登录页的方案我想好了：邮箱优先、验证码放第二步、失败三次才出图形校验，按钮文案用“继续”。你先确认一下，不用改代码。",
+     "这个单独拎出去让别的线做吧，我想进去盯着：按上面说的写一份 login-spec.md。", &["验证码", "继续"], true),
+    ("英文决定", "We settled on: Postgres 16, nightly backups at 02:30 UTC, 14-day retention, owner is Priya. Just acknowledge, don't do anything yet.",
+     "Spin that off into a nested session I can step into: write it up as ops-decisions.md.", &["02:30", "Priya"], true),
+    ("无关算术", "17*23 等于多少？直接告诉我。", "开个嵌套会话，看看这个目录里有哪些文件，列给我。", &[], false),
+    ("无关寒暄", "今天状态不错，回复“好”就行。", "单开一条线，我想进去盯着：新建 notes.txt，写一行 hello。", &[], false),
+    ("英文无关", "Say hi in one word.", "Spin off a nested session I can step into: list the files in this directory.", &[], false),
+];
+
+async fn turn_ended(live: &Live, task_id: &str, replies: usize) -> Result<(), String> {
+    let started = Instant::now();
+    while started.elapsed() < Duration::from_secs(240) {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        let task = live.tasks().await.into_iter().find(|task| task["id"] == task_id).unwrap();
+        let events = live.events(&task).await;
+        if events.iter().any(|event| event["kind"] == "error") {
+            return Err(format!("回合出错：{events:#?}"));
+        }
+        if task["attention"]["state"] == "done" && answers(&events).len() > replies {
+            return Ok(());
+        }
+    }
+    Err("等不到第一轮结束".into())
+}
+
+async fn carry_of(agent: &str, first: &str, second: &str, facts: &[&str]) -> Result<Carry, String> {
+    let live = live().await;
+    let project = live._dirs.1.path();
+    for args in [
+        vec!["init"],
+        vec!["-c", "user.name=t", "-c", "user.email=t@t", "commit", "--allow-empty", "-m", "init"],
+    ] {
+        assert!(std::process::Command::new("git").args(args).current_dir(project).output().unwrap().status.success());
+    }
+    let params = json!({ "agent": agent, "prompt": first, "options": {}, "projectId": live.project_id });
+    let parent = live.services.dispatch("tasks.create", params).await.unwrap();
+    let parent_id = parent["id"].as_str().unwrap().to_string();
+    turn_ended(&live, &parent_id, 0).await?;
+    let session = parent["sessions"][0]["id"].clone();
+    live.services
+        .dispatch("sessions.send", json!({ "sessionId": session, "text": second }))
+        .await
+        .map_err(|err| err.to_string())?;
+    let started = Instant::now();
+    let mut settled = 0;
+    let verdict = loop {
+        if started.elapsed() > Duration::from_secs(240) {
+            break Err("等不到结果".to_string());
+        }
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        let task = live.tasks().await.into_iter().find(|task| task["id"] == parent_id).unwrap();
+        let events = live.events(&task).await;
+        if let Some(card) = events.iter().find(|event| event["kind"] == "subtask-offer") {
+            let spec = &card["subtasks"][0];
+            eprintln!("  link={} initiation={} fork={} background={}", card["link"], card["initiation"], spec["fork"], spec["background"]);
+            if spec["fork"] == true {
+                break Ok(Carry::Fork);
+            }
+            let written = format!("{}
+{}", spec["background"].as_str().unwrap_or(""), spec["prompt"].as_str().unwrap_or(""));
+            break Ok(if facts.iter().all(|fact| written.contains(fact)) {
+                Carry::FreshWithFacts
+            } else {
+                Carry::FreshWithoutFacts
+            });
+        }
+        settled = if task["attention"]["state"] == "done" && answers(&events).len() > 1 { settled + 1 } else { 0 };
+        if settled >= 3 {
+            break Ok(Carry::Other(answers(&events).last().cloned().unwrap_or_default()));
+        }
+    };
+    live.services.stop_agents().await;
+    verdict
+}
+
+/// 每句跑三次，单次的差异不当结论。三次里至少两次选对才算过。
+async fn carries(agent: &str) {
+    use futures_util::StreamExt;
+    let runs = CARRYING.iter().flat_map(|case| (0..3).map(move |run| (case, run)));
+    let results: Vec<_> = futures_util::stream::iter(runs)
+        .map(|((name, first, second, facts, fork), run)| async move {
+            let verdict = carry_of(agent, first, second, facts).await;
+            eprintln!("{agent} {name} #{run}：该分叉 {fork}，结果 {verdict:?}");
+            (*name, *fork, verdict)
+        })
+        .buffer_unordered(4)
+        .collect()
+        .await;
+    let mut wrong = Vec::new();
+    for (name, _, _, _, fork) in CARRYING {
+        let right = results
+            .iter()
+            .filter(|(case, _, verdict)| {
+                case == name
+                    && match verdict {
+                        Ok(Carry::Fork) => *fork,
+                        Ok(Carry::FreshWithFacts) => !*fork,
+                        Ok(Carry::FreshWithoutFacts) => !*fork,
+                        _ => false,
+                    }
+            })
+            .count();
+        eprintln!("{agent} {name}：{right}/3 选对");
+        if right < 2 {
+            wrong.push(*name);
+        }
+    }
+    assert!(wrong.is_empty(), "{agent} 选错：{wrong:?}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore]
+async fn codex_chooses_fork_by_what_the_work_needs() {
+    carries("codex-cli").await;
 }

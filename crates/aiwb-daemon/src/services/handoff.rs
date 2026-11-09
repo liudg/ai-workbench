@@ -1,10 +1,12 @@
 //! 中途换 Agent 和分叉聊天。前文怎么挑、怎么交在运行时里（`runtime/handoff.rs`）。
 
-use aiwb_core::models::{new_id, AgentKind, HandoffStrategy, SessionEventBody, SessionStatus};
-use aiwb_core::task::{SessionOptions, Task, TaskEntry, TaskSession, TaskWorkspace};
+use std::path::Path;
+
+use aiwb_core::models::{new_id, AgentKind, HandoffStrategy, MessageSender, SessionEventBody, SessionStatus};
+use aiwb_core::task::{SessionLink, SessionOptions, SessionSpec, Task, TaskEntry, TaskSession, TaskWorkspace};
 use serde::Deserialize;
 
-use super::{now_millis, session_busy, ServiceResult, Services};
+use super::{blocking, now_millis, session_busy, ServiceResult, Services};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -126,7 +128,7 @@ impl Services {
         let pending = self.has_pending_handoff(&current.id)?;
         let native = match current.native_id.as_deref() {
             Some(native) if agent == current.agent && !pending && adapter.capabilities().supports_fork => {
-                Some(adapter.fork_thread(native).await.map_err(|e| e.to_string())?.native_id)
+                Some(adapter.fork_thread(native, None).await.map_err(|e| e.to_string())?.native_id)
             }
             _ => {
                 self.ensure_handoff(current.agent, agent)?;
@@ -156,14 +158,140 @@ impl Services {
             updated_at: now,
             parent_task_id: None,
         };
-        // 按原来的分段抄，每段还是原来的 Agent。原生分叉时最后一段接上分出来的线程；
-        // 否则另起一段，第一条消息带上全部前文。
+        self.copy_segments(&task, &sessions, native, agent, options, SessionStatus::Completed)?;
+        self.runtimes.publish_tasks()?;
+        self.task_entry(&task.id)
+    }
+
+    /// Agent 开的分叉：新会话带着发起会话的完整对话，再收到任务。发起的会话这时正在回合里（它在调工具）。
+    /// 照 Claude Code 桌面版 `start_session` 的 `fork`：工作树里的会话分到新工作树，从它现在的提交切出来，没提交的改动留在原地。
+    pub(super) async fn fork_for_agent(
+        &self,
+        origin: &Task,
+        link: SessionLink,
+        spec: &SessionSpec,
+        notes: Option<String>,
+    ) -> ServiceResult<TaskEntry> {
+        let _worktrees = self.runtimes.worktrees.lock().await;
+        let sessions = self.store.task_sessions(&origin.id).map_err(|e| e.to_string())?;
+        let current = sessions.last().cloned().ok_or_else(|| "任务没有会话".to_string())?;
+        let adapter = self.runtimes.adapter(current.agent);
+        let native = current
+            .native_id
+            .clone()
+            .filter(|_| !self.has_pending_handoff(&current.id).unwrap_or(true))
+            .ok_or_else(|| "fork_unavailable: your conversation cannot be forked right now; do not fork and give background".to_string())?;
+        let (workspace, made) = self.fork_workspace(origin).await?;
+        let forked = match adapter.fork_thread(&native, made.as_deref()).await {
+            Ok(entry) => entry.native_id,
+            Err(err) => {
+                if let (Some(cwd), Some(project)) = (made, self.origin_project_path(origin)?) {
+                    let _ = blocking(move || aiwb_git::discard_confirmed_worktree(Path::new(&project), Path::new(&cwd), true)).await;
+                }
+                return Err(err.to_string());
+            }
+        };
+        let mut options = current.options.clone();
+        options.access = spec.options.access.clone();
+        let options = super::agent_sessions::with_notes(options, notes.as_deref());
+        let now = now_millis();
+        let task = Task {
+            id: new_id(),
+            project_id: origin.project_id.clone(),
+            title: spec.title.clone(),
+            workspace,
+            parent_task_id: (link == SessionLink::Child).then(|| origin.id.clone()),
+            pinned: false,
+            archived_at: None,
+            created_at: now,
+            updated_at: now,
+        };
+        let session = self.copy_segments(&task, &sessions, Some(forked), current.agent, options, SessionStatus::Starting)?;
+        let sender = MessageSender {
+            task_ids: vec![origin.id.clone()],
+            background: None,
+            notes,
+            fork: true,
+        };
+        let text = sender.agent_text(&spec.prompt);
+        self.runtimes.record(
+            &session.id,
+            SessionEventBody::UserMessage {
+                text: spec.prompt.clone(),
+                images: Vec::new(),
+                annotations: 0,
+                sender: Some(sender),
+            },
+        )?;
+        self.runtimes.start_initial(
+            session.id,
+            Some(aiwb_agents::UserTurn {
+                text,
+                images: Vec::new(),
+                client_id: new_id(),
+                annotations: Vec::new(),
+            }),
+            None,
+            false,
+        );
+        self.runtimes.publish_tasks()?;
+        if matches!(task.workspace, TaskWorkspace::Worktree { .. }) {
+            self.request_worktree_sweep();
+        }
+        self.task_entry(&task.id)
+    }
+
+    /// 分叉在哪干活，以及新建工作树时的目录。交给了项目目录的任务也在项目目录里。
+    async fn fork_workspace(&self, origin: &Task) -> ServiceResult<(TaskWorkspace, Option<String>)> {
+        let TaskWorkspace::Worktree { path, local: None, .. } = &origin.workspace else {
+            let workspace = match &origin.workspace {
+                TaskWorkspace::Worktree { .. } => TaskWorkspace::Root,
+                other => other.clone(),
+            };
+            return Ok((workspace, None));
+        };
+        let source = path.clone();
+        let root = self.worktree_root()?;
+        let options = aiwb_git::NewWorktree { base: None, carry_changes: false };
+        let made = blocking(move || aiwb_git::create_task_worktree(Path::new(&source), &root, &options)).await??;
+        let cwd = made.cwd.to_string_lossy().into_owned();
+        let workspace = TaskWorkspace::Worktree {
+            path: cwd.clone(),
+            branch: None,
+            base_ref: made.base,
+            base_sha: made.sha,
+            shelved: None,
+            local: None,
+        };
+        Ok((workspace, Some(cwd)))
+    }
+
+    fn origin_project_path(&self, origin: &Task) -> ServiceResult<Option<String>> {
+        let Some(id) = origin.project_id.as_deref() else {
+            return Ok(None);
+        };
+        Ok(self.store.project(id).map_err(|e| e.to_string())?.map(|project| project.path))
+    }
+
+    /// 按原来的分段抄进新任务，每段还是原来的 Agent。原生分叉时最后一段接上分出来的线程；
+    /// 否则另起一段，第一条消息带上全部前文。返回现在用的那段。
+    fn copy_segments(
+        &self,
+        task: &Task,
+        sessions: &[TaskSession],
+        native: Option<String>,
+        agent: AgentKind,
+        options: SessionOptions,
+        status: SessionStatus,
+    ) -> ServiceResult<TaskSession> {
+        let current = sessions.last().cloned().ok_or_else(|| "任务没有会话".to_string())?;
+        let now = task.created_at;
         let segment = |index: usize, agent: AgentKind, native_id: Option<String>, options: SessionOptions| TaskSession {
             id: new_id(),
             task_id: task.id.clone(),
             agent,
             native_id,
-            status: SessionStatus::Completed,
+            status,
             options,
             created_at: now + index as i64,
             updated_at: now + index as i64,
@@ -196,8 +324,7 @@ impl Services {
             self.runtimes
                 .record_handoff(&target.id, &current, target, HandoffStrategy::Full)?;
         }
-        self.runtimes.publish_tasks()?;
-        self.task_entry(&task.id)
+        Ok(target.or_else(|| copies.last().cloned()).expect("至少有一段"))
     }
 
     /// 两边的适配器都能交接才行。

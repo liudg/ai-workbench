@@ -171,24 +171,37 @@ pub fn remove_session_file(session_id: &str) -> Result<(), String> {
 /// 2026-10-15，Claude Code 2.1.300：`claude --print --resume <id> --fork-session` 不带提示词退出码 1，
 /// stderr 为 `No deferred tool marker found in the resumed session. ... Provide a prompt to continue the conversation.`
 /// 带提示词会新开一轮用户没写的对话。`--fork-session` 的产物就是一份新 session id 的转录。
-pub fn fork_session_file(session_id: &str) -> Result<ListedSession, String> {
+///
+/// 转录按工作目录分文件夹，CLI 只在当前目录对应的文件夹里找。分到别的目录时写进那个目录的文件夹。
+pub fn fork_session_file(session_id: &str, cwd: Option<&str>) -> Result<ListedSession, String> {
     if !is_uuid(session_id) {
         return Err(format!("无效的会话 id：{session_id}"));
     }
     let path = find_session_file(session_id).ok_or_else(|| format!("找不到会话 {session_id}"))?;
-    fork_under(&path, session_id)
+    match cwd {
+        Some(cwd) => {
+            let folder = projects_dir().join(sanitize_path(cwd));
+            std::fs::create_dir_all(&folder).map_err(|err| err.to_string())?;
+            fork_into(&path, session_id, &folder)
+        }
+        None => fork_under(&path, session_id),
+    }
 }
 
 pub fn fork_under(source: &Path, session_id: &str) -> Result<ListedSession, String> {
+    let parent = source
+        .parent()
+        .ok_or_else(|| "会话文件没有目录".to_string())?;
+    fork_into(source, session_id, parent)
+}
+
+fn fork_into(source: &Path, session_id: &str, parent: &Path) -> Result<ListedSession, String> {
     if !is_uuid(session_id) {
         return Err(format!("无效的会话 id：{session_id}"));
     }
     let text = std::fs::read_to_string(source).map_err(|err| err.to_string())?;
     let new_id = uuid::Uuid::new_v4().to_string();
     let rewritten = rewrite_session_ids(&text, session_id, &new_id);
-    let parent = source
-        .parent()
-        .ok_or_else(|| "会话文件没有目录".to_string())?;
     let dest = parent.join(format!("{new_id}.jsonl"));
     std::fs::write(&dest, &rewritten).map_err(|err| err.to_string())?;
     let lite = read_lite(&dest).ok_or_else(|| "分叉后的会话读不出来".to_string())?;

@@ -55,13 +55,14 @@ const session: Session = {
   updated_at: 1,
 };
 
-test("initial parent instructions are expanded and startup is not labelled running", async () => {
+test("a session opened by an agent starts with its origin and a later report stays folded", async () => {
   const { UserBubble } = await server.ssrLoadModule("/src/features/chat/events/UserBubble.tsx");
   const instruction = event("first", { kind: "user-message", text: "制作中文页面", images: [], sender: { task_ids: ["parent"] } });
   const bubble = (seq: number) => renderInHost(createElement(UserBubble, {
     event: { ...instruction, seq }, session: { ...session, status: "starting" }, time: "",
   }));
-  assert.match(bubble(1), /制作中文页面/);
+  assert.match(bubble(1), /data-session-origin/);
+  assert.doesNotMatch(bubble(2), /data-session-origin/);
   assert.doesNotMatch(bubble(2), /制作中文页面/);
   const { LiveTurn } = await server.ssrLoadModule("/src/features/chat/timeline/LiveTurn.tsx");
   const html = renderInHost(createElement(LiveTurn, {

@@ -21,24 +21,38 @@ enum InitiationParam {
     OwnInitiative,
 }
 
+#[derive(Deserialize, JsonSchema, Default, PartialEq)]
+#[serde(rename_all = "snake_case")]
+enum ContextParam {
+    #[default]
+    Fresh,
+    Fork,
+}
+
 #[derive(Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 struct SessionParam {
     /// Short title shown in the sidebar.
     title: String,
-    /// The first message. The session does not see your conversation: say what to do, which files are involved, and what done looks like. Required for a subtask; a top-level session may leave it empty to wait for the user.
+    /// The brief: the task, the files or area, what done looks like. Required for a subtask and for a fork; a top-level session that is not a fork may leave it empty to wait for the user.
     #[serde(default)]
     prompt: String,
+    /// fresh (default): the session gets only your prompt and background. fork: it gets this whole conversation and your prompt. Fork when the task leans on this conversation and the conversation is still short; otherwise use fresh. A fork stays on your agent (see `fork` in aiwb_capabilities).
+    #[serde(default)]
+    context: ContextParam,
+    /// Required with fresh when there is a prompt: at least 80 characters of overall goal, decisions and constraints so far, and how this piece fits, for someone who has not seen this conversation. Ignored for fork.
+    #[serde(default)]
+    background: Option<String>,
     /// Agent id from aiwb_capabilities. Defaults to your own agent.
     #[serde(default)]
     agent: Option<String>,
-    /// Give the session its own git worktree (detached; it can create a branch there). Use it for sessions that write code in parallel.
+    /// Fresh only. Give the session its own git worktree (detached; it can create a branch there). Use it for sessions that write code in parallel. A fork from a worktree always gets a new worktree cut from your current commit, so commit first; from a plain checkout it shares the folder.
     #[serde(default)]
     worktree: bool,
-    /// Model id from that agent's catalog in aiwb_capabilities. Omit for the agent's default.
+    /// Fresh only. Model id from that agent's catalog in aiwb_capabilities. Omit for the agent's default.
     #[serde(default)]
     model: Option<String>,
-    /// Reasoning effort from that model's list. Omit for the default.
+    /// Fresh only. Reasoning effort from that model's list. Omit for the default.
     #[serde(default)]
     effort: Option<String>,
     /// Permission level: read-only, ask, approve-for-me or full. Defaults to yours; never wider than yours.
@@ -146,6 +160,8 @@ impl WorkbenchServer {
                     agent,
                     title: item.title,
                     prompt: item.prompt,
+                    fork: item.context == ContextParam::Fork,
+                    background: item.background,
                     worktree: item.worktree,
                     model: item.model,
                     effort: item.effort,
@@ -182,7 +198,7 @@ impl WorkbenchServer {
 
     #[tool(description = concat!("Open one or more subtasks under your current task. Each subtask is a separate workbench task with a full agent session of its own: it may use a different agent and can get its own git worktree, and the user can open, steer or stop it from your timeline and the sidebar. The call returns at once; do not wait or poll. When all your subtasks have stopped and you are idle, the workbench sends you one message with their results.
 
-Every subtask starts a full session and reloads context, and does not see this conversation: write each prompt as a self-contained brief (what to do, which files, what done looks like).
+Every subtask starts a full session and reloads context. A fresh subtask does not see this conversation: write each prompt and background so that someone new can do the work.
 
 ", initiation_rules!(), "
 
@@ -193,7 +209,7 @@ A subtask inherits your permission level and plan mode and can never be wider th
 
     #[tool(description = concat!("Open one or more new top-level workbench sessions in your project. Each is independent of this conversation: it appears on its own in the sidebar, you cannot read, message or stop it, and its result does not come back to you.
 
-A session does not see this conversation: write the prompt as a self-contained brief, or leave it empty to open a session that waits for the user.
+A fresh session does not see this conversation: write the prompt and background so that someone new can do the work, or leave the prompt empty to open a session that waits for the user.
 
 ", initiation_rules!(), "
 

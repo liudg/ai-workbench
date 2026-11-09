@@ -637,10 +637,38 @@ pub enum SessionEventBody {
 }
 
 /// 工作台消息说的是哪些子任务。卡片结果「就在这做」没有子任务。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MessageSender {
     #[serde(default)]
     pub task_ids: Vec<String>,
+    /// 父 Agent 写给新会话的背景。时间线里和正文分开显示。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background: Option<String>,
+    /// 这组嵌套会话共用的笔记目录。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
+    /// 新会话是从发起的会话分叉出来的，这条是分叉后交给它的任务。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub fork: bool,
+}
+
+impl MessageSender {
+    /// 送给 Agent 的全文，时间线只存正文。格式照 Claude Code 桌面版 `start_session`。
+    pub fn agent_text(&self, text: &str) -> String {
+        let notes = self.notes.as_deref().map_or_else(String::new, |path| {
+            format!(
+                "\n\nShared notes folder for this group of sessions (outside the repo; read siblings' notes there, \
+                 leave hand-over notes or large findings there instead of pasting them into messages): {path}"
+            )
+        });
+        match (&self.background, self.fork) {
+            (_, true) => format!("Task (from the session that started this one):\n{text}{notes}"),
+            (Some(background), false) => {
+                format!("Background (from the session that started this one):\n{background}\n\nTask:\n{text}{notes}")
+            }
+            (None, false) => format!("{text}{notes}"),
+        }
+    }
 }
 
 /// 打开已被其他进程持有写锁的 Codex 线程时，给时间线和发送拒绝用的同一句说明。

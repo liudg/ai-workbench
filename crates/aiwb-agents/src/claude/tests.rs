@@ -105,6 +105,7 @@ fn workbench_mcp_is_added_beside_user_servers_and_preapproved() {
         workbench_mcp: Some(crate::WorkbenchMcp {
             url: "http://127.0.0.1:9/mcp".into(),
             token: "t".into(),
+            child: false,
         }),
     });
     assert!(!args.iter().any(|arg| arg == "--strict-mcp-config"));

@@ -166,8 +166,8 @@ pub trait AgentAdapter: Send + Sync {
         Ok(pages.into_iter().rev().flatten().chain(latest).collect())
     }
 
-    /// 分叉聊天。历史由适配器复制。
-    async fn fork_thread(&self, _native_id: &str) -> Result<DirectoryEntry, AgentError> {
+    /// 分叉聊天。历史由适配器复制。`cwd` 不为空时分叉出来的线程在那个目录里接着跑。
+    async fn fork_thread(&self, _native_id: &str, _cwd: Option<&str>) -> Result<DirectoryEntry, AgentError> {
         Err(AgentError::Runtime(format!(
             "{} 不支持分叉聊天",
             self.display_name()

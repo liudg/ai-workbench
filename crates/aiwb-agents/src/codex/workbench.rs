@@ -29,11 +29,11 @@ pub(super) fn attach(params: &mut Value, mcp: Option<&WorkbenchMcp>) {
 /// 照 t3code `apps/server/src/provider/CodexDeveloperInstructions.ts` 的 `buildCodexAdditionalContext`；
 /// codex-cli 0.165.0 实测模型能读到。
 pub(super) fn attach_instructions(params: &mut Value, mcp: Option<&WorkbenchMcp>) {
-    if mcp.is_none() {
+    let Some(mcp) = mcp else {
         return;
-    }
+    };
     params["additionalContext"] = json!({
-        "aiwb_subtasks": { "kind": "application", "value": WorkbenchMcp::INSTRUCTIONS },
+        "aiwb_subtasks": { "kind": "application", "value": mcp.instructions() },
     });
 }
 
@@ -47,6 +47,7 @@ mod tests {
         let mcp = WorkbenchMcp {
             url: "http://127.0.0.1:9/mcp".into(),
             token: "t".into(),
+            child: false,
         };
         attach(&mut params, Some(&mcp));
         assert_eq!(params["config"]["sandbox_workspace_write"]["network_access"], true);
@@ -64,6 +65,7 @@ mod tests {
         let mcp = WorkbenchMcp {
             url: "http://127.0.0.1:9/mcp".into(),
             token: "t".into(),
+            child: false,
         };
         let mut params = json!({ "threadId": "x" });
         attach_instructions(&mut params, Some(&mcp));

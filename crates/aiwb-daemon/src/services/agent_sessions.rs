@@ -21,6 +21,8 @@ use crate::runtime::task_branch;
 const ACCESS_ORDER: [&str; 4] = ["read-only", "ask", "approve-for-me", "full"];
 /// 自己提议的卡片一个回合最多几张。
 const MAX_PROPOSALS_PER_TURN: usize = 3;
+/// 不分叉的会话，`background` 至少这么多字。照 Claude Code 桌面版 `start_session`。
+const MIN_BACKGROUND_CHARS: usize = 80;
 /// 自己提议的卡片多久没点就过期。
 const PROPOSAL_TTL_MS: i64 = 7 * 24 * 60 * 60 * 1000;
 
@@ -29,6 +31,8 @@ pub(crate) struct SessionRequest {
     pub(crate) agent: Option<AgentKind>,
     pub(crate) title: String,
     pub(crate) prompt: String,
+    pub(crate) background: Option<String>,
+    pub(crate) fork: bool,
     pub(crate) worktree: bool,
     pub(crate) model: Option<String>,
     pub(crate) effort: Option<String>,
@@ -82,6 +86,7 @@ impl Services {
                     "models": models,
                     "access": supported_access(self, kind),
                     "planMode": adapter.capabilities().supports_plan,
+                    "fork": adapter.capabilities().supports_fork,
                 })
             })
             .collect();
@@ -203,6 +208,15 @@ impl Services {
             _ => {}
         }
         reject_command(&prompt)?;
+        let background = nonempty(request.background);
+        if request.fork {
+            check_fork(caller, adapter.capabilities().supports_fork, agent, &request.worktree, &prompt, &request.model, &request.effort)?;
+        } else if !prompt.is_empty() && background.as_deref().is_none_or(|text| text.chars().count() < MIN_BACKGROUND_CHARS) {
+            return Err(format!(
+                "invalid: a session that does not fork needs background of at least {MIN_BACKGROUND_CHARS} characters: \
+                 the overall goal, decisions and constraints so far, how this piece fits"
+            ));
+        }
         let plan = caller.options.collaboration_mode.as_deref() == Some("plan");
         if plan && !adapter.capabilities().supports_plan {
             return Err(format!(
@@ -214,6 +228,8 @@ impl Services {
             agent,
             title,
             prompt,
+            background: background.filter(|_| !request.fork),
+            fork: request.fork,
             worktree: request.worktree,
             options: SessionOptions {
                 model: nonempty(request.model),
@@ -330,9 +346,18 @@ impl Services {
     async fn open_sessions(&self, origin: &Task, link: SessionLink, specs: &[SessionSpec]) -> (Vec<Value>, Option<String>) {
         let child = link == SessionLink::Child;
         let _held = child.then(|| self.hold_reports(&origin.id));
+        let notes = match child.then(|| self.session_notes_folder(origin)).transpose() {
+            Ok(notes) => notes,
+            Err(err) => return (Vec::new(), Some(err)),
+        };
         let mut opened = Vec::new();
         for spec in specs {
-            let entry = match self.create_task(CreateTask::from_agent(origin, link, spec)).await {
+            let result = if spec.fork {
+                self.fork_for_agent(origin, link, spec, notes.clone()).await
+            } else {
+                self.create_task(CreateTask::from_agent(origin, link, spec, notes.clone())).await
+            };
+            let entry = match result {
                 Ok(entry) => entry,
                 Err(err) => return (opened, Some(err)),
             };
@@ -437,6 +462,66 @@ impl Services {
         }
         failed.map_or(Ok(()), Err)
     }
+}
+
+impl Services {
+    /// 这组嵌套会话共用的笔记目录，按最上面的任务分。照 Claude Code 桌面版的 side-session-notes。
+    fn session_notes_folder(&self, origin: &Task) -> ServiceResult<String> {
+        let mut root = origin.clone();
+        while let Some(parent) = root.parent_task_id.as_deref() {
+            match self.store.task(parent).map_err(|e| e.to_string())? {
+                Some(task) => root = task,
+                None => break,
+            }
+        }
+        let folder = self.session_notes_root.join(&root.id);
+        std::fs::create_dir_all(&folder).map_err(|e| format!("无法创建笔记目录：{e}"))?;
+        Ok(folder.to_string_lossy().into_owned())
+    }
+
+    /// 最上面的任务删掉时，这组的笔记也不要了。
+    pub(super) fn remove_session_notes(&self, task_id: &str) -> ServiceResult<()> {
+        let folder = self.session_notes_root.join(task_id);
+        if folder.is_dir() {
+            std::fs::remove_dir_all(&folder).map_err(|e| format!("无法删除笔记目录：{e}"))?;
+        }
+        Ok(())
+    }
+}
+
+/// 分叉带着完整对话留在同一个 Agent 上，工作树、模型和强度也跟着来，不能另选。
+fn check_fork(
+    caller: &TaskSession,
+    supported: bool,
+    agent: AgentKind,
+    worktree: &bool,
+    prompt: &str,
+    model: &Option<String>,
+    effort: &Option<String>,
+) -> ServiceResult<()> {
+    if agent != caller.agent {
+        return Err("invalid: a fork stays on your own agent; to use another agent, do not fork and give background".into());
+    }
+    if !supported {
+        return Err(format!("fork_unsupported: {} cannot fork; do not fork and give background", agent.display_name()));
+    }
+    if prompt.is_empty() {
+        return Err("invalid: a fork needs a prompt".into());
+    }
+    if *worktree || model.is_some() || effort.is_some() {
+        return Err("invalid: worktree, model and effort cannot be set on a fork".into());
+    }
+    Ok(())
+}
+
+/// 新会话要能写共享笔记目录。
+pub(super) fn with_notes(mut options: SessionOptions, notes: Option<&str>) -> SessionOptions {
+    if let (Some(access), Some(notes)) = (options.access.as_mut(), notes) {
+        if !access.writable_roots.iter().any(|root| root == notes) {
+            access.writable_roots.push(notes.to_string());
+        }
+    }
+    options
 }
 
 /// 用户选了另开之后告诉 Agent 什么。独立会话的结果不回来，自己提议的 Agent 本来就没等，不用告诉它。

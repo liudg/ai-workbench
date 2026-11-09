@@ -63,7 +63,7 @@ test("both session menu entry points copy the target task without opening it, an
       createElement(SessionRow, {
         task: { id: "right-clicked", projectId: "p", title: "另一个会话", agent: undefined, status: undefined,
           attention: { state: "done", unread: false, updatedAt: 1 }, updatedAt: 1, pinned: false, archived: true, parentTaskId: null },
-        active: false, now: 1, depth: 0, subtasks: 0, collapsed: false, onToggle: () => {},
+        active: false, now: 1, depth: 0, last: false, subtasks: 0, collapsed: false, onToggle: () => {},
       }), createElement(Status))));
     const click = async (selector: string) => {
       const button = dom.document.querySelector(selector);

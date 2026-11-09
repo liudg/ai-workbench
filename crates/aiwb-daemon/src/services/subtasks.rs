@@ -206,6 +206,7 @@ impl Services {
         let message = Outgoing {
             sender: Some(MessageSender {
                 task_ids: vec![caller.task.id.clone()],
+                ..Default::default()
             }),
             ..Outgoing::user(text, Vec::new(), steer)
         };
@@ -501,7 +502,7 @@ fn sender_of(batch: &Batch) -> MessageSender {
             task_ids.push(id.clone());
         }
     }
-    MessageSender { task_ids }
+    MessageSender { task_ids, ..Default::default() }
 }
 
 /// 时间线里给父任务看的一条。`all` 时连工具调用、提问和错误也给。

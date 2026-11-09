@@ -8,15 +8,17 @@ import { annotationCountLabel, annotationCountOf } from "./annotation-count";
 import { CopyButton, HoverActions } from "./chrome";
 import { EventImages } from "./EventImages";
 import { QuestionReplyCard } from "./QuestionReplyCard";
+import { SessionOrigin } from "./SessionOrigin";
 import { SubtaskReport } from "./SubtaskReport";
 import { parseQuestionReply } from "./question-reply";
 import type { EventViewProps } from "./types";
 import { userBubbleModel } from "./user-image-layout";
 
-export function UserBubble({ event, time }: EventViewProps) {
+export function UserBubble({ event, session, time }: EventViewProps) {
   const onContextMenu = useMessageMenu(event.kind === "user-message" && !event.sender ? event.text : "");
   if (event.kind !== "user-message") return null;
-  if (event.sender) return <SubtaskReport text={event.text} taskIds={event.sender.task_ids} time={time} defaultOpen={event.seq === 1} />;
+  if (event.sender && (event.seq === 1 || event.sender.fork)) return <SessionOrigin event={event} title={session.title} time={time} />;
+  if (event.sender) return <SubtaskReport text={event.text} taskIds={event.sender.task_ids} time={time} />;
   const text = event.text;
   const images = event.images ?? [];
   const replies = parseQuestionReply(text);

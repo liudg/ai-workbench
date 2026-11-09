@@ -45,6 +45,12 @@ pub(crate) struct CreateTask {
     /// 第一条消息是哪个任务发来的。Agent 经工作台 MCP 开会话时设，界面不传。
     #[serde(skip)]
     sender_task_id: Option<String>,
+    /// 发起的任务写给新会话的背景。界面不传。
+    #[serde(skip)]
+    background: Option<String>,
+    /// 这组嵌套会话共用的笔记目录。界面不传。
+    #[serde(skip)]
+    notes: Option<String>,
     /// 独立聊天的子任务用父聊天的文件夹，不另建。界面不传。
     #[serde(skip)]
     folder: Option<String>,
@@ -53,7 +59,7 @@ pub(crate) struct CreateTask {
 impl CreateTask {
     /// Agent 开的会话：和发起的任务同一个项目，第一条消息就是说明。
     /// 独立聊天下的子任务用同一个文件夹，独立会话自己建。
-    pub(super) fn from_agent(origin: &Task, link: SessionLink, spec: &SessionSpec) -> Self {
+    pub(super) fn from_agent(origin: &Task, link: SessionLink, spec: &SessionSpec, notes: Option<String>) -> Self {
         let child = link == SessionLink::Child;
         let folder = match &origin.workspace {
             TaskWorkspace::Folder { path } if child => Some(path.clone()),
@@ -68,11 +74,13 @@ impl CreateTask {
             worktree: spec.worktree,
             worktree_base: None,
             carry_changes: false,
-            options: spec.options.clone(),
+            options: super::agent_sessions::with_notes(spec.options.clone(), notes.as_deref()),
             goal: None,
             goal_status: None,
             parent_task_id: child.then(|| origin.id.clone()),
             sender_task_id: Some(origin.id.clone()),
+            background: spec.background.clone(),
+            notes,
             folder,
         }
     }
@@ -190,7 +198,13 @@ impl Services {
             created_at: now,
             updated_at: now,
         };
-        let sender = params.sender_task_id.clone().map(|origin| MessageSender { task_ids: vec![origin] });
+        let sender = params.sender_task_id.clone().map(|origin| MessageSender {
+            task_ids: vec![origin],
+            background: params.background.clone(),
+            notes: params.notes.clone(),
+            fork: false,
+        });
+        let first_turn = sender.as_ref().map_or_else(|| params.prompt.clone(), |sender| sender.agent_text(&params.prompt));
         let has_message = !params.prompt.trim().is_empty() || !params.images.is_empty();
         let starting = has_message || goal.is_some();
         let mut messages = Vec::new();
@@ -231,7 +245,7 @@ impl Services {
             self.runtimes.start_initial(
                 session.id.clone(),
                 has_message.then(|| aiwb_agents::UserTurn {
-                    text: params.prompt,
+                    text: first_turn,
                     images: params.images,
                     client_id: new_id(),
                     annotations: Vec::new(),
@@ -331,6 +345,7 @@ impl Services {
             .map(|session| session.id)
             .collect();
         self.forget_subtask(&params.id).await;
+        self.remove_session_notes(&params.id)?;
         if params.discard_worktree {
             self.drop_task_snapshot(&params.id).await?;
         }

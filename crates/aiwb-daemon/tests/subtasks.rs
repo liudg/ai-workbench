@@ -23,6 +23,9 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+/// 不分叉的会话必须带的背景，够 80 字。
+const BACKGROUND: &str = "这是发起会话写给新会话的背景，交代整体目标、已经定下的决定和约束，以及这一块工作在整件事里的位置，读的人没有看过发起会话的对话，所以要写得足够完整，至少八十个字才算数。";
+
 #[derive(Default)]
 struct Script {
     /// 每次拉起进程时的原生 id 和上下文。
@@ -66,6 +69,20 @@ impl AgentAdapter for FakeAdapter {
 
     fn takes_workbench_mcp(&self) -> bool {
         true
+    }
+
+    async fn fork_thread(&self, native_id: &str, cwd: Option<&str>) -> Result<aiwb_agents::DirectoryEntry, AgentError> {
+        Ok(aiwb_agents::DirectoryEntry {
+            native_id: format!("fork-of-{native_id}"),
+            cwd: cwd.unwrap_or_default().into(),
+            cwd_key: String::new(),
+            title: String::new(),
+            created_at: 1,
+            updated_at: 1,
+            status: SessionStatus::Completed,
+            ephemeral: false,
+            archived: false,
+        })
     }
 
     /// Codex 四档都有，Claude 没有只读和替我批准。
@@ -401,8 +418,8 @@ async fn subtasks_open_run_and_report_back_once() {
                 "initiation": "user_asked",
                 "clientRequestId": "req-1",
                 "subtasks": [
-                    { "title": "写代码", "prompt": "实现 A", "agent": "codex-cli" },
-                    { "title": "写测试", "prompt": "测试 A" },
+                    { "title": "写代码", "background": BACKGROUND, "prompt": "实现 A", "agent": "codex-cli" },
+                    { "title": "写测试", "background": BACKGROUND, "prompt": "测试 A" },
                 ],
             }),
         )
@@ -414,7 +431,7 @@ async fn subtasks_open_run_and_report_back_once() {
         .tool(
             &token,
             "aiwb_subtask_create",
-            json!({ "initiation": "user_asked", "clientRequestId": "req-1", "subtasks": [{ "title": "写代码", "prompt": "实现 A" }] }),
+            json!({ "initiation": "user_asked", "clientRequestId": "req-1", "subtasks": [{ "title": "写代码", "background": BACKGROUND, "prompt": "实现 A" }] }),
         )
         .await
         .unwrap();
@@ -465,7 +482,8 @@ async fn subtasks_open_run_and_report_back_once() {
     }
     let sent = report.expect("父会话收到回报");
     assert_eq!(sent.len(), 2, "只回报一次");
-    assert!(sent[1].contains("写代码") && sent[1].contains("写测试") && sent[1].contains("收到：实现 A"), "{}", sent[1]);
+    assert!(sent[1].contains("写代码") && sent[1].contains("写测试") && sent[1].contains("Task:
+实现 A"), "{}", sent[1]);
     h.wait_state(&parent_id, "done").await;
     let timeline = h.timeline(&parent_session).await;
     let folded: Vec<&Value> = timeline.iter().filter(|event| event["sender"].is_object()).collect();
@@ -487,8 +505,8 @@ async fn cold_subtasks_publish_instructions_before_start_and_never_complete_earl
     let gate = Arc::new(tokio::sync::Semaphore::new(0));
     *h.script.startup_gate.lock().unwrap() = Some(gate.clone());
     h.tool(&token, "aiwb_subtask_create", json!({ "initiation": "user_asked", "subtasks": [
-        { "title": "one", "prompt": "[hold] first", "agent": "codex-cli" },
-        { "title": "two", "prompt": "[hold] second", "agent": "claude-code" }
+        { "title": "one", "background": BACKGROUND, "prompt": "[hold] first", "agent": "codex-cli" },
+        { "title": "two", "background": BACKGROUND, "prompt": "[hold] second", "agent": "claude-code" }
     ] })).await.unwrap();
     let children = h.children(parent_id).await;
     assert_eq!(children.len(), 2);
@@ -596,7 +614,7 @@ async fn subtasks_nest_and_report_up_one_level_at_a_time() {
     let root_token = h.mcp_of(&root_native).unwrap().token;
 
     let opened = |title: &'static str, prompt: &'static str| {
-        json!({ "initiation": "user_asked", "subtasks": [{ "title": title, "prompt": prompt }] })
+        json!({ "initiation": "user_asked", "subtasks": [{ "title": title, "background": BACKGROUND, "prompt": prompt }] })
     };
     h.tool(&root_token, "aiwb_subtask_create", opened("中间层", "[hold] 中间层的活")).await.unwrap();
     let middle = h.children(&root_id).await.remove(0);
@@ -700,7 +718,7 @@ async fn permissions_never_widen_and_waiting_subtasks_refuse_messages() {
         .tool(
             &token,
             "aiwb_subtask_create",
-            json!({ "initiation": "user_asked", "subtasks": [{ "title": "x", "prompt": "y", "access": "full" }] }),
+            json!({ "initiation": "user_asked", "subtasks": [{ "title": "x", "background": BACKGROUND, "prompt": "y", "access": "full" }] }),
         )
         .await
         .unwrap_err();
@@ -709,7 +727,7 @@ async fn permissions_never_widen_and_waiting_subtasks_refuse_messages() {
     h.tool(
         &token,
         "aiwb_subtask_create",
-        json!({ "initiation": "user_asked", "subtasks": [{ "title": "删文件", "prompt": "[ask] 删掉旧文件" }] }),
+        json!({ "initiation": "user_asked", "subtasks": [{ "title": "删文件", "background": BACKGROUND, "prompt": "[ask] 删掉旧文件" }] }),
     )
     .await
     .unwrap();
@@ -782,7 +800,7 @@ async fn offer_cards_wait_for_the_user() {
         .tool(
             &token,
             "aiwb_subtask_create",
-            json!({ "initiation": "offer", "subtasks": [{ "title": "修登录", "prompt": "修登录页", "worktree": false }] }),
+            json!({ "initiation": "offer", "subtasks": [{ "title": "修登录", "background": BACKGROUND, "prompt": "修登录页", "worktree": false }] }),
         )
         .await
         .unwrap();
@@ -792,7 +810,7 @@ async fn offer_cards_wait_for_the_user() {
         h.tool(
             &token,
             "aiwb_subtask_create",
-            json!({ "initiation": "own_initiative", "subtasks": [{ "title": format!("顺手 {}", rand_id()), "prompt": "p" }] }),
+            json!({ "initiation": "own_initiative", "subtasks": [{ "title": format!("顺手 {}", rand_id()), "background": BACKGROUND, "prompt": "p" }] }),
         )
         .await
         .unwrap();
@@ -801,7 +819,7 @@ async fn offer_cards_wait_for_the_user() {
         .tool(
             &token,
             "aiwb_subtask_create",
-            json!({ "initiation": "own_initiative", "subtasks": [{ "title": "第四个", "prompt": "p" }] }),
+            json!({ "initiation": "own_initiative", "subtasks": [{ "title": "第四个", "background": BACKGROUND, "prompt": "p" }] }),
         )
         .await
         .unwrap_err();
@@ -858,7 +876,7 @@ async fn detached_sessions_open_at_the_top_level_and_never_report_back() {
         .tool(
             &token,
             "aiwb_session_create",
-            json!({ "initiation": "user_asked", "sessions": [{ "title": "x", "prompt": "y", "access": "full" }] }),
+            json!({ "initiation": "user_asked", "sessions": [{ "title": "x", "background": BACKGROUND, "prompt": "y", "access": "full" }] }),
         )
         .await
         .unwrap_err();
@@ -868,7 +886,7 @@ async fn detached_sessions_open_at_the_top_level_and_never_report_back() {
         .tool(
             &token,
             "aiwb_session_create",
-            json!({ "initiation": "user_asked", "sessions": [{ "title": "独立活", "prompt": "独立的活" }] }),
+            json!({ "initiation": "user_asked", "sessions": [{ "title": "独立活", "background": BACKGROUND, "prompt": "独立的活" }] }),
         )
         .await
         .unwrap();
@@ -881,6 +899,11 @@ async fn detached_sessions_open_at_the_top_level_and_never_report_back() {
     let session = h.wait_state(&task_id, "done").await;
     let first = h.timeline(&session).await.into_iter().find(|event| event["kind"] == "user-message").unwrap();
     assert_eq!(first["sender"]["task_ids"][0], origin_id.as_str(), "时间线里看得出是谁开的");
+    assert_eq!(first["text"], "独立的活");
+    assert_eq!(first["sender"]["background"], BACKGROUND);
+    let delivered = h.sent_to(&h.native_of("独立的活"));
+    assert!(delivered[0].contains("Task:\n独立的活"), "{}", delivered[0]);
+    assert!(delivered[0].contains(BACKGROUND), "Agent 要收到背景：{}", delivered[0]);
 
     let foreign = h.tool(&token, "aiwb_subtask_read", json!({ "taskId": task_id })).await.unwrap_err();
     assert!(foreign.starts_with("not_found"), "{foreign}");
@@ -920,7 +943,7 @@ async fn detached_session_cards_and_empty_sessions() {
         .tool(
             &token,
             "aiwb_session_create",
-            json!({ "initiation": "offer", "sessions": [{ "title": "问一下", "prompt": "问过再开" }] }),
+            json!({ "initiation": "offer", "sessions": [{ "title": "问一下", "background": BACKGROUND, "prompt": "问过再开" }] }),
         )
         .await
         .unwrap();
@@ -976,7 +999,7 @@ async fn standalone_chats_open_detached_sessions_in_a_new_folder() {
     h.wait_state(&chat_id, "working").await;
     let token = h.mcp_of(&h.native_of("换个地方做")).unwrap().token;
     let created = h
-        .tool(&token, "aiwb_session_create", json!({ "initiation": "user_asked", "sessions": [{ "title": "别处", "prompt": "别处的活" }] }))
+        .tool(&token, "aiwb_session_create", json!({ "initiation": "user_asked", "sessions": [{ "title": "别处", "background": BACKGROUND, "prompt": "别处的活" }] }))
         .await
         .unwrap();
     let detached = h.task(created["sessions"][0]["taskId"].as_str().unwrap()).await;
@@ -1004,7 +1027,7 @@ async fn standalone_chats_open_subtasks_in_their_own_folder() {
         .tool(
             &token,
             "aiwb_subtask_create",
-            json!({ "initiation": "user_asked", "subtasks": [{ "title": "x", "prompt": "y", "worktree": true }] }),
+            json!({ "initiation": "user_asked", "subtasks": [{ "title": "x", "background": BACKGROUND, "prompt": "y", "worktree": true }] }),
         )
         .await
         .unwrap_err();
@@ -1014,7 +1037,7 @@ async fn standalone_chats_open_subtasks_in_their_own_folder() {
         .tool(
             &token,
             "aiwb_subtask_create",
-            json!({ "initiation": "user_asked", "subtasks": [{ "title": "审查", "prompt": "审查一下", "agent": "claude-code" }] }),
+            json!({ "initiation": "user_asked", "subtasks": [{ "title": "审查", "background": BACKGROUND, "prompt": "审查一下", "agent": "claude-code" }] }),
         )
         .await
         .unwrap();
@@ -1029,4 +1052,46 @@ async fn standalone_chats_open_subtasks_in_their_own_folder() {
     // 子任务自己不再拿工作台 MCP。
     let child_native = h.native_of("审查一下");
     assert!(h.mcp_of(&child_native).is_some(), "子任务也能开子任务");
+}
+
+/// 分叉带着完整对话留在同一个 Agent 上；不分叉就要写背景。发起的会话这时还在回合里。
+#[tokio::test]
+async fn a_fork_carries_the_conversation_and_fresh_needs_background() {
+    let h = harness().await;
+    let parent = h.create("claude-code", "[hold] 父任务的活", json!({})).await;
+    let parent_id = parent["id"].as_str().unwrap().to_string();
+    h.wait_state(&parent_id, "working").await;
+    let native = h.native_of("父任务的活");
+    let token = h.mcp_of(&native).unwrap().token;
+    let create = |item: Value| json!({ "initiation": "user_asked", "subtasks": [item] });
+
+    for (item, expected) in [
+        (json!({ "title": "x", "prompt": "y" }), "background"),
+        (json!({ "title": "x", "prompt": "y", "background": "太短" }), "background"),
+        (json!({ "title": "x", "prompt": "y", "context": "fork", "agent": "codex-cli" }), "own agent"),
+        (json!({ "title": "x", "prompt": "y", "context": "fork", "worktree": true }), "cannot be set on a fork"),
+    ] {
+        let refused = h.tool(&token, "aiwb_subtask_create", create(item)).await.unwrap_err();
+        assert!(refused.contains(expected), "{refused}");
+    }
+    assert!(h.children(&parent_id).await.is_empty());
+
+    h.tool(&token, "aiwb_subtask_create", create(json!({ "title": "分叉", "prompt": "接着做", "context": "fork" }))).await.unwrap();
+    let child = h.children(&parent_id).await.remove(0);
+    let child_id = child["id"].as_str().unwrap().to_string();
+    let session = h.wait_state(&child_id, "done").await;
+    let fork_native = format!("fork-of-{native}");
+    assert_eq!(h.task(&child_id).await["sessions"][0]["nativeId"], fork_native.as_str());
+    let sent = h.sent_to(&fork_native);
+    assert!(sent[0].starts_with("Task (from the session that started this one):
+接着做"), "{}", sent[0]);
+    assert!(sent[0].contains("Shared notes folder"), "{}", sent[0]);
+    assert!(h.mcp_of(&fork_native).unwrap().child, "子任务收到专用说明");
+    assert!(!h.mcp_of(&native).unwrap().child);
+
+    let users: Vec<Value> = h.timeline(&session).await.into_iter().filter(|event| event["kind"] == "user-message").collect();
+    assert_eq!(users[0]["text"], "[hold] 父任务的活", "时间线抄了父对话");
+    let task = users.iter().find(|event| event["sender"]["fork"] == true).expect("分叉后的任务单独标出来");
+    assert_eq!(task["text"], "接着做");
+    assert_eq!(task["sender"]["task_ids"][0], parent_id.as_str());
 }

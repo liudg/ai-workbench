@@ -9,6 +9,8 @@ export interface SessionLine<T> {
   task: T;
   /** 1 是子任务。 */
   depth: 0 | 1;
+  /** 是这个顶层任务下最后一个子任务。 */
+  last: boolean;
   /** 顶层任务下的后代数。 */
   subtasks: number;
   collapsed: boolean;
@@ -50,9 +52,11 @@ export function nestLines<T extends Nestable>(
   for (const task of roots) {
     const children = childrenOf.get(task.id) ?? [];
     const folded = collapsed.has(task.id);
-    lines.push({ task, depth: 0, subtasks: children.length, collapsed: folded });
+    lines.push({ task, depth: 0, last: false, subtasks: children.length, collapsed: folded });
     if (folded) continue;
-    for (const child of children) lines.push({ task: child, depth: 1, subtasks: 0, collapsed: false });
+    children.forEach((child, index) => {
+      lines.push({ task: child, depth: 1, last: index === children.length - 1, subtasks: 0, collapsed: false });
+    });
   }
   return lines;
 }

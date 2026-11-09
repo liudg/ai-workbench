@@ -163,19 +163,17 @@ impl CodexDirectory {
     ///
     /// 不用常驻目录进程：它调用 `thread/fork` 后会成为新线程的 active writer，
     /// 随后会话里的 `thread/resume` 只能只读打开。
-    pub async fn fork_thread(&self, native_id: &str) -> Result<DirectoryEntry, String> {
+    pub async fn fork_thread(&self, native_id: &str, cwd: Option<&str>) -> Result<DirectoryEntry, String> {
         let client = RpcClient::spawn().await?;
-        let result = client
-            .request(
-                "thread/fork",
-                json!({
-                    "threadId": native_id,
-                    "excludeTurns": true,
-                    "threadSource": "user",
-                }),
-                Duration::from_secs(60),
-            )
-            .await;
+        let mut params = json!({
+            "threadId": native_id,
+            "excludeTurns": true,
+            "threadSource": "user",
+        });
+        if let Some(cwd) = cwd {
+            params["cwd"] = json!(cwd);
+        }
+        let result = client.request("thread/fork", params, Duration::from_secs(60)).await;
         client.shutdown().await;
         let result = result?;
         let thread = result.get("thread").cloned().unwrap_or(result);
@@ -730,7 +728,7 @@ mod tests {
         let _ = session.stop().await;
 
         let adapter = CodexCliAdapter::new();
-        let forked = adapter.fork_thread(&id).await.expect("thread/fork");
+        let forked = adapter.fork_thread(&id, None).await.expect("thread/fork");
         ids.lock().unwrap().push(forked.native_id.clone());
 
         let directory = CodexDirectory::new();

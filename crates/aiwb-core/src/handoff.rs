@@ -30,7 +30,11 @@ pub struct HistoricalMessage {
 /// 思考、提问卡、状态和子 Agent 自己的步骤不带。
 pub fn historical_message(event: &SessionEvent) -> Option<HistoricalMessage> {
     let (role, kind, text) = match &event.body {
-        SessionEventBody::UserMessage { text, .. } => (Role::User, "user_message", text.clone()),
+        SessionEventBody::UserMessage { text, sender, .. } => (
+            Role::User,
+            "user_message",
+            sender.as_ref().map_or_else(|| text.clone(), |sender| sender.agent_text(text)),
+        ),
         SessionEventBody::AgentMessage {
             text, dedupe_of: None, ..
         } => (Role::Assistant, "assistant_message", text.clone()),

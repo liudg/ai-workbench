@@ -34,6 +34,7 @@ export function SessionRow({
   active,
   now,
   depth,
+  last,
   subtasks,
   collapsed,
   onToggle,
@@ -43,6 +44,8 @@ export function SessionRow({
   now: number;
   /** 1 是挂在父任务下的子任务。 */
   depth: 0 | 1;
+  /** 是父任务下最后一个子任务，竖线到这里收尾。 */
+  last: boolean;
   /** 下面挂着几个子任务。有子任务时可以折叠。 */
   subtasks: number;
   collapsed: boolean;
@@ -141,6 +144,16 @@ export function SessionRow({
           }
         }}
       >
+        {depth === 1 && (
+          <span
+            aria-hidden="true"
+            data-subtask-rail={last ? "last" : "middle"}
+            className={cn(
+              "pointer-events-none absolute left-11 top-0 border-[#3d3d3d]",
+              last ? "h-1/2 w-1.5 rounded-bl-[5px] border-b border-l" : "bottom-0 border-l",
+            )}
+          />
+        )}
         {subtasks > 0 && (
           <button
             type="button"

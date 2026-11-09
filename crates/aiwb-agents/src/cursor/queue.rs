@@ -140,7 +140,7 @@ impl Shared {
                         super::context::prepend(context, &mut input.blocks);
                         if !command {
                             if let Some(text) = shared.instructions.lock().unwrap().take() {
-                                input.blocks.insert(0, json!({"type":"text", "text":super::updates::wrap_instructions(text)}));
+                                input.blocks.insert(0, json!({"type":"text", "text":super::updates::wrap_instructions(&text)}));
                             }
                         }
                         let response = shared.rpc.start_request(

@@ -84,7 +84,7 @@ pub struct Shared {
     config: Mutex<ModelConfig>,
     applied_plan: AtomicBool,
     /// 有工作台 MCP 时还没送出的说明。ACP 没有系统提示字段，跟着这个进程的第一条提示走。
-    pub(super) instructions: Mutex<Option<&'static str>>,
+    pub(super) instructions: Mutex<Option<String>>,
 }
 
 pub struct Open {
@@ -171,7 +171,7 @@ async fn launch(
         wanted: Mutex::new(Wanted::default()),
         config: Mutex::new(ModelConfig::default()),
         applied_plan: AtomicBool::new(false),
-        instructions: Mutex::new(options.workbench_mcp.as_ref().map(|_| WorkbenchMcp::INSTRUCTIONS)),
+        instructions: Mutex::new(options.workbench_mcp.as_ref().map(WorkbenchMcp::instructions)),
     });
     start_io(&shared, stdin, stdout, stderr, rx);
     let models = {

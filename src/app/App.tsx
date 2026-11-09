@@ -21,6 +21,7 @@ const PREVIEWS: Record<string, LazyExoticComponent<ComponentType>> | null = impo
       image: lazy(() => import("@/app/preview/ImagePanelPreview")),
       markdown: lazy(() => import("@/app/preview/MarkdownModePreview")),
       mcp: lazy(() => import("@/app/preview/McpPreview")),
+      "nested-session": lazy(() => import("@/app/preview/NestedSessionPreview")),
       "plan-choice": lazy(() => import("@/app/preview/PlanChoicePreview")),
       questions: lazy(() => import("@/app/preview/QuestionPreview")),
       sidebar: lazy(() => import("@/features/sidebar/SidebarPreview")),

@@ -613,7 +613,11 @@ impl Runtimes {
         // 工作台 MCP 现在只有子任务工具：哪个会话都发，层数不限；侧边聊天不发。
         let workbench_mcp = (side_of.is_none() && self.adapter(session.agent).takes_workbench_mcp())
             .then(|| self.mcp.issue(session_id))
-            .flatten();
+            .flatten()
+            .map(|mut mcp| {
+                mcp.child = self.store.task(&session.task_id).ok().flatten().is_some_and(|task| task.parent_task_id.is_some());
+                mcp
+            });
         let ctx = SessionContext {
             project_path: cwd,
             access_mode: session.options.access.as_ref().map(|access| access.mode.clone()),

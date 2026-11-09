@@ -12,11 +12,17 @@ import { openTask } from "@/shared/shell/navigation";
  */
 export function useSubtaskHost(): SubtaskHost {
   const { tasks } = useTasks();
-  const key = tasks.map((task) => `${task.id}\u0000${task.title}\u0000${task.projectId ?? ""}`).join("\n");
+  const key = tasks
+    .map((task) => `${task.id}\u0000${task.title}\u0000${task.projectId ?? ""}\u0000${currentSession(task)?.agent ?? ""}`)
+    .join("\n");
   return useMemo(() => {
     const byId = new Map(tasks.map((task) => [task.id, task]));
     return {
       title: (taskId) => byId.get(taskId)?.title.trim() || undefined,
+      agent: (taskId) => {
+        const task = byId.get(taskId);
+        return task ? currentSession(task)?.agent : undefined;
+      },
       useSubtask,
       open: (taskId) => {
         const task = byId.get(taskId);

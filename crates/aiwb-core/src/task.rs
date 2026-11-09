@@ -205,6 +205,12 @@ pub struct SessionSpec {
     pub title: String,
     /// 第一条消息。新会话不带发起任务的对话。独立会话可以为空，等用户自己发。
     pub prompt: String,
+    /// 不分叉时，发起的会话写给新会话的背景。和第一条消息一起送给 Agent，时间线里单独显示。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background: Option<String>,
+    /// 从发起的会话分叉：新会话带着完整对话。只能同一个 Agent。
+    #[serde(default)]
+    pub fork: bool,
     #[serde(default)]
     pub worktree: bool,
     #[serde(default)]

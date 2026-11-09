@@ -6,7 +6,7 @@
 //! `full_thread_summary` / `delta_since_target_last_seen`。
 
 use aiwb_core::handoff::{budget, coverage, historical_message, message_with_handoff, select_history, DEFAULT_TOKEN_CAP};
-use aiwb_core::models::{AgentKind, HandoffStrategy, SessionEvent, SessionEventBody, SessionStatus};
+use aiwb_core::models::{AgentKind, HandoffStrategy, SessionEvent, SessionEventBody, SessionStatus, ToolStatus};
 use aiwb_core::task::TaskSession;
 
 use super::{RuntimeResult, Runtimes};
@@ -67,6 +67,8 @@ impl Runtimes {
                     | SessionEventBody::ContextUsage { .. }
                     | SessionEventBody::SessionUsage { .. }
                     | SessionEventBody::Handoff { delivered: false, .. }
+                    // 分叉时发起的会话还在回合里，没出结果的工具调用（比如开这个会话的调用）不跟过来。
+                    | SessionEventBody::ToolCall { status: ToolStatus::Running, .. }
             );
             if !skip {
                 self.append_at(session_id, event.body, false, event.ts)?;

@@ -59,6 +59,8 @@ pub struct Services {
     pub(crate) filters: aiwb_files::FilterHub,
     /// 默认的工作树目录，每个任务一个子目录。设置里可以换。
     pub(crate) worktree_root: PathBuf,
+    /// 每组嵌套会话的共享笔记目录放在这下面。
+    pub(crate) session_notes_root: PathBuf,
     /// 叫醒后台的工作树清理。
     worktree_sweep: tokio::sync::Notify,
     /// 嵌套任务在内存里的状态：待回报和正在送的回报。
@@ -96,6 +98,7 @@ impl Services {
             indexes: aiwb_files::IndexHub::default(),
             filters: aiwb_files::FilterHub::default(),
             worktree_root: data_dir.join("worktrees"),
+            session_notes_root: data_dir.join("session-notes"),
             worktree_sweep: tokio::sync::Notify::new(),
             info,
             shutdown: watch::channel(false).0,

@@ -246,6 +246,12 @@ export type SessionEventBody =
 /** 工作台消息说的是哪些子任务。 */
 export interface MessageSender {
   task_ids: string[];
+  /** 父 Agent 写给新会话的背景。 */
+  background?: string;
+  /** 这组嵌套会话共用的笔记目录。 */
+  notes?: string;
+  /** 新会话是分叉出来的，这条是分叉后交给它的任务。 */
+  fork?: boolean;
 }
 
 export interface SessionSpec {
