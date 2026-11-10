@@ -48,3 +48,8 @@ export function settleSubmit(
 export function shouldClearSubmittedText(live: string | null, submitted: string): boolean {
   return live == null || live === submitted;
 }
+
+/** 先清空再发的那条没送出去。输入框还空着才把原文放回去，用户已经在写新的就不动。 */
+export function shouldRestoreFailedText(live: string | null): boolean {
+  return live == null || live === "";
+}

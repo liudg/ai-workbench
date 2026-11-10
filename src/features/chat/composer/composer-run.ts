@@ -11,6 +11,7 @@ import {
   claimSubmit,
   settleSubmit,
   shouldClearSubmittedText,
+  shouldRestoreFailedText,
   submitFingerprint,
   type SubmitFlight,
 } from "./submit-flight";
@@ -227,7 +228,14 @@ export function runComposerSubmit(run: ComposerRun, options?: { now?: boolean })
     run.setText("");
     run.exitGoal();
     if (clearSnippets) run.host.clearTextSnippets();
-    void run.host.setCollaborationMode("plan").then(() => run.host.send(decision.text, [], deliverNow));
+    void run.host
+      .setCollaborationMode("plan")
+      .then(() => run.host.send(decision.text, [], deliverNow))
+      .then((ok) => {
+        if (ok) return;
+        release();
+        restoreFailedSend(run, []);
+      });
     return;
   }
   if (decision.type === "update-queue") {
@@ -278,9 +286,20 @@ export function runComposerSubmit(run: ComposerRun, options?: { now?: boolean })
   }
   run.setText("");
   if (clearSnippets) run.host.clearTextSnippets();
-  void run.host.send(decision.text, images, deliverNow);
+  void run.host.send(decision.text, images, deliverNow).then((ok) => {
+    if (ok) return;
+    release();
+    restoreFailedSend(run, clearAttachments ? attached : []);
+  });
   if (clearAttachments) run.host.clearAttachments();
   run.textareaRef.current?.focus();
+}
+
+function restoreFailedSend(run: ComposerRun, attached: Attachment[]) {
+  if (!shouldRestoreFailedText(run.textareaRef.current?.value ?? null)) return;
+  run.setText(run.text);
+  run.setCaret(run.text.length);
+  if (attached.length > 0) run.host.addAttachments(attached);
 }
 
 /** Ctrl+Enter。有内容直接送出；空输入则按队列顺序逐条引导。 */
