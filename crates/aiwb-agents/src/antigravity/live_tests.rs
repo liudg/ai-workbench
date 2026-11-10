@@ -362,6 +362,7 @@ async fn live_permission_presets_switch_native_modes() {
             replay_history: true,
             workbench_mcp: None,
             roots: Vec::new(),
+            saved_goal: None,
         },
         tx,
     )
@@ -395,7 +396,7 @@ async fn live_permission_presets_switch_native_modes() {
 async fn live_background_commands_finish_in_the_same_turn() {
     let mut live = Live::open("full", persist(), None).await;
     let got = live
-        .run("Run this PowerShell command with your terminal tool and wait for it: Start-Sleep -Seconds 20; echo slow-done . Then report its output in one sentence.")
+        .run("Run this PowerShell command with your terminal tool and wait for it: Start-Sleep -Seconds 100; echo slow-done . Then report its output in one sentence.")
         .await;
     assert!(got.iter().any(|event| matches!(event, SessionEventBody::ToolCall { name, status: ToolStatus::Completed, detail, .. } if name == "command" && detail.contains("slow-done"))), "{got:#?}");
     let answers: Vec<String> = got
@@ -503,7 +504,7 @@ async fn live_unsent_session_is_not_gone() {
 async fn live_subagents_show_their_steps() {
     let mut live = Live::open("full", persist(), None).await;
     let got = live
-        .run("Call the invoke_subagent tool once to start exactly one subagent (TypeName research) that reads a.txt and reports its first line. Wait for it to finish, then tell me what it reported, prefixed with RESULT:.")
+        .run("Call the invoke_subagent tool once to start exactly one subagent (TypeName research, Role File Reader) that reads a.txt and reports its first line. Wait for it to finish, then tell me what it reported, prefixed with RESULT:.")
         .await;
     assert!(message(&got).contains("alpha"), "{}", message(&got));
     let segments: std::collections::HashSet<_> = got
@@ -542,6 +543,29 @@ async fn live_subagents_show_their_steps() {
         .collect();
     assert!(answers.iter().any(|text| text.contains("NEXT-OK")), "{answers:?}");
     assert!(!answers.iter().any(|text| text.contains("RESULT")), "{answers:?}");
+
+    // 恢复后同角色的新调用不能认领历史子会话；重新读取文件必须得到新结果。
+    let id = live.native();
+    let Live { handle, dir, .. } = live;
+    handle.stop().await.unwrap();
+    std::fs::write(dir.path().join("a.txt"), "FRESH-RESUME-42\n").unwrap();
+    let mut live = Live::open_in(dir, "full", json!({"persist":true,"skip_history":true}), None, Some(id.clone())).await;
+    let got = live.run("Call invoke_subagent once, TypeName research and Role File Reader, to read a.txt again and report its first line. Wait for its result and reply with that line.").await;
+    assert!(message(&got).contains("FRESH-RESUME-42"), "{got:#?}");
+    assert!(got.iter().any(|event| matches!(event, SessionEventBody::Subagent(card)
+        if card.status == SubagentStatus::Completed)), "{got:#?}");
+    assert!(got.iter().any(|event| matches!(event, SessionEventBody::SubagentStep { step, .. }
+        if matches!(step.as_ref(), SessionEventBody::ToolCall { detail, .. } if detail.contains("FRESH-RESUME-42")))), "{got:#?}");
+    assert!(!got.iter().any(|event| matches!(event, SessionEventBody::Subagent(card)
+        if card.status == SubagentStatus::Completed && card.result.contains("alpha"))), "{got:#?}");
+
+    // 完整回放仍能显示两次派发各自的结果。
+    live.handle.stop().await.unwrap();
+    let history = AntigravityAdapter::new().import_history(&id, &live.dir.path().to_string_lossy()).await.unwrap();
+    for expected in ["alpha", "FRESH-RESUME-42"] {
+        assert!(history.iter().any(|event| matches!(event, SessionEventBody::SubagentStep { step, .. }
+            if matches!(step.as_ref(), SessionEventBody::ToolCall { detail, .. } if detail.contains(expected)))), "{history:#?}");
+    }
 
     // 删掉父会话时，子 Agent 自己的会话也要一起删掉。
     let children: Vec<String> = std::fs::read_dir(directory::brain_dir(&live.native()).unwrap().join(".system_generated").join("subagents"))
@@ -636,6 +660,30 @@ async fn live_goal_runs_and_completes() {
     live.handle.clear_goal().await.unwrap();
     live.until(|event| matches!(event, SessionEventBody::Goal { objective: None, .. })).await;
     live.close().await;
+}
+
+#[tokio::test]
+#[ignore = "calls the installed and authenticated agy"]
+async fn live_paused_goal_can_resume_after_reopening() {
+    let mut live = Live::open("full", persist(), None).await;
+    let id = live.native();
+    live.handle.set_goal("Reply OK without using tools, then mark this goal complete.").await.unwrap();
+    live.handle.set_goal_status("paused").await.unwrap();
+    live.finished().await;
+    live.drain();
+    let saved = live.seen.iter().rev().find(|event| matches!(event, SessionEventBody::Goal { .. })).unwrap().clone();
+    assert!(matches!(&saved, SessionEventBody::Goal { status, .. } if status.as_deref() == Some("paused")));
+    let Live { handle, dir, .. } = live;
+    handle.stop().await.unwrap();
+
+    // 和 daemon 一样传最后一条持久化事件。打开本身不能重新启动目标。
+    let mut again = Live::open_in(dir, "full", json!({"persist":true,"skip_history":true,"saved_goal":saved}), None, Some(id)).await;
+    assert!(!again.seen.iter().any(|event| matches!(event, SessionEventBody::StatusChanged { status: SessionStatus::Running })));
+    again.handle.set_goal_status("active").await.unwrap();
+    again.until(|event| matches!(event, SessionEventBody::Goal { status, .. } if status.as_deref() == Some("complete"))).await;
+    again.handle.clear_goal().await.unwrap();
+    again.until(|event| matches!(event, SessionEventBody::Goal { objective: None, .. })).await;
+    again.close().await;
 }
 
 #[tokio::test]

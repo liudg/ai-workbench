@@ -305,6 +305,8 @@ pub struct Subagents {
     cards: HashMap<String, SubagentCard>,
     order: Vec<String>,
     children: HashMap<String, Child>,
+    /// 不回放地接上时，只认这次连接之后的调用，避免认领历史子会话。
+    first_step: u64,
     watching: bool,
     /// 这一回合派过子 Agent。
     invoked: bool,
@@ -318,8 +320,19 @@ impl Subagents {
             cards: HashMap::new(),
             order: Vec::new(),
             children: HashMap::new(),
+            first_step: 0,
             watching: false,
             invoked: false,
+        }
+    }
+
+    pub fn resume(&mut self, parent: &str, replay: bool) {
+        self.parent = parent.to_string();
+        if !replay {
+            self.first_step = read_transcript(parent, 0)
+                .into_iter().flat_map(|(steps, _)| steps)
+                .filter_map(|step| step.get("step_index").and_then(Value::as_u64))
+                .max().map_or(0, |step| step + 1);
         }
     }
 
@@ -412,6 +425,10 @@ impl Subagents {
         let Ok(entries) = std::fs::read_dir(dir) else {
             return;
         };
+        // agy 1.5.4 实测：spawnStepIndex 是父转录里此调用的 GENERIC 结果步骤。
+        // PLANNER_RESPONSE 的调用和随后 GENERIC 的次序相同，用完整调用输入关联 ACP 卡片。
+        let calls = read_transcript(&self.parent, 0)
+            .map(|(steps, _)| self.call_cards(spawn_calls(&steps))).unwrap_or_default();
         for entry in entries.filter_map(Result::ok) {
             let Some(id) = entry.path().file_stem().and_then(|stem| stem.to_str()).map(str::to_string) else {
                 continue;
@@ -422,21 +439,35 @@ impl Subagents {
             let Ok(record) = std::fs::read_to_string(entry.path()).map(|raw| serde_json::from_str::<Value>(&raw).unwrap_or(Value::Null)) else {
                 continue;
             };
-            let role = record.pointer("/subagentDescriptor/role").and_then(Value::as_str).unwrap_or("");
-            if let Some(card) = self.unbound_card(role) {
-                self.bind(id, card);
+            let Some(card) = record.get("spawnStepIndex").and_then(Value::as_u64).and_then(|step| calls.get(&step)) else {
+                continue;
+            };
+            if self.cards[card].status == SubagentStatus::Running
+                && !self.children.values().any(|child| &child.card == card)
+            {
+                self.bind(id, card.clone());
             }
         }
     }
 
-    fn unbound_card(&self, role: &str) -> Option<String> {
-        let free = |id: &&String| !self.children.values().any(|child| &child.card == *id);
-        self.order
-            .iter()
-            .filter(free)
-            .find(|id| self.cards[*id].title == role)
-            .or_else(|| self.order.iter().find(free))
-            .cloned()
+    /// 先按转录次序固定调用和卡片，再找对应的子会话。缺一份记录也不能把后一个孩子移给前一张卡。
+    fn call_cards(&self, calls: HashMap<u64, Value>) -> HashMap<u64, String> {
+        let mut calls: Vec<_> = calls.into_iter().filter(|(step, _)| *step >= self.first_step).collect();
+        calls.sort_by_key(|(step, _)| *step);
+        let mut available = self.order.clone();
+        let mut matched = HashMap::new();
+        for (step, input) in calls {
+            let (Some(role), Some(prompt), Some(kind)) = (text(&input, "Role"), text(&input, "Prompt"), text(&input, "TypeName")) else {
+                continue;
+            };
+            if let Some(index) = available.iter().position(|id| {
+                let card = &self.cards[id];
+                card.title == role && card.prompt == prompt && card.agent_type == kind
+            }) {
+                matched.insert(step, available.remove(index));
+            }
+        }
+        matched
     }
 
     fn bind(&mut self, child: String, card: String) {
@@ -541,6 +572,30 @@ impl Subagents {
         card.finish(status, Some(now_millis()));
         vec![SessionEventBody::Subagent(card.clone())]
     }
+}
+
+/// 子会话的生成步骤 → 派它的完整输入。不按角色或目录枚举顺序猜测。
+fn spawn_calls(steps: &[Value]) -> HashMap<u64, Value> {
+    let mut pending = VecDeque::new();
+    let mut calls = HashMap::new();
+    for step in steps {
+        match step.get("type").and_then(Value::as_str) {
+            Some("PLANNER_RESPONSE") => {
+                for call in step.get("tool_calls").and_then(Value::as_array).into_iter().flatten() {
+                    pending.push_back((call.get("name").and_then(Value::as_str), decoded_args(call.get("args"))));
+                }
+            }
+            Some("GENERIC") => {
+                if let Some((Some("invoke_subagent"), input)) = pending.pop_front() {
+                    if let Some(index) = step.get("step_index").and_then(Value::as_u64) {
+                        calls.insert(index, input);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    calls
 }
 
 /// 子 Agent 还在跑时盯着磁盘。

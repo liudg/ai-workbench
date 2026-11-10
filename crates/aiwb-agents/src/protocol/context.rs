@@ -10,6 +10,7 @@ pub struct SessionContext {
     /// 要恢复的原生会话 id。空表示新会话。
     pub resume_native_id: Option<String>,
     /// 适配器扩展。是否写入可 resume 的会话列表由各适配器读取 `persist`。
+    /// `saved_goal` 是恢复会话时 SQLite 中最后一条 Goal 事件；没有原生目标存储的适配器可恢复它，不重新投递。
     pub options: serde_json::Value,
     /// 工作台自己的 MCP 服务。有值时适配器把它加进这个会话的 MCP 列表，不动用户配的。
     pub workbench_mcp: Option<WorkbenchMcp>,

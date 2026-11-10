@@ -18,7 +18,7 @@ use super::process;
 use crate::acp::runtime::{mcp_servers, Opening, Parts, Shared, HANDSHAKE};
 use crate::acp::UpdateRules;
 use crate::{AgentError, DirectoryEntry, EventSink, WorkbenchMcp};
-use aiwb_core::models::{cwd_key, SessionStatus};
+use aiwb_core::models::{cwd_key, SessionEventBody, SessionStatus};
 
 /// 同一时刻只让一个 `agy acp` 走启动，并行时 `session/new` 会超时（2026-11-09，6 个同时起）。
 fn startup_gate() -> &'static tokio::sync::Mutex<()> {
@@ -37,6 +37,7 @@ pub struct Open {
     pub replay_history: bool,
     pub workbench_mcp: Option<WorkbenchMcp>,
     pub roots: Vec<String>,
+    pub saved_goal: Option<SessionEventBody>,
 }
 
 pub fn roots_of(options: &Value) -> Vec<String> {
@@ -77,6 +78,10 @@ pub async fn open(options: Open, events: EventSink) -> Result<Arc<Shared>, Agent
     let access = options.access_mode.as_deref().unwrap_or("full");
     let servers = mcp_servers(options.workbench_mcp.as_ref());
     let dialect = AntigravityDialect::new(&project, events.clone(), probing, servers.clone());
+    if let Some(id) = resume.as_deref() {
+        dialect.resume_subagents(id, options.replay_history);
+        dialect.restore_goal(options.saved_goal);
+    }
     let access = {
         use crate::acp::Dialect;
         dialect.access_level(access).to_string()

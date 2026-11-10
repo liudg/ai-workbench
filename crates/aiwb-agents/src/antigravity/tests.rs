@@ -160,7 +160,7 @@ fn a_background_command_finishes_its_running_card() {
 
 #[test]
 fn background_tasks_are_awaited_until_their_result_arrives() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = super::regression_tests::DataRoot::new();
     let id = "3f86e1c1-ca85-469f-946a-4877264ee320";
     let logs = dir.path().join("antigravity-cli").join("brain").join(id).join(".system_generated").join("logs");
     std::fs::create_dir_all(&logs).unwrap();
@@ -172,7 +172,6 @@ fn background_tasks_are_awaited_until_their_result_arrives() {
         std::fs::write(logs.join("transcript.jsonl"), text).unwrap();
     };
     write(&[&started, &reply]);
-    std::env::set_var("ANTIGRAVITY_GEMINI_DIR", dir.path());
     let mut tail = super::subagents::ParentTail::new(id);
     assert!(tail.waiting_on_tasks());
     assert!(!tail.settled(&[]));
@@ -181,7 +180,6 @@ fn background_tasks_are_awaited_until_their_result_arrives() {
     let answer = json!({"step_index":36,"type":"PLANNER_RESPONSE","status":"DONE","content":"The command finished with output: slow-done"});
     write(&[&started, &reply, &finished, &answer]);
     let updates = tail.read();
-    std::env::remove_var("ANTIGRAVITY_GEMINI_DIR");
     let done = tail.take_finished();
     assert_eq!(done.len(), 1);
     assert_eq!(done[0].command, "Start-Sleep -Seconds 25; echo slow-done");

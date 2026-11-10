@@ -12,10 +12,11 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use serde_json::{json, Value};
+use tokio::time::Instant;
 
 use super::catalog;
 use super::directory;
@@ -365,6 +366,23 @@ impl AntigravityDialect {
         }
     }
 
+    /// 恢复的是宿主保存的状态，不发 `/goal`。进程重开后没有运行中的回合，未完成的目标先暂停。
+    pub fn restore_goal(&self, saved: Option<SessionEventBody>) {
+        let Some(SessionEventBody::Goal { objective, status, .. }) = saved else { return };
+        *self.goal.lock().unwrap() = objective.filter(|text| !text.trim().is_empty()).map(|objective| Goal {
+            objective,
+            status: match status.as_deref() {
+                Some("complete") => "complete",
+                _ => "paused",
+            }.to_string(),
+        });
+        self.publish();
+    }
+
+    pub fn resume_subagents(&self, parent: &str, replay: bool) {
+        self.subagents.lock().unwrap().resume(parent, replay);
+    }
+
     fn publish(&self) {
         let _ = self.events.send(self.goal_event());
     }
@@ -589,7 +607,10 @@ impl Dialect for AntigravityDialect {
                 let subagents = self.subagents.lock().unwrap();
                 (subagents.has_running(), subagents.child_ids())
             };
-            if !running {
+            if running || tail.waiting_on_tasks() {
+                // 后台命令可以长时间没有新转录；只在所有工作结束后才开始等主会话答复。
+                quiet_since = None;
+            } else {
                 if tail.settled(&children) {
                     return;
                 }

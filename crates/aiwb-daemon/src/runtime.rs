@@ -475,6 +475,16 @@ impl Runtimes {
         Ok(answered)
     }
 
+    /// 原生协议不保存目标的适配器从事件恢复；清除事件也要带上，不能退回更早的目标。
+    fn saved_goal(&self, session_id: &str) -> RuntimeResult<Option<Value>> {
+        let mut logs = self.logs.lock().unwrap();
+        let log = self.log_mut(&mut logs, session_id)?;
+        log.events.iter().rev()
+            .find(|event| matches!(event.body, SessionEventBody::Goal { .. }))
+            .map(|event| serde_json::to_value(&event.body).map_err(|err| err.to_string()))
+            .transpose()
+    }
+
     /// Agent 自己切了计划模式（比如批准退出计划）。记进会话选项，重新接上时不再切回去。
     fn keep_collaboration_mode(&self, session_id: &str, mode: &str) -> RuntimeResult<()> {
         let Some(session) = self.store.session(session_id).map_err(|e| e.to_string())? else {
@@ -630,6 +640,11 @@ impl Runtimes {
         };
         if side_of.is_none() && resume.is_some() && self.has_native_history(session_id)? {
             options["has_history"] = json!(true);
+        }
+        if side_of.is_none() && resume.is_some() {
+            if let Some(goal) = self.saved_goal(session_id)? {
+                options["saved_goal"] = goal;
+            }
         }
         if let Some(access) = session.options.access.as_ref() {
             if !access.writable_roots.is_empty() {
@@ -1437,6 +1452,30 @@ mod tests {
                 _ => None,
             })
             .collect()
+    }
+
+    #[tokio::test]
+    async fn reopened_sessions_receive_the_latest_persisted_goal_including_clear() {
+        let (store, runtimes) = runtimes_with_task(SessionStatus::Completed);
+        store.set_session_native_id("s", "thread-1").unwrap();
+        let adapter = Arc::new(FailingStart { gone: false, starts: Default::default(), options: Default::default() });
+        let goal = |objective: Option<&str>| SessionEventBody::Goal {
+            objective: objective.map(str::to_string), status: Some("paused".into()),
+            token_budget: None, tokens_used: None, time_used_seconds: None,
+        };
+        for objective in [Some("old goal"), Some("new goal"), None] {
+            let event = goal(objective);
+            runtimes.record("s", event.clone()).unwrap();
+            // 新的 runtime 没有内存中的时间线，必须从 SQLite 读回来。
+            let restarted = failing_runtimes(&store, &adapter);
+            let _ = restarted.handle("s").await;
+            let options = adapter.options.lock().unwrap().last().unwrap().clone();
+            assert_eq!(options["saved_goal"], serde_json::to_value(event).unwrap());
+        }
+        // 没有原生会话时不能把抄来的目标当作恢复状态。
+        store.set_session_native_id("s", "").unwrap();
+        let _ = failing_runtimes(&store, &adapter).handle("s").await;
+        assert!(adapter.options.lock().unwrap().last().unwrap().get("saved_goal").is_none());
     }
 
     #[tokio::test]

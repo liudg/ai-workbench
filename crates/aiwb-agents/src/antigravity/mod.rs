@@ -21,6 +21,8 @@ mod subscription;
 #[cfg(test)]
 mod live_tests;
 #[cfg(test)]
+mod regression_tests;
+#[cfg(test)]
 mod tests;
 
 use std::sync::Arc;
@@ -147,6 +149,9 @@ impl AgentAdapter for AntigravityAdapter {
                 persist: ctx.flag("persist"),
                 replay_history: !ctx.flag("skip_history"),
                 roots: open::roots_of(&ctx.options),
+                saved_goal: ctx.options.get("saved_goal").cloned()
+                    .map(serde_json::from_value).transpose()
+                    .map_err(|err| AgentError::Runtime(format!("无法恢复目标：{err}")))?,
                 project_path: ctx.project_path,
                 access_mode: ctx.access_mode,
                 resume: ctx.resume_native_id,
