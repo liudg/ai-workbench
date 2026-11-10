@@ -1720,27 +1720,44 @@ async fn live_deleted_session_reopens_as_gone() {
         workbench_mcp: None,
         options: serde_json::json!({ "persist": true, "skip_history": true, "has_history": true }),
     };
+    // 跑完一轮，返回最后一句回复。
+    async fn reply(rx: &mut mpsc::UnboundedReceiver<SessionEventBody>) -> (SessionStatus, String) {
+        let mut started = false;
+        let mut text = String::new();
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(120);
+        while tokio::time::Instant::now() < deadline {
+            match timeout(Duration::from_secs(8), rx.recv()).await {
+                Ok(Some(SessionEventBody::AgentMessage { text: said, .. })) => text = said,
+                Ok(Some(SessionEventBody::StatusChanged { status: SessionStatus::Running })) => started = true,
+                Ok(Some(SessionEventBody::StatusChanged { status: status @ (SessionStatus::Completed | SessionStatus::Failed) })) if started => {
+                    return (status, text);
+                }
+                Ok(None) => break,
+                _ => {}
+            }
+        }
+        (SessionStatus::Failed, text)
+    }
+
     let (tx, mut rx) = mpsc::unbounded_channel();
     let first = adapter.start_session(ctx(None), tx).await.expect("start");
     let id = first.native_id().expect("native id");
-    first.send_message("Reply with the single word ok. Do not use tools.".into()).await.expect("send");
-    let mut started = false;
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(120);
-    while tokio::time::Instant::now() < deadline {
-        match timeout(Duration::from_secs(8), rx.recv()).await {
-            Ok(Some(SessionEventBody::StatusChanged { status: SessionStatus::Running })) => started = true,
-            Ok(Some(SessionEventBody::StatusChanged { status: SessionStatus::Completed | SessionStatus::Failed })) if started => break,
-            Ok(None) => break,
-            _ => {}
-        }
-    }
+    first.send_message("Remember the code word KIWI-42. Reply with the single word ok. Do not use tools.".into()).await.expect("send");
+    let (status, said) = reply(&mut rx).await;
+    assert_eq!(status, SessionStatus::Completed, "{said}");
+    assert!(said.to_lowercase().contains("ok"), "{said}");
     first.stop().await.unwrap();
     drop(first);
     assert!(history::find_session_file(&id).is_some(), "聊过之后应该有转录");
 
-    let (tx, _rx) = mpsc::unbounded_channel();
+    // 接回之后还能接着聊，记得上一轮。
+    let (tx, mut rx) = mpsc::unbounded_channel();
     let again = adapter.start_session(ctx(Some(id.clone())), tx).await.expect("转录还在时能接回");
     assert_eq!(again.native_id().as_deref(), Some(id.as_str()));
+    again.send_message("What was the code word? Reply with only the code word.".into()).await.expect("send");
+    let (status, said) = reply(&mut rx).await;
+    assert_eq!(status, SessionStatus::Completed, "{said}");
+    assert!(said.contains("KIWI-42"), "{said}");
     again.stop().await.unwrap();
     drop(again);
 
