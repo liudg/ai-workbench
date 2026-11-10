@@ -296,6 +296,45 @@ async fn live_queue_steer_and_cancel() {
     live.close().await;
 }
 
+/// 不动本机登录：改用「应用默认凭据」登录方式，再把凭据和数据目录指到空的临时目录，agy 就是未登录状态。
+/// 环境变量对整个测试进程生效，单独跑：
+/// cargo test -p aiwb-agents antigravity::live_tests::live_signed_out -- --ignored --test-threads=1
+#[tokio::test]
+#[ignore = "calls the installed agy with an isolated, signed-out environment"]
+async fn live_signed_out_sessions_say_how_to_sign_in() {
+    let empty = tempfile::tempdir().unwrap();
+    let project = tempfile::tempdir().unwrap();
+    let vars = [
+        ("AGY_ADC_AUTH", "1".to_string()),
+        ("GOOGLE_APPLICATION_CREDENTIALS", empty.path().join("missing.json").to_string_lossy().to_string()),
+        ("CLOUDSDK_CONFIG", empty.path().to_string_lossy().to_string()),
+        ("APPDATA", empty.path().to_string_lossy().to_string()),
+        ("ANTIGRAVITY_GEMINI_DIR", empty.path().join("gemini").to_string_lossy().to_string()),
+    ];
+    for (key, value) in &vars {
+        std::env::set_var(key, value);
+    }
+    let (tx, _rx) = mpsc::unbounded_channel();
+    let opened = AntigravityAdapter::new()
+        .start_session(
+            SessionContext {
+                project_path: project.path().to_string_lossy().to_string(),
+                access_mode: Some("full".into()),
+                resume_native_id: None,
+                workbench_mcp: None,
+                options: persist(),
+            },
+            tx,
+        )
+        .await;
+    for (key, _) in &vars {
+        std::env::remove_var(key);
+    }
+    let message = opened.err().expect("未登录不能打开会话").to_string();
+    // 前缀「agent 运行时错误: 」是所有 Agent 共用的错误格式。
+    assert!(message.ends_with("Antigravity 还没有登录。请在终端运行 `agy` 登录后再试。"), "{message}");
+}
+
 /// 收事件直到回合结束。
 async fn settle(rx: &mut mpsc::UnboundedReceiver<SessionEventBody>) -> Vec<SessionEventBody> {
     let mut got = Vec::new();
