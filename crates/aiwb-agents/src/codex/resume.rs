@@ -687,9 +687,19 @@ mod tests {
         let _ = session.stop().await;
         assert!(replied, "Codex did not answer");
 
-        let (opened, _rx) = open(Some(id.clone()), true);
+        // 接回之后还能接着聊，记得上一轮。
+        let (opened, mut rx) = open(Some(id.clone()), true);
         let session = opened.await.expect("聊过的线程还在时能接回");
+        session.send_message("What single word did you reply last time? Reply with only that word.".into()).await.expect("send");
+        let deadline = std::time::Instant::now() + Duration::from_secs(120);
+        let mut again = String::new();
+        while again.is_empty() && std::time::Instant::now() < deadline {
+            if let Ok(Some(SessionEventBody::AgentMessage { text, .. })) = timeout(Duration::from_millis(500), rx.recv()).await {
+                again = text.trim().to_lowercase();
+            }
+        }
         let _ = session.stop().await;
+        assert!(again.contains("ok"), "接回后的回复：{again:?}");
 
         delete_persisted_thread(&id).await.expect("thread/delete");
         let (opened, _rx) = open(Some(id.clone()), true);
