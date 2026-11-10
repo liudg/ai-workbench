@@ -58,15 +58,43 @@ pub fn remove(id: &str) -> Result<(), String> {
         let _ = std::fs::remove_file(root.join("conversations").join(format!("{id}.{suffix}")));
     }
     let _ = std::fs::remove_file(root.join("annotations").join(format!("{id}.pbtxt")));
+    // 子 Agent 各是一条会话，记在父会话的 `.system_generated/subagents/<子会话 id>.json`。父会话删了它们也跟着删。
+    for child in subagent_ids(&brain) {
+        if child != id {
+            let _ = remove(&child);
+        }
+    }
     if brain.is_dir() {
         std::fs::remove_dir_all(&brain).map_err(|err| format!("删不掉会话 {id} 的产物：{err}"))?;
     }
     Ok(())
 }
 
+fn subagent_ids(brain: &std::path::Path) -> Vec<String> {
+    let Ok(entries) = std::fs::read_dir(brain.join(".system_generated").join("subagents")) else {
+        return Vec::new();
+    };
+    entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| entry.path().file_stem().and_then(|stem| stem.to_str()).map(str::to_string))
+        .filter(|stem| uuid::Uuid::parse_str(stem).is_ok())
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::gone_under;
+    use super::{gone_under, subagent_ids};
+
+    #[test]
+    fn subagent_conversations_are_read_from_the_parent_brain() {
+        let brain = tempfile::tempdir().unwrap();
+        let dir = brain.path().join(".system_generated").join("subagents");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("1b5c2f53-9d0e-4b6a-8a43-2b1c3d4e5f60.json"), "{}").unwrap();
+        std::fs::write(dir.join("notes.json"), "{}").unwrap();
+        assert_eq!(subagent_ids(brain.path()), vec!["1b5c2f53-9d0e-4b6a-8a43-2b1c3d4e5f60".to_string()]);
+        assert!(subagent_ids(&brain.path().join("missing")).is_empty());
+    }
 
     #[test]
     fn gone_only_when_conversation_and_brain_are_both_missing() {

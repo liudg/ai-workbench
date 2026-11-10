@@ -542,7 +542,17 @@ async fn live_subagents_show_their_steps() {
         .collect();
     assert!(answers.iter().any(|text| text.contains("NEXT-OK")), "{answers:?}");
     assert!(!answers.iter().any(|text| text.contains("RESULT")), "{answers:?}");
+
+    // 删掉父会话时，子 Agent 自己的会话也要一起删掉。
+    let children: Vec<String> = std::fs::read_dir(directory::brain_dir(&live.native()).unwrap().join(".system_generated").join("subagents"))
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter_map(|entry| entry.path().file_stem()?.to_str().map(str::to_string))
+        .collect();
+    assert!(!children.is_empty());
+    assert!(children.iter().all(|child| directory::data_dir().unwrap().join("conversations").join(format!("{child}.db")).is_file()), "{children:?}");
     live.close().await;
+    assert!(children.iter().all(|child| directory::is_gone(child)), "{children:?}");
 }
 
 #[tokio::test]
