@@ -206,6 +206,69 @@ pub fn cursor_remove_rejected() -> Result<Vec<String>, String> {
     Err("agent mcp 没有 remove。帮助会退回父命令。".into())
 }
 
+pub fn antigravity_remove(name: &str) -> Result<Vec<String>, String> {
+    Ok(vec!["mcp".into(), "remove".into(), require_name(name)?])
+}
+
+/// `agy mcp add [flags] <name> <commandOrUrl> [args...]`：旗标必须在名字前面。
+pub fn antigravity_add(spec: &McpAddSpec) -> Result<Vec<String>, String> {
+    if !spec.scope.trim().is_empty() {
+        return Err("agy mcp add 没有 scope。".into());
+    }
+    if !spec.callback_port.trim().is_empty() {
+        return Err("agy mcp add 没有回调端口。".into());
+    }
+    if !spec.bearer_token_env_var.trim().is_empty() {
+        return Err("agy mcp add 没有 --bearer-token-env-var。HTTP 用 Headers。".into());
+    }
+    if !spec.client_id.trim().is_empty() || !spec.client_secret.trim().is_empty()
+        || !spec.oauth_resource.trim().is_empty() || !spec.oauth_registration.trim().is_empty()
+    {
+        return Err("agy mcp add 没有 OAuth 旗标。".into());
+    }
+    let name = require_new_name(&spec.name)?;
+    let mut args: Vec<String> = vec!["mcp".into(), "add".into()];
+    match spec.transport.as_str() {
+        "stdio" => {
+            require_text(&spec.command, "STDIO 需要启动命令。")?;
+            reject_text(&spec.url, "URL 只用于 HTTP。")?;
+            if !spec.headers.is_empty() {
+                return Err("Headers 只用于 HTTP。".into());
+            }
+            for pair in &spec.env {
+                args.push("--env".into());
+                args.push(env_arg(&pair.key, &pair.value)?);
+            }
+            args.push(name);
+            args.push("--".into());
+            args.push(spec.command.trim().to_string());
+            for arg in &spec.args {
+                if arg.chars().any(|ch| ch == '\n' || ch == '\r') {
+                    return Err("参数不能换行。".into());
+                }
+                args.push(arg.clone());
+            }
+        }
+        "http" => {
+            require_text(&spec.url, "HTTP 需要 URL。")?;
+            reject_text(&spec.command, "命令只用于 STDIO。")?;
+            if !spec.args.is_empty() || !spec.env.is_empty() {
+                return Err("参数和环境变量只用于 STDIO。".into());
+            }
+            args.push("--type".into());
+            args.push("http".into());
+            for pair in &spec.headers {
+                args.push("--header".into());
+                args.push(header_arg(&pair.key, &pair.value)?);
+            }
+            args.push(name);
+            args.push(spec.url.trim().to_string());
+        }
+        other => return Err(format!("Antigravity 不支持传输类型 {other}。")),
+    }
+    Ok(args)
+}
+
 fn push_codex_oauth(args: &mut Vec<String>, spec: &McpAddSpec) -> Result<(), String> {
     if !spec.client_id.trim().is_empty() {
         args.push("--oauth-client-id".into());

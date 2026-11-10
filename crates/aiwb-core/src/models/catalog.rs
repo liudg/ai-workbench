@@ -324,6 +324,60 @@ impl AgentCapabilities {
             supports_subagent_stop: false,
         }
     }
+
+    /// Antigravity 会话（`agy acp`）。证据来自 2026-11-09 本机 agy 1.5.3。
+    pub fn antigravity() -> Self {
+        Self {
+            // `available_commands_update` 给出斜杠命令和技能，正文里写 `/名字` 发出去。
+            supports_slash: true,
+            // `sessionCapabilities` 有 `load` 和 `resume`。
+            supports_resume: true,
+            // `ask_question` 走 `elicitation/create` 表单，单选、多选，每题可以写自由回答。
+            supports_questions: true,
+            // `session/set_config_option` 的 `model` 和 `thought_level`。
+            supports_tuning: true,
+            // 技能在 `available_commands_update` 里，走斜杠菜单，和 Cursor 一样不另列。
+            supports_skills: false,
+            // `/goal` 提示模板，达成时回答里带 `<!-- GOAL_COMPLETE -->`。
+            supports_goals: true,
+            // `promptCapabilities.image = true`。
+            supports_images: true,
+            // 本地排队；引导时回合进行中再发 `session/prompt`。
+            supports_queue: true,
+            // `session/cancel`，这一轮以 `stopReason = cancelled` 收尾。
+            supports_cancel: true,
+            // ACP 没有分叉方法，`--conversation` 只能接着原来的会话。
+            supports_fork: false,
+            // `session/set_mode` 的 `plan`，计划写成 `implementation_plan.md`。
+            supports_plan: true,
+            // 编辑工具结果带 `content[].type = diff`（原文和新文）。
+            changes: ChangeCapabilities {
+                turn_diff: true,
+                per_file_patch: true,
+                git_scopes: true,
+            },
+            // 没有审查目标接口。
+            supports_review: false,
+            // 没有网络开关，`--sandbox` 是启动参数，只管终端命令。
+            supports_network_access: false,
+            // `additionalDirectories`，`session/close` + `session/resume` 换。
+            supports_writable_roots: true,
+            supports_permission_profiles: false,
+            // `accept-edits` 模式作为预设档，不是 Codex 的 `auto_review`。
+            supports_approve_for_me: false,
+            supports_paged_history: false,
+            // `agy -p /usage --output-format json` 带回各组额度的 `remaining_fraction` 和 `reset_time`。
+            supports_subscription_usage: true,
+            // 交接只是第一条 `session/prompt` 的文字。
+            supports_context_handoff: true,
+            // 2026-11-09 实测：`session/resume` 带新的 `cwd` 后记忆还在。旧目录留在工作区里，由适配器告诉模型现在的项目目录。
+            supports_workdir_move: true,
+            // 临时分支对话只有 TUI 的 `/btw`，ACP 发过去是普通消息，会进历史。
+            supports_side_chat: false,
+            // `session/cancel` 只认主会话，停子 Agent 的 `manage_subagents` 是模型的工具。
+            supports_subagent_stop: false,
+        }
+    }
 }
 
 /// 权限菜单里的一项：内置档位或具名配置档。文案由适配器给出。

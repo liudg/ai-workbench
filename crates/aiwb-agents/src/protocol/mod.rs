@@ -7,6 +7,7 @@
 mod adapter;
 mod context;
 mod error;
+pub(crate) mod plan_choice;
 mod session;
 mod surface;
 mod turn;

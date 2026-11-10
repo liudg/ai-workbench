@@ -5,14 +5,9 @@
 
 use async_trait::async_trait;
 
-use crate::install::{AliasCheck, AliasRule, CliRelease};
+use crate::install::{AliasRule, CliRelease};
 use crate::{AgentAdapter, AgentError};
 use aiwb_core::models::{AgentCapabilities, AgentKind};
-
-const GEMINI_NOTE: &str = "\
-Gemini CLI（gemini）已于 2026-06-18 停更，官方后继是 Antigravity CLI。\
-优先识别 agy，其次 antigravity，最后才是仍留在 PATH 上的 gemini。\
-只找到 gemini 时不在应用内更新。";
 
 const OPENCODE_NOTE: &str = "\
 npm 包是 opencode-ai。安装方式认不出来时，opencode upgrade 可能在终端里询问，应用内更新就不会成功。";
@@ -48,21 +43,8 @@ pub fn release_for(kind: AgentKind) -> CliRelease {
             &[],
             OPENCODE_NOTE,
         ),
-        AgentKind::Antigravity => release(
-            &["agy", "antigravity", "gemini"],
-            "",
-            &["update"],
-            &[],
-            &[AliasRule {
-                name: "gemini",
-                check: AliasCheck::None,
-                version_args: None,
-                update_args: Some(&[]),
-            }],
-            GEMINI_NOTE,
-        ),
-        AgentKind::CodexCli | AgentKind::ClaudeCode | AgentKind::CursorAgent => {
-            panic!("Codex、Claude 和 Cursor 不走外部桩适配器")
+        AgentKind::CodexCli | AgentKind::ClaudeCode | AgentKind::CursorAgent | AgentKind::Antigravity => {
+            panic!("已接入的 Agent 不走外部桩适配器")
         }
     }
 }
@@ -101,7 +83,6 @@ impl AgentAdapter for ExternalCliAdapter {
             AgentKind::KimiCode => Some("/agent-icons/kimi-code.svg"),
             AgentKind::QwenCode => Some("/agent-icons/qwen-code.svg"),
             AgentKind::OpenCode => Some("/agent-icons/opencode.svg"),
-            AgentKind::Antigravity => Some("/agent-icons/antigravity.svg"),
             _ => None,
         }
     }
@@ -148,7 +129,7 @@ mod tests {
             .expect("no session for an unlinked agent");
         assert!(err.to_string().contains("未接入"), "{err}");
         for kind in AgentKind::all() {
-            if matches!(kind, AgentKind::CodexCli | AgentKind::ClaudeCode | AgentKind::CursorAgent) {
+            if matches!(kind, AgentKind::CodexCli | AgentKind::ClaudeCode | AgentKind::CursorAgent | AgentKind::Antigravity) {
                 continue;
             }
             assert!(
@@ -162,7 +143,7 @@ mod tests {
     #[test]
     fn updates_are_cli_subcommands() {
         for kind in AgentKind::all() {
-            if matches!(kind, AgentKind::CodexCli | AgentKind::ClaudeCode | AgentKind::CursorAgent) {
+            if matches!(kind, AgentKind::CodexCli | AgentKind::ClaudeCode | AgentKind::CursorAgent | AgentKind::Antigravity) {
                 continue;
             }
             let release = release_for(kind);

@@ -6,6 +6,8 @@
 //! 提问卡、审批、模型目录等共享能力走协议 trait 和能力开关，
 //! 会话管理和命令层不要解析某一种 CLI 的协议。
 
+mod acp;
+mod antigravity;
 mod changes;
 mod claude;
 mod codex;
@@ -29,6 +31,10 @@ use std::sync::Arc;
 use aiwb_core::models::{AgentInstallation, AgentKind, AgentProfile, McpSurface};
 
 pub use mcp::McpDriver;
+
+fn antigravity_bin() -> Option<std::path::PathBuf> {
+    antigravity::binary()
+}
 pub use install::UpgradeOutput;
 
 pub use directory::{DirectoryEntry, DirectoryPage, SessionDirectory};
@@ -39,10 +45,10 @@ pub fn adapter_for(kind: AgentKind) -> Arc<dyn AgentAdapter> {
         AgentKind::CodexCli => Arc::new(codex::CodexCliAdapter::new()),
         AgentKind::ClaudeCode => Arc::new(claude::ClaudeCodeAdapter::new()),
         AgentKind::CursorAgent => Arc::new(cursor::CursorAgentAdapter::new()),
-        AgentKind::KimiCode
-        | AgentKind::QwenCode
-        | AgentKind::OpenCode
-        | AgentKind::Antigravity => Arc::new(external::ExternalCliAdapter::new(kind)),
+        AgentKind::Antigravity => Arc::new(antigravity::AntigravityAdapter::new()),
+        AgentKind::KimiCode | AgentKind::QwenCode | AgentKind::OpenCode => {
+            Arc::new(external::ExternalCliAdapter::new(kind))
+        }
     }
 }
 
@@ -121,11 +127,11 @@ mod tests {
         assert!(adapter_for(AgentKind::CodexCli).mcp().is_some());
         assert!(adapter_for(AgentKind::ClaudeCode).mcp().is_some());
         assert!(adapter_for(AgentKind::CursorAgent).mcp().is_some());
+        assert!(adapter_for(AgentKind::Antigravity).mcp().is_some());
         for kind in [
             AgentKind::KimiCode,
             AgentKind::QwenCode,
             AgentKind::OpenCode,
-            AgentKind::Antigravity,
         ] {
             assert!(adapter_for(kind).mcp().is_none(), "{}", kind.as_str());
         }
@@ -196,11 +202,11 @@ mod tests {
     }
 
     #[test]
-    fn linked_sessions_are_codex_claude_and_cursor() {
+    fn linked_sessions_are_codex_claude_cursor_and_antigravity() {
         for kind in AgentKind::all() {
             let linked = matches!(
                 kind,
-                AgentKind::CodexCli | AgentKind::ClaudeCode | AgentKind::CursorAgent
+                AgentKind::CodexCli | AgentKind::ClaudeCode | AgentKind::CursorAgent | AgentKind::Antigravity
             );
             assert_eq!(
                 adapter_for(kind).session_linked(),
@@ -233,7 +239,7 @@ mod tests {
     #[test]
     fn subscription_usage_follows_native_quota_commands() {
         for kind in AgentKind::all() {
-            let on = matches!(kind, AgentKind::CodexCli | AgentKind::ClaudeCode);
+            let on = matches!(kind, AgentKind::CodexCli | AgentKind::ClaudeCode | AgentKind::Antigravity);
             assert_eq!(
                 adapter_for(kind).capabilities().supports_subscription_usage,
                 on,
@@ -261,11 +267,12 @@ mod tests {
         assert!(cursor.supports_cancel);
         assert!(cursor.supports_queue);
         assert!(cursor.supports_resume && cursor.supports_tuning && cursor.supports_plan);
+        let antigravity = adapter_for(AgentKind::Antigravity).capabilities();
+        assert!(antigravity.supports_cancel && antigravity.supports_queue);
         for kind in [
             AgentKind::KimiCode,
             AgentKind::QwenCode,
             AgentKind::OpenCode,
-            AgentKind::Antigravity,
         ] {
             let caps = adapter_for(kind).capabilities();
             assert!(!caps.supports_cancel, "{}", kind.as_str());

@@ -1,5 +1,10 @@
 //! 计划模式和审查在已打开线程上的动作。
 
+use crate::protocol::plan_choice::{
+    classify_plan_answer, plan_implementation_options, PlanChoice, CLEAR_CONTEXT_ID, IMPLEMENT_ID,
+    PLAN_IMPLEMENTATION_CLEAR_CONTEXT_PREFIX, PLAN_IMPLEMENTATION_CODING_MESSAGE,
+    PLAN_IMPLEMENTATION_TITLE,
+};
 use serde_json::{json, Value};
 
 use crate::AgentError;
@@ -7,10 +12,7 @@ use aiwb_core::models::{PromptKind, ReviewStart, SessionEventBody};
 
 use super::super::state::{emit, Collaboration, Pending, Shared};
 use super::{
-    classify_plan_answer, collaboration_mode_value, pick_effort, plan_collaboration_mode,
-    plan_implementation_options, review_protocol, PlanChoice, CLEAR_CONTEXT_ID, IMPLEMENT_ID,
-    PLAN_IMPLEMENTATION_CLEAR_CONTEXT_PREFIX, PLAN_IMPLEMENTATION_CODING_MESSAGE,
-    PLAN_IMPLEMENTATION_TITLE,
+    collaboration_mode_value, pick_effort, plan_collaboration_mode, review_protocol,
 };
 
 impl Shared {

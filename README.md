@@ -116,18 +116,17 @@ Codex 实现拆在 `crates/aiwb-agents/src/codex/`：`mod.rs` 只编排，`rpc` 
 
 设置页从侧栏左下角头像菜单进入，列出 `AgentKind::all` 里的每一种。新建会话只能选 `installed && session_linked` 的 Agent。项目行上只装了一个能开会话的就直接用它；「新建会话」主按钮始终打开选择菜单，菜单里不出现未接入的项。一个都没有时选择器说明原因。工作台不代为安装。
 
-探测和更新都写在适配器的 `cli_release` 里。Codex 仍用自己的二进制查找，官方包是 npm 全局 `@openai/codex`，否则 `codex update`。Claude Code 若是 npm 全局安装则升级 `@anthropic-ai/claude-code`，否则执行 `claude update`。Cursor Agent 认 `%LOCALAPPDATA%\cursor-agent\agent.cmd`（其次 PATH 上的 `agent`），更新走 `agent update`。其余种类在 `agents/external.rs`：
+探测和更新都写在适配器的 `cli_release` 里。Codex 仍用自己的二进制查找，官方包是 npm 全局 `@openai/codex`，否则 `codex update`。Claude Code 若是 npm 全局安装则升级 `@anthropic-ai/claude-code`，否则执行 `claude update`。Cursor Agent 认 `%LOCALAPPDATA%\cursor-agent\agent.cmd`（其次 PATH 上的 `agent`），更新走 `agent update`。Antigravity 认 `%LOCALAPPDATA%\agy\bin\agy.exe`（其次 PATH 上的 `agy`，再其次 `antigravity`、`gemini`），更新走 `agy update`；只找到 `gemini` 或 `antigravity` 时能显示版本，但不能开会话，停更的 `gemini` 也不在应用内更新。其余种类在 `agents/external.rs`：
 
 | 种类 | 命令 | 官方更新 |
 | --- | --- | --- |
 | Kimi Code | `kimi` | npm `@moonshot-ai/kimi-code`，或 `kimi upgrade -y` |
 | Qwen Code | `qwen` | npm `@qwen-code/qwen-code`，或 `qwen update` |
 | OpenCode | `opencode` | npm `opencode-ai`，或 `opencode upgrade` |
-| Antigravity | `agy`，其次 `antigravity`，最后 `gemini` | `agy update`。只找到停更的 `gemini` 时不在应用内更新 |
 
-Gemini CLI 与 Antigravity 登记成一项，不做成两套会话。只找到停更的 `gemini` 时不在应用内更新。
+Gemini CLI 与 Antigravity 登记成一项，不做成两套会话。
 
-**Codex、Claude Code 和 Cursor Agent 的会话协议已接入。** 其余适配器只做安装探测和官方升级，`start_session()` 走 trait 默认实现，直接返回「未接入」错误。设置页仍显示「未安装」或「版本 · 未接入」；新建会话菜单不列出它们。接入时实现 `AgentSession`，在适配器里覆盖 `start_session` 和 `session_linked`，要支持导入再实现 `import_list` / `import_history`；工作目录用 `ctx.project_path`。认证交给 CLI 自身，应用不保存密钥。Claude Code 的目录读 `~/.claude/projects` 里的 jsonl；Cursor Agent 读 `~/.cursor/acp-sessions/<id>/meta.json`，历史用 `session/load` 回放。
+**Codex、Claude Code、Cursor Agent 和 Antigravity 的会话协议已接入。** 其余适配器只做安装探测和官方升级，`start_session()` 走 trait 默认实现，直接返回「未接入」错误。设置页仍显示「未安装」或「版本 · 未接入」；新建会话菜单不列出它们。接入时实现 `AgentSession`，在适配器里覆盖 `start_session` 和 `session_linked`，要支持导入再实现 `import_list` / `import_history`；工作目录用 `ctx.project_path`。认证交给 CLI 自身，应用不保存密钥。Claude Code 的目录读 `~/.claude/projects` 里的 jsonl；Cursor Agent 读 `~/.cursor/acp-sessions/<id>/meta.json`，历史用 `session/load` 回放；Antigravity 用 `session/list` 和 `session/load`。Cursor 和 Antigravity 都走 ACP，共用 `agents/acp/`（收发、时间线映射、排队和设置），差别写在各自的 `Dialect` 里。
 
 右侧「打开文件」按目录逐层列出当前项目根下的文件，没有全局数量上限。点文件在当前这一页里预览，不会为每次点击新开标签。全文搜索直接读本机目录，分段返回。目录名正好是 `.git`、`node_modules`、`target`、`dist`、`Library`、`Temp` 的文件夹不进入目录树，也不进入全文搜索；其余文件和文件夹都会列出。
 

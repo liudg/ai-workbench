@@ -88,6 +88,12 @@ pub struct ChosenBin {
 }
 
 /// Cursor 官方安装位置。PATH 上别的 `agent` 不能拿来更新。
+pub fn locate_agy() -> Option<PathBuf> {
+    let root = std::env::var_os("LOCALAPPDATA")?;
+    let path = PathBuf::from(root).join("agy").join("bin").join("agy.exe");
+    path.is_file().then_some(path)
+}
+
 pub fn locate_cursor_agent() -> Option<PathBuf> {
     let root = std::env::var_os("LOCALAPPDATA")?;
     let path = PathBuf::from(root).join("cursor-agent").join("agent.cmd");

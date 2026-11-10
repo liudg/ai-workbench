@@ -9,13 +9,15 @@ use serde_json::{json, Value};
 use tokio::time::Instant;
 
 use super::catalog;
+use super::dialect::RULES;
 use super::directory;
+use super::open::{self as runtime, services_unavailable};
 use super::process::version_key;
 use super::prompts::{self, Pending};
 use super::retry::{self, Miss};
-use super::rpc::RpcError;
-use super::runtime::{self, services_unavailable};
-use super::updates::UpdateMap;
+use crate::acp::config;
+use crate::acp::rpc::RpcError;
+use crate::acp::updates::UpdateMap;
 use crate::AgentError;
 use aiwb_core::models::{
     FileStatus, PromptAnswer, PromptKind, SessionEventBody, SessionStatus, ToolStatus,
@@ -24,7 +26,7 @@ use aiwb_core::models::{
 const PROJECT: &str = r"C:\ws";
 
 fn map() -> UpdateMap {
-    let mut map = UpdateMap::new(Path::new(PROJECT));
+    let mut map = UpdateMap::new(Path::new(PROJECT), &RULES);
     map.begin_turn("t1");
     map
 }
@@ -264,7 +266,7 @@ fn edits_become_file_changes_from_original_text() {
 
 #[test]
 fn replay_rebuilds_turns_from_user_chunks() {
-    let mut map = UpdateMap::new(Path::new(PROJECT));
+    let mut map = UpdateMap::new(Path::new(PROJECT), &RULES);
     let mut events = apply_all(
         &mut map,
         &[
@@ -342,9 +344,9 @@ fn permission_request_uses_cursor_options_and_answers_by_option_id() {
             {"optionId":"reject-once","name":"Reject","kind":"reject_once"}
         ]
     });
-    assert_eq!(prompts::allow_once(&params).as_deref(), Some("allow-once"));
+    assert_eq!(crate::acp::permission::allow_once(&params).as_deref(), Some("allow-once"));
     let id = prompts::prompt_id(&json!(0));
-    let (event, pending) = prompts::permission_prompt(&id, &params);
+    let (event, pending) = crate::acp::permission::permission_prompt(&id, &params);
     let SessionEventBody::Prompt { prompt_kind, options, header, body, body_kind, reason, .. } = event else { panic!() };
     assert_eq!(prompt_kind, PromptKind::Approval);
     assert_eq!(header, "command");
@@ -354,10 +356,10 @@ fn permission_request_uses_cursor_options_and_answers_by_option_id() {
     let slots: Vec<&str> = options.iter().map(|option| option.slot.as_str()).collect();
     assert_eq!(slots, ["primary", "scoped", "deny"]);
 
-    let (reply, label) = prompts::response(&pending, &PromptAnswer::Single { value: "allow-always".into() }).unwrap();
+    let (reply, label) = crate::acp::permission::respond(&pending, &PromptAnswer::Single { value: "allow-always".into() }).unwrap();
     assert_eq!(reply, json!({"outcome":{"outcome":"selected","optionId":"allow-always"}}));
     assert_eq!(label, "总是允许");
-    let (reply, _) = prompts::response(&pending, &PromptAnswer::Single { value: "reject".into() }).unwrap();
+    let (reply, _) = crate::acp::permission::respond(&pending, &PromptAnswer::Single { value: "reject".into() }).unwrap();
     assert_eq!(reply["outcome"]["optionId"], "reject-once");
 }
 
@@ -444,7 +446,7 @@ fn session_config_finds_effort_by_category() {
         json!({"id":"effort","category":"thought_level","currentValue":"medium","options":[{"value":"low","name":"Low"},{"value":"max","name":"Max"}]}),
         json!({"id":"fast","category":"model_config","currentValue":"false","options":[{"value":"false","name":"Off"},{"value":"true","name":"Fast"}]}),
     ];
-    let config = catalog::read_config(&options);
+    let config = config::read_config(&options);
     assert_eq!(config.model.as_deref(), Some("claude-opus-5-5"));
     assert_eq!(config.effort_id.as_deref(), Some("effort"));
     assert_eq!(config.effort.as_deref(), Some("medium"));
@@ -454,7 +456,7 @@ fn session_config_finds_effort_by_category() {
 
 #[test]
 fn commands_get_a_leading_slash() {
-    let commands = catalog::commands(&json!({"sessionUpdate":"available_commands_update","availableCommands":[
+    let commands = config::commands(&json!({"sessionUpdate":"available_commands_update","availableCommands":[
         {"name":"simplify","description":"Find low-info comments"},
         {"name":"worktree","description":"Create a worktree","input":{"hint":"branch"}}
     ]}));
@@ -473,10 +475,10 @@ fn version_dirs_follow_the_launcher_script() {
 
 #[test]
 fn prompt_blocks_carry_text_and_images() {
-    let blocks = super::session::prompt_blocks("看图", &["data:image/png;base64,aGk=".into()]).unwrap();
+    let blocks = crate::acp::session::prompt_blocks("看图", &["data:image/png;base64,aGk=".into()]).unwrap();
     assert_eq!(blocks[0], json!({"type":"text","text":"看图"}));
     assert_eq!(blocks[1], json!({"type":"image","mimeType":"image/png","data":"aGk="}));
-    assert!(super::session::prompt_blocks("  ", &[]).is_err());
+    assert!(crate::acp::session::prompt_blocks("  ", &[]).is_err());
 }
 
 /// 真实 CLI：建会话、探目录、载入空会话、删掉。要求本机已装并登录 Cursor Agent。

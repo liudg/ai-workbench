@@ -1,11 +1,24 @@
 //! 用真实调度器和 RPC 管道控制回包顺序，验证取消与续发的竞争。
-use super::super::session::CursorSession;
-use super::*;
-use crate::{AgentSession, TurnDelivery, UserTurn};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::time::Duration;
+
+use serde_json::{json, Value};
+use tokio::sync::mpsc;
+
+use super::catalog;
+use super::dialect::CursorDialect;
+use crate::acp::rpc::RpcError;
+use crate::acp::runtime::{Parts, Shared};
+use crate::acp::updates::UpdateMap;
+use crate::acp::session::AcpSession;
+use crate::{AgentError, AgentSession, TurnDelivery, UserTurn};
+use aiwb_core::models::{SessionEventBody, SessionStatus};
 
 struct Harness {
     shared: Arc<Shared>,
-    session: CursorSession,
+    session: AcpSession,
     wire: mpsc::UnboundedReceiver<String>,
     events: mpsc::UnboundedReceiver<SessionEventBody>,
 }
@@ -24,31 +37,21 @@ impl Harness {
         let (tx, wire) = mpsc::unbounded_channel();
         let (events, rx) = mpsc::unbounded_channel();
         let project = PathBuf::from("C:/test-cursor-steering");
-        let shared = Arc::new(Shared {
-            events,
-            map: Mutex::new(UpdateMap::new(&project)),
-            subagents: Mutex::new(Subagents::new(&project)),
-            project,
-            rpc: Rpc::new(tx),
-            child: Mutex::new(None),
-            stderr: Arc::new(Mutex::new(String::new())),
-            closed: AtomicBool::new(false),
-            session_id: Mutex::new(Some("same-session".into())),
-            catalog: Mutex::new(catalog::empty_catalog()),
-            replay: Mutex::new(Replay::Live),
-            prompts: Mutex::new(HashMap::new()),
-            queue: Mutex::new(Default::default()),
-            busy: AtomicBool::new(false),
-            user_stopped: AtomicBool::new(false),
-            status_lock: Mutex::new(()),
-            access: Mutex::new("ask".into()),
-            wanted: Mutex::new(Wanted::default()),
-            config: Mutex::new(ModelConfig::default()),
-            applied_plan: AtomicBool::new(false),
-            instructions: Mutex::new(None),
-        });
+        let shared = Shared::detached(
+            Parts {
+                dialect: Arc::new(CursorDialect::new(&project)),
+                events,
+                project,
+                access: "ask".into(),
+                catalog: catalog::empty_catalog(),
+                instructions: None,
+                roots: Vec::new(),
+            },
+            tx,
+        );
+        shared.adopt_session_id("same-session");
         Self {
-            session: CursorSession::new(shared.clone()),
+            session: AcpSession::new(shared.clone()),
             shared,
             wire,
             events: rx,
@@ -373,7 +376,7 @@ async fn steer_mode_keeps_images_and_failure_keeps_unsent_messages() {
 #[test]
 fn continuation_keeps_cumulative_diff_and_closes_interrupted_tools() {
     use aiwb_core::models::ToolStatus;
-    let mut map = UpdateMap::new(Path::new("C:/test"));
+    let mut map = UpdateMap::new(Path::new("C:/test"), &super::dialect::RULES);
     map.begin_turn("turn");
     for (id, old, new) in [
         ("edit-a", "before\n", "middle\n"),

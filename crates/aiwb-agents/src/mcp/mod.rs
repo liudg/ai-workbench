@@ -28,6 +28,46 @@ pub trait McpDriver: Send + Sync {
     }
 }
 
+pub struct AntigravityMcp;
+
+#[async_trait]
+impl McpDriver for AntigravityMcp {
+    fn surface(&self, installed: bool) -> McpSurface {
+        surface::antigravity(installed)
+    }
+
+    async fn list(&self) -> Result<Vec<McpServerRow>, String> {
+        let text = run_agy(args::cursor_list(), exec::LIST_LIMIT).await?;
+        Ok(parse::parse_antigravity_list(&text))
+    }
+
+    async fn add(&self, spec: &McpAddSpec) -> Result<String, String> {
+        run_agy(args::antigravity_add(spec)?, exec::MUTATE_LIMIT).await
+    }
+
+    async fn remove(&self, name: &str, _scope: &str) -> Result<String, String> {
+        run_agy(args::antigravity_remove(name)?, exec::MUTATE_LIMIT).await
+    }
+
+    async fn login(&self, _name: &str, _registration: &str, _scopes: &str) -> Result<String, String> {
+        Err("agy mcp 没有 login。".into())
+    }
+
+    async fn logout(&self, _name: &str) -> Result<String, String> {
+        Err("agy mcp 没有 logout。".into())
+    }
+
+    async fn set_enabled(&self, name: &str, enabled: bool) -> Result<String, String> {
+        run_agy(args::cursor_enabled(name, enabled)?, exec::MUTATE_LIMIT).await
+    }
+}
+
+async fn run_agy(args: Vec<String>, limit: Duration) -> Result<String, String> {
+    let bin = crate::antigravity_bin().ok_or_else(|| "未找到 Antigravity CLI（agy）。".to_string())?;
+    let captured = exec::run_cli(&bin, &args, limit).await?;
+    exec::success_stdout(captured)
+}
+
 pub struct CursorMcp;
 
 #[async_trait]

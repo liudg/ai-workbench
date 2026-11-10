@@ -152,6 +152,41 @@ pub fn parse_cursor_list(text: &str) -> Vec<McpServerRow> {
     rows
 }
 
+/// `agy mcp list` 是一张表：`NAME  TYPE  STATUS  COMMAND/URL`，列之间至少两个空格。
+pub fn parse_antigravity_list(text: &str) -> Vec<McpServerRow> {
+    let mut rows = Vec::new();
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with("NAME") || line.starts_with("No MCP servers") {
+            continue;
+        }
+        let mut cells = line.split("  ").map(str::trim).filter(|cell| !cell.is_empty());
+        let (Some(name), Some(kind), Some(status)) = (cells.next(), cells.next(), cells.next()) else {
+            continue;
+        };
+        let target = cells.collect::<Vec<_>>().join("  ");
+        let remote = kind != "stdio";
+        rows.push(McpServerRow {
+            name: name.to_string(),
+            transport: kind.to_string(),
+            command: if remote { String::new() } else { target.clone() },
+            args: Vec::new(),
+            url: if remote { target } else { String::new() },
+            bearer_token_env_var: String::new(),
+            enabled: Some(status != "disabled"),
+            auth_status: String::new(),
+            status_text: status.to_string(),
+            scope: String::new(),
+            cwd: String::new(),
+            env: Vec::new(),
+            env_vars: Vec::new(),
+            headers: Vec::new(),
+            env_headers: Vec::new(),
+        });
+    }
+    rows
+}
+
 pub fn enabled_from_cursor_status(status: &str) -> Option<bool> {
     let bare = status
         .trim()

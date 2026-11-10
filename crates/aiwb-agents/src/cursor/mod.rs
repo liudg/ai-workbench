@@ -5,18 +5,14 @@
 //! 和 2026-10-29 的实际收发。认证留在 CLI（`agent login`），这里不碰密钥。
 
 mod catalog;
-mod context;
+mod dialect;
 mod directory;
+mod open;
 mod permission;
 mod process;
 mod prompts;
-mod queue;
 mod retry;
-mod rpc;
-mod runtime;
-mod session;
 mod subagents;
-mod updates;
 
 #[cfg(test)]
 mod tests;
@@ -24,13 +20,14 @@ mod tests;
 mod subagent_tests;
 #[cfg(test)]
 mod live_steering_tests;
+#[cfg(test)]
+mod queue_tests;
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use session::CursorSession;
-
+use crate::acp::session::AcpSession;
 use crate::install::{locate_cursor_agent, CliRelease};
 use crate::{
     AgentAdapter, AgentError, AgentSession, DirectoryPage, EventSink, SessionContext,
@@ -118,8 +115,8 @@ impl AgentAdapter for CursorAgentAdapter {
         ctx: SessionContext,
         events: EventSink,
     ) -> Result<Arc<dyn AgentSession>, AgentError> {
-        let shared = runtime::open(
-            runtime::Open {
+        let shared = open::open(
+            open::Open {
                 persist: ctx.flag("persist"),
                 replay_history: !ctx.flag("skip_history"),
                 project_path: ctx.project_path,
@@ -130,7 +127,7 @@ impl AgentAdapter for CursorAgentAdapter {
             events,
         )
         .await?;
-        Ok(Arc::new(CursorSession::new(shared)))
+        Ok(Arc::new(AcpSession::new(shared)))
     }
 
     /// 每条会话只有一个 `meta.json`，整份读出来再分页。游标是下一页的起点。

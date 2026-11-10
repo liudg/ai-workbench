@@ -17,7 +17,8 @@ use serde_json::Value;
 
 use aiwb_core::models::{now_millis, SessionEventBody, SubagentCard, SubagentStatus, ToolStatus};
 
-use super::updates::UpdateMap;
+use super::dialect::RULES;
+use crate::acp::updates::UpdateMap;
 
 struct Child {
     card: String,
@@ -172,7 +173,7 @@ impl Subagents {
             card.duration_ms = None;
         }
         card.started_at.get_or_insert_with(now_millis);
-        let mut map = UpdateMap::new(&self.project);
+        let mut map = UpdateMap::new(&self.project, &RULES);
         map.begin_turn(&format!("sub-{id}"));
         self.children.insert(
             session,

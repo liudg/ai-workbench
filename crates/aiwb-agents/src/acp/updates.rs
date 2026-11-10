@@ -1,21 +1,19 @@
 //! `session/update` → 时间线事件。实时回合和 `session/load` 的回放走同一份映射。
 //!
-//! 报文形状照 ACP（`@agentclientprotocol/sdk` 的 `SessionUpdate`），以及 2026-10-29 本机
-//! Cursor Agent 2026.10.22-27dcf5f 实际发出的内容：
+//! 报文形状照 ACP（`@agentclientprotocol/sdk` 的 `SessionUpdate`）：
 //! - 文字和思考是 `agent_message_chunk` / `agent_thought_chunk` 增量，中间夹着工具调用。
-//! - `tool_call` 先报 `pending` 和空 `rawInput`，`tool_call_update` 再补标题、输入、状态和结果。
-//! - 命令结果在 `rawOutput.exitCode/stdout/stderr`；编辑结果是 `content[].type = diff`。
-//! - 新建文件的 diff 是 `oldText = "-- /dev/null"`，`newText` 首行带 `++ b/<路径>`。
-//! - 回放里用户消息是 `user_message_chunk`，工具 id 是 `replay-<回合>-<序号>`。
-//! - 后端出错时 Cursor 不报错，而是发一段 `\n\nError: …` 的回答文字，`session/prompt` 照常 `end_turn`
-//!   （`agent-session.ts` 的 ``sendAgentMessageChunk(`\n\nError: ${String(e)}`)``）。这段先压着：
-//!   后面还有内容就照常算回答，回合就此结束就算失败（[`UpdateMap::take_error`]）。
+//! - `tool_call` 可能只有空 `rawInput`，`tool_call_update` 再补标题、输入、状态和结果。
+//! - 编辑结果是 `content[].type = diff`。
+//! - 回放里用户消息是 `user_message_chunk`。实时回合的同名更新是回显，由运行时丢掉。
+//! - 后端出错时有的 Agent 不报错，而是发一段报错文字，`session/prompt` 照常 `end_turn`。
+//!   这段先压着：后面还有内容就照常算回答，回合就此结束就算失败（[`UpdateMap::take_error`]）。
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
+use super::{DiffTexts, ToolSubject, ToolView, UpdateRules};
 use crate::changes::{same_file, unified_diff};
 use aiwb_core::models::{
     FileChange, FileStatus, PlanStep, SessionEventBody, SessionStatus, ToolStatus,
@@ -30,6 +28,8 @@ struct Tool {
     stream_id: String,
     kind: String,
     title: String,
+    /// Agent 自己的工具名。Cursor 不给。
+    native: String,
     input: Value,
     status: ToolStatus,
     exit_code: Option<i64>,
@@ -46,8 +46,8 @@ struct FileTexts {
     new: Option<String>,
 }
 
-#[derive(Default)]
 pub struct UpdateMap {
+    rules: &'static dyn UpdateRules,
     project: PathBuf,
     pub turn_id: String,
     pub plan_mode: bool,
@@ -62,19 +62,43 @@ pub struct UpdateMap {
     todos: Vec<(String, String, String)>,
     /// 最近一轮有变更时的统一 diff。
     pub last_diff: String,
-    /// 压着没发的 `\n\nError: …` 回答块。
+    /// 压着没发的报错回答块。
     error_tail: Option<String>,
+    /// 这一回合写出的计划正文。
+    plan: Option<String>,
+    /// 这一回合最后一段回答的原文。
+    last_message: String,
 }
 
-/// Cursor 把后端异常当回答文字发出时的开头。
-const ERROR_TAIL: &str = "\n\nError: ";
-
 impl UpdateMap {
-    pub fn new(project: &Path) -> Self {
+    pub fn new(project: &Path, rules: &'static dyn UpdateRules) -> Self {
         Self {
+            rules,
             project: project.to_path_buf(),
-            ..Default::default()
+            turn_id: String::new(),
+            plan_mode: false,
+            seq: 0,
+            message: None,
+            thought: None,
+            user: None,
+            replay_turns: 0,
+            tools: HashMap::new(),
+            files: Vec::new(),
+            todos: Vec::new(),
+            last_diff: String::new(),
+            error_tail: None,
+            plan: None,
+            last_message: String::new(),
         }
+    }
+
+    /// 这一回合写出的计划正文。读一次就清掉。
+    pub fn take_plan(&mut self) -> Option<String> {
+        self.plan.take()
+    }
+
+    pub fn last_message(&self) -> &str {
+        &self.last_message
     }
 
     pub fn begin_turn(&mut self, turn_id: &str) {
@@ -82,6 +106,8 @@ impl UpdateMap {
         self.message = None;
         self.thought = None;
         self.error_tail = None;
+        self.plan = None;
+        self.last_message.clear();
         self.tools.clear();
         self.files.clear();
         self.todos.clear();
@@ -92,6 +118,27 @@ impl UpdateMap {
         self.message = None;
         self.thought = None;
         self.error_tail = None;
+    }
+
+    /// 转成后台任务的命令跑完了：找到还在跑、命令相同的卡片，写上结果。
+    pub fn finish_command(&mut self, command: &str, output: &str) -> Option<SessionEventBody> {
+        let id = self
+            .tools
+            .iter()
+            .find(|(_, tool)| {
+                tool.status == ToolStatus::Running && tool.kind == "execute" && self.tool_summary(tool) == command
+            })
+            .map(|(id, _)| id.clone())?;
+        let code = output
+            .strip_prefix("Command exited with code ")
+            .and_then(|rest| rest.split('.').next())
+            .and_then(|code| code.trim().parse::<i64>().ok());
+        let detail = self.rules.content_text(output);
+        let tool = self.tools.get_mut(&id)?;
+        tool.exit_code = code;
+        tool.status = if code.is_some_and(|code| code != 0) { ToolStatus::Failed } else { ToolStatus::Completed };
+        tool.detail = detail;
+        Some(self.tool_event(&id))
     }
 
     /// 已确认取消后，把没有终态的工具卡片收尾。
@@ -125,7 +172,7 @@ impl UpdateMap {
     /// 回合结束时还压着的报错：这一回合以它收尾，算失败。返回去掉 `Error: ` 的报错正文。
     pub fn take_error(&mut self) -> Option<String> {
         let tail = self.error_tail.take()?;
-        Some(tail[ERROR_TAIL.len()..].trim().to_string())
+        Some(tail[self.rules.error_tail().len()..].trim().to_string())
     }
 
     /// 压着的报错后面还有内容：它只是回答的一部分，照常写出。
@@ -142,8 +189,9 @@ impl UpdateMap {
         }
         let segment = self.message.as_mut().unwrap();
         segment.text.push_str(text);
+        self.last_message.clone_from(&segment.text);
         events.push(SessionEventBody::AgentMessage {
-            text: segment.text.clone(),
+            text: self.rules.message_view(&segment.text).into_owned(),
             stream_id: Some(segment.id.clone()),
             phase: None,
             mode: self.mode(),
@@ -156,7 +204,7 @@ impl UpdateMap {
         let status = match self.take_error() {
             Some(message) => {
                 events.push(SessionEventBody::Error {
-                    message: error_message(&message),
+                    message: self.rules.error_message(&message),
                 });
                 SessionStatus::Failed
             }
@@ -179,6 +227,9 @@ impl UpdateMap {
         let Some(text) = self.user.take() else {
             return;
         };
+        if self.rules.hides_user_message(text.trim()) {
+            return;
+        }
         let text = strip_instructions(&text);
         let text = super::context::user_text(&text).to_string();
         if self.replay_turns > 0 {
@@ -220,7 +271,7 @@ impl UpdateMap {
             self.flush_user(&mut events);
         }
         let text = content_text(update.get("content"));
-        let error = kind == "agent_message_chunk" && text.as_deref().is_some_and(|text| text.starts_with(ERROR_TAIL));
+        let error = kind == "agent_message_chunk" && text.as_deref().is_some_and(|text| text.starts_with(self.rules.error_tail()));
         if !error && matches!(kind, "agent_message_chunk" | "agent_thought_chunk" | "tool_call" | "tool_call_update" | "plan") {
             self.release_error_tail(&mut events);
         }
@@ -384,6 +435,28 @@ impl UpdateMap {
         let Some(id) = update.get("toolCallId").and_then(Value::as_str) else {
             return Vec::new();
         };
+        let view = self.rules.tool_view(update);
+        let counts = matches!(view, ToolView::Card);
+        match view {
+            ToolView::Hidden => return Vec::new(),
+            ToolView::Plan { text } => {
+                self.plan = Some(text.clone());
+                return vec![SessionEventBody::PlanText {
+                    text,
+                    stream_id: Some(format!("plan-{id}")),
+                    mode: self.mode(),
+                }];
+            }
+            ToolView::Steps(steps) => {
+                return vec![SessionEventBody::PlanSteps {
+                    turn_id: self.turn_id.clone(),
+                    explanation: String::new(),
+                    steps,
+                    mode: self.mode(),
+                }];
+            }
+            ToolView::Card | ToolView::Artifact => {}
+        }
         if created || !self.tools.contains_key(id) {
             let stream_id = format!("tool-{}", id.replace('\n', "-"));
             self.tools.insert(
@@ -392,6 +465,7 @@ impl UpdateMap {
                     stream_id,
                     kind: String::new(),
                     title: String::new(),
+                    native: String::new(),
                     input: Value::Null,
                     status: ToolStatus::Running,
                     exit_code: None,
@@ -411,6 +485,9 @@ impl UpdateMap {
             if let Some(title) = update.get("title").and_then(Value::as_str) {
                 tool.title = title.to_string();
             }
+            if let Some(native) = update.get("name").and_then(Value::as_str) {
+                tool.native = native.to_string();
+            }
             if let Some(input) = update.get("rawInput").filter(|input| non_empty(input)) {
                 tool.input = input.clone();
             }
@@ -423,21 +500,22 @@ impl UpdateMap {
             }
             let mut detail = Vec::new();
             if let Some(output) = update.get("rawOutput").filter(|output| non_empty(output)) {
-                if let Some(code) = output.get("exitCode").and_then(Value::as_i64) {
+                if let Some(code) = self.rules.exit_code(output) {
                     tool.exit_code = Some(code);
                     if code != 0 {
                         tool.status = ToolStatus::Failed;
                     }
                 }
-                detail.push(output_text(output));
+                detail.push(self.rules.tool_output(output));
             }
             if let Some(content) = update.get("content").and_then(Value::as_array) {
                 for item in content {
                     match item.get("type").and_then(Value::as_str) {
                         Some("diff") => {
-                            if let Some(change) = diff_texts(item) {
+                            if let Some(change) = self.rules.diff_texts(item).map(file_texts) {
+                                let path = relative(&self.project, &self.rules.path(&change.path));
                                 detail.push(unified_diff(
-                                    &relative(&self.project, &change.path),
+                                    &path,
                                     change.old.as_deref().unwrap_or(""),
                                     change.new.as_deref().unwrap_or(""),
                                 ));
@@ -446,7 +524,10 @@ impl UpdateMap {
                         }
                         Some("content") => {
                             if let Some(text) = content_text(item.get("content")) {
-                                detail.push(text);
+                                let text = self.rules.content_text(&text);
+                                if !detail.contains(&text) {
+                                    detail.push(text);
+                                }
                             }
                         }
                         _ => {}
@@ -459,10 +540,15 @@ impl UpdateMap {
                 .collect();
             if !detail.is_empty() {
                 tool.detail = detail.join("\n");
+                for image in self.rules.tool_images(&tool.detail) {
+                    if !tool.images.contains(&image) {
+                        tool.images.push(image);
+                    }
+                }
             }
         }
         let mut events = vec![self.tool_event(id)];
-        if !diffs.is_empty() {
+        if counts && !diffs.is_empty() {
             events.extend(self.record_files(diffs));
         }
         events
@@ -474,7 +560,7 @@ impl UpdateMap {
             name: tool
                 .name_override
                 .clone()
-                .unwrap_or_else(|| tool_name(&tool.kind, &tool.title)),
+                .unwrap_or_else(|| self.rules.tool_name(&tool.kind, &tool.title, &tool.native)),
             summary: tool
                 .summary_override
                 .clone()
@@ -488,33 +574,21 @@ impl UpdateMap {
     }
 
     fn tool_summary(&self, tool: &Tool) -> String {
-        let field = |keys: &[&str]| {
-            keys.iter()
-                .find_map(|key| tool.input.get(*key).and_then(Value::as_str))
-                .map(str::trim)
-                .filter(|text| !text.is_empty())
-                .map(str::to_string)
-        };
-        let found = match tool.kind.as_str() {
-            "execute" => field(&["command"]),
-            "edit" | "read" | "delete" | "move" => {
-                field(&["path", "file_path", "filePath"]).map(|path| self.display_path(&path))
-            }
-            "search" => field(&["pattern", "query", "searchTerm", "glob"]),
-            "fetch" => field(&["url"]),
-            _ => None,
-        };
-        found.unwrap_or_else(|| strip_ticks(&tool.title))
+        match self.rules.tool_subject(&tool.kind, &tool.input) {
+            Some(ToolSubject::Path(path)) => self.relative(&path),
+            Some(ToolSubject::Text(text)) => text,
+            None => strip_ticks(&tool.title),
+        }
     }
 
-    fn display_path(&self, path: &str) -> String {
-        relative(&self.project, path)
+    fn relative(&self, path: &str) -> String {
+        relative(&self.project, &self.rules.path(path))
     }
 
     /// 项目里的文件按相对路径记，和 git 范围的路径对得上。
     fn record_files(&mut self, diffs: Vec<FileTexts>) -> Vec<SessionEventBody> {
         for mut change in diffs {
-            change.path = self.display_path(&change.path);
+            change.path = self.relative(&change.path);
             match self
                 .files
                 .iter_mut()
@@ -570,11 +644,6 @@ fn strip_instructions(text: &str) -> String {
     }
 }
 
-/// 时间线里的报错文案。
-pub fn error_message(detail: &str) -> String {
-    format!("Cursor 后端出错：{detail}")
-}
-
 fn relative(project: &Path, path: &str) -> String {
     Path::new(path)
         .strip_prefix(project)
@@ -620,39 +689,11 @@ fn count_lines(diff: &str) -> (u32, u32) {
     (added, removed)
 }
 
-/// `content[].type = diff`。`oldText` 为 null 或 Cursor 的 `-- /dev/null` 表示新建；
-/// `newText` 首行 `++ b/<路径>` 是 Cursor 带上的文件头，不是正文。
-fn diff_texts(item: &Value) -> Option<FileTexts> {
-    let path = item.get("path").and_then(Value::as_str)?.trim().to_string();
-    if path.is_empty() {
-        return None;
-    }
-    let old = item
-        .get("oldText")
-        .and_then(Value::as_str)
-        .filter(|text| text.trim() != "-- /dev/null")
-        .map(str::to_string);
-    let new = match item.get("newText").and_then(Value::as_str) {
-        Some(text) if text.trim() == "++ /dev/null" => None,
-        Some(text) if text.starts_with("++ ") => {
-            Some(text.split_once('\n').map(|(_, rest)| rest).unwrap_or("").to_string())
-        }
-        Some(text) => Some(text.to_string()),
-        None => None,
-    };
-    let new = if old.is_none() {
-        new.map(|text| ensure_trailing_newline(&text))
-    } else {
-        new
-    };
-    Some(FileTexts { path, old, new })
-}
-
-fn ensure_trailing_newline(text: &str) -> String {
-    if text.is_empty() || text.ends_with('\n') {
-        text.to_string()
-    } else {
-        format!("{text}\n")
+fn file_texts(diff: DiffTexts) -> FileTexts {
+    FileTexts {
+        path: diff.path,
+        old: diff.old,
+        new: diff.new,
     }
 }
 
@@ -686,7 +727,7 @@ pub fn strip_ticks(text: &str) -> String {
         .to_string()
 }
 
-/// ACP 计划和 Cursor 待办的状态 → 时间线计划步骤的状态。
+/// ACP 计划和各 Agent 待办的状态 → 时间线计划步骤的状态。
 pub fn step_status(status: &str) -> String {
     match status {
         "in_progress" | "inProgress" => "inProgress".into(),
@@ -717,7 +758,7 @@ fn non_empty(value: &Value) -> bool {
     }
 }
 
-fn output_text(output: &Value) -> String {
+pub fn output_text(output: &Value) -> String {
     let stdout = output.get("stdout").and_then(Value::as_str);
     let stderr = output.get("stderr").and_then(Value::as_str);
     if stdout.is_some() || stderr.is_some() {

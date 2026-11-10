@@ -1,4 +1,4 @@
-//! 一个正在运行的 Cursor Agent 会话。方法都走 [`super::runtime::Shared`]。
+//! 一条正在运行的 ACP 会话。方法都走 [`super::runtime::Shared`]。
 
 use std::sync::Arc;
 
@@ -9,24 +9,23 @@ use super::super::protocol::{
     default_git_scopes, submit_annotation_as_attachment, turn_scope,
     AnnotationSink, DiffScopeProvider, TurnDelivery, UserTurn,
 };
-use super::permission;
 use super::runtime::Shared;
 use super::queue::Input;
 use crate::image_input;
 use crate::{AgentError, AgentSession};
 use aiwb_core::models::{AgentCatalog, PageAnnotation, PermissionMenu, PromptAnswer};
 
-pub struct CursorSession {
+pub struct AcpSession {
     shared: Arc<Shared>,
 }
 
-impl CursorSession {
+impl AcpSession {
     pub fn new(shared: Arc<Shared>) -> Self {
         Self { shared }
     }
 }
 
-impl Drop for CursorSession {
+impl Drop for AcpSession {
     fn drop(&mut self) {
         self.shared.shutdown();
     }
@@ -49,7 +48,7 @@ pub fn prompt_blocks(text: &str, images: &[String]) -> Result<Vec<Value>, AgentE
 }
 
 #[async_trait]
-impl AgentSession for CursorSession {
+impl AgentSession for AcpSession {
     async fn send_message(&self, text: String) -> Result<(), AgentError> {
         self.deliver(UserTurn { text, images: Vec::new(), client_id: String::new(), annotations: Vec::new() }).await.map(|_| ())
     }
@@ -110,18 +109,19 @@ impl AgentSession for CursorSession {
         if network_access {
             return Err(AgentError::Runtime("不支持网络访问开关".into()));
         }
-        if !writable_roots.is_empty() {
+        if !writable_roots.is_empty() && !self.shared.can_reopen() {
             return Err(AgentError::Runtime("不支持额外目录".into()));
         }
         if !profile_id.trim().is_empty() {
             return Err(AgentError::Runtime("不支持具名权限配置档".into()));
         }
         self.shared.set_access(mode);
+        self.shared.set_roots(writable_roots);
         Ok(())
     }
 
     async fn permission_menu(&self) -> Result<PermissionMenu, AgentError> {
-        Ok(permission::permission_menu(&self.shared.current_access()))
+        Ok(self.shared.dialect.permission_menu(&self.shared.current_access()))
     }
 
     async fn catalog(&self) -> Result<AgentCatalog, AgentError> {
@@ -150,10 +150,31 @@ impl AgentSession for CursorSession {
         }
         Ok(())
     }
+
+    async fn set_goal(&self, objective: &str) -> Result<(), AgentError> {
+        let objective = objective.trim();
+        if objective.is_empty() {
+            return Err(AgentError::Runtime("目标不能为空".into()));
+        }
+        self.shared.dialect.set_goal(&self.shared, objective)
+    }
+
+    async fn clear_goal(&self) -> Result<(), AgentError> {
+        self.shared.dialect.clear_goal(&self.shared)
+    }
+
+    async fn set_goal_status(&self, status: &str) -> Result<(), AgentError> {
+        self.shared.dialect.set_goal_status(&self.shared, status)
+    }
+
+    async fn publish_goal(&self) -> Result<(), AgentError> {
+        self.shared.dialect.publish_goal(&self.shared);
+        Ok(())
+    }
 }
 
 #[async_trait]
-impl DiffScopeProvider for CursorSession {
+impl DiffScopeProvider for AcpSession {
     async fn diff_scopes(&self) -> Result<Vec<crate::DiffScope>, AgentError> {
         let mut scopes = vec![turn_scope()];
         scopes.extend(default_git_scopes());
@@ -166,7 +187,7 @@ impl DiffScopeProvider for CursorSession {
 }
 
 #[async_trait]
-impl AnnotationSink for CursorSession {
+impl AnnotationSink for AcpSession {
     async fn submit_annotation(&self, note: PageAnnotation) -> Result<TurnDelivery, AgentError> {
         submit_annotation_as_attachment(self, note).await
     }

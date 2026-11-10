@@ -1,5 +1,5 @@
 //! ACP 的 JSON-RPC 2.0：一行一个 JSON。宿主发请求用递增整数 id；
-//! Agent 发来的请求（审批、提问、计划）按原 id 回包。
+//! Agent 发来的请求（审批、提问、计划）按原 id 回包，id 可能是数字也可能是字符串。
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -78,14 +78,17 @@ pub fn parse(line: &str) -> Option<Incoming> {
 type Waiter = oneshot::Sender<Result<Value, RpcError>>;
 
 pub struct Rpc {
+    /// 报错里用的 Agent 名字。
+    label: &'static str,
     outbound: Mutex<Option<mpsc::UnboundedSender<String>>>,
     next: AtomicU64,
     waiters: Mutex<HashMap<u64, Waiter>>,
 }
 
 impl Rpc {
-    pub fn new(outbound: mpsc::UnboundedSender<String>) -> Self {
+    pub fn new(label: &'static str, outbound: mpsc::UnboundedSender<String>) -> Self {
         Self {
+            label,
             outbound: Mutex::new(Some(outbound)),
             next: AtomicU64::new(1),
             waiters: Mutex::new(HashMap::new()),
@@ -112,7 +115,7 @@ impl Rpc {
                 Ok(reply) => reply,
                 Err(_) => {
                     self.waiters.lock().unwrap().remove(&id);
-                    return Err(AgentError::Runtime(format!("Cursor Agent 没有回应 {method}")));
+                    return Err(AgentError::Runtime(format!("{} 没有回应 {method}", self.label)));
                 }
             },
             None => rx.await,
@@ -121,7 +124,7 @@ impl Rpc {
     }
 
     /// 同步入写队列，保证随后发出的 cancel 一定排在 prompt 后面。
-    pub(super) fn start_request(
+    pub(crate) fn start_request(
         &self,
         method: &str,
         params: Value,

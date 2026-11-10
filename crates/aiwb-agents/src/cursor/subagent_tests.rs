@@ -7,7 +7,8 @@ use serde_json::{json, Value};
 
 use super::prompts;
 use super::subagents::Subagents;
-use super::updates::UpdateMap;
+use super::dialect::RULES;
+use crate::acp::updates::UpdateMap;
 use aiwb_core::models::{SessionEventBody, SessionStatus, SubagentCard, SubagentStatus, ToolStatus};
 
 const PROJECT: &str = r"C:\ws";
@@ -149,7 +150,7 @@ fn stop_all_stops_only_running_cards() {
 /// 2026-10 用户在正式包里遇到的：跑了 27 分钟后 Cursor 把后端异常当回答发出来。
 #[test]
 fn trailing_error_chunk_is_held_and_taken_as_the_turn_failure() {
-    let mut map = UpdateMap::new(Path::new(PROJECT));
+    let mut map = UpdateMap::new(Path::new(PROJECT), &RULES);
     map.begin_turn("t1");
     let mut events = map.apply(&json!({"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": "已经检查了两个文件。"}}));
     events.extend(map.apply(&json!({"sessionUpdate": "agent_message_chunk",
@@ -171,7 +172,7 @@ fn trailing_error_chunk_is_held_and_taken_as_the_turn_failure() {
 
 #[test]
 fn error_text_followed_by_more_output_stays_part_of_the_answer() {
-    let mut map = UpdateMap::new(Path::new(PROJECT));
+    let mut map = UpdateMap::new(Path::new(PROJECT), &RULES);
     map.begin_turn("t1");
     map.apply(&json!({"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": "日志里是"}}));
     map.apply(&json!({"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": "\n\nError: not found"}}));
@@ -183,7 +184,7 @@ fn error_text_followed_by_more_output_stays_part_of_the_answer() {
 
 #[test]
 fn replayed_turn_ending_in_error_is_failed() {
-    let mut map = UpdateMap::new(Path::new(PROJECT));
+    let mut map = UpdateMap::new(Path::new(PROJECT), &RULES);
     let mut events = Vec::new();
     for update in [
         json!({"sessionUpdate": "user_message_chunk", "content": {"type": "text", "text": "审查一下"}}),
@@ -198,8 +199,8 @@ fn replayed_turn_ending_in_error_is_failed() {
 
 #[test]
 fn replayed_user_messages_drop_the_workbench_instructions() {
-    let mut map = UpdateMap::new(Path::new(PROJECT));
-    let sent = format!("{}审查一下", super::updates::wrap_instructions(crate::WorkbenchMcp::INSTRUCTIONS));
+    let mut map = UpdateMap::new(Path::new(PROJECT), &RULES);
+    let sent = format!("{}审查一下", crate::acp::updates::wrap_instructions(crate::WorkbenchMcp::INSTRUCTIONS));
     let mut events = map.apply(&json!({"sessionUpdate": "user_message_chunk", "content": {"type": "text", "text": sent}}));
     events.extend(map.finish_replay());
     assert!(events.iter().any(|event| matches!(event, SessionEventBody::UserMessage { text, .. } if text == "审查一下")), "{events:?}");

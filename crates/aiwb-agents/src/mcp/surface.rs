@@ -293,6 +293,57 @@ pub fn cursor(installed: bool) -> McpSurface {
     }
 }
 
+pub fn antigravity(installed: bool) -> McpSurface {
+    McpSurface {
+        kind: AgentKind::Antigravity,
+        display_name: AgentKind::Antigravity.display_name().into(),
+        installed,
+        manageable: installed,
+        unavailable_reason: (!installed)
+            .then(|| not_installed_reason(AgentKind::Antigravity.display_name())),
+        verbs: McpVerbs {
+            list: true,
+            add: true,
+            remove: true,
+            login: false,
+            logout: false,
+            enable: true,
+            disable: true,
+            list_tools: false,
+        },
+        transports: vec![labeled("stdio", "STDIO"), labeled("http", "HTTP")],
+        scopes: Vec::new(),
+        fields: vec![
+            field("name", "名称", "MCP 服务器名称", "always", "text", true, "server-name"),
+            field("command", "启动命令", "openai-dev-mcp serve-sqlite", "stdio", "text", true, "command"),
+            field("args", "参数", "", "stdio", "list", false, "arg-list"),
+            field("env", "环境变量", "", "stdio", "pairs", false, "pairs-env"),
+            field("url", "URL", "https://mcp.example.com/mcp", "http", "text", true, "url"),
+            field("headers", "Headers", "", "http", "pairs", false, "pairs-header"),
+        ],
+        oauth_registration: Vec::new(),
+        login_rule: "never".into(),
+        login_statuses: Vec::new(),
+        logout_label: String::new(),
+        scope_label: String::new(),
+        tools_label: String::new(),
+        notes: vec![
+            note(
+                "子命令",
+                "agy 1.5.3 的 mcp 只有 add、remove、list、enable、disable。OAuth 登录在 TUI 的 /mcp 里。",
+            ),
+            note(
+                "list",
+                "没有 --json。实测是一张表：NAME TYPE STATUS COMMAND/URL，STATUS 是 enabled 或 disabled。",
+            ),
+            note(
+                "add",
+                "旗标必须在名字前面，放到后面会报 flags must come before the server name。同名 add 是更新。",
+            ),
+        ],
+    }
+}
+
 fn registration() -> Vec<McpLabeled> {
     vec![
         labeled("auto", "自动"),

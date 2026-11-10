@@ -1,3 +1,7 @@
+use crate::protocol::plan_choice::{
+    classify_plan_answer, plan_implementation_options, PlanChoice, PLAN_IMPLEMENTATION_CODING_MESSAGE,
+    PLAN_IMPLEMENTATION_TITLE,
+};
 use super::git::review_labels;
 use super::*;
 
