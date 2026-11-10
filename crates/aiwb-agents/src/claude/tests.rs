@@ -159,10 +159,18 @@ fn unsent_session_without_a_transcript_starts_fresh() {
     )
     .unwrap();
 
-    let (id, resume) = super::runtime::launch_target(Some(sent), &projects).unwrap();
+    let (id, resume) = super::runtime::launch_target(Some(sent), &projects, true).unwrap();
     assert_eq!((id.as_str(), resume), (sent, true));
 
-    let (id, resume) = super::runtime::launch_target(Some(unsent), &projects).unwrap();
+    // 聊过的会话转录不在了，是被删了，不另开一个顶替。
+    assert!(matches!(
+        super::runtime::launch_target(Some(unsent), &projects, true),
+        Err(crate::AgentError::SessionGone)
+    ));
+    let elsewhere = projects.join("missing");
+    assert!(super::runtime::launch_target(Some(unsent), &elsewhere, true).is_ok(), "找不到 projects 目录时不下结论");
+
+    let (id, resume) = super::runtime::launch_target(Some(unsent), &projects, false).unwrap();
     assert!(!resume);
     assert_ne!(id, unsent);
     assert!(history::is_uuid(&id));
@@ -179,7 +187,7 @@ fn unsent_session_without_a_transcript_starts_fresh() {
     assert!(args.contains(&format!("--session-id={id}")));
     assert!(!args.iter().any(|arg| arg.starts_with("--resume")));
 
-    assert!(super::runtime::launch_target(Some("not-a-uuid"), &projects).is_err());
+    assert!(super::runtime::launch_target(Some("not-a-uuid"), &projects, false).is_err());
     let _ = std::fs::remove_dir_all(&projects);
 }
 
@@ -1692,4 +1700,52 @@ async fn live_unsent_session_reopens_as_a_new_session() {
     let fresh = reopened.native_id().expect("native id");
     assert_ne!(fresh, unsent);
     reopened.stop().await.unwrap();
+}
+
+/// 真实 Claude Code：聊过的会话删掉转录后再打开，要说会话没了，不另开一个新会话顶替。
+#[tokio::test]
+#[ignore = "calls the local Claude Code CLI"]
+async fn live_deleted_session_reopens_as_gone() {
+    use std::time::Duration;
+
+    use crate::{AgentAdapter, AgentError, SessionContext};
+    use tokio::sync::mpsc;
+    use tokio::time::timeout;
+
+    let adapter = super::ClaudeCodeAdapter::new();
+    let ctx = |resume: Option<String>| SessionContext {
+        project_path: std::env::temp_dir().to_string_lossy().to_string(),
+        access_mode: Some("full".into()),
+        resume_native_id: resume,
+        workbench_mcp: None,
+        options: serde_json::json!({ "persist": true, "skip_history": true, "has_history": true }),
+    };
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let first = adapter.start_session(ctx(None), tx).await.expect("start");
+    let id = first.native_id().expect("native id");
+    first.send_message("Reply with the single word ok. Do not use tools.".into()).await.expect("send");
+    let mut started = false;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(120);
+    while tokio::time::Instant::now() < deadline {
+        match timeout(Duration::from_secs(8), rx.recv()).await {
+            Ok(Some(SessionEventBody::StatusChanged { status: SessionStatus::Running })) => started = true,
+            Ok(Some(SessionEventBody::StatusChanged { status: SessionStatus::Completed | SessionStatus::Failed })) if started => break,
+            Ok(None) => break,
+            _ => {}
+        }
+    }
+    first.stop().await.unwrap();
+    drop(first);
+    assert!(history::find_session_file(&id).is_some(), "聊过之后应该有转录");
+
+    let (tx, _rx) = mpsc::unbounded_channel();
+    let again = adapter.start_session(ctx(Some(id.clone())), tx).await.expect("转录还在时能接回");
+    assert_eq!(again.native_id().as_deref(), Some(id.as_str()));
+    again.stop().await.unwrap();
+    drop(again);
+
+    adapter.delete_thread(&id).await.unwrap();
+    let (tx, _rx) = mpsc::unbounded_channel();
+    let reopened = adapter.start_session(ctx(Some(id)), tx).await;
+    assert!(matches!(reopened.err(), Some(AgentError::SessionGone)));
 }

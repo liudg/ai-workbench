@@ -458,6 +458,23 @@ impl Runtimes {
         Ok(())
     }
 
+    /// 原生会话里应该已经有对话：Agent 回过用户的消息，也没有还没交出去的前文。
+    /// 分叉和换 Agent 抄来了前文，但原生会话要等第一条消息发出去才有内容。
+    fn has_native_history(&self, session_id: &str) -> RuntimeResult<bool> {
+        let mut logs = self.logs.lock().unwrap();
+        let log = self.log_mut(&mut logs, session_id)?;
+        let (mut asked, mut answered) = (false, false);
+        for event in &log.events {
+            match event.body {
+                SessionEventBody::Handoff { delivered: false, .. } => return Ok(false),
+                SessionEventBody::UserMessage { .. } => asked = true,
+                SessionEventBody::AgentMessage { .. } if asked => answered = true,
+                _ => {}
+            }
+        }
+        Ok(answered)
+    }
+
     /// Agent 自己切了计划模式（比如批准退出计划）。记进会话选项，重新接上时不再切回去。
     fn keep_collaboration_mode(&self, session_id: &str, mode: &str) -> RuntimeResult<()> {
         let Some(session) = self.store.session(session_id).map_err(|e| e.to_string())? else {
@@ -611,6 +628,9 @@ impl Runtimes {
             Some(parent) => json!({ "persist": false, "side_of": parent }),
             None => json!({ "persist": true, "skip_history": resume.is_some() }),
         };
+        if side_of.is_none() && resume.is_some() && self.has_native_history(session_id)? {
+            options["has_history"] = json!(true);
+        }
         if let Some(access) = session.options.access.as_ref() {
             if !access.writable_roots.is_empty() {
                 options["writable_roots"] = json!(access.writable_roots);
@@ -1370,6 +1390,7 @@ mod tests {
     struct FailingStart {
         gone: bool,
         starts: std::sync::atomic::AtomicUsize,
+        options: Mutex<Vec<Value>>,
     }
 
     #[async_trait::async_trait]
@@ -1388,10 +1409,11 @@ mod tests {
 
         async fn start_session(
             &self,
-            _ctx: SessionContext,
+            ctx: SessionContext,
             _events: aiwb_agents::EventSink,
         ) -> Result<Arc<dyn AgentSession>, AgentError> {
             self.starts.fetch_add(1, Ordering::SeqCst);
+            self.options.lock().unwrap().push(ctx.options);
             Err(if self.gone {
                 AgentError::SessionGone
             } else {
@@ -1421,7 +1443,7 @@ mod tests {
     async fn repeated_startup_failure_is_recorded_once() {
         let (store, _) = runtimes_with_task(SessionStatus::Completed);
         store.set_session_native_id("s", "thread-1").unwrap();
-        let adapter = Arc::new(FailingStart { gone: false, starts: Default::default() });
+        let adapter = Arc::new(FailingStart { gone: false, starts: Default::default(), options: Default::default() });
         let runtimes = failing_runtimes(&store, &adapter);
         // 打开会话时目录、权限菜单、目标各自要句柄。
         for _ in 0..4 {
@@ -1448,7 +1470,7 @@ mod tests {
     async fn gone_native_session_is_reported_once_without_restarting_the_cli() {
         let (store, _) = runtimes_with_task(SessionStatus::Completed);
         store.set_session_native_id("s", "thread-1").unwrap();
-        let adapter = Arc::new(FailingStart { gone: true, starts: Default::default() });
+        let adapter = Arc::new(FailingStart { gone: true, starts: Default::default(), options: Default::default() });
         let runtimes = failing_runtimes(&store, &adapter);
         for _ in 0..4 {
             assert_eq!(runtimes.handle("s").await.err().as_deref(), Some(AgentError::SessionGone.to_string().as_str()));
@@ -1460,5 +1482,55 @@ mod tests {
         store.set_session_native_id("s", "thread-2").unwrap();
         assert!(runtimes.handle("s").await.is_err());
         assert_eq!(adapter.starts.load(Ordering::SeqCst), 2);
+    }
+    #[tokio::test]
+    async fn reopening_says_whether_the_native_session_should_have_history() {
+        let (store, _) = runtimes_with_task(SessionStatus::Completed);
+        store.set_session_native_id("s", "thread-1").unwrap();
+        let adapter = Arc::new(FailingStart { gone: false, starts: Default::default(), options: Default::default() });
+        let has_history = |runtimes: &Arc<Runtimes>| {
+            let runtimes = runtimes.clone();
+            let adapter = adapter.clone();
+            async move {
+                let _ = runtimes.handle("s").await;
+                adapter.options.lock().unwrap().last().unwrap().get("has_history").cloned()
+            }
+        };
+        let reply = || SessionEventBody::AgentMessage {
+            text: "好的".into(),
+            stream_id: None,
+            phase: None,
+            mode: None,
+            dedupe_of: None,
+        };
+        let ask = || SessionEventBody::UserMessage { text: "你好".into(), images: vec![], annotations: 0, sender: None };
+
+        // 没聊过的会话，原生那边本来就可能还没有文件。
+        assert_eq!(has_history(&failing_runtimes(&store, &adapter)).await, None);
+
+        // 有问有答才算原生会话里有对话。
+        let runtimes = failing_runtimes(&store, &adapter);
+        runtimes.record("s", ask()).unwrap();
+        assert_eq!(has_history(&runtimes).await, None, "只有提问，Agent 可能还没写下文件");
+        runtimes.record("s", reply()).unwrap();
+        assert_eq!(has_history(&runtimes).await, Some(json!(true)));
+
+        // 分叉、换 Agent 抄来了前文，第一条消息发出去之前原生会话是空的。
+        runtimes
+            .record(
+                "s",
+                SessionEventBody::Handoff {
+                    from_agent: AgentKind::CodexCli,
+                    from_model: None,
+                    to_agent: AgentKind::Antigravity,
+                    to_model: None,
+                    strategy: aiwb_core::models::HandoffStrategy::Full,
+                    delivered: false,
+                    selected: 0,
+                    omitted: 0,
+                },
+            )
+            .unwrap();
+        assert_eq!(has_history(&runtimes).await, None);
     }
 }

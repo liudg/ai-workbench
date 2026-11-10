@@ -56,9 +56,13 @@ pub async fn open(options: Open, events: EventSink) -> Result<Arc<Shared>, Agent
     let launcher = process::resolve()?;
     let shared = retry::with_restarts(|| launch(&launcher, &project, &options, &events)).await?;
     let mcp_servers = mcp_servers(options.workbench_mcp.as_ref());
-    let opened = startup(&shared, &project, resume, options.persist, options.replay_history, mcp_servers).await;
+    let opened = startup(&shared, &project, resume.clone(), options.persist, options.replay_history, mcp_servers).await;
     if let Err(err) = opened {
         shared.shutdown();
+        // 删掉会话目录后 `session/load` 报 `Session "<id>" not found`。连 `meta.json` 都没有，就是会话没了。
+        if resume.as_deref().is_some_and(directory::is_gone) {
+            return Err(AgentError::SessionGone);
+        }
         return Err(err);
     }
     Ok(shared)

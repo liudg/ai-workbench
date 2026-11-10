@@ -390,7 +390,10 @@ impl AgentAdapter for CodexCliAdapter {
                 return Err(err);
             }
         } else if let Some(thread_id) = ctx.resume_native_id.clone().filter(|id| !id.is_empty()) {
-            shared.restore_thread(&thread_id, !ctx.flag("skip_history")).await;
+            if let Err(err) = shared.restore_thread(&thread_id, !ctx.flag("skip_history"), ctx.flag("has_history")).await {
+                shared.stop();
+                return Err(err);
+            }
         } else if ctx.flag("persist") {
             if let Err(err) = shared.ensure_thread().await {
                 shared.stop();

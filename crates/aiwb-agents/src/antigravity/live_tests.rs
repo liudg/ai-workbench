@@ -484,6 +484,20 @@ async fn live_resume_replay_import_and_delete() {
     drop(dir);
 }
 
+/// 没发过消息的会话关掉再打开，不能当成被删了。
+#[tokio::test]
+#[ignore = "calls the installed and authenticated agy"]
+async fn live_unsent_session_is_not_gone() {
+    let live = Live::open("full", persist(), None).await;
+    let id = live.native();
+    let Live { handle, dir, .. } = live;
+    handle.stop().await.unwrap();
+    assert!(!directory::is_gone(&id), "没发消息的会话也要留下文件");
+    let again = Live::open_in(dir, "full", json!({"persist":true,"skip_history":true}), None, Some(id.clone())).await;
+    assert_eq!(again.native(), id);
+    again.close().await;
+}
+
 #[tokio::test]
 #[ignore = "calls the installed and authenticated agy"]
 async fn live_subagents_show_their_steps() {

@@ -100,6 +100,15 @@ pub fn is_placeholder(id: &str) -> bool {
     dir.join("meta.json").is_file() && !dir.join("store.db").exists()
 }
 
+/// 会话目录整个不在了。`session/new` 就写了 `meta.json`，所以没发过消息的会话不算。会话根目录找不到时不下结论。
+pub fn is_gone(id: &str) -> bool {
+    sessions_dir().is_some_and(|root| gone_under(&root, id))
+}
+
+fn gone_under(root: &std::path::Path, id: &str) -> bool {
+    is_session_id(id) && root.is_dir() && !root.join(id).exists()
+}
+
 /// 没有删除会话的 ACP 方法。删掉目录之后 `session/load` 报 `Session "<id>" not found`。
 pub fn remove(id: &str) -> Result<(), String> {
     if !is_session_id(id) {
@@ -112,4 +121,20 @@ pub fn remove(id: &str) -> Result<(), String> {
         return Err(format!("找不到会话 {id}"));
     }
     std::fs::remove_dir_all(&dir).map_err(|err| format!("删不掉会话 {id}：{err}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::gone_under;
+
+    #[test]
+    fn gone_only_when_the_session_folder_is_missing() {
+        let root = tempfile::tempdir().unwrap();
+        let id = "0b5c2f53-9d0e-4b6a-8a43-2b1c3d4e5f60";
+        assert!(gone_under(root.path(), id));
+        std::fs::create_dir_all(root.path().join(id)).unwrap();
+        assert!(!gone_under(root.path(), id), "只有 meta.json 的空会话不算没了");
+        assert!(!gone_under(&root.path().join("missing"), "1b5c2f53-9d0e-4b6a-8a43-2b1c3d4e5f60"), "根目录不在时不下结论");
+        assert!(!gone_under(root.path(), "not-a-uuid"));
+    }
 }

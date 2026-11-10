@@ -90,6 +90,7 @@ pub async fn open(
     side_of: Option<String>,
     writable_roots: Vec<String>,
     replay_history: bool,
+    has_history: bool,
     workbench_mcp: Option<crate::WorkbenchMcp>,
     events: EventSink,
 ) -> Result<Arc<Shared>, AgentError> {
@@ -102,7 +103,7 @@ pub async fn open(
     }
     // 侧边聊天分出来的是新会话，id 由这里定。
     let resume_native_id = if side_of.is_some() { None } else { resume_native_id };
-    let (session_id, resume) = launch_target(resume_native_id.as_deref(), &history::projects_dir())?;
+    let (session_id, resume) = launch_target(resume_native_id.as_deref(), &history::projects_dir(), has_history)?;
     let permission_mode = command::permission_mode_for_access(access_mode.as_deref());
     let access = match access_mode.as_deref().unwrap_or("full") {
         "full" => "full",
@@ -183,9 +184,11 @@ pub async fn open(
 /// 2026-11-05，Claude Code 2.1.312：只做过 initialize / get_settings、没发过消息的会话不写
 /// `<id>.jsonl`，之后 `--resume=<id>` 退出码 1，stderr 是 `No conversation found with session ID: <id>`。
 /// 找不到转录就没有可接的历史，开一个新会话；新 id 经 `native_id()` 报回，由 runtime 跟着改记录。
+/// `has_history` 时这个会话聊过，转录不在就是被删了（`claude` 自己也只能报找不到），不另开一个顶替。
 pub(super) fn launch_target(
     resume_native_id: Option<&str>,
     projects: &std::path::Path,
+    has_history: bool,
 ) -> Result<(String, bool), AgentError> {
     match resume_native_id.map(str::trim).filter(|id| !id.is_empty()) {
         Some(id) if !history::is_uuid(id) => {
@@ -194,6 +197,7 @@ pub(super) fn launch_target(
         Some(id) if history::find_session_file_under(projects, id).is_some() => {
             Ok((id.to_string(), true))
         }
+        Some(_) if has_history && projects.is_dir() => Err(AgentError::SessionGone),
         _ => Ok((uuid::Uuid::new_v4().to_string(), false)),
     }
 }

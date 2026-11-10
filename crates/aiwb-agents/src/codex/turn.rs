@@ -204,7 +204,9 @@ impl Shared {
         Ok(())
     }
 
-    pub(super) async fn restore_thread(&self, thread_id: &str, with_history: bool) {
+    /// `has_history` 时这条线程聊过。codex-cli 2026-11-10 实测：删掉的线程和没发过消息的线程，
+    /// `thread/resume` 都回 `no rollout found for thread id <id>`，所以只有聊过的才当作被删了。
+    pub(super) async fn restore_thread(&self, thread_id: &str, with_history: bool, has_history: bool) -> Result<(), AgentError> {
         *self.thread_id.lock().unwrap() = Some(thread_id.to_string());
         if with_history {
             self.load_history(thread_id).await;
@@ -228,6 +230,9 @@ impl Shared {
             }
             Err(err) => {
                 let raw = err.to_string();
+                if has_history && raw.contains("no rollout found") {
+                    return Err(AgentError::SessionGone);
+                }
                 // 写锁被占用时历史已经在上面载入。不要把这次打开记成失败。
                 if !self.reject_writer_conflict(&raw) {
                     emit(
@@ -240,6 +245,7 @@ impl Shared {
             }
         }
         self.publish_rollout_usage(thread_id);
+        Ok(())
     }
 
     /// rollout 是打开时的累计。实时 `thread/tokenUsage/updated` 如果已经到了，就以它为准。

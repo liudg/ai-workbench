@@ -172,6 +172,35 @@ async fn cold_starts_always_get_the_model_catalog() {
     assert!(failures.is_empty(), "{failures:?}");
 }
 
+/// 删掉会话目录再接回，要说会话没了。不发消息，不用额度。
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "calls the local Cursor Agent CLI"]
+async fn deleted_sessions_reopen_as_gone() {
+    let project = std::env::temp_dir().join(format!("aiwb-cursor-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&project).unwrap();
+    let open = |resume: Option<String>| {
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        runtime::open(
+            runtime::Open {
+                project_path: project.to_string_lossy().to_string(),
+                access_mode: None,
+                resume,
+                persist: true,
+                replay_history: false,
+                workbench_mcp: None,
+            },
+            tx,
+        )
+    };
+    let shared = open(None).await.expect("新建会话");
+    let id = shared.session_id().expect("persist 时有会话 id");
+    shared.shutdown_and_wait().await;
+    directory::remove(&id).unwrap();
+    let reopened = open(Some(id)).await;
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(matches!(reopened.err(), Some(AgentError::SessionGone)));
+}
+
 #[test]
 fn text_and_thought_chunks_stream_into_one_message_each() {
     let mut map = map();

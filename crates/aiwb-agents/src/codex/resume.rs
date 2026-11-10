@@ -647,6 +647,61 @@ mod tests {
         deleted.expect("thread/delete");
     }
 
+    /// 聊过的线程删掉后再接回，要说会话没了；没聊过的线程照旧能打开。
+    #[tokio::test]
+    #[ignore = "calls the local Codex CLI"]
+    async fn deleted_thread_reopens_as_gone() {
+        use crate::codex::CodexCliAdapter;
+        use crate::{AgentAdapter, AgentError, SessionContext};
+        use tokio::sync::mpsc;
+
+        let dir = std::env::temp_dir().join(format!("ai-workbench-gone-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp cwd");
+        let adapter = CodexCliAdapter::new();
+        let open = |resume: Option<String>, has_history: bool| {
+            let (tx, rx) = mpsc::unbounded_channel();
+            let opened = adapter.start_session(
+                SessionContext {
+                    project_path: dir.display().to_string(),
+                    access_mode: Some("full".into()),
+                    resume_native_id: resume,
+                    workbench_mcp: None,
+                    options: json!({ "persist": true, "skip_history": true, "has_history": has_history }),
+                },
+                tx,
+            );
+            (opened, rx)
+        };
+
+        let (opened, mut rx) = open(None, false);
+        let session = opened.await.expect("thread/start");
+        let id = session.native_id().expect("native thread id");
+        session.send_message("Reply with the single word ok. Do not use tools.".into()).await.expect("send");
+        let deadline = std::time::Instant::now() + Duration::from_secs(120);
+        let mut replied = false;
+        while !replied && std::time::Instant::now() < deadline {
+            if let Ok(Some(SessionEventBody::AgentMessage { text, .. })) = timeout(Duration::from_millis(500), rx.recv()).await {
+                replied = !text.trim().is_empty();
+            }
+        }
+        let _ = session.stop().await;
+        assert!(replied, "Codex did not answer");
+
+        let (opened, _rx) = open(Some(id.clone()), true);
+        let session = opened.await.expect("聊过的线程还在时能接回");
+        let _ = session.stop().await;
+
+        delete_persisted_thread(&id).await.expect("thread/delete");
+        let (opened, _rx) = open(Some(id.clone()), true);
+        assert!(matches!(opened.await.err(), Some(AgentError::SessionGone)));
+
+        // 没聊过的线程同样没有 rollout，那不是被删了。
+        let (opened, _rx) = open(Some("019a0000-0000-7000-8000-000000000000".into()), false);
+        let session = opened.await.expect("没聊过的线程照旧打开");
+        let _ = session.stop().await;
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     const GAP_LIFECYCLE: &str = r"C:\Users\admin\Desktop\temp\ai-workbench-project\_gap-lifecycle";
 
     struct GapCleanup {
