@@ -465,6 +465,22 @@ async fn live_resume_replay_import_and_delete() {
     adapter.delete_thread(&id).await.unwrap();
     let page = adapter.import_page(&cwd, None, 50).await.unwrap();
     assert!(!page.entries.iter().any(|entry| entry.native_id == id));
+
+    // 删掉之后再接回，要说会话没了，而不是协议原文。
+    let (tx, _rx) = mpsc::unbounded_channel();
+    let reopened = adapter
+        .start_session(
+            SessionContext {
+                project_path: cwd,
+                access_mode: Some("full".into()),
+                resume_native_id: Some(id),
+                workbench_mcp: None,
+                options: json!({"persist":true,"skip_history":true}),
+            },
+            tx,
+        )
+        .await;
+    assert!(matches!(reopened.err(), Some(crate::AgentError::SessionGone)));
     drop(dir);
 }
 

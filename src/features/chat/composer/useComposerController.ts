@@ -45,6 +45,7 @@ import { useComposerMenu } from "./useComposerMenu";
 import { useFileDrop } from "./useFileDrop";
 import { collaborationMode } from "./collaboration-mode";
 import { composerTokens, liveFileRefs, type FileRef } from "./file-refs";
+import { shownInTimeline } from "./timeline-notice";
 import { useGoalDraft } from "./useGoalDraft";
 import { useMentionMenu } from "./useMentionMenu";
 import { releaseSubmitOnEdit, submitFingerprint, type SubmitFlight } from "./submit-flight";
@@ -153,7 +154,7 @@ export function useComposerController(host: ComposerHost, session: Session, even
   }, [view.skillQuery]);
 
   useEffect(() => {
-    if (goal.publishError) setNotice(goal.publishError);
+    if (goal.publishError && !shownInTimeline(events, goal.publishError)) setNotice(goal.publishError);
   }, [goal.publishError]);
 
   useEffect(() => {

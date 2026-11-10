@@ -61,6 +61,8 @@ pub struct Runtimes {
     starting: Mutex<HashMap<String, Arc<AtomicBool>>>,
     /// 同一时间只打开一个会话，避免对同一线程起两个 CLI。
     opening: tokio::sync::Mutex<()>,
+    /// 适配器确认原生会话已经没了的会话和那个原生 id。再用到时直接报，不再起 CLI。
+    gone: Mutex<HashMap<String, String>>,
     /// 清理和恢复工作树一次只做一件，免得一边删一边恢复。
     pub(crate) worktrees: tokio::sync::Mutex<()>,
     /// 同一时间只探一次目录。等锁的一方拿到锁后先看缓存。
@@ -120,6 +122,7 @@ impl Runtimes {
             live: Mutex::default(),
             starting: Mutex::default(),
             opening: tokio::sync::Mutex::new(()),
+            gone: Mutex::default(),
             worktrees: tokio::sync::Mutex::new(()),
             probing: tokio::sync::Mutex::new(()),
             fresh_catalogs: Mutex::default(),
@@ -601,6 +604,9 @@ impl Runtimes {
             None
         };
         let resume = session.native_id.clone().filter(|id| !id.is_empty());
+        if side_of.is_none() && resume.is_some() && self.gone.lock().unwrap().get(session_id) == resume.as_ref() {
+            return Err(AgentError::SessionGone.to_string());
+        }
         let mut options = match &side_of {
             Some(parent) => json!({ "persist": false, "side_of": parent }),
             None => json!({ "persist": true, "skip_history": resume.is_some() }),
@@ -622,7 +628,7 @@ impl Runtimes {
             project_path: cwd,
             access_mode: session.options.access.as_ref().map(|access| access.mode.clone()),
             options,
-            resume_native_id: if side_of.is_some() { None } else { resume },
+            resume_native_id: if side_of.is_some() { None } else { resume.clone() },
             workbench_mcp,
         };
         let (tx, rx) = mpsc::unbounded_channel();
@@ -634,6 +640,9 @@ impl Runtimes {
             Err(err) => {
                 self.mcp.revoke(session_id);
                 if self.initial_cancelled(session_id) { return Err("启动已取消".into()); }
+                if let (AgentError::SessionGone, Some(native), None) = (&err, resume.as_ref(), side_of.as_ref()) {
+                    self.gone.lock().unwrap().insert(session_id.to_string(), native.clone());
+                }
                 let message = err.to_string();
                 self.record_initial_failure(session_id, message.clone())?;
                 return Err(message);
@@ -1355,5 +1364,101 @@ mod tests {
             .unwrap();
         let options = store.session("s").unwrap().unwrap().options;
         assert_eq!(options.collaboration_mode.as_deref(), Some("plan"));
+    }
+
+    /// 每次启动都失败的 Agent。`gone` 时报原生会话没了，否则报一句协议原文。
+    struct FailingStart {
+        gone: bool,
+        starts: std::sync::atomic::AtomicUsize,
+    }
+
+    #[async_trait::async_trait]
+    impl AgentAdapter for FailingStart {
+        fn kind(&self) -> AgentKind {
+            AgentKind::Antigravity
+        }
+
+        fn capabilities(&self) -> aiwb_core::models::AgentCapabilities {
+            aiwb_core::models::AgentCapabilities::antigravity()
+        }
+
+        async fn detect(&self) -> Result<(), AgentError> {
+            Ok(())
+        }
+
+        async fn start_session(
+            &self,
+            _ctx: SessionContext,
+            _events: aiwb_agents::EventSink,
+        ) -> Result<Arc<dyn AgentSession>, AgentError> {
+            self.starts.fetch_add(1, Ordering::SeqCst);
+            Err(if self.gone {
+                AgentError::SessionGone
+            } else {
+                AgentError::Runtime("session/resume 失败：Failed to read session".into())
+            })
+        }
+    }
+
+    fn failing_runtimes(store: &Arc<Store>, adapter: &Arc<FailingStart>) -> Arc<Runtimes> {
+        let adapter = adapter.clone();
+        Arc::new(Runtimes::new(store.clone(), Arc::new(Hub::new()), Arc::new(move |_| adapter.clone())))
+    }
+
+    fn errors(store: &Store) -> Vec<String> {
+        store
+            .events_since("s", 0)
+            .unwrap()
+            .into_iter()
+            .filter_map(|item| match item.event.body {
+                SessionEventBody::Error { message } => Some(message),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn repeated_startup_failure_is_recorded_once() {
+        let (store, _) = runtimes_with_task(SessionStatus::Completed);
+        store.set_session_native_id("s", "thread-1").unwrap();
+        let adapter = Arc::new(FailingStart { gone: false, starts: Default::default() });
+        let runtimes = failing_runtimes(&store, &adapter);
+        // 打开会话时目录、权限菜单、目标各自要句柄。
+        for _ in 0..4 {
+            assert!(runtimes.handle("s").await.is_err());
+        }
+        assert_eq!(adapter.starts.load(Ordering::SeqCst), 4, "不确定的失败下次还要再试");
+        assert_eq!(errors(&store).len(), 1);
+        assert_eq!(store.session("s").unwrap().unwrap().status, SessionStatus::Failed);
+
+        // 重启 daemon 后再打开，还是那一条。
+        let restarted = failing_runtimes(&store, &adapter);
+        assert!(restarted.handle("s").await.is_err());
+        assert_eq!(errors(&store).len(), 1);
+
+        // 中间有过别的事，再失败要再记。
+        restarted.record("s", SessionEventBody::UserMessage {
+            text: "再试一次".into(), images: vec![], annotations: 0, sender: None,
+        }).unwrap();
+        assert!(restarted.handle("s").await.is_err());
+        assert_eq!(errors(&store).len(), 2);
+    }
+
+    #[tokio::test]
+    async fn gone_native_session_is_reported_once_without_restarting_the_cli() {
+        let (store, _) = runtimes_with_task(SessionStatus::Completed);
+        store.set_session_native_id("s", "thread-1").unwrap();
+        let adapter = Arc::new(FailingStart { gone: true, starts: Default::default() });
+        let runtimes = failing_runtimes(&store, &adapter);
+        for _ in 0..4 {
+            assert_eq!(runtimes.handle("s").await.err().as_deref(), Some(AgentError::SessionGone.to_string().as_str()));
+        }
+        assert_eq!(adapter.starts.load(Ordering::SeqCst), 1);
+        assert_eq!(errors(&store), vec![AgentError::SessionGone.to_string()]);
+
+        // 换了原生会话就重新试。
+        store.set_session_native_id("s", "thread-2").unwrap();
+        assert!(runtimes.handle("s").await.is_err());
+        assert_eq!(adapter.starts.load(Ordering::SeqCst), 2);
     }
 }

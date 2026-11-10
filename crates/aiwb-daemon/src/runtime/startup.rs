@@ -105,15 +105,18 @@ impl Runtimes {
         {
             return Ok(());
         }
-        if self
-            .store
-            .session(session_id)
-            .map_err(|e| e.to_string())?
-            .is_some_and(|s| {
-                s.status != SessionStatus::Failed || !starting.contains_key(session_id)
-            })
-        {
+        let Some(session) = self.store.session(session_id).map_err(|e| e.to_string())? else {
+            return Ok(());
+        };
+        // 首轮启动时 start_session 自己的失败已经记过。
+        if session.status == SessionStatus::Failed && starting.contains_key(session_id) {
+            return Ok(());
+        }
+        // 打开会话时目录、权限菜单、目标等各自要句柄，同一个失败会报好几次；重启后再打开也一样。
+        if !self.repeats_last_error(session_id, &message)? {
             self.record(session_id, SessionEventBody::Error { message })?;
+        }
+        if session.status != SessionStatus::Failed {
             self.record(
                 session_id,
                 SessionEventBody::StatusChanged {
@@ -122,6 +125,18 @@ impl Runtimes {
             )?;
         }
         Ok(())
+    }
+
+    /// 时间线最后一条不是状态的事件就是这条报错。
+    fn repeats_last_error(&self, session_id: &str, message: &str) -> RuntimeResult<bool> {
+        let mut logs = self.logs.lock().unwrap();
+        let log = self.log_mut(&mut logs, session_id)?;
+        Ok(log
+            .events
+            .iter()
+            .rev()
+            .find(|event| !matches!(event.body, SessionEventBody::StatusChanged { .. }))
+            .is_some_and(|event| matches!(&event.body, SessionEventBody::Error { message: last } if last == message)))
     }
 
     pub(super) fn initial_cancelled(&self, session_id: &str) -> bool {

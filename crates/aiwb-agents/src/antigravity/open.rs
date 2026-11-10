@@ -12,6 +12,7 @@ use serde_json::{json, Value};
 use tokio::sync::mpsc;
 
 use super::catalog;
+use super::directory;
 use super::dialect::{AntigravityDialect, RULES};
 use super::process;
 use crate::acp::runtime::{mcp_servers, Opening, Parts, Shared, HANDSHAKE};
@@ -94,10 +95,15 @@ pub async fn open(options: Open, events: EventSink) -> Result<Arc<Shared>, Agent
     )?;
     let opened = {
         let _gate = startup_gate().lock().await;
-        startup(&shared, &project, resume, options.replay_history, options.workbench_mcp.as_ref(), &options.roots, servers).await
+        startup(&shared, &project, resume.clone(), options.replay_history, options.workbench_mcp.as_ref(), &options.roots, servers).await
     };
     if let Err(err) = opened {
         shared.shutdown();
+        // 2026-11-10 agy 1.5.3：删掉 `conversations/<id>.db` 和 `brain/<id>` 后 `session/resume` 回
+        // `Failed to read session <id>`。接不上又找不到文件，就是会话没了，不是这次没读成。
+        if resume.as_deref().is_some_and(directory::is_gone) {
+            return Err(AgentError::SessionGone);
+        }
         return Err(err);
     }
     Ok(shared)

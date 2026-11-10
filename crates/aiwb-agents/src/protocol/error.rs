@@ -13,6 +13,9 @@ pub enum AgentError {
     Closed,
     #[error("{0} 的会话协议未接入工作台，不能新建会话")]
     NotLinked(&'static str),
+    /// 要接回的原生会话已经没了（例如在 Agent 自己的界面里删掉了）。只有适配器确认过才用。
+    #[error("原来的对话已经不在了，可能已在别处删除，无法接着聊。")]
+    SessionGone,
     /// 真实 CLI 适配器（进程 / 解析失败）使用。
     #[error("agent 运行时错误: {0}")]
     Runtime(String),

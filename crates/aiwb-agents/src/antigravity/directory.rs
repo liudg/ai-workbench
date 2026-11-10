@@ -28,6 +28,18 @@ pub fn brain_dir(id: &str) -> Option<PathBuf> {
     data_dir().map(|dir| dir.join("brain").join(id))
 }
 
+/// 会话本身和它的产物都不在了。数据目录本身找不到时不下结论。
+pub fn is_gone(id: &str) -> bool {
+    data_dir().is_some_and(|root| gone_under(&root, id))
+}
+
+fn gone_under(root: &std::path::Path, id: &str) -> bool {
+    uuid::Uuid::parse_str(id).is_ok()
+        && root.join("conversations").is_dir()
+        && !root.join("conversations").join(format!("{id}.db")).exists()
+        && !root.join("brain").join(id).exists()
+}
+
 /// ACP 没有删除方法。2026-11-09 实测：删掉这几处之后 `session/resume` 报读不到，`session/list` 里也没有了。
 pub fn remove(id: &str) -> Result<(), String> {
     if uuid::Uuid::parse_str(id).is_err() || id.contains(['/', '\\', '.']) {
@@ -50,4 +62,24 @@ pub fn remove(id: &str) -> Result<(), String> {
         std::fs::remove_dir_all(&brain).map_err(|err| format!("删不掉会话 {id} 的产物：{err}"))?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::gone_under;
+
+    #[test]
+    fn gone_only_when_conversation_and_brain_are_both_missing() {
+        let root = tempfile::tempdir().unwrap();
+        let id = "0b5c2f53-9d0e-4b6a-8a43-2b1c3d4e5f60";
+        assert!(!gone_under(root.path(), id), "数据目录不全时不下结论");
+        std::fs::create_dir_all(root.path().join("conversations")).unwrap();
+        assert!(gone_under(root.path(), id));
+        std::fs::create_dir_all(root.path().join("brain").join(id)).unwrap();
+        assert!(!gone_under(root.path(), id));
+        std::fs::remove_dir_all(root.path().join("brain")).unwrap();
+        std::fs::write(root.path().join("conversations").join(format!("{id}.db")), b"").unwrap();
+        assert!(!gone_under(root.path(), id));
+        assert!(!gone_under(root.path(), "not-a-uuid"));
+    }
 }
