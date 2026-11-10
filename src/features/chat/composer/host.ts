@@ -123,6 +123,8 @@ export interface ComposerHost {
   clearAttachments(): void;
   replaceAttachments(files: Attachment[]): void;
   clearTextSnippets(): void;
+  /** 发送被拒时把清掉的引用放回去。 */
+  restoreTextSnippets(snippets: TextSnippet[]): void;
   removeTextSnippet(id: string): void;
   updateQueued(id: string, text: string, images: string[]): Promise<void>;
   removeQueued(id: string): Promise<void>;

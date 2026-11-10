@@ -19,7 +19,14 @@ import type {
   SessionTuning,
 } from "@/types";
 import { filterPaths } from "../session/api";
-import { moveDraft, patchDraft, readDraft, removeDraftSnippet, type ComposerDraft } from "../session/composer-drafts";
+import {
+  moveDraft,
+  patchDraft,
+  readDraft,
+  removeDraftSnippet,
+  restoreDraftSnippets,
+  type ComposerDraft,
+} from "../session/composer-drafts";
 import { usePanelStore } from "@/features/panel/state/store";
 import { initialSandbox } from "@/lib/sandbox";
 import { rememberAgent, rememberSandbox, rememberTuning, stickyAgent, stickySandbox, stickyTuning } from "./sticky";
@@ -261,6 +268,7 @@ export function useNewComposer({
       clearAttachments: () => patch({ files: [] }),
       replaceAttachments: (files) => patch({ files }),
       clearTextSnippets: () => patch({ snippets: [] }),
+      restoreTextSnippets: (snippets) => restoreDraftSnippets(key, snippets),
       removeTextSnippet: (id) => removeDraftSnippet(key, id),
       updateQueued: async () => {},
       removeQueued: async () => {},

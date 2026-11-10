@@ -148,6 +148,13 @@ export function addDraftSnippet(key: string, draft: TextSnippetDraft) {
   });
 }
 
+/** 没送出去的引用放回原位，排在之后新加的前面。 */
+export function restoreDraftSnippets(key: string, snippets: readonly TextSnippet[]) {
+  const current = readDraft(key).snippets;
+  const missing = snippets.filter((snippet) => !current.some((item) => item.id === snippet.id));
+  if (missing.length > 0) patchDraft(key, { snippets: [...missing, ...current] });
+}
+
 export function removeDraftSnippet(key: string, id: string) {
   const current = readDraft(key).snippets;
   const next = withoutTextSnippet(current, id);

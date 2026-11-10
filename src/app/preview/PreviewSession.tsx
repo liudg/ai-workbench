@@ -80,6 +80,7 @@ export function previewComposerHost(input: {
     clearAttachments: () => {},
     replaceAttachments: () => {},
     clearTextSnippets: () => {},
+    restoreTextSnippets: () => {},
     removeTextSnippet: () => {},
     updateQueued: async () => {},
     removeQueued: async () => {},

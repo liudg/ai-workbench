@@ -2,6 +2,7 @@ import type { ClipboardEvent, KeyboardEvent as ReactKeyboardEvent, RefObject } f
 
 import { pickFiles } from "@/lib/native/pick-files";
 import { stageImage } from "@/lib/native/stage-image";
+import type { TextSnippet } from "@/shared/text-snippet";
 import type { AgentCapabilities, AgentSkillOption, Attachment, SessionSandbox, SlashCommand } from "@/types";
 import { composerKeyIntent, stepIndex } from "./composer-keys";
 import { composerCtrlEnter, queueFlushIds, submitDelivery } from "./composer-now";
@@ -234,7 +235,7 @@ export function runComposerSubmit(run: ComposerRun, options?: { now?: boolean })
       .then((ok) => {
         if (ok) return;
         release();
-        restoreFailedSend(run, []);
+        restoreFailedSend(run, { files: [], snippets: clearSnippets ? snippets : [] });
       });
     return;
   }
@@ -289,17 +290,21 @@ export function runComposerSubmit(run: ComposerRun, options?: { now?: boolean })
   void run.host.send(decision.text, images, deliverNow).then((ok) => {
     if (ok) return;
     release();
-    restoreFailedSend(run, clearAttachments ? attached : []);
+    restoreFailedSend(run, {
+      files: clearAttachments ? attached : [],
+      snippets: clearSnippets ? snippets : [],
+    });
   });
   if (clearAttachments) run.host.clearAttachments();
   run.textareaRef.current?.focus();
 }
 
-function restoreFailedSend(run: ComposerRun, attached: Attachment[]) {
+function restoreFailedSend(run: ComposerRun, cleared: { files: Attachment[]; snippets: TextSnippet[] }) {
   if (!shouldRestoreFailedText(run.textareaRef.current?.value ?? null)) return;
   run.setText(run.text);
   run.setCaret(run.text.length);
-  if (attached.length > 0) run.host.addAttachments(attached);
+  if (cleared.files.length > 0) run.host.addAttachments(cleared.files);
+  if (cleared.snippets.length > 0) run.host.restoreTextSnippets(cleared.snippets);
 }
 
 /** Ctrl+Enter。有内容直接送出；空输入则按队列顺序逐条引导。 */
