@@ -208,6 +208,14 @@ export const DESKTOP_ZH = {
   /** 相邻工具收成一行。名字只来自这一条事件，不查目录。 */
   activityUsedIntegrations: "已使用 {names} 集成运行了命令",
   activityRanCommands: "已运行 {count} 条命令",
+  /** 一组里几类工具都有时逐类列出，只在开头写一次「已」。 */
+  activityDone: "已{parts}",
+  activityPartCommands: "运行 {count} 条命令",
+  activityPartReads: "读取 {count} 个文件",
+  activityPartSearches: "搜索 {count} 次",
+  activityPartEdits: "编辑 {count} 个文件",
+  activityPartFetches: "读取 {count} 个网页",
+  activityPartTools: "调用 {count} 个工具",
   activitySearchedWeb: "已搜索网页",
   /** 进行中的一轮，活动流末行。 */
   liveThinking: "正在思考",

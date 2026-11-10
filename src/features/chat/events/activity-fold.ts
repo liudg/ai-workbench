@@ -66,7 +66,7 @@ export function activitySummary(calls: readonly ToolCallEvent[]): { text: string
   const servers: string[] = [];
   const seen = new Set<string>();
   let web = false;
-  let other = 0;
+  const counts = new Map<ToolKind, number>();
   for (const call of calls) {
     if (isWebSearch(call)) {
       web = true;
@@ -81,13 +81,65 @@ export function activitySummary(calls: readonly ToolCallEvent[]): { text: string
       }
       continue;
     }
-    other += 1;
+    const kind = toolKind(call.name);
+    counts.set(kind, (counts.get(kind) ?? 0) + 1);
   }
   let text: string;
   if (servers.length > 0) text = integrationLine(servers);
-  else if (other === 0 && web) text = DESKTOP_ZH.activitySearchedWeb;
-  else text = commandLine(other > 0 ? other : calls.length);
+  else if (counts.size === 0 && web) text = DESKTOP_ZH.activitySearchedWeb;
+  else text = countedLine(counts.size > 0 ? counts : new Map([["command", calls.length]]));
   return { text, webSearch: web && text !== DESKTOP_ZH.activitySearchedWeb };
+}
+
+type ToolKind = "command" | "read" | "search" | "edit" | "fetch" | "tool";
+
+/** 按适配器写入的工具名分类。名字来自各 Agent 自己（Claude `Read`、Cursor 和 Antigravity 的 ACP 种类、`command`）。 */
+const TOOL_KINDS: Record<string, ToolKind> = {
+  command: "command",
+  read: "read",
+  notebookread: "read",
+  readfile: "read",
+  viewfile: "read",
+  search: "search",
+  grep: "search",
+  glob: "search",
+  ls: "search",
+  listdir: "search",
+  grepsearch: "search",
+  findbyname: "search",
+  edit: "edit",
+  write: "edit",
+  multiedit: "edit",
+  notebookedit: "edit",
+  delete: "edit",
+  move: "edit",
+  editfile: "edit",
+  writefile: "edit",
+  writetofile: "edit",
+  replacefilecontent: "edit",
+  multireplacefilecontent: "edit",
+  webfetch: "fetch",
+  readurlcontent: "fetch",
+};
+
+function toolKind(name: string): ToolKind {
+  return TOOL_KINDS[name.replace(/[_-]/g, "").toLowerCase()] ?? "tool";
+}
+
+const PART_LABELS: Record<ToolKind, string> = {
+  command: DESKTOP_ZH.activityPartCommands,
+  read: DESKTOP_ZH.activityPartReads,
+  search: DESKTOP_ZH.activityPartSearches,
+  edit: DESKTOP_ZH.activityPartEdits,
+  fetch: DESKTOP_ZH.activityPartFetches,
+  tool: DESKTOP_ZH.activityPartTools,
+};
+
+/** 只有命令时沿用「已运行 N 条命令」；几类都有时按出现顺序逐类列出。 */
+function countedLine(counts: ReadonlyMap<ToolKind, number>): string {
+  if (counts.size === 1 && counts.has("command")) return commandLine(counts.get("command") ?? 0);
+  const parts = [...counts].map(([kind, count]) => PART_LABELS[kind].replace("{count}", String(count)));
+  return DESKTOP_ZH.activityDone.replace("{parts}", parts.join("，"));
 }
 
 /** 展开后的子步骤标题。不把 PowerShell 路径当作主行。 */

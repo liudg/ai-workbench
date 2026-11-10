@@ -85,6 +85,23 @@ test("a web-only group is just the search phrase", () => {
   assert.equal(summary.webSearch, false);
 });
 
+test("reads, searches and edits are counted by kind, not as commands", () => {
+  const mixed = activitySummary([
+    tool("r1", "Read", "a.txt"),
+    tool("c1", "command", "echo ok"),
+    tool("r2", "Read", "b.txt"),
+    tool("s1", "Search", "BagMain"),
+    tool("e1", "Edit", "a.txt"),
+  ]);
+  assert.equal(mixed.text, "已读取 2 个文件，运行 1 条命令，搜索 1 次，编辑 1 个文件");
+  assert.equal(activitySummary([tool("r", "Read", "a.txt")]).text, "已读取 1 个文件");
+  assert.equal(activitySummary([tool("g", "Grep", "x"), tool("l", "Glob", "*.ts")]).text, "已搜索 2 次");
+  assert.equal(activitySummary([tool("w", "Write", "b.txt"), tool("m", "MultiEdit", "c.txt")]).text, "已编辑 2 个文件");
+  assert.equal(activitySummary([tool("f", "WebFetch", "https://a")]).text, "已读取 1 个网页");
+  assert.equal(activitySummary([tool("t", "TodoWrite", "plan"), tool("k", "manage_task", "kill")]).text, "已调用 2 个工具");
+  assert.equal(activitySummary([tool("c", "command", "ls"), tool("c2", "command", "pwd")]).text, "已运行 2 条命令");
+});
+
 test("thinking splits tool groups and leaves no thinking row", () => {
   const pieces = foldActivity([
     event("c1", { kind: "agent-message", text: "先看表格。", phase: "commentary" }),
