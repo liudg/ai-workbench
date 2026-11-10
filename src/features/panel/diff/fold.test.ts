@@ -52,6 +52,17 @@ test("hunk rows keep old and new line numbers", () => {
   );
 });
 
+test("the newline that ends the diff text is not an extra context row", () => {
+  const diff = "--- a/a.txt\n+++ b/a.txt\n@@ -1,2 +1,2 @@\n alpha\n-beta\n+BETA\n";
+  const rows = foldDiffLines(diff).filter((row) => row.kind === "line");
+  assert.deepEqual(
+    rows.map((row) => (row.kind === "line" ? `${row.tone}:${row.oldNo ?? ""}:${row.newNo ?? ""}:${row.text}` : "")),
+    ["context:1:1:alpha", "del:2::beta", "add::2:BETA"],
+  );
+  const expanded = expandDiffLines(diff, "alpha\nBETA\n");
+  assert.equal(expanded?.filter((row) => row.kind === "line").length, 3);
+});
+
 test("whitespace-only edits drop out and expand fills the new file", () => {
   const spaced = ["@@ -1,2 +1,2 @@", "-a b", "+a  b", " same"].join("\n");
   assert.equal(texts(body(spaced, { hideWhitespace: true })).includes("add:a  b"), false);

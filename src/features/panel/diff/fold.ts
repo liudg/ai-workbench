@@ -80,7 +80,8 @@ export function foldDiffLines(diff: string): DiffFoldRow[] {
       inHunk = true;
       continue;
     }
-    if (!inHunk) continue;
+    // diff 原文以换行结尾，拆出来的最后一个空串不是一行。空白上下文行是一个空格。
+    if (!inHunk || line === "") continue;
     if (line.startsWith("\\")) {
       const text = line.replace(/^\\/, "").trim();
       rows.push(diffLine("meta", text, null, null));
@@ -202,7 +203,7 @@ function parseHunks(diff: string): ParsedHunk[] {
       current = null;
       continue;
     }
-    if (!current) continue;
+    if (!current || line === "") continue;
     if (line.startsWith("\\")) current.lines.push({ kind: "meta", text: line.replace(/^\\/, "").trim() });
     else if (line.startsWith("+")) current.lines.push({ kind: "add", text: line.slice(1) });
     else if (line.startsWith("-")) current.lines.push({ kind: "del", text: line.slice(1) });
