@@ -55,8 +55,8 @@ export function DiffFileSection({
   return (
     <section
       className={cn(
-        "min-w-0 scroll-mt-2 border-b border-[#222]",
-        active && "bg-[#121212]",
+        "min-w-0 scroll-mt-2 border-b border-[var(--wb-border)]",
+        active && "bg-[var(--wb-card)]",
       )}
       data-diff-file-body={file.path}
       data-diff-open={open ? "true" : "false"}
@@ -65,7 +65,10 @@ export function DiffFileSection({
       onClick={onSelect}
     >
       <header
-        className="flex min-w-0 cursor-pointer flex-nowrap items-center gap-2 px-3 py-2 text-xs"
+        className={cn(
+          "flex min-w-0 cursor-pointer flex-nowrap items-center gap-2 border-b bg-[var(--wb-canvas)]/70 px-3 py-2 text-xs",
+          open ? "border-[var(--wb-border)]" : "border-transparent",
+        )}
         data-diff-summary={file.path}
         onClick={(event) => {
           event.stopPropagation();
@@ -78,7 +81,7 @@ export function DiffFileSection({
           data-diff-toggle={file.path}
           aria-expanded={open}
           aria-label={open ? "收起差异" : "展开差异"}
-          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-[#888] hover:bg-white/5 hover:text-[#e8e8e8]"
+          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--wb-muted)] hover:bg-[var(--wb-hover)] hover:text-[var(--wb-text-strong)]"
         >
           <ChevronRight
             data-diff-disclosure={diffFileDisclosureClass(open)}
@@ -88,11 +91,11 @@ export function DiffFileSection({
             )}
           />
         </button>
-        <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-[#cfcfcf]" title={file.path}>
+        <span className="min-w-0 flex-1 truncate font-mono text-[12px] font-medium text-[var(--wb-text-strong)]" title={file.path}>
           {file.path}
         </span>
-        <span className="shrink-0 whitespace-nowrap font-mono text-[12px] text-[#3fb950]">+{file.added}</span>
-        <span className="shrink-0 whitespace-nowrap font-mono text-[12px] text-[#f85149]">-{file.removed}</span>
+        <span className="shrink-0 whitespace-nowrap font-mono text-[12px] text-[var(--wb-add-stat)]">+{file.added}</span>
+        <span className="shrink-0 whitespace-nowrap font-mono text-[12px] text-[var(--wb-del-stat)]">-{file.removed}</span>
       </header>
       {open ? (
         renderPreview && markdown ? (
@@ -100,11 +103,11 @@ export function DiffFileSection({
             <MarkdownBody text={source && source.length > 0 ? source : previewTextFromDiff(file.diff)} />
           </div>
         ) : display.whitespaceHidden ? (
-          <p className="px-3 py-2 text-xs text-zinc-500" data-diff-whitespace-hidden>
+          <p className="px-3 py-2 text-xs text-[var(--wb-muted)]" data-diff-whitespace-hidden>
             {DESKTOP_ZH.diffWhitespaceHidden}
           </p>
         ) : rows.length === 0 ? (
-          <p className="px-3 py-2 text-xs text-zinc-500">没有可显示的差异文本。</p>
+          <p className="px-3 py-2 text-xs text-[var(--wb-muted)]">没有可显示的差异文本。</p>
         ) : presentation === "split" ? (
           <SplitBody rows={rows} wrap={wrap} />
         ) : (
@@ -148,16 +151,18 @@ function SplitCellView({ cell, wrap, edge }: { cell: SplitCell; wrap: boolean; e
       data-diff-tone={cell.tone}
       className={cn(
         "flex min-w-0",
-        edge === "left" && "border-r border-[#222]",
-        cell.tone === "add" && "bg-[#173324] text-[#b7ebc6]",
-        cell.tone === "del" && "bg-[#3a1f24] text-[#f0b4b4]",
-        cell.tone === "context" && "text-[#d4d4d4]",
-        cell.tone === "meta" && "text-zinc-500",
-        cell.tone === "pad" && "bg-zinc-950/30",
+        edge === "left" && "border-r border-[var(--wb-border)]",
+        cell.tone === "add" && "border-l-2 border-l-[var(--wb-add-bar)] bg-[var(--wb-add-bg)] text-[var(--wb-add-text)]",
+        cell.tone === "del" && "border-l-2 border-l-[var(--wb-del-bar)] bg-[var(--wb-del-bg)] text-[var(--wb-del-text)]",
+        cell.tone === "context" && "border-l-2 border-l-transparent text-[var(--wb-text)]",
+        cell.tone === "meta" && "border-l-2 border-l-transparent text-[var(--wb-muted)]",
+        cell.tone === "pad" && "border-l-2 border-l-transparent bg-[var(--wb-gutter)]",
       )}
     >
-      <span className="w-10 shrink-0 select-none px-2 text-right text-zinc-500">{cell.lineNo ?? ""}</span>
-      <LineText text={cell.text} parts={cell.parts} wrap={wrap} />
+      <span className="min-w-10 shrink-0 select-none bg-[var(--wb-gutter)] px-1.5 text-right tabular-nums text-[var(--wb-faint)]">
+        {cell.lineNo ?? ""}
+      </span>
+      <LineText text={cell.text} parts={cell.parts} wrap={wrap} tone={cell.tone} />
     </div>
   );
 }
@@ -169,22 +174,22 @@ function DiffRowView({ row, wrap }: { row: DiffDisplayRow; wrap: boolean }) {
       data-diff-tone={row.tone}
       className={cn(
         "flex min-w-0 flex-nowrap",
-        row.tone === "add" && "bg-[#173324] text-[#b7ebc6]",
-        row.tone === "del" && "bg-[#3a1f24] text-[#f0b4b4]",
-        row.tone === "context" && "text-[#d4d4d4]",
-        row.tone === "meta" && "text-zinc-500",
+        row.tone === "add" && "border-l-2 border-l-[var(--wb-add-bar)] bg-[var(--wb-add-bg)] text-[var(--wb-add-text)]",
+        row.tone === "del" && "border-l-2 border-l-[var(--wb-del-bar)] bg-[var(--wb-del-bg)] text-[var(--wb-del-text)]",
+        row.tone === "context" && "border-l-2 border-l-transparent text-[var(--wb-text)]",
+        row.tone === "meta" && "border-l-2 border-l-transparent text-[var(--wb-muted)]",
       )}
     >
-      <span data-diff-old-line className="w-9 shrink-0 select-none px-1 text-right text-[#6a6a6a]">
+      <span data-diff-old-line className="min-w-10 shrink-0 select-none bg-[var(--wb-gutter)] px-1.5 text-right tabular-nums text-[var(--wb-faint)]">
         {row.oldNo ?? ""}
       </span>
-      <span data-diff-new-line className="w-9 shrink-0 select-none px-1 text-right text-[#6a6a6a]">
+      <span data-diff-new-line className="min-w-10 shrink-0 select-none bg-[var(--wb-gutter)] px-1.5 text-right tabular-nums text-[var(--wb-faint)]">
         {row.newNo ?? ""}
       </span>
-      <span data-diff-sign className="w-4 shrink-0 select-none text-center text-[#8a8a8a]">
+      <span data-diff-sign className="w-4 shrink-0 select-none text-center text-[var(--wb-muted)]">
         {row.tone === "add" ? "+" : row.tone === "del" ? "-" : ""}
       </span>
-      <LineText text={row.text} parts={row.parts} wrap={wrap} />
+      <LineText text={row.text} parts={row.parts} wrap={wrap} tone={row.tone} />
     </div>
   );
 }
@@ -195,14 +200,30 @@ function CollapseBar({ count }: { count: number }) {
     <div
       data-unmodified-lines={count}
       title={label}
-      className="mx-3 my-1 truncate rounded bg-zinc-800 px-3 py-1 text-zinc-400"
+      className="mx-3 my-1 truncate rounded-md border border-[var(--wb-border)] bg-[var(--wb-card)] px-3 py-1 text-[var(--wb-muted)]"
     >
       {label}
     </div>
   );
 }
 
-function LineText({ text, parts, wrap }: { text: string; parts: WordPart[] | null; wrap: boolean }) {
+function LineText({
+  text,
+  parts,
+  wrap,
+  tone,
+}: {
+  text: string;
+  parts: WordPart[] | null;
+  wrap: boolean;
+  tone?: string;
+}) {
+  const changedClass =
+    tone === "add"
+      ? "rounded-xs bg-[var(--wb-add-word)]"
+      : tone === "del"
+        ? "rounded-xs bg-[var(--wb-del-word)]"
+        : "rounded-xs bg-[var(--wb-hover-strong)]";
   return (
     <span
       className={cn(
@@ -212,7 +233,7 @@ function LineText({ text, parts, wrap }: { text: string; parts: WordPart[] | nul
     >
       {parts && parts.length > 0
         ? parts.map((part, index) => (
-            <span key={index} className={part.changed ? "rounded-sm bg-white/10" : undefined}>
+            <span key={index} className={part.changed ? changedClass : undefined}>
               {part.text.length > 0 ? part.text : " "}
             </span>
           ))

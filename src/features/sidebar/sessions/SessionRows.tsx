@@ -30,14 +30,14 @@ export function SessionRows({
   return (
     <div
       ref={ref}
-      className="relative overflow-hidden bg-[#141414]"
+      className="relative bg-transparent"
       style={{ height: sessions.length * SESSION_ROW_HEIGHT }}
     >
       {rows.map((session, index) => (
         <div
           key={session.id}
           style={{ top: (start + index) * SESSION_ROW_HEIGHT, height: SESSION_ROW_HEIGHT }}
-          className="absolute inset-x-0 overflow-hidden"
+          className="absolute inset-x-0"
         >
           <SessionRow
             projectId={session.project_id || projectId}

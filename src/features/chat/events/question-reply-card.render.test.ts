@@ -59,8 +59,6 @@ async function markup(text: string): Promise<string> {
       session,
       resolvedAnswer: null,
       time: "10:00",
-      thinkingOpen: false,
-      onToggleThinking: () => {},
       showAgentLabel: false,
     }),
   );
@@ -79,7 +77,7 @@ test("two answered questions stay expanded and leave the purple bubble", async (
   assert.equal(html.includes("已回答 2 题"), true);
   assert.equal(html.includes("Vite"), true);
   assert.equal(html.includes("先别加依赖"), true);
-  assert.equal(html.includes("6e5bff"), false);
+  assert.equal(html.includes("wb-user-bubble"), false);
   assert.equal(html.includes("data-user-text"), false);
 });
 
@@ -91,7 +89,7 @@ test("five answered questions start collapsed", async () => {
   assert.equal(html.includes("已回答 5 题"), true);
   assert.equal(html.includes("答案1"), false);
   assert.equal(html.includes("答案5"), false);
-  assert.equal(html.includes("6e5bff"), false);
+  assert.equal(html.includes("wb-user-bubble"), false);
 });
 
 test("a raw reply envelope renders as the same card", async () => {
@@ -103,13 +101,13 @@ test("a raw reply envelope renders as the same card", async () => {
   assert.equal(html.includes("已回答 2 题"), true);
   assert.equal(html.includes("选哪个？"), true);
   assert.equal(html.includes(">甲<") || html.includes("甲"), true);
-  assert.equal(html.includes("6e5bff"), false);
+  assert.equal(html.includes("wb-user-bubble"), false);
 });
 
-test("a normal user message stays in the purple bubble", async () => {
+test("a normal user message stays in the user bubble", async () => {
   const html = await markup("帮我看一下这个接口");
   assert.equal(html.includes("data-user-text"), true);
-  assert.equal(html.includes("6e5bff"), true);
+  assert.equal(html.includes("wb-user-bubble"), true);
   assert.equal(html.includes("data-question-answers"), false);
   assert.equal(html.includes("帮我看一下这个接口"), true);
 });

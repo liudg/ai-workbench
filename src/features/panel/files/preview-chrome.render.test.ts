@@ -130,7 +130,7 @@ test("the file tree toggle uses the folder icon, pressed fill, and a right-align
   assert.match(button, /\bh-7\b/);
   assert.match(button, /\bw-7\b/);
   assert.match(button, /rounded-\[6px\]/);
-  assert.match(button, /bg-white\/10/);
+  assert.match(button, /bg-\[var\(--wb-chip\)\]/);
   assert.match(button, /aria-pressed="true"/);
   assert.equal(button.includes("title="), false);
   assert.match(open, /data-file-tree-icon="folder"/);
@@ -143,7 +143,7 @@ test("the file tree toggle uses the folder icon, pressed fill, and a right-align
   const closed = screen("docs/note.md", false);
   const closedButton = openingTag(closed, 'data-toggle-file-tree="true"');
   assert.match(closedButton, /aria-pressed="false"/);
-  assert.equal(closedButton.includes("bg-white/10"), false);
+  assert.equal(closedButton.includes("bg-[var(--wb-chip)]"), false);
   assert.equal(closed.includes("data-workspace-tree"), false);
   assert.ok(closed.indexOf('data-preview-chrome="true"') < closed.indexOf('data-open-files-split="true"'));
   assert.match(closed, /切换文件树/);
@@ -162,9 +162,9 @@ test("the open control is one capsule with a divider between the two halves", as
   assert.match(capsule, /border/);
   assert.equal(capsule.includes("hover:"), false);
   assert.match(left, /rounded-l-full/);
-  assert.match(left, /hover:bg-white\/10/);
+  assert.match(left, /hover:bg-\[var\(--wb-hover-strong\)\]/);
   assert.match(right, /rounded-r-full/);
-  assert.match(right, /hover:bg-white\/10/);
+  assert.match(right, /hover:bg-\[var\(--wb-hover-strong\)\]/);
   assert.ok(leftAt < dividerAt && dividerAt < rightAt);
   assert.equal(html.slice(leftAt, dividerAt).includes(">打开<"), true);
 

@@ -30,7 +30,7 @@ export function ActivityGroup({
   return (
     <div className="event-in min-w-0 px-6 py-1" data-activity-group data-activity-summary={piece.summary}>
       <div className="min-w-0 pl-6">
-        <div className="overflow-hidden rounded-lg border border-[#2a2a2a] bg-[#1a1a1a]">
+        <div className="overflow-hidden rounded-xl border border-[var(--wb-border)] bg-[var(--wb-card)]">
           <button
             type="button"
             data-activity-toggle
@@ -38,18 +38,18 @@ export function ActivityGroup({
             aria-expanded={open}
             title={piece.summary}
             onClick={onToggle}
-            className="flex w-full min-w-0 items-center gap-2.5 px-3 py-2 text-left text-[13px] text-[#d4d4d4] hover:bg-[#222]"
+            className="flex w-full min-w-0 items-center gap-2.5 px-3 py-2 text-left text-[13px] text-[var(--wb-text)] transition-colors hover:bg-[var(--wb-card-hover)]"
           >
-            <LayoutGrid className="h-3.5 w-3.5 shrink-0 text-[#8a8a8a]" />
+            <LayoutGrid className="h-3.5 w-3.5 shrink-0 text-[var(--wb-muted)]" />
             <span className="min-w-0 flex-1 truncate">{piece.summary}</span>
             {piece.webSearch ? (
-              <span className="inline-flex shrink-0 items-center gap-1 text-[12px] text-[#9a9a9a]">
+              <span className="inline-flex shrink-0 items-center gap-1 text-[12px] text-[var(--wb-muted)]">
                 <Search className="h-3.5 w-3.5" />
                 {DESKTOP_ZH.activitySearchedWeb}
               </span>
             ) : null}
             <ChevronRight
-              className={cn("h-4 w-4 shrink-0 text-[#777] transition-transform", open && "rotate-90")}
+              className={cn("h-4 w-4 shrink-0 text-[var(--wb-faint)] transition-transform", open && "rotate-90")}
             />
           </button>
           {open ? (
@@ -87,16 +87,16 @@ function ActivityStep({
   const copyText = [event.name, summary, detail].filter((part) => part.trim()).join("\n");
 
   return (
-    <li className="border-t border-[#2a2a2a]" data-activity-step data-step-title={title}>
-      <div className="flex min-w-0 items-center gap-2.5 px-3 py-2 text-[13px] text-[#cfcfcf]">
-        <span className="h-1 w-1 shrink-0 rounded-full bg-[#8a8a8a]" />
+    <li className="border-t border-[var(--wb-border)]" data-activity-step data-step-title={title}>
+      <div className="flex min-w-0 items-center gap-2.5 px-3 py-2 text-[13px] text-[var(--wb-text)]">
+        <span className="h-1 w-1 shrink-0 rounded-full bg-[var(--wb-muted)]" />
         <span className="min-w-0 flex-1 truncate">{title}</span>
       </div>
       {hasBody ? (
         <div data-activity-body className="min-w-0 overflow-x-hidden px-3 pb-2 pl-7 font-mono text-xs">
-          {summaryShown ? <p className="break-all whitespace-pre-wrap text-zinc-300">{summary}</p> : null}
+          {summaryShown ? <p className="break-all whitespace-pre-wrap text-[var(--wb-text-strong)]">{summary}</p> : null}
           {detail ? (
-            <p className={cn("break-all whitespace-pre-wrap text-zinc-400", summaryShown && "mt-1")}>{detail}</p>
+            <p className={cn("break-all whitespace-pre-wrap text-[var(--wb-muted)]", summaryShown && "mt-1")}>{detail}</p>
           ) : null}
           <EventImages
             paths={images}

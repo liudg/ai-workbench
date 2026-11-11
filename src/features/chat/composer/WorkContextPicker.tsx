@@ -2,11 +2,8 @@ import { useCallback, useRef, useState } from "react";
 import { Check, ChevronDown, Folder, MessageSquare } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { CONTEXT_PILL_BASE_CLASS, contextPillStyle } from "./context-pill";
 import { useComposerMenu } from "./useComposerMenu";
-
-const CARD_SHADOW = "0 1px 2px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.04)";
-const CARD_BG = "linear-gradient(180deg, #1c1c1f 0%, #17171a 100%)";
-const CARD_BG_HOT = "linear-gradient(180deg, #242428 0%, #1e1e22 100%)";
 
 export function WorkContextPicker({
   label,
@@ -39,12 +36,8 @@ export function WorkContextPicker({
       <button
         ref={anchorRef}
         type="button"
-        className="inline-flex max-w-full items-center gap-1.5 rounded-[10px] border py-1 pl-1 pr-2.5 text-[13px] leading-5 text-[#ececef]"
-        style={{
-          backgroundImage: lifted ? CARD_BG_HOT : CARD_BG,
-          borderColor: lifted ? "#3a3a42" : "#2e2e33",
-          boxShadow: CARD_SHADOW,
-        }}
+        className={cn(CONTEXT_PILL_BASE_CLASS, "max-w-full pl-1 pr-2.5")}
+        style={contextPillStyle(lifted)}
         aria-label={chat ? "聊天" : `项目：${label}`}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -57,7 +50,7 @@ export function WorkContextPicker({
           setOpen((value) => !value);
         }}
       >
-        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] bg-[#26262b] text-[#d2d2d6]">
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] bg-[var(--wb-chip)] text-[var(--wb-muted)]">
           {chat ? (
             <MessageSquare className="h-3 w-3" strokeWidth={1.75} />
           ) : (
@@ -65,7 +58,7 @@ export function WorkContextPicker({
           )}
         </span>
         <span className="min-w-0 truncate">{label}</span>
-        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[#9a9aa0]" strokeWidth={1.5} />
+        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[var(--wb-faint)]" strokeWidth={1.5} />
       </button>
       {open && (
         <div
@@ -73,8 +66,8 @@ export function WorkContextPicker({
           role="menu"
           aria-label="选择项目"
           data-work-context-menu=""
-          className="fixed z-50 min-w-[220px] overflow-hidden rounded-[10px] border border-[#2e2e33] py-1"
-          style={{ top: -9999, left: 8, backgroundImage: CARD_BG, boxShadow: CARD_SHADOW }}
+          className="fixed z-50 min-w-[220px] overflow-hidden rounded-xl border border-[var(--wb-border-strong)] bg-[var(--wb-elev)] py-1 shadow-[var(--wb-float-shadow)]"
+          style={{ top: -9999, left: 8 }}
         >
           {projects.map((project) => {
             const selected = project.id === selectedId;
@@ -87,9 +80,9 @@ export function WorkContextPicker({
                 data-work-context-project={project.id}
                 disabled={!canRetarget && !selected}
                 className={cn(
-                  "flex w-full items-center justify-between px-3 py-2 text-left text-sm text-zinc-100 hover:bg-white/[0.06]",
-                  selected && "bg-white/[0.04]",
-                  !canRetarget && !selected && "cursor-default text-zinc-400 hover:bg-transparent",
+                  "flex w-full items-center justify-between px-3 py-2 text-left text-sm text-[var(--wb-text-strong)] hover:bg-[var(--wb-hover)]",
+                  selected && "bg-[var(--wb-hover)]",
+                  !canRetarget && !selected && "cursor-default text-[var(--wb-muted)] hover:bg-transparent",
                 )}
                 onClick={(event) => {
                   event.stopPropagation();
@@ -99,11 +92,11 @@ export function WorkContextPicker({
                 }}
               >
                 <span className="truncate">{project.name}</span>
-                {selected ? <Check className="h-4 w-4 shrink-0 text-zinc-200" strokeWidth={2} /> : null}
+                {selected ? <Check className="h-4 w-4 shrink-0 text-[var(--wb-text-strong)]" strokeWidth={2} /> : null}
               </button>
             );
           })}
-          <div className={cn(projects.length > 0 && "mt-1 border-t border-zinc-800")} />
+          <div className={cn(projects.length > 0 && "mt-1 border-t border-[var(--wb-border)]")} />
           <button
             type="button"
             role="menuitemradio"
@@ -111,9 +104,9 @@ export function WorkContextPicker({
             data-work-context-standalone=""
             disabled={!canRetarget && selectedId !== standaloneId}
             className={cn(
-              "flex w-full items-center justify-between px-3 py-2 text-left text-sm text-zinc-100 hover:bg-white/[0.06]",
-              selectedId === standaloneId && "bg-white/[0.04]",
-              !canRetarget && selectedId !== standaloneId && "cursor-default text-zinc-400 hover:bg-transparent",
+              "flex w-full items-center justify-between px-3 py-2 text-left text-sm text-[var(--wb-text-strong)] hover:bg-[var(--wb-hover)]",
+              selectedId === standaloneId && "bg-[var(--wb-hover)]",
+              !canRetarget && selectedId !== standaloneId && "cursor-default text-[var(--wb-muted)] hover:bg-transparent",
             )}
             onClick={(event) => {
               event.stopPropagation();
@@ -124,7 +117,7 @@ export function WorkContextPicker({
           >
             不在项目中工作
             {selectedId === standaloneId ? (
-              <Check className="h-4 w-4 shrink-0 text-zinc-200" strokeWidth={2} />
+              <Check className="h-4 w-4 shrink-0 text-[var(--wb-text-strong)]" strokeWidth={2} />
             ) : null}
           </button>
         </div>

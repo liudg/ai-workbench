@@ -14,7 +14,7 @@ export default function WorktreePreview() {
   if (scene === "live") return <LiveMarker />;
   if (scene === "delete") return <DirtyDelete />;
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-16 bg-[#0f0f0f] px-6 text-[#e8e8e8]">
+    <div className="flex min-h-screen flex-col items-center justify-center gap-16 bg-[var(--wb-canvas)] px-6 text-[var(--wb-text)]">
       <section data-worktree-preview="shown" className="w-full max-w-[760px]">
         <ComposerShell>
           <div className="mb-2 flex min-w-0 items-center gap-2 px-1" data-composer-context>
@@ -35,7 +35,7 @@ export default function WorktreePreview() {
       <section data-worktree-preview="hidden" className="w-full max-w-[760px]">
         <ComposerShell>
           <div className="mb-2 flex min-w-0 items-center gap-2 px-1" data-composer-context>
-            <span className="inline-flex items-center rounded-[10px] border border-[#2e2e33] px-2.5 py-1 text-[13px] text-[#ececef]">
+            <span className="inline-flex items-center rounded-[10px] border border-[var(--wb-border-strong)] bg-[var(--wb-card)] px-2.5 py-1 text-[13px] text-[var(--wb-text-strong)]">
               聊天
             </span>
           </div>
@@ -50,7 +50,7 @@ export default function WorktreePreview() {
 
 function LiveMarker() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#0f0f0f] px-6 text-[#e8e8e8]">
+    <div className="flex min-h-screen items-center justify-center bg-[var(--wb-canvas)] px-6 text-[var(--wb-text)]">
       <section data-worktree-preview="live" className="w-full max-w-[760px]">
         <LiveComposer />
       </section>
@@ -82,7 +82,7 @@ function LiveComposer() {
 
 function DirtyDelete() {
   return (
-    <div className="min-h-screen bg-[#0f0f0f] text-[#e8e8e8]" data-worktree-preview="delete">
+    <div className="min-h-screen bg-[var(--wb-canvas)] text-[var(--wb-text)]" data-worktree-preview="delete">
       <DeleteSessionDialog
         open
         dirtyWorktree
@@ -100,7 +100,7 @@ function ComposerShell({ children }: { children: ReactNode }) {
   return (
     <div>
       {children}
-      <div className="min-w-0 rounded-[18px] border border-[#2a2a2a] bg-[#171717] px-3 py-3 text-sm text-[#8a8a8a]">
+      <div className="min-w-0 rounded-[18px] border border-[var(--wb-border-strong)] bg-[var(--wb-composer)] px-3 py-3 text-sm text-[var(--wb-faint)] shadow-[var(--wb-composer-shadow)]">
         输入消息…
       </div>
     </div>

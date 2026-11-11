@@ -17,12 +17,12 @@ function EmptyPane({
 }) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
-      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-zinc-800/80">
+      <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-[var(--wb-border)] bg-[var(--wb-chip)]">
         {icon}
       </div>
       <div>
-        <h2 className="text-lg font-medium text-zinc-200">{title}</h2>
-        <p className="mt-1 max-w-72 text-sm leading-6 text-zinc-500">{body}</p>
+        <h2 className="text-lg font-medium text-[var(--wb-text-strong)]">{title}</h2>
+        <p className="mt-1 max-w-72 text-sm leading-6 text-[var(--wb-muted)]">{body}</p>
       </div>
       {children}
     </div>
@@ -33,7 +33,7 @@ export function NoProjectSelected() {
   const openDialog = useEmptyProject();
   return (
     <EmptyPane
-      icon={<FolderOpen className="h-6 w-6 text-zinc-400" />}
+      icon={<FolderOpen className="h-6 w-6 text-[var(--wb-muted)]" />}
       title="选择一个项目"
       body="每个项目可以并行运行多个 Agent 会话，会话在后台持续执行，随时回来查看。"
     >

@@ -133,10 +133,10 @@ export function DiffView({ files }: { files: FileChange[] }) {
             )}
             data-diff-wrap={doc.wrap ? "on" : "off"}
           >
-            {doc.loading ? <p className="px-4 py-6 text-sm text-zinc-500">正在读取…</p> : null}
-            {doc.gitError ? <p className="px-4 py-6 text-sm text-red-300">{doc.gitError}</p> : null}
+            {doc.loading ? <p className="px-4 py-6 text-sm text-[var(--wb-muted)]">正在读取…</p> : null}
+            {doc.gitError ? <p className="px-4 py-6 text-sm text-[var(--wb-danger-text)]">{doc.gitError}</p> : null}
             {!doc.loading && !doc.gitError && doc.shown.length === 0 ? (
-              <p className="px-4 py-6 text-sm text-zinc-500">{DESKTOP_ZH.noFileChanges}</p>
+              <p className="px-4 py-6 text-sm text-[var(--wb-muted)]">{DESKTOP_ZH.noFileChanges}</p>
             ) : null}
             {doc.shown.map((file) => (
               <DiffFileSection
@@ -180,7 +180,7 @@ export function DiffView({ files }: { files: FileChange[] }) {
             width={listWidth}
             onSelect={doc.revealFile}
             empty={
-              <p className="px-2 py-6 text-center text-xs leading-5 text-zinc-500">{DESKTOP_ZH.noFileChanges}</p>
+              <p className="px-2 py-6 text-center text-xs leading-5 text-[var(--wb-muted)]">{DESKTOP_ZH.noFileChanges}</p>
             }
           />
         ) : null}

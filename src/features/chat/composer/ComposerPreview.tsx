@@ -405,7 +405,7 @@ export default function ComposerPreview() {
 
   return (
     <div
-      className="flex min-h-screen flex-col justify-end bg-[#0f0f0f] px-4 pb-4 text-[#e8e8e8]"
+      className="flex min-h-screen flex-col justify-end bg-[var(--wb-canvas)] px-4 pb-4 text-[var(--wb-text)]"
       data-composer-preview
       data-preview-agent={claude ? "claude-code" : "codex-cli"}
     >
@@ -462,13 +462,13 @@ export default function ComposerPreview() {
         ) : null}
         {snippets.length > 0 ? (
           <div className="mb-2">
-            <p className="px-2 text-sm text-[#bdbdbd]">先看这个入口。</p>
+            <p className="px-2 text-sm text-[var(--wb-muted)]">先看这个入口。</p>
             <div className="h-28" />
           </div>
         ) : null}
         <div className="relative min-w-0">
         <TextSnippetPreview snippets={snippets} />
-        <div className="min-w-0 rounded-[18px] border border-[#2a2a2a] bg-[#171717]">
+        <div className="min-w-0 rounded-[18px] border border-[var(--wb-border-strong)] [background:var(--wb-composer-bg)] shadow-[var(--wb-composer-shadow)]">
           {showQueue && queued.length > 0 ? (
             <QueuedMessageList
               items={queued}

@@ -20,7 +20,9 @@ const ADD_ITEMS: { id: MentionAddId; label: string; hint: string }[] = [
 
 function supportHint(support: MentionSupport, hint: string): string {
   if (support === "loading") return DESKTOP_ZH.mentionLoadingCaps;
-  if (support === "unsupported") return hint === DESKTOP_ZH.goalHint ? DESKTOP_ZH.mentionNoGoal : DESKTOP_ZH.mentionNoPlan;
+  if (support === "unsupported") {
+    return hint === DESKTOP_ZH.goalHint ? DESKTOP_ZH.mentionNoGoal : DESKTOP_ZH.mentionNoPlan;
+  }
   return hint;
 }
 
@@ -52,11 +54,11 @@ export function MentionMenu({
       role="listbox"
       aria-label={mode === "add" ? DESKTOP_ZH.addSection : "文件"}
       data-mention-menu={mode}
-      className="absolute bottom-full left-0 right-0 z-20 mb-2 max-h-72 min-w-0 overflow-x-hidden overflow-y-auto rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
+      className="absolute bottom-full left-0 right-0 z-20 mb-2 max-h-72 min-w-0 overflow-x-hidden overflow-y-auto rounded-xl border border-[var(--wb-border-strong)] bg-[var(--wb-elev)] py-1 shadow-[var(--wb-float-shadow)]"
     >
       {mode === "add" ? (
         <>
-          <p className="px-3 pb-1 pt-1.5 text-xs text-zinc-500">{DESKTOP_ZH.addSection}</p>
+          <p className="px-3 pb-1 pt-1.5 text-xs text-[var(--wb-muted)]">{DESKTOP_ZH.addSection}</p>
           {MENTION_ADD_ORDER.map((id, index) => {
             const item = ADD_ITEMS.find((entry) => entry.id === id);
             if (!item) return null;
@@ -78,9 +80,9 @@ export function MentionMenu({
                 data-mention-item={item.id}
                 disabled={disabled}
                 className={cn(
-                  "flex w-full min-w-0 items-center gap-3 px-3 py-2 text-left",
-                  disabled ? "cursor-not-allowed opacity-40" : "hover:bg-zinc-800",
-                  index === active && !disabled && "bg-zinc-800",
+                  "flex w-full min-w-0 items-center gap-3 px-3 py-2 text-left transition-colors",
+                  disabled ? "cursor-not-allowed opacity-40" : "hover:bg-[var(--wb-hover)]",
+                  index === active && !disabled && "bg-[var(--wb-hover-strong)]",
                 )}
                 onMouseDown={(event) => {
                   event.preventDefault();
@@ -89,22 +91,22 @@ export function MentionMenu({
                 }}
               >
                 <AddIcon id={item.id} />
-                <span className="shrink-0 text-sm text-zinc-100">{item.label}</span>
-                {hint ? <span className="min-w-0 truncate text-xs text-zinc-500">{hint}</span> : null}
+                <span className="shrink-0 text-sm text-[var(--wb-text-strong)]">{item.label}</span>
+                {hint ? <span className="min-w-0 truncate text-xs text-[var(--wb-muted)]">{hint}</span> : null}
               </button>
             );
           })}
         </>
       ) : pending && files.length === 0 ? (
-        <p className="px-3 py-2 text-xs text-zinc-500" data-mention-pending>
+        <p className="px-3 py-2 text-xs text-[var(--wb-muted)]" data-mention-pending>
           {DESKTOP_ZH.mentionPending}
         </p>
       ) : error ? (
-        <p className="px-3 py-2 text-xs text-red-300" data-mention-error>
+        <p className="px-3 py-2 text-xs text-[var(--wb-danger-text)]" data-mention-error>
           {error}
         </p>
       ) : files.length === 0 ? (
-        <p className="px-3 py-2 text-xs text-zinc-500" data-mention-empty>
+        <p className="px-3 py-2 text-xs text-[var(--wb-muted)]" data-mention-empty>
           {DESKTOP_ZH.mentionEmpty}
         </p>
       ) : (
@@ -116,8 +118,8 @@ export function MentionMenu({
             aria-selected={index === active}
             data-mention-file={file.path}
             className={cn(
-              "flex w-full min-w-0 items-center gap-3 px-3 py-2 text-left hover:bg-zinc-800",
-              index === active && "bg-zinc-800",
+              "flex w-full min-w-0 items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-[var(--wb-hover)]",
+              index === active && "bg-[var(--wb-hover-strong)]",
             )}
             onMouseDown={(event) => {
               event.preventDefault();
@@ -125,11 +127,11 @@ export function MentionMenu({
               onPick(file);
             }}
           >
-            <File className="h-4 w-4 shrink-0 text-zinc-400" />
-            <span className="min-w-0 shrink truncate text-sm text-zinc-100">
+            <File className="h-4 w-4 shrink-0 text-[var(--wb-muted)]" />
+            <span className="min-w-0 shrink truncate text-sm text-[var(--wb-text-strong)]">
               {highlightParts(file.name, query).map((part, partIndex) =>
                 part.match ? (
-                  <mark key={partIndex} className="bg-transparent text-amber-300">
+                  <mark key={partIndex} className="bg-transparent font-medium text-[var(--wb-accent)]">
                     {part.text}
                   </mark>
                 ) : (
@@ -138,7 +140,7 @@ export function MentionMenu({
               )}
             </span>
             {file.directory ? (
-              <span className="min-w-0 truncate text-xs text-zinc-500">{file.directory}</span>
+              <span className="min-w-0 truncate text-xs text-[var(--wb-muted)]">{file.directory}</span>
             ) : null}
           </button>
         ))
@@ -148,7 +150,7 @@ export function MentionMenu({
 }
 
 function AddIcon({ id }: { id: MentionAddId }) {
-  const className = "h-4 w-4 shrink-0 text-zinc-400";
+  const className = "h-4 w-4 shrink-0 text-[var(--wb-muted)]";
   if (id === "files") return <Folder className={className} />;
   if (id === "goal") return <Target className={className} />;
   return <Lightbulb className={className} />;

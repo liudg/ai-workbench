@@ -25,7 +25,7 @@ test("reduced motion keeps the thinking label still and readable", () => {
   assert.ok(block, "reduced-motion rule for .thinking-shimmer");
   assert.match(block[0], /animation:\s*none/);
   assert.match(block[0], /background-image:\s*none/);
-  assert.match(block[0], /-webkit-text-fill-color:\s*#8a8a8a/);
+  assert.match(block[0], /-webkit-text-fill-color:\s*var\(--wb-muted\)/);
 });
 
 test("the thinking line is mounted only while thinking is still in progress", () => {

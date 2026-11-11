@@ -127,7 +127,7 @@ export function DiffToolbar({
     <div
       ref={rootRef}
       data-diff-toolbar
-      className="relative z-20 flex h-10 min-w-0 shrink-0 flex-nowrap items-center gap-1.5 border-b border-[#222] bg-[#0f0f0f] px-2"
+      className="relative z-20 flex h-10 min-w-0 shrink-0 flex-nowrap items-center gap-1.5 border-b border-[var(--wb-border)] bg-[var(--wb-canvas)] px-2"
     >
       {scopes.length > 0 ? <div className="relative shrink-0">
         <button
@@ -135,17 +135,17 @@ export function DiffToolbar({
           data-diff-scope
           aria-expanded={menu === "scope"}
           aria-haspopup="menu"
-          className="inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-md bg-[#1c1c1c] px-2 text-[12px] text-[#e8e8e8]"
+          className="inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-md border border-[var(--wb-border)] bg-[var(--wb-chip)] px-2 text-[12px] font-medium text-[var(--wb-text-strong)] transition-colors hover:bg-[var(--wb-chip-hover)]"
           onClick={() => setMenu((value) => (value === "scope" ? null : "scope"))}
         >
           {current?.label ?? ""}
-          <ChevronDown className="h-3 w-3 shrink-0 text-zinc-400" />
+          <ChevronDown className="h-3 w-3 shrink-0 text-[var(--wb-muted)]" />
         </button>
         {menu === "scope" ? (
           <div
             role="menu"
             data-diff-scope-menu
-            className="absolute left-0 top-full z-20 mt-1 w-40 rounded-xl border border-zinc-700 bg-zinc-900 py-1 shadow-lg"
+            className="absolute left-0 top-full z-20 mt-1 w-40 rounded-xl border border-[var(--wb-border-strong)] bg-[var(--wb-elev)] py-1 shadow-[var(--wb-float-shadow)]"
           >
             {scopes.map((item) => (
               <button
@@ -158,7 +158,7 @@ export function DiffToolbar({
                 data-submenu={item.submenu ? "true" : "false"}
                 className={cn(
                   "flex w-full items-center gap-2 whitespace-nowrap px-3 py-1.5 text-left text-xs",
-                  item.submenu ? "cursor-default text-zinc-500" : "text-zinc-100 hover:bg-zinc-800",
+                  item.submenu ? "cursor-default text-[var(--wb-faint)]" : "text-[var(--wb-text-strong)] hover:bg-[var(--wb-hover)]",
                 )}
                 onClick={() => {
                   if (item.submenu) return;
@@ -168,14 +168,14 @@ export function DiffToolbar({
               >
                 <span className="min-w-0 flex-1">{item.label}</span>
                 {scope === item.id ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
-                {item.submenu ? <ChevronRight className="h-3.5 w-3.5 shrink-0 text-zinc-500" /> : null}
+                {item.submenu ? <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[var(--wb-faint)]" /> : null}
               </button>
             ))}
           </div>
         ) : null}
       </div> : null}
-      <span className="shrink-0 whitespace-nowrap font-mono text-[12px] text-[#3fb950]">+{added}</span>
-      <span className="shrink-0 whitespace-nowrap font-mono text-[12px] text-[#f85149]">-{removed}</span>
+      <span className="shrink-0 whitespace-nowrap font-mono text-[12px] text-[var(--wb-add-stat)]">+{added}</span>
+      <span className="shrink-0 whitespace-nowrap font-mono text-[12px] text-[var(--wb-del-stat)]">-{removed}</span>
       <div className="ml-auto flex shrink-0 items-center gap-0.5">
         {DIFF_TOOLBAR_ICON_IDS.map((id) => {
           if (id === "options") {

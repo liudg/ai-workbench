@@ -22,7 +22,7 @@ export default function McpPreview() {
   const rows = useMemo(() => rowsFor(selected, params.get("login") === "1"), [selected, params]);
 
   return (
-    <div className="min-h-screen bg-[#0f0f0f] text-zinc-100">
+    <div className="min-h-screen bg-[var(--wb-canvas)] text-[var(--wb-text-strong)]">
       <div className="mx-auto max-w-3xl px-6 py-6">
         <McpPanel
           surfaces={previewSurfaces}

@@ -26,6 +26,9 @@ export type PaletteCommandId =
   | "new-standalone"
   | "open-folder"
   | "settings"
+  | "theme-graphite"
+  | "theme-daylight"
+  | "theme-system"
   | "search-chats"
   | "find-in-thread"
   | "next-attention"
@@ -165,6 +168,9 @@ function commandItems(input: PaletteInput): PaletteRow[] {
   }
   rows.push(command("open-folder", COPY.openFolder, "workspace"));
   rows.push(command("settings", COPY.settings, "settings"));
+  rows.push(command("theme-graphite", COPY.themeGraphite, "settings"));
+  rows.push(command("theme-daylight", COPY.themeDaylight, "settings"));
+  rows.push(command("theme-system", COPY.themeSystem, "settings"));
   return rows;
 }
 

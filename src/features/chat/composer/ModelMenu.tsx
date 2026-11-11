@@ -1,6 +1,7 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
 import { Check, ChevronRight, RotateCcw, Zap } from "lucide-react";
 
+import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import type { AgentModelOption, ReasoningEffortOption } from "@/types";
@@ -49,7 +50,7 @@ export function ModelMenu({
       aria-label={panel === "models" ? DESKTOP_ZH.selectModel : "推理强度"}
       data-intensity-popover
       data-intensity-panel={panel}
-      className="fixed z-50 w-[17.5rem] select-none rounded-2xl border border-zinc-700/80 bg-zinc-900 text-zinc-100 shadow-xl shadow-black/50"
+      className="fixed z-50 w-[17.5rem] select-none rounded-2xl border border-[var(--wb-border-strong)] bg-[var(--wb-elev)] text-[var(--wb-text-strong)] shadow-[var(--wb-float-shadow)]"
       style={{ top: -9999, left: 8 }}
     >
       {panel === "models" ? (
@@ -66,7 +67,7 @@ export function ModelMenu({
         <div className="px-2.5 pb-2 pt-2">
           <div className="flex items-start gap-1">
             {fastAvailable ? (
-              <Tip text={fastTip} align="start">
+              <OptionalTooltip text={fastTip} align="start">
                 <button
                   type="button"
                   data-fast-toggle
@@ -74,46 +75,49 @@ export function ModelMenu({
                   aria-pressed={fastOn}
                   aria-label={fastTip || "快速"}
                   className={cn(
-                    "flex h-8 w-8 items-center justify-center rounded-lg hover:bg-zinc-800",
-                    fastOn ? "text-blue-400" : "text-zinc-400",
+                    "flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-[var(--wb-hover)]",
+                    fastOn ? "text-[var(--wb-accent)]" : "text-[var(--wb-muted)]",
                   )}
                   onClick={() => onFast(!fastOn)}
                 >
                   <Zap className={cn("h-4 w-4", fastOn && "fill-current")} />
                 </button>
-              </Tip>
+              </OptionalTooltip>
             ) : (
               <span className="h-8 w-8 shrink-0" />
             )}
             <button
               type="button"
               data-model-trigger
-              className="flex min-w-0 flex-1 flex-col items-center justify-center rounded-xl px-2 py-0.5 hover:bg-zinc-800/70"
+              className="flex min-w-0 flex-1 flex-col items-center justify-center rounded-xl px-2 py-0.5 transition-colors hover:bg-[var(--wb-hover)]"
               aria-label={DESKTOP_ZH.selectModel}
               aria-haspopup="listbox"
               onClick={() => setPanel("models")}
             >
               {hasEfforts ? (
-                <span data-effort-label className="block max-w-full whitespace-nowrap text-lg font-semibold leading-none text-blue-400">
+                <span
+                  data-effort-label
+                  className="block max-w-full whitespace-nowrap text-lg font-semibold leading-none text-[var(--wb-accent)]"
+                >
                   {effortLabel || DESKTOP_ZH.selectEffort}
                 </span>
               ) : null}
               <span
                 className={
                   hasEfforts
-                    ? "mt-1.5 inline-flex max-w-full items-center gap-0.5 text-[13px] text-zinc-400"
-                    : "inline-flex max-w-full items-center gap-0.5 text-lg font-semibold leading-none text-blue-400"
+                    ? "mt-1.5 inline-flex max-w-full items-center gap-0.5 text-[13px] text-[var(--wb-muted)]"
+                    : "inline-flex max-w-full items-center gap-0.5 text-lg font-semibold leading-none text-[var(--wb-accent)]"
                 }
               >
                 <span className="truncate">{modelLabel || current?.label || DESKTOP_ZH.selectModel}</span>
                 <ChevronRight className="h-3.5 w-3.5 shrink-0" />
               </span>
             </button>
-            <Tip text={DESKTOP_ZH.resetDefault} align="end">
+            <OptionalTooltip text={DESKTOP_ZH.resetDefault} align="end">
               <button
                 type="button"
                 data-reset-tuning
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 disabled:opacity-40"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--wb-muted)] transition-colors hover:bg-[var(--wb-hover)] hover:text-[var(--wb-text-strong)] disabled:opacity-40"
                 aria-label={DESKTOP_ZH.resetDefault}
                 disabled={!canReset}
                 onClick={() => {
@@ -123,7 +127,7 @@ export function ModelMenu({
               >
                 <RotateCcw className="h-4 w-4" />
               </button>
-            </Tip>
+            </OptionalTooltip>
           </div>
           <EffortSlider
             efforts={sliderEfforts(current)}
@@ -137,7 +141,7 @@ export function ModelMenu({
   );
 }
 
-function Tip({
+function OptionalTooltip({
   text,
   align,
   children,
@@ -146,29 +150,11 @@ function Tip({
   align: "start" | "end";
   children: ReactNode;
 }) {
-  const [open, setOpen] = useState(false);
   if (!text.trim()) return children;
   return (
-    <span
-      className="relative inline-flex shrink-0"
-      onPointerEnter={() => setOpen(true)}
-      onPointerLeave={() => setOpen(false)}
-      onFocus={() => setOpen(true)}
-      onBlur={() => setOpen(false)}
-    >
+    <Tooltip label={text} side="top" align={align} className="shrink-0">
       {children}
-      <span
-        role="tooltip"
-        data-hover-tip={text}
-        className={cn(
-          "pointer-events-none absolute bottom-[calc(100%+6px)] z-10 whitespace-nowrap rounded-md bg-zinc-800 px-2 py-1 text-[11px] leading-4 text-zinc-100 shadow-lg ring-1 ring-zinc-700",
-          align === "start" ? "left-0" : "right-0",
-          open ? "block" : "hidden",
-        )}
-      >
-        {text}
-      </span>
-    </span>
+    </Tooltip>
   );
 }
 
@@ -217,7 +203,7 @@ function EffortSlider({
       aria-valuemax={Math.max(count - 1, 0)}
       aria-valuenow={Math.max(selected, 0)}
       aria-valuetext={valueText}
-      className="relative mx-1 mt-2 h-6 cursor-pointer touch-none"
+      className="relative mx-1 mt-2 h-6 cursor-pointer touch-none rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--wb-accent)]/35"
       onPointerDown={(event) => {
         dragging.current = true;
         event.currentTarget.setPointerCapture(event.pointerId);
@@ -248,10 +234,10 @@ function EffortSlider({
         if (id && id !== effortId) onEffort(id);
       }}
     >
-      <div className="absolute left-0 right-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-zinc-700" />
+      <div className="absolute left-0 right-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-[var(--wb-border-strong)]" />
       {selected >= 0 && (
         <div
-          className="absolute left-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-blue-400"
+          className="absolute left-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-[var(--wb-accent)]"
           style={{ width: `${percent}%` }}
         />
       )}
@@ -263,7 +249,7 @@ function EffortSlider({
             data-effort-stop={effort.id}
             className={cn(
               "absolute top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full",
-              selected >= 0 && index <= selected ? "bg-blue-400" : "bg-zinc-500",
+              selected >= 0 && index <= selected ? "bg-[var(--wb-accent)]" : "bg-[var(--wb-faint)]",
             )}
             style={{ left: `${left}%` }}
           />
@@ -272,7 +258,7 @@ function EffortSlider({
       {selected >= 0 && (
         <span
           data-effort-handle
-          className="absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-blue-400 bg-white shadow"
+          className="absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[var(--wb-accent)] bg-white shadow"
           style={{ left: `${percent}%` }}
         />
       )}
@@ -292,13 +278,15 @@ function ModelList({
   const sections = modelSections(models);
   return (
     <div data-model-list role="listbox" aria-label={DESKTOP_ZH.selectModel} className="max-h-80 overflow-y-auto py-2">
-      <p className="px-3 pb-1 pt-1 text-sm font-medium text-zinc-100">{DESKTOP_ZH.selectModel}</p>
+      <p className="px-3 pb-1 pt-1 text-sm font-medium text-[var(--wb-text-strong)]">
+        {DESKTOP_ZH.selectModel}
+      </p>
       {sections.length === 0 ? (
-        <p className="px-3 py-2 text-xs text-zinc-500">当前 Agent 没有可选模型</p>
+        <p className="px-3 py-2 text-xs text-[var(--wb-muted)]">当前 Agent 没有可选模型</p>
       ) : (
         sections.map((section) => (
           <div key={section.id}>
-            <p className="px-3 pb-1 pt-2 text-[11px] text-zinc-500">{section.title}</p>
+            <p className="px-3 pb-1 pt-2 text-[11px] text-[var(--wb-muted)]">{section.title}</p>
             {section.models.map((model) => {
               const selected = model.id === modelId;
               return (
@@ -307,13 +295,20 @@ function ModelList({
                   type="button"
                   role="option"
                   aria-selected={selected}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left [&:hover]:bg-zinc-800"
+                  className={cn(
+                    "flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-[var(--wb-hover)]",
+                    selected && "bg-[var(--wb-hover-strong)]",
+                  )}
                   onClick={() => onPick(model)}
                 >
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm text-zinc-100">{model.label}</span>
+                    <span className="block truncate text-sm text-[var(--wb-text-strong)]">
+                      {model.label}
+                    </span>
                   </span>
-                  {selected && <Check className="h-4 w-4 shrink-0 text-zinc-100" aria-hidden />}
+                  {selected && (
+                    <Check className="h-4 w-4 shrink-0 text-[var(--wb-text-strong)]" aria-hidden />
+                  )}
                 </button>
               );
             })}

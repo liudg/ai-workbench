@@ -9,7 +9,7 @@ const GAP_PX = 6;
 const FRAME = "flex w-fit min-w-0 flex-wrap items-end justify-end gap-1.5";
 
 const BUBBLE =
-  "min-w-0 max-w-full cursor-text overflow-x-hidden bg-[#6e5bff] text-[13.5px] leading-6 text-white";
+  "wb-user-bubble min-w-0 max-w-full cursor-text overflow-x-hidden text-[13.5px] leading-6";
 
 export interface UserImageLayout {
   frameClassName: string;

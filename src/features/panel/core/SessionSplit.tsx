@@ -47,7 +47,7 @@ export function SessionSplit({ children }: { children: ReactNode }) {
   const chatWidth = measured && panelOpen && !full ? Math.max(0, layoutWidth - panelWidth) : undefined;
 
   return (
-    <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-[#0f0f0f]">
+    <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-[var(--wb-canvas)]">
       <div
         ref={rowRef}
         data-workspace-row

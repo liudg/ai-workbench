@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { PanelRightClose } from "lucide-react";
 
+import { cn } from "@/lib/utils";
 import type { FileChange } from "@/features/changes-model/diff-parse";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { pinnedColumnStyle } from "../core/layout";
@@ -56,9 +57,12 @@ export function ChangesSidebar({
       {...(mark === "session" ? { "data-session-files": "" } : {})}
       {...(mark === "diff" ? { "data-diff-files": "" } : {})}
       style={width ? pinnedColumnStyle(width) : undefined}
-      className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-l border-[#222] bg-[#0f0f0f]"
+      className={cn(
+        "flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-[var(--wb-diff-well)]",
+        mark !== "diff" && "border-l border-[var(--wb-border)]",
+      )}
     >
-      <div className="flex shrink-0 items-center gap-1 border-b border-[#222] p-2">
+      <div className="flex shrink-0 items-center gap-1 border-b border-[var(--wb-border)] p-2">
         <input
           value={filter}
           onChange={(event) => setFilter(event.target.value)}
@@ -66,7 +70,7 @@ export function ChangesSidebar({
           aria-label={DESKTOP_ZH.filterFiles}
           data-files-filter
           {...(mark === "diff" ? { "data-diff-filter": "" } : {})}
-          className="w-full min-w-0 rounded-md border border-[#2a2a2a] bg-[#171717] px-2 py-1.5 text-[12px] text-[#e8e8e8] outline-none placeholder:text-[#666] focus:border-[#3a3a3a]"
+          className="w-full min-w-0 rounded-md border border-[var(--wb-border-strong)] bg-[var(--wb-well)] px-2 py-1.5 text-[12px] text-[var(--wb-text-strong)] outline-none placeholder:text-[var(--wb-faint)] focus:border-[var(--wb-accent)]"
         />
         {onHide ? (
           <button
@@ -74,7 +78,7 @@ export function ChangesSidebar({
             data-files-toggle
             title={DESKTOP_ZH.filesHideSidebar}
             aria-label={DESKTOP_ZH.filesHideSidebar}
-            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-zinc-300 hover:bg-zinc-800 hover:text-zinc-50"
+            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-[var(--wb-muted)] hover:bg-[var(--wb-hover)] hover:text-[var(--wb-text-strong)]"
             onClick={onHide}
           >
             <PanelRightClose className="h-3.5 w-3.5" />
@@ -85,7 +89,7 @@ export function ChangesSidebar({
         {files.length === 0 ? (
           empty
         ) : shown.length === 0 ? (
-          <p className="px-2 py-6 text-center text-xs leading-5 text-zinc-500">{DESKTOP_ZH.noFileMatch}</p>
+          <p className="px-2 py-6 text-center text-xs leading-5 text-[var(--wb-muted)]">{DESKTOP_ZH.noFileMatch}</p>
         ) : (
           <FileTreeList
             nodes={tree}

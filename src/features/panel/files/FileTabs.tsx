@@ -22,7 +22,7 @@ export function FileTabs({
   return (
     <div
       data-file-tabs
-      className="flex h-9 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-[#222] px-1.5"
+      className="flex h-9 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-[var(--wb-border)] bg-[var(--wb-canvas)] px-1.5"
     >
       {tabs.map((tab) => {
         const active = tab.path === activePath;
@@ -30,8 +30,10 @@ export function FileTabs({
           <div
             key={tab.path}
             className={cn(
-              "flex min-w-0 max-w-[180px] items-center rounded-md",
-              active ? "bg-[#1c1c1c] text-[#e8e8e8]" : "text-[#8d8d8d] hover:bg-white/[0.04]",
+              "flex min-w-0 max-w-[180px] items-center rounded-md transition-colors",
+              active
+                ? "bg-[var(--wb-chip)] font-medium text-[var(--wb-text-strong)]"
+                : "text-[var(--wb-muted)] hover:bg-[var(--wb-hover)]",
             )}
           >
             <button
@@ -48,7 +50,7 @@ export function FileTabs({
               type="button"
               data-file-tab-close={tab.path}
               aria-label={DESKTOP_ZH.closeTab}
-              className="mr-1 rounded p-0.5 text-[#666] hover:bg-white/10 hover:text-[#e8e8e8]"
+              className="mr-1 rounded p-0.5 text-[var(--wb-faint)] hover:bg-[var(--wb-hover-strong)] hover:text-[var(--wb-text-strong)]"
               onClick={(event) => {
                 event.stopPropagation();
                 onClose(tab.path);
@@ -64,7 +66,7 @@ export function FileTabs({
         data-file-tab-add
         aria-label={DESKTOP_ZH.openAnotherFile}
         title={DESKTOP_ZH.openAnotherFile}
-        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[#8d8d8d] hover:bg-white/5 hover:text-[#e8e8e8]"
+        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--wb-muted)] hover:bg-[var(--wb-hover)] hover:text-[var(--wb-text-strong)]"
         onClick={onAdd}
       >
         <Plus className="h-3.5 w-3.5" />

@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { Hint } from "./Hint";
 import { FullViewIcon, PanelSquareIcon } from "./panel-icons";
@@ -16,7 +17,12 @@ export function PanelLayoutControls() {
           data-panel-full
           aria-pressed={full}
           aria-label={`${fullLabel} ${DESKTOP_ZH.panelShortcutF}`}
-          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[#8d8d8d] hover:bg-white/5 hover:text-[#e8e8e8]"
+          className={cn(
+            "inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors",
+            full
+              ? "bg-[var(--wb-accent-muted)] text-[var(--wb-accent)] hover:bg-[var(--wb-hover)]"
+              : "text-[var(--wb-muted)] hover:bg-[var(--wb-hover)] hover:text-[var(--wb-text-strong)]",
+          )}
           onClick={toggleFull}
         >
           <FullViewIcon exit={full} />
@@ -28,7 +34,7 @@ export function PanelLayoutControls() {
             type="button"
             data-panel-hide
             aria-label={`${DESKTOP_ZH.panelHideTabs} ${DESKTOP_ZH.panelShortcutB}`}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[#8d8d8d] hover:bg-white/5 hover:text-[#e8e8e8]"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--wb-muted)] transition-colors hover:bg-[var(--wb-hover)] hover:text-[var(--wb-text-strong)]"
             onClick={hidePanel}
           >
             <PanelSquareIcon />

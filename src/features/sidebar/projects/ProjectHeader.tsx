@@ -1,37 +1,13 @@
-import { useCallback, useRef, useState } from "react";
-import { Ellipsis } from "lucide-react";
-
-import { useDismiss } from "../use-dismiss";
 import { SidebarPlusButton } from "./SidebarPlusButton";
 import { useProjectHeader } from "./use-project-header";
 
 export function ProjectHeader() {
   const openDialog = useProjectHeader();
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const closeMenu = useCallback(() => setMenuOpen(false), []);
-  useDismiss(menuOpen, menuRef, closeMenu);
 
   return (
-    <div className="flex items-center justify-between px-3 pb-1.5 pt-2.5">
-      <span className="text-[12px] text-[#cfcfcf]">项目</span>
-      <div className="flex items-center gap-1">
-        <div ref={menuRef} className="relative">
-          <button
-            type="button"
-            className="flex h-7 w-7 items-center justify-center rounded-md text-[#888] transition-colors hover:bg-white/5 hover:text-[#e8e8e8]"
-            aria-label="更多"
-            aria-expanded={menuOpen}
-            onClick={() => setMenuOpen((open) => !open)}
-          >
-            <Ellipsis className="h-4 w-4" strokeWidth={2} />
-          </button>
-          {menuOpen && (
-            <div className="absolute right-0 top-full z-30 mt-1 w-36 rounded-xl border border-zinc-700/80 bg-zinc-900 px-3 py-2 text-xs text-zinc-500 shadow-xl shadow-black/40">
-              暂无更多操作
-            </div>
-          )}
-        </div>
+    <div className="flex items-center justify-between px-2.5 pb-1 pt-2.5">
+      <span className="text-[11px] font-semibold tracking-[0.04em] text-[var(--wb-faint)]">项目</span>
+      <div className="flex items-center gap-0.5">
         <SidebarPlusButton label="创建项目" onClick={() => openDialog("create")} />
       </div>
     </div>

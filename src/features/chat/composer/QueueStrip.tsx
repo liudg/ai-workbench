@@ -1,6 +1,7 @@
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { MoreHorizontal, Pencil, Reply, Trash2 } from "lucide-react";
 
+import { cn } from "@/lib/utils";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import type { QueuedTurn } from "@/types";
 import type { FollowUpQueueMode } from "./follow-up-queue-mode";
@@ -71,7 +72,7 @@ export function QueuedMessageList({
       data-queue-list
       data-queue-strip
       data-queue-mode={mode}
-      className="border-b border-[#2a2a2a]"
+      className="border-b border-[var(--wb-border)]"
       onClick={(event) => event.stopPropagation()}
     >
       {rows.map((row, index) => {
@@ -84,15 +85,15 @@ export function QueuedMessageList({
             data-queue-row
             data-queue-id={row.id}
             data-editing={editingId === row.id ? "true" : "false"}
-            className={
-              index > 0
-                ? "flex min-w-0 items-center gap-1 border-t border-[#2a2a2a] py-0.5 pl-1.5 pr-1"
-                : "flex min-w-0 items-center gap-1 py-0.5 pl-1.5 pr-1"
-            }
+            className={cn(
+              "flex min-w-0 items-center gap-1 py-0.5 pl-1.5 pr-1 transition-colors",
+              index > 0 && "border-t border-[var(--wb-border)]",
+              editingId === row.id && "bg-[var(--wb-active)] ring-1 ring-inset ring-[var(--wb-accent-border)]",
+            )}
           >
             <span
               data-queue-position
-              className="inline-flex h-7 w-5 shrink-0 items-center justify-center text-[12px] tabular-nums text-[#8d8d8d]"
+              className="inline-flex h-7 w-5 shrink-0 items-center justify-center text-[12px] tabular-nums text-[var(--wb-faint)]"
               aria-label={`第${row.position}条`}
             >
               {row.position}
@@ -100,7 +101,7 @@ export function QueuedMessageList({
             <p
               data-queue-text
               title={preview}
-              className="min-w-0 flex-1 truncate px-1 text-[13px] leading-5 text-[#cfcfcf]"
+              className="min-w-0 flex-1 truncate px-1 text-[13px] leading-5 text-[var(--wb-text)]"
             >
               {preview}
             </p>
@@ -108,7 +109,7 @@ export function QueuedMessageList({
               <button
                 type="button"
                 data-queue-steer
-                className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-[13px] text-[#e8e8e8] hover:bg-zinc-800"
+                className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-[13px] text-[var(--wb-text-strong)] hover:bg-[var(--wb-hover)]"
                 aria-label={DESKTOP_ZH.queueSteer}
                 title={DESKTOP_ZH.queueSteerHint}
                 onClick={() => onSteer(item.id)}
@@ -119,7 +120,7 @@ export function QueuedMessageList({
               <button
                 type="button"
                 data-queue-remove
-                className="flex h-7 w-7 items-center justify-center rounded-md text-[#a3a3a3] hover:bg-zinc-800 hover:text-[#e8e8e8]"
+                className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--wb-muted)] hover:bg-[var(--wb-hover)] hover:text-[var(--wb-text-strong)]"
                 aria-label={REMOVE_LABEL}
                 title={REMOVE_LABEL}
                 onClick={() => onRemove(item.id)}
@@ -133,7 +134,7 @@ export function QueuedMessageList({
                 }}
                 type="button"
                 data-queue-more
-                className="flex h-7 w-7 items-center justify-center rounded-md text-[#a3a3a3] hover:bg-zinc-800 hover:text-[#e8e8e8]"
+                className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--wb-muted)] hover:bg-[var(--wb-hover)] hover:text-[var(--wb-text-strong)]"
                 aria-label={MORE_LABEL}
                 title={MORE_LABEL}
                 aria-haspopup="menu"
@@ -152,7 +153,7 @@ export function QueuedMessageList({
           role="menu"
           aria-label="排队消息"
           data-queue-menu
-          className="fixed z-50 w-max min-w-[9.5rem] overflow-hidden rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
+          className="fixed z-50 w-max min-w-[9.5rem] overflow-hidden rounded-xl border border-[var(--wb-border-strong)] bg-[var(--wb-elev)] py-1 shadow-[var(--wb-float-shadow)]"
           style={{ top: -9999, left: 8 }}
         >
           {menu.map((entry) => (
@@ -161,11 +162,11 @@ export function QueuedMessageList({
               type="button"
               role="menuitem"
               data-queue-action={entry.id}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-zinc-100 hover:bg-zinc-800"
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--wb-text-strong)] hover:bg-[var(--wb-hover)]"
               onClick={() => pickMenu(entry)}
             >
               {entry.id === "edit" ? (
-                <Pencil className="h-3.5 w-3.5 shrink-0 text-zinc-400" aria-hidden />
+                <Pencil className="h-3.5 w-3.5 shrink-0 text-[var(--wb-muted)]" aria-hidden />
               ) : (
                 <span className="h-3.5 w-3.5 shrink-0" aria-hidden />
               )}

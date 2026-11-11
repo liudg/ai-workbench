@@ -38,13 +38,13 @@ export function ViewedImages({
           onClick={() => {
             if (canOpen) onToggle();
           }}
-          className="inline-flex max-w-full min-w-0 items-center gap-2 py-0.5 text-left text-[13px] text-[#c8c8c8] hover:text-[#e8e8e8]"
+          className="inline-flex max-w-full min-w-0 items-center gap-2 py-0.5 text-left text-[13px] text-[var(--wb-text-secondary)] transition-colors hover:text-[var(--wb-text-strong)]"
         >
-          <ImageIcon className="h-3.5 w-3.5 shrink-0 text-[#8a8a8a]" />
+          <ImageIcon className="h-3.5 w-3.5 shrink-0 text-[var(--wb-muted)]" />
           <span className="min-w-0 truncate">{label}</span>
           {canOpen ? (
             <ChevronRight
-              className={cn("h-3.5 w-3.5 shrink-0 text-[#777] transition-transform", expanded && "rotate-90")}
+              className={cn("h-3.5 w-3.5 shrink-0 text-[var(--wb-faint)] transition-transform", expanded && "rotate-90")}
             />
           ) : null}
         </button>

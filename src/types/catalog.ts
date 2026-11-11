@@ -198,6 +198,8 @@ export interface AgentProfile {
   display_name?: string | null;
   /** 适配器图标资源。没有资源时侧栏用中性图标。 */
   icon?: string | null;
+  /** 适配器图标是否为单色浅灰矢量（浅色主题下统一加深）。 */
+  icon_monochrome?: boolean;
 }
 
 export interface AgentCatalog {

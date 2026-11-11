@@ -12,8 +12,8 @@ export function ChatGroup() {
 
   return (
     <section data-sidebar-section="chats" className="pb-2 pt-2">
-      <div className="group/chat flex items-center justify-between px-3 pb-1 pt-1">
-        <span className="text-[12px] text-[#cfcfcf]">聊天</span>
+      <div className="group/chat flex items-center justify-between px-2.5 pb-1 pt-1">
+        <span className="text-[11px] font-semibold tracking-[0.04em] text-[var(--wb-faint)]">聊天</span>
         <NewSessionButton
           projectId={STANDALONE_DRAFT_ID}
           appearance="plus"
@@ -22,7 +22,7 @@ export function ChatGroup() {
         />
       </div>
       {empty ? (
-        <p data-empty-chats="" className="px-3 py-1 text-[12px] text-[#666]">
+        <p data-empty-chats="" className="px-2.5 py-1 text-[12px] text-[var(--wb-faint)]">
           无聊天
         </p>
       ) : (

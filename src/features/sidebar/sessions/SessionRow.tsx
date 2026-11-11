@@ -10,7 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { loadWorktreeDeletePreview } from "@/lib/worktree-delete-preview";
+import { Input } from "@/components/ui/input";
 import {
   worktreeDeleteFlags,
   worktreeDeleteIsDirty,
@@ -53,6 +53,7 @@ export function SessionRow({
     archiveSession,
     deleteSession,
     unreadFinished,
+    previewWorktreeDelete,
   } = useSessionRow(session);
   const showUnread = unreadFinished && !active;
 
@@ -64,6 +65,7 @@ export function SessionRow({
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deletePreview, setDeletePreview] = useState<WorktreeDeletePreview | null>(null);
   const anchorRef = useRef<HTMLButtonElement>(null);
+  const rowRef = useRef<HTMLDivElement>(null);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
   const archived = Boolean(session.archived);
   const pending = isPendingId(session.id);
@@ -87,7 +89,7 @@ export function SessionRow({
     }
     setDeleteError(null);
     setDeletePreview(null);
-    void loadWorktreeDeletePreview(session.id).then((preview) => {
+    void previewWorktreeDelete().then((preview) => {
       setDeletePreview(preview);
       setDeleteOpen(true);
     });
@@ -111,6 +113,7 @@ export function SessionRow({
   return (
     <>
       <div
+        ref={rowRef}
         role="button"
         tabIndex={0}
         data-session-row=""
@@ -121,13 +124,20 @@ export function SessionRow({
         data-pinned={pinned ? "true" : "false"}
         data-archived={archived ? "true" : "false"}
         className={cn(
-          "group flex h-full w-full items-center gap-1.5 rounded-md pl-9 pr-2 text-left text-[11.5px] leading-none",
+          "group relative flex h-full w-full items-center gap-1.5 rounded-lg border pl-7 pr-2 text-left text-[11.5px] leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--wb-accent)]/35",
           active
-            ? "bg-[#222] text-[#f3f3f3]"
-            : "text-[#bdbdbd] hover:bg-white/[0.04] hover:text-[#e8e8e8]",
+            ? "border-[var(--wb-active-border)] bg-[var(--wb-active)] font-medium text-[var(--wb-text-strong)] shadow-[var(--wb-active-shadow)] before:pointer-events-none before:absolute before:bottom-1.5 before:left-[13px] before:top-1.5 before:w-[2.5px] before:rounded-full before:bg-[var(--wb-accent)]"
+            : "border-transparent text-[var(--wb-muted)] hover:bg-[var(--wb-hover)] hover:text-[var(--wb-text-strong)]",
         )}
         onClick={() => void selectSession(projectId, session.id)}
+        onContextMenu={(event) => {
+          if (items.length === 0) return;
+          event.preventDefault();
+          event.stopPropagation();
+          setMenuOpen(true);
+        }}
         onKeyDown={(event) => {
+          if (event.target !== event.currentTarget) return;
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
             void selectSession(projectId, session.id);
@@ -140,17 +150,17 @@ export function SessionRow({
           {showUnread && <UnreadFinishedMark />}
         </span>
         {readOnly && (
-          <span className="ml-1 shrink-0 rounded bg-amber-400/15 px-1.5 py-0.5 text-[10px] leading-4 text-amber-200">
+          <span className="ml-1 shrink-0 rounded border border-[var(--wb-warn-border)] bg-[var(--wb-warn-bg)] px-1.5 py-0.5 text-[10px] leading-4 text-[var(--wb-warn-text)]">
             只读
           </span>
         )}
         <SessionStatusDot status={session.status} />
-        {pinned && <Pin className="h-3 w-3 shrink-0 text-[#8a8a8a]" aria-hidden="true" />}
-        <span className="relative flex w-16 shrink-0 justify-end text-right tabular-nums">
+        {pinned && <Pin className="h-3 w-3 shrink-0 text-[var(--wb-faint)]" aria-hidden="true" />}
+        <span className="relative flex w-14 shrink-0 items-center justify-end text-right tabular-nums">
           <span
             className={cn(
-              "text-[10px] text-[#666]",
-              "group-hover:invisible group-focus-within:invisible",
+              "text-[10px] text-[var(--wb-faint)]",
+              items.length > 0 && "group-hover:invisible group-focus-within:invisible",
               menuOpen && "invisible",
             )}
           >
@@ -161,8 +171,8 @@ export function SessionRow({
               ref={anchorRef}
               type="button"
               className={cn(
-                "absolute inset-0 hidden items-center justify-end text-zinc-300 group-hover:flex group-focus-within:flex",
-                menuOpen && "flex",
+                "absolute right-0 hidden h-6 w-6 items-center justify-center rounded text-[var(--wb-muted)] transition-colors hover:bg-[var(--wb-hover-strong)] hover:text-[var(--wb-text-strong)] focus-visible:flex focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--wb-accent)]/35 group-hover:flex group-focus-within:flex",
+                menuOpen && "flex bg-[var(--wb-hover-strong)] text-[var(--wb-text-strong)]",
               )}
               aria-label="聊天操作"
               aria-haspopup="menu"
@@ -182,7 +192,7 @@ export function SessionRow({
         anchorRef={anchorRef}
         onClose={closeMenu}
         label="聊天操作"
-        className="w-44 rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
+        className="w-44 rounded-xl border border-[var(--wb-border-strong)] bg-[var(--wb-elev)] py-1 shadow-[var(--wb-float-shadow)]"
       >
         {items.map((item) => (
           <MenuItem
@@ -202,9 +212,10 @@ export function SessionRow({
             <DialogTitle>重命名</DialogTitle>
             <DialogDescription>保持简短且易于识别</DialogDescription>
           </DialogHeader>
-          <input
+          <Input
             aria-label="聊天标题"
             placeholder="添加标题…"
+            autoFocus
             value={title}
             onChange={(event) => setTitle(event.target.value)}
             onKeyDown={(event) => {
@@ -221,11 +232,14 @@ export function SessionRow({
               event.preventDefault();
               submitRename();
             }}
-            className="h-9 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none focus:border-zinc-500"
           />
-          {renameError && <p className="text-sm text-red-300">{renameError}</p>}
+          {renameError && (
+            <p className="rounded-lg border border-[var(--wb-danger-border)] bg-[var(--wb-danger-bg)] px-3 py-2 text-xs text-[var(--wb-danger-text)]">
+              {renameError}
+            </p>
+          )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRenameOpen(false)}>
+            <Button variant="ghost" onClick={() => setRenameOpen(false)}>
               取消
             </Button>
             <Button disabled={!title.trim()} onClick={submitRename}>
@@ -254,10 +268,11 @@ function UnreadFinishedMark() {
       data-unread-finished=""
       title="未读"
       aria-label="未读"
-      className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[#4f8dff]"
+      className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--wb-accent)]"
     />
   );
 }
+
 function MenuItem({
   action,
   label,
@@ -278,8 +293,8 @@ function MenuItem({
       data-session-action={action}
       disabled={disabled}
       className={cn(
-        "block w-full px-3 py-2 text-left text-sm hover:bg-zinc-800 disabled:opacity-60",
-        danger ? "text-red-400" : "text-zinc-100",
+        "block w-full px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--wb-hover)] focus-visible:bg-[var(--wb-hover)] focus-visible:outline-none disabled:opacity-60",
+        danger ? "text-[var(--wb-danger-text)]" : "text-[var(--wb-text-strong)]",
       )}
       onClick={(event) => {
         event.stopPropagation();

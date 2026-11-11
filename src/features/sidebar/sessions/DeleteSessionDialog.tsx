@@ -36,9 +36,13 @@ export function DeleteSessionDialog({
               : "这将永久删除该任务及其子智能体任务。此操作无法撤销。"}
           </DialogDescription>
         </DialogHeader>
-        {error ? <p className="text-sm text-red-300">{error}</p> : null}
+        {error ? (
+          <p className="rounded-lg border border-[var(--wb-danger-border)] bg-[var(--wb-danger-bg)] px-3 py-2 text-xs text-[var(--wb-danger-text)]">
+            {error}
+          </p>
+        ) : null}
         <DialogFooter>
-          <Button variant="outline" autoFocus onClick={() => onOpenChange(false)}>
+          <Button variant="ghost" autoFocus onClick={() => onOpenChange(false)}>
             取消
           </Button>
           {dirtyWorktree ? (

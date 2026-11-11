@@ -5,18 +5,20 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-400 disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--wb-accent)]/35 disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
         default:
-          "bg-indigo-600 text-white shadow hover:bg-indigo-500 active:bg-indigo-600",
+          "bg-[var(--wb-send-bg)] text-[var(--wb-send-fg)] shadow-sm hover:opacity-90 active:opacity-95",
         secondary:
-          "bg-zinc-800 text-zinc-200 hover:bg-zinc-700 active:bg-zinc-800",
-        ghost: "text-zinc-400 hover:bg-zinc-800/70 hover:text-zinc-200",
+          "bg-[var(--wb-chip)] text-[var(--wb-text)] hover:bg-[var(--wb-chip-hover)] active:bg-[var(--wb-chip)]",
+        ghost:
+          "text-[var(--wb-muted)] hover:bg-[var(--wb-hover)] hover:text-[var(--wb-text-strong)]",
         outline:
-          "border border-zinc-700 text-zinc-300 hover:bg-zinc-800/70 hover:text-zinc-100",
-        destructive: "bg-red-600/90 text-white hover:bg-red-500",
+          "border border-[var(--wb-border-strong)] bg-transparent text-[var(--wb-text)] hover:bg-[var(--wb-hover)] hover:text-[var(--wb-text-strong)]",
+        destructive:
+          "bg-[var(--wb-danger-solid)] text-white shadow-sm hover:bg-[var(--wb-danger-solid-hover)] active:opacity-95",
       },
       size: {
         default: "h-9 px-4 py-2",

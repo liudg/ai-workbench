@@ -71,6 +71,5 @@ export function useEditProjectForm(project: Project, onClose: () => void) {
     error,
     busy,
     valid,
-    onClose,
   };
 }

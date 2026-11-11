@@ -3,14 +3,10 @@ import { isRenderedEventKind } from "./event-kinds";
 import { eventRenderers } from "./registry";
 import type { EventItemProps } from "./types";
 
-function noop() {}
-
 export function EventItem({
   event,
   session,
   resolvedAnswer,
-  thinkingOpen = false,
-  onToggleThinking,
   showAgentLabel = true,
   showMessageFooter,
 }: EventItemProps) {
@@ -22,8 +18,6 @@ export function EventItem({
       session={session}
       resolvedAnswer={resolvedAnswer}
       time={formatMessageTime(event.ts)}
-      thinkingOpen={thinkingOpen}
-      onToggleThinking={onToggleThinking ?? noop}
       showAgentLabel={showAgentLabel}
       showMessageFooter={showMessageFooter}
     />

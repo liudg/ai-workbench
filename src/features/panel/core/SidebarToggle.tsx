@@ -22,7 +22,7 @@ export function SidebarToggle() {
         aria-pressed={open}
         aria-keyshortcuts="Control+B"
         aria-label={`${label} ${SIDEBAR_SHORTCUT_LABEL}`}
-        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[#333] text-[#cfcfcf] hover:bg-[#1c1c1c]"
+        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--wb-border-strong)] text-[var(--wb-muted)] transition-colors hover:bg-[var(--wb-hover)] hover:text-[var(--wb-text-strong)]"
         onClick={() => toggleSidebar()}
       >
         <Icon className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />

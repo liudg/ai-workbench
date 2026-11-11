@@ -28,29 +28,29 @@ export function ChangeCard({
   return (
     <div className="event-in min-w-0 px-6 py-1.5" data-change-card>
       <div className="change-card min-w-0 pl-6">
-        <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/50">
-          <div className="flex min-w-0 items-center gap-2 px-2.5 py-1.5">
+        <div className="overflow-hidden rounded-xl border border-[var(--wb-border)] bg-[var(--wb-card)]">
+          <div className="flex min-w-0 items-center gap-2 px-3 py-1.5">
             {multiple ? (
               <button
                 type="button"
                 aria-expanded={expanded}
-                className="flex min-w-0 items-center gap-1.5 text-left text-xs text-zinc-100"
+                className="flex min-w-0 items-center gap-1.5 text-left text-xs font-medium text-[var(--wb-text-strong)]"
                 onClick={() => setExpanded((value) => !value)}
               >
                 <ChevronRight
                   className={cn(
-                    "h-3 w-3 shrink-0 text-zinc-500 transition-transform",
+                    "h-3 w-3 shrink-0 text-[var(--wb-faint)] transition-transform",
                     expanded && "rotate-90",
                   )}
                 />
-                <File className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
+                <File className="h-3.5 w-3.5 shrink-0 text-[var(--wb-muted)]" />
                 <span data-edited-label className="truncate">
                   {title}
                 </span>
               </button>
             ) : (
-              <span className="flex min-w-0 items-center gap-1.5 text-xs text-zinc-100">
-                <File className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
+              <span className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-[var(--wb-text-strong)]">
+                <File className="h-3.5 w-3.5 shrink-0 text-[var(--wb-muted)]" />
                 <span data-edited-label className="truncate">
                   {title}
                 </span>
@@ -61,7 +61,7 @@ export function ChangeCard({
               <button
                 type="button"
                 data-view-changes
-                className="rounded px-2 py-1 text-xs text-zinc-100 hover:bg-zinc-800"
+                className="rounded-md px-2 py-1 text-xs font-medium text-[var(--wb-text)] transition-colors hover:bg-[var(--wb-hover-strong)] hover:text-[var(--wb-text-strong)]"
                 onClick={() =>
                   preview.openDiff(`diff:${changes.id}`, DESKTOP_ZH.changesTab, changes.files)
                 }
@@ -71,7 +71,7 @@ export function ChangeCard({
             </span>
           </div>
           {rows.length > 0 ? (
-            <ul className="border-t border-zinc-800/80">
+            <ul className="border-t border-[var(--wb-border)]">
               {rows.map((file) => (
                 <li key={file.path}>
                   <FileRow
@@ -88,7 +88,7 @@ export function ChangeCard({
                   <button
                     type="button"
                     data-show-more
-                    className="w-full px-2.5 py-1.5 text-left text-xs text-sky-300 hover:bg-zinc-800/60 hover:text-sky-200"
+                    className="w-full px-3 py-1.5 text-left text-xs text-[var(--wb-link)] transition-colors hover:bg-[var(--wb-card-hover)]"
                     onClick={() => setRevealed(true)}
                   >
                     {DESKTOP_ZH.showMore}
@@ -110,11 +110,11 @@ function FileRow({ file, onOpen, root }: { file: FileChange; onOpen: () => void;
       type="button"
       data-change-file={file.path}
       title={label}
-      className="flex w-full min-w-0 items-center gap-2 px-2.5 py-1 text-left hover:bg-zinc-800/70"
+      className="flex w-full min-w-0 items-center gap-2 px-3 py-1.5 text-left transition-colors hover:bg-[var(--wb-card-hover)]"
       onClick={onOpen}
     >
       <StatusMark status={file.status} />
-      <span className="min-w-0 flex-1 truncate font-mono text-xs text-zinc-200">{label}</span>
+      <span className="min-w-0 flex-1 truncate font-mono text-xs text-[var(--wb-text)]">{label}</span>
       <Stat added={file.added} removed={file.removed} />
     </button>
   );
@@ -127,9 +127,10 @@ function StatusMark({ status }: { status: FileStatus }) {
       data-file-status={status}
       className={cn(
         "w-4 shrink-0 font-mono text-[11px]",
-        tone === "add" && "text-emerald-400",
-        tone === "del" && "text-red-400",
-        tone === "neutral" && "text-zinc-400",
+        tone === "add" && "text-[var(--wb-add-stat)]",
+        tone === "mod" && "text-[var(--wb-warn-strong)]",
+        tone === "del" && "text-[var(--wb-del-stat)]",
+        tone === "neutral" && "text-[var(--wb-muted)]",
       )}
     >
       {status}
@@ -140,8 +141,8 @@ function StatusMark({ status }: { status: FileStatus }) {
 function Stat({ added, removed }: { added: number; removed: number }) {
   return (
     <span className="flex shrink-0 items-center gap-2 font-mono text-[11px] tabular-nums">
-      <span className="text-emerald-400">+{added}</span>
-      <span className="text-red-400">-{removed}</span>
+      <span className="text-[var(--wb-add-stat)]">+{added}</span>
+      <span className="text-[var(--wb-del-stat)]">-{removed}</span>
     </span>
   );
 }

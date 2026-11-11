@@ -48,15 +48,15 @@ function MarkdownViewerBody({ payload, status, sessionId }: ViewerViewProps<Mark
   else if (status === "error") body = <PreviewFailed message={payload.error ?? ""} />;
   const title = payloadTitle(payload) || baseName(path);
   return (
-    <div data-open-files-preview data-markdown-view={shown} className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 items-center gap-1.5 border-b border-[#222] px-3 py-1.5">
-        <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-[#bdbdbd]" title={path || title}>
+    <div data-open-files-preview data-markdown-view={shown} className="flex h-full min-h-0 flex-col bg-[var(--wb-canvas)]">
+      <div className="flex shrink-0 items-center gap-1.5 border-b border-[var(--wb-border)] bg-[var(--wb-canvas)] px-3 py-1.5">
+        <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-[var(--wb-muted)]" title={path || title}>
           {title}
         </span>
         <button
           type="button"
           data-markdown-mode-toggle
-          className="inline-flex h-7 shrink-0 items-center rounded-full border border-[#3a3a3a] bg-[#2a2a2a] px-3 text-[12px] leading-5 text-[#f3f3f3] hover:bg-[#333]"
+          className="inline-flex h-7 shrink-0 items-center rounded-full border border-[var(--wb-border-strong)] bg-[var(--wb-chip)] px-3 text-[12px] leading-5 text-[var(--wb-text-strong)] hover:bg-[var(--wb-chip-hover)]"
           onClick={() => {
             const next = nextMarkdownViewMode(shown);
             rememberMarkdownViewMode(path, next);

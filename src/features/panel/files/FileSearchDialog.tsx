@@ -72,19 +72,25 @@ export function FileSearchDialog({
   if (typeof document === "undefined") return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/45 pt-16" data-file-search>
+    <div
+      className="fixed inset-0 z-[70] flex items-start justify-center bg-[var(--wb-backdrop)] pt-16 backdrop-blur-[2px]"
+      data-file-search
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
       <div
         role="dialog"
         aria-label={DESKTOP_ZH.openFilesSearchTitle}
         onKeyDown={onKeyDown}
-        className="w-[min(720px,94vw)] rounded-xl border border-zinc-700 bg-zinc-900 p-4 shadow-xl"
+        className="w-[min(720px,94vw)] rounded-xl border border-[var(--wb-border-strong)] bg-[var(--wb-elev)] p-4 shadow-[var(--wb-float-shadow)]"
       >
         <div className="mb-3 flex items-center justify-between gap-3">
-          <h2 className="text-sm text-zinc-100">{DESKTOP_ZH.openFilesSearchTitle}</h2>
+          <h2 className="text-sm font-medium text-[var(--wb-text-strong)]">{DESKTOP_ZH.openFilesSearchTitle}</h2>
           <button
             type="button"
             data-file-search-esc
-            className="rounded-md bg-zinc-800 px-1.5 py-0.5 text-[11px] text-zinc-200"
+            className="rounded-md border border-[var(--wb-border)] bg-[var(--wb-chip)] px-1.5 py-0.5 text-[11px] text-[var(--wb-muted)] hover:bg-[var(--wb-chip-hover)] hover:text-[var(--wb-text-strong)]"
             onClick={onClose}
           >
             Esc
@@ -97,32 +103,32 @@ export function FileSearchDialog({
           placeholder={DESKTOP_ZH.openFilesSearchPlaceholder}
           aria-label={DESKTOP_ZH.openFilesSearchPlaceholder}
           data-file-search-query
-          className="h-9 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-zinc-500"
+          className="h-9 w-full rounded-lg border border-[var(--wb-border-strong)] bg-[var(--wb-well)] px-3 text-sm text-[var(--wb-text-strong)] outline-none placeholder:text-[var(--wb-faint)] focus:border-[var(--wb-accent)]"
         />
-        <label className="mt-3 flex items-center gap-2 text-xs text-zinc-400">
+        <label className="mt-3 flex items-center gap-2 text-xs text-[var(--wb-muted)]">
           <span className="shrink-0">{DESKTOP_ZH.openFilesMask}</span>
           <input
             value={mask}
             onChange={(event) => setMask(event.target.value)}
             aria-label={DESKTOP_ZH.openFilesMask}
             data-file-search-mask
-            className="h-7 min-w-0 flex-1 rounded-md border border-zinc-700 bg-zinc-950 px-2 text-xs text-zinc-100 outline-none focus:border-zinc-500"
+            className="h-7 min-w-0 flex-1 rounded-md border border-[var(--wb-border-strong)] bg-[var(--wb-well)] px-2 text-xs text-[var(--wb-text-strong)] outline-none focus:border-[var(--wb-accent)]"
           />
         </label>
         {query.trim() ? (
-          <div className="mt-3 overflow-hidden rounded-lg border border-zinc-800">
+          <div className="mt-3 overflow-hidden rounded-lg border border-[var(--wb-border)] bg-[var(--wb-well)]">
             {loading && hits.length === 0 ? (
-              <p className="px-3 py-4 text-xs text-zinc-500" data-file-search-pending>
+              <p className="px-3 py-4 text-xs text-[var(--wb-muted)]" data-file-search-pending>
                 {DESKTOP_ZH.openFilesSearchPending}
               </p>
             ) : null}
             {error ? (
-              <p className="px-3 py-4 text-xs text-red-300" data-file-search-error>
+              <p className="px-3 py-4 text-xs text-[var(--wb-danger-text)]" data-file-search-error>
                 {error}
               </p>
             ) : null}
             {!loading && !error && hits.length === 0 ? (
-              <p className="px-3 py-4 text-xs text-zinc-500" data-file-search-empty>
+              <p className="px-3 py-4 text-xs text-[var(--wb-muted)]" data-file-search-empty>
                 {DESKTOP_ZH.openFilesSearchEmpty}
               </p>
             ) : null}
@@ -147,16 +153,16 @@ export function FileSearchDialog({
                       data-file-search-line={hit.line ?? ""}
                       data-file-search-kind={hit.kind}
                       className={cn(
-                        "flex w-full min-w-0 items-center gap-3 px-3 py-1.5 text-left",
-                        selected ? "bg-zinc-800" : "hover:bg-zinc-800/70",
+                        "flex w-full min-w-0 items-center gap-3 px-3 py-1.5 text-left transition-colors",
+                        selected ? "bg-[var(--wb-chip)]" : "hover:bg-[var(--wb-hover)]",
                       )}
                       onMouseEnter={() => setActive(index)}
                       onClick={() => openHit(hit)}
                     >
-                      <span className="min-w-0 flex-1 truncate font-mono text-xs text-zinc-200">
+                      <span className="min-w-0 flex-1 truncate font-mono text-xs text-[var(--wb-text-strong)]">
                         <Highlight text={hit.text} query={query} />
                       </span>
-                      <span className="shrink-0 font-mono text-[11px] text-zinc-500">{where}</span>
+                      <span className="shrink-0 font-mono text-[11px] text-[var(--wb-muted)]">{where}</span>
                     </button>
                   );
                 })}
@@ -164,7 +170,7 @@ export function FileSearchDialog({
             ) : null}
             {hits.length > 0 ? (
               <div
-                className="flex items-center justify-between gap-3 border-t border-zinc-800 px-3 py-2 text-[11px] text-zinc-500"
+                className="flex items-center justify-between gap-3 border-t border-[var(--wb-border)] px-3 py-2 text-[11px] text-[var(--wb-muted)]"
                 data-file-search-footer
               >
                 <span data-file-search-cap>
@@ -189,7 +195,7 @@ function Highlight({ text, query }: { text: string; query: string }) {
     <>
       {highlightParts(text, query).map((part, index) =>
         part.hit ? (
-          <mark key={index} data-file-search-mark className="rounded-sm bg-amber-300/35 text-amber-50">
+          <mark key={index} data-file-search-mark className="rounded-[2px] bg-[var(--wb-find-hit-bg)] px-0.5 text-[var(--wb-find-hit-fg)]">
             {part.text}
           </mark>
         ) : (

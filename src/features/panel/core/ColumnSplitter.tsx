@@ -22,7 +22,7 @@ export function ColumnSplitter({
       aria-label={name === "chat-preview" ? "调整预览宽度" : "调整文件列宽度"}
       tabIndex={0}
       data-resize={name}
-      className="relative z-20 w-1.5 shrink-0 cursor-col-resize touch-none bg-zinc-900 hover:bg-zinc-600 focus-visible:bg-zinc-600 before:absolute before:inset-y-0 before:-left-1.5 before:-right-1.5 before:content-['']"
+      className="group relative z-20 w-1.5 shrink-0 cursor-col-resize touch-none bg-transparent outline-none before:absolute before:inset-y-0 before:-left-1.5 before:-right-1.5 before:content-[''] after:pointer-events-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-[var(--wb-border)] after:transition-all hover:after:w-0.5 hover:after:bg-[var(--wb-accent)] focus-visible:after:w-0.5 focus-visible:after:bg-[var(--wb-accent)]"
       onKeyDown={(event) => {
         const key = event.key === "ArrowLeft" || event.key === "ArrowRight" ? event.key : null;
         if (!key) return;

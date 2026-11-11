@@ -1,12 +1,14 @@
 import { useState } from "react";
 
+import { cn } from "@/lib/utils";
+import { STANDALONE_DRAFT_ID } from "@/store/standalone";
 import type { Session } from "@/types";
 import { SessionRows } from "./SessionRows";
 import { revealMoreSessions, SESSION_PREVIEW_LIMIT, sidebarSessionWindow } from "./session-order";
 import { usePinnedSessionIds } from "./use-pinned-session-ids";
 
 const rowButtonClass =
-  "w-full rounded-md py-1 pl-[58px] pr-2 text-left text-[11.5px] text-[#666] hover:bg-white/[0.04] hover:text-[#bdbdbd]";
+  "w-full rounded-lg py-1 pl-[52px] pr-2 text-left text-[11.5px] text-[var(--wb-faint)] hover:bg-[var(--wb-hover)] hover:text-[var(--wb-text)]";
 
 export function SessionList({
   projectId,
@@ -26,9 +28,16 @@ export function SessionList({
     visibleLimit,
     pinnedIds,
   );
+  const showGuide = projectId !== STANDALONE_DRAFT_ID;
 
   return (
-    <div className="mt-0.5">
+    <div
+      className={cn(
+        "mt-0.5",
+        showGuide &&
+          "relative before:pointer-events-none before:absolute before:bottom-1 before:left-[14px] before:top-1 before:w-px before:bg-[var(--wb-border)]",
+      )}
+    >
       <SessionRows
         projectId={projectId}
         sessions={visible}

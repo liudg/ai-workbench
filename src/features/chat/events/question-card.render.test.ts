@@ -67,8 +67,6 @@ function prompt(
 
 const view = {
   time: "10:00",
-  thinkingOpen: false,
-  onToggleThinking: () => {},
   showAgentLabel: false,
 };
 
@@ -95,7 +93,7 @@ test("answered question card hugs the answer and drops trailing blank lines", ()
   assert.match(html, />已回答：浏览器页面<\/p>/);
   assert.equal(html.includes("已回答：\n"), false);
   assert.match(html, /问题/);
-  assert.match(html, /border-amber-500\/25/);
+  assert.match(html, /border-\[var\(--wb-warn-border\)\]/);
 });
 
 test("multiple answers stay stacked without a blank footer", () => {

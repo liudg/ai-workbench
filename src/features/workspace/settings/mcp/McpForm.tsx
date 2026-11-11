@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 
 import type { McpAddSpec, McpField, McpPair, McpSurface } from "@/types";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   FORM_TEXT,
@@ -17,9 +18,7 @@ import {
 import { MCP_PAGE, addLabel, registrationAria, showRegistration, visibleFields } from "./view";
 
 const inputClass =
-  "w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-zinc-500";
-const quietButton =
-  "rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-100 hover:bg-zinc-800 disabled:opacity-50";
+  "w-full rounded-lg border border-[var(--wb-border-strong)] bg-[var(--wb-well)] px-3 py-2 text-sm text-[var(--wb-text-strong)] outline-none transition-colors placeholder:text-[var(--wb-muted)] focus:border-[var(--wb-accent)] focus-visible:ring-2 focus-visible:ring-[var(--wb-accent)]/20 disabled:cursor-not-allowed disabled:opacity-50";
 
 export function McpForm(props: {
   surface: McpSurface;
@@ -160,19 +159,29 @@ export function McpForm(props: {
       }}
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h3 className="text-sm font-medium text-zinc-100">{MCP_PAGE.titleNew}</h3>
+        <h3 className="text-sm font-medium text-[var(--wb-text-strong)]">{MCP_PAGE.titleNew}</h3>
         <div className="flex gap-2">
-          <button type="button" className={quietButton} data-mcp-paste="config" disabled={props.busy} onClick={() => void pasteConfig()}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            data-mcp-paste="config"
+            disabled={props.busy}
+            onClick={() => void pasteConfig()}
+          >
             {FORM_TEXT.pasteConfig}
-          </button>
-          <button type="button" className={quietButton} onClick={props.onBack}>
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={props.onBack}>
             {MCP_PAGE.back}
-          </button>
+          </Button>
         </div>
       </div>
       {notice && (
         <p
-          className={cn("mt-4 text-sm", notice.tone === "alert" ? "text-red-300" : "text-zinc-400")}
+          className={cn(
+            "mt-4 text-sm",
+            notice.tone === "alert" ? "text-[var(--wb-danger-text)]" : "text-[var(--wb-muted)]",
+          )}
           role={notice.tone === "alert" ? "alert" : "status"}
           data-mcp-form-message={notice.tone}
         >
@@ -194,35 +203,45 @@ export function McpForm(props: {
             onList={putList}
             onPairs={putPairs}
             onCopy={(index, pair) => void copyPair(first.id, index, pair)}
-            onToggleSecret={() => setSecretOpen((current) => ({ ...current, [first.id]: !current[first.id] }))}
+            onToggleSecret={() =>
+              setSecretOpen((current) => ({ ...current, [first.id]: !current[first.id] }))
+            }
           />
         )}
         {surface.transports.length > 0 && (
           <div>
-            <div className="mb-2 text-xs text-zinc-400">{MCP_PAGE.typeLabel}</div>
+            <div className="mb-2 text-xs text-[var(--wb-muted)]">{MCP_PAGE.typeLabel}</div>
             <div className="flex flex-wrap gap-2" role="group" aria-label={MCP_PAGE.typeAria}>
-              {surface.transports.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  data-mcp-transport={item.id}
-                  aria-pressed={draft.transport === item.id}
-                  className={cn(quietButton, draft.transport === item.id && "border-zinc-400 bg-zinc-800")}
-                  disabled={props.busy}
-                  onClick={() => {
-                    setDraft((current) => ({ ...current, transport: item.id }));
-                    setErrors({});
-                    setNotice(null);
-                  }}
-                >
-                  {item.label}
-                </button>
-              ))}
+              {surface.transports.map((item) => {
+                const active = draft.transport === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    data-mcp-transport={item.id}
+                    aria-pressed={active}
+                    className={cn(
+                      "rounded-lg border px-3 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--wb-accent)]/35 disabled:opacity-50",
+                      active
+                        ? "border-[var(--wb-accent-border)] bg-[var(--wb-accent-muted)] font-medium text-[var(--wb-text-strong)]"
+                        : "border-[var(--wb-border-strong)] bg-[var(--wb-elev)] text-[var(--wb-muted)] hover:bg-[var(--wb-hover)] hover:text-[var(--wb-text-strong)]",
+                    )}
+                    disabled={props.busy}
+                    onClick={() => {
+                      setDraft((current) => ({ ...current, transport: item.id }));
+                      setErrors({});
+                      setNotice(null);
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
         {surface.scopes.length > 0 && surface.scope_label && (
-          <label className="block text-xs text-zinc-400">
+          <label className="block text-xs text-[var(--wb-muted)]">
             {surface.scope_label}
             <select
               className={inputClass + " mt-1"}
@@ -254,11 +273,13 @@ export function McpForm(props: {
             onList={putList}
             onPairs={putPairs}
             onCopy={(index, pair) => void copyPair(field.id, index, pair)}
-            onToggleSecret={() => setSecretOpen((current) => ({ ...current, [field.id]: !current[field.id] }))}
+            onToggleSecret={() =>
+              setSecretOpen((current) => ({ ...current, [field.id]: !current[field.id] }))
+            }
           />
         ))}
         {showRegistration(surface, draft.transport) && (
-          <label className="block text-xs text-zinc-400">
+          <label className="block text-xs text-[var(--wb-muted)]">
             {MCP_PAGE.registration}
             <select
               className={inputClass + " mt-1"}
@@ -266,7 +287,9 @@ export function McpForm(props: {
               value={draft.registration}
               data-mcp-add-registration=""
               disabled={props.busy}
-              onChange={(event) => setDraft((current) => ({ ...current, registration: event.target.value }))}
+              onChange={(event) =>
+                setDraft((current) => ({ ...current, registration: event.target.value }))
+              }
             >
               {surface.oauth_registration.map((item) => (
                 <option key={item.id} value={item.id}>
@@ -277,9 +300,9 @@ export function McpForm(props: {
           </label>
         )}
       </div>
-      <button type="submit" className={quietButton + " mt-4"} data-mcp-save="" disabled={props.busy}>
+      <Button type="submit" className="mt-5" data-mcp-save="" disabled={props.busy}>
         {MCP_PAGE.save}
-      </button>
+      </Button>
     </form>
   );
 }
@@ -331,9 +354,12 @@ function Field(props: {
   const value = props.draft.values[field.id] ?? "";
   const secret = field.control === "secret";
   return (
-    <label className="block text-xs text-zinc-400" data-mcp-required={field.required ? field.id : undefined}>
+    <label
+      className="block text-xs text-[var(--wb-muted)]"
+      data-mcp-required={field.required ? field.id : undefined}
+    >
       <FieldLabel field={field} />
-      <span className="mt-1 flex gap-2">
+      <span className="mt-1 flex items-center gap-2">
         <input
           className={fieldClass(invalid)}
           data-mcp-field={field.id}
@@ -349,9 +375,16 @@ function Field(props: {
           onChange={(event) => props.onText(field.id, event.target.value)}
         />
         {secret && (
-          <button type="button" className={quietButton + " shrink-0"} disabled={props.busy} onClick={props.onToggleSecret}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            disabled={props.busy}
+            onClick={props.onToggleSecret}
+          >
             {props.secretOpen ? FORM_TEXT.hideSecret : FORM_TEXT.showSecret}
-          </button>
+          </Button>
         )}
       </span>
       <FieldError id={field.id} error={props.error} />
@@ -372,10 +405,10 @@ function StringList(props: {
   return (
     <div data-mcp-list={props.field.id} data-mcp-required={props.field.required ? props.field.id : undefined}>
       <FieldLabel field={props.field} />
-      <p className="mt-1 text-xs text-zinc-500">{FORM_TEXT.pasteList}</p>
+      <p className="mt-1 text-xs text-[var(--wb-muted)]">{FORM_TEXT.pasteList}</p>
       <div className="mt-2 space-y-2">
         {rows.map((value, index) => (
-          <div key={index} className="flex gap-2">
+          <div key={index} className="flex items-center gap-2">
             <input
               className={fieldClass(Boolean(props.error))}
               value={value}
@@ -399,26 +432,30 @@ function StringList(props: {
                 if (event.key === "Enter") event.preventDefault();
               }}
             />
-            <button
+            <Button
               type="button"
-              className={quietButton + " shrink-0"}
+              variant="outline"
+              size="sm"
+              className="shrink-0"
               aria-label={MCP_PAGE.removeEntry}
               disabled={props.busy || (synthetic && !value)}
               onClick={() => props.onChange(rows.filter((_, item) => item !== index))}
             >
               {MCP_PAGE.removeEntry}
-            </button>
+            </Button>
           </div>
         ))}
       </div>
-      <button
+      <Button
         type="button"
-        className={quietButton + " mt-2"}
+        variant="outline"
+        size="sm"
+        className="mt-2"
         disabled={props.busy}
         onClick={() => props.onChange([...rows, ""])}
       >
         {addLabel(props.field.id) ?? props.field.label}
-      </button>
+      </Button>
       <FieldError id={props.field.id} error={props.error} />
     </div>
   );
@@ -439,8 +476,8 @@ function PairList(props: {
   return (
     <div data-mcp-pairs={props.field.id} data-mcp-required={props.field.required ? props.field.id : undefined}>
       <FieldLabel field={props.field} />
-      <p className="mt-1 text-xs text-zinc-500">{FORM_TEXT.pastePairs}</p>
-      <div className="mt-2 grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto] gap-2 text-xs text-zinc-500">
+      <p className="mt-1 text-xs text-[var(--wb-muted)]">{FORM_TEXT.pastePairs}</p>
+      <div className="mt-2 grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto] gap-2 text-xs text-[var(--wb-muted)]">
         <span>{MCP_PAGE.key}</span>
         <span>{MCP_PAGE.value}</span>
         <span />
@@ -450,7 +487,7 @@ function PairList(props: {
           const token = `${props.field.id}:${index}`;
           const empty = !pair.key.trim() && !pair.value.trim();
           return (
-            <div key={index} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto] gap-2">
+            <div key={index} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto] items-center gap-2">
               <input
                 className={fieldClass(Boolean(props.error))}
                 placeholder={MCP_PAGE.key}
@@ -459,7 +496,9 @@ function PairList(props: {
                 data-mcp-focus={index === 0 ? props.focusId : undefined}
                 value={pair.key}
                 disabled={props.busy}
-                onChange={(event) => props.onChange(replacePair(rows, index, { ...pair, key: event.target.value }))}
+                onChange={(event) =>
+                  props.onChange(replacePair(rows, index, { ...pair, key: event.target.value }))
+                }
                 onPaste={(event) => pastePairs(event, rows, index, props.onChange, "key")}
                 onKeyDown={blockEnter}
               />
@@ -470,41 +509,49 @@ function PairList(props: {
                 aria-invalid={props.error ? true : undefined}
                 value={pair.value}
                 disabled={props.busy}
-                onChange={(event) => props.onChange(replacePair(rows, index, { ...pair, value: event.target.value }))}
+                onChange={(event) =>
+                  props.onChange(replacePair(rows, index, { ...pair, value: event.target.value }))
+                }
                 onPaste={(event) => pastePairs(event, rows, index, props.onChange, "value")}
                 onKeyDown={blockEnter}
               />
               <div className="flex gap-2">
-                <button
+                <Button
                   type="button"
-                  className={quietButton + " shrink-0"}
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0"
                   disabled={props.busy || empty}
                   onClick={() => props.onCopy(index, pair)}
                 >
                   {props.copied === token ? FORM_TEXT.copied : FORM_TEXT.copyEntry}
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
-                  className={quietButton + " shrink-0"}
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0"
                   aria-label={MCP_PAGE.removeEntry}
                   disabled={props.busy || (synthetic && empty)}
                   onClick={() => props.onChange(rows.filter((_, item) => item !== index))}
                 >
                   {MCP_PAGE.removeEntry}
-                </button>
+                </Button>
               </div>
             </div>
           );
         })}
       </div>
-      <button
+      <Button
         type="button"
-        className={quietButton + " mt-2"}
+        variant="outline"
+        size="sm"
+        className="mt-2"
         disabled={props.busy}
         onClick={() => props.onChange([...rows, { key: "", value: "" }])}
       >
         {addLabel(props.field.id) ?? props.field.label}
-      </button>
+      </Button>
       <FieldError id={props.field.id} error={props.error} />
     </div>
   );
@@ -512,10 +559,10 @@ function PairList(props: {
 
 function FieldLabel({ field }: { field: McpField }) {
   return (
-    <span className="text-xs text-zinc-400">
+    <span className="text-xs font-medium text-[var(--wb-text)]">
       {field.label}
       {field.required && (
-        <span className="ml-1 text-red-300/80" aria-hidden>
+        <span className="ml-1 text-[var(--wb-danger-strong)]" aria-hidden>
           *
         </span>
       )}
@@ -526,14 +573,18 @@ function FieldLabel({ field }: { field: McpField }) {
 function FieldError({ id, error }: { id: string; error?: string }) {
   if (!error) return null;
   return (
-    <p className="mt-1 text-xs text-red-300" role="alert" data-mcp-field-error={id}>
+    <p className="mt-1 text-xs text-[var(--wb-danger-text)]" role="alert" data-mcp-field-error={id}>
       {error}
     </p>
   );
 }
 
 function fieldClass(invalid: boolean): string {
-  return cn(inputClass, "mt-0", invalid && "border-red-800 focus:border-red-700");
+  return cn(
+    inputClass,
+    "mt-0",
+    invalid && "border-[var(--wb-danger-border)] focus:border-[var(--wb-danger-strong)]",
+  );
 }
 
 function pastePairs(

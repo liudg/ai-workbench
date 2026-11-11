@@ -373,6 +373,9 @@ pub struct AgentProfile {
     /// 侧栏图标资源。没有文件时为 None，界面用中性图标。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
+    /// 图标是否为单色浅灰矢量（浅色主题下统一加深，不按文件名猜）。
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub icon_monochrome: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -19,7 +19,7 @@ export function sessionStatusView(status: string | null | undefined): SessionSta
         word: "运行中",
         prominent: false,
         marker: "spinner",
-        ringClass: "text-[#c6c6c6]",
+        ringClass: "text-[var(--wb-muted)]",
         dotClass: "",
       };
     case "needs-input":
@@ -28,8 +28,8 @@ export function sessionStatusView(status: string | null | undefined): SessionSta
         word: "等待",
         prominent: true,
         marker: "ring",
-        ringClass: "border-[#f0a04a]",
-        dotClass: "bg-[#f0a04a]",
+        ringClass: "border-[var(--wb-warn-strong)]",
+        dotClass: "bg-[var(--wb-warn-strong)]",
       };
     case "failed":
       return {
@@ -38,7 +38,7 @@ export function sessionStatusView(status: string | null | undefined): SessionSta
         prominent: false,
         marker: "dot",
         ringClass: "",
-        dotClass: "bg-red-400",
+        dotClass: "bg-[var(--wb-danger-strong)]",
       };
     case "completed":
     case "stopped":

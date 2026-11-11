@@ -37,6 +37,7 @@ pub fn agent_profiles() -> Vec<AgentProfile> {
             let mut profile = adapter.profile();
             profile.display_name = Some(adapter.display_name().to_string());
             profile.icon = adapter.icon_href().map(str::to_string);
+            profile.icon_monochrome = adapter.icon_monochrome();
             profile
         })
         .collect()

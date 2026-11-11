@@ -15,7 +15,7 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed inset-0 z-50 bg-zinc-950/70 backdrop-blur-sm data-[state=open]:animate-in data-[state=open]:fade-in-0",
+      "fixed inset-0 z-50 bg-[var(--wb-backdrop)] backdrop-blur-[2px]",
       className,
     )}
     {...props}
@@ -32,13 +32,13 @@ const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed left-1/2 top-1/2 z-50 grid w-full max-w-md -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl border border-zinc-800 bg-zinc-900 p-5 shadow-2xl shadow-black/50 focus:outline-none",
+        "fixed left-1/2 top-1/2 z-50 grid w-full max-w-md -translate-x-1/2 -translate-y-1/2 gap-4 rounded-2xl border border-[var(--wb-border-strong)] bg-[var(--wb-elev)] p-6 text-[var(--wb-text)] shadow-[var(--wb-float-shadow)] focus:outline-none",
         className,
       )}
       {...props}
     >
       {children}
-      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-md p-1 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300 focus:outline-none">
+      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-md p-1 text-[var(--wb-faint)] transition-colors hover:bg-[var(--wb-hover)] hover:text-[var(--wb-text-strong)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--wb-accent)]/35">
         <X className="h-4 w-4" />
         <span className="sr-only">关闭</span>
       </DialogPrimitive.Close>
@@ -77,7 +77,7 @@ const DialogTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Title
     ref={ref}
-    className={cn("text-base font-semibold text-zinc-100", className)}
+    className={cn("text-base font-semibold text-[var(--wb-text-strong)]", className)}
     {...props}
   />
 ));
@@ -89,7 +89,7 @@ const DialogDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Description
     ref={ref}
-    className={cn("text-sm text-zinc-500", className)}
+    className={cn("text-sm text-[var(--wb-muted)]", className)}
     {...props}
   />
 ));

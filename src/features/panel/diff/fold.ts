@@ -1,7 +1,7 @@
 import { sourceLines } from "../core/source-lines.ts";
 
 export function unmodifiedLinesLabel(count: number): string {
-  return `${count} unmodified lines`;
+  return `${count} 行未修改`;
 }
 
 export type DiffFoldRow =

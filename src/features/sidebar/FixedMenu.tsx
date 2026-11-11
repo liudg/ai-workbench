@@ -42,6 +42,7 @@ export function FixedMenu({
       ref={menuRef}
       role="menu"
       aria-label={label}
+      data-fixed-menu=""
       className={cn("fixed z-50 overflow-x-hidden overflow-y-auto", className)}
       style={
         box

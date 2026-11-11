@@ -60,7 +60,7 @@ export default function FilesPreview() {
   });
 
   return (
-    <div className="flex h-screen min-h-0 flex-col bg-zinc-950 text-zinc-200">
+    <div className="flex h-screen min-h-0 flex-col bg-[var(--wb-canvas)] text-[var(--wb-text)]">
       <PreviewChrome {...chrome.chromeProps} />
       <div className="flex min-h-0 min-w-0 flex-1">
       <div className="flex min-w-0 flex-1 flex-col">
@@ -72,16 +72,16 @@ export default function FilesPreview() {
           quotePath={path ? joinRoot(root, path) : ""}
           onQuote={(draft) => addSessionTextSnippet(SESSION, draft)}
         />
-        <div className="shrink-0 border-t border-zinc-800 p-3">
-          <span className="mb-1 block text-xs text-zinc-500">对话</span>
+        <div className="shrink-0 border-t border-[var(--wb-border)] p-3">
+          <span className="mb-1 block text-xs text-[var(--wb-muted)]">对话</span>
           {snippets.length > 0 ? (
             <div data-preview-snippets={snippets.length} className="mb-2">
-              <p className="text-xs text-zinc-300">{textSnippetChipLabel(snippets.length)}</p>
+              <p className="text-xs text-[var(--wb-text-strong)]">{textSnippetChipLabel(snippets.length)}</p>
               {snippets.map((snippet) => (
                 <pre
                   key={snippet.id}
                   data-preview-snippet
-                  className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap text-xs text-zinc-400"
+                  className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap text-xs text-[var(--wb-muted)]"
                 >
                   {textSnippetPreview(snippet.body)}
                 </pre>
@@ -93,20 +93,20 @@ export default function FilesPreview() {
             readOnly
             value=""
             placeholder="随心输入"
-            className="h-28 w-full resize-none rounded-lg border border-zinc-700 bg-zinc-900 p-2 font-mono text-xs text-zinc-100"
+            className="h-28 w-full resize-none rounded-lg border border-[var(--wb-border-strong)] bg-[var(--wb-composer)] p-2 font-mono text-xs text-[var(--wb-text-strong)] placeholder:text-[var(--wb-faint)]"
           />
         </div>
       </div>
       {treeOpen ? (
-        <aside data-workspace-tree data-tree-surface="sidebar" className="flex w-80 shrink-0 flex-col border-l border-zinc-800">
-          <div className="flex gap-1 border-b border-zinc-800 p-1.5">
+        <aside data-workspace-tree data-tree-surface="sidebar" className="flex w-80 shrink-0 flex-col border-l border-[var(--wb-border)] bg-[var(--wb-diff-well)]">
+          <div className="flex gap-1 border-b border-[var(--wb-border)] p-1.5">
             <input
               data-files-filter
               value={filter}
               aria-label={DESKTOP_ZH.filterFiles}
               placeholder={DESKTOP_ZH.filterFiles}
               onChange={(event) => setFilter(event.target.value)}
-              className="w-full min-w-0 rounded-md border border-zinc-800 bg-zinc-900 px-1.5 py-1 text-xs text-zinc-100 outline-none"
+              className="w-full min-w-0 rounded-md border border-[var(--wb-border-strong)] bg-[var(--wb-well)] px-1.5 py-1 text-xs text-[var(--wb-text-strong)] outline-none placeholder:text-[var(--wb-faint)] focus:border-[var(--wb-accent)]"
             />
           </div>
           <div className="min-h-0 flex-1 overflow-auto px-1 py-1">
@@ -123,7 +123,7 @@ export default function FilesPreview() {
                 onContextMenu={(next, event) => setContextMenu({ x: event.clientX, y: event.clientY, path: next })}
               />
             ) : (
-              <p className="px-2 py-6 text-center text-xs text-zinc-500">{error || DESKTOP_ZH.filesReading}</p>
+              <p className="px-2 py-6 text-center text-xs text-[var(--wb-muted)]">{error || DESKTOP_ZH.filesReading}</p>
             )}
           </div>
         </aside>

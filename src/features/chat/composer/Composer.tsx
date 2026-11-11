@@ -39,17 +39,17 @@ export function Composer({
   return (
     <div className="composer-root relative z-10 min-w-0 shrink-0 px-4 pb-4 pt-1">
       {view.occupied && (
-        <p className="mb-2 break-words px-2 text-center text-xs leading-5 text-amber-200/90">
+        <p className="mb-2 break-words px-2 text-center text-xs leading-5 text-[var(--wb-warn-text)]">
           此会话正被其他进程占用，当前只读，不能发送。
         </p>
       )}
       {notice && (
-        <p role="status" className="mb-2 break-words px-2 text-center text-xs leading-5 text-amber-200/90">
+        <p role="status" className="mb-2 break-words px-2 text-center text-xs leading-5 text-[var(--wb-warn-text)]">
           {notice}
         </p>
       )}
       {catalogNotice && (
-        <p role="status" className="mb-2 break-words px-2 text-center text-xs leading-5 text-[#888]">
+        <p role="status" className="mb-2 break-words px-2 text-center text-xs leading-5 text-[var(--wb-muted)]">
           {catalogNotice}
         </p>
       )}
@@ -109,8 +109,8 @@ export function Composer({
           ref={anchorRef}
           data-question-anchor
           className={cn(
-            "min-w-0 rounded-[18px] border border-[#2a2a2a] bg-[#171717] transition-colors focus-within:border-[#3a3a3a]",
-            c.dragOver && view.imagesOn && "border-indigo-400/80",
+            "min-w-0 rounded-[18px] border border-[var(--wb-border-strong)] [background:var(--wb-composer-bg)] shadow-[var(--wb-composer-shadow)] transition-colors focus-within:border-[var(--wb-accent)]",
+            c.dragOver && view.imagesOn && "border-[var(--wb-accent)] ring-1 ring-[var(--wb-accent)]",
           )}
           onClick={() => c.textareaRef.current?.focus()}
           onDragOver={(event) => {

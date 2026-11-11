@@ -214,7 +214,7 @@ function ChatTimeline({
           {!eventsReady ? (
             <div className="min-h-full" data-history-pending />
           ) : !hasVisibleEvent ? (
-            <div className="flex h-full flex-col items-center justify-center gap-3 text-zinc-600">
+            <div className="flex h-full flex-col items-center justify-center gap-3 text-[var(--wb-muted)]">
               <MessageSquareDashed className="h-8 w-8" strokeWidth={1.5} />
               <p className="text-sm">发送第一条消息，开始这轮会话</p>
             </div>
@@ -264,7 +264,7 @@ function ChatTimeline({
         />
       ) : null}
       {pendingId && (
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-transparent via-amber-400/60 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-transparent via-[var(--wb-warn-strong)]/60 to-transparent" />
       )}
     </>
   );

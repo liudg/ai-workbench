@@ -1,3 +1,4 @@
+import { loadWorktreeDeletePreview } from "@/lib/worktree-delete-preview";
 import { useWorkbench } from "@/store";
 import { isFinishedStatus } from "@/store/unread-finished";
 import type { Session } from "@/types";
@@ -17,6 +18,7 @@ export function useSessionRow(session: Session) {
   const unreadFinished = useWorkbench(
     (s) => s.unreadFinishedIds.includes(session.id) && isFinishedStatus(session.status),
   );
+  const previewWorktreeDelete = () => loadWorktreeDeletePreview(session.id);
   return {
     selectSession,
     caps,
@@ -28,5 +30,6 @@ export function useSessionRow(session: Session) {
     archiveSession,
     deleteSession,
     unreadFinished,
+    previewWorktreeDelete,
   };
 }

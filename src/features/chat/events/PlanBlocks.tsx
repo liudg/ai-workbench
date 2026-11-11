@@ -6,12 +6,12 @@ import type { EventViewProps } from "./types";
 
 function PlanMark({ status }: { status: string }) {
   if (status === "completed") {
-    return <Check className="mt-1 h-3.5 w-3.5 shrink-0 text-emerald-400" />;
+    return <Check className="mt-1 h-3.5 w-3.5 shrink-0 text-[var(--wb-success-strong)]" />;
   }
   if (status === "inProgress") {
-    return <Circle className="mt-1 h-3.5 w-3.5 shrink-0 fill-zinc-200 text-zinc-200" />;
+    return <Circle className="mt-1 h-3.5 w-3.5 shrink-0 fill-[var(--wb-accent)] text-[var(--wb-accent)]" />;
   }
-  return <Circle className="mt-1 h-3.5 w-3.5 shrink-0 text-zinc-600" />;
+  return <Circle className="mt-1 h-3.5 w-3.5 shrink-0 text-[var(--wb-faint)]" />;
 }
 
 export function PlanSteps({ event }: EventViewProps) {
@@ -19,19 +19,21 @@ export function PlanSteps({ event }: EventViewProps) {
   const explanation = event.explanation ?? "";
   return (
     <div className="event-in min-w-0 px-6 py-2">
-      <div className="min-w-0 rounded-lg border border-zinc-800 bg-zinc-900/60 p-3">
-        <p className="text-xs font-medium text-zinc-300">{DESKTOP_ZH.planTitle}</p>
-        {explanation ? (
-          <p className="mt-1 break-words whitespace-pre-wrap text-sm leading-6 text-zinc-400">{explanation}</p>
-        ) : null}
-        <ol className="mt-2 space-y-1.5">
-          {event.steps.map((step, index) => (
-            <li key={`${index}-${step.step}`} className="flex min-w-0 items-start gap-2 text-sm text-zinc-200">
-              <PlanMark status={step.status} />
-              <span className="min-w-0 break-words whitespace-pre-wrap">{step.step}</span>
-            </li>
-          ))}
-        </ol>
+      <div className="min-w-0 pl-6">
+        <div className="min-w-0 rounded-xl border border-[var(--wb-border)] bg-[var(--wb-card)] p-3">
+          <p className="text-xs font-medium text-[var(--wb-muted)]">{DESKTOP_ZH.planTitle}</p>
+          {explanation ? (
+            <p className="mt-1 break-words whitespace-pre-wrap text-sm leading-6 text-[var(--wb-text)]">{explanation}</p>
+          ) : null}
+          <ol className="mt-2 space-y-1.5">
+            {event.steps.map((step, index) => (
+              <li key={`${index}-${step.step}`} className="flex min-w-0 items-start gap-2 text-sm text-[var(--wb-text-strong)]">
+                <PlanMark status={step.status} />
+                <span className="min-w-0 break-words whitespace-pre-wrap">{step.step}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
       </div>
     </div>
   );

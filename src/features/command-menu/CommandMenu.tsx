@@ -120,7 +120,7 @@ export function CommandMenu({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[60] flex items-start justify-center bg-black/50 pt-[12vh]"
+      className="fixed inset-0 z-[60] flex items-start justify-center bg-[var(--wb-backdrop)] pt-[12vh] backdrop-blur-[2px]"
       data-command-menu
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
@@ -132,23 +132,23 @@ export function CommandMenu({
         data-command-drill={drill}
         aria-describedby="command-menu-description"
         onKeyDown={onKeyDown}
-        className="flex max-h-[min(560px,70vh)] w-[min(640px,94vw)] flex-col overflow-hidden rounded-xl border border-[#2e2e2e] bg-[#1a1a1a] shadow-2xl shadow-black/50"
+        className="flex max-h-[min(560px,70vh)] w-[min(640px,94vw)] flex-col overflow-hidden rounded-2xl border border-[var(--wb-border-strong)] bg-[var(--wb-elev)] text-[var(--wb-text)] shadow-[var(--wb-float-shadow)]"
       >
         <p id="command-menu-description" className="sr-only">
           {COPY.description}
         </p>
-        <div className="flex items-center gap-2 border-b border-[#2a2a2a] px-3">
+        <div className="flex items-center gap-2 border-b border-[var(--wb-border)] px-3.5">
           {drill !== "commands" ? (
             <button
               type="button"
-              className="shrink-0 text-xs text-[#8d8d8d] hover:text-[#e8e8e8]"
+              className="shrink-0 text-xs text-[var(--wb-muted)] hover:text-[var(--wb-text-strong)]"
               onClick={onBack}
             >
               {COPY.back}
             </button>
           ) : null}
           {drill === "rename" || drill === "delete" ? (
-            <span className="py-3 text-sm text-[#e8e8e8]">
+            <span className="py-3 text-sm font-medium text-[var(--wb-text-strong)]">
               {drill === "rename" ? COPY.renameTitle : COPY.deleteTitle}
             </span>
           ) : (
@@ -159,7 +159,7 @@ export function CommandMenu({
               aria-label={placeholder}
               data-command-query
               onChange={(event) => onQuery(event.target.value)}
-              className="h-12 min-w-0 flex-1 bg-transparent text-sm text-[#e8e8e8] outline-none placeholder:text-[#6d6d6d]"
+              className="h-12 min-w-0 flex-1 bg-transparent text-sm text-[var(--wb-text-strong)] outline-none placeholder:text-[var(--wb-faint)]"
             />
           )}
         </div>
@@ -185,14 +185,14 @@ export function CommandMenu({
           />
         ) : null}
         {notice ? (
-          <p className="px-3 pt-3 text-xs text-[#a3a3a3]" data-command-notice>
+          <p className="px-3.5 pt-3 text-xs text-[var(--wb-muted)]" data-command-notice>
             {notice}
           </p>
         ) : null}
         {drill === "commands" || drill === "chats" || drill === "files" ? (
           <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto py-2" data-command-list>
             {rows.length === 0 ? (
-              <p className="px-4 py-6 text-center text-sm text-[#8d8d8d]" data-command-empty>
+              <p className="px-4 py-6 text-center text-sm text-[var(--wb-muted)]" data-command-empty>
                 {emptyLabel}
               </p>
             ) : (
@@ -232,7 +232,7 @@ function RowList({
     <>
       {sections.map((section) => (
         <section key={section.group} data-command-menu-search-section={section.group} className="pb-1">
-          <h2 className="px-3 pb-1 pt-2 text-[11px] text-[#777]">{section.label}</h2>
+          <h2 className="px-3.5 pb-1 pt-2 text-[11px] font-medium text-[var(--wb-faint)]">{section.label}</h2>
           {section.rows.map(({ row, index }) => {
             const selected = index === active;
             return (
@@ -245,8 +245,8 @@ function RowList({
                 data-command-active={selected ? "true" : "false"}
                 className={
                   selected
-                    ? "flex h-9 w-full items-center gap-3 bg-white/10 px-3 text-left text-sm text-[#f3f3f3]"
-                    : "flex h-9 w-full items-center gap-3 px-3 text-left text-sm text-[#d4d4d4] hover:bg-white/5"
+                    ? "flex h-9 w-full items-center gap-3 bg-[var(--wb-hover-strong)] px-3.5 text-left text-sm text-[var(--wb-text-strong)]"
+                    : "flex h-9 w-full items-center gap-3 px-3.5 text-left text-sm text-[var(--wb-text)] hover:bg-[var(--wb-hover)]"
                 }
                 onMouseEnter={() => onActive(index)}
                 onClick={() => onRun(index)}
@@ -255,12 +255,12 @@ function RowList({
                   {row.kind === "command" ? row.label : highlight(row.label, query)}
                 </span>
                 {row.detail ? (
-                  <span className="w-[46%] shrink-0 truncate text-right text-xs text-[#777]" data-command-detail>
+                  <span className="w-[46%] shrink-0 truncate text-right text-xs text-[var(--wb-faint)]" data-command-detail>
                     {row.detail}
                   </span>
                 ) : null}
                 {row.shortcut ? (
-                  <span className="shrink-0 text-xs text-[#777]" data-command-shortcut>
+                  <span className="shrink-0 text-xs text-[var(--wb-faint)]" data-command-shortcut>
                     {row.shortcut}
                   </span>
                 ) : null}
@@ -281,7 +281,7 @@ function highlight(label: string, query: string): ReactNode {
   return (
     <>
       {label.slice(0, at)}
-      <mark className="bg-transparent text-[#f5f5f5] underline decoration-[#4f8dff]/70">
+      <mark className="bg-transparent font-medium text-[var(--wb-accent)] underline decoration-[var(--wb-accent)]/60 underline-offset-2">
         {label.slice(at, at + needle.length)}
       </mark>
       {label.slice(at + needle.length)}
@@ -306,24 +306,32 @@ function RenameDrill({
 }) {
   return (
     <div className="space-y-3 px-4 py-4" data-command-drill="rename">
-      <p className="text-sm text-[#a3a3a3]">{COPY.renameDescription}</p>
+      <p className="text-sm text-[var(--wb-muted)]">{COPY.renameDescription}</p>
       <input
         ref={inputRef}
         aria-label={COPY.renameAria}
         placeholder={COPY.renamePlaceholder}
         value={title}
         onChange={(event) => onTitle(event.target.value)}
-        className="h-9 w-full rounded-md border border-[#3a3a3a] bg-[#111] px-3 text-sm text-[#f3f3f3] outline-none focus:border-[#666]"
+        className="h-9 w-full rounded-lg border border-[var(--wb-border-strong)] bg-[var(--wb-well)] px-3 text-sm text-[var(--wb-text-strong)] outline-none focus:border-[var(--wb-accent)] focus:ring-2 focus:ring-[var(--wb-accent)]/20"
       />
-      {error ? <p className="text-sm text-red-300">{error}</p> : null}
+      {error ? (
+        <p className="rounded-lg border border-[var(--wb-danger-border)] bg-[var(--wb-danger-bg)] px-3 py-2 text-xs text-[var(--wb-danger-text)]">
+          {error}
+        </p>
+      ) : null}
       <div className="flex justify-end gap-2">
-        <button type="button" className="rounded-md px-3 py-1.5 text-sm text-[#ccc] hover:bg-white/5" onClick={onCancel}>
+        <button
+          type="button"
+          className="rounded-lg px-3 py-1.5 text-sm text-[var(--wb-muted)] transition-colors hover:bg-[var(--wb-hover)] hover:text-[var(--wb-text-strong)]"
+          onClick={onCancel}
+        >
           {COPY.cancel}
         </button>
         <button
           type="button"
           disabled={!title.trim()}
-          className="rounded-md bg-[#e8e8e8] px-3 py-1.5 text-sm text-[#111] disabled:opacity-40"
+          className="rounded-lg bg-[var(--wb-send-bg)] px-3 py-1.5 text-sm font-medium text-[var(--wb-send-fg)] transition-opacity hover:opacity-90 disabled:opacity-40"
           onClick={onSubmit}
         >
           {COPY.save}
@@ -352,19 +360,27 @@ function DeleteDrill({
 }) {
   return (
     <div className="space-y-3 px-4 py-4" data-command-drill="delete" data-dirty-worktree={dirtyWorktree ? "true" : "false"}>
-      <p className="text-sm text-[#a3a3a3]">
+      <p className="text-sm text-[var(--wb-muted)]">
         {dirtyWorktree ? COPY.deleteDirtyWorktree : COPY.deleteDescription}
       </p>
-      {error ? <p className="text-sm text-red-300">{error}</p> : null}
+      {error ? (
+        <p className="rounded-lg border border-[var(--wb-danger-border)] bg-[var(--wb-danger-bg)] px-3 py-2 text-xs text-[var(--wb-danger-text)]">
+          {error}
+        </p>
+      ) : null}
       <div className="flex justify-end gap-2">
-        <button type="button" className="rounded-md px-3 py-1.5 text-sm text-[#ccc] hover:bg-white/5" onClick={onCancel}>
+        <button
+          type="button"
+          className="rounded-lg px-3 py-1.5 text-sm text-[var(--wb-muted)] transition-colors hover:bg-[var(--wb-hover)] hover:text-[var(--wb-text-strong)]"
+          onClick={onCancel}
+        >
           {COPY.cancel}
         </button>
         {dirtyWorktree ? (
           <button
             type="button"
             disabled={!ready}
-            className="rounded-md px-3 py-1.5 text-sm text-[#ccc] hover:bg-white/5 disabled:opacity-40"
+            className="rounded-lg border border-[var(--wb-border-strong)] px-3 py-1.5 text-sm text-[var(--wb-text)] transition-colors hover:bg-[var(--wb-hover)] hover:text-[var(--wb-text-strong)] disabled:opacity-40"
             onClick={onKeep}
           >
             {COPY.keepWorktree}
@@ -373,7 +389,7 @@ function DeleteDrill({
         <button
           type="button"
           disabled={!ready}
-          className="rounded-md bg-red-600 px-3 py-1.5 text-sm text-white hover:bg-red-500 disabled:opacity-40"
+          className="rounded-lg bg-[var(--wb-danger-solid)] px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-[var(--wb-danger-solid-hover)] disabled:opacity-40"
           onClick={dirtyWorktree ? onDiscard : onConfirm}
         >
           {dirtyWorktree ? COPY.discardWorktree : COPY.deleteAction}

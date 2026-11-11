@@ -21,7 +21,7 @@ function SidebarFrame() {
   return (
     <aside
       data-sidebar-open=""
-      className="flex h-full min-h-0 w-[260px] shrink-0 flex-col overflow-hidden border-r border-[#222] bg-[#141414]"
+      className="flex h-full min-h-0 w-[260px] shrink-0 flex-col overflow-hidden bg-[var(--wb-sidebar)] px-1.5 text-[var(--wb-text)]"
     >
       <BrandHeader />
 
@@ -31,8 +31,8 @@ function SidebarFrame() {
       >
         {pinned.length > 0 && (
           <section data-sidebar-section="pinned">
-            <div className="flex items-center px-3 pb-1.5 pt-2.5">
-              <span className="text-[12px] text-[#cfcfcf]">置顶</span>
+            <div className="flex items-center px-2.5 pb-1 pt-2.5">
+              <span className="text-[11px] font-semibold tracking-[0.04em] text-[var(--wb-faint)]">置顶</span>
             </div>
             <div className="space-y-0.5">
               {pinned.map((project) => (
@@ -42,13 +42,13 @@ function SidebarFrame() {
           </section>
         )}
 
-        <div className="sticky top-0 z-20 bg-[#141414]">
+        <div className="sticky top-0 z-20 bg-[var(--wb-sidebar)]">
           <ProjectHeader />
         </div>
 
         {noProjects ? (
-          <div className="mx-2 mt-4 rounded-lg border border-dashed border-[#2a2a2a] px-3 py-6 text-center">
-            <p className="text-xs leading-5 text-zinc-500">
+          <div className="mx-1.5 mt-4 rounded-xl border border-dashed border-[var(--wb-border-strong)] px-3 py-6 text-center">
+            <p className="text-xs leading-5 text-[var(--wb-faint)]">
               还没有项目。
               <br />
               点击上方 + 创建。
@@ -65,12 +65,12 @@ function SidebarFrame() {
       </div>
 
       {notice && (
-        <div className="mx-3 mb-2 flex items-center justify-between gap-2 rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] px-3 py-2 text-xs text-[#e8e8e8]">
+        <div className="mx-1.5 mb-2 flex items-center justify-between gap-2 rounded-xl border border-[var(--wb-border-strong)] bg-[var(--wb-elev)] px-3 py-2 text-xs text-[var(--wb-text)] shadow-sm">
           <span>{notice.text}</span>
         </div>
       )}
 
-      <div className="relative z-10 px-3 py-3">
+      <div className="relative z-10 px-2.5 py-2.5">
         <AccountMenu />
       </div>
     </aside>

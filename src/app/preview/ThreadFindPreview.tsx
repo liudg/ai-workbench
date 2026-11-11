@@ -43,7 +43,7 @@ export default function ThreadFindPreview() {
   }, [query]);
 
   return (
-    <div className="relative flex h-screen min-h-0 flex-col bg-[#0f0f0f] text-[#e8e8e8]">
+    <div className="relative flex h-screen min-h-0 flex-col bg-[var(--wb-canvas)] text-[var(--wb-text)]">
       <ChatView session={session("completed")} events={events} />
     </div>
   );

@@ -163,6 +163,11 @@ test("a query drops the shortcut group and zero scores", () => {
   const settings = buildPaletteRows({ ...enabled, query: "设置" });
   assert.equal(settings.some((row) => row.commandId === "settings"), true);
   assert.equal(settings.some((row) => row.group === "suggested"), false);
+  const themes = buildPaletteRows({ ...enabled, query: "主题" });
+  assert.deepEqual(
+    themes.map((row) => row.commandId),
+    ["theme-graphite", "theme-daylight", "theme-system"],
+  );
 });
 
 test("new chat agent comes from the usable installation list", () => {

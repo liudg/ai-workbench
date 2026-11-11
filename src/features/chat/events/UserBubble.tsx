@@ -47,7 +47,7 @@ export function UserBubble({ event, time }: EventViewProps) {
           {badge ? (
             <span
               data-annotation-count={badge.count}
-              className="inline-flex items-center gap-1 rounded-full border border-zinc-200 bg-zinc-100 px-2 py-0.5 text-xs text-zinc-700"
+              className="inline-flex items-center gap-1 rounded-full border border-[var(--wb-border-strong)] bg-[var(--wb-chip)] px-2 py-0.5 text-xs text-[var(--wb-text)]"
             >
               <MessageSquare className="h-3 w-3" />
               {annotationCountLabel(badge.count)}

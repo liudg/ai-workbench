@@ -26,7 +26,7 @@ export function SidebarPlusButton({
       ref={buttonRef}
       type="button"
       className={cn(
-        "flex h-7 w-7 items-center justify-center rounded-md text-[#888] transition-colors hover:bg-white/5 hover:text-[#e8e8e8]",
+        "flex h-6 w-6 items-center justify-center rounded-md text-[var(--wb-muted)] transition-colors hover:bg-[var(--wb-hover)] hover:text-[var(--wb-text-strong)]",
         className,
       )}
       aria-label={label}

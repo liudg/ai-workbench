@@ -1,6 +1,7 @@
 import { ArrowLeft, ArrowRight, RotateCw } from "lucide-react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
+import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 
@@ -38,7 +39,7 @@ export function BrowserChrome({
   onAnnotate: () => void;
 }) {
   return (
-    <div className="flex h-9 shrink-0 items-center gap-1 border-b border-zinc-800 bg-zinc-900 px-1.5">
+    <div className="flex h-9 shrink-0 items-center gap-1 border-b border-[var(--wb-border)] bg-[var(--wb-canvas)] px-1.5">
       <ChromeButton label={DESKTOP_ZH.browserBack} disabled={!canBack} onClick={onBack} data-browser-back>
         <ArrowLeft className="h-3.5 w-3.5" />
       </ChromeButton>
@@ -59,37 +60,35 @@ export function BrowserChrome({
         <RotateCw className="h-3.5 w-3.5" />
       </ChromeButton>
       {showAnnotate ? (
-        <div className="group relative shrink-0">
+        <Tooltip
+          label={DESKTOP_ZH.browserAnnotateTooltip}
+          shortcut={DESKTOP_ZH.browserAnnotateShortcut}
+          side="bottom"
+          align="start"
+        >
           <button
             type="button"
             data-browser-annotate
             aria-pressed={annotating}
             className={cn(
-              "inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs",
-              annotating ? "bg-[#d7e8ff] text-[#2457d6]" : "text-zinc-300 hover:bg-zinc-800",
+              "inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
+              annotating
+                ? "bg-[var(--wb-accent-muted)] text-[var(--wb-accent)]"
+                : "text-[var(--wb-muted)] hover:bg-[var(--wb-hover)] hover:text-[var(--wb-text-strong)]",
             )}
             onClick={onAnnotate}
           >
             <AnnotatePin />
             {DESKTOP_ZH.browserAnnotate}
           </button>
-          <div
-            role="tooltip"
-            className="pointer-events-none absolute left-0 top-full z-30 mt-1 hidden w-max max-w-[260px] items-center gap-1.5 rounded-lg bg-zinc-950 px-2 py-1.5 text-[11px] leading-4 text-white shadow-lg group-hover:flex"
-          >
-            <span>{DESKTOP_ZH.browserAnnotateTooltip}</span>
-            <kbd className="shrink-0 rounded bg-zinc-700 px-1 py-0.5 text-[10px] text-zinc-100">
-              {DESKTOP_ZH.browserAnnotateShortcut}
-            </kbd>
-          </div>
-        </div>
+        </Tooltip>
       ) : null}
       <div className="relative min-w-0 flex-1">
         <input
           data-browser-address
           aria-label={DESKTOP_ZH.browserAddressPlaceholder}
           placeholder={DESKTOP_ZH.browserAddressPlaceholder}
-          className="h-7 w-full rounded-full border border-zinc-700 bg-zinc-950 px-3 text-xs text-zinc-100 outline-none focus:border-zinc-500"
+          className="h-7 w-full rounded-full border border-[var(--wb-border-strong)] bg-[var(--wb-well)] px-3 text-xs text-[var(--wb-text-strong)] outline-none transition-colors placeholder:text-[var(--wb-faint)] focus:border-[var(--wb-accent)]"
           value={shown}
           spellCheck={false}
           onFocus={onFocusAddress}
@@ -120,17 +119,18 @@ function ChromeButton({
   children: ReactNode;
 } & ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      disabled={disabled}
-      onClick={onClick}
-      className="shrink-0 rounded-md p-1.5 text-zinc-300 hover:bg-zinc-800 disabled:text-zinc-600 disabled:hover:bg-transparent"
-      {...rest}
-    >
-      {children}
-    </button>
+    <Tooltip label={label} side="bottom">
+      <button
+        type="button"
+        aria-label={label}
+        disabled={disabled}
+        onClick={onClick}
+        className="shrink-0 rounded-md p-1.5 text-[var(--wb-muted)] transition-colors hover:bg-[var(--wb-hover)] hover:text-[var(--wb-text-strong)] disabled:text-[var(--wb-faint)] disabled:opacity-45 disabled:hover:bg-transparent"
+        {...rest}
+      >
+        {children}
+      </button>
+    </Tooltip>
   );
 }
 

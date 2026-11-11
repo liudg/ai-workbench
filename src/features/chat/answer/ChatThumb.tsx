@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 
-import { isTauri } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
-import { resolveLocalChatImage } from "./local-image";
+import type { ImageSource } from "@/shared/markdown/markdown-images";
+import { useChatImage } from "./useChatImage";
 
 export function ChatThumb({
   path,
@@ -13,33 +13,17 @@ export function ChatThumb({
   name: string;
   className?: string;
 }) {
-  const remote = /^(data:|https?:)/i.test(path);
-  const [src, setSrc] = useState<string | null>(remote ? path : null);
-  const [failed, setFailed] = useState(!remote && !isTauri);
+  const source = useMemo<ImageSource>(
+    () => (/^(data:|https?:)/i.test(path) ? { type: "https", url: path } : { type: "local", path }),
+    [path],
+  );
+  const { state, fail } = useChatImage(source);
 
-  useEffect(() => {
-    if (remote || !isTauri) return;
-    let cancelled = false;
-    setFailed(false);
-    setSrc(null);
-    resolveLocalChatImage(path).then(
-      (url) => {
-        if (!cancelled) setSrc(url);
-      },
-      () => {
-        if (!cancelled) setFailed(true);
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [path, remote]);
-
-  if (failed || !src) {
+  if (state.status !== "ready") {
     return (
       <span
         className={cn(
-          "flex items-center justify-center overflow-hidden bg-black/25 px-1 text-center text-[10px] leading-3 text-white/80",
+          "flex items-center justify-center overflow-hidden bg-[var(--wb-chip)] px-1 text-center text-[10px] leading-3 text-[var(--wb-muted)]",
           className,
         )}
       >
@@ -50,10 +34,10 @@ export function ChatThumb({
 
   return (
     <img
-      src={src}
+      src={state.src}
       alt={name}
-      className={cn("bg-black/20", className)}
-      onError={() => setFailed(true)}
+      className={cn("bg-[var(--wb-well)]", className)}
+      onError={() => fail("图片加载失败")}
     />
   );
 }

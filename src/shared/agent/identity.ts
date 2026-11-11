@@ -3,6 +3,7 @@ import type { AgentKind, AgentProfile } from "@/types";
 export interface AgentIdentity {
   name: string;
   icon: string | null;
+  monochrome?: boolean;
 }
 
 export function profileForSessionAgent(
@@ -23,5 +24,5 @@ export function agentIdentity(
   const name = profile.display_name?.trim() ?? "";
   const icon = profile.icon?.trim() || null;
   if (!name && !icon) return null;
-  return { name, icon };
+  return profile.icon_monochrome ? { name, icon, monochrome: true } : { name, icon };
 }

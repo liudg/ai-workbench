@@ -117,6 +117,13 @@ impl AgentAdapter for ExternalCliAdapter {
         }
     }
 
+    fn icon_monochrome(&self) -> bool {
+        matches!(
+            self.kind,
+            AgentKind::CursorAgent | AgentKind::KimiCode | AgentKind::OpenCode
+        )
+    }
+
     fn cli_release(&self) -> Option<CliRelease> {
         Some(release_for(self.kind))
     }

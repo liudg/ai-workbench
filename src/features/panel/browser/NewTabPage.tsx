@@ -23,20 +23,20 @@ export function NewTabPage() {
   const { openFiles } = usePanel();
   const Icon = FILE_TOOL.icon;
   return (
-    <div data-new-tab-page className="h-full overflow-auto bg-zinc-950 px-6 py-8">
+    <div data-new-tab-page className="h-full overflow-auto bg-[var(--wb-diff-well)] px-6 py-8">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-8">
         <section className="flex flex-col gap-3">
-          <h3 className="text-sm font-medium text-zinc-100">{DESKTOP_ZH.browserToolsHeading}</h3>
+          <h3 className="text-sm font-medium text-[var(--wb-text-strong)]">{DESKTOP_ZH.browserToolsHeading}</h3>
           <div className="grid grid-cols-2 gap-3">
             <button
               type="button"
               data-browser-tool={FILE_TOOL.id}
-              className="flex min-h-12 items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900 px-3 text-left text-sm text-zinc-100 hover:bg-zinc-800"
+              className="flex min-h-12 items-center gap-2.5 rounded-xl border border-[var(--wb-border)] bg-[var(--wb-card)] px-3.5 text-left text-sm text-[var(--wb-text-strong)] transition-colors hover:bg-[var(--wb-card-hover)]"
               onClick={openFiles}
             >
-              <Icon className="h-4 w-4 shrink-0 text-zinc-400" />
+              <Icon className="h-4 w-4 shrink-0 text-[var(--wb-muted)]" />
               <span className="min-w-0 flex-1 truncate">{FILE_TOOL.label}</span>
-              <kbd className="shrink-0 rounded-md bg-zinc-800 px-1.5 py-0.5 text-[11px] text-zinc-400">
+              <kbd className="shrink-0 rounded-md border border-[var(--wb-border)] bg-[var(--wb-chip)] px-1.5 py-0.5 text-[11px] text-[var(--wb-muted)]">
                 {FILE_TOOL.shortcut}
               </kbd>
             </button>

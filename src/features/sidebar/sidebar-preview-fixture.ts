@@ -17,12 +17,18 @@ const TASKS = [
   "补图标资源",
 ];
 
-function profile(kind: AgentKind, name: string, icon: string | null): AgentProfile {
+function profile(
+  kind: AgentKind,
+  name: string,
+  icon: string | null,
+  monochrome = false,
+): AgentProfile {
   const linked = kind === "codex-cli" || kind === "claude-code";
   return {
     kind,
     display_name: name,
     icon,
+    icon_monochrome: monochrome,
     commands: [],
     default_access: null,
     capabilities: {
@@ -266,13 +272,13 @@ export function seedSidebarPreview() {
     ],
     installationsLoading: false,
     profiles: {
-      "codex-cli": profile("codex-cli", "Codex CLI", "/agent-icons/codex.svg"),
-      "claude-code": profile("claude-code", "Claude Code", "/agent-icons/claude.svg"),
-      "cursor-agent": profile("cursor-agent", "Cursor Agent", "/agent-icons/cursor-agent.svg"),
-      "kimi-code": profile("kimi-code", "Kimi Code", "/agent-icons/kimi-code.svg"),
-      "qwen-code": profile("qwen-code", "Qwen Code", "/agent-icons/qwen-code.svg"),
-      "opencode": profile("opencode", "OpenCode", "/agent-icons/opencode.svg"),
-      antigravity: profile("antigravity", "Antigravity", "/agent-icons/antigravity.svg"),
+      "codex-cli": profile("codex-cli", "Codex CLI", "/agent-icons/codex.svg", true),
+      "claude-code": profile("claude-code", "Claude Code", "/agent-icons/claude.svg", false),
+      "cursor-agent": profile("cursor-agent", "Cursor Agent", "/agent-icons/cursor-agent.svg", true),
+      "kimi-code": profile("kimi-code", "Kimi Code", "/agent-icons/kimi-code.svg", true),
+      "qwen-code": profile("qwen-code", "Qwen Code", "/agent-icons/qwen-code.svg", false),
+      "opencode": profile("opencode", "OpenCode", "/agent-icons/opencode.svg", true),
+      antigravity: profile("antigravity", "Antigravity", "/agent-icons/antigravity.svg", false),
     },
     selectedProjectId: PROJECT_ID,
     activeSessionId: { [PROJECT_ID]: "claude-code:idle-claude" },

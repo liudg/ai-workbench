@@ -176,7 +176,7 @@ export function SelectionMenu({
       ref={menuRef}
       role="menu"
       data-selection-menu
-      className="fixed z-[80] rounded-lg border border-[#2a2a2a] bg-[#1b1b1b] px-1 py-1 shadow-lg"
+      className="fixed z-[80] rounded-lg border border-[var(--wb-border-strong)] bg-[var(--wb-elev)] px-1 py-1 shadow-[var(--wb-float-shadow)]"
       style={{
         top: place?.top ?? -9999,
         left: place?.left ?? 0,
@@ -188,7 +188,7 @@ export function SelectionMenu({
         type="button"
         role="menuitem"
         data-add-selection
-        className="rounded-md px-2.5 py-1 text-xs text-[#e8e8e8] hover:bg-white/10"
+        className="rounded-md px-2.5 py-1 text-xs text-[var(--wb-text-strong)] hover:bg-[var(--wb-hover-strong)]"
         onClick={() => {
           onAddRef.current(box.draft);
           setBox(null);

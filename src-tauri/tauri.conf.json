@@ -20,6 +20,7 @@
         "minHeight": 600,
         "resizable": true,
         "fullscreen": false,
+        "backgroundColor": "#090b10",
         "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --remote-debugging-port=9222"
       }
     ],

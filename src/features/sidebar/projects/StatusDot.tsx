@@ -2,12 +2,12 @@ import { cn } from "@/lib/utils";
 import type { SessionStatus } from "@/types";
 
 const STYLES: Record<SessionStatus | "none", string> = {
-  running: "bg-[#4f8dff] animate-pulse",
-  "needs-input": "bg-amber-400 animate-pulse",
-  completed: "bg-[#22c55e]",
-  failed: "bg-red-400",
-  stopped: "bg-zinc-500",
-  none: "bg-transparent border border-zinc-600",
+  running: "bg-[var(--wb-accent)] animate-pulse",
+  "needs-input": "bg-[var(--wb-warn-strong)] animate-pulse",
+  completed: "bg-[var(--wb-success-strong)]",
+  failed: "bg-[var(--wb-danger-strong)]",
+  stopped: "bg-[var(--wb-faint)]",
+  none: "bg-transparent border border-[var(--wb-border-strong)]",
 };
 
 export function StatusDot({

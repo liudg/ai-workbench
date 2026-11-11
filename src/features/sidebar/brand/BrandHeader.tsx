@@ -1,3 +1,6 @@
+import { Search } from "lucide-react";
+
+import { COMMAND_MENU_COPY, OPEN_COMMAND_MENU } from "@/features/command-menu";
 import styles from "./brand.module.css";
 
 export function BrandHeader() {
@@ -8,7 +11,17 @@ export function BrandHeader() {
           <BrandMark />
           <span className={styles.wordmark}>One</span>
         </div>
-        <p className={styles.tagline}>所有 agent，一处协作</p>
+        <button
+          type="button"
+          className={styles.quickSearch}
+          aria-label={COMMAND_MENU_COPY.open}
+          aria-keyshortcuts="Control+K Control+Shift+P"
+          title={`${COMMAND_MENU_COPY.title} (${COMMAND_MENU_COPY.shortcutOpen})`}
+          onClick={() => window.dispatchEvent(new Event(OPEN_COMMAND_MENU))}
+        >
+          <Search className={styles.searchIcon} strokeWidth={2} aria-hidden="true" />
+          <kbd className={styles.shortcut}>{COMMAND_MENU_COPY.shortcutOpen}</kbd>
+        </button>
       </div>
     </header>
   );
@@ -17,16 +30,31 @@ export function BrandHeader() {
 function BrandMark() {
   return (
     <svg className={styles.mark} viewBox="0 0 26 26" aria-hidden="true">
-      <rect x="1" y="1" width="24" height="24" rx="7" fill="none" stroke="#4f8dff" strokeWidth="2.2" />
+      <rect
+        x="1"
+        y="1"
+        width="24"
+        height="24"
+        rx="7"
+        fill="var(--wb-accent-muted)"
+        stroke="var(--wb-accent)"
+        strokeWidth="1.8"
+      />
       <path
-        d="M7 9l4 4-4 4"
+        d="M7.5 9.5l3.8 3.5-3.8 3.5"
         fill="none"
-        stroke="#4f8dff"
-        strokeWidth="2.4"
+        stroke="var(--wb-accent)"
+        strokeWidth="2.2"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <path d="M13.5 17.5h5.5" fill="none" stroke="#e8e8e8" strokeWidth="2.4" strokeLinecap="round" />
+      <path
+        d="M13.5 16.5h5"
+        fill="none"
+        stroke="var(--wb-text-strong)"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }

@@ -43,18 +43,18 @@ export function FindBar({
     <div
       data-thread-find
       role="search"
-      className="absolute right-3 top-2 z-30 flex items-center gap-0.5 rounded-lg border border-[#2a2a2a] bg-[#1c1c1c] py-1 pl-2.5 pr-1 shadow-lg shadow-black/40"
+      className="absolute right-3 top-2 z-30 flex items-center gap-0.5 rounded-xl border border-[var(--wb-border-strong)] bg-[var(--wb-elev)] py-1 pl-2.5 pr-1 shadow-[var(--wb-float-shadow)]"
     >
       <input
         ref={inputRef}
         value={query}
         aria-label={COPY.find}
         placeholder={COPY.find}
-        className="h-7 w-40 bg-transparent text-sm text-[#e8e8e8] outline-none placeholder:text-[#777]"
+        className="h-7 w-40 bg-transparent text-sm text-[var(--wb-text-strong)] outline-none placeholder:text-[var(--wb-faint)]"
         onChange={(event) => onQuery(event.target.value)}
         onKeyDown={onKeyDown}
       />
-      <span data-thread-find-status className="min-w-14 px-1 text-right text-xs text-[#9a9a9a]">
+      <span data-thread-find-status className="min-w-14 px-1 text-right text-xs tabular-nums text-[var(--wb-muted)]">
         {status}
       </span>
       <FindButton label={COPY.previous} disabled={count === 0} onClick={onPrevious}>
@@ -87,7 +87,7 @@ function FindButton({
       aria-label={label}
       title={label}
       disabled={disabled}
-      className="flex h-7 w-7 items-center justify-center rounded-md text-[#cfcfcf] hover:bg-white/10 disabled:text-[#555] disabled:hover:bg-transparent"
+      className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--wb-text)] hover:bg-[var(--wb-hover)] disabled:text-[var(--wb-faint)] disabled:opacity-45 disabled:hover:bg-transparent"
       onMouseDown={(event) => event.preventDefault()}
       onClick={onClick}
     >

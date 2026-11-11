@@ -19,7 +19,7 @@ export default function GitBranchPreview() {
   const [branches, setBranches] = useState(["master", "topic", "feature/next"]);
 
   return (
-    <div className="flex min-h-screen items-end justify-center bg-[#0f0f0f] px-6 pb-24 text-[#e8e8e8]">
+    <div className="flex min-h-screen items-end justify-center bg-[var(--wb-canvas)] px-6 pb-24 text-[var(--wb-text)]">
       <div className="w-full max-w-[760px]">
         <div className="mb-2 flex min-w-0 items-center gap-2 px-1">
           <WorkContextPicker
@@ -52,8 +52,8 @@ export default function GitBranchPreview() {
             }}
           />
         </div>
-        <div className="min-w-0 rounded-[18px] border border-[#2a2a2a] bg-[#171717] px-3 pt-3 pb-2.5">
-          <p className="px-1 pb-8 text-sm text-zinc-500">随心输入</p>
+        <div className="min-w-0 rounded-[18px] border border-[var(--wb-border-strong)] bg-[var(--wb-composer)] px-3 pt-3 pb-2.5 shadow-[var(--wb-composer-shadow)]">
+          <p className="px-1 pb-8 text-sm text-[var(--wb-faint)]">随心输入</p>
         </div>
       </div>
     </div>

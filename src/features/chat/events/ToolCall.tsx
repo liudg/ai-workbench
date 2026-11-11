@@ -42,26 +42,30 @@ export function ToolCall({ event, session }: EventViewProps) {
           onClick={() => {
             if (hasBody) setOpen((value) => !value);
           }}
-          className="inline-flex max-w-full min-w-0 items-center gap-2 rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] px-2.5 py-1 text-left text-[12.5px] text-[#cfcfcf] hover:bg-[#222]"
+          className="inline-flex max-w-full min-w-0 items-center gap-2 rounded-lg border border-[var(--wb-border)] bg-[var(--wb-card)] px-2.5 py-1 text-left text-[12.5px] text-[var(--wb-text)] transition-colors hover:bg-[var(--wb-card-hover)]"
         >
-          {open ? <Icon className="h-3.5 w-3.5 shrink-0 text-[#888]" /> : <Play className="h-3 w-3 shrink-0 fill-current text-[#888]" />}
+          {open ? (
+            <Icon className="h-3.5 w-3.5 shrink-0 text-[var(--wb-muted)]" />
+          ) : (
+            <Play className="h-3 w-3 shrink-0 fill-current text-[var(--wb-muted)]" />
+          )}
           <span className="min-w-0 truncate">{line}</span>
           {hasBody ? (
             <ChevronRight
               className={cn(
-                "h-3.5 w-3.5 shrink-0 text-[#666] transition-transform duration-150",
+                "h-3.5 w-3.5 shrink-0 text-[var(--wb-faint)] transition-transform duration-150",
                 open && "rotate-90",
               )}
             />
           ) : null}
         </button>
         {open && hasBody ? (
-          <div className="mt-1 min-w-0 overflow-x-hidden rounded-md border border-[#2a2a2a] bg-[#141414] px-2.5 py-1.5 font-mono text-xs">
+          <div className="mt-1 min-w-0 overflow-x-hidden rounded-lg border border-[var(--wb-border)] bg-[var(--wb-code-bg)] px-2.5 py-1.5 font-mono text-xs">
             {summary.trim() ? (
-              <p className="whitespace-pre-wrap break-all text-zinc-300">{summary}</p>
+              <p className="whitespace-pre-wrap break-all text-[var(--wb-text-strong)]">{summary}</p>
             ) : null}
             {detail.trim() ? (
-              <p className="mt-1 overflow-x-hidden whitespace-pre-wrap break-all text-zinc-400">
+              <p className="mt-1 overflow-x-hidden whitespace-pre-wrap break-all text-[var(--wb-muted)]">
                 {detail}
               </p>
             ) : null}

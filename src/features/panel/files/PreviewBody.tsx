@@ -23,9 +23,9 @@ export function PreviewEmpty() {
       data-preview-shell="empty"
       className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-6 text-center"
     >
-      <Folder className="h-12 w-12 text-zinc-500" strokeWidth={1.25} />
-      <p className="text-sm text-zinc-100">{DESKTOP_ZH.openFiles}</p>
-      <p className="text-xs text-zinc-500">{DESKTOP_ZH.openFilesHint}</p>
+      <Folder className="h-12 w-12 text-[var(--wb-muted)]" strokeWidth={1.25} />
+      <p className="text-sm font-medium text-[var(--wb-text-strong)]">{DESKTOP_ZH.openFiles}</p>
+      <p className="text-xs text-[var(--wb-muted)]">{DESKTOP_ZH.openFilesHint}</p>
     </div>
   );
 }
@@ -168,8 +168,8 @@ function StatusShell({
 }) {
   return (
     <div data-preview-shell={status} className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
-      <p className={status === "error" ? "text-sm text-red-300" : "text-sm text-zinc-100"}>{children}</p>
-      {detail ? <p className="text-xs text-zinc-500">{detail}</p> : null}
+      <p className={status === "error" ? "text-sm text-[var(--wb-danger-text)]" : "text-sm text-[var(--wb-text-strong)]"}>{children}</p>
+      {detail ? <p className="text-xs text-[var(--wb-muted)]">{detail}</p> : null}
     </div>
   );
 }

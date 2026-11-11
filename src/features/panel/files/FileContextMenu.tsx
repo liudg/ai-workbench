@@ -47,7 +47,7 @@ export function FileContextMenu({
       ref={menuRef}
       role="menu"
       data-file-context-menu
-      className="fixed z-[80] w-40 rounded-xl border border-zinc-700 bg-zinc-900 py-1 shadow-lg"
+      className="fixed z-[80] w-40 rounded-xl border border-[var(--wb-border-strong)] bg-[var(--wb-elev)] py-1 shadow-[var(--wb-float-shadow)]"
       style={{ top: -9999, left: 8 }}
     >
       <button
@@ -55,7 +55,7 @@ export function FileContextMenu({
         ref={itemRef}
         role="menuitem"
         data-add-to-chat
-        className="flex w-full items-center px-3 py-1.5 text-left text-xs text-zinc-100 hover:bg-zinc-800"
+        className="flex w-full items-center px-3 py-1.5 text-left text-xs text-[var(--wb-text-strong)] hover:bg-[var(--wb-hover)]"
         onClick={onAdd}
       >
         {DESKTOP_ZH.addToChat}

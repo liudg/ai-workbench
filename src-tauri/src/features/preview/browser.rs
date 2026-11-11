@@ -290,7 +290,7 @@ fn show_browser(
     let window = window.as_ref().window();
     let app_for_load = app.clone();
     let builder = tauri::webview::WebviewBuilder::new(LABEL, WebviewUrl::External(url))
-        .background_color(tauri::webview::Color(15, 23, 42, 255))
+        .background_color(tauri::webview::Color(255, 255, 255, 255))
         .initialization_script(PAGE_JS)
         // 与 tauri.conf.json 主窗口 additionalBrowserArgs 一致：同一数据目录下 WebView2 参数不同会建不出子 webview。
         .additional_browser_args(crate::WEBVIEW2_BROWSER_ARGS)
@@ -701,9 +701,9 @@ fn raise_platform(platform: tauri::webview::PlatformWebview) {
         let _ = unsafe {
             controller2.SetDefaultBackgroundColor(COREWEBVIEW2_COLOR {
                 A: 255,
-                R: 15,
-                G: 23,
-                B: 42,
+                R: 255,
+                G: 255,
+                B: 255,
             })
         };
     }

@@ -12,10 +12,10 @@ export default function SidebarPreview() {
     <div
       data-sidebar-preview=""
       data-sidebar-collapsed={open ? undefined : ""}
-      className="flex h-screen w-screen overflow-hidden bg-[#0f0f0f] text-[#e8e8e8]"
+      className="flex h-screen w-screen overflow-hidden bg-[var(--wb-shell)] text-[var(--wb-text)]"
     >
       <Sidebar />
-      <main className="flex min-w-0 flex-1 items-center justify-center px-8 text-center text-sm leading-6 text-zinc-500">
+      <main className="m-2 flex min-w-0 flex-1 items-center justify-center rounded-2xl border border-[var(--wb-border)] bg-[var(--wb-canvas)] px-8 text-center text-sm leading-6 text-[var(--wb-muted)] shadow-[var(--wb-sheet-shadow)]">
         从左侧选择一个会话。
       </main>
       <CommandMenuHost />

@@ -21,15 +21,15 @@ function PromptBody(props: PromptBodyProps) {
   return (
     <div
       className={cn(
-        "min-w-0 rounded-lg border border-amber-500/25 bg-amber-500/[0.06]",
+        "min-w-0 rounded-xl border border-[var(--wb-warn-border)] bg-[var(--wb-warn-bg)]",
         interactive ? "p-3" : "px-2.5 py-1.5",
       )}
     >
       <div className={cn("flex min-w-0 items-start gap-2", interactive ? "mb-2" : "mb-1")}>
-        <HelpCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+        <HelpCircle className="mt-0.5 h-4 w-4 shrink-0 text-[var(--wb-warn-strong)]" />
         <p
           className={cn(
-            "min-w-0 break-words whitespace-pre-wrap text-sm text-zinc-200",
+            "min-w-0 break-words whitespace-pre-wrap text-sm text-[var(--wb-text-strong)]",
             interactive ? "leading-6" : "leading-5",
           )}
         >
@@ -43,7 +43,7 @@ function PromptBody(props: PromptBodyProps) {
           <ChoiceCard {...props} />
         )
       ) : (
-        <p className="min-w-0 break-words whitespace-pre-wrap pl-6 text-xs leading-4 text-zinc-500">
+        <p className="min-w-0 break-words whitespace-pre-wrap pl-6 text-xs leading-4 text-[var(--wb-muted)]">
           {settledAnswerLine(resolvedLabel) ?? "等待回答…"}
         </p>
       )}

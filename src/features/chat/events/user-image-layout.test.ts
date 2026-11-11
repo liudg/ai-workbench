@@ -11,7 +11,7 @@ import {
 test("a single attachment is its own preview layer, not the text bubble", () => {
   const model = userBubbleModel("添加装备，然后弹出截图中的界面", 1);
   assert.equal(model.showTextBubble, true);
-  assert.match(model.textBubbleClass, /bg-\[#6e5bff\]/);
+  assert.match(model.textBubbleClass, /wb-user-bubble/);
   assert.match(model.textBubbleClass, /rounded-full/);
   assert.ok(model.images);
   assert.equal(model.images.columns, 1);
@@ -20,8 +20,8 @@ test("a single attachment is its own preview layer, not the text bubble", () => 
   assert.match(model.images.frameClassName, /max-w-\[min\(100%,320px\)\]/);
   assert.match(model.images.thumbClassName, /max-h-64/);
   assert.match(model.images.thumbClassName, /object-contain/);
-  assert.doesNotMatch(model.images.frameClassName, /6e5bff|rounded-full/);
-  assert.doesNotMatch(model.images.thumbClassName, /6e5bff|rounded-full/);
+  assert.doesNotMatch(model.images.frameClassName, /wb-user-bubble|rounded-full/);
+  assert.doesNotMatch(model.images.thumbClassName, /wb-user-bubble|rounded-full/);
 });
 
 test("several images shrink and wrap instead of growing the preview", () => {
@@ -44,7 +44,7 @@ test("several images shrink and wrap instead of growing the preview", () => {
     assert.match(layout.frameClassName, /flex-wrap/);
     assert.match(layout.frameClassName, new RegExp(`${layout.frameMaxPx}px`));
     assert.match(layout.thumbClassName, new RegExp(`${layout.maxEdgePx}px`));
-    assert.doesNotMatch(`${layout.frameClassName} ${layout.thumbClassName}`, /6e5bff|rounded-full/);
+    assert.doesNotMatch(`${layout.frameClassName} ${layout.thumbClassName}`, /wb-user-bubble|rounded-full/);
   }
 
   assert.equal(two.columns, 2);

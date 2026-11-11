@@ -104,12 +104,16 @@ export default function QuestionPreview() {
   const current = session();
   const asking = prompt(surface);
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-screen min-h-0 flex-col bg-[var(--wb-canvas)] text-[var(--wb-text)]">
       <div className="flex gap-2 px-6 py-3">
         <button
           type="button"
           data-preview-surface="async-reply"
-          className="rounded-full bg-[#2a2a2a] px-3 py-1 text-sm text-[#e8e8e8]"
+          className={`rounded-full border px-3 py-1 text-sm transition-colors ${
+            surface === "async-reply"
+              ? "border-[var(--wb-accent-border)] bg-[var(--wb-accent-muted)] font-medium text-[var(--wb-accent)]"
+              : "border-[var(--wb-border)] bg-[var(--wb-chip)] text-[var(--wb-text)] hover:bg-[var(--wb-chip-hover)]"
+          }`}
           onClick={() => setSurface("async-reply")}
         >
           异步提问
@@ -117,7 +121,11 @@ export default function QuestionPreview() {
         <button
           type="button"
           data-preview-surface="request-input"
-          className="rounded-full bg-[#2a2a2a] px-3 py-1 text-sm text-[#e8e8e8]"
+          className={`rounded-full border px-3 py-1 text-sm transition-colors ${
+            surface === "request-input"
+              ? "border-[var(--wb-accent-border)] bg-[var(--wb-accent-muted)] font-medium text-[var(--wb-accent)]"
+              : "border-[var(--wb-border)] bg-[var(--wb-chip)] text-[var(--wb-text)] hover:bg-[var(--wb-chip-hover)]"
+          }`}
           onClick={() => setSurface("request-input")}
         >
           逐题提问
@@ -131,7 +139,11 @@ export default function QuestionPreview() {
         </div>
       </div>
       <div data-chat-column className="mx-auto w-full max-w-[760px] px-4 pb-4">
-        <div ref={setAnchor} data-preview-composer className="h-14 rounded-2xl border border-[#2a2a2a] bg-[#171717]" />
+        <div
+          ref={setAnchor}
+          data-preview-composer
+          className="h-14 rounded-2xl border border-[var(--wb-border-strong)] bg-[var(--wb-composer)] shadow-[var(--wb-composer-shadow)]"
+        />
       </div>
       <QuestionPopup key={asking.prompt_id} event={{ ...asking, id: "ask", session_id: current.id, seq: 4, ts: 4 }} sessionId={current.id} anchor={anchor} />
     </div>

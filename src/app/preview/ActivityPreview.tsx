@@ -114,7 +114,7 @@ function Frame({
 }) {
   const current = session(id, title, status);
   return (
-    <div data-activity-frame={id} className="h-[70vh] min-h-0 border-b border-[#222]">
+    <div data-activity-frame={id} className="h-[70vh] min-h-0 border-b border-[var(--wb-border)]">
       <PanelProvider
         sessionId={id}
         projectId="preview"
@@ -138,7 +138,7 @@ function Frame({
 export default function ActivityPreview() {
   useActivityPreviewProfiles();
   return (
-    <div className="h-screen w-screen overflow-auto bg-[#0f0f0f] text-[#e8e8e8]">
+    <div className="h-screen w-screen overflow-auto bg-[var(--wb-canvas)] text-[var(--wb-text)]">
       <Frame id="activity-live" title="正在思考" status="running" events={liveEvents} />
       <Frame id="activity-done" title="思考已结束" status="completed" events={doneEvents} />
       <Frame id="activity-images" title="已查看图像" status="running" events={imageEvents} />

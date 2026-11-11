@@ -116,40 +116,44 @@ export function ApprovalSurface({
   return (
     <section
       data-codex-approval-surface
-      className="@container/approval-card mb-2 overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 shadow-sm"
+      className="@container/approval-card mx-4 mb-2 overflow-hidden rounded-2xl border border-[var(--wb-border-strong)] bg-[var(--wb-elev)] text-[var(--wb-text)] shadow-[var(--wb-float-shadow)]"
     >
       <div className="flex min-w-0 flex-col gap-2 px-4 pb-3 pt-4">
         <div role="alert" aria-atomic="true" className="min-w-0">
           {event.header ? (
-            <div className="mb-1 flex min-w-0 items-center gap-1.5 text-xs text-zinc-400">
+            <div className="mb-1 flex min-w-0 items-center gap-1.5 text-xs text-[var(--wb-muted)]">
               {Icon ? <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden /> : null}
               <span className="truncate">{event.header}</span>
             </div>
           ) : null}
-          <p className="break-words text-sm font-medium leading-6 text-zinc-100">{event.question}</p>
+          <p className="break-words text-sm font-medium leading-6 text-[var(--wb-text-strong)]">
+            {event.question}
+          </p>
           {event.subtitle ? (
-            <p className="mt-1 break-words text-xs leading-5 text-zinc-400">{event.subtitle}</p>
+            <p className="mt-1 break-words text-xs leading-5 text-[var(--wb-muted)]">
+              {event.subtitle}
+            </p>
           ) : null}
         </div>
         {event.reason ? (
           <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 text-sm">
-            <div className="text-zinc-500">原因</div>
-            <div className="min-w-0 break-words text-zinc-200">{event.reason}</div>
+            <div className="text-[var(--wb-muted)]">原因</div>
+            <div className="min-w-0 break-words text-[var(--wb-text-strong)]">{event.reason}</div>
           </div>
         ) : null}
       </div>
       {event.body ? (
-        <div className="px-3 pb-1">
+        <div className="px-4 pb-1">
           <div
             className={cn(
-              "overflow-hidden rounded-md bg-zinc-950/80 text-xs text-zinc-300",
+              "overflow-hidden rounded-xl border border-[var(--wb-border)] bg-[var(--wb-code-bg)] text-xs text-[var(--wb-text)]",
               event.body_kind === "files" ? "max-h-[200px] overflow-y-auto" : "",
             )}
           >
             <pre
               ref={bodyRef}
               className={cn(
-                "whitespace-pre-wrap break-words px-2 py-2 font-mono",
+                "whitespace-pre-wrap break-words px-3 py-2 font-mono",
                 commandBody && !expanded && "line-clamp-3",
               )}
             >
@@ -188,7 +192,7 @@ export function ApprovalSurface({
           {slots.deny ? (
             <Button type="button" variant="outline" size="sm" disabled={busy} onClick={deny}>
               {slots.deny.label}
-              <span className="@max-md/approval-card:hidden rounded bg-zinc-800 px-1 text-[10px] text-zinc-400">
+              <span className="@max-md/approval-card:hidden rounded bg-[var(--wb-chip)] px-1 text-[10px] text-[var(--wb-muted)]">
                 Esc
               </span>
             </Button>
@@ -204,7 +208,7 @@ export function ApprovalSurface({
                   className="rounded-r-none"
                 >
                   <span className="max-w-40 truncate">{slots.primary.label}</span>
-                  <span className="@max-md/approval-card:hidden rounded bg-white/15 px-1 text-[10px]">Enter</span>
+                  <span className="@max-md/approval-card:hidden rounded bg-current/12 px-1 text-[10px]">Enter</span>
                 </Button>
                 <Button
                   type="button"
@@ -213,7 +217,7 @@ export function ApprovalSurface({
                   aria-label="审批选项"
                   aria-expanded={menuOpen}
                   aria-controls={menuId}
-                  className="rounded-l-none border-l border-white/20 px-1.5"
+                  className="rounded-l-none border-l border-current/20 px-1.5"
                   onClick={() => setMenuOpen((open) => !open)}
                 >
                   <ChevronDown className="h-3.5 w-3.5" />
@@ -222,12 +226,12 @@ export function ApprovalSurface({
                   <div
                     id={menuId}
                     role="menu"
-                    className="absolute bottom-full right-0 z-20 mb-1 min-w-44 rounded-md border border-zinc-700 bg-zinc-900 p-1 shadow-lg"
+                    className="absolute bottom-full right-0 z-20 mb-1 min-w-44 rounded-xl border border-[var(--wb-border-strong)] bg-[var(--wb-elev)] p-1 shadow-[var(--wb-float-shadow)]"
                   >
                     <button
                       type="button"
                       role="menuitem"
-                      className="block w-full rounded px-2 py-1.5 text-left text-sm text-zinc-100 hover:bg-zinc-800"
+                      className="block w-full rounded-lg px-2.5 py-1.5 text-left text-sm text-[var(--wb-text-strong)] transition-colors hover:bg-[var(--wb-hover)]"
                       onClick={approve}
                     >
                       {slots.primary.label}
@@ -236,7 +240,7 @@ export function ApprovalSurface({
                       type="button"
                       role="menuitem"
                       title={slots.scoped.tooltip || undefined}
-                      className="block w-full rounded px-2 py-1.5 text-left text-sm text-zinc-100 hover:bg-zinc-800"
+                      className="block w-full rounded-lg px-2.5 py-1.5 text-left text-sm text-[var(--wb-text-strong)] transition-colors hover:bg-[var(--wb-hover)]"
                       onClick={() => choose(slots.scoped?.id)}
                     >
                       {slots.scoped.label}
@@ -247,7 +251,7 @@ export function ApprovalSurface({
             ) : (
               <Button ref={primaryRef} type="submit" size="sm" disabled={busy}>
                 {slots.primary.label}
-                <span className="@max-md/approval-card:hidden rounded bg-white/15 px-1 text-[10px]">Enter</span>
+                <span className="@max-md/approval-card:hidden rounded bg-current/12 px-1 text-[10px]">Enter</span>
               </Button>
             )
           ) : null}

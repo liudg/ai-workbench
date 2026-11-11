@@ -27,7 +27,7 @@ export function CopyButton({ text, className }: { text: string; className?: stri
       title={copied ? "已复制" : "复制"}
       aria-label={copied ? "已复制" : "复制"}
       className={cn(
-        "rounded p-0.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200",
+        "rounded p-0.5 text-[var(--wb-muted)] transition-colors hover:bg-[var(--wb-hover)] hover:text-[var(--wb-text-strong)]",
         className,
       )}
       onClick={() => {
@@ -46,7 +46,7 @@ export function CopyButton({ text, className }: { text: string; className?: stri
 export function HoverActions({ time, children }: { time: string; children?: ReactNode }) {
   return (
     <div className="mt-1 flex min-h-5 min-w-0 max-w-full items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-      <span className="px-0.5 text-[11px] tabular-nums text-zinc-500">{time}</span>
+      <span className="px-0.5 text-[11px] tabular-nums text-[var(--wb-muted)]">{time}</span>
       {children}
     </div>
   );
@@ -74,19 +74,19 @@ export function Row({
     <div className="event-in group min-w-0 px-6 py-2">
       <div className="min-w-0">
         <div className="mb-1 flex min-w-0 items-center gap-2">
-          <span className="shrink-0 text-zinc-500">{icon}</span>
+          <span className="shrink-0 text-[var(--wb-muted)]">{icon}</span>
           <span
             data-agent-label={title}
             className={cn(
               "min-w-0 break-words text-xs font-medium",
-              tone === "muted" ? "text-zinc-500" : "text-zinc-400",
+              tone === "muted" ? "text-[var(--wb-muted)]" : "text-[var(--wb-text)]",
             )}
           >
             {title}
           </span>
           {chrome === "inline" ? (
             <>
-              <span className="text-[11px] text-zinc-600 opacity-0 transition-opacity group-hover:opacity-100">
+              <span className="text-[11px] tabular-nums text-[var(--wb-faint)] opacity-0 transition-opacity group-hover:opacity-100">
                 {time}
               </span>
               {copyText ? (

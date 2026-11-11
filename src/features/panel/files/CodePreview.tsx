@@ -23,7 +23,7 @@ export default function CodePreview() {
   const [path, setPath] = useState("");
   const [treeOpen, setTreeOpen] = useState(true);
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-[#0f0f0f] text-[#e8e8e8]" data-file-tree={treeOpen ? "visible" : "hidden"}>
+    <div className="flex h-screen w-screen flex-col overflow-hidden bg-[var(--wb-canvas)] text-[var(--wb-text-strong)]" data-file-tree={treeOpen ? "visible" : "hidden"}>
       <PreviewChrome
         path={path}
         projectId=""
@@ -42,7 +42,7 @@ export default function CodePreview() {
                 <SourceView text={source} line={line > 0 ? line : 1} />
               </div>
             ) : path ? (
-              <p data-preview-shell="error" className="px-6 py-8 text-center text-sm text-red-300">
+              <p data-preview-shell="error" className="px-6 py-8 text-center text-sm text-[var(--wb-danger-text)]">
                 无法读取文件
               </p>
             ) : (
@@ -51,14 +51,14 @@ export default function CodePreview() {
           </div>
         </div>
         {treeOpen ? (
-          <aside data-workspace-tree data-tree-surface="sidebar" className="flex h-full w-[220px] shrink-0 flex-col overflow-hidden border-l border-[#222] bg-[#0f0f0f]">
-          <div className="border-b border-[#222] p-2">
+          <aside data-workspace-tree data-tree-surface="sidebar" className="flex h-full w-[220px] shrink-0 flex-col overflow-hidden border-l border-[var(--wb-border)] bg-[var(--wb-diff-well)]">
+          <div className="border-b border-[var(--wb-border)] p-2">
             <input
               readOnly
               value=""
               placeholder={DESKTOP_ZH.filterFiles}
               aria-label={DESKTOP_ZH.filterFiles}
-              className="w-full min-w-0 rounded-md border border-[#2a2a2a] bg-[#171717] px-2 py-1.5 text-[12px] text-[#e8e8e8] outline-none placeholder:text-[#666]"
+              className="w-full min-w-0 rounded-md border border-[var(--wb-border-strong)] bg-[var(--wb-well)] px-2 py-1.5 text-[12px] text-[var(--wb-text-strong)] outline-none placeholder:text-[var(--wb-faint)]"
             />
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-1 py-1">

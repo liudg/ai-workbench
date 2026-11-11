@@ -18,18 +18,3 @@ export function PanelSquareIcon() {
     </svg>
   );
 }
-
-export function FolderStackIcon() {
-  return (
-    <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true">
-      <path
-        d="M2.2 5.2h4l1 1.1h6.4v6.2H2.2V5.2Z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinejoin="round"
-      />
-      <path d="M4 3.4h3.4l.9 1" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-    </svg>
-  );
-}

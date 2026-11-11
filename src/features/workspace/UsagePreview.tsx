@@ -148,7 +148,7 @@ function Frame({
 }) {
   const usage = useMemo(() => accumulateSessionUsage(events), [events]);
   return (
-    <div data-usage-frame={id} className="h-[50vh] min-h-0 border-b border-zinc-800">
+    <div data-usage-frame={id} className="h-[50vh] min-h-0 border-b border-[var(--wb-border)]">
       <PanelProvider
         sessionId={id}
         projectId="preview"
@@ -172,7 +172,7 @@ function Frame({
 export default function UsagePreview() {
   useUsagePreviewProfiles();
   return (
-    <div className="h-screen w-screen overflow-hidden bg-[#0f0f0f] text-[#e8e8e8]">
+    <div className="h-screen w-screen overflow-hidden bg-[var(--wb-canvas)] text-[var(--wb-text)]">
       <Frame id="usage-on" title="整理会话用量" events={supportedEvents} />
       <Frame id="usage-run" title="整理会话用量" events={runningEvents} status="running" />
       <Frame id="usage-off" title="未报告用量" events={unsupportedEvents} />

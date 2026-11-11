@@ -1,13 +1,14 @@
 import { useCallback, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
-import { Plus, SquarePen } from "lucide-react";
+import { SquarePen } from "lucide-react";
 
 import { immediateSessionAgent, newSessionMenu } from "@/lib/agents";
 import { cn } from "@/lib/utils";
+import { agentIdentity } from "@/shared/agent/identity";
+import { SessionAgentIcon } from "@/shared/agent/SessionAgentIcon";
 import type { AgentKind } from "@/types";
-import { useNewSession } from "./use-new-session";
-import { buttonVariants } from "@/components/ui/button";
 import { FixedMenu } from "../FixedMenu";
 import { SidebarPlusButton } from "../projects/SidebarPlusButton";
+import { useNewSession } from "./use-new-session";
 
 export function NewSessionButton({
   projectId,
@@ -16,13 +17,13 @@ export function NewSessionButton({
   title = "新建会话",
 }: {
   projectId: string;
-  appearance?: "pencil" | "primary" | "plus";
+  appearance?: "pencil" | "plus";
   className?: string;
   title?: string;
 }) {
-  const { openDraft, openSettings, installations } = useNewSession();
+  const { openDraft, openSettings, installations, profiles } = useNewSession();
   const menu = newSessionMenu(installations);
-  const immediate = appearance === "primary" ? null : immediateSessionAgent(installations);
+  const immediate = immediateSessionAgent(installations);
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLButtonElement>(null);
   const close = useCallback(() => setOpen(false), []);
@@ -58,20 +59,14 @@ export function NewSessionButton({
         <button
           ref={anchorRef}
           type="button"
-          className={cn(appearance === "primary" && buttonVariants({ variant: "default" }), shown)}
+          className={shown}
           aria-label={title}
           aria-haspopup="menu"
           aria-expanded={open}
           title={title}
           onClick={onPress}
         >
-          {appearance === "primary" ? (
-            <>
-              <Plus /> 新建会话
-            </>
-          ) : (
-            <SquarePen className="h-3.5 w-3.5" />
-          )}
+          <SquarePen className="h-3.5 w-3.5" />
         </button>
       )}
       <FixedMenu
@@ -79,49 +74,52 @@ export function NewSessionButton({
         anchorRef={anchorRef}
         onClose={close}
         label="选择 Agent"
-        className="w-60 rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
+        className="w-60 rounded-xl border border-[var(--wb-border-strong)] bg-[var(--wb-elev)] py-1 shadow-[var(--wb-float-shadow)]"
       >
-          {menu.status === "loading" ? (
-            <div className="px-3 py-3 text-sm text-zinc-500">正在检测本地 Agent…</div>
-          ) : menu.status === "empty" ? (
-            <div className="px-3 py-3" data-session-menu="empty" data-session-menu-reason={menu.reason}>
-              <p className="text-sm leading-5 text-zinc-300">
-                {menu.reason === "unwired"
-                  ? "已安装的 Agent 还不能新建会话。"
-                  : "未检测到已安装的 Agent CLI。"}
-              </p>
+        {menu.status === "loading" ? (
+          <div className="px-3 py-3 text-sm text-[var(--wb-muted)]">正在检测本地 Agent…</div>
+        ) : menu.status === "empty" ? (
+          <div className="px-3 py-3" data-session-menu="empty" data-session-menu-reason={menu.reason}>
+            <p className="text-sm leading-5 text-[var(--wb-text)]">
+              {menu.reason === "unwired"
+                ? "已安装的 Agent 还不能新建会话。"
+                : "未检测到已安装的 Agent CLI。"}
+            </p>
+            <button
+              type="button"
+              className="mt-2 text-sm font-medium text-[var(--wb-accent)] hover:underline"
+              onClick={(event) => {
+                event.stopPropagation();
+                close();
+                openSettings();
+              }}
+            >
+              打开设置
+            </button>
+          </div>
+        ) : (
+          <div data-session-menu="ready">
+            <div className="px-3 pb-1 pt-1.5 text-[11px] font-medium text-[var(--wb-muted)]">
+              选择 Agent
+            </div>
+            {menu.agents.map((agent) => (
               <button
+                key={agent.kind}
                 type="button"
-                className="mt-2 text-sm text-indigo-300 hover:text-indigo-200"
+                role="menuitem"
+                data-agent={agent.kind}
+                className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-[var(--wb-text-strong)] transition-colors hover:bg-[var(--wb-hover)] focus-visible:bg-[var(--wb-hover)] focus-visible:outline-none"
                 onClick={(event) => {
                   event.stopPropagation();
-                  close();
-                  openSettings();
+                  choose(agent.kind);
                 }}
               >
-                打开设置
+                <SessionAgentIcon identity={agentIdentity(agent.kind, profiles[agent.kind])} />
+                <span className="truncate">{agent.display_name}</span>
               </button>
-            </div>
-          ) : (
-            <div data-session-menu="ready">
-              <div className="px-3 pb-1 pt-1.5 text-[11px] text-zinc-500">选择 Agent</div>
-              {menu.agents.map((agent) => (
-                <button
-                  key={agent.kind}
-                  type="button"
-                  role="menuitem"
-                  data-agent={agent.kind}
-                  className="block w-full px-3 py-2 text-left text-sm text-zinc-100 hover:bg-zinc-800"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    choose(agent.kind);
-                  }}
-                >
-                  {agent.display_name}
-                </button>
-              ))}
-            </div>
-          )}
+            ))}
+          </div>
+        )}
       </FixedMenu>
     </>
   );

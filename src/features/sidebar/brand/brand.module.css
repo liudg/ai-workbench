@@ -16,63 +16,86 @@
 }
 
 .panel {
-  margin: 0 14px 4px;
-  margin-inline: clamp(4px, 8cqi, 14px);
-  padding: 29px 0 18px;
-  border-bottom: 1px solid #232323;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 6px;
+  padding: 12px 6px 10px;
+  border-bottom: 1px solid var(--wb-border);
 }
 
 .lockup {
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 8px;
   min-width: 0;
 }
 
 .mark {
   display: block;
-  width: 31px;
-  height: auto;
-  aspect-ratio: 1;
-  max-width: 100%;
-  flex: 0 1 31px;
-  min-width: 0;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
 }
 
 .wordmark {
   min-width: 0;
-  color: #fff;
+  color: var(--wb-text-strong);
   font-family: "Manrope", ui-sans-serif, system-ui, sans-serif;
-  font-size: 31px;
-  font-size: clamp(16px, 22cqi, 31px);
+  font-size: 16px;
   font-style: normal;
   font-weight: 800;
   font-synthesis: none;
-  letter-spacing: -0.5px;
-  line-height: normal;
+  letter-spacing: -0.02em;
+  line-height: 1;
   white-space: nowrap;
 }
 
-.tagline {
-  margin: 7px 0 0;
-  color: #6b6b6b;
-  font-family: var(--font-sans);
+.quickSearch {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--wb-border);
+  border-radius: 7px;
+  background: var(--wb-card);
+  color: var(--wb-faint);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.quickSearch:hover {
+  background: var(--wb-card-hover);
+  border-color: var(--wb-border-strong);
+  color: var(--wb-text-strong);
+}
+
+.quickSearch:focus-visible {
+  outline: none;
+  border-color: var(--wb-accent);
+  box-shadow: 0 0 0 2px var(--wb-accent-muted);
+  color: var(--wb-text-strong);
+}
+
+.searchIcon {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+
+.shortcut {
+  font-family: var(--font-mono);
   font-size: 10.5px;
-  font-weight: 400;
-  letter-spacing: 2px;
-  letter-spacing: clamp(0px, (100cqi - 150px) / 25, 2px);
-  line-height: normal;
-  white-space: nowrap;
+  font-weight: 500;
+  letter-spacing: 0.01em;
 }
 
-@container sidebar-brand (max-width: 148px) {
-  .panel {
-    padding: 16px 0 12px;
-  }
-
-  .tagline {
+@container sidebar-brand (max-width: 168px) {
+  .quickSearch {
     display: none;
   }
 }
@@ -82,19 +105,8 @@
     display: none;
   }
 
-  .lockup {
-    gap: 0;
-  }
-
   .panel {
-    margin-inline: 4px;
-    padding: 12px 0 10px;
-  }
-}
-
-@container sidebar-brand (max-width: 40px) {
-  .panel {
-    margin-inline: 2px;
-    padding: 8px 0;
+    justify-content: center;
+    padding: 10px 4px;
   }
 }

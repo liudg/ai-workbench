@@ -7,9 +7,9 @@ import { useWorkContextPreview } from "./use-work-context-preview";
 export default function WorkContextPreview() {
   useWorkContextPreview();
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#0f0f0f] text-[#e8e8e8]">
+    <div className="flex h-screen w-screen overflow-hidden bg-[var(--wb-shell)] text-[var(--wb-text)]">
       <Sidebar />
-      <main className="flex min-w-0 flex-1 flex-col">
+      <main className="my-2 mr-2 flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[var(--wb-border)] bg-[var(--wb-canvas)] shadow-[var(--wb-sheet-shadow)]">
         <Workspace />
       </main>
     </div>

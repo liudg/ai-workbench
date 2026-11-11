@@ -51,3 +51,15 @@ test("blank adapter identity does not invent a name or icon", () => {
   assert.equal(agentIdentity("codex-cli", blank), null);
   assert.equal(agentIdentity("codex-cli", undefined), null);
 });
+
+test("monochrome adapter icon metadata propagates without matching filenames", () => {
+  const mono = {
+    ...profile("codex-cli", "Codex CLI", "/agent-icons/custom.svg"),
+    icon_monochrome: true,
+  };
+  assert.deepEqual(agentIdentity("codex-cli", mono), {
+    name: "Codex CLI",
+    icon: "/agent-icons/custom.svg",
+    monochrome: true,
+  });
+});

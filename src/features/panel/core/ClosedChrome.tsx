@@ -31,10 +31,10 @@ export function ClosedChrome() {
     <div
       data-chat-header=""
       data-panel-closed={layout === "chat" ? "" : undefined}
-      className="relative z-20 flex h-11 shrink-0 items-center gap-2 border-b border-[#222] bg-[#0f0f0f] px-4"
+      className="relative z-20 flex h-11 shrink-0 items-center gap-2 border-b border-[var(--wb-border)] bg-[var(--wb-header)] px-4 backdrop-blur-md"
     >
       <SidebarToggle />
-      <span data-session-title className="min-w-0 flex-1 truncate text-[14px] font-medium text-[#e8e8e8]">
+      <span data-session-title className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-[var(--wb-text-strong)]">
         {sessionTitle}
       </span>
       <SessionUsageCluster />
@@ -45,7 +45,7 @@ export function ClosedChrome() {
             data-panel-marker
             data-open-tabs={count}
             aria-label={`${DESKTOP_ZH.panelNewTab} ${DESKTOP_ZH.panelShortcutB}`}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-[#333] text-[#cfcfcf] hover:bg-[#1c1c1c]"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-[var(--wb-border-strong)] text-[var(--wb-muted)] transition-colors hover:bg-[var(--wb-hover)] hover:text-[var(--wb-text-strong)]"
             onClick={openBlank}
           >
             <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
@@ -65,7 +65,7 @@ export function ClosedChrome() {
             aria-haspopup="menu"
             aria-expanded={menu}
             aria-label={DESKTOP_ZH.panelOpenTabsMenu}
-            className="inline-flex h-7 min-w-7 items-center justify-center rounded-md border border-[#333] bg-transparent px-1.5 text-[13px] font-medium tabular-nums text-[#e8e8e8] hover:bg-[#1c1c1c]"
+            className="inline-flex h-7 min-w-7 items-center justify-center rounded-md border border-[var(--wb-border-strong)] bg-transparent px-1.5 text-[13px] font-medium tabular-nums text-[var(--wb-text-strong)] transition-colors hover:bg-[var(--wb-hover)]"
             onKeyDown={(event) => {
               if (event.key !== "ArrowDown") return;
               event.preventDefault();
@@ -101,7 +101,7 @@ export function ClosedChrome() {
             data-panel-marker
             data-open-tabs={0}
             aria-label={`${DESKTOP_ZH.panelNewTab} ${DESKTOP_ZH.panelShortcutB}`}
-            className="inline-flex h-7 min-w-7 items-center justify-center rounded-md border border-[#333] bg-transparent px-1.5 text-[#cfcfcf] hover:bg-[#1c1c1c]"
+            className="inline-flex h-7 min-w-7 items-center justify-center rounded-md border border-[var(--wb-border-strong)] bg-transparent px-1.5 text-[var(--wb-muted)] transition-colors hover:bg-[var(--wb-hover)] hover:text-[var(--wb-text-strong)]"
             onClick={showPanel}
           >
             <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
@@ -118,9 +118,9 @@ function OpenTabsMenu({ onPick }: { onPick: (id: string) => void }) {
     <div
       role="menu"
       data-open-tabs-menu
-      className="absolute right-0 top-full z-40 mt-1 w-48 rounded-xl border border-zinc-700 bg-zinc-900 py-1 shadow-lg"
+      className="absolute right-0 top-full z-40 mt-1 w-48 rounded-xl border border-[var(--wb-border-strong)] bg-[var(--wb-elev)] py-1 shadow-[var(--wb-float-shadow)]"
     >
-      <div className="px-3 py-1.5 text-[11px] text-zinc-500">{DESKTOP_ZH.panelOpenTabsMenu}</div>
+      <div className="px-3 py-1.5 text-[11px] text-[var(--wb-faint)]">{DESKTOP_ZH.panelOpenTabsMenu}</div>
       {tabs.map((tab) => {
         const viewer = viewerById(tab.viewerId);
         const Icon = viewer?.icon;
@@ -132,10 +132,10 @@ function OpenTabsMenu({ onPick }: { onPick: (id: string) => void }) {
             role="menuitem"
             data-open-tab={tab.id}
             data-open-tab-viewer={tab.viewerId}
-            className={cn("flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-zinc-100 hover:bg-zinc-800")}
+            className={cn("flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--wb-text-strong)] hover:bg-[var(--wb-hover)]")}
             onClick={() => onPick(tab.id)}
           >
-            {Icon ? <Icon className="h-3.5 w-3.5 shrink-0 text-zinc-400" /> : null}
+            {Icon ? <Icon className="h-3.5 w-3.5 shrink-0 text-[var(--wb-muted)]" /> : null}
             <span className="min-w-0 flex-1 truncate">{title}</span>
           </button>
         );

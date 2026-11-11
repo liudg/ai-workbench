@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { X } from "lucide-react";
 
+import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 export function ModeChip({
@@ -23,30 +24,25 @@ export function ModeChip({
   onDismiss: () => void;
 }) {
   return (
-    <button
-      type="button"
-      data-mode-chip={id}
-      aria-label={dismissLabel}
-      disabled={disabled}
-      className={cn(
-        "group relative inline-flex h-8 shrink-0 items-center gap-1 rounded-full bg-zinc-100 text-sm text-zinc-950 disabled:cursor-not-allowed disabled:opacity-40",
-        iconOnly ? "w-8 justify-center px-0" : "px-2.5",
-      )}
-      onClick={(event) => {
-        event.stopPropagation();
-        onDismiss();
-      }}
-    >
-      {icon}
-      {iconOnly ? null : <span>{label}</span>}
-      <X className="h-3 w-3 shrink-0" aria-hidden />
-      <span
-        role="tooltip"
-        data-mode-tooltip={id}
-        className="pointer-events-none absolute bottom-[calc(100%+6px)] left-1/2 z-30 -translate-x-1/2 whitespace-nowrap rounded-md bg-zinc-950 px-2 py-1 text-xs font-normal text-zinc-100 opacity-0 shadow-lg ring-1 ring-zinc-700 group-hover:opacity-100 group-focus-visible:opacity-100"
+    <Tooltip label={tooltip} side="top" className="shrink-0">
+      <button
+        type="button"
+        data-mode-chip={id}
+        aria-label={dismissLabel}
+        disabled={disabled}
+        className={cn(
+          "inline-flex h-8 shrink-0 items-center gap-1 rounded-full bg-[var(--wb-send-bg)] text-sm text-[var(--wb-send-fg)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40",
+          iconOnly ? "w-8 justify-center px-0" : "px-2.5",
+        )}
+        onClick={(event) => {
+          event.stopPropagation();
+          onDismiss();
+        }}
       >
-        {tooltip}
-      </span>
-    </button>
+        {icon}
+        {iconOnly ? null : <span>{label}</span>}
+        <X className="h-3 w-3 shrink-0" aria-hidden />
+      </button>
+    </Tooltip>
   );
 }

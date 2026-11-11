@@ -125,6 +125,7 @@ impl AgentAdapter for ClaudeCodeAdapter {
             default_access: Some("full".into()),
             display_name: None,
             icon: None,
+            icon_monochrome: self.icon_monochrome(),
         }
     }
 

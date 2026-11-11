@@ -22,12 +22,9 @@ import {
 import { useComposerMenu } from "./useComposerMenu";
 import { useGitBranch } from "./useGitBranch";
 import { worktreeBranchMarker } from "./worktree-option";
+import { CONTEXT_PILL_BASE_CLASS, contextPillStyle } from "./context-pill";
 import { WorkContextPicker } from "./WorkContextPicker";
 import { WorktreeSessionLabel, WorktreeToggle } from "./WorktreeChoice";
-
-const CARD_SHADOW = "0 1px 2px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.04)";
-const CARD_BG = "linear-gradient(180deg, #1c1c1f 0%, #17171a 100%)";
-const CARD_BG_HOT = "linear-gradient(180deg, #242428 0%, #1e1e22 100%)";
 
 export function ComposerContextRow({
   workContext,
@@ -190,12 +187,8 @@ export function GitBranchChrome({
       <button
         ref={anchorRef}
         type="button"
-        className="inline-flex max-w-[14rem] items-center gap-1.5 rounded-[10px] border py-1 pl-2 pr-2.5 text-[13px] leading-5 text-[#ececef]"
-        style={{
-          backgroundImage: lifted ? CARD_BG_HOT : CARD_BG,
-          borderColor: lifted ? "#3a3a42" : "#2e2e33",
-          boxShadow: CARD_SHADOW,
-        }}
+        className={cn(CONTEXT_PILL_BASE_CLASS, "max-w-[14rem] pl-2 pr-2.5")}
+        style={contextPillStyle(lifted)}
         aria-label={`分支：${label}`}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -207,7 +200,7 @@ export function GitBranchChrome({
           toggle();
         }}
       >
-        <GitBranch className="h-3.5 w-3.5 shrink-0 text-[#d2d2d6]" strokeWidth={1.75} />
+        <GitBranch className="h-3.5 w-3.5 shrink-0 text-[var(--wb-muted)]" strokeWidth={1.75} />
         <span className="min-w-0 truncate">{label}</span>
       </button>
       {open && (
@@ -216,32 +209,34 @@ export function GitBranchChrome({
           role="menu"
           aria-label="分支"
           data-git-branch-menu=""
-          className="fixed z-50 flex w-[300px] max-h-[min(24rem,calc(100vh-2rem))] flex-col overflow-hidden rounded-[10px] border border-[#2e2e33] py-1"
-          style={{ top: -9999, left: 8, backgroundImage: CARD_BG, boxShadow: CARD_SHADOW }}
+          className="fixed z-50 flex w-[300px] max-h-[min(24rem,calc(100vh-2rem))] flex-col overflow-hidden rounded-xl border border-[var(--wb-border-strong)] bg-[var(--wb-elev)] py-1 shadow-[var(--wb-float-shadow)]"
+          style={{ top: -9999, left: 8 }}
           onClick={(event) => event.stopPropagation()}
         >
-          <div className="flex items-center gap-2 border-b border-zinc-800 px-3 py-2">
-            <Search className="h-4 w-4 shrink-0 text-zinc-500" />
+          <div className="flex items-center gap-2 border-b border-[var(--wb-border)] px-3 py-2">
+            <Search className="h-4 w-4 shrink-0 text-[var(--wb-faint)]" />
             <input
               autoFocus
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder={branchSearchPlaceholder(projectName)}
               aria-label={branchSearchPlaceholder(projectName)}
-              className="w-full bg-transparent text-sm text-zinc-100 outline-none placeholder:text-zinc-500"
+              className="w-full bg-transparent text-sm text-[var(--wb-text-strong)] outline-none placeholder:text-[var(--wb-faint)]"
             />
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
-            <p className="px-3 pb-1 pt-2 text-xs text-zinc-500">分支</p>
+            <p className="px-3 pb-1 pt-2 text-xs text-[var(--wb-faint)]">分支</p>
             {actionError ? (
-              <p role="alert" className="px-3 pb-1 text-xs text-red-300">
+              <p role="alert" className="px-3 pb-1 text-xs text-[var(--wb-danger-text)]">
                 {actionError}
               </p>
             ) : null}
-            {listError ? <p className="px-3 py-2 text-xs text-red-300">{listError}</p> : null}
-            {loading ? <p className="px-3 py-2 text-xs text-zinc-500">正在读取分支…</p> : null}
+            {listError ? (
+              <p className="px-3 py-2 text-xs text-[var(--wb-danger-text)]">{listError}</p>
+            ) : null}
+            {loading ? <p className="px-3 py-2 text-xs text-[var(--wb-muted)]">正在读取分支…</p> : null}
             {!loading && !listError && shown.length === 0 ? (
-              <p className="px-3 py-2 text-xs text-zinc-500">没有匹配的分支</p>
+              <p className="px-3 py-2 text-xs text-[var(--wb-muted)]">没有匹配的分支</p>
             ) : null}
             {shown.map((name) => {
               const selected = name === current;
@@ -254,33 +249,33 @@ export function GitBranchChrome({
                   aria-checked={selected}
                   data-git-branch-name={name}
                   disabled={busy}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-zinc-100 hover:bg-white/[0.06] disabled:opacity-60"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-[var(--wb-text-strong)] hover:bg-[var(--wb-hover)] disabled:opacity-60"
                   onClick={(event) => {
                     event.stopPropagation();
                     void checkout(name);
                   }}
                 >
-                  <GitBranch className="h-4 w-4 shrink-0 text-zinc-400" strokeWidth={1.75} />
+                  <GitBranch className="h-4 w-4 shrink-0 text-[var(--wb-muted)]" strokeWidth={1.75} />
                   <span className="min-w-0 flex-1">
                     <span className={cn("block truncate text-sm", selected && "font-semibold")}>{name}</span>
                     {subtitle ? (
-                      <span data-git-dirty-files={dirtyFiles} className="block truncate text-xs text-zinc-500">
+                      <span data-git-dirty-files={dirtyFiles} className="block truncate text-xs text-[var(--wb-muted)]">
                         {subtitle}
                       </span>
                     ) : null}
                   </span>
-                  {selected ? <Check className="h-4 w-4 shrink-0 text-zinc-200" strokeWidth={2} /> : null}
+                  {selected ? <Check className="h-4 w-4 shrink-0 text-[var(--wb-text-strong)]" strokeWidth={2} /> : null}
                 </button>
               );
             })}
           </div>
-          <div className="border-t border-zinc-800" />
+          <div className="border-t border-[var(--wb-border)]" />
           <button
             type="button"
             role="menuitem"
             data-git-branch-create=""
             disabled={busy}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-zinc-100 hover:bg-white/[0.06] disabled:opacity-60"
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--wb-text-strong)] hover:bg-[var(--wb-hover)] disabled:opacity-60"
             onClick={(event) => {
               event.stopPropagation();
               setCreateName("");
@@ -313,7 +308,7 @@ export function GitBranchChrome({
               void submitCreate();
             }}
           >
-            <label className="grid gap-1.5 text-sm text-zinc-300" htmlFor="git-branch-name">
+            <label className="grid gap-1.5 text-sm text-[var(--wb-text)]" htmlFor="git-branch-name">
               分支名
               <input
                 id="git-branch-name"
@@ -323,11 +318,11 @@ export function GitBranchChrome({
                   setCreateName(event.target.value);
                   if (createError) setCreateError(null);
                 }}
-                className="h-9 rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none focus:border-zinc-500"
+                className="h-9 rounded-lg border border-[var(--wb-border-strong)] bg-[var(--wb-well)] px-3 text-sm text-[var(--wb-text-strong)] outline-none focus:border-[var(--wb-accent)]"
               />
             </label>
             {createError ? (
-              <p role="alert" className="text-xs text-red-300">
+              <p role="alert" className="text-xs text-[var(--wb-danger-text)]">
                 {createError}
               </p>
             ) : null}
@@ -335,7 +330,7 @@ export function GitBranchChrome({
               <Button
                 type="button"
                 variant="ghost"
-                className="text-zinc-400 hover:bg-transparent hover:text-zinc-200"
+                className="text-[var(--wb-muted)] hover:bg-transparent hover:text-[var(--wb-text-strong)]"
                 disabled={busy}
                 onClick={() => setCreateOpen(false)}
               >
@@ -344,7 +339,7 @@ export function GitBranchChrome({
               <Button
                 type="submit"
                 disabled={busy}
-                className="rounded-lg bg-zinc-100 px-4 text-zinc-950 shadow-none hover:bg-white"
+                className="rounded-lg bg-[var(--wb-send-bg)] px-4 text-[var(--wb-send-fg)] shadow-none hover:opacity-90"
               >
                 {busy ? "正在创建…" : "创建"}
               </Button>

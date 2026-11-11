@@ -143,6 +143,58 @@ pub(crate) fn manage_state<R: Runtime>(
 pub const WEBVIEW2_BROWSER_ARGS: &str =
     "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --remote-debugging-port=9222";
 
+/// 同步主窗口原生标题栏深浅色与底色，避免浅色/深色系统下标题栏反差割裂或冷启动闪白。
+#[tauri::command]
+async fn sync_window_theme(
+    window: tauri::WebviewWindow,
+    theme: String,
+    preference: String,
+) -> Result<(), String> {
+    let daylight = theme == "daylight";
+    let os_theme = if daylight {
+        tauri::Theme::Light
+    } else {
+        tauri::Theme::Dark
+    };
+    let bg = if daylight {
+        tauri::window::Color(242, 243, 247, 255)
+    } else {
+        tauri::window::Color(9, 11, 16, 255)
+    };
+    let follow_system = preference == "system";
+    window
+        .set_theme(if follow_system { None } else { Some(os_theme) })
+        .map_err(|error| error.to_string())?;
+    #[cfg(windows)]
+    if follow_system {
+        // 同色切换也恢复自动偏好，此时原生窗口可能不会发出 ThemeChanged。
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+        window
+            .with_webview(move |webview| {
+                use webview2_com::Microsoft::Web::WebView2::Win32::{
+                    ICoreWebView2_13, COREWEBVIEW2_PREFERRED_COLOR_SCHEME_AUTO,
+                };
+                use windows::core::Interface;
+                let result = (|| unsafe {
+                    webview
+                        .controller()
+                        .CoreWebView2()?
+                        .cast::<ICoreWebView2_13>()?
+                        .Profile()?
+                        .SetPreferredColorScheme(COREWEBVIEW2_PREFERRED_COLOR_SCHEME_AUTO)
+                })();
+                sender
+                    .send(result.map_err(|error| error.to_string()))
+                    .expect("主题命令接收端已关闭");
+            })
+            .map_err(|error| error.to_string())?;
+        receiver.await.map_err(|error| error.to_string())??;
+    }
+    window
+        .set_background_color(Some(bg))
+        .map_err(|error| error.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -167,6 +219,7 @@ pub fn run() {
             }
         })
         .invoke_handler(workbench_handler![
+            sync_window_theme,
             features::preview::browser::prepare_browser_file,
             features::preview::browser::browser_show,
             features::preview::browser::browser_bounds,

@@ -122,7 +122,7 @@ export default function DiffPreview() {
     [files],
   );
   return (
-    <div className="h-screen w-screen overflow-hidden bg-[#0f0f0f] text-[#e8e8e8]">
+    <div className="h-screen w-screen overflow-hidden bg-[var(--wb-canvas)] text-[var(--wb-text)]">
       <PanelProvider
         sessionId="preview-session"
         projectId={projectId}

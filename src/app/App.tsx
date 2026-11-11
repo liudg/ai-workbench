@@ -1,9 +1,11 @@
 import { lazy, Suspense } from "react";
 
 import { CommandMenuHost } from "@/features/command-menu";
+import { cn } from "@/lib/utils";
 import { userFacingMessage } from "@/lib/user-facing";
 import { NewProjectDialog, Sidebar } from "@/features/sidebar";
 import { RightPane, UpdateDialog } from "@/features/workspace";
+import { useSidebarOpen } from "@/shared/shell/sidebar-open";
 import { useAppShell } from "./use-app-shell";
 
 const DiffPreview = import.meta.env.DEV
@@ -194,26 +196,32 @@ export default function App() {
 
 function WorkbenchApp() {
   const { ready, lastError, dialogOpen, clearError } = useAppShell();
+  const sidebarOpen = useSidebarOpen();
   const errorText = userFacingMessage(lastError);
 
   if (!ready) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[#0f0f0f] text-sm text-[#666]">
+      <div className="flex h-screen items-center justify-center bg-[var(--wb-shell)] text-sm text-[var(--wb-muted)]">
         正在启动工作台…
       </div>
     );
   }
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#0f0f0f] text-[#e8e8e8]">
+    <div className="flex h-screen w-screen overflow-hidden bg-[var(--wb-shell)] text-[var(--wb-text)]">
       <Sidebar />
-      <main className="flex min-w-0 flex-1 flex-col">
+      <main
+        className={cn(
+          "flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[var(--wb-border)] bg-[var(--wb-canvas)] shadow-[var(--wb-sheet-shadow)]",
+          sidebarOpen ? "my-2 mr-2" : "m-2",
+        )}
+      >
         {errorText && !dialogOpen && (
-          <div className="flex items-start gap-3 border-b border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-200">
+          <div className="flex items-start gap-3 border-b border-[var(--wb-danger-border)] bg-[var(--wb-danger-bg)] px-4 py-2 text-sm text-[var(--wb-danger-text)]">
             <p className="min-w-0 flex-1">{errorText}</p>
             <button
               type="button"
-              className="shrink-0 text-xs text-red-300 hover:text-white"
+              className="shrink-0 text-xs text-[var(--wb-danger-text)] transition-colors hover:text-[var(--wb-text-strong)]"
               onClick={clearError}
             >
               关闭

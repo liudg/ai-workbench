@@ -5,6 +5,7 @@ import { OPEN_THREAD_FIND } from "@/features/chat/find/use-thread-find";
 import { FileSearchDialog } from "@/features/panel/files/FileSearchDialog";
 import { sessionChanges } from "@/features/changes-model/diff-parse";
 import { toggleSidebar } from "@/shared/shell/sidebar-open";
+import { setThemePreference } from "@/shared/theme/theme";
 import { loadWorktreeDeletePreview } from "@/lib/worktree-delete-preview";
 import {
   worktreeDeleteFlags,
@@ -144,6 +145,21 @@ export function CommandMenuHost() {
     }
     if (id === "settings") {
       state.openSettings();
+      close();
+      return;
+    }
+    if (id === "theme-graphite") {
+      setThemePreference("graphite");
+      close();
+      return;
+    }
+    if (id === "theme-daylight") {
+      setThemePreference("daylight");
+      close();
+      return;
+    }
+    if (id === "theme-system") {
+      setThemePreference("system");
       close();
       return;
     }

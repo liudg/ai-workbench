@@ -8,6 +8,7 @@ import { viewerById, type PanelTab } from "./registry";
 import { Hint } from "./Hint";
 import { PanelLayoutControls } from "./PanelChrome";
 import { usePanel } from "./PanelProvider";
+import { SidebarToggle } from "./SidebarToggle";
 import { SessionUsageCluster } from "./SubscriptionUsageMeter";
 
 registerBuiltinViewers();
@@ -22,13 +23,16 @@ export function PanelTabs() {
   return (
     <section
       data-preview-panel
-      className="flex h-full w-full min-w-0 flex-col border-l border-[#222] bg-[#0f0f0f]"
+      className="flex h-full w-full min-w-0 flex-col bg-[var(--wb-diff-well)]"
     >
-      <div className="relative z-20 flex h-11 shrink-0 items-center border-b border-[#222] px-1.5">
+      <div className="relative z-20 flex h-11 shrink-0 items-center border-b border-[var(--wb-border)] bg-[var(--wb-header)] px-1.5 backdrop-blur-md">
         {layout === "full" ? (
-          <span data-session-title className="flex max-w-[34%] shrink-0 items-center truncate px-3 text-xs text-zinc-300">
-            {sessionTitle}
-          </span>
+          <div className="flex max-w-[36%] shrink-0 items-center gap-1.5 pl-2.5 pr-2">
+            <SidebarToggle />
+            <span data-session-title className="min-w-0 truncate text-[13.5px] font-medium text-[var(--wb-text-strong)]">
+              {sessionTitle}
+            </span>
+          </div>
         ) : null}
         <div className="flex min-w-0 flex-1 items-stretch gap-0.5 overflow-x-auto px-1">
           {tabs.map((tab) => {
@@ -40,14 +44,16 @@ export function PanelTabs() {
               <div
                 key={tab.id}
                 className={cn(
-                  "my-1.5 flex min-w-0 max-w-[180px] items-center rounded-md",
-                  selected ? "bg-[#1c1c1c] text-[#e8e8e8]" : "text-[#8d8d8d] hover:bg-white/[0.04]",
+                  "my-1.5 flex min-w-0 max-w-[180px] items-center rounded-lg transition-colors",
+                  selected
+                    ? "bg-[var(--wb-chip)] font-medium text-[var(--wb-text-strong)]"
+                    : "text-[var(--wb-muted)] hover:bg-[var(--wb-hover)] hover:text-[var(--wb-text)]",
                 )}
               >
                 <button
                   type="button"
                   data-preview-tab={tab.viewerId}
-                  className="flex min-w-0 flex-1 items-center gap-1 px-2 py-1.5 text-left text-xs"
+                  className="flex min-w-0 flex-1 items-center gap-1.5 px-2.5 py-1.5 text-left text-xs"
                   onClick={() => selectTab(tab.id)}
                 >
                   {Icon ? (
@@ -60,7 +66,7 @@ export function PanelTabs() {
                 <button
                   type="button"
                   aria-label={DESKTOP_ZH.closeTab}
-                  className="mr-1 rounded p-0.5 text-[#666] hover:bg-white/10 hover:text-[#e8e8e8]"
+                  className="mr-1 rounded p-0.5 text-[var(--wb-faint)] hover:bg-[var(--wb-hover-strong)] hover:text-[var(--wb-text-strong)]"
                   onClick={() => closeTab(tab.id)}
                 >
                   <X className="h-3 w-3" />
@@ -73,7 +79,7 @@ export function PanelTabs() {
               type="button"
               data-browser-new-tab
               aria-label={DESKTOP_ZH.panelOpenSideTab}
-              className="my-1 shrink-0 rounded-md px-1.5 text-[#8d8d8d] hover:bg-white/5 hover:text-[#e8e8e8]"
+              className="my-1 shrink-0 rounded-md px-1.5 text-[var(--wb-muted)] transition-colors hover:bg-[var(--wb-hover)] hover:text-[var(--wb-text-strong)]"
               onClick={openBlank}
             >
               <Plus className="h-3.5 w-3.5" />
@@ -85,7 +91,7 @@ export function PanelTabs() {
       </div>
       {menu && menu.length > 0 ? (
         <div
-          className="flex shrink-0 items-center gap-1 border-b border-zinc-800 px-2 py-1"
+          className="flex shrink-0 items-center gap-1 border-b border-[var(--wb-border)] bg-[var(--wb-canvas)] px-2 py-1"
           data-viewer-menu={active.viewerId}
         >
           {menu.map((item) => (
@@ -93,7 +99,7 @@ export function PanelTabs() {
               key={item.id}
               type="button"
               disabled={item.disabled}
-              className="rounded px-2 py-0.5 text-xs text-zinc-300 hover:bg-zinc-800 disabled:text-zinc-600"
+              className="rounded px-2 py-0.5 text-xs text-[var(--wb-text)] hover:bg-[var(--wb-hover)] disabled:text-[var(--wb-faint)]"
               onClick={() => item.onSelect?.()}
             >
               {item.label}

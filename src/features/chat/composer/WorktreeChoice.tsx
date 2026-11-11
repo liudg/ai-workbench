@@ -1,8 +1,7 @@
-import { cn } from "@/lib/utils";
+import { useState } from "react";
 
-const CARD_SHADOW = "0 1px 2px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.04)";
-const CARD_BG = "linear-gradient(180deg, #1c1c1f 0%, #17171a 100%)";
-const CARD_BG_HOT = "linear-gradient(180deg, #242428 0%, #1e1e22 100%)";
+import { cn } from "@/lib/utils";
+import { CONTEXT_PILL_BASE_CLASS, contextPillStyle } from "./context-pill";
 
 export function WorktreeToggle({
   pressed,
@@ -11,17 +10,16 @@ export function WorktreeToggle({
   pressed: boolean;
   onToggle: () => void;
 }) {
+  const [hot, setHot] = useState(false);
   return (
     <button
       type="button"
       data-worktree-toggle=""
       aria-pressed={pressed}
-      className="inline-flex max-w-full items-center gap-1.5 rounded-[10px] border py-1 pl-2 pr-2.5 text-[13px] leading-5 text-[#ececef]"
-      style={{
-        backgroundImage: pressed ? CARD_BG_HOT : CARD_BG,
-        borderColor: pressed ? "#3a3a42" : "#2e2e33",
-        boxShadow: CARD_SHADOW,
-      }}
+      className={cn(CONTEXT_PILL_BASE_CLASS, "max-w-full pl-2 pr-2.5")}
+      style={contextPillStyle(pressed || hot)}
+      onMouseEnter={() => setHot(true)}
+      onMouseLeave={() => setHot(false)}
       onClick={(event) => {
         event.stopPropagation();
         onToggle();
@@ -29,7 +27,10 @@ export function WorktreeToggle({
     >
       <span
         aria-hidden
-        className={cn("h-2 w-2 shrink-0 rounded-full", pressed ? "bg-[#ececef]" : "bg-[#5c5c66]")}
+        className={cn(
+          "h-2 w-2 shrink-0 rounded-full transition-colors",
+          pressed ? "bg-[var(--wb-accent)]" : "bg-[var(--wb-faint)]",
+        )}
       />
       在新的工作树中运行
     </button>
@@ -41,8 +42,8 @@ export function WorktreeSessionLabel({ label, title }: { label: string; title: s
     <span
       data-worktree-session=""
       title={title}
-      className="inline-flex max-w-[18rem] min-w-0 items-center truncate rounded-[10px] border border-[#2e2e33] px-2.5 py-1 text-[13px] leading-5 text-[#ececef]"
-      style={{ backgroundImage: CARD_BG, boxShadow: CARD_SHADOW }}
+      className={cn(CONTEXT_PILL_BASE_CLASS, "max-w-[18rem] min-w-0 truncate px-2.5")}
+      style={contextPillStyle(false)}
     >
       {label}
     </span>
