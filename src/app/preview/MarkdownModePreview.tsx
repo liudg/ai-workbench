@@ -1,6 +1,6 @@
 import { FileText } from "lucide-react";
 
-import { markdownViewer } from "@/features/panel/viewers/markdown";
+import { markdownViewer } from "@/features/panel";
 
 const SAMPLE = `# 宝石说明
 
@@ -16,10 +16,10 @@ public class Gem { int n = 4; // note
 export default function MarkdownModePreview() {
   const View = markdownViewer.View;
   return (
-    <div className="flex h-screen w-screen items-stretch bg-[#0a0a0a] text-[#e8e8e8]">
-      <section data-preview-panel className="flex h-full min-w-0 flex-1 flex-col border-l border-[#222] bg-[#0f0f0f]">
-        <div className="flex h-11 shrink-0 items-center border-b border-[#222] px-1.5">
-          <div className="my-1.5 flex min-w-0 max-w-[180px] items-center rounded-md bg-[#1c1c1c] text-[#e8e8e8]">
+    <div className="flex h-screen w-screen items-stretch bg-wb-shell text-wb-fg">
+      <section data-preview-panel className="flex h-full min-w-0 flex-1 flex-col border-l border-wb-border bg-wb-surface">
+        <div className="flex h-11 shrink-0 items-center border-b border-wb-border px-1.5">
+          <div className="my-1.5 flex min-w-0 max-w-[180px] items-center rounded-md bg-wb-active text-wb-fg">
             <span className="flex min-w-0 items-center gap-1 px-2 py-1.5 text-xs">
               <FileText className="h-3.5 w-3.5" />
               <span className="truncate">宝石说明.md</span>

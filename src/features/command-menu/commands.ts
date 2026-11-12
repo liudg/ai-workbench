@@ -1,7 +1,7 @@
-import { THREAD_FIND_COPY } from "../chat/find/copy.ts";
-import { showsFileChanges } from "../changes-model/capabilities.ts";
+import { THREAD_FIND_COPY } from "../chat/headless.ts";
+import { showsFileChanges } from "../changes-model/index.ts";
 import type { AgentKind, ChangeCapabilities } from "../../types/index.ts";
-import type { ForkTarget } from "../tasks/fork-targets.ts";
+import type { ForkTarget } from "../tasks/index.ts";
 import { COMMAND_MENU_COPY as COPY } from "./copy.ts";
 import { commandFilter } from "./fuzzy.ts";
 
@@ -25,6 +25,7 @@ export type PaletteCommandId =
   | "new-standalone"
   | "open-folder"
   | "settings"
+  | "toggle-theme"
   | "search-chats"
   | "find-in-thread"
   | "search-files"
@@ -158,6 +159,7 @@ function commandItems(input: PaletteInput): PaletteRow[] {
     rows.push(command("toggle-side-chat", COPY.toggleSideChat, "panels", COPY.shortcutSideChat));
   }
   rows.push(command("open-folder", COPY.openFolder, "workspace"));
+  rows.push(command("toggle-theme", COPY.toggleTheme, "settings"));
   rows.push(command("settings", COPY.settings, "settings"));
   return rows;
 }

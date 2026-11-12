@@ -182,7 +182,7 @@ export function SelectionMenu({
       ref={menuRef}
       role="menu"
       data-selection-menu
-      className="fixed z-[80] flex items-center rounded-lg border border-[#2a2a2a] bg-[#1b1b1b] px-1 py-1 shadow-lg"
+      className="wb-popover fixed z-[80] flex items-center p-1"
       style={{
         top: place?.top ?? -9999,
         left: place?.left ?? 0,
@@ -192,12 +192,12 @@ export function SelectionMenu({
     >
       {items.map((item, index) => (
         <Fragment key={item.id}>
-          {index > 0 ? <span className="mx-0.5 h-3.5 w-px bg-[#333]" /> : null}
+          {index > 0 ? <span className="mx-0.5 h-3.5 w-px bg-wb-border" /> : null}
           <button
             type="button"
             role="menuitem"
             data-selection-action={item.id}
-            className="rounded-md px-2.5 py-1 text-xs text-[#e8e8e8] hover:bg-white/10"
+            className="rounded-md px-2.5 py-1 text-xs font-medium text-wb-fg hover:bg-wb-hover"
             onClick={() => {
               const selection = window.getSelection();
               const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0).cloneRange() : null;

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { blankSession, placeTab, selectTab, dropTab } from "../../panel/state/panel-session.ts";
+import { blankSession, placeTab, selectTab, dropTab } from "../../panel/headless.ts";
 import { recentSideTab } from "./selection.ts";
 
 test("content follows the most recently selected chat across other tabs and closes", () => {

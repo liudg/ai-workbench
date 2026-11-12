@@ -2,8 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 
 import type { DiffScope } from "@/types";
 import { relativeToProject } from "@/shared/path";
-import { parseUnifiedDiff, type FileChange } from "@/features/changes-model/diff-parse";
-import { usePanel } from "@/features/panel/core/PanelProvider";
+import { parseUnifiedDiff, type FileChange } from "@/features/changes-model";
+import { usePanel } from "../core/PanelProvider";
 import { filterFiles, setFileFilter, useFileFilter } from "../core/file-filter";
 import { browserDiffMenuStorage, writeDiffMenuOptions, type DiffMenuOptions } from "./diff-menu-options";
 import { patchFromFiles } from "./git-apply";

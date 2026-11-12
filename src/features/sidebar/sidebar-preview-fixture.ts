@@ -24,11 +24,12 @@ const TASKS = [
   "补图标资源",
 ];
 
-function profile(kind: AgentKind, name: string, icon: string | null): AgentProfile {
+function profile(kind: AgentKind, name: string, icon: string | null, monochrome = false): AgentProfile {
   return {
     kind,
     display_name: name,
     icon,
+    monochrome_icon: monochrome,
     commands: [],
     default_access: null,
     capabilities: {
@@ -190,7 +191,7 @@ export function seedSidebarPreview() {
   startPreview({ [TOPIC_PROJECTS]: projects, [TOPIC_TASKS]: previewTasks(Date.now()) });
   seedAgents(
     {
-      "codex-cli": profile("codex-cli", "Codex CLI", "/agent-icons/codex.svg"),
+      "codex-cli": profile("codex-cli", "Codex CLI", "/agent-icons/codex.svg", true),
       "claude-code": profile("claude-code", "Claude Code", "/agent-icons/claude.svg"),
     },
     [installation("codex-cli", "Codex CLI"), installation("claude-code", "Claude Code")],

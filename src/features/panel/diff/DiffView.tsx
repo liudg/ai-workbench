@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEven
 import { cn } from "@/lib/utils";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { useElementWidth } from "@/shared/dom/useElementWidth";
-import type { FileChange } from "@/features/changes-model/diff-parse";
+import type { FileChange } from "@/features/changes-model";
 import { nextDraggedListWidth, paneFileColumnWidth } from "../core/layout";
 import { ColumnSplitter } from "../core/ColumnSplitter";
 import { useColumnGesture } from "../core/useColumnGesture";
@@ -199,10 +199,10 @@ export function DiffView({ files, focus, onFocusHandled }: {
             )}
             data-diff-wrap={doc.wrap ? "on" : "off"}
           >
-            {doc.loading ? <p className="px-4 py-6 text-sm text-zinc-500">正在读取…</p> : null}
-            {doc.gitError ? <p className="px-4 py-6 text-sm text-red-300">{doc.gitError}</p> : null}
+            {doc.loading ? <p className="px-4 py-6 text-sm text-wb-fg-3">正在读取…</p> : null}
+            {doc.gitError ? <p className="px-4 py-6 text-sm text-wb-danger">{doc.gitError}</p> : null}
             {!doc.loading && !doc.gitError && doc.shown.length === 0 ? (
-              <p className="px-4 py-6 text-sm text-zinc-500">{DESKTOP_ZH.noFileChanges}</p>
+              <p className="px-4 py-6 text-sm text-wb-fg-3">{DESKTOP_ZH.noFileChanges}</p>
             ) : null}
             {doc.shown.map((file) => (
               <DiffFileSection
@@ -258,7 +258,7 @@ export function DiffView({ files, focus, onFocusHandled }: {
             width={listWidth}
             onSelect={doc.revealFile}
             empty={
-              <p className="px-2 py-6 text-center text-xs leading-5 text-zinc-500">{DESKTOP_ZH.noFileChanges}</p>
+              <p className="px-2 py-6 text-center text-xs leading-5 text-wb-fg-3">{DESKTOP_ZH.noFileChanges}</p>
             }
           />
         ) : null}

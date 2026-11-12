@@ -4,7 +4,8 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { agentsApi } from "@/features/agents";
-import type { AgentOption, ComposerHost } from "@/features/chat/composer/host";
+import type { AgentOption, ComposerHost } from "@/features/chat/headless";
+import { usePanelStore } from "@/features/panel/headless";
 import { projectsApi, type Project } from "@/features/projects";
 import { tasksApi } from "@/features/tasks";
 import { agentIdentity } from "@/shared/agent/identity";
@@ -27,7 +28,6 @@ import {
   restoreDraftSnippets,
   type ComposerDraft,
 } from "../session/composer-drafts";
-import { usePanelStore } from "@/features/panel/state/store";
 import { initialSandbox } from "@/lib/sandbox";
 import { rememberAgent, rememberSandbox, rememberTuning, stickyAgent, stickySandbox, stickyTuning } from "./sticky";
 

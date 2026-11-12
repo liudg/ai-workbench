@@ -39,7 +39,7 @@ export function ChatThumb({
     return (
       <span
         className={cn(
-          "flex items-center justify-center overflow-hidden bg-black/25 px-1 text-center text-[10px] leading-3 text-white/80",
+          "flex items-center justify-center overflow-hidden border border-wb-border bg-wb-elev px-1 text-center text-[10px] leading-3 text-wb-fg-2",
           className,
         )}
       >
@@ -52,7 +52,7 @@ export function ChatThumb({
     <img
       src={src}
       alt={name}
-      className={cn("bg-black/20", className)}
+      className={cn("bg-wb-elev", className)}
       onError={() => setFailed(true)}
     />
   );

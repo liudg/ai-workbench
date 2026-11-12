@@ -143,7 +143,7 @@ function Frame({
   status?: Session["status"];
 }) {
   return (
-    <div data-usage-frame={id} className="h-[50vh] min-h-0 border-b border-zinc-800">
+    <div data-usage-frame={id} className="h-[50vh] min-h-0 border-b border-wb-border">
       <PreviewSession session={session(id, title, status)} events={events} profiles={profiles} />
     </div>
   );
@@ -153,7 +153,7 @@ function Frame({
 export default function UsagePreview() {
   const profiles = useUsagePreviewProfiles();
   return (
-    <div className="h-screen w-screen overflow-hidden bg-[#0f0f0f] text-[#e8e8e8]">
+    <div className="h-screen w-screen overflow-hidden bg-wb-surface text-wb-fg">
       <Frame id="usage-on" title="整理会话用量" events={supportedEvents} profiles={profiles} />
       <Frame id="usage-run" title="整理会话用量" events={runningEvents} status="running" profiles={profiles} />
       <Frame id="usage-off" title="未报告用量" events={unsupportedEvents} profiles={profiles} />

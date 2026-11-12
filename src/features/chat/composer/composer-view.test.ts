@@ -69,7 +69,7 @@ test("queue keeps the composer open while a turn is running", () => {
   assert.equal(noQueue.composerLocked, true);
   assert.equal(noQueue.queueOn, false);
   assert.equal(noQueue.stopMode, false);
-  assert.equal(noQueue.placeholder, "随心输入");
+  assert.equal(noQueue.placeholder, "输入任务或问题，@ 引用文件");
   assert.equal(view({ status: "stopped" }).placeholder, "会话已停止，请新建会话");
 });
 
@@ -79,7 +79,7 @@ test("stop shows while a turn is open when cancel is supported and the queue is 
   assert.equal(running.queueOn, false);
   assert.equal(running.stopMode, true);
   assert.equal(running.sendDisabled, false);
-  assert.equal(running.placeholder, "随心输入");
+  assert.equal(running.placeholder, "输入任务或问题，@ 引用文件");
   assert.equal(running.composerLocked, true);
   assert.equal(queueStripVisible({ supportsQueue: running.queueOn, count: 2 }), false);
   const idle = view({ status: "completed", caps: capsOffQueue });

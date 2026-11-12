@@ -83,7 +83,7 @@ const PROFILES: Partial<Record<AgentKind, AgentProfile>> = {
 /** 开发预览：计划回合结束后，确认面板在输入框上方。`?preview=plan-choice` */
 export default function PlanChoicePreview() {
   return (
-    <div className="h-screen w-screen bg-[#0f0f0f] text-[#e8e8e8]">
+    <div className="h-screen w-screen bg-wb-surface text-wb-fg">
       <PreviewSession session={session()} events={events} profiles={PROFILES} />
     </div>
   );

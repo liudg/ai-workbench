@@ -27,7 +27,11 @@ export function SessionAgentIcon({
         title={label}
         data-agent-icon={src}
         draggable={false}
-        className={cn("h-[18px] w-[18px] shrink-0", className)}
+        className={cn(
+          "h-[18px] w-[18px] shrink-0",
+          identity?.monochrome && "wb-agent-mono",
+          className,
+        )}
         onError={() => setFailed(true)}
       />
     );
@@ -38,7 +42,7 @@ export function SessionAgentIcon({
       aria-label={label}
       aria-hidden={label ? undefined : true}
       data-agent-icon="generic"
-      className={cn("flex h-[18px] w-[18px] shrink-0 items-center justify-center text-[#888]", className)}
+      className={cn("flex h-[18px] w-[18px] shrink-0 items-center justify-center text-wb-fg-2", className)}
     >
       <Bot className="h-3.5 w-3.5" aria-hidden />
     </span>

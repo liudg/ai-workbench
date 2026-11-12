@@ -1,9 +1,9 @@
 import { useMemo, type ReactNode } from "react";
 
-import { MessageImage } from "@/features/chat/answer/MessageContent";
-import { WebsiteCard } from "@/features/chat/cards/WebsiteCard";
-import { usePanelOptional } from "@/features/panel/core/PanelProvider";
+import { usePanelOptional } from "@/features/panel";
 import { MarkdownHost, type MarkdownHostApi } from "@/shared/markdown/host";
+import { WebsiteCard } from "../cards/WebsiteCard";
+import { MessageImage } from "./MessageContent";
 
 /** 聊天和右侧预览共用的回答渲染。挂在已经有面板上下文的会话里。 */
 export function AnswerMarkdownHost({ children }: { children: ReactNode }) {

@@ -1,8 +1,7 @@
 import { useMemo } from "react";
 
 import { formatMessageTime } from "@/lib/utils";
-import { showsFileChanges } from "@/features/changes-model/capabilities";
-import { turnChanges } from "@/features/changes-model/diff-parse";
+import { showsFileChanges, turnChanges } from "@/features/changes-model";
 import { useChangeCapabilities } from "../use-change-capabilities";
 import { ChangeCard } from "../cards/ChangeCard";
 import { MessageFooter } from "../events/chrome";

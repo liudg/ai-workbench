@@ -64,8 +64,8 @@ export function SubmenuItem({
         aria-expanded={open}
         data-session-action={item.id}
         className={cn(
-          "flex w-full items-center justify-between px-3 py-2 text-left text-sm text-zinc-100 hover:bg-zinc-800",
-          open && "bg-zinc-800",
+          "flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-[13px] text-wb-fg transition-colors hover:bg-wb-hover",
+          open && "bg-wb-hover",
         )}
         onClick={(event) => {
           event.stopPropagation();
@@ -80,14 +80,14 @@ export function SubmenuItem({
         }}
       >
         {item.label}
-        <ChevronRight className="h-3.5 w-3.5 text-zinc-500" aria-hidden="true" />
+        <ChevronRight className="h-3.5 w-3.5 text-wb-fg-3" aria-hidden="true" />
       </button>
       {open && (
         <div
           ref={panelRef}
           role="menu"
           aria-label={item.label}
-          className="fixed z-50 min-w-40 rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
+          className="wb-popover fixed z-50 min-w-40 p-1"
           style={box ? { top: box.top, left: box.left } : { top: 0, left: 0, visibility: "hidden" }}
           onKeyDown={(event) => {
             if (event.key !== "ArrowLeft") return;
@@ -103,7 +103,7 @@ export function SubmenuItem({
               role="menuitem"
               data-session-action={child.id}
               data-agent={child.agent}
-              className="block w-full whitespace-nowrap px-3 py-2 text-left text-sm text-zinc-100 hover:bg-zinc-800 focus:bg-zinc-800 focus:outline-none"
+              className="block w-full whitespace-nowrap rounded-lg px-2.5 py-1.5 text-left text-[13px] text-wb-fg hover:bg-wb-hover focus:bg-wb-hover focus:outline-none"
               onClick={(event) => {
                 event.stopPropagation();
                 onSelect(child.id, child.agent);

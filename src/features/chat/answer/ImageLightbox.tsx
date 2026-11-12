@@ -65,7 +65,7 @@ export function ImageLightbox({
       <button
         type="button"
         aria-label={DESKTOP_ZH.imagePreviewClose}
-        className="absolute right-4 top-4 rounded-full bg-black/60 p-2 text-zinc-100 hover:bg-black/80"
+        className="absolute right-4 top-4 rounded-full bg-black/60 p-2 text-white transition-colors hover:bg-black/80"
         onClick={onClose}
       >
         <X className="h-4 w-4" />
@@ -75,7 +75,7 @@ export function ImageLightbox({
           <button
             type="button"
             aria-label={DESKTOP_ZH.imagePreviewPrevious}
-            className="absolute left-4 top-1/2 -translate-y-1/2 rounded-full bg-black/60 p-2 text-zinc-100 hover:bg-black/80"
+            className="absolute left-4 top-1/2 -translate-y-1/2 rounded-full bg-black/60 p-2 text-white transition-colors hover:bg-black/80"
             onClick={() => step(-1)}
           >
             <ChevronLeft className="h-5 w-5" />
@@ -83,7 +83,7 @@ export function ImageLightbox({
           <button
             type="button"
             aria-label={DESKTOP_ZH.imagePreviewNext}
-            className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full bg-black/60 p-2 text-zinc-100 hover:bg-black/80"
+            className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full bg-black/60 p-2 text-white transition-colors hover:bg-black/80"
             onClick={() => step(1)}
           >
             <ChevronRight className="h-5 w-5" />

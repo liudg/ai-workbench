@@ -8,6 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import type { Project } from "@/features/projects";
 import { removeConfirmLabel } from "./project-menu";
 import { useEditProjectForm } from "./useEditProjectForm";
@@ -37,12 +38,10 @@ export function EditProjectDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-[440px] gap-5 overflow-hidden rounded-2xl border-zinc-700 bg-zinc-900 p-6 outline-none [&>*]:min-w-0">
+      <DialogContent className="max-w-[440px] gap-4 [&>*]:min-w-0">
         <DialogHeader className="pr-6">
-          <DialogTitle className="text-lg font-semibold tracking-tight text-zinc-50">
-            编辑项目
-          </DialogTitle>
-          <DialogDescription className="sr-only">修改项目名称和源文件夹。</DialogDescription>
+          <DialogTitle>项目设置</DialogTitle>
+          <DialogDescription>修改项目名称或关联的工作目录。</DialogDescription>
         </DialogHeader>
 
         <form
@@ -52,34 +51,33 @@ export function EditProjectDialog({
             void submit();
           }}
         >
-          <div className="flex min-w-0 items-center gap-2.5 rounded-xl border border-zinc-600 bg-zinc-950/50 px-3 transition-colors focus-within:border-sky-500 focus-within:ring-1 focus-within:ring-sky-500/70">
-            <Folder className="h-4 w-4 shrink-0 text-zinc-500" />
-            <input
+          <div className="space-y-1.5">
+            <label className="block text-xs font-medium text-wb-fg-2">项目名称</label>
+            <Input
               value={name}
               onChange={(event) => setName(event.target.value)}
               placeholder="项目名称"
               aria-label="项目名称"
               autoFocus
-              className="h-11 w-full min-w-0 bg-transparent text-sm text-zinc-100 outline-none placeholder:text-zinc-500"
             />
           </div>
 
-          <div className="min-w-0">
-            <div className="mb-2 text-sm text-zinc-300">源文件夹</div>
-            <div className="overflow-hidden rounded-xl border border-zinc-700">
+          <div className="min-w-0 space-y-1.5">
+            <div className="text-xs font-medium text-wb-fg-2">关联目录</div>
+            <div className="overflow-hidden rounded-xl border border-wb-border bg-wb-elev/40">
               {folders.map((folder, index) => (
                 <div
                   key={`${folder}-${index}`}
-                  className="flex min-w-0 items-center gap-2 border-b border-zinc-800 px-3 py-2.5"
+                  className="flex min-w-0 items-center gap-2 border-b border-wb-border px-3 py-2"
                 >
-                  <Folder className="h-4 w-4 shrink-0 text-zinc-500" aria-hidden="true" />
-                  <span className="min-w-0 flex-1 truncate text-sm text-zinc-200" title={folder}>
+                  <Folder className="h-4 w-4 shrink-0 text-wb-fg-3" aria-hidden="true" />
+                  <span className="min-w-0 flex-1 truncate font-mono text-xs text-wb-fg" title={folder}>
                     {folder}
                   </span>
                   <button
                     type="button"
                     aria-label="移除文件夹"
-                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-wb-fg-3 hover:bg-wb-hover hover:text-wb-fg"
                     onClick={() => removeFolder(index)}
                   >
                     <X className="h-3.5 w-3.5" />
@@ -88,45 +86,36 @@ export function EditProjectDialog({
               ))}
               <button
                 type="button"
-                className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-zinc-200 hover:bg-zinc-800"
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
                 onClick={() => void addFolder()}
               >
-                <FolderPlus className="h-4 w-4 shrink-0 text-zinc-400" aria-hidden="true" />
-                添加文件夹
+                <FolderPlus className="h-4 w-4 shrink-0 text-wb-fg-3" aria-hidden="true" />
+                添加目录
               </button>
             </div>
           </div>
 
           {error && (
-            <p className="rounded-md border border-red-500/25 bg-red-500/[0.06] px-3 py-2 text-xs text-red-300">
+            <p className="rounded-lg border border-wb-danger/25 bg-wb-danger-soft px-3 py-2 text-xs text-wb-danger">
               {error}
             </p>
           )}
 
-          <div className="flex min-w-0 items-center justify-between gap-3 pt-1">
+          <div className="flex min-w-0 items-center justify-between gap-3 pt-2">
             <button
               type="button"
-              className="text-sm text-red-300 hover:text-red-200 disabled:opacity-50"
+              className="text-[13px] text-wb-danger hover:opacity-85 disabled:opacity-50"
               disabled={busy}
               onClick={() => void removeLocal()}
             >
-              {confirmingRemove ? removeConfirmLabel(sessionCount) : "移除本地项目"}
+              {confirmingRemove ? removeConfirmLabel(sessionCount) : "移除项目"}
             </button>
-            <div className="flex items-center gap-3">
-              <Button
-                type="button"
-                variant="ghost"
-                className="text-zinc-400 hover:bg-transparent hover:text-zinc-200"
-                onClick={onClose}
-              >
+            <div className="flex items-center gap-2">
+              <Button type="button" variant="ghost" onClick={onClose}>
                 取消
               </Button>
-              <Button
-                type="submit"
-                disabled={!valid || busy}
-                className="rounded-lg bg-black px-4 text-white shadow-none hover:bg-zinc-800"
-              >
-                {busy ? "处理中…" : "保存"}
+              <Button type="submit" disabled={!valid || busy}>
+                {busy ? "保存中…" : "保存"}
               </Button>
             </div>
           </div>

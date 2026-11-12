@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -80,38 +81,27 @@ export function BranchNameDialog({
             submit();
           }}
         >
-          <label className="grid gap-1.5 text-sm text-zinc-300">
+          <label className="grid gap-1.5 text-sm text-wb-fg-2">
             分支名
-            <input
+            <Input
               autoFocus
               value={name}
               onChange={(event) => {
                 setName(event.target.value);
                 if (invalid) setInvalid(null);
               }}
-              className="h-9 rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none focus:border-zinc-500"
             />
           </label>
           {shown ? (
-            <p role="alert" className="text-xs text-red-300">
+            <p role="alert" className="text-xs text-wb-danger">
               {shown}
             </p>
           ) : null}
           <DialogFooter>
-            <Button
-              type="button"
-              variant="ghost"
-              className="text-zinc-400 hover:bg-transparent hover:text-zinc-200"
-              disabled={busy}
-              onClick={onCancel}
-            >
+            <Button type="button" variant="ghost" disabled={busy} onClick={onCancel}>
               取消
             </Button>
-            <Button
-              type="submit"
-              disabled={busy}
-              className="rounded-lg bg-zinc-100 px-4 text-zinc-950 shadow-none hover:bg-white"
-            >
+            <Button type="submit" disabled={busy}>
               {busy ? busyLabel : submitLabel}
             </Button>
           </DialogFooter>

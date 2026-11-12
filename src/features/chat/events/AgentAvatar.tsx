@@ -18,7 +18,7 @@ export function AgentAvatar({
     <span
       aria-hidden
       className={cn(
-        "relative inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-[#333] bg-[#222] ring-2 ring-[#1a1a1a]",
+        "relative inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-wb-border-strong bg-wb-elev ring-2 ring-wb-surface",
         className,
       )}
     >
@@ -26,7 +26,7 @@ export function AgentAvatar({
       {dotClass ? (
         <span
           className={cn(
-            "absolute -bottom-px -right-px h-2 w-2 rounded-full ring-2 ring-[#1a1a1a]",
+            "absolute -bottom-px -right-px h-2 w-2 rounded-full ring-2 ring-wb-surface",
             dotClass,
             pulse && "animate-pulse motion-reduce:animate-none",
           )}

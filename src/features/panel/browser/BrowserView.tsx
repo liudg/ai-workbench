@@ -50,11 +50,11 @@ export function BrowserView({
         onReload={session.reload}
         onAnnotate={session.toggleAnnotate}
       />
-      {session.error ? <p className="shrink-0 px-3 py-1 text-xs text-red-300">{session.error}</p> : null}
+      {session.error ? <p className="shrink-0 px-3 py-1 text-xs text-wb-danger">{session.error}</p> : null}
       {session.snapshotFailed ? (
-        <p className="shrink-0 px-3 py-1 text-[11px] text-amber-200/90">{DESKTOP_ZH.browserSnapshotFailed}</p>
+        <p className="shrink-0 px-3 py-1 text-[11px] text-wb-warn">{DESKTOP_ZH.browserSnapshotFailed}</p>
       ) : null}
-      <div ref={session.viewport} className="relative min-h-0 min-w-0 flex-1 bg-zinc-950" data-browser-viewport>
+      <div ref={session.viewport} className="relative min-h-0 min-w-0 flex-1 bg-wb-panel" data-browser-viewport>
         {!session.frameTarget ? <NewTabPage tabId={tabId} /> : null}
         {!session.native && session.frameTarget ? (
           <iframe
@@ -63,7 +63,7 @@ export function BrowserView({
             src={session.localFrame ? undefined : session.frameTarget}
             srcDoc={session.localFrame ? session.text || undefined : undefined}
             key={session.frameKey}
-            className="h-full w-full border-0 bg-zinc-950"
+            className="h-full w-full border-0 bg-wb-panel"
             data-browser-frame="iframe"
             onLoad={session.onFrameLoad}
           />

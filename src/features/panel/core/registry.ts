@@ -1,6 +1,6 @@
 import type { ComponentType } from "react";
 
-import type { FileChange } from "../../changes-model/diff-parse.ts";
+import type { FileChange } from "../../changes-model/index.ts";
 import type { PanelData } from "./PanelProvider.tsx";
 
 /** 打开动作。查看器只靠 match 得分认领，核心不按种类分支渲染。 */

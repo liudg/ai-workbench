@@ -27,14 +27,13 @@ import type {
 import type { TextSnippet, TextSnippetDraft } from "@/shared/text-snippet";
 import type { BrowserHistory } from "../browser/browser";
 import { useCloseBrowserOnUnmount } from "../browser/use-browser-host";
-import { showsFileChanges } from "@/features/changes-model/capabilities";
+import { sessionChanges, showsFileChanges, type FileChange } from "@/features/changes-model";
 import type { PanelLayoutMode } from "./layout";
 import {
   browserDiffMenuStorage,
   readDiffMenuOptions,
 } from "../diff/diff-menu-options";
 import { defaultDiffViewPrefs, type DiffViewPrefs } from "../diff/view-prefs";
-import { sessionChanges, type FileChange } from "@/features/changes-model/diff-parse";
 import type { PanelSlice } from "../state/slice";
 import { queueTerminalRun } from "../terminal/terminal-runs";
 import { emptyCtx } from "../state/panel-session";
@@ -143,8 +142,6 @@ export function usePanel(): PanelApi {
 export function usePanelOptional(): PanelApi | null {
   return useContext(PreviewContext);
 }
-
-export type { PanelTab };
 
 interface PanelProps {
   sessionId: string;

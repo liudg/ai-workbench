@@ -1,5 +1,4 @@
-import type { OpenTarget } from "@/features/panel/core/registry";
-import { usePanelStore } from "@/features/panel/state/store";
+import { usePanelStore, type OpenTarget } from "@/features/panel/headless";
 import { tasksApi, type TaskEntry, type TaskSession } from "@/features/tasks";
 import { showError } from "@/shared/shell/error-banner";
 import type { TextSnippetDraft } from "@/shared/text-snippet";

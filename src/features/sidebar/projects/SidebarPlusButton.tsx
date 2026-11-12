@@ -26,7 +26,7 @@ export function SidebarPlusButton({
       ref={buttonRef}
       type="button"
       className={cn(
-        "flex h-7 w-7 items-center justify-center rounded-md text-[#888] transition-colors hover:bg-white/5 hover:text-[#e8e8e8]",
+        "flex h-6 w-6 items-center justify-center rounded-md text-wb-fg-3 transition-colors hover:bg-wb-hover hover:text-wb-fg",
         className,
       )}
       aria-label={label}
@@ -35,7 +35,7 @@ export function SidebarPlusButton({
       title={title ?? label}
       onClick={onClick}
     >
-      <Plus className="h-[18px] w-[18px]" strokeWidth={2} />
+      <Plus className="h-4 w-4" strokeWidth={2} />
     </button>
   );
 }

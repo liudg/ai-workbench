@@ -57,7 +57,7 @@ export default function CommandMenuPreview() {
   const safeActive = rows.length === 0 ? 0 : Math.min(active, rows.length - 1);
 
   return (
-    <div className="h-screen bg-[#0f0f0f] text-[#e8e8e8]" data-command-menu-preview>
+    <div className="h-screen bg-wb-surface text-wb-fg" data-command-menu-preview>
       <CommandMenu
         query={query}
         rows={rows}

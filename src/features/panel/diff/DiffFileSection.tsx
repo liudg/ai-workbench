@@ -2,8 +2,8 @@ import { Fragment, useLayoutEffect, type MouseEvent as ReactMouseEvent } from "r
 import { ChevronRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import type { FileChange } from "@/features/changes-model/diff-parse";
-import { previewKindForPath } from "@/features/panel/core/preview-kind";
+import type { FileChange } from "@/features/changes-model";
+import { previewKindForPath } from "../core/preview-kind";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { MarkdownBody } from "@/shared/markdown/MarkdownBody";
 import type { TextSnippetDraft } from "@/shared/text-snippet";
@@ -41,7 +41,7 @@ export interface DiffLineHit {
   draft: TextSnippetDraft | null;
 }
 
-const PICKED = "shadow-[inset_3px_0_0_#2f81f7]";
+const PICKED = "bg-[var(--wb-line-pick-bg)] shadow-[inset_3px_0_0_var(--color-wb-accent)]";
 
 export function DiffFileSection({
   file,
@@ -135,8 +135,8 @@ export function DiffFileSection({
   return (
     <section
       className={cn(
-        "min-w-0 scroll-mt-2 border-b border-[#222]",
-        active && "bg-[#121212]",
+        "min-w-0 scroll-mt-2 border-b border-wb-border",
+        active && "bg-wb-elev/60",
       )}
       data-diff-file-body={file.path}
       data-diff-open={open ? "true" : "false"}
@@ -146,7 +146,7 @@ export function DiffFileSection({
       onContextMenu={rowMenu}
     >
       <header
-        className="flex min-w-0 cursor-pointer flex-nowrap items-center gap-2 px-3 py-2 text-xs"
+        className="flex min-w-0 cursor-pointer flex-nowrap items-center gap-2 px-3 py-2 text-xs transition-colors hover:bg-wb-hover/60"
         data-diff-summary={file.path}
         onClick={(event) => {
           event.stopPropagation();
@@ -159,7 +159,7 @@ export function DiffFileSection({
           data-diff-toggle={file.path}
           aria-expanded={open}
           aria-label={open ? "收起差异" : "展开差异"}
-          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-[#888] hover:bg-white/5 hover:text-[#e8e8e8]"
+          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-wb-fg-3 transition-colors hover:bg-wb-hover hover:text-wb-fg"
         >
           <ChevronRight
             data-diff-disclosure={diffFileDisclosureClass(open)}
@@ -169,11 +169,11 @@ export function DiffFileSection({
             )}
           />
         </button>
-        <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-[#cfcfcf]" title={file.path}>
+        <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-wb-fg" title={file.path}>
           {file.path}
         </span>
-        <span className="shrink-0 whitespace-nowrap font-mono text-[12px] text-[#3fb950]">+{file.added}</span>
-        <span className="shrink-0 whitespace-nowrap font-mono text-[12px] text-[#f85149]">-{file.removed}</span>
+        <span className="shrink-0 whitespace-nowrap font-mono text-[12px] tabular-nums text-wb-diff-add-fg">+{file.added}</span>
+        <span className="shrink-0 whitespace-nowrap font-mono text-[12px] tabular-nums text-wb-diff-del-fg">-{file.removed}</span>
       </header>
       {open ? (
         renderPreview && markdown ? (
@@ -181,11 +181,11 @@ export function DiffFileSection({
             <MarkdownBody text={source && source.length > 0 ? source : previewTextFromDiff(file.diff)} />
           </div>
         ) : display.whitespaceHidden ? (
-          <p className="px-3 py-2 text-xs text-zinc-500" data-diff-whitespace-hidden>
+          <p className="px-3 py-2 text-xs text-wb-fg-3" data-diff-whitespace-hidden>
             {DESKTOP_ZH.diffWhitespaceHidden}
           </p>
         ) : rows.length === 0 ? (
-          <p className="px-3 py-2 text-xs text-zinc-500">没有可显示的差异文本。</p>
+          <p className="px-3 py-2 text-xs text-wb-fg-3">没有可显示的差异文本。</p>
         ) : split ? (
           <div className="min-w-0 pb-2 font-mono text-xs leading-5" data-diff-split-body>
             {split.map((row, index) =>
@@ -245,18 +245,18 @@ function SplitCellView({
       {...(commentable ? commentRowProps(scope, row) : {})}
       className={cn(
         "group relative flex min-w-0",
-        edge === "left" && "border-r border-[#222]",
-        cell.tone === "add" && "bg-[#173324] text-[#b7ebc6]",
-        cell.tone === "del" && "bg-[#3a1f24] text-[#f0b4b4]",
-        cell.tone === "context" && "text-[#d4d4d4]",
-        cell.tone === "meta" && "text-zinc-500",
-        cell.tone === "pad" && "bg-zinc-950/30",
+        edge === "left" && "border-r border-wb-border",
+        cell.tone === "add" && "bg-wb-diff-add-bg text-wb-fg",
+        cell.tone === "del" && "bg-wb-diff-del-bg text-wb-fg",
+        cell.tone === "context" && "text-wb-fg",
+        cell.tone === "meta" && "text-wb-fg-3",
+        cell.tone === "pad" && "bg-wb-elev/50",
         spanCovers(comments, scope, row) && PICKED,
       )}
     >
       {commentable ? <CommentPlus scope={scope} row={row} comments={comments} className="left-0.5" /> : null}
-      <span className="w-10 shrink-0 select-none px-2 text-right text-zinc-500">{cell.lineNo ?? ""}</span>
-      <LineText text={cell.text} parts={cell.parts} wrap={wrap} />
+      <span className="w-10 shrink-0 select-none px-2 text-right tabular-nums text-wb-fg-3">{cell.lineNo ?? ""}</span>
+      <LineText text={cell.text} parts={cell.parts} wrap={wrap} tone={cell.tone} />
     </div>
   );
 }
@@ -282,24 +282,24 @@ function DiffRowView({
       {...(commentable ? commentRowProps(scope, index) : {})}
       className={cn(
         "group relative flex min-w-0 flex-nowrap",
-        row.tone === "add" && "bg-[#173324] text-[#b7ebc6]",
-        row.tone === "del" && "bg-[#3a1f24] text-[#f0b4b4]",
-        row.tone === "context" && "text-[#d4d4d4]",
-        row.tone === "meta" && "text-zinc-500",
+        row.tone === "add" && "bg-wb-diff-add-bg text-wb-fg",
+        row.tone === "del" && "bg-wb-diff-del-bg text-wb-fg",
+        row.tone === "context" && "text-wb-fg",
+        row.tone === "meta" && "text-wb-fg-3",
         spanCovers(comments, scope, index) && PICKED,
       )}
     >
       {commentable ? <CommentPlus scope={scope} row={index} comments={comments} className="left-0.5" /> : null}
-      <span data-diff-old-line className="w-9 shrink-0 select-none px-1 text-right text-[#6a6a6a]">
+      <span data-diff-old-line className="w-9 shrink-0 select-none px-1 text-right tabular-nums text-wb-fg-3">
         {row.oldNo ?? ""}
       </span>
-      <span data-diff-new-line className="w-9 shrink-0 select-none px-1 text-right text-[#6a6a6a]">
+      <span data-diff-new-line className="w-9 shrink-0 select-none px-1 text-right tabular-nums text-wb-fg-3">
         {row.newNo ?? ""}
       </span>
-      <span data-diff-sign className="w-4 shrink-0 select-none text-center text-[#8a8a8a]">
+      <span data-diff-sign className="w-4 shrink-0 select-none text-center text-wb-fg-2">
         {row.tone === "add" ? "+" : row.tone === "del" ? "-" : ""}
       </span>
-      <LineText text={row.text} parts={row.parts} wrap={wrap} />
+      <LineText text={row.text} parts={row.parts} wrap={wrap} tone={row.tone} />
     </div>
   );
 }
@@ -310,14 +310,30 @@ function CollapseBar({ count }: { count: number }) {
     <div
       data-unmodified-lines={count}
       title={label}
-      className="mx-3 my-1 truncate rounded bg-zinc-800 px-3 py-1 text-zinc-400"
+      className="mx-3 my-1 truncate rounded-md bg-wb-elev px-3 py-1 text-wb-fg-2"
     >
       {label}
     </div>
   );
 }
 
-function LineText({ text, parts, wrap }: { text: string; parts: WordPart[] | null; wrap: boolean }) {
+function LineText({
+  text,
+  parts,
+  wrap,
+  tone,
+}: {
+  text: string;
+  parts: WordPart[] | null;
+  wrap: boolean;
+  tone?: string;
+}) {
+  const wordBg =
+    tone === "add"
+      ? "rounded-xs bg-wb-diff-add-word"
+      : tone === "del"
+        ? "rounded-xs bg-wb-diff-del-word"
+        : "rounded-xs bg-wb-active";
   return (
     <span
       className={cn(
@@ -327,7 +343,7 @@ function LineText({ text, parts, wrap }: { text: string; parts: WordPart[] | nul
     >
       {parts && parts.length > 0
         ? parts.map((part, index) => (
-            <span key={index} className={part.changed ? "rounded-sm bg-white/10" : undefined}>
+            <span key={index} className={part.changed ? wordBg : undefined}>
               {part.text.length > 0 ? part.text : " "}
             </span>
           ))

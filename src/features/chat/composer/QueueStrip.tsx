@@ -71,7 +71,7 @@ export function QueuedMessageList({
       data-queue-list
       data-queue-strip
       data-queue-mode={mode}
-      className="border-b border-[#2a2a2a]"
+      className="border-b border-wb-border"
       onClick={(event) => event.stopPropagation()}
     >
       {rows.map((row, index) => {
@@ -86,13 +86,13 @@ export function QueuedMessageList({
             data-editing={editingId === row.id ? "true" : "false"}
             className={
               index > 0
-                ? "flex min-w-0 items-center gap-1 border-t border-[#2a2a2a] py-0.5 pl-1.5 pr-1"
+                ? "flex min-w-0 items-center gap-1 border-t border-wb-border py-0.5 pl-1.5 pr-1"
                 : "flex min-w-0 items-center gap-1 py-0.5 pl-1.5 pr-1"
             }
           >
             <span
               data-queue-position
-              className="inline-flex h-7 w-5 shrink-0 items-center justify-center text-[12px] tabular-nums text-[#8d8d8d]"
+              className="inline-flex h-7 w-5 shrink-0 items-center justify-center text-[12px] tabular-nums text-wb-fg-3"
               aria-label={`第${row.position}条`}
             >
               {row.position}
@@ -100,7 +100,7 @@ export function QueuedMessageList({
             <p
               data-queue-text
               title={preview}
-              className="min-w-0 flex-1 truncate px-1 text-[13px] leading-5 text-[#cfcfcf]"
+              className="min-w-0 flex-1 truncate px-1 text-[13px] leading-5 text-wb-fg-2"
             >
               {preview}
             </p>
@@ -108,7 +108,7 @@ export function QueuedMessageList({
               <button
                 type="button"
                 data-queue-steer
-                className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-[13px] text-[#e8e8e8] hover:bg-zinc-800"
+                className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-[13px] text-wb-fg transition-colors hover:bg-wb-hover"
                 aria-label={DESKTOP_ZH.queueSteer}
                 title={DESKTOP_ZH.queueSteerHint}
                 onClick={() => onSteer(item.id)}
@@ -119,7 +119,7 @@ export function QueuedMessageList({
               <button
                 type="button"
                 data-queue-remove
-                className="flex h-7 w-7 items-center justify-center rounded-md text-[#a3a3a3] hover:bg-zinc-800 hover:text-[#e8e8e8]"
+                className="flex h-7 w-7 items-center justify-center rounded-md text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
                 aria-label={REMOVE_LABEL}
                 title={REMOVE_LABEL}
                 onClick={() => onRemove(item.id)}
@@ -133,7 +133,7 @@ export function QueuedMessageList({
                 }}
                 type="button"
                 data-queue-more
-                className="flex h-7 w-7 items-center justify-center rounded-md text-[#a3a3a3] hover:bg-zinc-800 hover:text-[#e8e8e8]"
+                className="flex h-7 w-7 items-center justify-center rounded-md text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
                 aria-label={MORE_LABEL}
                 title={MORE_LABEL}
                 aria-haspopup="menu"
@@ -152,7 +152,7 @@ export function QueuedMessageList({
           role="menu"
           aria-label="排队消息"
           data-queue-menu
-          className="fixed z-50 w-max min-w-[9.5rem] overflow-hidden rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
+          className="wb-popover fixed z-50 w-max min-w-[9.5rem] overflow-hidden rounded-xl p-1"
           style={{ top: -9999, left: 8 }}
         >
           {menu.map((entry) => (
@@ -161,11 +161,11 @@ export function QueuedMessageList({
               type="button"
               role="menuitem"
               data-queue-action={entry.id}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-zinc-100 hover:bg-zinc-800"
+              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm text-wb-fg transition-colors hover:bg-wb-hover"
               onClick={() => pickMenu(entry)}
             >
               {entry.id === "edit" ? (
-                <Pencil className="h-3.5 w-3.5 shrink-0 text-zinc-400" aria-hidden />
+                <Pencil className="h-3.5 w-3.5 shrink-0 text-wb-fg-3" aria-hidden />
               ) : (
                 <span className="h-3.5 w-3.5 shrink-0" aria-hidden />
               )}

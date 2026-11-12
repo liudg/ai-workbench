@@ -30,8 +30,8 @@ export function SubtaskOfferCard({ event }: EventViewProps) {
   };
   return (
     <div className="event-in min-w-0 px-6 py-2" data-subtask-offer={state}>
-      <div className="min-w-0 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2.5">
-        <div className="flex items-center gap-1.5 text-xs font-medium text-zinc-400">
+      <div className="min-w-0 rounded-xl border border-wb-border bg-wb-card px-3.5 py-3">
+        <div className="flex items-center gap-1.5 text-xs font-medium text-wb-fg-2">
           <Split className="h-3.5 w-3.5 shrink-0" />
           <span>{labels.title}</span>
         </div>
@@ -40,7 +40,7 @@ export function SubtaskOfferCard({ event }: EventViewProps) {
             <OfferItem key={index} spec={spec} />
           ))}
         </ul>
-        <div className="mt-2.5 flex min-w-0 flex-wrap items-center gap-2 text-xs text-zinc-500">
+        <div className="mt-2.5 flex min-w-0 flex-wrap items-center gap-2 text-xs text-wb-fg-3">
           {state === "pending" && subtasks ? (
             <>
               <Button size="sm" disabled={busy} onClick={() => choose(true)}>
@@ -63,19 +63,19 @@ function OfferItem({ spec }: { spec: SessionSpec }) {
   const identity = useAgentIdentity(spec.agent);
   return (
     <li className="min-w-0">
-      <div className="flex min-w-0 items-center gap-1.5 text-sm text-zinc-200">
+      <div className="flex min-w-0 items-center gap-1.5 text-sm text-wb-fg">
         <SessionAgentIcon identity={identity} className="h-3.5 w-3.5" />
         <span className="min-w-0 truncate font-medium">{spec.title}</span>
-        <span className="shrink-0 text-xs text-zinc-500">{agentTurnName(spec.agent, identity)}</span>
+        <span className="shrink-0 text-xs text-wb-fg-3">{agentTurnName(spec.agent, identity)}</span>
         {spec.worktree ? (
-          <span className="inline-flex shrink-0 items-center gap-0.5 text-xs text-zinc-500">
+          <span className="inline-flex shrink-0 items-center gap-0.5 text-xs text-wb-fg-3">
             <GitBranch className="h-3 w-3" />
             工作树
           </span>
         ) : null}
       </div>
       {spec.prompt ? (
-        <p className="mt-0.5 line-clamp-2 min-w-0 break-words pl-5 text-xs leading-5 text-zinc-500">{spec.prompt}</p>
+        <p className="mt-0.5 line-clamp-2 min-w-0 break-words pl-5 text-xs leading-5 text-wb-fg-2">{spec.prompt}</p>
       ) : null}
     </li>
   );

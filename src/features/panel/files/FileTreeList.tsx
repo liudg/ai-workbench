@@ -86,7 +86,7 @@ function TreeRows<T extends FileTreeFile>({
           title={node.path}
           aria-expanded={open}
           style={pad}
-          className="flex w-full min-w-0 items-center gap-1 rounded-md py-1 text-left text-[12px] text-[#bdbdbd] hover:bg-white/[0.04]"
+          className="flex w-full min-w-0 items-center gap-1 rounded-md py-1 text-left text-[12px] text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
           onClick={() => onToggle(node.id)}
         >
           {open ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
@@ -128,8 +128,8 @@ function TreeRows<T extends FileTreeFile>({
         title={file.path}
         style={pad}
         className={cn(
-          "flex w-full min-w-0 items-center gap-1 rounded-md py-1 text-left",
-          active ? "bg-[#2a2a2a]" : "hover:bg-white/[0.04]",
+          "flex w-full min-w-0 items-center gap-1.5 rounded-md pr-2 py-1 text-left transition-colors",
+          active ? "bg-wb-active" : "hover:bg-wb-hover",
         )}
         onClick={() => onSelect(file)}
         onDoubleClick={onKeepOpen ? () => onKeepOpen(file) : undefined}
@@ -142,13 +142,13 @@ function TreeRows<T extends FileTreeFile>({
             : undefined
         }
       >
-        <File className="h-3.5 w-3.5 shrink-0 text-[#888]" />
-        <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-[#e8e8e8]">{node.name}</span>
+        <File className="h-3.5 w-3.5 shrink-0 text-wb-fg-3" />
+        <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-wb-fg">{node.name}</span>
         {showStats && file.added > 0 ? (
-          <span className="shrink-0 font-mono text-[11px] tabular-nums text-[#3fb950]">+{file.added}</span>
+          <span className="shrink-0 font-mono text-[11px] tabular-nums text-wb-diff-add-fg">+{file.added}</span>
         ) : null}
         {showStats && file.removed > 0 ? (
-          <span className="shrink-0 font-mono text-[11px] tabular-nums text-[#f85149]">-{file.removed}</span>
+          <span className="shrink-0 font-mono text-[11px] tabular-nums text-wb-diff-del-fg">-{file.removed}</span>
         ) : null}
       </button>
     </li>

@@ -14,17 +14,17 @@ export function HandoffNote({ event }: EventViewProps) {
     : null;
   return (
     <div className="event-in min-w-0 px-6 py-3">
-      <div className="flex min-w-0 items-center gap-3 text-xs text-zinc-500">
-        <span className="h-px flex-1 bg-white/10" />
+      <div className="flex min-w-0 items-center gap-3 text-xs text-wb-fg-3">
+        <span className="h-px flex-1 bg-wb-border" />
         <span className="flex min-w-0 flex-wrap items-center justify-center gap-1.5">
           <ArrowRightLeft className="h-3 w-3 shrink-0" />
           <span>{label}</span>
           <Endpoint agent={event.from_agent} model={event.from_model} />
           <ArrowRight className="h-3 w-3 shrink-0" />
           <Endpoint agent={event.to_agent} model={event.to_model} />
-          {counts ? <span className="text-zinc-600">· {counts}</span> : null}
+          {counts ? <span className="text-wb-fg-3">· {counts}</span> : null}
         </span>
-        <span className="h-px flex-1 bg-white/10" />
+        <span className="h-px flex-1 bg-wb-border" />
       </div>
     </div>
   );
@@ -34,7 +34,7 @@ function Endpoint({ agent, model }: { agent: AgentKind; model?: string }) {
   const identity = useAgentIdentity(agent);
   const name = agentTurnName(agent, identity);
   return (
-    <span className="inline-flex min-w-0 items-center gap-1 font-medium text-zinc-400" title={model || name}>
+    <span className="inline-flex min-w-0 items-center gap-1 font-medium text-wb-fg-2" title={model || name}>
       <SessionAgentIcon identity={identity} className="h-3.5 w-3.5" />
       <span className="truncate">{model?.trim() || name}</span>
     </span>

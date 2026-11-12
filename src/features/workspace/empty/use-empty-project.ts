@@ -1,5 +1,8 @@
-import { openProjectDialog } from "@/shared/shell/navigation";
+import { openNewSession, openProjectDialog } from "@/shared/shell/navigation";
 
 export function useEmptyProject() {
-  return openProjectDialog;
+  return {
+    openDialog: openProjectDialog,
+    startStandalone: () => openNewSession(null),
+  };
 }

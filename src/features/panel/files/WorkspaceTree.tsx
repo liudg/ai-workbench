@@ -95,17 +95,17 @@ function FilterTree({
   onContextMenu?: (path: string, event: ReactMouseEvent) => void;
 }) {
   if (tree.filterError) {
-    return <p className="px-2 py-6 text-center text-xs leading-5 text-red-300">{tree.filterError}</p>;
+    return <p className="px-2 py-6 text-center text-xs leading-5 text-wb-danger">{tree.filterError}</p>;
   }
   if (!tree.filtered) {
     return (
-      <p className="px-2 py-6 text-center text-xs leading-5 text-zinc-500" data-files-filter-pending>
+      <p className="px-2 py-6 text-center text-xs leading-5 text-wb-fg-3" data-files-filter-pending>
         {DESKTOP_ZH.filesFilterPending}
       </p>
     );
   }
   if (tree.filtered.paths.length === 0) {
-    return <p className="px-2 py-6 text-center text-xs leading-5 text-zinc-500">{DESKTOP_ZH.noFileMatch}</p>;
+    return <p className="px-2 py-6 text-center text-xs leading-5 text-wb-fg-3">{DESKTOP_ZH.noFileMatch}</p>;
   }
   const files: FileTreeFile[] = tree.filtered.paths.map((path) => ({ path, added: 0, removed: 0 }));
   return (
@@ -128,12 +128,12 @@ function FilterTree({
         }
       />
       {tree.filtered.truncated ? (
-        <p className="px-2 py-2 text-center text-[11px] text-zinc-500" data-files-filter-cap>
+        <p className="px-2 py-2 text-center text-[11px] text-wb-fg-3" data-files-filter-cap>
           {DESKTOP_ZH.filesFilterCap}
         </p>
       ) : null}
       {tree.filtering ? (
-        <p className="px-2 py-1 text-center text-[11px] text-zinc-500">{DESKTOP_ZH.filesFilterPending}</p>
+        <p className="px-2 py-1 text-center text-[11px] text-wb-fg-3">{DESKTOP_ZH.filesFilterPending}</p>
       ) : null}
     </div>
   );
@@ -156,21 +156,21 @@ function DirectoryTree({
 }) {
   if (tree.rootError) {
     return (
-      <p className="px-2 py-6 text-center text-xs leading-5 text-red-300" data-directory-error>
+      <p className="px-2 py-6 text-center text-xs leading-5 text-wb-danger" data-directory-error>
         {surface === "dropdown" ? DESKTOP_ZH.directoryError : tree.rootError}
       </p>
     );
   }
   if (!tree.rootEntries) {
     return (
-      <p className="px-2 py-6 text-center text-xs leading-5 text-zinc-500" data-tree-pending>
+      <p className="px-2 py-6 text-center text-xs leading-5 text-wb-fg-3" data-tree-pending>
         {surface === "dropdown" ? DESKTOP_ZH.loadingDirectory : DESKTOP_ZH.filesReading}
       </p>
     );
   }
   if (tree.rootEntries.length === 0) {
     return (
-      <p className="px-2 py-6 text-center text-xs leading-5 text-zinc-500" data-directory-empty>
+      <p className="px-2 py-6 text-center text-xs leading-5 text-wb-fg-3" data-directory-empty>
         {surface === "dropdown" ? DESKTOP_ZH.emptyDirectory : DESKTOP_ZH.noFileMatch}
       </p>
     );
@@ -239,7 +239,7 @@ function TreeRows({
           title={entry.path}
           aria-expanded={open}
           style={pad}
-          className="flex w-full min-w-0 items-center gap-1 rounded-md py-1 text-left text-[12px] text-[#bdbdbd] hover:bg-white/[0.04]"
+          className="flex w-full min-w-0 items-center gap-1 rounded-md py-1 text-left text-[12px] text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
           onClick={() => onToggle(entry.path)}
         >
           {open ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
@@ -250,18 +250,18 @@ function TreeRows({
         {open ? (
           <ul>
             {loading.has(entry.path) && !children ? (
-              <li className="px-2 py-1 text-[11px] text-zinc-500" style={{ paddingLeft: 16 + depth * 12 }}>
+              <li className="px-2 py-1 text-[11px] text-wb-fg-3" style={{ paddingLeft: 16 + depth * 12 }}>
                 {surface === "dropdown" ? DESKTOP_ZH.loadingDirectory : DESKTOP_ZH.filesReading}
               </li>
             ) : null}
             {error ? (
-              <li className="px-2 py-1 text-[11px] text-red-300" style={{ paddingLeft: 16 + depth * 12 }}>
+              <li className="px-2 py-1 text-[11px] text-wb-danger" style={{ paddingLeft: 16 + depth * 12 }}>
                 {surface === "dropdown" ? DESKTOP_ZH.directoryError : error}
               </li>
             ) : null}
             {children && children.length === 0 ? (
               <li
-                className="px-2 py-1 text-[11px] text-zinc-500"
+                className="px-2 py-1 text-[11px] text-wb-fg-3"
                 data-directory-empty
                 style={{ paddingLeft: 16 + depth * 12 }}
               >
@@ -306,8 +306,8 @@ function TreeRows({
         title={entry.path}
         style={pad}
         className={cn(
-          "flex w-full min-w-0 items-center gap-1 rounded-md py-1 text-left",
-          active ? "bg-[#2a2a2a]" : "hover:bg-white/[0.04]",
+          "flex w-full min-w-0 items-center gap-1.5 rounded-md pr-2 py-1 text-left transition-colors",
+          active ? "bg-wb-active" : "hover:bg-wb-hover",
         )}
         onClick={() => onSelectFile(entry.path, entry.kind)}
         onDoubleClick={() => onSelectFile(entry.path, entry.kind, false)}
@@ -320,8 +320,8 @@ function TreeRows({
             : undefined
         }
       >
-        <File className="h-3.5 w-3.5 shrink-0 text-[#888]" />
-        <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-[#e8e8e8]">{entry.name}</span>
+        <File className="h-3.5 w-3.5 shrink-0 text-wb-fg-3" />
+        <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-wb-fg">{entry.name}</span>
       </button>
     </li>
   );

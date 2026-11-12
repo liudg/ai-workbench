@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useRef } from "react";
 
-import { AnswerMarkdownHost } from "@/features/chat/answer/AnswerMarkdownHost";
-import { parseUnifiedDiff, type FileChange } from "@/features/changes-model/diff-parse";
-import { usePanel } from "@/features/panel/core/PanelProvider";
+import { AnswerMarkdownHost } from "@/features/chat";
+import { parseUnifiedDiff, type FileChange } from "@/features/changes-model";
+import { SessionSplit, usePanel } from "@/features/panel";
 import { ProjectPanel } from "@/features/workspace";
-import { SessionSplit } from "@/features/panel/core/SessionSplit";
 import type { SessionEvent } from "@/types";
 
 const INSPECT = [
@@ -123,7 +122,7 @@ export default function DiffPreview() {
     [files],
   );
   return (
-    <div className="h-screen w-screen overflow-hidden bg-[#0f0f0f] text-[#e8e8e8]">
+    <div className="h-screen w-screen overflow-hidden bg-wb-surface text-wb-fg">
       <ProjectPanel projectId={projectId} path={params.get("path") ?? ""} title="梳理需求" events={events}>
         <AnswerMarkdownHost>
           <SessionSplit>

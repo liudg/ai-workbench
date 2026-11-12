@@ -50,7 +50,7 @@ export function MessageImage({ alt, source }: { alt: string; source: ImageSource
       <span
         data-chat-image={source.type}
         data-chat-image-state="loading"
-        className="my-2 block h-16 max-w-full animate-pulse rounded-md bg-black/20"
+        className="my-2 block h-16 max-w-full animate-pulse rounded-lg bg-wb-elev"
       />
     );
   }
@@ -64,7 +64,7 @@ export function MessageImage({ alt, source }: { alt: string; source: ImageSource
         data-chat-image={source.type}
         data-chat-image-state="ready"
         referrerPolicy="no-referrer"
-        className="my-2 block max-h-96 max-w-full cursor-zoom-in rounded-md border border-white/10 bg-zinc-950/40 object-contain"
+        className="my-2 block max-h-96 max-w-full cursor-zoom-in rounded-lg border border-wb-border bg-wb-elev object-contain"
         onClick={() => setOpened(true)}
         onError={() => fail("图片加载失败")}
       />
@@ -89,15 +89,15 @@ function ImageFallback({
     <span
       data-chat-image="fallback"
       data-chat-image-state="fallback"
-      className="my-2 flex max-w-full items-center gap-2 rounded-md border border-zinc-700/80 bg-zinc-950/50 px-2.5 py-2 text-left text-xs text-zinc-300"
+      className="my-2 flex max-w-full items-center gap-2 rounded-lg border border-wb-border bg-wb-card px-2.5 py-2 text-left text-xs text-wb-fg-2"
     >
-      <ImageOff className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
+      <ImageOff className="h-3.5 w-3.5 shrink-0 text-wb-fg-3" />
       <span className="min-w-0">
-        <span className="block">{alt}</span>
-        <span className="block truncate font-mono text-[11px] text-zinc-500" title={detail}>
+        <span className="block text-wb-fg">{alt}</span>
+        <span className="block truncate font-mono text-[11px] text-wb-fg-3" title={detail}>
           {name}
         </span>
-        {reason ? <span className="block text-[11px] text-zinc-500">{reason}</span> : null}
+        {reason ? <span className="block text-[11px] text-wb-fg-3">{reason}</span> : null}
       </span>
     </span>
   );

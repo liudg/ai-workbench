@@ -43,7 +43,7 @@ export function ToolOutput({
           <p
             data-tool-command
             className={cn(
-              "whitespace-pre-wrap break-all text-zinc-300",
+              "whitespace-pre-wrap break-all text-wb-fg",
               longCommand && !commandOpen && "line-clamp-3",
             )}
           >
@@ -53,7 +53,7 @@ export function ToolOutput({
             <button
               type="button"
               onClick={() => setCommandOpen((value) => !value)}
-              className="mt-0.5 font-sans text-[11.5px] text-zinc-500 hover:text-zinc-300"
+              className="mt-0.5 font-sans text-[11.5px] text-wb-fg-3 hover:text-wb-fg"
             >
               {commandOpen ? DESKTOP_ZH.toolCommandLess : DESKTOP_ZH.toolCommandMore}
             </button>
@@ -61,15 +61,15 @@ export function ToolOutput({
         </div>
       ) : null}
       {output ? (
-        <div className="min-w-0 overflow-hidden rounded-md border border-[#262626] bg-[#111]">
+        <div className="min-w-0 overflow-hidden rounded-lg border border-wb-border bg-wb-code">
           {preview.hiddenLines > 0 && !showAll ? (
-            <div className="flex items-center gap-2 border-b border-[#262626] px-2.5 py-1 font-sans text-[11.5px] text-zinc-500">
+            <div className="flex items-center gap-2 border-b border-wb-border px-2.5 py-1 font-sans text-[11.5px] text-wb-fg-3">
               <span>{DESKTOP_ZH.toolOutputHidden.replace("{count}", String(preview.hiddenLines))}</span>
               <button
                 type="button"
                 data-tool-output-all
                 onClick={() => setShowAll(true)}
-                className="text-zinc-400 hover:text-zinc-200"
+                className="text-wb-fg-2 hover:text-wb-fg"
               >
                 {DESKTOP_ZH.toolOutputShowAll}
               </button>
@@ -79,7 +79,7 @@ export function ToolOutput({
             ref={follow.ref}
             onScroll={follow.onScroll}
             data-own-scroll
-            className="max-h-64 overflow-auto overscroll-contain whitespace-pre-wrap break-all px-2.5 py-1.5 font-mono text-zinc-400"
+            className="max-h-64 overflow-auto overscroll-contain whitespace-pre-wrap break-all px-2.5 py-1.5 font-mono text-wb-fg-2"
           >
             {shown}
           </pre>

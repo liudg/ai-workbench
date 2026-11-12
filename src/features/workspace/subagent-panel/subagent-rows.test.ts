@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import type { SessionEvent } from "../../../types/index.ts";
-import type { TaskEntry } from "../../tasks/types.ts";
+import type { TaskEntry } from "../../tasks/index.ts";
 import { descendantTasks, nativeRow, subagentCards, taskRow } from "./subagent-rows.ts";
 
 function task(id: string, parentTaskId?: string, extra: Partial<TaskEntry> = {}): TaskEntry {

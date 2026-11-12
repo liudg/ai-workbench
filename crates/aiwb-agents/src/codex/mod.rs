@@ -124,6 +124,10 @@ impl AgentAdapter for CodexCliAdapter {
         Some("/agent-icons/codex.svg")
     }
 
+    fn monochrome_icon(&self) -> bool {
+        true
+    }
+
     fn session_linked(&self) -> bool {
         true
     }
@@ -173,6 +177,7 @@ impl AgentAdapter for CodexCliAdapter {
             default_access: Some("full".into()),
             display_name: None,
             icon: None,
+            monochrome_icon: true,
         }
     }
 

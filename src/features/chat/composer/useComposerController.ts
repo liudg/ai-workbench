@@ -7,7 +7,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 
-import { usePanelOptional } from "@/features/panel/core/PanelProvider";
+import { usePanelOptional } from "@/features/panel";
 import { baseName } from "@/shared/path";
 import type { ReviewStart, Session, SessionEvent } from "@/types";
 import {

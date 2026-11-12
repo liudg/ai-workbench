@@ -109,7 +109,7 @@ test("answered question card hugs the answer and drops trailing blank lines", ()
   assert.match(html, />已回答：浏览器页面<\/p>/);
   assert.equal(html.includes("已回答：\n"), false);
   assert.match(html, /问题/);
-  assert.match(html, /border-amber-500\/25/);
+  assert.match(html, /border-wb-warn\/25/);
 });
 
 test("multiple answers stay stacked without a blank footer", () => {

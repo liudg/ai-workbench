@@ -33,18 +33,18 @@ export function TurnFoldLine({
         className="group/fold inline-flex max-w-full min-w-0 flex-nowrap items-center gap-2 rounded py-0.5 text-left"
       >
         {icon}
-        <span className="min-w-0 truncate text-[12.5px] text-[#8a8a8a] group-hover/fold:text-[#bdbdbd]">
+        <span className="min-w-0 truncate text-[12.5px] text-wb-fg-2 transition-colors group-hover/fold:text-wb-fg">
           {summary}
         </span>
         {pulse ? (
           <span data-turn-running className="relative inline-flex h-1.5 w-1.5 shrink-0">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4f8dff] opacity-60 motion-reduce:hidden" />
-            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#4f8dff]" />
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-wb-accent opacity-60 motion-reduce:hidden" />
+            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-wb-accent" />
           </span>
         ) : null}
         <ChevronRight
           className={cn(
-            "h-3.5 w-3.5 shrink-0 text-[#555] transition-transform duration-150",
+            "h-3.5 w-3.5 shrink-0 text-wb-dim transition-transform duration-150",
             expanded && "rotate-90",
           )}
         />

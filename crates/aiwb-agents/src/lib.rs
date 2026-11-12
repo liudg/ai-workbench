@@ -61,6 +61,7 @@ pub fn agent_profiles() -> Vec<AgentProfile> {
             let mut profile = adapter.profile();
             profile.display_name = Some(adapter.display_name().to_string());
             profile.icon = adapter.icon_href().map(str::to_string);
+            profile.monochrome_icon = adapter.monochrome_icon();
             profile
         })
         .collect()
@@ -319,6 +320,13 @@ mod tests {
         let unique: std::collections::HashSet<_> = icons.iter().collect();
         assert_eq!(unique.len(), icons.len());
         assert!(cursor.icon.is_some());
+        assert!(codex.monochrome_icon);
+        assert!(cursor.monochrome_icon);
+        assert!(profile(AgentKind::KimiCode).monochrome_icon);
+        assert!(profile(AgentKind::OpenCode).monochrome_icon);
+        assert!(!claude.monochrome_icon);
+        assert!(!profile(AgentKind::Antigravity).monochrome_icon);
+        assert!(!profile(AgentKind::QwenCode).monochrome_icon);
         for icon in icons {
             let relative = icon.trim_start_matches('/');
             let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))

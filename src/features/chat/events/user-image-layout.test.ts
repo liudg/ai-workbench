@@ -11,8 +11,8 @@ import {
 test("a single attachment is its own preview layer, not the text bubble", () => {
   const model = userBubbleModel("添加装备，然后弹出截图中的界面", 1);
   assert.equal(model.showTextBubble, true);
-  assert.match(model.textBubbleClass, /bg-\[#6e5bff\]/);
-  assert.match(model.textBubbleClass, /rounded-full/);
+  assert.match(model.textBubbleClass, /bg-wb-user/);
+  assert.match(model.textBubbleClass, /rounded-2xl/);
   assert.ok(model.images);
   assert.equal(model.images.columns, 1);
   assert.equal(model.images.maxEdgePx, 320);
@@ -20,8 +20,8 @@ test("a single attachment is its own preview layer, not the text bubble", () => 
   assert.match(model.images.frameClassName, /max-w-\[min\(100%,320px\)\]/);
   assert.match(model.images.thumbClassName, /max-h-64/);
   assert.match(model.images.thumbClassName, /object-contain/);
-  assert.doesNotMatch(model.images.frameClassName, /6e5bff|rounded-full/);
-  assert.doesNotMatch(model.images.thumbClassName, /6e5bff|rounded-full/);
+  assert.doesNotMatch(model.images.frameClassName, /bg-wb-user|rounded-full/);
+  assert.doesNotMatch(model.images.thumbClassName, /bg-wb-user|rounded-full/);
 });
 
 test("several images shrink and wrap instead of growing the preview", () => {
@@ -67,16 +67,17 @@ test("image-only and text-only messages keep the matching layer", () => {
   const textOnly = userBubbleModel("你好", 0);
   assert.equal(textOnly.images, null);
   assert.equal(textOnly.showTextBubble, true);
-  assert.match(textOnly.textBubbleClass, /rounded-full/);
+  assert.match(textOnly.textBubbleClass, /rounded-2xl/);
+  assert.match(textOnly.textBubbleClass, /px-3\.5 py-2/);
 
   const multiline = userBubbleModel(`第一行\n第二行`, 2);
   assert.equal(multiline.showTextBubble, true);
   assert.match(multiline.textBubbleClass, /rounded-2xl/);
-  assert.doesNotMatch(multiline.textBubbleClass, /rounded-full/);
+  assert.match(multiline.textBubbleClass, /px-4 py-2\.5/);
 
   assert.equal(userImageLayout(0), null);
   assert.equal(userImageLayout(-2), null);
   assert.equal(userShowsTextBubble("", 0), true);
-  assert.match(userTextBubbleClass("看".repeat(47)), /rounded-full/);
-  assert.match(userTextBubbleClass("看".repeat(48)), /rounded-2xl/);
+  assert.match(userTextBubbleClass("看".repeat(47)), /px-3\.5 py-2/);
+  assert.match(userTextBubbleClass("看".repeat(48)), /px-4 py-2\.5/);
 });

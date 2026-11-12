@@ -1,7 +1,13 @@
-import { subagentDetail, subagentTitle, SUBAGENT_STATUS_LABELS, type SubagentEvent } from "../../chat/events/subagent-display.ts";
-import { subtaskDetail, subtaskStatus } from "../../chat/events/subtask-row.ts";
+import {
+  SUBAGENT_STATUS_LABELS,
+  subagentDetail,
+  subagentTitle,
+  subtaskDetail,
+  subtaskStatus,
+  type SubagentEvent,
+} from "../../chat/headless.ts";
 import type { AgentKind, SessionEvent } from "../../../types/index.ts";
-import type { TaskEntry } from "../../tasks/types.ts";
+import type { TaskEntry } from "../../tasks/index.ts";
 
 /** 子智能体列表里的一行。 */
 export interface SubagentRow {
@@ -56,7 +62,7 @@ export function nativeRow(card: SubagentEvent, agent: AgentKind): SubagentRow {
     agent,
     title: subagentTitle(card),
     status: SUBAGENT_STATUS_LABELS[card.status],
-    statusClass: card.status === "failed" ? "text-red-400" : "text-[#8a8a8a]",
+    statusClass: card.status === "failed" ? "text-wb-danger" : "text-wb-fg-3",
     detail: subagentDetail(card),
     active: card.status === "running",
     since: card.started_at ?? card.ts,

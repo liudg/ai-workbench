@@ -22,7 +22,7 @@ export function SessionUsageMeter({ usage }: { usage: SessionUsageView | null })
         tabIndex={0}
         onFocus={() => setOpen(true)}
         onBlur={() => setOpen(false)}
-        className="cursor-default rounded px-1.5 py-0.5 text-[12px] tabular-nums text-[#8d8d8d] outline-none hover:bg-white/5 hover:text-[#e8e8e8] focus-visible:bg-white/5"
+        className="cursor-default rounded-md px-1.5 py-0.5 text-[12px] tabular-nums text-wb-fg-2 outline-none transition-colors hover:bg-wb-hover hover:text-wb-fg focus-visible:bg-wb-hover"
       >
         {formatTokens(usage.total)} tokens
       </span>
@@ -30,12 +30,12 @@ export function SessionUsageMeter({ usage }: { usage: SessionUsageView | null })
         <span
           role="tooltip"
           data-session-usage-breakdown
-          className="pointer-events-none absolute right-0 top-full z-50 mt-1.5 flex min-w-[168px] flex-col gap-1.5 rounded-lg border border-[#2c2c2c] bg-[#1b1b1b] px-3 py-2.5 text-[12px] shadow-[0_8px_24px_rgba(0,0,0,0.45)]"
+          className="wb-popover pointer-events-none absolute right-0 top-full z-50 mt-1.5 flex min-w-[168px] flex-col gap-1.5 rounded-xl px-3 py-2.5 text-[12px]"
         >
           {rows.map((row) => (
             <span key={row.id} data-usage-row={row.id} className="flex items-baseline justify-between gap-4">
-              <span className="text-[#8d8d8d]">{row.label}</span>
-              <span className="tabular-nums text-[#e8e8e8]">{numberFormat.format(row.value)}</span>
+              <span className="text-wb-fg-2">{row.label}</span>
+              <span className="tabular-nums text-wb-fg">{numberFormat.format(row.value)}</span>
             </span>
           ))}
         </span>

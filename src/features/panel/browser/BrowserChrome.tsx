@@ -38,7 +38,7 @@ export function BrowserChrome({
   onAnnotate: () => void;
 }) {
   return (
-    <div className="flex h-9 shrink-0 items-center gap-1 border-b border-zinc-800 bg-zinc-900 px-1.5">
+    <div className="flex h-10 shrink-0 items-center gap-1 border-b border-wb-border bg-wb-panel px-2">
       <ChromeButton label={DESKTOP_ZH.browserBack} disabled={!canBack} onClick={onBack} data-browser-back>
         <ArrowLeft className="h-3.5 w-3.5" />
       </ChromeButton>
@@ -65,8 +65,8 @@ export function BrowserChrome({
             data-browser-annotate
             aria-pressed={annotating}
             className={cn(
-              "inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs",
-              annotating ? "bg-[#d7e8ff] text-[#2457d6]" : "text-zinc-300 hover:bg-zinc-800",
+              "inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium transition-colors",
+              annotating ? "bg-wb-accent-soft text-wb-accent-ink" : "text-wb-fg-2 hover:bg-wb-hover hover:text-wb-fg",
             )}
             onClick={onAnnotate}
           >
@@ -75,10 +75,10 @@ export function BrowserChrome({
           </button>
           <div
             role="tooltip"
-            className="pointer-events-none absolute left-0 top-full z-30 mt-1 hidden w-max max-w-[260px] items-center gap-1.5 rounded-lg bg-zinc-950 px-2 py-1.5 text-[11px] leading-4 text-white shadow-lg group-hover:flex"
+            className="wb-tooltip pointer-events-none absolute left-0 top-full z-30 mt-1 hidden w-max max-w-[260px] items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] leading-4 group-hover:flex"
           >
             <span>{DESKTOP_ZH.browserAnnotateTooltip}</span>
-            <kbd className="shrink-0 rounded bg-zinc-700 px-1 py-0.5 text-[10px] text-zinc-100">
+            <kbd className="shrink-0 rounded border border-wb-border bg-wb-elev px-1 py-0.5 text-[10px] text-wb-fg-2">
               {DESKTOP_ZH.browserAnnotateShortcut}
             </kbd>
           </div>
@@ -89,7 +89,7 @@ export function BrowserChrome({
           data-browser-address
           aria-label={DESKTOP_ZH.browserAddressPlaceholder}
           placeholder={DESKTOP_ZH.browserAddressPlaceholder}
-          className="h-7 w-full rounded-full border border-zinc-700 bg-zinc-950 px-3 text-xs text-zinc-100 outline-none focus:border-zinc-500"
+          className="h-7 w-full rounded-lg border border-wb-border-strong bg-wb-input px-3 text-xs text-wb-fg outline-none transition-colors placeholder:text-wb-dim focus-visible:border-wb-accent focus-visible:ring-2 focus-visible:ring-wb-accent-soft"
           value={shown}
           spellCheck={false}
           onFocus={onFocusAddress}
@@ -126,7 +126,7 @@ function ChromeButton({
       title={label}
       disabled={disabled}
       onClick={onClick}
-      className="shrink-0 rounded-md p-1.5 text-zinc-300 hover:bg-zinc-800 disabled:text-zinc-600 disabled:hover:bg-transparent"
+      className="shrink-0 rounded-md p-1.5 text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg disabled:text-wb-fg-3 disabled:hover:bg-transparent"
       {...rest}
     >
       {children}

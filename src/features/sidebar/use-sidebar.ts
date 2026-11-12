@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 
+import { openCommandMenu } from "@/features/command-menu";
 import { useProjects } from "@/features/projects";
 import { useTasks } from "@/features/tasks";
 import { selectedProjectOf, useNavigation } from "@/shared/shell/navigation";
@@ -38,5 +39,6 @@ export function useSidebar() {
     selectedProjectId: selectedProjectOf(view),
     activeTaskId: visibleTaskId,
     notice: useSidebarNotice(),
+    openCommandMenu,
   };
 }

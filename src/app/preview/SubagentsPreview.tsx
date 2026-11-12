@@ -92,7 +92,7 @@ const events: SessionEvent[] = [
 /** 开发预览：Agent 自带的子 Agent 卡片。`?preview=subagents` */
 export default function SubagentsPreview() {
   return (
-    <div className="h-screen w-screen bg-[#0f0f0f] text-[#e8e8e8]">
+    <div className="h-screen w-screen bg-wb-surface text-wb-fg">
       <PreviewSession session={SESSION} events={events} panel={false} />
     </div>
   );

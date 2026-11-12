@@ -1,15 +1,17 @@
 import { useMemo, useState } from "react";
 
 import type { AgentKind, McpAddSpec, McpServerRow } from "@/types";
-import { McpPanel } from "@/features/settings/mcp/McpPanel";
 import {
   claudeRows,
   codexRows,
   cursorRows,
   loginRow,
+  MCP_PAGE,
+  McpPanel,
   previewSurfaces,
-} from "@/features/settings/mcp/fixtures";
-import { MCP_PAGE, type McpFeedback, type McpToolEntry } from "@/features/settings/mcp/view";
+  type McpFeedback,
+  type McpToolEntry,
+} from "@/features/settings";
 
 /** 开发预览。`?preview=mcp`，不启动第二个工作台窗口。 */
 export default function McpPreview() {
@@ -22,7 +24,7 @@ export default function McpPreview() {
   const rows = useMemo(() => rowsFor(selected, params.get("login") === "1"), [selected, params]);
 
   return (
-    <div className="min-h-screen bg-[#0f0f0f] text-zinc-100">
+    <div className="min-h-screen bg-wb-surface text-wb-fg">
       <div className="mx-auto max-w-3xl px-6 py-6">
         <McpPanel
           surfaces={previewSurfaces}

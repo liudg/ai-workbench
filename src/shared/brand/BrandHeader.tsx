@@ -1,32 +1,49 @@
-import styles from "./brand.module.css";
+import type { ReactNode } from "react";
 
-export function BrandHeader() {
+export function BrandHeader({ action }: { action?: ReactNode }) {
   return (
-    <header className={styles.frame} data-sidebar-brand="">
-      <div className={styles.panel}>
-        <div className={styles.lockup}>
-          <BrandMark />
-          <span className={styles.wordmark}>One</span>
-        </div>
-        <p className={styles.tagline}>所有 agent，一处协作</p>
+    <header
+      data-sidebar-brand=""
+      className="flex h-12 shrink-0 items-center justify-between gap-2 px-3 pt-1"
+    >
+      <div className="flex min-w-0 items-center gap-2.5">
+        <BrandMark />
+        <span className="truncate text-[13.5px] font-semibold tracking-tight text-wb-fg">
+          AI 工作台
+        </span>
       </div>
+      {action ? <div className="flex shrink-0 items-center">{action}</div> : null}
     </header>
   );
 }
 
 function BrandMark() {
   return (
-    <svg className={styles.mark} viewBox="0 0 26 26" aria-hidden="true">
-      <rect x="1" y="1" width="24" height="24" rx="7" fill="none" stroke="#4f8dff" strokeWidth="2.2" />
+    <svg className="h-5 w-5 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
+      <rect
+        x="1.5"
+        y="1.5"
+        width="21"
+        height="21"
+        rx="6.5"
+        className="fill-wb-accent-soft stroke-wb-accent"
+        strokeWidth="1.75"
+      />
       <path
-        d="M7 9l4 4-4 4"
+        d="M7.25 8.75L10.75 12L7.25 15.25"
         fill="none"
-        stroke="#4f8dff"
-        strokeWidth="2.4"
+        className="stroke-wb-accent"
+        strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <path d="M13.5 17.5h5.5" fill="none" stroke="#e8e8e8" strokeWidth="2.4" strokeLinecap="round" />
+      <path
+        d="M12.75 15.25H16.75"
+        fill="none"
+        className="stroke-wb-fg"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }

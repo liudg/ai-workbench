@@ -4,8 +4,12 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { agentsApi, useSessionAgents } from "@/features/agents";
-import type { AgentOption, ComposerHost } from "@/features/chat/composer/host";
-import { suggestedBranchName, worktreeCaption } from "@/features/chat/composer/worktree-option";
+import {
+  suggestedBranchName,
+  worktreeCaption,
+  type AgentOption,
+  type ComposerHost,
+} from "@/features/chat/headless";
 import { projectsApi, type Project } from "@/features/projects";
 import { tasksApi, type SessionOptions, type TaskEntry, type TaskSession } from "@/features/tasks";
 import { agentIdentity } from "@/shared/agent/identity";

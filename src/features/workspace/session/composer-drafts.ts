@@ -3,7 +3,7 @@
 
 import { useEffect, useSyncExternalStore } from "react";
 
-import type { FileRef } from "@/features/chat/composer/file-refs";
+import type { FileRef } from "@/features/chat/headless";
 import { daemon } from "@/lib/daemon";
 import {
   createTextSnippet,

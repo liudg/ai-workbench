@@ -24,7 +24,7 @@ export class ChatErrorBoundary extends Component<Props, State> {
           "data-chat-error": "",
           className: "flex min-h-0 flex-1 items-center justify-center px-6",
         },
-        createElement("p", { className: "text-sm text-zinc-400" }, "这条会话暂时无法显示。"),
+        createElement("p", { className: "text-sm text-wb-fg-2" }, "这条会话暂时无法显示。"),
       );
     }
     return this.props.children;

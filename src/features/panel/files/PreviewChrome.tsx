@@ -88,7 +88,7 @@ export function PreviewChrome({
     <div
       data-preview-chrome
       data-preview-toolbar
-      className="flex h-10 min-w-0 shrink-0 flex-nowrap items-center gap-2 border-b border-[#222] bg-[#0f0f0f] px-2 text-[12px] text-[#bdbdbd]"
+      className="flex h-10 min-w-0 shrink-0 flex-nowrap items-center gap-2 border-b border-wb-border bg-wb-panel px-2.5 text-[12px] text-wb-fg-2"
     >
       <nav
         data-slot="file-path"
@@ -99,7 +99,7 @@ export function PreviewChrome({
         {segments.map((segment, index) => (
           <span key={`${segment.path}:${segment.label}`} className="inline whitespace-nowrap align-middle">
             {index > 0 ? (
-              <span aria-hidden className="px-1 text-[#666]">
+              <span aria-hidden className="px-1 text-wb-fg-3">
                 &gt;
               </span>
             ) : null}
@@ -118,8 +118,8 @@ export function PreviewChrome({
                   else anchors.current.delete(segment.path);
                 }}
                 className={cn(
-                  "rounded px-1 py-0.5 hover:bg-white/[0.06]",
-                  segment.last ? "font-medium text-[#f3f3f3]" : "text-[#bdbdbd]",
+                  "rounded px-1 py-0.5 transition-colors hover:bg-wb-hover",
+                  segment.last ? "font-medium text-wb-fg" : "text-wb-fg-2",
                 )}
               >
                 {segment.label}
@@ -135,7 +135,7 @@ export function PreviewChrome({
           aria-label={DESKTOP_ZH.openFilesSearch}
           title={searchEnabled ? DESKTOP_ZH.openFilesSearch : DESKTOP_ZH.previewSearchUnavailable}
           disabled={!searchEnabled}
-          className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-[#cfcfcf] hover:bg-white/5 disabled:text-[#555]"
+          className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg disabled:text-wb-fg-3"
           onClick={onSearch}
         >
           <Search className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
@@ -145,7 +145,7 @@ export function PreviewChrome({
           <button
             type="button"
             data-markdown-mode-toggle
-            className="inline-flex h-7 shrink-0 items-center rounded-full border border-[#3a3a3a] bg-[#2a2a2a] px-3 text-[12px] leading-5 text-[#f3f3f3] hover:bg-[#333]"
+            className="inline-flex h-7 shrink-0 items-center rounded-lg border border-wb-border bg-wb-elev px-2.5 text-[12px] leading-5 text-wb-fg transition-colors hover:border-wb-border-strong hover:bg-wb-hover"
             onClick={onToggleMarkdown}
           >
             {markdownLabel}
@@ -156,7 +156,7 @@ export function PreviewChrome({
           data-copy-path
           aria-label={DESKTOP_ZH.copyPath}
           disabled={!shown}
-          className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-[#cfcfcf] hover:bg-white/5 disabled:text-[#555]"
+          className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg disabled:text-wb-fg-3"
           onClick={() => void copyPath()}
         >
           <Copy className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
@@ -165,20 +165,20 @@ export function PreviewChrome({
         {onOpenWith ? (
           <div
             data-open-with
-            className="inline-flex h-7 shrink-0 items-stretch overflow-hidden rounded-full border border-[#3a3a3a] bg-[#2a2a2a] text-[#e8e8e8]"
+            className="inline-flex h-7 shrink-0 items-stretch overflow-hidden rounded-lg border border-wb-border bg-wb-elev text-wb-fg"
           >
             <button
               type="button"
               data-open-with-default
               aria-label={DESKTOP_ZH.openFileDefault}
               disabled={!shown}
-              className="inline-flex items-center gap-1 rounded-l-full pl-2 pr-1.5 hover:bg-white/10 disabled:text-[#555] disabled:hover:bg-transparent"
+              className="inline-flex items-center gap-1 pl-2 pr-1.5 transition-colors hover:bg-wb-hover disabled:text-wb-fg-3 disabled:hover:bg-transparent"
               onClick={() => onOpenWith("default")}
             >
               <AppWindow className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
               <span className="max-w-16 truncate">{openNote || DESKTOP_ZH.openFile}</span>
             </button>
-            <span data-open-with-divider aria-hidden className="h-3.5 w-px shrink-0 self-center bg-[#555]" />
+            <span data-open-with-divider aria-hidden className="h-3.5 w-px shrink-0 self-center bg-wb-border-strong" />
             <button
               type="button"
               ref={openAnchor}
@@ -188,7 +188,7 @@ export function PreviewChrome({
               aria-haspopup="menu"
               aria-controls={menuId}
               disabled={!shown}
-              className="inline-flex w-7 items-center justify-center rounded-r-full hover:bg-white/10 disabled:text-[#555] disabled:hover:bg-transparent"
+              className="inline-flex w-7 items-center justify-center transition-colors hover:bg-wb-hover disabled:text-wb-fg-3 disabled:hover:bg-transparent"
               onClick={toggleOpenMenu}
             >
               <ChevronDown className="h-3.5 w-3.5" strokeWidth={1.75} />
@@ -202,8 +202,8 @@ export function PreviewChrome({
             aria-label={DESKTOP_ZH.toggleFileTree}
             aria-pressed={treeOpen}
             className={cn(
-              "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px]",
-              treeOpen ? "bg-white/10 text-[#e8e8e8]" : "text-[#8d8d8d] hover:bg-white/5 hover:text-[#e8e8e8]",
+              "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors",
+              treeOpen ? "bg-wb-active text-wb-fg" : "text-wb-fg-2 hover:bg-wb-hover hover:text-wb-fg",
             )}
             onClick={onToggleTree}
           >

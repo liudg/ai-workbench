@@ -42,7 +42,7 @@ export function FixedMenu({
       ref={menuRef}
       role="menu"
       aria-label={label}
-      className={cn("fixed z-50 overflow-x-hidden overflow-y-auto", className)}
+      className={cn("wb-popover fixed z-50 overflow-x-hidden overflow-y-auto p-1", className)}
       style={
         box
           ? {

@@ -153,7 +153,7 @@ export function deriveComposerView(input: ComposerViewInput) {
   const showPlan = Boolean(caps?.supports_plan);
   const goalOn = mode === "goal";
   const placeholder = occupied
-    ? "此会话正被其他进程占用，只能查看"
+    ? "此会话已在其他窗口打开，仅可查看"
     : dead
       ? "会话已停止，请新建会话"
       : queueOn && busy
@@ -162,7 +162,7 @@ export function deriveComposerView(input: ComposerViewInput) {
           ? DESKTOP_ZH.goalPlaceholder
           : planOn
             ? DESKTOP_ZH.planPlaceholder
-            : "随心输入";
+            : "输入任务或问题，@ 引用文件";
   const hasText = Boolean(input.text.trim());
   const hasSnippets = input.snippetCount > 0;
   // 会话列表可能晚一拍。回合是否还在，以事件日志最后一次状态为准，和对话时间线一致。

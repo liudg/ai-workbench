@@ -147,7 +147,7 @@ export function McpSettings() {
   }
 
   if (surfaces === null) {
-    return <p className="text-sm text-zinc-500">{MCP_PAGE.loading}</p>;
+    return <p className="text-sm text-wb-fg-3">{MCP_PAGE.loading}</p>;
   }
 
   const list = visibleList(book, selected);

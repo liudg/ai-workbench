@@ -56,7 +56,7 @@ export function SourceView({
         selectionDraft(comment.path, lines.slice(span.start, span.end + 1).join("\n"), span.start + 1, span.end + 1))
       : null;
   return (
-    <div ref={scroller} className="h-full min-w-0 overflow-x-hidden overflow-y-auto bg-[#0f0f0f] font-mono text-[12.5px] leading-5">
+    <div ref={scroller} className="h-full min-w-0 overflow-x-hidden overflow-y-auto bg-wb-panel font-mono text-[12.5px] leading-5">
       {truncated ? <TruncatedNote /> : null}
       {lines.map((content, index) => {
         const number = index + 1;
@@ -68,12 +68,12 @@ export function SourceView({
               {...(comments ? commentRowProps(SOURCE_SCOPE, index) : {})}
               className={cn(
                 "group relative flex min-w-0",
-                number === line && "bg-[#1e2a3a]",
-                picked && "bg-[#1b2b45]",
+                number === line && "bg-[var(--wb-line-focus-bg)]",
+                picked && "bg-[var(--wb-line-pick-bg)]",
               )}
             >
               {comments ? <CommentPlus scope={SOURCE_SCOPE} row={index} comments={comments} className="left-1" /> : null}
-              <span className="w-10 shrink-0 select-none px-2 text-right text-[#666]">{number}</span>
+              <span className="w-10 shrink-0 select-none px-2 text-right tabular-nums text-wb-fg-3">{number}</span>
               <span className="min-w-0 flex-1 select-text whitespace-pre-wrap break-words px-2">
                 <HighlightedText text={content} />
               </span>

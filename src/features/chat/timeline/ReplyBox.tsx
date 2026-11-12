@@ -105,10 +105,10 @@ export function ReplyBox({
     <div
       ref={boxRef}
       data-reply-box
-      className="fixed z-[80] rounded-xl border border-[#333] bg-[#1b1b1b] p-3 shadow-xl shadow-black/40"
+      className="wb-popover fixed z-[80] rounded-xl p-3"
       style={{ width: WIDTH, top: place?.top ?? -9999, left: place?.left ?? 0, visibility: place ? "visible" : "hidden" }}
     >
-      <p className="line-clamp-2 whitespace-pre-wrap break-words border-l-2 border-[#444] pl-2 text-[12px] leading-5 text-[#9a9a9a]">
+      <p className="line-clamp-2 whitespace-pre-wrap break-words border-l-2 border-wb-border-strong pl-2 text-[12px] leading-5 text-wb-fg-2">
         {textSnippetPreview(draft.body)}
       </p>
       <textarea
@@ -117,7 +117,7 @@ export function ReplyBox({
         value={note}
         placeholder={DESKTOP_ZH.replyPlaceholder}
         aria-label={DESKTOP_ZH.reply}
-        className="mt-2 max-h-40 w-full resize-none bg-transparent text-[13px] leading-5 text-[#e8e8e8] outline-none placeholder:text-[#666]"
+        className="mt-2 max-h-40 w-full resize-none bg-transparent text-[13px] leading-5 text-wb-fg outline-none placeholder:text-wb-dim"
         onChange={(event) => setNote(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
@@ -131,7 +131,7 @@ export function ReplyBox({
           type="button"
           data-reply-submit
           disabled={!ready}
-          className="flex items-center gap-1.5 rounded-md bg-[#e8e8e8] px-2.5 py-1 text-xs text-[#111] disabled:bg-[#2a2a2a] disabled:text-[#666]"
+          className="flex items-center gap-1.5 rounded-lg bg-wb-primary px-2.5 py-1 text-xs font-medium text-wb-primary-fg transition-colors hover:bg-wb-primary-hover disabled:bg-wb-hover disabled:text-wb-dim"
           onMouseDown={(event) => event.preventDefault()}
           onClick={submit}
         >

@@ -22,7 +22,7 @@ export function ColumnSplitter({
       aria-label={name === "chat-preview" ? "调整预览宽度" : "调整文件列宽度"}
       tabIndex={0}
       data-resize={name}
-      className="relative z-20 w-1.5 shrink-0 cursor-col-resize touch-none bg-zinc-900 hover:bg-zinc-600 focus-visible:bg-zinc-600 before:absolute before:inset-y-0 before:-left-1.5 before:-right-1.5 before:content-['']"
+      className="relative z-20 w-1.5 shrink-0 cursor-col-resize touch-none bg-wb-panel transition-colors hover:bg-wb-accent/35 focus-visible:bg-wb-accent/45 before:absolute before:inset-y-0 before:-left-1.5 before:-right-1.5 before:content-['']"
       onKeyDown={(event) => {
         const key = event.key === "ArrowLeft" || event.key === "ArrowRight" ? event.key : null;
         if (!key) return;

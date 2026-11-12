@@ -1,7 +1,6 @@
 import { useState } from "react";
 
-import { GitBranchChrome } from "@/features/chat/composer/GitBranchControl";
-import { WorkContextPicker } from "@/features/chat/composer/WorkContextPicker";
+import { GitBranchChrome, WorkContextPicker } from "@/features/chat";
 
 const PROJECTS = [
   { id: "csgo", name: "CSGO" },
@@ -19,41 +18,41 @@ export default function GitBranchPreview() {
   const [branches, setBranches] = useState(["master", "topic", "feature/next"]);
 
   return (
-    <div className="flex min-h-screen items-end justify-center bg-[#0f0f0f] px-6 pb-24 text-[#e8e8e8]">
+    <div className="flex min-h-screen items-end justify-center bg-wb-surface px-6 pb-24 text-wb-fg">
       <div className="w-full max-w-[760px]">
-        <div className="mb-2 flex min-w-0 items-center gap-2 px-1">
-          <WorkContextPicker
-            label="CSGO"
-            projects={PROJECTS}
-            selectedId="csgo"
-            standaloneId="chat"
-            canRetarget={false}
-            onPickProject={() => {}}
-            onPickStandalone={() => {}}
-          />
-          <GitBranchChrome
-            label={current}
-            projectName="CSGO"
-            current={current}
-            branches={branches}
-            dirtyFiles={135}
-            listError={null}
-            initialOpen={scene === "menu" || scene === "create"}
-            initialCreate={scene === "create"}
-            onCheckout={async (name) => {
-              if (failCheckout) throw new Error("有未提交的改动，无法切换分支");
-              setCurrent(name);
-            }}
-            onCreate={async (name) => {
-              const trimmed = name.trim();
-              if (branches.includes(trimmed)) throw new Error("分支已存在");
-              setBranches((items) => [trimmed, ...items.filter((item) => item !== trimmed)]);
-              setCurrent(trimmed);
-            }}
-          />
-        </div>
-        <div className="min-w-0 rounded-[18px] border border-[#2a2a2a] bg-[#171717] px-3 pt-3 pb-2.5">
-          <p className="px-1 pb-8 text-sm text-zinc-500">随心输入</p>
+        <div className="min-w-0 rounded-2xl border border-wb-border-strong bg-wb-composer shadow-[var(--wb-composer-shadow)]">
+          <div className="flex min-w-0 items-center gap-2 border-b border-wb-border px-2.5 py-1.5">
+            <WorkContextPicker
+              label="CSGO"
+              projects={PROJECTS}
+              selectedId="csgo"
+              standaloneId="chat"
+              canRetarget={false}
+              onPickProject={() => {}}
+              onPickStandalone={() => {}}
+            />
+            <GitBranchChrome
+              label={current}
+              projectName="CSGO"
+              current={current}
+              branches={branches}
+              dirtyFiles={135}
+              listError={null}
+              initialOpen={scene === "menu" || scene === "create"}
+              initialCreate={scene === "create"}
+              onCheckout={async (name) => {
+                if (failCheckout) throw new Error("有未提交的改动，无法切换分支");
+                setCurrent(name);
+              }}
+              onCreate={async (name) => {
+                const trimmed = name.trim();
+                if (branches.includes(trimmed)) throw new Error("分支已存在");
+                setBranches((items) => [trimmed, ...items.filter((item) => item !== trimmed)]);
+                setCurrent(trimmed);
+              }}
+            />
+          </div>
+          <p className="px-3.5 pt-3 pb-8 text-sm text-wb-fg-3">输入任务或问题，@ 引用文件</p>
         </div>
       </div>
     </div>

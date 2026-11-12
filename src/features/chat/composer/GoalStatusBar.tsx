@@ -27,17 +27,17 @@ export function GoalStatusBar({
       data-goal-label={model.label}
       data-goal-metric={metric ?? ""}
       data-goal-running={ongoing ? "true" : "false"}
-      className="mb-2 flex min-h-10 min-w-0 items-center gap-2 rounded-2xl border border-[#2a2a2a] bg-[#171717] py-1.5 pl-3 pr-1.5"
+      className="mb-2 flex min-h-10 min-w-0 items-center gap-2 rounded-xl border border-wb-border bg-wb-elev py-1.5 pl-3 pr-1.5"
     >
       <GoalMark ongoing={ongoing} />
       <div className="flex min-w-0 flex-1 items-center gap-2">
-        <span className="shrink-0 text-sm font-semibold leading-5 text-[#f4f4f5]">{model.label}</span>
+        <span className="shrink-0 text-sm font-medium leading-5 text-wb-fg">{model.label}</span>
         {model.objective ? (
-          <span className="min-w-0 truncate text-sm leading-5 text-[#9a9a9a]" title={model.objective}>
+          <span className="min-w-0 truncate text-sm leading-5 text-wb-fg-2" title={model.objective}>
             {model.objective}
           </span>
         ) : null}
-        {metric ? <span className="shrink-0 text-sm leading-5 text-[#9a9a9a]">· {metric}</span> : null}
+        {metric ? <span className="shrink-0 text-sm leading-5 text-wb-fg-3">· {metric}</span> : null}
       </div>
       {model.actionable ? (
         <div className="flex shrink-0 items-center">
@@ -69,7 +69,7 @@ export function GoalStatusBar({
 
 function GoalMark({ ongoing }: { ongoing: boolean }) {
   return (
-    <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0 text-[#b5b5b5]" aria-hidden>
+    <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0 text-wb-accent" aria-hidden>
       <circle
         cx="8"
         cy="8"
@@ -132,7 +132,7 @@ function GoalIconButton({
       aria-label={label}
       data-goal-action={action}
       disabled={disabled}
-      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[#a3a3a3] hover:bg-white/10 hover:text-[#f4f4f5] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
       onClick={(event) => {
         event.stopPropagation();
         onClick();

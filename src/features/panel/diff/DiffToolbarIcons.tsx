@@ -64,12 +64,10 @@ export function IconButton({
       aria-expanded={expanded}
       aria-haspopup={menu ? "menu" : undefined}
       className={cn(
-        "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md",
-        pressed
-          ? "bg-white/10 text-[#e8e8e8]"
-          : expanded
-            ? "bg-[#2a2a2a] text-[#e8e8e8]"
-            : "text-[#8d8d8d] hover:bg-white/5 hover:text-[#e8e8e8]",
+        "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors",
+        pressed || expanded
+          ? "bg-wb-active text-wb-fg"
+          : "text-wb-fg-2 hover:bg-wb-hover hover:text-wb-fg",
       )}
       onClick={onClick}
     >

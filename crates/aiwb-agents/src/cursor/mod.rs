@@ -75,6 +75,10 @@ impl AgentAdapter for CursorAgentAdapter {
         Some("/agent-icons/cursor-agent.svg")
     }
 
+    fn monochrome_icon(&self) -> bool {
+        true
+    }
+
     fn profile(&self) -> AgentProfile {
         AgentProfile {
             kind: self.kind(),
@@ -83,6 +87,7 @@ impl AgentAdapter for CursorAgentAdapter {
             default_access: Some("full".into()),
             display_name: None,
             icon: None,
+            monochrome_icon: true,
         }
     }
 

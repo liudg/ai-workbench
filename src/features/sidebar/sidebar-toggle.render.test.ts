@@ -184,7 +184,7 @@ test("hovering the left edge slides the sidebar over the content, and leaving re
   assert.ok(edge);
   assert.ok(accent);
   assert.ok(peekRoot);
-  assert.equal(accent.className.includes("bg-[#6e5bff]"), true);
+  assert.equal(accent.className.includes("bg-wb-accent"), true);
   assert.equal(peekRoot.className.includes("fixed"), true);
   assert.equal(dom.document.querySelector("[data-sidebar-peek]"), null);
 

@@ -3,8 +3,7 @@
 
 import { create } from "zustand";
 
-import type { OpenTarget } from "@/features/panel/core/registry";
-import { usePanelStore } from "@/features/panel/state/store";
+import { usePanelStore, type OpenTarget } from "@/features/panel/headless";
 
 export const SUBAGENTS_VIEWER = "subagents";
 

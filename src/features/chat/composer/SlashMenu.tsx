@@ -22,14 +22,14 @@ export function SlashMenu({
       active={selected}
       footer={
         token === "/" ? (
-          <p className="border-t border-zinc-800 px-3 py-2 text-[11px] leading-4 text-zinc-600">
-            /vim、/theme 等终端命令可以输入，但不会发给模型。
+          <p className="border-t border-wb-border px-3 py-2 text-[11px] leading-4 text-wb-fg-3">
+            /vim、/theme 等终端专属命令无需在此发送。
           </p>
         ) : null
       }
     >
       {matches.length === 0 && (
-        <p className="px-3 py-2 text-xs text-zinc-500">这条斜杠命令不会发给模型。回车后会在时间线里说明。</p>
+        <p className="px-3 py-2 text-xs text-wb-fg-3">此命令仅适用于终端界面，回车后将在对话中说明。</p>
       )}
       {matches.map((command, index) => (
         <button
@@ -38,8 +38,8 @@ export function SlashMenu({
           role="option"
           aria-selected={index === selected}
           className={cn(
-            "flex w-full min-w-0 items-baseline gap-3 px-3 py-2 text-left hover:bg-zinc-800",
-            index === selected && "bg-zinc-800",
+            "flex w-full min-w-0 items-baseline gap-3 px-3 py-2 text-left transition-colors hover:bg-wb-hover",
+            index === selected && "bg-wb-active",
           )}
           onMouseDown={(event) => {
             event.preventDefault();
@@ -47,10 +47,10 @@ export function SlashMenu({
             onPick(command);
           }}
         >
-          <span className="shrink-0 text-sm text-zinc-100">
+          <span className="shrink-0 text-sm text-wb-fg">
             {command.name}
           </span>
-          <span className="min-w-0 truncate text-xs text-zinc-500">
+          <span className="min-w-0 truncate text-xs text-wb-fg-3">
             {command.name === "/plan" ? (planOn ? DESKTOP_ZH.planOff : DESKTOP_ZH.planOn) : command.hint}
           </span>
         </button>

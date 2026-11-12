@@ -154,8 +154,8 @@ test("the file tree toggle uses the folder icon, pressed fill, and a right-align
   const button = openingTag(open, 'data-toggle-file-tree="true"');
   assert.match(button, /\bh-7\b/);
   assert.match(button, /\bw-7\b/);
-  assert.match(button, /rounded-\[6px\]/);
-  assert.match(button, /bg-white\/10/);
+  assert.match(button, /rounded-md/);
+  assert.match(button, /bg-wb-active/);
   assert.match(button, /aria-pressed="true"/);
   assert.equal(button.includes("title="), false);
   assert.match(open, /data-file-tree-icon="folder"/);
@@ -168,7 +168,7 @@ test("the file tree toggle uses the folder icon, pressed fill, and a right-align
   const closed = screen("docs/note.md", false);
   const closedButton = openingTag(closed, 'data-toggle-file-tree="true"');
   assert.match(closedButton, /aria-pressed="false"/);
-  assert.equal(closedButton.includes("bg-white/10"), false);
+  assert.equal(closedButton.includes("bg-wb-active"), false);
   assert.equal(closed.includes("data-workspace-tree"), false);
   assert.ok(closed.indexOf('data-preview-chrome="true"') < closed.indexOf('data-open-files-split="true"'));
   assert.match(closed, /切换文件树/);
@@ -183,13 +183,11 @@ test("the open control is one capsule with a divider between the two halves", as
   const dividerAt = html.indexOf('data-open-with-divider="true"');
   const leftAt = html.indexOf('data-open-with-default="true"');
   const rightAt = html.indexOf('data-open-with-menu-button="true"');
-  assert.match(capsule, /rounded-full/);
+  assert.match(capsule, /rounded-lg/);
   assert.match(capsule, /border/);
   assert.equal(capsule.includes("hover:"), false);
-  assert.match(left, /rounded-l-full/);
-  assert.match(left, /hover:bg-white\/10/);
-  assert.match(right, /rounded-r-full/);
-  assert.match(right, /hover:bg-white\/10/);
+  assert.match(left, /hover:bg-wb-hover/);
+  assert.match(right, /hover:bg-wb-hover/);
   assert.ok(leftAt < dividerAt && dividerAt < rightAt);
   assert.equal(html.slice(leftAt, dividerAt).includes(">打开<"), true);
 

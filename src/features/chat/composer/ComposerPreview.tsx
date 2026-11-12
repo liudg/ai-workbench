@@ -408,7 +408,7 @@ export default function ComposerPreview() {
 
   return (
     <div
-      className="flex min-h-screen flex-col justify-end bg-[#0f0f0f] px-4 pb-4 text-[#e8e8e8]"
+      className="flex min-h-screen flex-col justify-end bg-wb-surface px-4 pb-4 text-wb-fg"
       data-composer-preview
       data-preview-agent={claude ? "claude-code" : "codex-cli"}
     >
@@ -465,7 +465,7 @@ export default function ComposerPreview() {
           />
         ) : null}
         <div className="relative min-w-0">
-        <div className="min-w-0 rounded-[18px] border border-[#2a2a2a] bg-[#171717]">
+        <div className="min-w-0 rounded-2xl border border-wb-border-strong bg-wb-composer shadow-[var(--wb-composer-shadow)]">
           {showQueue && queued.length > 0 ? (
             <QueuedMessageList
               items={queued}

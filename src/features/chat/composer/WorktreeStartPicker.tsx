@@ -37,7 +37,7 @@ export function WorktreeStartPicker({
       name={name}
       selected={name === base && carry === carrying}
       attrs={{ "data-worktree-start": name, "data-worktree-carry": carry ? "true" : undefined }}
-      subtitle={subtitle ? <span className="block truncate text-xs text-zinc-500">{subtitle}</span> : null}
+      subtitle={subtitle ? <span className="block truncate text-xs text-wb-fg-3">{subtitle}</span> : null}
       onPick={() => {
         // 记具体的分支名：草稿留到以后发时，项目目录可能已经换了分支。
         start.onPick(name, carry);

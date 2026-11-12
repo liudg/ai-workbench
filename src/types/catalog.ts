@@ -200,6 +200,8 @@ export interface AgentProfile {
   display_name?: string | null;
   /** 适配器图标资源。没有资源时侧栏用中性图标。 */
   icon?: string | null;
+  /** 单色剪影图标，浅色主题下跟随前景色加深。 */
+  monochrome_icon?: boolean;
 }
 
 export interface AgentCatalog {

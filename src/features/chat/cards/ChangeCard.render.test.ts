@@ -6,8 +6,8 @@ import { createRoot } from "react-dom/client";
 import { Window } from "happy-dom";
 import { createServer, type ViteDevServer } from "vite";
 
-import type { TurnChanges } from "../../changes-model/diff-parse.ts";
-import type { PanelData } from "../../panel/core/PanelProvider.tsx";
+import type { TurnChanges } from "../../changes-model/index.ts";
+import type { PanelData } from "../../panel/index.ts";
 
 const rootDir = fileURLToPath(new URL("../../../../", import.meta.url));
 const dom = new Window({ url: "http://localhost/" });

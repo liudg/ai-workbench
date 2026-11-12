@@ -3,7 +3,6 @@ import { Check, ChevronDown, Folder, MessageSquare } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useComposerMenu } from "./useComposerMenu";
-import { CARD_BG, CARD_BG_HOT, CARD_SHADOW } from "./context-card";
 
 export function WorkContextPicker({
   label,
@@ -23,46 +22,40 @@ export function WorkContextPicker({
   onPickStandalone: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [hot, setHot] = useState(false);
   const anchorRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setOpen(false), []);
   useComposerMenu(open, anchorRef, menuRef, close);
   const chat = selectedId === standaloneId;
-  const lifted = open || hot;
 
   return (
     <>
       <button
         ref={anchorRef}
         type="button"
-        className="inline-flex max-w-full items-center gap-1.5 rounded-[10px] border py-1 pl-1 pr-2.5 text-[13px] leading-5 text-[#ececef]"
-        style={{
-          backgroundImage: lifted ? CARD_BG_HOT : CARD_BG,
-          borderColor: lifted ? "#3a3a42" : "#2e2e33",
-          boxShadow: CARD_SHADOW,
-        }}
+        className={cn(
+          "inline-flex h-6 max-w-full items-center gap-1.5 rounded-md border px-2 text-xs transition-colors",
+          open
+            ? "border-wb-border-strong bg-wb-active text-wb-fg"
+            : "border-wb-border bg-wb-surface/75 text-wb-fg-2 hover:border-wb-border-strong hover:bg-wb-hover hover:text-wb-fg",
+        )}
         aria-label={chat ? "聊天" : `项目：${label}`}
         aria-haspopup="menu"
         aria-expanded={open}
         data-work-context={chat ? "chat" : selectedId}
         data-work-context-icon={chat ? "chat" : "folder"}
-        onMouseEnter={() => setHot(true)}
-        onMouseLeave={() => setHot(false)}
         onClick={(event) => {
           event.stopPropagation();
           setOpen((value) => !value);
         }}
       >
-        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] bg-[#26262b] text-[#d2d2d6]">
-          {chat ? (
-            <MessageSquare className="h-3 w-3" strokeWidth={1.75} />
-          ) : (
-            <Folder className="h-3 w-3" strokeWidth={1.75} />
-          )}
-        </span>
+        {chat ? (
+          <MessageSquare className="h-3 w-3 shrink-0 opacity-80" strokeWidth={1.75} />
+        ) : (
+          <Folder className="h-3 w-3 shrink-0 opacity-80" strokeWidth={1.75} />
+        )}
         <span className="min-w-0 truncate">{label}</span>
-        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[#9a9aa0]" strokeWidth={1.5} />
+        <ChevronDown className="h-3 w-3 shrink-0 opacity-70" strokeWidth={1.5} />
       </button>
       {open && (
         <div
@@ -70,8 +63,8 @@ export function WorkContextPicker({
           role="menu"
           aria-label="选择项目"
           data-work-context-menu=""
-          className="fixed z-50 min-w-[220px] overflow-hidden rounded-[10px] border border-[#2e2e33] py-1"
-          style={{ top: -9999, left: 8, backgroundImage: CARD_BG, boxShadow: CARD_SHADOW }}
+          className="wb-popover fixed z-50 min-w-[220px] overflow-hidden rounded-xl p-1"
+          style={{ top: -9999, left: 8 }}
         >
           {projects.map((project) => {
             const selected = project.id === selectedId;
@@ -84,9 +77,9 @@ export function WorkContextPicker({
                 data-work-context-project={project.id}
                 disabled={!canRetarget && !selected}
                 className={cn(
-                  "flex w-full items-center justify-between px-3 py-2 text-left text-sm text-zinc-100 hover:bg-white/[0.06]",
-                  selected && "bg-white/[0.04]",
-                  !canRetarget && !selected && "cursor-default text-zinc-400 hover:bg-transparent",
+                  "flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-sm text-wb-fg transition-colors hover:bg-wb-hover",
+                  selected && "bg-wb-active/70 font-medium",
+                  !canRetarget && !selected && "cursor-default text-wb-dim hover:bg-transparent",
                 )}
                 onClick={(event) => {
                   event.stopPropagation();
@@ -96,11 +89,11 @@ export function WorkContextPicker({
                 }}
               >
                 <span className="truncate">{project.name}</span>
-                {selected ? <Check className="h-4 w-4 shrink-0 text-zinc-200" strokeWidth={2} /> : null}
+                {selected ? <Check className="h-3.5 w-3.5 shrink-0 text-wb-accent" strokeWidth={2} /> : null}
               </button>
             );
           })}
-          <div className={cn(projects.length > 0 && "mt-1 border-t border-zinc-800")} />
+          <div className={cn(projects.length > 0 && "my-1 border-t border-wb-border")} />
           <button
             type="button"
             role="menuitemradio"
@@ -108,9 +101,9 @@ export function WorkContextPicker({
             data-work-context-standalone=""
             disabled={!canRetarget && selectedId !== standaloneId}
             className={cn(
-              "flex w-full items-center justify-between px-3 py-2 text-left text-sm text-zinc-100 hover:bg-white/[0.06]",
-              selectedId === standaloneId && "bg-white/[0.04]",
-              !canRetarget && selectedId !== standaloneId && "cursor-default text-zinc-400 hover:bg-transparent",
+              "flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-sm text-wb-fg transition-colors hover:bg-wb-hover",
+              selectedId === standaloneId && "bg-wb-active/70 font-medium",
+              !canRetarget && selectedId !== standaloneId && "cursor-default text-wb-dim hover:bg-transparent",
             )}
             onClick={(event) => {
               event.stopPropagation();
@@ -121,7 +114,7 @@ export function WorkContextPicker({
           >
             不在项目中工作
             {selectedId === standaloneId ? (
-              <Check className="h-4 w-4 shrink-0 text-zinc-200" strokeWidth={2} />
+              <Check className="h-3.5 w-3.5 shrink-0 text-wb-accent" strokeWidth={2} />
             ) : null}
           </button>
         </div>

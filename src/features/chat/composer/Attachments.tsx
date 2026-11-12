@@ -25,7 +25,7 @@ export function Attachments({
   return (
     <>
       {pictures.length > 0 ? (
-        <div className="mb-2 flex min-w-0 flex-wrap gap-2 overflow-x-hidden px-1">
+        <div className="mb-2 flex min-w-0 flex-wrap gap-2 px-1 pr-1.5 pt-1.5">
           {pictures.map((file, index) => (
             <div key={file.path} data-attachment={file.path} className="group relative h-[72px] w-[72px] shrink-0">
               <button
@@ -42,7 +42,7 @@ export function Attachments({
               </button>
               <button
                 type="button"
-                className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-zinc-950/85 text-zinc-100 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full border border-wb-border-strong bg-wb-popover text-wb-fg-2 opacity-0 shadow-xs transition-opacity hover:text-wb-fg group-hover:opacity-100 focus-visible:opacity-100"
                 aria-label={`移除 ${file.name}`}
                 onClick={(event) => {
                   event.stopPropagation();
@@ -69,13 +69,13 @@ export function Attachments({
               key={file.path}
               title={file.path}
               data-attachment={file.path}
-              className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-full bg-zinc-800 px-2.5 py-1 text-xs text-zinc-200"
+              className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-lg border border-wb-border bg-wb-surface px-2.5 py-1 text-xs text-wb-fg"
             >
               {onOpenFile ? (
                 <button
                   type="button"
                   data-attachment-open
-                  className="min-w-0 truncate text-left hover:text-white hover:underline"
+                  className="min-w-0 truncate text-left hover:text-wb-accent hover:underline"
                   onClick={(event) => {
                     event.stopPropagation();
                     onOpenFile(file.path);
@@ -88,7 +88,7 @@ export function Attachments({
               )}
               <button
                 type="button"
-                className="rounded-full text-zinc-400 hover:text-zinc-100"
+                className="rounded-full text-wb-fg-2 hover:text-wb-fg"
                 aria-label={`移除 ${file.name}`}
                 onClick={(event) => {
                   event.stopPropagation();

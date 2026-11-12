@@ -6,6 +6,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -45,21 +46,21 @@ export function ImportSessionsDialog({ project, onClose }: { project: Project; o
 
   return (
     <Dialog open onOpenChange={(open) => !open && !busy && onClose()}>
-      <DialogContent className="flex max-h-[80vh] max-w-[520px] flex-col gap-4 overflow-hidden rounded-2xl border-zinc-700 bg-zinc-900 p-6 outline-none [&>*]:min-w-0">
+      <DialogContent className="flex max-h-[80vh] max-w-[520px] flex-col gap-4 overflow-hidden [&>*]:min-w-0">
         <DialogHeader className="pr-6">
-          <DialogTitle className="text-lg font-semibold tracking-tight text-zinc-50">导入 CLI 会话</DialogTitle>
-          <DialogDescription className="truncate text-xs text-zinc-500" title={project.path}>
+          <DialogTitle>导入历史会话</DialogTitle>
+          <DialogDescription className="truncate font-mono text-xs" title={project.path}>
             {displayPath(project.path)}
           </DialogDescription>
         </DialogHeader>
 
-        {loading && <p className="py-8 text-center text-sm text-zinc-500">正在读取会话…</p>}
+        {loading && <p className="py-8 text-center text-sm text-wb-fg-3">正在读取会话…</p>}
 
         {loadError && <ErrorLine message={loadError} onRetry={retry} />}
 
-        {imported > 0 && <p className="text-xs text-zinc-400">已导入 {imported} 个会话。</p>}
+        {imported > 0 && <p className="text-xs text-wb-ok">已导入 {imported} 个会话。</p>}
         {failures.length > 0 && (
-          <div className="space-y-1 rounded-md border border-red-500/25 bg-red-500/[0.06] px-3 py-2 text-xs text-red-300">
+          <div className="space-y-1 rounded-lg border border-wb-danger/25 bg-wb-danger-soft px-3 py-2 text-xs text-wb-danger">
             {failures.map((failure) => (
               <p key={`${failure.agent}:${failure.nativeId}`} className="break-words">
                 {failure.title.trim() || "无标题"}：{failure.message}
@@ -69,7 +70,7 @@ export function ImportSessionsDialog({ project, onClose }: { project: Project; o
         )}
 
         {tabs.length > 0 && (
-          <div className="-mb-1 flex flex-wrap gap-1.5" role="tablist" aria-label="Agent">
+          <div className="-mb-1 flex flex-wrap gap-1" role="tablist" aria-label="Agent">
             {tabs.map((tab) => {
               const isActive = tab.agent === active;
               return (
@@ -80,17 +81,19 @@ export function ImportSessionsDialog({ project, onClose }: { project: Project; o
                   aria-selected={isActive}
                   data-import-agent={tab.agent}
                   className={cn(
-                    "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm",
-                    isActive ? "bg-zinc-800 text-zinc-50" : "text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-100",
+                    "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] transition-colors",
+                    isActive
+                      ? "bg-wb-active font-medium text-wb-fg"
+                      : "text-wb-fg-2 hover:bg-wb-hover hover:text-wb-fg",
                   )}
                   onClick={() => pick(tab.agent)}
                 >
                   <SessionAgentIcon identity={tab.identity} className="h-4 w-4" />
                   <span>{tab.name}</span>
                   {tab.failed ? (
-                    <span className="text-xs text-red-400">!</span>
+                    <span className="text-xs text-wb-danger">!</span>
                   ) : (
-                    tab.count !== null && <span className="text-xs text-zinc-500">{tab.count}</span>
+                    tab.count !== null && <span className="text-xs text-wb-fg-3">{tab.count}</span>
                   )}
                 </button>
               );
@@ -99,20 +102,20 @@ export function ImportSessionsDialog({ project, onClose }: { project: Project; o
         )}
 
         {active && !pageLoaded && pageLoading && (
-          <p className="py-8 text-center text-sm text-zinc-500">正在读取会话…</p>
+          <p className="py-8 text-center text-sm text-wb-fg-3">正在读取会话…</p>
         )}
 
         {active && !pageLoaded && pageError && <ErrorLine message={pageError} onRetry={retryPage} />}
 
         {active && pageLoaded && rows.length === 0 && !hasMore && (
-          <p className="py-8 text-center text-sm text-zinc-500">这个目录下没有可以导入的会话</p>
+          <p className="py-8 text-center text-sm text-wb-fg-3">该目录下没有可导入会话</p>
         )}
 
         {rows.length > 0 && (
-          <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-zinc-700">
+          <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-wb-border bg-wb-elev/40">
             <button
               type="button"
-              className="flex items-center gap-2.5 border-b border-zinc-800 px-3 py-2 text-left text-xs text-zinc-400 hover:bg-zinc-800/60"
+              className="flex items-center gap-2.5 border-b border-wb-border px-3 py-2 text-left text-xs text-wb-fg-2 hover:bg-wb-hover"
               onClick={toggleAll}
               disabled={busy}
             >
@@ -131,22 +134,22 @@ export function ImportSessionsDialog({ project, onClose }: { project: Project; o
                     data-import-row={row.key}
                     disabled={busy}
                     className={cn(
-                      "flex w-full min-w-0 items-center gap-2.5 px-3 py-2 text-left hover:bg-zinc-800/60",
-                      checked && "bg-zinc-800/40",
+                      "flex w-full min-w-0 items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-wb-hover",
+                      checked && "bg-wb-accent-soft",
                     )}
                     onClick={() => toggle(row)}
                   >
                     <Checkbox checked={checked} />
-                    <span className="min-w-0 flex-1 truncate text-sm text-zinc-200" title={row.item.title}>
+                    <span className="min-w-0 flex-1 truncate text-[13px] text-wb-fg" title={row.item.title}>
                       {row.item.title.trim() || "无标题"}
                     </span>
-                    <span className="shrink-0 text-xs text-zinc-500">
+                    <span className="shrink-0 text-xs text-wb-fg-3">
                       {relativeSessionTime(row.item.updatedAt, now)}
                     </span>
                   </button>
                 );
               })}
-              {pageLoading && <p className="px-3 py-2 text-center text-xs text-zinc-500">正在加载…</p>}
+              {pageLoading && <p className="px-3 py-2 text-center text-xs text-wb-fg-3">正在加载…</p>}
               {pageError && (
                 <div className="px-3 py-2">
                   <ErrorLine message={pageError} onRetry={retryPage} />
@@ -156,25 +159,14 @@ export function ImportSessionsDialog({ project, onClose }: { project: Project; o
           </div>
         )}
 
-        <div className="flex items-center justify-end gap-3 pt-1">
-          <Button
-            type="button"
-            variant="ghost"
-            className="text-zinc-400 hover:bg-transparent hover:text-zinc-200"
-            disabled={busy}
-            onClick={onClose}
-          >
+        <DialogFooter>
+          <Button type="button" variant="ghost" disabled={busy} onClick={onClose}>
             {failures.length > 0 ? "关闭" : "取消"}
           </Button>
-          <Button
-            type="button"
-            disabled={count === 0 || busy}
-            className="rounded-lg bg-black px-4 text-white shadow-none hover:bg-zinc-800"
-            onClick={() => void submit()}
-          >
+          <Button type="button" disabled={count === 0 || busy} onClick={() => void submit()}>
             {busy ? "正在导入…" : count > 0 ? `导入 ${count} 个` : "导入"}
           </Button>
-        </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -182,9 +174,9 @@ export function ImportSessionsDialog({ project, onClose }: { project: Project; o
 
 function ErrorLine({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-md border border-red-500/25 bg-red-500/[0.06] px-3 py-2 text-xs text-red-300">
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-wb-danger/25 bg-wb-danger-soft px-3 py-2 text-xs text-wb-danger">
       <span className="min-w-0 break-words">{message}</span>
-      <button type="button" className="shrink-0 text-zinc-300 hover:text-zinc-100" onClick={onRetry}>
+      <button type="button" className="shrink-0 text-wb-fg-2 hover:text-wb-fg" onClick={onRetry}>
         重试
       </button>
     </div>
@@ -235,8 +227,8 @@ function Checkbox({ checked }: { checked: boolean }) {
     <span
       aria-hidden
       className={cn(
-        "flex h-4 w-4 shrink-0 items-center justify-center rounded border",
-        checked ? "border-sky-500 bg-sky-500 text-white" : "border-zinc-600",
+        "flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors",
+        checked ? "border-wb-accent bg-wb-accent text-white" : "border-wb-border-strong",
       )}
     >
       {checked && <Check className="h-3 w-3" strokeWidth={3} />}

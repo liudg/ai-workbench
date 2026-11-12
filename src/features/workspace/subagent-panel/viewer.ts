@@ -1,6 +1,6 @@
 import { Bot } from "lucide-react";
 
-import { registerViewer, type PanelViewer } from "@/features/panel/core/registry";
+import { registerViewer, type PanelViewer } from "@/features/panel/headless";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { SUBAGENTS_VIEWER } from "./open";
 import { SubagentsTab } from "./SubagentsTab";

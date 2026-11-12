@@ -16,26 +16,26 @@ export interface SubtaskStatusView {
 export function subtaskStatus(attention: Attention): SubtaskStatusView {
   switch (attention.state) {
     case "starting":
-      return { label: "正在启动", dotClass: "bg-[#8fb4ff]", textClass: "text-[#8a8a8a]", running: true };
+      return { label: "正在启动", dotClass: "bg-wb-accent", textClass: "text-wb-fg-2", running: true };
     case "new":
-      return { label: "未开始", dotClass: "bg-[#6a6a6a]", textClass: "text-[#8a8a8a]", running: false };
+      return { label: "未开始", dotClass: "bg-wb-dim", textClass: "text-wb-fg-3", running: false };
     case "working":
-      return { label: "运行中", dotClass: "bg-[#8fb4ff]", textClass: "text-[#8a8a8a]", running: true };
+      return { label: "运行中", dotClass: "bg-wb-accent", textClass: "text-wb-fg-2", running: true };
     case "needs-input": {
       const pill = attentionPill(attention);
       return {
         label: pill?.label ?? "待回答",
-        dotClass: pill?.dotClass ?? "bg-[#f0a04a]",
-        textClass: pill?.textClass ?? "text-[#f0a04a]",
+        dotClass: pill?.dotClass ?? "bg-wb-warn",
+        textClass: pill?.textClass ?? "text-wb-warn",
         running: false,
       };
     }
     case "done":
-      return { label: "完成", dotClass: "bg-emerald-400", textClass: "text-[#8a8a8a]", running: false };
+      return { label: "完成", dotClass: "bg-wb-ok", textClass: "text-wb-fg-2", running: false };
     case "failed":
-      return { label: "失败", dotClass: "bg-red-400", textClass: "text-red-400", running: false };
+      return { label: "失败", dotClass: "bg-wb-danger", textClass: "text-wb-danger", running: false };
     case "idle":
-      return { label: "已停止", dotClass: "bg-[#6a6a6a]", textClass: "text-[#8a8a8a]", running: false };
+      return { label: "已停止", dotClass: "bg-wb-dim", textClass: "text-wb-fg-3", running: false };
   }
 }
 

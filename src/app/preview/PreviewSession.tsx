@@ -3,14 +3,15 @@
 
 import { useMemo } from "react";
 
-import { AnswerMarkdownHost } from "@/features/chat/answer/AnswerMarkdownHost";
-import { Composer } from "@/features/chat/composer/Composer";
-import type { ComposerHost } from "@/features/chat/composer/host";
-import { ChatHostProvider, type ChatHost } from "@/features/chat/host";
-import { ChatView } from "@/features/chat/timeline/ChatView";
-import { PanelHost, type PanelData, type PanelStateSource } from "@/features/panel/core/PanelProvider";
-import { SessionSplit } from "@/features/panel/core/SessionSplit";
-import { usePanelStore } from "@/features/panel/state/store";
+import {
+  AnswerMarkdownHost,
+  ChatHostProvider,
+  ChatView,
+  Composer,
+  type ChatHost,
+  type ComposerHost,
+} from "@/features/chat";
+import { PanelHost, SessionSplit, usePanelStore, type PanelData, type PanelStateSource } from "@/features/panel";
 import { accumulateSessionUsage } from "@/store/session-usage";
 import type { AgentCatalog, AgentKind, AgentProfile, PermissionMenu, Session, SessionEvent } from "@/types";
 

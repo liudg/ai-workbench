@@ -31,7 +31,7 @@ export function SuggestionList({
   return (
     <div
       className={cn(
-        "absolute bottom-full left-0 right-0 z-20 mb-2 min-w-0 overflow-hidden rounded-xl border border-zinc-700/80 bg-zinc-900 shadow-xl shadow-black/50",
+        "wb-popover absolute bottom-full left-0 right-0 z-20 mb-2 min-w-0 overflow-hidden rounded-xl",
         className,
       )}
       {...rest}

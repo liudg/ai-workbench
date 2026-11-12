@@ -30,13 +30,13 @@ export function ElicitationCard({ event, session, resolvedAnswer, answerPrompt }
   return (
     <div
       className={cn(
-        "min-w-0 overflow-x-hidden rounded-lg border border-amber-500/25 bg-amber-500/[0.06]",
+        "min-w-0 overflow-x-hidden rounded-xl border border-wb-warn/25 bg-wb-warn-soft",
         interactive ? "p-3" : "px-2.5 py-1.5",
       )}
     >
       <p
         className={cn(
-          "min-w-0 break-words whitespace-pre-wrap text-sm text-zinc-200",
+          "min-w-0 break-words whitespace-pre-wrap text-sm text-wb-fg",
           interactive ? "leading-6" : "leading-5",
         )}
       >
@@ -47,17 +47,18 @@ export function ElicitationCard({ event, session, resolvedAnswer, answerPrompt }
           <div className="mt-3 space-y-3">
             {event.questions.map((question) => (
               <label key={question.id} className="block min-w-0">
-                <span className="mb-1 block break-words text-xs text-zinc-400">
+                <span className="mb-1 block break-words text-xs font-medium text-wb-fg-2">
                   {question.header || question.id}
                   {question.required ? " *" : ""}
                 </span>
                 {question.question && question.question !== question.header ? (
-                  <span className="mb-1 block break-words text-[11px] text-zinc-500">{question.question}</span>
+                  <span className="mb-1 block break-words text-[11px] text-wb-fg-3">{question.question}</span>
                 ) : null}
                 {question.input_kind === "boolean" ? (
                   <input
                     type="checkbox"
                     checked={Boolean(flags[question.id])}
+                    className="accent-wb-accent"
                     onChange={(change) =>
                       setFlags((current) => ({
                         ...current,
@@ -69,7 +70,7 @@ export function ElicitationCard({ event, session, resolvedAnswer, answerPrompt }
                   <select
                     aria-label={question.header || question.id}
                     value={values[question.id] ?? ""}
-                    className="h-8 w-full min-w-0 rounded-md border border-zinc-700 bg-zinc-950 px-2 text-sm text-zinc-200"
+                    className="h-8 w-full min-w-0 rounded-lg border border-wb-border-strong bg-wb-input px-2.5 text-sm text-wb-fg outline-none transition-colors focus-visible:border-wb-accent focus-visible:ring-2 focus-visible:ring-wb-accent-soft"
                     onChange={(change) =>
                       setValues((current) => ({
                         ...current,
@@ -120,7 +121,7 @@ export function ElicitationCard({ event, session, resolvedAnswer, answerPrompt }
           </div>
         </>
       ) : (
-        <p className="mt-0.5 break-words whitespace-pre-wrap text-xs leading-4 text-zinc-500">
+        <p className="mt-0.5 break-words whitespace-pre-wrap text-xs leading-4 text-wb-fg-3">
           {settledAnswerLine(resolvedAnswer) ?? "等待回答…"}
         </p>
       )}

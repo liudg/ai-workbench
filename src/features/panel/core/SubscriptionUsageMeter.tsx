@@ -9,9 +9,9 @@ import { usePanel } from "./PanelProvider";
 import { useSubscriptionUsage } from "./use-subscription-usage";
 
 const TONE_CLASS = {
-  normal: "text-[#8d8d8d]",
-  warning: "text-[#e6b450]",
-  critical: "text-[#ff8b8b]",
+  normal: "text-wb-fg-2 hover:text-wb-fg",
+  warning: "text-wb-warn",
+  critical: "text-wb-danger",
 } as const;
 
 /** 订阅剩余和重置时间。没有窗口时不渲染。点击再拉一次，悬停列出全部窗口。 */
@@ -39,7 +39,7 @@ export function SubscriptionUsageMeter({ agent }: { agent: AgentKind | null }) {
         onBlur={() => setOpen(false)}
         onClick={() => refresh()}
         className={cn(
-          "cursor-pointer rounded px-1.5 py-0.5 text-[12px] tabular-nums outline-none hover:bg-white/5 hover:text-[#e8e8e8] focus-visible:bg-white/5",
+          "cursor-pointer rounded-md px-1.5 py-0.5 text-[12px] tabular-nums outline-none transition-colors hover:bg-wb-hover focus-visible:bg-wb-hover",
           TONE_CLASS[tone],
         )}
       >
@@ -49,12 +49,12 @@ export function SubscriptionUsageMeter({ agent }: { agent: AgentKind | null }) {
         <span
           role="tooltip"
           data-subscription-usage-breakdown
-          className="pointer-events-none absolute right-0 top-full z-50 mt-1.5 flex min-w-[220px] flex-col gap-1.5 rounded-lg border border-[#2c2c2c] bg-[#1b1b1b] px-3 py-2.5 text-[12px] shadow-[0_8px_24px_rgba(0,0,0,0.45)]"
+          className="wb-popover pointer-events-none absolute right-0 top-full z-50 mt-1.5 flex min-w-[220px] flex-col gap-1.5 rounded-xl px-3 py-2.5 text-[12px]"
         >
           {rows.map((row) => (
             <span key={row.id} data-subscription-row={row.id} className="flex items-baseline justify-between gap-4">
-              <span className="text-[#8d8d8d]">{row.label}</span>
-              <span className="tabular-nums text-[#e8e8e8]">{row.line}</span>
+              <span className="text-wb-fg-2">{row.label}</span>
+              <span className="tabular-nums text-wb-fg">{row.line}</span>
             </span>
           ))}
         </span>

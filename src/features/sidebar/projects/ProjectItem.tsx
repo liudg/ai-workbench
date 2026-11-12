@@ -60,7 +60,8 @@ export function ProjectItem({
     <div className="py-0.5">
       <div
         className={cn(
-          "group relative flex w-full cursor-pointer flex-nowrap items-center gap-1.5 rounded-md px-3 py-1.5 pr-2 text-left text-[12.5px] transition-colors hover:bg-white/[0.04]",
+          "group relative flex w-full cursor-pointer flex-nowrap items-center gap-1.5 rounded-lg px-2 py-1.5 pr-2 text-left text-[13px] transition-colors hover:bg-wb-hover focus-within:bg-wb-hover",
+          menuOpen && "bg-wb-hover",
         )}
         title={displayPath(project.path)}
         aria-expanded={!collapsed}
@@ -74,32 +75,39 @@ export function ProjectItem({
       >
         <ChevronRight
           className={cn(
-            "h-3.5 w-3.5 shrink-0 text-[#777] transition-transform",
+            "h-3.5 w-3.5 shrink-0 text-wb-fg-3 transition-transform",
             !collapsed && "rotate-90",
           )}
         />
         <span className="flex w-1.5 shrink-0 justify-center">
           <AttentionPill pill={pill} compact />
         </span>
-        <span className="max-w-[9.5rem] shrink-0 truncate text-[12.5px] text-[#e8e8e8]">{project.name}</span>
+        <span className="max-w-[9.5rem] shrink-0 truncate font-medium text-wb-fg">{project.name}</span>
         {branch ? (
           <span
             data-project-branch={branch}
             title={branch}
-            className="min-w-0 shrink truncate rounded-md bg-[#2a2a2a] px-1.5 text-[10px] leading-4 text-[#9a9a9a]"
+            className="min-w-0 shrink truncate rounded border border-wb-border bg-wb-elev px-1.5 text-[10px] leading-4 text-wb-fg-2"
           >
             {branch}
           </span>
         ) : null}
         <span className="min-w-0 flex-1" />
         {/* 操作钮叠在行尾。短分支留在名字旁边；长分支用剩余宽度，悬停时不把下面的会话顶开。 */}
-        <div className="absolute right-1.5 top-[calc(50%-12px)] z-10 flex h-6 w-12 items-center justify-end rounded-md group-hover:bg-[#1b1b1b] group-focus-within:bg-[#1b1b1b]">
+        <div
+          className={cn(
+            "absolute right-1.5 top-[calc(50%-12px)] z-10 flex h-6 items-center justify-end rounded-r-md pl-4",
+            menuOpen
+              ? "bg-[linear-gradient(to_right,transparent,var(--wb-sidebar-row-hover)_32%)]"
+              : "group-hover:bg-[linear-gradient(to_right,transparent,var(--wb-sidebar-row-hover)_32%)] group-focus-within:bg-[linear-gradient(to_right,transparent,var(--wb-sidebar-row-hover)_32%)]",
+          )}
+        >
           <div className="relative">
               <button
                 ref={anchorRef}
                 type="button"
                 className={cn(
-                  "flex h-6 w-6 items-center justify-center rounded text-[#888] hover:bg-white/10 hover:text-[#e8e8e8]",
+                  "flex h-6 w-6 items-center justify-center rounded-md text-wb-fg-3 hover:bg-wb-hover hover:text-wb-fg",
                   actionVisibility,
                 )}
                 aria-label={`${project.name} 更多`}
@@ -147,7 +155,7 @@ export function ProjectItem({
           <NewSessionButton
             projectId={project.id}
             className={cn(
-              "flex h-6 w-6 items-center justify-center rounded text-[#888] hover:bg-white/10 hover:text-[#e8e8e8]",
+              "flex h-6 w-6 items-center justify-center rounded-md text-wb-fg-3 hover:bg-wb-hover hover:text-wb-fg",
               actionVisibility,
             )}
             title={`在 ${project.name} 中新建会话`}
@@ -202,10 +210,7 @@ function ProjectMenu({
       anchorRef={anchorRef}
       onClose={onClose}
       label={`${project.name} 菜单`}
-      className={cn(
-        "overflow-hidden rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/40",
-        wide ? "w-56" : "w-44",
-      )}
+      className={cn("overflow-hidden", wide ? "w-56" : "w-44")}
     >
       <div
         data-project-menu
@@ -217,7 +222,7 @@ function ProjectMenu({
       {entries.map((entry, index) => {
         if (entry.type === "separator") {
           return (
-            <div key={`sep-${index}`} role="separator" className="mx-2 my-1 border-t border-zinc-800" />
+            <div key={`sep-${index}`} role="separator" className="my-1 h-px bg-wb-border" />
           );
         }
         const label = entry.id === "remove" && confirming ? removeConfirmLabel(sessionCount) : entry.label;
@@ -228,8 +233,8 @@ function ProjectMenu({
             role="menuitem"
             data-project-action={entry.id}
             className={cn(
-              "flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-zinc-800",
-              entry.id === "remove" && confirming ? "text-red-300" : "text-zinc-200",
+              "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] transition-colors hover:bg-wb-hover",
+              entry.id === "remove" && confirming ? "text-wb-danger" : "text-wb-fg",
             )}
             onClick={(event) => {
               event.stopPropagation();
@@ -259,7 +264,7 @@ function MenuIcon({
   pinned: boolean;
   danger: boolean;
 }) {
-  const className = cn("h-4 w-4 shrink-0", danger ? "text-red-300" : "text-zinc-400");
+  const className = cn("h-4 w-4 shrink-0", danger ? "text-wb-danger" : "text-wb-fg-3");
   if (id === "pin") {
     const Icon = pinned ? PinOff : Pin;
     return <Icon className={className} aria-hidden="true" />;

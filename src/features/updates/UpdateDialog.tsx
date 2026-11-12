@@ -35,28 +35,28 @@ export function UpdateDialog() {
           <DialogDescription>当前版本 v{APP_VERSION}</DialogDescription>
         </DialogHeader>
 
-        <div className="flex items-start gap-3 rounded-lg border border-zinc-800 bg-zinc-900/60 px-4 py-3.5">
+        <div className="flex items-start gap-3 rounded-xl border border-wb-border bg-wb-elev px-4 py-3.5">
           {update.kind === "checking" && (
             <>
-              <Loader2 className="mt-0.5 h-5 w-5 shrink-0 animate-spin text-zinc-400" />
-              <p className="text-sm text-zinc-300">正在检查更新…</p>
+              <Loader2 className="mt-0.5 h-5 w-5 shrink-0 animate-spin text-wb-fg-3" />
+              <p className="text-sm text-wb-fg-2">正在检查更新…</p>
             </>
           )}
           {update.kind === "none" && (
             <>
-              <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-400" />
-              <p className="text-sm text-zinc-300">已是最新版本。</p>
+              <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-wb-ok" />
+              <p className="text-sm text-wb-fg">当前已是最新版本。</p>
             </>
           )}
           {update.kind === "available" && (
             <>
-              <Rocket className="mt-0.5 h-5 w-5 shrink-0 text-indigo-400" />
+              <Rocket className="mt-0.5 h-5 w-5 shrink-0 text-wb-accent" />
               <div className="min-w-0">
-                <p className="text-sm text-zinc-200">
+                <p className="text-sm text-wb-fg">
                   发现新版本 <span className="font-medium">v{update.version}</span>
                 </p>
                 {update.notes && (
-                  <p className="mt-1 max-h-32 overflow-y-auto whitespace-pre-wrap text-xs leading-5 text-zinc-500">
+                  <p className="mt-1 max-h-32 overflow-y-auto whitespace-pre-wrap text-xs leading-5 text-wb-fg-2">
                     {update.notes}
                   </p>
                 )}
@@ -65,12 +65,12 @@ export function UpdateDialog() {
           )}
           {update.kind === "downloading" && (
             <>
-              <Download className="mt-0.5 h-5 w-5 shrink-0 animate-pulse text-indigo-400" />
+              <Download className="mt-0.5 h-5 w-5 shrink-0 animate-pulse text-wb-accent" />
               <div className="min-w-0 flex-1">
-                <p className="text-sm text-zinc-300">正在下载更新…</p>
-                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-800">
+                <p className="text-sm text-wb-fg-2">正在下载更新…</p>
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-wb-border">
                   <div
-                    className="h-full rounded-full bg-indigo-500 transition-all"
+                    className="h-full rounded-full bg-wb-accent transition-all"
                     style={{
                       width: update.total
                         ? `${Math.min(100, (update.received / update.total) * 100)}%`
@@ -78,7 +78,7 @@ export function UpdateDialog() {
                     }}
                   />
                 </div>
-                <p className="mt-1 text-[11px] text-zinc-500">
+                <p className="mt-1 text-[11px] text-wb-fg-3">
                   {formatSize(update.received)}
                   {update.total ? ` / ${formatSize(update.total)}` : ""}
                 </p>
@@ -87,24 +87,24 @@ export function UpdateDialog() {
           )}
           {update.kind === "ready" && (
             <>
-              <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-400" />
-              <p className="text-sm text-zinc-300">
-                v{update.version} 安装完成，应用即将重启…
+              <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-wb-ok" />
+              <p className="text-sm text-wb-fg">
+                v{update.version} 已就绪，正在重启…
               </p>
             </>
           )}
           {update.kind === "unavailable" && (
             <>
-              <RefreshCw className="mt-0.5 h-5 w-5 shrink-0 text-zinc-500" />
-              <p className="text-sm text-zinc-300">暂无可用更新源</p>
+              <RefreshCw className="mt-0.5 h-5 w-5 shrink-0 text-wb-fg-3" />
+              <p className="text-sm text-wb-fg-2">暂无可用更新源</p>
             </>
           )}
           {update.kind === "error" && (
             <>
-              <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-400" />
+              <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-wb-danger" />
               <div className="min-w-0">
-                <p className="text-sm text-zinc-300">检查更新失败</p>
-                <p className="mt-1 break-all text-xs leading-5 text-zinc-500">
+                <p className="text-sm text-wb-fg">检查更新失败</p>
+                <p className="mt-1 break-all text-xs leading-5 text-wb-fg-2">
                   {update.message}
                 </p>
               </div>
@@ -112,8 +112,8 @@ export function UpdateDialog() {
           )}
           {update.kind === "idle" && (
             <>
-              <RefreshCw className="mt-0.5 h-5 w-5 shrink-0 text-zinc-500" />
-              <p className="text-sm text-zinc-400">点击「检查更新」获取新版本。</p>
+              <RefreshCw className="mt-0.5 h-5 w-5 shrink-0 text-wb-fg-3" />
+              <p className="text-sm text-wb-fg-2">点击「检查更新」获取新版本。</p>
             </>
           )}
         </div>

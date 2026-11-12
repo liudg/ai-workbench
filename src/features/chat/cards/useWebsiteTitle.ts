@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { usePanelOptional } from "@/features/panel/core/PanelProvider";
+import { usePanelOptional } from "@/features/panel";
 import { pageTitleFromHtml } from "@/shared/html-title";
 
 /** 本地 html 的标题。外链不读文件。 */

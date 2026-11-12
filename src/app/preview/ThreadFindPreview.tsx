@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-import { OPEN_THREAD_FIND } from "@/features/chat/find/use-thread-find";
+import { OPEN_THREAD_FIND } from "@/features/chat";
 import type { Session, SessionEvent, SessionEventBody, SessionStatus } from "@/types";
 
 import { PreviewSession } from "./PreviewSession";
@@ -42,7 +42,7 @@ export default function ThreadFindPreview() {
   }, [query]);
 
   return (
-    <div className="relative flex h-screen min-h-0 flex-col bg-[#0f0f0f] text-[#e8e8e8]">
+    <div className="relative flex h-screen min-h-0 flex-col bg-wb-surface text-wb-fg">
       <PreviewSession session={session("completed")} events={events} profiles={ACTIVITY_PREVIEW_PROFILES} panel={false} />
     </div>
   );

@@ -2,6 +2,6 @@
 
 import { create } from "zustand";
 
-import { createPanelSlice, type PanelSlice } from "./slice";
+import { createPanelSlice, type PanelSlice } from "./slice.ts";
 
 export const usePanelStore = create<PanelSlice>()((set, get) => createPanelSlice(set, get));

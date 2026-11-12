@@ -12,8 +12,8 @@ test("subtask rows follow the subtask's attention, waiting ones use the sidebar'
   );
   const approval = subtaskStatus({ ...base, state: "needs-input", ask: "approval" });
   assert.equal(approval.label, "待批准");
-  assert.equal(approval.textClass, "text-[#f0a04a]");
-  assert.equal(subtaskStatus({ ...base, state: "failed" }).textClass, "text-red-400");
+  assert.equal(approval.textClass, "text-wb-warn");
+  assert.equal(subtaskStatus({ ...base, state: "failed" }).textClass, "text-wb-danger");
   assert.equal(subtaskStatus({ ...base, state: "done" }).label, "完成");
   assert.equal(subtaskStatus({ ...base, state: "idle" }).label, "已停止");
 });

@@ -1,12 +1,9 @@
 import { useMemo } from "react";
 
 import { useAgentDetection, useAgentProfiles, useSessionAgents } from "@/features/agents";
-import { AnswerMarkdownHost } from "@/features/chat/answer/AnswerMarkdownHost";
-import { Composer } from "@/features/chat/composer/Composer";
-import { ChatHostProvider, type ChatHost } from "@/features/chat/host";
-import { ChatView } from "@/features/chat/timeline/ChatView";
+import { AnswerMarkdownHost, ChatHostProvider, ChatView, Composer, type ChatHost } from "@/features/chat";
 import { CommandMenuHost } from "@/features/command-menu";
-import { SessionSplit } from "@/features/panel/core/SessionSplit";
+import { SessionSplit } from "@/features/panel";
 import type { Project } from "@/features/projects";
 import { openSettings, type ProjectScope } from "@/shared/shell/navigation";
 import type { AgentKind, Session } from "@/types";
@@ -31,8 +28,8 @@ export function NewSessionView({ projectId, project, projects }: {
   if (!agent && agents === null && detection.error) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
-        <p className="break-words text-sm text-zinc-400">检测本地 Agent 失败：{detection.error}</p>
-        <button type="button" className="text-sm text-indigo-300 hover:text-indigo-200" onClick={detection.retry}>
+        <p className="break-words text-sm text-wb-fg-2">检测本地 Agent 失败：{detection.error}</p>
+        <button type="button" className="text-sm font-medium text-wb-accent-ink transition-colors hover:underline" onClick={detection.retry}>
           重试
         </button>
         <CommandMenuHost />
@@ -42,7 +39,7 @@ export function NewSessionView({ projectId, project, projects }: {
   // 本机 Agent 还在检测：记得上次用的就先用它，否则等检测完。
   if (!agent && agents === null) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-zinc-500">
+      <div className="flex h-full items-center justify-center text-sm text-wb-fg-3">
         正在检测本地 Agent…
         <CommandMenuHost />
       </div>
@@ -51,8 +48,8 @@ export function NewSessionView({ projectId, project, projects }: {
   if (!agent) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-        <p className="text-sm text-zinc-400">未检测到能对话的 Agent CLI。</p>
-        <button type="button" className="text-sm text-indigo-300 hover:text-indigo-200" onClick={openSettings}>
+        <p className="text-sm text-wb-fg-2">未检测到可用的本地 Agent</p>
+        <button type="button" className="text-sm font-medium text-wb-accent-ink transition-colors hover:underline" onClick={openSettings}>
           打开设置
         </button>
         <CommandMenuHost />

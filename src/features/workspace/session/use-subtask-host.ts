@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 
-import type { SubtaskHost, SubtaskView } from "@/features/chat/host";
+import type { SubtaskHost, SubtaskView } from "@/features/chat";
 import { currentSession, tasksApi, useTasks } from "@/features/tasks";
 import { showError } from "@/shared/shell/error-banner";
 import { openTask } from "@/shared/shell/navigation";

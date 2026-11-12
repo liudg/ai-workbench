@@ -1,4 +1,4 @@
-import type { SubtaskHost, SubtaskView } from "@/features/chat/host";
+import type { SubtaskHost, SubtaskView } from "@/features/chat";
 import type { Session, SessionEvent, SessionEventBody } from "@/types";
 import { PreviewSession } from "./PreviewSession";
 
@@ -88,7 +88,7 @@ const SUBTASKS: SubtaskHost = {
 /** 开发预览：子任务回报折成一行，开子任务的卡片。`?preview=subtasks` */
 export default function SubtasksPreview() {
   return (
-    <div className="h-screen w-screen bg-[#0f0f0f] text-[#e8e8e8]">
+    <div className="h-screen w-screen bg-wb-surface text-wb-fg">
       <PreviewSession session={SESSION} events={events} subtasks={SUBTASKS} panel={false} />
     </div>
   );

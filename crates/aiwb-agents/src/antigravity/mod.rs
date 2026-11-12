@@ -99,6 +99,7 @@ impl AgentAdapter for AntigravityAdapter {
             default_access: Some("full".into()),
             display_name: None,
             icon: None,
+            monochrome_icon: false,
         }
     }
 

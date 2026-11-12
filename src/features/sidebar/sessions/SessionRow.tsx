@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import {
   worktreeDeleteFlags,
   worktreeDeleteIsDirty,
@@ -125,11 +126,11 @@ export function SessionRow({
         data-archived={task.archived ? "true" : "false"}
         data-subtask={depth === 1 ? "true" : undefined}
         className={cn(
-          "group relative flex h-full w-full items-center gap-1.5 rounded-md pr-2 text-left text-[11.5px] leading-none",
-          depth === 1 ? "pl-[52px]" : "pl-9",
+          "group relative flex h-full w-full items-center gap-1.5 rounded-lg pr-2 text-left text-xs leading-none transition-colors",
+          depth === 1 ? "pl-[48px]" : "pl-8",
           active
-            ? "bg-[#222] text-[#f3f3f3]"
-            : "text-[#bdbdbd] hover:bg-white/[0.04] hover:text-[#e8e8e8]",
+            ? "bg-wb-active font-medium text-wb-fg"
+            : "text-wb-fg-2 hover:bg-wb-hover hover:text-wb-fg",
         )}
         onClick={row.select}
         onContextMenu={(event) => {
@@ -149,7 +150,7 @@ export function SessionRow({
             aria-hidden="true"
             data-subtask-rail={last ? "last" : "middle"}
             className={cn(
-              "pointer-events-none absolute left-11 top-0 border-[#3d3d3d]",
+              "pointer-events-none absolute left-10 top-0 border-wb-border-strong",
               last ? "h-1/2 w-1.5 rounded-bl-[5px] border-b border-l" : "bottom-0 border-l",
             )}
           />
@@ -157,7 +158,7 @@ export function SessionRow({
         {subtasks > 0 && (
           <button
             type="button"
-            className="absolute left-4 flex h-4 w-4 items-center justify-center rounded text-[#777] hover:text-[#e8e8e8]"
+            className="absolute left-3.5 flex h-4 w-4 items-center justify-center rounded text-wb-fg-3 hover:text-wb-fg"
             aria-label={collapsed ? `展开 ${subtasks} 个子任务` : "收起子任务"}
             aria-expanded={!collapsed}
             onClick={(event) => {
@@ -171,11 +172,11 @@ export function SessionRow({
         <SessionAgentIcon identity={row.identity} />
         <span className="min-w-0 flex-1 truncate">{task.title}</span>
         <AttentionPill pill={attentionPill(task.attention)} />
-        {task.pinned && <Pin className="h-3 w-3 shrink-0 text-[#8a8a8a]" aria-hidden="true" />}
-        <span className="relative flex w-16 shrink-0 justify-end text-right tabular-nums">
+        {task.pinned && <Pin className="h-3 w-3 shrink-0 text-wb-fg-3" aria-hidden="true" />}
+        <span className="relative flex w-14 shrink-0 justify-end text-right tabular-nums">
           <span
             className={cn(
-              "text-[10px] text-[#666]",
+              "text-[10px] text-wb-fg-3",
               "group-hover:invisible group-focus-within:invisible",
               menuOpen && "invisible",
             )}
@@ -186,7 +187,7 @@ export function SessionRow({
             ref={anchorRef}
             type="button"
             className={cn(
-              "absolute inset-0 hidden items-center justify-end text-zinc-300 group-hover:flex group-focus-within:flex",
+              "absolute inset-0 hidden items-center justify-end text-wb-fg-2 group-hover:flex group-focus-within:flex",
               menuOpen && "flex",
             )}
             aria-label="聊天操作"
@@ -206,7 +207,7 @@ export function SessionRow({
         anchorRef={anchorRef}
         onClose={closeMenu}
         label="聊天操作"
-        className="w-44 rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
+        className="w-44"
       >
         {items.map((item) =>
           item.children ? (
@@ -226,12 +227,12 @@ export function SessionRow({
       <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>重命名</DialogTitle>
-            <DialogDescription>保持简短且易于识别</DialogDescription>
+            <DialogTitle>重命名任务</DialogTitle>
+            <DialogDescription>输入简短标题以便识别</DialogDescription>
           </DialogHeader>
-          <input
+          <Input
             aria-label="聊天标题"
-            placeholder="添加标题…"
+            placeholder="任务标题…"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
             onKeyDown={(event) => {
@@ -248,11 +249,10 @@ export function SessionRow({
               event.preventDefault();
               submitRename();
             }}
-            className="h-9 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none focus:border-zinc-500"
           />
-          {renameError && <p className="text-sm text-red-300">{renameError}</p>}
+          {renameError && <p className="text-xs text-wb-danger">{renameError}</p>}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRenameOpen(false)}>
+            <Button variant="ghost" onClick={() => setRenameOpen(false)}>
               取消
             </Button>
             <Button disabled={!title.trim()} onClick={submitRename}>
@@ -292,8 +292,8 @@ function MenuItem({
       role="menuitem"
       data-session-action={action}
       className={cn(
-        "block w-full px-3 py-2 text-left text-sm hover:bg-zinc-800",
-        danger ? "text-red-400" : "text-zinc-100",
+        "block w-full rounded-lg px-2.5 py-1.5 text-left text-[13px] transition-colors hover:bg-wb-hover",
+        danger ? "text-wb-danger" : "text-wb-fg",
       )}
       onClick={(event) => {
         event.stopPropagation();

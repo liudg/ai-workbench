@@ -46,17 +46,17 @@ export function Composer({
   return (
     <div className="composer-root relative z-10 min-w-0 shrink-0 px-4 pb-4 pt-1">
       {view.occupied && (
-        <p className="mb-2 break-words px-2 text-center text-xs leading-5 text-amber-200/90">
-          此会话正被其他进程占用，当前只读，不能发送。
+        <p className="mb-2 break-words px-2 text-center text-xs leading-5 text-wb-warn">
+          此会话已在其他窗口打开，当前仅可查看。
         </p>
       )}
       {notice && (
-        <p role="status" className="mb-2 break-words px-2 text-center text-xs leading-5 text-amber-200/90">
+        <p role="status" className="mb-2 break-words px-2 text-center text-xs leading-5 text-wb-warn">
           {notice}
         </p>
       )}
       {catalogNotice && (
-        <p role="status" className="mb-2 break-words px-2 text-center text-xs leading-5 text-[#888]">
+        <p role="status" className="mb-2 break-words px-2 text-center text-xs leading-5 text-wb-fg-3">
           {catalogNotice}
         </p>
       )}
@@ -107,20 +107,20 @@ export function Composer({
             onEdit={c.editGoal}
           />
         ) : null}
-        <ComposerContextRow
-          workContext={host.workContext}
-          git={host.git}
-          worktree={host.worktree}
-        />
         <div
           ref={anchorRef}
           data-question-anchor
           className={cn(
-            "min-w-0 rounded-[18px] border border-[#2a2a2a] bg-[#171717] transition-colors focus-within:border-[#3a3a3a]",
-            c.dragOver && "border-indigo-400/80",
+            "min-w-0 rounded-2xl border border-wb-border-strong bg-wb-composer shadow-[var(--wb-composer-shadow)] transition-colors focus-within:border-wb-accent/55",
+            c.dragOver && "border-wb-accent bg-wb-accent-soft",
           )}
           onClick={() => c.textareaRef.current?.focus()}
         >
+          <ComposerContextRow
+            workContext={host.workContext}
+            git={host.git}
+            worktree={host.worktree}
+          />
           {c.queueStrip ? (
             <QueuedMessageList
               items={c.queue}
@@ -134,7 +134,7 @@ export function Composer({
               onToggleQueueMode={c.toggleQueueMode}
             />
           ) : null}
-          <div className="min-w-0 overflow-hidden px-3 pt-3">
+          <div className="min-w-0 overflow-x-clip px-3 pt-3">
           <TextSnippetCards snippets={c.snippets} onRemove={c.removeSnippet} />
           <Attachments files={c.files} imagesOn={view.imagesOn} onRemove={c.removeFile} onOpenFile={c.openFile} />
           <ComposerInput

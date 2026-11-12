@@ -43,7 +43,7 @@ export function SidebarPeek({ children }: { children: ReactNode }) {
   return (
     <div
       data-sidebar-peek-root=""
-      className={cn("fixed inset-y-0 left-0 z-30", peek ? "w-[260px]" : "w-2")}
+      className={cn("fixed inset-y-0 left-0 z-30", peek ? "w-[256px]" : "w-2")}
       onMouseEnter={show}
       onMouseLeave={hide}
     >
@@ -52,7 +52,7 @@ export function SidebarPeek({ children }: { children: ReactNode }) {
         <div
           data-sidebar-peek={peek ? "open" : "closed"}
           className={cn(
-            "absolute inset-y-0 left-0 flex w-[260px] shadow-[4px_0_24px_rgba(0,0,0,0.45)]",
+            "absolute inset-y-0 left-0 flex w-[256px] border-r border-wb-border shadow-[var(--wb-popover-shadow)]",
             peek ? "sidebar-peek-in" : "sidebar-peek-out",
           )}
         >
@@ -61,7 +61,7 @@ export function SidebarPeek({ children }: { children: ReactNode }) {
       ) : null}
       <span
         data-sidebar-accent=""
-        className="pointer-events-none absolute inset-y-0 left-0 z-10 w-0.5 bg-[#6e5bff]"
+        className="pointer-events-none absolute inset-y-0 left-0 z-10 w-0.5 bg-wb-accent"
       />
     </div>
   );

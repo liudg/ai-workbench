@@ -9,7 +9,7 @@ const GAP_PX = 6;
 const FRAME = "flex w-fit min-w-0 flex-wrap items-end justify-end gap-1.5";
 
 const BUBBLE =
-  "min-w-0 max-w-full cursor-text overflow-x-hidden bg-[#6e5bff] text-[13.5px] leading-6 text-white";
+  "min-w-0 max-w-full cursor-text overflow-x-hidden border border-wb-user-border bg-wb-user text-[13.5px] leading-6 text-wb-user-fg";
 
 export interface UserImageLayout {
   frameClassName: string;
@@ -48,7 +48,7 @@ export function userImageLayout(count: number): UserImageLayout | null {
 
 export function userTextBubbleClass(text: string): string {
   const singleLine = !text.includes("\n") && text.length < 48;
-  return singleLine ? `${BUBBLE} rounded-full px-4 py-1.5` : `${BUBBLE} rounded-2xl px-4 py-2.5`;
+  return singleLine ? `${BUBBLE} rounded-2xl px-3.5 py-2` : `${BUBBLE} rounded-2xl px-4 py-2.5`;
 }
 
 export function userShowsTextBubble(text: string, imageCount: number): boolean {

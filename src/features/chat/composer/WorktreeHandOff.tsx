@@ -5,7 +5,6 @@ import { userFacingMessage } from "@/lib/user-facing";
 
 import { BranchNameDialog } from "./BranchNameDialog";
 import type { WorktreeHandOffLine } from "./host";
-import { CARD_BG, CARD_SHADOW } from "./context-card";
 
 /**
  * 交给项目目录 / 交回工作树。工作树还没有分支时先起一个分支名。
@@ -47,15 +46,14 @@ export function WorktreeHandOff({
       {handOff.localBranch ? (
         <span
           data-worktree-local={handOff.localBranch}
-          className="inline-flex max-w-full min-w-0 items-center gap-2 rounded-[10px] border border-[#2e2e33] py-1 pl-2.5 pr-1 text-[13px] leading-5 text-[#ececef]"
-          style={{ backgroundImage: CARD_BG, boxShadow: CARD_SHADOW }}
+          className="inline-flex h-6 max-w-full min-w-0 items-center gap-1.5 rounded-md border border-wb-border bg-wb-surface/75 pl-2 pr-1 text-xs text-wb-fg-2"
         >
           <span className="truncate">在项目目录</span>
           <button
             type="button"
             data-worktree-hand-back=""
             disabled={handOff.busy}
-            className="shrink-0 rounded-md px-2 hover:bg-white/[0.08] disabled:opacity-60"
+            className="shrink-0 rounded px-1.5 py-0.5 text-wb-fg transition-colors hover:bg-wb-hover disabled:opacity-60"
             onClick={(event) => {
               event.stopPropagation();
               handOff.onHandOff();
@@ -69,14 +67,13 @@ export function WorktreeHandOff({
           type="button"
           data-worktree-hand-off=""
           disabled={handOff.busy || !branchKnown}
-          className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#2e2e33] py-1 pl-2 pr-2.5 text-[13px] leading-5 text-[#ececef] disabled:opacity-60"
-          style={{ backgroundImage: CARD_BG, boxShadow: CARD_SHADOW }}
+          className="inline-flex h-6 items-center gap-1.5 rounded-md border border-wb-border bg-wb-surface/75 px-2 text-xs text-wb-fg-2 transition-colors hover:border-wb-border-strong hover:bg-wb-hover hover:text-wb-fg disabled:opacity-60"
           onClick={(event) => {
             event.stopPropagation();
             toLocal();
           }}
         >
-          <ArrowLeftRight className="h-3.5 w-3.5 shrink-0 text-[#d2d2d6]" strokeWidth={1.75} />
+          <ArrowLeftRight className="h-3 w-3 shrink-0 opacity-80" strokeWidth={1.75} />
           {handOff.busy ? "正在交给项目目录…" : "交给项目目录"}
         </button>
       )}

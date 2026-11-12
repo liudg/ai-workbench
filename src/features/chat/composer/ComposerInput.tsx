@@ -101,7 +101,7 @@ export function ComposerInput({
           ref={backdropRef}
           aria-hidden
           data-composer-tokens
-          className={`pointer-events-none absolute inset-0 overflow-hidden text-[#e8e8e8] ${TEXT_BOX}`}
+          className={`pointer-events-none absolute inset-0 overflow-hidden text-wb-fg ${TEXT_BOX}`}
         >
           {tokens.map((token, index) =>
             token.kind === "text" ? (
@@ -112,8 +112,8 @@ export function ComposerInput({
                 data-token={token.kind}
                 className={
                   token.kind === "skill"
-                    ? "rounded-[5px] bg-violet-400/15 text-violet-300 shadow-[0_0_0_2px_rgba(167,139,250,0.15)]"
-                    : "rounded-[5px] bg-sky-400/15 text-sky-300 shadow-[0_0_0_2px_rgba(56,189,248,0.15)]"
+                    ? "rounded-[5px] bg-wb-skill-soft text-wb-skill shadow-[0_0_0_2px_var(--color-wb-skill-soft)]"
+                    : "rounded-[5px] bg-wb-accent-soft text-wb-accent shadow-[0_0_0_2px_var(--color-wb-accent-soft)]"
                 }
               >
                 {token.text}
@@ -140,8 +140,8 @@ export function ComposerInput({
         placeholder={placeholder}
         disabled={disabled}
         rows={2}
-        className={`relative block max-h-40 resize-none overflow-x-hidden bg-transparent placeholder:text-[#666] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 ${TEXT_BOX} ${
-          decorated ? "text-transparent caret-[#e8e8e8]" : "text-[#e8e8e8]"
+        className={`relative block max-h-40 resize-none overflow-x-hidden bg-transparent placeholder:text-wb-dim focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 ${TEXT_BOX} ${
+          decorated ? "text-transparent caret-wb-fg" : "text-wb-fg"
         }`}
       />
     </div>

@@ -181,19 +181,19 @@ export function QuestionPopup({
         ref={cardRef}
         tabIndex={0}
         style={{ maxHeight: place.maxHeight }}
-        className="select-text overflow-y-auto rounded-2xl border border-[#2a2a2a] bg-[#171717] text-[#e8e8e8] shadow-[0_16px_48px_rgba(0,0,0,0.45)] outline-none [&_button]:select-none"
+        className="wb-popover select-text overflow-y-auto rounded-2xl text-wb-fg outline-none [&_button]:select-none"
         onKeyDown={onKeyDown}
       >
-        <div className="sticky top-0 z-10 flex items-start justify-between gap-3 bg-[#171717] px-4 pb-2 pt-4">
-          <p className="min-w-0 break-words text-sm font-medium text-[#f3f3f3]">{title}</p>
-          <div className="flex shrink-0 items-center gap-1 text-xs text-zinc-500">
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-3 bg-wb-popover px-4 pb-2 pt-4">
+          <p className="min-w-0 break-words text-sm font-medium text-wb-fg">{title}</p>
+          <div className="flex shrink-0 items-center gap-1 text-xs text-wb-fg-3">
             {questions.length > 1 ? (
               <>
                 <button
                   type="button"
                   aria-label="上一个问题"
                   disabled={cursor.index === 0}
-                  className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-zinc-400 hover:bg-[#2a2a2a] hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg disabled:cursor-not-allowed disabled:opacity-40"
                   onClick={() => apply(pageQuestion(step, questions, cursor.index - 1))}
                 >
                   <ChevronLeft className="h-3.5 w-3.5" />
@@ -205,7 +205,7 @@ export function QuestionPopup({
                   type="button"
                   aria-label="下一个问题"
                   disabled={cursor.isLast}
-                  className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-zinc-400 hover:bg-[#2a2a2a] hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg disabled:cursor-not-allowed disabled:opacity-40"
                   onClick={() => apply(pageQuestion(step, questions, cursor.index + 1))}
                 >
                   <ChevronRight className="h-3.5 w-3.5" />
@@ -217,7 +217,7 @@ export function QuestionPopup({
               aria-label="关闭"
               data-question-close
               data-request-input-dismiss
-              className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-zinc-400 hover:bg-[#2a2a2a] hover:text-zinc-200"
+              className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
               onKeyDown={(keyEvent) => {
                 if (keyEvent.key === "Enter") keyEvent.stopPropagation();
               }}
@@ -228,12 +228,12 @@ export function QuestionPopup({
           </div>
         </div>
         {showBody ? (
-          <p className="break-words whitespace-pre-wrap px-4 text-sm font-medium text-[#f3f3f3]">
+          <p className="break-words whitespace-pre-wrap px-4 text-sm font-medium text-wb-fg">
             {question.question}
           </p>
         ) : null}
         {question.description?.trim() ? (
-          <p className="mt-1 break-words whitespace-pre-wrap px-4 text-sm text-zinc-500">
+          <p className="mt-1 break-words whitespace-pre-wrap px-4 text-sm text-wb-fg-2">
             {question.description}
           </p>
         ) : null}
@@ -269,10 +269,10 @@ export function QuestionPopup({
               onChange={(change) => setStep(setQuestionFreeform(step, questions, change.target.value))}
               placeholder={placeholder}
               autoComplete="off"
-              className="min-h-10 w-full bg-transparent px-2 py-2 text-sm text-[#f3f3f3] outline-none placeholder:text-zinc-500"
+              className="min-h-10 w-full bg-transparent px-2 py-2 text-sm text-wb-fg outline-none placeholder:text-wb-fg-3"
             />
           ) : null}
-          <div className={cn("flex items-center gap-2", showOther && "rounded-xl px-2 py-1.5 focus-within:ring-1 focus-within:ring-zinc-600")}>
+          <div className={cn("flex items-center gap-2", showOther && "rounded-xl px-2 py-1.5 focus-within:ring-1 focus-within:ring-wb-accent/40")}>
             {showOther ? (
               <input
                 ref={freeformRef}
@@ -283,7 +283,7 @@ export function QuestionPopup({
                 onFocus={() => setStep(focusQuestionFreeform(step, questions))}
                 placeholder={placeholder}
                 autoComplete="off"
-                className="min-w-0 flex-1 bg-transparent py-1.5 text-sm text-[#f3f3f3] outline-none placeholder:text-zinc-500"
+                className="min-w-0 flex-1 bg-transparent py-1.5 text-sm text-wb-fg outline-none placeholder:text-wb-fg-3"
               />
             ) : (
               <span className="flex-1" />
@@ -292,7 +292,7 @@ export function QuestionPopup({
               type="button"
               data-question-skip
               data-request-input-dismiss
-              className="h-8 shrink-0 cursor-pointer rounded-full border border-[#3a3a3a] bg-transparent px-3 text-sm text-zinc-400 hover:bg-[#2a2a2a] hover:text-[#e8e8e8]"
+              className="h-8 shrink-0 cursor-pointer rounded-full border border-wb-border-strong bg-transparent px-3 text-sm text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
               onKeyDown={(keyEvent) => {
                 if (keyEvent.key === "Enter") keyEvent.stopPropagation();
               }}
@@ -304,7 +304,7 @@ export function QuestionPopup({
               type="button"
               data-question-primary
               disabled={!canPrimary}
-              className="flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full bg-[#f2f2f2] px-3.5 text-sm font-medium text-[#171717] hover:bg-white disabled:cursor-not-allowed disabled:bg-[#2a2a2a] disabled:text-[#666]"
+              className="flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full bg-wb-primary px-3.5 text-sm font-medium text-wb-primary-fg transition-colors hover:bg-wb-primary-hover disabled:cursor-not-allowed disabled:bg-wb-elev disabled:text-wb-fg-3"
               onClick={() => apply(continueQuestionStep(step, questions))}
             >
               <span>{primary}</span>
@@ -349,12 +349,12 @@ function OptionRow({
       disabled={disabled}
       data-question-option={index + 1}
       className={cn(
-        "flex w-full min-w-0 items-start gap-2.5 rounded-xl px-2 py-2 text-left",
+        "flex w-full min-w-0 items-start gap-2.5 rounded-xl px-2 py-2 text-left transition-colors",
         disabled
           ? "cursor-not-allowed opacity-50"
           : selected
-            ? "cursor-pointer bg-white/[0.14]"
-            : "cursor-pointer hover:bg-white/10",
+            ? "cursor-pointer bg-wb-active"
+            : "cursor-pointer hover:bg-wb-hover",
       )}
       onMouseDown={(event) => event.preventDefault()}
       onClick={onPick}
@@ -363,7 +363,7 @@ function OptionRow({
         <span
           className={cn(
             "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border text-[10px]",
-            selected ? "border-zinc-200 bg-zinc-200 text-[#171717]" : "border-zinc-600 text-transparent",
+            selected ? "border-wb-primary bg-wb-primary text-wb-primary-fg" : "border-wb-border-strong text-transparent",
           )}
           aria-hidden="true"
         >
@@ -373,7 +373,7 @@ function OptionRow({
         <span
           className={cn(
             "mt-0.5 flex h-5 min-w-5 shrink-0 items-center justify-center rounded-md px-1 text-[11px] tabular-nums",
-            selected ? "bg-white/15 text-zinc-100" : "bg-white/5 text-zinc-500",
+            selected ? "bg-wb-accent-soft text-wb-accent-ink" : "bg-wb-elev text-wb-fg-3",
           )}
         >
           {index + 1}
@@ -381,13 +381,13 @@ function OptionRow({
       ) : null}
       <span className="min-w-0 break-words">
         <span className="inline-flex min-w-0 flex-wrap items-center gap-1.5">
-          <span className="text-sm font-medium text-[#f3f3f3]">{presented.label}</span>
+          <span className="text-sm font-medium text-wb-fg">{presented.label}</span>
           {presented.recommended ? (
-            <span className="rounded-md bg-white/10 px-1.5 py-0.5 text-xs text-zinc-300">推荐</span>
+            <span className="rounded-md bg-wb-accent-soft px-1.5 py-0.5 text-xs text-wb-accent-ink">推荐</span>
           ) : null}
         </span>
         {option.description || option.disabled_reason ? (
-          <span className="mt-0.5 block text-sm text-zinc-500">
+          <span className="mt-0.5 block text-sm text-wb-fg-2">
             {option.disabled_reason || option.description}
           </span>
         ) : null}

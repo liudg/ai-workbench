@@ -132,7 +132,7 @@ export function DiffToolbar({
     <div
       ref={rootRef}
       data-diff-toolbar
-      className="relative z-20 flex h-10 min-w-0 shrink-0 flex-nowrap items-center gap-1.5 border-b border-[#222] bg-[#0f0f0f] px-2"
+      className="relative z-20 flex h-10 min-w-0 shrink-0 flex-nowrap items-center gap-1.5 border-b border-wb-border bg-wb-panel px-2.5"
     >
       {scopes.length > 0 ? <div className="relative shrink-0">
         <button
@@ -140,17 +140,17 @@ export function DiffToolbar({
           data-diff-scope
           aria-expanded={menu === "scope"}
           aria-haspopup="menu"
-          className="inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-md bg-[#1c1c1c] px-2 text-[12px] text-[#e8e8e8]"
+          className="inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-md border border-wb-border bg-wb-elev px-2 text-[12px] font-medium text-wb-fg transition-colors hover:border-wb-border-strong hover:bg-wb-hover"
           onClick={() => setMenu((value) => (value === "scope" ? null : "scope"))}
         >
           {current?.label ?? ""}
-          <ChevronDown className="h-3 w-3 shrink-0 text-zinc-400" />
+          <ChevronDown className="h-3 w-3 shrink-0 text-wb-fg-3" />
         </button>
         {menu === "scope" ? (
           <div
             role="menu"
             data-diff-scope-menu
-            className="absolute left-0 top-full z-20 mt-1 w-40 rounded-xl border border-zinc-700 bg-zinc-900 py-1 shadow-lg"
+            className="wb-popover absolute left-0 top-full z-20 mt-1 w-40 rounded-xl py-1"
           >
             {scopes.map((item) => (
               <button
@@ -158,25 +158,25 @@ export function DiffToolbar({
                 type="button"
                 role="menuitem"
                 data-diff-scope-item={item.id}
-                className="flex w-full items-center gap-2 whitespace-nowrap px-3 py-1.5 text-left text-xs text-zinc-100 hover:bg-zinc-800"
+                className="flex w-full items-center gap-2 whitespace-nowrap px-3 py-1.5 text-left text-xs text-wb-fg transition-colors hover:bg-wb-hover"
                 onClick={() => {
                   onScope(item.id);
                   setMenu(null);
                 }}
               >
                 <span className="min-w-0 flex-1">{item.label}</span>
-                {scope === item.id ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
+                {scope === item.id ? <Check className="h-3.5 w-3.5 shrink-0 text-wb-accent-ink" /> : null}
               </button>
             ))}
           </div>
         ) : null}
       </div> : null}
-      <span className="shrink-0 whitespace-nowrap font-mono text-[12px] text-[#3fb950]">+{added}</span>
-      <span className="shrink-0 whitespace-nowrap font-mono text-[12px] text-[#f85149]">-{removed}</span>
+      <span className="shrink-0 whitespace-nowrap font-mono text-[12px] tabular-nums text-wb-diff-add-fg">+{added}</span>
+      <span className="shrink-0 whitespace-nowrap font-mono text-[12px] tabular-nums text-wb-diff-del-fg">-{removed}</span>
       <p
         role="status"
         data-diff-copy-status={copyStatus || undefined}
-        className="min-w-0 truncate text-[12px] text-zinc-400"
+        className="min-w-0 truncate text-[12px] text-wb-fg-2"
       >
         {copyStatus}
       </p>

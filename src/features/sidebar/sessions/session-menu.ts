@@ -1,6 +1,6 @@
 /** 会话行菜单。改名、置顶、归档、删除都记在工作台的数据库里，所有 Agent 都有；分叉看 Agent 能不能分。 */
 
-import type { ForkTarget } from "../../tasks/fork-targets.ts";
+import type { ForkTarget } from "../../tasks/index.ts";
 import type { AgentKind } from "../../../types/index.ts";
 
 export type SessionMenuAction = "rename" | "pin" | "fork" | "copy" | "copy-markdown" | "copy-workdir" | "archive" | "delete";

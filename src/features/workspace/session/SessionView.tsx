@@ -1,11 +1,8 @@
 import { useEffect, useMemo } from "react";
 
-import { AnswerMarkdownHost } from "@/features/chat/answer/AnswerMarkdownHost";
-import { Composer } from "@/features/chat/composer/Composer";
-import { ChatHostProvider, type ChatHost } from "@/features/chat/host";
-import { ChatView } from "@/features/chat/timeline/ChatView";
+import { AnswerMarkdownHost, ChatHostProvider, ChatView, Composer, type ChatHost } from "@/features/chat";
 import { CommandMenuHost } from "@/features/command-menu";
-import { SessionSplit } from "@/features/panel/core/SessionSplit";
+import { SessionSplit } from "@/features/panel";
 import type { Project } from "@/features/projects";
 import type { TaskEntry, TaskSession } from "@/features/tasks";
 import { canOpenSideChat } from "../side-chat/can-open";

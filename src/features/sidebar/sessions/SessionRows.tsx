@@ -27,7 +27,7 @@ export function SessionRows({
   return (
     <div
       ref={ref}
-      className="relative overflow-hidden bg-[#141414]"
+      className="relative overflow-hidden bg-wb-sidebar"
       style={{ height: lines.length * SESSION_ROW_HEIGHT }}
     >
       {rows.map((line, index) => (

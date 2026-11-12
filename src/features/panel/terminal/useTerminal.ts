@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Terminal } from "@xterm/xterm";
 
+import { getResolvedTheme, subscribeTheme } from "@/shared/theme";
 import {
   closeTerminal,
   resizeTerminal,
@@ -8,6 +9,7 @@ import {
   writeTerminal,
 } from "./api";
 import { runKeys, takeTerminalRuns, watchTerminalRuns } from "./terminal-runs";
+import { terminalThemeFor } from "./terminal-theme";
 
 export interface TerminalPayload {
   title?: string;
@@ -165,23 +167,31 @@ async function loadXterm() {
 
 /** 颜色和字体跟着宿主元素的样式走，尺寸跟着宿主元素变。 */
 function mountTerminal(host: HTMLElement, { Terminal, FitAddon }: Xterm, onTerm: (term: Terminal | null) => void) {
+  const readHostTheme = () => {
+    const current = getComputedStyle(host);
+    return terminalThemeFor(getResolvedTheme(), current.backgroundColor, current.color);
+  };
   const style = getComputedStyle(host);
   const term = new Terminal({
     cursorBlink: true,
     fontFamily: style.getPropertyValue("--font-mono").trim() || "Consolas, monospace",
     fontSize: 13,
-    lineHeight: 1.2,
+    lineHeight: 1.25,
     scrollback: 5000,
-    theme: {
-      background: style.backgroundColor,
-      foreground: style.color,
-      cursor: style.color,
-    },
+    theme: readHostTheme(),
   });
   const fit = new FitAddon();
   term.loadAddon(fit);
   term.open(host);
   fit.fit();
+  let frameId: number | null = null;
+  const stopTheme = subscribeTheme(() => {
+    if (frameId !== null) window.cancelAnimationFrame(frameId);
+    frameId = window.requestAnimationFrame(() => {
+      frameId = null;
+      term.options.theme = readHostTheme();
+    });
+  });
   const observer = new ResizeObserver(() => {
     if (host.clientWidth > 0 && host.clientHeight > 0) fit.fit();
   });
@@ -189,6 +199,8 @@ function mountTerminal(host: HTMLElement, { Terminal, FitAddon }: Xterm, onTerm:
   term.focus();
   onTerm(term);
   return () => {
+    stopTheme();
+    if (frameId !== null) window.cancelAnimationFrame(frameId);
     observer.disconnect();
     onTerm(null);
     term.dispose();

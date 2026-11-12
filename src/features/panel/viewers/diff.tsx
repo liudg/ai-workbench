@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { FileDiff } from "lucide-react";
 
-import type { FileChange } from "@/features/changes-model/diff-parse";
+import type { FileChange } from "@/features/changes-model";
 import { DiffView } from "../diff/DiffView";
 import { payloadTitle, type PanelViewer, type ViewerViewProps } from "../core/registry";
 import { matchDiff } from "./kinds";

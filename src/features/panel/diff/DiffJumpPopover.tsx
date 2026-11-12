@@ -38,17 +38,17 @@ export function JumpPopover({
       role="dialog"
       aria-label={DESKTOP_ZH.diffJump}
       data-diff-jump-popover
-      className="fixed z-[80] w-80 overflow-hidden rounded-xl border border-[#2a2a2a] bg-[#1b1b1b] text-[#e8e8e8] shadow-[0_12px_32px_rgba(0,0,0,0.45)]"
+      className="wb-popover fixed z-[80] w-80 overflow-hidden rounded-xl text-wb-fg"
     >
-      <div className="flex items-center gap-2 border-b border-[#2a2a2a] px-3">
-        <Search className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
+      <div className="flex items-center gap-2 border-b border-wb-border px-3">
+        <Search className="h-3.5 w-3.5 shrink-0 text-wb-fg-3" />
         <input
           ref={inputRef}
           value={query}
           placeholder={DESKTOP_ZH.diffJump}
           aria-label={DESKTOP_ZH.diffJump}
           data-diff-jump-input
-          className="h-9 w-full bg-transparent text-sm text-[#e8e8e8] outline-none placeholder:text-[#666]"
+          className="h-9 w-full bg-transparent text-sm text-wb-fg outline-none placeholder:text-wb-fg-3"
           onChange={(event) => {
             setQuery(event.target.value);
             setCursor(0);
@@ -71,9 +71,9 @@ export function JumpPopover({
       </div>
       <div className="max-h-72 overflow-y-auto py-1" role="listbox" aria-label={DESKTOP_ZH.diffJump}>
         {files.length === 0 ? (
-          <p className="px-3 py-2 text-sm text-zinc-400">{DESKTOP_ZH.noFileChanges}</p>
+          <p className="px-3 py-2 text-sm text-wb-fg-3">{DESKTOP_ZH.noFileChanges}</p>
         ) : matches.length === 0 ? (
-          <p className="px-3 py-2 text-sm text-zinc-400">{DESKTOP_ZH.noFileMatch}</p>
+          <p className="px-3 py-2 text-sm text-wb-fg-3">{DESKTOP_ZH.noFileMatch}</p>
         ) : (
           matches.map((file, index) => {
             const parts = jumpFileParts(file.path);
@@ -86,14 +86,14 @@ export function JumpPopover({
                 data-diff-jump-file={file.path}
                 data-diff-jump-current={file.path === activePath ? "true" : "false"}
                 className={cn(
-                  "flex w-full min-w-0 items-baseline gap-3 px-3 py-1.5 text-left",
-                  index === activeIndex ? "bg-white/10" : "hover:bg-white/5",
+                  "flex w-full min-w-0 items-baseline gap-3 px-3 py-1.5 text-left transition-colors",
+                  index === activeIndex ? "bg-wb-active" : "hover:bg-wb-hover",
                 )}
                 onMouseEnter={() => setCursor(index)}
                 onClick={() => onSelect(file.path)}
               >
-                <span className="shrink-0 text-sm font-medium text-[#e8e8e8]">{parts.name}</span>
-                {parts.dir ? <span className="min-w-0 flex-1 truncate text-xs text-zinc-400">{parts.dir}</span> : null}
+                <span className="shrink-0 text-sm font-medium text-wb-fg">{parts.name}</span>
+                {parts.dir ? <span className="min-w-0 flex-1 truncate text-xs text-wb-fg-3">{parts.dir}</span> : null}
               </button>
             );
           })

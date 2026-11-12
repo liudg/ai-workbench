@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 
 import { useAgentProfiles } from "@/features/agents";
-import type { ChatHost } from "@/features/chat/host";
+import type { ChatHost } from "@/features/chat";
 import type { Project } from "@/features/projects";
 import type { TaskEntry, TaskSession } from "@/features/tasks";
 import type { PromptAnswer } from "@/types";

@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import {
   MASKED_VALUE,
@@ -34,16 +35,16 @@ import {
 } from "./view";
 
 const inputClass =
-  "w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-zinc-500";
+  "w-full rounded-lg border border-wb-border-strong bg-wb-input px-3 py-2 text-sm text-wb-fg outline-none transition-colors placeholder:text-wb-dim focus-visible:border-wb-accent focus-visible:ring-2 focus-visible:ring-wb-accent-soft";
 const quietButton =
-  "rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-100 hover:bg-zinc-800 disabled:opacity-50";
+  "rounded-lg border border-wb-border bg-wb-elev px-3 py-1.5 text-sm text-wb-fg transition-colors hover:border-wb-border-strong hover:bg-wb-hover disabled:opacity-50";
 
 const STATUS_DOT: Record<string, string> = {
-  connected: "bg-emerald-400",
-  configured: "bg-zinc-400",
-  loggedOut: "bg-amber-400",
-  failed: "bg-red-400",
-  disabled: "bg-zinc-500",
+  connected: "bg-wb-ok",
+  configured: "bg-wb-fg-3",
+  loggedOut: "bg-wb-warn",
+  failed: "bg-wb-danger",
+  disabled: "bg-wb-dim",
 };
 
 export interface McpPanelProps {
@@ -177,9 +178,9 @@ export function McpPanel(props: McpPanelProps) {
 
   return (
     <section data-mcp-panel="">
-      <h2 className="text-base font-medium text-zinc-100">{MCP_PAGE.nav}</h2>
-      <p className="mt-1 max-w-lg text-sm leading-6 text-zinc-500">{MCP_PAGE.subtitle}</p>
-      <div className="mt-4 flex flex-wrap gap-2" role="tablist" aria-label={MCP_PAGE.nav}>
+      <h2 className="text-base font-semibold text-wb-fg">{MCP_PAGE.nav}</h2>
+      <p className="mt-1 max-w-lg text-sm leading-6 text-wb-fg-2">{MCP_PAGE.subtitle}</p>
+      <div className="mt-4 flex flex-wrap gap-1.5" role="tablist" aria-label={MCP_PAGE.nav}>
         {props.surfaces.map((item) => {
           const selected = item.kind === surface?.kind;
           return (
@@ -191,18 +192,18 @@ export function McpPanel(props: McpPanelProps) {
               data-mcp-installed={item.installed ? "true" : "false"}
               aria-selected={selected}
               className={cn(
-                "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm",
-                !item.installed && "text-zinc-600",
-                selected && item.installed && "bg-zinc-800 text-zinc-50",
-                selected && !item.installed && "bg-zinc-900 text-zinc-500",
-                !selected && item.installed && "text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-100",
-                !selected && !item.installed && "hover:bg-zinc-800/30",
+                "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition-colors",
+                !item.installed && "text-wb-fg-3",
+                selected && item.installed && "bg-wb-active font-medium text-wb-fg",
+                selected && !item.installed && "bg-wb-elev text-wb-fg-2",
+                !selected && item.installed && "text-wb-fg-2 hover:bg-wb-hover hover:text-wb-fg",
+                !selected && !item.installed && "hover:bg-wb-hover/60",
               )}
               onClick={() => pick(item.kind)}
             >
               <span>{item.display_name}</span>
               {!item.installed && (
-                <span className="text-xs text-zinc-500" data-mcp-uninstalled="">
+                <span className="text-xs text-wb-fg-3" data-mcp-uninstalled="">
                   {MCP_PAGE.notInstalled}
                 </span>
               )}
@@ -212,7 +213,7 @@ export function McpPanel(props: McpPanelProps) {
       </div>
       {props.feedback?.tone === "success" && (
         <p
-          className="mt-4 inline-flex rounded-full bg-zinc-800 px-3 py-1 text-sm text-zinc-100"
+          className="mt-4 inline-flex rounded-full border border-wb-ok/30 bg-wb-ok-soft px-3 py-1 text-sm text-wb-ok"
           role="status"
           data-mcp-toast=""
         >
@@ -301,7 +302,7 @@ export function McpPanel(props: McpPanelProps) {
               </button>
               <button
                 type="button"
-                className={quietButton + " border-red-900 text-red-300"}
+                className="rounded-lg border border-wb-danger/30 bg-wb-danger-soft px-3 py-1.5 text-sm text-wb-danger transition-colors hover:opacity-90 disabled:opacity-50"
                 data-mcp-uninstall-confirm={confirmRow.name}
                 disabled={props.rowBusy.has(confirmRow.name)}
                 onClick={() => {
@@ -324,12 +325,12 @@ export function McpPanel(props: McpPanelProps) {
 function Failure({ title, detail }: { title: string; detail: string }) {
   const body = detail.trim();
   return (
-    <div className="mt-4 rounded-lg border border-red-900/80 bg-red-950/40 px-3 py-2" role="alert" data-mcp-error="">
-      <p className="text-sm text-red-200">{title}</p>
+    <div className="mt-4 rounded-xl border border-wb-danger/30 bg-wb-danger-soft px-3.5 py-2.5" role="alert" data-mcp-error="">
+      <p className="text-sm text-wb-danger">{title}</p>
       {body && (
         <details className="mt-1">
-          <summary className="cursor-pointer text-xs text-zinc-400">{MCP_PAGE.viewDetails}</summary>
-          <pre className="mt-2 whitespace-pre-wrap text-xs leading-5 text-zinc-400">{body}</pre>
+          <summary className="cursor-pointer text-xs text-wb-fg-2">{MCP_PAGE.viewDetails}</summary>
+          <pre className="mt-2 whitespace-pre-wrap text-xs leading-5 text-wb-fg-2">{body}</pre>
         </details>
       )}
     </div>
@@ -358,10 +359,10 @@ function ServerList(props: {
   return (
     <div className="mt-6">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="flex items-center gap-2 text-sm font-medium text-zinc-100">
+        <h3 className="flex items-center gap-2 text-sm font-medium text-wb-fg">
           {MCP_PAGE.heading}
           {props.listing && props.rows.length > 0 && (
-            <span className="text-xs font-normal text-zinc-500" role="status" data-mcp-refreshing="">
+            <span className="text-xs font-normal text-wb-fg-3" role="status" data-mcp-refreshing="">
               {MCP_PAGE.refreshing}
             </span>
           )}
@@ -386,18 +387,18 @@ function ServerList(props: {
         </div>
       </div>
       {!surface.manageable && props.reason && (
-        <p className="mt-4 text-sm leading-6 text-zinc-400" data-mcp-unavailable="">
+        <p className="mt-4 text-sm leading-6 text-wb-fg-2" data-mcp-unavailable="">
           {props.reason}
         </p>
       )}
       {props.listError && <Failure title={MCP_PAGE.listErrorTitle} detail={props.listError} />}
       {surface.manageable && props.listing && props.rows.length === 0 && !props.listError && (
-        <p className="mt-8 text-sm text-zinc-500" data-mcp-loading="">
+        <p className="mt-8 text-sm text-wb-fg-3" data-mcp-loading="">
           {MCP_PAGE.loading}
         </p>
       )}
       {surface.manageable && props.rows.length === 0 && !props.listError && !props.listing && (
-        <p className="mt-8 text-sm text-zinc-500" data-mcp-empty="">
+        <p className="mt-8 text-sm text-wb-fg-3" data-mcp-empty="">
           {MCP_PAGE.empty}
         </p>
       )}
@@ -412,17 +413,17 @@ function ServerList(props: {
               data-mcp-row={row.name}
               data-mcp-highlight={props.lit === row.name ? row.name : undefined}
               className={cn(
-                "relative rounded-xl border bg-zinc-900/60 px-4 py-3",
-                props.lit === row.name ? "border-emerald-500/80 bg-emerald-950/30" : "border-zinc-800",
+                "relative rounded-xl border bg-wb-elev px-4 py-3 transition-colors",
+                props.lit === row.name ? "border-wb-ok/30 bg-wb-ok-soft" : "border-wb-border",
               )}
             >
               <div className="flex items-center gap-3">
                 <button type="button" className="min-w-0 flex-1 text-left" data-mcp-open={row.name} onClick={() => props.onOpen(row.name)}>
                   <span className="flex items-center gap-2">
-                    <span className="truncate text-sm font-medium text-zinc-100">{row.name}</span>
+                    <span className="truncate text-sm font-medium text-wb-fg">{row.name}</span>
                     {tag && (
                       <span
-                        className="rounded border border-zinc-700 px-1.5 py-0.5 text-[10px] tracking-wide text-zinc-400"
+                        className="rounded border border-wb-border px-1.5 py-0.5 text-[10px] tracking-wide text-wb-fg-2"
                         data-mcp-transport-tag={tag}
                       >
                         {tag}
@@ -459,14 +460,14 @@ function ServerList(props: {
                   role="menu"
                   aria-label={MCP_PAGE.more}
                   data-mcp-menu={row.name}
-                  className="absolute right-3 top-14 z-10 w-44 overflow-hidden rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-xl"
+                  className="wb-popover absolute right-3 top-14 z-10 w-44 overflow-hidden rounded-xl p-1"
                 >
                   {actions.map((action) => (
                     <button
                       key={action.id}
                       type="button"
                       role="menuitem"
-                      className="block w-full px-3 py-2 text-left text-sm text-zinc-100 hover:bg-zinc-800"
+                      className="block w-full rounded-lg px-2.5 py-1.5 text-left text-sm text-wb-fg transition-colors hover:bg-wb-hover"
                       data-mcp-action={action.id}
                       onClick={() => props.onAction(action.id, row)}
                     >
@@ -496,18 +497,18 @@ function StatusLine({ row, busy, brief = true }: { row: McpServerRow; busy: bool
   const status = rowStatus(row);
   const issue = brief ? statusIssue(row) : null;
   return (
-    <span className="mt-1 flex min-w-0 items-center gap-2 text-xs text-zinc-400">
+    <span className="mt-1 flex min-w-0 items-center gap-2 text-xs text-wb-fg-2">
       <span className="inline-flex shrink-0 items-center gap-1.5" data-mcp-status={status.kind}>
         <span className={cn("h-1.5 w-1.5 rounded-full", STATUS_DOT[status.kind])} aria-hidden />
         {status.label}
       </span>
       {issue && (
-        <span className="min-w-0 truncate text-zinc-500" title={issue} data-mcp-issue="">
+        <span className="min-w-0 truncate text-wb-fg-3" title={issue} data-mcp-issue="">
           {issue}
         </span>
       )}
       {busy && (
-        <span data-mcp-busy={row.name} className="text-zinc-500">
+        <span data-mcp-busy={row.name} className="text-wb-fg-3">
           {MCP_PAGE.processing}
         </span>
       )}
@@ -517,24 +518,13 @@ function StatusLine({ row, busy, brief = true }: { row: McpServerRow; busy: bool
 
 function Toggle(props: { name: string; enabled: boolean; disabled: boolean; onToggle: () => void }) {
   return (
-    <button
-      type="button"
-      role="switch"
+    <Switch
       data-mcp-toggle={props.name}
-      aria-checked={props.enabled}
+      checked={props.enabled}
       aria-label={props.enabled ? MCP_PAGE.disable : MCP_PAGE.enable}
       disabled={props.disabled}
-      className={cn(
-        "relative h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-50",
-        props.enabled ? "bg-emerald-500" : "bg-zinc-700",
-      )}
-      onClick={props.onToggle}
-    >
-      <span
-        className={cn("absolute top-0.5 h-4 w-4 rounded-full bg-white", props.enabled ? "left-4" : "left-0.5")}
-        aria-hidden
-      />
-    </button>
+      onCheckedChange={props.onToggle}
+    />
   );
 }
 
@@ -549,10 +539,10 @@ function AuthPopover(props: {
   return (
     <div
       data-mcp-popover={props.row.name}
-      className="mt-3 space-y-3 rounded-lg border border-zinc-700 bg-zinc-950 p-3"
+      className="mt-3 space-y-3 rounded-xl border border-wb-border bg-wb-surface p-3"
     >
       {props.surface.oauth_registration.length > 0 && (
-        <label className="block text-xs text-zinc-400">
+        <label className="block text-xs text-wb-fg-2">
           {MCP_PAGE.registration}
           <select
             aria-label={registrationAria(registration)}
@@ -594,14 +584,14 @@ function AuthPopover(props: {
 
 function ToolList({ entries }: { entries: McpToolEntry[] }) {
   if (entries.length === 0) {
-    return <p className="mt-3 text-xs text-zinc-500">{MCP_PAGE.toolsEmpty}</p>;
+    return <p className="mt-3 text-xs text-wb-fg-3">{MCP_PAGE.toolsEmpty}</p>;
   }
   return (
     <ul className="mt-3 space-y-2" data-mcp-tool-list="">
       {entries.map((tool) => (
         <li key={tool.name} data-mcp-tool={tool.name}>
-          <div className="text-sm text-zinc-100">{tool.name}</div>
-          {tool.description && <p className="text-xs leading-5 text-zinc-500">{tool.description}</p>}
+          <div className="text-sm text-wb-fg">{tool.name}</div>
+          {tool.description && <p className="text-xs leading-5 text-wb-fg-3">{tool.description}</p>}
         </li>
       ))}
     </ul>
@@ -627,7 +617,7 @@ function ServerDetail(props: {
   return (
     <div className="mt-6" data-mcp-form="existing">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-sm font-medium text-zinc-100" data-mcp-detail-title="">
+        <h3 className="text-sm font-medium text-wb-fg" data-mcp-detail-title="">
           {row.name}
         </h3>
         <button type="button" className={quietButton} onClick={props.onBack}>
@@ -685,7 +675,7 @@ function ServerDetail(props: {
       </dl>
       {props.tools && surface.verbs.list_tools && surface.tools_label.trim() && (
         <div className="mt-6" data-mcp-tools-for={row.name}>
-          <h4 className="text-sm font-medium text-zinc-100">{MCP_PAGE.toolsHeading}</h4>
+          <h4 className="text-sm font-medium text-wb-fg">{MCP_PAGE.toolsHeading}</h4>
           <ToolList entries={props.tools} />
         </div>
       )}
@@ -696,8 +686,8 @@ function ServerDetail(props: {
 function Readout({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-xs text-zinc-500">{label}</dt>
-      <dd className="mt-1 whitespace-pre-wrap break-all text-zinc-100">{value}</dd>
+      <dt className="text-xs text-wb-fg-3">{label}</dt>
+      <dd className="mt-1 whitespace-pre-wrap break-all text-wb-fg">{value}</dd>
     </div>
   );
 }
@@ -707,13 +697,13 @@ function SecretPairs({ label, pairs }: { label: string; pairs: McpPair[] }) {
   if (pairs.length === 0) return null;
   return (
     <div data-mcp-secret-group={label}>
-      <dt className="text-xs text-zinc-500">{label}</dt>
+      <dt className="text-xs text-wb-fg-3">{label}</dt>
       <dd className="mt-1 space-y-1">
         {pairs.map((pair, index) => {
           const shown = open[index] === true;
           const hidden = pair.value.length > 0 && !shown;
           return (
-            <div key={`${pair.key}-${index}`} className="flex flex-wrap items-center gap-2 text-zinc-100">
+            <div key={`${pair.key}-${index}`} className="flex flex-wrap items-center gap-2 text-wb-fg">
               <span className="font-mono text-xs">{pair.key}</span>
               <span className="font-mono text-xs" data-mcp-secret-value={hidden ? "masked" : "shown"}>
                 {hidden ? MASKED_VALUE : pair.value}
@@ -721,7 +711,7 @@ function SecretPairs({ label, pairs }: { label: string; pairs: McpPair[] }) {
               {pair.value.length > 0 && (
                 <button
                   type="button"
-                  className="text-xs text-zinc-400 underline"
+                  className="text-xs text-wb-fg-2 underline hover:text-wb-fg"
                   aria-label={`${shown ? MCP_PAGE.hideValue : MCP_PAGE.showValue} ${pair.key}`}
                   onClick={() =>
                     setOpen((current) => {

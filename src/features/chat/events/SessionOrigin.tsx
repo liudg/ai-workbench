@@ -26,14 +26,14 @@ export function SessionOrigin({
   const notes = event.sender?.notes;
   return (
     <div className="event-in min-w-0 px-6 py-2" data-session-origin="">
-      <div className="flex min-w-0 items-center gap-1 text-xs text-zinc-500">
+      <div className="flex min-w-0 items-center gap-1 text-xs text-wb-fg-3">
         <span className="flex min-w-0 items-center">
           {originAgent ? <StartedBy agent={originAgent} /> : null}
           <span className="shrink-0">来自</span>
           {originId && originTitle ? (
             <button
               type="button"
-              className="ml-1 min-w-0 truncate text-zinc-300 underline-offset-2 hover:text-zinc-100 hover:underline"
+              className="ml-1 min-w-0 truncate text-wb-fg-2 underline-offset-2 transition-colors hover:text-wb-fg hover:underline"
               onClick={() => subtasks?.open(originId)}
             >
               {originTitle}
@@ -44,7 +44,7 @@ export function SessionOrigin({
         </span>
         <button
           type="button"
-          className="flex shrink-0 items-center gap-0.5 rounded px-0.5 hover:text-zinc-300"
+          className="flex shrink-0 items-center gap-0.5 rounded px-0.5 transition-colors hover:text-wb-fg-2"
           aria-label={open ? "收起" : "展开"}
           aria-expanded={open}
           title={time}
@@ -55,15 +55,15 @@ export function SessionOrigin({
         </button>
       </div>
       {open ? (
-        <div className="mt-1.5 min-w-0 divide-y divide-white/10 rounded-xl border border-white/10">
+        <div className="mt-1.5 min-w-0 divide-y divide-wb-border rounded-xl border border-wb-border bg-wb-card">
           <OriginRow label="任务" title={title} name="task">
             <ClampedText text={event.text} />
           </OriginRow>
           {background || notes ? (
             <OriginRow label="上下文" name="context">
-              <div className="text-sm text-zinc-300">
+              <div className="text-sm text-wb-fg-2">
                 {background ? <MessageContent text={background} /> : null}
-                {notes ? <p className="mt-2 break-all text-xs text-zinc-500">共享笔记目录：{notes}</p> : null}
+                {notes ? <p className="mt-2 break-all text-xs text-wb-fg-3">共享笔记目录：{notes}</p> : null}
               </div>
             </OriginRow>
           ) : null}
@@ -99,9 +99,9 @@ function OriginRow({
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
       >
-        <span className="shrink-0 text-zinc-500">{label}</span>
-        {title ? <span className="min-w-0 truncate font-medium text-zinc-200">{title}</span> : null}
-        <Chevron className="h-3.5 w-3.5 shrink-0 text-zinc-500 group-hover:text-zinc-300" />
+        <span className="shrink-0 text-wb-fg-3">{label}</span>
+        {title ? <span className="min-w-0 truncate font-medium text-wb-fg">{title}</span> : null}
+        <Chevron className="h-3.5 w-3.5 shrink-0 text-wb-fg-3 transition-colors group-hover:text-wb-fg-2" />
       </button>
       {open ? <div className="mt-2 min-w-0">{children}</div> : null}
     </div>
@@ -128,14 +128,14 @@ function ClampedText({ text }: { text: string }) {
   return (
     <div className="min-w-0">
       <div ref={frameRef} className={full ? "min-w-0" : "max-h-[4.5rem] min-w-0 overflow-hidden"}>
-        <div ref={contentRef} className="text-sm text-zinc-300">
+        <div ref={contentRef} className="text-sm text-wb-fg-2">
           <MessageContent text={text} />
         </div>
       </div>
       {full || overflows ? (
         <button
           type="button"
-          className="mt-1.5 text-xs text-zinc-400 hover:text-zinc-200"
+          className="mt-1.5 text-xs text-wb-fg-3 transition-colors hover:text-wb-fg"
           onClick={() => setFull((value) => !value)}
         >
           {full ? "收起" : "显示更多"}

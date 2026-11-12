@@ -79,7 +79,7 @@ export function ComposerBar({
         <button
           ref={plusRef}
           type="button"
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-zinc-300 hover:bg-zinc-800 hover:text-zinc-50 disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg disabled:cursor-not-allowed disabled:opacity-40"
           aria-label="添加附件"
           title="添加附件"
           aria-haspopup={imagesOn ? "menu" : undefined}
@@ -101,9 +101,9 @@ export function ComposerBar({
           type="button"
           title={accessLabel}
           className={cn(
-            "inline-flex h-8 min-w-0 items-center justify-center gap-1 overflow-hidden rounded-full text-sm hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40",
-            icons ? "w-8 shrink-0 px-0" : density === "compact" ? "max-w-[7.5rem] px-2" : "max-w-[11rem] px-2",
-            accessCaution ? "text-[#f0a04a]" : "text-[#cfcfcf]",
+            "inline-flex h-7 min-w-0 items-center justify-center gap-1 overflow-hidden rounded-lg text-[13px] transition-colors hover:bg-wb-hover disabled:cursor-not-allowed disabled:opacity-40",
+            icons ? "w-7 shrink-0 px-0" : density === "compact" ? "max-w-[7.5rem] px-2" : "max-w-[11rem] px-2",
+            accessCaution ? "text-wb-warn" : "text-wb-fg-2 hover:text-wb-fg",
           )}
           aria-label="权限"
           aria-haspopup="menu"
@@ -114,12 +114,12 @@ export function ComposerBar({
             onToggleMenu("access");
           }}
         >
-          <Shield className="h-4 w-4 shrink-0" />
+          <Shield className="h-3.5 w-3.5 shrink-0" />
           {icons ? null : <span className="min-w-0 truncate">{accessLabel}</span>}
-          {icons ? null : <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />}
+          {icons ? null : <ChevronDown className="h-3 w-3 shrink-0 opacity-70" />}
         </button>
         {(planIndicator || goalChip) && (
-          <span aria-hidden className="mx-0.5 h-4 w-px shrink-0 bg-zinc-700" data-mode-divider />
+          <span aria-hidden className="mx-0.5 h-3.5 w-px shrink-0 bg-wb-border-strong" data-mode-divider />
         )}
         {planIndicator && <PlanModeIndicator disabled={composerLocked} onExit={onDismissPlan} />}
         {goalChip && (
@@ -135,14 +135,14 @@ export function ComposerBar({
           />
         )}
       </div>
-      <div className="flex shrink-0 items-center gap-1">
+      <div className="flex shrink-0 items-center gap-1.5">
         {showModel && (
           <button
             ref={modelRef}
             type="button"
             title={modelButton}
             className={cn(
-              "inline-flex h-8 min-w-0 items-center justify-center gap-1 overflow-hidden rounded-full px-2 text-sm text-[#cfcfcf] hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40",
+              "inline-flex h-7 min-w-0 items-center justify-center gap-1 overflow-hidden rounded-lg px-2 text-[13px] text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg disabled:cursor-not-allowed disabled:opacity-40",
               icons || density === "compact" ? "max-w-[8.5rem]" : "max-w-52",
             )}
             data-model-chip
@@ -159,7 +159,7 @@ export function ComposerBar({
               <span className="inline-flex min-w-0 items-center gap-1">
                 <span className="min-w-0 truncate">{modelName}</span>
                 {effortLabel ? (
-                  <span data-model-effort className="shrink-0 whitespace-nowrap">
+                  <span data-model-effort className="shrink-0 whitespace-nowrap text-wb-fg-3">
                     {effortLabel}
                   </span>
                 ) : null}
@@ -167,13 +167,13 @@ export function ComposerBar({
             ) : (
               <span className="min-w-0 truncate">{modelButton}</span>
             )}
-            <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />
+            <ChevronDown className="h-3 w-3 shrink-0 opacity-70" />
           </button>
         )}
         {editing && (
           <button
             type="button"
-            className="h-8 shrink-0 rounded-full px-2 text-sm text-zinc-300 hover:bg-zinc-800"
+            className="h-7 shrink-0 rounded-lg px-2 text-[13px] text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
             onClick={(event) => {
               event.stopPropagation();
               onCancelEdit();
@@ -189,7 +189,7 @@ export function ComposerBar({
             onSend();
           }}
           disabled={sendDisabled}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#3a3a3a] bg-[#2c2c2c] text-[#e8e8e8] transition-colors hover:bg-[#3a3a3a] disabled:cursor-not-allowed disabled:border-[#2a2a2a] disabled:bg-[#242424] disabled:text-[#555]"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-wb-primary text-wb-primary-fg transition-colors hover:bg-wb-primary-hover disabled:cursor-not-allowed disabled:bg-wb-hover disabled:text-wb-dim"
           title={stopMode ? "停止" : "发送"}
           aria-label={stopMode ? "停止" : "发送"}
         >

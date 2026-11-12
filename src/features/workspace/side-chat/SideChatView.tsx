@@ -1,12 +1,15 @@
 import { useMemo } from "react";
 
 import { useAgentProfiles } from "@/features/agents";
-import { AnswerMarkdownHost } from "@/features/chat/answer/AnswerMarkdownHost";
-import { CHAT_SCOPE_ATTR } from "@/features/chat/chat-scope";
-import { Composer } from "@/features/chat/composer/Composer";
-import { ChatHostProvider, type ChatHost } from "@/features/chat/host";
-import { ChatView } from "@/features/chat/timeline/ChatView";
-import type { ViewerViewProps } from "@/features/panel/core/registry";
+import {
+  AnswerMarkdownHost,
+  CHAT_SCOPE_ATTR,
+  ChatHostProvider,
+  ChatView,
+  Composer,
+  type ChatHost,
+} from "@/features/chat";
+import type { ViewerViewProps } from "@/features/panel";
 import { useProjects } from "@/features/projects";
 import { useTasks, type TaskEntry, type TaskSession } from "@/features/tasks";
 import { useSessionFeeds, type SessionFeedState } from "@/lib/daemon";
@@ -31,7 +34,7 @@ export function SideChatTab({ payload, status }: ViewerViewProps<SideChatPayload
 
 function Notice({ text, tone }: { text: string; tone?: "error" }) {
   return (
-    <p className={tone === "error" ? "px-4 py-6 text-sm text-red-300" : "px-4 py-6 text-sm text-zinc-500"}>{text}</p>
+    <p className={tone === "error" ? "px-4 py-6 text-sm text-wb-danger" : "px-4 py-6 text-sm text-wb-fg-3"}>{text}</p>
   );
 }
 
@@ -68,7 +71,7 @@ function SideChat({ task, side }: { task: TaskEntry; side: TaskSession }) {
   );
   return (
     <ChatHostProvider host={host}>
-      <div data-side-chat {...{ [CHAT_SCOPE_ATTR]: "" }} className="flex h-full min-h-0 flex-col bg-[#0f0f0f]">
+      <div data-side-chat {...{ [CHAT_SCOPE_ATTR]: "" }} className="flex h-full min-h-0 flex-col bg-wb-panel">
         <div className="flex min-h-0 flex-1 flex-col">
           <AnswerMarkdownHost>
             <ChatView

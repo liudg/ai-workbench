@@ -190,9 +190,9 @@ export function OpenFilesScreen({
             data-workspace-tree
             data-tree-surface="sidebar"
             style={pinnedColumnStyle(listWidth)}
-            className="flex h-full min-h-0 flex-col overflow-hidden border-l border-[#222] bg-[#0f0f0f]"
+            className="flex h-full min-h-0 flex-col overflow-hidden border-l border-wb-border bg-wb-panel"
           >
-            <div className="flex shrink-0 items-center gap-1 border-b border-[#222] p-2">
+            <div className="flex shrink-0 items-center gap-1.5 border-b border-wb-border p-2">
               <input
                 value={place.filter}
                 onChange={(event) => {
@@ -202,7 +202,7 @@ export function OpenFilesScreen({
                 placeholder={DESKTOP_ZH.filterFiles}
                 aria-label={DESKTOP_ZH.filterFiles}
                 data-files-filter
-                className="w-full min-w-0 rounded-md border border-[#2a2a2a] bg-[#171717] px-2 py-1.5 text-[12px] text-[#e8e8e8] outline-none placeholder:text-[#666] focus:border-[#3a3a3a]"
+                className="w-full min-w-0 rounded-lg border border-wb-border-strong bg-wb-input px-2.5 py-1.5 text-[12px] text-wb-fg outline-none transition-colors placeholder:text-wb-dim focus-visible:border-wb-accent focus-visible:ring-2 focus-visible:ring-wb-accent-soft"
               />
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-1 py-1">

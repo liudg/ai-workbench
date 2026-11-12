@@ -16,7 +16,7 @@ export function PanelLayoutControls() {
           data-panel-full
           aria-pressed={full}
           aria-label={`${fullLabel} ${DESKTOP_ZH.panelShortcutF}`}
-          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[#8d8d8d] hover:bg-white/5 hover:text-[#e8e8e8]"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
           onClick={toggleFull}
         >
           <FullViewIcon exit={full} />
@@ -28,7 +28,7 @@ export function PanelLayoutControls() {
             type="button"
             data-panel-hide
             aria-label={`${DESKTOP_ZH.panelHideTabs} ${DESKTOP_ZH.panelShortcutB}`}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[#8d8d8d] hover:bg-white/5 hover:text-[#e8e8e8]"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
             onClick={hidePanel}
           >
             <PanelSquareIcon />

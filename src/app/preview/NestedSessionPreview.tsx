@@ -1,4 +1,4 @@
-import type { SubtaskHost } from "@/features/chat/host";
+import type { SubtaskHost } from "@/features/chat";
 import type { Session, SessionEvent, SessionEventBody } from "@/types";
 import { PreviewSession } from "./PreviewSession";
 
@@ -55,7 +55,7 @@ const SUBTASKS: SubtaskHost = {
 /** 开发预览：Agent 开的会话的信息流头部。`?preview=nested-session` */
 export default function NestedSessionPreview() {
   return (
-    <div className="h-screen w-screen bg-[#0f0f0f] text-[#e8e8e8]">
+    <div className="h-screen w-screen bg-wb-surface text-wb-fg">
       <PreviewSession session={SESSION} events={events} subtasks={SUBTASKS} panel={false} />
     </div>
   );

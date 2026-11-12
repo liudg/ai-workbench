@@ -1,5 +1,5 @@
 import type { ChangeCapabilities } from "../../../types/index.ts";
-import type { FileChange } from "../../changes-model/diff-parse.ts";
+import type { FileChange } from "../../changes-model/index.ts";
 
 export interface ScopeChoice {
   id: string;

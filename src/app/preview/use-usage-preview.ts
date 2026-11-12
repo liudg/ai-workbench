@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from "react";
 
-import { seedSubscriptionUsage } from "@/features/panel/core/subscription-cache";
+import { seedSubscriptionUsage } from "@/features/panel/headless";
 import { parseSubscriptionSeed } from "@/store/subscription-usage";
 import type { AgentKind, AgentProfile } from "@/types";
 

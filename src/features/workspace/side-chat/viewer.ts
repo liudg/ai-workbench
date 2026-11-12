@@ -1,6 +1,6 @@
 import { MessageCirclePlus } from "lucide-react";
 
-import { registerViewer, type OpenTarget, type PanelViewer } from "@/features/panel/core/registry";
+import { registerViewer, type OpenTarget, type PanelViewer } from "@/features/panel/headless";
 import { SIDE_CHAT_VIEWER, loadSideChat, disposeSideChat, type SideChatPayload } from "./open";
 import { SideChatTab } from "./SideChatView";
 

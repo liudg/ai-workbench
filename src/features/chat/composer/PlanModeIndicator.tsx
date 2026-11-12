@@ -16,7 +16,7 @@ export function PlanModeIndicator({
       data-plan-indicator
       aria-label={DESKTOP_ZH.planLabel}
       disabled={disabled}
-      className="group relative inline-flex h-8 shrink-0 items-center gap-1 rounded-full px-2 text-sm text-[#cfcfcf] hover:bg-zinc-800 hover:text-zinc-50 disabled:cursor-not-allowed disabled:opacity-40"
+      className="group relative inline-flex h-7 shrink-0 items-center gap-1 rounded-lg bg-wb-accent-soft px-2 text-[13px] text-wb-accent transition-colors hover:bg-wb-hover hover:text-wb-fg disabled:cursor-not-allowed disabled:opacity-40"
       onClick={(event) => {
         event.stopPropagation();
         onExit();
@@ -28,7 +28,7 @@ export function PlanModeIndicator({
       <span
         role="tooltip"
         data-plan-indicator-tooltip
-        className="pointer-events-none absolute bottom-[calc(100%+6px)] left-1/2 z-30 -translate-x-1/2 whitespace-nowrap rounded-md bg-zinc-950 px-2 py-1 text-xs font-normal text-zinc-100 opacity-0 shadow-lg ring-1 ring-zinc-700 group-hover:opacity-100 group-focus-visible:opacity-100"
+        className="wb-tooltip pointer-events-none absolute bottom-[calc(100%+6px)] left-1/2 z-30 -translate-x-1/2 whitespace-nowrap rounded-md px-2 py-1 text-xs font-normal opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100"
       >
         {DESKTOP_ZH.planTooltip}
       </span>

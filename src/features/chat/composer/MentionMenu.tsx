@@ -52,7 +52,7 @@ export function MentionMenu({
     <SuggestionList label={mode === "add" ? DESKTOP_ZH.addSection : "文件"} active={active} data-mention-menu={mode}>
       {mode === "add" ? (
         <>
-          <p className="px-3 pb-1 pt-1.5 text-xs text-zinc-500">{DESKTOP_ZH.addSection}</p>
+          <p className="px-3 pb-1 pt-1.5 text-[11px] font-medium text-wb-fg-3">{DESKTOP_ZH.addSection}</p>
           {items.map((id, index) => {
             const item = ADD_ITEMS.find((entry) => entry.id === id);
             if (!item) return null;
@@ -74,9 +74,9 @@ export function MentionMenu({
                 data-mention-item={item.id}
                 disabled={disabled}
                 className={cn(
-                  "flex w-full min-w-0 items-center gap-3 px-3 py-2 text-left",
-                  disabled ? "cursor-not-allowed opacity-40" : "hover:bg-zinc-800",
-                  index === active && !disabled && "bg-zinc-800",
+                  "flex w-full min-w-0 items-center gap-3 px-3 py-2 text-left transition-colors",
+                  disabled ? "cursor-not-allowed opacity-40" : "hover:bg-wb-hover",
+                  index === active && !disabled && "bg-wb-active",
                 )}
                 onMouseDown={(event) => {
                   event.preventDefault();
@@ -85,22 +85,22 @@ export function MentionMenu({
                 }}
               >
                 <AddIcon id={item.id} />
-                <span className="shrink-0 text-sm text-zinc-100">{item.label}</span>
-                {hint ? <span className="min-w-0 truncate text-xs text-zinc-500">{hint}</span> : null}
+                <span className="shrink-0 text-sm text-wb-fg">{item.label}</span>
+                {hint ? <span className="min-w-0 truncate text-xs text-wb-fg-3">{hint}</span> : null}
               </button>
             );
           })}
         </>
       ) : pending && files.length === 0 ? (
-        <p className="px-3 py-2 text-xs text-zinc-500" data-mention-pending>
+        <p className="px-3 py-2 text-xs text-wb-fg-3" data-mention-pending>
           {DESKTOP_ZH.mentionPending}
         </p>
       ) : error ? (
-        <p className="px-3 py-2 text-xs text-red-300" data-mention-error>
+        <p className="px-3 py-2 text-xs text-wb-danger" data-mention-error>
           {error}
         </p>
       ) : files.length === 0 ? (
-        <p className="px-3 py-2 text-xs text-zinc-500" data-mention-empty>
+        <p className="px-3 py-2 text-xs text-wb-fg-3" data-mention-empty>
           {DESKTOP_ZH.mentionEmpty}
         </p>
       ) : (
@@ -112,8 +112,8 @@ export function MentionMenu({
             aria-selected={index === active}
             data-mention-file={file.path}
             className={cn(
-              "flex w-full min-w-0 items-center gap-3 px-3 py-2 text-left hover:bg-zinc-800",
-              index === active && "bg-zinc-800",
+              "flex w-full min-w-0 items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-wb-hover",
+              index === active && "bg-wb-active",
             )}
             onMouseDown={(event) => {
               event.preventDefault();
@@ -121,11 +121,11 @@ export function MentionMenu({
               onPick(file);
             }}
           >
-            <File className="h-4 w-4 shrink-0 text-zinc-400" />
-            <span className="min-w-0 shrink truncate text-sm text-zinc-100">
+            <File className="h-4 w-4 shrink-0 text-wb-fg-3" />
+            <span className="min-w-0 shrink truncate text-sm text-wb-fg">
               {highlightParts(file.name, query).map((part, partIndex) =>
                 part.match ? (
-                  <mark key={partIndex} className="bg-transparent text-amber-300">
+                  <mark key={partIndex} className="bg-transparent font-medium text-wb-accent">
                     {part.text}
                   </mark>
                 ) : (
@@ -134,7 +134,7 @@ export function MentionMenu({
               )}
             </span>
             {file.directory ? (
-              <span className="min-w-0 truncate text-xs text-zinc-500">{file.directory}</span>
+              <span className="min-w-0 truncate text-xs text-wb-fg-3">{file.directory}</span>
             ) : null}
           </button>
         ))
@@ -144,7 +144,7 @@ export function MentionMenu({
 }
 
 function AddIcon({ id }: { id: MentionAddId }) {
-  const className = "h-4 w-4 shrink-0 text-zinc-400";
+  const className = "h-4 w-4 shrink-0 text-wb-fg-3";
   if (id === "files") return <Folder className={className} />;
   if (id === "goal") return <Target className={className} />;
   return <Lightbulb className={className} />;

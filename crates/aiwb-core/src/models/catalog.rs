@@ -475,6 +475,9 @@ pub struct AgentProfile {
     /// 侧栏图标资源。没有文件时为 None，界面用中性图标。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
+    /// 单色剪影图标（非品牌多色标志），浅色主题下跟随前景加深。
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub monochrome_icon: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

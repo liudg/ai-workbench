@@ -42,7 +42,7 @@ export function HoverCard({ content, children }: { content: ReactNode; children:
             <div
               role="tooltip"
               data-hover-card
-              className="pointer-events-none fixed z-50 rounded-lg border border-[#2f2f2f] bg-[#161616] px-3 py-2.5 text-[12px] leading-5 text-[#bdbdbd] shadow-xl"
+              className="wb-popover pointer-events-none fixed z-50 px-3 py-2.5 text-xs leading-5 text-wb-fg-2"
               style={{
                 left: place.left,
                 width: CARD_WIDTH,

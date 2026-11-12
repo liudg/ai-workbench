@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { usePanel } from "@/features/panel/core/PanelProvider";
-import { PanelTabs } from "@/features/panel/core/PanelTabs";
+import { PanelTabs, usePanel } from "@/features/panel";
 import { ProjectPanel } from "@/features/workspace";
 import { projectIdForRoot } from "./preview-project";
 
@@ -32,7 +31,7 @@ export default function ImagePanelPreview() {
 
   if (!projectId) {
     return (
-      <p className="p-6 text-sm text-zinc-400" data-image-panel-status>
+      <p className="p-6 text-sm text-wb-fg-2" data-image-panel-status>
         {error || "正在读取…"}
       </p>
     );
@@ -51,7 +50,7 @@ function ImagePanelBoot() {
     openFiles();
   }, [openFiles]);
   return (
-    <div className="h-screen bg-zinc-950">
+    <div className="h-screen bg-wb-surface text-wb-fg">
       <PanelTabs />
     </div>
   );

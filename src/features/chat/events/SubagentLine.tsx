@@ -23,7 +23,7 @@ export function SubagentLine({ event, session }: EventViewProps) {
   return (
     <Line event={event} session={session} subagentId={event.subagent_id} state={event.status}>
       <HoverCard content={<SubagentDetails card={event} />}>
-        <span className={cn("min-w-0 truncate", event.status === "failed" && "text-red-400/90")}>
+        <span className={cn("min-w-0 truncate", event.status === "failed" && "text-wb-danger")}>
           {title}{SUBAGENT_LINE_LABELS[event.status]}
         </span>
       </HoverCard>
@@ -52,7 +52,7 @@ function Line({
       {children}
     </>
   );
-  const rowClass = "flex min-w-0 max-w-full items-center gap-2 text-left text-[13px] text-[#8a8a8a]";
+  const rowClass = "flex min-w-0 max-w-full items-center gap-2 text-left text-[13px] text-wb-fg-2";
   return (
     <div className="event-in min-w-0 px-6 py-1" data-subagent-line={subagentId} data-subagent-state={state}>
       <div className="min-w-0 pl-6">
@@ -60,7 +60,7 @@ function Line({
           <button
             type="button"
             onClick={() => open(event.session_id, subagentId)}
-            className={cn(rowClass, "rounded hover:text-[#d4d4d4]")}
+            className={cn(rowClass, "rounded transition-colors hover:text-wb-fg")}
           >
             {content}
           </button>
@@ -81,12 +81,12 @@ function SubagentDetails({ card }: { card: SubagentEvent }) {
   const meta = [subagentMeta(card), SUBAGENT_STATUS_LABELS[card.status]].filter(Boolean).join(" · ");
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="font-medium text-[#e4e4e4]">{subagentTitle(card)}</div>
-      <div className="text-[#8a8a8a]">{meta}</div>
-      {prompt ? <p className="m-0 line-clamp-4 whitespace-pre-wrap break-words text-[#9a9a9a]">{prompt}</p> : null}
-      {activity ? <p className="m-0 truncate text-[#bdbdbd]">{activity}</p> : null}
-      {result ? <p className="m-0 line-clamp-4 whitespace-pre-wrap break-words text-[#bdbdbd]">{result}</p> : null}
-      {usage ? <div className="text-[#7a7a7a]">{usage}</div> : null}
+      <div className="font-medium text-wb-fg">{subagentTitle(card)}</div>
+      <div className="text-wb-fg-3">{meta}</div>
+      {prompt ? <p className="m-0 line-clamp-4 whitespace-pre-wrap break-words text-wb-fg-2">{prompt}</p> : null}
+      {activity ? <p className="m-0 truncate text-wb-fg">{activity}</p> : null}
+      {result ? <p className="m-0 line-clamp-4 whitespace-pre-wrap break-words text-wb-fg-2">{result}</p> : null}
+      {usage ? <div className="text-wb-fg-3">{usage}</div> : null}
     </div>
   );
 }

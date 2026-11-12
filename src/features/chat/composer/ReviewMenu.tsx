@@ -43,13 +43,13 @@ export function ReviewMenu({
     <div
       role="menu"
       aria-label={labels?.title ?? "审查"}
-      className="absolute bottom-full left-0 right-0 z-20 mb-2 max-h-80 min-w-0 overflow-x-hidden overflow-y-auto rounded-xl border border-zinc-700/80 bg-zinc-900 py-1 shadow-xl shadow-black/50"
+      className="wb-popover absolute bottom-full left-0 right-0 z-20 mb-2 max-h-80 min-w-0 overflow-x-hidden overflow-y-auto rounded-xl p-1"
     >
-      {error && <p className="px-3 py-2 text-xs text-red-300">{error}</p>}
-      {!labels && !error && <p className="px-3 py-2 text-xs text-zinc-500">…</p>}
+      {error && <p className="px-2.5 py-2 text-xs text-wb-danger">{error}</p>}
+      {!labels && !error && <p className="px-2.5 py-2 text-xs text-wb-fg-3">…</p>}
       {labels && step === "presets" && (
         <>
-          <p className="px-3 pb-1 pt-2 text-xs font-medium text-zinc-300">{labels.title}</p>
+          <p className="px-2.5 pb-1 pt-1.5 text-[11px] font-medium text-wb-fg-3">{labels.title}</p>
           <Row label={labels.base_branch} hint={labels.base_branch_hint} onPick={() => open("branch")} />
           <Row label={labels.uncommitted} onPick={() => onStart({ kind: "uncommitted" })} />
           <Row label={labels.commit} onPick={() => open("commit")} />
@@ -58,8 +58,8 @@ export function ReviewMenu({
       )}
       {labels && step === "branch" && (
         <>
-          <p className="px-3 pt-2 text-xs font-medium text-zinc-300">{labels.branch_title}</p>
-          <p className="px-3 pb-1 text-[11px] text-zinc-500">{labels.branch_subtitle}</p>
+          <p className="px-2.5 pt-1.5 text-xs font-medium text-wb-fg">{labels.branch_title}</p>
+          <p className="px-2.5 pb-1 text-[11px] text-wb-fg-3">{labels.branch_subtitle}</p>
           <Search value={query} placeholder={labels.branch_search} onChange={setQuery} />
           {targets.branches
             .filter((branch) => branch.toLowerCase().includes(needle))
@@ -70,7 +70,7 @@ export function ReviewMenu({
       )}
       {labels && step === "commit" && (
         <>
-          <p className="px-3 pb-1 pt-2 text-xs font-medium text-zinc-300">{labels.commit_title}</p>
+          <p className="px-2.5 pb-1 pt-1.5 text-xs font-medium text-wb-fg">{labels.commit_title}</p>
           <Search value={query} placeholder={labels.commit_search} onChange={setQuery} />
           {targets.commits
             .filter((commit) => `${commit.title} ${commit.sha}`.toLowerCase().includes(needle))
@@ -85,21 +85,21 @@ export function ReviewMenu({
       )}
       {labels && step === "custom" && (
         <form
-          className="px-3 py-2"
+          className="px-2.5 py-2"
           onSubmit={(event) => {
             event.preventDefault();
             const instructions = query.trim();
             if (instructions) onStart({ kind: "custom", instructions });
           }}
         >
-          <p className="pb-1 text-xs font-medium text-zinc-300">{labels.custom}</p>
+          <p className="pb-1 text-xs font-medium text-wb-fg">{labels.custom}</p>
           <input
             autoFocus
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder={labels.custom_placeholder}
             aria-label={labels.custom}
-            className="h-8 w-full min-w-0 rounded-md border border-zinc-700 bg-zinc-950 px-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-500"
+            className="h-8 w-full min-w-0 rounded-lg border border-wb-border-strong bg-wb-input px-2.5 text-sm text-wb-fg outline-none transition-colors placeholder:text-wb-dim focus-visible:border-wb-accent focus-visible:ring-2 focus-visible:ring-wb-accent-soft"
           />
         </form>
       )}
@@ -112,14 +112,14 @@ function Row({ label, hint, onPick }: { label: string; hint?: string; onPick: ()
     <button
       type="button"
       role="menuitem"
-      className="flex w-full min-w-0 items-baseline gap-2 px-3 py-1.5 text-left text-sm text-zinc-100 hover:bg-zinc-800"
+      className="flex w-full min-w-0 items-baseline gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm text-wb-fg transition-colors hover:bg-wb-hover"
       onMouseDown={(event) => {
         event.preventDefault();
         onPick();
       }}
     >
       <span className="min-w-0 break-words">{label}</span>
-      {hint && <span className="shrink-0 text-xs text-zinc-500">{hint}</span>}
+      {hint && <span className="shrink-0 text-xs text-wb-fg-3">{hint}</span>}
     </button>
   );
 }
@@ -134,14 +134,14 @@ function Search({
   onChange: (value: string) => void;
 }) {
   return (
-    <div className="px-3 pb-1">
+    <div className="px-2.5 pb-1">
       <input
         autoFocus
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         aria-label={placeholder}
-        className="h-8 w-full min-w-0 rounded-md border border-zinc-700 bg-zinc-950 px-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-500"
+        className="h-8 w-full min-w-0 rounded-lg border border-wb-border-strong bg-wb-input px-2.5 text-sm text-wb-fg outline-none transition-colors placeholder:text-wb-dim focus-visible:border-wb-accent focus-visible:ring-2 focus-visible:ring-wb-accent-soft"
       />
     </div>
   );

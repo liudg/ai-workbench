@@ -17,8 +17,8 @@ interface ImagePayload {
 export function ImageFrame({ src, name }: { src: string; name: string }) {
   if (!src) return <PreviewFailed message="无法读取图片" />;
   return (
-    <div data-image-preview className="flex h-full min-h-0 items-center justify-center overflow-auto bg-zinc-950 p-6">
-      <img src={src} alt={name} className="max-h-full max-w-full object-contain" />
+    <div data-image-preview className="flex h-full min-h-0 items-center justify-center overflow-auto bg-wb-panel p-6">
+      <img src={src} alt={name} className="max-h-full max-w-full rounded-lg object-contain" />
     </div>
   );
 }

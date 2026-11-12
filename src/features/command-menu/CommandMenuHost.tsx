@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
-import { OPEN_THREAD_FIND } from "@/features/chat/find/use-thread-find";
-import { FileSearchDialog } from "@/features/panel/files/FileSearchDialog";
+import { OPEN_THREAD_FIND } from "@/features/chat";
+import { FileSearchDialog } from "@/features/panel";
 import { currentSession, tasksApi } from "@/features/tasks";
 import {
   worktreeDeleteFlags,
@@ -19,6 +19,7 @@ import {
 } from "@/shared/shell/navigation";
 import { toggleSidebar } from "@/shared/shell/sidebar-open";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
+import { toggleTheme } from "@/shared/theme";
 import type { AgentKind } from "@/types";
 
 import { buildPaletteRows, type PaletteCommandId } from "./commands";
@@ -128,6 +129,11 @@ export function CommandMenuHost() {
     }
     if (id === "toggle-sidebar") {
       toggleSidebar();
+      close();
+      return;
+    }
+    if (id === "toggle-theme") {
+      toggleTheme();
       close();
       return;
     }

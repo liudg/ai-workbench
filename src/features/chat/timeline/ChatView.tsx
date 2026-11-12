@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState, type ReactNode, type Ref } from "react";
-import { MessageSquareDashed } from "lucide-react";
 
 import { useChangeCapabilities } from "../use-change-capabilities";
-import { showsFileChanges } from "@/features/changes-model/capabilities";
-import { lastSlice, turnChanges } from "@/features/changes-model/diff-parse";
+import { lastSlice, showsFileChanges, turnChanges } from "@/features/changes-model";
 import { pendingPrompt } from "@/lib/utils";
+import { SessionAgentIcon } from "@/shared/agent/SessionAgentIcon";
 import { type Session, type SessionEvent } from "@/types";
 import { ChangeCard } from "../cards/ChangeCard";
 import { EventItem } from "../events/EventItem";
+import { agentTurnName, useAgentIdentity } from "../events/use-agent-identity";
 import { pendingQuestionEvent } from "../events/pending-question";
 import { pendingApprovalEvent } from "../events/pending-approval";
 import { pendingPlanChoice } from "../events/pending-plan-choice";
@@ -113,6 +113,7 @@ function ChatTimeline({
     () => events.some((event) => event.kind !== "status-changed"),
     [events],
   );
+  const agentIdentity = useAgentIdentity(session.agent);
   const changeFlags = useChangeCapabilities(session.agent);
   const liveChanges = useMemo(() => {
     if (!showsFileChanges(changeFlags)) return null;
@@ -231,11 +232,16 @@ function ChatTimeline({
       >
         <div ref={contentRef} data-message-column className="mx-auto min-h-full w-full min-w-0 max-w-[760px]">
           {!eventsReady ? (
-            <div className="px-6 py-4 text-sm text-zinc-500" data-history-pending role="status">正在加载会话…</div>
+            <div className="px-6 py-4 text-sm text-wb-fg-3" data-history-pending role="status">正在加载对话…</div>
           ) : !hasVisibleEvent ? (
-            <div className="flex h-full flex-col items-center justify-center gap-3 text-zinc-600">
-              <MessageSquareDashed className="h-8 w-8" strokeWidth={1.5} />
-              <p className="text-sm">发送第一条消息，开始这轮会话</p>
+            <div className="flex h-full flex-col items-center justify-center gap-2.5 px-6 text-center">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-wb-border bg-wb-elev">
+                <SessionAgentIcon identity={agentIdentity} className="h-5 w-5" />
+              </div>
+              <p className="text-sm font-medium text-wb-fg">{agentTurnName(session.agent, agentIdentity)}</p>
+              <p className="text-xs text-wb-fg-3">
+                {session.project_id ? "描述任务或问题，输入 @ 引用项目文件" : "输入任务或问题即可开始对话"}
+              </p>
             </div>
           ) : (
             <div className="turn-virtual-list" style={{ position: "relative", height: virtual.totalHeight, width: "100%" }}>
@@ -281,7 +287,7 @@ function ChatTimeline({
         />
       ) : null}
       {pendingId && (
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-transparent via-amber-400/60 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-transparent via-wb-warn/70 to-transparent" />
       )}
     </>
   );

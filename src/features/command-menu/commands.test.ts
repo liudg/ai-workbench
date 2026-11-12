@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { THREAD_FIND_COPY } from "../chat/find/copy.ts";
+import { THREAD_FIND_COPY } from "../chat/headless.ts";
 import { COMMAND_MENU_COPY as COPY } from "./copy.ts";
 import {
   buildPaletteRows,

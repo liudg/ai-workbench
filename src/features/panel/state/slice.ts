@@ -1,4 +1,4 @@
-import type { FileChange } from "../../changes-model/diff-parse.ts";
+import type { FileChange } from "../../changes-model/index.ts";
 import {
   defaultDiffViewPrefs,
   diffViewPrefsEqual,

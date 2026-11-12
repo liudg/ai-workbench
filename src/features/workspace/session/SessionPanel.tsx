@@ -3,11 +3,15 @@
 
 import { useMemo, type ReactNode } from "react";
 
-import { PanelHost, type PanelData, type PanelStateSource } from "@/features/panel/core/PanelProvider";
-import { usePanelStore } from "@/features/panel/state/store";
+import {
+  PanelHost,
+  usePanelStore,
+  type OpenTarget,
+  type PanelData,
+  type PanelStateSource,
+} from "@/features/panel";
 import { openPath, prepareBrowserPath } from "@/lib/native/open-path";
 import { accumulateSessionUsage } from "@/store/session-usage";
-import type { OpenTarget } from "@/features/panel/core/registry";
 import type { AgentProfile, Session, SessionEvent } from "@/types";
 import * as api from "./api";
 import { addDraftAttachments, addDraftSnippet, readDraft, removeDraftSnippet, subscribeDrafts } from "./composer-drafts";

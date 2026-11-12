@@ -31,6 +31,11 @@ pub trait AgentAdapter: Send + Sync {
         None
     }
 
+    /// 侧栏图标是否为单色剪影（浅色主题下跟随前景加深）。多色品牌图标保持 false。
+    fn monochrome_icon(&self) -> bool {
+        false
+    }
+
     fn capabilities(&self) -> AgentCapabilities;
 
     /// 当前账号的订阅额度窗口。只有 `supports_subscription_usage` 的适配器覆盖它。
@@ -51,6 +56,7 @@ pub trait AgentAdapter: Send + Sync {
             default_access: None,
             display_name: None,
             icon: None,
+            monochrome_icon: false,
         }
     }
 

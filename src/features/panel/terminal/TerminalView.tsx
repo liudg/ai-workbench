@@ -20,14 +20,14 @@ export function TerminalView({ tabId, payload, sessionId }: ViewerViewProps<Term
   });
   const notice = error ?? (exited ? exitNotice(exitCode) : null);
   return (
-    <div data-terminal-view className="flex h-full flex-col bg-zinc-950 text-zinc-100">
-      <div ref={hostRef} className="min-h-0 flex-1 bg-zinc-950 py-2 pl-3 text-zinc-100" />
+    <div data-terminal-view className="flex h-full flex-col bg-wb-panel text-wb-fg">
+      <div ref={hostRef} className="min-h-0 flex-1 bg-wb-panel py-2 pl-3 text-wb-fg" />
       {notice ? (
-        <div className="flex shrink-0 items-center gap-3 border-t border-zinc-800 px-3 py-2 text-xs text-zinc-400">
+        <div className="flex shrink-0 items-center gap-3 border-t border-wb-border px-3 py-2 text-xs text-wb-fg-2">
           <span className="min-w-0 flex-1 truncate">{notice}</span>
           <button
             type="button"
-            className="shrink-0 rounded-md px-2 py-1 text-zinc-100 hover:bg-zinc-800"
+            className="shrink-0 rounded-lg border border-wb-border bg-wb-elev px-2.5 py-1 text-wb-fg hover:bg-wb-hover"
             onClick={restart}
           >
             {DESKTOP_ZH.terminalRestart}

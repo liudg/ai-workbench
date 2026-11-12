@@ -65,7 +65,7 @@ export function ModelMenu({
       data-intensity-popover
       data-intensity-panel={panel}
       className={cn(
-        "fixed z-50 select-none rounded-2xl border border-zinc-700/80 bg-zinc-900 text-zinc-100 shadow-xl shadow-black/50",
+        "wb-popover fixed z-50 select-none rounded-2xl text-wb-fg",
         panel === "models" && agents ? "w-[20rem]" : "w-[17.5rem]",
       )}
       style={{ top: -9999, left: 8 }}
@@ -93,8 +93,8 @@ export function ModelMenu({
                   aria-pressed={fastOn}
                   aria-label={fastTip || "快速"}
                   className={cn(
-                    "flex h-8 w-8 items-center justify-center rounded-lg hover:bg-zinc-800",
-                    fastOn ? "text-blue-400" : "text-zinc-400",
+                    "flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-wb-hover",
+                    fastOn ? "text-wb-accent" : "text-wb-fg-2",
                   )}
                   onClick={() => onFast(!fastOn)}
                 >
@@ -107,21 +107,21 @@ export function ModelMenu({
             <button
               type="button"
               data-model-trigger
-              className="flex min-w-0 flex-1 flex-col items-center justify-center rounded-xl px-2 py-0.5 hover:bg-zinc-800/70"
+              className="flex min-w-0 flex-1 flex-col items-center justify-center rounded-xl px-2 py-0.5 transition-colors hover:bg-wb-hover"
               aria-label={DESKTOP_ZH.selectModel}
               aria-haspopup="listbox"
               onClick={() => setPanel("models")}
             >
               {hasEfforts ? (
-                <span data-effort-label className="block max-w-full whitespace-nowrap text-lg font-semibold leading-none text-blue-400">
+                <span data-effort-label className="block max-w-full whitespace-nowrap text-lg font-semibold leading-none text-wb-accent">
                   {effortLabel || DESKTOP_ZH.selectEffort}
                 </span>
               ) : null}
               <span
                 className={
                   hasEfforts
-                    ? "mt-1.5 inline-flex max-w-full items-center gap-0.5 text-[13px] text-zinc-400"
-                    : "inline-flex max-w-full items-center gap-0.5 text-lg font-semibold leading-none text-blue-400"
+                    ? "mt-1.5 inline-flex max-w-full items-center gap-0.5 text-[13px] text-wb-fg-2"
+                    : "inline-flex max-w-full items-center gap-0.5 text-lg font-semibold leading-none text-wb-accent"
                 }
               >
                 <span className="truncate">{modelLabel || current?.label || DESKTOP_ZH.selectModel}</span>
@@ -132,7 +132,7 @@ export function ModelMenu({
               <button
                 type="button"
                 data-reset-tuning
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 disabled:opacity-40"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg disabled:opacity-40"
                 aria-label={DESKTOP_ZH.resetDefault}
                 disabled={!canReset}
                 onClick={() => {
@@ -180,7 +180,7 @@ function Tip({
         role="tooltip"
         data-hover-tip={text}
         className={cn(
-          "pointer-events-none absolute bottom-[calc(100%+6px)] z-10 whitespace-nowrap rounded-md bg-zinc-800 px-2 py-1 text-[11px] leading-4 text-zinc-100 shadow-lg ring-1 ring-zinc-700",
+          "wb-tooltip pointer-events-none absolute bottom-[calc(100%+6px)] z-10 whitespace-nowrap rounded-md px-2 py-1 text-[11px] leading-4",
           align === "start" ? "left-0" : "right-0",
           open ? "block" : "hidden",
         )}
@@ -271,10 +271,10 @@ function EffortSlider({
         if (id && id !== effortId) onEffort(id);
       }}
     >
-      <div className="absolute left-0 right-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-zinc-700" />
+      <div className="absolute left-0 right-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-wb-active" />
       {selected >= 0 && (
         <div
-          className="absolute left-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-blue-400"
+          className="absolute left-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-wb-accent"
           style={{ width: `${percent}%` }}
         />
       )}
@@ -286,7 +286,7 @@ function EffortSlider({
             data-effort-stop={effort.id}
             className={cn(
               "absolute top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full",
-              selected >= 0 && index <= selected ? "bg-blue-400" : "bg-zinc-500",
+              selected >= 0 && index <= selected ? "bg-wb-accent" : "bg-wb-dim",
             )}
             style={{ left: `${left}%` }}
           />
@@ -295,7 +295,7 @@ function EffortSlider({
       {selected >= 0 && (
         <span
           data-effort-handle
-          className="absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-blue-400 bg-white shadow"
+          className="absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-wb-accent bg-white shadow"
           style={{ left: `${percent}%` }}
         />
       )}
@@ -361,7 +361,7 @@ function ModelPanel({
         aria-orientation="vertical"
         aria-label="Agent"
         data-agent-rail
-        className="flex flex-col items-center gap-1 border-r border-zinc-800 py-2"
+        className="flex flex-col items-center gap-1 border-r border-wb-border py-2"
       >
         {(agents.options ?? []).map((option) => {
           const active = option.kind === railAgent;
@@ -374,8 +374,8 @@ function ModelPanel({
               aria-pressed={active}
               data-agent={option.kind}
               className={cn(
-                "flex h-8 w-8 items-center justify-center rounded-lg hover:bg-zinc-800",
-                active && "bg-zinc-800 ring-1 ring-zinc-600",
+                "flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-wb-hover",
+                active && "bg-wb-active ring-1 ring-wb-border-strong",
               )}
               onClick={() => setRailAgent(option.kind)}
             >
@@ -406,18 +406,18 @@ function ModelList({
 }) {
   const sections = models ? modelSections(models) : [];
   return (
-    <div data-model-list role="listbox" aria-label={DESKTOP_ZH.selectModel} className="max-h-80 overflow-y-auto py-2">
-      {heading ? <p className="px-3 pb-1 pt-1 text-sm font-medium text-zinc-100">{DESKTOP_ZH.selectModel}</p> : null}
+    <div data-model-list role="listbox" aria-label={DESKTOP_ZH.selectModel} className="max-h-80 overflow-y-auto p-1.5">
+      {heading ? <p className="px-2.5 pb-1 pt-1 text-sm font-medium text-wb-fg">{DESKTOP_ZH.selectModel}</p> : null}
       {error ? (
-        <p className="break-words px-3 py-2 text-xs text-zinc-500">{error}</p>
+        <p className="break-words px-2.5 py-2 text-xs text-wb-fg-3">{error}</p>
       ) : models === null ? (
-        <p className="px-3 py-2 text-xs text-zinc-500">读取模型…</p>
+        <p className="px-2.5 py-2 text-xs text-wb-fg-3">读取模型…</p>
       ) : sections.length === 0 ? (
-        <p className="px-3 py-2 text-xs text-zinc-500">当前 Agent 没有可选模型</p>
+        <p className="px-2.5 py-2 text-xs text-wb-fg-3">当前 Agent 没有可选模型</p>
       ) : (
         sections.map((section) => (
           <div key={section.id}>
-            <p className="px-3 pb-1 pt-2 text-[11px] text-zinc-500">{section.title}</p>
+            <p className="px-2.5 pb-1 pt-2 text-[11px] font-medium text-wb-fg-3">{section.title}</p>
             {section.models.map((model) => {
               const selected = model.id === modelId;
               return (
@@ -426,13 +426,16 @@ function ModelList({
                   type="button"
                   role="option"
                   aria-selected={selected}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left [&:hover]:bg-zinc-800"
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left transition-colors hover:bg-wb-hover",
+                    selected && "bg-wb-active/70",
+                  )}
                   onClick={() => onPick(model)}
                 >
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm text-zinc-100">{model.label}</span>
+                    <span className="block truncate text-sm text-wb-fg">{model.label}</span>
                   </span>
-                  {selected && <Check className="h-4 w-4 shrink-0 text-zinc-100" aria-hidden />}
+                  {selected && <Check className="h-3.5 w-3.5 shrink-0 text-wb-accent" aria-hidden />}
                 </button>
               );
             })}

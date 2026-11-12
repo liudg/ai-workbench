@@ -11,7 +11,7 @@ export function SubtaskReport({ text, taskIds, time }: { text: string; taskIds: 
   const subtasks = useChatHost().subtasks;
   return (
     <div className="event-in group min-w-0 px-6 py-1.5" data-subtask-report="">
-      <div className="flex min-w-0 items-center gap-1.5 text-xs text-zinc-500">
+      <div className="flex min-w-0 items-center gap-1.5 text-xs text-wb-fg-3">
         <CornerDownRight className="h-3 w-3 shrink-0" />
         <span className="shrink-0">来自</span>
         <span className="flex min-w-0 flex-wrap items-center gap-x-1">
@@ -21,7 +21,7 @@ export function SubtaskReport({ text, taskIds, time }: { text: string; taskIds: 
               {index > 0 ? <span>、</span> : null}
               <button
                 type="button"
-                className="max-w-[16rem] truncate font-medium text-zinc-400 hover:text-zinc-200 hover:underline"
+                className="max-w-[16rem] truncate font-medium text-wb-fg-2 transition-colors hover:text-wb-fg hover:underline"
                 onClick={() => subtasks?.open(id)}
               >
                 {subtasks?.title(id) ?? "任务"}
@@ -31,7 +31,7 @@ export function SubtaskReport({ text, taskIds, time }: { text: string; taskIds: 
         </span>
         <button
           type="button"
-          className="flex shrink-0 items-center rounded p-0.5 hover:bg-zinc-800 hover:text-zinc-200"
+          className="flex shrink-0 items-center rounded p-0.5 transition-colors hover:bg-wb-hover hover:text-wb-fg"
           aria-label={open ? "收起" : "展开"}
           aria-expanded={open}
           onClick={() => setOpen((value) => !value)}
@@ -43,7 +43,7 @@ export function SubtaskReport({ text, taskIds, time }: { text: string; taskIds: 
         </HoverActions>
       </div>
       {open ? (
-        <div className="mt-1.5 min-w-0 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 text-sm text-zinc-300">
+        <div className="mt-1.5 min-w-0 rounded-xl border border-wb-border bg-wb-card px-3 py-2 text-sm text-wb-fg">
           <MessageContent text={text} />
         </div>
       ) : null}

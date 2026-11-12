@@ -26,7 +26,7 @@ export function FileTabs({
   return (
     <div
       data-file-tabs
-      className="flex h-9 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-[#222] px-1.5"
+      className="flex h-9 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-wb-border bg-wb-panel px-1.5"
     >
       {tabs.map((tab) => {
         const active = tab.path === activePath;
@@ -35,8 +35,8 @@ export function FileTabs({
             key={tab.path}
             onContextMenu={(event) => tabMenu.open(event, tab.path)}
             className={cn(
-              "flex min-w-0 max-w-[180px] items-center rounded-md",
-              active ? "bg-[#1c1c1c] text-[#e8e8e8]" : "text-[#8d8d8d] hover:bg-white/[0.04]",
+              "flex min-w-0 max-w-[180px] items-center rounded-md transition-colors",
+              active ? "bg-wb-active text-wb-fg shadow-[inset_0_0_0_1px_var(--color-wb-border)]" : "text-wb-fg-2 hover:bg-wb-hover hover:text-wb-fg",
             )}
           >
             <button
@@ -55,7 +55,7 @@ export function FileTabs({
               type="button"
               data-file-tab-close={tab.path}
               aria-label={DESKTOP_ZH.closeTab}
-              className="mr-1 rounded p-0.5 text-[#666] hover:bg-white/10 hover:text-[#e8e8e8]"
+              className="mr-1 rounded p-0.5 text-wb-fg-3 transition-colors hover:bg-wb-hover hover:text-wb-fg"
               onClick={(event) => {
                 event.stopPropagation();
                 onClose([tab.path]);
@@ -71,7 +71,7 @@ export function FileTabs({
         data-file-tab-add
         aria-label={DESKTOP_ZH.openAnotherFile}
         title={DESKTOP_ZH.openAnotherFile}
-        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[#8d8d8d] hover:bg-white/5 hover:text-[#e8e8e8]"
+        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
         onClick={onAdd}
       >
         <Plus className="h-3.5 w-3.5" />

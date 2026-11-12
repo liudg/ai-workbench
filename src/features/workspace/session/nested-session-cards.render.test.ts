@@ -5,7 +5,7 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { Window } from "happy-dom";
 import { createServer } from "vite";
-import type { TaskEntry } from "../../tasks/types.ts";
+import type { TaskEntry } from "../../tasks/index.ts";
 import type { Session, SessionEvent } from "../../../types/index.ts";
 
 test("nested session cards remain in the reply and both copies navigate to their session", async () => {

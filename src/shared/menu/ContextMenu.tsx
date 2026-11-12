@@ -76,13 +76,13 @@ export function ContextMenu({
       ref={menuRef}
       role="menu"
       data-context-menu
-      className="fixed z-[80] min-w-40 rounded-xl border border-zinc-700 bg-zinc-900 py-1 shadow-lg"
+      className="wb-popover fixed z-[80] min-w-44 p-1"
       style={{ top: -9999, left: 8 }}
       onMouseDown={(event) => event.preventDefault()}
     >
       {items.map((item) =>
         "separator" in item ? (
-          <div key={item.id} role="separator" className="my-1 h-px bg-zinc-800" />
+          <div key={item.id} role="separator" className="my-1 h-px bg-wb-border" />
         ) : (
           <button
             key={item.id}
@@ -92,8 +92,8 @@ export function ContextMenu({
             data-menu-item={item.id}
             disabled={item.disabled}
             className={cn(
-              "flex w-full items-center gap-6 whitespace-nowrap px-3 py-1.5 text-left text-xs text-zinc-100 outline-none",
-              "hover:bg-zinc-800 focus-visible:bg-zinc-800 disabled:text-zinc-600 disabled:hover:bg-transparent",
+              "flex w-full items-center gap-6 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-left text-[13px] text-wb-fg outline-none",
+              "hover:bg-wb-hover focus-visible:bg-wb-hover disabled:text-wb-dim disabled:hover:bg-transparent",
             )}
             onClick={() => {
               onCloseRef.current();
@@ -101,7 +101,7 @@ export function ContextMenu({
             }}
           >
             <span className="min-w-0 flex-1">{item.label}</span>
-            {item.shortcut ? <span className="text-[11px] text-zinc-500">{item.shortcut}</span> : null}
+            {item.shortcut ? <span className="text-[11px] text-wb-fg-3">{item.shortcut}</span> : null}
           </button>
         ),
       )}

@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 
 import { useAgentProfiles, useSessionAgents } from "@/features/agents";
-import { usePanelOptional } from "@/features/panel/core/PanelProvider";
+import { usePanelOptional } from "@/features/panel";
 import { useProjects } from "@/features/projects";
 import { currentSession, forkTargets as forkTargetsOf, useTasks, type ForkTarget } from "@/features/tasks";
 import { attentionQueue, nextInQueue } from "@/shared/attention";

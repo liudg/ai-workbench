@@ -61,14 +61,14 @@ function SubtaskRow({
           disabled={!view}
           aria-label={`打开 ${title}`}
           onClick={() => host.open(taskId)}
-          className="flex w-full min-w-0 items-center gap-2.5 rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] px-3 py-2 text-left transition-colors enabled:hover:bg-[#222] disabled:opacity-60"
+          className="flex w-full min-w-0 items-center gap-2.5 rounded-xl border border-wb-border bg-wb-card px-3 py-2 text-left transition-colors enabled:hover:border-wb-border-strong enabled:hover:bg-wb-hover disabled:opacity-60"
         >
           <AgentAvatar identity={identity} dotClass={status?.dotClass} pulse={status?.running} />
-          <span className="min-w-0 flex-1 truncate text-[13px] text-[#d4d4d4]">{title}</span>
-          <span className={cn("shrink-0 text-[12px]", status?.textClass ?? "text-[#8a8a8a]")}>
+          <span className="min-w-0 flex-1 truncate text-[13px] text-wb-fg">{title}</span>
+          <span className={cn("shrink-0 text-[12px]", status?.textClass ?? "text-wb-fg-3")}>
             {status?.label ?? "已删除"}
           </span>
-          <ChevronRight className="h-4 w-4 shrink-0 text-[#777]" />
+          <ChevronRight className="h-4 w-4 shrink-0 text-wb-fg-3" />
         </button>
       </HoverCard>
     </li>
@@ -90,10 +90,10 @@ function SubtaskCard({
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="font-medium text-[#e4e4e4]">{title}</div>
-      <div className="text-[#8a8a8a]">{[agentName, status].filter(Boolean).join(" · ")}</div>
-      {prompt ? <p className="m-0 line-clamp-4 whitespace-pre-wrap break-words text-[#9a9a9a]">{prompt}</p> : null}
-      {detail ? <p className="m-0 line-clamp-3 break-words text-[#bdbdbd]">{detail}</p> : null}
+      <div className="font-medium text-wb-fg">{title}</div>
+      <div className="text-wb-fg-3">{[agentName, status].filter(Boolean).join(" · ")}</div>
+      {prompt ? <p className="m-0 line-clamp-4 whitespace-pre-wrap break-words text-wb-fg-2">{prompt}</p> : null}
+      {detail ? <p className="m-0 line-clamp-3 break-words text-wb-fg-2">{detail}</p> : null}
     </div>
   );
 }

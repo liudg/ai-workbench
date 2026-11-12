@@ -104,7 +104,7 @@ test("list rows show transport, one status, and a single toggle", () => {
   assert.equal(html.includes('data-mcp-transport-tag="HTTP"'), true);
   assert.equal(html.includes('data-mcp-status="configured"'), true);
   assert.equal(html.includes("已配置"), true);
-  assert.equal(html.includes("bg-zinc-400"), true);
+  assert.equal(html.includes("bg-wb-fg-3"), true);
   assert.equal(html.includes("已连接"), false);
   assert.equal(html.includes('data-mcp-highlight="wb-mcp-probe"'), true);
   assert.equal(html.includes('role="switch"'), true);

@@ -1,19 +1,19 @@
-import { ChevronDown, Folder, FolderPlus } from "lucide-react";
+import { Folder, FolderOpen } from "lucide-react";
 
-import { cn } from "@/lib/utils";
-import { useDismiss } from "../use-dismiss";
-import { useNewProjectForm } from "./useNewProjectForm";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
+import { useNewProjectForm } from "./useNewProjectForm";
 
 export function NewProjectDialog() {
-  const form = useNewProjectForm();
   const {
     dialog,
     closeDialog,
@@ -21,157 +21,147 @@ export function NewProjectDialog() {
     name,
     setName,
     dir,
+    placeholder,
     source,
     setSource,
-    sourceMenu,
-    setSourceMenu,
     initGit,
     setInitGit,
     busy,
-    sourceRef,
-    closeSourceMenu,
     pickDir,
     submit,
     valid,
-    sourceLabel,
-  } = form;
-  useDismiss(sourceMenu, sourceRef, closeSourceMenu);
+  } = useNewProjectForm();
 
   return (
     <Dialog open={dialog !== null} onOpenChange={(open) => !open && closeDialog()}>
-      <DialogContent
-        className="max-w-[440px] gap-5 overflow-hidden rounded-2xl border-zinc-700 bg-zinc-900 p-6 outline-none [&>*]:min-w-0"
-        onEscapeKeyDown={(event) => {
-          if (sourceMenu) {
-            event.preventDefault();
-            setSourceMenu(false);
-          }
-        }}
-      >
+      <DialogContent className="max-w-[440px] gap-4 [&>*]:min-w-0">
         <DialogHeader className="pr-6">
-          <DialogTitle className="text-lg font-semibold tracking-tight text-zinc-50">
-            创建项目
-          </DialogTitle>
-          <DialogDescription className="sr-only">
-            填写项目名称，并在此电脑上添加源文件夹。
+          <DialogTitle>{source === "import" ? "导入项目目录" : "新建项目"}</DialogTitle>
+          <DialogDescription>
+            {source === "import" ? "选择本地已有代码目录接入工作台。" : "在指定位置创建新目录并可选初始化 Git。"}
           </DialogDescription>
         </DialogHeader>
 
+        <div
+          role="tablist"
+          aria-label="添加方式"
+          className="grid grid-cols-2 gap-1 rounded-lg border border-wb-border bg-wb-elev p-1"
+        >
+          {(
+            [
+              ["import", "导入现有目录"],
+              ["create", "新建空目录"],
+            ] as const
+          ).map(([mode, label]) => {
+            const active = source === mode;
+            return (
+              <button
+                key={mode}
+                id={`new-project-tab-${mode}`}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                aria-controls={`new-project-panel-${mode}`}
+                tabIndex={active ? 0 : -1}
+                onClick={() => setSource(mode)}
+                onKeyDown={(event) => {
+                  if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+                    event.preventDefault();
+                    const next = mode === "import" ? "create" : "import";
+                    setSource(next);
+                    document.getElementById(`new-project-tab-${next}`)?.focus();
+                  }
+                }}
+                className={cn(
+                  "rounded-md py-1.5 text-xs font-medium transition-colors",
+                  active
+                    ? "bg-wb-popover text-wb-fg shadow-xs"
+                    : "text-wb-fg-2 hover:text-wb-fg",
+                )}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+
         <form
+          id={`new-project-panel-${source}`}
+          role="tabpanel"
+          aria-labelledby={`new-project-tab-${source}`}
           className="min-w-0 space-y-4"
           onSubmit={(event) => {
             event.preventDefault();
             void submit();
           }}
         >
-          <div className="flex min-w-0 items-center gap-2.5 rounded-xl border border-zinc-600 bg-zinc-950/50 px-3 transition-colors focus-within:border-sky-500 focus-within:ring-1 focus-within:ring-sky-500/70">
-            <Folder className="h-4 w-4 shrink-0 text-zinc-500" />
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="项目名称"
-              autoFocus
-              className="h-11 w-full min-w-0 bg-transparent text-sm text-zinc-100 outline-none placeholder:text-zinc-500"
-            />
+          <div className="space-y-1.5">
+            <label className="block text-xs font-medium text-wb-fg-2">
+              {source === "import" ? "本地目录" : "存放位置"}
+            </label>
+            <div className="flex min-w-0 items-center gap-2">
+              <div
+                className={cn(
+                  "flex h-9 min-w-0 flex-1 items-center gap-2 rounded-lg border border-wb-border-strong bg-wb-input px-3 text-sm",
+                  dir ? "text-wb-fg" : "text-wb-dim",
+                )}
+                title={dir || undefined}
+              >
+                <Folder className="h-4 w-4 shrink-0 text-wb-fg-3" />
+                <span className="min-w-0 flex-1 truncate">
+                  {dir || (source === "import" ? "未选择目录" : "未选择父目录")}
+                </span>
+              </div>
+              <Button type="button" variant="secondary" onClick={() => void pickDir()}>
+                <FolderOpen className="h-3.5 w-3.5" />
+                浏览
+              </Button>
+            </div>
           </div>
 
-          <div className="min-w-0">
-            <div className="mb-2 text-sm text-zinc-300">源文件夹</div>
-            <div className="min-w-0 rounded-xl border border-zinc-700 bg-zinc-950/35 px-4 py-7 text-center">
-              <div ref={sourceRef} className="relative inline-flex">
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1 text-sm text-zinc-200 hover:text-white"
-                  aria-expanded={sourceMenu}
-                  onClick={() => setSourceMenu((open) => !open)}
-                >
-                  {sourceLabel}
-                  <ChevronDown className="h-3.5 w-3.5 text-zinc-500" />
-                </button>
-                {sourceMenu && (
-                  <div className="absolute left-1/2 top-full z-10 mt-1.5 w-52 -translate-x-1/2 overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 py-1 text-left shadow-xl shadow-black/40">
-                    {(
-                      [
-                        ["create", "在此电脑上添加文件夹"],
-                        ["import", "导入现有文件夹"],
-                      ] as const
-                    ).map(([mode, label]) => (
-                      <button
-                        key={mode}
-                        type="button"
-                        className={cn(
-                          "block w-full px-3 py-2 text-left text-sm hover:bg-zinc-800",
-                          source === mode ? "text-zinc-50" : "text-zinc-400",
-                        )}
-                        onClick={() => {
-                          setSource(mode);
-                          setSourceMenu(false);
-                        }}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              {dir ? (
-                <p className="mt-2 w-full min-w-0 truncate text-xs text-zinc-500" title={dir}>
-                  {dir}
-                </p>
-              ) : null}
-              <div className="mt-3">
-                <button
-                  type="button"
-                  onClick={() => void pickDir()}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-zinc-600 bg-zinc-800/90 px-3 py-1 text-xs font-medium text-zinc-100 transition-colors hover:bg-zinc-700"
-                >
-                  <FolderPlus className="h-3.5 w-3.5" />
-                  添加
-                </button>
-              </div>
-            </div>
+          <div className="space-y-1.5">
+            <label className="block text-xs font-medium text-wb-fg-2">
+              {source === "import" ? "显示名称（选填）" : "项目名称"}
+            </label>
+            <Input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder={placeholder}
+              autoFocus={source === "create"}
+            />
             {source === "create" && name.trim() && dir.trim() ? (
-              <p className="mt-1.5 min-w-0 truncate text-[11px] text-zinc-500">
-                将创建：{dir.replace(/[\\/]+$/, "")}/{name.trim()}
+              <p className="min-w-0 truncate font-mono text-[11px] text-wb-fg-3">
+                {dir.replace(/[\\/]+$/, "")}/{name.trim()}
               </p>
             ) : null}
           </div>
 
           {source === "create" && (
-            <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-400">
+            <label className="flex cursor-pointer items-center gap-2 text-[13px] text-wb-fg-2">
               <input
                 type="checkbox"
                 checked={initGit}
-                onChange={(e) => setInitGit(e.target.checked)}
-                className="h-4 w-4 rounded border-zinc-600 bg-zinc-800 accent-indigo-500"
+                onChange={(event) => setInitGit(event.target.checked)}
+                className="h-4 w-4 rounded border-wb-border-strong bg-wb-input accent-wb-accent"
               />
-              初始化 Git 仓库（git init）
+              初始化 Git 仓库
             </label>
           )}
 
           {lastError && (
-            <p className="rounded-md border border-red-500/25 bg-red-500/[0.06] px-3 py-2 text-xs text-red-300">
+            <p className="rounded-lg border border-wb-danger/25 bg-wb-danger-soft px-3 py-2 text-xs text-wb-danger">
               {lastError}
             </p>
           )}
 
-          <div className="flex min-w-0 items-center justify-end gap-3 pt-1">
-            <Button
-              type="button"
-              variant="ghost"
-              className="text-zinc-400 hover:bg-transparent hover:text-zinc-200"
-              onClick={closeDialog}
-            >
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={closeDialog}>
               取消
             </Button>
-            <Button
-              type="submit"
-              disabled={!valid || busy}
-              className="rounded-lg bg-zinc-100 px-4 text-zinc-950 shadow-none hover:bg-white"
-            >
-              {busy ? "处理中…" : "创建项目"}
+            <Button type="submit" disabled={!valid || busy}>
+              {busy ? "处理中…" : source === "import" ? "导入项目" : "创建项目"}
             </Button>
-          </div>
+          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

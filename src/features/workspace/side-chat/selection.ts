@@ -1,4 +1,4 @@
-import type { SessionPanel } from "../../panel/state/panel-session.ts";
+import type { SessionPanel } from "../../panel/headless.ts";
 
 /** 只选择仍然存在的聊天；最近看的文件或浏览器不改变聊天目标。 */
 export function recentSideTab(panel: SessionPanel | undefined) {

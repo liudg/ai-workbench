@@ -37,7 +37,7 @@ export function OptionsMenu({
       ref={menuRef}
       role="menu"
       data-diff-options-menu
-      className="fixed z-[80] w-max min-w-[232px] rounded-xl border border-[#2a2a2a] bg-[#1b1b1b] py-1 text-[#e8e8e8] shadow-[0_12px_32px_rgba(0,0,0,0.45)]"
+      className="wb-popover fixed z-[80] w-max min-w-[232px] rounded-xl py-1 text-wb-fg"
     >
       {entries.map((entry) => (
         <span key={entry.id} className="block" title={entry.kind === "disabled" ? entry.reason : undefined}>
@@ -55,10 +55,10 @@ export function OptionsMenu({
             data-diff-copy-enabled={entry.id === "copy-apply" ? String(entry.kind === "action") : undefined}
             data-diff-copy-reason={entry.id === "copy-apply" ? entry.reason ?? "" : undefined}
             className={cn(
-              "flex w-full items-center gap-2 whitespace-nowrap px-3 py-1.5 text-left text-[13px]",
+              "flex w-full items-center gap-2 whitespace-nowrap px-3 py-1.5 text-left text-[13px] transition-colors",
               entry.kind === "disabled"
-                ? "pointer-events-none cursor-default text-[#666]"
-                : "text-[#e8e8e8] hover:bg-white/5",
+                ? "pointer-events-none cursor-default text-wb-fg-3"
+                : "text-wb-fg hover:bg-wb-hover",
             )}
             onClick={() => {
               if (entry.kind === "disabled") return;
@@ -69,7 +69,7 @@ export function OptionsMenu({
             <MenuGlyph icon={entry.icon} />
             <span className="min-w-0 flex-1">{entry.label}</span>
             {entry.kind === "check" && checked[entry.id] ? (
-              <Check className="h-3.5 w-3.5 shrink-0 text-[#cfcfcf]" />
+              <Check className="h-3.5 w-3.5 shrink-0 text-wb-accent-ink" />
             ) : (
               <span className="h-3.5 w-3.5 shrink-0" />
             )}

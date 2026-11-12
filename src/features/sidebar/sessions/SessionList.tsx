@@ -6,7 +6,7 @@ import { nestLines, splitSubtasks } from "./session-nesting";
 import { revealMoreSessions, SESSION_PREVIEW_LIMIT, sidebarSessionWindow } from "./session-order";
 
 const rowButtonClass =
-  "w-full rounded-md py-1 pl-[58px] pr-2 text-left text-[11.5px] text-[#666] hover:bg-white/[0.04] hover:text-[#bdbdbd]";
+  "w-full rounded-lg py-1 pl-[52px] pr-2 text-left text-xs text-wb-fg-3 hover:bg-wb-hover hover:text-wb-fg-2";
 
 export function SessionList({
   tasks,

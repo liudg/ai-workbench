@@ -14,7 +14,7 @@ export function LiveStatus({ label, startedAt }: { label: string; startedAt: num
       <p className="flex min-w-0 items-baseline gap-2 pl-6 text-[13px]">
         <span className="live-shimmer min-w-0 truncate">{label}</span>
         {elapsed != null ? (
-          <span data-live-elapsed className="shrink-0 tabular-nums text-[12px] text-[#6f6f6f]">
+          <span data-live-elapsed className="shrink-0 tabular-nums text-[12px] text-wb-fg-3">
             {formatElapsed(elapsed)}
           </span>
         ) : null}

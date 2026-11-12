@@ -2,14 +2,16 @@ import { useEffect, useState } from "react";
 
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { textSnippetBadge, textSnippetPreview } from "@/shared/text-snippet";
-import { usePanel } from "@/features/panel/core/PanelProvider";
-import { resolvePreviewPath } from "@/features/panel/core/preview-kind";
+import {
+  FilePreviewColumn,
+  PreviewChrome,
+  resolvePreviewPath,
+  useAttachFile,
+  useFilePreviewChrome,
+  usePanel,
+  WorkspaceTree,
+} from "@/features/panel";
 import { ContextMenu } from "@/shared/menu/ContextMenu";
-import { FilePreviewColumn } from "@/features/panel/files/FilePreview";
-import { PreviewChrome } from "@/features/panel/files/PreviewChrome";
-import { useFilePreviewChrome } from "@/features/panel/files/use-file-preview-chrome";
-import { useAttachFile } from "@/features/panel/files/useAttachFile";
-import { WorkspaceTree } from "@/features/panel/files/WorkspaceTree";
 import { ProjectPanel, useComposerDraft } from "@/features/workspace";
 import { baseName } from "@/shared/path";
 import { projectIdForRoot } from "./preview-project";
@@ -40,7 +42,7 @@ export default function FilesPreview() {
   }, [root]);
 
   if (!projectId) {
-    return <p className="p-6 text-sm text-zinc-400">{error || DESKTOP_ZH.filesReading}</p>;
+    return <p className="p-6 text-sm text-wb-fg-2">{error || DESKTOP_ZH.filesReading}</p>;
   }
   return (
     <ProjectPanel projectId={projectId} path={root} title="search-fixture">
@@ -72,7 +74,7 @@ function FilesBody({ root, projectId }: { root: string; projectId: string }) {
   });
 
   return (
-    <div className="flex h-screen min-h-0 flex-col bg-zinc-950 text-zinc-200">
+    <div className="flex h-screen min-h-0 flex-col bg-wb-surface text-wb-fg">
       <PreviewChrome {...chrome.chromeProps} />
       <div className="flex min-h-0 min-w-0 flex-1">
       <div className="flex min-w-0 flex-1 flex-col">
@@ -85,14 +87,14 @@ function FilesBody({ root, projectId }: { root: string; projectId: string }) {
           quotePath={path ? joinRoot(root, path) : ""}
           onQuote={(draft) => panel.data.addTextSnippet(panel.sessionId, draft)}
         />
-        <div className="shrink-0 border-t border-zinc-800 p-3">
-          <span className="mb-1 block text-xs text-zinc-500">对话</span>
+        <div className="shrink-0 border-t border-wb-border p-3">
+          <span className="mb-1 block text-xs text-wb-fg-3">对话</span>
           {snippets.length > 0 ? (
             <div data-preview-snippets={snippets.length} className="mb-2">
               {snippets.map((snippet) => (
                 <div key={snippet.id} data-preview-snippet className="mt-1">
-                  <p className="text-xs text-zinc-300">{textSnippetBadge(snippet)}</p>
-                  <pre className="max-h-24 overflow-auto whitespace-pre-wrap text-xs text-zinc-400">
+                  <p className="text-xs text-wb-fg-2">{textSnippetBadge(snippet)}</p>
+                  <pre className="max-h-24 overflow-auto whitespace-pre-wrap text-xs text-wb-fg-3">
                     {textSnippetPreview(snippet.note ?? snippet.body)}
                   </pre>
                 </div>
@@ -103,21 +105,21 @@ function FilesBody({ root, projectId }: { root: string; projectId: string }) {
             data-preview-composer
             readOnly
             value=""
-            placeholder="随心输入"
-            className="h-28 w-full resize-none rounded-lg border border-zinc-700 bg-zinc-900 p-2 font-mono text-xs text-zinc-100"
+            placeholder="输入任务或问题，@ 引用文件"
+            className="h-28 w-full resize-none rounded-lg border border-wb-border bg-wb-elev p-2 font-mono text-xs text-wb-fg"
           />
         </div>
       </div>
       {treeOpen ? (
-        <aside data-workspace-tree data-tree-surface="sidebar" className="flex w-80 shrink-0 flex-col border-l border-zinc-800">
-          <div className="flex gap-1 border-b border-zinc-800 p-1.5">
+        <aside data-workspace-tree data-tree-surface="sidebar" className="flex w-80 shrink-0 flex-col border-l border-wb-border">
+          <div className="flex gap-1 border-b border-wb-border p-1.5">
             <input
               data-files-filter
               value={filter}
               aria-label={DESKTOP_ZH.filterFiles}
               placeholder={DESKTOP_ZH.filterFiles}
               onChange={(event) => setFilter(event.target.value)}
-              className="w-full min-w-0 rounded-md border border-zinc-800 bg-zinc-900 px-1.5 py-1 text-xs text-zinc-100 outline-none"
+              className="w-full min-w-0 rounded-md border border-wb-border-strong bg-wb-input px-1.5 py-1 text-xs text-wb-fg outline-none focus-visible:border-wb-accent focus-visible:ring-2 focus-visible:ring-wb-accent-soft"
             />
           </div>
           <div className="min-h-0 flex-1 overflow-auto px-1 py-1">

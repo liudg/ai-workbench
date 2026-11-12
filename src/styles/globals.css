@@ -3,17 +3,159 @@
 @theme {
   --font-sans: Inter, "Noto Sans CJK SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
     "WenQuanYi Micro Hei", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
-  --color-wb-bg: #0f0f0f;
-  --color-wb-sidebar: #141414;
-  --color-wb-elev: #171717;
-  --color-wb-border: #222222;
-  --color-wb-line: #232323;
-  --color-wb-text: #e8e8e8;
-  --color-wb-muted: #bdbdbd;
-  --color-wb-faint: #888888;
-  --color-wb-dim: #666666;
-  --color-wb-user: #6e5bff;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+
+  /* 方案一：极夜精密 (Obsidian Studio — 默认) */
+  --color-wb-shell: #090a0d;
+  --color-wb-surface: #101216;
+  --color-wb-sidebar: #090a0d;
+  --color-wb-panel: #0d0f13;
+  --color-wb-elev: #15181e;
+  --color-wb-composer: #15181e;
+  --color-wb-code: #0b0d11;
+  --color-wb-backdrop: rgba(4, 5, 8, 0.62);
+  --color-wb-card: #14171d;
+  --color-wb-popover: #161920;
+  --color-wb-input: #0c0e12;
+  --color-wb-hover: rgba(255, 255, 255, 0.05);
+  --color-wb-active: rgba(255, 255, 255, 0.085);
+  --color-wb-border: rgba(255, 255, 255, 0.075);
+  --color-wb-border-strong: rgba(255, 255, 255, 0.13);
+
+  --color-wb-fg: #ededf0;
+  --color-wb-fg-2: #a3a9b6;
+  --color-wb-fg-3: #7d8494;
+  --color-wb-dim: #5c6270;
+
+  --color-wb-accent: #5e81ff;
+  --color-wb-accent-ink: #7da0ff;
+  --color-wb-accent-soft: rgba(94, 129, 255, 0.14);
+  --color-wb-skill: #a78bfa;
+  --color-wb-skill-soft: rgba(139, 92, 246, 0.16);
+
+  --color-wb-user: #191d25;
+  --color-wb-user-fg: #ededf0;
+  --color-wb-user-border: rgba(255, 255, 255, 0.095);
+
+  --color-wb-primary: #f0f1f5;
+  --color-wb-primary-fg: #0b0d11;
+  --color-wb-primary-hover: #ffffff;
+
+  --color-wb-warn: #e5993e;
+  --color-wb-warn-soft: rgba(229, 153, 62, 0.14);
+  --color-wb-ok: #3fb97c;
+  --color-wb-ok-soft: rgba(63, 185, 124, 0.14);
+  --color-wb-danger: #ef5f5f;
+  --color-wb-danger-soft: rgba(239, 95, 95, 0.14);
+
+  --color-wb-diff-add-bg: rgba(46, 160, 67, 0.16);
+  --color-wb-diff-add-word: rgba(46, 160, 67, 0.36);
+  --color-wb-diff-add-fg: #4ac26b;
+  --color-wb-diff-del-bg: rgba(248, 81, 73, 0.16);
+  --color-wb-diff-del-word: rgba(248, 81, 73, 0.36);
+  --color-wb-diff-del-fg: #ff7b72;
+}
+
+:root {
+  color-scheme: dark;
+  --wb-sidebar-row-hover: color-mix(in srgb, #ffffff 5%, var(--color-wb-sidebar));
+  --wb-island-shadow: 0 12px 36px -12px rgba(0, 0, 0, 0.65), 0 1px 0 rgba(255, 255, 255, 0.04) inset;
+  --wb-popover-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.62), 0 0 0 1px rgba(255, 255, 255, 0.03);
+  --wb-composer-shadow: 0 8px 24px -10px rgba(0, 0, 0, 0.5);
+  --wb-shimmer-edge: #7d8494;
+  --wb-shimmer-peak: #f4f5f8;
+  --wb-code-bg: rgba(9, 10, 13, 0.72);
+  --wb-inline-code-bg: rgba(255, 255, 255, 0.075);
+  --wb-cite-bg: rgba(255, 255, 255, 0.065);
+  --wb-cite-hover: rgba(255, 255, 255, 0.11);
+  --wb-selection-bg: rgba(94, 129, 255, 0.32);
+  --wb-line-focus-bg: rgba(94, 129, 255, 0.16);
+  --wb-line-pick-bg: rgba(94, 129, 255, 0.22);
+  --wb-scrollbar: rgba(163, 169, 182, 0.22);
+  --wb-scrollbar-hover: rgba(163, 169, 182, 0.4);
+  --tok-keyword: #c792ea;
+  --tok-type: #4ec9b0;
+  --tok-string: #ecc48d;
+  --tok-comment: #697098;
+  --tok-number: #f78c6c;
+  --tok-plain: #dcdfe4;
+  --tok-command: #6ee7b7;
+}
+
+/* 方案三：雾白日光 (Daylight Architect) */
+:root[data-theme="daylight"] {
+  color-scheme: light;
+  --color-wb-shell: #eef0f4;
+  --color-wb-surface: #ffffff;
+  --color-wb-sidebar: #eef0f4;
+  --color-wb-panel: #f7f8fa;
+  --color-wb-elev: #f3f5f8;
+  --color-wb-composer: #fbfcfd;
+  --color-wb-code: #f4f6fa;
+  --color-wb-backdrop: rgba(15, 23, 42, 0.34);
+  --color-wb-card: #f8f9fb;
+  --color-wb-popover: #ffffff;
+  --color-wb-input: #ffffff;
+  --color-wb-hover: rgba(15, 23, 42, 0.045);
+  --color-wb-active: rgba(15, 23, 42, 0.075);
+  --color-wb-border: rgba(15, 23, 42, 0.085);
+  --color-wb-border-strong: rgba(15, 23, 42, 0.15);
+
+  --color-wb-fg: #14171f;
+  --color-wb-fg-2: #495060;
+  --color-wb-fg-3: #646c7e;
+  --color-wb-dim: #8b93a4;
+
+  --color-wb-accent: #3b5bdb;
+  --color-wb-accent-ink: #364fc7;
+  --color-wb-accent-soft: rgba(59, 91, 219, 0.1);
+  --color-wb-skill: #6d28d9;
+  --color-wb-skill-soft: rgba(109, 40, 217, 0.11);
+
+  --color-wb-user: #f1f3f8;
+  --color-wb-user-fg: #14171f;
+  --color-wb-user-border: rgba(15, 23, 42, 0.09);
+
+  --color-wb-primary: #181b22;
+  --color-wb-primary-fg: #ffffff;
+  --color-wb-primary-hover: #262b36;
+
+  --color-wb-warn: #c2710c;
+  --color-wb-warn-soft: rgba(194, 113, 12, 0.12);
+  --color-wb-ok: #15803d;
+  --color-wb-ok-soft: rgba(21, 128, 61, 0.11);
+  --color-wb-danger: #dc2626;
+  --color-wb-danger-soft: rgba(220, 38, 38, 0.1);
+
+  --color-wb-diff-add-bg: rgba(34, 197, 94, 0.13);
+  --color-wb-diff-add-word: rgba(34, 197, 94, 0.3);
+  --color-wb-diff-add-fg: #15803d;
+  --color-wb-diff-del-bg: rgba(239, 68, 68, 0.11);
+  --color-wb-diff-del-word: rgba(239, 68, 68, 0.27);
+  --color-wb-diff-del-fg: #b91c1c;
+
+  --wb-sidebar-row-hover: color-mix(in srgb, #0f172a 4.5%, var(--color-wb-sidebar));
+  --wb-island-shadow: 0 4px 20px -4px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.03);
+  --wb-popover-shadow: 0 14px 36px -6px rgba(15, 23, 42, 0.14), 0 2px 6px rgba(15, 23, 42, 0.06);
+  --wb-composer-shadow: 0 4px 16px -4px rgba(15, 23, 42, 0.06);
+  --wb-shimmer-edge: #646c7e;
+  --wb-shimmer-peak: #14171f;
+  --wb-code-bg: #f6f8fa;
+  --wb-inline-code-bg: rgba(15, 23, 42, 0.065);
+  --wb-cite-bg: rgba(15, 23, 42, 0.055);
+  --wb-cite-hover: rgba(15, 23, 42, 0.095);
+  --wb-selection-bg: rgba(59, 91, 219, 0.2);
+  --wb-line-focus-bg: rgba(59, 91, 219, 0.11);
+  --wb-line-pick-bg: rgba(59, 91, 219, 0.16);
+  --wb-scrollbar: rgba(73, 80, 96, 0.22);
+  --wb-scrollbar-hover: rgba(73, 80, 96, 0.4);
+  --tok-keyword: #7c3aed;
+  --tok-type: #0f766e;
+  --tok-string: #b45309;
+  --tok-comment: #64748b;
+  --tok-number: #c2410c;
+  --tok-plain: #1e293b;
+  --tok-command: #047857;
 }
 
 html,
@@ -23,25 +165,49 @@ body,
 }
 
 body {
-  background: #0f0f0f;
-  color: #e8e8e8;
+  background: var(--color-wb-shell);
+  color: var(--color-wb-fg);
   @apply antialiased select-none;
   overflow: hidden;
 }
 
+/* 统一浮层、提示与单色 Agent 图标（置于 components 层，允许 Tailwind utilities 覆盖圆角/前景色） */
+@layer components {
+  .wb-popover {
+    border-radius: 0.75rem;
+    border: 1px solid var(--color-wb-border-strong);
+    background: var(--color-wb-popover);
+    color: var(--color-wb-fg);
+    box-shadow: var(--wb-popover-shadow);
+  }
+
+  .wb-tooltip {
+    border-radius: 0.5rem;
+    border: 1px solid var(--color-wb-border-strong);
+    background: var(--color-wb-popover);
+    color: var(--color-wb-fg);
+    box-shadow: var(--wb-popover-shadow);
+  }
+
+  :root[data-theme="daylight"] .wb-agent-mono {
+    filter: brightness(0) opacity(0.88);
+  }
+}
+
 /* 细滚动条 */
 *::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
 }
 *::-webkit-scrollbar-track {
   background: transparent;
 }
 *::-webkit-scrollbar-thumb {
-  @apply bg-zinc-700/50 rounded-full;
+  background: var(--wb-scrollbar);
+  border-radius: 9999px;
 }
 *::-webkit-scrollbar-thumb:hover {
-  @apply bg-zinc-600;
+  background: var(--wb-scrollbar-hover);
 }
 *::-webkit-scrollbar-corner {
   background: transparent;
@@ -108,7 +274,12 @@ body {
 
 .live-shimmer {
   display: inline-block;
-  background-image: linear-gradient(90deg, #6f6f6f 0%, #f5f5f5 50%, #6f6f6f 100%);
+  background-image: linear-gradient(
+    90deg,
+    var(--wb-shimmer-edge) 0%,
+    var(--wb-shimmer-peak) 50%,
+    var(--wb-shimmer-edge) 100%
+  );
   background-size: 200% 100%;
   background-repeat: no-repeat;
   -webkit-background-clip: text;
@@ -122,8 +293,8 @@ body {
   .live-shimmer {
     animation: none;
     background-image: none;
-    color: #8a8a8a;
-    -webkit-text-fill-color: #8a8a8a;
+    color: var(--color-wb-fg-2);
+    -webkit-text-fill-color: var(--color-wb-fg-2);
   }
   .sidebar-peek-in,
   .sidebar-peek-out {
@@ -176,7 +347,7 @@ textarea {
   user-select: text;
 }
 .chat-log ::selection {
-  background: rgb(99 102 241 / 0.45);
+  background: var(--wb-selection-bg);
 }
 
 /* 打开的文件要能拖选、复制。浮动菜单本身不可选。 */
@@ -194,13 +365,13 @@ textarea {
   cursor: pointer;
 }
 
-/* 助手回答：接近 Codex 桌面的阅读栏，而不是一整块等宽预格式文本。 */
+/* 助手回答排版栏 */
 .answer-body {
   max-width: 42rem;
   min-width: 0;
-  color: #e8e8e8;
-  font-size: 14.5px;
-  line-height: 1.7;
+  color: var(--color-wb-fg);
+  font-size: 14px;
+  line-height: 1.72;
   overflow-wrap: break-word;
   text-wrap: pretty;
 }
@@ -208,7 +379,7 @@ textarea {
   margin-top: 0;
 }
 .answer-h {
-  color: #fafafa;
+  color: var(--color-wb-fg);
   font-weight: 600;
   letter-spacing: -0.011em;
   line-height: 1.4;
@@ -220,22 +391,22 @@ textarea {
   font-size: 1rem;
 }
 .answer-h3 {
-  font-size: 0.95rem;
+  font-size: 0.9375rem;
 }
 .answer-p {
   margin: 0;
 }
 .answer-body strong {
-  color: #fafafa;
+  color: var(--color-wb-fg);
   font-weight: 600;
 }
 .answer-body em {
   font-style: italic;
 }
 .answer-body a {
-  color: #7dd3fc;
+  color: var(--color-wb-accent-ink);
   text-decoration-line: underline;
-  text-decoration-color: rgb(125 211 252 / 0.45);
+  text-decoration-color: color-mix(in srgb, var(--color-wb-accent-ink) 42%, transparent);
   text-underline-offset: 2px;
 }
 .answer-list {
@@ -255,7 +426,7 @@ ol.answer-list {
   margin-top: 0.4rem;
 }
 .answer-list li::marker {
-  color: #a1a1aa;
+  color: var(--color-wb-fg-3);
 }
 .answer-inline-code,
 .answer-path {
@@ -263,10 +434,10 @@ ol.answer-list {
   font-size: 0.86em;
   line-height: 1.45;
   overflow-wrap: normal;
-  border-radius: 0.3em;
-  background: rgb(39 39 42 / 0.95);
-  color: #f4f4f5;
-  padding: 0.08em 0.38em;
+  border-radius: 0.35em;
+  background: var(--wb-inline-code-bg);
+  color: var(--color-wb-fg);
+  padding: 0.1em 0.4em;
 }
 .answer-path {
   cursor: help;
@@ -279,11 +450,11 @@ ol.answer-list {
   max-width: 100%;
   min-width: 0;
   margin: 0.05rem 0.2rem 0.05rem 0;
-  padding: 0.08rem 0.45rem 0.08rem 0.32rem;
+  padding: 0.08rem 0.48rem 0.08rem 0.34rem;
   border: 0;
   border-radius: 0.75rem;
-  background: rgb(39 39 42 / 0.72);
-  color: #e4e4e7;
+  background: var(--wb-cite-bg);
+  color: var(--color-wb-fg);
   font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.35;
@@ -294,7 +465,7 @@ ol.answer-list {
   width: 12px;
   height: 12px;
   flex: none;
-  color: #a1a1aa;
+  color: var(--color-wb-fg-2);
 }
 .answer-cite-name {
   min-width: 0;
@@ -305,13 +476,13 @@ ol.answer-list {
 }
 .answer-cite-line {
   flex: none;
-  color: #71717a;
+  color: var(--color-wb-fg-3);
 }
 span.answer-cite {
   cursor: default;
 }
 button.answer-cite:hover {
-  background: rgb(63 63 70 / 0.88);
+  background: var(--wb-cite-hover);
 }
 .answer-file-section > .answer-h {
   margin-bottom: 0.45rem;
@@ -325,7 +496,7 @@ button.answer-cite:hover {
   max-width: 100%;
 }
 .answer-file-list-label {
-  color: #71717a;
+  color: var(--color-wb-fg-3);
   font-size: 12px;
   font-weight: 500;
   line-height: 1.4;
@@ -351,13 +522,13 @@ button.answer-cite:hover {
   border: 0;
   background: transparent;
   padding: 0.1rem 0;
-  color: #a1a1aa;
+  color: var(--color-wb-fg-2);
   font-size: 12px;
   line-height: 1.4;
   cursor: pointer;
 }
 .answer-file-more:hover {
-  color: #e4e4e7;
+  color: var(--color-wb-fg);
 }
 .answer-pre {
   margin: 0;
@@ -365,11 +536,11 @@ button.answer-cite:hover {
   overflow-x: auto;
   overflow-wrap: normal;
   white-space: pre;
-  border: 1px solid rgb(39 39 42);
-  border-radius: 0.6rem;
-  background: rgb(9 9 11 / 0.72);
-  padding: 0.7rem 0.85rem;
-  color: #e4e4e7;
+  border: 1px solid var(--color-wb-border);
+  border-radius: 0.65rem;
+  background: var(--wb-code-bg);
+  padding: 0.72rem 0.88rem;
+  color: var(--color-wb-fg);
   font-family: var(--font-mono);
   font-size: 12.5px;
   line-height: 1.6;
@@ -379,7 +550,7 @@ button.answer-cite:hover {
 }
 .answer-command .answer-pre {
   padding-right: 4.5rem;
-  color: #86efac;
+  color: var(--tok-command);
 }
 .answer-command-actions {
   position: absolute;
@@ -395,23 +566,23 @@ button.answer-cite:hover {
   align-items: center;
   justify-content: center;
   border-radius: 0.4rem;
-  color: #a1a1aa;
+  color: var(--color-wb-fg-2);
   cursor: pointer;
 }
 .answer-command-button:hover {
-  background: rgb(39 39 42);
-  color: #f4f4f5;
+  background: var(--color-wb-hover);
+  color: var(--color-wb-fg);
 }
 .answer-table-wrap {
   max-width: 100%;
   overflow-x: auto;
-  border: 1px solid rgb(39 39 42);
-  border-radius: 0.6rem;
+  border: 1px solid var(--color-wb-border);
+  border-radius: 0.65rem;
 }
 .answer-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13.5px;
+  font-size: 13px;
   line-height: 1.55;
 }
 .answer-table th,
@@ -419,11 +590,11 @@ button.answer-cite:hover {
   padding: 0.5rem 0.75rem;
   vertical-align: top;
   text-align: left;
-  border-bottom: 1px solid rgb(39 39 42 / 0.95);
+  border-bottom: 1px solid var(--color-wb-border);
 }
 .answer-table th {
-  background: rgb(24 24 27 / 0.9);
-  color: #a1a1aa;
+  background: var(--color-wb-elev);
+  color: var(--color-wb-fg-2);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.01em;
@@ -439,13 +610,13 @@ button.answer-cite:hover {
 }
 .answer-quote {
   margin: 0;
-  border-left: 2px solid rgb(82 82 91);
+  border-left: 2px solid var(--color-wb-border-strong);
   padding-left: 0.8rem;
-  color: #a1a1aa;
+  color: var(--color-wb-fg-2);
 }
 .answer-rule {
   border: 0;
-  border-top: 1px solid rgb(39 39 42);
+  border-top: 1px solid var(--color-wb-border);
 }
 .answer-section > button {
   display: flex;
@@ -462,25 +633,25 @@ button.answer-cite:hover {
 }
 .answer-section > button:hover .answer-h,
 .answer-section > button:hover .answer-section-fallback {
-  color: #fff;
+  color: var(--color-wb-fg);
 }
 .answer-chevron {
   width: 14px;
   height: 14px;
   flex: none;
-  color: #71717a;
+  color: var(--color-wb-fg-3);
   transition: transform 160ms ease;
 }
 .answer-chevron.is-open {
   transform: rotate(90deg);
 }
 .answer-section-fallback {
-  color: #f4f4f5;
+  color: var(--color-wb-fg);
   font-size: 14px;
   font-weight: 600;
 }
 .answer-section-meta {
-  color: #71717a;
+  color: var(--color-wb-fg-3);
   font-size: 12px;
   font-weight: 500;
 }
@@ -491,12 +662,12 @@ button.answer-cite:hover {
 .chat-log .answer-section > button {
   cursor: pointer;
 }
-.tok-keyword { color: #c586c0; }
-.tok-type { color: #4ec9b0; }
-.tok-string { color: #ce9178; }
-.tok-comment { color: #6a9955; }
-.tok-number { color: #b5cea8; }
-.tok-plain { color: #d4d4d4; }
+.tok-keyword { color: var(--tok-keyword); }
+.tok-type { color: var(--tok-type); }
+.tok-string { color: var(--tok-string); }
+.tok-comment { color: var(--tok-comment); }
+.tok-number { color: var(--tok-number); }
+.tok-plain { color: var(--tok-plain); }
 /* 放在各块 margin:0 之后，否则段落和列表会把段间距清掉。 */
 .answer-body > * + * {
   margin-top: 0.95rem;
@@ -515,15 +686,15 @@ button.answer-cite:hover {
 /* 会话内查找。当前命中更深，其余命中浅一档。 */
 mark[data-thread-find-mark] {
   border-radius: 2px;
-  background-color: rgba(240, 160, 74, 0.45);
+  background-color: rgba(229, 153, 62, 0.35);
   color: inherit;
 }
 mark[data-thread-find-mark="current"] {
-  background-color: #f0a04a;
-  color: #1a1208;
+  background-color: #e5993e;
+  color: #14171f;
 }
 
 /* 正在回复的那段选区，回复框开着时一直标着。 */
 ::highlight(chat-reply) {
-  background-color: rgb(47 129 247 / 0.35);
+  background-color: var(--wb-selection-bg);
 }

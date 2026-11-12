@@ -38,16 +38,16 @@ function OptionPrompt({ event, session, answerPrompt, flush = false }: PromptBod
             aria-disabled={disabled}
             disabled={disabled}
             className={cn(
-              "flex min-w-0 items-start gap-2 rounded-md border border-zinc-700/70 px-3 py-2 text-left",
-              disabled ? "cursor-not-allowed opacity-50" : "hover:border-zinc-500 hover:bg-zinc-800/70",
+              "flex min-w-0 items-start gap-2 rounded-lg border border-wb-border bg-wb-card px-3 py-2 text-left transition-colors",
+              disabled ? "cursor-not-allowed opacity-50" : "hover:border-wb-border-strong hover:bg-wb-hover",
             )}
             onClick={() => pick(opt.id)}
           >
-            <span className="w-4 shrink-0 text-sm text-zinc-500">{index + 1}.</span>
+            <span className="w-4 shrink-0 text-sm tabular-nums text-wb-fg-3">{index + 1}.</span>
             <span className="min-w-0 flex-1">
-              <span className="block break-words text-sm text-zinc-100">{opt.label}</span>
+              <span className="block break-words text-sm text-wb-fg">{opt.label}</span>
               {(opt.disabled_reason || opt.description) && (
-                <span className="mt-0.5 block break-words text-xs leading-4 text-zinc-500">
+                <span className="mt-0.5 block break-words text-xs leading-4 text-wb-fg-2">
                   {opt.disabled_reason ?? opt.description}
                 </span>
               )}

@@ -2,16 +2,19 @@ import { useEffect, useMemo, type ReactNode } from "react";
 import { ArrowLeft, ArrowUpRight, Square } from "lucide-react";
 
 import { useAgentProfiles } from "@/features/agents";
-import { AnswerMarkdownHost } from "@/features/chat/answer/AnswerMarkdownHost";
-import { CHAT_SCOPE_ATTR } from "@/features/chat/chat-scope";
-import { Composer } from "@/features/chat/composer/Composer";
-import { subagentTitle } from "@/features/chat/events/subagent-display";
-import { subtaskStatus } from "@/features/chat/events/subtask-row";
-import { useAgentIdentity, agentTurnName } from "@/features/chat/events/use-agent-identity";
-import { ChatHostProvider } from "@/features/chat/host";
-import { SubagentView } from "@/features/chat/subagent/SubagentView";
-import { ChatView } from "@/features/chat/timeline/ChatView";
-import type { ViewerViewProps } from "@/features/panel/core/registry";
+import {
+  agentTurnName,
+  AnswerMarkdownHost,
+  CHAT_SCOPE_ATTR,
+  ChatHostProvider,
+  ChatView,
+  Composer,
+  subagentTitle,
+  subtaskStatus,
+  SubagentView,
+  useAgentIdentity,
+} from "@/features/chat";
+import type { ViewerViewProps } from "@/features/panel";
 import { useProjects } from "@/features/projects";
 import { currentSession, useTasks, type TaskEntry, type TaskSession } from "@/features/tasks";
 import { cn } from "@/lib/utils";
@@ -36,7 +39,7 @@ export function SubagentsTab({ sessionId }: ViewerViewProps) {
   const session = owner ? currentSession(owner) : undefined;
   if (!owner || !session) return null;
   return (
-    <div data-subagents-tab className="flex h-full min-h-0 flex-col bg-[#0f0f0f]">
+    <div data-subagents-tab className="flex h-full min-h-0 flex-col bg-wb-panel">
       {focus ? (
         <Detail key={focusKey(focus)} owner={sessionId} focus={focus} />
       ) : (
@@ -53,14 +56,14 @@ function focusKey(focus: SubagentFocus): string {
 function SubagentList({ owner, task, taskSession }: { owner: string; task: TaskEntry; taskSession: TaskSession }) {
   const profiles = useAgentProfiles();
   const { items, stopAll } = useSubagentRows(task, taskSession, profiles[taskSession.agent]);
-  if (items.length === 0) return <p className="px-4 py-6 text-sm text-zinc-500">还没有子智能体</p>;
+  if (items.length === 0) return <p className="px-4 py-6 text-sm text-wb-fg-3">还没有子智能体</p>;
   const running = items.some((item) => item.row.active && item.stop);
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-2 py-3">
-      <div className="flex h-7 items-center px-2 text-[12px] text-[#8a8a8a]">
+      <div className="flex h-7 items-center px-2 text-[12px] text-wb-fg-3">
         <span className="min-w-0 flex-1 truncate">已开启 · {items.length}</span>
         {running ? (
-          <button type="button" onClick={stopAll} className="rounded px-1.5 py-0.5 text-[#bdbdbd] hover:bg-white/[0.06] hover:text-white">
+          <button type="button" onClick={stopAll} className="rounded-md px-1.5 py-0.5 text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg">
             全部停止
           </button>
         ) : null}
@@ -96,12 +99,12 @@ function Row({
       <button
         type="button"
         onClick={onOpen}
-        className="flex w-full min-w-0 items-start gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-white/[0.04]"
+        className="flex w-full min-w-0 items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-wb-hover"
       >
         <SessionAgentIcon identity={agentIdentity(row.agent, profile)} className="mt-0.5 h-4 w-4" />
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[13px] text-[#e4e4e4]">{row.title}</span>
-          <span className="block truncate text-[12px] leading-5 text-[#8a8a8a]">
+          <span className="block truncate text-[13px] font-medium text-wb-fg">{row.title}</span>
+          <span className="block truncate text-[12px] leading-5 text-wb-fg-3">
             <span className={row.statusClass}>{row.status}</span>
             {row.detail ? ` · ${row.detail}` : ""}
           </span>
@@ -113,7 +116,7 @@ function Row({
           title="停止"
           aria-label={`停止 ${row.title}`}
           onClick={onStop}
-          className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded text-[#8a8a8a] opacity-0 hover:bg-white/[0.08] hover:text-[#ddd] focus-visible:opacity-100 group-hover/row:opacity-100"
+          className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-md text-wb-fg-3 opacity-0 transition-colors hover:bg-wb-hover hover:text-wb-fg focus-visible:opacity-100 group-hover/row:opacity-100"
         >
           <Square className="h-3 w-3" />
         </button>
@@ -274,13 +277,13 @@ function DetailHeader({
   const identity = useAgentIdentity(agent);
   const detail = meta || agentTurnName(agent, identity);
   return (
-    <div data-subagent-header className="flex h-10 shrink-0 items-center gap-2 border-b border-[#222] px-2 text-[13px]">
+    <div data-subagent-header className="flex h-10 shrink-0 items-center gap-2 border-b border-wb-border bg-wb-panel px-2 text-[13px]">
       <HeaderButton label="返回列表" onClick={() => focusSubagent(owner, undefined)}>
         <ArrowLeft className="h-4 w-4" />
       </HeaderButton>
       <SessionAgentIcon identity={identity} className="h-4 w-4" />
-      <span className="min-w-0 flex-1 truncate font-medium text-[#e4e4e4]">{title}</span>
-      <span className="min-w-0 max-w-[45%] shrink truncate text-[12px] text-[#8a8a8a]">
+      <span className="min-w-0 flex-1 truncate font-medium text-wb-fg">{title}</span>
+      <span className="min-w-0 max-w-[45%] shrink truncate text-[12px] text-wb-fg-3">
         {[detail, status].filter(Boolean).join(" · ")}
       </span>
       {onStop ? (
@@ -304,7 +307,7 @@ function HeaderButton({ label, onClick, children }: { label: string; onClick: ()
       title={label}
       aria-label={label}
       onClick={onClick}
-      className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded text-[#9a9a9a] hover:bg-white/[0.08] hover:text-[#e4e4e4]")}
+      className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg")}
     >
       {children}
     </button>

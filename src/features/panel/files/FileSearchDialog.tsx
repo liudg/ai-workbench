@@ -50,6 +50,8 @@ export function FileSearchDialog({
       ?.scrollIntoView({ block: "nearest" });
   }, [active, hits]);
 
+  const selectedIndex = hits.length === 0 ? 0 : Math.min(active, hits.length - 1);
+
   const openHit = (hit: FileSearchHit | undefined) => {
     if (!hit) return;
     onOpen(hit.path, hit.line);
@@ -60,31 +62,38 @@ export function FileSearchDialog({
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
       const key = event.key;
-      setActive((current) => moveSearchCursor(current, hits.length, key));
+      setActive((current) => moveSearchCursor(Math.min(current, Math.max(hits.length - 1, 0)), hits.length, key));
       return;
     }
     if (event.key === "Enter") {
       event.preventDefault();
-      openHit(hits[active]);
+      openHit(hits[selectedIndex]);
     }
   };
 
   if (typeof document === "undefined") return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/45 pt-16" data-file-search>
+    <div
+      className="fixed inset-0 z-[70] flex items-start justify-center bg-wb-backdrop pt-16 backdrop-blur-[2px]"
+      data-file-search
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
       <div
         role="dialog"
+        aria-modal="true"
         aria-label={DESKTOP_ZH.openFilesSearchTitle}
         onKeyDown={onKeyDown}
-        className="w-[min(720px,94vw)] rounded-xl border border-zinc-700 bg-zinc-900 p-4 shadow-xl"
+        className="wb-popover w-[min(720px,94vw)] rounded-2xl p-4"
       >
         <div className="mb-3 flex items-center justify-between gap-3">
-          <h2 className="text-sm text-zinc-100">{DESKTOP_ZH.openFilesSearchTitle}</h2>
+          <h2 className="text-sm font-medium text-wb-fg">{DESKTOP_ZH.openFilesSearchTitle}</h2>
           <button
             type="button"
             data-file-search-esc
-            className="rounded-md bg-zinc-800 px-1.5 py-0.5 text-[11px] text-zinc-200"
+            className="rounded-md border border-wb-border bg-wb-elev px-1.5 py-0.5 text-[11px] text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
             onClick={onClose}
           >
             Esc
@@ -97,9 +106,9 @@ export function FileSearchDialog({
           placeholder={DESKTOP_ZH.openFilesSearchPlaceholder}
           aria-label={DESKTOP_ZH.openFilesSearchPlaceholder}
           data-file-search-query
-          className="h-9 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-zinc-500"
+          className="h-9 w-full rounded-lg border border-wb-border-strong bg-wb-input px-3 text-sm text-wb-fg outline-none transition-colors placeholder:text-wb-dim focus-visible:border-wb-accent focus-visible:ring-2 focus-visible:ring-wb-accent-soft"
         />
-        <label className="mt-3 flex items-center gap-2 text-xs text-zinc-400">
+        <label className="mt-3 flex items-center gap-2 text-xs text-wb-fg-2">
           <span className="shrink-0">{DESKTOP_ZH.openFilesMask}</span>
           <input
             value={mask}
@@ -107,23 +116,23 @@ export function FileSearchDialog({
             placeholder={DESKTOP_ZH.openFilesMaskPlaceholder}
             aria-label={DESKTOP_ZH.openFilesMask}
             data-file-search-mask
-            className="h-7 min-w-0 flex-1 rounded-md border border-zinc-700 bg-zinc-950 px-2 text-xs text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-zinc-500"
+            className="h-7 min-w-0 flex-1 rounded-lg border border-wb-border-strong bg-wb-input px-2.5 text-xs text-wb-fg outline-none transition-colors placeholder:text-wb-dim focus-visible:border-wb-accent focus-visible:ring-2 focus-visible:ring-wb-accent-soft"
           />
         </label>
         {query.trim() ? (
-          <div className="mt-3 overflow-hidden rounded-lg border border-zinc-800">
+          <div className="mt-3 overflow-hidden rounded-xl border border-wb-border bg-wb-card">
             {loading && hits.length === 0 ? (
-              <p className="px-3 py-4 text-xs text-zinc-500" data-file-search-pending>
+              <p className="px-3 py-4 text-xs text-wb-fg-3" data-file-search-pending>
                 {DESKTOP_ZH.openFilesSearchPending}
               </p>
             ) : null}
             {error ? (
-              <p className="px-3 py-4 text-xs text-red-300" data-file-search-error>
+              <p className="px-3 py-4 text-xs text-wb-danger" data-file-search-error>
                 {error}
               </p>
             ) : null}
             {!loading && !error && hits.length === 0 ? (
-              <p className="px-3 py-4 text-xs text-zinc-500" data-file-search-empty>
+              <p className="px-3 py-4 text-xs text-wb-fg-3" data-file-search-empty>
                 {DESKTOP_ZH.openFilesSearchEmpty}
               </p>
             ) : null}
@@ -136,7 +145,7 @@ export function FileSearchDialog({
               >
                 {hits.map((hit, index) => {
                   const where = hit.line ? `${hit.path}:${hit.line}` : hit.path;
-                  const selected = index === active;
+                  const selected = index === selectedIndex;
                   return (
                     <button
                       key={`${hit.kind}:${hit.path}:${hit.line ?? ""}:${index}`}
@@ -148,16 +157,21 @@ export function FileSearchDialog({
                       data-file-search-line={hit.line ?? ""}
                       data-file-search-kind={hit.kind}
                       className={cn(
-                        "flex w-full min-w-0 items-center gap-3 px-3 py-1.5 text-left",
-                        selected ? "bg-zinc-800" : "hover:bg-zinc-800/70",
+                        "flex w-full min-w-0 items-center gap-3 px-3 py-1.5 text-left transition-colors",
+                        selected ? "bg-wb-active" : "hover:bg-wb-hover",
                       )}
                       onMouseEnter={() => setActive(index)}
                       onClick={() => openHit(hit)}
                     >
-                      <span className="min-w-0 flex-1 truncate font-mono text-xs text-zinc-200">
+                      <span className="min-w-0 flex-1 truncate font-mono text-xs text-wb-fg">
                         <Highlight text={hit.text} query={query} />
                       </span>
-                      <span className="shrink-0 font-mono text-[11px] text-zinc-500">{where}</span>
+                      <span
+                        title={where}
+                        className="max-w-[42%] shrink-0 truncate font-mono text-[11px] tabular-nums text-wb-fg-3"
+                      >
+                        {where}
+                      </span>
                     </button>
                   );
                 })}
@@ -165,7 +179,7 @@ export function FileSearchDialog({
             ) : null}
             {hits.length > 0 ? (
               <div
-                className="flex items-center justify-between gap-3 border-t border-zinc-800 px-3 py-2 text-[11px] text-zinc-500"
+                className="flex items-center justify-between gap-3 border-t border-wb-border px-3 py-2 text-[11px] text-wb-fg-3"
                 data-file-search-footer
               >
                 <span data-file-search-cap>
@@ -190,7 +204,7 @@ function Highlight({ text, query }: { text: string; query: string }) {
     <>
       {highlightParts(text, query).map((part, index) =>
         part.hit ? (
-          <mark key={index} data-file-search-mark className="rounded-sm bg-amber-300/35 text-amber-50">
+          <mark key={index} data-file-search-mark className="rounded-xs bg-wb-accent-soft px-0.5 text-wb-accent-ink">
             {part.text}
           </mark>
         ) : (

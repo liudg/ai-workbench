@@ -43,9 +43,10 @@ export function ComposerContextRow({
   if (!workContext && !showBranch && !start && !handOff && !worktree?.showToggle && !worktree?.liveLabel) return null;
   return (
     <div
-      className="mb-2 flex min-w-0 flex-wrap items-center gap-2 px-1"
+      className="flex min-w-0 flex-wrap items-center gap-1.5 border-b border-wb-border px-2.5 py-1.5"
       data-composer-context
       data-work-context-slot="above-input"
+      onClick={(event) => event.stopPropagation()}
     >
       {workContext ? <WorkContextPicker {...workContext} /> : null}
       {worktree?.showToggle ? (
@@ -186,7 +187,7 @@ export function GitBranchChrome({
                 attrs={{ "data-git-branch-name": name }}
                 subtitle={
                   subtitle ? (
-                    <span data-git-dirty-files={dirtyFiles ?? undefined} className="block truncate text-xs text-zinc-500">
+                    <span data-git-dirty-files={dirtyFiles ?? undefined} className="block truncate text-xs text-wb-fg-3">
                       {subtitle}
                     </span>
                   ) : null
@@ -202,7 +203,7 @@ export function GitBranchChrome({
             role="menuitem"
             data-git-branch-create=""
             disabled={busy}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-zinc-100 hover:bg-white/[0.06] disabled:opacity-60"
+            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm text-wb-fg transition-colors hover:bg-wb-hover disabled:opacity-60"
             onClick={(event) => {
               event.stopPropagation();
               setCreateError(null);

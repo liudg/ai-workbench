@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 
 import type { AgentKind, AgentProfile } from "../../types/index.ts";
 import { agentIdentity, profileForSessionAgent } from "./identity.ts";
@@ -50,4 +52,24 @@ test("blank adapter identity does not invent a name or icon", () => {
   const blank = profile("codex-cli", "  ", "  ");
   assert.equal(agentIdentity("codex-cli", blank), null);
   assert.equal(agentIdentity("codex-cli", undefined), null);
+});
+
+test("monochrome_icon flag propagates from owning adapter profile", () => {
+  const codex = {
+    ...profile("codex-cli", "Codex CLI", "/agent-icons/codex.svg"),
+    monochrome_icon: true,
+  };
+  assert.deepEqual(agentIdentity("codex-cli", codex), {
+    name: "Codex CLI",
+    icon: "/agent-icons/codex.svg",
+    monochrome: true,
+  });
+});
+
+test("monochrome SVG assets stay pure light-on-dark without OS prefers-color-scheme overrides", () => {
+  for (const icon of ["codex.svg", "cursor-agent.svg", "kimi-code.svg", "opencode.svg"]) {
+    const svgPath = fileURLToPath(new URL(`../../../public/agent-icons/${icon}`, import.meta.url));
+    const svg = readFileSync(svgPath, "utf8");
+    assert.ok(!svg.includes("prefers-color-scheme"), `${icon} should be themed by host CSS`);
+  }
 });

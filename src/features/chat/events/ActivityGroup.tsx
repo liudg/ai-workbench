@@ -43,7 +43,7 @@ export function ActivityGroup({
       data-activity-running={running ? "true" : undefined}
     >
       <div className="min-w-0 pl-6">
-        <div className="overflow-hidden rounded-lg border border-[#2a2a2a] bg-[#1a1a1a]">
+        <div className="overflow-hidden rounded-xl border border-wb-border bg-wb-elev">
           <button
             type="button"
             data-activity-toggle
@@ -51,27 +51,27 @@ export function ActivityGroup({
             aria-expanded={open}
             title={piece.summary}
             onClick={onToggle}
-            className="flex w-full min-w-0 items-center gap-2.5 px-3 py-2 text-left text-[13px] text-[#d4d4d4] hover:bg-[#222]"
+            className="flex w-full min-w-0 items-center gap-2.5 px-3 py-2 text-left text-[13px] text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
           >
             {running ? (
-              <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-[#8fb4ff] motion-reduce:animate-none" />
+              <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-wb-accent motion-reduce:animate-none" />
             ) : (
-              <LayoutGrid className="h-3.5 w-3.5 shrink-0 text-[#8a8a8a]" />
+              <LayoutGrid className="h-3.5 w-3.5 shrink-0 text-wb-fg-3" />
             )}
             <span className="min-w-0 flex-1 truncate">{piece.summary}</span>
             {failed > 0 ? (
-              <span data-activity-failed className="shrink-0 text-[12px] text-red-400/90">
+              <span data-activity-failed className="shrink-0 text-[12px] text-wb-danger">
                 {DESKTOP_ZH.toolFailedCount.replace("{count}", String(failed))}
               </span>
             ) : null}
             {piece.webSearch ? (
-              <span className="inline-flex shrink-0 items-center gap-1 text-[12px] text-[#9a9a9a]">
+              <span className="inline-flex shrink-0 items-center gap-1 text-[12px] text-wb-fg-3">
                 <Search className="h-3.5 w-3.5" />
                 {DESKTOP_ZH.activitySearchedWeb}
               </span>
             ) : null}
             <ChevronRight
-              className={cn("h-4 w-4 shrink-0 text-[#777] transition-transform", open && "rotate-90")}
+              className={cn("h-4 w-4 shrink-0 text-wb-dim transition-transform", open && "rotate-90")}
             />
           </button>
           {open ? (
@@ -114,21 +114,21 @@ function ActivityStep({
   const failure = state === "failed" ? toolFailureText(event) : null;
 
   return (
-    <li className="border-t border-[#2a2a2a]" data-activity-step data-step-title={title} data-step-state={state}>
+    <li className="border-t border-wb-border" data-activity-step data-step-title={title} data-step-state={state}>
       <button
         type="button"
         data-step-toggle
         aria-expanded={hasBody ? open : undefined}
         disabled={!hasBody}
         onClick={() => setOpen((value) => !value)}
-        className="flex w-full min-w-0 items-center gap-2.5 px-3 py-2 text-left text-[13px] text-[#cfcfcf] enabled:hover:bg-[#202020] disabled:cursor-default"
+        className="flex w-full min-w-0 items-center gap-2.5 px-3 py-2 text-left text-[13px] text-wb-fg-2 transition-colors enabled:hover:bg-wb-hover enabled:hover:text-wb-fg disabled:cursor-default"
       >
         <StepMark state={state} />
         <span className="min-w-0 flex-1 truncate">{title}</span>
-        {failure ? <span className="shrink-0 text-[12px] text-red-400/90">{failure}</span> : null}
+        {failure ? <span className="shrink-0 text-[12px] text-wb-danger">{failure}</span> : null}
         {hasBody ? (
           <ChevronRight
-            className={cn("h-3.5 w-3.5 shrink-0 text-[#666] transition-transform duration-150", open && "rotate-90")}
+            className={cn("h-3.5 w-3.5 shrink-0 text-wb-dim transition-transform duration-150", open && "rotate-90")}
           />
         ) : null}
       </button>
@@ -149,11 +149,11 @@ function ActivityStep({
 
 function StepMark({ state }: { state: ToolState }) {
   if (state === "running") {
-    return <Loader2 className="h-3 w-3 shrink-0 animate-spin text-[#8fb4ff] motion-reduce:animate-none" />;
+    return <Loader2 className="h-3 w-3 shrink-0 animate-spin text-wb-accent motion-reduce:animate-none" />;
   }
   return (
     <span className="flex h-3 w-3 shrink-0 items-center justify-center">
-      <span className={cn("h-1.5 w-1.5 rounded-full", state === "failed" ? "bg-red-400" : "bg-[#8a8a8a]")} />
+      <span className={cn("h-1.5 w-1.5 rounded-full", state === "failed" ? "bg-wb-danger" : "bg-wb-dim")} />
     </span>
   );
 }

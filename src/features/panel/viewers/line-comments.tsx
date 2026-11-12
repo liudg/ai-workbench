@@ -140,18 +140,18 @@ export function SavedComment({ snippet, onRemove }: { snippet: TextSnippet; onRe
   return (
     <div
       data-saved-comment={snippet.id}
-      className="group/comment relative mx-3 my-1.5 rounded-lg border border-[#2e2e2e] bg-[#161616] px-3 py-2 font-sans"
+      className="group/comment relative mx-3 my-1.5 rounded-xl border border-wb-border bg-wb-elev px-3 py-2 font-sans"
       onMouseDown={(event) => event.stopPropagation()}
       onClick={(event) => event.stopPropagation()}
     >
-      {label ? <p className="text-[12px] leading-5 text-[#8a8a8a]">{label}</p> : null}
-      <p className="mt-0.5 whitespace-pre-wrap break-words text-[13px] leading-5 text-[#e8e8e8]">{snippet.note}</p>
+      {label ? <p className="text-[12px] leading-5 text-wb-fg-3">{label}</p> : null}
+      <p className="mt-0.5 whitespace-pre-wrap break-words text-[13px] leading-5 text-wb-fg">{snippet.note}</p>
       <button
         type="button"
         data-saved-comment-remove
         aria-label={DESKTOP_ZH.textSnippetRemove}
         title={DESKTOP_ZH.textSnippetRemove}
-        className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded text-[#8a8a8a] opacity-0 hover:bg-white/10 hover:text-white group-hover/comment:opacity-100 focus-visible:opacity-100"
+        className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded text-wb-fg-3 opacity-0 transition-colors hover:bg-wb-hover hover:text-wb-fg group-hover/comment:opacity-100 focus-visible:opacity-100"
         onClick={onRemove}
       >
         <X className="h-3.5 w-3.5" />
@@ -180,7 +180,7 @@ export function CommentPlus({
       aria-label={DESKTOP_ZH.addComment}
       title={DESKTOP_ZH.addComment}
       className={cn(
-        "absolute top-0.5 z-[1] hidden h-4 w-4 items-center justify-center rounded-full bg-[#2f81f7] text-white shadow group-hover:flex",
+        "absolute top-0.5 z-[1] hidden h-4 w-4 items-center justify-center rounded-full bg-wb-accent text-white shadow group-hover:flex",
         className,
       )}
       onMouseDown={(event) => {
@@ -233,12 +233,12 @@ export function LineCommentBox({
     <div
       ref={boxRef}
       data-line-comment-box
-      className="mx-3 my-1.5 rounded-lg border border-[#3a3a3a] bg-[#161616] px-3 py-2 font-sans focus-within:border-[#2f81f7]"
+      className="mx-3 my-1.5 rounded-xl border border-wb-border-strong bg-wb-elev px-3 py-2 font-sans transition-colors focus-within:border-wb-accent"
       onMouseDown={(event) => event.stopPropagation()}
       onClick={(event) => event.stopPropagation()}
       onContextMenu={(event) => event.stopPropagation()}
     >
-      {label ? <p className="text-[12px] leading-5 text-[#a1a1aa]">{label}</p> : null}
+      {label ? <p className="text-[12px] leading-5 text-wb-fg-2">{label}</p> : null}
       <div className="mt-1 flex items-end gap-2">
         <textarea
           ref={areaRef}
@@ -246,7 +246,7 @@ export function LineCommentBox({
           value={note}
           placeholder={DESKTOP_ZH.addComment}
           aria-label={DESKTOP_ZH.addComment}
-          className="max-h-40 min-w-0 flex-1 resize-none bg-transparent text-[13px] leading-5 text-[#e8e8e8] outline-none placeholder:text-[#666]"
+          className="max-h-40 min-w-0 flex-1 resize-none bg-transparent text-[13px] leading-5 text-wb-fg outline-none placeholder:text-wb-fg-3"
           onChange={(event) => setNote(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Escape") {
@@ -260,17 +260,25 @@ export function LineCommentBox({
               submit();
             }
           }}
-          onBlur={() => {
-            if (!note.trim()) onCancel();
-          }}
         />
+        <button
+          type="button"
+          data-line-comment-cancel
+          aria-label="取消"
+          title="取消 (Esc)"
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-wb-fg-3 transition-colors hover:bg-wb-hover hover:text-wb-fg"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={onCancel}
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
         <button
           type="button"
           data-line-comment-submit
           aria-label={DESKTOP_ZH.addComment}
           title={DESKTOP_ZH.addComment}
           disabled={!ready}
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#e8e8e8] text-[#111] disabled:bg-[#2a2a2a] disabled:text-[#666]"
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-wb-primary text-wb-primary-fg transition-colors hover:bg-wb-primary-hover disabled:bg-wb-active disabled:text-wb-fg-3"
           onMouseDown={(event) => event.preventDefault()}
           onClick={submit}
         >

@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-import { usePanelStore } from "@/features/panel/state/store";
+import { usePanelStore } from "@/features/panel/headless";
 import { tasksApi } from "@/features/tasks";
 import { useConnectionStatus } from "@/lib/daemon";
 import { SIDE_CHAT_VIEWER, type SideChatPayload } from "./open";

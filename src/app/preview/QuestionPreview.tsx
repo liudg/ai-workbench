@@ -1,7 +1,6 @@
 import { useState } from "react";
 
-import { EventItem } from "@/features/chat/events/EventItem";
-import { QuestionPopup } from "@/features/chat/events/QuestionPopup";
+import { EventItem, QuestionPopup } from "@/features/chat";
 import type { PromptQuestion, Session, SessionEvent, SessionEventBody } from "@/types";
 
 function session(): Session {
@@ -104,12 +103,12 @@ export default function QuestionPreview() {
   const current = session();
   const asking = prompt(surface);
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-col bg-wb-surface text-wb-fg">
       <div className="flex gap-2 px-6 py-3">
         <button
           type="button"
           data-preview-surface="async-reply"
-          className="rounded-full bg-[#2a2a2a] px-3 py-1 text-sm text-[#e8e8e8]"
+          className="rounded-full border border-wb-border bg-wb-elev px-3 py-1 text-sm text-wb-fg transition-colors hover:bg-wb-hover"
           onClick={() => setSurface("async-reply")}
         >
           异步提问
@@ -117,7 +116,7 @@ export default function QuestionPreview() {
         <button
           type="button"
           data-preview-surface="request-input"
-          className="rounded-full bg-[#2a2a2a] px-3 py-1 text-sm text-[#e8e8e8]"
+          className="rounded-full border border-wb-border bg-wb-elev px-3 py-1 text-sm text-wb-fg transition-colors hover:bg-wb-hover"
           onClick={() => setSurface("request-input")}
         >
           逐题提问
@@ -131,7 +130,7 @@ export default function QuestionPreview() {
         </div>
       </div>
       <div data-chat-column className="mx-auto w-full max-w-[760px] px-4 pb-4">
-        <div ref={setAnchor} data-preview-composer className="h-14 rounded-2xl border border-[#2a2a2a] bg-[#171717]" />
+        <div ref={setAnchor} data-preview-composer className="h-14 rounded-2xl border border-wb-border-strong bg-wb-composer" />
       </div>
       <QuestionPopup key={asking.prompt_id} event={{ ...asking, id: "ask", session_id: current.id, seq: 4, ts: 4 }} sessionId={current.id} anchor={anchor} />
     </div>
