@@ -33,12 +33,14 @@ installGlobal("cancelAnimationFrame", dom.cancelAnimationFrame.bind(dom));
 installGlobal("fetch", () => Promise.resolve(new Response("null", { status: 200, headers: { "content-type": "application/json" } })));
 
 let server: ViteDevServer;
-let toggleMod: typeof import("../panel/core/SidebarToggle.tsx");
+let toggleMod: typeof import("../../shared/shell/SidebarToggle.tsx");
 let chromeMod: typeof import("../panel/core/ClosedChrome.tsx");
 let panelMod: typeof import("../panel/core/PanelProvider.tsx");
 let panelStoreMod: typeof import("../panel/state/store.ts");
 let sidebarMod: typeof import("./Sidebar.tsx");
 let peekMod: typeof import("./SidebarPeek.tsx");
+let chatGroupMod: typeof import("./chats/ChatGroup.tsx");
+let themeMod: typeof import("../../shared/theme/theme.ts");
 let visibilityMod: typeof import("../../shared/shell/sidebar-open.ts");
 let daemonMod: typeof import("../../lib/daemon/index.ts");
 
@@ -50,12 +52,14 @@ before(async () => {
     appType: "custom",
     logLevel: "error",
   });
-  toggleMod = (await server.ssrLoadModule("/src/features/panel/core/SidebarToggle.tsx")) as unknown as typeof toggleMod;
+  toggleMod = (await server.ssrLoadModule("/src/shared/shell/SidebarToggle.tsx")) as unknown as typeof toggleMod;
   chromeMod = (await server.ssrLoadModule("/src/features/panel/core/ClosedChrome.tsx")) as unknown as typeof chromeMod;
   panelMod = (await server.ssrLoadModule("/src/features/panel/core/PanelProvider.tsx")) as unknown as typeof panelMod;
   panelStoreMod = (await server.ssrLoadModule("/src/features/panel/state/store.ts")) as unknown as typeof panelStoreMod;
   sidebarMod = (await server.ssrLoadModule("/src/features/sidebar/Sidebar.tsx")) as unknown as typeof sidebarMod;
   peekMod = (await server.ssrLoadModule("/src/features/sidebar/SidebarPeek.tsx")) as unknown as typeof peekMod;
+  chatGroupMod = (await server.ssrLoadModule("/src/features/sidebar/chats/ChatGroup.tsx")) as unknown as typeof chatGroupMod;
+  themeMod = (await server.ssrLoadModule("/src/shared/theme/theme.ts")) as unknown as typeof themeMod;
   visibilityMod = (await server.ssrLoadModule("/src/shared/shell/sidebar-open.ts")) as unknown as typeof visibilityMod;
   daemonMod = (await server.ssrLoadModule("/src/lib/daemon/index.ts")) as unknown as typeof daemonMod;
 });
@@ -248,4 +252,62 @@ test("the header button pins the sidebar open instead of leaving it as a hover l
 
   await view.unmount();
   visibilityMod.setSidebarOpen(true);
+});
+
+test("sidebar omits brand header, uses 3-tab segmented theme control, and labels standalone group as 聊天", async () => {
+  visibilityMod.setSidebarOpen(true);
+  themeMod.setThemePreference("obsidian");
+  const view = await render(
+    createElement(
+      "div",
+      null,
+      createElement(sidebarMod.Sidebar),
+      createElement(chatGroupMod.ChatGroup, {
+        activeTaskId: null,
+        tasks: [
+          {
+            id: "t1",
+            projectId: null,
+            agent: "codex-cli",
+            title: "示例聊天",
+            status: "completed",
+            attention: { state: "idle", unread: false, updatedAt: 1 },
+            updatedAt: 1,
+            pinned: false,
+            archived: false,
+            parentTaskId: null,
+          },
+        ],
+      }),
+    ),
+  );
+
+  assert.equal(dom.document.querySelector("[data-sidebar-brand]"), null);
+  assert.equal(dom.document.querySelector("[data-theme-toggle]"), null);
+  assert.ok(dom.document.querySelector("[data-new-chat-entry]"));
+  assert.ok(dom.document.querySelector("[data-sidebar-search]"));
+  assert.ok(dom.document.querySelector("[data-board-entry]"));
+  assert.equal(dom.document.querySelector("[data-sidebar-section='chats']")?.textContent?.includes("聊天"), true);
+  assert.equal(dom.document.querySelector("[data-sidebar-section='chats']")?.textContent?.includes("独立对话"), false);
+
+  const menuTrigger = dom.document.querySelector("button[aria-label='打开菜单']");
+  assert.ok(menuTrigger instanceof dom.HTMLButtonElement);
+  await act(async () => {
+    menuTrigger.click();
+  });
+
+  const radios = Array.from(dom.document.querySelectorAll("[data-account-theme]"));
+  assert.deepEqual(
+    radios.map((el) => el.textContent?.trim()),
+    ["浅色", "深色", "系统"],
+  );
+  const lightBtn = dom.document.querySelector("[data-account-theme='daylight']");
+  assert.ok(lightBtn instanceof dom.HTMLButtonElement);
+  await act(async () => {
+    lightBtn.click();
+  });
+  assert.equal(themeMod.getThemePreference(), "daylight");
+
+  await view.unmount();
+  themeMod.setThemePreference("obsidian");
 });

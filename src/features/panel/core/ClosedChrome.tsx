@@ -5,8 +5,8 @@ import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { cn } from "@/lib/utils";
 import { registerBuiltinViewers } from "../viewers/register";
 import { viewerById } from "./registry";
-import { Hint } from "./Hint";
-import { SidebarToggle } from "./SidebarToggle";
+import { Hint } from "@/components/ui/hint";
+import { SidebarToggle } from "@/shared/shell/SidebarToggle";
 import { useDismissLayer } from "@/shared/menu/useDismissLayer";
 import { usePanel } from "./PanelProvider";
 import { SessionUsageCluster } from "./SubscriptionUsageMeter";
@@ -45,10 +45,10 @@ export function ClosedChrome() {
             data-panel-marker
             data-open-tabs={count}
             aria-label={`${DESKTOP_ZH.panelNewTab} ${DESKTOP_ZH.panelShortcutB}`}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-wb-border text-wb-fg-2 transition-colors hover:border-wb-border-strong hover:bg-wb-hover hover:text-wb-fg"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
             onClick={openBlank}
           >
-            <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
+            <Plus className="h-4 w-4" strokeWidth={1.75} />
           </button>
         </Hint>
       ) : count > 0 ? (
@@ -65,7 +65,7 @@ export function ClosedChrome() {
             aria-haspopup="menu"
             aria-expanded={menu}
             aria-label={DESKTOP_ZH.panelOpenTabsMenu}
-            className="inline-flex h-7 min-w-7 items-center justify-center rounded-md border border-wb-border bg-transparent px-1.5 text-[13px] font-medium tabular-nums text-wb-fg transition-colors hover:border-wb-border-strong hover:bg-wb-hover"
+            className="inline-flex h-7 min-w-7 items-center justify-center rounded-md bg-wb-elev px-2 text-xs font-medium tabular-nums text-wb-fg transition-colors hover:bg-wb-hover"
             onKeyDown={(event) => {
               if (event.key !== "ArrowDown") return;
               event.preventDefault();
@@ -101,10 +101,10 @@ export function ClosedChrome() {
             data-panel-marker
             data-open-tabs={0}
             aria-label={`${DESKTOP_ZH.panelNewTab} ${DESKTOP_ZH.panelShortcutB}`}
-            className="inline-flex h-7 min-w-7 items-center justify-center rounded-md border border-wb-border bg-transparent px-1.5 text-wb-fg-2 transition-colors hover:border-wb-border-strong hover:bg-wb-hover hover:text-wb-fg"
+            className="inline-flex h-7 min-w-7 items-center justify-center rounded-md px-1.5 text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
             onClick={showPanel}
           >
-            <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
+            <Plus className="h-4 w-4" strokeWidth={1.75} />
           </button>
         </Hint>
       )}

@@ -10,8 +10,8 @@ interface ThemeOption {
 }
 
 export const THEME_OPTIONS: readonly ThemeOption[] = [
-  { id: "obsidian", label: "极夜精密", hint: "低眩光深色悬浮工作台" },
-  { id: "daylight", label: "雾白日光", hint: "高可读浅色纸面工作台" },
+  { id: "daylight", label: "浅色", hint: "明亮清晰的浅色界面" },
+  { id: "obsidian", label: "深色", hint: "低眩光深色界面" },
   { id: "system", label: "跟随系统", hint: "随系统深浅外观自动切换" },
 ];
 
@@ -111,7 +111,7 @@ export function setThemePreference(next: ThemePreference) {
   if (prevPref !== currentPreference || prevResolved !== currentResolved) emit();
 }
 
-/** 在「极夜精密」与「雾白日光」之间一键切换。 */
+/** 在深色与浅色之间一键切换。 */
 export function toggleTheme(): ResolvedTheme {
   const next: ResolvedTheme = currentResolved === "obsidian" ? "daylight" : "obsidian";
   setThemePreference(next);

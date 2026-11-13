@@ -19,7 +19,6 @@ use tauri_plugin_notification::NotificationExt;
 use tokio_tungstenite::tungstenite::Message;
 
 const RETRY: Duration = Duration::from_secs(2);
-const TRAY_TOOLTIP: &str = "AI 工作台";
 
 /// 应用启动时调用一次。连不上 daemon 就隔一会儿再试；daemon 由前端连接时拉起。
 pub fn start(app: &AppHandle, data_dir: PathBuf) {
@@ -159,8 +158,8 @@ fn deliver(app: &AppHandle, update: &Update) {
     }
     if let Some(tray) = app.tray_by_id(crate::tray::TRAY_ID) {
         let tooltip = match update.waiting {
-            0 => TRAY_TOOLTIP.to_string(),
-            n => format!("{TRAY_TOOLTIP} · {n} 个会话等着你"),
+            0 => crate::tray::APP_TITLE.to_string(),
+            n => format!("{} · {n} 个会话等着你", crate::tray::APP_TITLE),
         };
         let _ = tray.set_tooltip(Some(tooltip));
     }

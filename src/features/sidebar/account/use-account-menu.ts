@@ -14,8 +14,6 @@ export function useAccountMenu() {
     readyCount: readyAgents === null ? null : readyAgents.length,
     themePreference: theme.preference,
     themeOptions: THEME_OPTIONS,
-    resolvedTheme: theme.resolved,
     setTheme: theme.setTheme,
-    toggleTheme: theme.toggleTheme,
   };
 }

@@ -8,6 +8,7 @@ use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 pub const TRAY_ID: &str = "main-tray";
+pub const APP_TITLE: &str = "AI Workbench";
 const MENU_SHOW: &str = "show";
 const MENU_QUIT: &str = "quit";
 
@@ -19,7 +20,7 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     let mut builder = TrayIconBuilder::with_id(TRAY_ID)
         .menu(&menu)
         .show_menu_on_left_click(false)
-        .tooltip("AI 工作台")
+        .tooltip(APP_TITLE)
         .on_menu_event(|app, event| match event.id().as_ref() {
             MENU_SHOW => show_main_window(app),
             MENU_QUIT => confirm_quit(app),
@@ -60,7 +61,7 @@ fn confirm_quit(app: &AppHandle) {
         let handle = app.clone();
         app.dialog()
             .message(format!("还有 {running} 个会话在运行。退出会停掉它们。"))
-            .title("退出 AI 工作台")
+            .title(format!("退出 {APP_TITLE}"))
             .kind(MessageDialogKind::Warning)
             .buttons(MessageDialogButtons::OkCancelCustom("退出".into(), "取消".into()))
             .show(move |confirmed| {

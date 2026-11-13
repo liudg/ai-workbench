@@ -1,5 +1,5 @@
+import { Hint } from "@/components/ui/hint";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
-import { Hint } from "./Hint";
 import { FullViewIcon, PanelSquareIcon } from "./panel-icons";
 import { usePanel } from "./PanelProvider";
 

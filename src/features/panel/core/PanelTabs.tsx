@@ -5,7 +5,8 @@ import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { cn } from "@/lib/utils";
 import { registerBuiltinViewers } from "../viewers/register";
 import { viewerById, type PanelTab } from "./registry";
-import { Hint } from "./Hint";
+import { Hint } from "@/components/ui/hint";
+import { SidebarToggle } from "@/shared/shell/SidebarToggle";
 import { PanelLayoutControls } from "./PanelChrome";
 import { usePanel } from "./PanelProvider";
 import { SessionUsageCluster } from "./SubscriptionUsageMeter";
@@ -28,9 +29,12 @@ export function PanelTabs() {
     >
       <div className="relative z-20 flex h-11 shrink-0 items-center border-b border-wb-border bg-wb-panel px-1.5">
         {layout === "full" ? (
-          <span data-session-title className="flex max-w-[34%] shrink-0 items-center truncate px-3 text-xs font-medium text-wb-fg-2">
-            {sessionTitle}
-          </span>
+          <div className="flex max-w-[36%] shrink-0 items-center gap-2 pl-2.5 pr-2">
+            <SidebarToggle />
+            <span data-session-title className="truncate text-xs font-medium text-wb-fg-2">
+              {sessionTitle}
+            </span>
+          </div>
         ) : null}
         <div className="flex min-w-0 flex-1 items-stretch gap-0.5 overflow-x-auto px-1">
           {tabs.map((tab) => {

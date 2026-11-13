@@ -62,6 +62,9 @@
   --wb-island-shadow: 0 12px 36px -12px rgba(0, 0, 0, 0.65), 0 1px 0 rgba(255, 255, 255, 0.04) inset;
   --wb-popover-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.62), 0 0 0 1px rgba(255, 255, 255, 0.03);
   --wb-composer-shadow: 0 8px 24px -10px rgba(0, 0, 0, 0.5);
+  --wb-seg-track: #0c0e13;
+  --wb-seg-thumb: #242936;
+  --wb-seg-thumb-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
   --wb-shimmer-edge: #7d8494;
   --wb-shimmer-peak: #f4f5f8;
   --wb-code-bg: rgba(9, 10, 13, 0.72);
@@ -138,6 +141,9 @@
   --wb-island-shadow: 0 4px 20px -4px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.03);
   --wb-popover-shadow: 0 14px 36px -6px rgba(15, 23, 42, 0.14), 0 2px 6px rgba(15, 23, 42, 0.06);
   --wb-composer-shadow: 0 4px 16px -4px rgba(15, 23, 42, 0.06);
+  --wb-seg-track: #eef1f6;
+  --wb-seg-thumb: #ffffff;
+  --wb-seg-thumb-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
   --wb-shimmer-edge: #646c7e;
   --wb-shimmer-peak: #14171f;
   --wb-code-bg: #f6f8fa;

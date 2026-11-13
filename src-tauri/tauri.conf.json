@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "AI 工作台",
+        "title": "AI Workbench",
         "width": 1280,
         "height": 800,
         "minWidth": 960,

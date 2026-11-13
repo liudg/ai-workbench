@@ -4,6 +4,7 @@ import { ArrowLeft, Monitor, Moon, RefreshCw, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
+import { SidebarToggle } from "@/shared/shell/SidebarToggle";
 import type { AgentInstallation, AgentUpgrade } from "@/types";
 
 import { agentCardFace, statusLabel, type AgentCardFace } from "./agent-card";
@@ -247,9 +248,9 @@ function GeneralPanel() {
   return (
     <section data-settings-panel="general">
       <AppearanceSection />
-      <h2 className="text-base font-semibold text-wb-fg">独立对话目录</h2>
+      <h2 className="text-base font-semibold text-wb-fg">聊天默认目录</h2>
       <p className="mt-1 max-w-lg text-sm leading-6 text-wb-fg-2">
-        未绑定项目的对话默认使用的工作目录。
+        未绑定项目的聊天默认使用的工作目录。
       </p>
       <div className="mt-4 flex items-center justify-between gap-4 rounded-xl border border-wb-border bg-wb-elev px-4 py-3">
         <span
@@ -393,10 +394,11 @@ export function SettingsView() {
 
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col bg-wb-surface">
-      <header className="flex items-center gap-3 border-b border-wb-border px-5 py-3">
+      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-wb-border px-4">
+        <SidebarToggle />
         <button
           type="button"
-          className="flex h-7 w-7 items-center justify-center rounded-lg text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
+          className="flex h-7 w-7 items-center justify-center rounded-md text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
           aria-label="返回工作区"
           onClick={closeSettings}
         >

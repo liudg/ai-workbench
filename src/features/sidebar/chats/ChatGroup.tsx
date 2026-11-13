@@ -7,7 +7,7 @@ import { SessionList } from "../sessions/SessionList";
 import { partitionSidebarSessions } from "../sessions/session-partition";
 import type { SidebarTask } from "../sidebar-task";
 
-/** 不属于任何项目的独立对话。没有独立对话时不展示空占位，避免侧栏重复噪音。 */
+/** 不属于任何项目的聊天。没有聊天时不展示空占位，避免侧栏重复噪音。 */
 export function ChatGroup({
   tasks,
   activeTaskId,
@@ -30,11 +30,11 @@ export function ChatGroup({
         <ChevronRight
           className={cn("h-3.5 w-3.5 shrink-0 text-wb-fg-3 transition-transform", !collapsed && "rotate-90")}
         />
-        <span className="flex-1 text-[11px] font-medium tracking-wide text-wb-fg-3">独立对话</span>
+        <span className="flex-1 text-[11px] font-medium tracking-wide text-wb-fg-3">聊天</span>
         <NewSessionButton
           projectId={null}
           appearance="plus"
-          title="新建对话"
+          title="新聊天"
           className="pointer-events-none opacity-0 group-hover/chat:pointer-events-auto group-hover/chat:opacity-100 group-focus-within/chat:pointer-events-auto group-focus-within/chat:opacity-100"
         />
       </div>

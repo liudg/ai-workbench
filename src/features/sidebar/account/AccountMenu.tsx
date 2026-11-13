@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import { Check, Monitor, Moon, RefreshCw, Settings, SlidersHorizontal, Sun } from "lucide-react";
+import { Ellipsis, Monitor, Moon, RefreshCw, Settings, Sun } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { APP_VERSION } from "@/lib/version";
@@ -14,17 +14,13 @@ export function AccountMenu() {
     readyCount,
     themePreference,
     themeOptions,
-    resolvedTheme,
     setTheme,
-    toggleTheme,
   } = useAccountMenu();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setOpen(false), []);
   useDismiss(open, rootRef, close);
 
-  const isLight = resolvedTheme === "daylight";
-  const nextThemeLabel = isLight ? "切换为极夜精密" : "切换为雾白日光";
   const statusLabel =
     readyCount === null
       ? "正在检测 Agent"
@@ -38,56 +34,66 @@ export function AccountMenu() {
         <div
           role="menu"
           aria-label="工作台菜单"
-          className="wb-popover absolute bottom-full right-0 z-30 mb-2 w-56 overflow-hidden p-1"
+          className="wb-popover absolute bottom-full left-0 right-0 z-30 mb-2 overflow-hidden p-1.5"
         >
-          <p className="px-2.5 pb-1 pt-1.5 text-[11px] font-medium text-wb-fg-3">外观</p>
-          {themeOptions.map((option) => {
-            const checked = themePreference === option.id;
-            const Icon = option.id === "obsidian" ? Moon : option.id === "daylight" ? Sun : Monitor;
-            return (
-              <button
-                key={option.id}
-                type="button"
-                role="menuitemradio"
-                aria-checked={checked}
-                data-account-theme={option.id}
-                className={cn(
-                  "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[13px] text-wb-fg transition-colors hover:bg-wb-hover",
-                  checked && "bg-wb-active/70",
-                )}
-                onClick={() => setTheme(option.id)}
-              >
-                <Icon className="h-3.5 w-3.5 shrink-0 text-wb-fg-3" />
-                <span className="min-w-0 flex-1">{option.label}</span>
-                {checked ? <Check className="h-3.5 w-3.5 shrink-0 text-wb-accent" /> : null}
-              </button>
-            );
-          })}
-          <div className="my-1 h-px bg-wb-border" role="separator" />
+          <div
+            role="radiogroup"
+            aria-label="外观"
+            className="grid grid-cols-3 gap-0.5 rounded-lg border border-wb-border bg-[var(--wb-seg-track)] p-0.5"
+          >
+            {themeOptions.map((option) => {
+              const checked = themePreference === option.id;
+              const Icon = option.id === "obsidian" ? Moon : option.id === "daylight" ? Sun : Monitor;
+              const shortLabel = option.id === "system" ? "系统" : option.label;
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={checked}
+                  data-account-theme={option.id}
+                  className={cn(
+                    "flex h-7 items-center justify-center gap-1 rounded-md text-xs transition-all",
+                    checked
+                      ? "bg-[var(--wb-seg-thumb)] font-medium text-wb-fg shadow-[var(--wb-seg-thumb-shadow)]"
+                      : "text-wb-fg-3 hover:text-wb-fg-2",
+                  )}
+                  onClick={() => setTheme(option.id)}
+                >
+                  <Icon className="h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
+                  <span>{shortLabel}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="my-1.5 h-px bg-wb-border" role="separator" />
           <button
             type="button"
             role="menuitem"
-            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] text-wb-fg transition-colors hover:bg-wb-hover"
+            className="flex h-8 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] text-wb-fg transition-colors hover:bg-wb-hover"
             onClick={() => {
               setOpen(false);
               openSettings();
             }}
           >
-            <Settings className="h-4 w-4 shrink-0 text-wb-fg-3" />
+            <Settings className="h-3.5 w-3.5 shrink-0 text-wb-fg-3" strokeWidth={1.8} />
             <span className="min-w-0 flex-1">设置</span>
           </button>
           <button
             type="button"
             role="menuitem"
-            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] text-wb-fg transition-colors hover:bg-wb-hover"
+            className="flex h-8 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] text-wb-fg transition-colors hover:bg-wb-hover"
             onClick={() => {
               setOpen(false);
               checkUpdates();
             }}
           >
-            <RefreshCw className={cn("h-4 w-4 shrink-0 text-wb-fg-3", checking && "animate-spin")} />
+            <RefreshCw
+              className={cn("h-3.5 w-3.5 shrink-0 text-wb-fg-3", checking && "animate-spin")}
+              strokeWidth={1.8}
+            />
             <span className="min-w-0 flex-1">检查更新</span>
-            <span className="text-[11px] text-wb-fg-3">v{APP_VERSION}</span>
+            <span className="text-[11px] tabular-nums text-wb-fg-3">v{APP_VERSION}</span>
           </button>
         </div>
       )}
@@ -111,34 +117,20 @@ export function AccountMenu() {
         <span className="min-w-0 truncate">{statusLabel}</span>
       </button>
 
-      <div className="flex shrink-0 items-center gap-0.5">
-        <button
-          type="button"
-          data-theme-toggle=""
-          aria-label={nextThemeLabel}
-          title={nextThemeLabel}
-          onClick={toggleTheme}
-          className="flex h-7 w-7 items-center justify-center rounded-lg text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
-        >
-          {isLight ? <Moon className="h-3.5 w-3.5" /> : <Sun className="h-3.5 w-3.5" />}
-        </button>
-        <button
-          type="button"
-          aria-label="打开菜单"
-          title="设置与更多"
-          aria-expanded={open}
-          aria-haspopup="menu"
-          onClick={() => setOpen((value) => !value)}
-          className={cn(
-            "flex h-7 w-7 items-center justify-center rounded-lg transition-colors",
-            open
-              ? "bg-wb-active text-wb-fg"
-              : "text-wb-fg-2 hover:bg-wb-hover hover:text-wb-fg",
-          )}
-        >
-          <SlidersHorizontal className="h-3.5 w-3.5" />
-        </button>
-      </div>
+      <button
+        type="button"
+        aria-label="打开菜单"
+        title="外观与设置"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        onClick={() => setOpen((value) => !value)}
+        className={cn(
+          "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors",
+          open ? "bg-wb-active text-wb-fg" : "text-wb-fg-2 hover:bg-wb-hover hover:text-wb-fg",
+        )}
+      >
+        <Ellipsis className="h-4 w-4" strokeWidth={1.8} />
+      </button>
     </div>
   );
 }

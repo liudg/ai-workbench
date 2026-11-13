@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  THEME_OPTIONS,
   getResolvedTheme,
   getThemePreference,
   parseThemePreference,
@@ -10,6 +11,17 @@ import {
   subscribeTheme,
   toggleTheme,
 } from "./theme.ts";
+
+test("THEME_OPTIONS uses plain Chinese labels in daylight-obsidian-system order", () => {
+  assert.deepEqual(
+    THEME_OPTIONS.map((item) => ({ id: item.id, label: item.label })),
+    [
+      { id: "daylight", label: "浅色" },
+      { id: "obsidian", label: "深色" },
+      { id: "system", label: "跟随系统" },
+    ],
+  );
+});
 
 test("parseThemePreference falls back to obsidian for unknown values", () => {
   assert.equal(parseThemePreference(null), "obsidian");

@@ -1,12 +1,16 @@
 import { FolderOpen, FolderPlus, MessageSquarePlus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { SidebarToggle } from "@/shared/shell/SidebarToggle";
 import { useEmptyProject } from "./use-empty-project";
 
 export function NoProjectSelected() {
   const { openDialog, startStandalone } = useEmptyProject();
   return (
-    <div className="flex h-full flex-col items-center justify-center px-6 text-center">
+    <div className="relative flex h-full flex-col items-center justify-center px-6 text-center">
+      <div className="absolute left-4 top-2">
+        <SidebarToggle />
+      </div>
       <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-wb-border bg-wb-elev text-wb-fg-2">
         <FolderOpen className="h-5 w-5" strokeWidth={1.8} />
       </div>

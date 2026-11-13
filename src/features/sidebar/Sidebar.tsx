@@ -1,7 +1,6 @@
 import { FolderPlus, Search } from "lucide-react";
 
 import { COMMAND_MENU_COPY } from "@/features/command-menu";
-import { BrandHeader } from "@/shared/brand/BrandHeader";
 import { ConnectionNotice } from "@/shared/shell/ConnectionNotice";
 import { useSidebarOpen } from "@/shared/shell/sidebar-open";
 import { AccountMenu } from "./account/AccountMenu";
@@ -41,26 +40,24 @@ function SidebarFrame() {
       data-sidebar-open=""
       className="flex h-full min-h-0 w-[256px] shrink-0 flex-col overflow-hidden bg-wb-sidebar text-wb-fg"
     >
-      <BrandHeader action={<NewChatEntry />} />
-
-      <div className="px-2.5 pb-1">
+      <div className="space-y-0.5 px-1.5 pb-1 pt-2.5">
+        <NewChatEntry />
         <button
           type="button"
           data-sidebar-search=""
           aria-label={COMMAND_MENU_COPY.open}
           aria-keyshortcuts="Control+K Control+Shift+P"
-          className="flex h-8 w-full items-center gap-2 rounded-lg border border-wb-border bg-wb-elev/70 px-2.5 text-left text-xs text-wb-fg-3 transition-colors hover:border-wb-border-strong hover:text-wb-fg-2"
+          className="flex h-8 w-full items-center gap-2.5 rounded-lg px-2 text-left text-[13px] text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
           onClick={openCommandMenu}
         >
-          <Search className="h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
-          <span className="min-w-0 flex-1 truncate">搜索或跳转…</span>
-          <kbd className="shrink-0 rounded border border-wb-border bg-wb-surface px-1 py-0.5 text-[10px] leading-none text-wb-fg-3">
+          <Search className="h-3.5 w-3.5 shrink-0 text-wb-fg-3" strokeWidth={1.8} />
+          <span className="min-w-0 flex-1 truncate">搜索或跳转</span>
+          <kbd className="shrink-0 font-sans text-[11px] text-wb-fg-3">
             {COMMAND_MENU_COPY.shortcutOpen}
           </kbd>
         </button>
+        <BoardEntry />
       </div>
-
-      <BoardEntry />
 
       <div
         data-sidebar-scroll
