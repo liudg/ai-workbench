@@ -3,7 +3,7 @@
 // 用法：
 //   node scripts/gen-latest-json.mjs \
 //     --url https://example.com/releases/download/v0.1.1 \
-//     [--notes "更新说明"] [--bundle src-tauri/target/release/bundle/nsis] \
+//     [--notes "更新说明"] [--bundle target/release/bundle/nsis] \
 //     [--out release/latest.json]
 //
 // 在 GitHub Actions 中可省略 --url/--notes/--tag，自动取 GITHUB_* 环境变量。
@@ -39,7 +39,7 @@ if (!baseUrl) {
 
 const bundleDir = arg(
   "bundle",
-  join(root, "src-tauri", "target", "release", "bundle", "nsis"),
+  join(root, "target", "release", "bundle", "nsis"),
 );
 const notes = arg("notes", process.env.RELEASE_NOTES || `v${version} 版本更新`);
 
@@ -56,7 +56,7 @@ const signed = (suffix) =>
 const artifact = signed("_x64-setup.exe") || signed("_x64-setup.nsis.zip");
 if (!artifact) {
   console.error(
-    `在 ${bundleDir} 未找到已签名的 *_x64-setup.exe 或 *_x64-setup.nsis.zip，请先运行 pnpm tauri build`,
+    `在 ${bundleDir} 未找到已签名的 *_x64-setup.exe 或 *_x64-setup.nsis.zip，请先运行 pnpm tauri:build`,
   );
   process.exit(1);
 }

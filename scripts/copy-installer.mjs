@@ -2,7 +2,7 @@
 //
 // 用法：
 //   node scripts/copy-installer.mjs
-//   node scripts/copy-installer.mjs --bundle src-tauri/target/release/bundle/nsis
+//   node scripts/copy-installer.mjs --bundle target/release/bundle/nsis
 //
 // `pnpm tauri:build` 和 `scripts/gen-latest-json.mjs` 都会调用这里。
 // 安装包不入库（见 .gitignore 的 release/*.exe）。
@@ -29,7 +29,7 @@ function isInstaller(name) {
 
 export function copyLatestInstaller({
   rootDir = root,
-  bundleDir = join(root, "src-tauri", "target", "release", "bundle", "nsis"),
+  bundleDir = join(root, "target", "release", "bundle", "nsis"),
   releaseDir = join(root, "release"),
 } = {}) {
   const conf = JSON.parse(
@@ -42,7 +42,7 @@ export function copyLatestInstaller({
   );
   if (!artifact) {
     throw new Error(
-      `在 ${bundleDir} 未找到 AI Workbench_${version}_x64-setup.exe，请先运行 pnpm tauri build`,
+      `在 ${bundleDir} 未找到 AI Workbench_${version}_x64-setup.exe，请先运行 pnpm tauri:build`,
     );
   }
 
@@ -73,7 +73,7 @@ if (isDirectRun) {
     copyLatestInstaller({
       bundleDir: arg(
         "bundle",
-        join(root, "src-tauri", "target", "release", "bundle", "nsis"),
+        join(root, "target", "release", "bundle", "nsis"),
       ),
     });
   } catch (error) {

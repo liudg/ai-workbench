@@ -3,15 +3,29 @@
 import { execFileSync } from "node:child_process";
 import { copyFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const host = execFileSync("rustc", ["-vV"], { encoding: "utf8" }).match(/^host: (.+)$/m)?.[1];
-if (!host) throw new Error("rustc -vV 没有给出 host");
 
-execFileSync("cargo", ["build", "--release", "-p", "aiwb-daemon"], { cwd: root, stdio: "inherit" });
+export function buildDaemon({ rootDir = root } = {}) {
+  const host = execFileSync("rustc", ["-vV"], { encoding: "utf8" }).match(/^host: (.+)$/m)?.[1];
+  if (!host) throw new Error("rustc -vV 没有给出 host");
 
-const ext = process.platform === "win32" ? ".exe" : "";
-const outDir = join(root, "src-tauri", "binaries");
-mkdirSync(outDir, { recursive: true });
-copyFileSync(join(root, "target", "release", `aiwb-daemon${ext}`), join(outDir, `aiwb-daemon-${host}${ext}`));
+  execFileSync("cargo", ["build", "--release", "-p", "aiwb-daemon"], {
+    cwd: rootDir,
+    stdio: "inherit",
+  });
+
+  const ext = process.platform === "win32" ? ".exe" : "";
+  const outDir = join(rootDir, "src-tauri", "binaries");
+  mkdirSync(outDir, { recursive: true });
+  const dest = join(outDir, `aiwb-daemon-${host}${ext}`);
+  copyFileSync(join(rootDir, "target", "release", `aiwb-daemon${ext}`), dest);
+  return dest;
+}
+
+const isDirectRun =
+  process.argv[1] != null && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isDirectRun) {
+  buildDaemon();
+}

@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "cargo build -p aiwb-daemon && tauri dev -- --bin ai-workbench",
-    "tauri:build": "node scripts/build-daemon.mjs && tauri build --config src-tauri/tauri.release.json && node scripts/copy-installer.mjs",
+    "tauri:build": "node scripts/build-release.mjs",
     "icons:gen": "node scripts/gen-icons.mjs"
   },
   "dependencies": {
