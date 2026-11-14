@@ -18,6 +18,8 @@ mod process;
 mod subagents;
 mod subscription;
 
+pub(crate) use process::NO_SELF_UPDATE;
+
 #[cfg(test)]
 mod live_tests;
 #[cfg(test)]

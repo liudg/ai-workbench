@@ -20,6 +20,15 @@ pub fn resolve() -> Result<PathBuf, AgentError> {
         .ok_or_else(|| AgentError::Runtime("未找到 Antigravity CLI（agy）。请先安装并运行 `agy` 登录。".into()))
 }
 
+/// 工作台拉起的每个 `agy` 都带上：不让它自己起后台自更新进程。
+///
+/// 2026-11-14 agy 1.5.9：会话、`-p /usage`、`mcp` 这些调用启动时会按 `last_check.timestamp` 节流，
+/// 到点就 `auto_updater.go` 起一个脱离的更新进程，它再拉起的 `agy.exe` 自己开一个可见的控制台，
+/// 在 Windows 上就是发消息时闪过的黑窗口。值必须是 `true`（`1` 不认），日志会写
+/// `Auto-update disabled via environment variable AGY_CLI_DISABLE_AUTO_UPDATE`。
+/// 升级走工作台的 `agy update`，用户自己在终端里跑的 `agy` 照常自更新。`--version` 不检查更新。
+pub(crate) const NO_SELF_UPDATE: [(&str, &str); 1] = [("AGY_CLI_DISABLE_AUTO_UPDATE", "true")];
+
 pub fn spawn(program: &Path, project: &Path) -> Result<Child, AgentError> {
     let mut command = Command::new(program);
     command
@@ -28,6 +37,7 @@ pub fn spawn(program: &Path, project: &Path) -> Result<Child, AgentError> {
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
+        .envs(NO_SELF_UPDATE)
         .kill_on_drop(true);
     apply_utf8_env(&mut command);
     #[cfg(windows)]

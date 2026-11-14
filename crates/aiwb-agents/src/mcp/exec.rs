@@ -70,9 +70,20 @@ pub fn ensure_ok(captured: Captured) -> Result<String, String> {
 }
 
 pub async fn run_cli(bin: &Path, args: &[String], limit: Duration) -> Result<Captured, String> {
+    run_cli_with_env(bin, args, &[], limit).await
+}
+
+/// 同 [`run_cli`]，另给这个 CLI 自己认的环境变量。
+pub async fn run_cli_with_env(
+    bin: &Path,
+    args: &[String],
+    env: &[(&str, &str)],
+    limit: Duration,
+) -> Result<Captured, String> {
     let refs: Vec<&str> = args.iter().map(String::as_str).collect();
     let mut command = crate::install::tool_command(bin, &refs, false);
     command.env_remove("CLAUDECODE");
+    command.envs(env.iter().copied());
     let child = command
         .spawn()
         .map_err(|err| format!("无法启动 {}：{err}", bin.display()))?;

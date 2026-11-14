@@ -21,7 +21,9 @@ pub async fn fetch() -> Result<SubscriptionUsage, AgentError> {
         .iter()
         .map(|arg| arg.to_string())
         .collect();
-    let captured = exec::run_cli(&program, &args, LIMIT).await.map_err(AgentError::Runtime)?;
+    let captured = exec::run_cli_with_env(&program, &args, &process::NO_SELF_UPDATE, LIMIT)
+        .await
+        .map_err(AgentError::Runtime)?;
     let stdout = exec::ensure_ok(captured).map_err(AgentError::Runtime)?;
     let line = stdout
         .lines()

@@ -64,7 +64,7 @@ impl McpDriver for AntigravityMcp {
 
 async fn run_agy(args: Vec<String>, limit: Duration) -> Result<String, String> {
     let bin = crate::antigravity_bin().ok_or_else(|| "未找到 Antigravity CLI（agy）。".to_string())?;
-    let captured = exec::run_cli(&bin, &args, limit).await?;
+    let captured = exec::run_cli_with_env(&bin, &args, &crate::antigravity::NO_SELF_UPDATE, limit).await?;
     exec::success_stdout(captured)
 }
 
