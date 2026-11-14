@@ -195,7 +195,7 @@ impl Services {
         let handle = self.runtimes.handle(&params.session_id).await?;
         let catalog = handle.catalog().await.map_err(|e| e.to_string())?;
         if let Some(session) = self.store.session(&params.session_id).map_err(|e| e.to_string())? {
-            self.remember_catalog(session.agent, &catalog);
+            self.runtimes.remember_catalog(session.agent, &catalog);
         }
         Ok(catalog)
     }

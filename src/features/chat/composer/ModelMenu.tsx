@@ -1,5 +1,5 @@
 // 模型和推理强度。左边的 Agent 竖栏照 t3code `apps/web/src/components/chat/ModelPickerSidebar.tsx`，
-// 会话建好后只剩当前 Agent 照 `apps/web/src/components/chat/ModelPickerContent.tsx` 的 `lockedProvider`。
+// 换不了 Agent 的会话只剩当前 Agent 照 `apps/web/src/components/chat/ModelPickerContent.tsx` 的 `lockedProvider`。
 
 import {
   useEffect,
@@ -323,22 +323,24 @@ function ModelPanel({
   const [other, setOther] = useState<OtherModels | null>(null);
   const viewingOther = switcher !== null && railAgent !== undefined && railAgent !== selected;
 
+  // 回合进行中外面会不断给新的 switcher；只在换了竖栏上的 Agent 时重读。
+  const loadModels = useRef(switcher?.loadModels);
+  loadModels.current = switcher?.loadModels;
+  const canSwitch = switcher !== null;
   useEffect(() => {
-    if (!switcher || railAgent === undefined || railAgent === selected) return;
+    if (!canSwitch || !loadModels.current || railAgent === undefined || railAgent === selected) return;
     let cancelled = false;
     setOther({ agent: railAgent, models: null, error: null });
-    switcher.loadModels(railAgent).then(
-      (found) => {
-        if (!cancelled) setOther({ agent: railAgent, models: found, error: null });
-      },
-      (error: unknown) => {
-        if (!cancelled) setOther({ agent: railAgent, models: null, error: userFacingMessage(error) });
-      },
-    );
+    const show = (found: AgentModelOption[]) => {
+      if (!cancelled) setOther({ agent: railAgent, models: found, error: null });
+    };
+    loadModels.current(railAgent, show).catch((error: unknown) => {
+      if (!cancelled) setOther({ agent: railAgent, models: null, error: userFacingMessage(error) });
+    });
     return () => {
       cancelled = true;
     };
-  }, [railAgent, selected, switcher]);
+  }, [railAgent, selected, canSwitch]);
 
   const loaded = other?.agent === railAgent ? other : null;
   const list = viewingOther ? (
@@ -346,6 +348,7 @@ function ModelPanel({
       heading={!agents}
       models={loaded?.models ?? null}
       error={loaded?.error ?? null}
+      blocked={switcher?.blocked ?? null}
       onPick={(model) => {
         if (railAgent !== undefined) switcher?.onPick(railAgent, model);
       }}
@@ -393,6 +396,7 @@ function ModelList({
   heading,
   models,
   error,
+  blocked = null,
   modelId,
   onPick,
 }: {
@@ -401,6 +405,8 @@ function ModelList({
   /** null 表示还在读。 */
   models: AgentModelOption[] | null;
   error: string | null;
+  /** 有值时模型只能看，顶上写明原因。 */
+  blocked?: string | null;
   modelId?: string;
   onPick: (model: AgentModelOption) => void;
 }) {
@@ -408,6 +414,9 @@ function ModelList({
   return (
     <div data-model-list role="listbox" aria-label={DESKTOP_ZH.selectModel} className="max-h-80 overflow-y-auto p-1.5">
       {heading ? <p className="px-2.5 pb-1 pt-1 text-sm font-medium text-wb-fg">{DESKTOP_ZH.selectModel}</p> : null}
+      {blocked ? (
+        <p data-switch-blocked className="px-2.5 pb-1 pt-1.5 text-xs text-wb-warn">{blocked}</p>
+      ) : null}
       {error ? (
         <p className="break-words px-2.5 py-2 text-xs text-wb-fg-3">{error}</p>
       ) : models === null ? (
@@ -426,8 +435,9 @@ function ModelList({
                   type="button"
                   role="option"
                   aria-selected={selected}
+                  disabled={Boolean(blocked)}
                   className={cn(
-                    "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left transition-colors hover:bg-wb-hover",
+                    "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left transition-colors hover:bg-wb-hover disabled:pointer-events-none disabled:opacity-50",
                     selected && "bg-wb-active/70",
                   )}
                   onClick={() => onPick(model)}

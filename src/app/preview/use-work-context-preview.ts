@@ -2,7 +2,7 @@ import { useLayoutEffect } from "react";
 
 import { seedAgents } from "@/features/agents";
 import type { Project } from "@/features/projects";
-import { startPreview, TOPIC_PROJECTS, TOPIC_TASKS } from "@/lib/daemon";
+import { startPreview, TOPIC_AGENT_CATALOGS, TOPIC_PROJECTS, TOPIC_TASKS } from "@/lib/daemon";
 import { openNewSession } from "@/shared/shell/navigation";
 import type { AgentInstallation, AgentKind, AgentProfile } from "@/types";
 
@@ -54,6 +54,10 @@ export function useWorkContextPreview() {
     startPreview({
       [TOPIC_PROJECTS]: [project(APP_ID, "工作台"), project(NOTES_ID, "笔记")],
       [TOPIC_TASKS]: [],
+      [TOPIC_AGENT_CATALOGS]: [
+        { kind: "codex-cli", status: "ready", error: null },
+        { kind: "claude-code", status: "ready", error: null },
+      ],
     });
     seedAgents(
       { "codex-cli": profile("codex-cli", "Codex CLI"), "claude-code": profile("claude-code", "Claude Code") },

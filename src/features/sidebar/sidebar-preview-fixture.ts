@@ -3,7 +3,7 @@
 import { seedAgents } from "@/features/agents";
 import type { Project } from "@/features/projects";
 import type { TaskEntry } from "@/features/tasks";
-import { startPreview, TOPIC_PROJECTS, TOPIC_TASKS } from "@/lib/daemon";
+import { startPreview, TOPIC_AGENT_CATALOGS, TOPIC_PROJECTS, TOPIC_TASKS } from "@/lib/daemon";
 import type { Attention } from "@/shared/attention";
 import { openTask } from "@/shared/shell/navigation";
 import type { AgentInstallation, AgentKind, AgentProfile, SessionStatus } from "@/types";
@@ -188,7 +188,14 @@ const projects: Project[] = [
 ];
 
 export function seedSidebarPreview() {
-  startPreview({ [TOPIC_PROJECTS]: projects, [TOPIC_TASKS]: previewTasks(Date.now()) });
+  startPreview({
+    [TOPIC_PROJECTS]: projects,
+    [TOPIC_TASKS]: previewTasks(Date.now()),
+    [TOPIC_AGENT_CATALOGS]: [
+      { kind: "codex-cli", status: "ready", error: null },
+      { kind: "claude-code", status: "ready", error: null },
+    ],
+  });
   seedAgents(
     {
       "codex-cli": profile("codex-cli", "Codex CLI", "/agent-icons/codex.svg", true),

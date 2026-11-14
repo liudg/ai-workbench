@@ -21,6 +21,23 @@ pub enum UpgradeStatus {
     Failed,
 }
 
+/// 一种 Agent 这次启动后探模型目录的结果。探成功才算能用。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CatalogProbe {
+    pub kind: AgentKind,
+    pub status: ProbeStatus,
+    /// 探失败的原因。
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ProbeStatus {
+    Probing,
+    Ready,
+    Failed,
+}
+
 /// 已注册的 Agent CLI。新种类可以先只有探测和更新，会话仍走桩。
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "kebab-case")]

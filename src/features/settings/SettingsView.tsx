@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { SidebarToggle } from "@/shared/shell/SidebarToggle";
-import type { AgentInstallation, AgentUpgrade } from "@/types";
+import type { AgentInstallation, AgentUpgrade, CatalogProbe } from "@/types";
 
 import { agentCardFace, statusLabel, type AgentCardFace } from "./agent-card";
 import { McpSettings } from "./mcp/McpSettings";
@@ -30,6 +30,7 @@ function StatusLine({ face }: { face: AgentCardFace }) {
 
 function AgentCard({
   item,
+  probe,
   updating,
   updateLocked,
   upgrade,
@@ -37,13 +38,14 @@ function AgentCard({
   onUpdate,
 }: {
   item: AgentInstallation;
+  probe: CatalogProbe | undefined;
   updating: boolean;
   updateLocked: boolean;
   upgrade: AgentUpgrade | undefined;
   error: string | null;
   onUpdate: (kind: AgentInstallation["kind"]) => void;
 }) {
-  const face = agentCardFace(item);
+  const face = agentCardFace(item, probe);
   const updateSucceeded = upgrade?.status === "succeeded";
   return (
     <li
@@ -64,6 +66,11 @@ function AgentCard({
         )}
         {face.kind === "ready" && face.detail && (
           <div className="mt-1 text-xs leading-5 text-wb-warn">{face.detail}</div>
+        )}
+        {face.kind === "ready" && face.probeError && (
+          <p data-probe-error className="mt-1 break-words text-xs leading-5 text-wb-danger">
+            未就绪：{face.probeError}
+          </p>
         )}
         {error && (
           <p className="mt-1 text-xs leading-5 text-wb-danger" role="alert">
@@ -101,7 +108,7 @@ function AgentCard({
 }
 
 function AgentsPanel() {
-  const { installations, loading, error, updateErrors, upgrades, starting, upgradesReady, refresh, updateInstallation } =
+  const { installations, probes, loading, error, updateErrors, upgrades, starting, upgradesReady, refresh, updateInstallation } =
     useAgentSettings();
 
   return (
@@ -141,6 +148,7 @@ function AgentsPanel() {
             <AgentCard
               key={item.kind}
               item={item}
+              probe={probes?.find((entry) => entry.kind === item.kind)}
               updating={Boolean(starting[item.kind]) || upgrades?.some((entry) => entry.kind === item.kind && entry.status === "running") === true}
               updateLocked={!upgradesReady || Boolean(starting[item.kind]) || upgrades?.some((entry) => entry.kind === item.kind && entry.status === "running") === true}
               upgrade={upgrades?.find((entry) => entry.kind === item.kind)}

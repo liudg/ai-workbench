@@ -59,24 +59,13 @@ function useAgentCatalog(agent: AgentKind | null, projectId: ProjectScope) {
     setPermissionMenu(null);
     if (!agent) return;
     let cancelled = false;
-    let probed = false;
-    // 存下的目录先显示，现探的新目录到了再换掉。
-    void agentsApi.cachedCatalog(agent).then(
-      (stored) => {
-        if (!cancelled && !probed && stored) setCatalog(stored);
-      },
-      () => {},
-    );
-    void agentsApi.probeCatalog(agent, projectId).then(
-      (next) => {
-        probed = true;
+    agentsApi
+      .loadCatalog(agent, projectId, (next) => {
         if (!cancelled) setCatalog(next);
-      },
-      () => {
-        probed = true;
+      })
+      .catch(() => {
         if (!cancelled) setMissing(true);
-      },
-    );
+      });
     void agentsApi.draftPermissionMenu(agent).then(
       (menu) => {
         if (!cancelled) setPermissionMenu(menu);
@@ -189,7 +178,8 @@ export function useNewComposer({
         options,
         selected: agent,
         switcher: {
-          loadModels: (next) => agentsApi.probeCatalog(next, projectId).then((found) => found.models),
+          blocked: null,
+          loadModels: (next, show) => agentsApi.loadCatalog(next, projectId, (found) => show(found.models)),
           onPick: (next, model) => {
             const picked: SessionTuning = { model: model.id, effort: model.default_effort };
             rememberAgent(next);

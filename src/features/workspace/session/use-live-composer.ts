@@ -28,6 +28,9 @@ import {
 import { askInSideChat } from "../side-chat/open";
 import { useSessionCatalog } from "./use-session-catalog";
 
+/** 回合进行中或在等回答时，别的 Agent 的模型只能看。 */
+const SWITCH_BLOCKED = "当前回合结束后可切换";
+
 function toSandbox(options: SessionOptions): SessionSandbox | null {
   const access = options.access;
   if (!access) return null;
@@ -118,7 +121,7 @@ export function useLiveComposer({
       : null;
     const handsOff = (agent: AgentKind) => profiles[agent]?.capabilities.supports_context_handoff === true;
     const idle = taskSession.status !== "starting" && taskSession.status !== "running" && taskSession.status !== "needs-input";
-    const switchable = !side && idle && handsOff(taskSession.agent);
+    const switchable = !side && handsOff(taskSession.agent);
     const option = (agent: AgentKind, fallback: string): AgentOption => ({
       kind: agent,
       name: profiles[agent]?.display_name || fallback,
@@ -185,9 +188,11 @@ export function useLiveComposer({
         switcher:
           others.length > 0
             ? {
-                loadModels: (agent) =>
-                  agentsApi.probeCatalog(agent, task.projectId ?? null).then((found) => found.models),
+                blocked: idle ? null : SWITCH_BLOCKED,
+                loadModels: (agent, show) =>
+                  agentsApi.loadCatalog(agent, task.projectId ?? null, (found) => show(found.models)),
                 onPick: (agent, model) => {
+                  if (!idle) return;
                   const next: SessionOptions = {
                     model: model.id,
                     effort: model.default_effort || undefined,

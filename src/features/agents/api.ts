@@ -1,5 +1,6 @@
-// Agent 的 daemon 调用：能力、安装检测、升级、模型目录（上次的或现探的）、新会话的权限菜单。
+// Agent 的 daemon 调用：能力、安装检测、升级、模型目录（上次的和现探的）、新会话的权限菜单。
 
+import { storedThenProbed } from "@/lib/catalog";
 import { CLI_TIMEOUT_MS, daemon, OFFLINE_MESSAGE } from "@/lib/daemon";
 import type { AgentCatalog, AgentInstallation, AgentKind, AgentProfile, AgentUpgrade, PermissionMenu } from "@/types";
 
@@ -27,9 +28,14 @@ export function cachedCatalog(agent: AgentKind) {
   return daemon.call<AgentCatalog | null>("agents.catalog", { agent });
 }
 
-/** 这次启动后还没拿到过新目录时，在新会话所在的目录里起一次 CLI 探出来。探不到时退回上次的。 */
-export function probeCatalog(agent: AgentKind, projectId: string | null) {
+/** 这次启动后探成功过就直接给那份；否则在新会话所在的目录里起一次 CLI 探出来，探不到时退回上次的。 */
+function probeCatalog(agent: AgentKind, projectId: string | null) {
   return daemon.call<AgentCatalog>("agents.probeCatalog", { agent, projectId }, CLI_TIMEOUT_MS);
+}
+
+/** 存下的目录先给，现探的新目录到了再给一次。两样都没有时 reject。 */
+export function loadCatalog(agent: AgentKind, projectId: string | null, show: (catalog: AgentCatalog) => void) {
+  return storedThenProbed(cachedCatalog(agent), probeCatalog(agent, projectId), show);
 }
 
 export function draftPermissionMenu(agent: AgentKind) {

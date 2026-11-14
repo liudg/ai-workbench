@@ -89,6 +89,7 @@ pub async fn run(config: Config) -> Result<(), String> {
     // 整理时记的「已停止」不算子任务的回合结束，接在它后面。
     services.start_subtask_reports();
     services.start_worktree_sweeper();
+    services.start_catalog_prewarm();
     instance::write_info(&config.data_dir, &info)?;
     eprintln!("daemon {} 已启动，端口 {port}", info.version);
 

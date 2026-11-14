@@ -1,10 +1,12 @@
-import type { AgentInstallation, UpdateVia } from "@/types";
+import type { AgentInstallation, CatalogProbe, UpdateVia } from "@/types";
+
+const PROBE_FAILED = "没有读到模型列表";
 
 /** 设置卡片在状态行上的样子。未接入时前缀和「未接入」写在同一行。 */
 export type AgentCardFace =
   | { kind: "absent" }
   | { kind: "unwired"; lead: string; canUpdate: boolean }
-  | { kind: "ready"; text: string; canUpdate: boolean; detail: string | null };
+  | { kind: "ready"; text: string; canUpdate: boolean; detail: string | null; probeError: string | null };
 
 function viaLabel(via: UpdateVia | null): string | null {
   if (via === "npm") return "npm";
@@ -27,8 +29,9 @@ function readyText(item: AgentInstallation): string {
  * 协议未接入时，状态行是「未安装 · 未接入」或「版本 · 未接入」。
  * 已经装上、并且官方更新还可用时，未接入的卡片也保留「更新」。
  * 升级命令的执行结果独立展示，不改写上一次检测到的版本。
+ * 装上了但这次启动后没探到模型目录的，带上探失败的原因。
  */
-export function agentCardFace(item: AgentInstallation): AgentCardFace {
+export function agentCardFace(item: AgentInstallation, probe?: CatalogProbe): AgentCardFace {
   if (!item.session_linked) {
     return {
       kind: "unwired",
@@ -42,6 +45,7 @@ export function agentCardFace(item: AgentInstallation): AgentCardFace {
     text: readyText(item),
     canUpdate: item.update_available,
     detail: item.detail,
+    probeError: probe?.status === "failed" ? (probe.error ?? PROBE_FAILED) : null,
   };
 }
 

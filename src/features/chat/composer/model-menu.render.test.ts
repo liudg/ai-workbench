@@ -95,9 +95,10 @@ test("the model list sits beside an agent rail; another agent's model switches a
     options,
     selected: "codex-cli",
     switcher: {
-      loadModels: async (agent) => {
+      blocked: null,
+      loadModels: async (agent, show) => {
         loaded.push(agent);
-        return [model("sonnet")];
+        show([model("sonnet")]);
       },
       onPick: (agent, next) => switched.push([agent, next.id]),
     },
@@ -123,7 +124,47 @@ test("the model list sits beside an agent rail; another agent's model switches a
   host.remove();
 });
 
-test("a started session only shows its own agent; no catalog opens straight on the model list", async () => {
+test("a busy session still lists other agents: stored models show first and cannot be picked", async () => {
+  const switched: AgentKind[] = [];
+  let finish: () => void = () => undefined;
+  let calls = 0;
+  const choice = (): AgentChoice => ({
+    options,
+    selected: "codex-cli",
+    switcher: {
+      blocked: "当前回合结束后可切换",
+      loadModels: (_agent, show) => {
+        calls += 1;
+        show([model("stored")]);
+        return new Promise<void>((resolve) => {
+          finish = () => {
+            show([model("fresh")]);
+            resolve();
+          };
+        });
+      },
+      onPick: (agent) => switched.push(agent),
+    },
+  });
+  const { host, root } = await mount(menu(choice(), [model("gpt")]));
+  await act(async () => click(host, "[data-model-trigger]"));
+  await act(async () => click(host, '[data-agent="claude-code"]'));
+  assert.match(host.querySelector("[data-model-list]")?.textContent ?? "", /STORED/);
+  assert.match(host.querySelector("[data-switch-blocked]")?.textContent ?? "", /当前回合结束后可切换/);
+
+  // 回合进行中外面不断给新的 switcher，不重读。
+  await act(async () => root.render(menu(choice(), [model("gpt")])));
+  assert.equal(calls, 1);
+
+  await act(async () => finish());
+  assert.match(host.querySelector("[data-model-list]")?.textContent ?? "", /FRESH/);
+  await act(async () => click(host, '[data-model-list] [role="option"]'));
+  assert.deepEqual(switched, []);
+  await act(async () => root.unmount());
+  host.remove();
+});
+
+test("a session that cannot switch only shows its own agent; no catalog opens straight on the model list", async () => {
   const locked: AgentChoice = { options: [options[0]], selected: "codex-cli", switcher: null };
   const { host, root } = await mount(menu(locked, []));
   const rail = [...host.querySelectorAll("[data-agent-rail] button")].map((button) => button.getAttribute("data-agent"));

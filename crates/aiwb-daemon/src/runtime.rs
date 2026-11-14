@@ -23,6 +23,7 @@ use tokio::sync::mpsc;
 
 use crate::hub::Hub;
 
+mod catalogs;
 mod handoff;
 mod startup;
 mod worktrees;
@@ -65,10 +66,14 @@ pub struct Runtimes {
     gone: Mutex<HashMap<String, String>>,
     /// 清理和恢复工作树一次只做一件，免得一边删一边恢复。
     pub(crate) worktrees: tokio::sync::Mutex<()>,
-    /// 同一时间只探一次目录。等锁的一方拿到锁后先看缓存。
-    pub(crate) probing: tokio::sync::Mutex<()>,
-    /// 这次启动后拿到过新目录的 Agent。没拿到过的，存下的目录可能是旧的。
-    pub(crate) fresh_catalogs: Mutex<HashSet<AgentKind>>,
+    /// 同一种 Agent 同一时间只探一次目录。等锁的一方拿到锁后先看缓存。
+    probing: Mutex<HashMap<AgentKind, Arc<tokio::sync::Mutex<()>>>>,
+    /// 这次启动后各 Agent 探目录的结果。没探成功过的，存下的目录可能是旧的。
+    catalog_probes: Mutex<HashMap<AgentKind, aiwb_core::models::CatalogProbe>>,
+    /// 正在探目录的 CLI。退出时一起关掉。
+    probe_handles: Mutex<HashMap<AgentKind, Arc<dyn AgentSession>>>,
+    /// 正在退出：不再起新的探测。
+    closing: AtomicBool,
     /// 每条连接正看着的任务。窗口没有焦点时界面会报空。
     viewing: Mutex<HashMap<u64, String>>,
     /// 每条连接的面板里开着侧边聊天标签的任务。有标签就不空闲回收。
@@ -124,8 +129,10 @@ impl Runtimes {
             opening: tokio::sync::Mutex::new(()),
             gone: Mutex::default(),
             worktrees: tokio::sync::Mutex::new(()),
-            probing: tokio::sync::Mutex::new(()),
-            fresh_catalogs: Mutex::default(),
+            probing: Mutex::default(),
+            catalog_probes: Mutex::default(),
+            probe_handles: Mutex::default(),
+            closing: AtomicBool::new(false),
             viewing: Mutex::default(),
             side_tabs: Mutex::default(),
             mcp: crate::mcp::Credentials::default(),
@@ -1053,7 +1060,7 @@ impl Runtimes {
     }
 
     /// 不建线程起一次 CLI，只要模型目录，拿到就关掉。
-    pub(crate) async fn probe_catalog(&self, agent: AgentKind, cwd: String) -> RuntimeResult<AgentCatalog> {
+    async fn probe_catalog(&self, agent: AgentKind, cwd: String) -> RuntimeResult<AgentCatalog> {
         let ctx = SessionContext {
             project_path: cwd,
             access_mode: None,
@@ -1067,12 +1074,21 @@ impl Runtimes {
             .start_session(ctx, tx)
             .await
             .map_err(|e| e.to_string())?;
-        let catalog = handle.catalog().await.map_err(|e| e.to_string());
+        self.probe_handles.lock().unwrap().insert(agent, handle.clone());
+        // 起 CLI 的工夫里开始退出了：`stop_all` 可能已经扫过，这里自己关。
+        let catalog = if self.closing.load(Ordering::SeqCst) {
+            Err("后台正在退出".to_string())
+        } else {
+            handle.catalog().await.map_err(|e| e.to_string())
+        };
+        self.probe_handles.lock().unwrap().remove(&agent);
         let _ = handle.stop().await;
         catalog
     }
 
     pub(crate) async fn stop_all(&self) {
+        self.closing.store(true, Ordering::SeqCst);
+        let probes: Vec<_> = self.probe_handles.lock().unwrap().drain().map(|(_, handle)| handle).collect();
         let handles: Vec<_> = self
             .live
             .lock()
@@ -1082,6 +1098,7 @@ impl Runtimes {
                 self.mcp.revoke(&id);
                 entry.handle
             })
+            .chain(probes)
             .collect();
         for handle in handles {
             let _ = handle.stop().await;

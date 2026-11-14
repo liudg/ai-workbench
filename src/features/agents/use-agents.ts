@@ -1,8 +1,9 @@
 import { useEffect } from "react";
 import { useShallow } from "zustand/react/shallow";
 
-import { sessionAgents } from "@/lib/agents";
-import type { AgentInstallation, AgentKind, AgentProfile } from "@/types";
+import { readyAgentCount, sessionAgents } from "@/lib/agents";
+import { TOPIC_AGENT_CATALOGS, useTopic } from "@/lib/daemon";
+import type { AgentInstallation, AgentKind, AgentProfile, CatalogProbe } from "@/types";
 import {
   loadInstallationUpdates,
   loadInstallations,
@@ -25,6 +26,16 @@ export function useSessionAgents(): AgentInstallation[] | null {
   return installations === null ? null : sessionAgents(installations);
 }
 
+/** 各 Agent 这次启动后探模型目录的结果。还没收到时为 undefined。 */
+function useCatalogProbes(): CatalogProbe[] | undefined {
+  return useTopic<CatalogProbe[]>(TOPIC_AGENT_CATALOGS);
+}
+
+/** 就绪的 Agent 数。还在检测时为 null。 */
+export function useReadyAgentCount(): number | null {
+  return readyAgentCount(useSessionAgents(), useCatalogProbes());
+}
+
 /** 检测本机 Agent 失败的原因和重试。 */
 export function useAgentDetection(): { error: string | null; retry: () => void } {
   const error = useAgentState((state) => state.installationError);
@@ -42,5 +53,5 @@ export function useAgentInstallations() {
       error: s.installationError,
     })),
   );
-  return { ...state, ...upgrades, refresh: () => refreshInstallations(true) };
+  return { ...state, ...upgrades, probes: useCatalogProbes(), refresh: () => refreshInstallations(true) };
 }

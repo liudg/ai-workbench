@@ -25,6 +25,10 @@ struct Script {
     listed: Mutex<Vec<DirectoryEntry>>,
     /// 各 Agent 收到的消息原文。
     sent: Mutex<Vec<(AgentKind, String)>>,
+    /// CLI 起不来的 Agent。
+    broken: Mutex<Vec<AgentKind>>,
+    /// CLI 起得来但一个模型都不给的 Agent。
+    modelless: Mutex<Vec<AgentKind>>,
 }
 
 /// 按 Agent 区分的假适配器：Codex 的新线程叫 `thread-1`，Claude 的叫 `claude-1`。
@@ -111,6 +115,9 @@ impl AgentAdapter for FakeAdapter {
         ctx: SessionContext,
         events: EventSink,
     ) -> Result<Arc<dyn AgentSession>, AgentError> {
+        if self.0.broken.lock().unwrap().contains(&self.1) {
+            return Err(AgentError::Runtime("CLI 起不来".into()));
+        }
         let native = match ctx.side_of() {
             Some(parent) => format!("side-of-{parent}"),
             None => ctx
@@ -198,6 +205,9 @@ impl AgentSession for FakeSession {
 
     async fn catalog(&self) -> Result<AgentCatalog, AgentError> {
         let mut catalog = AgentCatalog::empty();
+        if self.script.modelless.lock().unwrap().contains(&self.kind) {
+            return Ok(catalog);
+        }
         catalog.models.push(
             serde_json::from_value(json!({
                 "id": "fake-model",
@@ -851,6 +861,44 @@ async fn probe_catalog_starts_a_threadless_cli_once_and_remembers_it() {
 }
 
 #[tokio::test]
+async fn each_agent_probes_its_own_catalog_and_reports_the_result() {
+    let dir = tempfile::tempdir().unwrap();
+    let chats = tempfile::tempdir().unwrap();
+    let script = Arc::new(Script::default());
+    let services = services(Arc::new(Store::open_in_memory().unwrap()), script.clone(), dir.path());
+    services
+        .dispatch("settings.setTaskFolder", json!({ "path": chats.path().to_string_lossy() }))
+        .await
+        .unwrap();
+    assert_eq!(services.snapshot("agents.catalogs", &json!({})).unwrap(), json!([]));
+
+    let mut rx = services.hub().receiver();
+    let (codex, claude) = tokio::join!(
+        services.dispatch("agents.probeCatalog", json!({ "agent": "codex-cli" })),
+        services.dispatch("agents.probeCatalog", json!({ "agent": "claude-code" })),
+    );
+    codex.unwrap();
+    claude.unwrap();
+    assert_eq!(script.started.lock().unwrap().len(), 2);
+    assert_eq!(
+        services.snapshot("agents.catalogs", &json!({})).unwrap(),
+        json!([
+            { "kind": "codex-cli", "status": "ready", "error": null },
+            { "kind": "claude-code", "status": "ready", "error": null },
+        ])
+    );
+    // 每种 Agent 先推「在探」，再推结果。
+    let mut pushed = Vec::new();
+    while let Ok(envelope) = rx.try_recv() {
+        if envelope.topic == "agents.catalogs" {
+            pushed.push(envelope.data.clone());
+        }
+    }
+    assert_eq!(pushed.len(), 4);
+    assert_eq!(pushed[0][0]["status"], "probing");
+}
+
+#[tokio::test]
 async fn probe_catalog_refreshes_a_stored_catalog_once_per_launch() {
     let dir = tempfile::tempdir().unwrap();
     let chats = tempfile::tempdir().unwrap();
@@ -894,6 +942,135 @@ async fn probe_catalog_refreshes_a_stored_catalog_once_per_launch() {
         .unwrap();
     assert_eq!(again, probed);
     assert_eq!(script.started.lock().unwrap().len(), 1);
+}
+
+fn old_catalog() -> String {
+    let mut stale = AgentCatalog::empty();
+    stale.models.push(
+        serde_json::from_value(json!({
+            "id": "old-model",
+            "label": "Old",
+            "description": "",
+            "is_default": true,
+            "default_effort": "",
+            "efforts": [],
+        }))
+        .unwrap(),
+    );
+    serde_json::to_string(&stale).unwrap()
+}
+
+fn probes(services: &Services) -> Value {
+    services.snapshot("agents.catalogs", &json!({})).unwrap()
+}
+
+#[tokio::test]
+async fn a_failed_probe_reports_why_and_is_tried_again() {
+    let dir = tempfile::tempdir().unwrap();
+    let chats = tempfile::tempdir().unwrap();
+    let store = Arc::new(Store::open_in_memory().unwrap());
+    store.set_meta("catalog:claude-code", &old_catalog()).unwrap();
+    let script = Arc::new(Script::default());
+    *script.broken.lock().unwrap() = vec![AgentKind::CodexCli, AgentKind::ClaudeCode];
+    let services = services(store, script.clone(), dir.path());
+    services
+        .dispatch("settings.setTaskFolder", json!({ "path": chats.path().to_string_lossy() }))
+        .await
+        .unwrap();
+
+    // 没有存下的目录：报错。有的：退回存下的那份。两种都记成失败。
+    let error = services
+        .dispatch("agents.probeCatalog", json!({ "agent": "codex-cli" }))
+        .await
+        .unwrap_err();
+    assert!(error.contains("CLI 起不来"), "{error}");
+    let stored = services
+        .dispatch("agents.probeCatalog", json!({ "agent": "claude-code" }))
+        .await
+        .unwrap();
+    assert_eq!(stored["models"][0]["id"], "old-model");
+    let failed = probes(&services);
+    assert_eq!(failed[0]["kind"], "codex-cli");
+    assert_eq!(failed[0]["status"], "failed");
+    assert!(failed[0]["error"].as_str().unwrap().contains("CLI 起不来"));
+    assert_eq!(failed[1]["status"], "failed");
+
+    // 修好以后再要一次就重探，重探期间不退回「在探」。
+    script.broken.lock().unwrap().clear();
+    let mut rx = services.hub().receiver();
+    let probed = services
+        .dispatch("agents.probeCatalog", json!({ "agent": "codex-cli" }))
+        .await
+        .unwrap();
+    assert_eq!(probed["models"][0]["id"], "fake-model");
+    assert_eq!(probes(&services)[0], json!({ "kind": "codex-cli", "status": "ready", "error": null }));
+    let pushed: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok())
+        .filter(|envelope| envelope.topic == "agents.catalogs")
+        .collect();
+    assert_eq!(pushed.len(), 1);
+}
+
+#[tokio::test]
+async fn a_probe_without_models_is_not_ready_and_keeps_the_stored_catalog() {
+    let dir = tempfile::tempdir().unwrap();
+    let chats = tempfile::tempdir().unwrap();
+    let store = Arc::new(Store::open_in_memory().unwrap());
+    store.set_meta("catalog:codex-cli", &old_catalog()).unwrap();
+    let script = Arc::new(Script::default());
+    *script.modelless.lock().unwrap() = vec![AgentKind::CodexCli];
+    let services = services(store, script.clone(), dir.path());
+    services
+        .dispatch("settings.setTaskFolder", json!({ "path": chats.path().to_string_lossy() }))
+        .await
+        .unwrap();
+
+    for round in 1..=2 {
+        let probed = services
+            .dispatch("agents.probeCatalog", json!({ "agent": "codex-cli" }))
+            .await
+            .unwrap();
+        assert_eq!(probed["models"], json!([]));
+        // 每次都重探，不把存下的旧目录当成这次探到的。
+        assert_eq!(script.started.lock().unwrap().len(), round);
+    }
+    assert_eq!(probes(&services), json!([{ "kind": "codex-cli", "status": "failed", "error": null }]));
+    let cached = services
+        .dispatch("agents.catalog", json!({ "agent": "codex-cli" }))
+        .await
+        .unwrap();
+    assert_eq!(cached["models"][0]["id"], "old-model");
+}
+
+#[tokio::test]
+async fn a_sessions_own_catalog_makes_its_agent_ready() {
+    let dir = tempfile::tempdir().unwrap();
+    let project_dir = tempfile::tempdir().unwrap();
+    let script = Arc::new(Script::default());
+    let services = services(Arc::new(Store::open_in_memory().unwrap()), script.clone(), dir.path());
+    let project = services
+        .dispatch("projects.add", json!({ "path": project_dir.path().to_string_lossy() }))
+        .await
+        .unwrap();
+    let task = services
+        .dispatch("tasks.create", json!({ "projectId": project["id"], "agent": "codex-cli", "prompt": "你好" }))
+        .await
+        .unwrap();
+    let session_id = task["sessions"][0]["id"].as_str().unwrap().to_string();
+    wait_for_answer(&services, &session_id, "收到：你好").await;
+    assert_eq!(probes(&services), json!([]));
+
+    services
+        .dispatch("sessions.catalog", json!({ "sessionId": session_id }))
+        .await
+        .unwrap();
+    assert_eq!(probes(&services), json!([{ "kind": "codex-cli", "status": "ready", "error": null }]));
+    // 之后新会话要目录就不再起 CLI。
+    let before = script.started.lock().unwrap().len();
+    services
+        .dispatch("agents.probeCatalog", json!({ "agent": "codex-cli", "projectId": project["id"] }))
+        .await
+        .unwrap();
+    assert_eq!(script.started.lock().unwrap().len(), before);
 }
 
 fn listed(native_id: &str, cwd: &str, title: &str, updated_at: i64) -> DirectoryEntry {

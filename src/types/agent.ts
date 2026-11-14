@@ -31,6 +31,13 @@ export interface AgentUpgrade {
   error: string | null;
 }
 
+/** 一种 Agent 这次启动后探模型目录的结果。探成功才算就绪。 */
+export interface CatalogProbe {
+  kind: AgentKind;
+  status: "probing" | "ready" | "failed";
+  error: string | null;
+}
+
 /** 本机一次探测。设置页用完整列表；新建会话只取 installed。 */
 export interface AgentInstallation {
   kind: AgentKind;

@@ -14,6 +14,9 @@ pub const TOPIC_TASKS: &str = "tasks";
 
 pub const TOPIC_AGENT_UPGRADES: &str = "agents.upgrades";
 
+/// 主题：各 Agent 这次启动后探模型目录的结果。
+pub const TOPIC_AGENT_CATALOGS: &str = "agents.catalogs";
+
 /// 主题前缀：一个会话的时间线。订阅参数 `fromRev` 给出客户端已有的最大 rev，只补之后的。
 pub const TOPIC_SESSION_PREFIX: &str = "session:";
 

@@ -137,3 +137,16 @@ test("a linked agent that is not installed still says 未安装", () => {
   assert.equal(face.kind, "absent");
   assert.equal(statusLabel(face), "未安装");
 });
+
+test("a wired agent whose catalog probe failed carries the reason", () => {
+  const wired = item({ kind: "codex-cli", display_name: "Codex CLI", installed: true, version: "1.0.0", detail: null, session_linked: true });
+  const failed = agentCardFace(wired, { kind: "codex-cli", status: "failed", error: "未登录" });
+  assert.equal(failed.kind, "ready");
+  if (failed.kind !== "ready") return;
+  assert.equal(failed.probeError, "未登录");
+
+  for (const probe of [undefined, { kind: "codex-cli", status: "probing", error: null } as const, { kind: "codex-cli", status: "ready", error: null } as const]) {
+    const face = agentCardFace(wired, probe);
+    assert.equal(face.kind === "ready" && face.probeError, null);
+  }
+});

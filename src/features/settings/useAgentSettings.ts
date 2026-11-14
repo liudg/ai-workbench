@@ -6,6 +6,7 @@ export function useAgentSettings() {
   const agents = useAgentInstallations();
   return {
     installations: agents.installations,
+    probes: agents.probes,
     loading: agents.loading,
     error: agents.error,
     updateErrors: agents.upgradeErrors,

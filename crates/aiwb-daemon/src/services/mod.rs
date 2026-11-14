@@ -32,7 +32,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use aiwb_core::rpc::{
-    TOPIC_AGENT_UPGRADES, TOPIC_PROJECTS, TOPIC_SESSION_PREFIX, TOPIC_TASKS, TOPIC_TERMINAL_PREFIX,
+    TOPIC_AGENT_CATALOGS, TOPIC_AGENT_UPGRADES, TOPIC_PROJECTS, TOPIC_SESSION_PREFIX, TOPIC_TASKS, TOPIC_TERMINAL_PREFIX,
 };
 use aiwb_core::models::SessionStatus;
 use aiwb_core::task::{Task, TaskSession};
@@ -267,6 +267,7 @@ impl Services {
             TOPIC_PROJECTS => to_value(self.list_projects()?),
             TOPIC_TASKS => to_value(self.runtimes.task_entries()?),
             TOPIC_AGENT_UPGRADES => to_value(self.upgrades.snapshot()),
+            TOPIC_AGENT_CATALOGS => to_value(self.runtimes.catalog_probes()),
             _ if topic.starts_with(TOPIC_TERMINAL_PREFIX) => {
                 Ok(self.terminals.snapshot(&topic[TOPIC_TERMINAL_PREFIX.len()..]))
             }
