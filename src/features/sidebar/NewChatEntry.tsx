@@ -12,7 +12,7 @@ export function NewChatEntry() {
       data-new-chat-entry=""
       aria-pressed={active}
       className={cn(
-        "flex h-8 w-full items-center gap-2.5 rounded-lg px-2 text-left text-[13px] transition-colors",
+        "flex h-8 w-full items-center gap-2.5 rounded-lg px-2 text-left text-xs transition-colors",
         active
           ? "bg-wb-active font-medium text-wb-fg"
           : "text-wb-fg-2 hover:bg-wb-hover hover:text-wb-fg",

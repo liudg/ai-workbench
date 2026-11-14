@@ -27,7 +27,7 @@ export function PanelTabs() {
       data-preview-panel
       className="flex h-full w-full min-w-0 flex-col border-l border-wb-border bg-wb-panel"
     >
-      <div className="relative z-20 flex h-11 shrink-0 items-center border-b border-wb-border bg-wb-panel px-1.5">
+      <div className="relative z-20 flex h-10 shrink-0 items-center border-b border-wb-border bg-wb-panel px-1.5">
         {layout === "full" ? (
           <div className="flex max-w-[36%] shrink-0 items-center gap-2 pl-2.5 pr-2">
             <SidebarToggle />

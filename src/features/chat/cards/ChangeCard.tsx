@@ -145,7 +145,7 @@ function StatusMark({ status }: { status: FileStatus }) {
     <span
       data-file-status={status}
       className={cn(
-        "w-4 shrink-0 font-mono text-[11px]",
+        "w-4 shrink-0 font-mono text-xs",
         tone === "add" && "text-wb-diff-add-fg",
         tone === "del" && "text-wb-diff-del-fg",
         tone === "neutral" && "text-wb-fg-2",
@@ -158,7 +158,7 @@ function StatusMark({ status }: { status: FileStatus }) {
 
 function Stat({ added, removed }: { added: number; removed: number }) {
   return (
-    <span className="flex shrink-0 items-center gap-2 font-mono text-[11px] tabular-nums">
+    <span className="flex shrink-0 items-center gap-2 font-mono text-xs tabular-nums">
       <span className="text-wb-diff-add-fg">+{added}</span>
       <span className="text-wb-diff-del-fg">-{removed}</span>
     </span>

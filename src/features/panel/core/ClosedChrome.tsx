@@ -31,10 +31,10 @@ export function ClosedChrome() {
     <div
       data-chat-header=""
       data-panel-closed={layout === "chat" ? "" : undefined}
-      className="relative z-20 flex h-11 shrink-0 items-center gap-2 border-b border-wb-border bg-wb-surface px-4"
+      className="relative z-20 flex h-10 shrink-0 items-center gap-2 border-b border-wb-border bg-wb-surface px-4"
     >
       <SidebarToggle />
-      <span data-session-title className="min-w-0 flex-1 truncate text-[14px] font-medium text-wb-fg">
+      <span data-session-title className="min-w-0 flex-1 truncate text-sm font-medium text-wb-fg">
         {sessionTitle}
       </span>
       <SessionUsageCluster />
@@ -120,7 +120,7 @@ function OpenTabsMenu({ onPick }: { onPick: (id: string) => void }) {
       data-open-tabs-menu
       className="wb-popover absolute right-0 top-full z-40 mt-1 w-48 rounded-xl py-1"
     >
-      <div className="px-3 py-1.5 text-[11px] text-wb-fg-3">{DESKTOP_ZH.panelOpenTabsMenu}</div>
+      <div className="px-3 py-1.5 text-xs text-wb-fg-3">{DESKTOP_ZH.panelOpenTabsMenu}</div>
       {tabs.map((tab) => {
         const viewer = viewerById(tab.viewerId);
         const Icon = viewer?.icon;

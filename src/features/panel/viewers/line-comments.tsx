@@ -266,7 +266,7 @@ export function LineCommentBox({
           data-line-comment-cancel
           aria-label="取消"
           title="取消 (Esc)"
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-wb-fg-3 transition-colors hover:bg-wb-hover hover:text-wb-fg"
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-wb-fg-3 transition-colors hover:bg-wb-hover hover:text-wb-fg"
           onMouseDown={(event) => event.preventDefault()}
           onClick={onCancel}
         >
@@ -278,7 +278,7 @@ export function LineCommentBox({
           aria-label={DESKTOP_ZH.addComment}
           title={DESKTOP_ZH.addComment}
           disabled={!ready}
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-wb-primary text-wb-primary-fg transition-colors hover:bg-wb-primary-hover disabled:bg-wb-active disabled:text-wb-fg-3"
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-wb-primary text-wb-primary-fg transition-colors hover:bg-wb-primary-hover disabled:bg-wb-active disabled:text-wb-fg-3"
           onMouseDown={(event) => event.preventDefault()}
           onClick={submit}
         >

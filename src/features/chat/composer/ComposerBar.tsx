@@ -79,7 +79,7 @@ export function ComposerBar({
         <button
           ref={plusRef}
           type="button"
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-wb-hover text-wb-fg-2 transition-colors hover:bg-wb-active hover:text-wb-fg disabled:cursor-not-allowed disabled:opacity-40"
           aria-label="添加附件"
           title="添加附件"
           aria-haspopup={imagesOn ? "menu" : undefined}
@@ -101,7 +101,7 @@ export function ComposerBar({
           type="button"
           title={accessLabel}
           className={cn(
-            "inline-flex h-7 min-w-0 items-center justify-center gap-1 overflow-hidden rounded-lg text-[13px] transition-colors hover:bg-wb-hover disabled:cursor-not-allowed disabled:opacity-40",
+            "inline-flex h-7 min-w-0 items-center justify-center gap-1 overflow-hidden rounded-lg text-xs transition-colors hover:bg-wb-hover disabled:cursor-not-allowed disabled:opacity-40",
             icons ? "w-7 shrink-0 px-0" : density === "compact" ? "max-w-[7.5rem] px-2" : "max-w-[11rem] px-2",
             accessCaution ? "text-wb-warn" : "text-wb-fg-2 hover:text-wb-fg",
           )}
@@ -142,7 +142,10 @@ export function ComposerBar({
             type="button"
             title={modelButton}
             className={cn(
-              "inline-flex h-7 min-w-0 items-center justify-center gap-1 overflow-hidden rounded-lg px-2 text-[13px] text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg disabled:cursor-not-allowed disabled:opacity-40",
+              "inline-flex h-7 min-w-0 items-center justify-center gap-1 overflow-hidden rounded-lg px-2 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-40",
+              menu === "model"
+                ? "bg-wb-active text-wb-fg"
+                : "bg-wb-hover text-wb-fg-2 hover:bg-wb-active hover:text-wb-fg",
               icons || density === "compact" ? "max-w-[8.5rem]" : "max-w-52",
             )}
             data-model-chip
@@ -173,7 +176,7 @@ export function ComposerBar({
         {editing && (
           <button
             type="button"
-            className="h-7 shrink-0 rounded-lg px-2 text-[13px] text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
+            className="h-7 shrink-0 rounded-lg px-2 text-xs text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
             onClick={(event) => {
               event.stopPropagation();
               onCancelEdit();

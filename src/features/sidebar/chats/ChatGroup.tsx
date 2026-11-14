@@ -30,7 +30,7 @@ export function ChatGroup({
         <ChevronRight
           className={cn("h-3.5 w-3.5 shrink-0 text-wb-fg-3 transition-transform", !collapsed && "rotate-90")}
         />
-        <span className="flex-1 text-[11px] font-medium tracking-wide text-wb-fg-3">聊天</span>
+        <span className="flex-1 text-xs font-medium text-wb-fg-3">聊天</span>
         <NewSessionButton
           projectId={null}
           appearance="plus"

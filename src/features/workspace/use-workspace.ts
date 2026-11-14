@@ -23,3 +23,14 @@ export function useWorkspace() {
     loading: projectsLoading || tasksLoading,
   };
 }
+
+/** 窗口顶栏显示的当前上下文名：设置、全局看板、项目名或当前会话状态。 */
+export function useWorkspaceContextLabel(): string | null {
+  const { settings, board, project, task, view } = useWorkspace();
+  if (settings) return "设置";
+  if (board) return "全局看板";
+  if (project) return project.name;
+  if (view.kind === "task" && task) return task.title.trim() || "聊天";
+  if (view.kind === "new") return "新对话";
+  return null;
+}

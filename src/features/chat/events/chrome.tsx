@@ -46,7 +46,7 @@ export function CopyButton({ text, className }: { text: string; className?: stri
 export function HoverActions({ time, children }: { time: string; children?: ReactNode }) {
   return (
     <div className="mt-1 flex min-h-5 min-w-0 max-w-full items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-      <span className="px-0.5 text-[11px] tabular-nums text-wb-fg-3">{time}</span>
+      <span className="px-0.5 text-xs tabular-nums text-wb-fg-3">{time}</span>
       {children}
     </div>
   );
@@ -94,7 +94,7 @@ export function Row({
           </span>
           {chrome === "inline" ? (
             <>
-              <span className="text-[11px] tabular-nums text-wb-fg-3 opacity-0 transition-opacity group-hover:opacity-100">
+              <span className="text-xs tabular-nums text-wb-fg-3 opacity-0 transition-opacity group-hover:opacity-100">
                 {time}
               </span>
               {copyText ? (

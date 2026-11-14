@@ -45,7 +45,7 @@ export function AccessMenu({
         <p className="px-3 py-2 text-sm text-wb-fg-3">正在读取权限…</p>
       ) : (
         <>
-          <p className="px-2.5 pb-1 pt-1.5 text-[11px] font-medium text-wb-fg-3">{permissionMenuTitle(menu.title)}</p>
+          <p className="px-2.5 pb-1 pt-1.5 text-xs font-medium text-wb-fg-3">{permissionMenuTitle(menu.title)}</p>
           {notice ? <p className="px-2.5 pb-1 text-xs leading-4 text-wb-fg-3">{notice}</p> : null}
           {menu.presets.map((preset) => (
             <MenuRow

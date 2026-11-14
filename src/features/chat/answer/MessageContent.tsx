@@ -94,10 +94,10 @@ function ImageFallback({
       <ImageOff className="h-3.5 w-3.5 shrink-0 text-wb-fg-3" />
       <span className="min-w-0">
         <span className="block text-wb-fg">{alt}</span>
-        <span className="block truncate font-mono text-[11px] text-wb-fg-3" title={detail}>
+        <span className="block truncate font-mono text-xs text-wb-fg-3" title={detail}>
           {name}
         </span>
-        {reason ? <span className="block text-[11px] text-wb-fg-3">{reason}</span> : null}
+        {reason ? <span className="block text-xs text-wb-fg-3">{reason}</span> : null}
       </span>
     </span>
   );

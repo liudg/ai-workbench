@@ -130,7 +130,7 @@ export function NewProjectDialog() {
               autoFocus={source === "create"}
             />
             {source === "create" && name.trim() && dir.trim() ? (
-              <p className="min-w-0 truncate font-mono text-[11px] text-wb-fg-3">
+              <p className="min-w-0 truncate font-mono text-xs text-wb-fg-3">
                 {dir.replace(/[\\/]+$/, "")}/{name.trim()}
               </p>
             ) : null}

@@ -145,10 +145,10 @@ function TreeRows<T extends FileTreeFile>({
         <File className="h-3.5 w-3.5 shrink-0 text-wb-fg-3" />
         <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-wb-fg">{node.name}</span>
         {showStats && file.added > 0 ? (
-          <span className="shrink-0 font-mono text-[11px] tabular-nums text-wb-diff-add-fg">+{file.added}</span>
+          <span className="shrink-0 font-mono text-xs tabular-nums text-wb-diff-add-fg">+{file.added}</span>
         ) : null}
         {showStats && file.removed > 0 ? (
-          <span className="shrink-0 font-mono text-[11px] tabular-nums text-wb-diff-del-fg">-{file.removed}</span>
+          <span className="shrink-0 font-mono text-xs tabular-nums text-wb-diff-del-fg">-{file.removed}</span>
         ) : null}
       </button>
     </li>

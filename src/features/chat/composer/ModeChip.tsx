@@ -29,7 +29,7 @@ export function ModeChip({
       aria-label={dismissLabel}
       disabled={disabled}
       className={cn(
-        "group relative inline-flex h-7 shrink-0 items-center gap-1 rounded-lg bg-wb-accent-soft text-[13px] text-wb-accent transition-colors hover:bg-wb-hover hover:text-wb-fg disabled:cursor-not-allowed disabled:opacity-40",
+        "group relative inline-flex h-7 shrink-0 items-center gap-1 rounded-lg bg-wb-accent-soft text-xs font-medium text-wb-accent-ink transition-colors hover:bg-wb-hover hover:text-wb-fg disabled:cursor-not-allowed disabled:opacity-40",
         iconOnly ? "w-7 justify-center px-0" : "px-2",
       )}
       onClick={(event) => {

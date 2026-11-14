@@ -18,7 +18,7 @@ export default function MarkdownModePreview() {
   return (
     <div className="flex h-screen w-screen items-stretch bg-wb-shell text-wb-fg">
       <section data-preview-panel className="flex h-full min-w-0 flex-1 flex-col border-l border-wb-border bg-wb-surface">
-        <div className="flex h-11 shrink-0 items-center border-b border-wb-border px-1.5">
+        <div className="flex h-10 shrink-0 items-center border-b border-wb-border px-1.5">
           <div className="my-1.5 flex min-w-0 max-w-[180px] items-center rounded-md bg-wb-active text-wb-fg">
             <span className="flex min-w-0 items-center gap-1 px-2 py-1.5 text-xs">
               <FileText className="h-3.5 w-3.5" />

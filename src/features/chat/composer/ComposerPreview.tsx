@@ -353,7 +353,7 @@ export default function ComposerPreview() {
     goalLive,
     goal,
   });
-  useComposerMenu(menu === "model", modelRef, modelMenuRef, () => setMenu(null));
+  useComposerMenu(menu === "model", modelRef, modelMenuRef, () => setMenu(null), undefined, "end");
   useComposerMenu(menu === "access", accessRef, accessMenuRef, () => setMenu(null));
   const rememberTuning = (next: SessionTuning) => {
     setTuning((current) => ({

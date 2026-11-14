@@ -43,9 +43,9 @@ function OptionPrompt({ event, session, answerPrompt, flush = false }: PromptBod
             )}
             onClick={() => pick(opt.id)}
           >
-            <span className="w-4 shrink-0 text-sm tabular-nums text-wb-fg-3">{index + 1}.</span>
+            <span className="w-4 shrink-0 text-xs leading-5 tabular-nums text-wb-fg-3">{index + 1}.</span>
             <span className="min-w-0 flex-1">
-              <span className="block break-words text-sm text-wb-fg">{opt.label}</span>
+              <span className="block break-words text-xs font-medium leading-5 text-wb-fg">{opt.label}</span>
               {(opt.disabled_reason || opt.description) && (
                 <span className="mt-0.5 block break-words text-xs leading-4 text-wb-fg-2">
                   {opt.disabled_reason ?? opt.description}

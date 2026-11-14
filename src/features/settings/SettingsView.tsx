@@ -171,39 +171,39 @@ function ThemePreviewIcon({ id }: { id: ThemePreference }) {
 function ThemeSwatch({ id }: { id: ThemePreference }) {
   if (id === "obsidian") {
     return (
-      <div className="flex h-12 overflow-hidden rounded-lg border border-[#2a2c33] bg-[#0b0c0e] p-1">
+      <div className="flex h-12 overflow-hidden rounded-lg border border-[#242832] bg-[#090a0d] p-1">
         <div className="w-4 shrink-0 space-y-1 pr-1 pt-0.5">
-          <div className="h-1 w-2.5 rounded-full bg-[#3a3d46]" />
-          <div className="h-1 w-3 rounded-full bg-[#5b7cf7]" />
+          <div className="h-1 w-2.5 rounded-full bg-[#383e4c]" />
+          <div className="h-1 w-3 rounded-full bg-[#5e81ff]" />
         </div>
-        <div className="flex-1 rounded-md border border-[#23252c] bg-[#121316] p-1.5">
-          <div className="ml-auto h-2 w-8 rounded bg-[#1d212b]" />
-          <div className="mt-1 h-1.5 w-10 rounded-full bg-[#2c2f37]" />
+        <div className="flex-1 rounded-md border border-[#1f232c] bg-[#101216] p-1.5">
+          <div className="ml-auto h-2 w-8 rounded bg-[#191d25]" />
+          <div className="mt-1 h-1.5 w-10 rounded-full bg-[#2a2f3b]" />
         </div>
       </div>
     );
   }
   if (id === "daylight") {
     return (
-      <div className="flex h-12 overflow-hidden rounded-lg border border-[#d6d9e0] bg-[#f1f2f5] p-1">
+      <div className="flex h-12 overflow-hidden rounded-lg border border-[#d6dae2] bg-[#eef0f4] p-1">
         <div className="w-4 shrink-0 space-y-1 pr-1 pt-0.5">
-          <div className="h-1 w-2.5 rounded-full bg-[#c5c9d2]" />
+          <div className="h-1 w-2.5 rounded-full bg-[#c5cad4]" />
           <div className="h-1 w-3 rounded-full bg-[#3b5bdb]" />
         </div>
-        <div className="flex-1 rounded-md border border-[#e3e5ea] bg-[#ffffff] p-1.5">
-          <div className="ml-auto h-2 w-8 rounded bg-[#eff2f7]" />
-          <div className="mt-1 h-1.5 w-10 rounded-full bg-[#dfe2e8]" />
+        <div className="flex-1 rounded-md border border-[#e2e5ec] bg-[#ffffff] p-1.5">
+          <div className="ml-auto h-2 w-8 rounded bg-[#f1f3f8]" />
+          <div className="mt-1 h-1.5 w-10 rounded-full bg-[#dfe3ea]" />
         </div>
       </div>
     );
   }
   return (
     <div className="grid h-12 grid-cols-2 overflow-hidden rounded-lg border border-wb-border">
-      <div className="bg-[#0b0c0e] p-1.5">
-        <div className="h-full rounded border border-[#23252c] bg-[#121316]" />
+      <div className="bg-[#090a0d] p-1.5">
+        <div className="h-full rounded border border-[#1f232c] bg-[#101216]" />
       </div>
-      <div className="bg-[#f1f2f5] p-1.5">
-        <div className="h-full rounded border border-[#e3e5ea] bg-[#ffffff]" />
+      <div className="bg-[#eef0f4] p-1.5">
+        <div className="h-full rounded border border-[#e2e5ec] bg-[#ffffff]" />
       </div>
     </div>
   );
@@ -402,7 +402,7 @@ export function SettingsView() {
 
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col bg-wb-surface">
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-wb-border px-4">
+      <header className="flex h-10 shrink-0 items-center gap-2 border-b border-wb-border px-4">
         <SidebarToggle />
         <button
           type="button"

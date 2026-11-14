@@ -52,7 +52,7 @@ export function BrowserView({
       />
       {session.error ? <p className="shrink-0 px-3 py-1 text-xs text-wb-danger">{session.error}</p> : null}
       {session.snapshotFailed ? (
-        <p className="shrink-0 px-3 py-1 text-[11px] text-wb-warn">{DESKTOP_ZH.browserSnapshotFailed}</p>
+        <p className="shrink-0 px-3 py-1 text-xs text-wb-warn">{DESKTOP_ZH.browserSnapshotFailed}</p>
       ) : null}
       <div ref={session.viewport} className="relative min-h-0 min-w-0 flex-1 bg-wb-panel" data-browser-viewport>
         {!session.frameTarget ? <NewTabPage tabId={tabId} /> : null}

@@ -22,7 +22,7 @@ export function BoardView() {
 
   return (
     <div data-board="" className="flex min-h-0 flex-1 flex-col bg-wb-surface">
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-wb-border px-4">
+      <header className="flex h-10 shrink-0 items-center gap-2 border-b border-wb-border px-4">
         <SidebarToggle />
         <h1 className="text-[13px] font-semibold tracking-tight text-wb-fg">全局看板</h1>
         {!loading && <span className="text-xs text-wb-fg-3">{total} 个会话</span>}
@@ -55,7 +55,7 @@ function Lane({ lane, now, onOpen }: { lane: BoardLane<BoardCard>; now: number; 
     >
       <header className="flex items-center gap-2 border-b border-wb-border px-3 py-2.5">
         <span className="text-xs font-medium text-wb-fg-2">{COLUMN_TITLE[lane.column]}</span>
-        <span className="ml-auto rounded-full bg-wb-elev px-2 py-0.5 text-[11px] font-medium tabular-nums text-wb-fg-2">
+        <span className="ml-auto rounded-full bg-wb-elev px-2 py-0.5 text-xs font-medium tabular-nums text-wb-fg-2">
           {count}
         </span>
       </header>
@@ -64,7 +64,7 @@ function Lane({ lane, now, onOpen }: { lane: BoardLane<BoardCard>; now: number; 
         {lane.cards.map((card) => (
           <Card key={card.id} card={card} column={lane.column} now={now} onOpen={onOpen} />
         ))}
-        {lane.hidden > 0 && <p className="px-2 py-1 text-[11px] text-wb-fg-3">其余 {lane.hidden} 个见侧边栏</p>}
+        {lane.hidden > 0 && <p className="px-2 py-1 text-xs text-wb-fg-3">其余 {lane.hidden} 个见侧边栏</p>}
       </div>
     </section>
   );
@@ -106,10 +106,10 @@ function Card({
       {card.attention.preview && (
         <span className="line-clamp-2 text-xs leading-snug text-wb-fg-2">{card.attention.preview}</span>
       )}
-      <span className="flex w-full items-center gap-1.5 pt-0.5 text-[11px] text-wb-fg-3">
+      <span className="flex w-full items-center gap-1.5 pt-0.5 text-xs text-wb-fg-3">
         <span className="min-w-0 truncate">{card.place ?? "聊天"}</span>
         {card.branch && (
-          <span className="min-w-0 truncate rounded border border-wb-border bg-wb-elev px-1.5 text-[10px] text-wb-fg-2">
+          <span className="min-w-0 truncate rounded border border-wb-border bg-wb-elev px-1.5 text-xs text-wb-fg-2">
             {card.branch}
           </span>
         )}

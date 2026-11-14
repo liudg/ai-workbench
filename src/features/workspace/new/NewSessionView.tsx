@@ -6,6 +6,7 @@ import { CommandMenuHost } from "@/features/command-menu";
 import { SessionSplit } from "@/features/panel";
 import type { Project } from "@/features/projects";
 import { openSettings, type ProjectScope } from "@/shared/shell/navigation";
+import { SidebarToggle } from "@/shared/shell/SidebarToggle";
 import type { AgentKind, Session } from "@/types";
 import { addDraftSnippet, useComposerDraft, type ComposerDraft } from "../session/composer-drafts";
 import { SessionPanel } from "../session/SessionPanel";
@@ -27,32 +28,47 @@ export function NewSessionView({ projectId, project, projects }: {
   if (!loaded) return null;
   if (!agent && agents === null && detection.error) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
-        <p className="break-words text-sm text-wb-fg-2">检测本地 Agent 失败：{detection.error}</p>
-        <button type="button" className="text-sm font-medium text-wb-accent-ink transition-colors hover:underline" onClick={detection.retry}>
-          重试
-        </button>
-        <CommandMenuHost />
+      <div className="flex h-full min-w-0 flex-1 flex-col">
+        <header className="flex h-10 shrink-0 items-center px-4">
+          <SidebarToggle />
+        </header>
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
+          <p className="break-words text-sm text-wb-fg-2">检测本地 Agent 失败：{detection.error}</p>
+          <button type="button" className="text-sm font-medium text-wb-accent-ink transition-colors hover:underline" onClick={detection.retry}>
+            重试
+          </button>
+          <CommandMenuHost />
+        </div>
       </div>
     );
   }
   // 本机 Agent 还在检测：记得上次用的就先用它，否则等检测完。
   if (!agent && agents === null) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-wb-fg-3">
-        正在检测本地 Agent…
-        <CommandMenuHost />
+      <div className="flex h-full min-w-0 flex-1 flex-col">
+        <header className="flex h-10 shrink-0 items-center px-4">
+          <SidebarToggle />
+        </header>
+        <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-wb-fg-3">
+          正在检测本地 Agent…
+          <CommandMenuHost />
+        </div>
       </div>
     );
   }
   if (!agent) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-        <p className="text-sm text-wb-fg-2">未检测到可用的本地 Agent</p>
-        <button type="button" className="text-sm font-medium text-wb-accent-ink transition-colors hover:underline" onClick={openSettings}>
-          打开设置
-        </button>
-        <CommandMenuHost />
+      <div className="flex h-full min-w-0 flex-1 flex-col">
+        <header className="flex h-10 shrink-0 items-center px-4">
+          <SidebarToggle />
+        </header>
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 text-center">
+          <p className="text-sm text-wb-fg-2">未检测到可用的本地 Agent</p>
+          <button type="button" className="text-sm font-medium text-wb-accent-ink transition-colors hover:underline" onClick={openSettings}>
+            打开设置
+          </button>
+          <CommandMenuHost />
+        </div>
       </div>
     );
   }
@@ -145,10 +161,19 @@ function NewSession({
           <CommandMenuHost />
         </SessionPanel>
       ) : (
-        <>
+        <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-wb-surface">
+          <header
+            data-chat-header=""
+            className="relative z-20 flex h-10 shrink-0 items-center gap-2 border-b border-wb-border bg-wb-surface px-4"
+          >
+            <SidebarToggle />
+            <span data-session-title className="min-w-0 flex-1 truncate text-sm font-medium text-wb-fg">
+              新建对话
+            </span>
+          </header>
           <AnswerMarkdownHost>{chat}</AnswerMarkdownHost>
           <CommandMenuHost />
-        </>
+        </div>
       )}
     </ChatHostProvider>
   );

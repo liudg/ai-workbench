@@ -12,7 +12,7 @@ export function BoardEntry() {
       data-board-entry=""
       aria-pressed={open}
       className={cn(
-        "flex h-8 w-full items-center gap-2.5 rounded-lg px-2 text-left text-[13px] transition-colors",
+        "flex h-8 w-full items-center gap-2.5 rounded-lg px-2 text-left text-xs transition-colors",
         open
           ? "bg-wb-active font-medium text-wb-fg"
           : "text-wb-fg-2 hover:bg-wb-hover hover:text-wb-fg",
@@ -24,7 +24,7 @@ export function BoardEntry() {
       {count > 0 && (
         <span
           title={`${count} 个会话待处理`}
-          className="rounded-full bg-wb-warn-soft px-2 py-0.5 text-[11px] font-medium leading-4 tabular-nums text-wb-warn"
+          className="rounded-full bg-wb-warn-soft px-2 py-0.5 text-xs font-medium leading-4 tabular-nums text-wb-warn"
         >
           {count} 待处理
         </span>

@@ -78,7 +78,7 @@ export function UpdateDialog() {
                     }}
                   />
                 </div>
-                <p className="mt-1 text-[11px] text-wb-fg-3">
+                <p className="mt-1 text-xs text-wb-fg-3">
                   {formatSize(update.received)}
                   {update.total ? ` / ${formatSize(update.total)}` : ""}
                 </p>

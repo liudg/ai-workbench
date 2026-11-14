@@ -70,7 +70,7 @@ export function AccountMenu() {
           <button
             type="button"
             role="menuitem"
-            className="flex h-8 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] text-wb-fg transition-colors hover:bg-wb-hover"
+            className="flex h-8 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-xs text-wb-fg transition-colors hover:bg-wb-hover"
             onClick={() => {
               setOpen(false);
               openSettings();
@@ -82,7 +82,7 @@ export function AccountMenu() {
           <button
             type="button"
             role="menuitem"
-            className="flex h-8 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] text-wb-fg transition-colors hover:bg-wb-hover"
+            className="flex h-8 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-xs text-wb-fg transition-colors hover:bg-wb-hover"
             onClick={() => {
               setOpen(false);
               checkUpdates();
@@ -93,7 +93,7 @@ export function AccountMenu() {
               strokeWidth={1.8}
             />
             <span className="min-w-0 flex-1">检查更新</span>
-            <span className="text-[11px] tabular-nums text-wb-fg-3">v{APP_VERSION}</span>
+            <span className="text-xs tabular-nums text-wb-fg-3">v{APP_VERSION}</span>
           </button>
         </div>
       )}

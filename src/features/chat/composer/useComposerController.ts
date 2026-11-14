@@ -142,7 +142,7 @@ export function useComposerController(host: ComposerHost, session: Session, even
   const activeSkill = view.skillMatches[Math.min(skillIndex, Math.max(view.skillMatches.length - 1, 0))];
 
   useComposerMenu(menu === "access", accessRef, accessMenuRef, closeMenu);
-  useComposerMenu(menu === "model", modelRef, modelMenuRef, closeMenu);
+  useComposerMenu(menu === "model", modelRef, modelMenuRef, closeMenu, undefined, "end");
   useComposerMenu(menu === "attach", plusRef, attachMenuRef, closeMenu);
 
   useEffect(() => {

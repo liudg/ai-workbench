@@ -23,6 +23,7 @@ export interface AttentionPillView {
   tone: AttentionTone;
   label: string;
   textClass: string;
+  bgClass: string;
   dotClass: string;
   pulse: boolean;
 }
@@ -32,24 +33,30 @@ export function attentionPill(attention: Attention | undefined): AttentionPillVi
   switch (attention.state) {
     case "needs-input":
       return attention.ask === "approval"
-        ? pill("approval", "待批准", "text-wb-warn", "bg-wb-warn")
-        : pill("input", "待回答", "text-wb-accent-ink", "bg-wb-accent");
+        ? pill("approval", "待批准", "text-wb-warn", "bg-wb-warn-soft", "bg-wb-warn")
+        : pill("input", "待回答", "text-wb-accent-ink", "bg-wb-accent-soft", "bg-wb-accent");
     case "starting":
-      return { ...pill("working", "正在启动", "text-wb-fg-3", "bg-wb-fg-3"), pulse: true };
+      return { ...pill("working", "正在启动", "text-wb-fg-3", "bg-wb-elev", "bg-wb-fg-3"), pulse: true };
     case "working":
-      return { ...pill("working", "运行中", "text-wb-fg-3", "bg-wb-fg-3"), pulse: true };
+      return { ...pill("working", "运行中", "text-wb-fg-3", "bg-wb-elev", "bg-wb-fg-3"), pulse: true };
     case "failed":
-      return attention.unread ? pill("failed", "失败", "text-wb-danger", "bg-wb-danger") : null;
+      return attention.unread ? pill("failed", "失败", "text-wb-danger", "bg-wb-danger-soft", "bg-wb-danger") : null;
     case "done":
-      return attention.unread ? pill("done", "已完成", "text-wb-ok", "bg-wb-ok") : null;
+      return attention.unread ? pill("done", "已完成", "text-wb-ok", "bg-wb-ok-soft", "bg-wb-ok") : null;
     case "new":
     case "idle":
       return null;
   }
 }
 
-function pill(tone: AttentionTone, label: string, textClass: string, dotClass: string): AttentionPillView {
-  return { tone, label, textClass, dotClass, pulse: false };
+function pill(
+  tone: AttentionTone,
+  label: string,
+  textClass: string,
+  bgClass: string,
+  dotClass: string,
+): AttentionPillView {
+  return { tone, label, textClass, bgClass, dotClass, pulse: false };
 }
 
 /** 等着你：在等输入，或者停下来了你还没看。 */

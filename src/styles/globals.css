@@ -13,14 +13,14 @@
   --color-wb-elev: #15181e;
   --color-wb-composer: #15181e;
   --color-wb-code: #0b0d11;
-  --color-wb-backdrop: rgba(4, 5, 8, 0.62);
+  --color-wb-backdrop: rgba(5, 7, 12, 0.48);
   --color-wb-card: #14171d;
   --color-wb-popover: #161920;
   --color-wb-input: #0c0e12;
-  --color-wb-hover: rgba(255, 255, 255, 0.05);
-  --color-wb-active: rgba(255, 255, 255, 0.085);
+  --color-wb-hover: rgba(255, 255, 255, 0.055);
+  --color-wb-active: rgba(255, 255, 255, 0.09);
   --color-wb-border: rgba(255, 255, 255, 0.075);
-  --color-wb-border-strong: rgba(255, 255, 255, 0.13);
+  --color-wb-border-strong: rgba(255, 255, 255, 0.135);
 
   --color-wb-fg: #ededf0;
   --color-wb-fg-2: #a3a9b6;
@@ -29,7 +29,7 @@
 
   --color-wb-accent: #5e81ff;
   --color-wb-accent-ink: #7da0ff;
-  --color-wb-accent-soft: rgba(94, 129, 255, 0.14);
+  --color-wb-accent-soft: rgba(94, 129, 255, 0.15);
   --color-wb-skill: #a78bfa;
   --color-wb-skill-soft: rgba(139, 92, 246, 0.16);
 
@@ -42,26 +42,26 @@
   --color-wb-primary-hover: #ffffff;
 
   --color-wb-warn: #e5993e;
-  --color-wb-warn-soft: rgba(229, 153, 62, 0.14);
+  --color-wb-warn-soft: rgba(229, 153, 62, 0.15);
   --color-wb-ok: #3fb97c;
-  --color-wb-ok-soft: rgba(63, 185, 124, 0.14);
+  --color-wb-ok-soft: rgba(63, 185, 124, 0.15);
   --color-wb-danger: #ef5f5f;
   --color-wb-danger-soft: rgba(239, 95, 95, 0.14);
 
-  --color-wb-diff-add-bg: rgba(46, 160, 67, 0.16);
+  --color-wb-diff-add-bg: rgba(46, 160, 67, 0.15);
   --color-wb-diff-add-word: rgba(46, 160, 67, 0.36);
   --color-wb-diff-add-fg: #4ac26b;
-  --color-wb-diff-del-bg: rgba(248, 81, 73, 0.16);
+  --color-wb-diff-del-bg: rgba(248, 81, 73, 0.15);
   --color-wb-diff-del-word: rgba(248, 81, 73, 0.36);
   --color-wb-diff-del-fg: #ff7b72;
 }
 
 :root {
   color-scheme: dark;
-  --wb-sidebar-row-hover: color-mix(in srgb, #ffffff 5%, var(--color-wb-sidebar));
-  --wb-island-shadow: 0 12px 36px -12px rgba(0, 0, 0, 0.65), 0 1px 0 rgba(255, 255, 255, 0.04) inset;
-  --wb-popover-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.62), 0 0 0 1px rgba(255, 255, 255, 0.03);
-  --wb-composer-shadow: 0 8px 24px -10px rgba(0, 0, 0, 0.5);
+  --wb-sidebar-row-hover: color-mix(in srgb, #ffffff 5.5%, var(--color-wb-sidebar));
+  --wb-island-shadow: 0 14px 36px -12px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  --wb-popover-shadow: 0 18px 42px -8px rgba(0, 0, 0, 0.68), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --wb-composer-shadow: 0 8px 24px -10px rgba(0, 0, 0, 0.52);
   --wb-seg-track: #0c0e13;
   --wb-seg-thumb: #242936;
   --wb-seg-thumb-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
@@ -99,8 +99,8 @@
   --color-wb-card: #f8f9fb;
   --color-wb-popover: #ffffff;
   --color-wb-input: #ffffff;
-  --color-wb-hover: rgba(15, 23, 42, 0.045);
-  --color-wb-active: rgba(15, 23, 42, 0.075);
+  --color-wb-hover: rgba(15, 23, 42, 0.048);
+  --color-wb-active: rgba(15, 23, 42, 0.08);
   --color-wb-border: rgba(15, 23, 42, 0.085);
   --color-wb-border-strong: rgba(15, 23, 42, 0.15);
 
@@ -111,7 +111,7 @@
 
   --color-wb-accent: #3b5bdb;
   --color-wb-accent-ink: #364fc7;
-  --color-wb-accent-soft: rgba(59, 91, 219, 0.1);
+  --color-wb-accent-soft: rgba(59, 91, 219, 0.11);
   --color-wb-skill: #6d28d9;
   --color-wb-skill-soft: rgba(109, 40, 217, 0.11);
 
@@ -137,10 +137,10 @@
   --color-wb-diff-del-word: rgba(239, 68, 68, 0.27);
   --color-wb-diff-del-fg: #b91c1c;
 
-  --wb-sidebar-row-hover: color-mix(in srgb, #0f172a 4.5%, var(--color-wb-sidebar));
-  --wb-island-shadow: 0 4px 20px -4px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.03);
-  --wb-popover-shadow: 0 14px 36px -6px rgba(15, 23, 42, 0.14), 0 2px 6px rgba(15, 23, 42, 0.06);
-  --wb-composer-shadow: 0 4px 16px -4px rgba(15, 23, 42, 0.06);
+  --wb-sidebar-row-hover: color-mix(in srgb, #0f172a 4.8%, var(--color-wb-sidebar));
+  --wb-island-shadow: 0 4px 20px -4px rgba(15, 23, 42, 0.07), 0 1px 2px rgba(15, 23, 42, 0.03);
+  --wb-popover-shadow: 0 16px 38px -6px rgba(15, 23, 42, 0.16), 0 2px 6px rgba(15, 23, 42, 0.06);
+  --wb-composer-shadow: 0 4px 16px -4px rgba(15, 23, 42, 0.07);
   --wb-seg-track: #eef1f6;
   --wb-seg-thumb: #ffffff;
   --wb-seg-thumb-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
@@ -177,7 +177,16 @@ body {
   overflow: hidden;
 }
 
-/* 统一浮层、提示与单色 Agent 图标（置于 components 层，允许 Tailwind utilities 覆盖圆角/前景色） */
+/* 沉浸顶栏开启时向 body 门户（CommandMenu / 文件搜索等）同步顶栏高度，并隐藏内层重复的侧栏开关。 */
+:root:has([data-immersive-shell]) {
+  --wb-shell-top: 2rem;
+}
+
+[data-immersive-shell] main [data-sidebar-toggle] {
+  display: none;
+}
+
+/* 统一浮层（两档圆角：紧凑菜单 12px / 模态浮层 16px）、提示与单色 Agent 图标 */
 @layer components {
   .wb-popover {
     border-radius: 0.75rem;
@@ -185,6 +194,24 @@ body {
     background: var(--color-wb-popover);
     color: var(--color-wb-fg);
     box-shadow: var(--wb-popover-shadow);
+    animation: wb-pop-in 130ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .wb-modal {
+    border-radius: 1rem;
+    border: 1px solid var(--color-wb-border-strong);
+    background: var(--color-wb-popover);
+    color: var(--color-wb-fg);
+    box-shadow: var(--wb-popover-shadow);
+    animation: wb-pop-in 130ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .wb-anim-pop {
+    animation: wb-pop-in 130ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .wb-backdrop-in {
+    animation: wb-backdrop-in 130ms ease-out both;
   }
 
   .wb-tooltip {
@@ -197,6 +224,26 @@ body {
 
   :root[data-theme="daylight"] .wb-agent-mono {
     filter: brightness(0) opacity(0.88);
+  }
+}
+
+@keyframes wb-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes wb-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }
 
@@ -296,6 +343,12 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .wb-popover,
+  .wb-modal,
+  .wb-anim-pop,
+  .wb-backdrop-in {
+    animation: none;
+  }
   .live-shimmer {
     animation: none;
     background-image: none;
@@ -548,7 +601,7 @@ button.answer-cite:hover {
   padding: 0.72rem 0.88rem;
   color: var(--color-wb-fg);
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 1.6;
 }
 .answer-command {
@@ -692,12 +745,15 @@ button.answer-cite:hover {
 /* 会话内查找。当前命中更深，其余命中浅一档。 */
 mark[data-thread-find-mark] {
   border-radius: 2px;
-  background-color: rgba(229, 153, 62, 0.35);
+  background-color: color-mix(in srgb, var(--color-wb-warn) 32%, transparent);
   color: inherit;
 }
 mark[data-thread-find-mark="current"] {
-  background-color: #e5993e;
-  color: #14171f;
+  background-color: var(--color-wb-warn);
+  color: #ffffff;
+}
+:root:not([data-theme="daylight"]) mark[data-thread-find-mark="current"] {
+  color: #0b0d11;
 }
 
 /* 正在回复的那段选区，回复框开着时一直标着。 */

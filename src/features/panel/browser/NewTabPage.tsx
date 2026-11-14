@@ -65,7 +65,7 @@ export function NewTabPage({ tabId }: { tabId: string }) {
                 <Icon className="h-4 w-4 shrink-0 text-wb-fg-2" />
                 <span className="min-w-0 flex-1 truncate">{label}</span>
                 {shortcut ? (
-                  <kbd className="shrink-0 rounded-md border border-wb-border bg-wb-elev px-1.5 py-0.5 text-[11px] text-wb-fg-3">
+                  <kbd className="shrink-0 rounded-md border border-wb-border bg-wb-elev px-1.5 py-0.5 text-xs text-wb-fg-3">
                     {shortcut}
                   </kbd>
                 ) : null}

@@ -136,7 +136,7 @@ export function ReplyBox({
           onClick={submit}
         >
           {DESKTOP_ZH.replyAdd}
-          <span aria-hidden className="text-[11px] opacity-60">↵</span>
+          <span aria-hidden className="text-xs opacity-60">↵</span>
         </button>
       </div>
     </div>,

@@ -73,13 +73,13 @@ export function PlanChoiceSurface({
       ref={rootRef}
       data-plan-choice-surface
       aria-busy={busy}
-      className="mb-2 overflow-hidden rounded-2xl border border-wb-border-strong bg-wb-elev px-4 py-4 shadow-[var(--wb-composer-shadow)]"
+      className="wb-anim-pop mb-2 overflow-hidden rounded-2xl border border-wb-border-strong bg-wb-elev p-3.5 text-xs shadow-[var(--wb-composer-shadow)]"
     >
-      <p className="break-words text-sm font-medium leading-6 text-wb-fg">{event.question}</p>
+      <p className="break-words text-xs font-medium leading-5 text-wb-fg">{event.question}</p>
       {event.subtitle ? (
         <p className="mt-1 break-words text-xs leading-5 text-wb-fg-2">{event.subtitle}</p>
       ) : null}
-      <div className={cn("mt-3", busy && "pointer-events-none opacity-60")}>
+      <div className={cn("mt-2.5", busy && "pointer-events-none opacity-60")}>
         <ChoiceCard
           event={event}
           session={session}

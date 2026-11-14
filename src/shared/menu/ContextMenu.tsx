@@ -101,7 +101,7 @@ export function ContextMenu({
             }}
           >
             <span className="min-w-0 flex-1">{item.label}</span>
-            {item.shortcut ? <span className="text-[11px] text-wb-fg-3">{item.shortcut}</span> : null}
+            {item.shortcut ? <span className="text-xs text-wb-fg-3">{item.shortcut}</span> : null}
           </button>
         ),
       )}

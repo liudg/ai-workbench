@@ -30,6 +30,7 @@ installGlobal("navigator", dom.navigator);
 
 let server: ViteDevServer;
 let ModelMenu: typeof import("./ModelMenu.tsx").ModelMenu;
+let placeComposerMenu: typeof import("./useComposerMenu.ts").placeComposerMenu;
 
 before(async () => {
   server = await createServer({
@@ -40,6 +41,7 @@ before(async () => {
     logLevel: "error",
   });
   ModelMenu = (await server.ssrLoadModule("/src/features/chat/composer/ModelMenu.tsx")).ModelMenu;
+  placeComposerMenu = (await server.ssrLoadModule("/src/features/chat/composer/useComposerMenu.ts")).placeComposerMenu;
 });
 
 after(async () => {
@@ -170,6 +172,54 @@ test("a session that cannot switch only shows its own agent; no catalog opens st
   const rail = [...host.querySelectorAll("[data-agent-rail] button")].map((button) => button.getAttribute("data-agent"));
   assert.deepEqual(rail, ["codex-cli"]);
   assert.match(host.querySelector("[data-model-list]")?.textContent ?? "", /当前 Agent 没有可选模型/);
+  assert.equal(host.querySelector("[data-back-to-effort]"), null);
+  await act(async () => root.unmount());
+  host.remove();
+});
+
+test("model menu widens 276px -> 324px with right-bottom anchoring and effort-aware back label", async () => {
+  const withEffort: AgentModelOption = {
+    ...model("gpt-5.4"),
+    default_effort: "high",
+    efforts: [{ id: "high", description: "" }],
+  };
+  const { host, root } = await mount(menu(null, [withEffort]));
+  const popover = host.querySelector("[data-intensity-popover]");
+  assert.ok(popover instanceof dom.HTMLElement);
+  assert.equal(popover.className.includes("w-[276px]"), true);
+
+  await act(async () => click(host, "[data-model-trigger]"));
+  assert.equal(popover.className.includes("w-[324px]"), true);
+  assert.equal(host.querySelector("[data-back-to-effort]")?.textContent, "返回强度");
+
+  await act(async () => click(host, "[data-back-to-effort]"));
+  assert.equal(popover.className.includes("w-[276px]"), true);
+  assert.equal(popover.getAttribute("data-intensity-panel"), "effort");
+
+  // Without reasoning efforts, back button says "返回" rather than "返回强度".
+  await act(async () => root.render(menu(null, [model("claude-sonnet")])));
+  await act(async () => click(host, "[data-model-trigger]"));
+  assert.equal(host.querySelector("[data-back-to-effort]")?.textContent, "返回");
+
+  // Right-bottom anchoring keeps right & bottom fixed across 276px -> 324px.
+  Object.defineProperty(dom, "innerWidth", { configurable: true, value: 1280 });
+  Object.defineProperty(dom, "innerHeight", { configurable: true, value: 800 });
+  const anchor = dom.document.createElement("button") as unknown as HTMLElement;
+  anchor.getBoundingClientRect = () =>
+    ({ left: 820, right: 900, top: 720, bottom: 748, width: 80, height: 28, x: 820, y: 720, toJSON: () => ({}) }) as DOMRect;
+  Object.defineProperty(popover, "offsetWidth", { configurable: true, value: 276 });
+  Object.defineProperty(popover, "offsetHeight", { configurable: true, value: 110 });
+  placeComposerMenu(anchor, popover as unknown as HTMLElement, "end");
+  assert.equal(popover.style.left, "auto");
+  assert.equal(popover.style.right, "380px");
+  assert.equal(popover.style.bottom, "88px");
+
+  Object.defineProperty(popover, "offsetWidth", { configurable: true, value: 324 });
+  Object.defineProperty(popover, "offsetHeight", { configurable: true, value: 220 });
+  placeComposerMenu(anchor, popover as unknown as HTMLElement, "end");
+  assert.equal(popover.style.right, "380px");
+  assert.equal(popover.style.bottom, "88px");
+
   await act(async () => root.unmount());
   host.remove();
 });

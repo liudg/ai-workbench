@@ -33,7 +33,7 @@ export function TurnFoldLine({
         className="group/fold inline-flex max-w-full min-w-0 flex-nowrap items-center gap-2 rounded py-0.5 text-left"
       >
         {icon}
-        <span className="min-w-0 truncate text-[12.5px] text-wb-fg-2 transition-colors group-hover/fold:text-wb-fg">
+        <span className="min-w-0 truncate text-[13px] text-wb-fg-2 transition-colors group-hover/fold:text-wb-fg">
           {summary}
         </span>
         {pulse ? (

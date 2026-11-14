@@ -128,12 +128,12 @@ function FilterTree({
         }
       />
       {tree.filtered.truncated ? (
-        <p className="px-2 py-2 text-center text-[11px] text-wb-fg-3" data-files-filter-cap>
+        <p className="px-2 py-2 text-center text-xs text-wb-fg-3" data-files-filter-cap>
           {DESKTOP_ZH.filesFilterCap}
         </p>
       ) : null}
       {tree.filtering ? (
-        <p className="px-2 py-1 text-center text-[11px] text-wb-fg-3">{DESKTOP_ZH.filesFilterPending}</p>
+        <p className="px-2 py-1 text-center text-xs text-wb-fg-3">{DESKTOP_ZH.filesFilterPending}</p>
       ) : null}
     </div>
   );
@@ -250,18 +250,18 @@ function TreeRows({
         {open ? (
           <ul>
             {loading.has(entry.path) && !children ? (
-              <li className="px-2 py-1 text-[11px] text-wb-fg-3" style={{ paddingLeft: 16 + depth * 12 }}>
+              <li className="px-2 py-1 text-xs text-wb-fg-3" style={{ paddingLeft: 16 + depth * 12 }}>
                 {surface === "dropdown" ? DESKTOP_ZH.loadingDirectory : DESKTOP_ZH.filesReading}
               </li>
             ) : null}
             {error ? (
-              <li className="px-2 py-1 text-[11px] text-wb-danger" style={{ paddingLeft: 16 + depth * 12 }}>
+              <li className="px-2 py-1 text-xs text-wb-danger" style={{ paddingLeft: 16 + depth * 12 }}>
                 {surface === "dropdown" ? DESKTOP_ZH.directoryError : error}
               </li>
             ) : null}
             {children && children.length === 0 ? (
               <li
-                className="px-2 py-1 text-[11px] text-wb-fg-3"
+                className="px-2 py-1 text-xs text-wb-fg-3"
                 data-directory-empty
                 style={{ paddingLeft: 16 + depth * 12 }}
               >

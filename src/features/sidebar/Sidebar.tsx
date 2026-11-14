@@ -1,5 +1,6 @@
 import { FolderPlus, Search } from "lucide-react";
 
+import { useNeedsYouCount } from "@/features/board";
 import { COMMAND_MENU_COPY } from "@/features/command-menu";
 import { ConnectionNotice } from "@/shared/shell/ConnectionNotice";
 import { useSidebarOpen } from "@/shared/shell/sidebar-open";
@@ -15,9 +16,10 @@ import { useSidebar } from "./use-sidebar";
 
 export function Sidebar() {
   const open = useSidebarOpen();
+  const needsYouCount = useNeedsYouCount();
   const frame = <SidebarFrame />;
   if (open) return frame;
-  return <SidebarPeek>{frame}</SidebarPeek>;
+  return <SidebarPeek needsYou={needsYouCount > 0}>{frame}</SidebarPeek>;
 }
 
 function SidebarFrame() {
@@ -38,21 +40,21 @@ function SidebarFrame() {
   return (
     <aside
       data-sidebar-open=""
-      className="flex h-full min-h-0 w-[256px] shrink-0 flex-col overflow-hidden bg-wb-sidebar text-wb-fg"
+      className="flex h-full min-h-0 w-[244px] shrink-0 flex-col overflow-hidden bg-wb-sidebar text-wb-fg"
     >
-      <div className="space-y-0.5 px-1.5 pb-1 pt-2.5">
+      <div className="space-y-0.5 p-2">
         <NewChatEntry />
         <button
           type="button"
           data-sidebar-search=""
           aria-label={COMMAND_MENU_COPY.open}
           aria-keyshortcuts="Control+K Control+Shift+P"
-          className="flex h-8 w-full items-center gap-2.5 rounded-lg px-2 text-left text-[13px] text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
+          className="flex h-8 w-full items-center gap-2.5 rounded-lg px-2 text-left text-xs text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
           onClick={openCommandMenu}
         >
           <Search className="h-3.5 w-3.5 shrink-0 text-wb-fg-3" strokeWidth={1.8} />
           <span className="min-w-0 flex-1 truncate">搜索或跳转</span>
-          <kbd className="shrink-0 font-sans text-[11px] text-wb-fg-3">
+          <kbd className="shrink-0 font-sans text-xs text-wb-fg-3">
             {COMMAND_MENU_COPY.shortcutOpen}
           </kbd>
         </button>
@@ -61,12 +63,12 @@ function SidebarFrame() {
 
       <div
         data-sidebar-scroll
-        className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-1.5 pb-2 [overflow-anchor:none]"
+        className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-2 pb-2 [overflow-anchor:none]"
       >
         {pinned.length > 0 && (
-          <section data-sidebar-section="pinned" className="pt-2">
+          <section data-sidebar-section="pinned" className="pt-1.5">
             <div className="flex items-center px-2 pb-1">
-              <span className="text-[11px] font-medium tracking-wide text-wb-fg-3">置顶</span>
+              <span className="text-xs font-medium text-wb-fg-3">置顶</span>
             </div>
             <div className="space-y-0.5">{pinned.map(item)}</div>
           </section>
@@ -100,7 +102,7 @@ function SidebarFrame() {
       )}
 
       <ConnectionNotice />
-      <div className="relative z-10 border-t border-wb-border px-2.5 py-2">
+      <div className="relative z-10 border-t border-wb-border p-2.5">
         <AccountMenu />
       </div>
     </aside>

@@ -22,7 +22,7 @@ export function SlashMenu({
       active={selected}
       footer={
         token === "/" ? (
-          <p className="border-t border-wb-border px-3 py-2 text-[11px] leading-4 text-wb-fg-3">
+          <p className="border-t border-wb-border px-3 py-2 text-xs leading-4 text-wb-fg-3">
             /vim、/theme 等终端专属命令无需在此发送。
           </p>
         ) : null

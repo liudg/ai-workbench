@@ -1,20 +1,42 @@
-import { useEffect, type RefObject } from "react";
+import { useLayoutEffect, type RefObject } from "react";
 
 import { isImeKey } from "../keyboard";
 
-function placeMenu(anchor: HTMLElement, menu: HTMLElement) {
+export type ComposerMenuAlign = "center" | "end";
+
+export function placeComposerMenu(
+  anchor: HTMLElement,
+  menu: HTMLElement,
+  align: ComposerMenuAlign = "center",
+) {
   const rect = anchor.getBoundingClientRect();
   const width = menu.offsetWidth;
   const height = menu.offsetHeight;
-  let left = rect.left + rect.width / 2 - width / 2;
-  if (left + width > window.innerWidth - 8) {
-    left = window.innerWidth - width - 8;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+
+  if (align === "end") {
+    const maxRight = Math.max(8, vw - width - 8);
+    const right = Math.min(Math.max(8, vw - rect.right), maxRight);
+    menu.style.left = "auto";
+    menu.style.right = `${right}px`;
+  } else {
+    let left = rect.left + rect.width / 2 - width / 2;
+    if (left + width > vw - 8) {
+      left = vw - width - 8;
+    }
+    left = Math.max(8, left);
+    menu.style.right = "auto";
+    menu.style.left = `${left}px`;
   }
-  left = Math.max(8, left);
-  let top = rect.top - height - 8;
-  if (top < 8) top = rect.bottom + 8;
-  menu.style.top = `${top}px`;
-  menu.style.left = `${left}px`;
+
+  if (rect.top - height - 8 < 8 && vh - rect.bottom > rect.top) {
+    menu.style.bottom = "auto";
+    menu.style.top = `${rect.bottom + 8}px`;
+  } else {
+    menu.style.top = "auto";
+    menu.style.bottom = `${Math.max(8, vh - rect.top + 8)}px`;
+  }
 }
 
 export function useComposerMenu(
@@ -23,13 +45,14 @@ export function useComposerMenu(
   menuRef: RefObject<HTMLElement | null>,
   onClose: () => void,
   token?: unknown,
+  align: ComposerMenuAlign = "center",
 ) {
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open) return;
     const place = () => {
       const anchor = anchorRef.current;
       const menu = menuRef.current;
-      if (anchor && menu) placeMenu(anchor, menu);
+      if (anchor && menu) placeComposerMenu(anchor, menu, align);
     };
     place();
     let observer: ResizeObserver | null = null;
@@ -70,5 +93,5 @@ export function useComposerMenu(
       document.removeEventListener("keydown", onKey);
       window.removeEventListener("resize", place);
     };
-  }, [open, anchorRef, menuRef, onClose, token]);
+  }, [open, anchorRef, menuRef, onClose, token, align]);
 }

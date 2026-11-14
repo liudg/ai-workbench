@@ -21,10 +21,10 @@ export function TextSnippetCards({
           title={snippet.note ? `${snippet.note}\n\n${snippet.body}` : snippet.body}
           className="group relative flex h-[84px] w-[120px] shrink-0 flex-col rounded-xl border border-wb-border bg-wb-surface p-2"
         >
-          <p className="line-clamp-3 whitespace-pre-wrap break-words border-l-2 border-wb-border-strong pl-1.5 text-[11px] leading-4 text-wb-fg-2">
+          <p className="line-clamp-3 whitespace-pre-wrap break-words border-l-2 border-wb-border-strong pl-1.5 text-xs leading-4 text-wb-fg-2">
             {textSnippetPreview(snippet.note ?? snippet.body)}
           </p>
-          <span className="mt-auto max-w-full self-start truncate rounded-md border border-wb-border px-1.5 text-[10px] leading-4 text-wb-fg-3">
+          <span className="mt-auto max-w-full self-start truncate rounded-md border border-wb-border px-1.5 text-xs leading-4 text-wb-fg-3">
             {textSnippetBadge(snippet)}
           </span>
           <button

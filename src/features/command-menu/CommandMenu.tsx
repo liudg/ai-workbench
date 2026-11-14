@@ -123,7 +123,7 @@ export function CommandMenu({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[60] flex items-start justify-center bg-wb-backdrop pt-[12vh] backdrop-blur-[2px]"
+      className="wb-backdrop-in fixed inset-0 z-[60] flex items-start justify-center bg-wb-backdrop pt-[calc(4rem+var(--wb-shell-top,0px))] backdrop-blur-[2px]"
       data-command-menu
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
@@ -135,7 +135,7 @@ export function CommandMenu({
         data-command-drill={drill}
         aria-describedby="command-menu-description"
         onKeyDown={onKeyDown}
-        className="wb-popover flex max-h-[min(560px,70vh)] w-[min(640px,94vw)] flex-col overflow-hidden rounded-2xl"
+        className="wb-modal flex max-h-[min(520px,70vh)] w-[min(460px,92vw)] flex-col overflow-hidden text-xs"
       >
         <p id="command-menu-description" className="sr-only">
           {COPY.description}
@@ -151,7 +151,7 @@ export function CommandMenu({
             </button>
           ) : null}
           {drill === "rename" || drill === "delete" ? (
-            <span className="py-3 text-sm font-medium text-wb-fg">
+            <span className="py-2.5 text-xs font-medium text-wb-fg">
               {drill === "rename" ? COPY.renameTitle : COPY.deleteTitle}
             </span>
           ) : (
@@ -162,7 +162,7 @@ export function CommandMenu({
               aria-label={placeholder}
               data-command-query
               onChange={(event) => onQuery(event.target.value)}
-              className="h-12 min-w-0 flex-1 bg-transparent text-sm text-wb-fg outline-none placeholder:text-wb-dim"
+              className="h-10 min-w-0 flex-1 bg-transparent text-xs text-wb-fg outline-none placeholder:text-wb-dim"
             />
           )}
         </div>
@@ -188,14 +188,14 @@ export function CommandMenu({
           />
         ) : null}
         {notice ? (
-          <p className="px-3.5 pt-3 text-xs text-wb-fg-2" data-command-notice>
+          <p className="px-3.5 pt-2.5 text-xs text-wb-fg-2" data-command-notice>
             {notice}
           </p>
         ) : null}
         {drill === "commands" || drill === "chats" || drill === "files" ? (
-          <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-1.5 py-2" data-command-list>
+          <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto p-1.5" data-command-list>
             {rows.length === 0 ? (
-              <p className="px-4 py-6 text-center text-sm text-wb-fg-3" data-command-empty>
+              <p className="px-4 py-6 text-center text-xs text-wb-fg-3" data-command-empty>
                 {emptyLabel}
               </p>
             ) : (
@@ -235,7 +235,7 @@ function RowList({
     <>
       {sections.map((section) => (
         <section key={section.group} data-command-menu-search-section={section.group} className="pb-1">
-          <h2 className="px-2.5 pb-1 pt-2 text-[11px] font-medium text-wb-fg-3">{section.label}</h2>
+          <h2 className="px-2.5 py-1 text-xs font-medium text-wb-fg-3">{section.label}</h2>
           {section.rows.map(({ row, index }) => {
             const selected = index === active;
             return (
@@ -248,8 +248,8 @@ function RowList({
                 data-command-active={selected ? "true" : "false"}
                 className={
                   selected
-                    ? "flex h-9 w-full items-center gap-3 rounded-lg bg-wb-active px-2.5 text-left text-sm text-wb-fg"
-                    : "flex h-9 w-full items-center gap-3 rounded-lg px-2.5 text-left text-sm text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
+                    ? "flex w-full items-center gap-3 rounded-lg bg-wb-active px-2.5 py-2 text-left text-xs text-wb-fg"
+                    : "flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left text-xs text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
                 }
                 onMouseEnter={() => onActive(index)}
                 onClick={() => onRun(index)}
@@ -263,7 +263,7 @@ function RowList({
                   </span>
                 ) : null}
                 {row.shortcut ? (
-                  <span className="shrink-0 font-mono text-[11px] text-wb-fg-3" data-command-shortcut>
+                  <span className="shrink-0 font-mono text-xs text-wb-fg-3" data-command-shortcut>
                     {row.shortcut}
                   </span>
                 ) : null}

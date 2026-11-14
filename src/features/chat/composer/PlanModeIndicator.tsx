@@ -16,7 +16,7 @@ export function PlanModeIndicator({
       data-plan-indicator
       aria-label={DESKTOP_ZH.planLabel}
       disabled={disabled}
-      className="group relative inline-flex h-7 shrink-0 items-center gap-1 rounded-lg bg-wb-accent-soft px-2 text-[13px] text-wb-accent transition-colors hover:bg-wb-hover hover:text-wb-fg disabled:cursor-not-allowed disabled:opacity-40"
+      className="group relative inline-flex h-7 shrink-0 items-center gap-1 rounded-lg bg-wb-accent-soft px-2 text-xs font-medium text-wb-accent-ink transition-colors hover:bg-wb-hover hover:text-wb-fg disabled:cursor-not-allowed disabled:opacity-40"
       onClick={(event) => {
         event.stopPropagation();
         onExit();

@@ -75,10 +75,10 @@ export function BrowserChrome({
           </button>
           <div
             role="tooltip"
-            className="wb-tooltip pointer-events-none absolute left-0 top-full z-30 mt-1 hidden w-max max-w-[260px] items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] leading-4 group-hover:flex"
+            className="wb-tooltip pointer-events-none absolute left-0 top-full z-30 mt-1 hidden w-max max-w-[260px] items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs leading-4 group-hover:flex"
           >
             <span>{DESKTOP_ZH.browserAnnotateTooltip}</span>
-            <kbd className="shrink-0 rounded border border-wb-border bg-wb-elev px-1 py-0.5 text-[10px] text-wb-fg-2">
+            <kbd className="shrink-0 rounded border border-wb-border bg-wb-elev px-1 py-0.5 text-xs text-wb-fg-2">
               {DESKTOP_ZH.browserAnnotateShortcut}
             </kbd>
           </div>

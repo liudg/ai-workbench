@@ -39,7 +39,7 @@ export function ChatThumb({
     return (
       <span
         className={cn(
-          "flex items-center justify-center overflow-hidden border border-wb-border bg-wb-elev px-1 text-center text-[10px] leading-3 text-wb-fg-2",
+          "flex items-center justify-center overflow-hidden border border-wb-border bg-wb-elev px-1 text-center text-xs leading-4 text-wb-fg-2",
           className,
         )}
       >

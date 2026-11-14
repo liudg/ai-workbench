@@ -113,81 +113,99 @@ export function SessionRow({
     });
   };
 
+  const pill = attentionPill(task.attention);
+
   return (
     <>
-      <div
-        role="button"
-        tabIndex={0}
-        data-session-row=""
-        data-session-id={task.id}
-        data-agent={task.agent}
-        data-active={active ? "true" : "false"}
-        data-pinned={task.pinned ? "true" : "false"}
-        data-archived={task.archived ? "true" : "false"}
-        data-subtask={depth === 1 ? "true" : undefined}
-        className={cn(
-          "group relative flex h-full w-full items-center gap-1.5 rounded-lg pr-2 text-left text-xs leading-none transition-colors",
-          depth === 1 ? "pl-[48px]" : "pl-8",
-          active
-            ? "bg-wb-active font-medium text-wb-fg"
-            : "text-wb-fg-2 hover:bg-wb-hover hover:text-wb-fg",
-        )}
-        onClick={row.select}
-        onContextMenu={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          setMenuOpen(true);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            row.select();
-          }
-        }}
-      >
+      <div className="relative h-full w-full py-px">
         {depth === 1 && (
           <span
             aria-hidden="true"
             data-subtask-rail={last ? "last" : "middle"}
             className={cn(
-              "pointer-events-none absolute left-10 top-0 border-wb-border-strong",
-              last ? "h-1/2 w-1.5 rounded-bl-[5px] border-b border-l" : "bottom-0 border-l",
+              "pointer-events-none absolute left-7 top-0 border-wb-border-strong",
+              last ? "h-1/2 w-2 rounded-bl border-b border-l" : "bottom-0 border-l",
             )}
           />
         )}
-        {subtasks > 0 && (
-          <button
-            type="button"
-            className="absolute left-3.5 flex h-4 w-4 items-center justify-center rounded text-wb-fg-3 hover:text-wb-fg"
-            aria-label={collapsed ? `展开 ${subtasks} 个子任务` : "收起子任务"}
-            aria-expanded={!collapsed}
-            onClick={(event) => {
-              event.stopPropagation();
-              onToggle();
-            }}
-          >
-            {collapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-          </button>
-        )}
-        <SessionAgentIcon identity={row.identity} />
-        <span className="min-w-0 flex-1 truncate">{task.title}</span>
-        <AttentionPill pill={attentionPill(task.attention)} />
-        {task.pinned && <Pin className="h-3 w-3 shrink-0 text-wb-fg-3" aria-hidden="true" />}
-        <span className="relative flex w-14 shrink-0 justify-end text-right tabular-nums">
-          <span
-            className={cn(
-              "text-[10px] text-wb-fg-3",
-              "group-hover:invisible group-focus-within:invisible",
-              menuOpen && "invisible",
-            )}
-          >
-            {relativeSessionTime(task.updatedAt, now)}
-          </span>
+        <div
+          role="button"
+          tabIndex={0}
+          data-session-row=""
+          data-session-id={task.id}
+          data-agent={task.agent}
+          data-active={active ? "true" : "false"}
+          data-pinned={task.pinned ? "true" : "false"}
+          data-archived={task.archived ? "true" : "false"}
+          data-subtask={depth === 1 ? "true" : undefined}
+          className={cn(
+            "group relative flex h-full w-full items-center gap-1.5 rounded-lg pr-2 text-left text-xs leading-none transition-colors",
+            depth === 1 ? "pl-10" : "pl-6",
+            active
+              ? "bg-wb-active font-medium text-wb-fg"
+              : "text-wb-fg-2 hover:bg-wb-hover hover:text-wb-fg",
+          )}
+          onClick={row.select}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setMenuOpen(true);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              row.select();
+            }
+          }}
+        >
+          {subtasks > 0 && (
+            <button
+              type="button"
+              className="absolute left-1.5 flex h-4 w-4 items-center justify-center rounded text-wb-fg-3 hover:text-wb-fg"
+              aria-label={collapsed ? `展开 ${subtasks} 个子任务` : "收起子任务"}
+              aria-expanded={!collapsed}
+              onClick={(event) => {
+                event.stopPropagation();
+                onToggle();
+              }}
+            >
+              {collapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            </button>
+          )}
+          <SessionAgentIcon identity={row.identity} />
+          <span className="min-w-0 flex-1 truncate">{task.title}</span>
+          {task.pinned && (
+            <Pin
+              className={cn(
+                "h-3 w-3 shrink-0 text-wb-fg-3 group-hover:invisible group-focus-within:invisible",
+                menuOpen && "invisible",
+              )}
+              aria-hidden="true"
+            />
+          )}
+          {pill ? (
+            <AttentionPill
+              pill={pill}
+              className={cn(
+                "group-hover:invisible group-focus-within:invisible",
+                menuOpen && "invisible",
+              )}
+            />
+          ) : (
+            <span
+              className={cn(
+                "shrink-0 text-xs tabular-nums text-wb-fg-3 group-hover:invisible group-focus-within:invisible",
+                menuOpen && "invisible",
+              )}
+            >
+              {relativeSessionTime(task.updatedAt, now)}
+            </span>
+          )}
           <button
             ref={anchorRef}
             type="button"
             className={cn(
-              "absolute inset-0 hidden items-center justify-end text-wb-fg-2 group-hover:flex group-focus-within:flex",
+              "absolute right-1.5 top-1/2 hidden h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-wb-fg-2 hover:bg-wb-hover hover:text-wb-fg group-hover:flex group-focus-within:flex",
               menuOpen && "flex",
             )}
             aria-label="聊天操作"
@@ -200,7 +218,7 @@ export function SessionRow({
           >
             <Ellipsis className="h-4 w-4" />
           </button>
-        </span>
+        </div>
       </div>
       <FixedMenu
         open={menuOpen}

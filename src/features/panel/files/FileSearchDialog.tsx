@@ -75,7 +75,7 @@ export function FileSearchDialog({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[70] flex items-start justify-center bg-wb-backdrop pt-16 backdrop-blur-[2px]"
+      className="wb-backdrop-in fixed inset-0 z-[70] flex items-start justify-center bg-wb-backdrop pt-[calc(4rem+var(--wb-shell-top,0px))] backdrop-blur-[2px]"
       data-file-search
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
@@ -86,14 +86,14 @@ export function FileSearchDialog({
         aria-modal="true"
         aria-label={DESKTOP_ZH.openFilesSearchTitle}
         onKeyDown={onKeyDown}
-        className="wb-popover w-[min(720px,94vw)] rounded-2xl p-4"
+        className="wb-modal w-[min(720px,94vw)] p-4"
       >
         <div className="mb-3 flex items-center justify-between gap-3">
           <h2 className="text-sm font-medium text-wb-fg">{DESKTOP_ZH.openFilesSearchTitle}</h2>
           <button
             type="button"
             data-file-search-esc
-            className="rounded-md border border-wb-border bg-wb-elev px-1.5 py-0.5 text-[11px] text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
+            className="rounded-md border border-wb-border bg-wb-elev px-1.5 py-0.5 text-xs text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
             onClick={onClose}
           >
             Esc
@@ -168,7 +168,7 @@ export function FileSearchDialog({
                       </span>
                       <span
                         title={where}
-                        className="max-w-[42%] shrink-0 truncate font-mono text-[11px] tabular-nums text-wb-fg-3"
+                        className="max-w-[42%] shrink-0 truncate font-mono text-xs tabular-nums text-wb-fg-3"
                       >
                         {where}
                       </span>
@@ -179,7 +179,7 @@ export function FileSearchDialog({
             ) : null}
             {hits.length > 0 ? (
               <div
-                className="flex items-center justify-between gap-3 border-t border-wb-border px-3 py-2 text-[11px] text-wb-fg-3"
+                className="flex items-center justify-between gap-3 border-t border-wb-border px-3 py-2 text-xs text-wb-fg-3"
                 data-file-search-footer
               >
                 <span data-file-search-cap>

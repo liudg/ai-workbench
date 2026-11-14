@@ -23,7 +23,9 @@ test("pills only color what needs you; working is a gray pulse", () => {
   assert.equal(attentionPill(at("needs-input"))?.label, "待回答");
   const working = attentionPill(at("working"));
   assert.equal(working?.pulse, true);
-  assert.equal(/emerald|green|red|f0a04a/.test(`${working?.textClass} ${working?.dotClass}`), false);
+  assert.equal(/emerald|green|red|f0a04a/.test(`${working?.textClass} ${working?.bgClass} ${working?.dotClass}`), false);
+  assert.equal(attentionPill(at("needs-input", { ask: "approval" }))?.bgClass, "bg-wb-warn-soft");
+  assert.equal(attentionPill(at("done", { unread: true }))?.bgClass, "bg-wb-ok-soft");
   assert.equal(attentionPill(at("done", { unread: true }))?.label, "已完成");
   assert.equal(attentionPill(at("failed", { unread: true }))?.label, "失败");
   assert.equal(attentionPill(at("done")), null);

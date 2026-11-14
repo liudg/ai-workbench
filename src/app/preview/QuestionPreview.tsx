@@ -108,7 +108,7 @@ export default function QuestionPreview() {
         <button
           type="button"
           data-preview-surface="async-reply"
-          className="rounded-full border border-wb-border bg-wb-elev px-3 py-1 text-sm text-wb-fg transition-colors hover:bg-wb-hover"
+          className="rounded-lg border border-wb-border bg-wb-elev px-3 py-1 text-sm text-wb-fg transition-colors hover:bg-wb-hover"
           onClick={() => setSurface("async-reply")}
         >
           异步提问
@@ -116,7 +116,7 @@ export default function QuestionPreview() {
         <button
           type="button"
           data-preview-surface="request-input"
-          className="rounded-full border border-wb-border bg-wb-elev px-3 py-1 text-sm text-wb-fg transition-colors hover:bg-wb-hover"
+          className="rounded-lg border border-wb-border bg-wb-elev px-3 py-1 text-sm text-wb-fg transition-colors hover:bg-wb-hover"
           onClick={() => setSurface("request-input")}
         >
           逐题提问

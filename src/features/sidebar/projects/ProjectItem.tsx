@@ -60,7 +60,7 @@ export function ProjectItem({
     <div className="py-0.5">
       <div
         className={cn(
-          "group relative flex w-full cursor-pointer flex-nowrap items-center gap-1.5 rounded-lg px-2 py-1.5 pr-2 text-left text-[13px] transition-colors hover:bg-wb-hover focus-within:bg-wb-hover",
+          "group relative flex w-full cursor-pointer flex-nowrap items-center gap-1.5 rounded-lg px-2 py-1.5 pr-2 text-left text-xs transition-colors hover:bg-wb-hover focus-within:bg-wb-hover",
           menuOpen && "bg-wb-hover",
         )}
         title={displayPath(project.path)}
@@ -75,19 +75,23 @@ export function ProjectItem({
       >
         <ChevronRight
           className={cn(
-            "h-3.5 w-3.5 shrink-0 text-wb-fg-3 transition-transform",
+            "h-3 w-3 shrink-0 text-wb-fg-3 transition-transform",
             !collapsed && "rotate-90",
           )}
         />
         <span className="flex w-1.5 shrink-0 justify-center">
-          <AttentionPill pill={pill} compact />
+          {pill ? (
+            <AttentionPill pill={pill} compact />
+          ) : (
+            <span data-project-dot="ready" className="h-1.5 w-1.5 shrink-0 rounded-full bg-wb-ok" aria-hidden="true" />
+          )}
         </span>
         <span className="max-w-[9.5rem] shrink-0 truncate font-medium text-wb-fg">{project.name}</span>
         {branch ? (
           <span
             data-project-branch={branch}
             title={branch}
-            className="min-w-0 shrink truncate rounded border border-wb-border bg-wb-elev px-1.5 text-[10px] leading-4 text-wb-fg-2"
+            className="min-w-0 shrink truncate rounded border border-wb-border bg-wb-elev px-1.5 text-xs leading-4 text-wb-fg-2"
           >
             {branch}
           </span>

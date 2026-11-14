@@ -94,7 +94,7 @@ export function BranchMenu({
             />
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto pt-1">
-            <p className="px-2.5 pb-1 pt-1 text-[11px] font-medium text-wb-fg-3">{name}</p>
+            <p className="px-2.5 pb-1 pt-1 text-xs font-medium text-wb-fg-3">{name}</p>
             {actionError ? (
               <p role="alert" className="px-2.5 pb-1 text-xs text-wb-danger">
                 {actionError}

@@ -181,11 +181,11 @@ export function QuestionPopup({
         ref={cardRef}
         tabIndex={0}
         style={{ maxHeight: place.maxHeight }}
-        className="wb-popover select-text overflow-y-auto rounded-2xl text-wb-fg outline-none [&_button]:select-none"
+        className="wb-modal select-text overflow-y-auto text-xs outline-none [&_button]:select-none"
         onKeyDown={onKeyDown}
       >
-        <div className="sticky top-0 z-10 flex items-start justify-between gap-3 bg-wb-popover px-4 pb-2 pt-4">
-          <p className="min-w-0 break-words text-sm font-medium text-wb-fg">{title}</p>
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-2 bg-wb-popover px-3.5 pb-2 pt-3.5">
+          <p className="min-w-0 break-words text-xs font-semibold text-wb-fg">{title}</p>
           <div className="flex shrink-0 items-center gap-1 text-xs text-wb-fg-3">
             {questions.length > 1 ? (
               <>
@@ -228,16 +228,16 @@ export function QuestionPopup({
           </div>
         </div>
         {showBody ? (
-          <p className="break-words whitespace-pre-wrap px-4 text-sm font-medium text-wb-fg">
+          <p className="break-words whitespace-pre-wrap px-3.5 text-xs font-medium text-wb-fg">
             {question.question}
           </p>
         ) : null}
         {question.description?.trim() ? (
-          <p className="mt-1 break-words whitespace-pre-wrap px-4 text-sm text-wb-fg-2">
+          <p className="mt-1 break-words whitespace-pre-wrap px-3.5 text-xs text-wb-fg-2">
             {question.description}
           </p>
         ) : null}
-        <div className="flex flex-col gap-1 px-2 py-2">
+        <div className="flex flex-col gap-2 px-3.5 pb-3.5 pt-1">
           {showOptions ? (
             <div
               className="flex flex-col gap-1"
@@ -269,10 +269,10 @@ export function QuestionPopup({
               onChange={(change) => setStep(setQuestionFreeform(step, questions, change.target.value))}
               placeholder={placeholder}
               autoComplete="off"
-              className="min-h-10 w-full bg-transparent px-2 py-2 text-sm text-wb-fg outline-none placeholder:text-wb-fg-3"
+              className="min-h-8 w-full bg-transparent px-2 py-1.5 text-xs text-wb-fg outline-none placeholder:text-wb-fg-3"
             />
           ) : null}
-          <div className={cn("flex items-center gap-2", showOther && "rounded-xl px-2 py-1.5 focus-within:ring-1 focus-within:ring-wb-accent/40")}>
+          <div className={cn("flex items-center gap-2", showOther && "rounded-xl px-2 py-1 focus-within:ring-1 focus-within:ring-wb-accent/40")}>
             {showOther ? (
               <input
                 ref={freeformRef}
@@ -283,7 +283,7 @@ export function QuestionPopup({
                 onFocus={() => setStep(focusQuestionFreeform(step, questions))}
                 placeholder={placeholder}
                 autoComplete="off"
-                className="min-w-0 flex-1 bg-transparent py-1.5 text-sm text-wb-fg outline-none placeholder:text-wb-fg-3"
+                className="min-w-0 flex-1 bg-transparent py-1 text-xs text-wb-fg outline-none placeholder:text-wb-fg-3"
               />
             ) : (
               <span className="flex-1" />
@@ -292,7 +292,7 @@ export function QuestionPopup({
               type="button"
               data-question-skip
               data-request-input-dismiss
-              className="h-8 shrink-0 cursor-pointer rounded-full border border-wb-border-strong bg-transparent px-3 text-sm text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
+              className="h-7 shrink-0 cursor-pointer rounded-lg border border-wb-border-strong bg-transparent px-3 text-xs text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
               onKeyDown={(keyEvent) => {
                 if (keyEvent.key === "Enter") keyEvent.stopPropagation();
               }}
@@ -304,7 +304,7 @@ export function QuestionPopup({
               type="button"
               data-question-primary
               disabled={!canPrimary}
-              className="flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full bg-wb-primary px-3.5 text-sm font-medium text-wb-primary-fg transition-colors hover:bg-wb-primary-hover disabled:cursor-not-allowed disabled:bg-wb-elev disabled:text-wb-fg-3"
+              className="flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-wb-primary px-3 text-xs font-medium text-wb-primary-fg transition-colors hover:bg-wb-primary-hover disabled:cursor-not-allowed disabled:bg-wb-elev disabled:text-wb-fg-3"
               onClick={() => apply(continueQuestionStep(step, questions))}
             >
               <span>{primary}</span>
@@ -349,12 +349,12 @@ function OptionRow({
       disabled={disabled}
       data-question-option={index + 1}
       className={cn(
-        "flex w-full min-w-0 items-start gap-2.5 rounded-xl px-2 py-2 text-left transition-colors",
+        "flex w-full min-w-0 items-center gap-2.5 rounded-xl px-2.5 py-1.5 text-left text-xs transition-colors",
         disabled
           ? "cursor-not-allowed opacity-50"
           : selected
-            ? "cursor-pointer bg-wb-active"
-            : "cursor-pointer hover:bg-wb-hover",
+            ? "cursor-pointer bg-wb-active text-wb-fg"
+            : "cursor-pointer text-wb-fg-2 hover:bg-wb-hover hover:text-wb-fg",
       )}
       onMouseDown={(event) => event.preventDefault()}
       onClick={onPick}
@@ -362,7 +362,7 @@ function OptionRow({
       {multi ? (
         <span
           className={cn(
-            "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border text-[10px]",
+            "flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border text-xs",
             selected ? "border-wb-primary bg-wb-primary text-wb-primary-fg" : "border-wb-border-strong text-transparent",
           )}
           aria-hidden="true"
@@ -372,22 +372,22 @@ function OptionRow({
       ) : showNumber ? (
         <span
           className={cn(
-            "mt-0.5 flex h-5 min-w-5 shrink-0 items-center justify-center rounded-md px-1 text-[11px] tabular-nums",
+            "flex h-5 min-w-5 shrink-0 items-center justify-center rounded-md px-1 text-xs font-medium tabular-nums",
             selected ? "bg-wb-accent-soft text-wb-accent-ink" : "bg-wb-elev text-wb-fg-3",
           )}
         >
           {index + 1}
         </span>
       ) : null}
-      <span className="min-w-0 break-words">
-        <span className="inline-flex min-w-0 flex-wrap items-center gap-1.5">
-          <span className="text-sm font-medium text-wb-fg">{presented.label}</span>
+      <span className="min-w-0 flex-1 break-words">
+        <span className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+          <span className={cn("text-xs", selected ? "font-medium text-wb-fg" : "text-wb-fg-2")}>{presented.label}</span>
           {presented.recommended ? (
             <span className="rounded-md bg-wb-accent-soft px-1.5 py-0.5 text-xs text-wb-accent-ink">推荐</span>
           ) : null}
         </span>
         {option.description || option.disabled_reason ? (
-          <span className="mt-0.5 block text-sm text-wb-fg-2">
+          <span className="mt-0.5 block text-xs text-wb-fg-3">
             {option.disabled_reason || option.description}
           </span>
         ) : null}

@@ -49,7 +49,7 @@ export function ReviewMenu({
       {!labels && !error && <p className="px-2.5 py-2 text-xs text-wb-fg-3">…</p>}
       {labels && step === "presets" && (
         <>
-          <p className="px-2.5 pb-1 pt-1.5 text-[11px] font-medium text-wb-fg-3">{labels.title}</p>
+          <p className="px-2.5 pb-1 pt-1.5 text-xs font-medium text-wb-fg-3">{labels.title}</p>
           <Row label={labels.base_branch} hint={labels.base_branch_hint} onPick={() => open("branch")} />
           <Row label={labels.uncommitted} onPick={() => onStart({ kind: "uncommitted" })} />
           <Row label={labels.commit} onPick={() => open("commit")} />
@@ -59,7 +59,7 @@ export function ReviewMenu({
       {labels && step === "branch" && (
         <>
           <p className="px-2.5 pt-1.5 text-xs font-medium text-wb-fg">{labels.branch_title}</p>
-          <p className="px-2.5 pb-1 text-[11px] text-wb-fg-3">{labels.branch_subtitle}</p>
+          <p className="px-2.5 pb-1 text-xs text-wb-fg-3">{labels.branch_subtitle}</p>
           <Search value={query} placeholder={labels.branch_search} onChange={setQuery} />
           {targets.branches
             .filter((branch) => branch.toLowerCase().includes(needle))

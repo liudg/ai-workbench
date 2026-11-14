@@ -52,7 +52,7 @@ export function ElicitationCard({ event, session, resolvedAnswer, answerPrompt }
                   {question.required ? " *" : ""}
                 </span>
                 {question.question && question.question !== question.header ? (
-                  <span className="mb-1 block break-words text-[11px] text-wb-fg-3">{question.question}</span>
+                  <span className="mb-1 block break-words text-xs text-wb-fg-3">{question.question}</span>
                 ) : null}
                 {question.input_kind === "boolean" ? (
                   <input

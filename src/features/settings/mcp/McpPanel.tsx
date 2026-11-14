@@ -423,7 +423,7 @@ function ServerList(props: {
                     <span className="truncate text-sm font-medium text-wb-fg">{row.name}</span>
                     {tag && (
                       <span
-                        className="rounded border border-wb-border px-1.5 py-0.5 text-[10px] tracking-wide text-wb-fg-2"
+                        className="rounded border border-wb-border px-1.5 py-0.5 text-xs tracking-wide text-wb-fg-2"
                         data-mcp-transport-tag={tag}
                       >
                         {tag}

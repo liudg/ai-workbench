@@ -52,7 +52,7 @@ export function MentionMenu({
     <SuggestionList label={mode === "add" ? DESKTOP_ZH.addSection : "文件"} active={active} data-mention-menu={mode}>
       {mode === "add" ? (
         <>
-          <p className="px-3 pb-1 pt-1.5 text-[11px] font-medium text-wb-fg-3">{DESKTOP_ZH.addSection}</p>
+          <p className="px-3 pb-1 pt-1.5 text-xs font-medium text-wb-fg-3">{DESKTOP_ZH.addSection}</p>
           {items.map((id, index) => {
             const item = ADD_ITEMS.find((entry) => entry.id === id);
             if (!item) return null;

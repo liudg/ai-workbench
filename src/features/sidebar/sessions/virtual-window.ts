@@ -3,8 +3,8 @@ export interface VirtualRange {
   end: number;
 }
 
-/** 行槽高度，对齐侧栏会话行的 25px 行距。 */
-export const SESSION_ROW_HEIGHT = 25;
+/** 行槽高度：28px 会话行 + 上下各 1px 呼吸间距，容纳 12px 软底状态胶囊不贴边。 */
+export const SESSION_ROW_HEIGHT = 30;
 
 export const SESSION_ROW_OVERSCAN = 8;
 

@@ -181,12 +181,14 @@ test("hovering the left edge slides the sidebar over the content, and leaving re
   );
 
   const edge = dom.document.querySelector("[data-sidebar-edge]");
-  const accent = dom.document.querySelector("[data-sidebar-accent]");
+  const edgeLine = dom.document.querySelector("[data-sidebar-edge-line]");
   const peekRoot = dom.document.querySelector("[data-sidebar-peek-root]");
   assert.ok(edge);
-  assert.ok(accent);
+  assert.ok(edgeLine);
   assert.ok(peekRoot);
-  assert.equal(accent.className.includes("bg-wb-accent"), true);
+  assert.equal(dom.document.querySelector("[data-sidebar-accent]"), null);
+  assert.equal(dom.document.querySelector("[data-sidebar-alert]"), null);
+  assert.equal(edgeLine.className.includes("bg-wb-accent"), false);
   assert.equal(peekRoot.className.includes("fixed"), true);
   assert.equal(dom.document.querySelector("[data-sidebar-peek]"), null);
 
@@ -214,6 +216,25 @@ test("hovering the left edge slides the sidebar over the content, and leaving re
   assert.ok(dom.document.querySelector("[data-sidebar-edge]"));
 
   await view.unmount();
+
+  const alertView = await render(
+    createElement(peekMod.SidebarPeek, {
+      needsYou: true,
+      children: createElement("div", null, "待处理"),
+    }),
+  );
+  const alertPill = dom.document.querySelector("[data-sidebar-alert]");
+  const alertEdge = dom.document.querySelector("[data-sidebar-edge]");
+  assert.ok(alertPill);
+  assert.ok(alertEdge instanceof dom.HTMLElement);
+  assert.equal(alertPill.className.includes("bg-wb-warn"), true);
+  assert.equal(alertEdge.className.includes("w-3"), true);
+  await act(async () => {
+    alertEdge.click();
+  });
+  assert.equal(visibilityMod.isSidebarOpen(), true);
+  visibilityMod.setSidebarOpen(false);
+  await alertView.unmount();
 });
 
 test("the header button pins the sidebar open instead of leaving it as a hover layer", async () => {
