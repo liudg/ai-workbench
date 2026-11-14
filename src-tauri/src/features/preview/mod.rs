@@ -25,6 +25,16 @@ fn open_at(root: &std::path::Path, path: &str, mode: Option<&str>) -> Result<(),
     open_with::open_resolved(&shown, resolved)
 }
 
+/// 用系统浏览器打开网页。只接 http(s)，别的协议不交给系统。
+#[tauri::command]
+pub fn open_url(url: String) -> Result<(), String> {
+    let parsed = tauri::Url::parse(url.trim()).map_err(|_| "不是有效的网页地址".to_string())?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err("不是有效的网页地址".into());
+    }
+    browser::open_in_shell(parsed.as_str())
+}
+
 #[tauri::command]
 pub fn file_open_capabilities() -> open_with::FileOpenCapabilities {
     open_with::FileOpenCapabilities {

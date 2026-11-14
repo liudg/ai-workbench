@@ -374,8 +374,22 @@ function LinkView({ node }: { node: Extract<Inline, { type: "link" }> }) {
   const host = useMarkdownHost();
   const plain = inlinePlain(node.inlines);
   if (/^https?:\/\//i.test(node.href) && !isHtmlHref(node.href)) {
+    const openLink = host?.openLink;
     return (
-      <a href={node.href} title={node.title} target="_blank" rel="noreferrer noopener">
+      <a
+        href={node.href}
+        title={node.title}
+        target="_blank"
+        rel="noreferrer noopener"
+        onClick={
+          openLink
+            ? (event) => {
+                event.preventDefault();
+                openLink(node.href);
+              }
+            : undefined
+        }
+      >
         <Inlines nodes={node.inlines} inLink />
       </a>
     );

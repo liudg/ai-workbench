@@ -138,8 +138,7 @@ test("the session header toggle shares the sidebar state and stays in front of t
   assert.equal(button.className.includes("h-7"), true);
   assert.equal(button.className.includes("w-7"), true);
   assert.equal(button.className.includes("rounded-md"), true);
-  assert.equal(dom.document.body.textContent?.includes("隐藏侧边栏"), true);
-  assert.equal(dom.document.body.textContent?.includes("Ctrl+B"), true);
+  assert.equal(button.closest('[class*="group/hint"]'), null);
   assert.equal(title.textContent, "示例会话");
 
   await act(async () => {
@@ -149,7 +148,6 @@ test("the session header toggle shares the sidebar state and stays in front of t
   assert.equal(button.getAttribute("data-sidebar-toggle-state"), "closed");
   assert.equal(button.getAttribute("aria-pressed"), "false");
   assert.equal(button.getAttribute("aria-label"), "显示侧边栏 Ctrl+B");
-  assert.equal(dom.document.body.textContent?.includes("显示侧边栏"), true);
   assert.equal(dom.document.querySelector("[data-sidebar-toggle]"), button);
 
   await act(async () => {

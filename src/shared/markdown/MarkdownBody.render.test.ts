@@ -165,6 +165,43 @@ test("clicking an inline HTML file sends the original path to the preview host",
   }
 });
 
+test("clicking a web link hands it to the host instead of the default navigation", async () => {
+  const dom = new Window({ url: "http://localhost/" });
+  const globals = { window: dom, document: dom.document, IS_REACT_ACT_ENVIRONMENT: true };
+  const previous = new Map(Object.keys(globals).map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+  for (const [key, value] of Object.entries(globals)) {
+    Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
+  }
+  const container = dom.document.createElement("div");
+  const view = createRoot(container as unknown as HTMLElement);
+  const opened: string[] = [];
+  try {
+    await act(async () => view.render(createElement(MarkdownHost, {
+      api: {
+        canOpen: true,
+        openHref: () => undefined,
+        renderImage: () => null,
+        renderWebsite: () => null,
+        openLink: (url) => { opened.push(url); },
+      },
+      children: createElement(MarkdownBody, { text: "- **GitHub 仓库地址**：[https://github.com/morluto/rea](https://github.com/morluto/rea)" }),
+    })));
+    const link = container.querySelector("a");
+    assert.ok(link instanceof dom.HTMLAnchorElement);
+    const click = new dom.MouseEvent("click", { bubbles: true, cancelable: true });
+    await act(async () => { link.dispatchEvent(click); });
+    assert.deepEqual(opened, ["https://github.com/morluto/rea"]);
+    assert.equal(click.defaultPrevented, true);
+  } finally {
+    await act(async () => view.unmount());
+    for (const [key, descriptor] of previous) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+      else Reflect.deleteProperty(globalThis, key);
+    }
+    await dom.close();
+  }
+});
+
 test("five file refs stack and keep two behind 显示另外", () => {
   const lines = [1, 2, 3, 4, 5].map(
     (line) => `- [File${line}.cs](F:/work/src/Auth/File${line}.cs:${line * 10})：说明${line}`,

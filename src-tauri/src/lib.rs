@@ -50,6 +50,7 @@ pub fn run() {
             features::images::stage_chat_image,
             features::preview::open_path,
             features::preview::reveal_folder,
+            features::preview::open_url,
             features::preview::file_open_capabilities,
             features::preview::browser::prepare_browser_path,
             features::preview::browser::browser_show,
