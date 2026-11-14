@@ -330,16 +330,21 @@ fn subagent_calls_make_a_running_card() {
 #[test]
 fn usage_groups_become_labelled_windows() {
     let payload = json!({"command":{"name":"usage","data":{"groups":[
-        {"name":"Gemini Models","buckets":[
+        {"name":"Gemini Models","description":"Models within this group: Gemini 4 Carbon, Orchestrator (Carbon), Gemini 3.8 Flash","buckets":[
             {"id":"gemini-weekly","window":"weekly","remaining_fraction":0.9878,"reset_time":"2026-11-16T06:34:09Z"},
-            {"id":"gemini-5h","window":"5h","remaining_fraction":0.5,"reset_time":"2026-11-09T11:34:09Z"}]}
+            {"id":"gemini-5h","window":"5h","remaining_fraction":0.5,"reset_time":"2026-11-09T11:34:09Z"}]},
+        {"name":"Claude and GPT models","description":"Shared quota.","buckets":[
+            {"id":"3p-weekly","window":"weekly","remaining_fraction":0,"reset_time":"2026-11-18T09:32:19Z"}]}
     ]}}});
     let usage = subscription::parse(&payload);
-    assert_eq!(usage.windows.len(), 2);
+    assert_eq!(usage.windows.len(), 3);
     assert_eq!(usage.windows[0].label, "Gemini Models · 每周");
     assert_eq!(usage.windows[1].label, "Gemini Models · 5 小时");
     assert_eq!(usage.windows[1].remaining_percent, Some(50.0));
     assert_eq!(usage.windows[1].resets_at_ms, Some(1794224049000));
+    assert_eq!(usage.windows[1].models, ["Gemini 4 Carbon", "Orchestrator (Carbon)", "Gemini 3.8 Flash"]);
+    // 描述不是模型列表时不猜。
+    assert!(usage.windows[2].models.is_empty());
     assert!(subscription::parse(&json!({})).windows.is_empty());
 }
 

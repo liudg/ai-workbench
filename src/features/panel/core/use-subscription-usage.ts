@@ -6,6 +6,7 @@ import {
   remainingPercent,
   shouldRefreshAfterStatus,
   subscriptionTone,
+  windowsForModel,
 } from "@/store/subscription-usage";
 import type { AgentKind, SessionStatus } from "@/types";
 import {
@@ -20,7 +21,8 @@ const TICK_MS = 30_000;
 /** setTimeout 超过这个值会在浏览器里立刻触发。更长的等待靠本地计时重新安排。 */
 const MAX_TIMEOUT_MS = 2_147_483_647;
 
-export function useSubscriptionUsage(agent: AgentKind | null) {
+/** 顶栏显示当前模型所在窗口里最紧的一个；悬停仍列出全部窗口。 */
+export function useSubscriptionUsage(agent: AgentKind | null, modelLabel: string | null) {
   const { subscriptionSupported: supported, status, data } = usePanel();
   const fetch = data.subscriptionUsage;
   useSyncExternalStore(subscribeSubscriptionUsage, subscriptionUsageRevision, subscriptionUsageRevision);
@@ -45,7 +47,7 @@ export function useSubscriptionUsage(agent: AgentKind | null) {
     if (shouldRefreshAfterStatus(before, status)) void refreshSubscriptionUsage(agent, fetch);
   }, [agent, fetch, supported, status]);
 
-  const tight = usage ? pickTightestWindow(usage.windows) : null;
+  const tight = usage ? pickTightestWindow(windowsForModel(usage.windows, modelLabel)) : null;
   const resetAt = typeof tight?.resets_at_ms === "number" ? tight.resets_at_ms : null;
   const refreshedReset = useRef<number | null>(null);
   useEffect(() => {

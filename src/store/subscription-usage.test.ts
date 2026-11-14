@@ -9,6 +9,7 @@ import {
   remainingPercent,
   shouldRefreshAfterStatus,
   subscriptionTone,
+  windowsForModel,
 } from "./subscription-usage.ts";
 
 function window(patch: Partial<SubscriptionWindow> & Pick<SubscriptionWindow, "id">): SubscriptionWindow {
@@ -28,6 +29,26 @@ test("the tightest window is the lowest remainder, then the earlier reset", () =
   assert.equal(pickTightestWindow([hourly, weekly, sooner])?.id, "week");
   assert.equal(pickTightestWindow([hourly, sooner])?.id, "soon");
   assert.equal(pickTightestWindow([window({ id: "blank" })]), null);
+});
+
+test("windows narrow to the group that lists the current model", () => {
+  const gemini = ["Gemini 4 Carbon", "Orchestrator (Carbon)", "Gemini 3.8 Flash"];
+  const thirdParty = ["Claude Opus 5.5", "GPT-OSS 120B"];
+  const windows = [
+    window({ id: "gemini-weekly", remaining_percent: 95, models: gemini }),
+    window({ id: "3p-weekly", remaining_percent: 0, models: thirdParty }),
+    window({ id: "account", remaining_percent: 50 }),
+  ];
+  const ids = (label: string | null) => windowsForModel(windows, label).map((item) => item.id);
+  assert.deepEqual(ids("Gemini 4 Carbon"), ["gemini-weekly", "account"]);
+  assert.equal(pickTightestWindow(windowsForModel(windows, "Gemini 3.8 Flash"))?.id, "account");
+  assert.deepEqual(ids("Orchestrator (Carbon)"), ["gemini-weekly", "account"]);
+  // 菜单里的名字多一个括号里的强度。
+  assert.deepEqual(ids("GPT-OSS 120B (Medium)"), ["3p-weekly", "account"]);
+  // 不知道模型或者哪组都没列它时，全部都算。
+  assert.equal(ids(null).length, 3);
+  assert.equal(ids("Gemini 4").length, 3);
+  assert.equal(ids("Unlisted Model").length, 3);
 });
 
 test("headline shows the wait, an imminent reset, or percent only", () => {

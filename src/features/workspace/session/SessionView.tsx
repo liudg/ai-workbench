@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from "react";
 
-import { AnswerMarkdownHost, ChatHostProvider, ChatView, Composer, type ChatHost } from "@/features/chat";
+import { AnswerMarkdownHost, ChatHostProvider, ChatView, Composer, pickModel, type ChatHost } from "@/features/chat";
 import { CommandMenuHost } from "@/features/command-menu";
 import { SessionSplit } from "@/features/panel";
 import type { Project } from "@/features/projects";
@@ -60,6 +60,7 @@ export function SessionView({
         workdir={chat.workdir}
         events={feed.events}
         profile={profile}
+        modelLabel={pickModel(composer.catalog, composer.tuning)?.label ?? null}
         sideChat={sideChat}
         subagents={subagentsTarget}
       >

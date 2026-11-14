@@ -163,6 +163,8 @@ export interface SubscriptionWindow {
   remaining_percent?: number | null;
   /** 重置时刻，Unix 毫秒。 */
   resets_at_ms?: number | null;
+  /** CLI 写明的、共用这个窗口的模型名。没有表示所有模型都算在里面。 */
+  models?: string[];
 }
 
 export interface SubscriptionUsage {

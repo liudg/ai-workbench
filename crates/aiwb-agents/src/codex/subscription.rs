@@ -50,6 +50,7 @@ pub(super) fn windows_from_rate_limits(response: &Value) -> Vec<SubscriptionWind
                 used_percent: Some(used),
                 remaining_percent: None,
                 resets_at_ms: window.get("resetsAt").and_then(unix_ms),
+                models: Vec::new(),
             });
         }
     }

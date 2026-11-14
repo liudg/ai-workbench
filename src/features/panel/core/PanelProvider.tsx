@@ -112,6 +112,8 @@ interface PanelApi {
   projectPath: string;
   sessionTitle: string;
   agent: AgentKind | null;
+  /** 会话当前模型的显示名。订阅额度按它挑窗口。 */
+  modelLabel: string | null;
   usage: SessionUsageView | null;
   layout: PanelLayoutMode;
   hidePanel: () => void;
@@ -149,6 +151,7 @@ interface PanelProps {
   projectPath: string;
   sessionTitle: string;
   agent: AgentKind | null;
+  modelLabel?: string | null;
   events: readonly SessionEvent[];
   usage: SessionUsageView | null;
   /** 侧边聊天标签的打开目标。宿主判断这个会话能不能开，开不了时不给。 */
@@ -169,6 +172,7 @@ export function PanelHost({
   projectPath,
   sessionTitle,
   agent,
+  modelLabel = null,
   events,
   usage,
   sideChat = null,
@@ -322,6 +326,7 @@ export function PanelHost({
       projectPath,
       sessionTitle,
       agent,
+      modelLabel,
       usage,
       layout,
       hidePanel,
@@ -366,6 +371,7 @@ export function PanelHost({
       projectPath,
       sessionTitle,
       agent,
+      modelLabel,
       usage,
       layout,
       hidePanel,

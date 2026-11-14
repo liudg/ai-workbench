@@ -16,6 +16,9 @@ pub struct SubscriptionWindow {
     /// 重置时刻，Unix 毫秒。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resets_at_ms: Option<i64>,
+    /// CLI 写明的、共用这个窗口的模型名。空表示这个账号的所有模型都算在里面。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub models: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

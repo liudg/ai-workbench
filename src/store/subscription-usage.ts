@@ -22,6 +22,28 @@ export function remainingPercent(window: SubscriptionWindow): number | null {
   return null;
 }
 
+/** CLI 写的模型名和模型菜单的显示名相同，或者显示名后面多一个括号里的强度。 */
+function coversModel(name: string, label: string): boolean {
+  const listed = name.trim().toLowerCase();
+  const model = label.trim().toLowerCase();
+  return listed !== "" && (model === listed || model.startsWith(`${listed} (`));
+}
+
+/**
+ * 当前模型用的窗口：没写模型的窗口算所有模型，写了的要列着当前模型。
+ * 不知道当前模型，或者写了模型的窗口都没列它时，不缩小范围。
+ */
+export function windowsForModel(
+  windows: readonly SubscriptionWindow[],
+  modelLabel: string | null | undefined,
+): readonly SubscriptionWindow[] {
+  const label = modelLabel?.trim();
+  if (!label) return windows;
+  const covers = (window: SubscriptionWindow) => window.models?.some((name) => coversModel(name, label)) ?? false;
+  if (!windows.some(covers)) return windows;
+  return windows.filter((window) => !window.models?.length || covers(window));
+}
+
 /** 最紧的窗口：剩余最低。相同剩余时，更早重置的优先。 */
 export function pickTightestWindow(windows: readonly SubscriptionWindow[]): SubscriptionWindow | null {
   let best: SubscriptionWindow | null = null;

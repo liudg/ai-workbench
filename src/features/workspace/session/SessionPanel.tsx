@@ -50,6 +50,7 @@ export function SessionPanel({
   workdir,
   events,
   profile,
+  modelLabel = null,
   sideChat = null,
   subagents = null,
   children,
@@ -59,6 +60,8 @@ export function SessionPanel({
   workdir: string;
   events: SessionEvent[];
   profile: AgentProfile | undefined;
+  /** 作曲栏当前选中模型的显示名。 */
+  modelLabel?: string | null;
   /** 能开侧边聊天时给出它的标签目标。 */
   sideChat?: (() => OpenTarget) | null;
   /** 子智能体面板的标签目标。 */
@@ -80,6 +83,7 @@ export function SessionPanel({
       projectPath={workdir}
       sessionTitle={session.title}
       agent={session.agent}
+      modelLabel={modelLabel}
       events={events}
       usage={usage}
       sideChat={sideChat}

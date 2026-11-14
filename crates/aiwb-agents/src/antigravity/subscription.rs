@@ -2,6 +2,8 @@
 //!
 //! 2026-11-09 agy 1.5.3 的回包：`command.data.groups[]` 是共用额度的模型组，每组 `buckets[]` 带
 //! `window`（`weekly` / `5h`）、`remaining_fraction`（0–1）和 `reset_time`（RFC 3339）。
+//! 2026-11-14 agy 1.5.9 组上还有 `description`，写着组里有哪些模型。写的是显示名：ACP 模型选项的 `name` 和它相同，
+//! 或者后面多一个括号里的强度（组里 `GPT-OSS 120B`，选项 `GPT-OSS 120B (Medium)`）。
 
 use std::time::Duration;
 
@@ -44,6 +46,7 @@ pub fn parse(payload: &Value) -> SubscriptionUsage {
         .flatten()
     {
         let name = group.get("name").and_then(Value::as_str).unwrap_or("").trim();
+        let models = group_models(group.get("description").and_then(Value::as_str).unwrap_or(""));
         for bucket in group.get("buckets").and_then(Value::as_array).into_iter().flatten() {
             let Some(id) = bucket.get("id").and_then(Value::as_str) else {
                 continue;
@@ -61,10 +64,24 @@ pub fn parse(payload: &Value) -> SubscriptionUsage {
                     .and_then(Value::as_str)
                     .and_then(|at| DateTime::parse_from_rfc3339(at).ok())
                     .map(|at| at.timestamp_millis()),
+                models: models.clone(),
             });
         }
     }
     SubscriptionUsage { windows }
+}
+
+/// 组的 `description` 是 `Models within this group: Gemini 4 Carbon, Gemini 3.8 Flash` 这样的一句，
+/// 回包里没有单独的模型列表。不是这个开头时不猜，留空。
+fn group_models(description: &str) -> Vec<String> {
+    let Some(list) = description.trim().strip_prefix("Models within this group:") else {
+        return Vec::new();
+    };
+    list.split(',')
+        .map(|name| name.trim().trim_end_matches('.').trim())
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
+        .collect()
 }
 
 fn label(group: &str, window: &str) -> String {

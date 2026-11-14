@@ -250,6 +250,7 @@ fn push_window(out: &mut Vec<SubscriptionWindow>, id: String, label: String, val
             .get("resets_at")
             .or_else(|| value.get("resetsAt"))
             .and_then(resets_ms),
+        models: Vec::new(),
     });
 }
 

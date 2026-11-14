@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 
 import { useAgentDetection, useAgentProfiles, useSessionAgents } from "@/features/agents";
-import { AnswerMarkdownHost, ChatHostProvider, ChatView, Composer, type ChatHost } from "@/features/chat";
+import { AnswerMarkdownHost, ChatHostProvider, ChatView, Composer, pickModel, type ChatHost } from "@/features/chat";
 import { CommandMenuHost } from "@/features/command-menu";
 import { SessionSplit } from "@/features/panel";
 import type { Project } from "@/features/projects";
@@ -137,6 +137,7 @@ function NewSession({
           workdir={workdir}
           events={events}
           profile={profiles[agent]}
+          modelLabel={pickModel(composer.catalog, composer.tuning)?.label ?? null}
         >
           <AnswerMarkdownHost>
             <SessionSplit>{chat}</SessionSplit>
