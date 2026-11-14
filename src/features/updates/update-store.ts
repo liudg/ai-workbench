@@ -2,33 +2,102 @@
 
 import { create } from "zustand";
 
-import { checkForUpdate, installUpdate, type UpdatePhase } from "@/lib/updater";
+import {
+  checkForUpdate,
+  hasPendingUpdate,
+  installUpdate,
+  type UpdatePhase,
+  type UpdaterRuntime,
+} from "../../lib/native/updater.ts";
+
+export interface BusySessionTask {
+  sessions: readonly { status: string }[];
+  sides?: readonly { status: string }[];
+}
+
+function isSessionBusy(status: string): boolean {
+  return status === "starting" || status === "running" || status === "needs-input";
+}
+
+/** 统计仍在运行或等待输入的会话数，口径与 daemon /health 的 running_sessions 一致。 */
+export function countRunningSessions(tasks: readonly BusySessionTask[]): number {
+  let count = 0;
+  for (const task of tasks) {
+    for (const session of task.sessions) {
+      if (isSessionBusy(session.status)) count += 1;
+    }
+    if (task.sides) {
+      for (const side of task.sides) {
+        if (isSessionBusy(side.status)) count += 1;
+      }
+    }
+  }
+  return count;
+}
 
 interface UpdateState {
   phase: UpdatePhase;
   dialogOpen: boolean;
 }
 
-const useUpdateStore = create<UpdateState>()(() => ({ phase: { kind: "idle" }, dialogOpen: false }));
+const useUpdateStore = create<UpdateState>()(() => ({
+  phase: { kind: "idle" },
+  dialogOpen: false,
+}));
 
-/** 正在下载时再检查一次，不把进度盖掉。 */
-function keepDownload(current: UpdatePhase, next: UpdatePhase) {
-  return current.kind === "downloading" && (next.kind === "checking" || next.kind === "available");
+function isBusyInstall(phase: UpdatePhase): boolean {
+  return phase.kind === "downloading" || phase.kind === "ready";
 }
 
-/** 手动检查时马上打开对话框；自动检查只在有新版本时打开。 */
-export async function checkUpdates(manual: boolean) {
-  if (manual) useUpdateStore.setState({ dialogOpen: true, phase: { kind: "checking" } });
+/**
+ * 检查更新：
+ * - 正在下载或已就绪待重启时绝不覆盖进度，也不重新拉取远端（手动点击仅重新打开弹窗查看进度）；
+ * - 手动检查时立即打开对话框；自动检查只在发现新版本时弹出。
+ */
+export async function checkUpdates(
+  manual: boolean,
+  runtime?: UpdaterRuntime,
+): Promise<void> {
+  const current = useUpdateStore.getState();
+  if (isBusyInstall(current.phase)) {
+    if (manual && !current.dialogOpen) {
+      useUpdateStore.setState({ dialogOpen: true });
+    }
+    return;
+  }
+  if (current.phase.kind === "checking") {
+    if (manual && !current.dialogOpen) {
+      useUpdateStore.setState({ dialogOpen: true });
+    }
+    return;
+  }
+
+  if (manual) {
+    useUpdateStore.setState({ dialogOpen: true, phase: { kind: "checking" } });
+  }
   await checkForUpdate((phase) => {
     useUpdateStore.setState((state) => {
-      if (keepDownload(state.phase, phase)) return state;
-      return { phase, dialogOpen: state.dialogOpen || (!manual && phase.kind === "available") };
+      if (isBusyInstall(state.phase)) return state;
+      return {
+        phase,
+        dialogOpen: state.dialogOpen || (!manual && phase.kind === "available"),
+      };
     });
-  });
+  }, runtime);
 }
 
-export function startInstall() {
-  return installUpdate((phase) => useUpdateStore.setState({ phase }));
+export function startInstall(runtime?: UpdaterRuntime): Promise<void> {
+  const current = useUpdateStore.getState().phase;
+  if (isBusyInstall(current)) return Promise.resolve();
+  return installUpdate((phase) => useUpdateStore.setState({ phase }), runtime);
+}
+
+export function retryUpdate(runtime?: UpdaterRuntime): Promise<void> {
+  const current = useUpdateStore.getState().phase;
+  if (current.kind === "error" && current.stage === "install" && hasPendingUpdate()) {
+    return startInstall(runtime);
+  }
+  return checkUpdates(true, runtime);
 }
 
 export function closeUpdateDialog() {
@@ -37,4 +106,13 @@ export function closeUpdateDialog() {
 
 export function useUpdateState<T>(select: (state: UpdateState) => T): T {
   return useUpdateStore(select);
+}
+
+/** 仅供测试读取与重置状态。 */
+export function getUpdateStateSnapshot(): UpdateState {
+  return useUpdateStore.getState();
+}
+
+export function resetUpdateStoreForTest() {
+  useUpdateStore.setState({ phase: { kind: "idle" }, dialogOpen: false });
 }

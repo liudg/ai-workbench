@@ -29,12 +29,13 @@ vite.config.js
 vite.config.d.ts
 .playwright-mcp/
 
-# Local installers. Updater metadata stays in release/latest.json.
+# Local installers and generated updater manifest (uploaded to GitHub Releases, not tracked in Git)
 release/*.exe
 release/*.exe.sig
 release/*.sig
 release/*.nsis.zip
 release/*.zip
+release/latest.json
 
 # daemon sidecar（scripts/build-daemon.mjs 生成）
 src-tauri/binaries/

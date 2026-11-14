@@ -4,7 +4,7 @@
   "version": "0.2.87",
   "type": "module",
   "scripts": {
-    "test": "node --experimental-strip-types --test \"src/**/*.test.ts\" \"src/**/*.test.tsx\"",
+    "test": "node --experimental-strip-types --test \"src/**/*.test.ts\" \"src/**/*.test.tsx\" \"scripts/**/*.test.mjs\"",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",

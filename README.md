@@ -52,10 +52,10 @@ pnpm dev                   # 打开 http://localhost:4573
 
 发布链路（详见 [release/README.md](release/README.md)）：
 
-1. **云端开发**：日常开发在本云仓库进行；
-2. **Windows 构建**：Windows 安装包（NSIS）**必须在 Windows 机器上构建**——使用 GitHub Actions `windows-latest`（`.github/workflows/release-windows.yml` 已备好，推送 `v*` tag 即可）或 Cursor 私有 Windows worker；默认 Linux 云主机不能产出 .exe；
-3. **签名**：构建时设置 `TAURI_SIGNING_PRIVATE_KEY`（私钥不入库；本项目的私钥在云端交付物 `artifacts/tauri-signing/`，公钥已内嵌 `tauri.conf.json`）；
-4. **更新源**：仓库里还没有公开的 `latest.json`。`tauri.conf.json → plugins.updater.endpoints` 为空，`src/lib/update-source.ts` 的 `UPDATE_ENDPOINT` 也是空字符串，应用内检查显示「暂无可用更新源」。有真实 HTTPS 地址后，这两处写成同一个地址，再上传 `latest.json`（由 `scripts/gen-latest-json.mjs` 生成，模板见 [release/latest.json](release/latest.json)）和安装包；
+1. **版本同步**：发版前确保 `package.json`、`Cargo.toml`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json` 四处版本号一致（可用 `node scripts/check-release-version.mjs` 校验）；
+2. **推送触发构建**：推送 `v*` tag（如 `git tag v0.2.87 && git push origin v0.2.87`），GitHub Actions `windows-latest`（[.github/workflows/release-windows.yml](.github/workflows/release-windows.yml)）会自动完成签名打包、生成 `latest.json` 并发布 GitHub Release；
+3. **签名**：GitHub Actions 读取仓库 Secret `TAURI_SIGNING_PRIVATE_KEY` 对安装包签名（私钥不入库，公钥内嵌于 `src-tauri/tauri.conf.json`）；
+4. **更新源**：`src-tauri/tauri.conf.json → plugins.updater.endpoints` 与 `src/lib/native/update-source.ts → UPDATE_ENDPOINT` 统一指向 `https://github.com/liudg/ai-workbench/releases/latest/download/latest.json`；
 5. **用户侧**：旧版本用户启动应用即收到更新提示，一键升级到新版。
 
 ## 架构总览

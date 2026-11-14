@@ -1,11 +1,52 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
-import { checkUpdates, closeUpdateDialog, startInstall, useUpdateState } from "./update-store";
+import { useTasks } from "@/features/tasks";
+import {
+  checkUpdates,
+  closeUpdateDialog,
+  countRunningSessions,
+  retryUpdate,
+  startInstall,
+  useUpdateState,
+} from "./update-store";
 
 export function useUpdateDialog() {
   const open = useUpdateState((s) => s.dialogOpen);
   const update = useUpdateState((s) => s.phase);
-  return { open, update, close: closeUpdateDialog, startInstall };
+  const { tasks } = useTasks();
+  const runningSessions = countRunningSessions(tasks);
+  const [confirming, setConfirming] = useState(false);
+
+  useEffect(() => {
+    if (!open || update.kind !== "available") {
+      setConfirming(false);
+    }
+  }, [open, update.kind]);
+
+  const requestInstall = () => {
+    if (runningSessions > 0) {
+      setConfirming(true);
+      return;
+    }
+    void startInstall();
+  };
+
+  const confirmInstall = () => {
+    setConfirming(false);
+    void startInstall();
+  };
+
+  return {
+    open,
+    update,
+    runningSessions,
+    confirming,
+    close: closeUpdateDialog,
+    requestInstall,
+    cancelConfirm: () => setConfirming(false),
+    confirmInstall,
+    retry: () => void retryUpdate(),
+  };
 }
 
 /** 侧栏菜单里的「检查更新」。 */

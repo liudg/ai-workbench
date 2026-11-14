@@ -1,4 +1,5 @@
 import {
+  AlertTriangle,
   CheckCircle2,
   Download,
   Loader2,
@@ -25,7 +26,17 @@ function formatSize(bytes: number) {
 }
 
 export function UpdateDialog() {
-  const { open, update, close, startInstall } = useUpdateDialog();
+  const {
+    open,
+    update,
+    runningSessions,
+    confirming,
+    close,
+    requestInstall,
+    cancelConfirm,
+    confirmInstall,
+    retry,
+  } = useUpdateDialog();
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && close()}>
@@ -48,7 +59,7 @@ export function UpdateDialog() {
               <p className="text-sm text-wb-fg">当前已是最新版本。</p>
             </>
           )}
-          {update.kind === "available" && (
+          {update.kind === "available" && !confirming && (
             <>
               <Rocket className="mt-0.5 h-5 w-5 shrink-0 text-wb-accent" />
               <div className="min-w-0">
@@ -60,6 +71,19 @@ export function UpdateDialog() {
                     {update.notes}
                   </p>
                 )}
+              </div>
+            </>
+          )}
+          {update.kind === "available" && confirming && (
+            <>
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-wb-warn" />
+              <div className="min-w-0">
+                <p className="text-sm text-wb-fg">
+                  还有 {runningSessions} 个会话在运行
+                </p>
+                <p className="mt-1 text-xs leading-5 text-wb-fg-2">
+                  更新并重启应用会停掉正在运行的会话，是否继续？
+                </p>
               </div>
             </>
           )}
@@ -103,7 +127,9 @@ export function UpdateDialog() {
             <>
               <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-wb-danger" />
               <div className="min-w-0">
-                <p className="text-sm text-wb-fg">检查更新失败</p>
+                <p className="text-sm text-wb-fg">
+                  {update.stage === "install" ? "更新未完成" : "检查更新失败"}
+                </p>
                 <p className="mt-1 break-all text-xs leading-5 text-wb-fg-2">
                   {update.message}
                 </p>
@@ -119,13 +145,31 @@ export function UpdateDialog() {
         </div>
 
         <DialogFooter>
-          {update.kind === "available" ? (
+          {update.kind === "available" && confirming ? (
+            <>
+              <Button variant="ghost" onClick={cancelConfirm}>
+                取消
+              </Button>
+              <Button onClick={confirmInstall}>
+                <Download /> 继续更新
+              </Button>
+            </>
+          ) : update.kind === "available" ? (
             <>
               <Button variant="ghost" onClick={close}>
                 稍后
               </Button>
-              <Button onClick={startInstall}>
+              <Button onClick={requestInstall}>
                 <Download /> 立即更新
+              </Button>
+            </>
+          ) : update.kind === "error" ? (
+            <>
+              <Button variant="ghost" onClick={close}>
+                关闭
+              </Button>
+              <Button onClick={retry}>
+                <RefreshCw /> 重试
               </Button>
             </>
           ) : (
