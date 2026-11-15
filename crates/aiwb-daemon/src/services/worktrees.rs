@@ -133,8 +133,10 @@ impl Services {
         // 打开会话时没推目标（工作树还不在），恢复后接上 Agent 推一次。
         let sessions = self.store.task_sessions(&params.id).map_err(|e| e.to_string())?;
         if let Some(session) = sessions.last() {
-            let handle = self.runtimes.handle(&session.id).await?;
-            let _ = handle.publish_goal().await;
+            let _ = self
+                .runtimes
+                .with_handle(&session.id, |handle| async move { handle.publish_goal().await })
+                .await;
         }
         Ok(())
     }

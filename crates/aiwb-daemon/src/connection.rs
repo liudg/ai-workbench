@@ -84,6 +84,11 @@ pub(crate) async fn serve(socket: WebSocket, services: Arc<Services>) {
             Ok(request) => request,
             Err(err) => {
                 eprintln!("收到无法解析的消息：{err}");
+                // 看得出是哪次调用就回一个错误，调用方不用等到超时。
+                let id = serde_json::from_str::<Value>(&text).ok().and_then(|value| value.get("id")?.as_u64());
+                if let Some(id) = id {
+                    send(&out, &Response::err(id, format!("请求格式不对：{err}")));
+                }
                 continue;
             }
         };

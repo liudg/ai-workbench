@@ -309,7 +309,8 @@ async fn task_runs_streams_and_resumes_after_restart() {
             }
         }
     }
-    assert_eq!(revs_of_answer.len(), 3);
+    // 第一段马上推；挨得太近的后两段可以并成一次，最后一次是全文。
+    assert!((2..=3).contains(&revs_of_answer.len()), "{revs_of_answer:?}");
     assert!(revs_of_answer.iter().all(|(seq, _)| *seq == revs_of_answer[0].0));
     assert!(revs_of_answer.windows(2).all(|pair| pair[0].1 < pair[1].1));
 

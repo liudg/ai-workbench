@@ -29,6 +29,7 @@ export interface ClientOptions {
 }
 
 const OPEN = 1;
+const SUBSCRIBE_ATTEMPTS = 3;
 
 export const OFFLINE_MESSAGE = "没有连上后台服务";
 
@@ -113,6 +114,9 @@ export class DaemonClient {
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
+        // 还没发出去就超时了：调用方已经收到失败，重连后不能再发。
+        const queued = this.waiting.indexOf(text);
+        if (queued >= 0) this.waiting.splice(queued, 1);
         reject(new Error(this.status === "online" ? "后台服务没有响应" : OFFLINE_MESSAGE));
       }, timeoutMs ?? this.options.callTimeoutMs);
       this.pending.set(id, { resolve: resolve as (value: unknown) => void, reject, timer });
@@ -201,9 +205,17 @@ export class DaemonClient {
     }, delay);
   }
 
-  private sendSubscribe(topic: string) {
+  /** 订阅没成功（比如后台一时没响应）时隔一会儿再订，最多试 `SUBSCRIBE_ATTEMPTS` 次；断线后由重连重新订阅。 */
+  private sendSubscribe(topic: string, attempt = 0) {
+    const socket = this.socket;
     const extra = this.topicParams.get(topic)?.() ?? {};
-    this.call("subscribe", { ...extra, topic }).catch(() => {});
+    this.call("subscribe", { ...extra, topic }).catch(() => {
+      if (attempt + 1 >= SUBSCRIBE_ATTEMPTS) return;
+      setTimeout(() => {
+        if (this.socket !== socket || this.status !== "online" || !this.topics.has(topic)) return;
+        this.sendSubscribe(topic, attempt + 1);
+      }, this.options.retryDelay(attempt));
+    });
   }
 
   private handle(raw: unknown) {

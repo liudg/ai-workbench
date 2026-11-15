@@ -43,6 +43,8 @@ struct Log {
     next_seq: u64,
     next_rev: u64,
     queue: Vec<QueuedTurn>,
+    /// 上次写库没成功，之后也没能按库里的重读：下次用到前先重读。
+    stale: bool,
 }
 
 /// 接上的 CLI。`muted` 置上后它报的事件不再进时间线；`used_at` 是最后一次用到它或它报事件的时间。
@@ -50,7 +52,13 @@ struct Live {
     handle: Arc<dyn AgentSession>,
     muted: Arc<AtomicBool>,
     used_at: Arc<AtomicI64>,
+    held: Held,
 }
+
+/// pump 压着还没写的那段流式输出。
+type Held = Arc<Mutex<Option<SessionEventBody>>>;
+
+const READ_ONLY: &str = "此会话正被其他进程占用，当前只读，不能发送。";
 
 pub struct Runtimes {
     store: Arc<Store>,
@@ -60,8 +68,8 @@ pub struct Runtimes {
     live: Mutex<HashMap<String, Live>>,
     /// 首轮启动的取消令牌；可见状态和首条说明始终保存在 SQLite。
     starting: Mutex<HashMap<String, Arc<AtomicBool>>>,
-    /// 同一时间只打开一个会话，避免对同一线程起两个 CLI。
-    opening: tokio::sync::Mutex<()>,
+    /// 同一个会话同一时间只接一次，避免对同一线程起两个 CLI。不同会话互不等待。
+    opening: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
     /// 适配器确认原生会话已经没了的会话和那个原生 id。再用到时直接报，不再起 CLI。
     gone: Mutex<HashMap<String, String>>,
     /// 清理和恢复工作树一次只做一件，免得一边删一边恢复。
@@ -126,7 +134,7 @@ impl Runtimes {
             logs: Mutex::default(),
             live: Mutex::default(),
             starting: Mutex::default(),
-            opening: tokio::sync::Mutex::new(()),
+            opening: Mutex::default(),
             gone: Mutex::default(),
             worktrees: tokio::sync::Mutex::new(()),
             probing: Mutex::default(),
@@ -139,6 +147,10 @@ impl Runtimes {
             status_tx,
             status_rx: Mutex::new(Some(status_rx)),
         }
+    }
+
+    fn opening_of(&self, session_id: &str) -> Arc<tokio::sync::Mutex<()>> {
+        self.opening.lock().unwrap().entry(session_id.to_string()).or_default().clone()
     }
 
     /// 状态变化的接收端。只能取一次。
@@ -290,7 +302,26 @@ impl Runtimes {
     }
 
     /// 把一条事件体并进时间线、写库、推送。状态和标题变了再推一次任务列表。
+    /// pump 压着的那段流式输出先写出去，这条不排到它前面。
     pub(crate) fn record(&self, session_id: &str, body: SessionEventBody) -> RuntimeResult<()> {
+        let entry = self
+            .live
+            .lock()
+            .unwrap()
+            .get(session_id)
+            .map(|entry| (entry.held.clone(), entry.muted.clone()));
+        if let Some((held, muted)) = entry {
+            let mut slot = held.lock().unwrap();
+            if let Some(earlier) = slot.take().filter(|_| !muted.load(Ordering::SeqCst)) {
+                if let Err(err) = self.write_event(session_id, earlier) {
+                    eprintln!("记录会话 {session_id} 的事件失败：{err}");
+                }
+            }
+        }
+        self.write_event(session_id, body)
+    }
+
+    fn write_event(&self, session_id: &str, body: SessionEventBody) -> RuntimeResult<()> {
         let topic = session_topic(session_id);
         match body {
             // 适配器请求宿主另开会话。任务里还没有这个入口，不进时间线。
@@ -355,8 +386,49 @@ impl Runtimes {
         let mut ended = None;
         let appended = self.hub.publish_with(&topic, || -> RuntimeResult<_> {
             let mut logs = self.logs.lock().unwrap();
-            let log = self.log_mut(&mut logs, session_id)?;
-            ended = subagent_ended(&log.events, &body);
+            let appended = self.append_locked(&mut logs, session_id, body, activity, now, &mut ended);
+            if appended.is_err() {
+                self.resync(&mut logs, session_id);
+            }
+            appended
+        })?;
+        if let Some(ended) = ended {
+            self.append_at(session_id, ended, activity, now)?;
+        }
+        Ok(appended)
+    }
+
+    /// 写库没成功时副本里已经并进去了：按库里的重读一遍。这次读不了就记着，下次用到前再读。排队留着。
+    fn resync(&self, logs: &mut HashMap<String, Log>, session_id: &str) {
+        if let Some(log) = logs.get_mut(session_id) {
+            if self.reload(log, session_id).is_err() {
+                log.stale = true;
+            }
+        }
+    }
+
+    fn reload(&self, log: &mut Log, session_id: &str) -> RuntimeResult<()> {
+        let stored = self.store.events_since(session_id, 0).map_err(|e| e.to_string())?;
+        log.next_seq = stored.iter().map(|item| item.event.seq).max().unwrap_or(0) + 1;
+        log.next_rev = stored.iter().map(|item| item.rev).max().unwrap_or(0) + 1;
+        log.events = stored.into_iter().map(|item| item.event).collect();
+        log.stale = false;
+        Ok(())
+    }
+
+    #[allow(clippy::type_complexity)]
+    fn append_locked(
+        &self,
+        logs: &mut HashMap<String, Log>,
+        session_id: &str,
+        body: SessionEventBody,
+        activity: bool,
+        now: i64,
+        ended: &mut Option<SessionEventBody>,
+    ) -> RuntimeResult<((String, bool, bool), Value)> {
+        {
+            let log = self.log_mut(logs, session_id)?;
+            *ended = subagent_ended(&log.events, &body);
             let event = match merge_into(&mut log.events, &body, now) {
                 Some(index) => log.events[index].clone(),
                 None => {
@@ -387,11 +459,7 @@ impl Runtimes {
             };
             let data = serde_json::to_value(feed).map_err(|e| e.to_string())?;
             Ok(((log.task_id.clone(), log.side, attention.is_some()), data))
-        })?;
-        if let Some(ended) = ended {
-            self.append_at(session_id, ended, activity, now)?;
         }
-        Ok(appended)
     }
 
     /// 改写时间线里已有的一条：沿用 seq，换新的 rev。
@@ -400,20 +468,21 @@ impl Runtimes {
         self.hub.publish_with(&topic, || -> RuntimeResult<_> {
             let mut logs = self.logs.lock().unwrap();
             let log = self.log_mut(&mut logs, session_id)?;
-            let event = log
+            let index = log
                 .events
-                .iter_mut()
-                .find(|event| event.id == event_id)
+                .iter()
+                .position(|event| event.id == event_id)
                 .ok_or_else(|| "时间线里没有这条事件".to_string())?;
-            event.body = body;
+            // 先写库，写成了再改副本。
             let stored = StoredEvent {
-                event: event.clone(),
+                event: SessionEvent { body, ..log.events[index].clone() },
                 rev: log.next_rev,
             };
-            log.next_rev += 1;
             self.store
                 .put_event(&log.task_id, &stored, false, None)
                 .map_err(|e| e.to_string())?;
+            log.next_rev += 1;
+            log.events[index] = stored.event.clone();
             let feed = SessionFeed {
                 events: vec![stored],
                 ..Default::default()
@@ -424,6 +493,8 @@ impl Runtimes {
 
     /// 会话删掉之前：停掉 CLI，丢掉这里的时间线副本。
     pub(crate) async fn discard(&self, session_id: &str) {
+        // 等正在接的 CLI 接完再停，免得它接上以后没人管。
+        let _opening = self.opening_of(session_id).lock_owned().await;
         self.stop(session_id).await;
         self.logs.lock().unwrap().remove(session_id);
     }
@@ -431,7 +502,7 @@ impl Runtimes {
     /// 关掉侧边聊天：停进程，删会话、时间线和没发的草稿。
     /// 等正在接的 CLI 接完再关，免得刚分出来的进程没人管。
     pub(crate) async fn discard_side(&self, session_id: &str) -> RuntimeResult<()> {
-        let _opening = self.opening.lock().await;
+        let _opening = self.opening_of(session_id).lock_owned().await;
         self.remove_side(session_id).await
     }
 
@@ -551,10 +622,15 @@ impl Runtimes {
                     next_seq,
                     next_rev,
                     queue: Vec::new(),
+                    stale: false,
                 },
             );
         }
-        Ok(logs.get_mut(session_id).expect("log just inserted"))
+        let log = logs.get_mut(session_id).expect("log just inserted");
+        if log.stale {
+            self.reload(log, session_id)?;
+        }
+        Ok(log)
     }
 
     /// 会话干活的目录：工作树任务是检出目录，独立聊天是它自己的文件夹，否则是项目主目录。
@@ -620,7 +696,12 @@ impl Runtimes {
                 }
             }
         }
-        let _opening = self.opening.lock().await;
+        // 侧边聊天从主对话的原生会话分出来：先等主对话接完（它可能正在换原生会话）。顺序固定主 → 侧。
+        let _parent_opening = match self.side_main(session_id)? {
+            Some(main) => Some(self.opening_of(&main).lock_owned().await),
+            None => None,
+        };
+        let _opening = self.opening_of(session_id).lock_owned().await;
         if self.initial_cancelled(session_id) { return Err("启动已取消".into()); }
         if let Some(handle) = self.live_handle(session_id) {
             return Ok(handle);
@@ -676,7 +757,8 @@ impl Runtimes {
         let (tx, rx) = mpsc::unbounded_channel();
         let muted = Arc::new(AtomicBool::new(false));
         let used_at = Arc::new(AtomicI64::new(now_millis()));
-        self.spawn_pump(session_id.to_string(), rx, muted.clone(), used_at.clone());
+        let held = Held::default();
+        self.spawn_pump(session_id.to_string(), rx, muted.clone(), used_at.clone(), held.clone());
         let handle = match self.adapter(session.agent).start_session(ctx, tx).await {
             Ok(handle) => handle,
             Err(err) => {
@@ -715,9 +797,22 @@ impl Runtimes {
                 handle: handle.clone(),
                 muted,
                 used_at,
+                held,
             },
         );
         Ok(handle)
+    }
+
+    /// 侧边聊天所在任务现在用的主对话。不是侧边聊天时为空。
+    fn side_main(&self, session_id: &str) -> RuntimeResult<Option<String>> {
+        let store_err = |e: aiwb_store::StoreError| e.to_string();
+        if !self.store.is_side_session(session_id).map_err(store_err)? {
+            return Ok(None);
+        }
+        let Some(side) = self.store.session(session_id).map_err(store_err)? else {
+            return Ok(None);
+        };
+        Ok(self.store.task_sessions(&side.task_id).map_err(store_err)?.pop().map(|main| main.id))
     }
 
     /// 侧边聊天从任务现在这段的原生会话分出来。分出来的会话不落盘，CLI 退出后接不回去。
@@ -740,15 +835,52 @@ impl Runtimes {
         mut rx: mpsc::UnboundedReceiver<SessionEventBody>,
         muted: Arc<AtomicBool>,
         used_at: Arc<AtomicI64>,
+        held: Held,
     ) {
         let runtimes = Arc::clone(self);
         let cancelled = self.starting.lock().unwrap().get(&session_id).cloned();
         let mut awaiting_turn = self.store.session(&session_id).ok().flatten()
             .is_some_and(|s| matches!(s.status, SessionStatus::Starting | SessionStatus::Idle));
         tokio::spawn(async move {
-            while let Some(body) = rx.recv().await {
-                let _starting = cancelled.as_ref().map(|_| runtimes.starting.lock().unwrap());
-                if cancelled.as_ref().is_some_and(|c| c.load(Ordering::SeqCst)) { continue; }
+            let lock_starting = || cancelled.as_ref().map(|_| runtimes.starting.lock().unwrap());
+            // 调用方拿着 `starting`（首轮启动时）和 `held`。
+            let emit = |body: SessionEventBody| {
+                if cancelled.as_ref().is_some_and(|c| c.load(Ordering::SeqCst)) || muted.load(Ordering::SeqCst) {
+                    return;
+                }
+                used_at.store(now_millis(), Ordering::SeqCst);
+                if let Err(err) = runtimes.write_event(&session_id, body) {
+                    eprintln!("记录会话 {session_id} 的事件失败：{err}");
+                }
+            };
+            // 同一条流的全文覆盖来得再密，也隔 `STREAM_INTERVAL` 才写一次库、推一次；压着的那条只留最新的。
+            // 别的事件一到，压着的先写，顺序不变。
+            let mut last_stream: Option<tokio::time::Instant> = None;
+            loop {
+                let waiting = held.lock().unwrap().is_some();
+                let received = match last_stream.filter(|_| waiting) {
+                    Some(last) => tokio::select! {
+                        received = rx.recv() => received,
+                        _ = tokio::time::sleep_until(last + STREAM_INTERVAL) => {
+                            {
+                                let _starting = lock_starting();
+                                if let Some(body) = held.lock().unwrap().take() {
+                                    emit(body);
+                                }
+                            }
+                            last_stream = Some(tokio::time::Instant::now());
+                            continue;
+                        }
+                    },
+                    None => rx.recv().await,
+                };
+                let Some(mut body) = received else {
+                    let _starting = lock_starting();
+                    if let Some(body) = held.lock().unwrap().take() {
+                        emit(body);
+                    }
+                    break;
+                };
                 if let SessionEventBody::StatusChanged { status } = &body {
                     // 原生进程接通时的 idle 不是首轮完成；直到真正开始回合才接收完成状态。
                     if awaiting_turn && *status == SessionStatus::Completed { continue; }
@@ -756,34 +888,78 @@ impl Runtimes {
                         awaiting_turn = false;
                     }
                 }
-                if muted.load(Ordering::SeqCst) {
-                    continue;
+                let _starting = lock_starting();
+                let mut slot = held.lock().unwrap();
+                if let Some(earlier) = slot.take() {
+                    match absorb_stream(earlier, body) {
+                        Ok(merged) => {
+                            *slot = Some(merged);
+                            continue;
+                        }
+                        Err(pair) => {
+                            let (earlier, next) = *pair;
+                            emit(earlier);
+                            last_stream = Some(tokio::time::Instant::now());
+                            body = next;
+                        }
+                    }
                 }
-                used_at.store(now_millis(), Ordering::SeqCst);
-                if let Err(err) = runtimes.record(&session_id, body) {
-                    eprintln!("记录会话 {session_id} 的事件失败：{err}");
+                if is_stream_overwrite(&body) {
+                    if last_stream.is_some_and(|last| last.elapsed() < STREAM_INTERVAL) {
+                        *slot = Some(body);
+                        continue;
+                    }
+                    last_stream = Some(tokio::time::Instant::now());
                 }
+                emit(body);
             }
         });
     }
 
     /// 进程已经退出的句柄扔掉，下次用到时重新接上。
-    fn forget(&self, session_id: &str) {
-        self.live.lock().unwrap().remove(session_id);
-        self.mcp.revoke(session_id);
+    /// 只扔 `dead` 这一个：别的调用已经重新接上时，新句柄留着。
+    fn forget(&self, session_id: &str, dead: &Arc<dyn AgentSession>) {
+        let mut live = self.live.lock().unwrap();
+        if live.get(session_id).is_some_and(|entry| Arc::ptr_eq(&entry.handle, dead)) {
+            live.remove(session_id);
+            self.mcp.revoke(session_id);
+        }
     }
 
     /// 跑一个要句柄的操作。CLI 已经退出时重新接上再试一次。
-    async fn with_handle<T, F, Fut>(self: &Arc<Self>, session_id: &str, work: F) -> RuntimeResult<T>
+    pub(crate) async fn with_handle<T, F, Fut>(self: &Arc<Self>, session_id: &str, work: F) -> RuntimeResult<T>
+    where
+        F: Fn(Arc<dyn AgentSession>) -> Fut,
+        Fut: std::future::Future<Output = Result<T, AgentError>>,
+    {
+        self.with_live(session_id, false, work).await
+    }
+
+    /// 同 [`Self::with_handle`]，给要往会话里发东西的操作：只读的句柄（包括重新接上的）直接拒绝。
+    pub(crate) async fn with_writer<T, F, Fut>(self: &Arc<Self>, session_id: &str, work: F) -> RuntimeResult<T>
+    where
+        F: Fn(Arc<dyn AgentSession>) -> Fut,
+        Fut: std::future::Future<Output = Result<T, AgentError>>,
+    {
+        self.with_live(session_id, true, work).await
+    }
+
+    async fn with_live<T, F, Fut>(self: &Arc<Self>, session_id: &str, writes: bool, work: F) -> RuntimeResult<T>
     where
         F: Fn(Arc<dyn AgentSession>) -> Fut,
         Fut: std::future::Future<Output = Result<T, AgentError>>,
     {
         let handle = self.ensure_live(session_id).await?;
-        match work(handle).await {
+        if writes && handle.read_only() {
+            return Err(READ_ONLY.into());
+        }
+        match work(handle.clone()).await {
             Err(AgentError::Closed) => {
-                self.forget(session_id);
+                self.forget(session_id, &handle);
                 let handle = self.ensure_live(session_id).await?;
+                if writes && handle.read_only() {
+                    return Err(READ_ONLY.into());
+                }
                 work(handle).await.map_err(|e| e.to_string())
             }
             other => other.map_err(|e| e.to_string()),
@@ -805,13 +981,11 @@ impl Runtimes {
         if text.trim().is_empty() && images.is_empty() {
             return Err("消息不能为空".into());
         }
-        let handle = self.ensure_live(session_id).await?;
-        if handle.read_only() {
-            return Err("此会话正被其他进程占用，当前只读，不能发送。".into());
-        }
-        if text.starts_with('/') && images.is_empty() && preface.is_none() {
-            let text = text.clone();
-            self.with_handle(session_id, move |handle| {
+        // 和各适配器、子任务回报判断命令的口径一样：不看开头的空白。
+        let command = text.trim_start();
+        if command.starts_with('/') && images.is_empty() && preface.is_none() {
+            let text = command.to_string();
+            self.with_writer(session_id, move |handle| {
                 let text = text.clone();
                 async move { handle.send_message(text).await }
             })
@@ -831,7 +1005,7 @@ impl Runtimes {
             annotations: Vec::new(),
         };
         let delivery = self
-            .with_handle(session_id, move |handle| {
+            .with_writer(session_id, move |handle| {
                 let turn = turn.clone();
                 async move {
                     if now {
@@ -876,10 +1050,6 @@ impl Runtimes {
         session_id: &str,
         note: PageAnnotation,
     ) -> RuntimeResult<TurnDelivery> {
-        let handle = self.ensure_live(session_id).await?;
-        if handle.read_only() {
-            return Err("此会话正被其他进程占用，当前只读，不能发送。".into());
-        }
         let comment = note.comment.trim().to_string();
         let images: Vec<String> = note
             .screenshot
@@ -890,7 +1060,7 @@ impl Runtimes {
             .into_iter()
             .collect();
         let delivery = self
-            .with_handle(session_id, move |handle| {
+            .with_writer(session_id, move |handle| {
                 let note = note.clone();
                 async move { handle.submit_annotation(note).await }
             })
@@ -917,11 +1087,12 @@ impl Runtimes {
         if objective.is_empty() {
             return Err("目标不能为空".into());
         }
-        let handle = self.ensure_live(session_id).await?;
-        if handle.read_only() {
-            return Err("此会话正被其他进程占用，当前只读，不能发送。".into());
-        }
-        handle.set_goal(&objective).await.map_err(|e| e.to_string())?;
+        let goal = objective.clone();
+        self.with_writer(session_id, move |handle| {
+            let goal = goal.clone();
+            async move { handle.set_goal(&goal).await }
+        })
+        .await?;
         let session = self
             .store
             .session(session_id)
@@ -990,7 +1161,6 @@ impl Runtimes {
     /// 侧边聊天接不回去：哪条连接的面板里都没有它的标签时，已完成、空闲、没有排队就直接关掉
     /// （界面关了或重载后标签没了）。有标签时窗口没焦点、在看别的任务也留着。
     pub(crate) async fn release_idle(&self, now: i64, idle_ms: i64) -> RuntimeResult<usize> {
-        let _opening = self.opening.lock().await;
         let idle = |entry: &Live| now - entry.used_at.load(Ordering::SeqCst) >= idle_ms;
         let candidates: Vec<String> = self
             .live
@@ -1002,6 +1172,11 @@ impl Runtimes {
             .collect();
         let mut released = 0;
         for session_id in candidates {
+            // 正在接的会话不动。拿着它的锁，关的时候不会有人同时接。
+            let opening = self.opening_of(&session_id);
+            let Ok(_opening) = opening.try_lock() else {
+                continue;
+            };
             let Some(session) = self.store.session(&session_id).map_err(|e| e.to_string())? else {
                 continue;
             };
@@ -1056,7 +1231,17 @@ impl Runtimes {
             let _ = entry.handle.stop().await;
             released += 1;
         }
+        self.drop_detached_logs();
+        // 没人拿着也没人等的锁不留，再用到时新建。
+        self.opening.lock().unwrap().retain(|_, lock| Arc::strong_count(lock) > 1);
         Ok(released)
+    }
+
+    /// 没接着 CLI、也没有排队的会话，时间线副本不留；再用到时从库里读。
+    fn drop_detached_logs(&self) {
+        let mut logs = self.logs.lock().unwrap();
+        let live = self.live.lock().unwrap();
+        logs.retain(|session_id, log| live.contains_key(session_id) || !log.queue.is_empty());
     }
 
     /// 不建线程起一次 CLI，只要模型目录，拿到就关掉。
@@ -1107,6 +1292,48 @@ impl Runtimes {
 
     pub(crate) fn is_live(&self, session_id: &str) -> bool {
         self.live.lock().unwrap().contains_key(session_id)
+    }
+}
+
+/// 同一条流的全文覆盖最密隔这么久写一次。照 Codex 适配器自己的节流（`codex/rpc.rs`）。
+const STREAM_INTERVAL: std::time::Duration = std::time::Duration::from_millis(80);
+
+/// 带 `stream_id` 的助手消息或思考：每次都是全文，后一条盖掉前一条。
+fn is_stream_overwrite(body: &SessionEventBody) -> bool {
+    matches!(
+        body,
+        SessionEventBody::AgentMessage { stream_id: Some(_), .. } | SessionEventBody::Thinking { stream_id: Some(_), .. }
+    )
+}
+
+/// `next` 和 `earlier` 是同一条流时并成一条，结果和先后各写一次一样：正文用新的，
+/// 阶段、模式、去重标记只在新值有内容时换（同 `aiwb_core::timeline` 的归并）。不是同一条流就原样还回来。
+fn absorb_stream(
+    earlier: SessionEventBody,
+    next: SessionEventBody,
+) -> Result<SessionEventBody, Box<(SessionEventBody, SessionEventBody)>> {
+    match (earlier, next) {
+        (
+            SessionEventBody::AgentMessage { stream_id: Some(id), phase, mode, dedupe_of, .. },
+            SessionEventBody::AgentMessage {
+                text,
+                stream_id: Some(next_id),
+                phase: next_phase,
+                mode: next_mode,
+                dedupe_of: next_dedupe,
+            },
+        ) if id == next_id => Ok(SessionEventBody::AgentMessage {
+            text,
+            stream_id: Some(id),
+            phase: next_phase.or(phase),
+            mode: next_mode.or(mode),
+            dedupe_of: next_dedupe.or(dedupe_of),
+        }),
+        (
+            SessionEventBody::Thinking { stream_id: Some(id), .. },
+            SessionEventBody::Thinking { text, stream_id: Some(next_id) },
+        ) if id == next_id => Ok(SessionEventBody::Thinking { text, stream_id: Some(id) }),
+        (earlier, next) => Err(Box::new((earlier, next))),
     }
 }
 
@@ -1232,6 +1459,7 @@ mod tests {
     struct QuietlyStopped {
         sink: mpsc::UnboundedSender<SessionEventBody>,
         stopped: std::sync::atomic::AtomicUsize,
+        sent: Mutex<Vec<String>>,
     }
 
     #[async_trait::async_trait]
@@ -1246,7 +1474,8 @@ mod tests {
 
     #[async_trait::async_trait]
     impl AgentSession for QuietlyStopped {
-        async fn send_message(&self, _text: String) -> Result<(), AgentError> {
+        async fn send_message(&self, text: String) -> Result<(), AgentError> {
+            self.sent.lock().unwrap().push(text);
             Ok(())
         }
 
@@ -1266,10 +1495,12 @@ mod tests {
         let (tx, rx) = mpsc::unbounded_channel();
         let muted = Arc::new(AtomicBool::new(false));
         let used = Arc::new(AtomicI64::new(used_at));
-        runtimes.spawn_pump("s".into(), rx, muted.clone(), used.clone());
+        let held = Held::default();
+        runtimes.spawn_pump("s".into(), rx, muted.clone(), used.clone(), held.clone());
         let session = Arc::new(QuietlyStopped {
             sink: tx,
             stopped: Default::default(),
+            sent: Default::default(),
         });
         runtimes.live.lock().unwrap().insert(
             "s".into(),
@@ -1277,6 +1508,7 @@ mod tests {
                 handle: session.clone(),
                 muted,
                 used_at: used,
+                held,
             },
         );
         session
@@ -1347,6 +1579,224 @@ mod tests {
             assert_eq!(runtimes.release_idle(30 * MIN, 30 * MIN).await.unwrap(), 0);
             assert!(runtimes.is_live("s"));
         }
+    }
+
+    #[tokio::test]
+    async fn forgetting_a_dead_handle_keeps_the_one_that_replaced_it() {
+        let (_store, runtimes) = resumable_runtimes();
+        attach(&runtimes, 0);
+        let dead = runtimes.live_handle("s").unwrap();
+        // 另一个调用已经重新接上。
+        attach(&runtimes, 0);
+        let fresh = runtimes.live_handle("s").unwrap();
+        runtimes.forget("s", &dead);
+        assert!(Arc::ptr_eq(&runtimes.live_handle("s").unwrap(), &fresh));
+        runtimes.forget("s", &fresh);
+        assert!(!runtimes.is_live("s"));
+    }
+
+    fn delta(stream: &str, text: &str) -> SessionEventBody {
+        SessionEventBody::AgentMessage {
+            text: text.into(),
+            stream_id: Some(stream.into()),
+            phase: None,
+            mode: None,
+            dedupe_of: None,
+        }
+    }
+
+    fn texts(store: &Store) -> Vec<String> {
+        store
+            .events_since("s", 0)
+            .unwrap()
+            .into_iter()
+            .map(|item| match item.event.body {
+                SessionEventBody::AgentMessage { text, .. }
+                | SessionEventBody::Thinking { text, .. }
+                | SessionEventBody::System { text }
+                | SessionEventBody::UserMessage { text, .. } => text,
+                SessionEventBody::StatusChanged { status } => format!("{status:?}"),
+                other => format!("{other:?}"),
+            })
+            .collect()
+    }
+
+    /// 让 pump 把收到的处理完，时钟只往前走 1ms（不到节流间隔）。
+    async fn settle() {
+        tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_directly_recorded_event_does_not_overtake_held_stream_text() {
+        let (store, runtimes) = resumable_runtimes();
+        let session = attach(&runtimes, 0);
+        session.sink.send(delta("m1", "第一条")).unwrap();
+        // 新的一条流紧跟着来，被压住。
+        session.sink.send(delta("m2", "第二条")).unwrap();
+        settle().await;
+        assert_eq!(texts(&store), ["第一条"]);
+        runtimes.record("s", SessionEventBody::System { text: "直接记的".into() }).unwrap();
+        assert_eq!(texts(&store), ["第一条", "第二条", "直接记的"]);
+        // 压着的已经写过，到点不再写一遍。
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        assert_eq!(store.events_since("s", 0).unwrap().iter().map(|item| item.rev).max(), Some(3));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_full_text_lands_before_the_turn_ends_and_before_the_channel_closes() {
+        let (store, runtimes) = resumable_runtimes();
+        let session = attach(&runtimes, 0);
+        let thinking = |text: &str| SessionEventBody::Thinking { text: text.into(), stream_id: Some("t1".into()) };
+        session.sink.send(status(SessionStatus::Running)).unwrap();
+        session.sink.send(thinking("想")).unwrap();
+        session.sink.send(thinking("想好了")).unwrap();
+        session.sink.send(delta("m1", "答")).unwrap();
+        session.sink.send(delta("m1", "答完了")).unwrap();
+        session.sink.send(status(SessionStatus::Completed)).unwrap();
+        settle().await;
+        assert_eq!(texts(&store), ["Running", "想好了", "答完了", "Completed"]);
+        assert_eq!(store.attention("s").unwrap().unwrap().preview.as_deref(), Some("答完了"));
+
+        // 进程退出、通道关掉时，压着的最后一段也写出去。
+        session.sink.send(delta("m2", "收尾")).unwrap();
+        session.sink.send(delta("m2", "收尾了")).unwrap();
+        runtimes.live.lock().unwrap().remove("s");
+        drop(session);
+        settle().await;
+        assert_eq!(texts(&store).last().map(String::as_str), Some("收尾了"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn held_stream_text_of_a_muted_session_is_dropped() {
+        let (store, runtimes) = resumable_runtimes();
+        let session = attach(&runtimes, 0);
+        session.sink.send(delta("m1", "写了")).unwrap();
+        session.sink.send(delta("m2", "压着")).unwrap();
+        settle().await;
+        runtimes.live.lock().unwrap().get("s").unwrap().muted.store(true, Ordering::SeqCst);
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        assert_eq!(texts(&store), ["写了"]);
+    }
+
+    #[tokio::test]
+    async fn a_session_being_opened_is_not_released_and_unused_locks_are_dropped() {
+        let (_store, runtimes) = resumable_runtimes();
+        attach(&runtimes, 0);
+        let opening = runtimes.opening_of("s").lock_owned().await;
+        assert_eq!(runtimes.release_idle(30 * MIN, 30 * MIN).await.unwrap(), 0);
+        assert!(runtimes.is_live("s"));
+        assert!(runtimes.opening.lock().unwrap().contains_key("s"), "有人拿着的锁留着");
+        drop(opening);
+        assert_eq!(runtimes.release_idle(30 * MIN, 30 * MIN).await.unwrap(), 1);
+        assert!(runtimes.opening.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn discarding_waits_for_the_session_to_finish_opening() {
+        let (_store, runtimes) = resumable_runtimes();
+        let opening = runtimes.opening_of("s").lock_owned().await;
+        let discarding = {
+            let runtimes = runtimes.clone();
+            tokio::spawn(async move { runtimes.discard("s").await })
+        };
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        assert!(!discarding.is_finished());
+        // 这时接上的 CLI，丢弃时一起停掉。
+        let session = attach(&runtimes, 0);
+        drop(opening);
+        discarding.await.unwrap();
+        assert_eq!(session.stopped.load(Ordering::SeqCst), 1);
+        assert!(!runtimes.is_live("s"));
+    }
+
+    #[tokio::test]
+    async fn timeline_copies_of_detached_sessions_are_dropped_on_the_idle_sweep() {
+        let (_store, runtimes) = resumable_runtimes();
+        runtimes.record("s", SessionEventBody::System { text: "一".into() }).unwrap();
+        assert!(runtimes.logs.lock().unwrap().contains_key("s"));
+        assert_eq!(runtimes.release_idle(30 * MIN, 30 * MIN).await.unwrap(), 0);
+        assert!(!runtimes.logs.lock().unwrap().contains_key("s"));
+
+        // 接着 CLI 的、还有排队的留着。
+        attach(&runtimes, 30 * MIN);
+        runtimes.record("s", SessionEventBody::System { text: "二".into() }).unwrap();
+        assert_eq!(runtimes.release_idle(30 * MIN, 30 * MIN).await.unwrap(), 0);
+        assert!(runtimes.logs.lock().unwrap().contains_key("s"));
+    }
+
+    #[tokio::test]
+    async fn a_command_with_leading_whitespace_is_sent_as_a_command() {
+        let (store, runtimes) = resumable_runtimes();
+        let session = attach(&runtimes, 0);
+        let delivery = runtimes
+            .send_message("s", Outgoing::user("  /status".into(), Vec::new(), false))
+            .await
+            .unwrap();
+        assert_eq!(delivery, TurnDelivery::Started);
+        assert_eq!(*session.sent.lock().unwrap(), ["/status"]);
+        assert!(store.events_since("s", 0).unwrap().is_empty(), "命令不画用户气泡");
+    }
+
+    #[tokio::test]
+    async fn a_copy_that_could_not_be_reread_is_reread_before_its_next_use() {
+        let (store, runtimes) = resumable_runtimes();
+        runtimes.record("s", SessionEventBody::System { text: "一".into() }).unwrap();
+        {
+            let mut logs = runtimes.logs.lock().unwrap();
+            let log = logs.get_mut("s").unwrap();
+            log.events.clear();
+            log.queue.push(QueuedTurn { id: "q".into(), text: "下一条".into(), images: Vec::new(), client_id: String::new() });
+            log.stale = true;
+        }
+        runtimes.record("s", SessionEventBody::System { text: "二".into() }).unwrap();
+        assert_eq!(texts(&store), ["一", "二"]);
+        let logs = runtimes.logs.lock().unwrap();
+        assert_eq!(logs["s"].events.len(), 2);
+        assert_eq!(logs["s"].queue.len(), 1, "排队留着");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn dense_stream_overwrites_are_written_sparsely_and_end_on_the_latest_text() {
+        let (store, runtimes) = resumable_runtimes();
+        let session = attach(&runtimes, 0);
+        let delta = |text: String| SessionEventBody::AgentMessage {
+            text,
+            stream_id: Some("m1".into()),
+            phase: None,
+            mode: None,
+            dedupe_of: None,
+        };
+        for index in 0..200 {
+            session.sink.send(delta(format!("第 {index} 段"))).unwrap();
+        }
+        // 别的事件一到，压着的那条先写。
+        session.sink.send(SessionEventBody::System { text: "之后".into() }).unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let events = store.events_since("s", 0).unwrap();
+        assert_eq!(events.len(), 2);
+        assert!(matches!(&events[0].event.body, SessionEventBody::AgentMessage { text, .. } if text == "第 199 段"));
+        assert!(matches!(&events[1].event.body, SessionEventBody::System { .. }));
+        assert_eq!(events[1].rev, 3, "200 次覆盖只写了头一次和最后的全文");
+
+        // 没有后续事件时，压着的那条到点自己写出去。
+        session.sink.send(delta("第 200 段".into())).unwrap();
+        session.sink.send(delta("最后".into())).unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+        let events = store.events_since("s", 0).unwrap();
+        assert!(matches!(&events[0].event.body, SessionEventBody::AgentMessage { text, .. } if text == "最后"));
+    }
+
+    #[test]
+    fn a_failed_write_leaves_the_copy_matching_the_database() {
+        let (store, runtimes) = runtimes_with_task(SessionStatus::Completed);
+        runtimes.record("s", SessionEventBody::System { text: "一".into() }).unwrap();
+        // 会话行没了，外键挡住写入。
+        store.remove_session("s").unwrap();
+        assert!(runtimes.record("s", SessionEventBody::System { text: "二".into() }).is_err());
+        let logs = runtimes.logs.lock().unwrap();
+        let log = logs.get("s").unwrap();
+        assert!(log.events.is_empty());
+        assert_eq!((log.next_seq, log.next_rev), (1, 1));
     }
 
     /// 任务 `t` 的主对话是 `m`，侧边聊天是 `s`。

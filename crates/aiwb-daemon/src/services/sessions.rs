@@ -146,6 +146,7 @@ impl Services {
     }
 
     pub(crate) async fn answer(&self, params: Answer) -> ServiceResult<()> {
+        // 提问只活在发它的那个进程里，进程没了重新接上也答不了：不重试。
         let handle = self.runtimes.handle(&params.session_id).await?;
         handle
             .answer_prompt(&params.prompt_id, params.answer)
@@ -154,31 +155,44 @@ impl Services {
     }
 
     pub(crate) async fn update_queued(&self, params: UpdateQueued) -> ServiceResult<()> {
-        let handle = self.runtimes.handle(&params.session_id).await?;
         let turn = UserTurn {
             text: params.text,
             images: params.images,
             client_id: String::new(),
             annotations: Vec::new(),
         };
-        handle
-            .update_queued(&params.id, turn)
+        let id = params.id;
+        self.runtimes
+            .with_handle(&params.session_id, move |handle| {
+                let (id, turn) = (id.clone(), turn.clone());
+                async move { handle.update_queued(&id, turn).await }
+            })
             .await
-            .map_err(|e| e.to_string())
     }
 
     pub(crate) async fn remove_queued(&self, params: Queued) -> ServiceResult<()> {
-        let handle = self.runtimes.handle(&params.session_id).await?;
-        handle.remove_queued(&params.id).await.map_err(|e| e.to_string())
+        let id = params.id;
+        self.runtimes
+            .with_handle(&params.session_id, move |handle| {
+                let id = id.clone();
+                async move { handle.remove_queued(&id).await }
+            })
+            .await
     }
 
     pub(crate) async fn steer_queued(&self, params: Queued) -> ServiceResult<()> {
-        let handle = self.runtimes.handle(&params.session_id).await?;
-        handle.steer_queued(&params.id).await.map_err(|e| e.to_string())
+        let id = params.id;
+        self.runtimes
+            .with_handle(&params.session_id, move |handle| {
+                let id = id.clone();
+                async move { handle.steer_queued(&id).await }
+            })
+            .await
     }
 
     /// 按给定顺序把排队的消息逐条引导进当前回合。
     pub(crate) async fn flush_queued(&self, params: FlushQueued) -> ServiceResult<()> {
+        // 送到一半断了的话前几条已经发出，整组重试会漏掉后面的：不重试。
         let handle = self.runtimes.handle(&params.session_id).await?;
         handle.flush_queued(params.ids).await.map_err(|e| e.to_string())
     }
@@ -192,8 +206,9 @@ impl Services {
         if let Some(agent) = self.shelved_agent(&params.session_id)? {
             return Ok(self.stored_catalog(agent)?.unwrap_or_else(AgentCatalog::empty));
         }
-        let handle = self.runtimes.handle(&params.session_id).await?;
-        let catalog = handle.catalog().await.map_err(|e| e.to_string())?;
+        let catalog = self.runtimes
+            .with_handle(&params.session_id, |handle| async move { handle.catalog().await })
+            .await?;
         if let Some(session) = self.store.session(&params.session_id).map_err(|e| e.to_string())? {
             self.runtimes.remember_catalog(session.agent, &catalog);
         }
@@ -205,13 +220,19 @@ impl Services {
     }
 
     pub(crate) async fn clear_goal(&self, params: SessionId) -> ServiceResult<()> {
-        let handle = self.runtimes.handle(&params.session_id).await?;
-        handle.clear_goal().await.map_err(|e| e.to_string())
+        self.runtimes
+            .with_handle(&params.session_id, |handle| async move { handle.clear_goal().await })
+            .await
     }
 
     pub(crate) async fn set_goal_status(&self, params: GoalStatus) -> ServiceResult<()> {
-        let handle = self.runtimes.handle(&params.session_id).await?;
-        handle.set_goal_status(&params.status).await.map_err(|e| e.to_string())
+        let status = params.status;
+        self.runtimes
+            .with_handle(&params.session_id, move |handle| {
+                let status = status.clone();
+                async move { handle.set_goal_status(&status).await }
+            })
+            .await
     }
 
     /// 把当前目标再推给 Agent 一次。
@@ -220,16 +241,18 @@ impl Services {
         if self.shelved_agent(&params.session_id)?.is_some() {
             return Ok(());
         }
-        let handle = self.runtimes.handle(&params.session_id).await?;
-        handle.publish_goal().await.map_err(|e| e.to_string())
+        self.runtimes
+            .with_handle(&params.session_id, |handle| async move { handle.publish_goal().await })
+            .await
     }
 
     pub(crate) async fn permission_menu(&self, params: SessionId) -> ServiceResult<PermissionMenu> {
         if let Some(agent) = self.shelved_agent(&params.session_id)? {
             return Ok(self.runtimes.adapter(agent).draft_permission_menu());
         }
-        let handle = self.runtimes.handle(&params.session_id).await?;
-        handle.permission_menu().await.map_err(|e| e.to_string())
+        self.runtimes
+            .with_handle(&params.session_id, |handle| async move { handle.permission_menu().await })
+            .await
     }
 
     /// 当前账号的订阅额度。只有声明了 `supports_subscription_usage` 的 Agent 有。
@@ -264,17 +287,20 @@ impl Services {
     }
 
     pub(crate) async fn review_targets(&self, params: SessionId) -> ServiceResult<ReviewTargets> {
-        let handle = self.runtimes.handle(&params.session_id).await?;
-        handle.review_targets().await.map_err(|e| e.to_string())
+        self.runtimes
+            .with_handle(&params.session_id, |handle| async move { handle.review_targets().await })
+            .await
     }
 
     /// 代码审查。用户消息由适配器写进时间线。
     pub(crate) async fn start_review(&self, params: StartReview) -> ServiceResult<()> {
-        let handle = self.runtimes.handle(&params.session_id).await?;
-        if handle.read_only() {
-            return Err("此会话正被其他进程占用，当前只读，不能发送。".into());
-        }
-        handle.start_review(params.target).await.map_err(|e| e.to_string())
+        let target = params.target;
+        self.runtimes
+            .with_writer(&params.session_id, move |handle| {
+                let target = target.clone();
+                async move { handle.start_review(target).await }
+            })
+            .await
     }
 
     pub(crate) async fn stop_session(&self, params: SessionId) -> ServiceResult<()> {

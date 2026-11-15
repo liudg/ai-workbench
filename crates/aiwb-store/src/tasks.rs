@@ -137,7 +137,10 @@ impl Store {
 
     /// 任务列表主题的内容：每个任务带上它的会话，和现在用的会话的注意力。
     pub fn task_entries(&self) -> StoreResult<Vec<TaskEntry>> {
-        let mut sessions = self.list_sessions()?;
+        let mut sessions: HashMap<String, Vec<TaskSession>> = HashMap::new();
+        for session in self.list_sessions()? {
+            sessions.entry(session.task_id.clone()).or_default().push(session);
+        }
         let mut sides: HashMap<String, Vec<TaskSession>> = HashMap::new();
         for session in self.side_sessions()? {
             sides.entry(session.task_id.clone()).or_default().push(session);
@@ -147,9 +150,7 @@ impl Store {
             .list_tasks()?
             .into_iter()
             .map(|task| {
-                let (mine, rest): (Vec<_>, Vec<_>) =
-                    sessions.drain(..).partition(|session| session.task_id == task.id);
-                sessions = rest;
+                let mine = sessions.remove(&task.id).unwrap_or_default();
                 let attention = match mine.last() {
                     Some(current) => attention
                         .remove(&current.id)

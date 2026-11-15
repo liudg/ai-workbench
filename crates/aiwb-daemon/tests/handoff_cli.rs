@@ -176,3 +176,85 @@ async fn codex_and_claude_hand_off_and_fork() {
 
     services.stop_agents().await;
 }
+
+/// 时间线的 seq 从 1 连续，停在已完成。
+fn assert_timeline_whole(services: &Services, session_id: &str) {
+    let events = events_of(&services.snapshot(&format!("session:{session_id}"), &json!({})).unwrap());
+    let seqs: Vec<u64> = events.iter().map(|e| e["seq"].as_u64().unwrap()).collect();
+    assert_eq!(seqs, (1..=seqs.len() as u64).collect::<Vec<_>>(), "{session_id} 的 seq 不连续");
+    let status = events.iter().rev().find(|e| e["kind"] == "status-changed").map(|e| e["status"].clone());
+    assert_eq!(status, Some(json!("completed")));
+}
+
+/// 本机只有 Codex 和 Antigravity 时走的一遍：两个会话同时接上、流式回答落库、停掉进程后接回、
+/// 带前导空白的命令、侧边聊天、没说过话就换回 Agent、跨 Agent 交接。
+/// `cargo test -p aiwb-daemon --test handoff_cli codex_and_antigravity -- --ignored --nocapture`
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "calls the local Codex and Antigravity CLIs"]
+async fn codex_and_antigravity_run_side_by_side() {
+    let data = tempfile::tempdir().unwrap();
+    let project_dir = tempfile::tempdir().unwrap();
+    let services = Services::new(
+        Arc::new(Store::open(&data.path().join("db.sqlite")).unwrap()),
+        DaemonInfo { version: "cli".into(), build: String::new(), pid: 1, port: 0, token: "t".into() },
+        data.path().to_path_buf(),
+    );
+    let project = services.dispatch("projects.add", json!({ "path": project_dir.path().to_string_lossy() })).await.unwrap();
+    let create = |agent: &'static str| {
+        let services = &services;
+        let project = &project;
+        async move {
+            let task = services.dispatch("tasks.create", json!({ "projectId": project["id"], "agent": agent })).await.unwrap();
+            (task["id"].as_str().unwrap().to_string(), last_session(&task).0)
+        }
+    };
+    let (codex_task, codex) = create("codex-cli").await;
+    let (_, agy) = create("antigravity").await;
+
+    // 两个会话同时接上、同时跑：谁也不等谁。
+    let remember = "Remember the code PLUM-42. Reply OK only. Do not use tools.";
+    let started = Instant::now();
+    tokio::join!(ask(&services, &codex, remember), ask(&services, &agy, remember));
+    println!("两个会话同时跑完用了 {:?}", started.elapsed());
+    assert_timeline_whole(&services, &codex);
+    assert_timeline_whole(&services, &agy);
+
+    // 停掉进程，下一条消息接回原来的原生会话。
+    let recall = "What code did I ask you to remember? Reply only the code. Do not use tools.";
+    for session in [&codex, &agy] {
+        services.dispatch("sessions.stop", json!({ "sessionId": session })).await.unwrap();
+        let answer = ask(&services, session, recall).await;
+        assert!(answer.contains("PLUM-42"), "{session} 没接回原来的会话：{answer}");
+        assert_timeline_whole(&services, session);
+    }
+
+    // 开头带空白的命令照命令发：不开回合，不画用户气泡。
+    services.dispatch("sessions.send", json!({ "sessionId": codex, "text": "  /status" })).await.unwrap();
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    let events = events_of(&services.snapshot(&format!("session:{codex}"), &json!({})).unwrap());
+    assert!(!events.iter().any(|e| e["kind"] == "user-message" && e["text"].as_str().is_some_and(|t| t.contains("/status"))));
+
+    // 侧边聊天从主对话分出来。
+    let side = services.dispatch("tasks.openSide", json!({ "taskId": codex_task })).await.unwrap();
+    let side_id = side["id"].as_str().unwrap();
+    let answer = ask(&services, side_id, recall).await;
+    assert!(answer.contains("PLUM-42"), "侧边聊天没带上主对话：{answer}");
+    services.dispatch("tasks.closeSide", json!({ "sessionId": side_id })).await.unwrap();
+
+    // 换过去还没说话就换回来：新的那段丢掉，接着原来的 Codex 会话。
+    services.dispatch("tasks.switchAgent", json!({ "taskId": codex_task, "agent": "antigravity" })).await.unwrap();
+    let back = services.dispatch("tasks.switchAgent", json!({ "taskId": codex_task, "agent": "codex-cli" })).await.unwrap();
+    assert_eq!(last_session(&back).0, codex);
+    let answer = ask(&services, &codex, recall).await;
+    assert!(answer.contains("PLUM-42"), "换回来以后没接上：{answer}");
+
+    // Codex → Antigravity：新会话，带上前文。
+    let switched = services.dispatch("tasks.switchAgent", json!({ "taskId": codex_task, "agent": "antigravity" })).await.unwrap();
+    let (handed, _) = last_session(&switched);
+    let answer = ask(&services, &handed, recall).await;
+    assert!(answer.contains("PLUM-42"), "Antigravity 没拿到前文：{answer}");
+    assert_eq!(handoff_of(&services, &handed)["delivered"], true);
+    assert_timeline_whole(&services, &handed);
+
+    services.stop_agents().await;
+}

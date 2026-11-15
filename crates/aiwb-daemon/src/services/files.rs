@@ -124,10 +124,13 @@ impl Services {
         if self.shelved_agent(session_id)?.is_some() {
             return Err("工作树已清理，恢复后再看上一轮的改动".into());
         }
-        let handle = self.runtimes.handle(session_id).await?;
-        handle
-            .diff_for_scope(&root.to_string_lossy(), &params.diff_scope, params.ignore_whitespace)
+        let root = root.to_string_lossy().into_owned();
+        let (scope, ignore_whitespace) = (params.diff_scope, params.ignore_whitespace);
+        self.runtimes
+            .with_handle(session_id, move |handle| {
+                let (root, scope) = (root.clone(), scope.clone());
+                async move { handle.diff_for_scope(&root, &scope, ignore_whitespace).await }
+            })
             .await
-            .map_err(|e| e.to_string())
     }
 }

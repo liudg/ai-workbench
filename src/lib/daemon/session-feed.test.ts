@@ -70,3 +70,21 @@ test("离开后保留副本，再打开只补差", async () => {
   assert.equal(client.subs.length, 2);
   assert.deepEqual(client.subs[1].params?.(), { fromRev: 5 });
 });
+
+test("没人看的副本太多时丢掉最久没看的", async () => {
+  const client = fakeClient();
+  const feeds = new SessionFeeds(client);
+  const keep = feeds.watch("kept", () => {});
+  client.subs[0].listener({ reset: true, events: [message(1, 1, "在看")] });
+  for (let index = 0; index < 21; index++) {
+    const stop = feeds.watch(`s${index}`, () => {});
+    client.subs[client.subs.length - 1].listener({ reset: true, events: [message(1, 1, "看过")] });
+    stop();
+    await flush();
+  }
+  assert.equal(feeds.get("s0").ready, false);
+  assert.equal(feeds.get("s1").events.length, 1);
+  assert.equal(feeds.get("s20").events.length, 1);
+  assert.equal(feeds.get("kept").events.length, 1);
+  keep();
+});

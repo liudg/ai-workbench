@@ -8,34 +8,60 @@ use crate::models::{SessionEvent, SessionEventBody, SubagentStatus};
 
 /// 能覆盖时改写 `events` 里的那一条，返回它的下标；否则返回 None，调用方追加。
 pub fn merge_into(events: &mut [SessionEvent], body: &SessionEventBody, now: i64) -> Option<usize> {
+    // 从最新的往回找，流式输出改的几乎总是最后几条；不会覆盖别人的事件不用找。
     let index = match body {
         SessionEventBody::SubagentStep { subagent_id, step } => {
-            let owned: Vec<usize> = events
-                .iter()
-                .enumerate()
-                .filter(|(_, event)| {
-                    matches!(&event.body, SessionEventBody::SubagentStep { subagent_id: id, .. } if id == subagent_id)
-                })
-                .map(|(index, _)| index)
-                .collect();
-            let mut steps: Vec<&mut SessionEventBody> = events
-                .iter_mut()
-                .filter_map(|event| match &mut event.body {
-                    SessionEventBody::SubagentStep { subagent_id: id, step } if id == subagent_id => {
-                        Some(step.as_mut())
-                    }
-                    _ => None,
-                })
-                .collect();
-            owned[merge_body(&mut steps, step)?]
+            if !can_overwrite(step) {
+                return None;
+            }
+            let index = events.iter().rposition(|event| match &event.body {
+                SessionEventBody::SubagentStep { subagent_id: id, step: existing } => {
+                    id == subagent_id && overwrites(existing, step)
+                }
+                _ => false,
+            })?;
+            if let SessionEventBody::SubagentStep { step: existing, .. } = &mut events[index].body {
+                overwrite(existing, step);
+            }
+            index
         }
         _ => {
-            let mut bodies: Vec<&mut SessionEventBody> = events.iter_mut().map(|event| &mut event.body).collect();
-            merge_body(&mut bodies, body)?
+            if !can_overwrite(body) {
+                return None;
+            }
+            let index = events.iter().rposition(|event| overwrites(&event.body, body))?;
+            overwrite(&mut events[index].body, body);
+            index
         }
     };
     events[index].ts = now;
     Some(index)
+}
+
+/// 这种事件有可能覆盖已有的一条。
+fn can_overwrite(body: &SessionEventBody) -> bool {
+    matches!(
+        body,
+        SessionEventBody::TurnDiff { .. }
+            | SessionEventBody::FileChange { .. }
+            | SessionEventBody::TurnChanges { .. }
+            | SessionEventBody::PlanSteps { .. }
+            | SessionEventBody::Subagent(_)
+            | SessionEventBody::PlanText { stream_id: Some(_), .. }
+            | SessionEventBody::ToolCall { stream_id: Some(_), .. }
+            | SessionEventBody::AgentMessage { stream_id: Some(_), .. }
+            | SessionEventBody::Thinking { stream_id: Some(_), .. }
+    )
+}
+
+fn overwrites(existing: &SessionEventBody, body: &SessionEventBody) -> bool {
+    same_key(existing, body) || same_stream(existing, body)
+}
+
+fn overwrite(existing: &mut SessionEventBody, body: &SessionEventBody) {
+    if !merge_stream(existing, body) {
+        *existing = body.clone();
+    }
 }
 
 /// 这条事件让一张还在跑的卡片结束时，返回要接着记的结束事件。在 `merge_into` 之前调用。
@@ -60,17 +86,9 @@ pub fn subagent_ended(events: &[SessionEvent], body: &SessionEventBody) -> Optio
     })
 }
 
-/// 在 `bodies` 里找能被 `body` 覆盖的那条并改写，返回下标。
-fn merge_body(bodies: &mut [&mut SessionEventBody], body: &SessionEventBody) -> Option<usize> {
-    if let Some(index) = replace_keyed(bodies, body) {
-        *bodies[index] = body.clone();
-        return Some(index);
-    }
-    replace_stream(bodies, body)
-}
-
-fn replace_keyed(bodies: &[&mut SessionEventBody], body: &SessionEventBody) -> Option<usize> {
-    bodies.iter().rposition(|existing| match (&**existing, body) {
+/// 按回合、路径、`stream_id` 或子 Agent 整条替换的事件，是不是同一条。
+fn same_key(existing: &SessionEventBody, body: &SessionEventBody) -> bool {
+    match (existing, body) {
         (
             SessionEventBody::TurnDiff {
                 turn_id: existing, ..
@@ -121,66 +139,56 @@ fn replace_keyed(bodies: &[&mut SessionEventBody], body: &SessionEventBody) -> O
             existing.subagent_id == card.subagent_id
         }
         _ => false,
-    })
+    }
 }
 
-/// 同一 `stream_id` 的助手消息或思考：正文换成新的，阶段、模式、去重标记只在新值有内容时更新。
-fn replace_stream(bodies: &mut [&mut SessionEventBody], body: &SessionEventBody) -> Option<usize> {
-    let (text, stream_id, thinking, phase, mode, dedupe_of) = match body {
-        SessionEventBody::AgentMessage {
-            text,
-            stream_id: Some(stream_id),
-            phase,
-            mode,
-            dedupe_of,
-        } => (
-            text,
-            stream_id,
-            false,
-            *phase,
-            mode.clone(),
-            dedupe_of.clone(),
-        ),
-        SessionEventBody::Thinking {
-            text,
-            stream_id: Some(stream_id),
-        } => (text, stream_id, true, None, None, None),
-        _ => return None,
-    };
-    let index = bodies.iter().rposition(|existing| match &**existing {
-        SessionEventBody::AgentMessage {
-            stream_id: Some(id),
-            ..
-        } if !thinking => id == stream_id,
-        SessionEventBody::Thinking {
-            stream_id: Some(id),
-            ..
-        } if thinking => id == stream_id,
+/// 同一 `stream_id` 的助手消息，或同一 `stream_id` 的思考。两种不混。
+fn same_stream(existing: &SessionEventBody, body: &SessionEventBody) -> bool {
+    match (existing, body) {
+        (
+            SessionEventBody::AgentMessage { stream_id: Some(existing), .. },
+            SessionEventBody::AgentMessage { stream_id: Some(stream_id), .. },
+        )
+        | (
+            SessionEventBody::Thinking { stream_id: Some(existing), .. },
+            SessionEventBody::Thinking { stream_id: Some(stream_id), .. },
+        ) => existing == stream_id,
         _ => false,
-    })?;
-    match &mut *bodies[index] {
-        SessionEventBody::AgentMessage {
-            text: slot,
-            phase: slot_phase,
-            mode: slot_mode,
-            dedupe_of: slot_dedupe,
-            ..
-        } if !thinking => {
-            *slot = text.clone();
-            if let Some(phase) = phase {
-                *slot_phase = Some(phase);
+    }
+}
+
+/// 同一条流的助手消息或思考：正文换成新的，阶段、模式、去重标记只在新值有内容时更新。
+/// 不是这两种时什么都不做，返回 false。
+fn merge_stream(existing: &mut SessionEventBody, body: &SessionEventBody) -> bool {
+    match (existing, body) {
+        (
+            SessionEventBody::AgentMessage {
+                text: slot,
+                phase: slot_phase,
+                mode: slot_mode,
+                dedupe_of: slot_dedupe,
+                ..
+            },
+            SessionEventBody::AgentMessage { text, phase, mode, dedupe_of, .. },
+        ) => {
+            slot.clone_from(text);
+            if phase.is_some() {
+                *slot_phase = *phase;
             }
             if mode.is_some() {
-                *slot_mode = mode;
+                slot_mode.clone_from(mode);
             }
             if dedupe_of.is_some() {
-                *slot_dedupe = dedupe_of;
+                slot_dedupe.clone_from(dedupe_of);
             }
+            true
         }
-        SessionEventBody::Thinking { text: slot, .. } if thinking => *slot = text.clone(),
-        _ => return None,
+        (SessionEventBody::Thinking { text: slot, .. }, SessionEventBody::Thinking { text, .. }) => {
+            slot.clone_from(text);
+            true
+        }
+        _ => false,
     }
-    Some(index)
 }
 
 /// 用户或模型的一轮内容。状态、系统说明、只读通知和错误都不算新活动。

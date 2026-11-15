@@ -42,6 +42,8 @@ impl Store {
 
     fn init(mut conn: Connection) -> StoreResult<Self> {
         conn.pragma_update(None, "journal_mode", "WAL")?;
+        // WAL 下 NORMAL 不会坏库，断电最多丢最后几次提交；流式输出每次覆盖都是一次提交，不逐次刷盘。
+        conn.pragma_update(None, "synchronous", "NORMAL")?;
         conn.pragma_update(None, "foreign_keys", "OFF")?;
         migrations::run(&mut conn)?;
         conn.pragma_update(None, "foreign_keys", "ON")?;

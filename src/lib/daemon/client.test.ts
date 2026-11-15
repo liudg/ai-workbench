@@ -220,3 +220,41 @@ test("固定的主题值不向 daemon 订阅，观察者走了也还在", () => 
   assert.deepEqual(subscribed, []);
   assert.deepEqual(cache.get("projects"), [1]);
 });
+
+test("连上之前就超时的调用，重连后不再发出", async () => {
+  const sockets: FakeSocket[] = [];
+  const client = new DaemonClient({
+    resolveEndpoint: async () => ({ url: "ws://127.0.0.1:1/ws", token: "t" }),
+    openSocket: (url) => {
+      const socket = new FakeSocket(url);
+      sockets.push(socket);
+      return socket;
+    },
+    retryDelay: () => 0,
+    callTimeoutMs: 5,
+  });
+  client.start();
+  const lost = client.call("sessions.send", { text: "只发一次" });
+  await assert.rejects(lost, /没有连上后台服务/);
+  await flush();
+  sockets[0].open();
+  assert.deepEqual(sockets[0].sent, []);
+  client.stop();
+});
+
+test("订阅失败后再订一次", async () => {
+  const { client, sockets } = setup();
+  client.start();
+  await flush();
+  sockets[0].open();
+  client.subscribe("tasks", () => {});
+  assert.equal(sockets[0].sent.length, 1);
+  sockets[0].receive({ id: 1, error: { message: "一时没响应" } });
+  await flush();
+  await flush();
+  assert.deepEqual(
+    sockets[0].sent.map((message) => message.method),
+    ["subscribe", "subscribe"],
+  );
+  client.stop();
+});

@@ -22,6 +22,9 @@ export interface SessionFeedState {
   queue: QueuedTurn[];
 }
 
+/** 没人看的会话副本最多留这么多份。 */
+const MAX_IDLE = 20;
+
 const EMPTY: SessionFeedState = { ready: false, events: [], queue: [] };
 
 interface Entry {
@@ -70,8 +73,18 @@ export class SessionFeeds {
         if (watched.watchers.size > 0) return;
         watched.unsubscribe?.();
         watched.unsubscribe = null;
+        this.trim(sessionId, watched);
       }, 0);
     };
+  }
+
+  /** 刚没人看的副本挪到最后；没人看的超过 `MAX_IDLE` 份时丢掉最久没看的，下次打开重新取整条。 */
+  private trim(sessionId: string, entry: Entry) {
+    if (this.entries.get(sessionId) !== entry) return;
+    this.entries.delete(sessionId);
+    this.entries.set(sessionId, entry);
+    const idle = [...this.entries].filter(([, item]) => !item.unsubscribe && item.watchers.size === 0);
+    for (const [id] of idle.slice(0, Math.max(0, idle.length - MAX_IDLE))) this.entries.delete(id);
   }
 
   private apply(entry: Entry, push: FeedPush) {
