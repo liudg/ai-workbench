@@ -11,7 +11,6 @@ import {
 } from "@/lib/native/window-controls";
 
 export interface WindowTitlebarState {
-  visible: boolean;
   nativeControls: boolean;
   maximized: boolean;
   contextLabel: string | null;
@@ -31,7 +30,6 @@ export function useWindowTitlebar(): WindowTitlebarState {
   }, []);
 
   return {
-    visible: true,
     nativeControls: hasNativeWindowControls,
     maximized,
     contextLabel,

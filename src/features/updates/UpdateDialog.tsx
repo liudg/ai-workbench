@@ -128,7 +128,11 @@ export function UpdateDialog() {
               <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-wb-danger" />
               <div className="min-w-0">
                 <p className="text-sm text-wb-fg">
-                  {update.stage === "install" ? "更新未完成" : "检查更新失败"}
+                  {update.stage === "check"
+                    ? "检查更新失败"
+                    : update.stage === "restart"
+                      ? "重启未完成"
+                      : "更新未完成"}
                 </p>
                 <p className="mt-1 break-all text-xs leading-5 text-wb-fg-2">
                   {update.message}

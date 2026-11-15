@@ -3,7 +3,8 @@
 // 2. 若由 v* tag 触发（或传入 --tag），tag 必须等于 v<version>；
 // 3. tauri.conf.json 与 src/lib/native/update-source.ts 的更新源一致，且 pubkey 为合法的 minisign Ed25519 公钥；
 // 4. 传入 --require-signing-key 时检查 TAURI_SIGNING_PRIVATE_KEY 格式合法；
-// 5. 传入 --verify-keypair 时在临时文件上执行一次真实签名 + 公钥离线验签，确保公私钥严格成对。
+// 5. 传入 --verify-keypair 时在临时文件上执行一次真实签名 + 公钥离线验签，确保公私钥严格成对；
+// 6. 传入 --require-tag-at-head 时，若 v<version> tag 已存在，它必须指向当前提交，避免覆盖已发布版本。
 
 import { execFileSync } from "node:child_process";
 import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -55,6 +56,32 @@ export function resolveReleaseTag({ explicitTag, env = process.env, version }) {
   return `v${version}`;
 }
 
+function gitRevParse(rootDir, rev) {
+  try {
+    return execFileSync("git", ["rev-parse", "--verify", "--quiet", rev], {
+      cwd: rootDir,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    return "";
+  }
+}
+
+/** tag 已存在却不指向当前提交时拒绝发布：同一个版本号只能对应一份源码。 */
+export function assertTagAtHead({ rootDir = root, tag }) {
+  const head = gitRevParse(rootDir, "HEAD^{commit}");
+  if (!head) {
+    throw new Error("读不到当前提交，无法确认 tag 指向（需要在 Git 仓库内运行）");
+  }
+  const tagged = gitRevParse(rootDir, `refs/tags/${tag}^{commit}`);
+  if (tagged && tagged !== head) {
+    throw new Error(
+      `tag ${tag} 已存在并指向 ${tagged.slice(0, 7)}，当前提交是 ${head.slice(0, 7)}；请先升版本号再发布，不要覆盖已发布的版本`,
+    );
+  }
+}
+
 function verifySigningKeypairWithCli({
   rootDir = root,
   pubkey,
@@ -92,6 +119,7 @@ export function checkReleaseVersion({
   tag,
   requireSigningKey = false,
   verifyKeypair = false,
+  requireTagAtHead = false,
   env = process.env,
 } = {}) {
   const pkg = JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8"));
@@ -131,6 +159,10 @@ export function checkReleaseVersion({
     throw new Error(
       `Git tag (${effectiveTag}) 与代码版本号 (${expectedTag}) 不一致，请先同步更新版本号后再打 tag`,
     );
+  }
+
+  if (requireTagAtHead) {
+    assertTagAtHead({ rootDir, tag: effectiveTag });
   }
 
   const pubkey = tauriConf.plugins?.updater?.pubkey?.trim();
@@ -183,6 +215,7 @@ if (isDirectRun) {
         "github-output": { type: "string" },
         "require-signing-key": { type: "boolean", default: false },
         "verify-keypair": { type: "boolean", default: false },
+        "require-tag-at-head": { type: "boolean", default: false },
       },
       strict: true,
     });
@@ -190,6 +223,7 @@ if (isDirectRun) {
       tag: values.tag,
       requireSigningKey: values["require-signing-key"],
       verifyKeypair: values["verify-keypair"],
+      requireTagAtHead: values["require-tag-at-head"],
     });
     if (values["github-output"]) {
       appendFileSync(

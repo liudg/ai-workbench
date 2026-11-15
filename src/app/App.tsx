@@ -63,20 +63,13 @@ function WorkbenchApp() {
   useViewingReport();
 
   return (
-    <div
-      data-immersive-shell={titlebar.visible ? "" : undefined}
-      className={cn(
-        "flex h-screen w-screen flex-col overflow-hidden bg-wb-shell text-wb-fg",
-        titlebar.visible && "[--wb-shell-top:2rem]",
-      )}
-    >
+    <div className="flex h-screen w-screen flex-col overflow-hidden bg-wb-shell text-wb-fg">
       <WindowTitlebar chrome={titlebar} />
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <Sidebar />
         <main
           className={cn(
-            "mr-2 flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-wb-border bg-wb-surface shadow-[var(--wb-island-shadow)]",
-            titlebar.visible ? "mb-2" : "my-2",
+            "mb-2 mr-2 flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-wb-border bg-wb-surface shadow-[var(--wb-island-shadow)]",
             !sidebarOpen && "ml-2",
           )}
         >

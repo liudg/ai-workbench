@@ -4,7 +4,6 @@ import { ArrowLeft, Monitor, Moon, RefreshCw, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
-import { SidebarToggle } from "@/shared/shell/SidebarToggle";
 import type { AgentInstallation, AgentUpgrade, CatalogProbe } from "@/types";
 
 import { agentCardFace, statusLabel, type AgentCardFace } from "./agent-card";
@@ -403,7 +402,6 @@ export function SettingsView() {
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col bg-wb-surface">
       <header className="flex h-10 shrink-0 items-center gap-2 border-b border-wb-border px-4">
-        <SidebarToggle />
         <button
           type="button"
           className="flex h-7 w-7 items-center justify-center rounded-md text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"

@@ -4,7 +4,6 @@ import { cn } from "@/lib/utils";
 import { SessionAgentIcon } from "@/shared/agent/SessionAgentIcon";
 import { AttentionPill, type BoardColumn } from "@/shared/attention";
 import { relativeSessionTime } from "@/shared/format/relative-time";
-import { SidebarToggle } from "@/shared/shell/SidebarToggle";
 import type { BoardLane } from "./board-model";
 import { useBoard, type BoardCard } from "./use-board";
 
@@ -23,7 +22,6 @@ export function BoardView() {
   return (
     <div data-board="" className="flex min-h-0 flex-1 flex-col bg-wb-surface">
       <header className="flex h-10 shrink-0 items-center gap-2 border-b border-wb-border px-4">
-        <SidebarToggle />
         <h1 className="text-[13px] font-semibold tracking-tight text-wb-fg">全局看板</h1>
         {!loading && <span className="text-xs text-wb-fg-3">{total} 个会话</span>}
         <button

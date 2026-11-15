@@ -34,9 +34,6 @@ installGlobal("fetch", () => Promise.resolve(new Response("null", { status: 200,
 
 let server: ViteDevServer;
 let toggleMod: typeof import("../../shared/shell/SidebarToggle.tsx");
-let chromeMod: typeof import("../panel/core/ClosedChrome.tsx");
-let panelMod: typeof import("../panel/core/PanelProvider.tsx");
-let panelStoreMod: typeof import("../panel/state/store.ts");
 let sidebarMod: typeof import("./Sidebar.tsx");
 let peekMod: typeof import("./SidebarPeek.tsx");
 let chatGroupMod: typeof import("./chats/ChatGroup.tsx");
@@ -53,9 +50,6 @@ before(async () => {
     logLevel: "error",
   });
   toggleMod = (await server.ssrLoadModule("/src/shared/shell/SidebarToggle.tsx")) as unknown as typeof toggleMod;
-  chromeMod = (await server.ssrLoadModule("/src/features/panel/core/ClosedChrome.tsx")) as unknown as typeof chromeMod;
-  panelMod = (await server.ssrLoadModule("/src/features/panel/core/PanelProvider.tsx")) as unknown as typeof panelMod;
-  panelStoreMod = (await server.ssrLoadModule("/src/features/panel/state/store.ts")) as unknown as typeof panelStoreMod;
   sidebarMod = (await server.ssrLoadModule("/src/features/sidebar/Sidebar.tsx")) as unknown as typeof sidebarMod;
   peekMod = (await server.ssrLoadModule("/src/features/sidebar/SidebarPeek.tsx")) as unknown as typeof peekMod;
   chatGroupMod = (await server.ssrLoadModule("/src/features/sidebar/chats/ChatGroup.tsx")) as unknown as typeof chatGroupMod;
@@ -104,42 +98,19 @@ async function render(node: ReturnType<typeof createElement>) {
   };
 }
 
-test("the session header toggle shares the sidebar state and stays in front of the title", async () => {
+test("the sidebar toggle shares the sidebar state with the Ctrl+B shortcut", async () => {
   visibilityMod.setSidebarOpen(true);
-  const view = await render(
-    createElement(panelMod.PanelHost, {
-      state: {
-        use: (select) => panelStoreMod.usePanelStore(select),
-        get: () => panelStoreMod.usePanelStore.getState(),
-      },
-      data: {} as never,
-      changes: undefined,
-      status: undefined,
-      subscriptionSupported: false,
-      sessionId: "s",
-      projectId: "p",
-      projectPath: "/tmp/demo",
-      sessionTitle: "示例会话",
-      agent: null,
-      events: [],
-      usage: null,
-      children: createElement(chromeMod.ClosedChrome),
-    }),
-  );
+  const view = await render(createElement(toggleMod.SidebarToggle));
 
   const button = dom.document.querySelector("[data-sidebar-toggle]");
-  const title = dom.document.querySelector("[data-session-title]");
   assert.ok(button instanceof dom.HTMLButtonElement);
-  assert.ok(title);
-  assert.equal(button.compareDocumentPosition(title) & dom.Node.DOCUMENT_POSITION_FOLLOWING, dom.Node.DOCUMENT_POSITION_FOLLOWING);
   assert.equal(button.getAttribute("data-sidebar-toggle-state"), "open");
   assert.equal(button.getAttribute("aria-pressed"), "true");
   assert.equal(button.getAttribute("aria-label"), "隐藏侧边栏 Ctrl+B");
-  assert.equal(button.className.includes("h-7"), true);
-  assert.equal(button.className.includes("w-7"), true);
+  assert.equal(button.className.includes("h-6"), true);
+  assert.equal(button.className.includes("w-6"), true);
   assert.equal(button.className.includes("rounded-md"), true);
   assert.equal(button.closest('[class*="group/hint"]'), null);
-  assert.equal(title.textContent, "示例会话");
 
   await act(async () => {
     button.click();
@@ -228,7 +199,7 @@ test("hovering the left edge slides the sidebar over the content, and leaving re
   assert.ok(alertPill);
   assert.ok(alertEdge instanceof dom.HTMLElement);
   assert.equal(alertPill.className.includes("bg-wb-warn"), true);
-  assert.equal(alertEdge.className.includes("w-3"), true);
+  assert.equal(alertEdge.className.includes("w-2"), true);
   await act(async () => {
     alertEdge.click();
   });

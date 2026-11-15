@@ -6,7 +6,6 @@ import { cn } from "@/lib/utils";
 import { registerBuiltinViewers } from "../viewers/register";
 import { viewerById, type PanelTab } from "./registry";
 import { Hint } from "@/components/ui/hint";
-import { SidebarToggle } from "@/shared/shell/SidebarToggle";
 import { PanelLayoutControls } from "./PanelChrome";
 import { usePanel } from "./PanelProvider";
 import { SessionUsageCluster } from "./SubscriptionUsageMeter";
@@ -30,7 +29,6 @@ export function PanelTabs() {
       <div className="relative z-20 flex h-10 shrink-0 items-center border-b border-wb-border bg-wb-panel px-1.5">
         {layout === "full" ? (
           <div className="flex max-w-[36%] shrink-0 items-center gap-2 pl-2.5 pr-2">
-            <SidebarToggle />
             <span data-session-title className="truncate text-xs font-medium text-wb-fg-2">
               {sessionTitle}
             </span>

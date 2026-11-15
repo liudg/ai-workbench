@@ -1,5 +1,6 @@
 # Windows 发布流水线：校验版本与公私钥配对 → 构建签名 NSIS 安装包 → 离线验签并生成 latest.json → 发布 GitHub Release。
 # 触发：推送 v* tag（如 v0.2.87，须与代码内四处版本号一致）或在目标分支上手动运行。
+# 手动运行时若 v<version> tag 已存在且不指向当前提交，校验会失败，不会覆盖已发布的版本。
 # 需要的 Secrets：TAURI_SIGNING_PRIVATE_KEY（必填）、TAURI_SIGNING_PRIVATE_KEY_PASSWORD（无密码时无需配置）。
 
 name: release-windows
@@ -33,7 +34,7 @@ jobs:
         id: meta
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-        run: node scripts/check-release-version.mjs --require-signing-key --github-output "$env:GITHUB_OUTPUT"
+        run: node scripts/check-release-version.mjs --require-signing-key --require-tag-at-head --github-output "$env:GITHUB_OUTPUT"
 
       - uses: dtolnay/rust-toolchain@stable
 

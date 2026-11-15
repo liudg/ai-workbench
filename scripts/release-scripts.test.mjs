@@ -15,7 +15,11 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { parseBuildReleaseArgs } from "./build-release.mjs";
-import { checkReleaseVersion, resolveReleaseTag } from "./check-release-version.mjs";
+import {
+  assertTagAtHead,
+  checkReleaseVersion,
+  resolveReleaseTag,
+} from "./check-release-version.mjs";
 import { releaseAssetName } from "./copy-installer.mjs";
 import { deriveReleaseNotes, generateLatestJson } from "./gen-latest-json.mjs";
 import { decodeMinisignPublicKey, verifyMinisignSignature } from "./minisign.mjs";
@@ -25,7 +29,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 /** 生成一对用于测试的真实 Ed25519 minisign 公钥与对指定数据的合法签名。 */
 function createTestMinisignFixture({
   dataBuffer,
-  version = "0.2.87",
+  file = "AI Workbench_0.2.87_x64-setup.exe",
   keyId = Buffer.from("0102030405060708", "hex"),
 }) {
   const { publicKey, privateKey } = generateKeyPairSync("ed25519");
@@ -41,7 +45,7 @@ function createTestMinisignFixture({
   const digest = createHash("blake2b512").update(dataBuffer).digest();
   const sigBytes = sign(null, digest, privateKey);
   const bin1 = Buffer.concat([Buffer.from([0x45, 0x44]), keyId, sigBytes]);
-  const trustedComment = `timestamp:1794659223\tfile:test.exe\tversion:${version}`;
+  const trustedComment = `timestamp:1794659223\tfile:${file}`;
   const globalSig = sign(
     null,
     Buffer.concat([sigBytes, Buffer.from(trustedComment, "utf8")]),
@@ -86,9 +90,10 @@ test("repository versions, updater pubkey, and endpoints pass release validation
 
 test("minisign verifier validates real Ed25519/Blake2b signatures and rejects key mismatch or tampering", () => {
   const data = Buffer.from("nsis-installer-binary-payload");
+  const file = "AI Workbench_0.2.87_x64-setup.exe";
   const { pubkeyBase64, sigBase64 } = createTestMinisignFixture({
     dataBuffer: data,
-    version: "0.2.87",
+    file,
   });
 
   const pub = decodeMinisignPublicKey(pubkeyBase64);
@@ -98,9 +103,9 @@ test("minisign verifier validates real Ed25519/Blake2b signatures and rejects ke
     dataBuffer: data,
     sigContent: sigBase64,
     pubkeyInput: pubkeyBase64,
-    expectedVersion: "0.2.87",
+    expectedFile: file,
   });
-  assert.equal(ok.signedVersion, "0.2.87");
+  assert.equal(ok.signedFile, file);
 
   // 篡改安装包内容应拒绝
   assert.throws(
@@ -109,21 +114,21 @@ test("minisign verifier validates real Ed25519/Blake2b signatures and rejects ke
         dataBuffer: Buffer.from("tampered-payload"),
         sigContent: sigBase64,
         pubkeyInput: pubkeyBase64,
-        expectedVersion: "0.2.87",
+        expectedFile: file,
       }),
     /签名校验失败/,
   );
 
-  // 版本号不匹配应拒绝
+  // 签名是给别的版本的安装包签的，应拒绝
   assert.throws(
     () =>
       verifyMinisignSignature({
         dataBuffer: data,
         sigContent: sigBase64,
         pubkeyInput: pubkeyBase64,
-        expectedVersion: "0.2.88",
+        expectedFile: "AI Workbench_0.2.88_x64-setup.exe",
       }),
-    /版本/,
+    /文件名/,
   );
 
   // 不同密钥签发（Key ID 不一致）应拒绝
@@ -179,7 +184,7 @@ test("generateLatestJson verifies signature and sanitizes spaced NSIS installer 
     const installerPayload = Buffer.from("installer-bytes-v0.2.87");
     const { pubkeyBase64, sigBase64 } = createTestMinisignFixture({
       dataBuffer: installerPayload,
-      version: "0.2.87",
+      file: "AI Workbench_0.2.87_x64-setup.exe",
     });
 
     mkdirSync(join(sandbox, "src-tauri"), { recursive: true });
@@ -320,4 +325,41 @@ test("parseBuildReleaseArgs strips pnpm leading -- separator without leaking it 
       extraArgs: ["--no-bundle", "--", "--timings"],
     },
   );
+});
+
+test("assertTagAtHead rejects an existing release tag that points at another commit", () => {
+  const repo = mkdtempSync(join(tmpdir(), "aiwb-git-tag-"));
+  const git = (...args) =>
+    execFileSync("git", args, {
+      cwd: repo,
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: "Test",
+        GIT_AUTHOR_EMAIL: "test@example.com",
+        GIT_COMMITTER_NAME: "Test",
+        GIT_COMMITTER_EMAIL: "test@example.com",
+      },
+      stdio: "ignore",
+    });
+
+  try {
+    git("init");
+    writeFileSync(join(repo, "a.txt"), "1");
+    git("add", ".");
+    git("commit", "-m", "feat: initial");
+
+    // tag 还不存在：手动发布会在当前提交上新建它
+    assert.doesNotThrow(() => assertTagAtHead({ rootDir: repo, tag: "v0.1.0" }));
+
+    // 附注 tag 指向当前提交：tag 推送触发或原提交重跑
+    git("tag", "-a", "v0.1.0", "-m", "v0.1.0");
+    assert.doesNotThrow(() => assertTagAtHead({ rootDir: repo, tag: "v0.1.0" }));
+
+    // 之后又有提交但没升版本号：不能覆盖已发布的 v0.1.0
+    writeFileSync(join(repo, "a.txt"), "2");
+    git("commit", "-am", "fix: later change");
+    assert.throws(() => assertTagAtHead({ rootDir: repo, tag: "v0.1.0" }), /已存在/);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
 });

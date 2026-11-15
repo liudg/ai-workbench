@@ -6,14 +6,13 @@ import { cn } from "@/lib/utils";
 import { registerBuiltinViewers } from "../viewers/register";
 import { viewerById } from "./registry";
 import { Hint } from "@/components/ui/hint";
-import { SidebarToggle } from "@/shared/shell/SidebarToggle";
 import { useDismissLayer } from "@/shared/menu/useDismissLayer";
 import { usePanel } from "./PanelProvider";
 import { SessionUsageCluster } from "./SubscriptionUsageMeter";
 
 registerBuiltinViewers();
 
-/** 会话顶栏：侧栏开关和标题在左，用量和标记在右。 */
+/** 会话顶栏：标题在左，用量和标记在右。 */
 export function ClosedChrome() {
   const { tabs, sessionTitle, showPanel, selectTab, openBlank, layout } = usePanel();
   const count = tabs.length;
@@ -33,7 +32,6 @@ export function ClosedChrome() {
       data-panel-closed={layout === "chat" ? "" : undefined}
       className="relative z-20 flex h-10 shrink-0 items-center gap-2 border-b border-wb-border bg-wb-surface px-4"
     >
-      <SidebarToggle />
       <span data-session-title className="min-w-0 flex-1 truncate text-sm font-medium text-wb-fg">
         {sessionTitle}
       </span>

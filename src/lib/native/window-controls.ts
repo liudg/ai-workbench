@@ -32,7 +32,10 @@ export function subscribeNativeWindowMaximized(onChange: (maximized: boolean) =>
   let disposed = false;
   let unlisten: (() => void) | null = null;
 
+  let frame: number | null = null;
+
   const sync = () => {
+    frame = null;
     void win
       .isMaximized()
       .then((value) => {
@@ -40,12 +43,14 @@ export function subscribeNativeWindowMaximized(onChange: (maximized: boolean) =>
       })
       .catch(() => {});
   };
+  // 拖边缩放时 resize 事件很密，合并到每帧最多查一次。
+  const schedule = () => {
+    if (frame === null) frame = requestAnimationFrame(sync);
+  };
 
   sync();
   void win
-    .onResized(() => {
-      sync();
-    })
+    .onResized(schedule)
     .then((fn) => {
       if (disposed) fn();
       else unlisten = fn;
@@ -54,6 +59,7 @@ export function subscribeNativeWindowMaximized(onChange: (maximized: boolean) =>
 
   return () => {
     disposed = true;
+    if (frame !== null) cancelAnimationFrame(frame);
     unlisten?.();
   };
 }

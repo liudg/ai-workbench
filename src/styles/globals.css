@@ -177,13 +177,9 @@ body {
   overflow: hidden;
 }
 
-/* 沉浸顶栏开启时向 body 门户（CommandMenu / 文件搜索等）同步顶栏高度，并隐藏内层重复的侧栏开关。 */
-:root:has([data-immersive-shell]) {
+/* 有窗口顶栏时的顶栏高度：侧栏悬浮层和挂在 body 上的浮层（命令菜单、文件搜索）据此让开顶栏。 */
+:root:has([data-window-titlebar]) {
   --wb-shell-top: 2rem;
-}
-
-[data-immersive-shell] main [data-sidebar-toggle] {
-  display: none;
 }
 
 /* 统一浮层（两档圆角：紧凑菜单 12px / 模态浮层 16px）、提示与单色 Agent 图标 */

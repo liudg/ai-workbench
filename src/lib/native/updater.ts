@@ -16,7 +16,8 @@ export type UpdatePhase =
   | { kind: "available"; version: string; notes: string }
   | { kind: "downloading"; received: number; total: number | null }
   | { kind: "ready"; version: string } // 安装完成，待重启
-  | { kind: "error"; stage: "check" | "install"; message: string };
+  | { kind: "error"; stage: "check" | "install"; message: string }
+  | { kind: "error"; stage: "restart"; version: string; message: string }; // 已装好，重启没成功
 
 export interface UpdaterRuntime {
   isDesktop: boolean;
@@ -25,12 +26,15 @@ export interface UpdaterRuntime {
   relaunchApp: () => Promise<void>;
 }
 
+/** 检查请求的上限；连接僵住时到点报错，不让界面一直停在检查中。 */
+const CHECK_TIMEOUT_MS = 30_000;
+
 const defaultRuntime: UpdaterRuntime = {
   isDesktop: isTauri,
   endpoint: () => configuredUpdateEndpoint(),
   checkRemote: async () => {
     const { check } = await import("@tauri-apps/plugin-updater");
-    return check();
+    return check({ timeout: CHECK_TIMEOUT_MS });
   },
   relaunchApp: async () => {
     const { relaunch } = await import("@tauri-apps/plugin-process");
@@ -120,16 +124,35 @@ export async function installUpdate(
       onPhase({ kind: "downloading", received, total });
     });
     await clearPending();
-    onPhase({ kind: "ready", version });
-    await runtime.relaunchApp();
   } catch (e) {
     onPhase({
       kind: "error",
       stage: "install",
       message: formatUpdaterError(e, "install"),
     });
+    return;
   } finally {
     installing = false;
+  }
+  await relaunchAfterUpdate(onPhase, version, runtime);
+}
+
+/** 新版本已装好后重启应用。重启没成功时只报重启失败，不回到下载。 */
+export async function relaunchAfterUpdate(
+  onPhase: (p: UpdatePhase) => void,
+  version: string,
+  runtime: UpdaterRuntime = defaultRuntime,
+): Promise<void> {
+  onPhase({ kind: "ready", version });
+  try {
+    await runtime.relaunchApp();
+  } catch {
+    onPhase({
+      kind: "error",
+      stage: "restart",
+      version,
+      message: `v${version} 已安装，自动重启没有成功，请重试或手动重启应用。`,
+    });
   }
 }
 

@@ -115,11 +115,12 @@ function decodeMinisignSignature(sigInput) {
   const keyId = Buffer.from(bin1.subarray(2, 10));
   const signature = Buffer.from(bin1.subarray(10, 74));
   const trustedComment = trustedLine.slice("trusted comment: ".length);
-  const signedVersion =
+  // Tauri 签名的 trusted comment 形如 `timestamp:<秒>\tfile:<被签名的文件名>`
+  const signedFile =
     trustedComment
       .split("\t")
-      .find((field) => field.startsWith("version:"))
-      ?.slice("version:".length) ?? null;
+      .find((field) => field.startsWith("file:"))
+      ?.slice("file:".length) ?? null;
 
   return {
     untrustedComment: lines[0],
@@ -127,7 +128,7 @@ function decodeMinisignSignature(sigInput) {
     keyIdHex: Buffer.from(keyId).reverse().toString("hex").toUpperCase(),
     signature,
     trustedComment,
-    signedVersion,
+    signedFile,
     globalSignature,
     isPrehashed,
   };
@@ -137,7 +138,7 @@ export function verifyMinisignSignature({
   dataBuffer,
   sigContent,
   pubkeyInput,
-  expectedVersion,
+  expectedFile,
 }) {
   const pub = decodeMinisignPublicKey(pubkeyInput);
   const sig = decodeMinisignSignature(sigContent);
@@ -164,15 +165,16 @@ export function verifyMinisignSignature({
     throw new Error("安装包 minisign trusted comment 全局签名校验失败");
   }
 
-  if (expectedVersion && sig.signedVersion) {
-    const cleanSigned = sig.signedVersion.replace(/^v/, "");
-    const cleanExpected = expectedVersion.replace(/^v/, "");
-    if (cleanSigned !== cleanExpected) {
+  if (expectedFile) {
+    if (!sig.signedFile) {
+      throw new Error(".sig 的 trusted comment 缺少 file 字段，无法确认签名对应的安装包");
+    }
+    if (sig.signedFile !== expectedFile) {
       throw new Error(
-        `签名内嵌版本 (${sig.signedVersion}) 与预期版本 (${expectedVersion}) 不一致`,
+        `签名对应的文件 (${sig.signedFile}) 与安装包文件名 (${expectedFile}) 不一致`,
       );
     }
   }
 
-  return { keyIdHex: pub.keyIdHex, signedVersion: sig.signedVersion };
+  return { keyIdHex: pub.keyIdHex, signedFile: sig.signedFile };
 }

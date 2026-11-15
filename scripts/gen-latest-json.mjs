@@ -125,12 +125,13 @@ export function generateLatestJson({
   const installerBuffer = readFileSync(join(bundleDir, artifact));
   const signature = readFileSync(join(bundleDir, `${artifact}.sig`), "utf8").trim();
 
-  // 离线验证安装包字节与 .sig 签名确由 tauri.conf.json 内嵌公钥对应的私钥签发，且版本号一致
+  // 离线验证安装包字节与 .sig 签名确由 tauri.conf.json 内嵌公钥对应的私钥签发，
+  // 且签名里记的文件名就是这个带版本号的安装包
   verifyMinisignSignature({
     dataBuffer: installerBuffer,
     sigContent: signature,
     pubkeyInput: pubkey,
-    expectedVersion: version,
+    expectedFile: artifact,
   });
 
   const releaseArtifact = releaseAssetName(artifact);

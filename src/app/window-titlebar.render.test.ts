@@ -75,26 +75,9 @@ async function render(node: ReturnType<typeof createElement>) {
   };
 }
 
-test("hidden WindowTitlebar state renders nothing", async () => {
-  const chrome: WindowTitlebarState = {
-    visible: false,
-    nativeControls: false,
-    maximized: false,
-    contextLabel: "ai-workbench",
-    minimize: () => {},
-    toggleMaximize: () => {},
-    close: () => {},
-    startDrag: () => {},
-  };
-  const view = await render(createElement(WindowTitlebar, { chrome }));
-  assert.equal(view.host.querySelector("[data-window-titlebar]"), null);
-  await view.unmount();
-});
-
 test("web preview renders Variant A immersive breadcrumb bar without dead window caption buttons", async () => {
   const calls: string[] = [];
   const chrome: WindowTitlebarState = {
-    visible: true,
     nativeControls: false,
     maximized: false,
     contextLabel: "ai-workbench",
@@ -125,7 +108,6 @@ test("web preview renders Variant A immersive breadcrumb bar without dead window
 test("desktop immersive titlebar waits for pointer movement before dragging so double-click maximize is never swallowed", async () => {
   const calls: string[] = [];
   const makeChrome = (maximized: boolean): WindowTitlebarState => ({
-    visible: true,
     nativeControls: true,
     maximized,
     contextLabel: "ai-workbench",

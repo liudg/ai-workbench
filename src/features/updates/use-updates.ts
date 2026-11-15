@@ -18,10 +18,10 @@ export function useUpdateDialog() {
   const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
-    if (!open || update.kind !== "available") {
+    if (!open || update.kind !== "available" || runningSessions === 0) {
       setConfirming(false);
     }
-  }, [open, update.kind]);
+  }, [open, update.kind, runningSessions]);
 
   const requestInstall = () => {
     if (runningSessions > 0) {

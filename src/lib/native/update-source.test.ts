@@ -59,7 +59,7 @@ test("owner placeholder and empty plugin endpoints read as no source, not real r
 test("formatUpdaterError maps low-level English errors to concise Chinese messages", () => {
   assert.equal(
     formatUpdaterError("Could not fetch a valid release JSON from the remote", "check"),
-    "暂未获取到可用发布版本，请稍后再试。",
+    "暂时获取不到更新信息，请稍后再试。",
   );
   assert.equal(
     formatUpdaterError(

@@ -26,8 +26,9 @@ export function formatUpdaterError(raw: unknown, stage: "check" | "install"): st
     typeof raw === "string" ? raw : raw instanceof Error ? raw.message : "";
   const trimmed = text.trim();
 
+  // 更新源返回非成功状态码（还没发布、404、限流）时插件报这一句；连不上或超时走下面的网络分支。
   if (/could not fetch a valid release json/i.test(trimmed)) {
-    return "暂未获取到可用发布版本，请稍后再试。";
+    return "暂时获取不到更新信息，请稍后再试。";
   }
   if (
     /signature|minisign|pubkey|key id|signed for version|requiresignedversion/i.test(

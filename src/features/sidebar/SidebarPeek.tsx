@@ -51,14 +51,14 @@ export function SidebarPeek({
       data-sidebar-peek-root=""
       className={cn(
         "group/peek fixed bottom-0 left-0 top-[var(--wb-shell-top,0px)] z-30",
-        peek ? "w-[244px]" : "w-3",
+        peek ? "w-[244px]" : "w-2",
       )}
       onMouseEnter={show}
       onMouseLeave={hide}
     >
       <div
         data-sidebar-edge=""
-        className="absolute inset-y-0 left-0 w-3 cursor-pointer"
+        className="absolute inset-y-0 left-0 w-2 cursor-pointer"
         onClick={() => setSidebarOpen(true)}
       />
       {mounted ? (

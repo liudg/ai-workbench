@@ -11,8 +11,6 @@ export function WindowTitlebar({ chrome }: { chrome: WindowTitlebarState }) {
 
   useEffect(() => () => clearTrackRef.current?.(), []);
 
-  if (!chrome.visible) return null;
-
   const onMouseDown = (event: MouseEvent<HTMLElement>) => {
     if (!chrome.nativeControls || event.button !== 0) return;
     if (event.target instanceof Element && event.target.closest("button")) return;
@@ -58,7 +56,7 @@ export function WindowTitlebar({ chrome }: { chrome: WindowTitlebarState }) {
       onMouseDown={onMouseDown}
     >
       <div className="flex min-w-0 items-center gap-2">
-        <SidebarToggle compact />
+        <SidebarToggle />
         <span className="shrink-0 font-medium text-wb-fg-2">AI Workbench</span>
         {chrome.contextLabel ? (
           <>

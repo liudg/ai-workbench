@@ -154,3 +154,51 @@ test("countRunningSessions counts starting, running, and needs-input across main
 
   assert.equal(countRunningSessions(tasks), 3);
 });
+
+test("relaunch failure after a finished install retries only the restart, never the download or check", async () => {
+  await resetUpdaterForTest();
+  resetUpdateStoreForTest();
+
+  let checkCalls = 0;
+  let downloads = 0;
+  let relaunches = 0;
+  const runtime: UpdaterRuntime = {
+    isDesktop: true,
+    endpoint: () => "https://downloads.example.com/latest.json",
+    checkRemote: async () => {
+      checkCalls += 1;
+      return makeFakeUpdate({
+        version: "0.2.90",
+        onDownload: async () => {
+          downloads += 1;
+        },
+      });
+    },
+    relaunchApp: async () => {
+      relaunches += 1;
+      if (relaunches === 1) throw new Error("relaunch failed");
+    },
+  };
+
+  await checkUpdates(true, runtime);
+  await startInstall(runtime);
+  assert.deepEqual(getUpdateStateSnapshot().phase, {
+    kind: "error",
+    stage: "restart",
+    version: "0.2.90",
+    message: "v0.2.90 已安装，自动重启没有成功，请重试或手动重启应用。",
+  });
+
+  // 已经装好：再点「检查更新」只重新打开弹窗，不去远端发现同一个版本
+  closeUpdateDialog();
+  await checkUpdates(true, runtime);
+  assert.equal(checkCalls, 1);
+  assert.equal(getUpdateStateSnapshot().dialogOpen, true);
+  assert.equal(getUpdateStateSnapshot().phase.kind, "error");
+
+  await retryUpdate(runtime);
+  assert.equal(relaunches, 2);
+  assert.equal(downloads, 1);
+  assert.equal(checkCalls, 1);
+  assert.deepEqual(getUpdateStateSnapshot().phase, { kind: "ready", version: "0.2.90" });
+});

@@ -6,6 +6,7 @@ import {
   checkForUpdate,
   hasPendingUpdate,
   installUpdate,
+  relaunchAfterUpdate,
   type UpdatePhase,
   type UpdaterRuntime,
 } from "../../lib/native/updater.ts";
@@ -46,12 +47,20 @@ const useUpdateStore = create<UpdateState>()(() => ({
 }));
 
 function isBusyInstall(phase: UpdatePhase): boolean {
-  return phase.kind === "downloading" || phase.kind === "ready";
+  return (
+    phase.kind === "downloading" ||
+    phase.kind === "ready" ||
+    (phase.kind === "error" && phase.stage === "restart")
+  );
+}
+
+function setPhase(phase: UpdatePhase) {
+  useUpdateStore.setState({ phase });
 }
 
 /**
  * 检查更新：
- * - 正在下载或已就绪待重启时绝不覆盖进度，也不重新拉取远端（手动点击仅重新打开弹窗查看进度）；
+ * - 正在下载、已就绪待重启或重启失败时绝不覆盖进度，也不重新拉取远端（手动点击仅重新打开弹窗查看进度）；
  * - 手动检查时立即打开对话框；自动检查只在发现新版本时弹出。
  */
 export async function checkUpdates(
@@ -89,11 +98,15 @@ export async function checkUpdates(
 export function startInstall(runtime?: UpdaterRuntime): Promise<void> {
   const current = useUpdateStore.getState().phase;
   if (isBusyInstall(current)) return Promise.resolve();
-  return installUpdate((phase) => useUpdateStore.setState({ phase }), runtime);
+  return installUpdate(setPhase, runtime);
 }
 
 export function retryUpdate(runtime?: UpdaterRuntime): Promise<void> {
   const current = useUpdateStore.getState().phase;
+  // 已经装好、只是重启没成功：重试只重启，不再下载。
+  if (current.kind === "error" && current.stage === "restart") {
+    return relaunchAfterUpdate(setPhase, current.version, runtime);
+  }
   if (current.kind === "error" && current.stage === "install" && hasPendingUpdate()) {
     return startInstall(runtime);
   }
