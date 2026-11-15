@@ -49,10 +49,11 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           node scripts/check-release-version.mjs --verify-keypair
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node --experimental-strip-types --test scripts/release-scripts.test.mjs src/lib/native/update-source.test.ts src/features/updates/update-store.test.ts
 
       - name: 构建签名 NSIS 安装包
-        run: pnpm run tauri:build -- --skip-copy --bundles nsis
+        run: node scripts/build-release.mjs --skip-copy --bundles nsis
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}

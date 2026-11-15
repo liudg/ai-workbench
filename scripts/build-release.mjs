@@ -6,7 +6,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { buildDaemon } from "./build-daemon.mjs";
 import { copyLatestInstaller } from "./copy-installer.mjs";
@@ -14,43 +14,70 @@ import { copyLatestInstaller } from "./copy-installer.mjs";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
 const tauriCli = require.resolve("@tauri-apps/cli/tauri.js");
-const rawArgs = process.argv.slice(2);
-const skipCopy = rawArgs.includes("--skip-copy");
-const extraArgs = rawArgs.filter((a) => a !== "--skip-copy");
 
-buildDaemon({ rootDir: root });
-
-const args = [tauriCli, "build", "--config", "src-tauri/tauri.release.json"];
-const hasSigningKey = Boolean(process.env.TAURI_SIGNING_PRIVATE_KEY?.trim());
-const isCi = Boolean(
-  process.env.CI && process.env.CI !== "0" && process.env.CI !== "false",
-);
-const unsignedLocal = !hasSigningKey && !isCi;
-if (unsignedLocal) {
-  console.log("未设置 TAURI_SIGNING_PRIVATE_KEY，本地构建跳过自动更新签名");
-  args.push(
-    "--config",
-    JSON.stringify({ bundle: { createUpdaterArtifacts: false } }),
-  );
+/**
+ * 解析打包参数：兼容 `pnpm run tauri:build -- ...` 透传的首个 `--` 分隔符，
+ * 避免 `--bundles` 等 Tauri CLI 选项被误当作 `--` 之后的 `cargo build` 参数。
+ */
+export function parseBuildReleaseArgs(rawArgs = []) {
+  const normalized = rawArgs[0] === "--" ? rawArgs.slice(1) : rawArgs;
+  const runnerSep = normalized.indexOf("--");
+  const cliArgs = runnerSep === -1 ? normalized : normalized.slice(0, runnerSep);
+  const runnerArgs = runnerSep === -1 ? [] : normalized.slice(runnerSep);
+  const skipCopy = cliArgs.includes("--skip-copy");
+  const noBundle = cliArgs.includes("--no-bundle");
+  const extraArgs = [
+    ...cliArgs.filter((arg) => arg !== "--skip-copy"),
+    ...runnerArgs,
+  ];
+  return { skipCopy, noBundle, extraArgs };
 }
-args.push(...extraArgs);
 
-execFileSync(process.execPath, args, { cwd: root, stdio: "inherit" });
+export function runBuildRelease({
+  rootDir = root,
+  rawArgs = process.argv.slice(2),
+  env = process.env,
+} = {}) {
+  const { skipCopy, noBundle, extraArgs } = parseBuildReleaseArgs(rawArgs);
 
-if (unsignedLocal) {
-  const conf = JSON.parse(
-    readFileSync(join(root, "src-tauri", "tauri.conf.json"), "utf8"),
-  );
-  const bundleDir = join(root, "target", "release", "bundle", "nsis");
-  if (existsSync(bundleDir)) {
-    for (const name of readdirSync(bundleDir)) {
-      if (name.includes(`_${conf.version}_`) && name.endsWith(".sig")) {
-        rmSync(join(bundleDir, name), { force: true });
+  buildDaemon({ rootDir });
+
+  const args = [tauriCli, "build", "--config", "src-tauri/tauri.release.json"];
+  const hasSigningKey = Boolean(env.TAURI_SIGNING_PRIVATE_KEY?.trim());
+  const isCi = Boolean(env.CI && env.CI !== "0" && env.CI !== "false");
+  const unsignedLocal = !hasSigningKey && !isCi;
+  if (unsignedLocal) {
+    console.log("未设置 TAURI_SIGNING_PRIVATE_KEY，本地构建跳过自动更新签名");
+    args.push(
+      "--config",
+      JSON.stringify({ bundle: { createUpdaterArtifacts: false } }),
+    );
+  }
+  args.push(...extraArgs);
+
+  execFileSync(process.execPath, args, { cwd: rootDir, env, stdio: "inherit" });
+
+  if (unsignedLocal) {
+    const conf = JSON.parse(
+      readFileSync(join(rootDir, "src-tauri", "tauri.conf.json"), "utf8"),
+    );
+    const bundleDir = join(rootDir, "target", "release", "bundle", "nsis");
+    if (existsSync(bundleDir)) {
+      for (const name of readdirSync(bundleDir)) {
+        if (name.includes(`_${conf.version}_`) && name.endsWith(".sig")) {
+          rmSync(join(bundleDir, name), { force: true });
+        }
       }
     }
   }
+
+  if (!skipCopy && !noBundle && process.platform === "win32") {
+    copyLatestInstaller({ rootDir });
+  }
 }
 
-if (!skipCopy && !extraArgs.includes("--no-bundle") && process.platform === "win32") {
-  copyLatestInstaller({ rootDir: root });
+const isDirectRun =
+  process.argv[1] != null && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isDirectRun) {
+  runBuildRelease();
 }

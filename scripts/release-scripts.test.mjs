@@ -14,6 +14,7 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
+import { parseBuildReleaseArgs } from "./build-release.mjs";
 import { checkReleaseVersion, resolveReleaseTag } from "./check-release-version.mjs";
 import { releaseAssetName } from "./copy-installer.mjs";
 import { deriveReleaseNotes, generateLatestJson } from "./gen-latest-json.mjs";
@@ -291,4 +292,32 @@ test("deriveReleaseNotes handles first tag fallback, commit ranges, and annotate
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }
+});
+
+test("parseBuildReleaseArgs strips pnpm leading -- separator without leaking it to cargo", () => {
+  assert.deepEqual(parseBuildReleaseArgs(["--skip-copy", "--bundles", "nsis"]), {
+    skipCopy: true,
+    noBundle: false,
+    extraArgs: ["--bundles", "nsis"],
+  });
+
+  // pnpm run tauri:build -- --skip-copy --bundles nsis 会把首个 "--" 原样传给脚本
+  assert.deepEqual(
+    parseBuildReleaseArgs(["--", "--skip-copy", "--bundles", "nsis"]),
+    {
+      skipCopy: true,
+      noBundle: false,
+      extraArgs: ["--bundles", "nsis"],
+    },
+  );
+
+  // 显式传给 cargo 的第二个 "--" 仍正常保留
+  assert.deepEqual(
+    parseBuildReleaseArgs(["--", "--no-bundle", "--", "--timings"]),
+    {
+      skipCopy: false,
+      noBundle: true,
+      extraArgs: ["--no-bundle", "--", "--timings"],
+    },
+  );
 });
