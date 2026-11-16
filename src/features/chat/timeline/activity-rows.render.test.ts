@@ -90,7 +90,7 @@ const settledEvents: SessionEvent[] = [
   }),
 ];
 
-test("a settled stream collapses tool rows and hides finished thinking", async () => {
+test("a settled stream shows thinking entries and collapsed tool rows in order", async () => {
   const mod = await server.ssrLoadModule("/src/features/chat/timeline/ActivityStream.tsx");
   const html = renderInHost(
     createElement(mod.ActivityStream, {
@@ -102,6 +102,10 @@ test("a settled stream collapses tool rows and hides finished thinking", async (
     }),
   );
   assert.equal(html.includes('data-activity-settled="true"'), true);
+  assert.equal((html.match(/data-thinking=/g) ?? []).length, 2);
+  assert.ok(html.indexOf('data-thinking="t1"') < html.indexOf("已使用 unityMCP 集成运行了命令"));
+  assert.ok(html.indexOf("已使用 unityMCP 集成运行了命令") < html.indexOf('data-thinking="t2"'));
+  assert.ok(html.indexOf('data-thinking="t2"') < html.indexOf("已运行 1 条命令"));
   assert.equal(html.includes("先看背包里的宝石"), false);
   assert.equal(html.includes("再跑一条命令"), false);
   assert.equal(html.includes("正在思考"), false);

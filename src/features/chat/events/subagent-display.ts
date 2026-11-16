@@ -82,7 +82,7 @@ export function subagentSessionStatus(card: SubagentEvent): SessionStatus {
 
 /**
  * 单独打开子 Agent 时的时间线：派给它的说明当作第一条消息，接着是它自己的步骤；
- * 卡片上另写的结果和最后一句回答不同时补在最后；结束了就收尾。照 t3code 把子 Agent 投影成子线程
+ * 结束后，卡片结果和最后一句回答不同时补在最后。照 t3code 把子 Agent 投影成子线程
  * （`packages/provider-core/src/server/subagentProjection.ts`）。
  */
 export function subagentTimeline(card: SubagentEvent, steps: readonly SessionEvent[]): SessionEvent[] {
@@ -95,7 +95,7 @@ export function subagentTimeline(card: SubagentEvent, steps: readonly SessionEve
   }
   events.push({ ...base, id: `${card.subagent_id}:turn`, ts: start, kind: "turn-anchor", turn_id: card.subagent_id });
   events.push(...steps);
-  const result = subagentResultShown(card, steps);
+  const result = card.status === "running" ? "" : subagentResultShown(card, steps);
   const end = card.ended_at ?? card.ts;
   if (result) {
     events.push({ ...base, id: `${card.subagent_id}:result`, ts: end, kind: "agent-message", text: result });

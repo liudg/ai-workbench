@@ -154,6 +154,8 @@ test("opening a subagent shows its prompt as the first message, its steps, and t
   // 没有步骤时结果补成最后一句回答；还在跑时不收尾。
   const running = card("b", { prompt: "", status: "running", result: "" });
   assert.deepEqual(subagentTimeline(running, []).map((item) => item.kind), ["turn-anchor"]);
+  const updating = { ...running, result: "命令核对完成。" };
+  assert.deepEqual(subagentTimeline(updating, steps).map((item) => item.kind), ["turn-anchor", "tool-call", "agent-message"]);
   const bare = card("c", { status: "failed", result: "boom" });
   const tail = subagentTimeline(bare, []).slice(-2);
   assert.equal(tail[0]?.kind, "agent-message");
@@ -163,4 +165,24 @@ test("opening a subagent shows its prompt as the first message, its steps, and t
 test("a row's second line is what it is doing while running and its result after", () => {
   assert.equal(subagentDetail(card("a", { status: "running", activity: "Read  src/a.ts", result: "x" })), "Read src/a.ts");
   assert.equal(subagentDetail(card("a", { status: "completed", activity: "", result: "done\nnext" })), "done next");
+});
+
+test("a subagent without a prompt keeps all activity inside its first turn", () => {
+  const steps = [
+    event("thinking", 2, { kind: "thinking", text: "检查命令结果。" }),
+    event("command", 3, { kind: "tool-call", name: "command", summary: "echo PING" }),
+    event("answer", 4, { kind: "agent-message", text: "PING", phase: "final-answer" }),
+  ];
+  for (const status of ["running", "completed", "failed", "stopped"] as const) {
+    const child = card("a", { prompt: "", status, started_at: 1 });
+    const blocks = buildTimeline(subagentTimeline(child, steps), status);
+    assert.equal(blocks.length, 1);
+    const block = blocks[0];
+    assert.equal(block.type, status === "running" ? "live" : "turn");
+    assert.deepEqual(block.events.map((item) => item.id), steps.map((item) => item.id));
+  }
+  const empty = card("empty", { prompt: "", started_at: 42 });
+  assert.deepEqual(buildTimeline(subagentTimeline(empty, []), "running"), [
+    { type: "live", id: "live-empty:turn", events: [], startedAt: 42 },
+  ]);
 });

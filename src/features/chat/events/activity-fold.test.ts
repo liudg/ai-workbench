@@ -102,7 +102,7 @@ test("reads, searches and edits are counted by kind, not as commands", () => {
   assert.equal(activitySummary([tool("c", "command", "ls"), tool("c2", "command", "pwd")]).text, "已运行 2 条命令");
 });
 
-test("thinking splits tool groups and leaves no thinking row", () => {
+test("thinking splits tool groups and keeps its position", () => {
   const pieces = foldActivity([
     event("c1", { kind: "agent-message", text: "先看表格。", phase: "commentary" }),
     event("t1", { kind: "thinking", text: "先核对选区。" }),
@@ -117,10 +117,10 @@ test("thinking splits tool groups and leaves no thinking row", () => {
   ]);
   assert.deepEqual(
     pieces.map((piece) => piece.type),
-    ["event", "tools", "tools", "event", "tools"],
+    ["event", "event", "tools", "event", "tools", "event", "tools"],
   );
-  assert.equal(JSON.stringify(pieces).includes("先核对选区"), false);
-  assert.equal(JSON.stringify(pieces).includes("再看复制"), false);
+  assert.equal(JSON.stringify(pieces).includes("先核对选区"), true);
+  assert.equal(JSON.stringify(pieces).includes("再看复制"), true);
   const groups = pieces.filter((piece) => piece.type === "tools");
   assert.equal(groups.length, 3);
   const [integrations, commands, trailing] = groups;
@@ -215,7 +215,7 @@ test("an image summary path is the thumbnail when the images list is empty", () 
   assert.deepEqual(pieces[0].paths, ["shot.png"]);
 });
 
-test("thinking between single calls leaves stacked summaries and no thinking text", () => {
+test("thinking and single tool summaries retain their chronological order", () => {
   const pieces = foldActivity([
     event("t1", { kind: "thinking", text: "先看背包里的宝石。" }),
     tool("m1", "execute_code", "MCP unityMCP execute_code"),
@@ -231,16 +231,21 @@ test("thinking between single calls leaves stacked summaries and no thinking tex
   assert.deepEqual(
     pieces.map((piece) => (piece.type === "tools" ? piece.summary : piece.type)),
     [
+      "event",
       "已使用 unityMCP 集成运行了命令",
+      "event",
       "已使用 unityMCP 集成运行了命令",
+      "event",
       "已运行 1 条命令",
+      "event",
       "已使用 unityMCP 集成运行了命令",
+      "event",
       "已运行 1 条命令",
     ],
   );
   const text = JSON.stringify(pieces);
-  assert.equal(text.includes("先看背包里的宝石"), false);
-  assert.equal(text.includes("最后一条命令"), false);
+  assert.equal(text.includes("先看背包里的宝石"), true);
+  assert.equal(text.includes("最后一条命令"), true);
   const groups = pieces.filter((piece) => piece.type === "tools");
   assert.deepEqual(
     groups.map((piece) => (piece.type === "tools" ? piece.steps.map((step) => step.title) : [])),

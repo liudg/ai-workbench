@@ -296,7 +296,7 @@ function isActivity(events: readonly SessionEvent[], index: number): boolean {
 /**
  * 每一轮从哪条事件开始。用户消息总是开一轮。换 Agent 的交接也断开，不并进上一段的最后一轮。
  * Agent 自己开的回合（目标续跑、宿主发的命令）没有用户消息，只有 `turn-anchor`：
- * 前面这一轮已经有活动、后面在下一条用户消息之前也有活动，才算新的一轮。
+ * 首个标记直接建立回合；后续标记需要前后都有活动才建立新的回合。
  * 紧挨着用户消息的锚点属于那条消息的回合，不另开。
  * 回合进行中补进去的引导不开新的一轮，留在原来那轮里。
  */
@@ -313,7 +313,9 @@ function turnStarts(events: readonly SessionEvent[]): number[] {
       activitySinceStart = false;
       continue;
     }
-    if (event.kind === "turn-anchor" && activitySinceStart && activityAhead(events, index)) {
+    if (event.kind === "turn-anchor" && (
+      starts.length === 0 || (activitySinceStart && activityAhead(events, index))
+    )) {
       starts.push(index);
       activitySinceStart = false;
       continue;

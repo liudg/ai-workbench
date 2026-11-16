@@ -5,7 +5,7 @@ import { hasGeneratedImages } from "./generated-images.ts";
 /**
  * 时间线展示层把相邻的工具调用收成一行。
  * 只读当前事件的 name / summary / images，不改协议，也不查 MCP 目录。
- * 旁白或思考一插进来就拆组。思考正文不画出来。
+ * 旁白或思考出现时拆分工具组，并保留事件顺序。
  * 查看图像单独成行，不并进命令摘要。
  */
 
@@ -55,7 +55,7 @@ export function foldActivity(events: readonly SessionEvent[]): ActivityPiece[] {
       continue;
     }
     flushTools();
-    if (event.kind === "thinking") continue;
+    if (event.kind === "thinking" && !event.text.trim()) continue;
     pieces.push({ type: "event", event });
   }
   flushTools();

@@ -9,7 +9,7 @@ import { ViewedImages } from "../events/ViewedImages";
 
 /**
  * 一段会话的事件，按发生顺序画。相邻工具收成一行，查看图像单独成行。
- * 思考正文不画。进行中的末行由 `LiveTurn` 画，这里不管。
+ * 思考条目可以展开正文。进行中的末行由 `ChatView` 显示。
  * `live` 为真时，适配器报的进行中工具才转圈。
  * `settled` 为真时，进行中点开过的工具行收回去，默认只留一行摘要。
  */
@@ -32,6 +32,7 @@ export function ActivityStream({
 }) {
   const pieces = useMemo(() => foldActivity(events), [events]);
   const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(() => new Set());
+  const [openThinking, setOpenThinking] = useState<ReadonlySet<string>>(() => new Set());
   const [seenSettled, setSeenSettled] = useState(settled);
   if (settled !== seenSettled) {
     setSeenSettled(settled);
@@ -82,6 +83,11 @@ export function ActivityStream({
             }
             showAgentLabel={labeled}
             showMessageFooter={labeled && !laterTools(pieces, index)}
+            thinkingOpen={openThinking.has(event.id)}
+            onToggleThinking={() => {
+              onInteract?.();
+              setOpenThinking((prev) => toggleToolGroup(prev, event.id));
+            }}
           />
         );
       })}

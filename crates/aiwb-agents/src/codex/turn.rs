@@ -176,6 +176,8 @@ impl Shared {
             // 原生 TUI 每个用户回合都带 turnTrigger: "user"（tui/src/app_server_session.rs:1441），
             // Codex 把它写进回合元数据的 turn_trigger。
             "turnTrigger": "user",
+            // 请求原生思考摘要，供主会话和继承回合设置的子线程显示。
+            "summary": "auto",
         });
         merge_json(&mut params, access.turn_permissions(wire));
         if !client_id.is_empty() {

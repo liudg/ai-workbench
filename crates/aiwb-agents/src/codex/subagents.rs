@@ -259,7 +259,11 @@ impl Shared {
             "item/started" | "item/completed" => {
                 let completed = method == "item/completed";
                 let Some(item) = params.get("item") else { return };
-                let Some(step) = step_of(item, completed) else { return };
+                let step = match item.get("type").and_then(Value::as_str) {
+                    Some("reasoning" | "agentMessage") => self.subagent_streams.lock().unwrap().item(thread, item, completed),
+                    _ => step_of(item, completed),
+                };
+                let Some(step) = step else { return };
                 if let SessionEventBody::AgentMessage { text, .. } = &step {
                     if let Some(card) = self.subagents.lock().unwrap().get_mut(thread) {
                         card.result = text.clone();
@@ -273,8 +277,18 @@ impl Shared {
                     },
                 );
             }
+            "item/reasoning/summaryTextDelta" | "item/reasoning/textDelta" | "item/agentMessage/delta" => {
+                let step = self.subagent_streams.lock().unwrap().delta(thread, method, params);
+                if let Some(step) = step {
+                    emit(&self.events, SessionEventBody::SubagentStep {
+                        subagent_id: thread.to_string(),
+                        step: Box::new(step),
+                    });
+                }
+            }
             "turn/completed" => {
                 self.subagent_turns.lock().unwrap().remove(thread);
+                self.subagent_streams.lock().unwrap().finish(thread);
                 let status = match params.pointer("/turn/status").and_then(Value::as_str) {
                     Some("failed") => SubagentStatus::Failed,
                     Some("interrupted") => SubagentStatus::Stopped,
@@ -341,6 +355,7 @@ impl Shared {
 
     /// 进程没了，还在跑的子 Agent 也跟着停了。
     pub(super) fn stop_subagents(&self) {
+        self.subagent_streams.lock().unwrap().clear();
         let at = Some(now_millis());
         for card in self.subagents.lock().unwrap().values_mut() {
             if card.status == SubagentStatus::Running {
@@ -444,6 +459,12 @@ mod tests {
             "item/agentMessage/delta",
             &json!({ "threadId": PING, "itemId": "msg_p", "delta": "PI" }),
         );
+        let streaming = drain(&mut events);
+        assert!(streaming.iter().any(|body| matches!(body,
+            SessionEventBody::SubagentStep { step, .. } if matches!(&**step,
+                SessionEventBody::AgentMessage { text, stream_id: Some(id), .. } if text == "PI" && id == "msg_p"))));
+        assert!(streaming.iter().any(|body| matches!(body,
+            SessionEventBody::SubagentStep { step, .. } if matches!(&**step, SessionEventBody::ToolCall { .. }))));
         shared.handle_notification(
             "item/completed",
             &json!({ "threadId": PING, "turnId": "turn-ping", "item": {
@@ -463,7 +484,9 @@ mod tests {
             "{bodies:?}"
         );
         assert!(bodies.iter().any(|body| matches!(body,
-            SessionEventBody::SubagentStep { step, .. } if matches!(&**step, SessionEventBody::ToolCall { .. }))));
+            SessionEventBody::SubagentStep { step, .. } if matches!(&**step,
+                SessionEventBody::AgentMessage { text, stream_id: Some(id), phase: Some(MessagePhase::FinalAnswer), .. }
+                    if text == "PING" && id == "msg_p"))));
         assert!(shared.turn_open.load(Ordering::SeqCst), "子线程结束不收主回合");
         assert_eq!(shared.turn_id.lock().unwrap().as_deref(), Some("turn-main"));
 
