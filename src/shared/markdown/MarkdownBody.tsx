@@ -56,7 +56,7 @@ function BlockView({ block }: { block: AnswerBlock }) {
       }
       return (
         <MaybeCollapsed meta={block.meta}>
-          <ListView ordered={block.ordered} items={block.items} />
+          <ListView ordered={block.ordered} start={block.start} loose={block.loose} items={block.items} />
         </MaybeCollapsed>
       );
     case "table":
@@ -160,7 +160,7 @@ function Disclosure({
   );
 }
 
-function FileCiteList({ items, label }: { items: Inline[][]; label?: string | null }) {
+function FileCiteList({ items, label }: { items: AnswerBlock[][]; label?: string | null }) {
   const [revealed, setRevealed] = useState(false);
   const count = visibleFileCiteCount(items.length, revealed);
   const hidden = items.length - count;
@@ -170,7 +170,7 @@ function FileCiteList({ items, label }: { items: Inline[][]; label?: string | nu
       <div className="answer-file-rows">
         {items.slice(0, count).map((item, index) => (
           <div key={index} className="answer-file-row">
-            <Inlines nodes={item} />
+            {item.map((block, blockIndex) => <BlockView key={blockIndex} block={block} />)}
           </div>
         ))}
       </div>
@@ -183,13 +183,13 @@ function FileCiteList({ items, label }: { items: Inline[][]; label?: string | nu
   );
 }
 
-function ListView({ ordered, items }: { ordered: boolean; items: Inline[][] }) {
+function ListView({ ordered, start, loose, items }: Pick<Extract<AnswerBlock, { type: "list" }>, "ordered" | "start" | "loose" | "items">) {
   const Tag = ordered ? "ol" : "ul";
   return (
-    <Tag className="answer-list" data-answer-block="list">
+    <Tag className={cn("answer-list", loose && "is-loose")} start={ordered ? start : undefined} data-answer-block="list">
       {items.map((item, index) => (
         <li key={index}>
-          <Inlines nodes={item} />
+          {item.map((block, blockIndex) => <BlockView key={blockIndex} block={block} />)}
         </li>
       ))}
     </Tag>

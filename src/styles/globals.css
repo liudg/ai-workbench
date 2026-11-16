@@ -477,8 +477,12 @@ ol.answer-list {
 .answer-list li {
   padding-left: 0.2rem;
 }
-.answer-list li + li {
+.answer-list > li + li {
   margin-top: 0.4rem;
+}
+.answer-list.is-loose > li + li,
+.answer-list > li > * + * {
+  margin-top: 1rem;
 }
 .answer-list li::marker {
   color: var(--color-wb-fg-3);

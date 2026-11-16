@@ -26,7 +26,7 @@ export type Inline =
 export type AnswerBlock =
   | { type: "heading"; level: 1 | 2 | 3; inlines: Inline[] }
   | { type: "paragraph"; inlines: Inline[] }
-  | { type: "list"; ordered: boolean; items: Inline[][]; meta: CollapseMeta | null }
+  | { type: "list"; ordered: boolean; start: number | undefined; loose: boolean; items: AnswerBlock[][]; meta: CollapseMeta | null }
   | {
       type: "table";
       header: Inline[][];

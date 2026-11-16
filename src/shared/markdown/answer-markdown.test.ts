@@ -52,7 +52,9 @@ test("promotes a lone bold line to a heading and renders emphasis, lists, and co
   assert.ok(features && features.type === "list");
   assert.equal(features.meta, null);
   assert.equal(features.items.length, 5);
-  assert.match(inlinePlain(features.items[0]), /行为编排/);
+  const feature = features.items[0][0];
+  assert.equal(feature.type, "paragraph");
+  assert.match(inlinePlain(feature.inlines), /行为编排/);
 
   const intro = blocks[0];
   assert.equal(intro.type, "paragraph");
@@ -83,7 +85,9 @@ test("collapses code-entry lists and shortens absolute paths on hover data", () 
   const files = blocks.find((block) => block.type === "list" && block.meta?.kind === "files");
   assert.ok(files && files.type === "list" && files.meta);
   assert.equal(files.meta.detail, "4 个文件");
-  const link = files.items[0].find((node) => node.type === "link");
+  const file = files.items[0][0];
+  assert.equal(file.type, "paragraph");
+  const link = file.inlines.find((node) => node.type === "link");
   assert.ok(link && link.type === "link");
   assert.equal(inlinePlain(link.inlines), "AIEditorWindow.cs");
   assert.equal(link.title, LONG);

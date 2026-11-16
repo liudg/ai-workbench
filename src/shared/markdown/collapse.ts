@@ -61,11 +61,18 @@ function collapseMeta(block: AnswerBlock): CollapseMeta | null {
   if (block.type === "table" && block.rows.length >= TABLE_MIN_ROWS) {
     return meta("table", block.rows.length, `${block.rows.length} 行`, "表格");
   }
-  if (block.type === "list" && isFileList(block.items)) {
-    return meta("files", block.items.length, `${block.items.length} 个文件`, "代码入口");
-  }
-  if (block.type === "list" && isDirectoryList(block.items)) {
-    return meta("directory", block.items.length, `${block.items.length} 项`, "目录");
+  if (block.type === "list") {
+    const items: Inline[][] = [];
+    for (const item of block.items) {
+      if (item.length !== 1 || item[0].type !== "paragraph") return null;
+      items.push(item[0].inlines);
+    }
+    if (isFileList(items)) {
+      return meta("files", items.length, `${items.length} 个文件`, "代码入口");
+    }
+    if (isDirectoryList(items)) {
+      return meta("directory", items.length, `${items.length} 项`, "目录");
+    }
   }
   if (block.type === "code" && isDirectoryCode(block.text)) {
     const count = block.text.split("\n").filter((line) => line.trim()).length;

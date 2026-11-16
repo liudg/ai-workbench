@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { Window } from "happy-dom";
 import { createServer, type ViteDevServer } from "vite";
 import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 
@@ -43,6 +44,98 @@ function render(text: string, runCommand?: (command: string) => void): string {
     }),
   );
 }
+
+test("含有段落和代码块的四项列表保持连续编号和所属层级", async () => {
+  const text = readFileSync(new URL("./fixtures/ordered-list.md", import.meta.url), "utf8");
+  const dom = new Window();
+  try {
+    dom.document.body.innerHTML = render(text);
+    const lists = dom.document.querySelectorAll("ol");
+    assert.equal(lists.length, 1);
+    assert.equal(lists[0].start, 1);
+    const items = lists[0].querySelectorAll(":scope > li");
+    assert.equal(items.length, 4);
+    assert.deepEqual(
+      [...items].map((item) => item.querySelector("strong")?.textContent),
+      ["私有内核连接节点服务器时，被 TUN 接管。", "DNS 解析受到影响。", "部分应用子进程可能直接使用 Clash Verge。", "最终出口 IP 不一定改变。"],
+    );
+    assert.equal(items[0].querySelectorAll(":scope > .answer-p").length, 3);
+    assert.equal(items[0].querySelector("pre")?.textContent, "Claude → 私有 Mihomo → Clash Verge TUN → 节点服务器 → 目标网站");
+    for (const item of [...items].slice(1)) {
+      assert.equal(item.querySelectorAll(":scope > .answer-p").length, 2);
+    }
+    assert.equal(items[1].querySelector("a")?.href, "https://wiki.metacubex.one/config/dns/");
+    assert.match(lists[0].nextElementSibling?.textContent ?? "", /^此前方案/);
+  } finally {
+    await dom.close();
+  }
+});
+
+test("保留列表起始编号并支持重复使用 1 的 Markdown 写法", async () => {
+  const dom = new Window();
+  try {
+    for (const start of [0, 1, 5]) {
+      dom.document.body.innerHTML = render(`${start}. 第一项\n\n1. 第二项\n\n1. 第三项`);
+      const lists = dom.document.querySelectorAll("ol");
+      assert.equal(lists.length, 1);
+      assert.equal(lists[0].start, start);
+      assert.equal(lists[0].querySelectorAll(":scope > li").length, 3);
+    }
+    dom.document.body.innerHTML = render("1. 第一项\n\n独立段落。\n\n5. 第五项\n6. 第六项");
+    assert.deepEqual([...dom.document.querySelectorAll("ol")].map((list) => list.start), [1, 5]);
+  } finally {
+    await dom.close();
+  }
+});
+
+test("嵌套列表使用各自的编号且保留后续说明", async () => {
+  const dom = new Window();
+  try {
+    dom.document.body.innerHTML = render("3. 外层第一项\n\n   7. 内层第一项\n   8. 内层第二项\n\n   后续说明。\n\n4. 外层第二项\n\n   - 无序第一项\n   - 无序第二项");
+    const outer = dom.document.querySelector(".answer-body > ol");
+    assert.ok(outer);
+    assert.equal(outer.getAttribute("start"), "3");
+    const items = outer.querySelectorAll(":scope > li");
+    assert.equal(items.length, 2);
+    const inner = items[0].querySelector("ol");
+    assert.ok(inner);
+    assert.equal(inner.start, 7);
+    assert.equal(inner.querySelectorAll(":scope > li").length, 2);
+    assert.equal(inner.nextElementSibling?.textContent, "后续说明。");
+    const unordered = items[1].querySelector("ul");
+    assert.ok(unordered);
+    assert.equal(unordered.hasAttribute("start"), false);
+    assert.equal(unordered.querySelectorAll(":scope > li").length, 2);
+  } finally {
+    await dom.close();
+  }
+});
+
+test("流式消息在各个截断位置都能渲染", () => {
+  const text = readFileSync(new URL("./fixtures/ordered-list.md", import.meta.url), "utf8");
+  for (let length = 0; length <= text.length; length += 1) {
+    assert.doesNotThrow(() => render(text.slice(0, length)), `字符位置 ${length}`);
+  }
+});
+
+test("任务列表保留完成标记和说明", async () => {
+  const dom = new Window();
+  try {
+    for (const separator of ["\n", "\n\n"]) {
+      dom.document.body.innerHTML = render(`- [x] 完成${separator}- [ ] 待办`);
+      assert.deepEqual(
+        [...dom.document.querySelectorAll("li")].map((item) => item.textContent),
+        ["[x] 完成", "[ ] 待办"],
+      );
+    }
+    assert.doesNotThrow(() => render("- [x]\n- [ ]"));
+    dom.document.body.innerHTML = render("- [x] 完成\n\n  说明段落。\n\n- [ ] 待办");
+    assert.equal(dom.document.querySelector("li > .answer-p")?.textContent, "[x] 完成");
+    assert.equal(dom.document.querySelector("li > .answer-p + .answer-p")?.textContent, "说明段落。");
+  } finally {
+    await dom.close();
+  }
+});
 
 test("an inline file location is a citation pill and the line is not part of the path", () => {
   const html = render("先看 [LoginService.cs:648](F:/work/src/Auth/LoginService.cs:648) 这里。");
