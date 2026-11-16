@@ -2,15 +2,17 @@ import { useCallback, useRef, useState } from "react";
 import { Ellipsis, Monitor, Moon, RefreshCw, Settings, Sun } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { APP_VERSION } from "@/lib/version";
 import { useDismiss } from "../use-dismiss";
 import { useAccountMenu } from "./use-account-menu";
 
 export function AccountMenu() {
   const {
     checkUpdates,
-    openSettings,
     checking,
+    updateBadge,
+    updateLabel,
+    updateMeta,
+    openSettings,
     readyCount,
     themePreference,
     themeOptions,
@@ -82,6 +84,7 @@ export function AccountMenu() {
           <button
             type="button"
             role="menuitem"
+            data-account-update=""
             className="flex h-8 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-xs text-wb-fg transition-colors hover:bg-wb-hover"
             onClick={() => {
               setOpen(false);
@@ -89,11 +92,29 @@ export function AccountMenu() {
             }}
           >
             <RefreshCw
-              className={cn("h-3.5 w-3.5 shrink-0 text-wb-fg-3", checking && "animate-spin")}
+              className={cn(
+                "h-3.5 w-3.5 shrink-0",
+                updateBadge === "warn"
+                  ? "text-wb-warn"
+                  : updateBadge === "accent"
+                    ? "text-wb-accent"
+                    : "text-wb-fg-3",
+                checking && "animate-spin",
+              )}
               strokeWidth={1.8}
             />
-            <span className="min-w-0 flex-1">检查更新</span>
-            <span className="text-xs tabular-nums text-wb-fg-3">v{APP_VERSION}</span>
+            <span className="min-w-0 flex-1 truncate">{updateLabel}</span>
+            {updateMeta ? (
+              <span className="text-xs tabular-nums text-wb-fg-3">{updateMeta}</span>
+            ) : updateBadge ? (
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "h-1.5 w-1.5 shrink-0 rounded-full",
+                  updateBadge === "warn" ? "bg-wb-warn" : "bg-wb-accent",
+                )}
+              />
+            ) : null}
           </button>
         </div>
       )}
@@ -119,17 +140,27 @@ export function AccountMenu() {
 
       <button
         type="button"
-        aria-label="打开菜单"
-        title="外观与设置"
+        aria-label={updateBadge ? `打开菜单（${updateLabel}）` : "打开菜单"}
+        title={updateBadge ? `外观与设置 · ${updateLabel}` : "外观与设置"}
         aria-expanded={open}
         aria-haspopup="menu"
         onClick={() => setOpen((value) => !value)}
         className={cn(
-          "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors",
+          "relative flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors",
           open ? "bg-wb-active text-wb-fg" : "text-wb-fg-2 hover:bg-wb-hover hover:text-wb-fg",
         )}
       >
         <Ellipsis className="h-4 w-4" strokeWidth={1.8} />
+        {updateBadge && (
+          <span
+            data-account-update-dot={updateBadge}
+            aria-hidden="true"
+            className={cn(
+              "absolute right-1 top-1 h-1.5 w-1.5 rounded-full",
+              updateBadge === "warn" ? "bg-wb-warn" : "bg-wb-accent",
+            )}
+          />
+        )}
       </button>
     </div>
   );

@@ -30,6 +30,9 @@ installGlobal("Node", dom.Node);
 
 let server: ViteDevServer;
 let WindowTitlebar: typeof import("./WindowTitlebar.tsx").WindowTitlebar;
+let UpdateTitlebarPill: typeof import("../features/updates/UpdateTitlebarPill.tsx").UpdateTitlebarPill;
+let updateStore: typeof import("../features/updates/update-store.ts");
+let updater: typeof import("../lib/native/updater.ts");
 let AttentionPill: typeof import("../shared/attention/AttentionPill.tsx").AttentionPill;
 let attentionPill: typeof import("../shared/attention/attention.ts").attentionPill;
 
@@ -42,6 +45,9 @@ before(async () => {
     logLevel: "error",
   });
   WindowTitlebar = (await server.ssrLoadModule("/src/app/WindowTitlebar.tsx")).WindowTitlebar;
+  UpdateTitlebarPill = (await server.ssrLoadModule("/src/features/updates/UpdateTitlebarPill.tsx")).UpdateTitlebarPill;
+  updateStore = (await server.ssrLoadModule("/src/features/updates/update-store.ts")) as typeof updateStore;
+  updater = (await server.ssrLoadModule("/src/lib/native/updater.ts")) as typeof updater;
   AttentionPill = (await server.ssrLoadModule("/src/shared/attention/AttentionPill.tsx")).AttentionPill;
   attentionPill = (await server.ssrLoadModule("/src/shared/attention/attention.ts").then((m) => m)).attentionPill;
 });
@@ -86,9 +92,15 @@ test("web preview renders Variant A immersive breadcrumb bar without dead window
     close: () => calls.push("close"),
     startDrag: () => calls.push("startDrag"),
   };
-  const view = await render(createElement(WindowTitlebar, { chrome }));
+  const view = await render(
+    createElement(WindowTitlebar, {
+      chrome,
+      trailing: chrome.nativeControls ? createElement(UpdateTitlebarPill) : undefined,
+    }),
+  );
   const bar = view.host.querySelector("[data-window-titlebar]");
   assert.ok(bar instanceof dom.HTMLElement);
+  assert.equal(bar.children.length, 1);
   assert.equal(bar.className.includes("h-8"), true);
   assert.equal(bar.className.includes("z-40"), true);
   assert.ok(bar.querySelector("[data-sidebar-toggle]"));
@@ -199,4 +211,67 @@ test("non-compact AttentionPill renders 12px (text-xs) soft-tinted capsule while
   assert.equal(compactEl.className.includes("bg-wb-warn-soft"), false);
   assert.equal(compactEl.textContent, "");
   await compact.unmount();
+});
+
+test("UpdateTitlebarPill opens update dialog on click without triggering window drag and hides on dismiss", async () => {
+  await updater.resetUpdaterForTest();
+  updateStore.resetUpdateStoreForTest();
+
+  const calls: string[] = [];
+  const chrome: WindowTitlebarState = {
+    nativeControls: true,
+    maximized: false,
+    contextLabel: null,
+    minimize: () => calls.push("minimize"),
+    toggleMaximize: () => calls.push("toggleMaximize"),
+    close: () => calls.push("close"),
+    startDrag: () => calls.push("startDrag"),
+  };
+
+  const view = await render(
+    createElement(WindowTitlebar, {
+      chrome,
+      trailing: createElement(UpdateTitlebarPill),
+    }),
+  );
+  assert.equal(view.host.querySelector("[data-update-pill]"), null);
+
+  await act(async () => {
+    await updateStore.checkUpdates(false, {
+      isDesktop: true,
+      endpoint: () => "https://downloads.example.com/latest.json",
+      checkRemote: async () =>
+        ({
+          version: "0.2.95",
+          body: "notes",
+          download: async () => {},
+          install: async () => {},
+          close: async () => {},
+        }) as never,
+      relaunchApp: async () => {},
+    });
+  });
+
+  const pillBtn = view.host.querySelector("[data-update-pill='available']");
+  assert.ok(pillBtn instanceof dom.HTMLButtonElement);
+  assert.equal(pillBtn.textContent, "新版本 v0.2.95");
+  assert.equal(updateStore.getUpdateStateSnapshot().dialogOpen, false);
+
+  await act(async () => {
+    pillBtn.dispatchEvent(new dom.MouseEvent("mousedown", { bubbles: true, button: 0, detail: 1, clientX: 220, clientY: 12 }));
+    dom.dispatchEvent(new dom.MouseEvent("mousemove", { bubbles: true, buttons: 1, clientX: 250, clientY: 12 }));
+    dom.dispatchEvent(new dom.MouseEvent("mouseup", { bubbles: true }));
+    pillBtn.click();
+  });
+  assert.deepEqual(calls, []);
+  assert.equal(updateStore.getUpdateStateSnapshot().dialogOpen, true);
+
+  await act(async () => {
+    updateStore.dismissUpdate();
+  });
+  assert.equal(view.host.querySelector("[data-update-pill]"), null);
+
+  await view.unmount();
+  await updater.resetUpdaterForTest();
+  updateStore.resetUpdateStoreForTest();
 });

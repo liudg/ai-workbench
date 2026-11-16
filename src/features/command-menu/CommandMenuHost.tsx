@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { OPEN_THREAD_FIND } from "@/features/chat";
 import { FileSearchDialog } from "@/features/panel";
 import { currentSession, tasksApi } from "@/features/tasks";
+import { canCheckUpdates, recheckUpdates } from "@/features/updates";
 import {
   worktreeDeleteFlags,
   worktreeDeleteIsDirty,
@@ -66,6 +67,7 @@ export function CommandMenuHost() {
     canNewThread: Boolean(project),
     canStandalone: true,
     canSearchFiles: Boolean(panel && quickScope),
+    canCheckUpdates,
     hasPanel: Boolean(panel),
     canSideChat: Boolean(panel?.openSideChat),
     canFind: view.kind !== "none",
@@ -115,6 +117,11 @@ export function CommandMenuHost() {
     if (id === "settings") {
       openSettings();
       close();
+      return;
+    }
+    if (id === "check-updates") {
+      close();
+      void recheckUpdates();
       return;
     }
     if (id === "board") {

@@ -69,11 +69,15 @@ test("formatUpdaterError maps low-level English errors to concise Chinese messag
     "网络连接异常，无法检查更新。",
   );
   assert.equal(
-    formatUpdaterError("`Download request failed with status: 404 Not Found`", "install"),
+    formatUpdaterError("`Download request failed with status: 404 Not Found`", "download"),
     "下载更新包失败，请检查网络后重试。",
   );
   assert.equal(
-    formatUpdaterError("The signature verification failed", "install"),
+    formatUpdaterError("The signature verification failed", "download"),
     "更新包签名校验未通过，请稍后再试。",
+  );
+  assert.equal(
+    formatUpdaterError("installer exited with non-zero code", "install"),
+    "更新未能完成，请稍后再试。",
   );
 });

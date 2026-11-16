@@ -44,6 +44,7 @@ export default function CommandMenuPreview() {
     canNewThread: true,
     canStandalone: true,
     canSearchFiles: params.get("caps") !== "off",
+    canCheckUpdates: true,
     hasPanel: true,
     canSideChat: false,
     canFind: params.get("find") !== "off",

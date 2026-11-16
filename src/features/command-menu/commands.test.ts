@@ -31,6 +31,7 @@ const enabled: PaletteInput = {
   canNewThread: true,
   canStandalone: true,
   canSearchFiles: true,
+  canCheckUpdates: true,
   hasPanel: true,
   canSideChat: false,
   canFind: true,
@@ -50,6 +51,8 @@ test("empty query lifts new chat and open folder into 快捷操作", () => {
   assert.equal(rows[1]?.groupLabel, COPY.groups.suggested);
   assert.equal(rows.filter((row) => row.label === COPY.newThread).length, 1);
   assert.equal(rows.find((row) => row.commandId === "settings")?.groupLabel, COPY.groups.settings);
+  assert.equal(rows.find((row) => row.commandId === "check-updates")?.label, COPY.checkUpdates);
+  assert.equal(rows.find((row) => row.commandId === "check-updates")?.groupLabel, COPY.groups.settings);
   assert.ok(rows.findIndex((row) => row.group === "settings") < rows.findIndex((row) => row.group === "thread"));
 });
 
@@ -169,4 +172,9 @@ test("the side chat toggle shows only when the chat can open one", () => {
   assert.equal(off.some((row) => row.commandId === "toggle-side-chat"), false);
   const on = buildPaletteRows({ ...enabled, canSideChat: true });
   assert.equal(on.find((row) => row.commandId === "toggle-side-chat")?.shortcut, COPY.shortcutSideChat);
+});
+
+test("check-updates only appears when desktop updater is supported", () => {
+  assert.equal(ids(enabled).includes("check-updates"), true);
+  assert.equal(ids({ ...enabled, canCheckUpdates: false }).includes("check-updates"), false);
 });

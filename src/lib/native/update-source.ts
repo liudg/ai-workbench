@@ -21,7 +21,10 @@ export function updateFailureIsMissingSource(message: string): boolean {
 }
 
 /** 将底层英文网络、远端清单与签名错误转换为面向用户的简洁中文提示。 */
-export function formatUpdaterError(raw: unknown, stage: "check" | "install"): string {
+export function formatUpdaterError(
+  raw: unknown,
+  stage: "check" | "download" | "install",
+): string {
   const text =
     typeof raw === "string" ? raw : raw instanceof Error ? raw.message : "";
   const trimmed = text.trim();
@@ -42,14 +45,14 @@ export function formatUpdaterError(raw: unknown, stage: "check" | "install"): st
       trimmed,
     )
   ) {
-    return stage === "check"
-      ? "网络连接异常，无法检查更新。"
-      : "下载更新包失败，请检查网络后重试。";
+    if (stage === "check") return "网络连接异常，无法检查更新。";
+    if (stage === "download") return "下载更新包失败，请检查网络后重试。";
+    return "安装更新失败，请稍后再试。";
   }
   if (/[\u4e00-\u9fff]/.test(trimmed)) {
     return trimmed;
   }
-  return stage === "check"
-    ? "暂时无法检查更新，请稍后再试。"
-    : "更新未能完成，请稍后再试。";
+  if (stage === "check") return "暂时无法检查更新，请稍后再试。";
+  if (stage === "download") return "下载更新包失败，请稍后再试。";
+  return "更新未能完成，请稍后再试。";
 }

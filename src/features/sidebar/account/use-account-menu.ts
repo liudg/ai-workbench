@@ -4,13 +4,16 @@ import { openSettings } from "@/shared/shell/navigation";
 import { THEME_OPTIONS, useTheme } from "@/shared/theme";
 
 export function useAccountMenu() {
-  const { checking, checkNow } = useUpdateCheck();
+  const update = useUpdateCheck();
   const readyCount = useReadyAgentCount();
   const theme = useTheme();
   return {
-    checkUpdates: checkNow,
+    checkUpdates: update.checkNow,
+    checking: update.checking,
+    updateBadge: update.badge,
+    updateLabel: update.label,
+    updateMeta: update.meta,
     openSettings,
-    checking,
     readyCount,
     themePreference: theme.preference,
     themeOptions: THEME_OPTIONS,

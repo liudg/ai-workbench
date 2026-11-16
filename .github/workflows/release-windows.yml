@@ -51,7 +51,7 @@ jobs:
         run: |
           node scripts/check-release-version.mjs --verify-keypair
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node --experimental-strip-types --test scripts/release-scripts.test.mjs src/lib/native/update-source.test.ts src/features/updates/update-store.test.ts
+          node --experimental-strip-types --test scripts/release-scripts.test.mjs src/lib/native/update-source.test.ts src/features/updates/update-store.test.ts src/features/command-menu/commands.test.ts src/app/window-titlebar.render.test.ts
 
       - name: 构建签名 NSIS 安装包
         run: node scripts/build-release.mjs --skip-copy --bundles nsis

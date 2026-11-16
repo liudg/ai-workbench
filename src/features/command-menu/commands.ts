@@ -25,6 +25,7 @@ export type PaletteCommandId =
   | "new-standalone"
   | "open-folder"
   | "settings"
+  | "check-updates"
   | "toggle-theme"
   | "search-chats"
   | "find-in-thread"
@@ -79,6 +80,7 @@ export interface PaletteInput {
   canNewThread: boolean;
   canStandalone: boolean;
   canSearchFiles: boolean;
+  canCheckUpdates: boolean;
   /** 有右侧面板（建好的会话或项目里的新会话）。 */
   hasPanel: boolean;
   /** 当前会话能开侧边聊天。 */
@@ -161,6 +163,9 @@ function commandItems(input: PaletteInput): PaletteRow[] {
   rows.push(command("open-folder", COPY.openFolder, "workspace"));
   rows.push(command("toggle-theme", COPY.toggleTheme, "settings"));
   rows.push(command("settings", COPY.settings, "settings"));
+  if (input.canCheckUpdates) {
+    rows.push(command("check-updates", COPY.checkUpdates, "settings"));
+  }
   return rows;
 }
 

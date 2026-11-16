@@ -59,4 +59,4 @@ node scripts/gen-latest-json.mjs --url "https://github.com/liudg/ai-workbench/re
 - [ ] 四处版本号一致且高于上一个已发布版本（`node scripts/check-release-version.mjs` 通过）
 - [ ] GitHub Actions `release-windows` 工作流运行成功
 - [ ] 最新 GitHub Release 中包含 `AI-Workbench_<version>_x64-setup.exe`、`.exe.sig` 与 `latest.json`
-- [ ] 旧版本客户端点击「检查更新 → 立即更新」可正常下载、安装并重启到新版本
+- [ ] 旧版本客户端点击「检查更新 → 下载更新 → 立即重启」可正常下载、安装并重启到新版本

@@ -3,7 +3,11 @@ import { X } from "lucide-react";
 
 import { useViewingReport } from "@/features/board";
 import { NewProjectDialog, Sidebar } from "@/features/sidebar";
-import { UpdateDialog, useStartupUpdateCheck } from "@/features/updates";
+import {
+  UpdateDialog,
+  UpdateTitlebarPill,
+  useStartupUpdateCheck,
+} from "@/features/updates";
 import { Workspace } from "@/features/workspace";
 import { cn } from "@/lib/utils";
 import { NativeMenuGuard } from "@/shared/menu/NativeMenuGuard";
@@ -64,7 +68,10 @@ function WorkbenchApp() {
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-wb-shell text-wb-fg">
-      <WindowTitlebar chrome={titlebar} />
+      <WindowTitlebar
+        chrome={titlebar}
+        trailing={titlebar.nativeControls ? <UpdateTitlebarPill /> : undefined}
+      />
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <Sidebar />
         <main

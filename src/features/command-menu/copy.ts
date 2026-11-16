@@ -29,6 +29,7 @@ export const COMMAND_MENU_COPY = {
   newStandalone: "新建独立聊天",
   openFolder: "打开文件夹…",
   settings: "设置…",
+  checkUpdates: "检查更新",
   toggleTheme: "切换外观主题",
   searchChats: "搜索聊天…",
   searchFiles: "搜索文件…",

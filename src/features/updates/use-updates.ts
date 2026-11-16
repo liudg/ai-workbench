@@ -1,27 +1,40 @@
 import { useEffect, useState } from "react";
 
 import { useTasks } from "@/features/tasks";
+import { APP_VERSION } from "@/lib/version";
 import {
+  accountMenuUpdate,
   checkUpdates,
   closeUpdateDialog,
   countRunningSessions,
+  dismissUpdate,
+  downloadPercent,
+  formatUpdateSize,
+  openOrCheckUpdates,
+  openUpdateDialog,
+  recheckUpdates,
   retryUpdate,
+  startDownload,
   startInstall,
+  titlebarUpdatePill,
   useUpdateState,
 } from "./update-store";
 
+export function useUpdateDialogOpen(): boolean {
+  return useUpdateState((s) => s.dialogOpen);
+}
+
 export function useUpdateDialog() {
-  const open = useUpdateState((s) => s.dialogOpen);
   const update = useUpdateState((s) => s.phase);
   const { tasks } = useTasks();
-  const runningSessions = countRunningSessions(tasks);
+  const runningSessions = update.kind === "downloaded" ? countRunningSessions(tasks) : 0;
   const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
-    if (!open || update.kind !== "available" || runningSessions === 0) {
+    if (update.kind !== "downloaded" || runningSessions === 0) {
       setConfirming(false);
     }
-  }, [open, update.kind, runningSessions]);
+  }, [update.kind, runningSessions]);
 
   const requestInstall = () => {
     if (runningSessions > 0) {
@@ -36,23 +49,49 @@ export function useUpdateDialog() {
     void startInstall();
   };
 
+  const progress =
+    update.kind === "downloading"
+      ? {
+          width:
+            downloadPercent(update.received, update.total) !== null
+              ? `${downloadPercent(update.received, update.total)}%`
+              : "40%",
+          text: update.total
+            ? `${formatUpdateSize(update.received)} / ${formatUpdateSize(update.total)}`
+            : formatUpdateSize(update.received),
+        }
+      : null;
+
   return {
-    open,
+    appVersion: APP_VERSION,
     update,
+    progress,
     runningSessions,
     confirming,
     close: closeUpdateDialog,
+    dismiss: dismissUpdate,
+    requestDownload: () => void startDownload(),
     requestInstall,
     cancelConfirm: () => setConfirming(false),
     confirmInstall,
     retry: () => void retryUpdate(),
+    recheck: () => void recheckUpdates(),
   };
 }
 
-/** 侧栏菜单里的「检查更新」。 */
+/** 顶栏右侧轻量更新胶囊，点击统一打开更新对话框。 */
+export function useTitlebarUpdatePill() {
+  const phase = useUpdateState((s) => s.phase);
+  const dismissedVersion = useUpdateState((s) => s.dismissedVersion);
+  const pill = titlebarUpdatePill({ phase, dialogOpen: false, dismissedVersion });
+  return { pill, openDialog: openUpdateDialog };
+}
+
+/** 侧栏左下角菜单里的更新项与触发器圆点。 */
 export function useUpdateCheck() {
-  const checking = useUpdateState((s) => s.phase.kind === "checking");
-  return { checking, checkNow: () => void checkUpdates(true) };
+  const phase = useUpdateState((s) => s.phase);
+  const view = accountMenuUpdate(phase, APP_VERSION);
+  return { ...view, checkNow: () => void openOrCheckUpdates() };
 }
 
 /** 启动时静默检查一次。 */
