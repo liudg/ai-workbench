@@ -6,12 +6,39 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
+import {
+  Archive,
+  ChevronLeft,
+  FileCode2,
+  FileSearch,
+  FolderOpen,
+  FolderTree,
+  GitCompareArrows,
+  GitFork,
+  MessageSquare,
+  MessageSquarePlus,
+  MessagesSquare,
+  PanelLeft,
+  Pencil,
+  Pin,
+  RefreshCw,
+  Search,
+  SlidersHorizontal,
+  Sparkles,
+  SquareKanban,
+  SquarePen,
+  SquareTerminal,
+  SunMoon,
+  TextSearch,
+  Trash2,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
 import { COMMAND_MENU_COPY as COPY } from "./copy";
-import type { PaletteRow } from "./commands";
+import type { PaletteCommandId, PaletteRow } from "./commands";
 import { jumpSection, moveCursor, sectionStarts } from "./keyboard";
 
 export type PaletteDrill = "commands" | "chats" | "files" | "rename" | "delete";
@@ -61,13 +88,19 @@ export function CommandMenu({
   onKeepWorktree?: () => void;
   onDiscardWorktree?: () => void;
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const cancelDeleteRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const searchingChats = drill === "chats";
   const placeholder =
     drill === "files" ? COPY.filePlaceholder : searchingChats ? COPY.chatPlaceholder : COPY.placeholder;
 
   useEffect(() => {
+    if (drill === "delete") {
+      (cancelDeleteRef.current ?? dialogRef.current)?.focus();
+      return;
+    }
     inputRef.current?.focus();
   }, [drill]);
 
@@ -93,7 +126,8 @@ export function CommandMenu({
       return;
     }
     if (drill === "delete") {
-      if (event.key === "Enter" && deleteReady && !dirtyWorktree) {
+      const onButton = event.target instanceof HTMLElement && event.target.closest("button") !== null;
+      if (event.key === "Enter" && deleteReady && !dirtyWorktree && !onButton) {
         event.preventDefault();
         onDeleteConfirm();
       }
@@ -121,49 +155,67 @@ export function CommandMenu({
   const emptyLabel =
     emptyText ?? (searchingChats && query.trim().length === 0 ? COPY.noChats : COPY.empty);
 
+  const hideGroupHeader = drill === "files" || (searchingChats && query.trim().length > 0);
+  const showList = drill === "commands" || drill === "chats" || drill === "files";
+
   return createPortal(
     <div
-      className="wb-backdrop-in fixed inset-0 z-[60] flex items-start justify-center bg-wb-backdrop pt-[calc(4rem+var(--wb-shell-top,0px))] backdrop-blur-[2px]"
+      className="wb-backdrop-in fixed inset-x-0 bottom-0 top-[var(--wb-shell-top,0px)] z-[60] flex items-start justify-center bg-wb-backdrop pt-16 backdrop-blur-[2px]"
       data-command-menu
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
     >
       <div
+        ref={dialogRef}
         role="dialog"
+        aria-modal="true"
+        tabIndex={-1}
         aria-label={drill === "files" ? COPY.quickOpen : COPY.title}
         data-command-drill={drill}
         aria-describedby="command-menu-description"
         onKeyDown={onKeyDown}
-        className="wb-modal flex max-h-[min(520px,70vh)] w-[min(460px,92vw)] flex-col overflow-hidden text-xs"
+        className="wb-modal flex max-h-[min(540px,72vh)] w-[min(480px,92vw)] flex-col overflow-hidden text-xs outline-none"
       >
         <p id="command-menu-description" className="sr-only">
           {COPY.description}
         </p>
-        <div className="flex items-center gap-2 border-b border-wb-border px-3.5">
+        <div className="flex items-center gap-2.5 border-b border-wb-border bg-wb-surface px-3.5">
           {drill !== "commands" ? (
             <button
               type="button"
-              className="shrink-0 rounded-md px-2 py-1 text-xs text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
+              className="inline-flex shrink-0 items-center gap-1 rounded-md border border-wb-border bg-wb-elev/70 px-2 py-1 text-xs font-medium text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
               onClick={onBack}
             >
-              {COPY.back}
+              <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>{COPY.back}</span>
             </button>
-          ) : null}
+          ) : (
+            <Search className="h-4 w-4 shrink-0 text-wb-fg-3" strokeWidth={1.8} aria-hidden="true" />
+          )}
           {drill === "rename" || drill === "delete" ? (
-            <span className="py-2.5 text-xs font-medium text-wb-fg">
+            <span className="py-3 text-sm font-semibold text-wb-fg">
               {drill === "rename" ? COPY.renameTitle : COPY.deleteTitle}
             </span>
           ) : (
-            <input
-              ref={inputRef}
-              value={query}
-              placeholder={placeholder}
-              aria-label={placeholder}
-              data-command-query
-              onChange={(event) => onQuery(event.target.value)}
-              className="h-10 min-w-0 flex-1 bg-transparent text-xs text-wb-fg outline-none placeholder:text-wb-dim"
-            />
+            <>
+              <input
+                ref={inputRef}
+                value={query}
+                placeholder={placeholder}
+                aria-label={placeholder}
+                data-command-query
+                onChange={(event) => onQuery(event.target.value)}
+                className="h-11 min-w-0 flex-1 bg-transparent text-[13.5px] text-wb-fg outline-none placeholder:text-wb-dim"
+              />
+              <button
+                type="button"
+                onClick={onClose}
+                className="shrink-0 rounded border border-wb-border bg-wb-elev/80 px-1.5 py-0.5 font-mono text-[11px] leading-4 text-wb-fg-3 transition-colors hover:bg-wb-hover hover:text-wb-fg"
+              >
+                Esc
+              </button>
+            </>
           )}
         </div>
         {drill === "rename" ? (
@@ -181,6 +233,7 @@ export function CommandMenu({
             error={deleteError}
             dirtyWorktree={dirtyWorktree}
             ready={deleteReady}
+            cancelRef={cancelDeleteRef}
             onConfirm={onDeleteConfirm}
             onKeep={onKeepWorktree}
             onDiscard={onDiscardWorktree}
@@ -192,15 +245,34 @@ export function CommandMenu({
             {notice}
           </p>
         ) : null}
-        {drill === "commands" || drill === "chats" || drill === "files" ? (
-          <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto p-1.5" data-command-list>
+        {showList ? (
+          <div
+            ref={listRef}
+            role="listbox"
+            aria-label={drill === "files" ? COPY.quickOpen : COPY.title}
+            className="min-h-0 flex-1 overflow-y-auto p-1.5"
+            data-command-list
+          >
             {rows.length === 0 ? (
-              <p className="px-4 py-6 text-center text-xs text-wb-fg-3" data-command-empty>
+              <p className="px-4 py-8 text-center text-xs text-wb-fg-3" data-command-empty>
                 {emptyLabel}
               </p>
             ) : (
-              <RowList rows={rows} active={active} query={query} onActive={onActive} onRun={onRun} />
+              <RowList
+                rows={rows}
+                active={active}
+                query={query}
+                hideGroupHeader={hideGroupHeader}
+                onActive={onActive}
+                onRun={onRun}
+              />
             )}
+          </div>
+        ) : null}
+        {showList && rows.length > 0 ? (
+          <div className="flex items-center justify-between border-t border-wb-border bg-wb-surface px-3.5 py-1.5 text-xs text-wb-group-fg">
+            <span>↑↓ 选择 · ↵ 执行</span>
+            {!hideGroupHeader ? <span>Tab 切换分组</span> : null}
           </div>
         ) : null}
       </div>
@@ -213,12 +285,14 @@ function RowList({
   rows,
   active,
   query,
+  hideGroupHeader,
   onActive,
   onRun,
 }: {
   rows: readonly PaletteRow[];
   active: number;
   query: string;
+  hideGroupHeader: boolean;
   onActive: (index: number) => void;
   onRun: (index: number) => void;
 }) {
@@ -234,46 +308,124 @@ function RowList({
   return (
     <>
       {sections.map((section) => (
-        <section key={section.group} data-command-menu-search-section={section.group} className="pb-1">
-          <h2 className="px-2.5 py-1 text-xs font-medium text-wb-fg-3">{section.label}</h2>
-          {section.rows.map(({ row, index }) => {
-            const selected = index === active;
-            return (
-              <button
-                key={row.key}
-                type="button"
-                role="option"
-                aria-selected={selected}
-                data-command-row={row.commandId ?? row.sessionId ?? row.filePath}
-                data-command-active={selected ? "true" : "false"}
-                className={
-                  selected
-                    ? "flex w-full items-center gap-3 rounded-lg bg-wb-active px-2.5 py-2 text-left text-xs text-wb-fg"
-                    : "flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left text-xs text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
-                }
-                onMouseEnter={() => onActive(index)}
-                onClick={() => onRun(index)}
-              >
-                <span className="min-w-0 flex-1 truncate">
-                  {row.kind === "command" ? row.label : highlight(row.label, query)}
-                </span>
-                {row.detail ? (
-                  <span className="w-[46%] shrink-0 truncate text-right text-xs text-wb-fg-3" data-command-detail>
-                    {row.detail}
+        <section key={section.group} data-command-menu-search-section={section.group} className="pb-1.5 last:pb-0">
+          {!hideGroupHeader ? (
+            <h2 className="wb-group-header px-2.5 pb-1 pt-2 first:pt-1">{section.label}</h2>
+          ) : null}
+          <div className="space-y-0.5">
+            {section.rows.map(({ row, index }) => {
+              const selected = index === active;
+              const danger = row.commandId === "delete";
+              return (
+                <button
+                  key={row.key}
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  data-command-row={row.commandId ?? row.sessionId ?? row.filePath}
+                  data-command-active={selected ? "true" : "false"}
+                  className={cn(
+                    "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] leading-5 transition-colors",
+                    selected
+                      ? "wb-menu-active font-medium"
+                      : "text-wb-fg hover:bg-wb-hover",
+                    danger && "text-wb-danger",
+                  )}
+                  onMouseEnter={() => onActive(index)}
+                  onClick={() => onRun(index)}
+                >
+                  <RowIcon row={row} selected={selected} />
+                  <span className="min-w-0 flex-1 truncate">
+                    {row.kind === "command" ? row.label : highlight(row.label, query)}
                   </span>
-                ) : null}
-                {row.shortcut ? (
-                  <span className="shrink-0 font-mono text-xs text-wb-fg-3" data-command-shortcut>
-                    {row.shortcut}
-                  </span>
-                ) : null}
-              </button>
-            );
-          })}
+                  {row.detail ? (
+                    <span className="max-w-[42%] shrink truncate text-right text-xs text-wb-fg-3" data-command-detail>
+                      {row.detail}
+                    </span>
+                  ) : null}
+                  {row.shortcut ? (
+                    <kbd
+                      className={cn(
+                        "shrink-0 rounded border px-1.5 py-0.5 font-mono text-[11px] leading-4",
+                        selected && !danger
+                          ? "border-wb-accent/20 bg-wb-surface text-wb-accent-ink"
+                          : "border-wb-border bg-wb-elev/80 text-wb-fg-3",
+                      )}
+                      data-command-shortcut
+                    >
+                      {row.shortcut}
+                    </kbd>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
         </section>
       ))}
     </>
   );
+}
+
+function RowIcon({ row, selected }: { row: PaletteRow; selected: boolean }) {
+  const danger = row.commandId === "delete";
+  const className = cn(
+    "h-[15px] w-[15px] shrink-0",
+    danger ? "text-wb-danger" : selected ? "text-wb-accent-ink" : "text-wb-fg-3",
+  );
+  if (row.kind === "chat") return <MessageSquare className={className} strokeWidth={1.8} aria-hidden="true" />;
+  if (row.kind === "file") return <FileCode2 className={className} strokeWidth={1.8} aria-hidden="true" />;
+  const Icon = commandIcon(row.commandId);
+  return <Icon className={className} strokeWidth={1.8} aria-hidden="true" />;
+}
+
+function commandIcon(id: PaletteCommandId | undefined) {
+  switch (id) {
+    case "new-thread":
+      return SquarePen;
+    case "new-standalone":
+      return MessageSquarePlus;
+    case "open-folder":
+      return FolderOpen;
+    case "toggle-theme":
+      return SunMoon;
+    case "settings":
+      return SlidersHorizontal;
+    case "check-updates":
+      return RefreshCw;
+    case "search-chats":
+      return Search;
+    case "find-in-thread":
+      return TextSearch;
+    case "rename":
+      return Pencil;
+    case "pin":
+      return Pin;
+    case "fork":
+      return GitFork;
+    case "archive":
+      return Archive;
+    case "delete":
+      return Trash2;
+    case "next-attention":
+      return Sparkles;
+    case "board":
+      return SquareKanban;
+    case "quick-open":
+    case "search-files":
+      return FileSearch;
+    case "toggle-sidebar":
+      return PanelLeft;
+    case "toggle-files":
+      return FolderTree;
+    case "toggle-changes":
+      return GitCompareArrows;
+    case "toggle-terminal":
+      return SquareTerminal;
+    case "toggle-side-chat":
+      return MessagesSquare;
+    default:
+      return Sparkles;
+  }
 }
 
 function highlight(label: string, query: string): ReactNode {
@@ -334,6 +486,7 @@ function DeleteDrill({
   error,
   dirtyWorktree,
   ready,
+  cancelRef,
   onConfirm,
   onKeep,
   onDiscard,
@@ -342,6 +495,7 @@ function DeleteDrill({
   error: string | null;
   dirtyWorktree: boolean;
   ready: boolean;
+  cancelRef: RefObject<HTMLButtonElement>;
   onConfirm: () => void;
   onKeep?: () => void;
   onDiscard?: () => void;
@@ -354,7 +508,7 @@ function DeleteDrill({
       </p>
       {error ? <p className="text-sm text-wb-danger">{error}</p> : null}
       <div className="flex justify-end gap-2">
-        <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+        <Button ref={cancelRef} type="button" variant="ghost" size="sm" onClick={onCancel}>
           {COPY.cancel}
         </Button>
         {dirtyWorktree ? (

@@ -52,5 +52,6 @@ function isSearchableElement(element: Element): boolean {
   if (element.hasAttribute("hidden")) return false;
   if (element.getAttribute("aria-hidden") === "true") return false;
   if (element.hasAttribute("data-thread-find")) return false;
+  if (element.hasAttribute("data-message-footer") || element.hasAttribute("data-hover-actions")) return false;
   return true;
 }

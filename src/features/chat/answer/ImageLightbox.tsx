@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 
@@ -21,8 +21,13 @@ export function ImageLightbox({
   onClose: () => void;
 }) {
   const [index, setIndex] = useState(start);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const count = images.length;
   const step = (direction: -1 | 1) => setIndex((current) => (current + direction + count) % count);
+
+  useEffect(() => {
+    dialogRef.current?.focus();
+  }, []);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -46,11 +51,13 @@ export function ImageLightbox({
 
   return createPortal(
     <div
+      ref={dialogRef}
+      tabIndex={-1}
       role="dialog"
       aria-modal="true"
       aria-label={image.name}
       data-image-lightbox
-      className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80"
+      className="fixed inset-x-0 bottom-0 top-[var(--wb-shell-top,0px)] z-[90] flex items-center justify-center bg-black/80 outline-none"
       onClick={(event) => {
         event.stopPropagation();
         if (event.target === event.currentTarget) onClose();
@@ -60,7 +67,7 @@ export function ImageLightbox({
         key={image.path}
         path={image.path}
         name={image.name}
-        className="max-h-[86vh] max-w-[86vw] rounded-lg object-contain shadow-2xl"
+        className="max-h-[84vh] max-w-[86vw] rounded-lg object-contain shadow-2xl"
       />
       <button
         type="button"
@@ -88,6 +95,9 @@ export function ImageLightbox({
           >
             <ChevronRight className="h-5 w-5" />
           </button>
+          <span className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-3 py-1 text-xs font-medium tabular-nums text-white/90">
+            {index + 1} / {count}
+          </span>
         </>
       ) : null}
     </div>,

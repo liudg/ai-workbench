@@ -113,7 +113,7 @@ export function ComposerInput({
                 className={
                   token.kind === "skill"
                     ? "rounded-[5px] bg-wb-skill-soft text-wb-skill shadow-[0_0_0_2px_var(--color-wb-skill-soft)]"
-                    : "rounded-[5px] bg-wb-accent-soft text-wb-accent shadow-[0_0_0_2px_var(--color-wb-accent-soft)]"
+                    : "rounded-[5px] bg-wb-accent-soft text-wb-accent-ink shadow-[0_0_0_2px_var(--color-wb-accent-soft)]"
                 }
               >
                 {token.text}
@@ -138,6 +138,7 @@ export function ComposerInput({
         onPaste={onPaste}
         onKeyDown={keyDown}
         placeholder={placeholder}
+        aria-label={placeholder}
         disabled={disabled}
         rows={2}
         className={`relative block max-h-40 resize-none overflow-x-hidden bg-transparent placeholder:text-wb-dim focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 ${TEXT_BOX} ${

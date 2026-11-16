@@ -17,23 +17,25 @@ export function ReviewFindings({ event }: EventViewProps) {
   const findings = Array.isArray(event.findings) ? event.findings : [];
   return (
     <div className="event-in min-w-0 px-6 py-2">
-      <div className="min-w-0 rounded-xl border border-wb-border bg-wb-card p-3.5">
-        <p className="text-xs font-medium text-wb-fg-2">{DESKTOP_ZH.reviewTitle}</p>
-        {event.summary ? (
-          <p className="mt-1 break-words whitespace-pre-wrap text-sm leading-6 text-wb-fg">{event.summary}</p>
-        ) : null}
-        <div className="mt-2 space-y-3">
-          {findings.map((finding, index) => (
-            <div key={`${finding.location}-${index}`} className="min-w-0">
-              <p className="break-words text-sm font-medium text-wb-fg">{finding.title}</p>
-              {finding.location ? (
-                <p className="break-all font-mono text-xs text-wb-fg-3">{finding.location}</p>
-              ) : null}
-              {finding.body ? (
-                <p className="mt-1 break-words whitespace-pre-wrap text-sm leading-6 text-wb-fg-2">{finding.body}</p>
-              ) : null}
-            </div>
-          ))}
+      <div className="min-w-0 pl-6">
+        <div className="min-w-0 rounded-xl border border-wb-border bg-wb-card p-3.5">
+          <p className="wb-group-header">{DESKTOP_ZH.reviewTitle}</p>
+          {event.summary ? (
+            <p className="mt-1.5 break-words whitespace-pre-wrap text-sm leading-6 text-wb-fg">{event.summary}</p>
+          ) : null}
+          <div className="mt-2 space-y-3">
+            {findings.map((finding, index) => (
+              <div key={`${finding.location}-${index}`} className="min-w-0">
+                <p className="break-words text-sm font-medium text-wb-fg">{finding.title}</p>
+                {finding.location ? (
+                  <p className="break-all font-mono text-xs text-wb-fg-3">{finding.location}</p>
+                ) : null}
+                {finding.body ? (
+                  <p className="mt-1 break-words whitespace-pre-wrap text-sm leading-6 text-wb-fg-2">{finding.body}</p>
+                ) : null}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>

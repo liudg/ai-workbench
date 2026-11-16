@@ -44,6 +44,7 @@ export type QuestionKeyFocus = "card" | "freeform" | "dismiss" | "field";
 
 export type QuestionKeyAction =
   | { type: "none" }
+  | { type: "blur-field" }
   | { type: "dismiss" }
   | { type: "select"; index: number }
   | { type: "focus-freeform" }
@@ -286,7 +287,9 @@ export function questionKeyAction(input: {
 }): QuestionKeyAction {
   const { key, focus } = input;
   if (isImeKey(input)) return { type: "none" };
-  if (key === "Escape") return { type: "dismiss" };
+  if (key === "Escape") {
+    return focus === "freeform" || focus === "field" ? { type: "blur-field" } : { type: "dismiss" };
+  }
   if (focus === "dismiss") return { type: "none" };
   if (focus === "freeform") {
     if (key === "ArrowUp" && input.hasOptions) {

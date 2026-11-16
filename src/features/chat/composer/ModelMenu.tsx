@@ -9,7 +9,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import { Check, ChevronRight, RotateCcw, Zap } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, RotateCcw, Zap } from "lucide-react";
 
 import { userFacingMessage } from "@/lib/user-facing";
 import { cn } from "@/lib/utils";
@@ -375,13 +375,13 @@ function ModelPanel({
   );
   if (!agents) return list;
   return (
-    <div className="grid grid-cols-[2.25rem_minmax(0,1fr)] gap-2 p-2.5">
+    <div className="grid grid-cols-[2.75rem_minmax(0,1fr)]">
       <div
         role="toolbar"
         aria-orientation="vertical"
         aria-label="Agent"
         data-agent-rail
-        className="flex flex-col items-center gap-1 border-r border-wb-border py-1 pr-1.5"
+        className="flex flex-col items-center gap-1 border-r border-wb-border p-2"
       >
         {(agents.options ?? []).map((option) => {
           const active = option.kind === railAgent;
@@ -394,8 +394,8 @@ function ModelPanel({
               aria-pressed={active}
               data-agent={option.kind}
               className={cn(
-                "flex h-7 w-7 items-center justify-center rounded-lg text-wb-fg-3 transition-colors hover:bg-wb-hover hover:text-wb-fg",
-                active && "bg-wb-active text-wb-fg",
+                "flex h-7 w-7 items-center justify-center rounded-lg transition-colors",
+                active ? "wb-menu-active text-wb-fg" : "text-wb-fg-3 hover:bg-wb-hover hover:text-wb-fg",
               )}
               onClick={() => setRailAgent(option.kind)}
             >
@@ -414,7 +414,6 @@ function ModelList({
   error,
   blocked = null,
   modelId,
-  withRail = false,
   backLabel,
   onBack,
   onPick,
@@ -436,59 +435,62 @@ function ModelList({
       data-model-list
       role="listbox"
       aria-label={DESKTOP_ZH.selectModel}
-      className={cn("max-h-80 overflow-y-auto text-xs", withRail ? "py-0.5" : "p-2.5")}
+      className="flex max-h-80 min-w-0 flex-col overflow-hidden text-xs"
     >
-      <div className="flex items-center justify-between px-2 pb-1 pt-0.5">
-        <span className="text-xs font-medium text-wb-fg-3">{DESKTOP_ZH.selectModel}</span>
+      <div className="flex shrink-0 items-center justify-between border-b border-wb-border bg-wb-surface px-3 py-2">
+        <span className="text-xs font-semibold text-wb-fg">{DESKTOP_ZH.selectModel}</span>
         {onBack ? (
           <button
             type="button"
             data-back-to-effort=""
-            className="text-xs text-wb-accent-ink underline transition-opacity hover:opacity-80"
+            className="inline-flex items-center gap-0.5 rounded-md border border-wb-border bg-wb-elev/70 px-2 py-0.5 text-xs font-medium text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
             onClick={onBack}
           >
+            <ChevronLeft className="h-3 w-3" aria-hidden="true" />
             {backLabel}
           </button>
         ) : null}
       </div>
-      {blocked ? (
-        <p data-switch-blocked className="px-2 pb-1 pt-1 text-xs text-wb-warn">{blocked}</p>
-      ) : null}
-      {error ? (
-        <p className="break-words px-2 py-2 text-xs text-wb-fg-3">{error}</p>
-      ) : models === null ? (
-        <p className="px-2 py-2 text-xs text-wb-fg-3">读取模型…</p>
-      ) : sections.length === 0 ? (
-        <p className="px-2 py-2 text-xs text-wb-fg-3">当前 Agent 没有可选模型</p>
-      ) : (
-        sections.map((section) => (
-          <div key={section.id}>
-            <p className="px-2 pb-1 pt-1.5 text-xs font-medium text-wb-fg-3">{section.title}</p>
-            {section.models.map((model) => {
-              const selected = model.id === modelId;
-              return (
-                <button
-                  key={model.id}
-                  type="button"
-                  role="option"
-                  aria-selected={selected}
-                  disabled={Boolean(blocked)}
-                  className={cn(
-                    "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition-colors hover:bg-wb-hover disabled:pointer-events-none disabled:opacity-50",
-                    selected ? "bg-wb-active text-wb-fg" : "text-wb-fg-2 hover:text-wb-fg",
-                  )}
-                  onClick={() => onPick(model)}
-                >
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate">{model.label}</span>
-                  </span>
-                  {selected && <Check className="h-3.5 w-3.5 shrink-0 text-wb-accent" aria-hidden />}
-                </button>
-              );
-            })}
-          </div>
-        ))
-      )}
+      <div className="min-h-0 flex-1 overflow-y-auto p-2">
+        {blocked ? (
+          <p data-switch-blocked className="px-2 pb-1 pt-0.5 text-xs text-wb-warn">{blocked}</p>
+        ) : null}
+        {error ? (
+          <p className="break-words px-2 py-2 text-xs text-wb-fg-3">{error}</p>
+        ) : models === null ? (
+          <p className="px-2 py-2 text-xs text-wb-fg-3">读取模型…</p>
+        ) : sections.length === 0 ? (
+          <p className="px-2 py-2 text-xs text-wb-fg-3">当前 Agent 没有可选模型</p>
+        ) : (
+          sections.map((section) => (
+            <div key={section.id} className="space-y-0.5">
+              <p className="wb-group-header px-2 pb-1 pt-2 first:pt-1">{section.title}</p>
+              {section.models.map((model) => {
+                const selected = model.id === modelId;
+                return (
+                  <button
+                    key={model.id}
+                    type="button"
+                    role="option"
+                    aria-selected={selected}
+                    disabled={Boolean(blocked)}
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] leading-5 transition-colors disabled:pointer-events-none disabled:opacity-50",
+                      selected ? "wb-menu-active font-medium" : "text-wb-fg hover:bg-wb-hover",
+                    )}
+                    onClick={() => onPick(model)}
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">{model.label}</span>
+                    </span>
+                    {selected && <Check className="h-3.5 w-3.5 shrink-0 text-wb-accent-ink" aria-hidden />}
+                  </button>
+                );
+              })}
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }

@@ -116,7 +116,7 @@ function AgentsPanel() {
         <div>
           <h2 className="text-base font-semibold text-wb-fg">本地 Agent</h2>
           <p className="mt-1 max-w-lg text-sm leading-6 text-wb-fg-2">
-            检测或更新本机已安装的 Agent CLI。
+            检测或更新本机已安装的 Agent。
           </p>
         </div>
         <Button
@@ -422,7 +422,7 @@ export function SettingsView() {
                 data-settings-nav="agents"
                 className={cn(
                   "w-full rounded-lg px-3 py-1.5 text-left text-[13px] transition-colors",
-                  section === "agents" ? "bg-wb-active font-medium text-wb-fg" : "text-wb-fg-2 hover:bg-wb-hover hover:text-wb-fg",
+                  section === "agents" ? "wb-menu-active font-medium" : "text-wb-fg-2 hover:bg-wb-hover hover:text-wb-fg",
                 )}
                 aria-current={section === "agents" ? "page" : undefined}
                 onClick={() => setSection("agents")}
@@ -436,7 +436,7 @@ export function SettingsView() {
                 data-settings-nav="mcp"
                 className={cn(
                   "w-full rounded-lg px-3 py-1.5 text-left text-[13px] transition-colors",
-                  section === "mcp" ? "bg-wb-active font-medium text-wb-fg" : "text-wb-fg-2 hover:bg-wb-hover hover:text-wb-fg",
+                  section === "mcp" ? "wb-menu-active font-medium" : "text-wb-fg-2 hover:bg-wb-hover hover:text-wb-fg",
                 )}
                 aria-current={section === "mcp" ? "page" : undefined}
                 onClick={() => setSection("mcp")}
@@ -450,7 +450,7 @@ export function SettingsView() {
                 data-settings-nav="general"
                 className={cn(
                   "w-full rounded-lg px-3 py-1.5 text-left text-[13px] transition-colors",
-                  section === "general" ? "bg-wb-active font-medium text-wb-fg" : "text-wb-fg-2 hover:bg-wb-hover hover:text-wb-fg",
+                  section === "general" ? "wb-menu-active font-medium" : "text-wb-fg-2 hover:bg-wb-hover hover:text-wb-fg",
                 )}
                 aria-current={section === "general" ? "page" : undefined}
                 onClick={() => setSection("general")}

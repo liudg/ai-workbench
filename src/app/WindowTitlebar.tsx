@@ -56,7 +56,7 @@ export function WindowTitlebar({
     <header
       data-window-titlebar=""
       className={cn(
-        "relative z-40 flex h-8 shrink-0 select-none items-center justify-between bg-wb-shell pl-3 text-xs text-wb-fg-3",
+        "pointer-events-auto relative z-40 flex h-8 shrink-0 select-none items-center justify-between bg-wb-shell pl-3 text-xs text-wb-fg-3",
         chrome.nativeControls ? "pr-1" : "pr-3",
       )}
       onMouseDown={onMouseDown}

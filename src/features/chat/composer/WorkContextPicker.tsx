@@ -63,7 +63,7 @@ export function WorkContextPicker({
           role="menu"
           aria-label="选择项目"
           data-work-context-menu=""
-          className="wb-popover fixed z-50 min-w-[220px] overflow-hidden rounded-xl p-1"
+          className="wb-popover fixed z-50 min-w-[220px] space-y-0.5 overflow-hidden rounded-xl p-1.5"
           style={{ top: -9999, left: 8 }}
         >
           {projects.map((project) => {
@@ -77,9 +77,12 @@ export function WorkContextPicker({
                 data-work-context-project={project.id}
                 disabled={!canRetarget && !selected}
                 className={cn(
-                  "flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-sm text-wb-fg transition-colors hover:bg-wb-hover",
-                  selected && "bg-wb-active/70 font-medium",
-                  !canRetarget && !selected && "cursor-default text-wb-dim hover:bg-transparent",
+                  "flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] leading-5 text-wb-fg transition-colors",
+                  selected
+                    ? "wb-menu-active font-medium"
+                    : !canRetarget
+                      ? "cursor-default text-wb-dim"
+                      : "hover:bg-wb-hover",
                 )}
                 onClick={(event) => {
                   event.stopPropagation();
@@ -89,11 +92,11 @@ export function WorkContextPicker({
                 }}
               >
                 <span className="truncate">{project.name}</span>
-                {selected ? <Check className="h-3.5 w-3.5 shrink-0 text-wb-accent" strokeWidth={2} /> : null}
+                {selected ? <Check className="h-3.5 w-3.5 shrink-0 text-wb-accent-ink" strokeWidth={2} /> : null}
               </button>
             );
           })}
-          <div className={cn(projects.length > 0 && "my-1 border-t border-wb-border")} />
+          {projects.length > 0 ? <div className="my-1 border-t border-wb-border" /> : null}
           <button
             type="button"
             role="menuitemradio"
@@ -101,9 +104,12 @@ export function WorkContextPicker({
             data-work-context-standalone=""
             disabled={!canRetarget && selectedId !== standaloneId}
             className={cn(
-              "flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-sm text-wb-fg transition-colors hover:bg-wb-hover",
-              selectedId === standaloneId && "bg-wb-active/70 font-medium",
-              !canRetarget && selectedId !== standaloneId && "cursor-default text-wb-dim hover:bg-transparent",
+              "flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] leading-5 text-wb-fg transition-colors",
+              selectedId === standaloneId
+                ? "wb-menu-active font-medium"
+                : !canRetarget
+                  ? "cursor-default text-wb-dim"
+                  : "hover:bg-wb-hover",
             )}
             onClick={(event) => {
               event.stopPropagation();
@@ -114,7 +120,7 @@ export function WorkContextPicker({
           >
             不在项目中工作
             {selectedId === standaloneId ? (
-              <Check className="h-3.5 w-3.5 shrink-0 text-wb-accent" strokeWidth={2} />
+              <Check className="h-3.5 w-3.5 shrink-0 text-wb-accent-ink" strokeWidth={2} />
             ) : null}
           </button>
         </div>

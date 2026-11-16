@@ -7,15 +7,12 @@ export function SuggestionList({
   label,
   active,
   className,
-  footer,
   children,
   ...rest
 }: {
   label: string;
   /** 当前选中项的下标，变化时把它滚进视野。 */
   active: number;
-  /** 固定在列表下方、不随列表滚动的说明。 */
-  footer?: ReactNode;
   children: ReactNode;
 } & Omit<HTMLAttributes<HTMLDivElement>, "role" | "aria-label" | "children">) {
   const listRef = useRef<HTMLDivElement>(null);
@@ -40,11 +37,10 @@ export function SuggestionList({
         ref={listRef}
         role="listbox"
         aria-label={label}
-        className="relative max-h-72 overflow-x-hidden overflow-y-auto overscroll-contain py-1"
+        className="relative max-h-72 space-y-0.5 overflow-x-hidden overflow-y-auto overscroll-contain p-1.5"
       >
         {children}
       </div>
-      {footer}
     </div>
   );
 }

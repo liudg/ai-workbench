@@ -76,7 +76,7 @@ export function ContextMenu({
       ref={menuRef}
       role="menu"
       data-context-menu
-      className="wb-popover fixed z-[80] min-w-44 p-1"
+      className="wb-popover fixed z-[80] min-w-44 space-y-0.5 p-1.5"
       style={{ top: -9999, left: 8 }}
       onMouseDown={(event) => event.preventDefault()}
     >
@@ -92,8 +92,8 @@ export function ContextMenu({
             data-menu-item={item.id}
             disabled={item.disabled}
             className={cn(
-              "flex w-full items-center gap-6 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-left text-[13px] text-wb-fg outline-none",
-              "hover:bg-wb-hover focus-visible:bg-wb-hover disabled:text-wb-dim disabled:hover:bg-transparent",
+              "flex w-full items-center gap-6 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-left text-[13px] leading-5 text-wb-fg outline-none",
+              "hover:bg-wb-hover focus-visible:wb-menu-active disabled:text-wb-dim disabled:hover:bg-transparent",
             )}
             onClick={() => {
               onCloseRef.current();

@@ -53,7 +53,7 @@ export function ToolOutput({
             <button
               type="button"
               onClick={() => setCommandOpen((value) => !value)}
-              className="mt-0.5 font-sans text-[11.5px] text-wb-fg-3 hover:text-wb-fg"
+              className="mt-0.5 font-sans text-xs text-wb-fg-3 hover:text-wb-fg"
             >
               {commandOpen ? DESKTOP_ZH.toolCommandLess : DESKTOP_ZH.toolCommandMore}
             </button>
@@ -63,7 +63,7 @@ export function ToolOutput({
       {output ? (
         <div className="min-w-0 overflow-hidden rounded-lg border border-wb-border bg-wb-code">
           {preview.hiddenLines > 0 && !showAll ? (
-            <div className="flex items-center gap-2 border-b border-wb-border px-2.5 py-1 font-sans text-[11.5px] text-wb-fg-3">
+            <div className="flex items-center gap-2 border-b border-wb-border px-2.5 py-1 font-sans text-xs text-wb-fg-3">
               <span>{DESKTOP_ZH.toolOutputHidden.replace("{count}", String(preview.hiddenLines))}</span>
               <button
                 type="button"

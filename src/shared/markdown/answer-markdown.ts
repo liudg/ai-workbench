@@ -7,7 +7,7 @@ import { attachSections } from "./collapse.ts";
 
 export type { Align, AnswerBlock, CollapseKind, CollapseMeta, Inline };
 export { inlinePlain } from "./inline.ts";
-export { codeDisplayLines, shortenLocalPath } from "./paths.ts";
+export { shortenLocalPath } from "./paths.ts";
 
 export function parseAnswer(input: string): AnswerBlock[] {
   return attachSections(parseBlocks(input));

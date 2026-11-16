@@ -6,30 +6,18 @@ import { SuggestionList } from "./SuggestionList";
 export function SlashMenu({
   matches,
   selected,
-  token,
   planOn,
   onPick,
 }: {
   matches: SlashCommand[];
   selected: number;
-  token: string | null;
   planOn: boolean;
   onPick: (command: SlashCommand) => void;
 }) {
   return (
-    <SuggestionList
-      label="斜杠命令"
-      active={selected}
-      footer={
-        token === "/" ? (
-          <p className="border-t border-wb-border px-3 py-2 text-xs leading-4 text-wb-fg-3">
-            /vim、/theme 等终端专属命令无需在此发送。
-          </p>
-        ) : null
-      }
-    >
+    <SuggestionList label="斜杠命令" active={selected}>
       {matches.length === 0 && (
-        <p className="px-3 py-2 text-xs text-wb-fg-3">此命令仅适用于终端界面，回车后将在对话中说明。</p>
+        <p className="px-2.5 py-2 text-xs text-wb-fg-3">没有匹配的命令</p>
       )}
       {matches.map((command, index) => (
         <button
@@ -38,8 +26,8 @@ export function SlashMenu({
           role="option"
           aria-selected={index === selected}
           className={cn(
-            "flex w-full min-w-0 items-baseline gap-3 px-3 py-2 text-left transition-colors hover:bg-wb-hover",
-            index === selected && "bg-wb-active",
+            "flex w-full min-w-0 items-baseline gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors",
+            index === selected ? "wb-menu-active" : "hover:bg-wb-hover",
           )}
           onMouseDown={(event) => {
             event.preventDefault();
@@ -47,7 +35,7 @@ export function SlashMenu({
             onPick(command);
           }}
         >
-          <span className="shrink-0 text-sm text-wb-fg">
+          <span className="shrink-0 font-mono text-[13px] font-medium text-wb-fg">
             {command.name}
           </span>
           <span className="min-w-0 truncate text-xs text-wb-fg-3">

@@ -22,30 +22,32 @@
   --color-wb-border: rgba(255, 255, 255, 0.075);
   --color-wb-border-strong: rgba(255, 255, 255, 0.135);
 
-  --color-wb-fg: #ededf0;
-  --color-wb-fg-2: #a3a9b6;
-  --color-wb-fg-3: #7d8494;
-  --color-wb-dim: #5c6270;
+  --color-wb-fg: #f1f3f7;
+  --color-wb-fg-2: #b0b7c6;
+  --color-wb-fg-3: #7c8598;
+  --color-wb-group-fg: #70798c;
+  --color-wb-dim: #687082;
 
   --color-wb-accent: #5e81ff;
-  --color-wb-accent-ink: #7da0ff;
+  --color-wb-accent-ink: #85a5ff;
   --color-wb-accent-soft: rgba(94, 129, 255, 0.15);
   --color-wb-skill: #a78bfa;
   --color-wb-skill-soft: rgba(139, 92, 246, 0.16);
 
-  --color-wb-user: #191d25;
-  --color-wb-user-fg: #ededf0;
-  --color-wb-user-border: rgba(255, 255, 255, 0.095);
+  --color-wb-user: #1c2436;
+  --color-wb-user-fg: #f1f3f7;
+  --color-wb-user-border: rgba(104, 137, 255, 0.2);
 
   --color-wb-primary: #f0f1f5;
   --color-wb-primary-fg: #0b0d11;
   --color-wb-primary-hover: #ffffff;
 
-  --color-wb-warn: #e5993e;
-  --color-wb-warn-soft: rgba(229, 153, 62, 0.15);
+  --color-wb-warn: #ea9f45;
+  --color-wb-warn-soft: rgba(234, 159, 69, 0.15);
   --color-wb-ok: #3fb97c;
   --color-wb-ok-soft: rgba(63, 185, 124, 0.15);
-  --color-wb-danger: #ef5f5f;
+  --color-wb-danger: #f26b6b;
+  --color-wb-danger-fill: #d93838;
   --color-wb-danger-soft: rgba(239, 95, 95, 0.14);
 
   --color-wb-diff-add-bg: rgba(46, 160, 67, 0.15);
@@ -76,10 +78,16 @@
   --wb-line-pick-bg: rgba(94, 129, 255, 0.22);
   --wb-scrollbar: rgba(163, 169, 182, 0.22);
   --wb-scrollbar-hover: rgba(163, 169, 182, 0.4);
+  --wb-pill-active-bg: rgba(104, 137, 255, 0.15);
+  --wb-pill-active-border: rgba(104, 137, 255, 0.22);
+  --wb-pill-active-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --wb-sidebar-active-bg: #1b2232;
+  --wb-sidebar-active-border: rgba(104, 137, 255, 0.22);
+  --wb-sidebar-active-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
   --tok-keyword: #c792ea;
   --tok-type: #4ec9b0;
   --tok-string: #ecc48d;
-  --tok-comment: #697098;
+  --tok-comment: #7a82ab;
   --tok-number: #f78c6c;
   --tok-plain: #dcdfe4;
   --tok-command: #6ee7b7;
@@ -96,7 +104,7 @@
   --color-wb-composer: #fbfcfd;
   --color-wb-code: #f4f6fa;
   --color-wb-backdrop: rgba(15, 23, 42, 0.34);
-  --color-wb-card: #f8f9fb;
+  --color-wb-card: #ffffff;
   --color-wb-popover: #ffffff;
   --color-wb-input: #ffffff;
   --color-wb-hover: rgba(15, 23, 42, 0.048);
@@ -104,10 +112,11 @@
   --color-wb-border: rgba(15, 23, 42, 0.085);
   --color-wb-border-strong: rgba(15, 23, 42, 0.15);
 
-  --color-wb-fg: #14171f;
-  --color-wb-fg-2: #495060;
-  --color-wb-fg-3: #646c7e;
-  --color-wb-dim: #8b93a4;
+  --color-wb-fg: #11141c;
+  --color-wb-fg-2: #3b4252;
+  --color-wb-fg-3: #687285;
+  --color-wb-group-fg: #758094;
+  --color-wb-dim: #788296;
 
   --color-wb-accent: #3b5bdb;
   --color-wb-accent-ink: #364fc7;
@@ -115,19 +124,20 @@
   --color-wb-skill: #6d28d9;
   --color-wb-skill-soft: rgba(109, 40, 217, 0.11);
 
-  --color-wb-user: #f1f3f8;
-  --color-wb-user-fg: #14171f;
-  --color-wb-user-border: rgba(15, 23, 42, 0.09);
+  --color-wb-user: #e8effc;
+  --color-wb-user-fg: #11141c;
+  --color-wb-user-border: rgba(59, 91, 219, 0.16);
 
   --color-wb-primary: #181b22;
   --color-wb-primary-fg: #ffffff;
   --color-wb-primary-hover: #262b36;
 
-  --color-wb-warn: #c2710c;
-  --color-wb-warn-soft: rgba(194, 113, 12, 0.12);
-  --color-wb-ok: #15803d;
-  --color-wb-ok-soft: rgba(21, 128, 61, 0.11);
-  --color-wb-danger: #dc2626;
+  --color-wb-warn: #9a4e08;
+  --color-wb-warn-soft: rgba(154, 78, 8, 0.12);
+  --color-wb-ok: #166534;
+  --color-wb-ok-soft: rgba(22, 101, 52, 0.11);
+  --color-wb-danger: #b91c1c;
+  --color-wb-danger-fill: #dc2626;
   --color-wb-danger-soft: rgba(220, 38, 38, 0.1);
 
   --color-wb-diff-add-bg: rgba(34, 197, 94, 0.13);
@@ -155,6 +165,12 @@
   --wb-line-pick-bg: rgba(59, 91, 219, 0.16);
   --wb-scrollbar: rgba(73, 80, 96, 0.22);
   --wb-scrollbar-hover: rgba(73, 80, 96, 0.4);
+  --wb-pill-active-bg: #eef2fb;
+  --wb-pill-active-border: rgba(59, 91, 219, 0.16);
+  --wb-pill-active-shadow: 0 0 0 transparent;
+  --wb-sidebar-active-bg: #ffffff;
+  --wb-sidebar-active-border: rgba(59, 91, 219, 0.18);
+  --wb-sidebar-active-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
   --tok-keyword: #7c3aed;
   --tok-type: #0f766e;
   --tok-string: #b45309;
@@ -182,6 +198,37 @@ body {
   --wb-shell-top: 2rem;
 }
 
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: default;
+  }
+
+  .chat-log svg {
+    cursor: default;
+  }
+
+  .chat-log :is(button, a, [role="button"]) svg {
+    cursor: inherit;
+  }
+}
+
+@utility wb-menu-active {
+  background: var(--wb-pill-active-bg);
+  box-shadow: inset 0 0 0 1px var(--wb-pill-active-border), var(--wb-pill-active-shadow);
+  color: var(--color-wb-fg);
+}
+
+@utility wb-sidebar-active {
+  background: var(--wb-sidebar-active-bg);
+  box-shadow: inset 0 0 0 1px var(--wb-sidebar-active-border), var(--wb-sidebar-active-shadow);
+  color: var(--color-wb-fg);
+}
+
 /* 统一浮层（两档圆角：紧凑菜单 12px / 模态浮层 16px）、提示与单色 Agent 图标 */
 @layer components {
   .wb-popover {
@@ -200,6 +247,25 @@ body {
     color: var(--color-wb-fg);
     box-shadow: var(--wb-popover-shadow);
     animation: wb-pop-in 130ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .wb-group-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.35;
+    letter-spacing: 0.01em;
+    color: var(--color-wb-group-fg);
+  }
+
+  .wb-group-header::after {
+    content: "";
+    flex: 1 1 auto;
+    min-width: 0.75rem;
+    height: 1px;
+    background: var(--color-wb-border);
   }
 
   .wb-anim-pop {
@@ -283,7 +349,8 @@ body {
 }
 
 /* Hint 胶囊。hidden 与 group-hover 同权重，后写的 hidden 会把悬停显示盖掉。 */
-.group\/hint:hover > [role="tooltip"] {
+.group\/hint:hover > [role="tooltip"],
+.group\/hint:focus-within > [role="tooltip"] {
   display: flex;
 }
 
@@ -383,16 +450,6 @@ body {
 .chat-log svg {
   -webkit-user-select: none;
   user-select: none;
-  cursor: default;
-}
-.chat-log button.answer-cite,
-.chat-log button.answer-file-more,
-.chat-log .change-card button,
-.chat-log button[data-show-more],
-.chat-log button[data-view-changes],
-.chat-log button[data-activity-toggle],
-.chat-log button[data-viewed-toggle] {
-  cursor: pointer;
 }
 .chat-log input,
 .chat-log textarea,
@@ -409,6 +466,10 @@ textarea {
 [data-open-files-preview] {
   -webkit-user-select: text;
   user-select: text;
+}
+[data-open-files-preview] pre,
+[data-open-files-preview] .answer-body,
+[data-open-files-preview] [data-source-line] {
   cursor: text;
 }
 [data-open-files-preview] button,
@@ -440,13 +501,13 @@ textarea {
   line-height: 1.4;
 }
 .answer-h1 {
-  font-size: 1.125rem;
+  font-size: 1.25rem;
 }
 .answer-h2 {
-  font-size: 1rem;
+  font-size: 1.0625rem;
 }
 .answer-h3 {
-  font-size: 0.9375rem;
+  font-size: 0.96875rem;
 }
 .answer-p {
   margin: 0;
@@ -604,6 +665,57 @@ button.answer-cite:hover {
   font-size: 13px;
   line-height: 1.6;
 }
+.answer-codeblock {
+  overflow: hidden;
+  border: 1px solid var(--color-wb-border);
+  border-radius: 0.65rem;
+  background: var(--color-wb-code);
+}
+.answer-codeblock .answer-pre {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0.65rem 0.88rem;
+}
+.answer-codeblock-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border-bottom: 1px solid var(--color-wb-border);
+  padding: 0.28rem 0.65rem;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--color-wb-group-fg);
+}
+.answer-codeblock-lang {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-wb-group-fg);
+  user-select: none;
+}
+.answer-codeblock-copy {
+  margin-left: auto;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: 0.375rem;
+  padding: 0.125rem 0.4rem;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--color-wb-fg-2);
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.answer-codeblock-copy:hover {
+  background: var(--color-wb-hover);
+  color: var(--color-wb-fg);
+}
 .answer-command {
   position: relative;
 }
@@ -710,6 +822,7 @@ button.answer-cite:hover {
   font-weight: 600;
 }
 .answer-section-meta {
+  flex-shrink: 0;
   color: var(--color-wb-fg-3);
   font-size: 12px;
   font-weight: 500;
@@ -735,6 +848,9 @@ button.answer-cite:hover {
 .answer-body > .answer-section {
   margin-top: 1.55rem;
 }
+.answer-body > .answer-h + .answer-h {
+  margin-top: 0.65rem;
+}
 
 /* Tailwind 的 hover 变体包在 @media (hover: hover) 里，触控环境里悬停不生效。芯片提示直接跟 :hover。 */
 [data-mode-chip]:hover [data-mode-tooltip],
@@ -749,11 +865,8 @@ mark[data-thread-find-mark] {
   color: inherit;
 }
 mark[data-thread-find-mark="current"] {
-  background-color: var(--color-wb-warn);
-  color: #ffffff;
-}
-:root:not([data-theme="daylight"]) mark[data-thread-find-mark="current"] {
-  color: #0b0d11;
+  background-color: #fbbf24;
+  color: #11141c;
 }
 
 /* 正在回复的那段选区，回复框开着时一直标着。 */

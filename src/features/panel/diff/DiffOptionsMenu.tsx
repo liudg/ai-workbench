@@ -37,7 +37,7 @@ export function OptionsMenu({
       ref={menuRef}
       role="menu"
       data-diff-options-menu
-      className="wb-popover fixed z-[80] w-max min-w-[232px] rounded-xl py-1 text-wb-fg"
+      className="wb-popover fixed z-[80] w-max min-w-[232px] space-y-0.5 rounded-xl p-1.5 text-wb-fg"
     >
       {entries.map((entry) => (
         <span key={entry.id} className="block" title={entry.kind === "disabled" ? entry.reason : undefined}>
@@ -55,7 +55,7 @@ export function OptionsMenu({
             data-diff-copy-enabled={entry.id === "copy-apply" ? String(entry.kind === "action") : undefined}
             data-diff-copy-reason={entry.id === "copy-apply" ? entry.reason ?? "" : undefined}
             className={cn(
-              "flex w-full items-center gap-2 whitespace-nowrap px-3 py-1.5 text-left text-[13px] transition-colors",
+              "flex w-full items-center gap-2 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-left text-[13px] leading-5 transition-colors",
               entry.kind === "disabled"
                 ? "pointer-events-none cursor-default text-wb-fg-3"
                 : "text-wb-fg hover:bg-wb-hover",

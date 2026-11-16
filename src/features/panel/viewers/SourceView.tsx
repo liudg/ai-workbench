@@ -56,7 +56,7 @@ export function SourceView({
         selectionDraft(comment.path, lines.slice(span.start, span.end + 1).join("\n"), span.start + 1, span.end + 1))
       : null;
   return (
-    <div ref={scroller} className="h-full min-w-0 overflow-x-hidden overflow-y-auto bg-wb-panel font-mono text-[13px] leading-5">
+    <div ref={scroller} className="h-full min-w-0 overflow-x-hidden overflow-y-auto bg-wb-code font-mono text-[13px] leading-5">
       {truncated ? <TruncatedNote /> : null}
       {lines.map((content, index) => {
         const number = index + 1;

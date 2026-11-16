@@ -15,7 +15,7 @@ export function WorktreeToggle({
       className={cn(
         "inline-flex h-6 max-w-full items-center gap-1.5 rounded-md border px-2 text-xs transition-colors",
         pressed
-          ? "border-wb-accent/40 bg-wb-accent-soft text-wb-accent"
+          ? "border-wb-accent/40 bg-wb-accent-soft text-wb-accent-ink"
           : "border-wb-border bg-wb-surface/75 text-wb-fg-2 hover:border-wb-border-strong hover:bg-wb-hover hover:text-wb-fg",
       )}
       onClick={(event) => {

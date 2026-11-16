@@ -4,7 +4,6 @@ import { Check, ChevronRight, Copy, File, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { baseName } from "@/shared/path";
 import {
-  codeDisplayLines,
   inlinePlain,
   parseAnswer,
   type Align,
@@ -71,7 +70,7 @@ function BlockView({ block }: { block: AnswerBlock }) {
           {isShellLang(block.lang) ? (
             <CommandView text={block.text} run={host?.runCommand} />
           ) : (
-            <CodeView text={block.text} />
+            <CodeBlockView text={block.text} lang={block.lang} />
           )}
         </MaybeCollapsed>
       );
@@ -239,24 +238,15 @@ function alignClass(align: Align | undefined): string | undefined {
   return undefined;
 }
 
-function CodeView({ text }: { text: string }) {
-  const lines = codeDisplayLines(text);
+function CodePre({ text }: { text: string }) {
   return (
     <pre className="answer-pre" data-answer-block="code">
-      <code>
-        {lines.map((line, index) => (
-          <span key={index}>
-            {line.length > 0 ? <Inlines nodes={line} /> : null}
-            {index < lines.length - 1 ? "\n" : null}
-          </span>
-        ))}
-      </code>
+      <code>{text}</code>
     </pre>
   );
 }
 
-/** 终端命令：右上角运行和复制。 */
-function CommandView({ text, run }: { text: string; run?: (command: string) => void }) {
+function useCopyFeedback(text: string) {
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (!copied) return;
@@ -266,9 +256,39 @@ function CommandView({ text, run }: { text: string; run?: (command: string) => v
   const copy = () => {
     void writeClipboardText(text).then(() => setCopied(true), () => {});
   };
+  return { copied, copy };
+}
+
+function CodeBlockView({ text, lang }: { text: string; lang: string }) {
+  const { copied, copy } = useCopyFeedback(text);
+  const copyLabel = copied ? DESKTOP_ZH.codeCopied : DESKTOP_ZH.codeCopy;
+  return (
+    <div className="answer-codeblock">
+      <div className="answer-codeblock-bar">
+        {lang ? <span className="answer-codeblock-lang">{lang}</span> : <span />}
+        <button
+          type="button"
+          className="answer-codeblock-copy"
+          title={copyLabel}
+          aria-label={copyLabel}
+          onClick={copy}
+        >
+          {copied ? <Check className="h-3.5 w-3.5 text-wb-ok" /> : <Copy className="h-3.5 w-3.5" />}
+          <span>{copyLabel}</span>
+        </button>
+      </div>
+      <CodePre text={text} />
+    </div>
+  );
+}
+
+/** 终端命令：右上角运行和复制。 */
+function CommandView({ text, run }: { text: string; run?: (command: string) => void }) {
+  const { copied, copy } = useCopyFeedback(text);
+  const copyLabel = copied ? DESKTOP_ZH.codeCopied : DESKTOP_ZH.codeCopy;
   return (
     <div className="answer-command" data-answer-block="command">
-      <CodeView text={text} />
+      <CodePre text={text} />
       <div className="answer-command-actions">
         {run ? (
           <button
@@ -284,8 +304,8 @@ function CommandView({ text, run }: { text: string; run?: (command: string) => v
         <button
           type="button"
           className="answer-command-button"
-          title={copied ? DESKTOP_ZH.codeCopied : DESKTOP_ZH.codeCopy}
-          aria-label={copied ? DESKTOP_ZH.codeCopied : DESKTOP_ZH.codeCopy}
+          title={copyLabel}
+          aria-label={copyLabel}
           onClick={copy}
         >
           {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}

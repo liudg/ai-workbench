@@ -29,7 +29,7 @@ export function UserBubble({ event, session, time }: EventViewProps) {
       <div className="flex min-w-0 justify-end">
         <div
           className={cn(
-            "flex min-w-0 max-w-[85%] flex-col items-end gap-2",
+            "flex min-w-0 max-w-[85%] flex-col items-end gap-1.5",
             model.images && "w-full",
           )}
         >

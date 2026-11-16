@@ -1,9 +1,9 @@
 import { useCallback, useRef, useState, type RefObject } from "react";
-import { ChevronRight, Ellipsis, Folder, History, Pin, PinOff, Settings, X } from "lucide-react";
+import { ChevronRight, Ellipsis, Folder, FolderOpen, History, Pin, PinOff, Settings, X } from "lucide-react";
 
 import type { Project } from "@/features/projects";
 import { cn, displayPath } from "@/lib/utils";
-import { AttentionPill, strongestPill } from "@/shared/attention";
+import { strongestPill } from "@/shared/attention";
 import { FixedMenu } from "../FixedMenu";
 import { NewSessionButton } from "../sessions/NewSessionButton";
 import { partitionSidebarSessions } from "../sessions/session-partition";
@@ -55,17 +55,31 @@ export function ProjectItem({
     ? "pointer-events-auto opacity-100"
     : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100";
 
+  const projectActive = selected && activeTaskId === null;
+  const FolderIcon = collapsed ? Folder : FolderOpen;
+
   return (
     <>
     <div className="py-0.5">
       <div
+        role="button"
+        tabIndex={0}
         className={cn(
-          "group relative flex w-full cursor-pointer flex-nowrap items-center gap-1.5 rounded-lg px-2 py-1.5 pr-2 text-left text-xs transition-colors hover:bg-wb-hover focus-within:bg-wb-hover",
-          menuOpen && "bg-wb-hover",
+          "group relative flex w-full cursor-pointer flex-nowrap items-center gap-1.5 rounded-lg px-2 py-1.5 pr-2 text-left text-[13px] leading-5 transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-wb-accent/60",
+          projectActive
+            ? "wb-sidebar-active font-medium"
+            : cn("hover:bg-wb-hover focus-within:bg-wb-hover", menuOpen && "bg-wb-hover"),
         )}
         title={displayPath(project.path)}
         aria-expanded={!collapsed}
         onClick={onHeaderClick}
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget) return;
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onHeaderClick();
+          }
+        }}
         onContextMenu={(event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -79,31 +93,53 @@ export function ProjectItem({
             !collapsed && "rotate-90",
           )}
         />
-        <span className="flex w-1.5 shrink-0 justify-center">
+        <span className="relative inline-flex h-4 w-4 shrink-0 items-center justify-center">
+          <FolderIcon
+            className={cn("h-3.5 w-3.5", projectActive ? "text-wb-accent-ink" : "text-wb-fg-3")}
+            strokeWidth={1.75}
+            aria-hidden="true"
+          />
           {pill ? (
-            <AttentionPill pill={pill} compact />
-          ) : (
-            <span data-project-dot="ready" className="h-1.5 w-1.5 shrink-0 rounded-full bg-wb-ok" aria-hidden="true" />
-          )}
+            <span
+              role="img"
+              aria-label={pill.label}
+              title={pill.label}
+              data-attention={pill.tone}
+              className={cn(
+                "absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full ring-2",
+                projectActive ? "ring-[var(--wb-sidebar-active-bg)]" : "ring-wb-sidebar",
+                pill.dotClass,
+                pill.pulse && "motion-safe:animate-pulse",
+              )}
+            />
+          ) : null}
         </span>
-        <span className="max-w-[9.5rem] shrink-0 truncate font-medium text-wb-fg">{project.name}</span>
+        <span className="min-w-0 flex-1 truncate font-medium text-wb-fg">
+          {project.name}
+        </span>
         {branch ? (
           <span
             data-project-branch={branch}
             title={branch}
-            className="min-w-0 shrink truncate rounded border border-wb-border bg-wb-elev px-1.5 text-xs leading-4 text-wb-fg-2"
+            className={cn(
+              "ml-auto max-w-[6.5rem] shrink truncate rounded border border-wb-border bg-wb-surface px-1.5 text-xs leading-4 text-wb-fg-2 group-hover:invisible group-focus-within:invisible",
+              menuOpen && "invisible",
+            )}
           >
             {branch}
           </span>
         ) : null}
-        <span className="min-w-0 flex-1" />
-        {/* 操作钮叠在行尾。短分支留在名字旁边；长分支用剩余宽度，悬停时不把下面的会话顶开。 */}
+        {/* 操作钮叠在行尾，悬停时不把下面的会话顶开。 */}
         <div
           className={cn(
             "absolute right-1.5 top-[calc(50%-12px)] z-10 flex h-6 items-center justify-end rounded-r-md pl-4",
-            menuOpen
-              ? "bg-[linear-gradient(to_right,transparent,var(--wb-sidebar-row-hover)_32%)]"
-              : "group-hover:bg-[linear-gradient(to_right,transparent,var(--wb-sidebar-row-hover)_32%)] group-focus-within:bg-[linear-gradient(to_right,transparent,var(--wb-sidebar-row-hover)_32%)]",
+            projectActive
+              ? menuOpen
+                ? "bg-[linear-gradient(to_right,transparent,var(--wb-sidebar-active-bg)_32%)]"
+                : "group-hover:bg-[linear-gradient(to_right,transparent,var(--wb-sidebar-active-bg)_32%)] group-focus-within:bg-[linear-gradient(to_right,transparent,var(--wb-sidebar-active-bg)_32%)]"
+              : menuOpen
+                ? "bg-[linear-gradient(to_right,transparent,var(--wb-sidebar-row-hover)_32%)]"
+                : "group-hover:bg-[linear-gradient(to_right,transparent,var(--wb-sidebar-row-hover)_32%)] group-focus-within:bg-[linear-gradient(to_right,transparent,var(--wb-sidebar-row-hover)_32%)]",
           )}
         >
           <div className="relative">
@@ -218,6 +254,7 @@ function ProjectMenu({
     >
       <div
         data-project-menu
+        className="space-y-0.5"
         onContextMenu={(event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -238,7 +275,7 @@ function ProjectMenu({
             data-project-action={entry.id}
             className={cn(
               "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] transition-colors hover:bg-wb-hover",
-              entry.id === "remove" && confirming ? "text-wb-danger" : "text-wb-fg",
+              entry.id === "remove" ? "text-wb-danger" : "text-wb-fg",
             )}
             onClick={(event) => {
               event.stopPropagation();
@@ -249,7 +286,7 @@ function ProjectMenu({
               else onRemove();
             }}
           >
-            <MenuIcon id={entry.id} pinned={pinned} danger={entry.id === "remove" && confirming} />
+            <MenuIcon id={entry.id} pinned={pinned} danger={entry.id === "remove"} />
             <span className="whitespace-nowrap">{label}</span>
           </button>
         );

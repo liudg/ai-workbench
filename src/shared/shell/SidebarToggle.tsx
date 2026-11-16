@@ -19,6 +19,7 @@ export function SidebarToggle() {
       aria-pressed={open}
       aria-keyshortcuts="Control+B"
       aria-label={`${label} ${SIDEBAR_SHORTCUT_LABEL}`}
+      title={`${label} (${SIDEBAR_SHORTCUT_LABEL})`}
       className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
       onClick={() => toggleSidebar()}
     >

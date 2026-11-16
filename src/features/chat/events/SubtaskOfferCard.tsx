@@ -30,29 +30,31 @@ export function SubtaskOfferCard({ event }: EventViewProps) {
   };
   return (
     <div className="event-in min-w-0 px-6 py-2" data-subtask-offer={state}>
-      <div className="min-w-0 rounded-xl border border-wb-border bg-wb-card px-3.5 py-3">
-        <div className="flex items-center gap-1.5 text-xs font-medium text-wb-fg-2">
-          <Split className="h-3.5 w-3.5 shrink-0" />
-          <span>{labels.title}</span>
-        </div>
-        <ul className="mt-2 flex min-w-0 flex-col gap-2">
-          {event.subtasks.map((spec, index) => (
-            <OfferItem key={index} spec={spec} />
-          ))}
-        </ul>
-        <div className="mt-2.5 flex min-w-0 flex-wrap items-center gap-2 text-xs text-wb-fg-3">
-          {state === "pending" && subtasks ? (
-            <>
-              <Button size="sm" disabled={busy} onClick={() => choose(true)}>
-                {labels.accept}
-              </Button>
-              <Button size="sm" variant="outline" disabled={busy} onClick={() => choose(false)}>
-                {labels.decline}
-              </Button>
-            </>
-          ) : null}
-          {state === "expired" ? <span>已过期</span> : null}
-          {state === "declined" ? <span>{labels.declined}</span> : null}
+      <div className="min-w-0 pl-6">
+        <div className="min-w-0 rounded-xl border border-wb-border bg-wb-card px-3.5 py-3">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-wb-fg-2">
+            <Split className="h-3.5 w-3.5 shrink-0" />
+            <span>{labels.title}</span>
+          </div>
+          <ul className="mt-2 flex min-w-0 flex-col gap-2">
+            {event.subtasks.map((spec, index) => (
+              <OfferItem key={index} spec={spec} />
+            ))}
+          </ul>
+          <div className="mt-2.5 flex min-w-0 flex-wrap items-center gap-2 text-xs text-wb-fg-3">
+            {state === "pending" && subtasks ? (
+              <>
+                <Button size="sm" disabled={busy} onClick={() => choose(true)}>
+                  {labels.accept}
+                </Button>
+                <Button size="sm" variant="outline" disabled={busy} onClick={() => choose(false)}>
+                  {labels.decline}
+                </Button>
+              </>
+            ) : null}
+            {state === "expired" ? <span>已过期</span> : null}
+            {state === "declined" ? <span>{labels.declined}</span> : null}
+          </div>
         </div>
       </div>
     </div>

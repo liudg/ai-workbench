@@ -25,8 +25,9 @@ export function FileTabs({
   const tabMenu = useTabContextMenu(tabs.map((tab) => tab.path), onClose);
   return (
     <div
+      role="tablist"
       data-file-tabs
-      className="flex h-9 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-wb-border bg-wb-panel px-1.5"
+      className="flex h-9 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-wb-border bg-wb-elev/50 px-1.5"
     >
       {tabs.map((tab) => {
         const active = tab.path === activePath;
@@ -34,13 +35,21 @@ export function FileTabs({
           <div
             key={tab.path}
             onContextMenu={(event) => tabMenu.open(event, tab.path)}
+            onAuxClick={(event) => {
+              if (event.button === 1) {
+                event.preventDefault();
+                onClose([tab.path]);
+              }
+            }}
             className={cn(
               "flex min-w-0 max-w-[180px] items-center rounded-md transition-colors",
-              active ? "bg-wb-active text-wb-fg shadow-[inset_0_0_0_1px_var(--color-wb-border)]" : "text-wb-fg-2 hover:bg-wb-hover hover:text-wb-fg",
+              active ? "wb-menu-active font-medium" : "text-wb-fg-2 hover:bg-wb-hover hover:text-wb-fg",
             )}
           >
             <button
               type="button"
+              role="tab"
+              aria-selected={active}
               data-file-tab={tab.path}
               data-active={active ? "true" : "false"}
               data-preview={tab.preview ? "true" : "false"}

@@ -8,7 +8,7 @@ import { agentTurnName, useAgentIdentity } from "./use-agent-identity";
 /** 换 Agent 或分叉的分隔：从哪个 Agent 交给哪个，交了几条前文。照 t3code `V2LifecycleRow.tsx` 的 `HandoffRow`。 */
 export function HandoffNote({ event }: EventViewProps) {
   if (event.kind !== "handoff") return null;
-  const label = event.delivered ? "上下文交接" : "上下文交接（未发送）";
+  const label = "上下文交接";
   const counts = event.delivered
     ? [`${event.selected ?? 0} 条前文`, event.omitted ? `省略 ${event.omitted} 条` : null].filter(Boolean).join("，")
     : null;

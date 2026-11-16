@@ -192,9 +192,9 @@ export function McpPanel(props: McpPanelProps) {
               data-mcp-installed={item.installed ? "true" : "false"}
               aria-selected={selected}
               className={cn(
-                "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition-colors",
+                "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] transition-colors",
                 !item.installed && "text-wb-fg-3",
-                selected && item.installed && "bg-wb-active font-medium text-wb-fg",
+                selected && item.installed && "wb-menu-active font-medium",
                 selected && !item.installed && "bg-wb-elev text-wb-fg-2",
                 !selected && item.installed && "text-wb-fg-2 hover:bg-wb-hover hover:text-wb-fg",
                 !selected && !item.installed && "hover:bg-wb-hover/60",
@@ -460,14 +460,17 @@ function ServerList(props: {
                   role="menu"
                   aria-label={MCP_PAGE.more}
                   data-mcp-menu={row.name}
-                  className="wb-popover absolute right-3 top-14 z-10 w-44 overflow-hidden rounded-xl p-1"
+                  className="wb-popover absolute right-3 top-14 z-10 w-44 space-y-0.5 overflow-hidden rounded-xl p-1.5"
                 >
                   {actions.map((action) => (
                     <button
                       key={action.id}
                       type="button"
                       role="menuitem"
-                      className="block w-full rounded-lg px-2.5 py-1.5 text-left text-sm text-wb-fg transition-colors hover:bg-wb-hover"
+                      className={cn(
+                        "block w-full rounded-lg px-2.5 py-1.5 text-left text-[13px] leading-5 transition-colors hover:bg-wb-hover",
+                        action.id === "remove" ? "text-wb-danger" : "text-wb-fg",
+                      )}
                       data-mcp-action={action.id}
                       onClick={() => props.onAction(action.id, row)}
                     >

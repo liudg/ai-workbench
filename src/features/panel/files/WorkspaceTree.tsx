@@ -1,5 +1,5 @@
 import { useEffect, useRef, type MouseEvent as ReactMouseEvent } from "react";
-import { ChevronDown, ChevronRight, File } from "lucide-react";
+import { ChevronDown, ChevronRight, File, Folder, FolderOpen } from "lucide-react";
 
 import type { TreeEntry } from "@/types";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
@@ -177,12 +177,11 @@ function DirectoryTree({
   }
 
   return (
-    <ul data-tree-root-count={tree.rootEntries.length}>
+    <ul className="space-y-0.5" data-tree-root-count={tree.rootEntries.length}>
       {tree.rootEntries.map((entry) => (
         <TreeRows
           key={entry.path}
           entry={entry}
-          depth={0}
           surface={surface}
           cache={tree.cache}
           expanded={tree.expanded}
@@ -201,7 +200,6 @@ function DirectoryTree({
 
 function TreeRows({
   entry,
-  depth,
   surface,
   cache,
   expanded,
@@ -214,7 +212,6 @@ function TreeRows({
   onContextMenu,
 }: {
   entry: TreeEntry;
-  depth: number;
   surface: TreeSurface;
   cache: ReadonlyMap<string, TreeEntry[]>;
   expanded: ReadonlySet<string>;
@@ -226,11 +223,11 @@ function TreeRows({
   onSelectFile: (path: string, kind?: string, isPreview?: boolean) => void;
   onContextMenu?: (path: string, event: ReactMouseEvent) => void;
 }) {
-  const pad = { paddingLeft: 4 + depth * 12 };
   if (entry.kind === "dir") {
     const open = expanded.has(entry.path);
     const children = cache.get(entry.path);
     const error = errors.get(entry.path);
+    const FolderIcon = open ? FolderOpen : Folder;
     return (
       <li>
         <button
@@ -238,33 +235,29 @@ function TreeRows({
           data-file-dir={entry.path}
           title={entry.path}
           aria-expanded={open}
-          style={pad}
-          className="flex w-full min-w-0 items-center gap-1 rounded-md py-1 text-left text-[12px] text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
+          className="flex w-full min-w-0 items-center gap-1 rounded-md px-1.5 py-1 text-left text-[12px] text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
           onClick={() => onToggle(entry.path)}
         >
-          {open ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
-          <span data-dir-path={entry.path} className="min-w-0 flex-1 truncate text-xs">
+          {open ? <ChevronDown className="h-3 w-3 shrink-0 text-wb-fg-3" /> : <ChevronRight className="h-3 w-3 shrink-0 text-wb-fg-3" />}
+          <FolderIcon className="h-3.5 w-3.5 shrink-0 text-wb-fg-3" strokeWidth={1.75} aria-hidden="true" />
+          <span data-dir-path={entry.path} className="min-w-0 flex-1 truncate text-xs font-medium text-wb-fg">
             {treePathLabel(entry.name)}
           </span>
         </button>
         {open ? (
-          <ul>
+          <ul className="ml-2.5 mt-0.5 space-y-0.5 border-l border-wb-border-strong pl-2">
             {loading.has(entry.path) && !children ? (
-              <li className="px-2 py-1 text-xs text-wb-fg-3" style={{ paddingLeft: 16 + depth * 12 }}>
+              <li className="px-1.5 py-1 text-xs text-wb-fg-3">
                 {surface === "dropdown" ? DESKTOP_ZH.loadingDirectory : DESKTOP_ZH.filesReading}
               </li>
             ) : null}
             {error ? (
-              <li className="px-2 py-1 text-xs text-wb-danger" style={{ paddingLeft: 16 + depth * 12 }}>
+              <li className="px-1.5 py-1 text-xs text-wb-danger">
                 {surface === "dropdown" ? DESKTOP_ZH.directoryError : error}
               </li>
             ) : null}
             {children && children.length === 0 ? (
-              <li
-                className="px-2 py-1 text-xs text-wb-fg-3"
-                data-directory-empty
-                style={{ paddingLeft: 16 + depth * 12 }}
-              >
+              <li className="px-1.5 py-1 text-xs text-wb-fg-3" data-directory-empty>
                 {surface === "dropdown" ? DESKTOP_ZH.emptyDirectory : DESKTOP_ZH.emptyFolder}
               </li>
             ) : null}
@@ -272,7 +265,6 @@ function TreeRows({
               <TreeRows
                 key={child.path}
                 entry={child}
-                depth={depth + 1}
                 surface={surface}
                 cache={cache}
                 expanded={expanded}
@@ -304,10 +296,9 @@ function TreeRows({
         }
         data-workspace-file={entry.path}
         title={entry.path}
-        style={pad}
         className={cn(
-          "flex w-full min-w-0 items-center gap-1.5 rounded-md pr-2 py-1 text-left transition-colors",
-          active ? "bg-wb-active" : "hover:bg-wb-hover",
+          "flex w-full min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-left transition-colors",
+          active ? "wb-menu-active font-medium" : "hover:bg-wb-hover",
         )}
         onClick={() => onSelectFile(entry.path, entry.kind)}
         onDoubleClick={() => onSelectFile(entry.path, entry.kind, false)}
@@ -320,7 +311,7 @@ function TreeRows({
             : undefined
         }
       >
-        <File className="h-3.5 w-3.5 shrink-0 text-wb-fg-3" />
+        <File className={cn("h-3.5 w-3.5 shrink-0", active ? "text-wb-accent-ink" : "text-wb-fg-3")} />
         <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-wb-fg">{entry.name}</span>
       </button>
     </li>

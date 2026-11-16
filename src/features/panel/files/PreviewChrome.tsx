@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type MutableRefObject } from "react";
 import { AppWindow, ChevronDown, Copy, Folder, Search } from "lucide-react";
 
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
@@ -6,7 +6,7 @@ import { writeClipboardText } from "@/shared/clipboard";
 import { relativeToProject } from "@/shared/path";
 import { Hint } from "@/components/ui/hint";
 import { cn } from "@/lib/utils";
-import { previewCrumbs, previewRootLabel } from "./file-preview-nav";
+import { previewCrumbs, previewRootLabel, type BreadcrumbSegment } from "./file-preview-nav";
 import { BreadcrumbMenu } from "./BreadcrumbMenu";
 import { OpenWithMenu } from "./OpenWithMenu";
 import { openWithActions, type OpenWithAction } from "./open-with";
@@ -84,49 +84,72 @@ export function PreviewChrome({
     setOpenMenu((open) => !open);
   };
 
+  const prefix = segments.length > 1 ? segments.slice(0, -1) : [];
+  const tail = segments.length > 0 ? segments[segments.length - 1] : null;
+
   return (
     <div
       data-preview-chrome
       data-preview-toolbar
-      className="flex h-10 min-w-0 shrink-0 flex-nowrap items-center gap-2 border-b border-wb-border bg-wb-panel px-2.5 text-[12px] text-wb-fg-2"
+      className="@container/chrome flex h-10 min-w-0 shrink-0 flex-nowrap items-center gap-2 border-b border-wb-border bg-wb-panel px-2.5 text-[12px] text-wb-fg-2"
     >
       <nav
         data-slot="file-path"
         aria-label={DESKTOP_ZH.breadcrumbLabel}
         data-preview-path-line
-        className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap"
+        className="flex min-w-0 flex-1 items-center overflow-hidden text-ellipsis whitespace-nowrap"
       >
-        {segments.map((segment, index) => (
-          <span key={`${segment.path}:${segment.label}`} className="inline whitespace-nowrap align-middle">
-            {index > 0 ? (
-              <span aria-hidden className="px-1 text-wb-fg-3">
+        {prefix.length > 0 ? (
+          <span className="min-w-0 shrink overflow-hidden text-ellipsis whitespace-nowrap">
+            {prefix.length > 1 ? (
+              <span aria-hidden className="hidden px-0.5 text-wb-fg-3 @max-[520px]/chrome:inline">
+                …<span className="px-1">&gt;</span>
+              </span>
+            ) : null}
+            {prefix.map((segment, index) => {
+              const hideNarrow = prefix.length > 1 && index < prefix.length - 1;
+              return (
+                <span
+                  key={`${segment.path}:${segment.label}`}
+                  className={cn("inline whitespace-nowrap align-middle", hideNarrow && "@max-[520px]/chrome:hidden")}
+                >
+                  {index > 0 ? (
+                    <span
+                      aria-hidden
+                      className={cn(
+                        "px-1 text-wb-fg-3",
+                        prefix.length > 1 && index === prefix.length - 1 && "@max-[520px]/chrome:hidden",
+                      )}
+                    >
+                      &gt;
+                    </span>
+                  ) : null}
+                  <CrumbButton
+                    segment={segment}
+                    open={openPath === segment.path}
+                    anchors={anchors}
+                    onToggle={() => setOpenPath((current) => (current === segment.path ? null : segment.path))}
+                  />
+                </span>
+              );
+            })}
+          </span>
+        ) : null}
+        {tail ? (
+          <span className="inline-flex max-w-[75%] shrink-0 items-center overflow-hidden whitespace-nowrap align-middle">
+            {prefix.length > 0 ? (
+              <span aria-hidden className="shrink-0 px-1 text-wb-fg-3">
                 &gt;
               </span>
             ) : null}
-            <button
-              type="button"
-              data-breadcrumb-segment={segment.path || segment.label}
-              data-open-mode={segment.last ? "file" : "workspace"}
-              aria-expanded={openPath === segment.path}
-              title={segment.label}
-              className="contents"
-              onClick={() => setOpenPath((current) => (current === segment.path ? null : segment.path))}
-            >
-              <span
-                ref={(node) => {
-                  if (node) anchors.current.set(segment.path, node);
-                  else anchors.current.delete(segment.path);
-                }}
-                className={cn(
-                  "rounded px-1 py-0.5 transition-colors hover:bg-wb-hover",
-                  segment.last ? "font-medium text-wb-fg" : "text-wb-fg-2",
-                )}
-              >
-                {segment.label}
-              </span>
-            </button>
+            <CrumbButton
+              segment={tail}
+              open={openPath === tail.path}
+              anchors={anchors}
+              onToggle={() => setOpenPath((current) => (current === tail.path ? null : tail.path))}
+            />
           </span>
-        ))}
+        ) : null}
       </nav>
       <div data-preview-actions className="ml-auto flex shrink-0 items-center gap-1">
         <button
@@ -139,7 +162,7 @@ export function PreviewChrome({
           onClick={onSearch}
         >
           <Search className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
-          <span>{DESKTOP_ZH.openFilesSearch}</span>
+          <span className="@max-[520px]/chrome:hidden">{DESKTOP_ZH.openFilesSearch}</span>
         </button>
         {markdownLabel && onToggleMarkdown ? (
           <button
@@ -155,12 +178,13 @@ export function PreviewChrome({
           type="button"
           data-copy-path
           aria-label={DESKTOP_ZH.copyPath}
+          title={copyNote || DESKTOP_ZH.copyPath}
           disabled={!shown}
           className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg disabled:text-wb-fg-3"
           onClick={() => void copyPath()}
         >
           <Copy className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
-          <span>{copyNote || DESKTOP_ZH.copyPath}</span>
+          <span className="@max-[520px]/chrome:hidden">{copyNote || DESKTOP_ZH.copyPath}</span>
         </button>
         {onOpenWith ? (
           <div
@@ -239,5 +263,45 @@ export function PreviewChrome({
         />
       ) : null}
     </div>
+  );
+}
+
+function CrumbButton({
+  segment,
+  open,
+  anchors,
+  onToggle,
+}: {
+  segment: BreadcrumbSegment;
+  open: boolean;
+  anchors: MutableRefObject<Map<string, HTMLElement>>;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      data-breadcrumb-segment={segment.path || segment.label}
+      data-open-mode={segment.last ? "file" : "workspace"}
+      aria-expanded={open}
+      title={segment.label}
+      className={cn(
+        "group/crumb inline rounded focus-visible:outline-none",
+        segment.last && "min-w-0 truncate",
+      )}
+      onClick={onToggle}
+    >
+      <span
+        ref={(node) => {
+          if (node) anchors.current.set(segment.path, node);
+          else anchors.current.delete(segment.path);
+        }}
+        className={cn(
+          "rounded px-1 py-0.5 transition-colors hover:bg-wb-hover group-focus-visible/crumb:ring-2 group-focus-visible/crumb:ring-wb-accent/65",
+          segment.last ? "font-semibold text-wb-fg" : "text-wb-fg-2",
+        )}
+      >
+        {segment.label}
+      </span>
+    </button>
   );
 }

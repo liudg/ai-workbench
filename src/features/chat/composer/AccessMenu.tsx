@@ -38,33 +38,42 @@ export function AccessMenu({
       ref={menuRef}
       role="menu"
       aria-label="权限"
-      className="wb-popover fixed z-50 w-80 overflow-hidden rounded-xl p-1"
+      className="wb-popover fixed z-50 w-80 overflow-hidden rounded-xl p-1.5"
       style={{ top: -9999, left: 8 }}
     >
       {menu === null ? (
-        <p className="px-3 py-2 text-sm text-wb-fg-3">正在读取权限…</p>
+        <p className="px-3 py-2 text-[13px] text-wb-fg-3">正在读取权限…</p>
       ) : (
         <>
-          <p className="px-2.5 pb-1 pt-1.5 text-xs font-medium text-wb-fg-3">{permissionMenuTitle(menu.title)}</p>
+          <p className="wb-group-header px-2.5 pb-1 pt-1">{permissionMenuTitle(menu.title)}</p>
           {notice ? <p className="px-2.5 pb-1 text-xs leading-4 text-wb-fg-3">{notice}</p> : null}
-          {menu.presets.map((preset) => (
-            <MenuRow
-              key={preset.id}
-              item={preset}
-              warning={Boolean(preset.caution)}
-              checked={Boolean(sandbox && !sandbox.profileId && sandbox.mode === preset.id)}
-              onPick={() => onPreset(preset.id as SessionSandbox["mode"])}
-            />
-          ))}
-          {menu.profiles.map((profile) => (
-            <MenuRow
-              key={profile.id}
-              item={profile}
-              warning={false}
-              checked={sandbox?.profileId === profile.id}
-              onPick={() => onProfile(profile.id)}
-            />
-          ))}
+          <div className="space-y-0.5">
+            {menu.presets.map((preset) => (
+              <MenuRow
+                key={preset.id}
+                item={preset}
+                warning={Boolean(preset.caution)}
+                checked={Boolean(sandbox && !sandbox.profileId && sandbox.mode === preset.id)}
+                onPick={() => onPreset(preset.id as SessionSandbox["mode"])}
+              />
+            ))}
+          </div>
+          {menu.presets.length > 0 && menu.profiles.length > 0 ? (
+            <div className="mx-2 my-1 border-t border-wb-border" />
+          ) : null}
+          {menu.profiles.length > 0 ? (
+            <div className="space-y-0.5">
+              {menu.profiles.map((profile) => (
+                <MenuRow
+                  key={profile.id}
+                  item={profile}
+                  warning={false}
+                  checked={sandbox?.profileId === profile.id}
+                  onPick={() => onProfile(profile.id)}
+                />
+              ))}
+            </div>
+          ) : null}
         </>
       )}
       {(showNetwork || showWritable) && <div className="mx-2 my-1 border-t border-wb-border" />}
@@ -73,7 +82,7 @@ export function AccessMenu({
           type="button"
           role="menuitemcheckbox"
           aria-checked={Boolean(sandbox?.networkAccess)}
-          className="flex w-full items-center justify-between gap-3 rounded-lg px-2.5 py-2 text-left text-sm text-wb-fg transition-colors hover:bg-wb-hover"
+          className="flex w-full items-center justify-between gap-3 rounded-lg px-2.5 py-2 text-left text-[13px] text-wb-fg transition-colors hover:bg-wb-hover"
           onClick={() => onNetwork(!sandbox?.networkAccess)}
         >
           <span>{NETWORK_LABEL}</span>
@@ -82,9 +91,9 @@ export function AccessMenu({
       )}
       {showWritable && (
         <div className="px-2.5 py-2">
-          <p className="text-sm text-wb-fg">{WRITABLE_HEADING}</p>
+          <p className="wb-group-header pb-1">{WRITABLE_HEADING}</p>
           {sandbox && sandbox.writableRoots.length > 0 && (
-            <ul className="mt-2 space-y-1">
+            <ul className="mt-1.5 space-y-1">
               {sandbox.writableRoots.map((path) => (
                 <li
                   key={path}
@@ -107,7 +116,7 @@ export function AccessMenu({
           )}
           <button
             type="button"
-            className="mt-2 text-sm text-wb-accent hover:underline"
+            className="mt-2 text-xs font-medium text-wb-accent-ink hover:underline"
             onClick={onAddDir}
           >
             {ADD_DIR_LABEL}
@@ -140,18 +149,17 @@ function MenuRow({
       disabled={disabled}
       className={cn(
         "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left transition-colors",
-        disabled ? "cursor-not-allowed opacity-50" : "hover:bg-wb-hover",
-        checked && "bg-wb-active/70",
+        disabled ? "cursor-not-allowed opacity-50" : checked ? "wb-menu-active font-medium" : "hover:bg-wb-hover",
       )}
       onClick={onPick}
     >
       <span className="min-w-0 flex-1">
-        <span className={cn("block truncate text-sm", warning ? "text-wb-warn" : "text-wb-fg")}>
+        <span className={cn("block truncate text-[13px] leading-5", warning ? "text-wb-warn" : "text-wb-fg")}>
           {permissionChoiceLabel(item)}
         </span>
         {detail ? <span className="mt-0.5 block truncate text-xs leading-4 text-wb-fg-3">{detail}</span> : null}
       </span>
-      {checked && <Check className="h-3.5 w-3.5 shrink-0 text-wb-accent" />}
+      {checked && <Check className="h-3.5 w-3.5 shrink-0 text-wb-accent-ink" />}
     </button>
   );
 }

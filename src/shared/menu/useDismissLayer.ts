@@ -11,7 +11,7 @@ export function useDismissLayer(open: boolean, onClose: () => void) {
     const close = () => onCloseRef.current();
     const remove = pushDismissLayer(close);
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || !isDismissTop(close)) return;
+      if (event.key !== "Escape" || event.defaultPrevented || event.isComposing || event.keyCode === 229 || !isDismissTop(close)) return;
       event.preventDefault();
       event.stopPropagation();
       dismissTop();

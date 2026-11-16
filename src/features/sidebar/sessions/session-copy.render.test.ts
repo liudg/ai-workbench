@@ -79,7 +79,7 @@ test("both session menu entry points copy the target task without opening it, an
     assert.deepEqual(clipboard, ["C:\\项目\\工作树"]);
     assert.equal(status().notice, "已复制工作目录");
     assert.equal(dom.document.querySelector('[role="menu"]'), null);
-    await click('button[aria-label="聊天操作"]');
+    await click('button[aria-label="对话操作"]');
     await click('[data-session-action="copy"]');
     await click('[data-session-action="copy-markdown"]');
     assert.equal(clipboard[1], "# 历史\n\n## 用户\n\n完整正文\n");
@@ -89,7 +89,7 @@ test("both session menu entry points copy the target task without opening it, an
       { method: "tasks.exportMarkdown", params: { id: "right-clicked" } },
     ]);
     fail = true;
-    await click('button[aria-label="聊天操作"]');
+    await click('button[aria-label="对话操作"]');
     await click('[data-session-action="copy"]');
     await click('[data-session-action="copy-markdown"]');
     assert.equal(clipboard.length, 2);

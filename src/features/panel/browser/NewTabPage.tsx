@@ -49,11 +49,11 @@ export function NewTabPage({ tabId }: { tabId: string }) {
     open: () => openTerminal(tabId),
   });
   return (
-    <div data-new-tab-page className="h-full overflow-auto bg-wb-panel px-6 py-8">
+    <div data-new-tab-page className="@container h-full overflow-auto bg-wb-panel px-6 py-8">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-8">
         <section className="flex flex-col gap-3">
-          <h3 className="text-xs font-medium uppercase tracking-wider text-wb-fg-3">{DESKTOP_ZH.browserToolsHeading}</h3>
-          <div className="grid grid-cols-2 gap-2.5">
+          <h3 className="wb-group-header">{DESKTOP_ZH.browserToolsHeading}</h3>
+          <div className="grid grid-cols-1 gap-2.5 @[420px]:grid-cols-2">
             {tools.map(({ id, label, shortcut, icon: Icon, open }) => (
               <button
                 key={id}

@@ -88,7 +88,7 @@ export function Attachments({
               )}
               <button
                 type="button"
-                className="rounded-full text-wb-fg-2 hover:text-wb-fg"
+                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
                 aria-label={`移除 ${file.name}`}
                 onClick={(event) => {
                   event.stopPropagation();

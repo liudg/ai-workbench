@@ -123,7 +123,7 @@ function commandItems(input: PaletteInput): PaletteRow[] {
   if (input.canStandalone) rows.push(command("new-standalone", COPY.newStandalone, "thread"));
   rows.push(command("search-chats", COPY.searchChats, "thread"));
   if (input.canFind) {
-    rows.push(command("find-in-thread", THREAD_FIND_COPY.find, "thread", THREAD_FIND_COPY.shortcut));
+    rows.push(command("find-in-thread", COPY.findInThread, "thread", THREAD_FIND_COPY.shortcut));
   }
   // 改名、置顶、归档、删除记在工作台的数据库里，所有 Agent 都有。
   if (active) rows.push(command("rename", COPY.rename, "thread"));

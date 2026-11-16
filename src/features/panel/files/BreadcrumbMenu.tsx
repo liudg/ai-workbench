@@ -68,7 +68,7 @@ export function BreadcrumbMenu({
       aria-label={DESKTOP_ZH.breadcrumbLabel}
       className="wb-popover fixed z-[80] flex h-80 w-80 flex-col overflow-hidden rounded-xl outline-none"
     >
-      <div className="min-h-0 flex-1 overflow-auto px-1 py-1">
+      <div className="min-h-0 flex-1 overflow-auto p-1.5">
         {projectId ? (
           <WorkspaceTree
             projectId={projectId}

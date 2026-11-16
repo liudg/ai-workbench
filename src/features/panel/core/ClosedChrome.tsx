@@ -113,31 +113,35 @@ export function ClosedChrome() {
 function OpenTabsMenu({ onPick }: { onPick: (id: string) => void }) {
   const { tabs } = usePanel();
   return (
-    <div
-      role="menu"
-      data-open-tabs-menu
-      className="wb-popover absolute right-0 top-full z-40 mt-1 w-48 rounded-xl py-1"
-    >
-      <div className="px-3 py-1.5 text-xs text-wb-fg-3">{DESKTOP_ZH.panelOpenTabsMenu}</div>
-      {tabs.map((tab) => {
-        const viewer = viewerById(tab.viewerId);
-        const Icon = viewer?.icon;
-        const title = viewer ? viewer.title(tab.payload) : "";
-        return (
-          <button
-            key={tab.id}
-            type="button"
-            role="menuitem"
-            data-open-tab={tab.id}
-            data-open-tab-viewer={tab.viewerId}
-            className={cn("flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-wb-fg transition-colors hover:bg-wb-hover")}
-            onClick={() => onPick(tab.id)}
-          >
-            {Icon ? <Icon className="h-3.5 w-3.5 shrink-0 text-wb-fg-2" /> : null}
-            <span className="min-w-0 flex-1 truncate">{title}</span>
-          </button>
-        );
-      })}
+    <div className="absolute right-0 top-full z-40 pt-1">
+      <div
+        role="menu"
+        data-open-tabs-menu
+        className="wb-popover w-52 space-y-0.5 rounded-xl p-1.5"
+      >
+        <div className="wb-group-header px-2.5 pb-1 pt-1">{DESKTOP_ZH.panelOpenTabsMenu}</div>
+        {tabs.map((tab) => {
+          const viewer = viewerById(tab.viewerId);
+          const Icon = viewer?.icon;
+          const title = viewer ? viewer.title(tab.payload) : "";
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              role="menuitem"
+              data-open-tab={tab.id}
+              data-open-tab-viewer={tab.viewerId}
+              className={cn(
+                "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] leading-5 text-wb-fg transition-colors hover:bg-wb-hover",
+              )}
+              onClick={() => onPick(tab.id)}
+            >
+              {Icon ? <Icon className="h-3.5 w-3.5 shrink-0 text-wb-fg-3" /> : null}
+              <span className="min-w-0 flex-1 truncate">{title}</span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

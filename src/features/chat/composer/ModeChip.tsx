@@ -6,7 +6,6 @@ import { cn } from "@/lib/utils";
 export function ModeChip({
   id,
   label,
-  tooltip,
   dismissLabel,
   icon,
   iconOnly,
@@ -15,7 +14,6 @@ export function ModeChip({
 }: {
   id: "plan" | "goal";
   label: string;
-  tooltip: string;
   dismissLabel: string;
   icon: ReactNode;
   iconOnly: boolean;
@@ -45,7 +43,7 @@ export function ModeChip({
         data-mode-tooltip={id}
         className="wb-tooltip pointer-events-none absolute bottom-[calc(100%+6px)] left-1/2 z-30 -translate-x-1/2 whitespace-nowrap rounded-md px-2 py-1 text-xs font-normal opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100"
       >
-        {tooltip}
+        {dismissLabel}
       </span>
     </button>
   );

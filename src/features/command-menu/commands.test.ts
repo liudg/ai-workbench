@@ -156,7 +156,7 @@ test("the board is always reachable; next-in-queue only when someone is waiting"
   assert.equal(ids(enabled).includes("next-attention"), false);
   const waiting = buildPaletteRows({ ...enabled, hasNextAttention: true });
   const next = waiting.find((row) => row.commandId === "next-attention");
-  assert.equal(next?.label, "下一个需要处理的聊天");
+  assert.equal(next?.label, "下一个需要处理的对话");
   assert.equal(next?.group, "navigation");
 });
 

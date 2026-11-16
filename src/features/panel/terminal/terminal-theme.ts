@@ -9,7 +9,7 @@ const OBSIDIAN_PALETTE: ITheme = {
   cursorAccent: "#0d0f13",
   selectionBackground: "rgba(94, 129, 255, 0.34)",
   selectionInactiveBackground: "rgba(94, 129, 255, 0.18)",
-  black: "#1f232c",
+  black: "#2b3140",
   red: "#f06868",
   green: "#46c483",
   yellow: "#e8a44a",
@@ -17,7 +17,7 @@ const OBSIDIAN_PALETTE: ITheme = {
   magenta: "#c792ea",
   cyan: "#4ec9b0",
   white: "#d5d9e2",
-  brightBlack: "#6e7687",
+  brightBlack: "#7d8494",
   brightRed: "#ff8585",
   brightGreen: "#6ee7b7",
   brightYellow: "#f6c177",
@@ -41,7 +41,7 @@ const DAYLIGHT_PALETTE: ITheme = {
   blue: "#2b4acb",
   magenta: "#7e22ce",
   cyan: "#0f766e",
-  white: "#4b5565",
+  white: "#dce1eb",
   brightBlack: "#647084",
   brightRed: "#dc2626",
   brightGreen: "#16a34a",
@@ -49,7 +49,7 @@ const DAYLIGHT_PALETTE: ITheme = {
   brightBlue: "#3b5bdb",
   brightMagenta: "#9333ea",
   brightCyan: "#0d9488",
-  brightWhite: "#14171f",
+  brightWhite: "#f8fafc",
 };
 
 function nonTransparentColor(value?: string): string | null {

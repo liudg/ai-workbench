@@ -49,7 +49,7 @@ export function ReplyBox({
       const height = box.offsetHeight;
       const left = Math.min(Math.max(MARGIN, last.left), window.innerWidth - WIDTH - MARGIN);
       let top = last.top - height - GAP;
-      if (top < MARGIN) top = Math.min(last.bottom + GAP, window.innerHeight - height - MARGIN);
+      if (top < MARGIN) top = Math.max(MARGIN, Math.min(last.bottom + GAP, window.innerHeight - height - MARGIN));
       setPlace((prev) => (prev && prev.top === top && prev.left === left ? prev : { top, left }));
     };
     apply();
@@ -126,7 +126,15 @@ export function ReplyBox({
           }
         }}
       />
-      <div className="mt-2 flex justify-end">
+      <div className="mt-2 flex items-center justify-end gap-2">
+        <button
+          type="button"
+          className="rounded-lg px-2.5 py-1 text-xs text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={onCancel}
+        >
+          取消
+        </button>
         <button
           type="button"
           data-reply-submit

@@ -66,37 +66,40 @@ export function FilePreview({
   const errorMessage =
     state.status === "error" ? state.message : picture.status === "error" ? picture.message : "";
   const readyText = !image && state.status === "ready" ? state : null;
+  const hasTruncatedPreview = shell === "tooLarge" && Boolean(readyText?.text);
+  const effectiveStatus = hasTruncatedPreview ? "ready" : shell;
 
   return (
     <div
       data-open-files-preview
       data-preview-path={path}
       data-preview-line={line ?? ""}
-      data-preview-status={shell}
+      data-preview-status={effectiveStatus}
       className="flex h-full min-h-0 flex-col"
     >
       <div className="min-h-0 flex-1">
-        {shell === "loading" ? <StatusShell status="loading">{DESKTOP_ZH.filesReading}</StatusShell> : null}
-        {shell === "error" ? <StatusShell status="error">{errorMessage || "无法读取文件"}</StatusShell> : null}
-        {shell === "tooLarge" ? (
+        {effectiveStatus === "loading" ? <StatusShell status="loading">{DESKTOP_ZH.filesReading}</StatusShell> : null}
+        {effectiveStatus === "error" ? <StatusShell status="error">{errorMessage || "无法读取文件"}</StatusShell> : null}
+        {effectiveStatus === "tooLarge" ? (
           <StatusShell status="tooLarge" detail={DESKTOP_ZH.previewTooLargeDetail}>
             {DESKTOP_ZH.previewTooLarge}
           </StatusShell>
         ) : null}
-        {shell === "unsupported" ? (
+        {effectiveStatus === "unsupported" ? (
           <StatusShell status="unsupported" detail={DESKTOP_ZH.previewUnsupportedDetail}>
             {DESKTOP_ZH.previewUnsupported}
           </StatusShell>
         ) : null}
-        {shell === "ready" && image && picture.status === "ready" ? (
+        {effectiveStatus === "ready" && image && picture.status === "ready" ? (
           <div data-content-viewer="image" className="h-full min-h-0">
             <ImageFrame src={picture.src} name={picture.name} />
           </div>
         ) : null}
-        {shell === "ready" && readyText ? (
+        {effectiveStatus === "ready" && readyText ? (
           <PreviewContent
             text={readyText.text}
             kind={readyText.kind}
+            truncated={readyText.truncated}
             line={line}
             path={path}
             quotePath={quotePath || path}
@@ -113,6 +116,7 @@ export function FilePreview({
 function PreviewContent({
   text,
   kind,
+  truncated = false,
   line,
   path,
   quotePath,
@@ -122,6 +126,7 @@ function PreviewContent({
 }: {
   text: string;
   kind: string;
+  truncated?: boolean;
   line: number | null;
   path: string;
   quotePath: string;
@@ -140,6 +145,7 @@ function PreviewContent({
       <FileContent
         view={view}
         text={text}
+        truncated={truncated}
         line={view === "source" ? line : null}
         quotePath={quotePath}
         copyPath={path}

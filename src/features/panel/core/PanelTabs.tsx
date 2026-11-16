@@ -34,51 +34,66 @@ export function PanelTabs() {
             </span>
           </div>
         ) : null}
-        <div className="flex min-w-0 flex-1 items-stretch gap-0.5 overflow-x-auto px-1">
-          {tabs.map((tab) => {
-            const selected = tab.id === active.id;
-            const viewer = viewerById(tab.viewerId);
-            const Icon = viewer?.icon;
-            const title = viewer ? viewer.title(tab.payload) : "";
-            return (
-              <div
-                key={tab.id}
-                onContextMenu={(event) => tabMenu.open(event, tab.id)}
-                className={cn(
-                  "my-1.5 flex min-w-0 max-w-[180px] items-center rounded-lg transition-colors",
-                  selected ? "bg-wb-active text-wb-fg shadow-[inset_0_0_0_1px_var(--color-wb-border)]" : "text-wb-fg-2 hover:bg-wb-hover hover:text-wb-fg",
-                )}
-              >
-                <button
-                  type="button"
-                  data-preview-tab={tab.viewerId}
-                  className="flex min-w-0 flex-1 items-center gap-1.5 px-2.5 py-1.5 text-left text-xs font-medium"
-                  onClick={() => selectTab(tab.id)}
+        <div className="flex min-w-0 flex-1 items-center gap-0.5 px-1">
+          <div role="tablist" className="flex min-w-0 items-stretch gap-0.5 overflow-x-auto px-0.5">
+            {tabs.map((tab) => {
+              const selected = tab.id === active.id;
+              const viewer = viewerById(tab.viewerId);
+              const Icon = viewer?.icon;
+              const title = viewer ? viewer.title(tab.payload) : "";
+              return (
+                <div
+                  key={tab.id}
+                  onContextMenu={(event) => tabMenu.open(event, tab.id)}
+                  onAuxClick={(event) => {
+                    if (event.button === 1) {
+                      event.preventDefault();
+                      closeTab(tab.id);
+                    }
+                  }}
+                  className={cn(
+                    "my-1.5 flex min-w-0 max-w-[180px] items-center rounded-lg transition-colors",
+                    selected
+                      ? "bg-[var(--wb-seg-thumb)] text-wb-fg shadow-[inset_0_0_0_1px_var(--color-wb-border),var(--wb-seg-thumb-shadow)]"
+                      : "text-wb-fg-2 hover:bg-wb-hover hover:text-wb-fg",
+                  )}
                 >
-                  {Icon ? (
-                    <span className="inline-flex shrink-0" data-tab-icon={tab.viewerId}>
-                      <Icon className="h-3.5 w-3.5" />
-                    </span>
-                  ) : null}
-                  <span className="truncate">{title}</span>
-                </button>
-                <button
-                  type="button"
-                  aria-label={DESKTOP_ZH.closeTab}
-                  className="mr-1 rounded p-0.5 text-wb-fg-3 transition-colors hover:bg-wb-hover hover:text-wb-fg"
-                  onClick={() => closeTab(tab.id)}
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            );
-          })}
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={selected}
+                    data-preview-tab={tab.viewerId}
+                    className="flex min-w-0 flex-1 items-center gap-1.5 px-2.5 py-1.5 text-left text-xs font-medium"
+                    onClick={() => selectTab(tab.id)}
+                  >
+                    {Icon ? (
+                      <span
+                        className={cn("inline-flex shrink-0", selected && "text-wb-accent-ink")}
+                        data-tab-icon={tab.viewerId}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                      </span>
+                    ) : null}
+                    <span className="truncate">{title}</span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={DESKTOP_ZH.closeTab}
+                    className="mr-1 rounded p-0.5 text-wb-fg-3 transition-colors hover:bg-wb-hover hover:text-wb-fg"
+                    onClick={() => closeTab(tab.id)}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
           <Hint label={DESKTOP_ZH.panelOpenSideTab}>
             <button
               type="button"
               data-browser-new-tab
               aria-label={DESKTOP_ZH.panelOpenSideTab}
-              className="my-1.5 shrink-0 rounded-lg px-1.5 text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
+              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
               onClick={openBlank}
             >
               <Plus className="h-3.5 w-3.5" />

@@ -5,8 +5,8 @@ export function ProjectHeader() {
   const openDialog = useProjectHeader();
 
   return (
-    <div className="flex items-center justify-between px-2 pb-1 pt-1.5">
-      <span className="text-xs font-medium text-wb-fg-3">项目</span>
+    <div className="flex items-center gap-1.5 px-2 pb-1 pt-1.5">
+      <span className="wb-group-header min-w-0 flex-1">项目</span>
       <SidebarPlusButton label="添加项目" onClick={() => openDialog("import")} />
     </div>
   );

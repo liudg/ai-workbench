@@ -248,6 +248,21 @@ test("number keys select, arrows page, and escape dismisses", () => {
       hasOptions: true,
       multi: false,
     }),
+    { type: "blur-field" },
+  );
+  assert.deepEqual(
+    questionKeyAction({
+      key: "Escape",
+      composing: false,
+      focus: "card",
+      questionCount: 1,
+      questionIndex: 0,
+      optionCount: 2,
+      selectedIndex: 0,
+      isOther: true,
+      hasOptions: true,
+      multi: false,
+    }),
     { type: "dismiss" },
   );
   assert.deepEqual(

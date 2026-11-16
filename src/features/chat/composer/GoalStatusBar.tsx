@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Pause, Play, Trash2 } from "lucide-react";
+import { Pause, Pencil, Play, Trash2 } from "lucide-react";
 
+import { cn } from "@/lib/utils";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { displayedElapsed, formatElapsed, type GoalStatusModel } from "./goal-status";
 
@@ -40,10 +41,7 @@ export function GoalStatusBar({
         {metric ? <span className="shrink-0 text-sm leading-5 text-wb-fg-3">· {metric}</span> : null}
       </div>
       {model.actionable ? (
-        <div className="flex shrink-0 items-center">
-          <GoalIconButton label={DESKTOP_ZH.goalDelete} action="delete" disabled={disabled} onClick={onDelete}>
-            <Trash2 className="h-4 w-4" strokeWidth={1.75} />
-          </GoalIconButton>
+        <div className="flex shrink-0 items-center gap-0.5">
           {model.run ? (
             <GoalIconButton
               label={model.run === "pause" ? DESKTOP_ZH.goalPause : DESKTOP_ZH.goalResume}
@@ -52,14 +50,17 @@ export function GoalStatusBar({
               onClick={onToggleRun}
             >
               {model.run === "pause" ? (
-                <Pause className="h-4 w-4" strokeWidth={1.75} />
+                <Pause className="h-3.5 w-3.5" strokeWidth={1.75} />
               ) : (
-                <Play className="h-4 w-4" strokeWidth={1.75} />
+                <Play className="h-3.5 w-3.5" strokeWidth={1.75} />
               )}
             </GoalIconButton>
           ) : null}
           <GoalIconButton label={DESKTOP_ZH.goalEdit} action="edit" disabled={disabled} onClick={onEdit}>
-            <GoalEditIcon />
+            <Pencil className="h-3.5 w-3.5" strokeWidth={1.75} />
+          </GoalIconButton>
+          <GoalIconButton label={DESKTOP_ZH.goalDelete} action="delete" danger disabled={disabled} onClick={onDelete}>
+            <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
           </GoalIconButton>
         </div>
       ) : null}
@@ -69,7 +70,11 @@ export function GoalStatusBar({
 
 function GoalMark({ ongoing }: { ongoing: boolean }) {
   return (
-    <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0 text-wb-accent" aria-hidden>
+    <svg
+      viewBox="0 0 16 16"
+      className={cn("h-4 w-4 shrink-0 text-wb-accent", ongoing && "animate-spin motion-reduce:animate-none")}
+      aria-hidden
+    >
       <circle
         cx="8"
         cy="8"
@@ -77,7 +82,7 @@ function GoalMark({ ongoing }: { ongoing: boolean }) {
         fill="none"
         stroke="currentColor"
         strokeWidth="1.5"
-        opacity={ongoing ? 0.35 : 0.85}
+        opacity={ongoing ? 0.3 : 0.85}
       />
       {ongoing ? (
         <path
@@ -92,35 +97,17 @@ function GoalMark({ ongoing }: { ongoing: boolean }) {
   );
 }
 
-function GoalEditIcon() {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      className="h-4 w-4"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M6.25 3.25H3.75V5.75" />
-      <path d="M9.75 3.25h2.5V5.75" />
-      <path d="M12.25 10.25v2.5H9.75" />
-      <path d="M6.25 12.75H3.75V10.25" />
-    </svg>
-  );
-}
-
 function GoalIconButton({
   label,
   action,
+  danger = false,
   disabled,
   onClick,
   children,
 }: {
   label: string;
   action: string;
+  danger?: boolean;
   disabled: boolean;
   onClick: () => void;
   children: ReactNode;
@@ -132,7 +119,10 @@ function GoalIconButton({
       aria-label={label}
       data-goal-action={action}
       disabled={disabled}
-      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+      className={cn(
+        "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-wb-fg-2 transition-colors disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent",
+        danger ? "hover:bg-wb-danger-soft hover:text-wb-danger" : "hover:bg-wb-hover hover:text-wb-fg",
+      )}
       onClick={(event) => {
         event.stopPropagation();
         onClick();

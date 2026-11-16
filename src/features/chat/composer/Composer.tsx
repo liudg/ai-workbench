@@ -93,7 +93,6 @@ export function Composer({
           <SlashMenu
             matches={view.slashMatches}
             selected={view.slashMatches.length === 0 ? -1 : slashSelected}
-            token={view.token}
             planOn={view.planOn}
             onPick={c.applySlash}
           />

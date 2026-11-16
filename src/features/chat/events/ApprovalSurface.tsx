@@ -1,8 +1,10 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { ChevronDown, FilePen, Globe, Shield, Terminal } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { dismissLayerCount } from "@/shared/menu/dismiss-layer";
+import { useDismissLayer } from "@/shared/menu/useDismissLayer";
 import { sameChatScope } from "../chat-scope";
 import { approvalKeyAction, releaseOwnedApproval, takeApproval, type ApprovalGate } from "./approval-keys";
 import { useAnswerPrompt } from "./useAnswerPrompt";
@@ -81,7 +83,7 @@ export function ApprovalSurface({
         composing: keyEvent.isComposing,
         keyCode: keyEvent.keyCode,
         defaultPrevented: keyEvent.defaultPrevented,
-        inDialog: target.closest("[role='dialog'],[role='menu']") != null,
+        inDialog: dismissLayerCount() > 0 || target.closest("[role='dialog'],[role='menu']") != null,
         onButton: target.closest("button,a") != null,
         inField: target.closest("input, textarea, [contenteditable]:not([contenteditable='false'])") != null,
       });
@@ -93,6 +95,9 @@ export function ApprovalSurface({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
+  useDismissLayer(menuOpen, closeMenu);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -124,17 +129,19 @@ export function ApprovalSurface({
     <section
       ref={rootRef}
       data-codex-approval-surface
-      className="wb-anim-pop @container/approval-card mb-2 overflow-hidden rounded-2xl border border-wb-border-strong bg-wb-elev text-xs shadow-[var(--wb-composer-shadow)]"
+      className="wb-anim-pop @container/approval-card mb-2 overflow-hidden rounded-2xl border border-wb-warn/30 bg-wb-card text-xs shadow-[var(--wb-composer-shadow)]"
     >
       <div className="flex min-w-0 flex-col gap-1.5 px-3.5 pb-2 pt-3.5">
         <div role="alert" aria-atomic="true" className="min-w-0">
           {event.header ? (
-            <div className="mb-1 flex min-w-0 items-center gap-1.5 text-xs text-wb-fg-2">
-              {Icon ? <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden /> : null}
-              <span className="truncate">{event.header}</span>
+            <div className="mb-1.5 flex min-w-0 items-center">
+              <span className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-wb-warn-soft px-2 py-0.5 text-xs font-medium text-wb-warn">
+                {Icon ? <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden /> : null}
+                <span className="truncate">{event.header}</span>
+              </span>
             </div>
           ) : null}
-          <p className="break-words text-xs font-medium leading-5 text-wb-fg">{event.question}</p>
+          <p className="break-words text-[13.5px] font-medium leading-5 text-wb-fg">{event.question}</p>
           {event.subtitle ? (
             <p className="mt-1 break-words text-xs leading-5 text-wb-fg-2">{event.subtitle}</p>
           ) : null}
@@ -238,12 +245,12 @@ export function ApprovalSurface({
                   <div
                     id={menuId}
                     role="menu"
-                    className="wb-popover absolute bottom-full right-0 z-20 mb-1 min-w-44 p-1"
+                    className="wb-popover absolute bottom-full right-0 z-20 mb-1 min-w-44 space-y-0.5 p-1.5"
                   >
                     <button
                       type="button"
                       role="menuitem"
-                      className="block w-full rounded-lg px-2.5 py-1.5 text-left text-xs text-wb-fg transition-colors hover:bg-wb-hover"
+                      className="block w-full rounded-lg px-2.5 py-1.5 text-left text-[13px] leading-5 text-wb-fg transition-colors hover:bg-wb-hover"
                       onClick={approve}
                     >
                       {slots.primary.label}
@@ -252,7 +259,7 @@ export function ApprovalSurface({
                       type="button"
                       role="menuitem"
                       title={slots.scoped.tooltip || undefined}
-                      className="block w-full rounded-lg px-2.5 py-1.5 text-left text-xs text-wb-fg transition-colors hover:bg-wb-hover"
+                      className="block w-full rounded-lg px-2.5 py-1.5 text-left text-[13px] leading-5 text-wb-fg transition-colors hover:bg-wb-hover"
                       onClick={() => choose(slots.scoped?.id)}
                     >
                       {slots.scoped.label}

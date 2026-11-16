@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 
 import type { FileSearchHit } from "@/types";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
+import { baseName } from "@/shared/path";
 import { cn } from "@/lib/utils";
 import { usePanelOptional } from "../core/PanelProvider";
 import { useDismissLayer } from "@/shared/menu/useDismissLayer";
@@ -75,7 +76,7 @@ export function FileSearchDialog({
 
   return createPortal(
     <div
-      className="wb-backdrop-in fixed inset-0 z-[70] flex items-start justify-center bg-wb-backdrop pt-[calc(4rem+var(--wb-shell-top,0px))] backdrop-blur-[2px]"
+      className="wb-backdrop-in fixed inset-x-0 bottom-0 top-[var(--wb-shell-top,0px)] z-[70] flex items-start justify-center bg-wb-backdrop pt-16 backdrop-blur-[2px]"
       data-file-search
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
@@ -141,10 +142,13 @@ export function FileSearchDialog({
                 ref={listRef}
                 role="listbox"
                 aria-label={DESKTOP_ZH.openFilesSearchTitle}
-                className="max-h-[min(360px,50vh)] overflow-y-auto"
+                className="max-h-[min(360px,50vh)] space-y-0.5 overflow-y-auto p-1.5"
               >
                 {hits.map((hit, index) => {
                   const where = hit.line ? `${hit.path}:${hit.line}` : hit.path;
+                  const fileName = baseName(hit.path) || hit.path;
+                  const dirPrefix = hit.path.length > fileName.length ? hit.path.slice(0, -fileName.length) : "";
+                  const fileTail = hit.line ? `${fileName}:${hit.line}` : fileName;
                   const selected = index === selectedIndex;
                   return (
                     <button
@@ -157,8 +161,8 @@ export function FileSearchDialog({
                       data-file-search-line={hit.line ?? ""}
                       data-file-search-kind={hit.kind}
                       className={cn(
-                        "flex w-full min-w-0 items-center gap-3 px-3 py-1.5 text-left transition-colors",
-                        selected ? "bg-wb-active" : "hover:bg-wb-hover",
+                        "flex w-full min-w-0 items-center gap-3 rounded-lg px-2.5 py-1.5 text-left transition-colors",
+                        selected ? "wb-menu-active" : "hover:bg-wb-hover",
                       )}
                       onMouseEnter={() => setActive(index)}
                       onClick={() => openHit(hit)}
@@ -168,9 +172,10 @@ export function FileSearchDialog({
                       </span>
                       <span
                         title={where}
-                        className="max-w-[42%] shrink-0 truncate font-mono text-xs tabular-nums text-wb-fg-3"
+                        className="flex max-w-[44%] min-w-0 shrink items-baseline justify-end font-mono text-xs tabular-nums text-wb-fg-3"
                       >
-                        {where}
+                        {dirPrefix ? <span className="min-w-0 truncate">{dirPrefix}</span> : null}
+                        <span className="shrink-0 text-wb-fg-2">{fileTail}</span>
                       </span>
                     </button>
                   );

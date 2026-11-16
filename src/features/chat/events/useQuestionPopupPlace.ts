@@ -18,7 +18,9 @@ export function useQuestionPopupPlace(anchor: HTMLElement | null): QuestionPopup
       if (!current) return;
       const rect = current.getBoundingClientRect();
       const column = current.closest("[data-chat-column]");
-      const header = column?.querySelector("[data-chat-header]");
+      const header =
+        column?.querySelector("[data-chat-header], [data-subagent-header]") ??
+        current.closest("[data-preview-panel]")?.firstElementChild;
       const ceiling = header instanceof HTMLElement ? header.getBoundingClientRect().bottom + 8 : 8;
       const next = placeQuestionPopup(
         { left: rect.left, top: rect.top, width: rect.width },

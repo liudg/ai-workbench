@@ -139,11 +139,11 @@ export function SessionRow({
           data-archived={task.archived ? "true" : "false"}
           data-subtask={depth === 1 ? "true" : undefined}
           className={cn(
-            "group relative flex h-full w-full items-center gap-1.5 rounded-lg pr-2 text-left text-xs leading-none transition-colors",
+            "group relative flex h-full w-full items-center gap-1.5 rounded-lg pr-2 text-left text-[13px] leading-5 transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-wb-accent/60",
             depth === 1 ? "pl-10" : "pl-6",
             active
-              ? "bg-wb-active font-medium text-wb-fg"
-              : "text-wb-fg-2 hover:bg-wb-hover hover:text-wb-fg",
+              ? "wb-sidebar-active font-medium"
+              : "text-wb-fg hover:bg-wb-hover",
           )}
           onClick={row.select}
           onContextMenu={(event) => {
@@ -152,6 +152,7 @@ export function SessionRow({
             setMenuOpen(true);
           }}
           onKeyDown={(event) => {
+            if (event.target !== event.currentTarget) return;
             if (event.key === "Enter" || event.key === " ") {
               event.preventDefault();
               row.select();
@@ -161,7 +162,7 @@ export function SessionRow({
           {subtasks > 0 && (
             <button
               type="button"
-              className="absolute left-1.5 flex h-4 w-4 items-center justify-center rounded text-wb-fg-3 hover:text-wb-fg"
+              className="absolute left-1 flex h-5 w-5 items-center justify-center rounded text-wb-fg-3 hover:bg-wb-hover hover:text-wb-fg"
               aria-label={collapsed ? `展开 ${subtasks} 个子任务` : "收起子任务"}
               aria-expanded={!collapsed}
               onClick={(event) => {
@@ -208,7 +209,7 @@ export function SessionRow({
               "absolute right-1.5 top-1/2 hidden h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-wb-fg-2 hover:bg-wb-hover hover:text-wb-fg group-hover:flex group-focus-within:flex",
               menuOpen && "flex",
             )}
-            aria-label="聊天操作"
+            aria-label="对话操作"
             aria-haspopup="menu"
             aria-expanded={menuOpen}
             onClick={(event) => {
@@ -224,7 +225,7 @@ export function SessionRow({
         open={menuOpen}
         anchorRef={anchorRef}
         onClose={closeMenu}
-        label="聊天操作"
+        label="对话操作"
         className="w-44"
       >
         {items.map((item) =>
@@ -245,12 +246,12 @@ export function SessionRow({
       <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>重命名任务</DialogTitle>
+            <DialogTitle>重命名对话</DialogTitle>
             <DialogDescription>输入简短标题以便识别</DialogDescription>
           </DialogHeader>
           <Input
-            aria-label="聊天标题"
-            placeholder="任务标题…"
+            aria-label="对话标题"
+            placeholder="对话标题…"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
             onKeyDown={(event) => {

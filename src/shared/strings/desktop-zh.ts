@@ -9,11 +9,9 @@ export const DESKTOP_ZH = {
   planOn: "开启计划模式",
   planOff: "关闭计划模式",
   planLabel: "计划",
-  planTooltip: "创建计划",
   planPlaceholder: "描述你的任务以生成计划",
   goalLabel: "目标",
   goalHint: "设置要持续追求的目标",
-  goalTooltip: "明确目标",
   goalPlaceholder: "描述你的目标，定义可衡量的成功标准",
   /** 目标状态栏。进行中时跟桌面端同一行：状态、目标、已用时间。 */
   goalStatusActive: "进行中的目标",

@@ -72,7 +72,7 @@ export function AccountMenu() {
           <button
             type="button"
             role="menuitem"
-            className="flex h-8 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-xs text-wb-fg transition-colors hover:bg-wb-hover"
+            className="flex h-8 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] text-wb-fg transition-colors hover:bg-wb-hover"
             onClick={() => {
               setOpen(false);
               openSettings();
@@ -85,7 +85,7 @@ export function AccountMenu() {
             type="button"
             role="menuitem"
             data-account-update=""
-            className="flex h-8 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-xs text-wb-fg transition-colors hover:bg-wb-hover"
+            className="flex h-8 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] text-wb-fg transition-colors hover:bg-wb-hover"
             onClick={() => {
               setOpen(false);
               checkUpdates();

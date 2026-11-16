@@ -146,7 +146,10 @@ export function DiffFileSection({
       onContextMenu={rowMenu}
     >
       <header
-        className="flex min-w-0 cursor-pointer flex-nowrap items-center gap-2 px-3 py-2 text-xs transition-colors hover:bg-wb-hover/60"
+        className={cn(
+          "flex min-w-0 cursor-pointer flex-nowrap items-center gap-2 px-3 py-2 text-xs transition-colors hover:bg-wb-hover/60",
+          open && "sticky top-0 z-10 border-b border-wb-border/60 bg-wb-panel/95 backdrop-blur-xs",
+        )}
         data-diff-summary={file.path}
         onClick={(event) => {
           event.stopPropagation();

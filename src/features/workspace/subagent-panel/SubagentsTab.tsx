@@ -60,10 +60,14 @@ function SubagentList({ owner, task, taskSession }: { owner: string; task: TaskE
   const running = items.some((item) => item.row.active && item.stop);
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-2 py-3">
-      <div className="flex h-7 items-center px-2 text-[12px] text-wb-fg-3">
-        <span className="min-w-0 flex-1 truncate">已开启 · {items.length}</span>
+      <div className="flex h-7 items-center gap-2 px-2 text-[12px] text-wb-fg-3">
+        <span className="wb-group-header min-w-0 flex-1">已开启 · {items.length}</span>
         {running ? (
-          <button type="button" onClick={stopAll} className="rounded-md px-1.5 py-0.5 text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg">
+          <button
+            type="button"
+            onClick={stopAll}
+            className="shrink-0 rounded-md px-1.5 py-0.5 text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
+          >
             全部停止
           </button>
         ) : null}
@@ -99,7 +103,10 @@ function Row({
       <button
         type="button"
         onClick={onOpen}
-        className="flex w-full min-w-0 items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-wb-hover"
+        className={cn(
+          "flex w-full min-w-0 items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-wb-hover",
+          onStop && "pr-9",
+        )}
       >
         <SessionAgentIcon identity={agentIdentity(row.agent, profile)} className="mt-0.5 h-4 w-4" />
         <span className="min-w-0 flex-1">

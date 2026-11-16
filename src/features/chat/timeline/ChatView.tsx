@@ -109,10 +109,6 @@ function ChatTimeline({
     () => `${events.length}:${contentChars(events)}:${status}`,
     [events, status],
   );
-  const hasVisibleEvent = useMemo(
-    () => events.some((event) => event.kind !== "status-changed"),
-    [events],
-  );
   const agentIdentity = useAgentIdentity(session.agent);
   const changeFlags = useChangeCapabilities(session.agent);
   const liveChanges = useMemo(() => {
@@ -120,6 +116,10 @@ function ChatTimeline({
     if (status !== "running" && status !== "needs-input") return null;
     return turnChanges(lastSlice(events));
   }, [changeFlags, events, status]);
+  const hasVisibleEvent = useMemo(
+    () => blocks.length > 0 || liveChanges !== null,
+    [blocks.length, liveChanges],
+  );
 
   const [liveOverrides, setLiveOverrides] = useState<ReadonlyMap<string, boolean>>(new Map());
   const [foldOverrides, setFoldOverrides] = useState<ReadonlyMap<string, boolean>>(new Map());
@@ -210,7 +210,7 @@ function ChatTimeline({
   };
 
   return (
-    <>
+    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
       {find.open ? (
         <FindBar
           query={find.query}
@@ -289,6 +289,6 @@ function ChatTimeline({
       {pendingId && (
         <div className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-transparent via-wb-warn/70 to-transparent" />
       )}
-    </>
+    </div>
   );
 }

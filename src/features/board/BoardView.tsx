@@ -14,6 +14,13 @@ const COLUMN_TITLE: Record<BoardColumn, string> = {
   idle: "空闲",
 };
 
+const COLUMN_DOT: Record<BoardColumn, string> = {
+  "needs-you": "bg-wb-warn",
+  working: "bg-wb-accent",
+  done: "bg-wb-ok",
+  idle: "bg-wb-dim",
+};
+
 /** 看板：所有会话按「待处理 / 运行中 / 已完成 / 空闲」分四列。照 orca `dashboard-popout/AgentKanbanBoard.tsx`。 */
 export function BoardView() {
   const { lanes, loading, now, open, close } = useBoard();
@@ -52,13 +59,14 @@ function Lane({ lane, now, onOpen }: { lane: BoardLane<BoardCard>; now: number; 
       className="flex min-w-[220px] flex-1 flex-col rounded-xl border border-wb-border bg-wb-panel"
     >
       <header className="flex items-center gap-2 border-b border-wb-border px-3 py-2.5">
-        <span className="text-xs font-medium text-wb-fg-2">{COLUMN_TITLE[lane.column]}</span>
+        <span className={cn("h-2 w-2 shrink-0 rounded-full", COLUMN_DOT[lane.column])} aria-hidden="true" />
+        <span className="text-[13px] font-semibold text-wb-fg">{COLUMN_TITLE[lane.column]}</span>
         <span className="ml-auto rounded-full bg-wb-elev px-2 py-0.5 text-xs font-medium tabular-nums text-wb-fg-2">
           {count}
         </span>
       </header>
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2">
-        {lane.cards.length === 0 && <p className="px-2 py-4 text-center text-xs text-wb-fg-3">暂无会话</p>}
+        {lane.cards.length === 0 && <p className="px-2 py-6 text-center text-xs text-wb-fg-3">暂无会话</p>}
         {lane.cards.map((card) => (
           <Card key={card.id} card={card} column={lane.column} now={now} onOpen={onOpen} />
         ))}
@@ -85,18 +93,18 @@ function Card({
       type="button"
       data-board-card={card.id}
       className={cn(
-        "flex w-full flex-col gap-1.5 rounded-lg border p-3 text-left transition-colors",
+        "flex w-full flex-col gap-1.5 rounded-xl border bg-wb-card p-3 text-left transition-colors hover:bg-wb-elev/75",
         column === "needs-you"
-          ? "border-wb-warn/35 bg-wb-warn-soft hover:border-wb-warn/60"
-          : column === "done"
-            ? "border-wb-ok/30 bg-wb-ok-soft hover:border-wb-ok/55"
-            : "border-wb-border bg-wb-surface hover:border-wb-border-strong hover:bg-wb-elev/70",
+          ? "border-wb-warn/35 hover:border-wb-warn/60"
+          : column === "done" && unread
+            ? "border-wb-ok/30 hover:border-wb-ok/55"
+            : "border-wb-border hover:border-wb-border-strong",
       )}
       onClick={() => onOpen(card)}
     >
       <span className="flex w-full items-center gap-1.5">
         <SessionAgentIcon identity={card.identity} className="h-3.5 w-3.5" />
-        <span className={cn("min-w-0 flex-1 truncate text-[13px]", unread ? "font-semibold text-wb-fg" : "text-wb-fg-2")}>
+        <span className={cn("min-w-0 flex-1 truncate text-[13px]", unread ? "font-semibold text-wb-fg" : "font-medium text-wb-fg")}>
           {card.title}
         </span>
         <AttentionPill pill={card.pill} />

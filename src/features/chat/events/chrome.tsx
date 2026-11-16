@@ -2,22 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Check, Copy } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-
-async function writeClipboard(text: string) {
-  try {
-    await navigator.clipboard.writeText(text);
-  } catch {
-    const area = document.createElement("textarea");
-    area.value = text;
-    area.setAttribute("readonly", "");
-    area.style.position = "fixed";
-    area.style.left = "-9999px";
-    document.body.appendChild(area);
-    area.select();
-    document.execCommand("copy");
-    area.remove();
-  }
-}
+import { writeClipboardText } from "@/shared/clipboard";
 
 export function CopyButton({ text, className }: { text: string; className?: string }) {
   const [copied, setCopied] = useState(false);
@@ -27,14 +12,17 @@ export function CopyButton({ text, className }: { text: string; className?: stri
       title={copied ? "已复制" : "复制"}
       aria-label={copied ? "已复制" : "复制"}
       className={cn(
-        "rounded-md p-0.5 text-wb-fg-3 transition-colors hover:bg-wb-hover hover:text-wb-fg",
+        "inline-flex h-6 w-6 items-center justify-center rounded-md text-wb-fg-3 transition-colors hover:bg-wb-hover hover:text-wb-fg",
         className,
       )}
       onClick={() => {
-        void writeClipboard(text).then(() => {
-          setCopied(true);
-          window.setTimeout(() => setCopied(false), 1200);
-        });
+        void writeClipboardText(text).then(
+          () => {
+            setCopied(true);
+            window.setTimeout(() => setCopied(false), 1200);
+          },
+          () => {},
+        );
       }}
     >
       {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
@@ -45,7 +33,10 @@ export function CopyButton({ text, className }: { text: string; className?: stri
 /** 时间与操作始终占位，悬停只改透明度，避免把后面的消息顶下去。 */
 export function HoverActions({ time, children }: { time: string; children?: ReactNode }) {
   return (
-    <div className="mt-1 flex min-h-5 min-w-0 max-w-full items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+    <div
+      data-hover-actions
+      className="mt-0.5 flex min-h-5 min-w-0 max-w-full items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+    >
       <span className="px-0.5 text-xs tabular-nums text-wb-fg-3">{time}</span>
       {children}
     </div>

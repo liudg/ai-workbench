@@ -29,10 +29,10 @@ export function DeleteSessionDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent data-delete-session={dirtyWorktree ? "dirty-worktree" : "session"}>
         <DialogHeader>
-          <DialogTitle>删除任务</DialogTitle>
+          <DialogTitle>删除对话</DialogTitle>
           <DialogDescription>
             {dirtyWorktree
-              ? "工作树内有未提交改动。可保留工作树仅删除任务，或一并删除。"
+              ? "工作树内有未提交改动。可保留工作树仅删除对话，或一并删除。"
               : "删除后将一并移除其子任务，不可恢复。"}
           </DialogDescription>
         </DialogHeader>

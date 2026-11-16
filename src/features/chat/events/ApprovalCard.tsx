@@ -10,17 +10,21 @@ function OptionPrompt({ event, session, answerPrompt, flush = false }: PromptBod
   if (!detailed) {
     return (
       <div className={cn("flex min-w-0 flex-wrap gap-2", pad)}>
-        {event.options.map((opt) => (
-          <Button
-            key={opt.id}
-            size="sm"
-            variant={opt.id === "reject" ? "outline" : "default"}
-            data-option-id={opt.id}
-            onClick={() => pick(opt.id)}
-          >
-            {opt.label}
-          </Button>
-        ))}
+        {event.options.map((opt) => {
+          const isSecondary = opt.slot === "deny" || opt.slot === "leading" || opt.id === "reject";
+          return (
+            <Button
+              key={opt.id}
+              size="sm"
+              variant={isSecondary ? "outline" : "default"}
+              title={opt.tooltip ?? undefined}
+              data-option-id={opt.id}
+              onClick={() => pick(opt.id)}
+            >
+              {opt.label}
+            </Button>
+          );
+        })}
       </div>
     );
   }

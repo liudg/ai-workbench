@@ -51,7 +51,12 @@ export function ActivityGroup({
             aria-expanded={open}
             title={piece.summary}
             onClick={onToggle}
-            className="flex w-full min-w-0 items-center gap-2.5 px-3 py-2 text-left text-[13px] text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
+            className={cn(
+              "flex w-full min-w-0 items-center gap-2.5 px-3 py-2 text-left text-[13px] transition-colors",
+              open
+                ? "bg-wb-card font-semibold text-wb-fg"
+                : "text-wb-fg-2 hover:bg-wb-hover hover:text-wb-fg",
+            )}
           >
             {running ? (
               <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-wb-accent motion-reduce:animate-none" />
@@ -133,7 +138,7 @@ function ActivityStep({
         ) : null}
       </button>
       {open && hasBody ? (
-        <div data-activity-body className="min-w-0 overflow-x-hidden px-3 pb-2 pl-7">
+        <div data-activity-body className="min-w-0 overflow-x-hidden px-3 pb-2.5 pl-9">
           <ToolOutput
             command={summaryShown ? summary : ""}
             output={detail}
@@ -149,10 +154,10 @@ function ActivityStep({
 
 function StepMark({ state }: { state: ToolState }) {
   if (state === "running") {
-    return <Loader2 className="h-3 w-3 shrink-0 animate-spin text-wb-accent motion-reduce:animate-none" />;
+    return <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-wb-accent motion-reduce:animate-none" />;
   }
   return (
-    <span className="flex h-3 w-3 shrink-0 items-center justify-center">
+    <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center">
       <span className={cn("h-1.5 w-1.5 rounded-full", state === "failed" ? "bg-wb-danger" : "bg-wb-dim")} />
     </span>
   );

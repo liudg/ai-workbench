@@ -23,7 +23,7 @@ export function SkillMenu({
   return (
     <SuggestionList label="技能" active={active ? matches.indexOf(active) : -1} data-skill-menu>
       {matches.length === 0 ? (
-        <p className="px-3 py-2 text-xs text-wb-fg-3" data-skill-empty={emptyKind}>
+        <p className="px-2.5 py-2 text-xs text-wb-fg-3" data-skill-empty={emptyKind}>
           {empty}
         </p>
       ) : (
@@ -34,8 +34,8 @@ export function SkillMenu({
             role="option"
             aria-selected={skill === active}
             className={cn(
-              "flex w-full min-w-0 items-baseline gap-3 px-3 py-2 text-left transition-colors hover:bg-wb-hover",
-              skill === active && "bg-wb-active",
+              "flex w-full min-w-0 items-baseline gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors",
+              skill === active ? "wb-menu-active" : "hover:bg-wb-hover",
             )}
             onMouseDown={(event) => {
               event.preventDefault();
@@ -45,7 +45,7 @@ export function SkillMenu({
           >
             <span
               data-skill-mention={skill.mention}
-              className="max-w-[60%] shrink-0 truncate text-sm text-wb-fg"
+              className="max-w-[60%] shrink-0 truncate font-mono text-[13px] font-medium text-wb-skill"
             >{`$${skill.mention}`}</span>
             <span className="min-w-0 truncate text-xs leading-4 text-wb-fg-3">
               {skill.label}

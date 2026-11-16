@@ -22,10 +22,10 @@ export function WebsiteCard({ href, label }: { href: string; label: string }) {
         <button
           type="button"
           data-open-with
-          className="shrink-0 rounded-md px-2.5 py-1 text-xs font-medium text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
+          className="shrink-0 rounded-lg border border-wb-border bg-wb-elev/70 px-2.5 py-1 text-xs font-medium text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
           onClick={() => preview.openHref(href)}
         >
-          {DESKTOP_ZH.openWith}
+          {DESKTOP_ZH.openFile}
         </button>
       ) : null}
     </div>

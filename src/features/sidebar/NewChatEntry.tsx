@@ -12,14 +12,17 @@ export function NewChatEntry() {
       data-new-chat-entry=""
       aria-pressed={active}
       className={cn(
-        "flex h-8 w-full items-center gap-2.5 rounded-lg px-2 text-left text-xs transition-colors",
+        "flex h-8 w-full items-center gap-2.5 rounded-lg px-2 text-left text-[13px] transition-colors",
         active
-          ? "bg-wb-active font-medium text-wb-fg"
-          : "text-wb-fg-2 hover:bg-wb-hover hover:text-wb-fg",
+          ? "wb-sidebar-active font-medium"
+          : "text-wb-fg hover:bg-wb-hover",
       )}
       onClick={open}
     >
-      <SquarePen className="h-3.5 w-3.5 shrink-0 text-wb-fg-3" strokeWidth={1.8} />
+      <SquarePen
+        className={cn("h-3.5 w-3.5 shrink-0", active ? "text-wb-accent-ink" : "text-wb-fg-3")}
+        strokeWidth={1.8}
+      />
       <span className="flex-1 truncate">新建对话</span>
     </button>
   );

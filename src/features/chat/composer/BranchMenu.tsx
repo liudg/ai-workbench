@@ -41,6 +41,7 @@ export function BranchMenu({
   const [query, setQuery] = useState("");
   const anchorRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const close = useCallback(() => onOpenChange(false), [onOpenChange]);
   useEffect(() => {
     if (open) setQuery("");
@@ -48,6 +49,26 @@ export function BranchMenu({
   useComposerMenu(open, anchorRef, menuRef, close, `${query}:${branches.length}:${listError ?? ""}`);
   const shown = filterBranchNames(branches, query);
   const loading = open && branches.length === 0 && !listError;
+
+  const moveFocus = (delta: 1 | -1) => {
+    const items = Array.from(
+      menuRef.current?.querySelectorAll<HTMLButtonElement>(
+        '[role="menuitemradio"]:not(:disabled), [role="menuitem"]:not(:disabled)',
+      ) ?? [],
+    );
+    if (items.length === 0) return;
+    const current = items.indexOf(document.activeElement as HTMLButtonElement);
+    if (current < 0) {
+      items[delta === 1 ? 0 : items.length - 1]?.focus();
+      return;
+    }
+    const next = current + delta;
+    if (next < 0) {
+      inputRef.current?.focus();
+      return;
+    }
+    items[next % items.length]?.focus();
+  };
 
   return (
     <>
@@ -78,23 +99,44 @@ export function BranchMenu({
           role="menu"
           aria-label={name}
           {...menuAttrs}
-          className="wb-popover fixed z-50 flex max-h-[min(24rem,calc(100vh-2rem))] w-[300px] flex-col overflow-hidden rounded-xl p-1"
+          className="wb-popover fixed z-50 flex max-h-[min(24rem,calc(100vh-2rem))] w-[300px] flex-col overflow-hidden rounded-xl p-1.5"
           style={{ top: -9999, left: 8 }}
           onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowDown") {
+              event.preventDefault();
+              moveFocus(1);
+            } else if (event.key === "ArrowUp") {
+              event.preventDefault();
+              moveFocus(-1);
+            }
+          }}
         >
           <div className="flex items-center gap-2 border-b border-wb-border px-2.5 py-1.5">
-            <Search className="h-3.5 w-3.5 shrink-0 text-wb-dim" />
+            <Search className="h-3.5 w-3.5 shrink-0 text-wb-fg-3" />
             <input
+              ref={inputRef}
               autoFocus
               value={query}
               onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                  const first = menuRef.current?.querySelector<HTMLButtonElement>(
+                    '[role="menuitemradio"]:not(:disabled)',
+                  );
+                  if (first) {
+                    event.preventDefault();
+                    first.click();
+                  }
+                }
+              }}
               placeholder={branchSearchPlaceholder(projectName)}
               aria-label={branchSearchPlaceholder(projectName)}
-              className="w-full bg-transparent text-sm text-wb-fg outline-none placeholder:text-wb-dim"
+              className="w-full bg-transparent text-[13px] text-wb-fg outline-none placeholder:text-wb-dim"
             />
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto pt-1">
-            <p className="px-2.5 pb-1 pt-1 text-xs font-medium text-wb-fg-3">{name}</p>
+          <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto pt-1">
+            <p className="wb-group-header px-2.5 pb-1 pt-1">{name}</p>
             {actionError ? (
               <p role="alert" className="px-2.5 pb-1 text-xs text-wb-danger">
                 {actionError}
@@ -143,20 +185,23 @@ export function BranchRow({
       {...attrs}
       disabled={disabled}
       className={cn(
-        "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-wb-fg transition-colors hover:bg-wb-hover disabled:opacity-60",
-        selected && "bg-wb-active/70",
+        "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-wb-fg transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-wb-accent/65 disabled:opacity-60",
+        selected ? "wb-menu-active font-medium" : "hover:bg-wb-hover",
       )}
       onClick={(event) => {
         event.stopPropagation();
         onPick();
       }}
     >
-      <GitBranch className="h-3.5 w-3.5 shrink-0 text-wb-fg-3" strokeWidth={1.75} />
+      <GitBranch
+        className={cn("h-3.5 w-3.5 shrink-0", selected ? "text-wb-accent-ink" : "text-wb-fg-3")}
+        strokeWidth={1.75}
+      />
       <span className="min-w-0 flex-1">
-        <span className={cn("block truncate text-sm", selected && "font-medium")}>{name}</span>
+        <span className={cn("block truncate text-[13px] leading-5", selected && "font-medium")}>{name}</span>
         {subtitle}
       </span>
-      {selected ? <Check className="h-3.5 w-3.5 shrink-0 text-wb-accent" strokeWidth={2} /> : null}
+      {selected ? <Check className="h-3.5 w-3.5 shrink-0 text-wb-accent-ink" strokeWidth={2} /> : null}
     </button>
   );
 }

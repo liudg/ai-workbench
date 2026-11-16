@@ -1,6 +1,7 @@
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { MoreHorizontal, Pencil, Reply, Trash2 } from "lucide-react";
 
+import { cn } from "@/lib/utils";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import type { QueuedTurn } from "@/types";
 import type { FollowUpQueueMode } from "./follow-up-queue-mode";
@@ -84,11 +85,11 @@ export function QueuedMessageList({
             data-queue-row
             data-queue-id={row.id}
             data-editing={editingId === row.id ? "true" : "false"}
-            className={
-              index > 0
-                ? "flex min-w-0 items-center gap-1 border-t border-wb-border py-0.5 pl-1.5 pr-1"
-                : "flex min-w-0 items-center gap-1 py-0.5 pl-1.5 pr-1"
-            }
+            className={cn(
+              "flex min-w-0 items-center gap-1 py-0.5 pl-1.5 pr-1",
+              index > 0 && "border-t border-wb-border",
+              editingId === row.id && "wb-menu-active",
+            )}
           >
             <span
               data-queue-position
@@ -152,7 +153,7 @@ export function QueuedMessageList({
           role="menu"
           aria-label="排队消息"
           data-queue-menu
-          className="wb-popover fixed z-50 w-max min-w-[9.5rem] overflow-hidden rounded-xl p-1"
+          className="wb-popover fixed z-50 w-max min-w-[9.5rem] space-y-0.5 overflow-hidden rounded-xl p-1.5"
           style={{ top: -9999, left: 8 }}
         >
           {menu.map((entry) => (
@@ -161,7 +162,7 @@ export function QueuedMessageList({
               type="button"
               role="menuitem"
               data-queue-action={entry.id}
-              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm text-wb-fg transition-colors hover:bg-wb-hover"
+              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] leading-5 text-wb-fg transition-colors hover:bg-wb-hover"
               onClick={() => pickMenu(entry)}
             >
               {entry.id === "edit" ? (

@@ -20,6 +20,7 @@ export function JumpPopover({
 }) {
   const popoverRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState("");
   const [cursor, setCursor] = useState(() => Math.max(0, files.findIndex((file) => file.path === activePath)));
   const matches = filterJumpFiles(files, query);
@@ -28,6 +29,12 @@ export function JumpPopover({
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    listRef.current
+      ?.querySelector('[role="option"][aria-selected="true"]')
+      ?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex, matches.length]);
 
   useAnchoredLayer(true, anchorRef, popoverRef, `${query}:${matches.length}`);
 
@@ -69,11 +76,16 @@ export function JumpPopover({
           }}
         />
       </div>
-      <div className="max-h-72 overflow-y-auto py-1" role="listbox" aria-label={DESKTOP_ZH.diffJump}>
+      <div
+        ref={listRef}
+        className="max-h-72 space-y-0.5 overflow-y-auto p-1.5"
+        role="listbox"
+        aria-label={DESKTOP_ZH.diffJump}
+      >
         {files.length === 0 ? (
-          <p className="px-3 py-2 text-sm text-wb-fg-3">{DESKTOP_ZH.noFileChanges}</p>
+          <p className="px-2.5 py-2 text-xs text-wb-fg-3">{DESKTOP_ZH.noFileChanges}</p>
         ) : matches.length === 0 ? (
-          <p className="px-3 py-2 text-sm text-wb-fg-3">{DESKTOP_ZH.noFileMatch}</p>
+          <p className="px-2.5 py-2 text-xs text-wb-fg-3">{DESKTOP_ZH.noFileMatch}</p>
         ) : (
           matches.map((file, index) => {
             const parts = jumpFileParts(file.path);
@@ -86,13 +98,13 @@ export function JumpPopover({
                 data-diff-jump-file={file.path}
                 data-diff-jump-current={file.path === activePath ? "true" : "false"}
                 className={cn(
-                  "flex w-full min-w-0 items-baseline gap-3 px-3 py-1.5 text-left transition-colors",
-                  index === activeIndex ? "bg-wb-active" : "hover:bg-wb-hover",
+                  "flex w-full min-w-0 items-baseline gap-2.5 rounded-lg px-2.5 py-1.5 text-left transition-colors",
+                  index === activeIndex ? "wb-menu-active" : "hover:bg-wb-hover",
                 )}
                 onMouseEnter={() => setCursor(index)}
                 onClick={() => onSelect(file.path)}
               >
-                <span className="shrink-0 text-sm font-medium text-wb-fg">{parts.name}</span>
+                <span className="shrink-0 text-[13px] font-medium text-wb-fg">{parts.name}</span>
                 {parts.dir ? <span className="min-w-0 flex-1 truncate text-xs text-wb-fg-3">{parts.dir}</span> : null}
               </button>
             );

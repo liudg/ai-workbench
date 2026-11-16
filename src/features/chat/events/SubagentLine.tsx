@@ -24,7 +24,10 @@ export function SubagentLine({ event, session }: EventViewProps) {
     <Line event={event} session={session} subagentId={event.subagent_id} state={event.status}>
       <HoverCard content={<SubagentDetails card={event} />}>
         <span className={cn("min-w-0 truncate", event.status === "failed" && "text-wb-danger")}>
-          {title}{SUBAGENT_LINE_LABELS[event.status]}
+          <span className={cn("font-medium", event.status !== "failed" && "text-wb-fg")}>{title}</span>{" "}
+          <span className={event.status === "failed" ? "text-wb-danger" : "text-wb-fg-3"}>
+            {SUBAGENT_LINE_LABELS[event.status]}
+          </span>
         </span>
       </HoverCard>
     </Line>
@@ -60,7 +63,7 @@ function Line({
           <button
             type="button"
             onClick={() => open(event.session_id, subagentId)}
-            className={cn(rowClass, "rounded transition-colors hover:text-wb-fg")}
+            className={cn(rowClass, "-ml-1.5 rounded-md px-1.5 py-0.5 transition-colors hover:bg-wb-hover hover:text-wb-fg")}
           >
             {content}
           </button>

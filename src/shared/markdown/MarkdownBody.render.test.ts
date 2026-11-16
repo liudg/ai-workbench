@@ -331,10 +331,15 @@ test("a shell block gets run and copy when a terminal is available", () => {
   assert.match(html, /pnpm tauri:dev/);
 });
 
-test("a shell block without a terminal only copies, other code stays plain", () => {
+test("a shell block without a terminal only copies, and non-shell code renders a B2-1 header bar with language and copy", () => {
   const shell = render("```sh\nls\n```");
   assert.match(shell, /aria-label="复制"/);
   assert.equal(shell.includes("在终端中运行"), false);
   const code = render("```ts\nconst a = 1;\n```", () => undefined);
   assert.equal(code.includes('data-answer-block="command"'), false);
+  assert.equal(code.includes("在终端中运行"), false);
+  assert.match(code, /class="answer-codeblock-bar"/);
+  assert.match(code, /<span class="answer-codeblock-lang">ts<\/span>/);
+  assert.match(code, /aria-label="复制"/);
+  assert.ok(code.indexOf("answer-codeblock-bar") < code.indexOf('data-answer-block="code"'));
 });

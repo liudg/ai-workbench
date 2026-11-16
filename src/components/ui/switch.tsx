@@ -18,7 +18,7 @@ export function SwitchTrack({
       className={cn(
         "relative inline-flex shrink-0 items-center rounded-full border transition-colors",
         small ? "h-4 w-7" : "h-5 w-9",
-        checked ? "border-transparent bg-wb-accent" : "border-wb-border-strong bg-wb-active",
+        checked ? "border-transparent bg-wb-accent" : "border-wb-dim/45 bg-wb-active",
         className,
       )}
     >
@@ -48,7 +48,7 @@ export const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(
       aria-checked={checked}
       disabled={disabled}
       className={cn(
-        "inline-flex shrink-0 cursor-pointer rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wb-accent-soft disabled:cursor-not-allowed disabled:opacity-50",
+        "inline-flex shrink-0 cursor-pointer rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wb-accent/65 disabled:cursor-not-allowed disabled:opacity-50",
         className,
       )}
       onClick={(event) => {

@@ -136,6 +136,10 @@ export function QuestionPopup({
     });
     if (action.type === "none") return;
     keyEvent.preventDefault();
+    if (action.type === "blur-field") {
+      cardRef.current?.focus();
+      return;
+    }
     if (action.type === "dismiss") {
       apply(dismissQuestionStep());
       return;
@@ -184,8 +188,8 @@ export function QuestionPopup({
         className="wb-modal select-text overflow-y-auto text-xs outline-none [&_button]:select-none"
         onKeyDown={onKeyDown}
       >
-        <div className="sticky top-0 z-10 flex items-center justify-between gap-2 bg-wb-popover px-3.5 pb-2 pt-3.5">
-          <p className="min-w-0 break-words text-xs font-semibold text-wb-fg">{title}</p>
+        <div className="sticky top-0 z-10 mb-1 flex items-center justify-between gap-2 border-b border-wb-border/70 bg-wb-popover px-3.5 pb-2.5 pt-3">
+          <p className="min-w-0 break-words text-[13.5px] font-semibold text-wb-fg">{title}</p>
           <div className="flex shrink-0 items-center gap-1 text-xs text-wb-fg-3">
             {questions.length > 1 ? (
               <>
@@ -228,7 +232,7 @@ export function QuestionPopup({
           </div>
         </div>
         {showBody ? (
-          <p className="break-words whitespace-pre-wrap px-3.5 text-xs font-medium text-wb-fg">
+          <p className="break-words whitespace-pre-wrap px-3.5 pt-1 text-[13.5px] font-medium leading-5 text-wb-fg">
             {question.question}
           </p>
         ) : null}
@@ -237,7 +241,7 @@ export function QuestionPopup({
             {question.description}
           </p>
         ) : null}
-        <div className="flex flex-col gap-2 px-3.5 pb-3.5 pt-1">
+        <div className="flex flex-col gap-2.5 px-3.5 pb-3.5 pt-2">
           {showOptions ? (
             <div
               className="flex flex-col gap-1"
@@ -269,10 +273,10 @@ export function QuestionPopup({
               onChange={(change) => setStep(setQuestionFreeform(step, questions, change.target.value))}
               placeholder={placeholder}
               autoComplete="off"
-              className="min-h-8 w-full bg-transparent px-2 py-1.5 text-xs text-wb-fg outline-none placeholder:text-wb-fg-3"
+              className="min-h-8 w-full rounded-lg border border-wb-border-strong bg-wb-input px-2.5 py-1.5 text-[13px] text-wb-fg outline-none transition-colors placeholder:text-wb-dim focus-visible:border-wb-accent focus-visible:ring-2 focus-visible:ring-wb-accent-soft"
             />
           ) : null}
-          <div className={cn("flex items-center gap-2", showOther && "rounded-xl px-2 py-1 focus-within:ring-1 focus-within:ring-wb-accent/40")}>
+          <div className="flex items-center gap-2">
             {showOther ? (
               <input
                 ref={freeformRef}
@@ -283,7 +287,7 @@ export function QuestionPopup({
                 onFocus={() => setStep(focusQuestionFreeform(step, questions))}
                 placeholder={placeholder}
                 autoComplete="off"
-                className="min-w-0 flex-1 bg-transparent py-1 text-xs text-wb-fg outline-none placeholder:text-wb-fg-3"
+                className="h-8 min-w-0 flex-1 rounded-lg border border-wb-border-strong bg-wb-input px-2.5 text-xs text-wb-fg outline-none transition-colors placeholder:text-wb-dim focus-visible:border-wb-accent focus-visible:ring-2 focus-visible:ring-wb-accent-soft"
               />
             ) : (
               <span className="flex-1" />
@@ -349,12 +353,12 @@ function OptionRow({
       disabled={disabled}
       data-question-option={index + 1}
       className={cn(
-        "flex w-full min-w-0 items-center gap-2.5 rounded-xl px-2.5 py-1.5 text-left text-xs transition-colors",
+        "flex w-full min-w-0 items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] leading-5 transition-colors",
         disabled
           ? "cursor-not-allowed opacity-50"
           : selected
-            ? "cursor-pointer bg-wb-active text-wb-fg"
-            : "cursor-pointer text-wb-fg-2 hover:bg-wb-hover hover:text-wb-fg",
+            ? "wb-menu-active cursor-pointer font-medium"
+            : "cursor-pointer text-wb-fg hover:bg-wb-hover",
       )}
       onMouseDown={(event) => event.preventDefault()}
       onClick={onPick}
@@ -381,7 +385,9 @@ function OptionRow({
       ) : null}
       <span className="min-w-0 flex-1 break-words">
         <span className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-          <span className={cn("text-xs", selected ? "font-medium text-wb-fg" : "text-wb-fg-2")}>{presented.label}</span>
+          <span className={cn("text-[13px] leading-5", selected ? "font-medium text-wb-fg" : "text-wb-fg")}>
+            {presented.label}
+          </span>
           {presented.recommended ? (
             <span className="rounded-md bg-wb-accent-soft px-1.5 py-0.5 text-xs text-wb-accent-ink">推荐</span>
           ) : null}

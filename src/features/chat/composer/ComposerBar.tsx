@@ -1,5 +1,5 @@
 import { useRef, type RefObject } from "react";
-import { ArrowUp, ChevronDown, Plus, Shield, Target } from "lucide-react";
+import { ArrowUp, ChevronDown, Lightbulb, Plus, Shield, Target } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useElementWidth } from "@/shared/dom/useElementWidth";
@@ -8,7 +8,6 @@ import type { PermissionMenu, SessionSandbox } from "@/types";
 import { buttonLabel, selectedPermission } from "./access";
 import { composerDensity } from "./composer-density";
 import { ModeChip } from "./ModeChip";
-import { PlanModeIndicator } from "./PlanModeIndicator";
 
 export function ComposerBar({
   plusRef,
@@ -101,7 +100,7 @@ export function ComposerBar({
           type="button"
           title={accessLabel}
           className={cn(
-            "inline-flex h-7 min-w-0 items-center justify-center gap-1 overflow-hidden rounded-lg text-xs transition-colors hover:bg-wb-hover disabled:cursor-not-allowed disabled:opacity-40",
+            "inline-flex h-7 min-w-7 items-center justify-center gap-1 overflow-hidden rounded-lg text-xs transition-colors hover:bg-wb-hover disabled:cursor-not-allowed disabled:opacity-40",
             icons ? "w-7 shrink-0 px-0" : density === "compact" ? "max-w-[7.5rem] px-2" : "max-w-[11rem] px-2",
             accessCaution ? "text-wb-warn" : "text-wb-fg-2 hover:text-wb-fg",
           )}
@@ -121,12 +120,21 @@ export function ComposerBar({
         {(planIndicator || goalChip) && (
           <span aria-hidden className="mx-0.5 h-3.5 w-px shrink-0 bg-wb-border-strong" data-mode-divider />
         )}
-        {planIndicator && <PlanModeIndicator disabled={composerLocked} onExit={onDismissPlan} />}
+        {planIndicator && (
+          <ModeChip
+            id="plan"
+            label={DESKTOP_ZH.planLabel}
+            dismissLabel={DESKTOP_ZH.planOff}
+            icon={<Lightbulb className="h-3.5 w-3.5 shrink-0" />}
+            iconOnly={icons}
+            disabled={composerLocked}
+            onDismiss={onDismissPlan}
+          />
+        )}
         {goalChip && (
           <ModeChip
             id="goal"
             label={DESKTOP_ZH.goalLabel}
-            tooltip={DESKTOP_ZH.goalTooltip}
             dismissLabel={DESKTOP_ZH.closeGoal}
             icon={<Target className="h-3.5 w-3.5 shrink-0" />}
             iconOnly={icons}

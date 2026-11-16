@@ -203,7 +203,7 @@ export function GitBranchChrome({
             role="menuitem"
             data-git-branch-create=""
             disabled={busy}
-            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm text-wb-fg transition-colors hover:bg-wb-hover disabled:opacity-60"
+            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] leading-5 text-wb-fg transition-colors hover:bg-wb-hover focus-visible:wb-menu-active focus-visible:outline-none disabled:opacity-60"
             onClick={(event) => {
               event.stopPropagation();
               setCreateError(null);

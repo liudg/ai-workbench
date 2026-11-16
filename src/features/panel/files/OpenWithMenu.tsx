@@ -42,7 +42,7 @@ export function OpenWithMenu({
       id={menuId}
       role="menu"
       data-open-with-menu
-      className="wb-popover fixed z-[80] min-w-[168px] rounded-xl py-1 text-wb-fg"
+      className="wb-popover fixed z-[80] min-w-[168px] space-y-0.5 rounded-xl p-1.5 text-wb-fg"
     >
       {items.map((item) => (
         <button
@@ -50,7 +50,7 @@ export function OpenWithMenu({
           type="button"
           role="menuitem"
           data-open-with-action={item.id}
-          className="flex w-full items-center px-3 py-1.5 text-left text-[13px] transition-colors hover:bg-wb-hover"
+          className="flex w-full items-center rounded-lg px-2.5 py-1.5 text-left text-[13px] leading-5 transition-colors hover:bg-wb-hover"
           onClick={() => onSelect(item.id)}
         >
           {item.label}

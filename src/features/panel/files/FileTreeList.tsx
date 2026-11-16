@@ -1,5 +1,5 @@
 import type React from "react";
-import { ChevronDown, ChevronRight, File } from "lucide-react";
+import { ChevronDown, ChevronRight, File, Folder, FolderOpen } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { treePathLabel, type FileTreeFile, type FileTreeNode } from "./file-tree";
@@ -26,12 +26,11 @@ export function FileTreeList<T extends FileTreeFile>({
   onContextMenu?: (file: T, event: React.MouseEvent) => void;
 }) {
   return (
-    <ul>
+    <ul className="space-y-0.5">
       {nodes.map((node) => (
         <TreeRows
           key={node.id}
           node={node}
-          depth={0}
           collapsed={collapsed}
           activePath={activePath}
           rowAttr={rowAttr}
@@ -52,9 +51,14 @@ function fileStatus(file: FileTreeFile): string {
   return typeof status === "string" ? status : "";
 }
 
+function fileStatusClass(status: string): string {
+  if (status === "A") return "text-wb-diff-add-fg";
+  if (status === "D") return "text-wb-diff-del-fg";
+  return "text-wb-warn";
+}
+
 function TreeRows<T extends FileTreeFile>({
   node,
-  depth,
   collapsed,
   activePath,
   rowAttr,
@@ -65,7 +69,6 @@ function TreeRows<T extends FileTreeFile>({
   onContextMenu,
 }: {
   node: FileTreeNode<T>;
-  depth: number;
   collapsed: ReadonlySet<string>;
   activePath: string;
   rowAttr: "data-diff-file" | "data-session-file" | "data-workspace-file";
@@ -75,9 +78,9 @@ function TreeRows<T extends FileTreeFile>({
   onKeepOpen?: (file: T) => void;
   onContextMenu?: (file: T, event: React.MouseEvent) => void;
 }) {
-  const pad = { paddingLeft: 4 + depth * 12 };
   if (node.kind === "dir") {
     const open = !collapsed.has(node.id);
+    const FolderIcon = open ? FolderOpen : Folder;
     return (
       <li>
         <button
@@ -85,22 +88,26 @@ function TreeRows<T extends FileTreeFile>({
           data-file-dir={node.path}
           title={node.path}
           aria-expanded={open}
-          style={pad}
-          className="flex w-full min-w-0 items-center gap-1 rounded-md py-1 text-left text-[12px] text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
+          className="flex w-full min-w-0 items-center gap-1 rounded-md px-1.5 py-1 text-left text-[12px] text-wb-fg-2 transition-colors hover:bg-wb-hover hover:text-wb-fg"
           onClick={() => onToggle(node.id)}
         >
-          {open ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
-          <span data-dir-path={node.path} className="min-w-0 flex-1 truncate text-xs">
+          {open ? <ChevronDown className="h-3 w-3 shrink-0 text-wb-fg-3" /> : <ChevronRight className="h-3 w-3 shrink-0 text-wb-fg-3" />}
+          <FolderIcon className="h-3.5 w-3.5 shrink-0 text-wb-fg-3" strokeWidth={1.75} aria-hidden="true" />
+          <span data-dir-path={node.path} className="min-w-0 flex-1 truncate text-xs font-medium text-wb-fg">
             {treePathLabel(node.name)}
           </span>
+          {showStats && node.count > 0 ? (
+            <span className="shrink-0 px-1 text-xs tabular-nums text-wb-group-fg">
+              {node.count}
+            </span>
+          ) : null}
         </button>
         {open ? (
-          <ul>
+          <ul className="ml-2.5 mt-0.5 space-y-0.5 border-l border-wb-border-strong pl-2">
             {node.children.map((child) => (
               <TreeRows
                 key={child.id}
                 node={child}
-                depth={depth + 1}
                 collapsed={collapsed}
                 activePath={activePath}
                 rowAttr={rowAttr}
@@ -119,17 +126,17 @@ function TreeRows<T extends FileTreeFile>({
   const file = node.file;
   if (!file) return null;
   const active = file.path === activePath;
+  const status = fileStatus(file);
   return (
     <li>
       <button
         type="button"
         {...{ [rowAttr]: file.path }}
-        {...(fileStatus(file) ? { "data-file-status": fileStatus(file) } : {})}
+        {...(status ? { "data-file-status": status } : {})}
         title={file.path}
-        style={pad}
         className={cn(
-          "flex w-full min-w-0 items-center gap-1.5 rounded-md pr-2 py-1 text-left transition-colors",
-          active ? "bg-wb-active" : "hover:bg-wb-hover",
+          "flex w-full min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-left transition-colors",
+          active ? "wb-menu-active font-medium" : "hover:bg-wb-hover",
         )}
         onClick={() => onSelect(file)}
         onDoubleClick={onKeepOpen ? () => onKeepOpen(file) : undefined}
@@ -142,8 +149,13 @@ function TreeRows<T extends FileTreeFile>({
             : undefined
         }
       >
-        <File className="h-3.5 w-3.5 shrink-0 text-wb-fg-3" />
+        <File className={cn("h-3.5 w-3.5 shrink-0", active ? "text-wb-accent-ink" : "text-wb-fg-3")} />
         <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-wb-fg">{node.name}</span>
+        {showStats && status ? (
+          <span className={cn("shrink-0 font-mono text-xs font-semibold", fileStatusClass(status))}>
+            {status}
+          </span>
+        ) : null}
         {showStats && file.added > 0 ? (
           <span className="shrink-0 font-mono text-xs tabular-nums text-wb-diff-add-fg">+{file.added}</span>
         ) : null}

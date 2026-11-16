@@ -26,13 +26,31 @@ export function HoverCard({ content, children }: { content: ReactNode; children:
       if (!rect) return;
       const left = Math.max(8, Math.min(rect.left + 24, window.innerWidth - CARD_WIDTH - 8));
       const above = rect.bottom + 180 > window.innerHeight;
-      setPlace({ left, top: above ? rect.top - 4 : rect.bottom + 4, above });
+      setPlace({
+        left,
+        top: above ? Math.max(8, rect.top - 4) : Math.min(window.innerHeight - 48, rect.bottom + 4),
+        above,
+      });
     }, OPEN_DELAY_MS);
   };
   const hide = () => {
     clear();
     setPlace(null);
   };
+
+  useEffect(() => {
+    if (!place) return;
+    const dismiss = () => setPlace(null);
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") dismiss();
+    };
+    window.addEventListener("scroll", dismiss, true);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("scroll", dismiss, true);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [place]);
 
   return (
     <div ref={anchorRef} onMouseEnter={show} onMouseLeave={hide} onFocus={show} onBlur={hide} className="min-w-0">
@@ -42,7 +60,7 @@ export function HoverCard({ content, children }: { content: ReactNode; children:
             <div
               role="tooltip"
               data-hover-card
-              className="wb-popover pointer-events-none fixed z-50 px-3 py-2.5 text-xs leading-5 text-wb-fg-2"
+              className="wb-popover pointer-events-none fixed z-50 max-h-72 overflow-y-auto px-3 py-2.5 text-xs leading-5 text-wb-fg-2"
               style={{
                 left: place.left,
                 width: CARD_WIDTH,

@@ -17,7 +17,7 @@ export function projectMenuItems(input: {
   const items: ProjectMenuEntry[] = [
     { type: "action", id: "pin", label: input.pinned ? "取消置顶" : "置顶" },
     { type: "action", id: "edit", label: "编辑" },
-    { type: "action", id: "import", label: "导入 CLI 会话" },
+    { type: "action", id: "import", label: "导入历史对话" },
     { type: "separator" },
   ];
   if (hasLocalProjectPath(input.path)) {

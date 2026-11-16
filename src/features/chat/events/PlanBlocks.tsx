@@ -19,19 +19,21 @@ export function PlanSteps({ event }: EventViewProps) {
   const explanation = event.explanation ?? "";
   return (
     <div className="event-in min-w-0 px-6 py-2">
-      <div className="min-w-0 rounded-xl border border-wb-border bg-wb-card p-3.5">
-        <p className="text-xs font-medium text-wb-fg-2">{DESKTOP_ZH.planTitle}</p>
-        {explanation ? (
-          <p className="mt-1 break-words whitespace-pre-wrap text-sm leading-6 text-wb-fg-2">{explanation}</p>
-        ) : null}
-        <ol className="mt-2 space-y-1.5">
-          {event.steps.map((step, index) => (
-            <li key={`${index}-${step.step}`} className="flex min-w-0 items-start gap-2 text-sm text-wb-fg">
-              <PlanMark status={step.status} />
-              <span className="min-w-0 break-words whitespace-pre-wrap">{step.step}</span>
-            </li>
-          ))}
-        </ol>
+      <div className="min-w-0 pl-6">
+        <div className="min-w-0 rounded-xl border border-wb-border bg-wb-card p-3.5">
+          <p className="wb-group-header">{DESKTOP_ZH.planTitle}</p>
+          {explanation ? (
+            <p className="mt-1.5 break-words whitespace-pre-wrap text-sm leading-6 text-wb-fg-2">{explanation}</p>
+          ) : null}
+          <ol className="mt-2 space-y-1.5">
+            {event.steps.map((step, index) => (
+              <li key={`${index}-${step.step}`} className="flex min-w-0 items-start gap-2 text-sm text-wb-fg">
+                <PlanMark status={step.status} />
+                <span className="min-w-0 break-words whitespace-pre-wrap">{step.step}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
       </div>
     </div>
   );

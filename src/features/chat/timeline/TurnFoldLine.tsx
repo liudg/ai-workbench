@@ -30,7 +30,7 @@ export function TurnFoldLine({
         aria-expanded={expanded}
         title={summary}
         onClick={onToggle}
-        className="group/fold inline-flex max-w-full min-w-0 flex-nowrap items-center gap-2 rounded py-0.5 text-left"
+        className="group/fold -ml-1.5 inline-flex max-w-full min-w-0 flex-nowrap items-center gap-2 rounded-md px-1.5 py-0.5 text-left transition-colors hover:bg-wb-hover"
       >
         {icon}
         <span className="min-w-0 truncate text-[13px] text-wb-fg-2 transition-colors group-hover/fold:text-wb-fg">

@@ -67,8 +67,3 @@ export function isRelativePath(path: string): boolean {
 export function pathSegments(path: string): string[] {
   return path.replace(/\\/g, "/").split("/").filter(Boolean);
 }
-
-export function codeDisplayLines(text: string): Inline[][] {
-  if (!text) return [];
-  return text.split("\n").map((line) => splitTextPaths(line));
-}
