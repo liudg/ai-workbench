@@ -49,6 +49,19 @@ export function downloadPercent(received: number, total: number | null): number 
   return Math.min(100, Math.round((received / total) * 100));
 }
 
+export function downloadProgress(received: number, total: number | null) {
+  const percent = downloadPercent(received, total);
+  return {
+    width: `${percent ?? 0}%`,
+    text:
+      percent !== null
+        ? `${formatUpdateSize(received)} / ${formatUpdateSize(total!)}`
+        : received > 0
+          ? `已下载 ${formatUpdateSize(received)}`
+          : "准备下载…",
+  };
+}
+
 export interface UpdateState {
   phase: UpdatePhase;
   dialogOpen: boolean;

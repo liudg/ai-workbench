@@ -8,8 +8,7 @@ import {
   closeUpdateDialog,
   countRunningSessions,
   dismissUpdate,
-  downloadPercent,
-  formatUpdateSize,
+  downloadProgress,
   openOrCheckUpdates,
   openUpdateDialog,
   recheckUpdates,
@@ -51,15 +50,7 @@ export function useUpdateDialog() {
 
   const progress =
     update.kind === "downloading"
-      ? {
-          width:
-            downloadPercent(update.received, update.total) !== null
-              ? `${downloadPercent(update.received, update.total)}%`
-              : "40%",
-          text: update.total
-            ? `${formatUpdateSize(update.received)} / ${formatUpdateSize(update.total)}`
-            : formatUpdateSize(update.received),
-        }
+      ? downloadProgress(update.received, update.total)
       : null;
 
   return {
