@@ -190,8 +190,10 @@ export function useNewComposer({
         },
       },
 
-      rememberText: (text) => {
-        if (readDraft(key).text !== text) patch({ text });
+      rememberText: (text, expected) => {
+        const current = readDraft(key).text;
+        if (expected !== undefined && current !== expected) return;
+        if (current !== text) patch({ text });
       },
       rememberFileRefs: (fileRefs) => patch({ fileRefs }),
       send: async (text, images) => {

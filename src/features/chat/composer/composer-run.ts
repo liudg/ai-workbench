@@ -258,9 +258,17 @@ export function runComposerSubmit(run: ComposerRun, options?: { now?: boolean })
     return;
   }
   if (decision.type === "answer") {
-    run.setText("");
-    if (clearSnippets) run.host.clearTextSnippets();
-    void run.host.answerPrompt(decision.promptId, { type: "single", value: decision.text });
+    void run.host.answerPrompt(decision.promptId, { type: "single", value: decision.text }).then((ok) => {
+      if (!ok) {
+        release();
+        return;
+      }
+      run.host.rememberText("", run.text);
+      if (run.textareaRef.current) clearIfUnchanged(run);
+      if (clearSnippets) {
+        for (const snippet of snippets) run.host.removeTextSnippet(snippet.id);
+      }
+    });
     run.textareaRef.current?.focus();
     return;
   }

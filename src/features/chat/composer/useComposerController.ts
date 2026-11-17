@@ -5,6 +5,7 @@ import {
   useState,
   type ClipboardEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type SetStateAction,
 } from "react";
 
 import { usePanelOptional } from "@/features/panel";
@@ -52,7 +53,21 @@ import { releaseSubmitOnEdit, submitFingerprint, type SubmitFlight } from "./sub
 import { useReviewDismiss } from "./useReviewDismiss";
 
 export function useComposerController(host: ComposerHost, session: Session, events: SessionEvent[]) {
-  const [text, setText] = useState(() => host.initialText);
+  const [text, setLocalText] = useState(() => host.initialText);
+  const textRef = useRef(text);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const remember = host.rememberText;
+  const setText = useCallback((value: SetStateAction<string>) => {
+    if (!textareaRef.current) return;
+    const next = typeof value === "function" ? value(textRef.current) : value;
+    textRef.current = next;
+    remember(next);
+    setLocalText(next);
+  }, [remember]);
+  useEffect(() => {
+    textRef.current = host.initialText;
+    setLocalText(host.initialText);
+  }, [host.initialText]);
   const [fileRefs, setFileRefs] = useState<FileRef[]>(() => liveFileRefs(host.initialText, host.initialFileRefs));
   const [caret, setCaret] = useState(0);
   const [menu, setMenu] = useState<null | "access" | "model" | "attach">(null);
@@ -63,7 +78,6 @@ export function useComposerController(host: ComposerHost, session: Session, even
   const [editingId, setEditingId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const submitFlight = useRef<SubmitFlight | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const reviewRootRef = useRef<HTMLDivElement>(null);
   const accessRef = useRef<HTMLButtonElement>(null);
   const modelRef = useRef<HTMLButtonElement>(null);
@@ -169,13 +183,6 @@ export function useComposerController(host: ComposerHost, session: Session, even
       }),
     );
   }, [host.files.length, host.snippets.length, editingId, session.id, text]);
-
-  // 没发出去的字交给宿主保存，切会话、重启都在。
-  const remember = host.rememberText;
-  useEffect(() => {
-    remember(text);
-    // 同一会话里宿主每次渲染都是新的，只在字变了时写。
-  }, [session.id, text]);
 
   // 框里删掉的引用不再带着；还在的和文字一起存。
   const live = liveFileRefs(text, fileRefs);

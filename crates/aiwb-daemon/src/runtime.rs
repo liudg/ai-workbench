@@ -25,6 +25,7 @@ use crate::hub::Hub;
 
 mod catalogs;
 mod handoff;
+mod prompts;
 mod startup;
 mod worktrees;
 
@@ -167,6 +168,7 @@ impl Runtimes {
     pub(crate) fn settle_interrupted(&self) -> RuntimeResult<()> {
         let sessions = self.store.list_sessions().map_err(|e| e.to_string())?;
         for session in sessions {
+            self.expire_prompts(&session.id, None)?;
             let interrupted = matches!(session.status, SessionStatus::Starting | SessionStatus::Running | SessionStatus::NeedsInput);
             let working = self
                 .store
@@ -713,6 +715,7 @@ impl Runtimes {
             .map_err(store_err)?
             .ok_or_else(|| "会话不存在".to_string())?;
         let cwd = self.workdir_of_task(&session.task_id)?;
+        self.expire_prompts(session_id, None)?;
         let side_of = if self.store.is_side_session(session_id).map_err(store_err)? {
             Some(self.side_parent(&session)?)
         } else {
@@ -1206,6 +1209,9 @@ impl Runtimes {
                     self.remove_side(&session_id).await?;
                     released += 1;
                 }
+                continue;
+            }
+            if !self.pending_prompt_ids(&session_id)?.is_empty() {
                 continue;
             }
             let resumable = session.native_id.as_deref().is_some_and(|id| !id.is_empty());

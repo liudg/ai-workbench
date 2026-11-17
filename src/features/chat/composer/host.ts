@@ -110,7 +110,8 @@ export interface ComposerHost {
   worktree: WorktreeLine | null;
   agentChoice: AgentChoice | null;
 
-  rememberText(text: string): void;
+  /** 提供 expected 时，仅在保存的文字仍相同时更新。 */
+  rememberText(text: string, expected?: string): void;
   rememberFileRefs(refs: FileRef[]): void;
   /** 发出一条消息。`now` 时回合进行中也直接引导进去。失败时返回 false，输入还在。 */
   send(text: string, images: string[], now: boolean): Promise<boolean>;

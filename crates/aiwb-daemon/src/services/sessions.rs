@@ -146,12 +146,9 @@ impl Services {
     }
 
     pub(crate) async fn answer(&self, params: Answer) -> ServiceResult<()> {
-        // 提问只活在发它的那个进程里，进程没了重新接上也答不了：不重试。
-        let handle = self.runtimes.handle(&params.session_id).await?;
-        handle
-            .answer_prompt(&params.prompt_id, params.answer)
+        self.runtimes
+            .answer_prompt(&params.session_id, &params.prompt_id, params.answer)
             .await
-            .map_err(|e| e.to_string())
     }
 
     pub(crate) async fn update_queued(&self, params: UpdateQueued) -> ServiceResult<()> {

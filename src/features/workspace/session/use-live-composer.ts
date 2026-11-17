@@ -210,8 +210,10 @@ export function useLiveComposer({
             : null,
       },
 
-      rememberText: (text) => {
-        if (readDraft(sessionId).text !== text) patchDraft(sessionId, { text });
+      rememberText: (text, expected) => {
+        const current = readDraft(sessionId).text;
+        if (expected !== undefined && current !== expected) return;
+        if (current !== text) patchDraft(sessionId, { text });
       },
       rememberFileRefs: (fileRefs) => patchDraft(sessionId, { fileRefs }),
       send: (text, images, now) =>
