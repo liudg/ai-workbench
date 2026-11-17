@@ -12,7 +12,6 @@ import { agentIdentity } from "@/shared/agent/identity";
 import { showError } from "@/shared/shell/error-banner";
 import { openNewSession, openTask, type ProjectScope } from "@/shared/shell/navigation";
 import type {
-  AgentCatalog,
   AgentInstallation,
   AgentKind,
   AgentProfile,
@@ -49,34 +48,49 @@ export function draftAgent(draft: ComposerDraft, agents: AgentInstallation[] | n
   return usable[0] ?? null;
 }
 
+function initialAgentState(scope: string, agent: AgentKind | null) {
+  const peeked = agent ? agentsApi.peekCatalog(agent) : undefined;
+  return {
+    scope,
+    catalog: peeked && (!peeked.agent || peeked.agent === agent) ? peeked : undefined,
+    missing: false,
+    permissionMenu: null as PermissionMenu | null,
+  };
+}
+
 function useAgentCatalog(agent: AgentKind | null, projectId: ProjectScope) {
-  const [catalog, setCatalog] = useState<AgentCatalog | undefined>(undefined);
-  const [missing, setMissing] = useState(false);
-  const [permissionMenu, setPermissionMenu] = useState<PermissionMenu | null>(null);
+  const scope = `${agent ?? ""}\0${projectId ?? ""}`;
+  const [state, setState] = useState(() => initialAgentState(scope, agent));
   useEffect(() => {
-    setCatalog(undefined);
-    setMissing(false);
-    setPermissionMenu(null);
+    const base = initialAgentState(scope, agent);
+    setState(base);
     if (!agent) return;
     let cancelled = false;
+    const patch = (next: Partial<typeof base>) =>
+      setState((prev) => (prev.scope === scope ? { ...prev, ...next } : { ...base, ...next }));
     agentsApi
       .loadCatalog(agent, projectId, (next) => {
-        if (!cancelled) setCatalog(next);
+        if (!cancelled && (!next.agent || next.agent === agent)) patch({ catalog: next, missing: false });
       })
       .catch(() => {
-        if (!cancelled) setMissing(true);
+        if (!cancelled && !base.catalog) patch({ missing: true });
       });
     void agentsApi.draftPermissionMenu(agent).then(
       (menu) => {
-        if (!cancelled) setPermissionMenu(menu);
+        if (!cancelled) patch({ permissionMenu: menu });
       },
       () => {},
     );
     return () => {
       cancelled = true;
     };
-  }, [agent, projectId]);
-  return { catalog, permissionMenu, notice: missing ? NO_CATALOG : null };
+  }, [agent, projectId, scope]);
+  const active = state.scope === scope ? state : initialAgentState(scope, agent);
+  return {
+    catalog: active.catalog,
+    permissionMenu: active.permissionMenu,
+    notice: active.missing ? NO_CATALOG : null,
+  };
 }
 
 function useHasCommit(projectId: ProjectScope) {

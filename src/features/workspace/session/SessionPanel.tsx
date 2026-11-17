@@ -51,6 +51,7 @@ export function SessionPanel({
   events,
   profile,
   modelLabel = null,
+  modelLoading = false,
   sideChat = null,
   subagents = null,
   children,
@@ -62,6 +63,8 @@ export function SessionPanel({
   profile: AgentProfile | undefined;
   /** 作曲栏当前选中模型的显示名。 */
   modelLabel?: string | null;
+  /** 当前模型还在加载时为 true。 */
+  modelLoading?: boolean;
   /** 能开侧边聊天时给出它的标签目标。 */
   sideChat?: (() => OpenTarget) | null;
   /** 子智能体面板的标签目标。 */
@@ -84,6 +87,7 @@ export function SessionPanel({
       sessionTitle={session.title}
       agent={session.agent}
       modelLabel={modelLabel}
+      modelLoading={modelLoading}
       events={events}
       usage={usage}
       sideChat={sideChat}

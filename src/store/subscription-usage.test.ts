@@ -51,6 +51,19 @@ test("windows narrow to the group that lists the current model", () => {
   assert.equal(ids("Unlisted Model").length, 3);
 });
 
+test("model-grouped windows wait while the model catalog is still loading", () => {
+  const windows = [
+    window({ id: "gemini-weekly", remaining_percent: 45, models: ["Gemini 4 Hydrogen"] }),
+    window({ id: "3p-weekly", remaining_percent: 0, models: ["Claude Opus 5.5"] }),
+  ];
+  assert.deepEqual(windowsForModel(windows, undefined), []);
+  assert.equal(pickTightestWindow(windowsForModel(windows, "Gemini 4 Hydrogen"))?.id, "gemini-weekly");
+  assert.equal(pickTightestWindow(windowsForModel(windows, null))?.id, "3p-weekly");
+
+  const ungrouped = [window({ id: "weekly", remaining_percent: 45 }), window({ id: "5h", remaining_percent: 10 })];
+  assert.equal(pickTightestWindow(windowsForModel(ungrouped, undefined))?.id, "5h");
+});
+
 test("headline shows the wait, an imminent reset, or percent only", () => {
   const now = 1_700_000_000_000;
   assert.equal(

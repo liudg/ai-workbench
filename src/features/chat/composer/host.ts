@@ -92,6 +92,8 @@ export interface ComposerHost {
   /** 框里 `@文件名` 对应的完整路径，和文字一起存。 */
   initialFileRefs: FileRef[];
   catalog: AgentCatalog | undefined;
+  /** 建好的会话里，会话自己的模型目录是否已经返回或失败。 */
+  catalogSettled?: boolean;
   catalogNotice: string | null;
   profile: AgentProfile | undefined;
   tuning: SessionTuning | undefined;

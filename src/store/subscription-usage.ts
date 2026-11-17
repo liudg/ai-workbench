@@ -31,12 +31,15 @@ function coversModel(name: string, label: string): boolean {
 
 /**
  * 当前模型用的窗口：没写模型的窗口算所有模型，写了的要列着当前模型。
- * 不知道当前模型，或者写了模型的窗口都没列它时，不缩小范围。
+ * `undefined` 表示模型还在读取，有按模型分的窗口时先等结果；`null` 或没列着当前模型时不缩小范围。
  */
 export function windowsForModel(
   windows: readonly SubscriptionWindow[],
   modelLabel: string | null | undefined,
 ): readonly SubscriptionWindow[] {
+  if (modelLabel === undefined) {
+    return windows.some((window) => (window.models?.length ?? 0) > 0) ? [] : windows;
+  }
   const label = modelLabel?.trim();
   if (!label) return windows;
   const covers = (window: SubscriptionWindow) => window.models?.some((name) => coversModel(name, label)) ?? false;

@@ -73,7 +73,7 @@ export function useLiveComposer({
   canOpenSide?: boolean;
 }): ComposerHost {
   const sessionId = session.id;
-  const { catalog, notice, permissionMenu } = useSessionCatalog(sessionId, taskSession.agent);
+  const { catalog, catalogSettled, notice, permissionMenu } = useSessionCatalog(sessionId, taskSession.agent);
   const options = taskSession.options;
   const profile = profiles[taskSession.agent];
   const agents = useSessionAgents();
@@ -141,6 +141,7 @@ export function useLiveComposer({
       initialText: readDraft(sessionId).text,
       initialFileRefs: readDraft(sessionId).fileRefs ?? [],
       catalog,
+      catalogSettled,
       catalogNotice: notice,
       profile,
       tuning: toTuning(options),
@@ -272,6 +273,7 @@ export function useLiveComposer({
   }, [
     agents,
     catalog,
+    catalogSettled,
     draft,
     notice,
     options,

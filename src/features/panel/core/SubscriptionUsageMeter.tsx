@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { cn } from "@/lib/utils";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
@@ -18,6 +18,10 @@ const TONE_CLASS = {
 export function SubscriptionUsageMeter({ agent, modelLabel }: { agent: AgentKind | null; modelLabel: string | null }) {
   const { headline, windows, now, tone, remaining, refresh } = useSubscriptionUsage(agent, modelLabel);
   const [open, setOpen] = useState(false);
+  const visible = Boolean(headline && remaining !== null);
+  useEffect(() => {
+    if (!visible) setOpen(false);
+  }, [visible]);
   if (!headline || remaining === null) return null;
   const rows = windows.flatMap((window) => {
     const line = formatSubscriptionHeadline(window, now);

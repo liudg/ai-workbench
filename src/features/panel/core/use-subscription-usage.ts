@@ -23,7 +23,7 @@ const MAX_TIMEOUT_MS = 2_147_483_647;
 
 /** 顶栏显示当前模型所在窗口里最紧的一个；悬停仍列出全部窗口。 */
 export function useSubscriptionUsage(agent: AgentKind | null, modelLabel: string | null) {
-  const { subscriptionSupported: supported, status, data } = usePanel();
+  const { subscriptionSupported: supported, modelLoading, status, data } = usePanel();
   const fetch = data.subscriptionUsage;
   useSyncExternalStore(subscribeSubscriptionUsage, subscriptionUsageRevision, subscriptionUsageRevision);
   const usage = agent && supported ? peekSubscriptionUsage(agent) : undefined;
@@ -47,7 +47,7 @@ export function useSubscriptionUsage(agent: AgentKind | null, modelLabel: string
     if (shouldRefreshAfterStatus(before, status)) void refreshSubscriptionUsage(agent, fetch);
   }, [agent, fetch, supported, status]);
 
-  const tight = usage ? pickTightestWindow(windowsForModel(usage.windows, modelLabel)) : null;
+  const tight = usage ? pickTightestWindow(windowsForModel(usage.windows, modelLoading ? undefined : modelLabel)) : null;
   const resetAt = typeof tight?.resets_at_ms === "number" ? tight.resets_at_ms : null;
   const refreshedReset = useRef<number | null>(null);
   useEffect(() => {

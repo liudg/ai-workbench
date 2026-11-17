@@ -66,6 +66,31 @@ export function pickModel(catalog: AgentCatalog | undefined, tuning: SessionTuni
   return catalog?.models.find((item) => item.is_default);
 }
 
+/**
+ * 面板顶栏订阅额度用的模型状态。
+ * 显式选过模型时，只要任意目录对得上就立刻给出显示名；没选过模型的已有会话等会话自己的目录落定，避免先拿别的会话留下的默认模型顶上。
+ */
+export function composerModelStatus(composer: {
+  catalog: AgentCatalog | undefined;
+  catalogSettled?: boolean;
+  catalogNotice: string | null;
+  tuning: SessionTuning | undefined;
+}): { modelLabel: string | null; modelLoading: boolean } {
+  const { catalog, catalogNotice, tuning } = composer;
+  const settled = composer.catalogSettled ?? (catalog !== undefined || Boolean(catalogNotice));
+  if (tuning?.model) {
+    const tuned = modelInCatalog(catalog, tuning.model);
+    if (tuned) return { modelLabel: tuned.label, modelLoading: false };
+    if (!settled) return { modelLabel: null, modelLoading: true };
+  } else if (!settled) {
+    return { modelLabel: null, modelLoading: true };
+  }
+  return {
+    modelLabel: pickModel(catalog, tuning)?.label ?? null,
+    modelLoading: false,
+  };
+}
+
 function effortAllowed(model: AgentModelOption | undefined, effort: string | null | undefined) {
   const id = effort?.trim();
   if (!id) return undefined;

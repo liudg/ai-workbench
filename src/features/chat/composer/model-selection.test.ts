@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import type { AgentCatalog, AgentModelOption } from "../../../types/index.ts";
-import { modelInCatalog, pickModel } from "./model-selection.ts";
+import { composerModelStatus, modelInCatalog, pickModel } from "./model-selection.ts";
 
 function model(patch: Partial<AgentModelOption> & Pick<AgentModelOption, "id" | "label">): AgentModelOption {
   return {
@@ -72,4 +72,54 @@ test("a configured model matches this catalog ignoring case and does not guess a
   const foreign = catalog([model({ id: "claude-sonnet", label: "Sonnet", is_default: true })]);
   foreign.configured_model = "gpt-6.1-sol";
   assert.equal(pickModel(foreign, { model: "gpt-6.1-sol", effort: "high" })?.id, "claude-sonnet");
+});
+
+test("composerModelStatus resolves tuned models from warm catalogs but waits on untuned sessions until settled", () => {
+  const shared = catalog([
+    model({ id: "claude-opus-5-5", label: "Claude Opus 5.5", is_default: true }),
+    model({ id: "gemini-4-hydrogen", label: "Gemini 4 Hydrogen" }),
+  ]);
+
+  // Tuned session resolves immediately from an agent-wide catalog before session catalog settles.
+  assert.deepEqual(
+    composerModelStatus({
+      catalog: shared,
+      catalogSettled: false,
+      catalogNotice: null,
+      tuning: { model: "gemini-4-hydrogen", effort: "high" },
+    }),
+    { modelLabel: "Gemini 4 Hydrogen", modelLoading: false },
+  );
+
+  // Untuned session does not guess another session's default before its own catalog settles.
+  assert.deepEqual(
+    composerModelStatus({
+      catalog: shared,
+      catalogSettled: false,
+      catalogNotice: null,
+      tuning: undefined,
+    }),
+    { modelLabel: null, modelLoading: true },
+  );
+
+  // Once the session's own catalog settles with its thread_model, untuned session resolves accurately.
+  assert.deepEqual(
+    composerModelStatus({
+      catalog: catalog(shared.models, "gemini-4-hydrogen"),
+      catalogSettled: true,
+      catalogNotice: null,
+      tuning: undefined,
+    }),
+    { modelLabel: "Gemini 4 Hydrogen", modelLoading: false },
+  );
+
+  // Draft / new session settles as soon as catalog or notice is present.
+  assert.deepEqual(
+    composerModelStatus({ catalog: undefined, catalogNotice: null, tuning: undefined }),
+    { modelLabel: null, modelLoading: true },
+  );
+  assert.deepEqual(
+    composerModelStatus({ catalog: undefined, catalogNotice: "暂无模型列表", tuning: undefined }),
+    { modelLabel: null, modelLoading: false },
+  );
 });
