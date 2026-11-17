@@ -1,9 +1,10 @@
 const SUMMARY_LIMIT = 120;
 const PLACEHOLDERS = new Set(["思考中…", "思考中..."]);
 
-/** 整段思考只有协议占位词，没有实际推理内容。 */
-export function isPlaceholderThinking(text: string): boolean {
-  return PLACEHOLDERS.has(text.trim());
+/** 思考里有实际推理正文：不是空白，也不只是协议占位词（「思考中…」）。 */
+export function hasThinkingBody(text: string): boolean {
+  const trimmed = text.trim();
+  return trimmed !== "" && !PLACEHOLDERS.has(trimmed);
 }
 
 /**

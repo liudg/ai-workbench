@@ -63,7 +63,10 @@ const liveEvents: SessionEvent[] = [
     phase: "commentary",
     text: "已找到装备对比组件和普通详情入口。当前替换按钮使用固定控制。详情预制体已有本地修改，我会保留这些内容。",
   }),
-  event("activity-live", "think", 5, 5_000, { kind: "thinking", text: "思考中…" }),
+  event("activity-live", "think", 5, 5_000, {
+    kind: "thinking",
+    text: "**核对替换按钮**\n先确认详情预制体里的本地修改，再决定替换按钮挂在哪一层。",
+  }),
   event("activity-live", "status", 6, 5_100, { kind: "status-changed", status: "running" }),
 ];
 

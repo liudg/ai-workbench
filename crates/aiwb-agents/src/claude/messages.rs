@@ -289,7 +289,8 @@ pub fn permission_events(request_id: &str, request: &Value) -> Option<(Vec<Sessi
         });
         return Some((events, PermissionKind::ExitPlan { input }));
     }
-    let (header, question, body, body_kind) = claude_approval_copy(tool_name, &summary);
+    let detail = approval_detail(tool_name, &input, summary);
+    let (header, question, body, body_kind) = claude_approval_copy(tool_name, &detail);
     let events = vec![SessionEventBody::Prompt {
         prompt_id: request_id.to_string(),
         prompt_kind: PromptKind::Approval,
@@ -1230,6 +1231,21 @@ fn claude_approval_copy(tool_name: &str, summary: &str) -> (String, String, Stri
     (header, question, body, body_kind.to_string())
 }
 
+/// 授权卡片的正文。Grep、Glob 的搜索位置决定会不会读到项目外，和 pattern 一起给出。
+fn approval_detail(tool_name: &str, input: &Value, summary: String) -> String {
+    if !matches!(tool_name, "Grep" | "Glob") {
+        return summary;
+    }
+    match (text_field(input, "pattern"), text_field(input, "path")) {
+        (Some(pattern), Some(path)) => format!("{pattern}\n位置：{path}"),
+        _ => summary,
+    }
+}
+
+fn text_field<'a>(input: &'a Value, key: &str) -> Option<&'a str> {
+    input.get(key).and_then(Value::as_str).filter(|text| !text.trim().is_empty())
+}
+
 fn tool_summary(reported: &str, input: &Value) -> String {
     match reported {
         "Bash" | "PowerShell" => input
@@ -1246,11 +1262,8 @@ fn tool_summary(reported: &str, input: &Value) -> String {
             .filter(|text| !text.trim().is_empty())
             .unwrap_or(reported)
             .to_string(),
-        "Grep" | "Glob" => input
-            .get("pattern")
-            .or_else(|| input.get("path"))
-            .and_then(Value::as_str)
-            .filter(|text| !text.trim().is_empty())
+        "Grep" | "Glob" => text_field(input, "pattern")
+            .or_else(|| text_field(input, "path"))
             .unwrap_or(reported)
             .to_string(),
         "WebFetch" => input

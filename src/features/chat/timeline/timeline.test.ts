@@ -600,3 +600,16 @@ test("persisted initial message remains visible during startup and after cancell
   assert.equal(stopped.filter((node) => node.type === "event" && node.event.id === "first").length, 1);
   assert.ok(!stopped.some((node) => node.type === "live"));
 });
+
+test("a settled turn whose only process is placeholder thinking renders flat without a fold line", () => {
+  const nodes = buildTimeline(
+    [
+      event("u1", 1, { kind: "user-message", text: "看一下" }),
+      event("t1", 2, { kind: "thinking", text: "思考中…" }),
+      event("a1", 3, { kind: "agent-message", text: "看完了", phase: "final-answer" }),
+    ],
+    "completed",
+  );
+  assert.equal(nodes.some((node) => node.type === "turn"), false);
+  assert.equal(isFoldable(event("t2", 4, { kind: "thinking", text: "先看目录" }), new Set()), true);
+});

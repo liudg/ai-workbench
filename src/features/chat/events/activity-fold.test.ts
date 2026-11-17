@@ -301,13 +301,19 @@ test("thinking and single tool summaries retain their chronological order", () =
   );
 });
 
-test("empty thinking does not add a row", () => {
+test("thinking without a body neither adds a row nor splits the tools around it", () => {
   const pieces = foldActivity([
     event("t1", { kind: "thinking", text: "   " }),
     tool("k1", "command", "git status"),
+    event("t2", { kind: "thinking", text: "思考中…" }),
+    tool("k2", "command", "git diff"),
   ]);
   assert.deepEqual(
     pieces.map((piece) => piece.type),
     ["tools"],
+  );
+  assert.deepEqual(
+    pieces.map((piece) => (piece.type === "tools" ? piece.steps.map((step) => step.id) : [])),
+    [["k1", "k2"]],
   );
 });

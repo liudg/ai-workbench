@@ -2,6 +2,7 @@ import type { SessionEvent } from "../../../types/index.ts";
 import { normalizePath, relativizeDisplayText } from "../../../shared/path.ts";
 import { DESKTOP_ZH } from "../../../shared/strings/desktop-zh.ts";
 import { hasGeneratedImages } from "./generated-images.ts";
+import { hasThinkingBody } from "./thinking-summary.ts";
 
 /**
  * 时间线展示层把相邻的工具调用收成一行。
@@ -57,8 +58,9 @@ export function foldActivity(events: readonly SessionEvent[], projectPath = ""):
       tools.push(event);
       continue;
     }
+    // 没有正文的思考不占位，也不把前后的工具拆成两行。
+    if (event.kind === "thinking" && !hasThinkingBody(event.text)) continue;
     flushTools();
-    if (event.kind === "thinking" && !event.text.trim()) continue;
     pieces.push({ type: "event", event });
   }
   flushTools();

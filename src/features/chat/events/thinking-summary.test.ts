@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { isPlaceholderThinking, thinkingSummary } from "./thinking-summary.ts";
+import { hasThinkingBody, thinkingSummary } from "./thinking-summary.ts";
 
 test("thinkingSummary extracts the first meaningful line and strips markdown", () => {
   assert.equal(
@@ -47,9 +47,10 @@ test("thinkingSummary protects inline code and snake_case identifiers from markd
 
 test("thinkingSummary skips fenced code blocks, rules, and placeholder thinking text", () => {
   assert.equal(thinkingSummary("   \n  "), "");
-  assert.equal(isPlaceholderThinking("思考中…"), true);
-  assert.equal(isPlaceholderThinking("思考中..."), true);
-  assert.equal(isPlaceholderThinking("先看目录"), false);
+  assert.equal(hasThinkingBody("思考中…"), false);
+  assert.equal(hasThinkingBody(" 思考中... "), false);
+  assert.equal(hasThinkingBody("   "), false);
+  assert.equal(hasThinkingBody("先看目录"), true);
   assert.equal(thinkingSummary("思考中…"), "");
   assert.equal(thinkingSummary("思考中..."), "");
   assert.equal(

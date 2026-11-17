@@ -1,6 +1,7 @@
 import type { SessionEvent, SessionStatus } from "../../../types";
 import { choiceHasSlot } from "../events/pending-plan-choice.ts";
 import { hasGeneratedImages } from "../events/generated-images.ts";
+import { hasThinkingBody } from "../events/thinking-summary.ts";
 import { steerFlags } from "../../../shared/session/steer.ts";
 
 /**
@@ -152,7 +153,7 @@ export function isFoldable(event: SessionEvent, answers: ReadonlySet<string>): b
   if (hasGeneratedImages(event) || answers.has(event.id) || choiceHasSlot(event)) return false;
   if (event.kind === "subtask-offer") return event.resolution != null;
   return (
-    event.kind === "thinking" ||
+    (event.kind === "thinking" && hasThinkingBody(event.text)) ||
     event.kind === "tool-call" ||
     event.kind === "prompt" ||
     event.kind === "agent-message" ||

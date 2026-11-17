@@ -92,7 +92,6 @@ export function ActivityStream({
         }
         const event = piece.event;
         const labeled = showAgentLabel(event);
-        const isActiveThinking = event.kind === "thinking" && event.id === liveThinking;
         return (
           <EventItem
             key={event.id}
@@ -103,7 +102,6 @@ export function ActivityStream({
             }
             showAgentLabel={labeled}
             showMessageFooter={labeled && !laterTools(pieces, index)}
-            thinkingActive={isActiveThinking}
             thinkingOpen={
               event.kind === "thinking"
                 ? thinkingBlockOpen(thinkingOverrides, event.id, liveThinking)

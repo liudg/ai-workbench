@@ -10,7 +10,6 @@ export function EventItem({
   session,
   resolvedAnswer,
   thinkingOpen = false,
-  thinkingActive = false,
   onToggleThinking,
   showAgentLabel = true,
   showMessageFooter,
@@ -24,7 +23,6 @@ export function EventItem({
       resolvedAnswer={resolvedAnswer}
       time={formatMessageTime(event.ts)}
       thinkingOpen={thinkingOpen}
-      thinkingActive={thinkingActive}
       onToggleThinking={onToggleThinking ?? noop}
       showAgentLabel={showAgentLabel}
       showMessageFooter={showMessageFooter}

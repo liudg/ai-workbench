@@ -1,7 +1,7 @@
 import type { SessionEvent } from "../../../types/index.ts";
 import { isRenderedEventKind } from "./event-kinds.ts";
 import { isPinnedChoice } from "./pending-plan-choice.ts";
-import { isPlaceholderThinking } from "./thinking-summary.ts";
+import { hasThinkingBody } from "./thinking-summary.ts";
 import { visibleErrorText } from "./visible-error.ts";
 
 /**
@@ -32,15 +32,16 @@ export function activityOpenAfterSettle(
 }
 
 function hiddenRenderedEvent(event: SessionEvent): boolean {
-  if (event.kind === "thinking" || event.kind === "agent-message") return !event.text.trim();
+  if (event.kind === "thinking") return !hasThinkingBody(event.text);
+  if (event.kind === "agent-message") return !event.text.trim();
   if (event.kind === "prompt") return event.prompt_kind === "approval" || isPinnedChoice(event);
   if (event.kind === "error") return !visibleErrorText(event.message);
   return false;
 }
 
 /**
- * 进行中的一轮里，最后一条在时间线上真正占位的事件如果是带推理正文的思考，默认展开；
- * 仅含占位词（「思考中…」）时不展开正文，等真实推理到达后再展开；
+ * 进行中的一轮里，最后一条在时间线上真正占位的事件如果是思考，默认展开；
+ * 只有占位词（「思考中…」）的思考不占位，跳过不算；
  * 一旦后面出现工具、旁白、可见提问或本轮结束，立刻自动收起。
  */
 export function activeThinkingId(
@@ -52,8 +53,7 @@ export function activeThinkingId(
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index];
     if (!isRenderedEventKind(event.kind) || hiddenRenderedEvent(event)) continue;
-    if (event.kind !== "thinking") return null;
-    return isPlaceholderThinking(event.text) ? null : event.id;
+    return event.kind === "thinking" ? event.id : null;
   }
   return null;
 }

@@ -148,8 +148,7 @@ test("a live stream auto-expands only the trailing active thinking and collapses
   assert.equal(html.includes("先看浅色主题变量。"), false);
   assert.equal(html.includes('id="thinking-t1"'), false);
   assert.equal(html.includes("已读取 styles.css"), true);
-  assert.equal(html.includes('data-thinking-active="true"'), true);
-  assert.equal(html.includes("正在思考"), true);
+  assert.equal(html.includes("正在思考"), false);
   assert.equal(html.includes('id="thinking-t2"'), true);
   assert.equal(html.includes("定位到黑底未覆盖。"), true);
 
@@ -163,9 +162,9 @@ test("a live stream auto-expands only the trailing active thinking and collapses
       settled: false,
     }),
   );
+  assert.equal(placeholderHtml.includes("data-thinking="), false);
   assert.equal(placeholderHtml.includes("思考中…"), false);
-  assert.equal(placeholderHtml.includes('id="thinking-tp"'), false);
-  assert.equal(placeholderHtml.includes("aria-expanded"), false);
+  assert.equal(placeholderHtml.includes("思考过程"), false);
 });
 
 test("opening a settled row lists the calls in order, each folded until clicked", async () => {
@@ -499,7 +498,7 @@ test("a running turn does not repeat the agent name or wedge the time before too
     "先看一下工作目录。",
     "已运行 rg --files",
     "坦克大战可以做成 H5。",
-    "正在思考",
+    "思考过程",
     "继续想方案。",
   ]);
   const between = html.slice(html.indexOf("先看一下工作目录。"), html.indexOf("已运行 rg --files"));

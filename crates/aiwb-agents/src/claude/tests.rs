@@ -446,6 +446,23 @@ fn stream_fixture_maps_bash_edit_usage_and_goal() {
         SessionEventBody::Prompt { question, body, body_kind, .. }
             if question == "允许使用 WebFetch？" && body == "https://example.com/very/long/query" && body_kind == "command"
     ));
+    let (grep_perm, _) = messages::permission_events(
+        "req-grep",
+        &json!({"subtype":"can_use_tool","tool_name":"Grep","input":{"pattern":"TerminalPane","path":"D:/other"}}),
+    ).unwrap();
+    assert!(matches!(
+        &grep_perm[0],
+        SessionEventBody::Prompt { body, body_kind, .. }
+            if body == "TerminalPane\n位置：D:/other" && body_kind == "command"
+    ));
+    let (glob_perm, _) = messages::permission_events(
+        "req-glob",
+        &json!({"subtype":"can_use_tool","tool_name":"Glob","input":{"pattern":"","path":"D:/other"}}),
+    ).unwrap();
+    assert!(matches!(
+        &glob_perm[0],
+        SessionEventBody::Prompt { body, .. } if body == "D:/other"
+    ));
 
     state.begin_turn("turn-1");
     let edit = ingest_line(

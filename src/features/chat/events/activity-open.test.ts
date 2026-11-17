@@ -77,6 +77,7 @@ test("live trailing thinking auto-opens until a later visible event or settle ar
   assert.equal(activeThinkingId([t1], true, false), "t1");
   assert.equal(activeThinkingId([t1, silent, emptyThink, approval, opaqueErr], true, false), "t1");
   assert.equal(activeThinkingId([placeholderThink], true, false), null);
+  assert.equal(activeThinkingId([t1, placeholderThink], true, false), "t1");
   assert.equal(activeThinkingId([t1, cmd, placeholderThink], true, false), null);
   assert.equal(activeThinkingId([t1, cmd], true, false), null);
   assert.equal(activeThinkingId([t1, cmd, t2], true, false), "t2");
