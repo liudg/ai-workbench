@@ -74,14 +74,14 @@ test("a session opened by an agent starts with its origin and a later report sta
 
 const settledEvents: SessionEvent[] = [
   event("note", { kind: "agent-message", text: "旁白按顺序留下。", phase: "commentary" }),
-  event("t1", { kind: "thinking", text: "先看背包里的宝石。" }),
+  event("t1", { kind: "thinking", text: "先看背包里的宝石。\n再核对装备槽。" }),
   event("m1", {
     kind: "tool-call",
     name: "execute_code",
     summary: "MCP unityMCP execute_code",
     detail: "结果\n打开了宝石详情",
   }),
-  event("t2", { kind: "thinking", text: "再跑一条命令。" }),
+  event("t2", { kind: "thinking", text: "再跑一条命令。\n确认返回行数。" }),
   event("k1", {
     kind: "tool-call",
     name: "command",
@@ -90,7 +90,7 @@ const settledEvents: SessionEvent[] = [
   }),
 ];
 
-test("a settled stream shows thinking entries and collapsed tool rows in order", async () => {
+test("a settled stream shows thinking summaries and collapsed tool rows in order", async () => {
   const mod = await server.ssrLoadModule("/src/features/chat/timeline/ActivityStream.tsx");
   const html = renderInHost(
     createElement(mod.ActivityStream, {
@@ -103,23 +103,69 @@ test("a settled stream shows thinking entries and collapsed tool rows in order",
   );
   assert.equal(html.includes('data-activity-settled="true"'), true);
   assert.equal((html.match(/data-thinking=/g) ?? []).length, 2);
+  assert.equal((html.match(/data-thinking-summary/g) ?? []).length, 2);
   assert.ok(html.indexOf('data-thinking="t1"') < html.indexOf("已使用 unityMCP 集成运行了命令"));
   assert.ok(html.indexOf("已使用 unityMCP 集成运行了命令") < html.indexOf('data-thinking="t2"'));
-  assert.ok(html.indexOf('data-thinking="t2"') < html.indexOf("已运行 1 条命令"));
-  assert.equal(html.includes("先看背包里的宝石"), false);
-  assert.equal(html.includes("再跑一条命令"), false);
+  assert.ok(html.indexOf('data-thinking="t2"') < html.indexOf("已运行 检查了表格选中"));
+  assert.equal(html.includes("先看背包里的宝石。"), true);
+  assert.equal(html.includes("再跑一条命令。"), true);
+  assert.equal(html.includes("再核对装备槽。"), false);
+  assert.equal(html.includes("确认返回行数。"), false);
+  assert.equal(html.includes('id="thinking-t1"'), false);
+  assert.equal(html.includes('id="thinking-t2"'), false);
   assert.equal(html.includes("正在思考"), false);
   assert.equal(html.includes("旁白按顺序留下"), true);
   assert.equal(html.includes("已使用 unityMCP 集成运行了命令"), true);
-  assert.equal(html.includes("已运行 1 条命令"), true);
+  assert.equal(html.includes("已运行 检查了表格选中"), true);
   assert.equal(html.includes('data-expanded="false"'), true);
   assert.equal(html.includes('data-expanded="true"'), false);
   assert.equal(html.includes("data-activity-steps"), false);
   assert.equal(html.includes("打开了宝石详情"), false);
   assert.equal(html.includes("选中 1 行"), false);
   const unity = html.indexOf("已使用 unityMCP 集成运行了命令");
-  const command = html.indexOf("已运行 1 条命令");
+  const command = html.indexOf("已运行 检查了表格选中");
   assert.equal(unity < command, true);
+});
+
+test("a live stream auto-expands only the trailing active thinking and collapses earlier ones to summaries", async () => {
+  const mod = await server.ssrLoadModule("/src/features/chat/timeline/ActivityStream.tsx");
+  const liveThinkingEvents: SessionEvent[] = [
+    event("t1", { kind: "thinking", text: "**检查样式文件**\n先看浅色主题变量。" }),
+    event("r1", { kind: "tool-call", name: "Read", summary: "src/styles.css" }),
+    event("t2", { kind: "thinking", text: "对比终端输入法背景。\n定位到黑底未覆盖。" }),
+  ];
+  const html = renderInHost(
+    createElement(mod.ActivityStream, {
+      events: liveThinkingEvents,
+      session,
+      resolvedAnswers: new Map(),
+      showAgentLabel: () => false,
+      live: true,
+      settled: false,
+    }),
+  );
+  assert.equal(html.includes("检查样式文件"), true);
+  assert.equal(html.includes("先看浅色主题变量。"), false);
+  assert.equal(html.includes('id="thinking-t1"'), false);
+  assert.equal(html.includes("已读取 styles.css"), true);
+  assert.equal(html.includes('data-thinking-active="true"'), true);
+  assert.equal(html.includes("正在思考"), true);
+  assert.equal(html.includes('id="thinking-t2"'), true);
+  assert.equal(html.includes("定位到黑底未覆盖。"), true);
+
+  const placeholderHtml = renderInHost(
+    createElement(mod.ActivityStream, {
+      events: [event("tp", { kind: "thinking", text: "思考中…" })],
+      session,
+      resolvedAnswers: new Map(),
+      showAgentLabel: () => false,
+      live: true,
+      settled: false,
+    }),
+  );
+  assert.equal(placeholderHtml.includes("思考中…"), false);
+  assert.equal(placeholderHtml.includes('id="thinking-tp"'), false);
+  assert.equal(placeholderHtml.includes("aria-expanded"), false);
 });
 
 test("opening a settled row lists the calls in order, each folded until clicked", async () => {
@@ -140,13 +186,13 @@ test("opening a settled row lists the calls in order, each folded until clicked"
       ),
     )
     .join("");
-  const openRow = html.slice(0, html.indexOf("已运行 1 条命令"));
+  const openRow = html.slice(0, html.indexOf("已运行 检查了表格选中"));
   assert.equal(openRow.includes('data-expanded="true"'), true);
   assert.equal(openRow.includes("data-activity-steps"), true);
   assert.equal(openRow.includes('data-step-title="execute_code"'), true);
   assert.equal(openRow.includes('aria-expanded="false"'), true);
   assert.equal(openRow.includes("打开了宝石详情"), false);
-  const closedRow = html.slice(html.indexOf("已运行 1 条命令"));
+  const closedRow = html.slice(html.indexOf("已运行 检查了表格选中"));
   assert.equal(closedRow.includes('data-expanded="false"'), true);
   assert.equal(closedRow.includes("data-activity-steps"), false);
   assert.equal(closedRow.includes("选中 1 行"), false);
@@ -323,17 +369,18 @@ test("an expanded process shows collapsed tool, command, MCP, and image rows", a
   assert.equal(html.includes('data-turn-summary="Codex CLI · 用时 0s"'), true);
   assert.equal(html.includes('data-activity-settled="true"'), true);
   assert.equal(html.includes("先看表格。"), true);
-  assert.equal(html.includes("已运行 3 条命令"), true);
-  assert.equal(html.includes("已运行 6 条命令"), true);
-  assert.equal(html.includes("已运行 8 条命令"), true);
+  assert.equal(html.includes("已运行 步骤 a0 等 3 条命令"), true);
+  assert.equal(html.includes("已运行 步骤 b0 等 6 条命令"), true);
+  assert.equal(html.includes("已运行 步骤 c0 等 8 条命令"), true);
   assert.equal(html.includes("已查看 1 张图像"), true);
   assert.equal(html.includes("已使用 unityMCP 集成运行了命令"), true);
-  assert.equal(html.includes("先看背包里的宝石"), false);
-  assert.equal(html.includes("再跑六条"), false);
-  assert.equal(html.includes("再跑八条"), false);
+  assert.equal(html.includes("先看背包里的宝石。"), true);
+  assert.equal(html.includes("再跑六条。"), true);
+  assert.equal(html.includes("再跑八条。"), true);
+  assert.equal(html.includes('id="thinking-think-a"'), false);
   assert.equal(html.includes("正在思考"), false);
   assert.equal(html.includes("打开了宝石详情"), false);
-  assert.equal(html.includes("步骤 "), false);
+  assert.equal(html.includes("步骤 a1"), false);
   assert.equal(html.includes("输出 "), false);
   assert.equal(html.includes("gem.png"), false);
   assert.equal(html.includes("data-activity-steps"), false);
@@ -343,9 +390,9 @@ test("an expanded process shows collapsed tool, command, MCP, and image rows", a
   assert.equal((html.match(/data-activity-group/g) ?? []).length, 4);
   assert.equal((html.match(/data-viewed-images/g) ?? []).length, 1);
   const note = html.indexOf("先看表格");
-  const three = html.indexOf("已运行 3 条命令");
-  const six = html.indexOf("已运行 6 条命令");
-  const eight = html.indexOf("已运行 8 条命令");
+  const three = html.indexOf("已运行 步骤 a0 等 3 条命令");
+  const six = html.indexOf("已运行 步骤 b0 等 6 条命令");
+  const eight = html.indexOf("已运行 步骤 c0 等 8 条命令");
   const images = html.indexOf("已查看 1 张图像");
   const mcp = html.indexOf("已使用 unityMCP 集成运行了命令");
   const answer = html.indexOf("目录里有 src");
@@ -383,16 +430,16 @@ test("generated images stay where they were made and survive folding, live and s
       assert.equal((html.match(/src="https:\/\/example.com\/dog.png"/g) ?? []).length, 1);
       assert.equal(html.includes("data-chat-image-open"), true);
       assert.equal(html.includes("我会画一张骑行插画。"), expanded);
-      assert.equal(html.includes("已运行 1 条命令"), expanded);
+      assert.equal(html.includes("已运行 检查图片"), expanded);
       assertOrder(html, expanded
-        ? ["data-turn-fold", "我会画一张骑行插画。", "data-generated-images", "已运行 1 条命令", "画好了。"]
+        ? ["data-turn-fold", "我会画一张骑行插画。", "data-generated-images", "已运行 检查图片", "画好了。"]
         : ["data-turn-fold", "data-generated-images", "画好了。"]);
     }
     const imageOnly = renderInHost(createElement(mod[component], {
       events: events.slice(0, -1), answerId: null, durationMs: 1000, session,
       resolvedAnswers: new Map(), expanded: true, onToggle: () => {},
     }));
-    assertOrder(imageOnly, ["我会画一张骑行插画。", "data-generated-images", "已运行 1 条命令"]);
+    assertOrder(imageOnly, ["我会画一张骑行插画。", "data-generated-images", "已运行 检查图片"]);
   }
 });
 
@@ -417,7 +464,7 @@ test("a settled turn keeps the status line as the first child", async () => {
     );
     assert.equal(html.startsWith('<div class="group min-w-0"><div class="event-in min-w-0 px-6 py-1"><button'), true);
     assertOrder(html, ['data-turn-summary="Codex CLI · 用时 0s"', "回合前提示", "目录里有 src"]);
-    assert.equal(html.includes("已运行 1 条命令"), expanded);
+    assert.equal(html.includes("已运行 rg --files"), expanded);
   }
 });
 
@@ -450,10 +497,12 @@ test("a running turn does not repeat the agent name or wedge the time before too
   assertOrder(html, [
     'data-turn-summary="Claude Code · 运行中"',
     "先看一下工作目录。",
-    "已运行 1 条命令",
+    "已运行 rg --files",
     "坦克大战可以做成 H5。",
+    "正在思考",
+    "继续想方案。",
   ]);
-  const between = html.slice(html.indexOf("先看一下工作目录。"), html.indexOf("已运行 1 条命令"));
+  const between = html.slice(html.indexOf("先看一下工作目录。"), html.indexOf("已运行 rg --files"));
   assert.equal(between.includes("data-message-footer"), false);
   assert.equal(between.includes("Claude Code"), false);
 });
@@ -491,13 +540,13 @@ test("a settled answer keeps the time and copy action after all content and file
   assertOrder(html, [
     'data-turn-summary="Claude Code · 用时 55m 39s"',
     "先看一下工作目录。",
-    "已运行 1 条命令",
+    "已运行 rg --files",
     "目录里有 src。",
     "答复后的提示",
     "data-change-card",
     "data-message-footer",
   ]);
-  const between = html.slice(html.indexOf("先看一下工作目录。"), html.indexOf("已运行 1 条命令"));
+  const between = html.slice(html.indexOf("先看一下工作目录。"), html.indexOf("已运行 rg --files"));
   assert.equal(between.includes("data-message-footer"), false);
   const footer = html.slice(html.indexOf("data-message-footer"));
   assert.equal((html.match(/data-message-footer/g) ?? []).length, 1);
@@ -520,7 +569,7 @@ test("a running turn keeps the status line as the first child", async () => {
     expandedHtml.startsWith('<div class="min-w-0" data-live-turn="true"><div class="event-in min-w-0 px-6 py-1"><button'),
     true,
   );
-  assertOrder(expandedHtml, ['data-turn-summary="Codex CLI · 运行中"', "我会查看目录。", "已运行 1 条命令"]);
+  assertOrder(expandedHtml, ['data-turn-summary="Codex CLI · 运行中"', "我会查看目录。", "已运行 rg --files"]);
   assert.equal(expandedHtml.includes("data-turn-running"), true);
 
   const collapsedHtml = renderInHost(
@@ -538,7 +587,7 @@ test("a running turn keeps the status line as the first child", async () => {
   );
   assert.equal(collapsedHtml.includes('data-turn-summary="Codex CLI · 运行中"'), true);
   assert.equal(collapsedHtml.includes("我会查看目录。"), false);
-  assert.equal(collapsedHtml.includes("已运行 1 条命令"), false);
+  assert.equal(collapsedHtml.includes("已运行 rg --files"), false);
 });
 
 test("text written before a steer stays visible when the turn is folded", async () => {
@@ -556,7 +605,7 @@ test("text written before a steer stays visible when the turn is folded", async 
         resolvedAnswers: new Map(), expanded, onToggle: () => {},
       }));
       assert.equal((html.match(/data-turn-fold/g) ?? []).length, 1);
-      assert.equal(html.includes("已运行 1 条命令"), expanded);
+      assert.equal(html.includes("已运行 rg 醍醐"), expanded);
       // 进行中的一轮收起时，正在写的最后一段本来就不露出来。
       const stillWriting = component === "LiveTurn" && !expanded;
       assertOrder(html, stillWriting ? ["检讨：我在", "不够真诚"] : ["检讨：我在", "不够真诚", "对不起。"]);

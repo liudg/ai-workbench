@@ -25,7 +25,7 @@ function tool(
 const POWERSHELL =
   `"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command '$r = Invoke-WebRequest https://example.invalid/defects' → completed`;
 
-test("adjacent commands collapse to one counted line and keep short step titles", () => {
+test("adjacent commands collapse to one counted line with a representative command and keep short step titles", () => {
   const pieces = foldActivity([
     tool("a", "command", "检查了表格选中"),
     tool("b", "command", "查看了表格复制操作"),
@@ -34,7 +34,7 @@ test("adjacent commands collapse to one counted line and keep short step titles"
   assert.equal(pieces.length, 1);
   assert.equal(pieces[0].type, "tools");
   if (pieces[0].type !== "tools") return;
-  assert.equal(pieces[0].summary, "已运行 3 条命令");
+  assert.equal(pieces[0].summary, "已运行 检查了表格选中 等 3 条命令");
   assert.deepEqual(
     pieces[0].steps.map((step) => step.title),
     ["检查了表格选中", "查看了表格复制操作", "复制了缺陷记录选中（只读）"],
@@ -85,21 +85,69 @@ test("a web-only group is just the search phrase", () => {
   assert.equal(summary.webSearch, false);
 });
 
-test("reads, searches and edits are counted by kind, not as commands", () => {
+test("reads, searches and edits expose representative basenames or commands and fall back when generic", () => {
   const mixed = activitySummary([
-    tool("r1", "Read", "a.txt"),
+    tool("r1", "Read", "src/a.txt"),
     tool("c1", "command", "echo ok"),
-    tool("r2", "Read", "b.txt"),
+    tool("r2", "Read", "src/b.txt"),
     tool("s1", "Search", "BagMain"),
-    tool("e1", "Edit", "a.txt"),
+    tool("e1", "Edit", "src/a.txt"),
   ]);
-  assert.equal(mixed.text, "已读取 2 个文件，运行 1 条命令，搜索 1 次，编辑 1 个文件");
-  assert.equal(activitySummary([tool("r", "Read", "a.txt")]).text, "已读取 1 个文件");
-  assert.equal(activitySummary([tool("g", "Grep", "x"), tool("l", "Glob", "*.ts")]).text, "已搜索 2 次");
-  assert.equal(activitySummary([tool("w", "Write", "b.txt"), tool("m", "MultiEdit", "c.txt")]).text, "已编辑 2 个文件");
-  assert.equal(activitySummary([tool("f", "WebFetch", "https://a")]).text, "已读取 1 个网页");
-  assert.equal(activitySummary([tool("t", "TodoWrite", "plan"), tool("k", "manage_task", "kill")]).text, "已调用 2 个工具");
-  assert.equal(activitySummary([tool("c", "command", "ls"), tool("c2", "command", "pwd")]).text, "已运行 2 条命令");
+  assert.equal(mixed.text, "已读取 a.txt 等 2 个文件，运行 echo ok，搜索 BagMain，编辑 a.txt");
+  assert.equal(activitySummary([tool("r", "Read", "src/components/TerminalPane.tsx")]).text, "已读取 TerminalPane.tsx");
+  assert.equal(
+    activitySummary([
+      tool("r1", "Read", "src/components/TerminalPane.tsx"),
+      tool("r2", "Read", "src/styles.css"),
+      tool("r3", "Read", "src/App.tsx"),
+      tool("r4", "Read", "src/shared/types.ts"),
+    ]).text,
+    "已读取 TerminalPane.tsx、styles.css 等 4 个文件",
+  );
+  // 同一文件分段读取两次只算 1 个文件；不同目录同名文件仍算 2 个文件。
+  assert.equal(
+    activitySummary([tool("r1", "Read", "src/styles.css"), tool("r2", "Read", "src/styles.css")]).text,
+    "已读取 styles.css",
+  );
+  assert.equal(
+    activitySummary([tool("r1", "Read", "src/a/index.ts"), tool("r2", "Read", "src/b/index.ts")]).text,
+    "已读取 index.ts 等 2 个文件",
+  );
+  assert.equal(activitySummary([tool("g", "Grep", "x"), tool("l", "Glob", "*.ts")]).text, "已搜索 x 等 2 次");
+  assert.equal(activitySummary([tool("w", "Write", "src/b.txt"), tool("m", "MultiEdit", "src/c.txt")]).text, "已编辑 b.txt、c.txt");
+  assert.equal(activitySummary([tool("f", "WebFetch", "https://a")]).text, "已读取 https://a");
+  assert.equal(activitySummary([tool("t", "TodoWrite", "plan"), tool("k", "manage_task", "kill")]).text, "已调用 TodoWrite 等 2 个工具");
+  assert.equal(activitySummary([tool("c", "command", "ls"), tool("c2", "command", "pwd")]).text, "已运行 ls 等 2 条命令");
+
+  // Cursor / Claude / Antigravity 泛指工具标题不当作具体对象名。
+  assert.equal(activitySummary([tool("r", "Read", "Read")]).text, "已读取 1 个文件");
+  assert.equal(activitySummary([tool("r", "Read", "Read File")]).text, "已读取 1 个文件");
+  assert.equal(activitySummary([tool("e", "Edit", "Edit File")]).text, "已编辑 1 个文件");
+  assert.equal(activitySummary([tool("r", "Read", "File a")]).text, "已读取 1 个文件");
+  assert.equal(activitySummary([tool("r", "Read", "File /C:/ws/n.txt")]).text, "已读取 n.txt");
+  assert.equal(activitySummary([tool("c", "command", "Terminal")]).text, "已运行 1 条命令");
+  assert.equal(activitySummary([tool("c", "command", "Bash")]).text, "已运行 1 条命令");
+  assert.equal(activitySummary([tool("c", "command", "PowerShell")]).text, "已运行 1 条命令");
+  assert.equal(activitySummary([tool("c", "command", "")]).text, "已运行 1 条命令");
+});
+
+test("project paths relativize before target clipping and do not split surrogate pairs", () => {
+  const project = "G:\\document\\ai-workbench";
+  const pieces = foldActivity(
+    [
+      tool("c1", "command", "cat G:\\document\\ai-workbench\\src\\App.tsx"),
+      tool("s1", "Grep", "G:\\document\\ai-workbench\\src\\features\\chat"),
+    ],
+    project,
+  );
+  assert.equal(pieces[0]?.type, "tools");
+  if (pieces[0]?.type !== "tools") return;
+  assert.equal(pieces[0].summary, "已运行 cat src/App.tsx，搜索 src/features/chat");
+  assert.equal(pieces[0].steps[0].title, "cat src/App.tsx");
+
+  const emojiSearch = activitySummary([tool("s", "Search", `${"a".repeat(26)}🔍bc`)]);
+  assert.equal(emojiSearch.text, `已搜索 ${"a".repeat(26)}🔍…`);
+  assert.equal(/[\uD800-\uDBFF]…$/.test(emojiSearch.text), false);
 });
 
 test("thinking splits tool groups and keeps its position", () => {
@@ -127,9 +175,9 @@ test("thinking splits tool groups and keeps its position", () => {
   assert.ok(integrations && integrations.type === "tools");
   assert.equal(integrations.summary, "已使用 Chrome 和 Unitymcp 集成运行了命令");
   assert.ok(commands && commands.type === "tools");
-  assert.equal(commands.summary, "已运行 3 条命令");
+  assert.equal(commands.summary, "已运行 检查了表格选中 等 3 条命令");
   assert.ok(trailing && trailing.type === "tools");
-  assert.equal(trailing.summary, "已运行 1 条命令");
+  assert.equal(trailing.summary, "已运行 git status");
 });
 
 test("a prompt between tools starts a new group", () => {
@@ -168,7 +216,7 @@ test("powershell paths are not the step title", () => {
   ]);
   assert.equal(pieces[0]?.type, "tools");
   if (pieces[0]?.type !== "tools") return;
-  assert.equal(pieces[0].summary, "已运行 2 条命令");
+  assert.equal(pieces[0].summary, "已运行 Invoke-WebRequest https://examp… 等 2 条命令");
   assert.equal(pieces[0].steps[1].title, "Get-Content -LiteralPath 'a.json'");
 });
 
@@ -193,7 +241,7 @@ test("viewed images are their own rows and stay out of command groups", () => {
   );
   const [commands, first, second, integrations] = pieces;
   assert.ok(commands && commands.type === "tools");
-  assert.equal(commands.summary, "已运行 1 条命令");
+  assert.equal(commands.summary, "已运行 git status");
   assert.equal(commands.steps.length, 1);
   assert.ok(first && first.type === "images");
   assert.equal(first.count, 2);
@@ -236,11 +284,11 @@ test("thinking and single tool summaries retain their chronological order", () =
       "event",
       "已使用 unityMCP 集成运行了命令",
       "event",
-      "已运行 1 条命令",
+      "已运行 检查了表格选中",
       "event",
       "已使用 unityMCP 集成运行了命令",
       "event",
-      "已运行 1 条命令",
+      "已运行 git status",
     ],
   );
   const text = JSON.stringify(pieces);

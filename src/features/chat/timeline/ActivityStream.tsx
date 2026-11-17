@@ -3,15 +3,25 @@ import { useMemo, useState } from "react";
 import type { Session, SessionEvent } from "@/types";
 import { ActivityGroup } from "../events/ActivityGroup";
 import { foldActivity, type ActivityPiece } from "../events/activity-fold";
-import { activityOpenAfterSettle, toggleToolGroup, toolGroupOpen } from "../events/activity-open";
+import {
+  activeThinkingId,
+  activityOpenAfterSettle,
+  thinkingBlockOpen,
+  thinkingOverridesAfterSettle,
+  toggleThinkingBlock,
+  toggleToolGroup,
+  toolGroupOpen,
+} from "../events/activity-open";
 import { EventItem } from "../events/EventItem";
+import { useSessionProjectPath } from "../events/use-session-project-path";
 import { ViewedImages } from "../events/ViewedImages";
 
 /**
  * 一段会话的事件，按发生顺序画。相邻工具收成一行，查看图像单独成行。
- * 思考条目可以展开正文。进行中的末行由 `ChatView` 显示。
+ * 进行中的最后一条思考默认展开，进入下一步工具或回合结束后自动收成一行摘要。
+ * 进行中的末行由 `ChatView` 显示。
  * `live` 为真时，适配器报的进行中工具才转圈。
- * `settled` 为真时，进行中点开过的工具行收回去，默认只留一行摘要。
+ * `settled` 为真时，进行中点开过的工具行和思考全部收回去，默认只留一行摘要。
  */
 export function ActivityStream({
   events,
@@ -30,14 +40,23 @@ export function ActivityStream({
   settled?: boolean;
   onInteract?: () => void;
 }) {
-  const pieces = useMemo(() => foldActivity(events), [events]);
+  const projectPath = useSessionProjectPath(session);
+  const pieces = useMemo(() => foldActivity(events, projectPath), [events, projectPath]);
+  const liveThinking = useMemo(
+    () => activeThinkingId(events, live, settled),
+    [events, live, settled],
+  );
   const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(() => new Set());
-  const [openThinking, setOpenThinking] = useState<ReadonlySet<string>>(() => new Set());
+  const [thinkingOverrides, setThinkingOverrides] = useState<ReadonlyMap<string, boolean>>(
+    () => new Map(),
+  );
   const [seenSettled, setSeenSettled] = useState(settled);
   if (settled !== seenSettled) {
     setSeenSettled(settled);
-    const next = activityOpenAfterSettle(openGroups, seenSettled, settled);
-    if (next !== openGroups) setOpenGroups(next);
+    const nextGroups = activityOpenAfterSettle(openGroups, seenSettled, settled);
+    if (nextGroups !== openGroups) setOpenGroups(nextGroups);
+    const nextThinking = thinkingOverridesAfterSettle(thinkingOverrides, seenSettled, settled);
+    if (nextThinking !== thinkingOverrides) setThinkingOverrides(nextThinking);
   }
 
   return (
@@ -73,6 +92,7 @@ export function ActivityStream({
         }
         const event = piece.event;
         const labeled = showAgentLabel(event);
+        const isActiveThinking = event.kind === "thinking" && event.id === liveThinking;
         return (
           <EventItem
             key={event.id}
@@ -83,10 +103,15 @@ export function ActivityStream({
             }
             showAgentLabel={labeled}
             showMessageFooter={labeled && !laterTools(pieces, index)}
-            thinkingOpen={openThinking.has(event.id)}
+            thinkingActive={isActiveThinking}
+            thinkingOpen={
+              event.kind === "thinking"
+                ? thinkingBlockOpen(thinkingOverrides, event.id, liveThinking)
+                : false
+            }
             onToggleThinking={() => {
               onInteract?.();
-              setOpenThinking((prev) => toggleToolGroup(prev, event.id));
+              setThinkingOverrides((prev) => toggleThinkingBlock(prev, event.id, liveThinking));
             }}
           />
         );

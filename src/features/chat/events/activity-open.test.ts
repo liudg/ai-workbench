@@ -1,7 +1,20 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { activityOpenAfterSettle, toggleToolGroup, toolGroupOpen } from "./activity-open.ts";
+import type { SessionEvent, SessionEventBody } from "../../../types/index.ts";
+import {
+  activeThinkingId,
+  activityOpenAfterSettle,
+  thinkingBlockOpen,
+  thinkingOverridesAfterSettle,
+  toggleThinkingBlock,
+  toggleToolGroup,
+  toolGroupOpen,
+} from "./activity-open.ts";
+
+function event(id: string, body: SessionEventBody): SessionEvent {
+  return { id, session_id: "s", seq: 1, ts: 1, ...body };
+}
 
 test("tool rows start collapsed", () => {
   const open = new Set<string>();
@@ -41,4 +54,45 @@ test("a click after the turn has finished stays open", () => {
 test("leaving the settled state does not clear a later click", () => {
   const opened = toggleToolGroup(new Set<string>(), "mcp-1");
   assert.equal(activityOpenAfterSettle(opened, true, false), opened);
+});
+
+test("live trailing thinking auto-opens until a later visible event or settle arrives", () => {
+  const t1 = event("t1", { kind: "thinking", text: "第一步推理" });
+  const silent = event("u1", { kind: "context-usage", source: "partial-usage" });
+  const emptyThink = event("t-empty", { kind: "thinking", text: "   " });
+  const placeholderThink = event("t-placeholder", { kind: "thinking", text: "思考中…" });
+  const approval = event("p1", {
+    kind: "prompt",
+    prompt_id: "ask",
+    prompt_kind: "approval",
+    question: "允许？",
+    options: [],
+    questions: [],
+  });
+  const opaqueErr = event("e1", { kind: "error", message: "unknown" });
+  const cmd = event("k1", { kind: "tool-call", name: "command", summary: "ls" });
+  const t2 = event("t2", { kind: "thinking", text: "第二步推理" });
+  const reply = event("a1", { kind: "agent-message", text: "正式答复" });
+
+  assert.equal(activeThinkingId([t1], true, false), "t1");
+  assert.equal(activeThinkingId([t1, silent, emptyThink, approval, opaqueErr], true, false), "t1");
+  assert.equal(activeThinkingId([placeholderThink], true, false), null);
+  assert.equal(activeThinkingId([t1, cmd, placeholderThink], true, false), null);
+  assert.equal(activeThinkingId([t1, cmd], true, false), null);
+  assert.equal(activeThinkingId([t1, cmd, t2], true, false), "t2");
+  assert.equal(activeThinkingId([t1, cmd, t2, reply], true, false), null);
+  assert.equal(activeThinkingId([t1, cmd, t2], false, false), null);
+  assert.equal(activeThinkingId([t1, cmd, t2], true, true), null);
+
+  let overrides: ReadonlyMap<string, boolean> = new Map();
+  assert.equal(thinkingBlockOpen(overrides, "t1", "t2"), false);
+  assert.equal(thinkingBlockOpen(overrides, "t2", "t2"), true);
+  overrides = toggleThinkingBlock(overrides, "t2", "t2");
+  assert.equal(thinkingBlockOpen(overrides, "t2", "t2"), false);
+  overrides = toggleThinkingBlock(overrides, "t1", "t2");
+  assert.equal(thinkingBlockOpen(overrides, "t1", "t2"), true);
+
+  const afterSettle = thinkingOverridesAfterSettle(overrides, false, true);
+  assert.equal(afterSettle.size, 0);
+  assert.equal(thinkingBlockOpen(afterSettle, "t1", null), false);
 });

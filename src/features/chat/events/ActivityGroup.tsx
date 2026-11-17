@@ -31,6 +31,7 @@ export function ActivityGroup({
   onToggle: () => void;
 }) {
   const projectPath = useSessionProjectPath(session);
+  const summary = relativizeDisplayText(piece.summary, projectPath);
   const states = piece.steps.map((step) => toolState(step.event, live));
   const running = states.includes("running");
   const failed = states.filter((state) => state === "failed").length;
@@ -39,7 +40,7 @@ export function ActivityGroup({
     <div
       className="event-in min-w-0 px-6 py-1"
       data-activity-group
-      data-activity-summary={piece.summary}
+      data-activity-summary={summary}
       data-activity-running={running ? "true" : undefined}
     >
       <div className="min-w-0 pl-6">
@@ -49,7 +50,7 @@ export function ActivityGroup({
             data-activity-toggle
             data-expanded={open ? "true" : "false"}
             aria-expanded={open}
-            title={piece.summary}
+            title={summary}
             onClick={onToggle}
             className={cn(
               "flex w-full min-w-0 items-center gap-2.5 px-3 py-2 text-left text-[13px] transition-colors",
@@ -63,7 +64,7 @@ export function ActivityGroup({
             ) : (
               <LayoutGrid className="h-3.5 w-3.5 shrink-0 text-wb-fg-3" />
             )}
-            <span className="min-w-0 flex-1 truncate">{piece.summary}</span>
+            <span className="min-w-0 flex-1 truncate">{summary}</span>
             {failed > 0 ? (
               <span data-activity-failed className="shrink-0 text-[12px] text-wb-danger">
                 {DESKTOP_ZH.toolFailedCount.replace("{count}", String(failed))}

@@ -669,6 +669,7 @@ pub(super) fn assistant_body(
     let mut events = Vec::new();
     let mut text = String::new();
     let mut thinking = String::new();
+    let mut tool_calls = Vec::new();
     if let Some(blocks) = content.as_array() {
         for block in blocks {
             let block_type = block.get("type").and_then(Value::as_str).unwrap_or("");
@@ -676,10 +677,10 @@ pub(super) fn assistant_body(
                 "text" => text.push_str(block.get("text").and_then(Value::as_str).unwrap_or("")),
                 "thinking" => thinking.push_str(block.get("thinking").and_then(Value::as_str).unwrap_or("")),
                 "tool_use" => {
-                    let id = block.get("id").and_then(Value::as_str).unwrap_or("");
-                    let name = block.get("name").and_then(Value::as_str).unwrap_or("tool");
+                    let id = block.get("id").and_then(Value::as_str).unwrap_or("").to_string();
+                    let name = block.get("name").and_then(Value::as_str).unwrap_or("tool").to_string();
                     let input = block.get("input").cloned().unwrap_or(Value::Null);
-                    events.extend(tool_events(state, id, name, &input, "", None, ToolStatus::Running, project));
+                    tool_calls.push((id, name, input));
                 }
                 _ => {}
             }
@@ -688,6 +689,10 @@ pub(super) fn assistant_body(
         text.push_str(plain);
     }
     let anchor = message_anchor(value);
+    if !thinking.is_empty() {
+        state.thinking = thinking;
+        events.extend(thinking_event(state, true, anchor));
+    }
     let api_error = flag(value, "isApiErrorMessage") || flag(message, "isApiErrorMessage");
     if !text.is_empty() && (api_error || connection_lost_text(&text)) {
         // 接口错误不是模型答复。流式碎片若已经写成这句英文，用同一 stream 清掉。
@@ -697,9 +702,8 @@ pub(super) fn assistant_body(
         state.text = text;
         events.extend(text_event(state, MessagePhase::FinalAnswer, anchor));
     }
-    if !thinking.is_empty() {
-        state.thinking = thinking;
-        events.extend(thinking_event(state, true, anchor));
+    for (id, name, input) in tool_calls {
+        events.extend(tool_events(state, &id, &name, &input, "", None, ToolStatus::Running, project));
     }
     if live {
         if let Some(body) = super::usage::apply_assistant(&mut state.usage, value) {
@@ -1209,8 +1213,8 @@ fn claude_approval_copy(tool_name: &str, summary: &str) -> (String, String, Stri
     let shown = summary.trim();
     let has_detail = !shown.is_empty() && shown != tool_name;
     let body_kind = match tool_name {
-        "Bash" | "PowerShell" if has_detail => "command",
-        "Edit" | "Write" | "NotebookEdit" | "MultiEdit" if has_detail => "files",
+        "Bash" | "PowerShell" | "Grep" | "Glob" | "WebFetch" | "WebSearch" if has_detail => "command",
+        "Edit" | "Write" | "NotebookEdit" | "MultiEdit" | "Read" | "NotebookRead" if has_detail => "files",
         _ => "",
     };
     let body = if body_kind.is_empty() {
@@ -1231,12 +1235,34 @@ fn tool_summary(reported: &str, input: &Value) -> String {
         "Bash" | "PowerShell" => input
             .get("command")
             .and_then(Value::as_str)
-            .unwrap_or(reported)
+            .filter(|text| !text.trim().is_empty())
+            .unwrap_or("")
             .to_string(),
-        "Edit" | "Write" | "NotebookEdit" | "MultiEdit" => input
+        "Edit" | "Write" | "NotebookEdit" | "MultiEdit" | "Read" | "NotebookRead" => input
             .get("file_path")
+            .or_else(|| input.get("notebook_path"))
             .or_else(|| input.get("path"))
             .and_then(Value::as_str)
+            .filter(|text| !text.trim().is_empty())
+            .unwrap_or(reported)
+            .to_string(),
+        "Grep" | "Glob" => input
+            .get("pattern")
+            .or_else(|| input.get("path"))
+            .and_then(Value::as_str)
+            .filter(|text| !text.trim().is_empty())
+            .unwrap_or(reported)
+            .to_string(),
+        "WebFetch" => input
+            .get("url")
+            .and_then(Value::as_str)
+            .filter(|text| !text.trim().is_empty())
+            .unwrap_or(reported)
+            .to_string(),
+        "WebSearch" => input
+            .get("query")
+            .and_then(Value::as_str)
+            .filter(|text| !text.trim().is_empty())
             .unwrap_or(reported)
             .to_string(),
         _ => reported.to_string(),

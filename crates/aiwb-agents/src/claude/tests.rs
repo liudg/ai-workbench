@@ -389,6 +389,64 @@ fn stream_fixture_maps_bash_edit_usage_and_goal() {
         other => panic!("unexpected {other:?}"),
     }
 
+    let read = ingest_line(
+        &mut state,
+        r#"{"type":"assistant","uuid":"dddddddd-dddd-4ddd-8ddd-dddddddddddd","message":{"role":"assistant","content":[{"type":"thinking","thinking":"先查入口"},{"type":"tool_use","id":"tool-read","name":"Read","input":{"file_path":"src/App.tsx"}},{"type":"tool_use","id":"tool-nb","name":"NotebookRead","input":{"notebook_path":"a.ipynb"}},{"type":"tool_use","id":"tool-grep","name":"Grep","input":{"pattern":"TerminalPane"}},{"type":"tool_use","id":"tool-glob","name":"Glob","input":{"pattern":"**/*.ts"}},{"type":"tool_use","id":"tool-fetch","name":"WebFetch","input":{"url":"https://example.com/docs"}},{"type":"tool_use","id":"tool-search","name":"WebSearch","input":{"query":"xterm theme"}},{"type":"tool_use","id":"tool-empty-bash","name":"Bash","input":{}}]}}"#,
+        true,
+        None,
+    );
+    assert!(matches!(
+        &read.events[0],
+        SessionEventBody::Thinking { text, .. } if text == "先查入口"
+    ));
+    assert!(matches!(
+        &read.events[1],
+        SessionEventBody::ToolCall { name, summary, .. } if name == "Read" && summary == "src/App.tsx"
+    ));
+    assert!(matches!(
+        &read.events[2],
+        SessionEventBody::ToolCall { name, summary, .. } if name == "NotebookRead" && summary == "a.ipynb"
+    ));
+    assert!(matches!(
+        &read.events[3],
+        SessionEventBody::ToolCall { name, summary, .. } if name == "Grep" && summary == "TerminalPane"
+    ));
+    assert!(matches!(
+        &read.events[4],
+        SessionEventBody::ToolCall { name, summary, .. } if name == "Glob" && summary == "**/*.ts"
+    ));
+    assert!(matches!(
+        &read.events[5],
+        SessionEventBody::ToolCall { name, summary, .. } if name == "WebFetch" && summary == "https://example.com/docs"
+    ));
+    assert!(matches!(
+        &read.events[6],
+        SessionEventBody::ToolCall { name, summary, .. } if name == "WebSearch" && summary == "xterm theme"
+    ));
+    assert!(matches!(
+        &read.events[7],
+        SessionEventBody::ToolCall { name, summary, .. } if name == "command" && summary.is_empty()
+    ));
+
+    let (read_perm, _) = messages::permission_events(
+        "req-read",
+        &json!({"subtype":"can_use_tool","tool_name":"Read","input":{"file_path":"D:/other/long/path.ts"}}),
+    ).unwrap();
+    assert!(matches!(
+        &read_perm[0],
+        SessionEventBody::Prompt { question, body, body_kind, .. }
+            if question == "允许使用 Read？" && body == "D:/other/long/path.ts" && body_kind == "files"
+    ));
+    let (fetch_perm, _) = messages::permission_events(
+        "req-fetch",
+        &json!({"subtype":"can_use_tool","tool_name":"WebFetch","input":{"url":"https://example.com/very/long/query"}}),
+    ).unwrap();
+    assert!(matches!(
+        &fetch_perm[0],
+        SessionEventBody::Prompt { question, body, body_kind, .. }
+            if question == "允许使用 WebFetch？" && body == "https://example.com/very/long/query" && body_kind == "command"
+    ));
+
     state.begin_turn("turn-1");
     let edit = ingest_line(
         &mut state,

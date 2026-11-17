@@ -5,6 +5,7 @@ export interface EventItemProps {
   session: Session;
   resolvedAnswer: string | null;
   thinkingOpen?: boolean;
+  thinkingActive?: boolean;
   onToggleThinking?: () => void;
   /** 一轮只在最终答复上标一次 Agent，旁白不再重复。折叠行已经写了名字时为 false。 */
   showAgentLabel?: boolean;
@@ -21,6 +22,7 @@ export interface EventViewProps {
   resolvedAnswer: string | null;
   time: string;
   thinkingOpen: boolean;
+  thinkingActive?: boolean;
   onToggleThinking: () => void;
   showAgentLabel: boolean;
   showMessageFooter?: boolean;
