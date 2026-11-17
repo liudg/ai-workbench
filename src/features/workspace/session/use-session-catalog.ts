@@ -29,7 +29,7 @@ function initialState(scope: string, sessionId: string, agent: AgentKind) {
   const own = matchingAgent(sessionCatalogs.get(sessionId), agent);
   return {
     scope,
-    catalog: own ?? matchingAgent(agentsApi.peekCatalog(agent), agent),
+    catalog: own ?? agentsApi.peekCatalog(agent),
     settled: own !== undefined,
     notice: null as string | null,
     permissionMenu: null as PermissionMenu | null,
@@ -66,8 +66,12 @@ export function useSessionCatalog(sessionId: string, agent: AgentKind) {
     }
     void sessionCatalog(sessionId).then(
       (next) => {
+        if (cancelled) return;
         const valid = matchingAgent(next, agent);
-        if (cancelled || !valid) return;
+        if (!valid) {
+          patch({ settled: true });
+          return;
+        }
         fresh = true;
         if (valid.models.length > 0) {
           rememberSessionCatalog(sessionId, valid);

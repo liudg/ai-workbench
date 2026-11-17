@@ -49,10 +49,9 @@ export function draftAgent(draft: ComposerDraft, agents: AgentInstallation[] | n
 }
 
 function initialAgentState(scope: string, agent: AgentKind | null) {
-  const peeked = agent ? agentsApi.peekCatalog(agent) : undefined;
   return {
     scope,
-    catalog: peeked && (!peeked.agent || peeked.agent === agent) ? peeked : undefined,
+    catalog: agent ? agentsApi.peekCatalog(agent) : undefined,
     missing: false,
     permissionMenu: null as PermissionMenu | null,
   };
