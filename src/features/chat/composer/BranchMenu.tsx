@@ -136,7 +136,7 @@ export function BranchMenu({
             />
           </div>
           <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto pt-1">
-            <p className="wb-group-header px-2.5 pb-1 pt-1">{name}</p>
+            <p className="wb-group-header truncate px-2.5 pb-1 pt-1">{name}</p>
             {actionError ? (
               <p role="alert" className="px-2.5 pb-1 text-xs text-wb-danger">
                 {actionError}

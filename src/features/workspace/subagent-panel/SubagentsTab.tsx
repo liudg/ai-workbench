@@ -61,7 +61,7 @@ function SubagentList({ owner, task, taskSession }: { owner: string; task: TaskE
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-2 py-3">
       <div className="flex h-7 items-center gap-2 px-2 text-[12px] text-wb-fg-3">
-        <span className="wb-group-header min-w-0 flex-1">已开启 · {items.length}</span>
+        <span className="wb-group-header min-w-0 flex-1 truncate">已开启 · {items.length}</span>
         {running ? (
           <button
             type="button"

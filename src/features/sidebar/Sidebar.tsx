@@ -42,7 +42,7 @@ function SidebarFrame() {
       data-sidebar-open=""
       className="flex h-full min-h-0 w-[244px] shrink-0 flex-col overflow-hidden bg-wb-sidebar text-wb-fg"
     >
-      <div className="space-y-0.5 border-b border-wb-border p-2">
+      <div className="space-y-0.5 p-2">
         <NewChatEntry />
         <button
           type="button"
@@ -66,7 +66,7 @@ function SidebarFrame() {
         className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-2 pb-2 [overflow-anchor:none]"
       >
         {pinned.length > 0 && (
-          <section data-sidebar-section="pinned" className="pt-1.5">
+          <section data-sidebar-section="pinned" className="pb-1.5 pt-1.5">
             <div className="px-2 pb-1">
               <span className="wb-group-header">置顶</span>
             </div>
