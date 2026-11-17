@@ -41,7 +41,7 @@ const DAYLIGHT_PALETTE: ITheme = {
   blue: "#2b4acb",
   magenta: "#7e22ce",
   cyan: "#0f766e",
-  white: "#dce1eb",
+  white: "#4b5565",
   brightBlack: "#647084",
   brightRed: "#dc2626",
   brightGreen: "#16a34a",
@@ -49,7 +49,7 @@ const DAYLIGHT_PALETTE: ITheme = {
   brightBlue: "#3b5bdb",
   brightMagenta: "#9333ea",
   brightCyan: "#0d9488",
-  brightWhite: "#f8fafc",
+  brightWhite: "#14171f",
 };
 
 function nonTransparentColor(value?: string): string | null {

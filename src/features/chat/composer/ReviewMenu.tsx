@@ -61,14 +61,16 @@ export function ReviewMenu({
     : [];
 
   const handleListKeys = (count: number, runAt: (idx: number) => void) => (event: ReactKeyboardEvent) => {
-    if (count <= 0) return;
-    if (event.key === "ArrowDown") {
+    if (count <= 0 || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
-      setActive((idx) => (idx + 1) % count);
-    } else if (event.key === "ArrowUp") {
-      event.preventDefault();
-      setActive((idx) => (idx - 1 + count) % count);
-    } else if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+      const next = (active + (event.key === "ArrowDown" ? 1 : -1) + count) % count;
+      setActive(next);
+      if (!(event.target instanceof HTMLInputElement)) {
+        menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')[next]?.focus();
+      }
+    } else if (event.key === "Enter") {
+      if (event.target instanceof HTMLElement && event.target.closest("button")) return;
       event.preventDefault();
       runAt(Math.min(active, count - 1));
     }
@@ -264,10 +266,11 @@ function Row({
         selected ? "wb-menu-active font-medium" : "hover:bg-wb-hover",
       )}
       onMouseEnter={onHover}
+      onFocus={onHover}
       onMouseDown={(event) => {
         event.preventDefault();
-        onPick();
       }}
+      onClick={onPick}
     >
       <span className="min-w-0 break-words">{label}</span>
       {hint ? (
