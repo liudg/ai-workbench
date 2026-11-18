@@ -165,6 +165,20 @@ test("a live stream auto-expands only the trailing active thinking and collapses
   assert.equal(placeholderHtml.includes("data-thinking="), false);
   assert.equal(placeholderHtml.includes("思考中…"), false);
   assert.equal(placeholderHtml.includes("思考过程"), false);
+
+  const boldSummaryHtml = renderInHost(
+    createElement(mod.ActivityStream, {
+      events: [event("tb", { kind: "thinking", text: "**Testing temporary path setup**" })],
+      session,
+      resolvedAnswers: new Map(),
+      showAgentLabel: () => false,
+      live: true,
+      settled: false,
+    }),
+  );
+  assert.equal(boldSummaryHtml.includes("answer-body-thinking"), true);
+  assert.equal(boldSummaryHtml.includes('data-answer-block="heading"'), false);
+  assert.equal(boldSummaryHtml.includes("<strong>Testing temporary path setup</strong>"), true);
 });
 
 test("opening a settled row lists the calls in order, each folded until clicked", async () => {

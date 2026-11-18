@@ -343,3 +343,13 @@ test("a shell block without a terminal only copies, and non-shell code renders a
   assert.match(code, /aria-label="复制"/);
   assert.ok(code.indexOf("answer-codeblock-bar") < code.indexOf('data-answer-block="code"'));
 });
+
+test("thinking variant uses muted body class and does not promote bold summary lines to headings", () => {
+  const html = renderToStaticMarkup(
+    createElement(MarkdownBody, { text: "**Testing temporary path setup**", variant: "thinking" }),
+  );
+  assert.match(html, /class="answer-body answer-body-thinking"/);
+  assert.match(html, /data-answer-block="paragraph"/);
+  assert.equal(html.includes('data-answer-block="heading"'), false);
+  assert.match(html, /<strong>Testing temporary path setup<\/strong>/);
+});

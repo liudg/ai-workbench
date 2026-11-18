@@ -192,6 +192,20 @@ test("does not render images that sit inside code", () => {
   assert.equal(blocks.some((block) => block.type === "image"), false);
 });
 
+test("keeps a lone bold summary line as a paragraph when heading promotion is disabled", () => {
+  const promoted = parseAnswer("**Testing temporary path setup**");
+  assert.equal(promoted.length, 1);
+  assert.equal(promoted[0].type, "heading");
+
+  const kept = parseAnswer("**Testing temporary path setup**", { promoteHeading: false });
+  assert.equal(kept.length, 1);
+  assert.equal(kept[0].type, "paragraph");
+  if (kept[0].type === "paragraph") {
+    assert.equal(inlinePlain(kept[0].inlines), "Testing temporary path setup");
+    assert.equal(kept[0].inlines[0]?.type, "strong");
+  }
+});
+
 function titleOf(block: AnswerBlock | undefined): Inline[] {
   assert.ok(block);
   if (block.type === "heading" || block.type === "section") return block.type === "heading" ? block.inlines : block.title;

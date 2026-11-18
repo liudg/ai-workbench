@@ -9,6 +9,10 @@ export type { Align, AnswerBlock, CollapseKind, CollapseMeta, Inline };
 export { inlinePlain } from "./inline.ts";
 export { shortenLocalPath } from "./paths.ts";
 
-export function parseAnswer(input: string): AnswerBlock[] {
-  return attachSections(parseBlocks(input));
+export interface ParseAnswerOptions {
+  promoteHeading?: boolean;
+}
+
+export function parseAnswer(input: string, options?: ParseAnswerOptions): AnswerBlock[] {
+  return attachSections(parseBlocks(input, options?.promoteHeading ?? true));
 }

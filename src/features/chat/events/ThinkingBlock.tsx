@@ -35,9 +35,9 @@ export function ThinkingBlock({ event, thinkingOpen, onToggleThinking }: EventVi
         {thinkingOpen ? (
           <div
             id={`thinking-${event.id}`}
-            className="mt-2 min-w-0 border-l border-wb-border pl-3 text-sm text-wb-fg-2"
+            className="mt-1.5 min-w-0 border-l border-wb-border pl-3 text-[13px] text-wb-fg-2"
           >
-            <AssistantAnswer text={event.text} />
+            <AssistantAnswer text={event.text} variant="thinking" />
           </div>
         ) : null}
       </div>

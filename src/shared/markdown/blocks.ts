@@ -4,8 +4,8 @@ import { Lexer, type Token, type Tokens } from "marked";
 import type { AnswerBlock, Inline } from "./ast.ts";
 import { inlinePlain, parseInlines } from "./inline.ts";
 
-export function parseBlocks(input: string): AnswerBlock[] {
-  return convertBlocks(Lexer.lex(input, { gfm: true }), true);
+export function parseBlocks(input: string, promoteHeading = true): AnswerBlock[] {
+  return convertBlocks(Lexer.lex(input, { gfm: true }), promoteHeading);
 }
 
 function convertBlocks(tokens: Token[], promoteHeading: boolean): AnswerBlock[] {

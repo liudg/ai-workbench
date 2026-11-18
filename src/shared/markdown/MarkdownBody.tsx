@@ -19,11 +19,22 @@ import { writeClipboardText } from "@/shared/clipboard";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import type { ImageSource } from "./markdown-images";
 
-export function MarkdownBody({ text }: { text: string }) {
-  const blocks = useMemo(() => parseAnswer(text), [text]);
+export type MarkdownVariant = "answer" | "thinking";
+
+export function MarkdownBody({
+  text,
+  variant = "answer",
+}: {
+  text: string;
+  variant?: MarkdownVariant;
+}) {
+  const blocks = useMemo(
+    () => parseAnswer(text, { promoteHeading: variant !== "thinking" }),
+    [text, variant],
+  );
   if (blocks.length === 0) return null;
   return (
-    <div className="answer-body" data-answer-body>
+    <div className={cn("answer-body", variant === "thinking" && "answer-body-thinking")} data-answer-body>
       {blocks.map((block, index) => (
         <BlockView key={index} block={block} />
       ))}

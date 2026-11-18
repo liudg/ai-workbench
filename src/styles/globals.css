@@ -834,12 +834,58 @@ button.answer-cite:hover {
 .answer-body > * + * {
   margin-top: 0.95rem;
 }
-.answer-body > .answer-h,
-.answer-body > .answer-section {
+.answer-body > * + .answer-h,
+.answer-body > * + .answer-section {
   margin-top: 1.55rem;
 }
 .answer-body > .answer-h + .answer-h {
   margin-top: 0.65rem;
+}
+
+/* 思考过程正文：收敛为 13px 次级信息流，不放大标题或拔高字重与前景色。 */
+.answer-body-thinking {
+  color: var(--color-wb-fg-3);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.answer-body-thinking .answer-h,
+.answer-body-thinking .answer-section-fallback {
+  color: var(--color-wb-fg-2);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: normal;
+  line-height: 1.6;
+}
+.answer-body-thinking strong {
+  color: var(--color-wb-fg-2);
+  font-weight: 500;
+}
+.answer-body-thinking .answer-quote {
+  color: var(--color-wb-fg-3);
+}
+.answer-body-thinking :is(.answer-inline-code, .answer-path, .answer-cite) {
+  color: var(--color-wb-fg-2);
+}
+.answer-body-thinking .answer-pre {
+  color: var(--color-wb-fg-2);
+  font-size: 12px;
+}
+.answer-body-thinking .answer-list > li + li {
+  margin-top: 0.25rem;
+}
+.answer-body-thinking .answer-list.is-loose > li + li,
+.answer-body-thinking .answer-list > li > * + * {
+  margin-top: 0.45rem;
+}
+.answer-body-thinking > * + * {
+  margin-top: 0.45rem;
+}
+.answer-body-thinking > * + .answer-h,
+.answer-body-thinking > * + .answer-section {
+  margin-top: 0.6rem;
+}
+.answer-body-thinking > .answer-h + .answer-h {
+  margin-top: 0.35rem;
 }
 
 /* Tailwind 的 hover 变体包在 @media (hover: hover) 里，触控环境里悬停不生效。芯片提示直接跟 :hover。 */
