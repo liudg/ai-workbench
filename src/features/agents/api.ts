@@ -9,11 +9,11 @@ export function agentProfiles() {
 }
 
 /** 本机装了哪些 Agent。`checkUpdates` 时顺带查官方最新版本，要走网络。 */
-export function agentInstallations(checkUpdates: boolean) {
+export function agentInstallations(options: { checkUpdates?: boolean; refreshCatalogs?: boolean }) {
   return daemon.call<AgentInstallation[]>(
     "agents.installations",
-    { checkUpdates },
-    checkUpdates ? CLI_TIMEOUT_MS : undefined,
+    options,
+    options.checkUpdates ? CLI_TIMEOUT_MS : undefined,
   );
 }
 

@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use aiwb_core::models::{AgentCatalog, AgentInstallation, AgentKind};
+use aiwb_core::models::{AgentCatalog, AgentInstallation, AgentKind, AgentUpgrade};
 use serde::Deserialize;
 
 use super::{ServiceResult, Services};
@@ -14,12 +14,14 @@ pub(crate) struct AgentParam {
     pub(crate) agent: AgentKind,
 }
 
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct InstallationsParam {
     /// 顺带查官方最新版本。要走网络，只有设置页要。
     #[serde(default)]
     check_updates: bool,
+    #[serde(default)]
+    refresh_catalogs: bool,
 }
 
 #[derive(Deserialize)]
@@ -36,11 +38,11 @@ impl Services {
     pub fn start_catalog_prewarm(self: &Arc<Self>) {
         let services = Arc::clone(self);
         tokio::spawn(async move {
-            services.installations(InstallationsParam { check_updates: false }).await;
+            services.installations(InstallationsParam::default()).await;
         });
     }
 
-    /// 检测到的能开会话的 Agent，还没探成功过模型目录的在后台探。
+    /// 检测安装时预读模型目录，用户点击「重新检测」时重新读取。
     pub(crate) async fn installations(&self, params: InstallationsParam) -> Vec<AgentInstallation> {
         let list = aiwb_agents::list_installations(params.check_updates).await;
         let agents: Vec<AgentKind> = list
@@ -49,12 +51,16 @@ impl Services {
             .map(|item| item.kind)
             .collect();
         if !agents.is_empty() {
-            match self.prewarm_dir() {
-                Ok(cwd) => self.runtimes.prewarm_catalogs(agents, cwd),
-                Err(err) => self.runtimes.fail_probes(agents, &err),
-            }
+            self.runtimes.prewarm_catalogs(agents, self.prewarm_dir(), params.refresh_catalogs);
         }
         list
+    }
+
+    pub(crate) fn upgrade_agent(&self, params: AgentParam) -> ServiceResult<AgentUpgrade> {
+        let agent = params.agent;
+        let runtimes = self.runtimes.clone();
+        let cwd = self.prewarm_dir();
+        self.upgrades.start(agent, move || runtimes.prewarm_catalogs(vec![agent], cwd, true))
     }
 
     /// 预探用的目录：任务文件夹已经有了就用它，没有就用数据目录，不为了探去建它。
@@ -95,7 +101,7 @@ impl Services {
             }
             None => self.chat_dir()?,
         };
-        self.runtimes.refresh_catalog(params.agent, cwd).await
+        self.runtimes.refresh_catalog(params.agent, cwd, false).await
     }
 
     /// 独立聊天的任务文件夹，没有就建出来。

@@ -42,14 +42,15 @@ export function loadProfiles() {
 }
 
 /** 失败时留着上次的列表（没有就仍为 null），只给出原因。检测失败不等于没装。 */
-export async function refreshInstallations(checkUpdates = false) {
+export async function refreshInstallations(options: Parameters<typeof agentInstallations>[0] = {}) {
+  const { checkUpdates } = options;
   installationsRequested = true;
   if (checkUpdates) {
     updatesRequested = true;
     useAgentStore.setState({ installationsLoading: true, installationError: null });
   }
   try {
-    const installations = await agentInstallations(checkUpdates);
+    const installations = await agentInstallations(options);
     if (checkUpdates) updatesLoaded = true;
     else if (updatesLoaded) return;
     useAgentStore.setState({ installations, installationError: null });
@@ -66,7 +67,7 @@ export function loadInstallations() {
 
 /** 设置页：本次运行第一次打开时顺带查一次更新。 */
 export function loadInstallationUpdates() {
-  if (!updatesRequested) void refreshInstallations(true);
+  if (!updatesRequested) void refreshInstallations({ checkUpdates: true });
 }
 
 /** 开发样例页：直接给出能力和安装情况，不向 daemon 要。 */

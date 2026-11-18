@@ -3,6 +3,7 @@ export {
   useAgentDetection,
   useAgentInstallations,
   useAgentProfiles,
+  useCatalogProbes,
   useReadyAgentCount,
   useSessionAgents,
 } from "./use-agents";

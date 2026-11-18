@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import { agentsApi } from "@/features/agents";
+import { agentsApi, useCatalogProbes } from "@/features/agents";
 import type { AgentOption, ComposerHost } from "@/features/chat/headless";
 import { usePanelStore } from "@/features/panel/headless";
 import { projectsApi, type Project } from "@/features/projects";
@@ -59,6 +59,7 @@ function initialAgentState(scope: string, agent: AgentKind | null) {
 
 function useAgentCatalog(agent: AgentKind | null, projectId: ProjectScope) {
   const scope = `${agent ?? ""}\0${projectId ?? ""}`;
+  const probeStatus = useCatalogProbes()?.find((probe) => probe.kind === agent)?.status;
   const [state, setState] = useState(() => initialAgentState(scope, agent));
   useEffect(() => {
     const base = initialAgentState(scope, agent);
@@ -67,13 +68,18 @@ function useAgentCatalog(agent: AgentKind | null, projectId: ProjectScope) {
     let cancelled = false;
     const patch = (next: Partial<typeof base>) =>
       setState((prev) => (prev.scope === scope ? { ...prev, ...next } : { ...base, ...next }));
-    agentsApi
-      .loadCatalog(agent, projectId, (next) => {
-        if (!cancelled && (!next.agent || next.agent === agent)) patch({ catalog: next, missing: false });
-      })
-      .catch(() => {
-        if (!cancelled && !base.catalog) patch({ missing: true });
-      });
+    const show = (next: NonNullable<typeof base.catalog>) => {
+      if (!cancelled && (!next.agent || next.agent === agent)) patch({ catalog: next, missing: false });
+    };
+    const load = probeStatus === "probing" || probeStatus === "failed"
+      ? agentsApi.cachedCatalog(agent).then((cached) => {
+          if (cached) show(cached);
+          else if (!cancelled && probeStatus === "failed") patch({ missing: true });
+        })
+      : agentsApi.loadCatalog(agent, projectId, show);
+    void load.catch(() => {
+      if (!cancelled && !base.catalog) patch({ missing: true });
+    });
     void agentsApi.draftPermissionMenu(agent).then(
       (menu) => {
         if (!cancelled) patch({ permissionMenu: menu });
@@ -83,7 +89,7 @@ function useAgentCatalog(agent: AgentKind | null, projectId: ProjectScope) {
     return () => {
       cancelled = true;
     };
-  }, [agent, projectId, scope]);
+  }, [agent, projectId, scope, probeStatus]);
   const active = state.scope === scope ? state : initialAgentState(scope, agent);
   return {
     catalog: active.catalog,

@@ -43,7 +43,11 @@ impl AgentUpgrades {
         list(&self.state.lock().unwrap_or_else(|e| e.into_inner()))
     }
 
-    pub(crate) fn start(self: &Arc<Self>, kind: AgentKind) -> Result<AgentUpgrade, String> {
+    pub(crate) fn start(
+        self: &Arc<Self>,
+        kind: AgentKind,
+        refresh_catalog: impl FnOnce() + Send + 'static,
+    ) -> Result<AgentUpgrade, String> {
         let adapter = (self.adapters)(kind);
         let key = adapter.upgrade_key();
         let (entry, started) = self.hub.publish_with(TOPIC_AGENT_UPGRADES, || {
@@ -83,6 +87,9 @@ impl AgentUpgrades {
             tokio::spawn(async move {
                 let output = Arc::new(move |text| updates.append(kind, text));
                 let result = adapter.upgrade(output).await.map_err(|e| e.to_string());
+                if matches!(result, Ok(Some(0))) && adapter.session_linked() {
+                    refresh_catalog();
+                }
                 owner.finish(kind, result);
             });
         }
@@ -241,15 +248,15 @@ mod tests {
         let updates =
             AgentUpgrades::new(hub.clone(), Arc::new(move |kind| adapters[&kind].clone()));
         assert_eq!(
-            updates.start(a.kind).unwrap().status,
+            updates.start(a.kind, || {}).unwrap().status,
             UpgradeStatus::Running
         );
         assert_eq!(
-            updates.start(b.kind).unwrap().status,
+            updates.start(b.kind, || {}).unwrap().status,
             UpgradeStatus::Running
         );
-        updates.start(a.kind).unwrap();
-        assert!(updates.start(alias.kind).is_err());
+        updates.start(a.kind, || {}).unwrap();
+        assert!(updates.start(alias.kind, || {}).is_err());
         tokio::time::timeout(Duration::from_secs(5), async {
             a.started.notified().await;
             b.started.notified().await;
@@ -282,7 +289,7 @@ mod tests {
         )
         .unwrap();
         // 完成后释放安装锁。
-        updates.start(alias.kind).unwrap();
+        updates.start(alias.kind, || {}).unwrap();
         alias.finish.add_permits(1);
         tokio::time::timeout(Duration::from_secs(5), updates.wait())
             .await
@@ -294,12 +301,12 @@ mod tests {
         let installer = Installer::new(AgentKind::CodexCli, "codex", 0);
         let adapter = installer.clone();
         let updates = AgentUpgrades::new(Arc::new(Hub::new()), Arc::new(move |_| adapter.clone()));
-        updates.start(installer.kind).unwrap();
+        updates.start(installer.kind, || {}).unwrap();
         tokio::time::timeout(Duration::from_secs(5), installer.started.notified())
             .await
             .unwrap();
         updates.begin_shutdown();
-        assert!(updates.start(installer.kind).is_err());
+        assert!(updates.start(installer.kind, || {}).is_err());
         assert!(
             tokio::time::timeout(Duration::from_millis(20), updates.wait())
                 .await

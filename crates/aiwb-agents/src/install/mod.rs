@@ -28,6 +28,7 @@ use version::version_from_output;
 pub use version::{extract_version, is_newer, parse_published_version};
 
 pub(crate) use command::tool_command;
+const NPM_REGISTRY_ARG: &str = "--registry=https://registry.npmmirror.com";
 #[cfg(test)]
 use command::cmd_invocation_line;
 #[cfg(test)]
@@ -302,7 +303,7 @@ pub async fn inspect_release(
         match &npm {
             Some(npm) => match run_captured(
                 npm,
-                &["view", release.npm_package, "version"],
+                &["view", release.npm_package, "version", NPM_REGISTRY_ARG],
                 Duration::from_secs(25),
                 true,
             )

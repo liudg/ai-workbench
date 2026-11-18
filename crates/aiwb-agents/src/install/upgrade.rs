@@ -60,7 +60,7 @@ pub(crate) async fn upgrade_release(
             let spec = format!("{}@latest", release.npm_package);
             run_upgrade(
                 &npm,
-                &["install", "-g", &spec, "--no-fund", "--no-audit"],
+                &["install", "-g", &spec, super::NPM_REGISTRY_ARG, "--no-fund", "--no-audit"],
                 true,
                 output,
             )

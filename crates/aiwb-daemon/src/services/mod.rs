@@ -194,7 +194,7 @@ impl Services {
             "drafts.set" => to_value(self.set_draft(parse(params)?)?),
             "agents.profiles" => to_value(aiwb_agents::agent_profiles()),
             "agents.installations" => to_value(self.installations(parse(params)?).await),
-            "agents.upgrade" => to_value(self.upgrades.start(parse::<agents::AgentParam>(params)?.agent)?),
+            "agents.upgrade" => to_value(self.upgrade_agent(parse(params)?)?),
             "agents.catalog" => to_value(self.cached_catalog(parse(params)?)?),
             "agents.probeCatalog" => to_value(self.probe_catalog(parse(params)?).await?),
             "agents.permissionMenu" => to_value(self.draft_permission_menu(parse(params)?)),

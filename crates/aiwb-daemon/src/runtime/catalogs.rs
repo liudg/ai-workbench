@@ -36,16 +36,20 @@ impl Runtimes {
         list(&self.catalog_probes.lock().unwrap())
     }
 
-    /// 探成功过就直接给；否则起一次 CLI 探出来并记下。探不到时退回存下的目录。
-    pub(crate) async fn refresh_catalog(&self, agent: AgentKind, cwd: String) -> RuntimeResult<AgentCatalog> {
+    /// 普通读取复用最近的目录，主动刷新在取得锁后启动新的 CLI。
+    pub(crate) async fn refresh_catalog(&self, agent: AgentKind, cwd: String, force: bool) -> RuntimeResult<AgentCatalog> {
         let lock = self.probing.lock().unwrap().entry(agent).or_default().clone();
         let _probing = lock.lock().await;
-        if let Some(catalog) = self.fresh_catalog(agent)? {
-            return Ok(catalog);
+        if self.closing.load(Ordering::SeqCst) {
+            return Err("后台正在退出".to_string());
+        }
+        if !force {
+            if let Some(catalog) = self.fresh_catalog(agent)? {
+                return Ok(catalog);
+            }
         }
         // 之前失败过的重试期间仍显示失败，出了结果再改。
-        self.set_probe(agent, ProbeStatus::Probing, None, |current| current.is_none());
-        // 探的时候会话自己的 CLI 可能已经给了目录，那份算数，不改回失败。
+        self.set_probe(agent, ProbeStatus::Probing, None, |current| force || current.is_none());
         let unless_ready = |current: Option<ProbeStatus>| current != Some(ProbeStatus::Ready);
         match self.probe_catalog(agent, cwd).await {
             Ok(mut catalog) => {
@@ -66,35 +70,34 @@ impl Runtimes {
         }
     }
 
-    /// 会话自己的 CLI 给的目录。空模型不算一次成功，不覆盖已有的目录。
+    /// 公共目录缺失时才使用会话的目录，已有对话可能仍在使用旧版 CLI。
     pub(crate) fn remember_catalog(&self, agent: AgentKind, catalog: &AgentCatalog) {
-        if self.store_catalog(agent, catalog) {
-            self.set_probe(agent, ProbeStatus::Ready, None, |_| true);
-        }
+        self.set_probe(agent, ProbeStatus::Ready, None, |current| {
+            matches!(current, None | Some(ProbeStatus::Failed)) && self.store_catalog(agent, catalog)
+        });
     }
 
-    /// 后台给这些 Agent 各探一次。探成功过或正在探的跳过，失败过的再试。
-    pub(crate) fn prewarm_catalogs(self: &Arc<Self>, agents: Vec<AgentKind>, cwd: String) {
+    /// 各 Agent 独立刷新。升级前已经发出的查询结束后，再向升级后的 CLI 获取目录。
+    pub(crate) fn prewarm_catalogs(self: &Arc<Self>, agents: Vec<AgentKind>, cwd: RuntimeResult<String>, force: bool) {
         if self.closing.load(Ordering::SeqCst) {
             return;
         }
         for agent in agents {
-            let fresh = self.set_probe(agent, ProbeStatus::Probing, None, |current| current.is_none());
-            if !fresh && !self.can_retry(agent) {
+            let cwd = match &cwd {
+                Ok(cwd) => cwd.clone(),
+                Err(error) => {
+                    self.set_probe(agent, ProbeStatus::Failed, Some(error.clone()), |current| force || current.is_none());
+                    continue;
+                }
+            };
+            let started = self.set_probe(agent, ProbeStatus::Probing, None, |current| force || current.is_none());
+            if !force && !started && !self.can_retry(agent) {
                 continue;
             }
             let runtimes = self.clone();
-            let cwd = cwd.clone();
             tokio::spawn(async move {
-                let _ = runtimes.refresh_catalog(agent, cwd).await;
+                let _ = runtimes.refresh_catalog(agent, cwd, force).await;
             });
-        }
-    }
-
-    /// 这些 Agent 没法探：还没有结果的记成失败并带上原因。
-    pub(crate) fn fail_probes(&self, agents: Vec<AgentKind>, error: &str) {
-        for agent in agents {
-            self.set_probe(agent, ProbeStatus::Failed, Some(error.to_string()), |current| current.is_none());
         }
     }
 

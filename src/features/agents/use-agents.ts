@@ -27,7 +27,7 @@ export function useSessionAgents(): AgentInstallation[] | null {
 }
 
 /** 各 Agent 这次启动后探模型目录的结果。还没收到时为 undefined。 */
-function useCatalogProbes(): CatalogProbe[] | undefined {
+export function useCatalogProbes(): CatalogProbe[] | undefined {
   return useTopic<CatalogProbe[]>(TOPIC_AGENT_CATALOGS);
 }
 
@@ -53,5 +53,10 @@ export function useAgentInstallations() {
       error: s.installationError,
     })),
   );
-  return { ...state, ...upgrades, probes: useCatalogProbes(), refresh: () => refreshInstallations(true) };
+  return {
+    ...state,
+    ...upgrades,
+    probes: useCatalogProbes(),
+    refresh: () => refreshInstallations({ checkUpdates: true, refreshCatalogs: true }),
+  };
 }
