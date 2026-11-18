@@ -4,7 +4,7 @@ resolver = "2"
 
 [workspace.package]
 edition = "2021"
-version = "0.2.95"
+version = "0.2.96"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
