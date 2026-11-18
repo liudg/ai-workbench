@@ -82,6 +82,11 @@ pub trait AgentSession: DiffScopeProvider + AnnotationSink + Send + Sync {
         Err(AgentError::Runtime("这个 Agent 不能单独停一个子 Agent".into()))
     }
 
+    /// 单独停掉一个后台任务（`BackgroundTask` 的 `task_id`）。声明 `supports_background_task_stop` 的适配器实现。
+    async fn stop_background_task(&self, _task_id: &str) -> Result<(), AgentError> {
+        Err(AgentError::Runtime("这个 Agent 不能单独停一个后台任务".into()))
+    }
+
     /// 测试收尾：删掉这次打开的原生线程。正式界面不调用。
     #[cfg(test)]
     async fn discard_thread(&self) -> Result<(), AgentError> {

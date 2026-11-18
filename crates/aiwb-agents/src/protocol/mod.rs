@@ -20,3 +20,13 @@ pub use surface::{
     default_git_scopes, is_turn_scope, turn_scope, AnnotationSink, DiffScope, DiffScopeProvider,
 };
 pub use turn::{fold_page_annotations, TurnDelivery, UserTurn};
+
+/// 对象里去掉首尾空白后非空的字符串字段。
+pub(crate) fn text(value: &serde_json::Value, key: &str) -> Option<String> {
+    value
+        .get(key)
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(str::to_string)
+}

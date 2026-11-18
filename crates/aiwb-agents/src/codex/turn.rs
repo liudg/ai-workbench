@@ -536,11 +536,17 @@ impl Shared {
             "stop" => {
                 let thread_id = self.thread_id.lock().unwrap().clone();
                 if let Some(thread_id) = thread_id {
-                    self.request(
-                        "thread/backgroundTerminals/clean",
-                        json!({ "threadId": thread_id }),
-                    )
-                    .await?;
+                    let cleaning = self.note_terminals_cleaning();
+                    if let Err(err) = self
+                        .request(
+                            "thread/backgroundTerminals/clean",
+                            json!({ "threadId": thread_id }),
+                        )
+                        .await
+                    {
+                        self.unmark_stopping(&cleaning);
+                        return Err(err);
+                    }
                 }
                 emit(
                     &self.events,

@@ -13,7 +13,7 @@ use crate::acp::{
     session::AcpSession,
 };
 use crate::{AgentSession, UserTurn};
-use aiwb_core::models::{SessionEventBody, SessionStatus, SubagentStatus, ToolStatus};
+use aiwb_core::models::{BackgroundTask, BackgroundTaskStatus, SessionEventBody, SessionStatus, SubagentStatus, ToolStatus};
 
 const PARENT: &str = "10000000-0000-4000-8000-000000000001";
 const OLD: &str = "10000000-0000-4000-8000-000000000002";
@@ -303,7 +303,6 @@ async fn long_background_tasks_keep_the_turn_running_and_can_be_stopped() {
         let started = json!({"type":"GENERIC","status":"RUNNING","content":
             "Tool is running as a background task with task id: task-1\nTask Description: slow command"});
         let reply = json!({"type":"PLANNER_RESPONSE","content":"Waiting for the command."});
-        data.transcript(PARENT, &[started.clone(), reply.clone()]);
         let mut h = Harness::new(data.path());
         h.session
             .deliver(UserTurn {
@@ -315,6 +314,8 @@ async fn long_background_tasks_keep_the_turn_running_and_can_be_stopped() {
             .await
             .unwrap();
         let request: Value = serde_json::from_str(&h.wire.recv().await.unwrap()).unwrap();
+        // agy 在回合里才写转录：回合开始之后。
+        data.transcript(PARENT, &[started.clone(), reply.clone()]);
         h.shared.on_update(&json!({"sessionId":PARENT,"update":{
             "sessionUpdate":"tool_call","toolCallId":"bg","kind":"execute","name":"run_command",
             "status":"in_progress","rawInput":{"CommandLine":"slow command"}}}));
@@ -352,5 +353,206 @@ async fn long_background_tasks_keep_the_turn_running_and_can_be_stopped() {
             assert!(events.iter().any(|event| matches!(event, SessionEventBody::ToolCall { status:ToolStatus::Completed, detail, .. } if detail == "DONE")));
             assert!(events.iter().any(|event| matches!(event, SessionEventBody::AgentMessage { text, .. } if text.contains("finished: DONE"))));
         }
+    }
+}
+
+impl Harness {
+    /// 投一轮：发出 `session/prompt` 后写好这一轮的转录（agy 在回合里才写），画这些命令卡片（工具调用 id、命令），
+    /// 再回包 `end_turn`。
+    async fn turn(&mut self, data: &DataRoot, transcript: &[Value], cards: &[(&str, &str)]) {
+        while self.wire.try_recv().is_ok() {}
+        self.session
+            .deliver(UserTurn { text: "go".into(), images: vec![], client_id: String::new(), annotations: vec![] })
+            .await
+            .unwrap();
+        let request = loop {
+            let request: Value = serde_json::from_str(&self.wire.recv().await.unwrap()).unwrap();
+            if request["method"] == "session/prompt" {
+                break request;
+            }
+        };
+        data.transcript(PARENT, transcript);
+        for (id, command) in cards {
+            self.shared.on_update(&json!({"sessionId":PARENT,"update":{
+                "sessionUpdate":"tool_call","toolCallId":id,"kind":"execute","name":"run_command",
+                "status":"in_progress","rawInput":{"CommandLine":command}}}));
+        }
+        self.shared.rpc.resolve(request["id"].as_u64().unwrap(), Ok(json!({"stopReason":"end_turn"})));
+        tick().await;
+    }
+}
+
+/// 让等待循环转几圈。
+async fn tick() {
+    for _ in 0..5 {
+        tokio::time::advance(Duration::from_millis(400)).await;
+        for _ in 0..10 {
+            tokio::task::yield_now().await;
+        }
+    }
+}
+
+fn task_started(id: &str, command: &str) -> Value {
+    json!({"type":"GENERIC","status":"RUNNING","content":
+        format!("Tool is running as a background task with task id: {id}\nTask Description: {command}")})
+}
+
+fn task_finished(id: &str, code: i64, output: &str) -> Value {
+    json!({"type":"SYSTEM_MESSAGE","content":format!(
+        "[Message] sender={id} content=Task id \"{id}\" finished with result:\nCommand exited with code {code}.\n\nCommand output:\n{output}")})
+}
+
+/// 照 agy 1.5.10 实录（2026-11-17）：取消的任务只有一个换行就是 `Log:`。
+fn task_canceled(id: &str) -> Value {
+    json!({"type":"SYSTEM_MESSAGE","content":format!(
+        "<SYSTEM_MESSAGE>\n[Message] timestamp=t sender={id} priority=MESSAGE_PRIORITY_LOW content=Task id \"{id}\" was canceled with result:\nTool execution was canceled\nLog: file:///x/{id}.log\n</SYSTEM_MESSAGE>")})
+}
+
+fn reply(text: &str) -> Value {
+    json!({"type":"PLANNER_RESPONSE","content":text})
+}
+
+fn background_tasks(events: &[SessionEventBody]) -> Vec<BackgroundTask> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            SessionEventBody::BackgroundTask(task) => Some(task.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+fn completed(events: &[SessionEventBody]) -> bool {
+    events.iter().any(|event| matches!(event, SessionEventBody::StatusChanged { status: SessionStatus::Completed }))
+}
+
+/// 整轮停掉时记成已停止的任务，转录里永远等不到结束消息。下一轮从头重读转录时不能再等它。
+#[tokio::test(start_paused = true)]
+async fn a_stopped_background_task_does_not_hold_the_next_turn() {
+    let data = DataRoot::new();
+    let started = task_started("task-1", "slow command");
+    let waiting = reply("Waiting for the command.");
+    let mut h = Harness::new(data.path());
+    h.turn(&data, &[started.clone(), waiting.clone()], &[("bg", "slow command")]).await;
+    h.session.interrupt().await.unwrap();
+    tick().await;
+    let tasks = background_tasks(&h.drain());
+    assert_eq!(tasks.last().map(|task| task.status), Some(BackgroundTaskStatus::Stopped), "{tasks:#?}");
+
+    h.turn(&data, &[started, waiting, reply("NEXT-OK")], &[]).await;
+    let events = h.drain();
+    assert!(completed(&events), "{events:#?}");
+}
+
+/// 重新打开会话（新进程，没有登记过任何任务）：旧转录里只有启动记录的任务是上一个进程的，第一轮不等它。
+#[tokio::test(start_paused = true)]
+async fn a_reopened_session_does_not_wait_for_the_old_process_tasks() {
+    let data = DataRoot::new();
+    let old = [task_started("task-1", "slow command"), reply("Waiting for the command.")];
+    data.transcript(PARENT, &old);
+    let mut h = Harness::new(data.path());
+    let mut steps = old.to_vec();
+    steps.push(reply("NEXT-OK"));
+    h.turn(&data, &steps, &[]).await;
+    let events = h.drain();
+    assert!(completed(&events), "{events:#?}");
+    assert!(background_tasks(&events).is_empty(), "旧任务不登记：{events:#?}");
+}
+
+/// 等待时 agy 把任务取消了（`was canceled with result:`）：记成已停止、卡片收尾，回合照常结束。
+#[tokio::test(start_paused = true)]
+async fn a_task_canceled_by_agy_while_waiting_ends_the_wait() {
+    let data = DataRoot::new();
+    let started = task_started("task-1", "slow command");
+    let waiting = reply("Waiting for the command.");
+    let mut h = Harness::new(data.path());
+    h.turn(&data, &[started.clone(), waiting.clone()], &[("bg", "slow command")]).await;
+    assert!(!completed(&h.drain()));
+
+    data.transcript(PARENT, &[started, waiting, task_canceled("task-1"), reply("The command was canceled.")]);
+    tick().await;
+    let events = h.drain();
+    let tasks = background_tasks(&events);
+    let task = tasks.last().expect("任务要收尾");
+    assert_eq!((task.status, task.result.as_str()), (BackgroundTaskStatus::Stopped, "Tool execution was canceled"));
+    assert!(events.iter().any(|event| matches!(event,
+        SessionEventBody::ToolCall { stream_id: Some(id), status: ToolStatus::Failed, .. } if id == "tool-bg")));
+    assert!(completed(&events), "{events:#?}");
+}
+
+/// `session/prompt` 回包前就跑完的本轮任务：第一次从头读转录时登记并收尾，退出码和结果不丢。
+#[tokio::test(start_paused = true)]
+async fn a_task_that_finished_before_the_reply_is_recorded() {
+    let data = DataRoot::new();
+    let mut h = Harness::new(data.path());
+    let steps = [
+        task_started("task-1", "quick command"),
+        reply("Waiting for the command."),
+        task_finished("task-1", 2, "oops"),
+        reply("It failed."),
+    ];
+    h.turn(&data, &steps, &[("bg", "quick command")]).await;
+    let events = h.drain();
+    let tasks = background_tasks(&events);
+    assert_eq!(tasks.len(), 1, "{tasks:#?}");
+    assert_eq!((tasks[0].status, tasks[0].exit_code), (BackgroundTaskStatus::Failed, Some(2)));
+    assert_eq!(tasks[0].tool_call_id.as_deref(), Some("tool-bg"));
+    assert!(completed(&events), "{events:#?}");
+}
+
+/// 两次读取之间启动又结束的任务也要记下，连同退出码和它的命令卡片。
+#[tokio::test(start_paused = true)]
+async fn a_background_task_that_starts_and_ends_between_reads_is_recorded() {
+    let data = DataRoot::new();
+    let slow = task_started("task-1", "slow command");
+    let waiting = reply("Waiting for the command.");
+    let mut h = Harness::new(data.path());
+    h.turn(&data, &[slow.clone(), waiting.clone()], &[("bg1", "slow command"), ("bg2", "quick command")]).await;
+    let tasks = background_tasks(&h.drain());
+    assert_eq!(tasks.iter().map(|task| task.task_id.as_str()).collect::<Vec<_>>(), ["task-1"]);
+
+    data.transcript(PARENT, &[
+        slow,
+        waiting,
+        task_started("task-2", "quick command"),
+        task_finished("task-2", 3, "boom"),
+        task_finished("task-1", 0, "DONE"),
+        reply("All done."),
+    ]);
+    tick().await;
+    let events = h.drain();
+    let tasks = background_tasks(&events);
+    let quick = tasks.iter().find(|task| task.task_id == "task-2").expect("task-2 要记下");
+    assert_eq!((quick.status, quick.exit_code), (BackgroundTaskStatus::Failed, Some(3)));
+    assert_eq!(quick.tool_call_id.as_deref(), Some("tool-bg2"));
+    let slow = tasks.iter().find(|task| task.task_id == "task-1").unwrap();
+    assert_eq!((slow.status, slow.tool_call_id.as_deref()), (BackgroundTaskStatus::Completed, Some("tool-bg1")));
+    assert!(events.iter().any(|event| matches!(event,
+        SessionEventBody::ToolCall { stream_id: Some(id), status: ToolStatus::Failed, detail, .. } if id == "tool-bg2" && detail == "boom")));
+    assert!(events.iter().any(|event| matches!(event,
+        SessionEventBody::ToolCall { stream_id: Some(id), status: ToolStatus::Completed, detail, .. } if id == "tool-bg1" && detail == "DONE")));
+    assert!(completed(&events));
+}
+
+/// 同一条命令起了两次，同一批读到「第一条已结束、第二条还在跑」：卡片按启动先后分，结果写回各自的卡片。
+#[tokio::test(start_paused = true)]
+async fn identical_commands_keep_their_cards_in_start_order() {
+    for round in 0..8 {
+        let data = DataRoot::new();
+        let mut h = Harness::new(data.path());
+        let steps = [
+            task_started("task-a", "npm run dev"),
+            task_started("task-b", "npm run dev"),
+            task_finished("task-a", 1, "first failed"),
+            reply("Waiting for the second one."),
+        ];
+        h.turn(&data, &steps, &[("first", "npm run dev"), ("second", "npm run dev")]).await;
+        let events = h.drain();
+        let tasks = background_tasks(&events);
+        let card = |id: &str| tasks.iter().rev().find(|task| task.task_id == id).and_then(|task| task.tool_call_id.clone());
+        assert_eq!(card("task-a").as_deref(), Some("tool-first"), "第 {round} 次：{tasks:#?}");
+        assert_eq!(card("task-b").as_deref(), Some("tool-second"), "第 {round} 次：{tasks:#?}");
+        assert!(events.iter().any(|event| matches!(event,
+            SessionEventBody::ToolCall { stream_id: Some(id), status: ToolStatus::Failed, detail, .. } if id == "tool-first" && detail == "first failed")));
     }
 }

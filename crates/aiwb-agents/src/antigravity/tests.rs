@@ -150,12 +150,35 @@ fn a_background_command_finishes_its_running_card() {
         "sessionUpdate":"tool_call","toolCallId":"bg","name":"run_command","status":"in_progress","kind":"execute",
         "title":"Start-Sleep -Seconds 25; echo slow-done","rawInput":{"CommandLine":"Start-Sleep -Seconds 25; echo slow-done"}
     }));
+    let card = map.claim_command("Start-Sleep -Seconds 25; echo slow-done", &[]).expect("running card");
     let event = map
-        .finish_command("Start-Sleep -Seconds 25; echo slow-done", "Command exited with code 0.\n\nCommand output:\nslow-done\r\n")
+        .finish_command(&card, "Command exited with code 0.\n\nCommand output:\nslow-done\r\n", false)
         .expect("running card");
     let SessionEventBody::ToolCall { status, detail, exit_code, .. } = event else { panic!() };
     assert_eq!((status, detail.as_str(), exit_code), (ToolStatus::Completed, "slow-done", Some(0)));
-    assert!(map.finish_command("Start-Sleep -Seconds 25; echo slow-done", "x").is_none());
+    assert!(map.finish_command(&card, "x", false).is_none());
+}
+
+/// 同一条命令同时转成两个后台任务：各占一张卡片，结果写回各自的卡片。
+#[test]
+fn identical_background_commands_claim_their_own_cards() {
+    let mut map = map();
+    for id in ["first", "second"] {
+        map.apply(&json!({
+            "sessionUpdate":"tool_call","toolCallId":id,"name":"run_command","status":"in_progress","kind":"execute",
+            "title":"npm run dev","rawInput":{"CommandLine":"npm run dev"}
+        }));
+    }
+    let first = map.claim_command("npm run dev", &[]).expect("first card");
+    let second = map.claim_command("npm run dev", std::slice::from_ref(&first)).expect("second card");
+    assert_ne!(first, second);
+    assert!(map.claim_command("npm run dev", &[first.clone(), second.clone()]).is_none());
+    let event = map.finish_command(&second, "Command exited with code 1.\n\nCommand output:\nboom", false).unwrap();
+    let SessionEventBody::ToolCall { stream_id, status, exit_code, .. } = event else { panic!() };
+    assert_eq!((stream_id.as_deref(), status, exit_code), (Some(second.as_str()), ToolStatus::Failed, Some(1)));
+    let event = map.finish_command(&first, "Command exited with code 0.\n\nCommand output:\nok", false).unwrap();
+    let SessionEventBody::ToolCall { stream_id, status, .. } = event else { panic!() };
+    assert_eq!((stream_id.as_deref(), status), (Some(first.as_str()), ToolStatus::Completed));
 }
 
 #[test]
@@ -172,8 +195,10 @@ fn background_tasks_are_awaited_until_their_result_arrives() {
         std::fs::write(logs.join("transcript.jsonl"), text).unwrap();
     };
     write(&[&started, &reply]);
-    let mut tail = super::subagents::ParentTail::new(id);
+    let mut tail = super::subagents::ParentTail::new(id, 0);
     assert!(tail.waiting_on_tasks());
+    let running: Vec<_> = tail.running_tasks().map(|task| (task.id.clone(), task.command.clone(), task.line)).collect();
+    assert_eq!(running, vec![(format!("{id}/task-31"), "Start-Sleep -Seconds 25; echo slow-done".to_string(), 0)]);
     assert!(!tail.settled(&[]));
     let finished = json!({"step_index":35,"type":"SYSTEM_MESSAGE","status":"DONE","content":format!(
         "<SYSTEM_MESSAGE>\n[Message] timestamp=t sender={id}/task-31 priority=MESSAGE_PRIORITY_HIGH content=Task id \"{id}/task-31\" finished with result:\nCommand exited with code 0.\n\nCommand output:\nslow-done\n\nLog: file:///x\n</SYSTEM_MESSAGE>")});
@@ -182,10 +207,18 @@ fn background_tasks_are_awaited_until_their_result_arrives() {
     let updates = tail.read();
     let done = tail.take_finished();
     assert_eq!(done.len(), 1);
-    assert_eq!(done[0].command, "Start-Sleep -Seconds 25; echo slow-done");
+    assert_eq!(done[0].task.id, format!("{id}/task-31"));
+    assert_eq!(done[0].task.command, "Start-Sleep -Seconds 25; echo slow-done");
+    assert!(!done[0].canceled);
     assert!(done[0].result.ends_with("slow-done") && !done[0].result.contains("Log:"));
     assert!(updates.iter().any(|update| update["content"]["text"] == "The command finished with output: slow-done"));
     assert!(!tail.waiting_on_tasks() && tail.settled(&[]));
+    // 等待被引导打断后从头再读：已经结束的任务也交出来，宿主据此收尾还记着在跑的那条。
+    let mut again = super::subagents::ParentTail::new(id, 0);
+    assert!(!again.waiting_on_tasks());
+    let earlier = again.take_finished();
+    assert_eq!(earlier.len(), 1);
+    assert_eq!(earlier[0].task.id, format!("{id}/task-31"));
 }
 
 #[test]

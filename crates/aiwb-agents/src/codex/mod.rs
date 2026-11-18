@@ -13,6 +13,7 @@
 //! 调用方自己保存了时间线，只需要接上线程。`options.side_of` 是侧边聊天，见 `side.rs`。
 
 mod approval;
+mod background;
 mod catalog;
 mod directory_client;
 mod gap;
@@ -299,6 +300,7 @@ impl AgentAdapter for CodexCliAdapter {
             review_output: Mutex::new(None),
             history_cursor: Mutex::new(None),
             activity: Mutex::new(HashMap::new()),
+            terminals: Mutex::new(Default::default()),
             subagents: Mutex::new(HashMap::new()),
             subagent_turns: Mutex::new(HashMap::new()),
             subagent_streams: Mutex::new(Default::default()),

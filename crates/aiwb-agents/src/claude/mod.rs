@@ -8,6 +8,7 @@
 //! （`utils/permissions/permissionSetup.ts` `initializeToolPermissionContext`）。
 //! 认证留在 CLI。这里不保存密钥，也不传 `--system-prompt ""`。
 
+mod background;
 mod catalog;
 mod command;
 mod control;
@@ -25,6 +26,8 @@ mod subagents;
 mod subscription;
 mod usage;
 
+#[cfg(test)]
+mod background_tests;
 #[cfg(test)]
 mod subagent_tests;
 #[cfg(test)]

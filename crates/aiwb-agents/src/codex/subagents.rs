@@ -17,6 +17,7 @@ use aiwb_core::models::{now_millis, MessagePhase, SessionEventBody, SubagentCard
 
 use super::history::{reasoning_text, take_chars, tool_event, tool_view, tool_visible};
 use super::state::{emit, Shared};
+use crate::protocol::text;
 
 /// 主线程上一条子 Agent 相关的 item，改到哪些卡片就返回哪些。不是这两种 item 时返回 None。
 pub(super) fn apply_item(
@@ -380,15 +381,6 @@ fn finished_status(kind: &str) -> Option<SubagentStatus> {
         "interrupted" | "shutdown" | "closed" | "stopped" => Some(SubagentStatus::Stopped),
         _ => None,
     }
-}
-
-fn text(value: &Value, key: &str) -> Option<String> {
-    value
-        .get(key)
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|text| !text.is_empty())
-        .map(str::to_string)
 }
 
 #[cfg(test)]

@@ -172,6 +172,8 @@ pub(super) struct Shared {
     pub(super) history_cursor: Mutex<Option<String>>,
     /// 流式命令输出和补丁正文。键是 item id。
     pub(super) activity: Mutex<HashMap<String, ActivityBuf>>,
+    /// 本线程还开着的命令条目和后台终端。
+    pub(super) terminals: Mutex<super::background::Terminals>,
     /// 子 Agent 卡片，按子线程 id。
     pub(super) subagents: Mutex<HashMap<String, SubagentCard>>,
     /// 子线程正在跑的回合 id，单独停一个子 Agent 时用。
@@ -323,6 +325,7 @@ impl Shared {
             review_output: Mutex::new(None),
             history_cursor: Mutex::new(None),
             activity: Mutex::new(HashMap::new()),
+            terminals: Mutex::new(Default::default()),
             subagents: Mutex::new(HashMap::new()),
             subagent_turns: Mutex::new(HashMap::new()),
             subagent_streams: Mutex::new(Default::default()),

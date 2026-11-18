@@ -23,7 +23,7 @@ use super::directory;
 use super::elicitation;
 use super::open;
 use super::permission;
-use super::subagents::{self, ParentTail, Subagents};
+use super::subagents::{self, ParentTail, StartedTask, Subagents};
 use crate::acp::queue::Input;
 use crate::acp::runtime::Shared;
 use crate::acp::{Dialect, DiffTexts, PendingAnswer, ToolSubject, ToolView, UpdateRules};
@@ -32,9 +32,14 @@ use crate::protocol::plan_choice::{
     PLAN_IMPLEMENTATION_CLEAR_CONTEXT_PREFIX, PLAN_IMPLEMENTATION_CODING_MESSAGE, PLAN_IMPLEMENTATION_TITLE,
 };
 use crate::{AgentError, EventSink, UserTurn};
+use crate::acp::updates::command_exit_code;
 use aiwb_core::models::{
-    AgentCatalog, PermissionMenu, PlanStep, PromptAnswer, PromptKind, SessionEventBody, SessionStatus,
+    now_millis, AgentCatalog, BackgroundTask, BackgroundTaskStatus, PermissionMenu, PlanStep, PromptAnswer, PromptKind,
+    SessionEventBody, SessionStatus,
 };
+
+/// 原生没有给后台任务分种类，转成后台的都是命令。
+const BACKGROUND_KIND: &str = "command";
 
 pub struct AntigravityRules;
 
@@ -282,7 +287,10 @@ impl Shown {
             None => {
                 let name = update.get("name").and_then(Value::as_str).unwrap_or("");
                 let input = update.get("rawInput").unwrap_or(&Value::Null);
-                let index = self.tools.iter().position(|(tool, seen, _)| tool == name && seen == input)?;
+                let index = self.tools.iter().position(|(tool, seen, _)| {
+                    tool == name && (seen == input || (name == "run_command"
+                        && seen["CommandLine"].as_str().is_some() && seen["CommandLine"] == input["CommandLine"]))
+                })?;
                 let (_, _, shown) = self.tools.remove(index);
                 self.ids.insert(id, shown.clone());
                 shown
@@ -333,8 +341,30 @@ struct Goal {
     status: String,
 }
 
+/// 新登记一个在跑的后台任务，占用还在跑、命令相同、没被别的任务占用的那张命令卡片。
+fn start_background(
+    shared: &Shared,
+    background: &HashMap<String, BackgroundTask>,
+    id: &str,
+    command: &str,
+) -> BackgroundTask {
+    let claimed: Vec<String> = background
+        .values()
+        .filter(|task| task.running())
+        .filter_map(|task| task.tool_call_id.clone())
+        .collect();
+    let mut task = BackgroundTask::new(id, BACKGROUND_KIND, command);
+    task.tool_call_id = shared.map.lock().unwrap().claim_command(command, &claimed);
+    task.started_at = Some(now_millis());
+    task
+}
+
 pub struct AntigravityDialect {
     subagents: Arc<Mutex<Subagents>>,
+    /// 转成后台任务的命令，按 agy 的任务 id。
+    background: Mutex<HashMap<String, BackgroundTask>>,
+    /// 这一轮开始时主会话转录有几行。在这之前启动、又没登记过的后台任务是旧的（上一个进程或更早的回合）。
+    turn_start: Mutex<Option<usize>>,
     events: EventSink,
     goal: Mutex<Option<Goal>>,
     shown: Mutex<Shown>,
@@ -347,11 +377,74 @@ impl AntigravityDialect {
     pub fn new(project: &std::path::Path, events: EventSink, probing: bool, servers: Value) -> Self {
         Self {
             subagents: Arc::new(Mutex::new(Subagents::new(project))),
+            background: Mutex::new(HashMap::new()),
+            turn_start: Mutex::new(None),
             events,
             goal: Mutex::new(None),
             shown: Mutex::new(Shown::default()),
             probing,
             servers,
+        }
+    }
+
+    /// 把转录里的后台任务和登记的对上。
+    ///
+    /// - 这一轮启动、还没登记的（包括启动和结束在同一次读取里、回包前就跑完的）按启动先后登记，
+    ///   命令相同的也按先后各占一张卡片。
+    /// - 读到结束消息的收尾：跑完的照退出码记成完成或失败，agy 取消的记成已停止。已经结束的不再改。
+    /// - 不再等：已经记成停止的（整轮停掉时，转录里可能永远等不到结束消息），
+    ///   以及这一轮之前启动、又没登记过的旧任务（重新打开会话后，上一个进程的任务）。
+    fn sync_background(&self, shared: &Shared, tail: &mut ParentTail) {
+        let since = self.turn_start.lock().unwrap().unwrap_or(0);
+        let finished = tail.take_finished();
+        let mut events = Vec::new();
+        let mut cards = Vec::new();
+        {
+            let mut background = self.background.lock().unwrap();
+            let running: Vec<StartedTask> = tail.running_tasks().cloned().collect();
+            let mut fresh: Vec<(&StartedTask, bool)> = running
+                .iter()
+                .map(|task| (task, true))
+                .chain(finished.iter().map(|done| (&done.task, false)))
+                .filter(|(task, _)| task.line >= since && !background.contains_key(&task.id))
+                .collect();
+            fresh.sort_by_key(|(task, _)| task.line);
+            for (started, still_running) in fresh {
+                let task = start_background(shared, &background, &started.id, &started.command);
+                if still_running {
+                    events.push(SessionEventBody::BackgroundTask(task.clone()));
+                }
+                background.insert(started.id.clone(), task);
+            }
+            for done in &finished {
+                let Some(task) = background.get_mut(&done.task.id).filter(|task| task.running()) else {
+                    continue;
+                };
+                task.result = done.result.clone();
+                task.exit_code = command_exit_code(&done.result);
+                let status = if done.canceled {
+                    BackgroundTaskStatus::Stopped
+                } else if task.exit_code.is_some_and(|code| code != 0) {
+                    BackgroundTaskStatus::Failed
+                } else {
+                    BackgroundTaskStatus::Completed
+                };
+                task.finish(status, Some(now_millis()));
+                events.push(SessionEventBody::BackgroundTask(task.clone()));
+                if let Some(card) = task.tool_call_id.clone() {
+                    cards.push((card, done.result.clone(), done.canceled));
+                }
+            }
+            tail.forget_tasks(|task| match background.get(&task.id) {
+                Some(known) => !known.running(),
+                None => task.line < since,
+            });
+        }
+        for event in events {
+            let _ = self.events.send(event);
+        }
+        for (card, result, canceled) in cards {
+            shared.finish_command(&card, &result, canceled);
         }
     }
 
@@ -526,8 +619,17 @@ impl Dialect for AntigravityDialect {
         catalog::apply_session(catalog, payload);
     }
 
+    /// 记下这一轮开始时转录写到了哪一行。
+    fn turn_started(&self, shared: &Shared) {
+        if let Some(id) = shared.session_id() {
+            *self.turn_start.lock().unwrap() = Some(subagents::transcript_lines(&id));
+        }
+    }
+
     fn stop_extras(&self) -> Vec<SessionEventBody> {
-        self.subagents.lock().unwrap().stop_all()
+        let mut stopped = self.subagents.lock().unwrap().stop_all();
+        stopped.extend(BackgroundTask::stop_all(self.background.lock().unwrap().values_mut()));
+        stopped
     }
 
     /// 被后一个 prompt 接管的回包没有 `usage`。
@@ -567,7 +669,10 @@ impl Dialect for AntigravityDialect {
             return;
         };
         let awaited = self.subagents.lock().unwrap().awaited_parent().is_some();
-        let mut tail = ParentTail::new(&parent);
+        let since = self.turn_start.lock().unwrap().unwrap_or(0);
+        let mut tail = ParentTail::new(&parent, since);
+        // 从头读到的：上一次等待被打断后才结束的、回包前就跑完的这一轮任务，都在这里收尾。
+        self.sync_background(shared, &mut tail);
         if !awaited && !tail.waiting_on_tasks() {
             return;
         }
@@ -585,20 +690,22 @@ impl Dialect for AntigravityDialect {
                 quiet_since = None;
                 progressed = Instant::now();
             }
-            for task in tail.take_finished() {
-                shared.finish_command(&task.command, &task.result);
-            }
-            for update in &updates {
-                self.shown.lock().unwrap().record(update);
-                match self.absorb_subagent(&parent, update) {
+            for mut update in updates {
+                let _guard = shared.status_lock.lock().unwrap();
+                if tail.reuse_command(&mut update, &shared.map.lock().unwrap()) {
+                    continue;
+                }
+                self.shown.lock().unwrap().record(&update);
+                match self.absorb_subagent(&parent, &update) {
                     Some(events) => {
                         for event in events {
                             let _ = self.events.send(event);
                         }
                     }
-                    None => shared.apply_step(update),
+                    None => shared.apply_step(&update),
                 }
             }
+            self.sync_background(shared, &mut tail);
             if tail.waiting_on_tool() && progressed.elapsed() > TOOL_STALL {
                 let _ = shared.nudge(NUDGE);
                 return;

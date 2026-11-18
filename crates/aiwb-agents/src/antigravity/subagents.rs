@@ -18,6 +18,7 @@ use serde_json::{json, Value};
 use super::dialect::RULES;
 use super::directory;
 use crate::acp::updates::UpdateMap;
+use crate::protocol::text;
 use crate::EventSink;
 use aiwb_core::models::{now_millis, SessionEventBody, SubagentCard, SubagentStatus, ToolStatus};
 
@@ -95,9 +96,13 @@ impl Transcript {
             return out;
         };
         let body = strip_step_times(step.get("content").and_then(Value::as_str).unwrap_or(""));
-        let failed = step.get("status").and_then(Value::as_str) != Some("DONE");
+        let status = match step.get("status").and_then(Value::as_str) {
+            Some("DONE") => "completed",
+            Some("RUNNING") => "in_progress",
+            _ => "failed",
+        };
         out.updates.push(json!({
-            "sessionUpdate": "tool_call_update", "toolCallId": tool, "status": if failed { "failed" } else { "completed" },
+            "sessionUpdate": "tool_call_update", "toolCallId": tool, "status": status,
             "content": [{ "type": "content", "content": { "type": "text", "text": body } }],
         }));
         out
@@ -106,6 +111,11 @@ impl Transcript {
 
 /// `brain/<会话>/.system_generated/logs/transcript.jsonl` 里从第 `seen` 行起写完的行。返回解析好的步骤和新的行数。
 fn read_transcript(id: &str, seen: usize) -> Option<(Vec<Value>, usize)> {
+    read_lines(id, seen).map(|(steps, lines)| (steps.into_iter().map(|(_, step)| step).collect(), lines))
+}
+
+/// 同 `read_transcript`，每一步带上它在转录里的行号（从 0 起）。
+fn read_lines(id: &str, seen: usize) -> Option<(Vec<(usize, Value)>, usize)> {
     let path = directory::brain_dir(id)?.join(".system_generated").join("logs").join("transcript.jsonl");
     let raw = std::fs::read_to_string(path).ok()?;
     let lines: Vec<&str> = raw.lines().collect();
@@ -116,15 +126,32 @@ fn read_transcript(id: &str, seen: usize) -> Option<(Vec<Value>, usize)> {
     }
     let steps = lines[seen..complete]
         .iter()
-        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .enumerate()
+        .filter_map(|(index, line)| Some((seen + index, serde_json::from_str::<Value>(line).ok()?)))
         .collect();
     Some((steps, complete))
 }
 
-/// 转成后台任务的命令跑完了：命令原文和结果原文。
-pub struct FinishedTask {
+/// 主会话转录现在写完了几行。回合开始时记下，之前启动的后台任务不是这一轮的。
+pub fn transcript_lines(id: &str) -> usize {
+    read_lines(id, usize::MAX).map_or(0, |(_, lines)| lines)
+}
+
+/// 转录里一个还没结束的后台任务。
+#[derive(Clone)]
+pub struct StartedTask {
+    pub id: String,
+    /// 命令原文。
     pub command: String,
+    /// 启动记录在转录里的行号。
+    pub line: usize,
+}
+
+/// 转成后台任务的命令结束了：跑完（`canceled` 为假）或被 agy 取消。
+pub struct FinishedTask {
+    pub task: StartedTask,
     pub result: String,
+    pub canceled: bool,
 }
 
 /// 主会话在回合回包之后的动静：子 Agent 回报、后台任务结束、被它们唤醒后的回答。
@@ -132,29 +159,45 @@ pub struct ParentTail {
     id: String,
     lines: usize,
     transcript: Transcript,
+    command_counts: HashMap<String, usize>,
+    /// 转录生成的调用标识与已经显示的 ACP 命令卡片。
+    command_ids: HashMap<String, String>,
     /// 已经写进转录的子 Agent 消息来源。
     heard: HashSet<String>,
     idle: bool,
     /// 发出去还没结果的工具调用。
     open_tools: usize,
     errored: bool,
-    /// 还没结束的后台任务：任务 id → 命令原文。
-    tasks: HashMap<String, String>,
+    /// 还没结束的后台任务，按任务 id。
+    tasks: HashMap<String, StartedTask>,
     finished: Vec<FinishedTask>,
 }
 
 impl ParentTail {
-    pub fn new(id: &str) -> Self {
+    /// 从头读一遍转录。已经结束的后台任务也放进 `take_finished`：上一次等待之后才结束的，宿主要据此收尾。
+    pub fn new(id: &str, turn_start: usize) -> Self {
         let mut heard = HashSet::new();
         let mut idle = false;
         let mut lines = 0;
         let mut open_tools = 0;
         let mut tasks = HashMap::new();
-        if let Some((steps, total)) = read_transcript(id, 0) {
+        let mut finished = Vec::new();
+        let mut command_counts = HashMap::new();
+        if let Some((steps, total)) = read_lines(id, 0) {
             lines = total;
-            for step in &steps {
+            for (line, step) in &steps {
+                if *line >= turn_start {
+                    for call in step["tool_calls"].as_array().into_iter().flatten() {
+                        if call["name"] == "run_command" {
+                            if let Some(command) = decoded_args(call.get("args"))["CommandLine"].as_str() {
+                                *command_counts.entry(command.trim().to_string()).or_default() += 1;
+                            }
+                        }
+                    }
+                }
                 note_sender(step, &mut heard);
-                note_task(step, &mut tasks);
+                note_task(step, *line, &mut tasks);
+                note_finished(step, &mut tasks, &mut finished);
                 idle = is_final(step);
                 open_tools = next_open_tools(open_tools, step);
             }
@@ -163,31 +206,49 @@ impl ParentTail {
         Self {
             id: id.to_string(),
             lines,
-            transcript: Transcript::new(&format!("parent-{id}")),
+            transcript: Transcript::new(&format!("parent-{id}-{lines}")),
+            command_counts,
+            command_ids: HashMap::new(),
             heard,
             idle,
             open_tools,
             errored: false,
             tasks,
-            finished: Vec::new(),
+            finished,
         }
+    }
+
+    /// ACP 已经显示过的命令跳过创建卡片，转录里的结果继续写入同一张卡片。
+    pub fn reuse_command(&mut self, update: &mut Value, map: &UpdateMap) -> bool {
+        let Some(id) = update["toolCallId"].as_str() else { return false };
+        if update["sessionUpdate"] == "tool_call_update" {
+            if let Some(existing) = self.command_ids.remove(id) {
+                update["toolCallId"] = json!(existing);
+            }
+            return false;
+        }
+        if update["name"] != "run_command" { return false; }
+        let Some(command) = update.pointer("/rawInput/CommandLine").and_then(Value::as_str) else { return false };
+        let command = command.trim();
+        let count = self.command_counts.entry(command.to_string()).or_default();
+        let existing = map.command_call_id(command, *count);
+        *count += 1;
+        let Some(existing) = existing else { return false };
+        self.command_ids.insert(id.to_string(), existing.to_string());
+        true
     }
 
     /// 读新增的步骤。
     pub fn read(&mut self) -> Vec<Value> {
-        let Some((steps, lines)) = read_transcript(&self.id, self.lines) else {
+        let Some((steps, lines)) = read_lines(&self.id, self.lines) else {
             return Vec::new();
         };
         self.lines = lines.max(self.lines);
         let mut updates = Vec::new();
-        for step in &steps {
+        for (line, step) in &steps {
             note_sender(step, &mut self.heard);
-            note_task(step, &mut self.tasks);
-            if let Some((task, result)) = task_result(step) {
-                if let Some(command) = self.tasks.remove(&task) {
-                    self.finished.push(FinishedTask { command, result });
-                }
-            }
+            note_task(step, *line, &mut self.tasks);
+            note_finished(step, &mut self.tasks, &mut self.finished);
             self.idle = is_final(step);
             self.open_tools = next_open_tools(self.open_tools, step);
             let out = self.transcript.step(step);
@@ -212,6 +273,16 @@ impl ParentTail {
         !self.tasks.is_empty()
     }
 
+    /// 还没结束的后台任务。
+    pub fn running_tasks(&self) -> impl Iterator<Item = &StartedTask> {
+        self.tasks.values()
+    }
+
+    /// 不再等这些后台任务：宿主已经确认它们结束了，或者不是这一轮、宿主也没在管的旧任务。
+    pub fn forget_tasks(&mut self, ended: impl Fn(&StartedTask) -> bool) {
+        self.tasks.retain(|_, task| !ended(task));
+    }
+
     /// 读到结束消息的后台任务。读一次就清掉。
     pub fn take_finished(&mut self) -> Vec<FinishedTask> {
         std::mem::take(&mut self.finished)
@@ -224,10 +295,12 @@ impl ParentTail {
 }
 
 const TASK_STARTED: &str = "running as a background task with task id: ";
+/// agy 重启后补的系统消息：之前的子 Agent 和后台任务都停了（2026-11-10 的真实转录）。
+const ALL_TASKS_STOPPED: &str = "background tasks have been stopped";
 
 /// 命令等太久转成后台任务时，工具结果是
 /// `Tool is running as a background task with task id: <id>\nTask Description: <命令>`。
-fn note_task(step: &Value, tasks: &mut HashMap<String, String>) {
+fn note_task(step: &Value, line: usize, tasks: &mut HashMap<String, StartedTask>) {
     if step.get("type").and_then(Value::as_str) != Some("GENERIC") {
         return;
     }
@@ -245,20 +318,44 @@ fn note_task(step: &Value, tasks: &mut HashMap<String, String>) {
         .trim()
         .to_string();
     if !id.is_empty() {
-        tasks.insert(id, command);
+        tasks.insert(id.clone(), StartedTask { id, command, line });
     }
 }
 
-/// 任务结束的系统消息：`sender=<任务 id> … content=Task id "<id>" finished with result:\n<结果>\n\nLog: …`。
-fn task_result(step: &Value) -> Option<(String, String)> {
+/// 任务结束的系统消息：`sender=<任务 id> … content=Task id "<id>" finished with result:\n<结果>\n\nLog: …`，
+/// 被 agy 取消的是 `… was canceled with result:\nTool execution was canceled\nLog: …`。返回任务 id、结果、是否取消。
+fn task_result(step: &Value) -> Option<(String, String, bool)> {
     if step.get("type").and_then(Value::as_str) != Some("SYSTEM_MESSAGE") {
         return None;
     }
     let content = step.get("content").and_then(Value::as_str)?;
-    let (head, rest) = content.split_once("\" finished with result:\n")?;
+    let (head, rest, canceled) = match content.split_once("\" finished with result:\n") {
+        Some((head, rest)) => (head, rest, false),
+        None => {
+            let (head, rest) = content.split_once("\" was canceled with result:\n")?;
+            (head, rest, true)
+        }
+    };
     let task = head.rsplit_once("Task id \"")?.1.to_string();
-    let result = rest.split("\n\nLog: ").next().unwrap_or(rest).trim_end().to_string();
-    Some((task, result))
+    let result = rest.rsplit_once("\nLog: ").map_or(rest, |(result, _)| result).trim_end().to_string();
+    Some((task, result, canceled))
+}
+
+/// 结束消息对上的后台任务移进 `finished`。agy 报所有后台任务都停了时，还在跑的都算取消。
+fn note_finished(step: &Value, tasks: &mut HashMap<String, StartedTask>, finished: &mut Vec<FinishedTask>) {
+    if let Some((id, result, canceled)) = task_result(step) {
+        if let Some(task) = tasks.remove(&id) {
+            finished.push(FinishedTask { task, result, canceled });
+        }
+        return;
+    }
+    let notice = step.get("type").and_then(Value::as_str) == Some("SYSTEM_MESSAGE")
+        && step.get("content").and_then(Value::as_str).is_some_and(|content| content.contains(ALL_TASKS_STOPPED));
+    if notice {
+        let mut stopped: Vec<StartedTask> = tasks.drain().map(|(_, task)| task).collect();
+        stopped.sort_by_key(|task| task.line);
+        finished.extend(stopped.into_iter().map(|task| FinishedTask { task, result: String::new(), canceled: true }));
+    }
 }
 
 fn next_open_tools(open: usize, step: &Value) -> usize {
@@ -660,13 +757,4 @@ fn kind_of(name: &str) -> &'static str {
         "read_url_content" | "search_web" => "fetch",
         _ => "other",
     }
-}
-
-fn text(value: &Value, key: &str) -> Option<String> {
-    value
-        .get(key)
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|text| !text.is_empty())
-        .map(str::to_string)
 }

@@ -12,7 +12,8 @@ use tokio::sync::mpsc;
 use super::{directory, AntigravityAdapter};
 use crate::{AgentAdapter, AgentSession, SessionContext, TurnDelivery, UserTurn, WorkbenchMcp};
 use aiwb_core::models::{
-    FileStatus, McpAddSpec, McpPair, PromptAnswer, PromptKind, SessionEventBody, SessionStatus, SubagentStatus, ToolStatus,
+    BackgroundTaskStatus, FileStatus, McpAddSpec, McpPair, PromptAnswer, PromptKind, SessionEventBody, SessionStatus,
+    SubagentStatus, ToolStatus,
 };
 
 const MODEL: &str = "gemini-4-argon";
@@ -396,9 +397,27 @@ async fn live_permission_presets_switch_native_modes() {
 async fn live_background_commands_finish_in_the_same_turn() {
     let mut live = Live::open("full", persist(), None).await;
     let got = live
-        .run("Run this PowerShell command with your terminal tool and wait for it: Start-Sleep -Seconds 100; echo slow-done . Then report its output in one sentence.")
+        .run("Run exactly two separate PowerShell commands. First run `Start-Sleep -Seconds 70; echo first-done`. \
+              After its result arrives, run `Start-Sleep -Seconds 70; echo slow-done`. Use a short WaitMsBeforeAsync \
+              for both. Let background result notifications arrive without polling. Report both results.")
         .await;
-    assert!(got.iter().any(|event| matches!(event, SessionEventBody::ToolCall { name, status: ToolStatus::Completed, detail, .. } if name == "command" && detail.contains("slow-done"))), "{got:#?}");
+    for marker in ["first-done", "slow-done"] {
+        let mut cards = std::collections::HashMap::new();
+        for event in &got {
+            if let SessionEventBody::ToolCall { stream_id, name, summary, status, detail, .. } = event {
+                if name == "command" && summary.contains(marker) {
+                    cards.insert(stream_id.as_deref().expect("命令卡片标识"), (status, detail));
+                }
+            }
+        }
+        assert_eq!(cards.len(), 1, "{marker}: {cards:?}");
+        let (id, (status, detail)) = cards.into_iter().next().unwrap();
+        assert_eq!(*status, ToolStatus::Completed);
+        assert_eq!(detail.trim(), marker);
+        assert!(got.iter().any(|event| matches!(event, SessionEventBody::BackgroundTask(task)
+            if task.tool_call_id.as_deref() == Some(id) && task.status == BackgroundTaskStatus::Completed
+                && task.exit_code == Some(0) && task.result.contains(marker))), "{marker}: {got:#?}");
+    }
     let answers: Vec<String> = got
         .iter()
         .filter_map(|event| match event {
@@ -902,4 +921,62 @@ async fn live_catalog_probe_leaves_no_thread() {
     assert!(!directory::brain_dir(&id).unwrap().exists());
     let _ = before;
     assert!(Path::new(&root).is_dir());
+}
+
+/// 转成后台任务的命令登记成后台任务，对上命令卡片。按停止后 agy 不再跑它：
+/// 2026-11-17 agy 1.5.9 实测，过了命令本该跑完的时间，转录里也没有这个任务的结束消息，任务记成已停止。
+#[tokio::test]
+#[ignore = "calls the installed and authenticated agy"]
+async fn live_background_task_stops_with_the_turn() {
+    let mut live = Live::open("full", persist(), None).await;
+    assert!(matches!(
+        live.handle
+            .deliver(turn("Run this PowerShell command with your terminal tool and wait for it: Start-Sleep -Seconds 70; echo slow-done . Then report its output in one sentence."))
+            .await
+            .unwrap(),
+        TurnDelivery::Started
+    ));
+    let got = live
+        .until(|event| matches!(event, SessionEventBody::BackgroundTask(task) if task.running()))
+        .await;
+    let Some(SessionEventBody::BackgroundTask(task)) = got.last().cloned() else { unreachable!() };
+    assert_eq!(task.task_type, "command");
+    assert!(task.title.contains("Start-Sleep -Seconds 70"), "{task:?}");
+    let card = task.tool_call_id.clone().expect("要对上命令卡片");
+    assert!(
+        live.seen.iter().any(|event| matches!(event, SessionEventBody::ToolCall { stream_id: Some(id), .. } if *id == card)),
+        "{card} 不是时间线里的命令卡片"
+    );
+    live.handle.interrupt().await.unwrap();
+    let (status, got) = live.finished().await;
+    assert_eq!(status, SessionStatus::Stopped);
+    let stopped = got.iter().rev().find_map(|event| match event {
+        SessionEventBody::BackgroundTask(task) => Some(task.clone()),
+        _ => None,
+    });
+    assert_eq!(stopped.map(|task| task.status), Some(BackgroundTaskStatus::Stopped));
+    let id = live.native();
+    tokio::time::sleep(Duration::from_secs(90)).await;
+    // 转录是 JSONL，正文里的引号转义过：逐行解析后看 `content`。读不到转录要报错，不能当成没有结束消息。
+    let path = directory::brain_dir(&id)
+        .expect("找不到会话目录")
+        .join(".system_generated")
+        .join("logs")
+        .join("transcript.jsonl");
+    let transcript = std::fs::read_to_string(&path).unwrap_or_else(|err| panic!("读不了 {}：{err}", path.display()));
+    let marker = format!("Task id \"{}\" finished", task.task_id);
+    let steps: Vec<Value> = transcript
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| serde_json::from_str(line).unwrap_or_else(|err| panic!("转录行不是 JSON：{err}\n{line}")))
+        .collect();
+    assert!(!steps.is_empty(), "转录是空的：{}", path.display());
+    assert!(
+        !steps.iter().any(|step| step["content"].as_str().is_some_and(|content| content.contains(&marker))),
+        "停止后任务不该再跑完"
+    );
+    // 停掉的任务在转录里永远等不到结束消息，下一轮不能因为它一直算在跑。
+    let got = live.run("Reply with the single word NEXT-OK.").await;
+    assert!(message(&got).contains("NEXT-OK"), "{}", message(&got));
+    live.close().await;
 }

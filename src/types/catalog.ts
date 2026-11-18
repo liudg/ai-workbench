@@ -151,6 +151,8 @@ export interface AgentCapabilities {
   supports_side_chat?: boolean;
   /** 单独停掉 Agent 自带的一个子 Agent。 */
   supports_subagent_stop?: boolean;
+  /** 单独停掉一个后台任务。 */
+  supports_background_task_stop?: boolean;
 }
 
 /** 一个订阅用量窗口。已用和剩余至少有一个，重置时间可以没有。 */

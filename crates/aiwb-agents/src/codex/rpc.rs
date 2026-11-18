@@ -60,6 +60,7 @@ impl Shared {
         }
         self.fail_waiters("已停止");
         self.stop_subagents();
+        self.stop_background();
         // 空闲时关进程（daemon 退出、空闲回收）不改状态：已经完成的回合仍是完成。
         if was_running {
             emit_status(&self.events, SessionStatus::Stopped);
@@ -122,6 +123,7 @@ impl Shared {
             return;
         }
         self.stop_subagents();
+        self.stop_background();
         self.turn_open.store(false, Ordering::SeqCst);
         // 只读打开的进程如果随后退出，历史还在。不要改写成「会话失败」。
         if self.read_only() {
@@ -425,6 +427,7 @@ impl Shared {
             "turn/completed" => {
                 self.turn_open.store(false, Ordering::SeqCst);
                 *self.turn_id.lock().unwrap() = None;
+                self.adopt_background_terminals();
                 if turn_finished_cleanly(params) {
                     self.maybe_offer_implement_plan();
                 } else {
@@ -571,6 +574,7 @@ impl Shared {
         if self.on_subagent_item(item) {
             return;
         }
+        self.note_command_item(completed, item);
         if item.get("type").and_then(Value::as_str) == Some("fileChange") {
             if let Some(id) = item.get("id").and_then(Value::as_str).filter(|id| !id.is_empty()) {
                 self.file_items

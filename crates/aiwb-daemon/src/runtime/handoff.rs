@@ -69,6 +69,10 @@ impl Runtimes {
                     | SessionEventBody::Handoff { delivered: false, .. }
                     // 分叉时发起的会话还在回合里，没出结果的工具调用（比如开这个会话的调用）不跟过来。
                     | SessionEventBody::ToolCall { status: ToolStatus::Running, .. }
+            ) || matches!(
+                // 还在跑的后台任务属于发起会话的进程，抄过来新会话会一直算在做。
+                &event.body,
+                SessionEventBody::BackgroundTask(task) if task.running()
             );
             if !skip {
                 self.append_at(session_id, event.body, false, event.ts)?;

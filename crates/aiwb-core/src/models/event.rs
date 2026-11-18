@@ -336,6 +336,89 @@ impl SubagentCard {
     }
 }
 
+/// Agent 放到后台跑的任务跑到哪了。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum BackgroundTaskStatus {
+    Running,
+    Completed,
+    Failed,
+    Stopped,
+}
+
+/// Agent 放到后台、回合不等它的任务：后台命令、终端、监视等。子 Agent 不在这里，走 `SubagentCard`。
+/// 同一个 `task_id` 的后一条整条替换前一条，适配器每次发全量。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct BackgroundTask {
+    /// 原生的任务 id：Claude 的 `task_id`、Codex 的终端 `processId`、agy 的任务 id。停止时按它找。
+    pub task_id: String,
+    /// 原生报的任务种类，比如 Claude 的 `local_bash`、`monitor`，Codex 的 `terminal`，agy 的 `command`。
+    /// 不叫 `kind`：事件体按 `kind` 打标签，同名会序列化出两个 `kind`。
+    pub task_type: String,
+    /// 启动它的那次工具调用，对应时间线里的工具卡片。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
+    /// 原生给的说明，没有说明时是命令原文。
+    pub title: String,
+    pub status: BackgroundTaskStatus,
+    /// 结束时原生给的摘要或输出。
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub result: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i64>,
+    /// 原生把输出写到的文件，跑着时也能读。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_file: Option<String>,
+    /// 毫秒时间戳。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ended_at: Option<i64>,
+}
+
+impl BackgroundTask {
+    pub fn new(task_id: impl Into<String>, task_type: impl Into<String>, title: impl Into<String>) -> Self {
+        Self {
+            task_id: task_id.into(),
+            task_type: task_type.into(),
+            tool_call_id: None,
+            title: title.into(),
+            status: BackgroundTaskStatus::Running,
+            result: String::new(),
+            exit_code: None,
+            output_file: None,
+            started_at: None,
+            ended_at: None,
+        }
+    }
+
+    pub fn running(&self) -> bool {
+        self.status == BackgroundTaskStatus::Running
+    }
+
+    /// 换成结束状态。已经结束的不再改。
+    pub fn finish(&mut self, status: BackgroundTaskStatus, at: Option<i64>) {
+        if !self.running() {
+            return;
+        }
+        self.status = status;
+        self.ended_at = at;
+    }
+
+    /// 还在跑的都记成已停止（进程没了、整轮停掉时），返回要发的事件。
+    pub fn stop_all<'a>(tasks: impl IntoIterator<Item = &'a mut BackgroundTask>) -> Vec<SessionEventBody> {
+        let at = Some(super::now_millis());
+        tasks
+            .into_iter()
+            .filter(|task| task.running())
+            .map(|task| {
+                task.finish(BackgroundTaskStatus::Stopped, at);
+                SessionEventBody::BackgroundTask(task.clone())
+            })
+            .collect()
+    }
+}
+
 /// 归一化文件状态：新增 / 修改 / 删除 / 重命名。
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum FileStatus {
@@ -610,6 +693,8 @@ pub enum SessionEventBody {
     },
     /// Agent 自带的子 Agent。同一个 `subagent_id` 整条替换。
     Subagent(SubagentCard),
+    /// Agent 放到后台跑的任务。同一个 `task_id` 整条替换。
+    BackgroundTask(BackgroundTask),
     /// 子 Agent 自己的一步（回答、思考、工具调用）。不进主时间线，挂在对应卡片下面。
     /// 同一个子 Agent 里按里面那条的规则覆盖。
     SubagentStep {

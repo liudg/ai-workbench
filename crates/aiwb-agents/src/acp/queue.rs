@@ -106,6 +106,9 @@ impl Shared {
     }
 
     fn begin_run(&self, continuation: bool) {
+        if !continuation {
+            self.dialect.turn_started(self);
+        }
         self.busy.store(true, Ordering::SeqCst);
         self.user_stopped.store(false, Ordering::SeqCst);
         let plan = self.wanted.lock().unwrap().plan;

@@ -11,8 +11,8 @@ use std::sync::{Arc, Mutex};
 use aiwb_agents::{AgentAdapter, AgentError, AgentSession, SessionContext, TurnDelivery, UserTurn};
 use aiwb_core::attention::{self, Attention, AttentionState};
 use aiwb_core::models::{
-    new_id, AgentCatalog, now_millis, AgentKind, MessageSender, PageAnnotation, QueuedTurn, SessionEvent,
-    SessionEventBody, SessionStatus, SubagentStatus,
+    new_id, AgentCatalog, now_millis, AgentKind, BackgroundTaskStatus, MessageSender, PageAnnotation, QueuedTurn,
+    SessionEvent, SessionEventBody, SessionStatus, SubagentStatus,
 };
 use aiwb_core::rpc::{session_topic, TOPIC_TASKS};
 use aiwb_core::task::{SessionFeed, SessionOptions, StoredEvent, TaskWorkspace};
@@ -83,6 +83,8 @@ pub struct Runtimes {
     probe_handles: Mutex<HashMap<AgentKind, Arc<dyn AgentSession>>>,
     /// 正在退出：不再起新的探测。
     closing: AtomicBool,
+    /// 启动时正在收拾上次退出留下的会话。这时后台任务被记成停止不算回合结束，不回报父任务。
+    restoring: AtomicBool,
     /// 每条连接正看着的任务。窗口没有焦点时界面会报空。
     viewing: Mutex<HashMap<u64, String>>,
     /// 每条连接的面板里开着侧边聊天标签的任务。有标签就不空闲回收。
@@ -142,6 +144,7 @@ impl Runtimes {
             catalog_probes: Mutex::default(),
             probe_handles: Mutex::default(),
             closing: AtomicBool::new(false),
+            restoring: AtomicBool::new(false),
             viewing: Mutex::default(),
             side_tabs: Mutex::default(),
             mcp: crate::mcp::Credentials::default(),
@@ -164,19 +167,23 @@ impl Runtimes {
     }
 
     /// 上次退出时还在跑或在等输入的会话，那一轮已经断了。记一条停止状态。
-    /// 还在跑的子 Agent（包括主回合已完成的后台子 Agent）也跟着停了。
+    /// 还在跑的子 Agent 和后台任务也跟着停了：按时间线里记着的找，不看会话状态。
+    /// 主回合被打断后后台命令还在跑的会话是「已停止」，侧栏也不算在做，不能漏。
     pub(crate) fn settle_interrupted(&self) -> RuntimeResult<()> {
         let sessions = self.store.list_sessions().map_err(|e| e.to_string())?;
+        let running = self.store.sessions_with_running_background().map_err(|e| e.to_string())?;
+        self.restoring.store(true, Ordering::SeqCst);
+        let settled = self.settle_sessions(sessions, &running);
+        self.restoring.store(false, Ordering::SeqCst);
+        settled
+    }
+
+    fn settle_sessions(&self, sessions: Vec<aiwb_core::task::TaskSession>, running: &HashSet<String>) -> RuntimeResult<()> {
         for session in sessions {
             self.expire_prompts(&session.id, None)?;
             let interrupted = matches!(session.status, SessionStatus::Starting | SessionStatus::Running | SessionStatus::NeedsInput);
-            let working = self
-                .store
-                .attention(&session.id)
-                .map_err(|e| e.to_string())?
-                .is_some_and(|attention| attention.state == AttentionState::Working);
-            if interrupted || working {
-                self.stop_subagents(&session.id)?;
+            if running.contains(&session.id) {
+                self.stop_background(&session.id)?;
             }
             if interrupted {
                 self.record(
@@ -190,15 +197,21 @@ impl Runtimes {
         Ok(())
     }
 
-    fn stop_subagents(&self, session_id: &str) -> RuntimeResult<()> {
+    /// Agent 进程不在了，还记着在跑的子 Agent 和后台任务也跟着停了。
+    fn stop_background(&self, session_id: &str) -> RuntimeResult<()> {
         let events = self.store.events_since(session_id, 0).map_err(|e| e.to_string())?;
         let now = now_millis();
         for stored in events {
-            if let SessionEventBody::Subagent(mut card) = stored.event.body {
-                if card.status == SubagentStatus::Running {
+            match stored.event.body {
+                SessionEventBody::Subagent(mut card) if card.status == SubagentStatus::Running => {
                     card.finish(SubagentStatus::Stopped, Some(now));
                     self.record(session_id, SessionEventBody::Subagent(card))?;
                 }
+                SessionEventBody::BackgroundTask(mut task) if task.running() => {
+                    task.finish(BackgroundTaskStatus::Stopped, Some(now));
+                    self.record(session_id, SessionEventBody::BackgroundTask(task))?;
+                }
+                _ => {}
             }
         }
         Ok(())
@@ -267,7 +280,9 @@ impl Runtimes {
             SessionEventBody::Prompt { .. } | SessionEventBody::PromptResolved { .. } => {
                 attention::on_prompt(&prev()?, events)
             }
-            SessionEventBody::Subagent(_) => attention::on_subagent(&prev()?, events, self.is_viewed(task_id), now),
+            SessionEventBody::Subagent(_) | SessionEventBody::BackgroundTask(_) => {
+                attention::on_background(&prev()?, events, self.is_viewed(task_id), now)
+            }
             _ => None,
         })
     }
@@ -357,7 +372,7 @@ impl Runtimes {
                     _ => None,
                 };
                 let activity = is_conversation_activity(&body);
-                let (task_id, side, attention_changed) = self.append_at(session_id, body, activity, now_millis())?;
+                let (task_id, side, attention_changed, settled) = self.append_at(session_id, body, activity, now_millis())?;
                 let titled = match title {
                     Some(title) if !side => self.adopt_title(&task_id, &title)?,
                     _ => false,
@@ -365,8 +380,9 @@ impl Runtimes {
                 if status.is_some() || attention_changed || titled {
                     self.publish_tasks()?;
                 }
-                // 状态事件的注意力变了，才是真换了状态（新会话接上时报的「已完成」不算）。
-                if let Some(status) = status.filter(|_| attention_changed && !side) {
+                // 重启收拾时后台任务被记成停止，是进程没了，不是这一轮做完了。
+                let restoring = status.is_none() && self.restoring.load(Ordering::SeqCst);
+                if let Some(status) = settled.filter(|_| !side && !restoring) {
                     let _ = self.status_tx.send(StatusNote { task_id, status });
                 }
                 Ok(())
@@ -374,7 +390,7 @@ impl Runtimes {
         }
     }
 
-    /// 并进时间线、写库、推给订阅者，返回任务 id、是不是侧边聊天、注意力有没有变。
+    /// 并进时间线、写库、推给订阅者，返回任务 id、是不是侧边聊天、注意力有没有变、会话是不是真换了状态（换成了哪个）。
     /// `activity` 时把任务的更新时间挪到 `now`，侧边聊天不挪。
     /// 状态事件的注意力和事件写在同一个事务里。分叉复制时间线时沿用原来的时间，回合用时才对得上。
     fn append_at(
@@ -383,7 +399,7 @@ impl Runtimes {
         body: SessionEventBody,
         activity: bool,
         now: i64,
-    ) -> RuntimeResult<(String, bool, bool)> {
+    ) -> RuntimeResult<(String, bool, bool, Option<SessionStatus>)> {
         let topic = session_topic(session_id);
         let mut ended = None;
         let appended = self.hub.publish_with(&topic, || -> RuntimeResult<_> {
@@ -427,7 +443,7 @@ impl Runtimes {
         activity: bool,
         now: i64,
         ended: &mut Option<SessionEventBody>,
-    ) -> RuntimeResult<((String, bool, bool), Value)> {
+    ) -> RuntimeResult<((String, bool, bool, Option<SessionStatus>), Value)> {
         {
             let log = self.log_mut(logs, session_id)?;
             *ended = subagent_ended(&log.events, &body);
@@ -447,6 +463,17 @@ impl Runtimes {
                 }
             };
             let attention = self.next_attention(session_id, &log.task_id, &event.body, &log.events, now)?;
+            // 状态事件的注意力变了，才是真换了状态（新会话接上时报的「已完成」不算）。
+            // 主回合完了还有后台的在跑时注意力不变；最后一个跑完、从「在做」变成完成时，这一轮才算真结束。
+            let settled = attention.as_ref().and_then(|attention| match &event.body {
+                SessionEventBody::StatusChanged { status } => Some(*status),
+                SessionEventBody::Subagent(_) | SessionEventBody::BackgroundTask(_)
+                    if attention.state != AttentionState::Working =>
+                {
+                    attention::last_status(&log.events)
+                }
+                _ => None,
+            });
             let stored = StoredEvent {
                 event,
                 rev: log.next_rev,
@@ -460,7 +487,7 @@ impl Runtimes {
                 ..Default::default()
             };
             let data = serde_json::to_value(feed).map_err(|e| e.to_string())?;
-            Ok(((log.task_id.clone(), log.side, attention.is_some()), data))
+            Ok(((log.task_id.clone(), log.side, attention.is_some(), settled), data))
         }
     }
 
@@ -1186,7 +1213,7 @@ impl Runtimes {
             if session.status != SessionStatus::Completed {
                 continue;
             }
-            // 主回合完了，后台的子 Agent 还在跑。
+            // 主回合完了，后台的子 Agent 或后台任务还在跑。关掉进程会把它们一起停掉。
             let working = self
                 .store
                 .attention(&session_id)
@@ -1420,6 +1447,88 @@ mod tests {
         assert_eq!(store.attention("s").unwrap().unwrap().state, AttentionState::Idle);
         assert_eq!(store.events_since("s", 0).unwrap()[0].event.id, first.id);
         assert_eq!(store.events_since("s", 0).unwrap().len(), 2);
+    }
+
+    /// 主回合被打断后后台命令还在跑，daemon 没等到它结束就退出了：重启时也要记成已停止，
+    /// 不然同一会话以后完成新回合时，旧任务会让侧栏一直算在做。
+    #[test]
+    fn restart_stops_background_tasks_of_stopped_sessions() {
+        use aiwb_core::models::{BackgroundTask, BackgroundTaskStatus};
+        let (store, runtimes) = runtimes_with_task(SessionStatus::Completed);
+        runtimes.record("s", status(SessionStatus::Running)).unwrap();
+        runtimes.record("s", SessionEventBody::BackgroundTask(BackgroundTask::new("b1", "local_bash", "sleep"))).unwrap();
+        runtimes.record("s", status(SessionStatus::Stopped)).unwrap();
+        assert_eq!(store.attention("s").unwrap().unwrap().state, AttentionState::Idle);
+
+        let restarted = Runtimes::new(store.clone(), Arc::new(Hub::new()), Arc::new(aiwb_agents::adapter_for));
+        restarted.settle_interrupted().unwrap();
+        let tasks: Vec<BackgroundTask> = store
+            .events_since("s", 0)
+            .unwrap()
+            .into_iter()
+            .filter_map(|stored| match stored.event.body {
+                SessionEventBody::BackgroundTask(task) => Some(task),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].status, BackgroundTaskStatus::Stopped);
+        assert!(store.sessions_with_running_background().unwrap().is_empty());
+
+        // 同一会话再完成一轮：没有遗留的后台任务，算完成。
+        restarted.record("s", status(SessionStatus::Running)).unwrap();
+        restarted.record("s", status(SessionStatus::Completed)).unwrap();
+        assert_eq!(store.attention("s").unwrap().unwrap().state, AttentionState::Done);
+    }
+
+    /// 主回合完了后台命令还在跑，daemon 就退出了。重启时把命令记成停止，会话因此算完成，但这不是回合做完了：
+    /// 不能给父任务报「完成」，不然父任务空闲时会被叫醒开新一轮。
+    #[test]
+    fn restart_cleanup_does_not_report_the_turn_as_completed() {
+        use aiwb_core::models::BackgroundTask;
+        let (store, runtimes) = runtimes_with_task(SessionStatus::Completed);
+        runtimes.record("s", status(SessionStatus::Running)).unwrap();
+        runtimes.record("s", SessionEventBody::BackgroundTask(BackgroundTask::new("b1", "terminal", "sleep"))).unwrap();
+        runtimes.record("s", status(SessionStatus::Completed)).unwrap();
+        assert_eq!(store.attention("s").unwrap().unwrap().state, AttentionState::Working);
+
+        let restarted = Runtimes::new(store.clone(), Arc::new(Hub::new()), Arc::new(aiwb_agents::adapter_for));
+        let mut notes = restarted.take_status_notes().unwrap();
+        restarted.settle_interrupted().unwrap();
+        assert_eq!(store.attention("s").unwrap().unwrap().state, AttentionState::Done);
+        assert!(notes.try_recv().is_err(), "重启收拾不回报父任务");
+
+        // 收拾完以后照常回报。
+        restarted.record("s", status(SessionStatus::Running)).unwrap();
+        restarted.record("s", status(SessionStatus::Completed)).unwrap();
+        let mut seen = Vec::new();
+        while let Ok(note) = notes.try_recv() {
+            seen.push(note.status);
+        }
+        assert_eq!(seen, [SessionStatus::Running, SessionStatus::Completed]);
+    }
+
+    /// 主回合完了后台任务还在跑，不报状态；最后一个后台任务跑完、会话变成完成时才报，子任务回报靠它。
+    #[test]
+    fn last_background_task_finishing_reports_the_turn_end() {
+        use aiwb_core::models::{BackgroundTask, BackgroundTaskStatus};
+        let (_store, runtimes) = runtimes_with_task(SessionStatus::Completed);
+        let mut notes = runtimes.take_status_notes().unwrap();
+        runtimes.record("s", status(SessionStatus::Running)).unwrap();
+        let mut task = BackgroundTask::new("b1", "terminal", "sleep");
+        runtimes.record("s", SessionEventBody::BackgroundTask(task.clone())).unwrap();
+        runtimes.record("s", status(SessionStatus::Completed)).unwrap();
+        let mut seen = Vec::new();
+        while let Ok(note) = notes.try_recv() {
+            seen.push(note.status);
+        }
+        assert_eq!(seen, [SessionStatus::Running]);
+
+        task.finish(BackgroundTaskStatus::Completed, Some(2));
+        runtimes.record("s", SessionEventBody::BackgroundTask(task)).unwrap();
+        let note = notes.try_recv().expect("后台任务跑完要报完成");
+        assert_eq!((note.task_id.as_str(), note.status), ("t", SessionStatus::Completed));
+        assert!(notes.try_recv().is_err());
     }
 
     #[test]

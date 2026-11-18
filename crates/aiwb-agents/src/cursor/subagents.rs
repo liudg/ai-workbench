@@ -19,6 +19,7 @@ use aiwb_core::models::{now_millis, SessionEventBody, SubagentCard, SubagentStat
 
 use super::dialect::RULES;
 use crate::acp::updates::UpdateMap;
+use crate::protocol::text;
 
 struct Child {
     card: String,
@@ -254,13 +255,4 @@ fn is_task(update: &Value) -> bool {
 /// 工具调用 id 里带换行（`call-…\nfc_…`），换成连字符当卡片 id。
 fn card_id(tool: &str) -> String {
     tool.replace('\n', "-")
-}
-
-fn text(value: &Value, key: &str) -> Option<String> {
-    value
-        .get(key)
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|text| !text.is_empty())
-        .map(str::to_string)
 }

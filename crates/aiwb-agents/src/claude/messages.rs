@@ -17,10 +17,11 @@ use serde_json::Value;
 
 use super::control::{self, PermissionKind};
 use super::diff;
-use super::subagents;
+use super::{background, subagents};
 use super::history::{conversation_chain, is_visible_message, transcript_entries};
 use aiwb_core::models::{
-    now_millis, FileChange, MessagePhase, PromptKind, SessionEventBody, SessionStatus, SubagentCard, ToolStatus,
+    now_millis, BackgroundTask, FileChange, MessagePhase, PromptKind, SessionEventBody, SessionStatus, SubagentCard,
+    ToolStatus,
 };
 
 #[derive(Default)]
@@ -55,6 +56,8 @@ pub struct MapState {
     pub(super) subagents: HashMap<String, SubagentCard>,
     /// `task_id` → 派它的工具调用 id。
     pub(super) subagent_tasks: HashMap<String, String>,
+    /// 后台任务（不是子 Agent 的那些），按原生 `task_id`。
+    pub(super) background: HashMap<String, BackgroundTask>,
     /// 每个子 Agent 自己的映射状态，按派它的工具调用 id。
     pub(super) children: HashMap<String, MapState>,
     /// 读历史时子 Agent 转录所在的目录（`<会话 id>/subagents`）。
@@ -118,6 +121,7 @@ impl MapState {
     }
 }
 
+#[cfg(test)]
 pub fn ingest_line(state: &mut MapState, line: &str, live: bool, project: Option<&Path>) -> Ingest {
     let Ok(value) = serde_json::from_str::<Value>(line) else {
         return Ingest { events: Vec::new(), control: None };
@@ -392,6 +396,9 @@ fn on_system(state: &mut MapState, value: &Value, live: bool) -> Vec<SessionEven
         return retry_note(state, value);
     }
     if subtype.starts_with("task_") {
+        if let Some(events) = background::on_task(state, subtype, value, live) {
+            return events;
+        }
         return subagents::on_task(state, subtype, value);
     }
     if subtype == "error" || subtype == "api_error" || value.get("error").is_some() {

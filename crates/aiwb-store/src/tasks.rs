@@ -1,6 +1,6 @@
 //! 任务、会话和事件日志。
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use aiwb_core::attention::Attention;
 use aiwb_core::models::{AgentKind, SessionEvent, SessionEventBody, SessionStatus};
@@ -226,6 +226,20 @@ impl Store {
                AND json_type(e.body, '$.sender.notes') = 'text'",
         )?;
         let rows = stmt.query_map([task_id], |row| row.get(0))?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    /// 时间线里还记着有子 Agent 或后台任务在跑的会话。
+    pub fn sessions_with_running_background(&self) -> StoreResult<HashSet<String>> {
+        let conn = self.conn();
+        // 先按原文筛掉绝大多数行，再解析 JSON 认准种类和状态。
+        let mut stmt = conn.prepare(
+            "SELECT DISTINCT session_id FROM event
+             WHERE instr(body, '\"running\"') > 0
+               AND json_extract(body, '$.kind') IN ('subagent', 'background-task')
+               AND json_extract(body, '$.status') = 'running'",
+        )?;
+        let rows = stmt.query_map([], |row| row.get(0))?;
         Ok(rows.collect::<Result<_, _>>()?)
     }
 

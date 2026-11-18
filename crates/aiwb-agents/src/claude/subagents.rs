@@ -16,6 +16,7 @@ use aiwb_core::models::{SessionEventBody, SubagentCard, SubagentStatus};
 
 use super::history::transcript_entries;
 use super::messages::{assistant_body, user_body, MapState};
+use crate::protocol::text;
 
 impl MapState {
     /// 进程退出时还在跑的子 Agent 记成已停止。
@@ -112,7 +113,7 @@ pub(super) fn returned(
 }
 
 /// `system/task_started` / `task_progress` / `task_updated` / `task_notification`。
-/// 不是子 Agent 的后台任务（`local_bash` 等）不管。
+/// 不是子 Agent 的后台任务（`local_bash` 等）由 `background` 先接走。
 pub(super) fn on_task(state: &mut MapState, subtype: &str, value: &Value) -> Vec<SessionEventBody> {
     let task_id = text(value, "task_id").unwrap_or_default();
     let tool_id = match text(value, "tool_use_id") {
@@ -178,13 +179,14 @@ pub(super) fn on_task(state: &mut MapState, subtype: &str, value: &Value) -> Vec
     vec![SessionEventBody::Subagent(card.clone())]
 }
 
-/// 转录里后台子 Agent 结束时补的那条用户消息。是的话改卡片，不画用户气泡。
+/// 转录里后台任务结束时补的那条用户消息，不画用户气泡。是子 Agent 的就改它的卡片；
+/// 后台命令（`tool-use-id` 指向 Bash 等工具调用）读历史时不建任务，见 `background`。
 pub(super) fn notification_message(state: &mut MapState, value: &Value) -> Option<Vec<SessionEventBody>> {
     if value.pointer("/origin/kind").and_then(Value::as_str) != Some("task-notification") {
         return None;
     }
     let content = value.pointer("/message/content").and_then(Value::as_str).unwrap_or("");
-    let Some(tool_id) = tag(content, "tool-use-id") else {
+    let Some(tool_id) = tag(content, "tool-use-id").filter(|id| state.subagents.contains_key(id)) else {
         return Some(Vec::new());
     };
     let at = state.clock;
@@ -270,7 +272,7 @@ fn apply_usage(card: &mut SubagentCard, usage: Option<&Value>) {
     card.duration_ms = usage.get("duration_ms").and_then(Value::as_i64).or(card.duration_ms);
 }
 
-fn status_of(status: &str) -> SubagentStatus {
+pub(super) fn status_of(status: &str) -> SubagentStatus {
     match status {
         "completed" => SubagentStatus::Completed,
         "failed" | "error" => SubagentStatus::Failed,
@@ -303,13 +305,4 @@ fn tag(content: &str, name: &str) -> Option<String> {
     let end = start + content[start..].find(&close)?;
     let inner = content[start..end].trim();
     (!inner.is_empty()).then(|| inner.to_string())
-}
-
-fn text(value: &Value, key: &str) -> Option<String> {
-    value
-        .get(key)
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|text| !text.is_empty())
-        .map(str::to_string)
 }

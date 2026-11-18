@@ -4,10 +4,13 @@
 //! 未读由 daemon 按「有没有人正看着」记，所以正在看的会话跑完不会弹通知。
 //! 照 orca `src/renderer/src/attention/agent-attention-policy.ts`（要你处理、已完成两类）
 //! 和 `src/main/notifications/notification-delivery-service.ts`。
+//!
+//! 变成未读后先等一小会儿再弹：会话马上又接着做（Claude Code 的后台任务跑完约 0.1 秒后自己开一轮）就不弹，
+//! 一件事做完只提醒一次。角标照旧立刻更新。
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use aiwb_core::attention::{AskKind, Attention, AttentionState};
 use aiwb_core::rpc::{Push, TOPIC_TASKS};
@@ -19,6 +22,8 @@ use tauri_plugin_notification::NotificationExt;
 use tokio_tungstenite::tungstenite::Message;
 
 const RETRY: Duration = Duration::from_secs(2);
+/// 变成未读到弹通知之间等的时间。
+const GRACE: Duration = Duration::from_secs(2);
 
 /// 应用启动时调用一次。连不上 daemon 就隔一会儿再试；daemon 由前端连接时拉起。
 pub fn start(app: &AppHandle, data_dir: PathBuf) {
@@ -44,30 +49,31 @@ async fn follow(app: &AppHandle, url: &str, watcher: &mut Watcher) -> Result<(),
         .send(Message::Text(subscribe.to_string()))
         .await
         .map_err(|e| e.to_string())?;
-    while let Some(message) = socket.next().await {
-        let Message::Text(text) = message.map_err(|e| e.to_string())? else {
-            continue;
-        };
-        let Ok(push) = serde_json::from_str::<Push>(&text) else {
-            continue;
-        };
-        if push.topic != TOPIC_TASKS {
-            continue;
+    loop {
+        let due = watcher.next_due();
+        tokio::select! {
+            message = socket.next() => {
+                let Some(message) = message else { break };
+                if let Some(entries) = task_entries(message.map_err(|e| e.to_string())?) {
+                    show_waiting(app, watcher.update(&entries, Instant::now()));
+                }
+            }
+            _ = tokio::time::sleep_until(due.unwrap_or_else(Instant::now).into()), if due.is_some() => {}
         }
-        let Ok(entries) = serde_json::from_value::<Vec<TaskEntry>>(push.data) else {
-            continue;
-        };
-        let update = watcher.update(&entries);
-        deliver(app, &update);
+        notify(app, &watcher.due(Instant::now()));
     }
     Ok(())
 }
 
-/// 一次任务列表推送带来的提醒和角标数。
-#[derive(Debug, Default, PartialEq)]
-struct Update {
-    notices: Vec<Notice>,
-    waiting: usize,
+fn task_entries(message: Message) -> Option<Vec<TaskEntry>> {
+    let Message::Text(text) = message else {
+        return None;
+    };
+    let push = serde_json::from_str::<Push>(&text).ok()?;
+    if push.topic != TOPIC_TASKS {
+        return None;
+    }
+    serde_json::from_value(push.data).ok()
 }
 
 #[derive(Debug, PartialEq)]
@@ -80,32 +86,57 @@ struct Notice {
 #[derive(Default)]
 struct Watcher {
     unread: Option<HashMap<String, bool>>,
+    /// 刚变成未读、还没到时间弹的提醒，按任务。
+    pending: HashMap<String, (Notice, Instant)>,
 }
 
 impl Watcher {
     fn reset(&mut self) {
         self.unread = None;
+        self.pending.clear();
     }
 
-    fn update(&mut self, entries: &[TaskEntry]) -> Update {
+    /// 收下一份任务列表，返回等着你的会话数。
+    fn update(&mut self, entries: &[TaskEntry], now: Instant) -> usize {
         let live: Vec<&TaskEntry> = entries.iter().filter(|entry| entry.task.archived_at.is_none()).collect();
-        let notices = match &self.unread {
-            None => Vec::new(),
-            Some(before) => live
-                .iter()
-                .filter(|entry| entry.attention.unread && !before.get(&entry.task.id).copied().unwrap_or(false))
-                .map(|entry| notice(entry))
-                .collect(),
-        };
+        let unread: HashMap<&str, &TaskEntry> = live
+            .iter()
+            .filter(|entry| entry.attention.unread)
+            .map(|entry| (entry.task.id.as_str(), *entry))
+            .collect();
+        // 已经不是未读（又接着做了、看过了、归档了）的不再弹；还在等的换成最新的说法。
+        self.pending.retain(|id, (waiting, _)| match unread.get(id.as_str()) {
+            Some(entry) => {
+                *waiting = notice(entry);
+                true
+            }
+            None => false,
+        });
+        if let Some(before) = &self.unread {
+            for (id, entry) in &unread {
+                if !before.get(*id).copied().unwrap_or(false) {
+                    self.pending.insert(id.to_string(), (notice(entry), now + GRACE));
+                }
+            }
+        }
         self.unread = Some(
             live.iter()
                 .map(|entry| (entry.task.id.clone(), entry.attention.unread))
                 .collect(),
         );
-        Update {
-            notices,
-            waiting: live.iter().filter(|entry| waits_for_you(&entry.attention)).count(),
-        }
+        live.iter().filter(|entry| waits_for_you(&entry.attention)).count()
+    }
+
+    /// 最早到时间的提醒。
+    fn next_due(&self) -> Option<Instant> {
+        self.pending.values().map(|(_, at)| *at).min()
+    }
+
+    /// 取出到时间的提醒。
+    fn due(&mut self, now: Instant) -> Vec<Notice> {
+        let ready: Vec<String> =
+            self.pending.iter().filter(|(_, (_, at))| *at <= now).map(|(id, _)| id.clone()).collect();
+        ready.into_iter().filter_map(|id| self.pending.remove(&id)).map(|(notice, _)| notice).collect()
     }
 }
 
@@ -136,9 +167,11 @@ fn notice(entry: &TaskEntry) -> Notice {
     }
 }
 
-fn deliver(app: &AppHandle, update: &Update) {
-    let window = app.get_webview_window("main");
-    for notice in &update.notices {
+fn notify(app: &AppHandle, notices: &[Notice]) {
+    if notices.is_empty() {
+        return;
+    }
+    for notice in notices {
         let _ = app
             .notification()
             .builder()
@@ -146,18 +179,19 @@ fn deliver(app: &AppHandle, update: &Update) {
             .body(&notice.body)
             .show();
     }
-    if !update.notices.is_empty() {
-        if let Some(window) = &window {
-            if !window.is_focused().unwrap_or(false) {
-                let _ = window.request_user_attention(Some(UserAttentionType::Informational));
-            }
+    if let Some(window) = app.get_webview_window("main") {
+        if !window.is_focused().unwrap_or(false) {
+            let _ = window.request_user_attention(Some(UserAttentionType::Informational));
         }
     }
-    if let Some(window) = &window {
-        set_badge(window, update.waiting);
+}
+
+fn show_waiting(app: &AppHandle, waiting: usize) {
+    if let Some(window) = app.get_webview_window("main") {
+        set_badge(&window, waiting);
     }
     if let Some(tray) = app.tray_by_id(crate::tray::TRAY_ID) {
-        let tooltip = match update.waiting {
+        let tooltip = match waiting {
             0 => crate::tray::APP_TITLE.to_string(),
             n => format!("{} · {n} 个会话等着你", crate::tray::APP_TITLE),
         };
@@ -284,47 +318,85 @@ mod tests {
         }
     }
 
+    /// 收一份列表，过了等待时间后弹出的提醒和等着你的会话数。
+    fn settle(watcher: &mut Watcher, entries: &[TaskEntry], now: Instant) -> (Vec<Notice>, usize) {
+        let waiting = watcher.update(entries, now);
+        (watcher.due(now + GRACE), waiting)
+    }
+
     #[test]
     fn startup_never_notifies_or_increments_the_badge() {
         let mut watcher = Watcher::default();
-        watcher.update(&[]);
+        let now = Instant::now();
+        watcher.update(&[], now);
         for state in [AttentionState::New, AttentionState::Starting, AttentionState::Working] {
-            let update = watcher.update(&[entry("a", state, false, false)]);
-            assert!(update.notices.is_empty());
-            assert_eq!(update.waiting, 0);
+            let (notices, waiting) = settle(&mut watcher, &[entry("a", state, false, false)], now);
+            assert!(notices.is_empty());
+            assert_eq!(waiting, 0);
         }
-        let completed = watcher.update(&[entry("a", AttentionState::Done, true, false)]);
-        assert_eq!(completed.waiting, 1);
-        assert_eq!(completed.notices.len(), 1);
+        let (notices, waiting) = settle(&mut watcher, &[entry("a", AttentionState::Done, true, false)], now);
+        assert_eq!(waiting, 1);
+        assert_eq!(notices.len(), 1);
     }
 
     #[test]
     fn first_snapshot_only_counts_and_new_unread_notifies_once() {
         let mut watcher = Watcher::default();
-        let first = watcher.update(&[
-            entry("a", AttentionState::Done, true, false),
-            entry("b", AttentionState::Working, false, false),
-            entry("c", AttentionState::NeedsInput, false, false),
-            entry("old", AttentionState::Failed, true, true),
-        ]);
-        assert!(first.notices.is_empty());
-        assert_eq!(first.waiting, 2);
-
-        let next = watcher.update(&[
-            entry("a", AttentionState::Done, true, false),
-            entry("b", AttentionState::Done, true, false),
-            entry("c", AttentionState::NeedsInput, false, false),
-        ]);
-        assert_eq!(
-            next.notices,
-            vec![Notice { title: "任务b".into(), body: "完成了：改好了".into() }]
+        let now = Instant::now();
+        let (notices, waiting) = settle(
+            &mut watcher,
+            &[
+                entry("a", AttentionState::Done, true, false),
+                entry("b", AttentionState::Working, false, false),
+                entry("c", AttentionState::NeedsInput, false, false),
+                entry("old", AttentionState::Failed, true, true),
+            ],
+            now,
         );
-        assert_eq!(next.waiting, 3);
+        assert!(notices.is_empty());
+        assert_eq!(waiting, 2);
+
+        let (notices, waiting) = settle(
+            &mut watcher,
+            &[
+                entry("a", AttentionState::Done, true, false),
+                entry("b", AttentionState::Done, true, false),
+                entry("c", AttentionState::NeedsInput, false, false),
+            ],
+            now,
+        );
+        assert_eq!(notices, vec![Notice { title: "任务b".into(), body: "完成了：改好了".into() }]);
+        assert_eq!(waiting, 3);
 
         // 同一个未读不再提醒；断线重连后的快照也不算变化。
-        assert!(watcher.update(&[entry("b", AttentionState::Done, true, false)]).notices.is_empty());
+        assert!(settle(&mut watcher, &[entry("b", AttentionState::Done, true, false)], now).0.is_empty());
         watcher.reset();
-        assert!(watcher.update(&[entry("z", AttentionState::Failed, true, false)]).notices.is_empty());
+        assert!(settle(&mut watcher, &[entry("z", AttentionState::Failed, true, false)], now).0.is_empty());
+    }
+
+    /// 刚完成又马上接着做的不弹；角标立刻跟着变；等够了才弹，弹的是最新的说法。
+    #[test]
+    fn notice_waits_and_is_dropped_when_the_session_resumes() {
+        let mut watcher = Watcher::default();
+        let start = Instant::now();
+        watcher.update(&[entry("a", AttentionState::Working, false, false)], start);
+        assert_eq!(watcher.update(&[entry("a", AttentionState::Done, true, false)], start), 1);
+        assert!(watcher.due(start + GRACE / 2).is_empty(), "还没到时间");
+        assert_eq!(watcher.next_due(), Some(start + GRACE));
+        watcher.update(&[entry("a", AttentionState::Working, false, false)], start + GRACE / 2);
+        assert!(watcher.due(start + GRACE * 2).is_empty(), "又接着做了，不弹");
+        assert_eq!(watcher.next_due(), None);
+
+        let later = start + GRACE * 3;
+        watcher.update(&[entry("a", AttentionState::Done, true, false)], later);
+        let mut failed = entry("a", AttentionState::Failed, true, false);
+        failed.attention.preview = Some("编译不过".into());
+        watcher.update(&[failed], later);
+        assert_eq!(
+            watcher.due(later + GRACE),
+            vec![Notice { title: "任务a".into(), body: "失败了：编译不过".into() }]
+        );
+        assert!(watcher.due(later + GRACE * 2).is_empty(), "只弹一次");
     }
 
     #[test]

@@ -183,6 +183,9 @@ pub trait Dialect: Send + Sync + 'static {
     /// 用户要发给 Agent 的一条正文（还没发出）。
     fn before_submit(&self, _text: &str) {}
 
+    /// 一个新的工作台回合开始（不含引导接着跑的同一回合），还没发 `session/prompt`。
+    fn turn_started(&self, _shared: &Shared) {}
+
     /// 回合真正结束、状态已经发出之后。
     fn turn_ended(&self, _shared: &Arc<Shared>, _status: SessionStatus) {}
 

@@ -39,7 +39,7 @@ enum Intent {
 
 struct PendingLines {
     ready: bool,
-    lines: Vec<String>,
+    lines: Vec<Value>,
 }
 
 pub struct Shared {
@@ -383,8 +383,12 @@ impl Shared {
     pub(super) fn write_user_content(&self, content: &Value) -> Result<(), AgentError> {
         let line = serde_json::to_string(&control::user_message(&self.session_id, content.clone()))
             .map_err(|err| AgentError::Runtime(err.to_string()))?;
-        self.write_line(&line)?;
+        // 先记数再写：CLI 为这条开的回合，`system/init` 不能早于记数到达，不然会被当成自己开的一轮再记一次。
         self.user_writes.fetch_add(1, Ordering::SeqCst);
+        if let Err(err) = self.write_line(&line) {
+            self.user_writes.fetch_sub(1, Ordering::SeqCst);
+            return Err(err);
+        }
         Ok(())
     }
 
@@ -510,10 +514,7 @@ impl Shared {
     }
 
     /// `stop_task` 认的是 `task_started` 报的任务 id，卡片 id 是派它的工具调用 id，按记下的对应关系找。
-    pub fn stop_subagent(&self, subagent_id: &str) -> Result<(), AgentError> {
-        if self.closed.load(Ordering::SeqCst) {
-            return Err(AgentError::Closed);
-        }
+    pub async fn stop_subagent(&self, subagent_id: &str) -> Result<(), AgentError> {
         let task = self
             .map
             .lock()
@@ -521,9 +522,26 @@ impl Shared {
             .subagent_tasks
             .iter()
             .find(|(_, card)| card.as_str() == subagent_id)
-            .map(|(task, _)| task.clone())
-            .ok_or_else(|| AgentError::Runtime("这个子 Agent 没有在跑".into()))?;
-        self.enqueue(json!({ "subtype": "stop_task", "task_id": task }), None)
+            .map(|(task, _)| task.clone());
+        self.stop_task(task.as_deref(), "这个子 Agent 没有在跑").await
+    }
+
+    /// 后台任务的 `task_id` 就是 `stop_task` 认的 id。
+    pub async fn stop_background_task(&self, task_id: &str) -> Result<(), AgentError> {
+        let running = self.map.lock().unwrap().background_running(task_id);
+        self.stop_task(running.then_some(task_id), "这个后台任务没有在跑").await
+    }
+
+    /// 控制请求 `stop_task`，按 `task_started` 报的任务 id 停，等 CLI 回包：它拒绝时把错误交给调用方。
+    /// 没找到在跑的任务时报 `not_running`。任务本身等 `task_updated` 报 `killed` 才算停下。
+    async fn stop_task(&self, task_id: Option<&str>, not_running: &str) -> Result<(), AgentError> {
+        if self.closed.load(Ordering::SeqCst) {
+            return Err(AgentError::Closed);
+        }
+        let task_id = task_id.ok_or_else(|| AgentError::Runtime(not_running.into()))?;
+        self.request(json!({ "subtype": "stop_task", "task_id": task_id }), Duration::from_secs(15))
+            .await
+            .map(|_| ())
     }
 
     pub fn current_access(&self) -> String {
@@ -677,23 +695,26 @@ impl Shared {
     }
 
     fn handle_line(&self, line: &str) {
-        if serde_json::from_str::<Value>(line).is_err() {
+        let Ok(value) = serde_json::from_str::<Value>(line) else {
             return;
-        }
-        if bufferable(line) {
+        };
+        if bufferable(&value) {
             let mut pending = self.pending.lock().unwrap();
             if !pending.ready {
-                pending.lines.push(line.to_string());
+                pending.lines.push(value);
                 return;
             }
         }
-        self.dispatch(line);
+        self.dispatch(&value);
     }
 
-    fn dispatch(&self, line: &str) {
+    fn dispatch(&self, value: &Value) {
+        if turn_starts(value) {
+            self.adopt_native_turn();
+        }
         let (ingest, diff, model) = {
             let mut map = self.map.lock().unwrap();
-            let ingest = messages::ingest_line(&mut map, line, true, Some(&self.project_path));
+            let ingest = messages::ingest_value(&mut map, value, true, Some(&self.project_path));
             let diff = map.latest_diff();
             let model = map.model.clone();
             (ingest, diff, model)
@@ -708,6 +729,28 @@ impl Shared {
         if let Some(control) = ingest.control {
             self.on_control(control);
         }
+    }
+
+    /// 后台任务结束后，CLI 被 task-notification 唤醒，自己开一轮：没有用户写入，却来了 `system/init`。
+    /// 照用户回合挂锚点、报运行中，并把它记成一条写入，回合结束的 result 才对得上数。
+    /// 实测 Claude Code 2.1.326（2026-11-17）：每一轮都以 `system/init` 开头，被唤醒的这轮也是。
+    fn adopt_native_turn(&self) {
+        let _guard = self.status_lock.lock().unwrap();
+        if self.closed.load(Ordering::SeqCst) || self.busy.load(Ordering::SeqCst) {
+            return;
+        }
+        // 还有写入在等 result（比如停止后还没回包）。被并进回合的写入不会再有 result，要像 `emit_terminal` 一样扣掉，
+        // 不然并过一次之后写入永远多一条，被唤醒的回合再也认不出来。
+        let seen = self.user_results.load(Ordering::SeqCst);
+        if self.expected_results(seen) > seen {
+            return;
+        }
+        self.busy.store(true, Ordering::SeqCst);
+        self.user_writes.fetch_add(1, Ordering::SeqCst);
+        self.arm_turn();
+        let _ = self.events.send(SessionEventBody::StatusChanged {
+            status: SessionStatus::Running,
+        });
     }
 
     fn note_model(&self, model: Option<String>) {
@@ -862,9 +905,7 @@ impl Shared {
                 "type": "active_goal",
                 "value": request.get("value").cloned().unwrap_or(Value::Null),
             });
-            if let Ok(line) = serde_json::to_string(&message) {
-                self.dispatch(&line);
-            }
+            self.dispatch(&message);
             self.reply_success(request_id, json!({}));
             return;
         }
@@ -960,9 +1001,15 @@ impl Shared {
         self.outbound.lock().unwrap().take();
         let message = self.stderr_message("Claude Code 已退出");
         self.fail_waiters(message.clone());
-        // 进程没了，还在跑的子 Agent 也跟着停了。
-        for card in self.map.lock().unwrap().stop_subagents() {
-            let _ = self.events.send(card);
+        // 进程没了，还在跑的子 Agent 和后台任务也跟着停了。
+        let stopped = {
+            let mut map = self.map.lock().unwrap();
+            let mut stopped = map.stop_subagents();
+            stopped.extend(map.stop_background());
+            stopped
+        };
+        for event in stopped {
+            let _ = self.events.send(event);
         }
         if first && !self.user_stopped.load(Ordering::SeqCst) {
             let _ = self.events.send(SessionEventBody::Error { message });
@@ -1067,10 +1114,13 @@ fn push_stderr(buf: &Mutex<String>, chunk: &str) {
     }
 }
 
-fn bufferable(line: &str) -> bool {
-    let Ok(value) = serde_json::from_str::<Value>(line) else {
-        return false;
-    };
+/// 一轮开始的 `system/init`。
+pub(super) fn turn_starts(value: &Value) -> bool {
+    value.get("type").and_then(Value::as_str) == Some("system")
+        && value.get("subtype").and_then(Value::as_str) == Some("init")
+}
+
+fn bufferable(value: &Value) -> bool {
     let kind = value.get("type").and_then(Value::as_str).unwrap_or("");
     !matches!(
         kind,

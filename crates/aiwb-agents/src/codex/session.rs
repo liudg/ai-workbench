@@ -142,6 +142,10 @@ impl AgentSession for CodexCliSession {
         self.shared.stop_subagent(subagent_id)
     }
 
+    async fn stop_background_task(&self, task_id: &str) -> Result<(), AgentError> {
+        self.shared.stop_background_task(task_id).await
+    }
+
     #[cfg(test)]
     async fn discard_thread(&self) -> Result<(), AgentError> {
         let Some(thread_id) = self.shared.thread_id.lock().unwrap().clone() else {

@@ -43,6 +43,29 @@ export interface SubagentCard {
   ended_at?: number;
 }
 
+/** Agent 放到后台跑的任务跑到哪了。 */
+export type BackgroundTaskStatus = "running" | "completed" | "failed" | "stopped";
+
+/** Agent 放到后台、回合不等它的任务（后台命令、终端、监视等）。同一个 `task_id` 的后一条整条替换前一条。 */
+export interface BackgroundTask {
+  /** 原生的任务 id，停止时按它找。 */
+  task_id: string;
+  /** 原生报的任务种类，比如 `local_bash`、`terminal`、`command`。 */
+  task_type: string;
+  /** 启动它的那次工具调用，对应时间线里的工具卡片。 */
+  tool_call_id?: string;
+  /** 原生给的说明，没有说明时是命令原文。 */
+  title: string;
+  status: BackgroundTaskStatus;
+  /** 结束时原生给的摘要或输出。 */
+  result?: string;
+  exit_code?: number;
+  /** 原生把输出写到的文件。 */
+  output_file?: string;
+  started_at?: number;
+  ended_at?: number;
+}
+
 /** 提问卡片的按钮和占位。适配器写入，界面不看 Agent 名字。 */
 export type QuestionSurface = "request-input" | "async-reply";
 
@@ -211,6 +234,8 @@ export type SessionEventBody =
   | { kind: "subagent-step"; subagent_id: string; step: SessionEventBody }
   /** 子 Agent 结束的那一刻。宿主在卡片结束时记，排在结束时的位置。 */
   | { kind: "subagent-ended"; subagent_id: string; title: string; status: SubagentStatus }
+  /** Agent 放到后台跑的任务。同一个 `task_id` 整条替换。 */
+  | ({ kind: "background-task" } & BackgroundTask)
   /** 线程目标。objective 为空表示已清除。用量字段来自 `thread/goal`，没有就不编。 */
   | {
       kind: "goal";

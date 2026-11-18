@@ -138,6 +138,10 @@ fn start_io(
                 reader.dispatch(message);
             }
         }
+        // 进程没了，还记着在跑的子 Agent 和后台任务也跟着停了。回合在等后台任务时进程退出，回合本身不会再收尾它们。
+        for event in reader.dialect.stop_extras() {
+            let _ = reader.events.send(event);
+        }
         reader.closed.store(true, Ordering::SeqCst);
         reader.rpc.close();
     });
@@ -345,6 +349,7 @@ impl Shared {
         if replay == Replay::Live && kind == "user_message_chunk" {
             return;
         }
+        let _guard = self.status_lock.lock().unwrap();
         let rewritten = self.dialect.rewrite_update(update);
         let update = rewritten.as_ref().unwrap_or(update);
         let session = params.get("sessionId").and_then(Value::as_str).unwrap_or("");
@@ -354,7 +359,6 @@ impl Shared {
             }
             return;
         }
-        let _guard = self.status_lock.lock().unwrap();
         if kind == "current_mode_update" {
             if let Some(mode) = update.get("currentModeId").and_then(Value::as_str) {
                 *self.applied_mode.lock().unwrap() = mode.to_string();
@@ -436,9 +440,8 @@ impl Shared {
         });
     }
 
-    /// 从转录读出来的一步，走同一份时间线映射。每一步的回答单独成段。
+    /// 调用方持有 status_lock，从转录读出来的一步走同一份时间线映射。每一步的回答单独成段。
     pub(crate) fn apply_step(&self, update: &Value) {
-        let _guard = self.status_lock.lock().unwrap();
         let mut map = self.map.lock().unwrap();
         if update.get("sessionUpdate").and_then(Value::as_str) == Some("agent_message_chunk") {
             map.continue_turn();
@@ -450,9 +453,9 @@ impl Shared {
         }
     }
 
-    pub(crate) fn finish_command(&self, command: &str, output: &str) {
+    pub(crate) fn finish_command(&self, stream_id: &str, output: &str, canceled: bool) {
         let _guard = self.status_lock.lock().unwrap();
-        let event = self.map.lock().unwrap().finish_command(command, output);
+        let event = self.map.lock().unwrap().finish_command(stream_id, output, canceled);
         if let Some(event) = event {
             let _ = self.events.send(event);
         }

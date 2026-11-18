@@ -156,6 +156,9 @@ pub struct AgentCapabilities {
     /// 单独停掉 Agent 自带的一个子 Agent，主回合接着跑。
     #[serde(default)]
     pub supports_subagent_stop: bool,
+    /// 单独停掉一个后台任务（`BackgroundTask`）。
+    #[serde(default)]
+    pub supports_background_task_stop: bool,
 }
 
 impl AgentCapabilities {
@@ -184,6 +187,7 @@ impl AgentCapabilities {
             supports_workdir_move: false,
             supports_side_chat: false,
             supports_subagent_stop: false,
+            supports_background_task_stop: false,
         }
     }
 
@@ -219,6 +223,9 @@ impl AgentCapabilities {
             supports_side_chat: true,
             // 子 Agent 是同一连接上的子线程：`turn/interrupt` 带子线程 id 和它的回合 id。
             supports_subagent_stop: true,
+            // 2026-11-17 codex-cli 0.169.0：`thread/backgroundTerminals/terminate { threadId, processId }`，
+            // 随后补一条该命令的 `item/completed`（`failed`，`exitCode: -1`）。
+            supports_background_task_stop: true,
         }
     }
 
@@ -268,6 +275,8 @@ impl AgentCapabilities {
             supports_side_chat: true,
             // stdin 控制请求 `{"subtype":"stop_task","task_id":…}`（Claude Code 2.1.312 的 control 协议）。
             supports_subagent_stop: true,
+            // 2026-11-17 Claude Code 2.1.326：同一个 `stop_task` 也停 `local_bash`，随后 `task_updated` 报 `killed`。
+            supports_background_task_stop: true,
         }
     }
 
@@ -322,6 +331,8 @@ impl AgentCapabilities {
             // `session/cancel` 只认主会话（`3635.index.js` 的 `cancel` 查 `this.sessions`），
             // 子 Agent 只能跟着主回合一起停。
             supports_subagent_stop: false,
+            // 工作台没有接 Cursor 的后台任务。
+            supports_background_task_stop: false,
         }
     }
 
@@ -376,6 +387,8 @@ impl AgentCapabilities {
             supports_side_chat: false,
             // `session/cancel` 只认主会话，停子 Agent 的 `manage_subagents` 是模型的工具。
             supports_subagent_stop: false,
+            // 2026-11-17 agy 1.5.9：ACP 只有 `session/cancel`，`initialize` 也没报别的方法，停不了单个后台任务。
+            supports_background_task_stop: false,
         }
     }
 }

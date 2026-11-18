@@ -2,7 +2,7 @@
 //!
 //! 流式输出（同一 `stream_id` 的助手消息、思考、工具调用、计划正文）和按回合覆盖的
 //! 差异、文件变更、计划步骤，都改写已有那条并沿用原来的 id 和 seq。
-//! 子 Agent 卡片按 `subagent_id` 覆盖；子 Agent 的步骤只和同一个子 Agent 的步骤比。
+//! 子 Agent 卡片按 `subagent_id`、后台任务按 `task_id` 覆盖；子 Agent 的步骤只和同一个子 Agent 的步骤比。
 
 use crate::models::{SessionEvent, SessionEventBody, SubagentStatus};
 
@@ -47,6 +47,7 @@ fn can_overwrite(body: &SessionEventBody) -> bool {
             | SessionEventBody::TurnChanges { .. }
             | SessionEventBody::PlanSteps { .. }
             | SessionEventBody::Subagent(_)
+            | SessionEventBody::BackgroundTask(_)
             | SessionEventBody::PlanText { stream_id: Some(_), .. }
             | SessionEventBody::ToolCall { stream_id: Some(_), .. }
             | SessionEventBody::AgentMessage { stream_id: Some(_), .. }
@@ -86,7 +87,7 @@ pub fn subagent_ended(events: &[SessionEvent], body: &SessionEventBody) -> Optio
     })
 }
 
-/// 按回合、路径、`stream_id` 或子 Agent 整条替换的事件，是不是同一条。
+/// 按回合、路径、`stream_id`、子 Agent 或后台任务整条替换的事件，是不是同一条。
 fn same_key(existing: &SessionEventBody, body: &SessionEventBody) -> bool {
     match (existing, body) {
         (
@@ -137,6 +138,9 @@ fn same_key(existing: &SessionEventBody, body: &SessionEventBody) -> bool {
         ) => existing == stream_id,
         (SessionEventBody::Subagent(existing), SessionEventBody::Subagent(card)) => {
             existing.subagent_id == card.subagent_id
+        }
+        (SessionEventBody::BackgroundTask(existing), SessionEventBody::BackgroundTask(task)) => {
+            existing.task_id == task.task_id
         }
         _ => false,
     }
@@ -210,6 +214,7 @@ pub fn is_conversation_activity(body: &SessionEventBody) -> bool {
             | SessionEventBody::Subagent(_)
             | SessionEventBody::SubagentStep { .. }
             | SessionEventBody::SubagentEnded { .. }
+            | SessionEventBody::BackgroundTask(_)
     )
 }
 
@@ -336,5 +341,30 @@ mod tests {
         assert_eq!(title_from_user_message("", 1, 0).as_deref(), Some("图片"));
         assert_eq!(title_from_user_message("", 0, 2).as_deref(), Some("2 条注释"));
         assert_eq!(title_from_user_message(" ", 0, 0), None);
+    }
+
+    #[test]
+    fn background_task_replaces_the_same_task_id() {
+        use crate::models::{BackgroundTask, BackgroundTaskStatus};
+        let mut task = BackgroundTask::new("b1", "local_bash", "sleep");
+        let mut events = vec![
+            event(1, SessionEventBody::BackgroundTask(task.clone())),
+            event(2, SessionEventBody::BackgroundTask(BackgroundTask::new("b2", "local_bash", "other"))),
+        ];
+        task.finish(BackgroundTaskStatus::Stopped, Some(3));
+        assert_eq!(merge_into(&mut events, &SessionEventBody::BackgroundTask(task), 9), Some(0));
+        assert!(matches!(&events[0].body, SessionEventBody::BackgroundTask(task) if task.status == BackgroundTaskStatus::Stopped));
+        assert!(matches!(&events[1].body, SessionEventBody::BackgroundTask(task) if task.running()));
+    }
+
+    /// 事件体按 `kind` 打标签，后台任务自己的字段不能再叫 `kind`，存库后要读得回来。
+    #[test]
+    fn background_task_round_trips_through_json() {
+        use crate::models::BackgroundTask;
+        let body = SessionEventBody::BackgroundTask(BackgroundTask::new("b1", "local_bash", "sleep"));
+        let json = serde_json::to_string(&body).unwrap();
+        assert_eq!(json.matches("\"kind\"").count(), 1, "{json}");
+        let back: SessionEventBody = serde_json::from_str(&json).unwrap();
+        assert!(matches!(back, SessionEventBody::BackgroundTask(task) if task.task_type == "local_bash"));
     }
 }

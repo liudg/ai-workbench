@@ -28,6 +28,7 @@ const ALL: SessionEvent["kind"][] = [
   "subagent",
   "subagent-step",
   "subagent-ended",
+  "background-task",
   "collaboration-mode",
   "goal",
   "context-usage",

@@ -27,6 +27,13 @@ pub(crate) struct SubagentId {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct BackgroundTaskId {
+    session_id: String,
+    task_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct Send {
     session_id: String,
     #[serde(default)]
@@ -143,6 +150,14 @@ impl Services {
             return Ok(());
         };
         handle.stop_subagent(&params.subagent_id).await.map_err(|e| e.to_string())
+    }
+
+    /// 单独停掉一个后台任务。会话没接上时它也不在跑。
+    pub(crate) async fn stop_background_task(&self, params: BackgroundTaskId) -> ServiceResult<()> {
+        let Some(handle) = self.runtimes.live_handle(&params.session_id) else {
+            return Ok(());
+        };
+        handle.stop_background_task(&params.task_id).await.map_err(|e| e.to_string())
     }
 
     pub(crate) async fn answer(&self, params: Answer) -> ServiceResult<()> {

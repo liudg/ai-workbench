@@ -338,7 +338,7 @@ pub(super) fn tool_view(item: &Value) -> Option<ToolView> {
 
 /// `status` 来自 app-server 的 `CommandExecutionStatus` / `McpToolCallStatus` 等：
 /// `inProgress`、`completed`、`failed`、`declined`。没有这个字段的条目按已结束算。
-fn item_status(item: &Value, exit_code: Option<i64>) -> ToolStatus {
+pub(super) fn item_status(item: &Value, exit_code: Option<i64>) -> ToolStatus {
     let status = item.get("status").and_then(Value::as_str).unwrap_or("");
     let failure = item
         .get("error")

@@ -83,8 +83,8 @@ pub fn on_status(
     now: i64,
 ) -> Option<Attention> {
     let mut state = state_of(status);
-    // 主回合结束了，后台的子 Agent 还在跑：仍算在做。
-    if state == AttentionState::Done && subagent_running(events) {
+    // 主回合结束了，后台的子 Agent 或后台任务还在跑：仍算在做。
+    if state == AttentionState::Done && background_running(events) {
         state = AttentionState::Working;
     }
     if state == prev.state {
@@ -106,18 +106,24 @@ pub fn on_status(
     })
 }
 
-/// 子 Agent 卡片变了：按会话最后的状态重算。后台子 Agent 跑完时从「在做」变成「完成」。
-pub fn on_subagent(prev: &Attention, events: &[SessionEvent], viewed: bool, now: i64) -> Option<Attention> {
-    let status = events.iter().rev().find_map(|event| match &event.body {
-        SessionEventBody::StatusChanged { status } => Some(*status),
-        _ => None,
-    })?;
-    on_status(prev, status, events, viewed, now)
+/// 子 Agent 卡片或后台任务变了：按会话最后的状态重算。后台的都跑完时从「在做」变成「完成」。
+pub fn on_background(prev: &Attention, events: &[SessionEvent], viewed: bool, now: i64) -> Option<Attention> {
+    on_status(prev, last_status(events)?, events, viewed, now)
 }
 
-fn subagent_running(events: &[SessionEvent]) -> bool {
-    events.iter().any(|event| {
-        matches!(&event.body, SessionEventBody::Subagent(card) if card.status == SubagentStatus::Running)
+/// 会话最后报的状态。
+pub fn last_status(events: &[SessionEvent]) -> Option<SessionStatus> {
+    events.iter().rev().find_map(|event| match &event.body {
+        SessionEventBody::StatusChanged { status } => Some(*status),
+        _ => None,
+    })
+}
+
+fn background_running(events: &[SessionEvent]) -> bool {
+    events.iter().any(|event| match &event.body {
+        SessionEventBody::Subagent(card) => card.status == SubagentStatus::Running,
+        SessionEventBody::BackgroundTask(task) => task.running(),
+        _ => false,
     })
 }
 
@@ -335,7 +341,26 @@ mod tests {
         card.finish(SubagentStatus::Completed, Some(4));
         let mut finished = running.to_vec();
         finished[1] = event(2, SessionEventBody::Subagent(card));
-        let done = on_subagent(&working(), &finished, false, 4).unwrap();
+        let done = on_background(&working(), &finished, false, 4).unwrap();
+        assert_eq!(done.state, AttentionState::Done);
+        assert!(done.unread);
+    }
+
+    /// 主回合完了，后台命令还在跑：仍算在做。命令结束后才算完成、记未读。
+    #[test]
+    fn running_background_task_keeps_the_session_working() {
+        use crate::models::{BackgroundTask, BackgroundTaskStatus};
+        let mut task = BackgroundTask::new("b1", "local_bash", "dev server");
+        let running = [
+            user(1, "后台跑一下"),
+            event(2, SessionEventBody::BackgroundTask(task.clone())),
+            event(3, SessionEventBody::StatusChanged { status: SessionStatus::Completed }),
+        ];
+        assert!(on_status(&working(), SessionStatus::Completed, &running, false, 3).is_none());
+        task.finish(BackgroundTaskStatus::Completed, Some(4));
+        let mut finished = running.to_vec();
+        finished[1] = event(2, SessionEventBody::BackgroundTask(task));
+        let done = on_background(&working(), &finished, false, 4).unwrap();
         assert_eq!(done.state, AttentionState::Done);
         assert!(done.unread);
     }

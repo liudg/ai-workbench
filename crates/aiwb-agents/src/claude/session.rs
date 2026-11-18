@@ -80,7 +80,11 @@ impl AgentSession for ClaudeSession {
     }
 
     async fn stop_subagent(&self, subagent_id: &str) -> Result<(), AgentError> {
-        self.shared.stop_subagent(subagent_id)
+        self.shared.stop_subagent(subagent_id).await
+    }
+
+    async fn stop_background_task(&self, task_id: &str) -> Result<(), AgentError> {
+        self.shared.stop_background_task(task_id).await
     }
 
     async fn answer_prompt(&self, prompt_id: &str, answer: PromptAnswer) -> Result<(), AgentError> {

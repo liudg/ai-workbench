@@ -26,6 +26,8 @@ struct Segment {
 
 struct Tool {
     stream_id: String,
+    /// 这一回合里第几张出现的卡片。
+    order: u64,
     kind: String,
     title: String,
     /// Agent 自己的工具名。Cursor 不给。
@@ -120,23 +122,42 @@ impl UpdateMap {
         self.error_tail = None;
     }
 
-    /// 转成后台任务的命令跑完了：找到还在跑、命令相同的卡片，写上结果。
-    pub fn finish_command(&mut self, command: &str, output: &str) -> Option<SessionEventBody> {
+    /// 转成后台任务的命令对应的卡片（时间线里的 `stream_id`）：还在跑、命令相同、没被别的后台任务占用的那张。
+    /// 同一条命令同时跑两次时按卡片出现的先后分给各自的任务。
+    pub fn claim_command(&self, command: &str, claimed: &[String]) -> Option<String> {
+        self.tools
+            .values()
+            .filter(|tool| {
+                tool.status == ToolStatus::Running
+                    && tool.kind == "execute"
+                    && !claimed.contains(&tool.stream_id)
+                    && self.tool_summary(tool) == command
+            })
+            .min_by_key(|tool| tool.order)
+            .map(|tool| tool.stream_id.clone())
+    }
+
+    /// 当前回合第几次执行这条命令。转录和 ACP 可能以不同顺序送达同一次调用。
+    pub fn command_call_id(&self, command: &str, occurrence: usize) -> Option<&str> {
+        let mut calls: Vec<_> = self.tools.iter()
+            .filter(|(_, tool)| tool.kind == "execute" && self.tool_summary(tool) == command)
+            .collect();
+        calls.sort_unstable_by_key(|(_, tool)| tool.order);
+        calls.get(occurrence).map(|(id, _)| id.as_str())
+    }
+
+    /// 转成后台任务的命令结束了：给它启动时占用的那张卡片写上结果。被取消的算失败。
+    pub fn finish_command(&mut self, stream_id: &str, output: &str, canceled: bool) -> Option<SessionEventBody> {
         let id = self
             .tools
             .iter()
-            .find(|(_, tool)| {
-                tool.status == ToolStatus::Running && tool.kind == "execute" && self.tool_summary(tool) == command
-            })
+            .find(|(_, tool)| tool.status == ToolStatus::Running && tool.stream_id == stream_id)
             .map(|(id, _)| id.clone())?;
-        let code = output
-            .strip_prefix("Command exited with code ")
-            .and_then(|rest| rest.split('.').next())
-            .and_then(|code| code.trim().parse::<i64>().ok());
+        let code = command_exit_code(output);
         let detail = self.rules.content_text(output);
         let tool = self.tools.get_mut(&id)?;
         tool.exit_code = code;
-        tool.status = if code.is_some_and(|code| code != 0) { ToolStatus::Failed } else { ToolStatus::Completed };
+        tool.status = if canceled || code.is_some_and(|code| code != 0) { ToolStatus::Failed } else { ToolStatus::Completed };
         tool.detail = detail;
         Some(self.tool_event(&id))
     }
@@ -459,10 +480,12 @@ impl UpdateMap {
         }
         if created || !self.tools.contains_key(id) {
             let stream_id = format!("tool-{}", id.replace('\n', "-"));
+            let order = self.tools.get(id).map_or(self.tools.len() as u64, |tool| tool.order);
             self.tools.insert(
                 id.to_string(),
                 Tool {
                     stream_id,
+                    order,
                     kind: String::new(),
                     title: String::new(),
                     native: String::new(),
@@ -777,4 +800,12 @@ pub fn output_text(output: &Value) -> String {
         Value::String(text) => text.clone(),
         other => serde_json::to_string_pretty(other).unwrap_or_default(),
     }
+}
+
+/// 命令结果开头的 `Command exited with code N.`。
+pub fn command_exit_code(output: &str) -> Option<i64> {
+    output
+        .strip_prefix("Command exited with code ")
+        .and_then(|rest| rest.split('.').next())
+        .and_then(|code| code.trim().parse::<i64>().ok())
 }
