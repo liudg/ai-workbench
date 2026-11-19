@@ -6,6 +6,7 @@ import { pendingPrompt } from "@/lib/utils";
 import { SessionAgentIcon } from "@/shared/agent/SessionAgentIcon";
 import { type Session, type SessionEvent } from "@/types";
 import { ChangeCard } from "../cards/ChangeCard";
+import { backgroundTasksByToolCall } from "../events/background-task-display";
 import { EventItem } from "../events/EventItem";
 import { agentTurnName, useAgentIdentity } from "../events/use-agent-identity";
 import { pendingQuestionEvent } from "../events/pending-question";
@@ -103,6 +104,7 @@ function ChatTimeline({
     () => timelineStatus(events, session.status),
     [events, session.status],
   );
+  const backgroundByToolCall = useMemo(() => backgroundTasksByToolCall(events), [events]);
   const blocks = useMemo(() => buildTimeline(events, status), [events, status]);
   const liveBlock = useMemo(() => blocks.find((block) => block.type === "live") ?? null, [blocks]);
   const layoutKey = useMemo(
@@ -158,6 +160,7 @@ function ChatTimeline({
           session={session}
           resolvedAnswers={resolvedAnswers}
           showAgentLabel={(event) => chunk.labels.get(event.id) ?? false}
+          backgroundByToolCall={backgroundByToolCall}
           onInteract={pausePinForToggle}
         />
       );
@@ -173,6 +176,7 @@ function ChatTimeline({
           session={session}
           resolvedAnswers={resolvedAnswers}
           expanded={expanded}
+          backgroundByToolCall={backgroundByToolCall}
           onInteract={pausePinForToggle}
           onToggle={() => {
             pausePinForToggle();
@@ -190,6 +194,7 @@ function ChatTimeline({
           session={session}
           resolvedAnswers={resolvedAnswers}
           expanded={expanded}
+          backgroundByToolCall={backgroundByToolCall}
           onInteract={pausePinForToggle}
           onToggle={() => {
             pausePinForToggle();

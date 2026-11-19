@@ -35,6 +35,11 @@ export function stopSubagent(sessionId: string, subagentId: string) {
   return daemon.call<null>("sessions.stopSubagent", { sessionId, subagentId }, CLI_TIMEOUT_MS);
 }
 
+/** 单独停掉一个后台任务。 */
+export function stopBackgroundTask(sessionId: string, taskId: string) {
+  return daemon.call<null>("sessions.stopBackgroundTask", { sessionId, taskId }, CLI_TIMEOUT_MS);
+}
+
 export function answerPrompt(sessionId: string, promptId: string, answer: PromptAnswer) {
   return daemon.call<null>("sessions.answer", { sessionId, promptId, answer }, CLI_TIMEOUT_MS);
 }

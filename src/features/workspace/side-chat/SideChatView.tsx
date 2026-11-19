@@ -13,11 +13,11 @@ import type { ViewerViewProps } from "@/features/panel";
 import { useProjects } from "@/features/projects";
 import { useTasks, type TaskEntry, type TaskSession } from "@/features/tasks";
 import { useSessionFeeds, type SessionFeedState } from "@/lib/daemon";
-import type { PromptAnswer } from "@/types";
-import { answerPrompt } from "../session/api";
+import { isReadOnlyOpen } from "@/lib/utils";
 import { chatSession } from "../session/chat-session";
 import { addDraftSnippet, useComposerDraft } from "../session/composer-drafts";
 import { useLiveComposer } from "../session/use-live-composer";
+import { sessionChatActions } from "../session/use-task-chat";
 import type { SideChatPayload } from "./open";
 
 const NOT_READY: SessionFeedState = { ready: false, events: [], queue: [] };
@@ -45,6 +45,7 @@ function SideChat({ task, side }: { task: TaskEntry; side: TaskSession }) {
   const session = useMemo(() => chatSession(task, side), [task, side]);
   const workdir = session.workdir?.trim() || project?.path || "";
   const [feed = NOT_READY] = useSessionFeeds([side.id]);
+  const occupied = useMemo(() => isReadOnlyOpen(feed.events), [feed.events]);
   const { draft, loaded } = useComposerDraft(side.id);
   const composer = useLiveComposer({
     task,
@@ -58,16 +59,12 @@ function SideChat({ task, side }: { task: TaskEntry; side: TaskSession }) {
   });
   const host = useMemo<ChatHost>(
     () => ({
-      answerPrompt: (sessionId: string, promptId: string, answer: PromptAnswer) =>
-        answerPrompt(sessionId, promptId, answer).then(
-          () => true,
-          () => false,
-        ),
+      ...sessionChatActions(occupied),
       profiles,
       projectPath: workdir,
       addTextSnippet: addDraftSnippet,
     }),
-    [profiles, workdir],
+    [occupied, profiles, workdir],
   );
   return (
     <ChatHostProvider host={host}>

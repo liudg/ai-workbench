@@ -613,3 +613,38 @@ test("a settled turn whose only process is placeholder thinking renders flat wit
   assert.equal(nodes.some((node) => node.type === "turn"), false);
   assert.equal(isFoldable(event("t2", 4, { kind: "thinking", text: "先看目录" }), new Set()), true);
 });
+
+test("background-task stays silent in turn events and changes contentChars when stopped", () => {
+  const runningBg = event("b1", 3, {
+    kind: "background-task",
+    task_id: "bg_1",
+    task_type: "terminal",
+    tool_call_id: "call_1",
+    title: "pnpm dev",
+    status: "running",
+  });
+  const stoppedBg = event("b1", 3, {
+    kind: "background-task",
+    task_id: "bg_1",
+    task_type: "terminal",
+    tool_call_id: "call_1",
+    title: "pnpm dev",
+    status: "stopped",
+  });
+  const nodes = buildTimeline(
+    [
+      event("u1", 1, { kind: "user-message", text: "后台启动服务" }),
+      event("k1", 2, { kind: "tool-call", name: "command", summary: "pnpm dev", stream_id: "call_1" }),
+      runningBg,
+      event("k2", 4, { kind: "tool-call", name: "command", summary: "ls", stream_id: "call_2" }),
+      event("a1", 6, { kind: "agent-message", text: "已启动", phase: "final-answer" }),
+    ],
+    "completed",
+  );
+  const turn = turnNode(nodes);
+  assert.deepEqual(
+    turn.events.map((item) => item.id),
+    ["k1", "k2", "a1"],
+  );
+  assert.notEqual(contentChars([runningBg]), contentChars([stoppedBg]));
+});

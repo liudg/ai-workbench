@@ -1,23 +1,34 @@
 import type { SessionEvent } from "../../../types/index.ts";
 import { DESKTOP_ZH } from "../../../shared/strings/desktop-zh.ts";
 import { activityStepTitle, isViewedImages, isWebSearch, titleFromName, type ToolCallEvent } from "./activity-fold.ts";
+import { backgroundFailureText, type BackgroundTaskEvent } from "./background-task-display.ts";
 
-export type ToolState = "running" | "done" | "failed";
+export type ToolState = "running" | "done" | "failed" | "stopped";
 
 /**
- * 一条工具调用怎么画。适配器报的 `running` 只在这一轮还在跑时才转圈；
- * 一轮结束后还留着的（被打断、没等到结果）按已结束画，不再转。照 orca `NativeChatToolRun.tsx`。
+ * 一条工具调用怎么画。关联了后台任务时以它的状态为准（跨回合仍在跑继续转圈；
+ * 主动停掉记为 `stopped`，不因底层退出码 -1 误报失败）。
+ * 普通工具调用只在这一轮还在跑时转圈；一轮结束后还留着的按已结束画。照 orca `NativeChatToolRun.tsx`。
  */
-export function toolState(event: ToolCallEvent, live: boolean): ToolState {
+export function toolState(
+  event: ToolCallEvent,
+  live: boolean,
+  background?: BackgroundTaskEvent,
+): ToolState {
+  if (background) {
+    if (background.status === "running") return "running";
+    if (background.status === "stopped") return "stopped";
+    if (background.status === "failed") return "failed";
+    return "done";
+  }
   if (event.status === "failed") return "failed";
   if (event.status === "running" && live) return "running";
   return "done";
 }
 
-/** 失败的说明：有退出码写退出码，没有就写「失败」。 */
-export function toolFailureText(event: ToolCallEvent): string {
-  if (event.exit_code != null) return DESKTOP_ZH.toolExitCode.replace("{code}", String(event.exit_code));
-  return DESKTOP_ZH.toolFailed;
+/** 失败的说明：优先后台任务的退出码，其次工具自己的退出码，都没有就写「失败」。 */
+export function toolFailureText(event: ToolCallEvent, background?: BackgroundTaskEvent): string {
+  return backgroundFailureText(background?.exit_code ?? event.exit_code);
 }
 
 const QUIET_KINDS: ReadonlySet<SessionEvent["kind"]> = new Set([

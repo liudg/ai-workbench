@@ -4,6 +4,10 @@ import type { Session, SessionEvent } from "@/types";
 import { ActivityGroup } from "../events/ActivityGroup";
 import { foldActivity, type ActivityPiece } from "../events/activity-fold";
 import {
+  backgroundTasksByToolCall,
+  type BackgroundTaskEvent,
+} from "../events/background-task-display";
+import {
   activeThinkingId,
   activityOpenAfterSettle,
   thinkingBlockOpen,
@@ -30,6 +34,7 @@ export function ActivityStream({
   showAgentLabel,
   live = false,
   settled = false,
+  backgroundByToolCall,
   onInteract,
 }: {
   events: SessionEvent[];
@@ -38,9 +43,14 @@ export function ActivityStream({
   showAgentLabel: (event: SessionEvent) => boolean;
   live?: boolean;
   settled?: boolean;
+  backgroundByToolCall?: ReadonlyMap<string, BackgroundTaskEvent>;
   onInteract?: () => void;
 }) {
   const projectPath = useSessionProjectPath(session);
+  const localBackgrounds = useMemo(
+    () => backgroundByToolCall ?? backgroundTasksByToolCall(events),
+    [backgroundByToolCall, events],
+  );
   const pieces = useMemo(() => foldActivity(events, projectPath), [events, projectPath]);
   const liveThinking = useMemo(
     () => activeThinkingId(events, live, settled),
@@ -83,6 +93,7 @@ export function ActivityStream({
               session={session}
               open={toolGroupOpen(openGroups, piece.id)}
               live={live}
+              backgroundByToolCall={localBackgrounds}
               onToggle={() => {
                 onInteract?.();
                 setOpenGroups((prev) => toggleToolGroup(prev, piece.id));

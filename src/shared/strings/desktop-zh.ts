@@ -259,4 +259,15 @@ export const DESKTOP_ZH = {
   queueEnable: "启用队列模式",
   renameSaveError: "无法保存更改。请重试",
   deleteSessionError: "无法删除任务。请重试。",
+  /** 后台任务。 */
+  backgroundTasks: "后台任务",
+  backgroundRunningCount: "{count} 个后台任务",
+  backgroundRunning: "后台运行中",
+  backgroundCompleted: "后台完成",
+  backgroundStopped: "已停止",
+  backgroundEnded: "后台任务已结束",
+  backgroundStop: "停止",
+  backgroundStopping: "停止中…",
+  backgroundStopAll: "全部停止",
+  backgroundWaitingOutput: "正在运行，暂无输出",
 } as const;

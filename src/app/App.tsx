@@ -20,6 +20,7 @@ import { WindowTitlebar } from "./WindowTitlebar";
 const PREVIEWS: Record<string, LazyExoticComponent<ComponentType>> | null = import.meta.env.DEV
   ? {
       activity: lazy(() => import("@/app/preview/ActivityPreview")),
+      "background-tasks": lazy(() => import("@/app/preview/BackgroundTasksPreview")),
       code: lazy(() => import("@/app/preview/CodePreview")),
       "command-menu": lazy(() => import("@/features/command-menu/CommandMenuPreview")),
       composer: lazy(() => import("@/features/chat/composer/ComposerPreview")),

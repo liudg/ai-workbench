@@ -11,6 +11,7 @@ import { ActivityStream } from "./ActivityStream";
 import { TurnFoldLine } from "./TurnFoldLine";
 import { SessionAgentIcon } from "@/shared/agent/SessionAgentIcon";
 import { AGENT_LABELS, type Session, type SessionEvent, type SessionSpec } from "@/types";
+import type { BackgroundTaskEvent } from "../events/background-task-display";
 import { agentTurnName, useAgentIdentity, useEventAgent } from "../events/use-agent-identity";
 
 /**
@@ -25,6 +26,7 @@ export function TurnProcess({
   session,
   resolvedAnswers,
   expanded,
+  backgroundByToolCall,
   onToggle,
   onInteract,
 }: {
@@ -34,6 +36,7 @@ export function TurnProcess({
   session: Session;
   resolvedAnswers: ReadonlyMap<string, string>;
   expanded: boolean;
+  backgroundByToolCall?: ReadonlyMap<string, BackgroundTaskEvent>;
   onToggle: () => void;
   onInteract?: () => void;
 }) {
@@ -72,6 +75,7 @@ export function TurnProcess({
         resolvedAnswers={resolvedAnswers}
         showAgentLabel={() => false}
         settled
+        backgroundByToolCall={backgroundByToolCall}
         onInteract={onInteract}
       />
       {answer?.kind === "agent-message" ? <SubtaskRows {...subtasks} /> : null}

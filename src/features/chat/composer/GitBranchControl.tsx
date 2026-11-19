@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ComponentProps } from "react";
+import { useCallback, useEffect, useState, type ComponentProps, type ReactNode } from "react";
 import { Plus } from "lucide-react";
 
 import { userFacingMessage } from "@/lib/user-facing";
@@ -18,10 +18,13 @@ export function ComposerContextRow({
   workContext,
   git,
   worktree,
+  trailing = null,
 }: {
   workContext: ComponentProps<typeof WorkContextPicker> | null;
   git: ComposerHost["git"];
   worktree: WorktreeLine | null;
+  /** 顶栏右侧挂件（如运行中的后台任务胶囊）。为空时不占行。 */
+  trailing?: ReactNode;
 }) {
   const branch = useGitBranch(git?.projectId ?? "", {
     sessionId: git?.sessionId,
@@ -40,7 +43,7 @@ export function ComposerContextRow({
   const showBranch =
     Boolean(git) && !shelved && !start && (worktree?.liveTitle ? Boolean(worktreeLabel) : branch.visible);
   const handOff = !shelved ? (worktree?.handOff ?? null) : null;
-  if (!workContext && !showBranch && !start && !handOff && !worktree?.showToggle && !worktree?.liveLabel) return null;
+  if (!workContext && !showBranch && !start && !handOff && !worktree?.showToggle && !worktree?.liveLabel && !trailing) return null;
   return (
     <div
       className="flex min-w-0 flex-wrap items-center gap-1.5 border-b border-wb-border px-2.5 py-1.5"
@@ -84,6 +87,7 @@ export function ComposerContextRow({
           createPrefix={worktree?.liveTitle && !branch.current ? WORKTREE_BRANCH_PREFIX : ""}
         />
       ) : null}
+      {trailing ? <div className="ml-auto flex min-w-0 items-center">{trailing}</div> : null}
     </div>
   );
 }

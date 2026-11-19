@@ -147,4 +147,8 @@ export interface ComposerHost {
   /** `@` 文件筛选，在会话的工作目录里找。 */
   filterPaths(query: string): Promise<PathPage>;
   reportError(error: unknown): void;
+  /** 单独停掉当前会话的一个后台任务。草稿或不支持的宿主不给。 */
+  stopBackgroundTask?: (taskId: string) => Promise<void>;
+  /** 读当前会话后台任务写到磁盘的输出文件。 */
+  readTaskOutput?: (path: string) => Promise<string>;
 }

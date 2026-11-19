@@ -25,6 +25,10 @@ export interface ChatHost {
   subtasks?: SubtaskHost;
   /** 在子智能体面板里打开 Agent 自带的子 Agent。不支持的宿主不给，子 Agent 的行就不能点。 */
   openSubagent?: (sessionId: string, subagentId: string) => void;
+  /** 单独停掉一个后台任务。不支持的宿主不给，输出框就不带停止按钮。 */
+  stopBackgroundTask?: (sessionId: string, taskId: string) => Promise<void>;
+  /** 读后台任务写到磁盘的输出文件。 */
+  readTaskOutput?: (sessionId: string, path: string) => Promise<string>;
 }
 
 /** 时间线里一行子任务要画的。 */

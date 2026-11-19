@@ -2,6 +2,7 @@ import { useMemo } from "react";
 
 import { SessionAgentIcon } from "@/shared/agent/SessionAgentIcon";
 import { AGENT_LABELS, type Session, type SessionEvent } from "@/types";
+import type { BackgroundTaskEvent } from "../events/background-task-display";
 import { agentTurnName, useAgentIdentity } from "../events/use-agent-identity";
 import { ActivityStream } from "./ActivityStream";
 import { foldedEvents, runningTurnSummary } from "./timeline";
@@ -21,6 +22,7 @@ export function LiveTurn({
   expanded,
   onToggle,
   onInteract,
+  backgroundByToolCall,
   starting = false,
 }: {
   events: SessionEvent[];
@@ -29,6 +31,7 @@ export function LiveTurn({
   expanded: boolean;
   onToggle: () => void;
   onInteract?: () => void;
+  backgroundByToolCall?: ReadonlyMap<string, BackgroundTaskEvent>;
   starting?: boolean;
 }) {
   const identity = useAgentIdentity(session.agent);
@@ -51,6 +54,7 @@ export function LiveTurn({
         showAgentLabel={() => false}
         live
         settled={false}
+        backgroundByToolCall={backgroundByToolCall}
         onInteract={onInteract}
       />
     </div>

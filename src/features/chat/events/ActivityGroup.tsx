@@ -1,13 +1,23 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { ChevronRight, LayoutGrid, Loader2, Search } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { relativizeDisplayText } from "@/shared/path";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import type { Session } from "@/types";
+import { useChatHost } from "../host";
+import { formatElapsed } from "../timeline/timeline";
+import { useElapsedSince } from "../timeline/useElapsedSince";
 import type { ActivityPiece, ToolCallEvent } from "./activity-fold";
+import {
+  resolveBackgroundOutput,
+  toolStreamKey,
+  type BackgroundTaskEvent,
+} from "./background-task-display";
 import { toolFailureText, toolState, type ToolState } from "./tool-status";
 import { ToolOutput } from "./ToolOutput";
+import { useEventAgent } from "./use-agent-identity";
+import { useBackgroundOutput } from "./useBackgroundOutput";
 import { useSessionProjectPath } from "./use-session-project-path";
 
 type ToolPiece = Extract<ActivityPiece, { type: "tools" }>;
@@ -15,23 +25,31 @@ type ToolPiece = Extract<ActivityPiece, { type: "tools" }>;
 /**
  * 一组相邻工具的摘要行。默认一行。点开后按时间顺序列出每一步的标题，
  * 每一步再点开才看到命令和输出。还在跑的步骤转圈，失败的标红。
- * `live` 为假时，适配器留下的进行中不再转圈。
+ * 关联了后台任务的步骤跟后台任务状态走，跨回合仍在跑继续转圈。
  */
 export function ActivityGroup({
   piece,
   session,
   open,
   live,
+  backgroundByToolCall,
   onToggle,
 }: {
   piece: ToolPiece;
   session: Session;
   open: boolean;
   live: boolean;
+  backgroundByToolCall?: ReadonlyMap<string, BackgroundTaskEvent>;
   onToggle: () => void;
 }) {
   const projectPath = useSessionProjectPath(session);
-  const states = piece.steps.map((step) => toolState(step.event, live));
+  const backgrounds = piece.steps.map((step) => {
+    const streamId = step.event.stream_id?.trim();
+    return streamId
+      ? backgroundByToolCall?.get(toolStreamKey(step.event.session_id, streamId))
+      : undefined;
+  });
+  const states = piece.steps.map((step, index) => toolState(step.event, live, backgrounds[index]));
   const running = states.includes("running");
   const failed = states.filter((state) => state === "failed").length;
 
@@ -86,7 +104,9 @@ export function ActivityGroup({
                   key={step.id}
                   title={step.title}
                   event={step.event}
+                  session={session}
                   state={states[index]}
+                  background={backgrounds[index]}
                   projectPath={projectPath}
                 />
               ))}
@@ -101,54 +121,138 @@ export function ActivityGroup({
 function ActivityStep({
   title,
   event,
+  session,
   state,
+  background,
   projectPath,
 }: {
   title: string;
   event: ToolCallEvent;
+  session: Session;
   state: ToolState;
+  background?: BackgroundTaskEvent;
   projectPath: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [stopping, setStopping] = useState(false);
+  const host = useChatHost();
+  const agent = useEventAgent(event, session);
+
+  const readTaskOutput = host.readTaskOutput;
+  const readForSession = useCallback(
+    (path: string) => (readTaskOutput ? readTaskOutput(event.session_id, path) : Promise.resolve("")),
+    [event.session_id, readTaskOutput],
+  );
+  const readableFile = Boolean(background?.output_file?.trim() && readTaskOutput);
+  const fileState = useBackgroundOutput(
+    background,
+    open,
+    readableFile ? readForSession : undefined,
+  );
+
   const summary = relativizeDisplayText(event.summary, projectPath).trim();
-  const detail = relativizeDisplayText(event.detail ?? "", projectPath).trim();
+  const rawOutput = background
+    ? resolveBackgroundOutput({
+        detail: event.detail,
+        fileText: fileState.text,
+        // 首次读 `output_file` 未返回前先不闪出 `result` 英文回执。
+        result: readableFile && !fileState.settled ? "" : background.result,
+        rawTitle: background.title,
+      })
+    : (event.detail ?? "");
+  const detail = relativizeDisplayText(rawOutput, projectPath).trim();
   const images = event.images ?? [];
   const summaryShown = summary.length > 0 && summary !== title;
-  const hasBody = summaryShown || detail.length > 0 || images.length > 0;
-  const copyText = [event.name, summary, detail].filter((part) => part.trim()).join("\n");
-  const failure = state === "failed" ? toolFailureText(event) : null;
+  const canStop = Boolean(
+    background?.status === "running" &&
+      background.session_id === session.id &&
+      host.profiles[agent]?.capabilities.supports_background_task_stop &&
+      host.stopBackgroundTask,
+  );
+  const hasVisibleContent = summaryShown || detail.length > 0 || images.length > 0;
+  const placeholder = !hasVisibleContent
+    ? fileState.loading
+      ? DESKTOP_ZH.filesReading
+      : background && state === "running"
+        ? DESKTOP_ZH.backgroundWaitingOutput
+        : undefined
+    : undefined;
+  const canExpand =
+    hasVisibleContent ||
+    Boolean(placeholder) ||
+    canStop ||
+    (readableFile && !fileState.settled);
+
+  if (open && !canExpand) {
+    setOpen(false);
+  }
+  const shownOpen = open && canExpand;
+
+  const copyText =
+    summaryShown || detail
+      ? [event.name, summary, detail].filter((part) => part.trim()).join("\n")
+      : "";
+  const failure = state === "failed" ? toolFailureText(event, background) : null;
+
+  const stop = () => {
+    if (!background || !host.stopBackgroundTask || stopping) return;
+    setStopping(true);
+    void host.stopBackgroundTask(background.session_id, background.task_id).finally(() => {
+      setStopping(false);
+    });
+  };
 
   return (
     <li className="border-t border-wb-border" data-activity-step data-step-title={title} data-step-state={state}>
       <button
         type="button"
         data-step-toggle
-        aria-expanded={hasBody ? open : undefined}
-        disabled={!hasBody}
+        aria-expanded={canExpand ? shownOpen : undefined}
+        disabled={!canExpand}
         onClick={() => setOpen((value) => !value)}
         className="flex w-full min-w-0 items-center gap-2.5 px-3 py-2 text-left text-[13px] text-wb-fg-2 transition-colors enabled:hover:bg-wb-hover enabled:hover:text-wb-fg disabled:cursor-default"
       >
         <StepMark state={state} />
         <span className="min-w-0 flex-1 truncate">{title}</span>
-        {failure ? <span className="shrink-0 text-[12px] text-wb-danger">{failure}</span> : null}
-        {hasBody ? (
+        {background?.status === "running" ? (
+          <BackgroundRunningTag startedAt={background.started_at ?? null} />
+        ) : state === "stopped" ? (
+          <span data-step-background="stopped" className="shrink-0 text-[12px] text-wb-fg-3">
+            {DESKTOP_ZH.backgroundStopped}
+          </span>
+        ) : failure ? (
+          <span className="shrink-0 text-[12px] text-wb-danger">{failure}</span>
+        ) : null}
+        {canExpand ? (
           <ChevronRight
-            className={cn("h-3.5 w-3.5 shrink-0 text-wb-dim transition-transform duration-150", open && "rotate-90")}
+            className={cn("h-3.5 w-3.5 shrink-0 text-wb-dim transition-transform duration-150", shownOpen && "rotate-90")}
           />
         ) : null}
       </button>
-      {open && hasBody ? (
+      {shownOpen ? (
         <div data-activity-body className="min-w-0 overflow-x-hidden px-3 pb-2.5 pl-9">
           <ToolOutput
             command={summaryShown ? summary : ""}
             output={detail}
+            placeholder={placeholder}
             images={images}
             copyText={copyText}
             running={state === "running"}
+            onStop={canStop ? stop : undefined}
+            stopping={stopping}
           />
         </div>
       ) : null}
     </li>
+  );
+}
+
+function BackgroundRunningTag({ startedAt }: { startedAt: number | null }) {
+  const elapsed = useElapsedSince(startedAt);
+  return (
+    <span data-step-background="running" className="shrink-0 tabular-nums text-[12px] text-wb-fg-3">
+      {elapsed != null ? `${DESKTOP_ZH.backgroundRunning} · ${formatElapsed(elapsed)}` : DESKTOP_ZH.backgroundRunning}
+    </span>
   );
 }
 
@@ -158,7 +262,12 @@ function StepMark({ state }: { state: ToolState }) {
   }
   return (
     <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center">
-      <span className={cn("h-1.5 w-1.5 rounded-full", state === "failed" ? "bg-wb-danger" : "bg-wb-dim")} />
+      <span
+        className={cn(
+          "h-1.5 w-1.5 rounded-full",
+          state === "failed" ? "bg-wb-danger" : "bg-wb-dim",
+        )}
+      />
     </span>
   );
 }

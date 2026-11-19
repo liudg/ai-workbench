@@ -626,3 +626,58 @@ test("text written before a steer stays visible when the turn is folded", async 
     }
   }
 });
+
+test("settled background command keeps group spinning without splitting tools or flagging stopped -1 as failed", async () => {
+  const mod = await server.ssrLoadModule("/src/features/chat/timeline/ActivityStream.tsx");
+  const runningHtml = renderInHost(
+    createElement(mod.ActivityStream, {
+      events: [
+        event("c1", { kind: "tool-call", name: "command", summary: "pnpm dev", stream_id: "call_1", status: "completed" }),
+        event("b1", {
+          kind: "background-task",
+          task_id: "bg_1",
+          task_type: "local_bash",
+          tool_call_id: "call_1",
+          title: "pnpm dev",
+          status: "running",
+        }),
+        event("c2", { kind: "tool-call", name: "command", summary: "pnpm lint", stream_id: "call_2", status: "completed" }),
+      ],
+      session,
+      resolvedAnswers: new Map(),
+      showAgentLabel: () => false,
+      settled: true,
+    }),
+  );
+  assert.equal((runningHtml.match(/data-activity-group/g) ?? []).length, 1);
+  assert.match(runningHtml, /data-activity-running="true"/);
+
+  const stoppedHtml = renderInHost(
+    createElement(mod.ActivityStream, {
+      events: [
+        event("c1", {
+          kind: "tool-call",
+          name: "command",
+          summary: "pnpm dev",
+          stream_id: "call_1",
+          status: "failed",
+          exit_code: -1,
+        }),
+        event("b1", {
+          kind: "background-task",
+          task_id: "bg_1",
+          task_type: "terminal",
+          tool_call_id: "call_1",
+          title: "pnpm dev",
+          status: "stopped",
+          exit_code: -1,
+        }),
+      ],
+      session: { ...session, status: "stopped" },
+      resolvedAnswers: new Map(),
+      showAgentLabel: () => false,
+      settled: true,
+    }),
+  );
+  assert.doesNotMatch(stoppedHtml, /data-activity-failed/);
+});

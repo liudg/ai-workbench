@@ -1,11 +1,14 @@
-import { useCallback, type Ref } from "react";
+import { useCallback, useMemo, type Ref } from "react";
 
 import { userFacingMessage } from "@/lib/user-facing";
 import { cn } from "@/lib/utils";
 import type { Session, SessionEvent } from "@/types";
+import type { ToolCallEvent } from "../events/activity-fold";
+import { backgroundTasks, toolCallsByStreamId } from "../events/background-task-display";
 import { AccessMenu } from "./AccessMenu";
 import { AttachMenu } from "./AttachMenu";
 import { Attachments } from "./Attachments";
+import { BackgroundTaskPill, useBackgroundPill } from "./BackgroundTaskPill";
 import { ComposerBar } from "./ComposerBar";
 import { ComposerInput } from "./ComposerInput";
 import { TextSnippetCards } from "./TextSnippets";
@@ -20,6 +23,8 @@ import { runComposerPrimary } from "./composer-view";
 import type { ComposerHost } from "./host";
 import { useComposerController } from "./useComposerController";
 import { ComposerContextRow } from "./GitBranchControl";
+
+const EMPTY_BG_TOOLS: ReadonlyMap<string, ToolCallEvent> = new Map();
 
 export function Composer({
   host,
@@ -43,6 +48,15 @@ export function Composer({
   const agents = host.agentChoice;
   // 有 Agent 竖栏时，没有模型也能打开选择器去换 Agent。
   const showModel = view.showModel || agents !== null;
+  const bgTasks = useMemo(() => backgroundTasks(events), [events]);
+  const bgPill = useBackgroundPill(bgTasks);
+  if (c.menu !== null && bgPill.open) {
+    bgPill.close();
+  }
+  const bgTools = useMemo(
+    () => (bgPill.visible ? toolCallsByStreamId(events) : EMPTY_BG_TOOLS),
+    [bgPill.visible, events],
+  );
   return (
     <div className="composer-root relative z-10 min-w-0 shrink-0 px-4 pb-4 pt-1">
       {view.occupied && (
@@ -119,6 +133,19 @@ export function Composer({
             workContext={host.workContext}
             git={host.git}
             worktree={host.worktree}
+            trailing={
+              bgPill.visible ? (
+                <BackgroundTaskPill
+                  pill={bgPill}
+                  toolsByStream={bgTools}
+                  projectPath={host.projectPath}
+                  canStop={view.backgroundTaskStop && Boolean(host.stopBackgroundTask)}
+                  onBeforeOpen={() => c.setMenu(null)}
+                  onStop={host.stopBackgroundTask}
+                  readTaskOutput={host.readTaskOutput}
+                />
+              ) : null
+            }
           />
           {c.queueStrip ? (
             <QueuedMessageList

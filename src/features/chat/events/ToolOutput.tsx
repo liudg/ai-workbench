@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Loader2, Square } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
@@ -17,16 +18,24 @@ import { useFollowBottom } from "./useFollowBottom";
 export function ToolOutput({
   command,
   output,
+  placeholder,
   images,
   copyText,
   running,
+  onStop,
+  stopping = false,
 }: {
   /** 命令或调用摘要。和步骤标题一样时由调用方传空。 */
   command: string;
   output: string;
+  /** 尚无输出时的轻量提示。有实际输出时不显示。 */
+  placeholder?: string;
   images: string[];
   copyText: string;
   running: boolean;
+  /** 关联的后台任务可单独停止时给出，安静放在复制旁。 */
+  onStop?: () => void;
+  stopping?: boolean;
 }) {
   const [commandOpen, setCommandOpen] = useState(false);
   const [showAll, setShowAll] = useState(false);
@@ -84,15 +93,35 @@ export function ToolOutput({
             {shown}
           </pre>
         </div>
+      ) : placeholder ? (
+        <p className="m-0 rounded-lg border border-wb-border bg-wb-code px-2.5 py-1.5 font-sans text-xs text-wb-fg-3">
+          {placeholder}
+        </p>
       ) : null}
       <EventImages
         paths={images}
         className="max-h-40 max-w-[160px] rounded-lg object-contain"
         frameClassName="flex min-w-0 flex-wrap gap-1.5 overflow-x-hidden"
       />
-      {copyText ? (
-        <div className="flex justify-end">
-          <CopyButton text={copyText} />
+      {copyText || onStop ? (
+        <div className="flex items-center justify-end gap-1.5">
+          {onStop ? (
+            <button
+              type="button"
+              data-tool-stop
+              disabled={stopping}
+              onClick={onStop}
+              className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 font-sans text-xs text-wb-fg-3 transition-colors hover:bg-wb-hover hover:text-wb-danger disabled:opacity-50"
+            >
+              {stopping ? (
+                <Loader2 className="h-3 w-3 shrink-0 animate-spin motion-reduce:animate-none" />
+              ) : (
+                <Square className="h-2.5 w-2.5 shrink-0 fill-current" />
+              )}
+              <span>{stopping ? DESKTOP_ZH.backgroundStopping : DESKTOP_ZH.backgroundStop}</span>
+            </button>
+          ) : null}
+          {copyText ? <CopyButton text={copyText} /> : null}
         </div>
       ) : null}
     </div>

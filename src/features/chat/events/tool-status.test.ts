@@ -31,6 +31,30 @@ test("failure text prefers the exit code", () => {
   assert.equal(toolFailureText(tool("b", "Edit", "x", "failed")), "失败");
 });
 
+test("linked background task overrides settled turn and filters -1 stop exit code", () => {
+  const cmd = tool("a", "command", "sleep 20", "completed");
+  const killedCmd = tool("b", "command", "pnpm dev", "failed", -1);
+  const bg = (status: "running" | "completed" | "failed" | "stopped", exit_code?: number) => ({
+    id: "bg1",
+    session_id: "s",
+    seq: 2,
+    ts: 2,
+    kind: "background-task" as const,
+    task_id: "t1",
+    task_type: "terminal",
+    tool_call_id: "a",
+    title: "sleep 20",
+    status,
+    exit_code,
+  });
+
+  assert.equal(toolState(cmd, false, bg("running")), "running");
+  assert.equal(toolState(killedCmd, false, bg("stopped", -1)), "stopped");
+  assert.equal(toolState(cmd, false, bg("failed", 101)), "failed");
+  assert.equal(toolFailureText(cmd, bg("failed", 101)), "退出码 101");
+  assert.equal(toolState(cmd, false, bg("completed", 0)), "done");
+});
+
 test("live label follows what the turn is doing now", () => {
   const thinking = event("t", { kind: "thinking", text: "…" });
   const status = event("s", { kind: "status-changed", status: "running" });

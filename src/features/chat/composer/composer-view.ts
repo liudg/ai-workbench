@@ -230,6 +230,7 @@ export function deriveComposerView(input: ComposerViewInput) {
     sendDisabled,
     showPlan,
     showModel: Boolean(caps?.supports_tuning),
+    backgroundTaskStop: Boolean(caps?.supports_background_task_stop) && !occupied && !dead,
     permissionMenu: menu,
     showNetwork: Boolean(menu?.network_access) && extrasAllowed(menu, input.sandbox),
     showWritable: Boolean(menu?.writable_roots) && extrasAllowed(menu, input.sandbox),

@@ -269,6 +269,8 @@ export function useLiveComposer({
       publishGoal: () => api.publishGoal(sessionId).then(() => undefined),
       filterPaths: (query) => api.filterPaths({ sessionId }, query),
       reportError: report,
+      stopBackgroundTask: (taskId) => quiet(api.stopBackgroundTask(sessionId, taskId)),
+      readTaskOutput: (path) => api.readFile({ sessionId }, path).then((doc) => doc.text),
     };
   }, [
     agents,

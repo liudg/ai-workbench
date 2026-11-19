@@ -99,7 +99,8 @@ function skippedInTimeline(event: SessionEvent): boolean {
     event.kind === "context-usage" ||
     event.kind === "session-usage" ||
     event.kind === "subagent-step" ||
-    event.kind === "subagent-ended"
+    event.kind === "subagent-ended" ||
+    event.kind === "background-task"
   );
 }
 
@@ -465,6 +466,18 @@ export function contentChars(events: readonly SessionEvent[]): number {
       case "subagent-step":
         chars += contentChars([{ ...event, ...event.step }]) + 1;
         break;
+      case "background-task": {
+        const stateWeight =
+          event.status === "running"
+            ? 1
+            : event.status === "completed"
+              ? 2
+              : event.status === "failed"
+                ? 3
+                : 4;
+        chars += event.title.length + stateWeight + (event.result?.length ?? 0);
+        break;
+      }
       case "review-findings": {
         const findings = Array.isArray(event.findings) ? event.findings : [];
         chars +=

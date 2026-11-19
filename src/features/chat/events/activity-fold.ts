@@ -44,6 +44,7 @@ export function foldActivity(events: readonly SessionEvent[], projectPath = ""):
   };
 
   for (const event of events) {
+    if (event.kind === "background-task") continue;
     if (hasGeneratedImages(event)) {
       flushTools();
       pieces.push({ type: "event", event });

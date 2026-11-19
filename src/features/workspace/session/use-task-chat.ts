@@ -4,13 +4,34 @@ import { useAgentProfiles } from "@/features/agents";
 import type { ChatHost } from "@/features/chat";
 import type { Project } from "@/features/projects";
 import type { TaskEntry, TaskSession } from "@/features/tasks";
+import { isReadOnlyOpen } from "@/lib/utils";
 import type { PromptAnswer } from "@/types";
-import { answerPrompt } from "./api";
+import { showError } from "@/shared/shell/error-banner";
+import { answerPrompt, readFile, stopBackgroundTask } from "./api";
 import { openSubagentPanel } from "../subagent-panel/open";
 import { chatSession } from "./chat-session";
 import { addDraftSnippet, useComposerDraft } from "./composer-drafts";
 import { useSubtaskHost } from "./use-subtask-host";
 import { useTaskTimeline } from "./use-task-timeline";
+
+/** 主会话与侧边聊天共用的 `ChatHost` 会话动作。只读打开时不给停止动作。 */
+export function sessionChatActions(
+  occupied: boolean,
+): Pick<ChatHost, "answerPrompt" | "stopBackgroundTask" | "readTaskOutput"> {
+  return {
+    answerPrompt: (sessionId: string, promptId: string, answer: PromptAnswer) =>
+      answerPrompt(sessionId, promptId, answer).then(
+        () => true,
+        () => false,
+      ),
+    stopBackgroundTask: occupied
+      ? undefined
+      : (sessionId, bgTaskId) =>
+          stopBackgroundTask(sessionId, bgTaskId).then(() => undefined, showError),
+    readTaskOutput: (sessionId, path) =>
+      readFile({ sessionId }, path).then((doc) => doc.text),
+  };
+}
 
 /**
  * 一个任务的聊天要的东西：时间线、聊天宿主、草稿。主区的会话视图和子智能体面板共用。
@@ -27,16 +48,13 @@ export function useTaskChat(
   const workdir = session.workdir?.trim() || project?.path || "";
   const timeline = useTaskTimeline(task, taskSession);
   const { agentOf } = timeline;
+  const occupied = useMemo(() => isReadOnlyOpen(timeline.current.events), [timeline.current.events]);
   const owner = panelOwner ?? session.id;
   const subtasks = useSubtaskHost();
   const taskId = task.id;
   const host = useMemo<ChatHost>(
     () => ({
-      answerPrompt: (sessionId: string, promptId: string, answer: PromptAnswer) =>
-        answerPrompt(sessionId, promptId, answer).then(
-          () => true,
-          () => false,
-        ),
+      ...sessionChatActions(occupied),
       profiles,
       projectPath: workdir,
       addTextSnippet: addDraftSnippet,
@@ -45,7 +63,7 @@ export function useTaskChat(
       openSubagent: (sessionId, subagentId) =>
         openSubagentPanel(owner, { kind: "native", taskId, sessionId, subagentId }),
     }),
-    [agentOf, owner, profiles, subtasks, taskId, workdir],
+    [agentOf, occupied, owner, profiles, subtasks, taskId, workdir],
   );
   const { draft, loaded } = useComposerDraft(session.id);
   return {
