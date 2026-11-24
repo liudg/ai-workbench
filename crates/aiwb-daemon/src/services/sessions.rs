@@ -122,8 +122,35 @@ pub(crate) struct Sent {
 
 impl Services {
     pub(crate) async fn send(&self, params: Send) -> ServiceResult<Sent> {
+        let first_turn_meta = if aiwb_core::models::is_visible_user_text(&params.text) {
+            self.store
+                .session(&params.session_id)
+                .ok()
+                .flatten()
+                .and_then(|s| {
+                    let is_side = self.store.is_side_session(&s.id).unwrap_or(false);
+                    if is_side {
+                        return None;
+                    }
+                    let spoke = self.has_spoken(&s.id).unwrap_or(true);
+                    let earlier_segs = self
+                        .store
+                        .task_sessions(&s.task_id)
+                        .map(|segs| segs.len() > 1)
+                        .unwrap_or(true);
+                    (!spoke && !earlier_segs).then_some((s.task_id, s.agent, s.instance_id))
+                })
+        } else {
+            None
+        };
+        let seed_text = params.text.clone();
         let message = crate::runtime::Outgoing::user(params.text, params.images, params.now);
         let delivery = self.send_from_user(&params.session_id, message).await?;
+        if delivery == TurnDelivery::Started {
+            if let Some((task_id, agent, instance_id)) = first_turn_meta {
+                self.spawn_auto_title(task_id, seed_text, agent, instance_id);
+            }
+        }
         Ok(Sent {
             queued: delivery == TurnDelivery::Queued,
         })
@@ -193,36 +220,85 @@ impl Services {
     }
 
     pub(crate) async fn steer_queued(&self, params: Queued) -> ServiceResult<()> {
+        let _ = self.runtimes.handle(&params.session_id).await?;
+        let is_idle = self
+            .store
+            .session(&params.session_id)
+            .ok()
+            .flatten()
+            .is_some_and(|s| !super::session_busy(&s));
+        if is_idle {
+            if let Some(pre) = self.runtimes.capture_pre_checkpoint(&params.session_id).await {
+                self.runtimes
+                    .stash_pending_pre_checkpoint(&params.session_id, pre);
+            }
+        }
         let id = params.id;
-        self.runtimes
+        let result = self
+            .runtimes
             .with_handle(&params.session_id, move |handle| {
                 let id = id.clone();
                 async move { handle.steer_queued(&id).await }
             })
-            .await
+            .await;
+        if result.is_err() {
+            self.runtimes
+                .clear_pending_pre_checkpoint(&params.session_id);
+        }
+        result
     }
 
     /// 按给定顺序把排队的消息逐条引导进当前回合。
     pub(crate) async fn flush_queued(&self, params: FlushQueued) -> ServiceResult<()> {
         // 送到一半断了的话前几条已经发出，整组重试会漏掉后面的：不重试。
         let handle = self.runtimes.handle(&params.session_id).await?;
-        handle.flush_queued(params.ids).await.map_err(|e| e.to_string())
+        let is_idle = self
+            .store
+            .session(&params.session_id)
+            .ok()
+            .flatten()
+            .is_some_and(|s| !super::session_busy(&s));
+        if is_idle {
+            if let Some(pre) = self.runtimes.capture_pre_checkpoint(&params.session_id).await {
+                self.runtimes
+                    .stash_pending_pre_checkpoint(&params.session_id, pre);
+            }
+        }
+        let result = handle
+            .flush_queued(params.ids)
+            .await
+            .map_err(|e| e.to_string());
+        if result.is_err() {
+            self.runtimes
+                .clear_pending_pre_checkpoint(&params.session_id);
+        }
+        result
     }
 
     pub(crate) async fn set_options(&self, params: SetOptions) -> ServiceResult<()> {
         self.runtimes.set_options(&params.session_id, &params.options).await
     }
 
-    /// 模型、推理强度、技能。要接上 CLI 才拿得到。拿到了就记下来，给这种 Agent 的新会话用。
+    /// 模型、推理强度、技能。要接上 CLI 才拿得到。拿到了就记下来，给该实例的新会话用。
     pub(crate) async fn catalog(&self, params: SessionId) -> ServiceResult<AgentCatalog> {
-        if let Some(agent) = self.shelved_agent(&params.session_id)? {
-            return Ok(self.stored_catalog(agent)?.unwrap_or_else(AgentCatalog::empty));
+        if let Some((agent, inst_id)) = self.shelved_agent_instance(&params.session_id)? {
+            return Ok(self
+                .stored_catalog_for(agent, inst_id.as_deref())?
+                .unwrap_or_else(AgentCatalog::empty));
         }
-        let catalog = self.runtimes
+        let mut catalog = self
+            .runtimes
             .with_handle(&params.session_id, |handle| async move { handle.catalog().await })
             .await?;
         if let Some(session) = self.store.session(&params.session_id).map_err(|e| e.to_string())? {
-            self.runtimes.remember_catalog(session.agent, &catalog);
+            if catalog.instance_id.is_none() {
+                catalog.instance_id = session.instance_id.clone();
+            }
+            self.runtimes.remember_catalog_for(
+                session.agent,
+                session.instance_id.as_deref(),
+                &catalog,
+            );
         }
         Ok(catalog)
     }
@@ -259,8 +335,11 @@ impl Services {
     }
 
     pub(crate) async fn permission_menu(&self, params: SessionId) -> ServiceResult<PermissionMenu> {
-        if let Some(agent) = self.shelved_agent(&params.session_id)? {
-            return Ok(self.runtimes.adapter(agent).draft_permission_menu());
+        if let Some((agent, inst_id)) = self.shelved_agent_instance(&params.session_id)? {
+            return Ok(self
+                .runtimes
+                .adapter_for_instance(agent, inst_id.as_deref())?
+                .draft_permission_menu());
         }
         self.runtimes
             .with_handle(&params.session_id, |handle| async move { handle.permission_menu().await })
@@ -270,7 +349,7 @@ impl Services {
     /// 当前账号的订阅额度。只有声明了 `supports_subscription_usage` 的 Agent 有。
     pub(crate) async fn subscription_usage(&self, params: AgentParam) -> ServiceResult<SubscriptionUsage> {
         self.runtimes
-            .adapter(params.agent)
+            .adapter_for_instance(params.agent, params.instance_id.as_deref())?
             .subscription_usage()
             .await
             .map_err(|e| e.to_string())
@@ -279,6 +358,13 @@ impl Services {
     /// 工作树已被清理、CLI 也没接着时是会话的 Agent。照 Codex，打开任务只给「恢复」，
     /// 不为了读模型、权限菜单和目标把工作树建回来；发消息或点恢复时才建。
     pub(crate) fn shelved_agent(&self, session_id: &str) -> ServiceResult<Option<AgentKind>> {
+        Ok(self.shelved_agent_instance(session_id)?.map(|(a, _)| a))
+    }
+
+    pub(crate) fn shelved_agent_instance(
+        &self,
+        session_id: &str,
+    ) -> ServiceResult<Option<(AgentKind, Option<String>)>> {
         if self.runtimes.is_live(session_id) {
             return Ok(None);
         }
@@ -290,12 +376,15 @@ impl Services {
             task.map(|task| task.workspace),
             Some(TaskWorkspace::Worktree { shelved: Some(_), local: None, .. })
         );
-        Ok(shelved.then_some(session.agent))
+        Ok(shelved.then_some((session.agent, session.instance_id)))
     }
 
     /// 还没有任务时的权限菜单，不启动 CLI。
-    pub(crate) fn draft_permission_menu(&self, params: AgentParam) -> PermissionMenu {
-        self.runtimes.adapter(params.agent).draft_permission_menu()
+    pub(crate) fn draft_permission_menu(&self, params: AgentParam) -> ServiceResult<PermissionMenu> {
+        Ok(self
+            .runtimes
+            .adapter_for_instance(params.agent, params.instance_id.as_deref())?
+            .draft_permission_menu())
     }
 
     pub(crate) async fn review_targets(&self, params: SessionId) -> ServiceResult<ReviewTargets> {

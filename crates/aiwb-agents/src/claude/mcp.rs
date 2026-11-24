@@ -4,14 +4,17 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use crate::mcp::exec::{self, require_bin};
+use crate::instance::InstanceOverlay;
+use crate::mcp::exec;
 use crate::mcp::{args, parse, surface, McpDriver};
 use aiwb_core::models::{McpAddSpec, McpServerRow, McpSurface};
 
-pub struct ClaudeMcp;
+pub struct ClaudeMcp {
+    overlay: Arc<InstanceOverlay>,
+}
 
-pub fn driver() -> Arc<dyn McpDriver> {
-    Arc::new(ClaudeMcp)
+pub fn driver_for(overlay: Arc<InstanceOverlay>) -> Arc<dyn McpDriver> {
+    Arc::new(ClaudeMcp { overlay })
 }
 
 #[async_trait]
@@ -21,30 +24,31 @@ impl McpDriver for ClaudeMcp {
     }
 
     async fn list(&self) -> Result<Vec<McpServerRow>, String> {
-        let text = run(args::claude_list(), exec::LIST_LIMIT).await?;
+        let text = self.run(args::claude_list(), exec::LIST_LIMIT).await?;
         Ok(parse::parse_cli_list(&text))
     }
 
     async fn add(&self, spec: &McpAddSpec) -> Result<String, String> {
-        run(args::claude_add(spec)?, exec::MUTATE_LIMIT).await
+        self.run(args::claude_add(spec)?, exec::MUTATE_LIMIT).await
     }
 
     async fn remove(&self, name: &str, scope: &str) -> Result<String, String> {
-        run(args::claude_remove(name, scope)?, exec::MUTATE_LIMIT).await
+        self.run(args::claude_remove(name, scope)?, exec::MUTATE_LIMIT)
+            .await
     }
 
     async fn login(&self, name: &str, registration: &str, scopes: &str) -> Result<String, String> {
-        let captured = exec::run_cli(
-            &bin()?,
-            &args::claude_login(name, registration, scopes)?,
-            exec::LOGIN_LIMIT,
-        )
-        .await?;
+        let captured = self
+            .run_captured(
+                args::claude_login(name, registration, scopes)?,
+                exec::LOGIN_LIMIT,
+            )
+            .await?;
         exec::success_text(captured)
     }
 
     async fn logout(&self, name: &str) -> Result<String, String> {
-        run(args::claude_logout(name)?, exec::MUTATE_LIMIT).await
+        self.run(args::claude_logout(name)?, exec::MUTATE_LIMIT).await
     }
 
     async fn set_enabled(&self, _name: &str, _enabled: bool) -> Result<String, String> {
@@ -52,14 +56,22 @@ impl McpDriver for ClaudeMcp {
     }
 }
 
-async fn run(args: Vec<String>, limit: std::time::Duration) -> Result<String, String> {
-    let captured = exec::run_cli(&bin()?, &args, limit).await?;
-    exec::success_stdout(captured)
-}
+impl ClaudeMcp {
+    async fn run_captured(
+        &self,
+        args: Vec<String>,
+        limit: std::time::Duration,
+    ) -> Result<exec::Captured, String> {
+        let bin = super::process::resolve_bin_for(&self.overlay).map_err(|e| e.to_string())?;
+        let overlay = Arc::clone(&self.overlay);
+        exec::run_cli_configured(&bin, &args, limit, move |cmd| {
+            super::process::apply_instance_env(cmd, &overlay);
+        })
+        .await
+    }
 
-fn bin() -> Result<std::path::PathBuf, String> {
-    require_bin(
-        super::process::resolve_claude_bin().ok(),
-        "未找到 Claude Code。",
-    )
+    async fn run(&self, args: Vec<String>, limit: std::time::Duration) -> Result<String, String> {
+        let captured = self.run_captured(args, limit).await?;
+        exec::success_stdout(captured)
+    }
 }

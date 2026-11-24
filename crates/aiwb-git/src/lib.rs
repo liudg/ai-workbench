@@ -1,22 +1,32 @@
 //! 本地分支的读取、切换和创建。工作树差异在 `diff`。
 
 mod branch;
+mod checkpoints;
 mod diff;
 mod handoff;
 mod include;
 mod snapshot;
 mod worktree;
 
+pub use checkpoints::{
+    capture_checkpoint, checkpoint_restore_conflict, delete_checkpoint_refs, has_checkpoint_ref,
+    has_working_tree_changed_since, in_progress_git_operation, recent_commit_subjects,
+    restore_checkpoint, CapturedCheckpoint,
+};
 pub use diff::git_diff_text;
 pub use handoff::{hand_back_to_worktree, hand_off_to_local, list_files};
-pub use snapshot::{drop_snapshot, remove_shelved_worktree, restore_worktree, snapshot_worktree};
+pub use snapshot::{
+    can_shelve_worktree, drop_snapshot, remove_shelved_worktree, restore_worktree,
+    snapshot_worktree,
+};
 
 pub use branch::{
     checkout_local_branch, create_and_checkout_branch, local_branch_menu, GitBranchMenu,
 };
 pub use worktree::{
     bind_codex_thread, create_task_worktree, delete_preview, discard_confirmed_worktree,
-    is_owned_worktree, repo_has_commit, repository_root, DeletePreview, NewWorktree, TaskWorktree,
+    is_owned_worktree, rebind_codex_thread, repo_has_commit, repository_root, DeletePreview,
+    NewWorktree, TaskWorktree,
 };
 
 use std::path::{Path, PathBuf};
@@ -59,7 +69,7 @@ pub fn current_branch(root: &Path) -> Result<Option<String>, String> {
         .stderr(Stdio::piped())
         .env("GIT_TERMINAL_PROMPT", "0");
     aiwb_proc::apply_utf8_env_std(&mut command);
-    hide_console(&mut command);
+    aiwb_proc::hide_console_std(&mut command);
     let output = command
         .output()
         .map_err(|err| format!("无法运行 git: {err}"))?;
@@ -102,7 +112,7 @@ pub fn inside_work_tree(root: &Path) -> Result<bool, String> {
         .stderr(Stdio::piped())
         .env("GIT_TERMINAL_PROMPT", "0");
     aiwb_proc::apply_utf8_env_std(&mut command);
-    hide_console(&mut command);
+    aiwb_proc::hide_console_std(&mut command);
     let output = command
         .output()
         .map_err(|err| format!("无法运行 git: {err}"))?;
@@ -144,19 +154,10 @@ pub(crate) fn git_output(root: &Path, args: &[&str]) -> Result<std::process::Out
         .stderr(Stdio::piped())
         .env("GIT_TERMINAL_PROMPT", "0");
     aiwb_proc::apply_utf8_env_std(&mut command);
-    hide_console(&mut command);
+    aiwb_proc::hide_console_std(&mut command);
     command
         .output()
         .map_err(|err| format!("无法运行 git: {err}"))
-}
-
-fn hide_console(command: &mut Command) {
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        command.creation_flags(0x08000000);
-    }
-    let _ = command;
 }
 
 #[cfg(test)]
@@ -181,7 +182,7 @@ mod tests {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
-        hide_console(&mut command);
+        aiwb_proc::hide_console_std(&mut command);
         command
             .status()
             .map(|status| status.success())
@@ -195,7 +196,7 @@ mod tests {
             .arg("--version")
             .stdout(Stdio::null())
             .stderr(Stdio::null());
-        hide_console(&mut probe);
+        aiwb_proc::hide_console_std(&mut probe);
         if !probe
             .status()
             .map(|status| status.success())

@@ -26,6 +26,26 @@ pub trait AgentAdapter: Send + Sync {
         self.kind().display_name()
     }
 
+    /// 实例主键（如 `codex`、`codex-work`）。
+    fn instance_id(&self) -> Option<&str> {
+        None
+    }
+
+    /// 实例自定义显示名（未自定义时返回 None，退回 `display_name()`）。
+    fn custom_display_name(&self) -> Option<&str> {
+        None
+    }
+
+    /// 实例强调色（如 `#6366f1`）。
+    fn accent_color(&self) -> Option<&str> {
+        None
+    }
+
+    /// 实例单独指定的二进制路径（未覆盖时返回 None，走默认探测）。
+    fn custom_binary_path(&self) -> Option<&std::path::Path> {
+        None
+    }
+
     /// 侧栏图标。没有资源时返回 None，调用方不要补一张别的 Agent 的图。
     fn icon_href(&self) -> Option<&'static str> {
         None
@@ -47,16 +67,28 @@ pub trait AgentAdapter: Send + Sync {
         )))
     }
 
+    /// 不启动 CLI 即可给出的静态斜杠命令表。
+    fn commands(&self) -> Vec<aiwb_core::models::SlashCommand> {
+        Vec::new()
+    }
+
+    /// 新建会话时的默认权限档（如 `"full"`）。未声明时返回 None。
+    fn default_access(&self) -> Option<&'static str> {
+        None
+    }
+
     /// 斜杠命令等不需要已打开会话就能给出的目录。模型/技能仍走 `AgentSession::catalog`。
     fn profile(&self) -> AgentProfile {
         AgentProfile {
             kind: self.kind(),
+            instance_id: self.instance_id().map(str::to_string),
             capabilities: self.capabilities(),
-            commands: Vec::new(),
-            default_access: None,
-            display_name: None,
-            icon: None,
-            monochrome_icon: false,
+            commands: self.commands(),
+            default_access: self.default_access().map(str::to_string),
+            display_name: self.custom_display_name().map(str::to_string),
+            accent_color: self.accent_color().map(str::to_string),
+            icon: self.icon_href().map(str::to_string),
+            monochrome_icon: self.monochrome_icon(),
         }
     }
 
@@ -80,13 +112,18 @@ pub trait AgentAdapter: Send + Sync {
 
     /// 探测安装版本。`check_updates` 时再对照官方来源看有没有更新，要走网络。
     async fn installation(&self, check_updates: bool) -> AgentInstallation {
-        let mut item = match self.cli_release() {
-            Some(release) => {
-                install::inspect_release(self.kind(), self.display_name(), &release, check_updates)
-                    .await
+        let label = self.custom_display_name().unwrap_or_else(|| self.display_name());
+        let mut item = if let Some(custom_path) = self.custom_binary_path() {
+            install::inspect_custom_binary(self.kind(), label, custom_path).await
+        } else {
+            match self.cli_release() {
+                Some(release) => {
+                    install::inspect_release(self.kind(), label, &release, check_updates).await
+                }
+                None => AgentInstallation::absent(self.kind(), label),
             }
-            None => AgentInstallation::absent(self.kind(), self.display_name()),
         };
+        item.instance_id = self.instance_id().map(str::to_string);
         item.session_linked = self.session_linked();
         item
     }
@@ -203,4 +240,34 @@ pub trait AgentAdapter: Send + Sync {
         None
     }
 
+    /// 独立于主会话的无痕单轮轻量文本生成（标题、分支名、Commit 说明）。
+    async fn generate_text(
+        &self,
+        _prompt: &str,
+        _model: Option<&str>,
+        _cwd: Option<&std::path::Path>,
+    ) -> Result<String, AgentError> {
+        Err(AgentError::Runtime(format!(
+            "{} 不支持轻量文本生成",
+            self.display_name()
+        )))
+    }
+
+    /// 将原生会话回退到第 `kept_turns` 轮之后（即丢弃 `target_turn_id` 及之后的全部回合）。
+    /// `delete_old` 为 `false` 时（例如存在分叉会话仍共享旧 `native_id`）保留旧原生会话不删除。
+    /// 返回 `Ok(Some(new_native_id))` 表示原生会话已生成截断后的新 ID；
+    /// 返回 `Ok(None)` 表示旧原生会话不再沿用，下一次发送通过前文交接（ContextHandoff）无缝续接。
+    async fn rewind_thread(
+        &self,
+        _native_id: &str,
+        _cwd: &str,
+        _target_turn_id: Option<&str>,
+        _kept_turns: usize,
+        _delete_old: bool,
+    ) -> Result<Option<String>, AgentError> {
+        Err(AgentError::Runtime(format!(
+            "{} 不支持会话回退",
+            self.display_name()
+        )))
+    }
 }

@@ -13,20 +13,21 @@
 //! 会话 id 就是 Codex thread id。本模块只负责列出线程；真正恢复用
 //! `thread/resume`，历史用 `thread/turns/list`。
 
-use std::collections::HashSet;
-#[cfg(test)]
-use std::sync::Mutex;
-use std::sync::{Arc, OnceLock};
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex as StdMutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
+#[cfg(test)]
+use std::sync::Mutex;
 #[cfg(test)]
 use tokio::time::timeout;
 
 use async_trait::async_trait;
 
 use crate::directory::{DirectoryEntry, DirectoryPage, SessionDirectory};
-use aiwb_core::models::cwd_key;
+use crate::instance::InstanceOverlay;
+use aiwb_core::models::{cwd_key, AgentKind};
 #[cfg(test)]
 use aiwb_core::models::SessionEventBody;
 use aiwb_core::models::{strip_verbatim_prefix, SessionStatus};
@@ -36,6 +37,7 @@ use super::directory_client::RpcClient;
 const CACHE_TTL: Duration = Duration::from_secs(8);
 
 pub struct CodexDirectory {
+    overlay: Arc<InstanceOverlay>,
     inner: tokio::sync::Mutex<DirectoryState>,
 }
 
@@ -51,9 +53,32 @@ struct Cache {
     result: Result<Vec<DirectoryEntry>, String>,
 }
 
+fn overlay_fingerprint(overlay: &InstanceOverlay) -> String {
+    format!(
+        "{}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}",
+        overlay.instance_id,
+        overlay.isolation_mode,
+        overlay.binary_path,
+        overlay.launch_args,
+        overlay.home_path,
+        overlay.shared_home_path,
+        overlay.env
+    )
+}
+
+fn directory_map() -> &'static StdMutex<HashMap<String, Arc<CodexDirectory>>> {
+    static DIRS: OnceLock<StdMutex<HashMap<String, Arc<CodexDirectory>>>> = OnceLock::new();
+    DIRS.get_or_init(|| StdMutex::new(HashMap::new()))
+}
+
 impl CodexDirectory {
     pub fn new() -> Self {
+        Self::with_overlay(Arc::new(InstanceOverlay::default_for(AgentKind::CodexCli)))
+    }
+
+    pub fn with_overlay(overlay: Arc<InstanceOverlay>) -> Self {
         Self {
+            overlay,
             inner: tokio::sync::Mutex::new(DirectoryState {
                 client: None,
                 active: None,
@@ -63,10 +88,26 @@ impl CodexDirectory {
         }
     }
 
-    /// 侧边栏列表和生命周期 RPC 共用一个 app-server。
-    pub fn shared() -> Arc<Self> {
-        static DIR: OnceLock<Arc<CodexDirectory>> = OnceLock::new();
-        DIR.get_or_init(|| Arc::new(CodexDirectory::new())).clone()
+    pub fn for_overlay(overlay: Arc<InstanceOverlay>) -> Arc<Self> {
+        let map = directory_map();
+        let key = overlay_fingerprint(&overlay);
+        let mut guard = map.lock().unwrap();
+        if let Some(existing) = guard.get(&key) {
+            return Arc::clone(existing);
+        }
+        // 清理同 instance_id 的旧配置缓存
+        guard.retain(|k, _| !k.starts_with(&format!("{}|", overlay.instance_id)));
+        let created = Arc::new(Self::with_overlay(overlay));
+        guard.insert(key, Arc::clone(&created));
+        created
+    }
+
+    pub fn evict_instance(instance_id: &str) {
+        let prefix = format!("{instance_id}|");
+        directory_map()
+            .lock()
+            .unwrap()
+            .retain(|k, _| !k.starts_with(&prefix));
     }
 
     pub async fn invalidate(&self) {
@@ -99,7 +140,7 @@ impl CodexDirectory {
             }
         }
         let generation = state.generation;
-        let result = fetch_threads(&mut state.client, archived).await;
+        let result = fetch_threads(&mut state.client, &self.overlay, archived).await;
         if state.generation == generation {
             let cache = Some(Cache {
                 at: Instant::now(),
@@ -164,7 +205,7 @@ impl CodexDirectory {
     /// 不用常驻目录进程：它调用 `thread/fork` 后会成为新线程的 active writer，
     /// 随后会话里的 `thread/resume` 只能只读打开。
     pub async fn fork_thread(&self, native_id: &str, cwd: Option<&str>) -> Result<DirectoryEntry, String> {
-        let client = RpcClient::spawn().await?;
+        let client = RpcClient::spawn_for(&self.overlay).await?;
         let mut params = json!({
             "threadId": native_id,
             "excludeTurns": true,
@@ -182,7 +223,142 @@ impl CodexDirectory {
         Ok(entry)
     }
 
-    #[allow(dead_code)]
+    /// 将原生 Codex 线程回退到保留前 `kept_turns` 轮用户回合。
+    /// `kept_turns == 0` 时直接删除旧线程并返回 `Ok(None)`（下一轮起新线程）。
+    /// `kept_turns >= 1` 时利用短命进程执行 `thread/fork { beforeTurnId, excludeTurns: true }`，
+    /// 立即退出释放 writer 锁，再删除旧线程并返回新的 `threadId`。
+    pub async fn rewind_before_turn(
+        &self,
+        native_id: &str,
+        cwd: Option<&str>,
+        target_turn_id: Option<&str>,
+        kept_turns: usize,
+        delete_old: bool,
+    ) -> Result<Option<String>, String> {
+        if kept_turns == 0 {
+            if delete_old {
+                let _ = self.delete_thread(native_id).await;
+            }
+            return Ok(None);
+        }
+
+        let client = RpcClient::spawn_for(&self.overlay).await?;
+        let outcome = async {
+            let mut before_turn_id = target_turn_id
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string);
+
+            if before_turn_id.is_none() {
+                let page = client
+                    .request(
+                        "thread/turns/list",
+                        json!({
+                            "threadId": native_id,
+                            "sortDirection": "asc",
+                            "itemsView": "notLoaded",
+                            "limit": (kept_turns + 1) as u32,
+                        }),
+                        Duration::from_secs(30),
+                    )
+                    .await?;
+                let turns = page
+                    .get("data")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_default();
+                if turns.len() <= kept_turns {
+                    // 原生线程里尚未记录第 kept_turns+1 轮，当前线程已处于目标回退点。
+                    return Ok(Some(native_id.to_string()));
+                }
+                before_turn_id = turns[kept_turns]
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string);
+            }
+
+            let Some(turn_id) = before_turn_id else {
+                return Err("无法定位 Codex 回退锚点回合".to_string());
+            };
+
+            let mut params = json!({
+                "threadId": native_id,
+                "beforeTurnId": turn_id,
+                "excludeTurns": true,
+                "threadSource": "user",
+            });
+            if let Some(cwd) = cwd.filter(|c| !c.trim().is_empty()) {
+                params["cwd"] = json!(cwd);
+            }
+
+            match client
+                .request("thread/fork", params.clone(), Duration::from_secs(60))
+                .await
+            {
+                Ok(result) => {
+                    let thread = result.get("thread").cloned().unwrap_or(result);
+                    let entry = parse_thread(&thread)
+                        .ok_or_else(|| "解析 Codex 回退后的新线程失败".to_string())?;
+                    Ok(Some(entry.native_id))
+                }
+                Err(err) if target_turn_id.is_some() => {
+                    // 若记录的 turn_id 未在原生 rollout 中命中（如中断在 turn/start 前），改按索引查一次。
+                    let page = client
+                        .request(
+                            "thread/turns/list",
+                            json!({
+                                "threadId": native_id,
+                                "sortDirection": "asc",
+                                "itemsView": "notLoaded",
+                                "limit": (kept_turns + 1) as u32,
+                            }),
+                            Duration::from_secs(30),
+                        )
+                        .await?;
+                    let turns = page
+                        .get("data")
+                        .and_then(Value::as_array)
+                        .cloned()
+                        .unwrap_or_default();
+                    if turns.len() <= kept_turns {
+                        return Ok(Some(native_id.to_string()));
+                    }
+                    let Some(fallback_id) = turns[kept_turns]
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .filter(|s| !s.is_empty())
+                    else {
+                        return Err(err);
+                    };
+                    params["beforeTurnId"] = json!(fallback_id);
+                    let result = client
+                        .request("thread/fork", params, Duration::from_secs(60))
+                        .await?;
+                    let thread = result.get("thread").cloned().unwrap_or(result);
+                    let entry = parse_thread(&thread)
+                        .ok_or_else(|| "解析 Codex 回退后的新线程失败".to_string())?;
+                    Ok(Some(entry.native_id))
+                }
+                Err(err) => Err(err),
+            }
+        }
+        .await;
+
+        client.shutdown().await;
+        let new_id = outcome?;
+        if delete_old {
+            if let Some(ref forked_id) = new_id {
+                if forked_id != native_id {
+                    let _ = self.delete_thread(native_id).await;
+                }
+            }
+        }
+        self.invalidate().await;
+        Ok(new_id)
+    }
+
     #[cfg(test)]
     pub async fn read_cwd(&self, native_id: &str) -> Result<String, String> {
         let result = self
@@ -196,7 +372,7 @@ impl CodexDirectory {
 
     async fn rpc(&self, method: &str, params: Value) -> Result<Value, String> {
         let mut state = self.inner.lock().await;
-        rpc_retry(&mut state.client, method, params).await
+        rpc_retry(&mut state.client, &self.overlay, method, params).await
     }
 }
 
@@ -226,12 +402,13 @@ impl SessionDirectory for CodexDirectory {
 
 async fn fetch_threads(
     client: &mut Option<RpcClient>,
+    overlay: &InstanceOverlay,
     archived: bool,
 ) -> Result<Vec<DirectoryEntry>, String> {
     let mut last_err = String::from("无法读取 Codex 会话");
     for attempt in 0..2 {
         if client.is_none() {
-            *client = Some(RpcClient::spawn().await?);
+            *client = Some(RpcClient::spawn_for(overlay).await?);
         }
         match client.as_ref().unwrap().list_pages(archived).await {
             Ok(threads) => return Ok(threads),
@@ -249,13 +426,14 @@ async fn fetch_threads(
 
 async fn rpc_retry(
     client: &mut Option<RpcClient>,
+    overlay: &InstanceOverlay,
     method: &str,
     params: Value,
 ) -> Result<Value, String> {
     let mut last_err = format!("无法调用 Codex {method}");
     for attempt in 0..2 {
         if client.is_none() {
-            *client = Some(RpcClient::spawn().await?);
+            *client = Some(RpcClient::spawn_for(overlay).await?);
         }
         match client
             .as_ref()
@@ -276,7 +454,6 @@ async fn rpc_retry(
     Err(last_err)
 }
 
-#[allow(dead_code)]
 #[cfg(test)]
 fn cwd_from_thread_payload(value: &Value) -> Option<String> {
     let thread = value.get("thread").unwrap_or(value);

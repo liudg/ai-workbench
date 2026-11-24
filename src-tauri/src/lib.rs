@@ -3,13 +3,17 @@
 //! 模块划分：
 //! - `daemon`                  拉起和连接 daemon
 //! - `attention`               订阅注意力，发系统通知、画任务栏角标
+//! - `cli_shim`                注册与卸载本机 `aiwb` 命令行启动器
+//! - `launch`                  单实例唤醒、`aiwb <目录>` 与 `aiwb://` 深层链接
 //! - `features::images`        时间线本机图片
 //! - `features::preview`       用系统程序打开、内置浏览器
 //! - `tray`                    系统托盘与常驻后台
 
 mod attention;
+mod cli_shim;
 mod daemon;
 mod features;
+mod launch;
 mod tray;
 
 use tauri::Manager;
@@ -23,16 +27,21 @@ pub const WEBVIEW2_BROWSER_ARGS: &str =
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // 单实例插件必须最先注册，确保二次启动在其余插件初始化前转发参数并立即退出。
+        .plugin(tauri_plugin_single_instance::init(launch::handle_single_instance))
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(launch::LaunchQueue::default())
         .setup(|app| {
             let data_dir = app
                 .path()
                 .app_data_dir()
                 .map_err(|e| format!("无法定位应用数据目录: {e}"))?;
             tray::setup(app.handle())?;
+            launch::setup(app.handle());
             attention::start(app.handle(), data_dir);
             Ok(())
         })
@@ -46,6 +55,10 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             daemon::daemon_endpoint,
+            launch::drain_launch_intents,
+            cli_shim::cli_command_status,
+            cli_shim::install_cli_command,
+            cli_shim::uninstall_cli_command,
             features::images::prepare_chat_image,
             features::images::stage_chat_image,
             features::preview::open_path,

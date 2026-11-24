@@ -423,6 +423,45 @@ export function timelineChunkKey(chunk: TimelineChunk): string {
   return chunk.block.id;
 }
 
+/** 查找包含指定事件 id 且当前默认被折叠隐藏的回合或进行中回合块，用于搜索命中跳转自动展开。 */
+export function findTimelineContainerForEvent(
+  blocks: readonly TimelineNode[],
+  eventId: string,
+): { turnId: string | null; liveId: string | null } {
+  for (const block of blocks) {
+    if (block.type === "turn" && block.events.some((event) => event.id === eventId)) {
+      if (!foldedEvents(block.events, true).some((event) => event.id === eventId)) {
+        return { turnId: block.id, liveId: null };
+      }
+      return { turnId: null, liveId: null };
+    }
+    if (block.type === "live" && block.events.some((event) => event.id === eventId)) {
+      if (!foldedEvents(block.events, false).some((event) => event.id === eventId)) {
+        return { turnId: null, liveId: block.id };
+      }
+      return { turnId: null, liveId: null };
+    }
+  }
+  return { turnId: null, liveId: null };
+}
+
+/** 判断指定事件是否实际进入时间线渲染块（未被 `hiddenInTimeline` 抑制或跳过）。 */
+export function isEventInTimelineBlocks(
+  blocks: readonly TimelineNode[],
+  eventId: string,
+): boolean {
+  for (const block of blocks) {
+    if (block.type === "event" && block.event.id === eventId) return true;
+    if (
+      (block.type === "turn" || block.type === "live") &&
+      block.events.some((event) => event.id === eventId)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /** 内容变长时用来判断要不要继续贴底。状态事件不计入。 */
 export function contentChars(events: readonly SessionEvent[]): number {
   let chars = 0;

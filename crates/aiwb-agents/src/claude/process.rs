@@ -13,9 +13,35 @@ use std::process::Stdio;
 
 use tokio::process::{Child, Command};
 
-use aiwb_proc::apply_utf8_env;
+use aiwb_proc::{apply_utf8_env, hide_console};
 use crate::install::{locate_release, CliRelease};
+use crate::instance::InstanceOverlay;
 use crate::AgentError;
+
+const CLAUDE_HOST_SESSION_VARS: &[&str] = &[
+    "CLAUDECODE",
+    "CLAUDE_CODE_SESSION_ID",
+    "CLAUDE_CODE_HOST_SESSION_ID",
+    "CLAUDE_CODE_CHILD_SESSION",
+    "CLAUDE_CODE_SESSION_ATTENDED",
+    "CLAUDE_CODE_MESSAGING_SOCKET",
+    "CLAUDE_CODE_MESSAGING_TOKEN",
+    "CLAUDE_CODE_EXECPATH",
+    "CLAUDE_CODE_DESKTOP_APP_VERSION",
+    "CLAUDE_EFFORT",
+    "CLAUDE_PID",
+    "CLAUDE_AGENT_SDK_VERSION",
+];
+
+const CLAUDE_ISOLATED_AUTH_VARS: &[&str] = &[
+    "CLAUDE_CONFIG_DIR",
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_BASE_URL",
+    "CLAUDE_CODE_OAUTH_TOKEN",
+    "CLAUDE_CODE_USE_BEDROCK",
+    "CLAUDE_CODE_USE_VERTEX",
+];
 
 pub fn resolve_claude_bin() -> Result<PathBuf, AgentError> {
     let release = CliRelease {
@@ -31,6 +57,36 @@ pub fn resolve_claude_bin() -> Result<PathBuf, AgentError> {
         AgentError::Runtime("未找到 Claude Code。请先安装并确保 `claude` 在 PATH 中。".into())
     })?;
     prefer_native(path)
+}
+
+pub fn resolve_bin_for(overlay: &InstanceOverlay) -> Result<PathBuf, AgentError> {
+    if let Some(custom) = overlay.binary_path.as_ref() {
+        if !custom.is_file() {
+            return Err(AgentError::Runtime(format!(
+                "配置的 Claude Code 路径不存在：{}",
+                custom.display()
+            )));
+        }
+        return prefer_native(custom.clone());
+    }
+    resolve_claude_bin()
+}
+
+pub fn apply_instance_env(command: &mut Command, overlay: &InstanceOverlay) {
+    for var in CLAUDE_HOST_SESSION_VARS {
+        command.env_remove(var);
+    }
+    command.env("CLAUDE_CODE_ENTRYPOINT", "cli");
+    if overlay.is_isolated() {
+        for var in CLAUDE_ISOLATED_AUTH_VARS {
+            command.env_remove(var);
+        }
+    }
+    if let Some(home) = overlay.home_path.as_ref() {
+        let _ = std::fs::create_dir_all(home);
+        command.env("CLAUDE_CONFIG_DIR", home);
+    }
+    overlay.apply_env(command);
 }
 
 pub fn prefer_native(path: PathBuf) -> Result<PathBuf, AgentError> {
@@ -59,26 +115,22 @@ fn sibling_exe(shim: &Path) -> Option<PathBuf> {
     sibling.is_file().then_some(sibling)
 }
 
-pub fn hide_console(command: &mut Command) {
-    #[cfg(windows)]
-    {
-        // CREATE_NO_WINDOW：GUI 宿主拉起控制台程序时不要弹出黑窗口。
-        command.creation_flags(0x08000000);
-    }
-    let _ = command;
-}
-
-pub fn spawn(bin: &Path, args: &[String], project: &Path) -> Result<Child, AgentError> {
+pub fn spawn(
+    bin: &Path,
+    args: &[String],
+    project: &Path,
+    overlay: &InstanceOverlay,
+) -> Result<Child, AgentError> {
     let mut command = Command::new(bin);
+    command.args(&overlay.launch_args);
     command
         .args(args)
         .current_dir(project)
-        .env_remove("CLAUDECODE")
-        .env("CLAUDE_CODE_ENTRYPOINT", "cli")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+    apply_instance_env(&mut command, overlay);
     apply_utf8_env(&mut command);
     hide_console(&mut command);
     command.spawn().map_err(|err| {

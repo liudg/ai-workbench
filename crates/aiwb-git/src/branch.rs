@@ -258,7 +258,7 @@ mod tests {
             .arg("--version")
             .stdout(Stdio::null())
             .stderr(Stdio::null());
-        super::super::hide_console(&mut probe);
+        aiwb_proc::hide_console_std(&mut probe);
         probe
             .status()
             .map(|status| status.success())
@@ -273,7 +273,7 @@ mod tests {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
-        super::super::hide_console(&mut command);
+        aiwb_proc::hide_console_std(&mut command);
         command
             .status()
             .map(|status| status.success())

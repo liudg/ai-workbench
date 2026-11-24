@@ -1,6 +1,6 @@
 export { CHAT_SCOPE_ATTR } from "./chat-scope.ts";
 export type { FileRef } from "./composer/file-refs.ts";
-export type { AgentOption, ComposerHost } from "./composer/host.ts";
+export type { AgentChoice, AgentOption, ComposerHost } from "./composer/host.ts";
 export { composerModelStatus, pickModel } from "./composer/model-selection.ts";
 export {
   suggestedBranchName,

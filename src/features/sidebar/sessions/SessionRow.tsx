@@ -38,6 +38,7 @@ export function SessionRow({
   last,
   subtasks,
   collapsed,
+  jumpIndex,
   onToggle,
 }: {
   task: SidebarTask;
@@ -50,6 +51,8 @@ export function SessionRow({
   /** 下面挂着几个子任务。有子任务时可以折叠。 */
   subtasks: number;
   collapsed: boolean;
+  /** 按住 Mod 键时前 9 个可见会话显示的数字角标（1..9）。 */
+  jumpIndex?: number;
   onToggle: () => void;
 }) {
   const row = useSessionRow(task);
@@ -57,6 +60,7 @@ export function SessionRow({
   const [menuOpen, setMenuOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [regeneratingTitle, setRegeneratingTitle] = useState(false);
   const [title, setTitle] = useState(task.title);
   const [renameError, setRenameError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -65,16 +69,24 @@ export function SessionRow({
   const closeMenu = useCallback(() => setMenuOpen(false), []);
   const items = sessionMenuItems({ pinned: task.pinned, archived: task.archived, forks: row.forks });
 
-  const run = (action: SessionMenuAction, agent?: AgentKind) => {
+  const run = (action: SessionMenuAction, agent?: AgentKind, instanceId?: string) => {
     closeMenu();
     if (action === "fork") {
-      row.fork(agent);
+      row.fork(agent, instanceId);
       return;
     }
     if (action === "rename") {
       setTitle(task.title);
       setRenameError(null);
       setRenameOpen(true);
+      return;
+    }
+    if (action === "regenerate-title") {
+      if (regeneratingTitle) return;
+      setRegeneratingTitle(true);
+      void row.regenerateTitle().finally(() => {
+        setRegeneratingTitle(false);
+      });
       return;
     }
     if (action === "pin") {
@@ -138,6 +150,7 @@ export function SessionRow({
           data-pinned={task.pinned ? "true" : "false"}
           data-archived={task.archived ? "true" : "false"}
           data-subtask={depth === 1 ? "true" : undefined}
+          data-regenerating-title={regeneratingTitle ? "true" : undefined}
           className={cn(
             "group relative flex h-full w-full items-center gap-1.5 rounded-lg pr-2 text-left text-[13px] leading-5 transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-wb-accent/60",
             depth === 1 ? "pl-10" : "pl-6",
@@ -174,7 +187,9 @@ export function SessionRow({
             </button>
           )}
           <SessionAgentIcon identity={row.identity} />
-          <span className="min-w-0 flex-1 truncate">{task.title}</span>
+          <span className={cn("min-w-0 flex-1 truncate", regeneratingTitle && "live-shimmer")}>
+            {task.title}
+          </span>
           {task.pinned && (
             <Pin
               className={cn(
@@ -184,7 +199,17 @@ export function SessionRow({
               aria-hidden="true"
             />
           )}
-          {pill ? (
+          {jumpIndex != null && jumpIndex >= 1 && jumpIndex <= 9 ? (
+            <kbd
+              data-session-jump-badge={String(jumpIndex)}
+              className={cn(
+                "shrink-0 rounded border border-wb-border bg-wb-elev/90 px-1.5 py-0.5 font-mono text-[10px] leading-3.5 tabular-nums text-wb-fg-2 group-hover:invisible group-focus-within:invisible",
+                menuOpen && "invisible",
+              )}
+            >
+              {jumpIndex}
+            </kbd>
+          ) : pill ? (
             <AttentionPill
               pill={pill}
               className={cn(
@@ -237,7 +262,8 @@ export function SessionRow({
               action={item.id}
               label={item.label}
               danger={item.danger}
-              onSelect={() => run(item.id, item.agent)}
+              disabled={item.id === "regenerate-title" && regeneratingTitle}
+              onSelect={() => run(item.id, item.agent, item.instanceId)}
             />
           ),
         )}
@@ -299,19 +325,22 @@ function MenuItem({
   label,
   onSelect,
   danger = false,
+  disabled = false,
 }: {
   action: SessionMenuAction;
   label: string;
   onSelect: () => void;
   danger?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       role="menuitem"
+      disabled={disabled}
       data-session-action={action}
       className={cn(
-        "block w-full rounded-lg px-2.5 py-1.5 text-left text-[13px] transition-colors hover:bg-wb-hover",
+        "block w-full rounded-lg px-2.5 py-1.5 text-left text-[13px] transition-colors hover:bg-wb-hover disabled:opacity-50",
         danger ? "text-wb-danger" : "text-wb-fg",
       )}
       onClick={(event) => {

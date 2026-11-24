@@ -17,6 +17,12 @@ pub const TOPIC_AGENT_UPGRADES: &str = "agents.upgrades";
 /// 主题：各 Agent 这次启动后探模型目录的结果。
 pub const TOPIC_AGENT_CATALOGS: &str = "agents.catalogs";
 
+/// 主题：已配置的 Agent 实例列表（脱敏）。
+pub const TOPIC_AGENT_INSTANCES: &str = "agents.instances";
+
+/// 主题：全局快捷键配置（`keybindings.json` 热重载同步）。
+pub const TOPIC_KEYBINDINGS: &str = "keybindings";
+
 /// 主题前缀：一个会话的时间线。订阅参数 `fromRev` 给出客户端已有的最大 rev，只补之后的。
 pub const TOPIC_SESSION_PREFIX: &str = "session:";
 

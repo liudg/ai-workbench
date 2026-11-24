@@ -1,0 +1,2992 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Orca vs AI Workbench 源码级功能与体验差距调研</title>
+<style>
+:root {
+  --bg: #f4f5f7;
+  --surface: #ffffff;
+  --surface-2: #f1f3f6;
+  --surface-3: #e8ecf2;
+  --surface-hover: #f7f9fc;
+  --border: #e2e6ee;
+  --border-strong: #cbd2df;
+  --fg: #111827;
+  --fg-2: #4b5563;
+  --fg-3: #6b7280;
+  --accent: #2563eb;
+  --accent-soft: #eff6ff;
+  --accent-border: #bfdbfe;
+  --missing-bg: #fef2f2;
+  --missing-fg: #b91c1c;
+  --missing-bd: #fecaca;
+  --weaker-bg: #fffbeb;
+  --weaker-fg: #b45309;
+  --weaker-bd: #fde68a;
+  --p0-bg: #eef2ff;
+  --p0-fg: #3730a3;
+  --p0-bd: #c7d2fe;
+  --p1-bg: #ecfeff;
+  --p1-fg: #0e7490;
+  --p1-bd: #a5f3fc;
+  --p2-bg: #f3f4f6;
+  --p2-fg: #4b5563;
+  --p2-bd: #d1d5db;
+  --defer-bg: #f9fafb;
+  --defer-fg: #6b7280;
+  --defer-bd: #d1d5db;
+  --ok-bg: #ecfdf5;
+  --ok-fg: #047857;
+  --ok-bd: #a7f3d0;
+  --sec-bg: #dc2626;
+  --sec-fg: #ffffff;
+  --orca-bg: #f8fbff;
+  --aiwb-bg: #fffbf2;
+  --advice-bg: #f0fdf4;
+  --code-bg: #f3f4f6;
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow-md: 0 8px 24px rgba(15, 23, 42, 0.12);
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", "Fira Code", Consolas, ui-monospace, monospace;
+  --list-w: 340px;
+}
+
+[data-theme="dark"] {
+  --bg: #0b0d12;
+  --surface: #11151d;
+  --surface-2: #171c27;
+  --surface-3: #1e2533;
+  --surface-hover: #181e2a;
+  --border: #232a38;
+  --border-strong: #333e52;
+  --fg: #eef2f8;
+  --fg-2: #a5b0c2;
+  --fg-3: #788498;
+  --accent: #60a5fa;
+  --accent-soft: rgba(59, 130, 246, 0.15);
+  --accent-border: rgba(96, 165, 250, 0.36);
+  --missing-bg: rgba(239, 68, 68, 0.14);
+  --missing-fg: #fca5a5;
+  --missing-bd: rgba(239, 68, 68, 0.32);
+  --weaker-bg: rgba(245, 158, 11, 0.14);
+  --weaker-fg: #fcd34d;
+  --weaker-bd: rgba(245, 158, 11, 0.32);
+  --p0-bg: rgba(99, 102, 241, 0.19);
+  --p0-fg: #c7d2fe;
+  --p0-bd: rgba(129, 140, 248, 0.38);
+  --p1-bg: rgba(6, 182, 212, 0.14);
+  --p1-fg: #67e8f9;
+  --p1-bd: rgba(34, 211, 238, 0.3);
+  --p2-bg: rgba(148, 163, 184, 0.12);
+  --p2-fg: #cbd5e1;
+  --p2-bd: rgba(148, 163, 184, 0.25);
+  --defer-bg: rgba(100, 116, 139, 0.1);
+  --defer-fg: #94a3b8;
+  --defer-bd: rgba(100, 116, 139, 0.28);
+  --ok-bg: rgba(16, 185, 129, 0.14);
+  --ok-fg: #6ee7b7;
+  --ok-bd: rgba(16, 185, 129, 0.32);
+  --sec-bg: #dc2626;
+  --sec-fg: #ffffff;
+  --orca-bg: rgba(59, 130, 246, 0.07);
+  --aiwb-bg: rgba(245, 158, 11, 0.07);
+  --advice-bg: rgba(16, 185, 129, 0.08);
+  --code-bg: #1a2130;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0; height: 100%; overflow: hidden;
+  background: var(--bg); color: var(--fg);
+  font-family: var(--font-sans); font-size: 13px; line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+button, input, select { font-family: inherit; font-size: inherit; color: inherit; }
+button { cursor: pointer; }
+code, .mono { font-family: var(--font-mono); font-size: 11.5px; }
+
+/* Custom Slim Scrollbars */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: var(--fg-3); }
+
+/* Root Viewport Shell: Fixed Slim Header + Full-Height Split Workspace */
+.shell { display: flex; flex-direction: column; height: 100vh; width: 100vw; overflow: hidden; }
+
+/* Top Single-Row Slim Header */
+.topbar {
+  height: 46px; flex-shrink: 0;
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 14px;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  z-index: 20;
+}
+.brand { display: flex; align-items: center; gap: 7px; font-weight: 700; font-size: 13.5px; letter-spacing: -0.015em; white-space: nowrap; }
+.brand-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+.brand-ver { font-family: var(--font-mono); font-size: 10.5px; color: var(--fg-3); font-weight: 500; padding: 1px 6px; border-radius: 4px; background: var(--surface-2); border: 1px solid var(--border); }
+
+.top-tabs { display: flex; align-items: center; gap: 3px; background: var(--surface-2); padding: 3px; border-radius: 8px; border: 1px solid var(--border); }
+.top-tab {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 28px; padding: 0 10px; border: none; border-radius: 6px;
+  background: transparent; color: var(--fg-2); font-size: 12px; font-weight: 500; white-space: nowrap;
+  transition: background 0.12s, color 0.12s;
+}
+.top-tab:hover { color: var(--fg); background: var(--surface-hover); }
+.top-tab.active { background: var(--surface); color: var(--fg); font-weight: 600; box-shadow: var(--shadow-sm); }
+.top-tab .tab-cnt { font-family: var(--font-mono); font-size: 10.5px; color: var(--fg-3); }
+.top-tab.active .tab-cnt { color: var(--accent); }
+
+.top-spacer { flex: 1; min-width: 8px; }
+
+.search-wrap { position: relative; width: 220px; flex-shrink: 1; min-width: 130px; }
+.search-input {
+  width: 100%; height: 30px; padding: 0 26px 0 26px;
+  border-radius: 7px; border: 1px solid var(--border-strong); background: var(--bg);
+  font-size: 12px; outline: none; transition: border-color 0.12s, box-shadow 0.12s, background 0.12s;
+}
+.search-input:focus { border-color: var(--accent); background: var(--surface); box-shadow: 0 0 0 3px var(--accent-soft); }
+.search-icon { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); color: var(--fg-3); font-size: 12px; pointer-events: none; }
+.search-clear { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); border: none; background: transparent; color: var(--fg-3); font-size: 14px; padding: 0 2px; display: none; }
+.search-clear.show { display: inline; }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 30px; padding: 0 10px; border-radius: 7px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--fg-2);
+  font-size: 12px; font-weight: 500; white-space: nowrap; transition: all 0.12s;
+}
+.btn:hover { background: var(--surface-2); color: var(--fg); border-color: var(--border-strong); }
+.btn:disabled { opacity: 0.4; cursor: default; pointer-events: none; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover { filter: brightness(1.06); }
+.btn.danger { color: var(--missing-fg); border-color: var(--missing-bd); background: var(--missing-bg); }
+.btn.sm { height: 26px; padding: 0 8px; font-size: 11.5px; }
+
+/* Main Workspace Container (Full Remaining Height, Never Scrolls Externally) */
+.workspace { flex: 1; min-height: 0; display: flex; overflow: hidden; }
+
+/* ====== Explorer 3-Pane Split (Rail | Master List | Resizer | Detail Pane) ====== */
+.rail {
+  width: 178px; flex-shrink: 0;
+  background: var(--surface); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.rail-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 7px; display: flex; flex-direction: column; gap: 2px; }
+.rail-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-3); padding: 4px 8px 4px; }
+.rail-btn {
+  display: flex; align-items: center; gap: 6px; width: 100%;
+  border: 1px solid transparent; background: transparent;
+  padding: 6px 8px; border-radius: 6px; text-align: left; font-size: 12px; color: var(--fg-2);
+  transition: background 0.1s, color 0.1s;
+}
+.rail-btn:hover { background: var(--surface-2); color: var(--fg); }
+.rail-btn.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-border); font-weight: 600; }
+.rail-btn .r-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rail-btn .r-cnt { font-family: var(--font-mono); font-size: 10.5px; color: var(--fg-3); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.rail-foot {
+  flex-shrink: 0; border-top: 1px solid var(--border); padding: 8px 10px 11px;
+  background: var(--surface-2); font-size: 11px; color: var(--fg-2);
+  display: flex; flex-direction: column; gap: 4px;
+}
+.rail-stat-row { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 11px; }
+.sec-quick-btn {
+  width: 100%; border: 1px solid var(--missing-bd); background: var(--missing-bg); color: var(--missing-fg);
+  border-radius: 6px; padding: 5px 8px; font-size: 11.5px; font-weight: 600; text-align: left;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.sec-quick-btn:hover { filter: brightness(0.97); }
+
+/* Master List Pane (Left in 2-pane, Middle in 3-pane) */
+.master-pane {
+  width: var(--list-w); min-width: 240px; max-width: 560px; flex-shrink: 0;
+  background: var(--surface); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.master-head {
+  flex-shrink: 0; padding: 8px 10px; border-bottom: 1px solid var(--border);
+  background: var(--surface-2); display: flex; flex-direction: column; gap: 6px;
+}
+.master-row { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.seg { display: inline-flex; background: var(--surface-3); padding: 2px; border-radius: 6px; }
+.seg button { border: none; background: transparent; padding: 3px 8px; border-radius: 5px; font-size: 11.5px; color: var(--fg-2); font-weight: 500; white-space: nowrap; }
+.seg button.active { background: var(--surface); color: var(--fg); font-weight: 600; box-shadow: var(--shadow-sm); }
+
+.chip {
+  height: 23px; padding: 0 7px; border-radius: 5px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--fg-2);
+  font-size: 11px; font-weight: 500; white-space: nowrap;
+}
+.chip:hover { border-color: var(--border-strong); color: var(--fg); }
+.chip.active { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent); font-weight: 600; }
+.chip.active-sec { background: var(--sec-bg); border-color: var(--sec-bg); color: var(--sec-fg); font-weight: 600; }
+
+.domain-select-wrap { display: none; }
+.domain-select {
+  width: 100%; height: 27px; border-radius: 6px; border: 1px solid var(--border-strong);
+  background: var(--surface); padding: 0 8px; font-size: 12px; outline: none;
+}
+
+.master-count { margin-left: auto; font-family: var(--font-mono); font-size: 11px; color: var(--fg-3); }
+
+.master-list { flex: 1; min-height: 0; overflow-y: auto; }
+.list-item {
+  padding: 9px 11px; border-bottom: 1px solid var(--border);
+  cursor: pointer; border-left: 3px solid transparent;
+  transition: background 0.08s, border-color 0.08s;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.list-item:hover { background: var(--surface-hover); }
+.list-item.selected { background: var(--accent-soft); border-left-color: var(--accent); }
+.li-top { display: flex; align-items: center; gap: 5px; }
+.li-title { font-size: 12.5px; font-weight: 600; color: var(--fg); line-height: 1.35; }
+.list-item.selected .li-title { color: var(--accent); }
+.li-essence {
+  font-size: 11.5px; color: var(--fg-2); line-height: 1.4;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.li-star {
+  margin-left: auto; width: 22px; height: 22px; border-radius: 5px;
+  border: 1px solid transparent; background: transparent; color: var(--fg-3); font-size: 13px;
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.li-star:hover { background: var(--surface-2); color: #d97706; }
+.li-star.starred { color: #f59e0b; background: var(--weaker-bg); border-color: var(--weaker-bd); }
+
+/* Draggable Splitter */
+.resizer {
+  width: 5px; flex-shrink: 0; cursor: col-resize; position: relative;
+  background: transparent; margin-left: -3px; margin-right: -2px; z-index: 10;
+}
+.resizer::after {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 2px; width: 1px;
+  background: transparent; transition: background 0.12s;
+}
+.resizer:hover::after, .resizer.dragging::after { background: var(--accent); width: 2px; left: 1.5px; }
+
+/* Right Detail Pane */
+.detail-pane {
+  flex: 1; min-width: 0;
+  background: var(--bg);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.detail-head {
+  flex-shrink: 0; padding: 11px 20px;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.detail-nav { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; }
+.detail-pos { font-family: var(--font-mono); font-size: 11.5px; color: var(--fg-3); padding: 0 4px; font-variant-numeric: tabular-nums; }
+
+.detail-body {
+  flex: 1; min-height: 0; overflow-y: auto;
+  padding: 18px 22px 28px;
+  container-type: inline-size;
+}
+.detail-inner { max-width: 960px; display: flex; flex-direction: column; gap: 14px; }
+.detail-title { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -0.015em; line-height: 1.35; }
+.essence-box {
+  padding: 10px 13px; border-radius: 8px;
+  background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--accent);
+  font-size: 13px; color: var(--fg); font-weight: 500;
+}
+.compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@container (max-width: 580px) {
+  .compare-grid { grid-template-columns: 1fr; }
+}
+.cmp-card {
+  border: 1px solid var(--border); border-radius: 9px; padding: 13px 15px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.cmp-card.orca { background: var(--orca-bg); border-color: var(--accent-border); }
+.cmp-card.aiwb { background: var(--aiwb-bg); border-color: var(--weaker-bd); }
+.cmp-head { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; display: flex; justify-content: space-between; align-items: center; }
+.cmp-card.orca .cmp-head { color: var(--accent); }
+.cmp-card.aiwb .cmp-head { color: var(--weaker-fg); }
+.cmp-list { margin: 0; padding-left: 17px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--fg); line-height: 1.55; }
+.cmp-list li::marker { color: var(--fg-3); }
+
+.advice-card {
+  padding: 12px 15px; border-radius: 9px;
+  border: 1px solid var(--ok-bd); background: var(--advice-bg);
+  display: flex; flex-direction: column; gap: 5px;
+}
+.advice-head { font-size: 11.5px; font-weight: 700; color: var(--ok-fg); text-transform: uppercase; letter-spacing: 0.04em; }
+.advice-text { font-size: 13px; color: var(--fg); line-height: 1.55; }
+
+.refs-card {
+  padding: 12px 15px; border-radius: 9px;
+  background: var(--surface); border: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.refs-head { font-size: 11px; font-weight: 700; color: var(--fg-3); text-transform: uppercase; letter-spacing: 0.04em; display: flex; justify-content: space-between; }
+.refs-wrap { display: flex; flex-wrap: wrap; gap: 6px; }
+.path-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 8px; border-radius: 6px;
+  background: var(--code-bg); border: 1px solid var(--border);
+  font-family: var(--font-mono); font-size: 11.5px; color: var(--fg-2);
+  transition: all 0.12s; max-width: 100%; word-break: break-all; text-align: left;
+}
+.path-chip:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.repo-tag { font-size: 9.5px; font-weight: 700; padding: 1px 4px; border-radius: 3px; text-transform: uppercase; }
+.repo-tag.r-orca { background: var(--accent-soft); color: var(--accent); }
+.repo-tag.r-aiwb { background: var(--weaker-bg); color: var(--weaker-fg); }
+
+/* Badges */
+.badge { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px; border-radius: 4px; font-size: 10.5px; font-weight: 600; border: 1px solid transparent; white-space: nowrap; line-height: 1.5; }
+.b-missing { background: var(--missing-bg); color: var(--missing-fg); border-color: var(--missing-bd); }
+.b-weaker { background: var(--weaker-bg); color: var(--weaker-fg); border-color: var(--weaker-bd); }
+.b-p0 { background: var(--p0-bg); color: var(--p0-fg); border-color: var(--p0-bd); }
+.b-p1 { background: var(--p1-bg); color: var(--p1-fg); border-color: var(--p1-bd); }
+.b-p2 { background: var(--p2-bg); color: var(--p2-fg); border-color: var(--p2-bd); }
+.b-defer { background: var(--defer-bg); color: var(--defer-fg); border: 1px dashed var(--defer-bd); }
+.b-domain { background: var(--surface-2); color: var(--fg-2); border-color: var(--border); font-weight: 500; }
+.b-sec { background: var(--sec-bg); color: var(--sec-fg); }
+.b-ok { background: var(--ok-bg); color: var(--ok-fg); border-color: var(--ok-bd); }
+
+/* ====== Split Layouts for Other 4 Views ====== */
+.split-2 { display: flex; flex: 1; min-height: 0; width: 100%; overflow: hidden; }
+.split-left {
+  width: 380px; min-width: 280px; max-width: 520px; flex-shrink: 0;
+  background: var(--surface); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.split-left-half {
+  width: 52%; flex-shrink: 0;
+  background: var(--surface); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.split-right {
+  flex: 1; min-width: 0; background: var(--bg);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.pane-header {
+  flex-shrink: 0; padding: 10px 14px;
+  background: var(--surface-2); border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.pane-header h2 { margin: 0; font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 7px; }
+.pane-scroll { flex: 1; min-height: 0; overflow-y: auto; }
+
+/* Matrix View Items */
+.matrix-row {
+  padding: 11px 13px; border-bottom: 1px solid var(--border);
+  border-left: 3px solid transparent; cursor: pointer;
+  display: flex; flex-direction: column; gap: 6px; transition: background 0.1s;
+}
+.matrix-row:hover { background: var(--surface-hover); }
+.matrix-row.selected { background: var(--accent-soft); border-left-color: var(--accent); }
+.mr-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.mr-title { font-weight: 700; font-size: 13px; }
+.mr-bar { height: 6px; border-radius: 99px; background: var(--surface-3); overflow: hidden; display: flex; }
+.mr-bar-m { background: #ef4444; height: 100%; }
+.mr-bar-w { background: #f59e0b; height: 100%; }
+.mr-verdict { font-size: 11.5px; color: var(--fg-2); line-height: 1.4; }
+
+.domain-detail-list { display: flex; flex-direction: column; gap: 8px; }
+.dd-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  padding: 10px 13px; cursor: pointer; transition: border-color 0.12s, background 0.12s;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.dd-card:hover { border-color: var(--accent); background: var(--surface-hover); }
+.dd-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.dd-title { font-weight: 600; font-size: 13px; }
+.dd-essence { font-size: 12px; color: var(--fg-2); }
+
+/* Roadmap Tier Tabs in Left Pane */
+.tier-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 8px 10px; border-bottom: 1px solid var(--border); background: var(--surface-2); flex-shrink: 0; }
+.tier-tab {
+  border: 1px solid var(--border); background: var(--surface); border-radius: 6px;
+  padding: 5px 4px; text-align: center; font-size: 11.5px; font-weight: 600; color: var(--fg-2);
+  display: flex; flex-direction: column; gap: 1px; align-items: center;
+}
+.tier-tab:hover { border-color: var(--border-strong); color: var(--fg); }
+.tier-tab.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.tier-tab small { font-family: var(--font-mono); font-size: 10.5px; font-weight: 500; opacity: 0.85; }
+.tier-rationale { padding: 7px 12px; font-size: 11.5px; color: var(--fg-2); border-bottom: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
+
+/* Strengths & Fact-checks Cards */
+.info-card { padding: 13px 16px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; }
+.info-card:last-child { border-bottom: none; }
+.info-title { font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.info-desc { font-size: 12.5px; color: var(--fg-2); line-height: 1.55; }
+.myth-claim { font-size: 12px; color: var(--missing-fg); text-decoration: line-through; }
+.myth-truth { font-size: 12.5px; color: var(--fg); font-weight: 500; line-height: 1.55; }
+.sec-alert-card {
+  margin: 12px 14px; padding: 12px 14px; border-radius: 8px;
+  border: 1px solid var(--missing-bd); background: var(--missing-bg);
+  display: flex; flex-direction: column; gap: 7px;
+}
+
+/* Shortlist Markdown Preview */
+.md-preview {
+  margin: 0; padding: 16px 20px; font-family: var(--font-mono); font-size: 12px;
+  line-height: 1.6; white-space: pre-wrap; word-break: break-word; color: var(--fg);
+}
+
+/* Empty & Kbd */
+.empty-box { padding: 36px 20px; text-align: center; color: var(--fg-3); font-size: 12.5px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.kbd { font-family: var(--font-mono); font-size: 10px; padding: 1px 4px; border: 1px solid var(--border); border-radius: 4px; color: var(--fg-3); background: var(--surface-2); }
+
+/* Toast */
+.toast {
+  position: fixed; right: 18px; bottom: 18px; z-index: 90;
+  background: var(--fg); color: var(--surface);
+  padding: 7px 12px; border-radius: 7px; font-size: 12px; font-weight: 500;
+  box-shadow: var(--shadow-md); opacity: 0; transform: translateY(6px);
+  pointer-events: none; transition: opacity 0.14s, transform 0.14s;
+}
+.toast.show { opacity: 1; transform: translateY(0); }
+
+/* Responsive: Keep 左右分栏 all the way down to 700px! Only collapse leftmost rail into dropdown < 940px */
+@media (max-width: 960px) {
+  .brand-ver { display: none; }
+  .rail { display: none; }
+  .domain-select-wrap { display: block; }
+  .master-pane { width: 310px; min-width: 230px; }
+  .split-left { width: 310px; min-width: 240px; }
+  .search-wrap { width: 160px; }
+}
+@media (max-width: 680px) {
+  .topbar { height: auto; flex-wrap: wrap; padding: 8px 10px; }
+  .workspace { flex-direction: column; }
+  .master-pane, .split-left, .split-left-half { width: 100%; max-width: none; height: 42vh; border-right: none; border-bottom: 1px solid var(--border); }
+  .resizer { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="shell">
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-dot"></span>
+      <span>Orca vs AIWB</span>
+      <span class="brand-ver" title="源码直读基准版本">1.4.214 vs 0.2.96</span>
+    </div>
+
+    <nav class="top-tabs" id="viewTabs">
+      <button class="top-tab active" data-view="explorer">差距对比 <span class="tab-cnt" id="cntAll">90</span></button>
+      <button class="top-tab" data-view="matrix">10 域矩阵</button>
+      <button class="top-tab" data-view="roadmap">路线图 <span class="tab-cnt" id="cntP0">P0·38</span></button>
+      <button class="top-tab" data-view="strengths">优势与纠偏</button>
+      <button class="top-tab" data-view="shortlist">待办 <span class="tab-cnt" id="cntShortlist">0</span></button>
+    </nav>
+
+    <div class="top-spacer"></div>
+
+    <div class="search-wrap">
+      <span class="search-icon">⌕</span>
+      <input id="searchInput" class="search-input" type="text" placeholder="搜索功能或路径 (/)" />
+      <button id="searchClear" class="search-clear" title="清空">×</button>
+    </div>
+
+    <button class="btn" id="themeBtn" title="切换深浅主题 (T)">深色</button>
+    <button class="btn primary" id="exportBtn" title="复制已选待办 Markdown">导出 (<span id="topExportCnt">0</span>)</button>
+  </header>
+
+  <main class="workspace" id="workspace"></main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const DOMAINS = [
+  { id: "agents", name: "Agent 与原生对话", verdict: "对话容错（倒带/断线续跑/限额续跑）、多账号热切、Composer 内核与上下文环差距最大。" },
+  { id: "workspaces", name: "工作区与项目", verdict: "缺 orca.yaml 钩子体系、Worktree 预热/堆叠/外部接管与安全清理分析；侧栏交互偏静态。" },
+  { id: "layout", name: "布局、看板与检索", verdict: "面板两列纯内存无持久化；Cmd+J 聚合检索、AI Vault 全文搜索与非模态看板体验代差明显。" },
+  { id: "terminal", name: "终端与进程", verdict: "AIWB 每会话仅单例 DOM 终端且无流控背压/跨重启保活；Orca 为完整多路复用 GPU 终端。" },
+  { id: "git", name: "Git 与代码审查", verdict: "AIWB 完全缺失 Git 写操作与冲突界面；Diff 为纯文本只读 DOM（2MiB 上限）且评论不落盘。" },
+  { id: "editor", name: "编辑器与文件", verdict: "AIWB 仅只读预览+64 词正则高亮+无 File Watcher；缺编辑保存、Ripgrep、富媒体与文件 CRUD。" },
+  { id: "browser", name: "浏览器与自动化", verdict: "AIWB 为单 WebView+仅 Windows 截图通道；缺多实例、React Fiber 定位、CDP 自动化、桌面与模拟器控制。" },
+  { id: "integrations", name: "外部集成、Bots 与 CLI", verdict: "AIWB 零代码托管/工单集成、无自动化/Webhook/CLI；MCP 透传缺凭证安全中继。" },
+  { id: "remote", name: "远程执行与多端", verdict: "AIWB 仅本机 127.0.0.1；缺 SSH/WSL 托管 daemon、生产级 Web 访问与多设备 E2EE 认证。" },
+  { id: "platform", name: "插件、语音与桌面打磨", verdict: "缺崩溃/卡死防护、防休眠、通知设置与环境诊断；且核实 AIWB 存在 3 项明确安全隐患。" }
+];
+
+const GAPS = [
+  // ================= 1. Agent 与原生对话 =================
+  {
+    id: "ag-01", domain: "agents", type: "missing", priority: "P0",
+    title: "对话倒带（Rewind to Turn）+ 回填编辑重发",
+    essence: "从任意历史回合撤回对话并自动回填输入框，保留磁盘改动",
+    orca: [
+      "两阶段持久化倒带（prepared → provider-succeeded）+ 崩溃自愈 recoverStructuredRewind",
+      "兼容 Codex 原生 prepareRewind/rewind 与 Claude 分叉截断式 forkForRewind",
+      "撤回同时保留磁盘改动，并将原消息自动回填输入框（returnMessageToComposer）"
+    ],
+    aiwb: ["无回合倒带；发错或跑偏后只能新开会话或末尾继续追问"],
+    advice: "在 Rust daemon 会话状态机补两阶段 rewind + 回填 composer 草稿，按适配器能力声明开启。",
+    refs: [
+      { repo: "orca", path: "src/main/native-chat/agent-session-wire/rewind/structured-agent-session-rewind.ts" },
+      { repo: "orca", path: "src/renderer/src/components/native-chat/messages/actions/use-native-chat-rewind.ts" }
+    ]
+  },
+  {
+    id: "ag-02", domain: "agents", type: "missing", priority: "P0",
+    title: "重启中断续跑（Resume Capsule）与限额到点自动续跑",
+    essence: "崩溃/重启后一键续跑中断任务；触发限额倒计时自动续跑或原地切号",
+    orca: [
+      "关闭/崩溃时通过 recoveryCapsule 写见证记录，重启列出中断会话按宿主并发串行注入续跑",
+      "触发限额展示重置倒计时，可开启到点自动续跑（含链长/重试上限、账号级 hold、取消持久化）",
+      "限额行内直接提供「原地切换 Claude 账号」或「一键交接给其他 Agent」"
+    ],
+    aiwb: ["daemon 启动仅 settle_interrupted 将未完会话标为已停止，无续跑引导，无任何限额续跑机制"],
+    advice: "利用 SQLite 已有任务态记录中断前 running 清单，重启弹窗一键续跑；限额续跑优先接入现有订阅监控。",
+    refs: [
+      { repo: "orca", path: "src/main/native-chat/agent-session-wire/recovery/structured-agent-session-restart-resume-host.ts" },
+      { repo: "orca", path: "src/main/native-chat/agent-session-wire/recovery/structured-agent-session-usage-limit-continue.ts" },
+      { repo: "aiwb", path: "crates/aiwb-daemon/src/services/mod.rs" }
+    ]
+  },
+  {
+    id: "ag-03", domain: "agents", type: "missing", priority: "P0",
+    title: "多账号隔离运行目录与原地热切换（含 Codex Reset Credits）",
+    essence: "按账号隔离 CLAUDE_CONFIG_DIR/CODEX_HOME，聊天内热切换不中断工作流",
+    orca: [
+      "覆盖 Claude / Codex / Cursor / Grok / Antigravity / OpenCode / Devin 7 类账号托管",
+      "独立 CLAUDE_CONFIG_DIR 与 CodexManagedHomeLifecycle，支持设备码/粘贴码/WSL 登录与配置镜像",
+      "Claude 限额行内原地热切；Codex 集成 CodexResetCreditCoordinator 消费额度重置券"
+    ],
+    aiwb: ["sidebar/account/AccountMenu.tsx 仅含主题、设置和更新检查，完全无多账号与登录态管理"],
+    advice: "在 Rust daemon 引入按 provider 隔离的 profile 目录与环境变量注入层，优先落地 Claude + Codex 双账号热切。",
+    refs: [
+      { repo: "orca", path: "src/main/claude-accounts/service.ts" },
+      { repo: "orca", path: "src/main/codex-accounts/service.ts" },
+      { repo: "aiwb", path: "src/features/sidebar/account/AccountMenu.tsx" }
+    ]
+  },
+  {
+    id: "ag-04", domain: "agents", type: "missing", priority: "P0",
+    title: "原生对话高频阅读与输入增强（导轨/提示词历史/灰字建议/LLM 命名）",
+    essence: "补齐长对话导航与高频输入手感，消灭滚动找消息和重复敲指令",
+    orca: [
+      "右侧 Message Rail 问答刻度条（悬停预览、键盘遍历、跨分页自动加载跳转）+ 未读新消息分割线",
+      "输入框 ↑↓ 回溯已发提示词历史 + 预测性 Prompt Suggestions 灰字补全 + 全局打字自动聚焦输入框",
+      "聊天内沙箱 HTML 可视化（InlineVisual）+ LLM 异步自动会话命名队列 + 独立字号/对比度/列宽设置"
+    ],
+    aiwb: ["会话名仅机械截取首条消息前段（title_from_user_message）；无导轨、无提示词历史、无灰字建议、无未读线"],
+    advice: "前端成本极低高收益：优先做 ↑↓ 提示词历史、Message Rail 刻度条、未读分割线和异步标题生成。",
+    refs: [
+      { repo: "orca", path: "src/renderer/src/components/native-chat/viewport/rail/NativeChatMessageRail.tsx" },
+      { repo: "orca", path: "src/renderer/src/components/native-chat/drafts/use-native-chat-composer-recall.ts" },
+      { repo: "orca", path: "src/main/native-chat/conversation-naming/structured-chat-naming-work.ts" }
+    ]
+  },
+  {
+    id: "ag-05", domain: "agents", type: "missing", priority: "P1",
+    title: "45 款 TUI Agent 终端托管与工作区信任预写",
+    essence: "统一拉起 45 种 CLI 并原子预写信任记录，避免首次信任弹窗吞掉提示词",
+    orca: [
+      "tui-agent.ts 声明 45 个 CLI，封装 6 种提示词注入模式与各 CLI 专属 PTY 就绪扫描器",
+      "启动前为 Claude/Codex/Cursor/Copilot/Antigravity/Kimi/Qwen/Qoder 原子预写工作区信任（含 WSL/SSH）",
+      "支持将 PTY 终端转录流式接入 Native Chat 视图"
+    ],
+    aiwb: ["仅支持结构化协议驱动的 4 个 Agent，无通用 TUI CLI 托管，也不预写工作区信任"],
+    advice: "保持结构化协议为主，但非常值得借鉴「启动前原子预写 workspace trust」消除首次弹窗卡死。",
+    refs: [
+      { repo: "orca", path: "src/shared/agent-launch/catalog/tui-agent.ts" },
+      { repo: "orca", path: "src/main/agent-launch/trust/agent-workspace-trust.ts" }
+    ]
+  },
+  {
+    id: "ag-06", domain: "agents", type: "missing", priority: "P1",
+    title: "完整多 Agent 编排引擎（DAG / 决策门 / 兄弟邮箱 / 审批穿透）",
+    essence: "超越树状子任务，支持有向依赖图、点对点协同与审批穿透到主聊天",
+    orca: [
+      "Run 生命周期 + DAG 依赖与收敛/卡死检测 + 人工阻塞 Decision Gates",
+      "任意 Agent 间点对点邮箱（send/reply/ask/inbox）、Crew 关系视图与跨宿主机联邦",
+      "子 Worker 权限审批卡片直接穿透至 Coordinator 输入框上方原地批复（orchestration.approvalAnswer）"
+    ],
+    aiwb: ["仅支持父子两级以上树状子任务汇总（回报硬截 400 字），无兄弟通信/DAG；子任务待审批时父发消息直接 blocked"],
+    advice: "第一步先补「子任务审批卡片穿透到父会话输入区上方」和解除 400 字回报截断，立竿见影。",
+    refs: [
+      { repo: "orca", path: "src/main/runtime/orchestration/coordinator/coordinator-dag-convergence.ts" },
+      { repo: "orca", path: "src/renderer/src/components/native-chat/worker-approvals/NativeChatWorkerApprovals.tsx" },
+      { repo: "aiwb", path: "crates/aiwb-daemon/src/mcp/sessions.rs" }
+    ]
+  },
+  {
+    id: "ag-07", domain: "agents", type: "missing", priority: "P1",
+    title: "受管 Agent Hook 监听服务 + OSC 7501 + PreToolUse 工具拦截",
+    essence: "向 20+ CLI 自动装钩子捕获精准状态/首消息改分支名/同步拦截改写工具参数",
+    orca: [
+      "本地回环 Hook 服务 + OSC 7501 终端状态协议兜底（hook-precedence 仲裁）",
+      "追踪 Claude continued-in 后台分叉接力，首条消息自动重命名工作树分支",
+      "Claude Code POSIX PreToolUse 同步阻断或改写工具参数（agent.tool.before/.after）"
+    ],
+    aiwb: ["直接控制结构化子进程无外部 Hook 服务，也无首消息自动命名分支与可插拔工具拦截钩子"],
+    advice: "在现有结构化事件流里先引入「首条消息自动重命名分支/会话」和可配置工具前置策略钩子。",
+    refs: [
+      { repo: "orca", path: "src/main/agent-hooks/first-work/first-work-branch-rename.ts" },
+      { repo: "orca", path: "src/main/agent-hooks/server/server-lifecycle.ts" }
+    ]
+  },
+  {
+    id: "ag-08", domain: "agents", type: "missing", priority: "P2",
+    title: "Managed Agent CLI 自动代装与按需更新",
+    essence: "宿主机缺 CLI 时自动下载受管发行版挂到 PATH 末尾（用户安装优先）",
+    orca: [
+      "为 claude / codex / antigravity 维护受管发行版注册表，缺失时应用内一键安装",
+      "appendManagedAgentDirsToChildPath 仅作兜底不覆盖用户自带版本，按真实使用触发更新"
+    ],
+    aiwb: ["crates/aiwb-agents/src/install/mod.rs 明确只做已装 CLI 探测与升级，不代装缺失 CLI"],
+    advice: "对非重度终端用户有降门槛价值，可在设置页缺失 Agent 卡片增加「一键安装」按钮复用现有 npmmirror 逻辑。",
+    refs: [
+      { repo: "orca", path: "src/main/managed-agent-cli/managed-agent-cli-registry.ts" },
+      { repo: "aiwb", path: "crates/aiwb-agents/src/install/mod.rs" }
+    ]
+  },
+  {
+    id: "ag-09", domain: "agents", type: "weaker", priority: "P0",
+    title: "分叉粒度：任意历史回合 Checkpoint Fork vs 仅末尾 Tip Fork",
+    essence: "AIWB 只能从整条对话最末尾分叉，无法从中间某轮回复切出新探索分支",
+    orca: [
+      "能力声明区分 fork: 'checkpoint' | 'tip'",
+      "Claude/Codex 支持从任意已完成历史回合（throughItemId）分叉出新会话或侧边聊天",
+      "新会话顶部展示可点击跳回原会话的来源行（NativeChatForkedFromRow）"
+    ],
+    aiwb: [
+      "fork_thread(native_id, cwd) 仅支持整条会话末尾分叉",
+      "消息菜单（message-menu.tsx）无按回合分叉或单条回复开侧边聊天入口"
+    ],
+    advice: "在 AgentAdapter 扩展 fork_at_turn(native_id, turn_id)，并在单条消息操作栏暴露「从此处分叉」。",
+    refs: [
+      { repo: "orca", path: "src/renderer/src/components/native-chat/messages/actions/use-native-chat-fork.ts" },
+      { repo: "aiwb", path: "crates/aiwb-daemon/src/services/handoff.rs" },
+      { repo: "aiwb", path: "src/features/chat/message-menu.tsx" }
+    ]
+  },
+  {
+    id: "ag-10", domain: "agents", type: "weaker", priority: "P0",
+    title: "排队消息管理：拖拽重排 / 编辑租约锁 / 中断自动暂停",
+    essence: "AIWB 排队条不能重排、编辑无服务端锁防误发、中断后不会自动暂停队列",
+    orca: [
+      "乐观拖拽重排（agentSession.queuedMessageMove）",
+      "就地编辑排队消息并持服务端 edit-lease 租约，防止编辑中途上一轮结束误发草稿",
+      "手动停止或重启后自动暂停队列（queued-pause），提供 Resume / Clear All 与折叠抽屉"
+    ],
+    aiwb: [
+      "QueueStrip.tsx 明确无拖拽重排与中断后队列暂停/恢复",
+      "编辑排队项直接回填主输入框且无服务端编辑租约，无一键清空"
+    ],
+    advice: "在 daemon queue 服务补 reorder、edit_lease 与 interrupt_pause 三项 RPC，成本低、防误发极实用。",
+    refs: [
+      { repo: "orca", path: "src/renderer/src/components/native-chat/queue/NativeChatQueuedMessageList.tsx" },
+      { repo: "orca", path: "src/main/native-chat/agent-session-wire/delivery/structured-agent-session-queued-pause.ts" },
+      { repo: "aiwb", path: "src/features/chat/composer/QueueStrip.tsx" }
+    ]
+  },
+  {
+    id: "ag-11", domain: "agents", type: "weaker", priority: "P0",
+    title: "Composer 编辑器内核、大段粘贴折叠胶囊与 @ / 补全",
+    essence: "AIWB 透明 textarea 叠加 div 依赖已废弃 execCommand，无大段粘贴折叠",
+    orca: [
+      "TipTap/ProseMirror 富文档内核，文件/图片/Skill/Bot/Chat 均为真实内联原子节点与标准撤销栈",
+      "大段粘贴自动落盘为 orca-paste:<uuid> 折叠胶囊，保持输入框清爽且避免超长卡顿",
+      "附件支持 TTL 分片上传；@ 支持文件/Bot/历史对话钻取；/ 分组并提示同名来源冲突"
+    ],
+    aiwb: [
+      "ComposerInput.tsx 用透明 <textarea> 叠 backdrop 模拟原子词，删除靠已废弃 document.execCommand('delete')",
+      "图片和文本片段只能挂在框外条带，大段代码粘贴直接撑爆输入框",
+      "@ 仅覆盖文件与 goal/plan 快捷项，无草稿未保存警示"
+    ],
+    advice: "先独立落地「超长粘贴自动折叠为磁盘/内存胶囊」，中期将 ComposerInput 升级为 ProseMirror/CodeMirror 轻内核。",
+    refs: [
+      { repo: "orca", path: "src/renderer/src/components/native-chat/composer/editor/NativeChatPromptEditor.tsx" },
+      { repo: "orca", path: "src/renderer/src/components/native-chat/paste/native-chat-pasted-text-reference.ts" },
+      { repo: "aiwb", path: "src/features/chat/composer/ComposerInput.tsx" }
+    ]
+  },
+  {
+    id: "ag-12", domain: "agents", type: "weaker", priority: "P0",
+    title: "上下文窗口占用环与多供应商限额监控（11 家 vs 3 家）",
+    essence: "AIWB 只算累计 token 不显示上下文窗口占比，无法预警即将满载/压缩",
+    orca: [
+      "输入框旁常驻 NativeChatContextUsageRing 环形占比条（临近满载变色告警+分类明细）",
+      "限额监控覆盖 11 家供应商（Claude/Codex/Cursor/Gemini/Grok/Kimi/Minimax/Muse/Antigravity/OpenCode-Go/ZCode）",
+      "后台轮询非激活账号额度，方便选剩余额度最高的号"
+    ],
+    aiwb: [
+      "SessionUsageMeter.tsx + store/session-usage.ts 明确注释「上下文窗口事件不参与」，仅累加总 token",
+      "SubscriptionUsageMeter 仅覆盖 Codex / Claude / Antigravity 3 家且只看当前单账号"
+    ],
+    advice: "后端已有上下文 token 事件来源，直接补齐 context_window_used / max 并在输入框旁放微型环形指示器。",
+    refs: [
+      { repo: "orca", path: "src/renderer/src/components/native-chat/usage/NativeChatContextUsageRing.tsx" },
+      { repo: "orca", path: "src/main/rate-limits/service/service-inactive-accounts.ts" },
+      { repo: "aiwb", path: "src/store/session-usage.ts" }
+    ]
+  },
+  {
+    id: "ag-13", domain: "agents", type: "weaker", priority: "P1",
+    title: "结构化 Native Chat Agent 覆盖面（12 家 vs 4 家）",
+    essence: "AIWB 仅 4 家可真实对话，Kimi/Qwen/OpenCode 仅为探测桩",
+    orca: [
+      "原生接入 12 个结构化 Agent：claude / codex / pi + 9 个 ACP 方言（grok/opencode/opencode2/omp/antigravity/copilot/kimi/cursor/hermes）",
+      "支持 OpenCode 1.x/2.x 双代差异、ACP modelCommand 回退与动态 elicitation"
+    ],
+    aiwb: [
+      "crates/aiwb-agents/src/lib.rs 仅 4 个完整适配器（Codex/Claude/Cursor/Antigravity）",
+      "KimiCode / QwenCode / OpenCode 为不可对话的 ExternalCliAdapter 探测桩"
+    ],
+    advice: "AIWB 已有 crates/aiwb-agents/src/acp 通用框架，按 ACP 方言配置化快速补齐 OpenCode / Kimi / Gemini / Copilot。",
+    refs: [
+      { repo: "orca", path: "src/main/acp/launch/acp-launch-registry.ts" },
+      { repo: "aiwb", path: "crates/aiwb-agents/src/lib.rs" }
+    ]
+  },
+  {
+    id: "ag-14", domain: "agents", type: "weaker", priority: "P1",
+    title: "时间线长内容呈现：长用户消息折叠 / 聊天内展开 Diff / 停靠待办 / PR 卡",
+    essence: "长提示词刷屏、看改动必须切右侧栏、Agent Todo 随对话滚走看不见",
+    orca: [
+      "超长用户消息自动折叠（渐隐遮罩 + Show full/less）",
+      "TurnDiffRollup 允许聊天内直接逐文件展开 inline patch；连续工具调用组汇总与窗口化",
+      "Agent 待办清单停靠在输入框正上方（DockedTaskList）；自动识别 PR 链接展示审阅状态卡"
+    ],
+    aiwb: [
+      "UserBubble.tsx 不折叠超长用户消息",
+      "ChangeCard.tsx 只列文件名和 +/- 行数，看改动必须打开右侧 Diff 面板",
+      "PlanBlocks.tsx 待办列表随时间线滚走，无常驻停靠；无 PR 状态卡"
+    ],
+    advice: "前端纯 UI 迭代：先补「超长用户气泡折叠」和「输入框上方停靠当前 Plan/Todo 摘要条」。",
+    refs: [
+      { repo: "orca", path: "src/renderer/src/components/native-chat/messages/rows/NativeChatUserMessageFold.tsx" },
+      { repo: "orca", path: "src/renderer/src/components/native-chat/tools/tasks/NativeChatDockedTaskList.tsx" },
+      { repo: "aiwb", path: "src/features/chat/cards/ChangeCard.tsx" }
+    ]
+  },
+  {
+    id: "ag-15", domain: "agents", type: "weaker", priority: "P1",
+    title: "模型/命令目录指纹缓存、跨 Agent 交接上限与 Codex Guardian 原地放行",
+    essence: "AIWB 目录重启慢、交接硬截 16k token、Guardian 拒绝不能原地一键放行",
+    orca: [
+      "模型目录按「账号 + CLI 二进制/环境指纹」持久化与预热；会话未启动即提供静态斜杠命令",
+      "跨 Agent 交接支持 focused/full 并把完整转录文件路径交给新 Agent 按需阅读，不受字节硬上限",
+      "Codex 自动审查拒绝行内嵌 Approve once 按钮原地一键重试"
+    ],
+    aiwb: [
+      "runtime/catalogs.rs 仅按 AgentKind 单键缓存，重启需逐个拉起 CLI 探测",
+      "aiwb-core/src/handoff.rs 硬截断 16k token / 64KB，超预算整条省略",
+      "codex/guardian.rs 仅记日志需手敲 /approve，且尚缺 writeStdin / requestPermissions 转换"
+    ],
+    advice: "交接时把完整会话导出为临时 Markdown 附路径给新 Agent；补全 Guardian 拒绝卡原地「单次放行」按钮。",
+    refs: [
+      { repo: "orca", path: "src/main/native-chat/agent-model-catalog/agent-model-catalog-input-stamp.ts" },
+      { repo: "orca", path: "src/renderer/src/components/native-chat/messages/notices/NativeChatAutoReviewDenialRow.tsx" },
+      { repo: "aiwb", path: "crates/aiwb-agents/src/codex/guardian.rs" }
+    ]
+  },
+
+  // ================= 2. 工作区与项目 =================
+  {
+    id: "ws-01", domain: "workspaces", type: "missing", priority: "P0",
+    title: "声明式仓库钩子配置（orca.yaml）与 9 种竞品配置一键导入",
+    essence: "建/删 worktree 自动跑依赖安装、环境变量与收尾脚本，兼容外部仓库既有配置",
+    orca: [
+      "支持 scripts.setup / scripts.archive（120s 超时、进程树强杀、archive 失败拦截删树、信任审批弹窗）",
+      "支持 setupAgentStartupPolicy（等待或并行）、defaultTabs、sharedDirectories、environmentRecipes",
+      "自动探测并一键导入 Superset / Conductor / Codex / Cursor / Copilot / Devcontainer 等 9 种配置"
+    ],
+    aiwb: ["仅有 .worktreeinclude 静态文件复制，建树后无法自动运行 pnpm install/env 初始化脚本"],
+    advice: "兼容读取 .aiwb.yaml + 自动回退解析 orca.yaml / codex / cursor 配置，并加首次仓库级信任审批。",
+    refs: [
+      { repo: "orca", path: "src/shared/workspace-setup/orca-yaml.ts" },
+      { repo: "orca", path: "src/shared/workspace-setup/setup-script-imports.ts" },
+      { repo: "orca", path: "src/main/workspace-hooks/hooks.ts" }
+    ]
+  },
+  {
+    id: "ws-02", domain: "workspaces", type: "missing", priority: "P1",
+    title: "Worktree 后台预热池（Speculative Preparation Pool）",
+    essence: "后台预建 3 个工作树并刷新 base tip，新建工作树秒级认领",
+    orca: [
+      "后台预创建最多 3 个 _preparing worktree，含并发认领注册表、base tip 自动刷新与 TTL 回收",
+      "新建工作树时直接认领并 checkout 目标分支，避免每次冷跑 git worktree add + 装依赖"
+    ],
+    aiwb: ["每次新建带 worktree 的任务时同步现场执行 git worktree add + 拷贝文件，大仓库等待感强"],
+    advice: "针对高频项目在 daemon 维护 1~2 个空闲预热槽位（结合现有 .worktreeinclude），建树瞬间可用。",
+    refs: [
+      { repo: "orca", path: "src/main/workspaces/creation/preparation/worktree-create-preparation-pool.ts" },
+      { repo: "aiwb", path: "crates/aiwb-git/src/worktree.rs" }
+    ]
+  },
+  {
+    id: "ws-03", domain: "workspaces", type: "missing", priority: "P1",
+    title: "Worktree 谱系堆叠（Stacking）与外部 Worktree 收件箱",
+    essence: "支持父子堆叠工作树管理，并自动发现接管外部 CLI 创建的工作树",
+    orca: [
+      "支持以另一 worktree 为父节点建堆叠子工作树，侧栏按谱系树缩进，可整子树休眠/删除或解绑",
+      "区分 orca-managed / external / agent-scratch 归属，侧栏提供外部 worktree 收件箱按需导入显隐"
+    ],
+    aiwb: ["任务只支持以默认分支或当前分支平铺建树，且看不到也不接管外部 git worktree"],
+    advice: "建工作树选择器增加「基于已有任务工作树」；增加扫描 git worktree list 的外部工作树接管入口。",
+    refs: [
+      { repo: "orca", path: "src/shared/worktree/lineage/workspace-lineage-graph.ts" },
+      { repo: "orca", path: "src/shared/worktree/visibility/external-worktree-inbox.ts" }
+    ]
+  },
+  {
+    id: "ws-04", domain: "workspaces", type: "missing", priority: "P1",
+    title: "Project Groups、嵌套仓库 BFS 发现、URL Clone 与 Folder Workspaces",
+    essence: "一键导入多仓库大目录、直接贴 URL 克隆、或在非 Git 目录建多泳道工作区",
+    orca: [
+      "添加非 Git 目录时 BFS 扫描嵌套 Git 仓库（遵守 .gitignore）一键建立 Project Group",
+      "支持直接粘贴 Git URL 克隆仓库、拖拽文件夹入侧栏导入",
+      "支持在同一非 Git 目录下创建多个命名的 Folder Workspace 泳道（含独立状态/置顶/归档）"
+    ],
+    aiwb: ["仅支持选本地目录添加项目或单项目绑定多个子文件夹，无 URL Clone、无嵌套仓库自动发现与拖拽添加"],
+    advice: "优先加「侧栏拖拽目录导入」与「通过 Git URL 直接 Clone 新建项目」，成本极低体验提升大。",
+    refs: [
+      { repo: "orca", path: "src/main/project-groups/nested-repo-discovery.ts" },
+      { repo: "orca", path: "src/shared/folder-workspaces/folder-workspaces.ts" },
+      { repo: "orca", path: "src/renderer/src/components/sidebar/project-admission/dialog/AddRepoCloneStep.tsx" }
+    ]
+  },
+  {
+    id: "ws-05", domain: "workspaces", type: "missing", priority: "P1",
+    title: "Workspace 智能清理审查器（16 类安全阻断）与磁盘 Treemap 分析",
+    essence: "自动识别已合并/过期工作树，经 16 项安全预检与空间可视化后批量安全回收",
+    orca: [
+      "6 类清理规则（归档≥7 天、不活跃≥30 天、含 squash/rebase/PR 证据的已合并、无改动、自动化/编排残留）",
+      "16 类安全阻断器（脏文件、未推送提交、未保存编辑器缓冲、运行中终端/Agent、风险忽略文件等）+ 指纹忽略",
+      "独立 Workspace Space Manager 窗口用 Treemap 展示各工作树体积和可回收空间"
+    ],
+    aiwb: ["仅按 keepCount 自动做快照搁置，无已合并 PR/分支识别、无磁盘占用可视化、无批量清理审查弹窗"],
+    advice: "在现有快照搁置之上增加「磁盘空间清理弹窗」：列出每个工作树字节数、是否已合并、脏状态与一键清理。",
+    refs: [
+      { repo: "orca", path: "src/shared/workspace-cleanup/workspace-cleanup.ts" },
+      { repo: "orca", path: "src/renderer/src/components/status-bar/workspace-storage/WorkspaceSpaceManagerPanel.tsx" }
+    ]
+  },
+  {
+    id: "ws-06", domain: "workspaces", type: "missing", priority: "P1",
+    title: "Workspace 休眠（Sleep）与自定义状态/Emoji/工作区备注 Checkpoint",
+    essence: "一键休眠停进程省内存、保留布局按需唤醒，配工作区状态与自由备注快照",
+    orca: [
+      "Sleep 保留目录和面板布局，优雅停终端/Agent/VM 并存恢复参数，点击遮罩按需唤醒",
+      "工作区支持自定义 workspaceStatus、:emoji: 图标、自由文本 comment checkpoint（Agent 可通过 CLI 更新）、单工作区静音"
+    ],
+    aiwb: ["仅有 30 分钟后台空闲自动回收 Agent 进程，无手动一键休眠工作区，无自定义状态标签与单工作区静音"],
+    advice: "在任务右键增加「静音通知」和「手动休眠/释放进程」，并将任务摘要备注开放给内部 MCP 工具更新。",
+    refs: [
+      { repo: "orca", path: "src/shared/workspace-session/workspace-session-sleeping-agents.ts" },
+      { repo: "orca", path: "src/shared/worktree/types.ts" }
+    ]
+  },
+  {
+    id: "ws-07", domain: "workspaces", type: "missing", priority: "P2",
+    title: "Git Sparse Checkout 预设 & 多 Profile 状态隔离",
+    essence: "大型 Monorepo 稀疏检出降体积；多 Profile 隔离不同工作环境与数据库",
+    orca: [
+      "Sparse Checkout 目录树选择器 + 预设保存/内联编辑（sparseDirectories / sparsePresetId）",
+      "多 Profile 独立 SQLite 与浏览器分区，支持带崩溃恢复日志的跨 Profile 移动/复制项目"
+    ],
+    aiwb: ["全量检出工作树；全局单一 SQLite 数据库无多 Profile 切换"],
+    advice: "Monorepo 场景按需支持 sparse-checkout 目录列表；多 Profile 属于中后期团队/隔离需求。",
+    refs: [
+      { repo: "orca", path: "src/renderer/src/components/sparse/SparseDirectoryPicker.tsx" },
+      { repo: "orca", path: "src/main/orca-profiles/profile-index-store.ts" }
+    ]
+  },
+  {
+    id: "ws-08", domain: "workspaces", type: "weaker", priority: "P0",
+    title: "侧边栏交互：定宽 244px vs 可调宽 / 5 排序 / 3 分组 / 多选批操作",
+    essence: "AIWB 侧栏不可调宽、归档即消失、无筛选分组与批量操作",
+    orca: [
+      "220–500px 拖拽调宽并持久化；全量虚拟化 + 回到顶部 + 定位当前工作区 + 一键全部折叠",
+      "5 种排序（Smart 衰减 / 最近[含 5 分钟防跳动保护期] / 名称 / 仓库 / 手动拖拽）+ 3 种分组（仓库 / PR 状态 / 工作区状态）",
+      "多选批量休眠/删树/改状态；侧栏内一键切 Workspaces / Agents Activity 视图"
+    ],
+    aiwb: [
+      "Sidebar.tsx 固定 w-[244px] 不可拖拽调整宽度",
+      "排序写死置顶+活跃+更新时间；归档会话从侧栏彻底过滤无查看入口",
+      "无筛选、无分组切换、无多选批量归档/删除、无「定位当前会话」按钮"
+    ],
+    advice: "P0 必改：侧栏支持拖拽调宽持久化、加「查看归档」切换与筛选框、补齐多选批量归档/删除。",
+    refs: [
+      { repo: "orca", path: "src/shared/sidebar-list/sorting/smart-sort.ts" },
+      { repo: "orca", path: "src/shared/sidebar-list/sections/worktree-grouping.ts" },
+      { repo: "aiwb", path: "src/features/sidebar/Sidebar.tsx" }
+    ]
+  },
+
+  // ================= 3. 布局、看板与检索 =================
+  {
+    id: "ly-01", domain: "layout", type: "missing", priority: "P0",
+    title: "AI Vault 23 家历史档案库与跨会话 SQLite 全文搜索引擎",
+    essence: "跨 23 种 CLI 历史统一全文检索（正文+代码），带拼写容错与高亮摘要",
+    orca: [
+      "23 个扫描器覆盖 Claude/Codex/Cursor/Antigravity/OpenCode/Gemini/Copilot/Cline/Aider 等历史对话",
+      "独立 Worker 增量构建 SQLite 全文索引，支持操作符语法、标识符拆词、拼写纠错、上下文摘要与 WAL 游标分页",
+      "同时暴露 CLI 命令 orca search 供 Agent 检索过往上下文"
+    ],
+    aiwb: ["imports.rs 仅支持 4 个 Agent 按项目目录手动导入；命令菜单搜索仅按内存标题过滤，完全不能搜对话正文"],
+    advice: "AIWB 本身已用 SQLite 存全部时间线，只需加 SQLite FTS5 虚拟表即可零依赖实现毫秒级跨会话全文搜索！",
+    refs: [
+      { repo: "orca", path: "src/main/ai-vault-search/query/session-search-engine.ts" },
+      { repo: "orca", path: "src/main/ai-vault/session-scanner.ts" },
+      { repo: "aiwb", path: "crates/aiwb-daemon/src/services/imports.rs" }
+    ]
+  },
+  {
+    id: "ly-02", domain: "layout", type: "missing", priority: "P1",
+    title: "独立右侧边栏 + Activity Bar 与全局底部状态栏（Status Bar）",
+    essence: "提供常驻信息底座（文件/Git/Checks/端口）与全局实时状态栏（配额/资源/连接/端口）",
+    orca: [
+      "可调宽独立右侧边栏 + 顶部/侧边可切 Activity Bar，聚合文件树、Source Control、PR Checks、Ports、AI Vault、插件",
+      "全局底部 StatusBar（右键自定义显隐、随宽度降密），集成多账号配额、CPU/RAM、SSH/WSL 状态、端口、Git Blame、防休眠"
+    ],
+    aiwb: ["无独立 Activity Bar，也无底部全局状态栏；用量和分支控件零散挂在会话顶栏和输入框附近"],
+    advice: "补一条极简 24~26px 全局底部状态栏，统一承载 daemon 连接态、分支、上下文/配额、活跃端口与防休眠开关。",
+    refs: [
+      { repo: "orca", path: "src/renderer/src/components/right-sidebar/RightSidebar.tsx" },
+      { repo: "orca", path: "src/renderer/src/components/status-bar/StatusBarSurface.tsx" }
+    ]
+  },
+  {
+    id: "ly-03", domain: "layout", type: "missing", priority: "P1",
+    title: "多窗口伴生弹窗（Dashboard Popout / 空间窗）与主窗几何持久化",
+    essence: "记住主窗多屏位置尺寸，并支持弹出独立看板副窗挂在副屏监控多 Agent",
+    orca: [
+      "主窗口记忆位置/尺寸/最大化/全屏并做多显示器越界校验（防副屏拔掉窗口丢失）+ Zoom 同步",
+      "独立伴生窗口：Agent Dashboard Popout（实时 IPC 同步）与 Workspace Space Manager Window"
+    ],
+    aiwb: ["src-tauri/tauri.conf.json 硬编码 1280×800 单窗，重启不记住位置大小，无伴生副窗能力"],
+    advice: "用 tauri-plugin-window-state 或轻量化几何持久化记住主窗位置，后续为看板增加「弹出独立窗口」。",
+    refs: [
+      { repo: "orca", path: "src/main/window/dashboard-popout-window.ts" },
+      { repo: "orca", path: "src/main/window/presentation/window-bounds-validation.ts" },
+      { repo: "aiwb", path: "src-tauri/src/lib.rs" }
+    ]
+  },
+  {
+    id: "ly-04", domain: "layout", type: "missing", priority: "P1",
+    title: "Activity 收件箱分栏页与历史 Stats / USD 成本分析页",
+    essence: "跨项目聚合未读 Agent 收件箱直连交互；42 天用量热力图与每日费用趋势",
+    orca: [
+      "Activity 页：左侧筛选未读/全部线程（含悬停预览），右侧双槽位 Terminal Portal 无闪烁直接操作",
+      "Stats 页：持久记录启动次数、工作时长、PR 数，展示 42 天热力图、每日 Token/USD 柱图、模型成本拆解与分享卡"
+    ],
+    aiwb: ["仅有会话级当前 token 总数与订阅窗口剩余百分比，无跨天历史统计、无费用估算、无收件箱分栏页"],
+    advice: "在 SQLite 持久化每轮 token 与模型单价表，做一个轻量的「用量统计」子页即可覆盖 80% 洞察价值。",
+    refs: [
+      { repo: "orca", path: "src/renderer/src/components/activity/ActivityPrototypePage.tsx" },
+      { repo: "orca", path: "src/renderer/src/components/stats/UsageOverviewPane.tsx" },
+      { repo: "orca", path: "src/main/stats/collector.ts" }
+    ]
+  },
+  {
+    id: "ly-05", domain: "layout", type: "missing", priority: "P2",
+    title: "Workspace 状态看板（区别于 Agent 看板的二号看板）",
+    essence: "按自定义工作区阶段（Todo/In Progress/Review）分列拖卡、框选批改并与工单同步",
+    orca: [
+      "按自定义 workspaceStatus 分列，支持拖卡改状态、拖入 Pin、框选批量操作（marquee selection）",
+      "与 Linear / Jira / GitHub 状态双向同步，列内支持搜索与直接建 worktree"
+    ],
+    aiwb: ["仅有按注意力状态（待处理/运行中/已完成/空闲）分的单一 BoardView"],
+    advice: "待外部工单集成或自定义任务状态上线后再考虑，避免看板概念重叠。",
+    refs: [
+      { repo: "orca", path: "src/renderer/src/components/sidebar/workspace-board/surface/WorkspaceKanbanDrawer.tsx" }
+    ]
+  },
+  {
+    id: "ly-06", domain: "layout", type: "weaker", priority: "P0",
+    title: "工作区布局与标签体系：固定两列纯内存 vs 递归分屏树 + 磁盘持久化",
+    essence: "AIWB 重启即丢全部打开标签和列宽，不能水平/垂直分屏，无标签拖拽/Pin/Ctrl+Tab",
+    orca: [
+      "任意深度水平/垂直递归二叉树分屏（TabGroupLayoutNode），拖拽标签重排、跨组移动或拖到边缘建新分屏",
+      "标签支持 Pin、10 色染色、预览态、重命名、关闭左/右侧、Ctrl+Tab MRU 浮层切换器",
+      "完整布局与标签状态持久化落盘，重启无缝恢复"
+    ],
+    aiwb: [
+      "SessionSplit.tsx 仅固定两列（聊天 + 单右侧标签组，chat/split/full 三态），不能多组/上下分屏",
+      "usePanelStore 为纯内存 Zustand，重启后所有打开文件/终端/浏览器标签及分屏比例全丢",
+      "PanelTabs 无拖拽重排、无 Pin/染色、无 Ctrl+Tab MRU，右键菜单仅 3 项"
+    ],
+    advice: "P0 必做：先把每个任务的右侧打开标签与分屏比例持久化到 SQLite/localStorage，再支持标签拖拽重排、Ctrl+Tab 与上下二级分屏。",
+    refs: [
+      { repo: "orca", path: "src/shared/workspace-layout/workspace-layout-model.ts" },
+      { repo: "orca", path: "src/renderer/src/components/tab-group/TabGroupSplitNodeTree.tsx" },
+      { repo: "aiwb", path: "src/features/panel/state/store.ts" }
+    ]
+  },
+  {
+    id: "ly-07", domain: "layout", type: "weaker", priority: "P0",
+    title: "全局看板（Board）：独占简板 vs 非模态抽屉 + 搜索筛选 + 原地交互",
+    essence: "AIWB 看板无搜索无项目筛选、空闲硬截 20 条、点卡只能跳转退出看板",
+    orca: [
+      "非模态侧滑抽屉 + 独立 Popout 窗口双形态，列内虚拟滚动 + View Transition 状态位移动效",
+      "内置 Cmd+K 搜索与项目/状态/宿主筛选芯片；卡片展示 PR 徽章、子 Agent 展开与用户/Agent 双摘要",
+      "卡片支持原地 Ack 已读，点击直接弹出实时可交互终端预览框无需切离看板"
+    ],
+    aiwb: [
+      "BoardView.tsx（明确注释参考 Orca）仅主视图独占替换式 4 列，空闲列硬截断 20 条",
+      "无搜索框、无项目/Agent 筛选、无原地已读操作、无快速回复/预览弹窗"
+    ],
+    advice: "给 BoardView 补上顶部搜索+项目/Agent 筛选条、卡片原地「标为已读/快速回复」与抽屉模式，投入极小。",
+    refs: [
+      { repo: "orca", path: "src/renderer/src/components/dashboard/board/AgentKanbanBoard.tsx" },
+      { repo: "orca", path: "src/renderer/src/components/dashboard/terminal-preview/AgentTerminalDialog.tsx" },
+      { repo: "aiwb", path: "src/features/board/BoardView.tsx" }
+    ]
+  },
+  {
+    id: "ly-08", domain: "layout", type: "weaker", priority: "P0",
+    title: "命令面板（Cmd+K）：22 条串行钻取 vs Cmd+J 统一多源容错检索",
+    essence: "AIWB 仅搜标题与 22 条命令且无拼写容错；Orca 单入口聚合并支持输入直建工作树/开网页",
+    orca: [
+      "900px 统一入口同时检索工作区（含状态点/PR 徽章）、打开标签、项目、所有设置项子锚点、Issue/PR、Bots",
+      "多字段打分引擎（palette-match）：1-edit 拼写容错、时间衰减桶（1h/1d/1w）、匹配证据高亮与 Repo/Host 过滤芯片",
+      "输入 URL 直接开内置浏览器；无匹配时底行可直接一键新建同名工作区"
+    ],
+    aiwb: [
+      "CommandMenu 仅 5 个串行子状态与 ~22 条命令，聊天仅匹配标题（commands.ts:214）",
+      "不支持分支/仓库/设置项检索，无拼写容错、无过滤芯片、无法直输 URL 或现场新建任务"
+    ],
+    advice: "扩充 CommandMenu 索引源（分支/项目/设置项/正文摘要），加入 1-edit 模糊容错与 URL 直开内置浏览器。",
+    refs: [
+      { repo: "orca", path: "src/shared/palette-match/palette-ranking.ts" },
+      { repo: "orca", path: "src/renderer/src/components/worktree-jump/WorktreeJumpPalette.tsx" },
+      { repo: "aiwb", path: "src/features/command-menu/commands.ts" }
+    ]
+  },
+  {
+    id: "ly-09", domain: "layout", type: "weaker", priority: "P1",
+    title: "Quick Open（Cmd+P）：无行列跳转/无最近优先 vs file:line:col + 增量缓存",
+    essence: "AIWB 空查询纯字典序且不认 path:line:col，前端 40ms 定时器轮询索引",
+    orca: [
+      "原生解析 file:line:col 与绝对路径直开；优先加权最近 100 个打开文件",
+      "多词空格分词、Unicode NFC 规范化、-/-/_/驼峰变体匹配、WeakMap 前缀收窄增量复用"
+    ],
+    aiwb: [
+      "useQuickOpen.ts 空查询按字典序截断无最近文件权重，不解析 :line:col",
+      "仅单串子序列打分不支持多词分词，且前端以 40ms setTimeout 轮询后端索引就绪态"
+    ],
+    advice: "在现有 Rust 内存索引上补 :line:col 解析、最近打开文件 MRU 权重和多词分词，1 天可落地。",
+    refs: [
+      { repo: "orca", path: "src/shared/quick-open/quick-open-query-target.ts" },
+      { repo: "orca", path: "src/shared/quick-open/quick-open-path-search.ts" },
+      { repo: "aiwb", path: "src/features/command-menu/useQuickOpen.ts" }
+    ]
+  },
+
+  // ================= 4. 终端与进程 =================
+  {
+    id: "tm-01", domain: "terminal", type: "missing", priority: "P0",
+    title: "多终端标签、二叉树分屏复用与已关闭标签恢复",
+    essence: "AIWB 每会话硬编码单例终端无法开第二个；Orca 支持无限标签/分屏/撤销关闭",
+    orca: [
+      "PaneManager 递归水平/垂直分屏（自动继承源 pane CWD）、拖拽重排/跨组/拆出独立标签、单 pane 最大化、均分尺寸",
+      "标签自定义标题与颜色、已关闭终端恢复、运行中进程/Pin 标签关闭确认防误杀"
+    ],
+    aiwb: [
+      "panel/state/slice.ts:195-197 传 { kind: 'custom', type: 'terminal' } 无 key，tabIdFor() 恒返回 'custom:terminal'，每会话最多 1 个终端"
+    ],
+    advice: "先给 terminal tab 加唯一 key 立刻解锁多终端标签，再加关闭前检测活跃子进程提示与左右/上下分屏。",
+    refs: [
+      { repo: "orca", path: "src/renderer/src/lib/pane-manager/pane-manager.ts" },
+      { repo: "orca", path: "src/renderer/src/store/terminals/tabs/recently-closed-terminal-tabs.ts" },
+      { repo: "aiwb", path: "src/features/panel/state/slice.ts" }
+    ]
+  },
+  {
+    id: "tm-02", domain: "terminal", type: "missing", priority: "P0",
+    title: "终端内搜索（@xterm/addon-search）与路径/URL 链接点击",
+    essence: "跑构建/测试报错无法在终端搜关键词，也无法直接点报错 file:line 跳转代码",
+    orca: [
+      "悬浮终端搜索条（大小写、正则、命中计数 index/count、选区搜索、Enter/Shift+Enter 跳转）",
+      "支持折行 HTTP URL、OSC 8、GitHub PR 链接及带批量存在性校验缓存的相对/绝对文件路径（含 :line:col）直达编辑器",
+      "文件拖入终端自动按目标 Shell 转义路径写入 PTY"
+    ],
+    aiwb: ["package.json 仅装 @xterm/xterm 5.5 + addon-fit，完全无终端搜索、无链接/路径点击、无文件拖入转义"],
+    advice: "极高 ROI：引入 @xterm/addon-search + addon-web-links，并复用现有 aiwb-files 路径索引做终端报错 file:line 点击打开。",
+    refs: [
+      { repo: "orca", path: "src/renderer/src/components/terminal-pane/search/TerminalSearch.tsx" },
+      { repo: "orca", path: "src/renderer/src/components/terminal-pane/links/files/terminal-link-handlers.ts" },
+      { repo: "aiwb", path: "src/features/panel/terminal/useTerminal.ts" }
+    ]
+  },
+  {
+    id: "tm-03", domain: "terminal", type: "missing", priority: "P1",
+    title: "端口自动探测归属、.orca.localhost 本地反代与 SSH 转发",
+    essence: "自动发现每个 worktree 启动的 dev server 端口，分配语义域名一键在内置浏览器打开",
+    orca: [
+      "跨平台扫描监听端口 + 解析 PTY 输出 URL 精确归属到对应工作树",
+      "内置 HTTP/WS 反向代理映射为 http://<label>.orca.localhost:<port>，多 worktree 并行调试不再记端口号",
+      "支持 SSH 远程端口自动发现与持久化端口转发"
+    ],
+    aiwb: ["无任何端口探测、URL 捕获或本地反代能力，多工作树并行开 dev server 需手动记忆端口"],
+    advice: "在 Rust daemon 解析 PTY/工具输出中的 localhost:PORT（或轮询进程树 socket）在顶栏/状态栏暴露一键打开内置浏览器。",
+    refs: [
+      { repo: "orca", path: "src/main/ports/local-workspace-port-scanner.ts" },
+      { repo: "orca", path: "src/main/ports/workspace-labels/localhost-worktree-label-proxy.ts" }
+    ]
+  },
+  {
+    id: "tm-04", domain: "terminal", type: "missing", priority: "P1",
+    title: "悬浮全局终端面板（Floating Terminal）与可配置快捷命令（Quick Commands）",
+    essence: "随时跨会话呼出浮动草稿终端；全局/仓库级常用命令右键一键下发",
+    orca: [
+      "全局 z-[45] 浮动终端窗（拖拽移动、四边缩放、最大化、几何持久化），不依赖当前选中工作区",
+      "Quick Commands 支持 global/repo 两级配置 shell 命令（含 appendEnter）或绑定 Agent Prompt"
+    ],
+    aiwb: ["仅有聊天代码块的单次「运行」按钮（terminal-runs.ts），无全局悬浮终端与用户快捷命令管理"],
+    advice: "先在终端工具栏加项目级快捷命令按钮（读取 package.json scripts + 用户自定义），成本极低。",
+    refs: [
+      { repo: "orca", path: "src/renderer/src/components/floating-terminal/FloatingTerminalPanel.tsx" },
+      { repo: "orca", path: "src/shared/terminal/quick-commands/terminal-quick-command-types.ts" }
+    ]
+  },
+  {
+    id: "tm-05", domain: "terminal", type: "missing", priority: "P1",
+    title: "终端冷停靠（Cold Parking）与 Shell 深度集成（OSC 133/7/52）",
+    essence: "后台终端卸载 DOM/WebGL 省内存而 daemon 保活；Shell 集成上报命令退出码与 CWD",
+    orca: [
+      "隐藏超时终端自动卸载 xterm/WebGL，轻量 watcher 监控输出与命令完成，切回从快照秒恢复",
+      "无侵入包装 zsh/bash/fish/pwsh 注入 OSC 133（命令起止/退出码）与 OSC 7（实时 CWD）、按工作树隔离 HISTFILE",
+      "支持 OSC 52 剪贴板、Kitty 键盘协议、Sixel/iTerm2/Kitty 内联图、连字与 Unicode 11"
+    ],
+    aiwb: ["无冷停靠卸载、无 OSC 133/7 Shell 集成、无工作树隔离 Shell 历史，也无现代终端扩展协议"],
+    advice: "优先加 OSC 7/133 解析识别命令完成并触发桌面通知，再在终端数增多后引入冷停靠卸载。",
+    refs: [
+      { repo: "orca", path: "src/renderer/src/components/terminal-pane/parking/lifecycle/use-terminal-tab-cold-parking.ts" },
+      { repo: "orca", path: "src/main/pty/shell-startup/powershell-osc133-bootstrap.ts" }
+    ]
+  },
+  {
+    id: "tm-06", domain: "terminal", type: "missing", priority: "P2",
+    title: "终端主题生态与 Ghostty / Kitty / Warp 配置一键导入",
+    essence: "多套可调终端主题 + WCAG 自动对比度修复 + 导入现有终端配置",
+    orca: [
+      "内置多套主题 + WCAG 对比度下限修正（亮底 4.5 / 暗底 3）",
+      "自动发现并预览导入 Ghostty / Kitty 配置与 Warp YAML 主题（Worker 线程安全解析）"
+    ],
+    aiwb: ["terminal-theme.ts 硬编码暗/亮 2 套固定色板，不可自定义字体、行高、光标与主题"],
+    advice: "在外观设置补充终端字体/字号/配色选择即可，外部终端配置导入按需推进。",
+    refs: [
+      { repo: "orca", path: "src/shared/terminal-themes/terminal-contrast-correction.ts" },
+      { repo: "orca", path: "src/main/terminal-config-import/preview.ts" },
+      { repo: "aiwb", path: "src/features/panel/terminal/terminal-theme.ts" }
+    ]
+  },
+  {
+    id: "tm-07", domain: "terminal", type: "weaker", priority: "P0",
+    title: "终端渲染与稳定性：xterm 5.5 纯 DOM vs xterm 6.1 WebGL + 显存回收",
+    essence: "AIWB 纯 DOM 渲染大输出掉帧且无字号缩放；Orca 启用 WebGL 并主动防显存耗尽",
+    orca: [
+      "@xterm/xterm 6.1 + @xterm/addon-webgl GPU 加速，隐藏标签主动 WEBGL_lose_context 释放显存",
+      "上下文丢失自动回退 DOM 并 refit，含纹理图集重置、渲染健康自愈与 Ctrl+滚轮字号缩放"
+    ],
+    aiwb: [
+      "package.json 使用 @xterm/xterm 5.5 且只加载 FitAddon，纯 DOM 渲染",
+      "无 WebGL 加速、无字体缩放、无光标/行高/滚动缓冲区配置"
+    ],
+    advice: "升级 @xterm/xterm 至最新稳定版并接入 WebGL addon（带自动回退 DOM）+ Ctrl+滚轮缩放。",
+    refs: [
+      { repo: "orca", path: "src/renderer/src/lib/pane-manager/terminal-rendering/pane-webgl-renderer.ts" },
+      { repo: "aiwb", path: "src/features/panel/terminal/useTerminal.ts" }
+    ]
+  },
+  {
+    id: "tm-08", domain: "terminal", type: "weaker", priority: "P0",
+    title: "Daemon 终端持久保活、高吞吐流控背压与进程树清理",
+    essence: "AIWB 断连 30s 杀 PTY、JSON 封装无背压会触发全快照风暴、关闭漏杀孙子进程",
+    orca: [
+      "独立 daemon 跨应用重启保活 PTY；服务端 @xterm/headless + SerializeAddon 落盘精准网格 Checkpoint",
+      "协商 binary-v1 二进制帧（零 JSON 转义）+ 128KB 浅门防按键延迟 + ACK 窗口反压暂停 PTY 生产者",
+      "按进程表+启动时间完整回收 POSIX 进程组 / Windows Job 子进程树；全平台 CJK/韩文 IME 与分块粘贴修复"
+    ],
+    aiwb: [
+      "terminals.rs 仅内存留 1MiB 纯文本，无观察者 30s（UNWATCHED_GRACE）即杀 PTY，重启 daemon 全丢",
+      "JSON 包 UTF-8 进 256 槽 broadcast + 无界 mpsc，慢连接触发 RecvError::Lagged 会重发全部主题完整快照",
+      "关闭仅调 child.clone_killer().kill() 无进程树清理；Windows 写死 pwsh/powershell 无 UTF-8 初始化与分块粘贴"
+    ],
+    advice: "P0 底层加固：Rust 端用 Windows Job Object / POSIX PGID 清进程树、给终端流改二进制 WS 帧与有界背压、放宽或持久化脱离观察者的后台终端。",
+    refs: [
+      { repo: "orca", path: "src/main/daemon/transport/framing/daemon-stream-binary-framing.ts" },
+      { repo: "orca", path: "src/main/pty/process-retirement/pty-descendant-termination.ts" },
+      { repo: "aiwb", path: "crates/aiwb-daemon/src/terminals.rs" },
+      { repo: "aiwb", path: "crates/aiwb-daemon/src/connection.rs" }
+    ]
+  },
+
+  // ================= 5. Git 与代码审查 =================
+  {
+    id: "gt-01", domain: "git", type: "missing", priority: "P0",
+    title: "完整 Source Control 面板与 Git 全量写操作",
+    essence: "AIWB 完全不能在界面里暂存、丢弃、提交、推送或拉取代码，必须切回终端或 IDE",
+    orca: [
+      "单文件/目录/批量 Stage & Unstage（--pathspec-from-file=- 防超长）、安全 Discard（restore + 边界校验 clean）",
+      "Commit / Commit & Push / Force-with-lease / Sync / Pull / Fetch --prune / Rebase onto base（隔离临时 ref 防竞争）",
+      "Submodule 展开与指针差异、远端 ahead/behind 追踪与 Fork 推送目标校验"
+    ],
+    aiwb: ["services/mod.rs 仅 6 个读/切分支 RPC（isRepo/hasCommit/branch/branches/checkout/createBranch）+ 只读 diff，零 Git 写操作"],
+    advice: "在 aiwb-git 补齐 stage / unstage / discard / commit / push / pull / fetch，并在 Diff 面板直接挂轻量化提交条。",
+    refs: [
+      { repo: "orca", path: "src/main/git/source-control/mutations/staging.ts" },
+      { repo: "orca", path: "src/main/git/source-control/mutations/commit-changes.ts" },
+      { repo: "aiwb", path: "crates/aiwb-daemon/src/services/mod.rs" }
+    ]
+  },
+  {
+    id: "gt-02", domain: "git", type: "missing", priority: "P0",
+    title: "AI 源码工作流自动化（Commit/PR 生成 + 5 类失败一键自愈）",
+    essence: "一键 AI 写 Commit/PR 文案，遇到提交/推送/CI/冲突/审阅失败直接派 Agent 修",
+    orca: [
+      "一键生成 Commit Message、PR 标题正文与按工作内容重命名分支",
+      "5 类失败/审查一键转交可配置 Agent 配方：fixCommitFailure / fixPushFailure / fixChecks / resolveConflicts / resolveComments"
+    ],
+    aiwb: ["无 AI 提交信息生成，无提交/推送/冲突失败一键交由 Agent 修复工作流"],
+    advice: "配合 Git 提交条同步做「AI 生成提交信息」和「Commit/Push 失败 → 一键发给当前会话修复」，与多 Agent 定位高度契合。",
+    refs: [
+      { repo: "orca", path: "src/shared/source-control/ai/recipes/source-control-ai-actions.ts" },
+      { repo: "orca", path: "src/shared/source-control/ai/generation/commit-message-generation.ts" }
+    ]
+  },
+  {
+    id: "gt-03", domain: "git", type: "missing", priority: "P1",
+    title: "合并/变基/拣选冲突三方审阅与序列器恢复界面",
+    essence: "识别 7 种冲突类型，提供逐冲突块跳转、单文件决议、--continue/--abort 与 AI 解冲突",
+    orca: [
+      "自动检测 merge / rebase / cherry-pick / revert 暂停态及 7 种冲突类型",
+      "EditorConflictReviewSurface 逐冲突块导航与保留/删除决议 + 序列器恢复按钮 + 一键 AI 解冲突"
+    ],
+    aiwb: ["无任何冲突状态检测或冲突解决 UI"],
+    advice: "先检测 .git/MERGE_HEAD & rebase-merge 在分支栏显红标并提供「交给当前 Agent 解冲突」与「中止操作」。",
+    refs: [
+      { repo: "orca", path: "src/main/git/source-control/mutations/git-conflict-operation.ts" },
+      { repo: "orca", path: "src/renderer/src/components/editor/conflict-review/EditorConflictReviewSurface.tsx" }
+    ]
+  },
+  {
+    id: "gt-04", domain: "git", type: "missing", priority: "P1",
+    title: "可视化 Git History Graph、任意提交/分支对比与行内 Git Blame",
+    essence: "SVG 提交拓扑图、任意 Commit/BaseRef 对比、右键 cherry-pick/revert 与编辑态行内 Blame",
+    orca: [
+      "虚拟滚动 SVG 拓扑图（搜索/分页），支持右键 checkout / 建分支 / cherry-pick / revert",
+      "支持任意 BaseRef 与任意 Commit 差异对比；Monaco 行内 Git Blame（编辑时动态映射行号，点状态栏看该 Commit Diff）",
+      "图片 Diff 对比视图（并排/上下）+ macOS APFS CoW 加速建树"
+    ],
+    aiwb: ["crates/aiwb-git/src/diff.rs 明确不支持 branch 或 commit 级对比，无提交图谱、无 Blame、无图片 Diff"],
+    advice: "先扩展 files.diff 支持任意 baseRef / commit SHA 对比，以及紧凑提交历史列表（无需一开始画复杂 SVG 图）。",
+    refs: [
+      { repo: "orca", path: "src/renderer/src/components/editor/git-graph/git-graph-tab.tsx" },
+      { repo: "orca", path: "src/main/git/source-control/blame/git-blame-read.ts" },
+      { repo: "aiwb", path: "crates/aiwb-git/src/diff.rs" }
+    ]
+  },
+  {
+    id: "gt-05", domain: "git", type: "weaker", priority: "P0",
+    title: "Diff 引擎：手工纯文本只读 DOM（2MiB 截断）vs Monaco 可编辑大 Diff",
+    essence: "AIWB Diff 无语法高亮、不可编辑、无虚拟滚动，且超 2MiB 整页报错",
+    orca: [
+      "Monaco DiffEditor 全语言语法高亮 + 折叠 + 查找 + 右侧修改区直接编辑与保存（含外部变更冲突条）",
+      "联合 Diff 采用 @tanstack/react-virtual 虚拟化 + 按需异步加载 + 单文件大 Diff 降级提示 + 文件戳去重缓存"
+    ],
+    aiwb: [
+      "DiffFileSection.tsx 手写 DOM 渲染，无任何语法高亮（仅文本+词级 LCS）、完全只读、无虚拟滚动",
+      "crates/aiwb-git/src/diff.rs 将全量改动拼单一字符串并硬卡 MAX_DIFF_BYTES = 2 MiB，超限整体报错；未跟踪文件串行跑 git diff"
+    ],
+    advice: "P0 关键体验：后端改为按文件列表索引 + 按需流式读单文件 diff（突破 2MiB 整包报错）；前端接入轻量化虚拟滚动与真实语法高亮（Shiki/CodeMirror/Monaco）。",
+    refs: [
+      { repo: "orca", path: "src/renderer/src/components/editor/diff/monaco-view/DiffViewer.tsx" },
+      { repo: "orca", path: "src/renderer/src/components/editor/combined-diff/CombinedDiffViewer.tsx" },
+      { repo: "aiwb", path: "src/features/panel/diff/DiffFileSection.tsx" },
+      { repo: "aiwb", path: "crates/aiwb-git/src/diff.rs" }
+    ]
+  },
+  {
+    id: "gt-06", domain: "git", type: "weaker", priority: "P0",
+    title: "行内 Diff 评论持久化与批量投递给 Agent",
+    essence: "AIWB Diff 内评完立刻消失为临时附件，无法回看/编辑/按文件批量发出",
+    orca: [
+      "评论持久化在 WorktreeMeta（含 sentAt 状态），通过 Monaco ViewZone 在 Diff 行下原地渲染可编辑/删除卡片",
+      "侧栏 NotesShelf 总览所有评论一键定位；DiffNotesSendMenu 支持「仅发当前文件 / 全部未发评论」批量投递给指定 Agent"
+    ],
+    aiwb: [
+      "DiffFileSection.tsx 虽支持行号拖拽弹评论框，但提交后立即变成聊天框临时 TextSnippetDraft 并关闭",
+      "未接入 useSavedComments（仅 SourceView 渲染了已存评论），Diff 内看不到历史评论、不落盘、不能二次修改"
+    ],
+    advice: "立刻将 DiffFileSection 接回已存评论持久化与原地卡片回显，并加「批量发送未发评审意见」按钮。",
+    refs: [
+      { repo: "orca", path: "src/renderer/src/components/diff-comments/useDiffCommentDecorator.tsx" },
+      { repo: "orca", path: "src/renderer/src/components/editor/diff/review/DiffNotesSendMenu.tsx" },
+      { repo: "aiwb", path: "src/features/panel/diff/DiffFileSection.tsx" }
+    ]
+  },
+  {
+    id: "gt-07", domain: "git", type: "weaker", priority: "P1",
+    title: "分支管理：仅本地 refs/heads vs 远端搜索 / 重命名 / Detached HEAD 恢复",
+    essence: "AIWB 分支菜单只认本地分支，无法搜远端分支、改名或处理游离 HEAD",
+    orca: [
+      "支持本地 + 远端 ref 搜索切换、分支重命名、过期分支清理、Detached HEAD 明确提示与恢复、Compare BaseRef 选择"
+    ],
+    aiwb: ["crates/aiwb-git/src/branch.rs 与 GitBranchControl.tsx 仅列/切/建本地分支与脏计数，不碰远端"],
+    advice: "在 git.branches 扩展返回 remote refs、detached 状态与 rename/delete RPC。",
+    refs: [
+      { repo: "orca", path: "src/main/git/worktrees/checkout/branch-rename.ts" },
+      { repo: "aiwb", path: "crates/aiwb-git/src/branch.rs" }
+    ]
+  },
+
+  // ================= 6. 编辑器与文件 =================
+  {
+    id: "ed-01", domain: "editor", type: "missing", priority: "P0",
+    title: "真实代码编辑（Monaco）、原子保存、自动保存与外部 Formatter",
+    essence: "AIWB 所有文件查看器均只读且无写入 RPC；无法就地微调代码或保存",
+    orca: [
+      "完整 Monaco 编辑栈 + 多分屏共享 Model + 视图/滚动位置 LRU 缓存 + 大文件降级",
+      "原子持久化写入（带磁盘基线签名校验防覆盖 + 滚动备份）+ 队列自动保存（非 UTF-8 自动暂停、重启热保存）",
+      "按仓库 glob 配置保存时自动调用本地外部 CLI Formatter（10s 超时、工作区路径边界校验）"
+    ],
+    aiwb: ["services/mod.rs 无任何 files.writeFile RPC，所有文件预览均为只读文本/Markdown"],
+    advice: "在 Rust daemon 补带 mtime/etag 校验的原子 files.writeFile，前端按轻量路线引入 CodeMirror 6 或 Monaco 支持就地编辑与 Cmd+S 保存。",
+    refs: [
+      { repo: "orca", path: "src/renderer/src/components/editor/panel/EditorEditFileSurface.tsx" },
+      { repo: "orca", path: "src/main/filesystem/durable-file-write.ts" },
+      { repo: "orca", path: "src/main/editor/format-editor-text.ts" }
+    ]
+  },
+  {
+    id: "ed-02", domain: "editor", type: "missing", priority: "P0",
+    title: "OS 级实时文件监听（@parcel/watcher）与外部变更冲突解决",
+    essence: "Agent 改完文件，AIWB 已打开的预览和文件树不会自动刷新；无冲突合并提示",
+    orca: [
+      "独立子进程 @parcel/watcher 监听池（含 canary 健康检测与事件批处理节流）实时刷新编辑器与文件树",
+      "无未保存编辑自动无感重载；有脏草稿时弹 4 策冲突横幅（Compare Diff / Reload+8s Undo Toast / Overwrite / Keep）"
+    ],
+    aiwb: ["无任何 OS File Watcher；aiwb-files/src/index/refresh.rs 仅搜索时按 2s 间隔惰性查 mtime，已开预览和目录树不自动刷新"],
+    advice: "Rust 生态用 notify crate 在 daemon 建统一文件监听推送 topic，自动刷新打开中的文件预览、Diff 和文件树。",
+    refs: [
+      { repo: "orca", path: "src/main/ipc/filesystem/watcher-process/parcel-watcher-process.ts" },
+      { repo: "orca", path: "src/renderer/src/components/editor/external-changes/ExternalFileChangeBanner.tsx" },
+      { repo: "aiwb", path: "crates/aiwb-files/src/index/refresh.rs" }
+    ]
+  },
+  {
+    id: "ed-03", domain: "editor", type: "missing", priority: "P0",
+    title: "文件树完整 CRUD、50 步 Undo/Redo、多选拖拽与外部拖入导入",
+    essence: "AIWB 文件树只能看与「添加到对话」，无法新建/改名/删文件或拖拽移动",
+    orca: [
+      "新建文件/目录（wx 独占创建）、行内重命名、Duplicate、移入系统回收站（降级删除）",
+      "50 步文件操作 Undo/Redo 栈 + 多选批量拖拽移动（悬停展目录/边缘滚屏）+ 外部文件拖入导入（含远程流上传）",
+      "右键 15+ 动作：复制路径/文件对象、在终端打开目录、Find in Folder、远程下载"
+    ],
+    aiwb: ["WorkspaceTree.tsx 右键仅有「添加到对话」一项，无新建、重命名、删除、拖拽移动和目录内搜索"],
+    advice: "在 aiwb-files 补 create / rename / trash / duplicate 与复制相对/绝对路径，立刻消除切外部文件管理器的摩擦。",
+    refs: [
+      { repo: "orca", path: "src/main/ipc/filesystem/mutations/filesystem-mutations.ts" },
+      { repo: "orca", path: "src/renderer/src/components/right-sidebar/file-explorer/mutations/fileExplorerUndoRedo.ts" },
+      { repo: "aiwb", path: "src/features/panel/files/WorkspaceTree.tsx" }
+    ]
+  },
+  {
+    id: "ed-04", domain: "editor", type: "missing", priority: "P1",
+    title: "多格式富媒体查看/编辑器（PDF / CSV / Jupyter / 音视频 / Mermaid / TipTap）",
+    essence: "支持直接阅读搜索 PDF、编辑 CSV 表格、执行 .ipynb Notebook、播音视频与所见即所得 Markdown",
+    orca: [
+      "PDF（pdfjs-dist + Range 流式 + 页内搜索）、可编辑 CSV/TSV（超大文件切 Worker 分页）",
+      "Jupyter Notebook（本地 Python ipykernel 桥接执行 Cell + ANSI/图片输出 + 首次安全确认）",
+      "音视频 orca-media:// Range 流播、Mermaid 独立查看+弹窗放大、TipTap 富文本 Markdown 编辑+导出 PDF、插件自定义二进制编辑器"
+    ],
+    aiwb: ["panel/viewers/register.ts 仅注册 7 个基础查看器（html/markdown/image/text/diff/files/terminal），非文本一律报错 BinaryFileError"],
+    advice: "优先按轻量化顺序补 Mermaid 渲染 + KaTeX 公式 + PDF 预览（iframe/pdfjs）+ CSV 只读表格预览；Notebook/TipTap 视需求决定。",
+    refs: [
+      { repo: "orca", path: "src/renderer/src/components/editor/pdf/PdfViewer.tsx" },
+      { repo: "orca", path: "src/renderer/src/components/editor/csv/CsvViewer.tsx" },
+      { repo: "orca", path: "src/main/notebook/notebook-kernel.ts" },
+      { repo: "aiwb", path: "src/features/panel/viewers/register.ts" }
+    ]
+  },
+  {
+    id: "ed-05", domain: "editor", type: "missing", priority: "P2",
+    title: "Artifacts 云端分享、浮动 Scratchpad 笔记、Wikilink 与链接 OG 预览",
+    essence: "一键发布 HTML/MD 生成分享链接、工作区浮动笔记与 [[doc#heading]] 互链、链接路由选择",
+    orca: [
+      "Artifacts 支持把 HTML/Markdown（≤10MB）发布云端并支持幂等恢复与 editToken 原地更新",
+      "工作区浮动 Markdown 笔记 + 模板选择器 + Obsidian 风格 [[doc#heading|alias]] 补全跳转",
+      "链接 OG 元数据抓取（SSRF 防护+LRU 缓存）与点击链接时选择内置/系统浏览器路由弹窗"
+    ],
+    aiwb: ["无云端分享发布、无工作区浮动笔记或 Wikilink、无链接路由偏好选择"],
+    advice: "本地「工作区草稿笔记 + 链接打开偏好（内置/外置浏览器）」值得借鉴；云端 Artifacts 依赖云设施可暂缓。",
+    refs: [
+      { repo: "orca", path: "src/main/artifacts/artifact-publisher.ts" },
+      { repo: "orca", path: "src/renderer/src/components/editor/markdown/documents/markdown-doc-links.ts" },
+      { repo: "orca", path: "src/main/link-preview/link-preview.ts" }
+    ]
+  },
+  {
+    id: "ed-06", domain: "editor", type: "weaker", priority: "P0",
+    title: "代码语法高亮与大文件读取：64 词正则 + 512KB 硬截断 vs 真实语法引擎",
+    essence: "AIWB 高亮不区分语言且不支持多行注释/JSX，文件超 512KB 硬截断无法搜索/折叠",
+    orca: [
+      "Monaco 全语言词法/语法高亮、代码折叠、页内查找替换、缩放字体、Unicode 异常字符提示与日志 liveTail"
+    ],
+    aiwb: [
+      "panel/viewers/highlight.ts 仅用 64 个通用关键字做逐行手写正则着色，不区分语言",
+      "crates/aiwb-files/src/read.rs 硬性截断于 MAX_PREVIEW_BYTES = 512KB，无代码折叠、无文件内搜索（Cmd+F）"
+    ],
+    advice: "用 Shiki（或 CodeMirror 6 词法包）立刻替换 64 词正则高亮，并补预览器内 Cmd+F 查找与分页读取大文件。",
+    refs: [
+      { repo: "orca", path: "src/renderer/src/components/editor/monaco/editor-unicode-highlight-options.ts" },
+      { repo: "aiwb", path: "src/features/panel/viewers/highlight.ts" },
+      { repo: "aiwb", path: "crates/aiwb-files/src/read.rs" }
+    ]
+  },
+  {
+    id: "ed-07", domain: "editor", type: "weaker", priority: "P0",
+    title: "Markdown 渲染管线：白板 marked vs Web Worker 全功能渲染",
+    essence: "AIWB 的 Markdown 无代码块语法高亮、无 Mermaid、无 KaTeX、无复选框与大纲",
+    orca: [
+      "Web Worker 内运行完整 unified 管线：GFM / KaTeX 数学 / Frontmatter / CJK 友好 / Callouts / 代码高亮 / Mermaid / 清洗 HTML",
+      "支持大文档虚拟分块渲染、TOC 目录大纲与文档内搜索条"
+    ],
+    aiwb: [
+      "shared/markdown/MarkdownBody.tsx 基于 marked 手写 AST，代码块是纯白板 <pre><code> 无高亮",
+      "无 Mermaid 图表、无 KaTeX 公式、无任务复选框渲染（变纯文本）、无删除线/Callout/TOC/页内搜索"
+    ],
+    advice: "高频痛点！给 MarkdownBody 补代码高亮 + GFM 任务列表/删除线 + KaTeX + Mermaid 懒加载，对话和文档阅读质感翻倍。",
+    refs: [
+      { repo: "orca", path: "src/renderer/src/components/editor/markdown-preview/render-tree/markdown-preview-plugins.ts" },
+      { repo: "aiwb", path: "src/shared/markdown/MarkdownBody.tsx" }
+    ]
+  },
+  {
+    id: "ed-08", domain: "editor", type: "weaker", priority: "P0",
+    title: "全文搜索：单线程字面子串（1MB/100 条）vs Ripgrep（正则/全词/分组/2000 条）",
+    essence: "AIWB 全文搜不支持正则、大小写、全词与排除规则，命中卡死 100 条且不按文件分组",
+    orca: [
+      "内置 @vscode/ripgrep-universal + git grep 回退，单文件 5MB、默认 2000 条命中、列偏移高亮",
+      "完整支持区分大小写 / 全词匹配 / 正则表达式 / Include & Exclude glob，结果按文件树折叠分组"
+    ],
+    aiwb: [
+      "crates/aiwb-files/src/search/content.rs 为单线程手写不区分大小写字面子串扫描，单文件 1MB、总上限 100 条",
+      "无正则、无大小写/全词切换、无排除 glob、结果不按文件折叠分组"
+    ],
+    advice: "AIWB 本身是 Rust！直接引入 BurntSushi 的 grep-searcher + ignore crate（ripgrep 同源 Rust 库），零外部二进制即可追平甚至超越性能。",
+    refs: [
+      { repo: "orca", path: "src/main/ripgrep/bundled-ripgrep-text-search.ts" },
+      { repo: "aiwb", path: "crates/aiwb-files/src/search/content.rs" }
+    ]
+  },
+  {
+    id: "ed-09", domain: "editor", type: "weaker", priority: "P1",
+    title: "文件树展示、图片查看器与外部编辑器/单文件定位",
+    essence: "AIWB 文件树不虚拟化缺 Git 颜色，图片不能缩放平移，reveal 传入文件直接报错",
+    orca: [
+      "文件树虚拟滚动 + 分类型文件图标 + 直接叠加 Git 状态色标与 .gitignore 斜体灰显",
+      "图片支持滚轮缩放/Fit/100%/Alt 拖拽平移/分辨率与体积显示/SVG 源码渲染双视图",
+      "支持配置 8 个外部 IDE（VS Code/Cursor/Zed/JetBrains/Vim，含 WSL/SSH Remote URL）与单文件在资源管理器高亮定位"
+    ],
+    aiwb: [
+      "WorkspaceTree 非虚拟 DOM、统一灰图标、工作区树无 Git 状态与忽略灰显",
+      "viewers/image.tsx 整文件 Base64 进 <img>，无缩放/平移/元信息/SVG 双视图",
+      "preview/reveal.rs 仅能打开目录（传文件报错「不是文件夹」）；open_with 仅系统默认 + 仅 Windows OpenAs"
+    ],
+    advice: "3 项都是小改动大体验：修 reveal.rs 支持 explorer /select & open -R 高亮单文件；图片加滚轮缩放拖拽；文件树加 Git 状态色标。",
+    refs: [
+      { repo: "orca", path: "src/renderer/src/components/editor/document-images/PanZoomImageSurface.tsx" },
+      { repo: "orca", path: "src/main/external-editors/external-editor-launch.ts" },
+      { repo: "aiwb", path: "src-tauri/src/features/preview/reveal.rs" },
+      { repo: "aiwb", path: "src/features/panel/viewers/image.tsx" }
+    ]
+  },
+
+  // ================= 7. 浏览器与自动化 =================
+  {
+    id: "br-01", domain: "browser", type: "missing", priority: "P0",
+    title: "Agent 浏览器自动化（CDP/无障碍快照/Console·Network·HAR/拦截/光标）",
+    essence: "AIWB 浏览器仅给人看和手动点批注，Agent 完全读不到 Console 报错、网络请求或操控页面",
+    orca: [
+      "完整 CDP Bridge + CLI：无障碍树 snapshot（--interactive/--delta）、click/fill/eval/wait/语义 find、设备仿真、全页截图与 PDF",
+      "Console / Network / HAR 抓包供 Agent 排查前端 Bug，支持请求拦截路由（intercept）",
+      "屏幕叠加弹簧动画光标实时可视化 Agent 正在点击/操作的页面位置"
+    ],
+    aiwb: ["无任何 CDP 自动化桥接、Console/Network 采集或 Agent 操控内置浏览器工具（尽管 WebView2 已开 9222 端口却未安全封装给 Agent）"],
+    advice: "高价值差异化：通过内部 MCP 为 Agent 暴露「读取内置浏览器 Console/Network 报错 + 截屏 + 无障碍快照 + 基础交互」，前端调试闭环立刻打通。",
+    refs: [
+      { repo: "orca", path: "src/main/browser/agent-browser/agent-browser-bridge.ts" },
+      { repo: "orca", path: "src/main/browser/cdp/commands/cdp-page-capture-commands.ts" },
+      { repo: "orca", path: "src/renderer/src/components/browser-pane/agent-cursor/agent-cursor-glyph.tsx" }
+    ]
+  },
+  {
+    id: "br-02", domain: "browser", type: "missing", priority: "P1",
+    title: "可停靠 DevTools、截图涂鸦画布（Markup）与完整浏览器宿主能力",
+    essence: "内置浏览器调试缺 DevTools、页内查找、缩放与截图自由涂鸦圈画",
+    orca: [
+      "可底部/右侧停靠拖拽调比或独立弹出的 DevTools Dock",
+      "Markup 涂鸦画布：冻结视口截图后提供画笔/荧光笔/箭头/矩形/椭圆/IME 文字/橡皮/Undo，合成 PNG 发给 Agent",
+      "完整宿主：页内 Find、硬刷新、缩放、视口预设、下载管理、WebAuthn/Passkey、JS alert/confirm/prompt 与历史记录"
+    ],
+    aiwb: ["BrowserChrome.tsx 仅含前进/后退/刷新/批注/地址栏，无 DevTools、无页内查找、无缩放、无涂鸦标注、无下载与弹窗处理"],
+    advice: "先补「一键开 WebView DevTools、页内查找、缩放和设备视口预设」；涂鸦画布可复用现有批注截图管线扩展。",
+    refs: [
+      { repo: "orca", path: "src/renderer/src/components/browser-pane/devtools-dock/BrowserDevToolsDock.tsx" },
+      { repo: "orca", path: "src/renderer/src/components/browser-pane/annotate/MarkupOverlay.tsx" },
+      { repo: "aiwb", path: "src/features/panel/browser/BrowserChrome.tsx" }
+    ]
+  },
+  {
+    id: "br-03", domain: "browser", type: "missing", priority: "P2",
+    title: "跨平台 Computer Use（macOS Swift / Linux AT-SPI2 / Windows UIA）",
+    essence: "让 Agent 后台无抢焦操作本机任意桌面软件（含密码管理器黑名单安全护栏）",
+    orca: [
+      "三端原生后端：macOS 5479 行 Swift（Accessibility+ScreenCaptureKit 后台不抢焦）、Linux 2702 行 AT-SPI2 Python、Windows 2784 行 UIAutomation+SendInput",
+      "紧凑无障碍树 + 增量 tree-diff + 截图 + 键鼠/值设置；内置 1Password/Bitwarden 黑名单与危险快捷键拦截"
+    ],
+    aiwb: ["无桌面级 OS 自动化控制能力"],
+    advice: "维护成本极高（三端上万行原生代码），中短期建议通过外部 MCP server 按需接入，不内置到主壳。",
+    refs: [
+      { repo: "orca", path: "src/main/computer/computer-sidecar.ts" },
+      { repo: "orca", path: "native/computer-use-windows/runtime.ps1" },
+      { repo: "orca", path: "native/computer-use-macos/Sources/OrcaComputerUseMacOS/main.swift" }
+    ]
+  },
+  {
+    id: "br-04", domain: "browser", type: "missing", priority: "P2",
+    title: "嵌入式 iOS Simulator & Android Emulator 面板与 Agent CLI",
+    essence: "在工作台内直接串流/操作手机模拟器，供 Agent 抓无障碍树、logcat 与装包验证",
+    orca: [
+      "Android：自动发现 AVD + 部署 scrcpy-server H.264 低延迟视频流 + uiautomator 无障碍树 + logcat + APK 安装/权限管理",
+      "iOS：simctl + serve-sim MJPEG 流 + 多点手势/旋转 + 无障碍树 + 隐藏原生 Simulator 窗"
+    ],
+    aiwb: ["无移动端模拟器面板与控制桥接"],
+    advice: "移动端开发垂直场景，非通用核心，按需通过插件或外部 MCP 支持。",
+    refs: [
+      { repo: "orca", path: "src/main/emulator/emulator-bridge.ts" },
+      { repo: "orca", path: "src/renderer/src/components/emulator-pane/EmulatorPane.tsx" }
+    ]
+  },
+  {
+    id: "br-05", domain: "browser", type: "missing", priority: "defer",
+    title: "浏览器多 Profile、外部 Cookie 导入、加密密码库与 Chrome 扩展运行时",
+    essence: "将内置浏览器做成完整日常浏览器（175 文件扩展宿主+密码库+外部浏览器 Cookie 导入）",
+    orca: [
+      "多 Partition Profile 隔离、一键导入 Chrome/Firefox/Safari 登录 Cookie、加密密码库自动填充",
+      "175 个文件实现 Chrome 扩展完整运行时（未打包/商店加载、工具栏 Popup、Side Panel、右键菜单）"
+    ],
+    aiwb: ["单一默认 WebView2 会话目录，无 Profile、无 Cookie 导入、无密码管理与扩展运行时"],
+    advice: "Tauri 系统 WebView 无法直接托管 Chrome 扩展，且维护密码库/扩展生态极重；最多补「独立 Profile 目录」或「一键在系统浏览器打开」。",
+    refs: [
+      { repo: "orca", path: "src/main/browser/cookies/browser-cookie-import.ts" },
+      { repo: "orca", path: "src/main/browser-passwords/browser-password-store.ts" }
+    ]
+  },
+  {
+    id: "br-06", domain: "browser", type: "weaker", priority: "P0",
+    title: "内置浏览器多实例模型与跨平台通道：单例+仅 Windows vs 独立多页全平台一致",
+    essence: "AIWB 全应用共用 1 个子 WebView（切标签丢状态）且 macOS/Linux 批注截图直接报错不可用",
+    orca: [
+      "每个标签独立持久化 WebView/WebContents（并发保活 + 后台空闲自动释放内存），支持分屏多页面",
+      "macOS / Windows / Linux 行为完全一致，且 Web/移动端可通过 CDP Screencast 远程流式交互"
+    ],
+    aiwb: [
+      "src-tauri/src/features/preview/browser.rs 硬编码全局唯一 const LABEL = 'preview-browser'，切 Tab 反复 navigate 丢内存态；on_new_window 全部 Deny",
+      "页面通信（120ms 轮询 ExecuteScript）与截图裁剪全写死 #[cfg(windows)]，macOS/Linux 返回 Err('截图不可用') 且收不到标题/批注",
+      "网页预览模式退化为 <iframe sandbox>，外部站点被 X-Frame-Options/CSP 拦截且不支持批注"
+    ],
+    advice: "P0 必修：按 tabId 管理多子 WebView 实例池（切换 hide/show 而非 navigate）；补齐 macOS WKWebView / Linux WebKitGTK 消息通道与截图。",
+    refs: [
+      { repo: "orca", path: "src/main/browser/backends/offscreen-page-idle-freeing.ts" },
+      { repo: "aiwb", path: "src-tauri/src/features/preview/browser.rs" }
+    ]
+  },
+  {
+    id: "br-07", domain: "browser", type: "weaker", priority: "P0",
+    title: "页面视觉拾取与批注：基础 CSS 路径单发 vs React Fiber 源码定位 + 脱敏 + 多条托盘",
+    essence: "AIWB 批注只抓 CSS 路径和 500 字文本且单条直发；Orca 穿透 React 源码行号并自动脱敏",
+    orca: [
+      "React Fiber 穿透：自动提取组件层级 <Parent> <Child> 与 _debugSource 精确 sourceFile:line:col",
+      "附带 16 项 computedStyles、ARIA 属性、HTML 片段、祖先/邻近上下文，并对 URL query/token 及属性双端自动脱敏",
+      "独立批注托盘支持多条汇总、二次编辑、意图标签（intent）、额外附图与选择任意目标 Agent 批量投递"
+    ],
+    aiwb: [
+      "preview/page.js 仅采集 8 层 cssPath、500 字 innerText、矩形坐标和 Windows 裁剪 PNG",
+      "无 React/Vue 组件源码定位、无计算样式与 ARIA 上下文、无敏感 token 脱敏、无多条暂存编辑托盘"
+    ],
+    advice: "在现有 page.js 注入 React Fiber / Vue component 穿透、关键 computedStyles、URL query 脱敏与多条草稿汇总，投入小回报极大。",
+    refs: [
+      { repo: "orca", path: "src/main/browser/element-grab/grab-guest-react-script.ts" },
+      { repo: "orca", path: "src/renderer/src/components/browser-pane/annotate/browser-page-annotation-tray.tsx" },
+      { repo: "aiwb", path: "src-tauri/src/features/preview/page.js" }
+    ]
+  },
+
+  // ================= 8. 外部集成、Bots 与 CLI =================
+  {
+    id: "in-01", domain: "integrations", type: "missing", priority: "P0",
+    title: "五大代码托管平台集成（GitHub/GitLab/Bitbucket/Azure/Gitea）与 PR/CI 追踪",
+    essence: "工作台内直接审阅 PR/MR、勾选 Viewed、看 CI 日志、一键修失败并将 CI 结果回写会话",
+    orca: [
+      "GitHub（217 文件）/ GitLab（41 文件）/ Bitbucket / Azure DevOps / Gitea 全覆盖，支持多账号 token 隔离（不污染全局 env）",
+      "完整 PR/MR 页：模板创建、行内 Review Thread 解决/表情、文件 Viewed 复选框、Auto-Merge、CI Check 日志下载/重跑、GitHub Projects v2",
+      "PRWatchService（SQLite 持久跟踪 14 天）在 CI 终态自动回写对应会话时间线"
+    ],
+    aiwb: ["全仓零 Forge/PR/CI 集成代码，仅本地 git CLI 操作"],
+    advice: "先通过 gh CLI / REST 落地 GitHub PR 状态胶囊 + 失败 CI 日志一键发给当前会话修复，覆盖 80% 开发者刚需。",
+    refs: [
+      { repo: "orca", path: "src/main/github/pr-watch/pr-watch-service.ts" },
+      { repo: "orca", path: "src/renderer/src/components/pull-request-page/page/surface.tsx" },
+      { repo: "orca", path: "src/main/source-control/forge-provider.ts" }
+    ]
+  },
+  {
+    id: "in-02", domain: "integrations", type: "missing", priority: "P1",
+    title: "外部工单系统双向集成（Jira / Linear）",
+    essence: "工作台直接浏览/筛选/评论 Jira & Linear 工单，一键带上下文拉起工作树并回写状态",
+    orca: [
+      "Jira（42 文件）：支持 Cloud & Server/DC 多站点、请求队列限流、附件缓存、Markdown ↔ Atlassian Document Format (ADF) 双向转换",
+      "Linear（55 文件）：多 Workspace、Custom Views、项目/子任务写回与工作树自动绑定当前 Issue"
+    ],
+    aiwb: ["无任何外部工单系统集成，BoardView 仅展示本地会话注意力状态"],
+    advice: "优先支持「粘贴 GitHub Issue / Linear / Jira 链接 → 拉取标题描述建任务」，再按需做列表页。",
+    refs: [
+      { repo: "orca", path: "src/main/jira/markdown-adf.ts" },
+      { repo: "orca", path: "src/main/linear/issues/issue-list-filter.ts" }
+    ]
+  },
+  {
+    id: "in-03", domain: "integrations", type: "missing", priority: "P1",
+    title: "定时与事件驱动自动化（Automations）+ Webhooks 宿主机接入",
+    essence: "支持 Cron 定时、一次性等待与 Webhook/外部事件触发 Agent 任务，带额度与防脑裂护栏",
+    orca: [
+      "AutomationService（60s tick）：Cron / 一次性等待 / 外部事件（Webhook/Google/Slack/GitHub），支持前置检查、额度感知、串行 lane 与防脑裂调度",
+      "纳管本机 ~/.openclaw/cron/jobs.json 外部任务；Webhook 服务支持本地规则匹配、账本去重与并发槽位控制"
+    ],
+    aiwb: ["无定时任务、无后台事件触发器、无 Webhook 接入"],
+    advice: "在 Rust daemon 内加轻量化本地 Cron 调度器（驱动现有 Agent 会话 + 前置 shell 检查），无需云依赖即可落地定时巡检/日报/测试。",
+    refs: [
+      { repo: "orca", path: "src/main/automations/automation-service.ts" },
+      { repo: "orca", path: "src/main/webhooks/webhook-host-service.ts" }
+    ]
+  },
+  {
+    id: "in-04", domain: "integrations", type: "missing", priority: "P1",
+    title: "独立跨平台 CLI（60 组子命令）与 PATH/WSL 自动注册",
+    essence: "把工作台所有能力暴露为统一 CLI，外部脚本与任意 Agent 都能直接驱动工作台",
+    orca: [
+      "60 组 CLI 子命令覆盖 worktree / terminal / browser / computer / emulator / automations / bots / search / ports / jira / linear",
+      "自动注册 macOS/Linux symlink、Windows PATH wrapper、WSL CLI 与规避 GNOME 冲突的 orca-ide 别名"
+    ],
+    aiwb: ["无独立 CLI 入口，外部终端和脚本无法调用 daemon RPC"],
+    advice: "AIWB 的 daemon 已有清晰的 WS JSON-RPC 与 rmcp 协议！补一个极轻 Rust `aiwb` CLI 子命令壳即可打通脚本与外部调用。",
+    refs: [
+      { repo: "orca", path: "src/cli/index.ts" },
+      { repo: "orca", path: "src/main/cli/cli-installer.ts" }
+    ]
+  },
+  {
+    id: "in-05", domain: "integrations", type: "missing", priority: "P2",
+    title: "持久化 Bots、跨回合记忆蒸馏（MEMORY.md）与多 Bot 群聊",
+    essence: "独立人设+长期记忆的常驻数字员工，夜间自动整理记忆并支持多 Bot @群聊",
+    orca: [
+      "每个 Bot 独立目录（SOUL.md 人设 + MEMORY.md 版本化记忆 + 独立工具集），内置 13 套模板技能（PR Review/CI Triage 等）",
+      "夜间/每周无工具 LLM 自动记忆蒸馏（带行数/新事实护栏防幻觉）+ 后台主动巡检（Look-around）+ 多 Bot 群聊与打包分享"
+    ],
+    aiwb: ["会话级一次性对话，无常驻 Bot 实体、无跨会话记忆蒸馏、无多 Bot 群聊"],
+    advice: "优先提取「项目级持久化记忆文件管理（读写 AGENTS.md / MEMORY.md + 变更提示）」，暂不做重型 Bot 群聊。",
+    refs: [
+      { repo: "orca", path: "src/main/bots/bot-memory-tidy-up.ts" },
+      { repo: "orca", path: "src/main/bots/bot-group-runtime.ts" }
+    ]
+  },
+  {
+    id: "in-06", domain: "integrations", type: "missing", priority: "P2",
+    title: "生产力连接器（Google Workspace / Composio / Slack 外部对话镜像）",
+    essence: "本地 OAuth 读写 Gmail/Calendar/Docs/Sheets 并响应事件；Slack 线程双向镜像到本地会话",
+    orca: [
+      "Google Workspace（49 文件）：多账号本地 OAuth 刷新、Gmail/Calendar/Drive/Docs/Sheets/PDF 读取 + 60s 邮件/日程触发器",
+      "Composio v3.1 隔离 MCP（显式禁 manage_connections 防越权）；Slack/GitHub/Linear 双向消息镜像与审批同步"
+    ],
+    aiwb: ["仅靠用户自行配置第三方 MCP server，无原生生产力连接器或外部聊天桥接"],
+    advice: "非编程 IDE 核心路径，继续通过标准 MCP 生态承接更符合 AIWB 定位。",
+    refs: [
+      { repo: "orca", path: "src/main/google/google-trigger-runtime.ts" },
+      { repo: "orca", path: "src/main/external-conversations/external-conversation-host.ts" }
+    ]
+  },
+  {
+    id: "in-07", domain: "integrations", type: "weaker", priority: "P1",
+    title: "Agent 操控工作台范围与 MCP 凭证零暴露中继",
+    essence: "AIWB 内部 MCP 仅 7 个子任务工具，外部 MCP 密钥裸写进各 CLI 配置且受制于各 CLI 缺陷",
+    orca: [
+      "Agent 通过 CLI 统一操控终端/浏览器/工作树/端口/检索/外部系统全域能力",
+      "bot-tool-relay 本地 HTTP 代理动态注入 OAuth/Header/API 密钥，Agent 仅持临时 token 永不接触真实密钥，吊销即断上游流"
+    ],
+    aiwb: [
+      "daemon /mcp 仅暴露 7 个子任务/会话编排工具，无法读终端输出、操控浏览器或读取批注",
+      "外部 MCP 透传给各 CLI（surface.rs 注释指出 Codex 不支持 --header、Claude list 慢数十秒、Cursor 不支持增删），且无凭证中继层"
+    ],
+    advice: "发挥 AIWB 已有的 Rust rmcp 优势：向 /mcp 增补终端/浏览器/工作区工具，并考虑用本地 MCP 代理统一托管凭证与热插拔。",
+    refs: [
+      { repo: "orca", path: "src/main/bots/tool-relay/bot-tool-relay.ts" },
+      { repo: "aiwb", path: "crates/aiwb-daemon/src/mcp/sessions.rs" },
+      { repo: "aiwb", path: "crates/aiwb-agents/src/mcp/surface.rs" }
+    ]
+  },
+
+  // ================= 9. 远程执行与多端 =================
+  {
+    id: "rm-01", domain: "remote", type: "missing", priority: "P1",
+    title: "SSH 远程执行与远程托管 Daemon（orcad）事务化部署",
+    essence: "直接连接开发机/云主机，自动部署远端 daemon，支持 SFTP、端口转发与禁用 TCP 时降级 stdio 隧道",
+    orca: [
+      "完整解析 ~/.ssh/config + ssh -G、OpenSSH agent/FIDO2/SK 认证、known_hosts 决策、断线阶梯重连、SFTP 与双引擎端口转发",
+      "远端自动探测架构部署版本化 orcad + 受管 Node（自定义镜像），用 fence 锁+事务日志+活跃终端普查实现无损升级与回滚",
+      "sshd 禁用 TCP 转发时自动降级为 SSH exec stdio 桥接；一键 VS Code / Zed Remote 打开"
+    ],
+    aiwb: ["纯本机工作台，完全不支持 SSH 远程项目或远程运行 Agent CLI"],
+    advice: "AIWB 的 Rust 单二进制 aiwb-daemon 天然极适合远端部署（零 Node ABI 与 node-pty 噩梦）！后续通过 SSH tunnel 即可极简落地远程模式。",
+    refs: [
+      { repo: "orca", path: "src/main/ssh/connection/ssh-connection-manager.ts" },
+      { repo: "orca", path: "src/main/managed-server/activation/orcad-activation-transaction.ts" }
+    ]
+  },
+  {
+    id: "rm-02", domain: "remote", type: "missing", priority: "P1",
+    title: "WSL 深度原生集成与 Guest Relay（防偷唤醒 / 迁移引导 / 浏览器隧道）",
+    essence: "Windows 开发高频痛点：原生支持 WSL 内项目与 Agent，规避 /mnt/c 极慢 I/O 与网络隔离",
+    orca: [
+      "发行版发现与保护：后台轮询绝不偷偷唤醒已停止 distro，仅显式切换时启动",
+      "检测 /mnt/c 跨界项目并引导迁移至 WSL 原生文件系统（wsl-move）大幅提速 Git",
+      "wsl-guest 通过 framed stdio 转发 Agent Hooks 与 guest 内网网页给 Windows 内置浏览器，绕过 NAT/mirrored 端口冲突"
+    ],
+    aiwb: ["无 WSL 发行版发现、路径映射、性能边界提醒或 WSL 内 Agent 驱动支持"],
+    advice: "Windows 用户核心诉求：利用 Rust linux 静态编译 aiwb-daemon 放入 WSL，轻松复用同一 WS RPC 协议支持 WSL 项目。",
+    refs: [
+      { repo: "orca", path: "src/wsl-guest/wsl-browser-network-relay.ts" },
+      { repo: "orca", path: "src/renderer/src/components/wsl-move/WslMoveDialog.tsx" }
+    ]
+  },
+  {
+    id: "rm-03", domain: "remote", type: "missing", priority: "P2",
+    title: "临时云端/脚本 VM 与可插拔环境提供者（Ephemeral VMs）",
+    essence: "按 orca.yaml recipe 拉起/休眠/恢复/销毁云端临时沙箱并自动配对接入",
+    orca: [
+      "EnvironmentProviderDriver 抽象（create/resume/suspend/destroy/memoryPause/idleStopMs）+ ShellRecipeDriver 执行自定义脚本",
+      "write-ahead 持久化实例 ID 防孤儿泄漏，解析 --recipe-json 输出配对码直连内部 orcad"
+    ],
+    aiwb: ["无云端/脚本化临时 VM 生命周期管理"],
+    advice: "需先具备远端 daemon 连接能力后再评估，适合有云端沙箱需求的团队。",
+    refs: [
+      { repo: "orca", path: "src/main/ephemeral-vm/runtime-service.ts" },
+      { repo: "orca", path: "src/main/environment-providers/shell-recipe-driver.ts" }
+    ]
+  },
+  {
+    id: "rm-04", domain: "remote", type: "missing", priority: "defer",
+    title: "多区域云端中继（Cloud Relay）+ 原生移动端 App（iOS/Android）+ 推送服务",
+    essence: "无公网 IP 手机扫码远程监控/审批/语音操控桌面 Agent（含 Cloudflare DO 中继与 APNs/FCM）",
+    orca: [
+      "cloud/apps/{relay,relay-edge,relay-ingress,relay-fence-broker,push}：Cloudflare Durable Objects 休眠中继、多区延迟择优、直连↔中继切换与 APNs/FCM 推送",
+      "mobile/（Expo/RN 0.88）：内置 xterm WebView、扫码配对、NaCl E2EE、双向语音听写与动态 Web Shell"
+    ],
+    aiwb: ["无云中继、无移动端 App、无远程推送"],
+    advice: "重资产云运维+双端商店发布体系，偏离轻量单机工作台定位；建议先做「局域网/Tailscale 生产级响应式 Web 端」低成本满足手机应急审批。",
+    refs: [
+      { repo: "orca", path: "cloud/apps/relay-edge/src/index.ts" },
+      { repo: "orca", path: "mobile/app/index.tsx" }
+    ]
+  },
+  {
+    id: "rm-05", domain: "remote", type: "weaker", priority: "P1",
+    title: "Daemon 传输层、无损升级切换、生产级 Web 端与多设备 E2EE 认证",
+    essence: "AIWB 写死 127.0.0.1 且更新直接杀旧 daemon 断会话；Web 模式仅限 Vite 开发环境且全员共用单 token",
+    orca: [
+      "本地走 Unix Socket/Named Pipe，可原子扩域 0.0.0.0（失败回滚）+ 网络源 ACL + 15s 心跳清半开连接 + 无间隙端点接管",
+      "orcad 同端口内置静态 Web 服务（支持反代前缀），脱离开发环境直接浏览器访问",
+      "一次性配对码换每设备独立凭证 + 权限角色白名单（runtime/mobile）+ 单设备吊销 + 应用层 NaCl E2EE"
+    ],
+    aiwb: [
+      "crates/aiwb-daemon/src/lib.rs 写死 127.0.0.1 TCP；src-tauri/src/daemon.rs 检测到新构建直接 POST /shutdown 强杀旧 daemon 中断运行中会话",
+      "vite.config.ts 依赖 dev 插件 /__daemon/endpoint 读本地文件，生产版脱离 Vite 无法网页访问",
+      "server.rs 全局仅 1 个 ?token= 无设备区分、无吊销、无 WS 心跳保活"
+    ],
+    advice: "3 项高价值改造：① 升级 daemon 时若 running > 0 延迟切换不强杀；② 让 aiwb-daemon 内嵌 rust-embed 静态 dist 实现零依赖生产 Web 模式；③ 给 WS 加 15s Ping/Pong 心跳与每设备配对 token。",
+    refs: [
+      { repo: "orca", path: "src/main/runtime/rpc/server/runtime-rpc-network-exposure.ts" },
+      { repo: "orca", path: "src/main/runtime/rpc/server/pairing/device-registry.ts" },
+      { repo: "aiwb", path: "crates/aiwb-daemon/src/lib.rs" },
+      { repo: "aiwb", path: "src-tauri/src/daemon.rs" }
+    ]
+  },
+
+  // ================= 10. 插件、语音与桌面打磨 =================
+  {
+    id: "pl-01", domain: "platform", type: "missing", priority: "P0", security: true,
+    title: "安全加固与 OS 密钥链（核实 AIWB 存在 3 项直接安全短板）",
+    essence: "AIWB 发布版开放无认证 9222 CDP、关闭 CSP、daemon.json 明文无权限位保护",
+    orca: [
+      "基于 safeStorage 的 fail-closed 密文存储（绝不静默降级明文）+ macOS Keychain 超时封装",
+      "Win32 原生 N-API 插件实现 CredReadW/WriteW、原子带 SDDL/DACL 创建读写文件与目录 ACL 授权",
+      "提供应用内完整卸载清理向导（清理 hooks/CLI/后台服务）与意外登出恢复卡"
+    ],
+    aiwb: [
+      "【高危】src-tauri/src/lib.rs:20-21 与 tauri.conf.json:24 在发布版也无条件开启 --remote-debugging-port=9222（本机任意进程可无认证接管 WebView 并调用全部 Tauri 命令）",
+      "【中危】src-tauri/tauri.conf.json:28 设置 'csp': null（完全关闭内容安全策略）",
+      "【中危】crates/aiwb-daemon/src/instance.rs:27-33 用普通 fs::write 写含 Bearer token 的 daemon.json，未设 Unix 0600 / Windows 用户独占 SDDL"
+    ],
+    advice: "P0 立刻修复（半天工作量）：① 9222 CDP 改为仅 debug_assertions 或显式环境变量开启；② 收紧 tauri.conf.json CSP；③ daemon.json 创建时设置 Unix 0600 与 Windows 当前用户 DACL。",
+    refs: [
+      { repo: "orca", path: "src/main/credentials/protected-secret-persistence.ts" },
+      { repo: "orca", path: "native/windows-security/index.d.ts" },
+      { repo: "aiwb", path: "src-tauri/src/lib.rs" },
+      { repo: "aiwb", path: "crates/aiwb-daemon/src/instance.rs" }
+    ]
+  },
+  {
+    id: "pl-02", domain: "platform", type: "missing", priority: "P0",
+    title: "崩溃捕获（Crashpad/Panic 落盘）、熔断恢复与结构化诊断日志",
+    essence: "AIWB 无崩溃转储/panic 落盘、daemon.log 无限膨胀且无一键脱敏诊断包，排障困难",
+    orca: [
+      "Crashpad 本地转储（128MB/64 文件配额）+ 纯 TS 解析 minidump 异常栈/断言 + 崩溃面包屑 + 60s/3 次重启熔断 + Windows GPU 软渲染降级 + 崩溃弹窗",
+      "OpenTelemetry 风格 span 追踪 + 有界轮转 NDJSON + 30 分钟窗口一键采集脱敏诊断包"
+    ],
+    aiwb: [
+      "无 Rust panic hook 落盘、无 WebView 崩溃恢复熔断与崩溃弹窗",
+      "src-tauri/src/daemon.rs:147-152 无上限追加原始 eprintln! 到 daemon.log，无轮转、无 tracing、无脱敏诊断包"
+    ],
+    advice: "Rust 侧引入 tracing + tracing-appender（按日/大小轮转）与 panic hook 落盘，设置页加「导出脱敏诊断日志 zip」。",
+    refs: [
+      { repo: "orca", path: "src/main/crash-reporting/minidumps/minidump-crash-signature.ts" },
+      { repo: "orca", path: "src/main/observability/local-file-sink.ts" },
+      { repo: "aiwb", path: "src-tauri/src/daemon.rs" }
+    ]
+  },
+  {
+    id: "pl-03", domain: "platform", type: "missing", priority: "P0",
+    title: "防休眠电源管理（Power / Caffeinate）",
+    essence: "Agent 跑长任务或过夜 /goal 时电脑自动休眠直接中断会话，AIWB 尚无防休眠控制",
+    orca: [
+      "AgentAwakeService 按活跃 Agent 状态租约动态持 powerSaveBlocker + macOS/Linux 系统级防休眠断言（off/auto/on）",
+      "状态栏常驻开关，并在系统睡眠唤醒后广播恢复通知给终端与网络层"
+    ],
+    aiwb: ["无任何防系统休眠机制，离开电脑跑长任务会被 OS 自动睡眠打断"],
+    advice: "在 Tauri Rust 端接入 keepawake-rs，当 daemon 报告 running > 0 时自动阻止系统空闲睡眠（设置可关闭），几十行代码解决大痛点。",
+    refs: [
+      { repo: "orca", path: "src/main/power/agent-awake-service.ts" },
+      { repo: "orca", path: "src/renderer/src/components/status-bar/CaffeinateStatusSegment.tsx" }
+    ]
+  },
+  {
+    id: "pl-04", domain: "platform", type: "missing", priority: "P0",
+    title: "环境诊断（Environment Doctor）与代码宿主 Preflight",
+    essence: "自动检测仓库工具链、Git/gh 认证、Agent 登录态与磁盘空间，定位环境问题不再盲猜",
+    orca: [
+      "EnvironmentDoctor 自动推断仓库工具需求、检查 PATH、验证 claude/codex 认证、检查 setup 脚本与磁盘剩余空间（<1GiB 报错 / <5GiB 警告）",
+      "Preflight 检查 git/gh/glab/Bitbucket/Gitea 认证态与 Shell PATH 注入（30s TTL 缓存）"
+    ],
+    aiwb: ["仅做 Agent CLI 二进制/版本/npm 升级探测，无 Git 认证、磁盘剩余空间或仓库依赖检查"],
+    advice: "在设置页「本地 Agent」旁增加一键「环境自检」，快速检查 git / 各 CLI 登录态 / 磁盘剩余空间 / 代理连通性。",
+    refs: [
+      { repo: "orca", path: "src/main/environment-doctor/environment-doctor.ts" },
+      { repo: "orca", path: "src/main/preflight/agent-detection.ts" }
+    ]
+  },
+  {
+    id: "pl-05", domain: "platform", type: "missing", priority: "P1",
+    title: "本地离线 + 云端语音听写（STT）与 LLM 润色清理",
+    essence: "按住说话直接口述复杂需求给 Agent，离线 Whisper/Parakeet 识别并支持 LLM 自动润色",
+    orca: [
+      "集成 transcribe-cpp（Parakeet/Whisper/SenseVoice/Nemotron）+ Silero VAD 停顿分段 + GPU 失败自动回退 CPU + MessagePort 零拷贝音频",
+      "支持云端 OpenAI-compatible 转录、按住说话（hold-to-talk）、静音自动停、仓库专有词典与本地 Agent 异步润色清理"
+    ],
+    aiwb: ["无任何语音输入、音频采集或听写能力"],
+    advice: "先接入轻量云端 Whisper/OpenAI-compatible STT 按钮（按住说话），后续按需支持本地 whisper.cpp 离线模式。",
+    refs: [
+      { repo: "orca", path: "src/main/speech/model-catalog.ts" },
+      { repo: "orca", path: "src/main/speech/dictation-cleanup-service.ts" }
+    ]
+  },
+  {
+    id: "pl-06", domain: "platform", type: "missing", priority: "P1",
+    title: "卡死看门狗（Hang Watchdog）与实时进程资源管理器",
+    essence: "捕获主进程/渲染器假死栈；状态栏实时看各工作树/PTY 内存占用并一键强杀泄漏进程",
+    orca: [
+      "独立 worker_threads 心跳看门狗（感知锁屏/休眠防误报）+ 渲染器 longtask/内存高水位/React 级联提交/输入回显延迟探针",
+      "状态栏内置进程资源管理器，按工作树/PTY 归因展示 RSS 内存树并支持确认强杀"
+    ],
+    aiwb: ["无卡死看门狗、无性能/长任务探针，也看不到各 Agent/终端子进程的 CPU 与内存占用"],
+    advice: "Rust 端用 sysinfo 枚举 daemon 子进程树内存/CPU，在状态栏/设置展示并允许强杀失控子进程。",
+    refs: [
+      { repo: "orca", path: "src/main/hang-watchdog/main-thread-hang-watchdog.ts" },
+      { repo: "orca", path: "src/renderer/src/components/status-bar/resources/ResourceUsageStatusSegment.tsx" }
+    ]
+  },
+  {
+    id: "pl-07", domain: "platform", type: "missing", priority: "P1",
+    title: "分步新手引导（Onboarding）、上下文导览与设置进度清单",
+    essence: "首次打开引导装 CLI/选主题/授权限，侧栏进度环帮助新用户快速跑通首条会话",
+    orca: [
+      "多步骤 Onboarding（语言、Agent 界面、内嵌 CLI 安装终端、主题画廊、通知权限、集成、Yolo 模式）",
+      "DOM 锚点高亮 Contextual Tours + 特性轮播 Tips + 侧栏进度环 Setup Guide"
+    ],
+    aiwb: ["EmptyState.tsx 仅 37 行静态空态页（导入/新建/无项目对话 3 个按钮），无首次环境引导"],
+    advice: "新安装未检测到任何已就绪 Agent 时，提供 3 步轻引导卡片（检测 CLI → 选主题 → 建首个项目），无需过度弹窗。",
+    refs: [
+      { repo: "orca", path: "src/renderer/src/components/onboarding/OnboardingFlow.tsx" },
+      { repo: "aiwb", path: "src/features/workspace/empty/EmptyState.tsx" }
+    ]
+  },
+  {
+    id: "pl-08", domain: "platform", type: "missing", priority: "P2",
+    title: "四级权限沙箱插件系统与 Marketplace（含远程 Kill-List）",
+    essence: "16+ 扩展点、独立 Worker 监管、隔离 WebView 帧、权限变更二次审批与加密插件密钥",
+    orca: [
+      "Manifest v2 四级最小权限（data / declarative / sandboxed-ui / trusted-worker），支持侧栏面板、命令劫持、生命周期 hooks、主题、语法、自定义编辑器、状态栏",
+      "PluginSupervisor 进程监管 + Sucrase 即时编译 + 官方/Git SSH 市场 + 原子回滚 + 6h 轮询远程 Kill-List + 加密 secrets 与审计日志"
+    ],
+    aiwb: ["完全无插件体系（仅支持外部 MCP 工具与内部 panel viewer 注册表）"],
+    advice: "核心产品打磨到位后再开放轻量声明式扩展点（主题/自定义面板），早期切忌过早背负重型插件沙箱兼容债。",
+    refs: [
+      { repo: "orca", path: "src/main/plugins/workers/worker-supervision/plugin-supervisor.ts" },
+      { repo: "orca", path: "docs/reference/plugin-manifest.md" }
+    ]
+  },
+  {
+    id: "pl-09", domain: "platform", type: "missing", priority: "defer",
+    title: "桌面像素宠物（Pet Overlay）",
+    essence: "订阅 Agent 状态切换像素精灵动画，支持自定义雪碧图自动帧检测",
+    orca: ["PetOverlay 订阅实时 Agent 状态、自动识别不规则雪碧图帧、拖拽交互、减弱动效自动暂停"],
+    aiwb: ["无"],
+    advice: "趣味彩蛋功能，非生产效率项，明确暂缓。",
+    refs: [
+      { repo: "orca", path: "src/renderer/src/components/pet/PetOverlay.tsx" }
+    ]
+  },
+  {
+    id: "pl-10", domain: "platform", type: "weaker", priority: "P0",
+    title: "系统通知、离席注意力判定与系统托盘",
+    essence: "AIWB 无通知设置/静音/提示音，点通知不能跳会话，锁屏离开电脑时前台任务会被误标已读",
+    orca: [
+      "原生读取 Windows Focus Assist / macOS DND 与授权态；10+ 提示音+自定义音频+音量；按源/主机/工作树静音；突发冷却与测试按钮",
+      "useReadOnScreenAttention 结合系统空闲/锁屏状态（desktop-away），人离开电脑时绝不自动标已读",
+      "托盘动态合成 1x/2x 未读琥珀图标 + 丰富菜单（打开/设置/查更新/退出/退出并停所有会话）"
+    ],
+    aiwb: [
+      "src-tauri/src/attention.rs 仅发默认系统通知，完全无通知设置页、无提示音/静音、不读系统勿扰、点击通知无跳转回调",
+      "board/use-viewing.ts 仅看 document.visibilityState && hasFocus()，锁屏或离席时前台完成的会话直接吞掉通知并标已读",
+      "src-tauri/src/tray.rs 仅「显示主窗口 / 退出」2 项与静态图标（仅改 tooltip）"
+    ],
+    advice: "P0 极高性价比：① 通知加点击回调聚焦对应任务；② 用 OS idle/lock 检测修正 viewing 判定；③ 设置页补通知开关/提示音/免打扰；④ 托盘加未读徽标与「设置/退出并停止后台」。",
+    refs: [
+      { repo: "orca", path: "src/main/notifications/notification-delivery-service.ts" },
+      { repo: "orca", path: "src/main/tray/tray-attention-icon.ts" },
+      { repo: "aiwb", path: "src-tauri/src/attention.rs" },
+      { repo: "aiwb", path: "src/features/board/use-viewing.ts" }
+    ]
+  },
+  {
+    id: "pl-11", domain: "platform", type: "weaker", priority: "P0",
+    title: "错误边界与守护进程异常恢复",
+    essence: "AIWB 渲染报错仅静态死文案无重试按钮无日志上报；断连横幅无法区分进程失联与假死",
+    orca: [
+      "RecoverableRenderErrorBoundary 自动过滤 chunk 懒加载错、结构化上报并弹崩溃报告、提供就地 Retry 重置与多表面隔离",
+      "周期探活 daemon 与异步 I/O，明确区分「进程断联」与「异步假死」并提供一键确认重启"
+    ],
+    aiwb: [
+      "ChatErrorBoundary.ts 仅 32 行静态文案「这条会话暂时无法显示」，无 componentDidCatch 上报、无重试按钮，且 App 顶层与其他面板无错误边界",
+      "ConnectionNotice.tsx 仅 15 行静态提示条，无诊断与手动重启 daemon 入口"
+    ],
+    advice: "补全顶层 + 分面板 ErrorBoundary（带报错堆栈复制、落盘与一键重试），断连横幅增加「重连 / 重启后台服务」按钮。",
+    refs: [
+      { repo: "orca", path: "src/renderer/src/components/error-boundaries/RecoverableRenderErrorBoundary.tsx" },
+      { repo: "aiwb", path: "src/features/chat/timeline/ChatErrorBoundary.ts" },
+      { repo: "aiwb", path: "src/shared/shell/ConnectionNotice.tsx" }
+    ]
+  },
+  {
+    id: "pl-12", domain: "platform", type: "weaker", priority: "P1",
+    title: "Skills 全生命周期管理：仅 $ 补全 vs 跨 26 目录发现 / 事务安装 / 分享",
+    essence: "AIWB 只能在输入框按 $ 过滤 CLI 列表，没有独立技能管理页与跨目录扫描/安装/更新",
+    orca: [
+      "独立 SkillsPage，扫描 26+ 主目录/仓库/Claude 插件/WSL/远程目录（10s 缓存+5min 降级保留）",
+      "事务化跨 Provider 放置、别名/副本漂移修复、内置技能过期提醒与 .tar.gz 云端打包分享"
+    ],
+    aiwb: ["仅从各 Agent 协议读取技能列表，在 composer/SkillMenu.tsx 做子串补全插入 $mention，无管理页与本地文件扫描"],
+    advice: "在设置页增加「Skills」面板，展示本机与当前项目扫描到的技能列表、来源路径、启停与一键打开 SKILL.md 编辑。",
+    refs: [
+      { repo: "orca", path: "src/main/skills/discovery/skill-native-discovery.ts" },
+      { repo: "orca", path: "src/renderer/src/components/skills/SkillsPage.tsx" },
+      { repo: "aiwb", path: "src/features/chat/composer/SkillMenu.tsx" }
+    ]
+  },
+  {
+    id: "pl-13", domain: "platform", type: "weaker", priority: "P1",
+    title: "快捷键体系、主题外观与设置中心检索",
+    essence: "AIWB 6 组快捷键写死不可改且无展示页；设置页仅 3 个无搜索标签且仅 2 套配色",
+    orca: [
+      "~/.orca/keybindings.json 持久化 + 可视化录制器 + 全局/插件/macOS 系统快捷键冲突检测 + 终端按键优先级策略",
+      "App/编辑器/终端独立深浅槽位、Win11 Acrylic / macOS Blur 材质、自定义图标、UI 缩放与减弱动效",
+      "设置中心全站本地化关键词搜索、深链定位与高亮"
+    ],
+    aiwb: [
+      "快捷键硬编码分散在 command-menu/keyboard.ts 等多处，不可查看或修改",
+      "SettingsView.tsx 仅 3 个无搜索标签（本地 Agent / MCP / 常规与外观），仅 obsidian / daylight / system 三选"
+    ],
+    advice: "先做「快捷键速查表 + 自定义重绑」和「UI 字号/紧凑度调节」，设置项增多后补顶部过滤框。",
+    refs: [
+      { repo: "orca", path: "src/main/keybindings/keybinding-service.ts" },
+      { repo: "orca", path: "src/renderer/src/components/settings/Settings.tsx" },
+      { repo: "aiwb", path: "src/features/settings/SettingsView.tsx" }
+    ]
+  },
+  {
+    id: "pl-14", domain: "platform", type: "weaker", priority: "P1",
+    title: "应用自动更新器：启动单查单渠道 vs 周期退避 / 多渠道 / 平台恢复",
+    essence: "AIWB 常驻后台不会周期检查更新，仅支持 GitHub latest 单渠道且纯文本展示日志",
+    orca: [
+      "24h 周期检查 + 指数退避重试（1h→6h）+ Nudge 提醒；支持 stable/rc 通道、历史版本选择与可配置发布延迟天数",
+      "macOS 多实例检测 + ShipIt 调度加速（75s→8s）+ Linux 恢复卡 + 安装退出看门狗"
+    ],
+    aiwb: [
+      "仅启动时 useStartupUpdateCheck 查一次，长驻托盘不定时复查",
+      "写死单一 GitHub latest.json，无 Beta 通道/版本回退/代理设置，UpdateDialog 用纯文本 <p> 渲染更新日志"
+    ],
+    advice: "补每 6~12h 定时后台检查、Markdown 渲染 Release Notes、以及 Beta 通道开关与国内镜像回退。",
+    refs: [
+      { repo: "orca", path: "src/main/updater/releases/updater-release-delay.ts" },
+      { repo: "aiwb", path: "src/features/updates/UpdateDialog.tsx" }
+    ]
+  },
+  {
+    id: "pl-15", domain: "platform", type: "weaker", priority: "P2",
+    title: "国际化（i18n）：全仓硬编码简中 vs 双进程 i18next 11 语言",
+    essence: "AIWB 文案硬编码简体中文且 NSIS 安装包锁死中文；Orca 支持 11 语言动态切换与插件语言包",
+    orca: [
+      "双进程 i18next 内置 11 种语言（中/英/日/韩/德/法/西/俄/葡/土/繁中）、按需懒加载、CLDR 复数与插件语言包"
+    ],
+    aiwb: ["全仓 TSX/Rust 硬编码简体中文，仅抽 273 行静态 desktop-zh.ts，无运行时语言切换"],
+    advice: "面向国内团队当前可保持中文优先；若计划开源国际化，需尽早抽离文案键并引入轻量化 i18n。",
+    refs: [
+      { repo: "orca", path: "src/renderer/src/i18n/i18n.ts" },
+      { repo: "aiwb", path: "src/shared/strings/desktop-zh.ts" }
+    ]
+  }
+];
+
+const AIWB_STRENGTHS = [
+  {
+    title: "同任务原地热切换 Agent + 统一时间线 + Delta 增量交接",
+    tag: "AIWB 独有反超",
+    desc: "同一 Task 内可中途从 Codex 切到 Claude 再切回 Codex，切回曾用 Agent 时自动 resume 原生线程并仅补发期间缺失的 Delta 上下文；Orca 只能新建标签页。",
+    refs: [{ repo: "aiwb", path: "crates/aiwb-daemon/src/services/handoff.rs" }, { repo: "aiwb", path: "crates/aiwb-core/src/handoff.rs" }]
+  },
+  {
+    title: "Worktree ↔ 项目主目录双向原子交接（Hand off / Hand back）",
+    tag: "AIWB 独有反超",
+    desc: "通过临时 GIT_INDEX_FILE + refs/aiwb/handoff/<uuid> 将分支和脏改动（含未跟踪文件）无损移入主目录测试，结束后一键交回工作树并全量回滚保护；Orca 无此流。",
+    refs: [{ repo: "aiwb", path: "crates/aiwb-git/src/handoff.rs" }, { repo: "aiwb", path: "src/features/chat/composer/WorktreeHandOff.tsx" }]
+  },
+  {
+    title: "Worktree 自动快照搁置与按需无损恢复（Shelve & Restore）",
+    tag: "AIWB 独有反超",
+    desc: "超 keepCount 或归档后将整个工作树（含未提交与未跟踪文件）存为 refs/aiwb/snapshots/<id> 再删目录省空间，发消息时自动重建并铺回 .worktreeinclude；Orca 的 sleep 仍占磁盘、cleanup 则是永久删除。",
+    refs: [{ repo: "aiwb", path: "crates/aiwb-git/src/snapshot.rs" }, { repo: "aiwb", path: "crates/aiwb-daemon/src/services/worktrees.rs" }]
+  },
+  {
+    title: "轻量 Rust 单二进制 Daemon + Tauri 壳 + SQLite 强一致 Hub",
+    tag: "架构红利",
+    desc: "内置 portable-pty 与 SQLite WAL，零 Electron/Node 运行时与 node-pty ABI 预编译矩阵负担；hub.rs 70 行实现同锁递增 seq 广播防丢消息；Windows 通过版本子目录拷贝 daemon.exe 无锁热替换。",
+    refs: [{ repo: "aiwb", path: "crates/aiwb-daemon/src/hub.rs" }, { repo: "aiwb", path: "src-tauri/src/daemon.rs" }]
+  },
+  {
+    title: "Subtask Offer 三态主动授权卡片 + 统一子智能体抽屉",
+    tag: "AIWB 特色",
+    desc: "区分 user_asked / offer / own_initiative 发起意图，由内嵌卡片经用户确认再建独立工作树子任务，右侧 SubagentsTab 统一查看并可单停/全停后台子任务，内置 clientRequestId 幂等防重。",
+    refs: [{ repo: "aiwb", path: "crates/aiwb-daemon/src/mcp/sessions.rs" }, { repo: "aiwb", path: "src/features/chat/events/SubtaskOfferCard.tsx" }]
+  },
+  {
+    title: "Windows 任务栏抗锯齿数字角标 + 2 秒通知防抖宽限期",
+    tag: "AIWB 更细",
+    desc: "自绘 16×16 RGBA 琥珀数字角标（1..9, 9+），Orca 仅 macOS Dock 有未读角标、Windows 缺失；变未读后延迟 2s 发系统通知，若后台子任务立刻续跑则自动撤销防骚扰。",
+    refs: [{ repo: "aiwb", path: "src-tauri/src/attention.rs" }, { repo: "orca", path: "src/main/dock/unread-badge.ts" }]
+  },
+  {
+    title: "Rust 内存增量路径索引 + 面包屑交互式目录树",
+    tag: "轻量高效",
+    desc: "daemon 维护遵守 .gitignore 的内存索引（带代数取消 FilterHub），无需每次按键起子进程；点击预览路径栏任意目录段直接弹出可展开目录树并自动定位当前文件。",
+    refs: [{ repo: "aiwb", path: "crates/aiwb-files/src/index/mod.rs" }, { repo: "aiwb", path: "src/features/panel/files/BreadcrumbMenu.tsx" }]
+  },
+  {
+    title: "排队消息直转侧边聊天 + 原生 Codex /review + 细粒度沙箱",
+    tag: "实用细节",
+    desc: "支持选中文本或把排队中消息直接转入零污染的 SideChat（Codex ephemeral fork / Claude --no-session-persistence）；原生暴露网络开关、--add-dir 与 Codex 分支/提交审查流。",
+    refs: [{ repo: "aiwb", path: "src/features/workspace/side-chat/SideChatView.tsx" }, { repo: "aiwb", path: "src/features/chat/composer/ReviewMenu.tsx" }]
+  },
+  {
+    title: "浏览器元素+任意框选双模批注 + 按住 Space 穿透操作",
+    tag: "交互简洁",
+    desc: "同一批注模式同时支持点击元素与拖拽任意区域框选，并可按住 Space 临时穿透点网页，心智路径比 Orca 分离的 Grab / Markup 双入口更轻。",
+    refs: [{ repo: "aiwb", path: "src-tauri/src/features/preview/page.js" }]
+  },
+  {
+    title: "侧栏收起悬停浮出（Sidebar Peek）+ 边缘注意脉冲条",
+    tag: "交互简洁",
+    desc: "收起侧栏后鼠标靠左缘 8px 即可浮出浏览，有待处理会话时在边缘亮橙色脉冲提示条，兼顾专注画布与多任务感知。",
+    refs: [{ repo: "aiwb", path: "src/features/sidebar/SidebarPeek.tsx" }]
+  },
+  {
+    title: "MCP 会话 256-bit 临时凭证 + 数据驱动多 Agent UI 零分支",
+    tag: "工程整洁",
+    desc: "每次拉起 Agent 签发 256-bit 随机 token 且内存仅存 SHA-256 摘要，会话结束即废；前端严格由适配器能力驱动，不按 Agent 名称硬编码 UI 分支；Agent 升级内置 npmmirror 贴合国内网络。",
+    refs: [{ repo: "aiwb", path: "crates/aiwb-daemon/src/mcp/tokens.rs" }, { repo: "aiwb", path: "crates/aiwb-agents/src/install/mod.rs" }]
+  },
+  {
+    title: "中文 Windows 边界打磨（CP936 误读修复 + CJK IME/AltGraph）",
+    tag: "本地化细节",
+    desc: "aiwb-proc 精准处理中文 Windows GBK/UTF-8 编码问题；全局快捷键处理 IME keyCode 229、物理键位与 AltGraph 防误触；建树原生支持 .worktreeinclude + carry_changes 携带脏改动。",
+    refs: [{ repo: "aiwb", path: "crates/aiwb-proc/src/lib.rs" }, { repo: "aiwb", path: "src/features/command-menu/keyboard.ts" }]
+  }
+];
+
+const FACT_CHECKS = [
+  {
+    claim: "Orca 文档（review/attribution.mdx）声称 Diff 边栏支持逐行 AI vs 人类代码归因标记",
+    truth: "源码核实未实现：检索 Orca 全仓 src/，不存在任何 Diff 行级 AI 代码归因或边栏 provenance 标记逻辑；代码里的 attribution 仅用于用量/账号/自动化归因。",
+    refs: [{ repo: "orca", path: "docs/site/content/docs/review/attribution.mdx" }, { repo: "orca", path: "src/main/usage/worktree-attribution/usage-event-attribution.ts" }]
+  },
+  {
+    claim: "Orca 文档中的 Worktree Checkpoints（cli/worktree-checkpoints.mdx）是类似 Git 的逐轮代码回滚点",
+    truth: "源码核实并非代码回滚点：它只是工作树卡片的自由文本状态备注（orca worktree set --comment），双方均未实现逐 Turn 文件级回滚快照（反而是 AIWB 有工作树清理搁置快照）。",
+    refs: [{ repo: "orca", path: "docs/site/content/docs/cli/worktree-checkpoints.mdx" }, { repo: "aiwb", path: "crates/aiwb-git/src/snapshot.rs" }]
+  },
+  {
+    claim: "Orca 的 src/main/memory/ 模块是跨会话 LLM 长期记忆引擎",
+    truth: "源码核实该目录是 OS 进程级 CPU/RSS 内存监控采集器；真正的 LLM 跨回合记忆（MEMORY.md + 夜间自动蒸馏）位于 src/main/bots/。",
+    refs: [{ repo: "orca", path: "src/main/memory/collector.ts" }, { repo: "orca", path: "src/main/bots/bot-memory-tidy-up.ts" }]
+  },
+  {
+    claim: "Orca 已支持 Hunk/行级暂存（git apply --cached）与 Git Stash 管理界面",
+    truth: "源码核实双方均未实现：Orca 的 staging.ts 仅支持文件/目录/全量级暂存与丢弃，也无 Stash 列表 UI；两仓库亦均无内置原生 .xlsx 查看器或跨文件全局替换。",
+    refs: [{ repo: "orca", path: "src/main/git/source-control/mutations/staging.ts" }]
+  }
+];
+
+const STORAGE_SHORTLIST = "aiwb_orca_shortlist_v1";
+const STORAGE_THEME = "aiwb_orca_theme_v1";
+const STORAGE_LIST_W = "aiwb_orca_list_w_v1";
+
+const DOMAIN_MAP = Object.fromEntries(DOMAINS.map(d => [d.id, d]));
+const PRIO_ORDER = { P0: 0, P1: 1, P2: 2, defer: 3 };
+const PRIO_LABEL = { P0: "P0 核心", P1: "P1 跃升", P2: "P2 生态", defer: "暂缓" };
+const TIER_META = {
+  P0: { title: "P0 核心", sub: "立刻补齐：高 ROI 日常痛点 + 3 项安全隐患，完全契合 Tauri + Rust 轻量架构。" },
+  P1: { title: "P1 跃升", sub: "体验跃升：SSH/WSL、自动化、Git 进阶、多端访问等拉开产品上限的能力。" },
+  P2: { title: "P2 生态", sub: "按需推进：插件市场、Computer Use、模拟器、Bots 群聊、多语言等中后期能力。" },
+  defer: { title: "暂缓", sub: "保持克制：重云运维/重体积项（云中继、双端原生 App、175 文件 Chrome 扩展、桌面宠物）。" }
+};
+
+function loadShortlist() {
+  try {
+    const raw = localStorage.getItem(STORAGE_SHORTLIST);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr : [];
+  } catch { return []; }
+}
+function saveShortlist() {
+  try { localStorage.setItem(STORAGE_SHORTLIST, JSON.stringify([...state.shortlist])); } catch {}
+}
+
+const state = {
+  view: "explorer",        // explorer | matrix | roadmap | strengths | shortlist
+  domain: "all",
+  type: "all",             // all | missing | weaker
+  prio: "all",             // all | P0 | P1 | P2 | defer
+  secOnly: false,
+  query: "",
+  selectedId: null,
+  matrixDomain: DOMAINS[0]?.id || "agents",
+  roadmapTier: "P0",
+  roadmapSelectedId: null,
+  shortlist: new Set(loadShortlist())
+};
+
+function initThemeAndWidth() {
+  let theme = "light";
+  try {
+    const saved = localStorage.getItem(STORAGE_THEME);
+    if (saved === "dark" || saved === "light") theme = saved;
+    else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) theme = "dark";
+    const lw = Number(localStorage.getItem(STORAGE_LIST_W));
+    if (lw >= 240 && lw <= 560) document.documentElement.style.setProperty("--list-w", lw + "px");
+  } catch {}
+  applyTheme(theme);
+}
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  const btn = document.getElementById("themeBtn");
+  if (btn) btn.textContent = theme === "dark" ? "浅色" : "深色";
+  try { localStorage.setItem(STORAGE_THEME, theme); } catch {}
+}
+
+function esc(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+let toastTimer = null;
+function showToast(msg) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"), 1800);
+}
+
+async function copyText(text, label) {
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast(label || "已复制");
+  } catch {
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select(); document.execCommand("copy");
+    document.body.removeChild(ta);
+    showToast(label || "已复制");
+  }
+}
+
+function sortGaps(arr) {
+  return arr.sort((a, b) => {
+    if (a.security && !b.security) return -1;
+    if (!a.security && b.security) return 1;
+    const pDiff = PRIO_ORDER[a.priority] - PRIO_ORDER[b.priority];
+    if (pDiff !== 0) return pDiff;
+    if (a.type !== b.type) return a.type === "missing" ? -1 : 1;
+    return 0;
+  });
+}
+
+function matchesQuery(item, q) {
+  if (!q) return true;
+  const hay = [
+    item.title, item.essence, DOMAIN_MAP[item.domain]?.name || "", item.advice,
+    ...item.orca, ...item.aiwb, ...item.refs.map(r => r.path)
+  ].join(" ").toLowerCase();
+  return q.split(/\s+/).filter(Boolean).every(t => hay.includes(t));
+}
+
+function filteredGaps() {
+  const q = state.query.trim().toLowerCase();
+  return sortGaps(GAPS.filter(item => {
+    if (state.domain !== "all" && item.domain !== state.domain) return false;
+    if (state.type !== "all" && item.type !== state.type) return false;
+    if (state.prio !== "all" && item.priority !== state.prio) return false;
+    if (state.secOnly && !item.security) return false;
+    return matchesQuery(item, q);
+  }));
+}
+
+function roadmapItems() {
+  const q = state.query.trim().toLowerCase();
+  return sortGaps(GAPS.filter(g => g.priority === state.roadmapTier && matchesQuery(g, q)));
+}
+
+function badgeType(type) {
+  return type === "missing"
+    ? '<span class="badge b-missing">缺失</span>'
+    : '<span class="badge b-weaker">差距</span>';
+}
+function badgePrio(p) {
+  const cls = p === "P0" ? "b-p0" : p === "P1" ? "b-p1" : p === "P2" ? "b-p2" : "b-defer";
+  return `<span class="badge ${cls}">${esc(PRIO_LABEL[p] || p)}</span>`;
+}
+function renderRefs(refs) {
+  return refs.map(r => {
+    const cls = r.repo === "orca" ? "r-orca" : "r-aiwb";
+    const full = (r.repo === "orca" ? "orca/" : "ai-workbench/") + r.path;
+    return `<button type="button" class="path-chip" data-copy-path="${esc(full)}" title="点击复制：${esc(full)}"><span class="repo-tag ${cls}">${esc(r.repo)}</span><span>${esc(r.path)}</span></button>`;
+  }).join("");
+}
+
+function renderDetailPane(item, list, mode) {
+  if (!item) {
+    return `
+      <section class="detail-pane">
+        <div class="detail-body">
+          <div class="empty-box">
+            <div>当前筛选条件下无匹配项</div>
+            <button class="btn" id="resetFiltersBtn">重置筛选</button>
+          </div>
+        </div>
+      </section>
+    `;
+  }
+  const idx = list.findIndex(x => x.id === item.id);
+  const starred = state.shortlist.has(item.id);
+  const prevId = idx > 0 ? list[idx - 1].id : "";
+  const nextId = idx >= 0 && idx < list.length - 1 ? list[idx + 1].id : "";
+  const navAttr = mode === "roadmap" ? "data-rm-select" : "data-select-id";
+
+  return `
+    <section class="detail-pane" id="detailPane">
+      <div class="detail-head">
+        ${badgeType(item.type)}
+        ${badgePrio(item.priority)}
+        ${item.security ? '<span class="badge b-sec">安全隐患</span>' : ""}
+        <span class="badge b-domain">${esc(DOMAIN_MAP[item.domain].name)}</span>
+        <div class="detail-nav">
+          <button type="button" class="btn sm ${starred ? "primary" : ""}" data-star-id="${esc(item.id)}" title="收藏至待办 (S)">${starred ? "★ 已收藏" : "☆ 加入待办"}</button>
+          <span class="detail-pos">${idx + 1} / ${list.length}</span>
+          <button type="button" class="btn sm" ${prevId ? `${navAttr}="${esc(prevId)}"` : "disabled"} title="上一条 (↑ / K)">↑</button>
+          <button type="button" class="btn sm" ${nextId ? `${navAttr}="${esc(nextId)}"` : "disabled"} title="下一条 (↓ / J)">↓</button>
+        </div>
+      </div>
+
+      <div class="detail-body" id="detailBody">
+        <div class="detail-inner">
+          <h1 class="detail-title">${esc(item.title)}</h1>
+          <div class="essence-box">${esc(item.essence)}</div>
+
+          <div class="compare-grid">
+            <div class="cmp-card orca">
+              <div class="cmp-head"><span>Orca 源码实现</span><span>${item.type === "missing" ? "独有能力" : "标杆方案"}</span></div>
+              <ul class="cmp-list">${item.orca.map(x => `<li>${esc(x)}</li>`).join("")}</ul>
+            </div>
+            <div class="cmp-card aiwb">
+              <div class="cmp-head"><span>AI Workbench 现状</span><span>${item.type === "missing" ? "当前空白" : "主要短板"}</span></div>
+              <ul class="cmp-list">${item.aiwb.map(x => `<li>${esc(x)}</li>`).join("")}</ul>
+            </div>
+          </div>
+
+          <div class="advice-card">
+            <div class="advice-head">AIWB 落地建议（契合 Rust Daemon + Tauri 架构）</div>
+            <div class="advice-text">${esc(item.advice)}</div>
+          </div>
+
+          <div class="refs-card">
+            <div class="refs-head"><span>源码依据（已核实路径，点击复制）</span><span>${item.refs.length} 处</span></div>
+            <div class="refs-wrap">${renderRefs(item.refs)}</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderExplorer() {
+  const list = filteredGaps();
+  if (!list.some(x => x.id === state.selectedId)) {
+    state.selectedId = list[0]?.id || null;
+  }
+  const activeItem = list.find(x => x.id === state.selectedId) || null;
+  const totalM = GAPS.filter(g => g.type === "missing").length;
+  const totalW = GAPS.filter(g => g.type === "weaker").length;
+  const totalP0 = GAPS.filter(g => g.priority === "P0").length;
+
+  const railRows = [
+    `<button type="button" class="rail-btn ${state.domain === "all" ? "active" : ""}" data-domain="all">
+      <span class="r-name">全部模块</span><span class="r-cnt">${GAPS.length}</span>
+    </button>`,
+    ...DOMAINS.map(d => {
+      const m = GAPS.filter(g => g.domain === d.id && g.type === "missing").length;
+      const w = GAPS.filter(g => g.domain === d.id && g.type === "weaker").length;
+      return `<button type="button" class="rail-btn ${state.domain === d.id ? "active" : ""}" data-domain="${esc(d.id)}" title="${esc(d.verdict)}">
+        <span class="r-name">${esc(d.name)}</span>
+        <span class="r-cnt"><span style="color:var(--missing-fg)">${m}</span>/<span style="color:var(--weaker-fg)">${w}</span></span>
+      </button>`;
+    })
+  ].join("");
+
+  const domainOptions = [
+    `<option value="all" ${state.domain === "all" ? "selected" : ""}>全部模块 (${GAPS.length})</option>`,
+    ...DOMAINS.map(d => {
+      const c = GAPS.filter(g => g.domain === d.id).length;
+      return `<option value="${esc(d.id)}" ${state.domain === d.id ? "selected" : ""}>${esc(d.name)} (${c})</option>`;
+    })
+  ].join("");
+
+  const listHtml = list.length === 0
+    ? `<div class="empty-box">无匹配项<button class="btn sm" id="resetFiltersBtn">重置筛选</button></div>`
+    : list.map(item => {
+        const sel = item.id === state.selectedId;
+        const starred = state.shortlist.has(item.id);
+        return `
+          <div class="list-item ${sel ? "selected" : ""}" data-select-id="${esc(item.id)}">
+            <div class="li-top">
+              ${badgeType(item.type)}
+              ${badgePrio(item.priority)}
+              ${item.security ? '<span class="badge b-sec">安全</span>' : ""}
+              <button type="button" class="li-star ${starred ? "starred" : ""}" data-star-id="${esc(item.id)}" title="${starred ? "移出待办" : "加入待办"}">${starred ? "★" : "☆"}</button>
+            </div>
+            <div class="li-title">${esc(item.title)}</div>
+            <div class="li-essence">${esc(item.essence)}</div>
+          </div>
+        `;
+      }).join("");
+
+  return `
+    <aside class="rail">
+      <div class="rail-scroll">
+        <div class="rail-label">10 大模块 (缺/差)</div>
+        ${railRows}
+      </div>
+      <div class="rail-foot">
+        <button type="button" class="sec-quick-btn" data-jump-sec="1"><span>⚠ 安全短板</span><span>3 隐患 →</span></button>
+        <div class="rail-stat-row"><span>缺失 ${totalM} · 差距 ${totalW}</span><span>P0 ${totalP0}</span></div>
+        <div style="font-size:10.5px;color:var(--fg-3)">↑↓ 切项 · S 收藏 · / 搜索</div>
+      </div>
+    </aside>
+
+    <section class="master-pane" id="masterPane">
+      <div class="master-head">
+        <div class="domain-select-wrap">
+          <select id="domainSelect" class="domain-select">${domainOptions}</select>
+        </div>
+        <div class="master-row">
+          <div class="seg" id="typeSeg">
+            <button type="button" data-type="all" class="${state.type === "all" ? "active" : ""}">全部</button>
+            <button type="button" data-type="missing" class="${state.type === "missing" ? "active" : ""}">缺失</button>
+            <button type="button" data-type="weaker" class="${state.type === "weaker" ? "active" : ""}">差距</button>
+          </div>
+          <span class="master-count">${list.length} / ${GAPS.length}</span>
+        </div>
+        <div class="master-row" id="prioChips">
+          <button type="button" class="chip ${state.prio === "all" && !state.secOnly ? "active" : ""}" data-prio="all">全</button>
+          <button type="button" class="chip ${state.prio === "P0" ? "active" : ""}" data-prio="P0">P0</button>
+          <button type="button" class="chip ${state.prio === "P1" ? "active" : ""}" data-prio="P1">P1</button>
+          <button type="button" class="chip ${state.prio === "P2" ? "active" : ""}" data-prio="P2">P2</button>
+          <button type="button" class="chip ${state.prio === "defer" ? "active" : ""}" data-prio="defer">暂缓</button>
+          <button type="button" class="chip ${state.secOnly ? "active-sec" : ""}" data-sec-toggle="1">⚠ 安全</button>
+        </div>
+      </div>
+      <div class="master-list" id="masterList">${listHtml}</div>
+    </section>
+
+    <div class="resizer" id="resizer" title="拖拽调整左右栏宽度"></div>
+
+    ${renderDetailPane(activeItem, list, "explorer")}
+  `;
+}
+
+function renderMatrix() {
+  const curDomain = DOMAIN_MAP[state.matrixDomain] || DOMAINS[0];
+  const dItems = sortGaps(GAPS.filter(g => g.domain === curDomain.id && matchesQuery(g, state.query.trim().toLowerCase())));
+  const dm = dItems.filter(g => g.type === "missing").length;
+  const dw = dItems.filter(g => g.type === "weaker").length;
+  const dp0 = dItems.filter(g => g.priority === "P0").length;
+
+  const leftRows = DOMAINS.map(d => {
+    const items = GAPS.filter(g => g.domain === d.id);
+    const m = items.filter(g => g.type === "missing").length;
+    const w = items.filter(g => g.type === "weaker").length;
+    const p0 = items.filter(g => g.priority === "P0").length;
+    const mPct = items.length ? (m / items.length) * 100 : 0;
+    const wPct = items.length ? (w / items.length) * 100 : 0;
+    return `
+      <div class="matrix-row ${d.id === curDomain.id ? "selected" : ""}" data-matrix-domain="${esc(d.id)}">
+        <div class="mr-top">
+          <span class="mr-title">${esc(d.name)}</span>
+          <span style="display:inline-flex;gap:4px">
+            <span class="badge b-missing">缺 ${m}</span>
+            <span class="badge b-weaker">差 ${w}</span>
+            <span class="badge b-p0">P0 ${p0}</span>
+          </span>
+        </div>
+        <div class="mr-bar"><div class="mr-bar-m" style="width:${mPct.toFixed(1)}%"></div><div class="mr-bar-w" style="width:${wPct.toFixed(1)}%"></div></div>
+        <div class="mr-verdict">${esc(d.verdict)}</div>
+      </div>
+    `;
+  }).join("");
+
+  return `
+    <div class="split-2">
+      <section class="split-left">
+        <div class="pane-header"><h2>10 大功能域总览</h2><span class="mono" style="color:var(--fg-3)">点击右侧直看清单</span></div>
+        <div class="pane-scroll">${leftRows}</div>
+      </section>
+      <section class="split-right">
+        <div class="pane-header">
+          <h2>${esc(curDomain.name)} <span class="badge b-missing">缺失 ${dm}</span> <span class="badge b-weaker">差距 ${dw}</span> <span class="badge b-p0">P0 ${dp0}</span></h2>
+          <button type="button" class="btn sm primary" data-open-in-explorer="${esc(curDomain.id)}">在对比视图打开 →</button>
+        </div>
+        <div class="detail-body">
+          <div class="detail-inner">
+            <div class="essence-box">${esc(curDomain.verdict)}</div>
+            <div class="domain-detail-list">
+              ${dItems.map(item => `
+                <div class="dd-card" data-jump-id="${esc(item.id)}">
+                  <div class="dd-top">
+                    ${badgeType(item.type)}
+                    ${badgePrio(item.priority)}
+                    ${item.security ? '<span class="badge b-sec">安全</span>' : ""}
+                    <span class="dd-title">${esc(item.title)}</span>
+                  </div>
+                  <div class="dd-essence">${esc(item.essence)}</div>
+                </div>
+              `).join("")}
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderRoadmap() {
+  const list = roadmapItems();
+  if (!list.some(x => x.id === state.roadmapSelectedId)) {
+    state.roadmapSelectedId = list[0]?.id || null;
+  }
+  const activeItem = list.find(x => x.id === state.roadmapSelectedId) || null;
+  const meta = TIER_META[state.roadmapTier];
+
+  const tabs = ["P0", "P1", "P2", "defer"].map(k => {
+    const cnt = GAPS.filter(g => g.priority === k).length;
+    return `<button type="button" class="tier-tab ${state.roadmapTier === k ? "active" : ""}" data-rm-tier="${k}">
+      <span>${esc(TIER_META[k].title)}</span><small>${cnt} 项</small>
+    </button>`;
+  }).join("");
+
+  const listHtml = list.length === 0
+    ? '<div class="empty-box">当前搜索下此层级无匹配项</div>'
+    : list.map(item => {
+        const sel = item.id === state.roadmapSelectedId;
+        const starred = state.shortlist.has(item.id);
+        return `
+          <div class="list-item ${sel ? "selected" : ""}" data-rm-select="${esc(item.id)}">
+            <div class="li-top">
+              ${badgeType(item.type)}
+              ${item.security ? '<span class="badge b-sec">安全</span>' : ""}
+              <span class="badge b-domain">${esc(DOMAIN_MAP[item.domain].name)}</span>
+              <button type="button" class="li-star ${starred ? "starred" : ""}" data-star-id="${esc(item.id)}">${starred ? "★" : "☆"}</button>
+            </div>
+            <div class="li-title">${esc(item.title)}</div>
+            <div class="li-essence">${esc(item.advice)}</div>
+          </div>
+        `;
+      }).join("");
+
+  return `
+    <div class="split-2">
+      <section class="split-left" id="masterPane">
+        <div class="tier-tabs">${tabs}</div>
+        <div class="tier-rationale">${esc(meta.sub)}</div>
+        <div class="pane-scroll" id="masterList">${listHtml}</div>
+      </section>
+      ${renderDetailPane(activeItem, list, "roadmap")}
+    </div>
+  `;
+}
+
+function renderStrengths() {
+  return `
+    <div class="split-2">
+      <section class="split-left-half">
+        <div class="pane-header">
+          <h2>AI Workbench 已有优势 / 反超点（迭代时务必保留）</h2>
+          <span class="badge b-ok">${AIWB_STRENGTHS.length} 项</span>
+        </div>
+        <div class="pane-scroll">
+          ${AIWB_STRENGTHS.map(s => `
+            <div class="info-card">
+              <div class="info-title"><span class="badge b-ok">${esc(s.tag)}</span><span>${esc(s.title)}</span></div>
+              <div class="info-desc">${esc(s.desc)}</div>
+              <div class="refs-wrap">${renderRefs(s.refs)}</div>
+            </div>
+          `).join("")}
+        </div>
+      </section>
+      <section class="split-right">
+        <div class="pane-header">
+          <h2>源码核实纠偏 &amp; 安全红线</h2>
+          <span class="badge b-domain">${FACT_CHECKS.length} 纠偏 + 3 安全隐患</span>
+        </div>
+        <div class="pane-scroll">
+          <div class="sec-alert-card">
+            <div class="info-title"><span class="badge b-sec">安全红线</span><span>AIWB 核实存在 3 处直接安全隐患</span></div>
+            <div class="info-desc" style="color:var(--fg)">
+              ① 发布版常开无认证 <code>--remote-debugging-port=9222</code>；<br/>
+              ② <code>tauri.conf.json</code> 关闭 CSP（<code>"csp": null</code>）；<br/>
+              ③ <code>daemon.json</code> 含 Bearer token 未设 0600 / SDDL 独占权限。
+            </div>
+            <div><button type="button" class="btn sm danger" data-jump-id="pl-01">查看源码定位与修复建议 →</button></div>
+          </div>
+          ${FACT_CHECKS.map(f => `
+            <div class="info-card">
+              <div class="myth-claim">文档/命名误导：${esc(f.claim)}</div>
+              <div class="myth-truth">${esc(f.truth)}</div>
+              <div class="refs-wrap">${renderRefs(f.refs)}</div>
+            </div>
+          `).join("")}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function buildShortlistMarkdown() {
+  const items = GAPS.filter(g => state.shortlist.has(g.id)).sort((a, b) => PRIO_ORDER[a.priority] - PRIO_ORDER[b.priority]);
+  if (items.length === 0) return "";
+  const lines = [
+    "# AI Workbench 借鉴 Orca 待办清单",
+    "",
+    `> 基准：Orca v1.4.214 (10fb46f9fd0) vs AI Workbench v0.2.96 (8bab097) · 共 ${items.length} 项`,
+    ""
+  ];
+  for (const item of items) {
+    const typeText = item.type === "missing" ? "缺失" : "体验差距";
+    const secText = item.security ? "[安全] " : "";
+    lines.push(`## [${item.priority}] ${secText}${item.title} (${typeText} · ${DOMAIN_MAP[item.domain].name})`);
+    lines.push(`- **核心差异**：${item.essence}`);
+    lines.push(`- **落地建议**：${item.advice}`);
+    lines.push(`- **源码参考**：${item.refs.map(r => `\`${r.repo}/${r.path}\``).join(" · ")}`);
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
+function renderShortlist() {
+  const items = GAPS.filter(g => state.shortlist.has(g.id)).sort((a, b) => PRIO_ORDER[a.priority] - PRIO_ORDER[b.priority]);
+  const md = buildShortlistMarkdown();
+  const p0Count = GAPS.filter(g => g.priority === "P0").length;
+
+  return `
+    <div class="split-2">
+      <section class="split-left">
+        <div class="pane-header">
+          <h2>已选待办 (${items.length})</h2>
+          <div style="display:flex;gap:5px">
+            <button type="button" class="btn sm" id="addAllP0Btn">加入全部 P0 (${p0Count})</button>
+            ${items.length ? '<button type="button" class="btn sm danger" id="clearShortlistBtn">清空</button>' : ""}
+          </div>
+        </div>
+        <div class="pane-scroll">
+          ${items.length === 0
+            ? '<div class="empty-box">尚未收藏项。点击任意项的 ☆ 或上方「加入全部 P0」。</div>'
+            : items.map(item => `
+                <div class="list-item" data-jump-id="${esc(item.id)}">
+                  <div class="li-top">
+                    ${badgeType(item.type)}
+                    ${badgePrio(item.priority)}
+                    ${item.security ? '<span class="badge b-sec">安全</span>' : ""}
+                    <button type="button" class="li-star starred" data-star-id="${esc(item.id)}" title="移出">★</button>
+                  </div>
+                  <div class="li-title">${esc(item.title)}</div>
+                  <div class="li-essence">${esc(item.advice)}</div>
+                </div>
+              `).join("")}
+        </div>
+      </section>
+      <section class="split-right">
+        <div class="pane-header">
+          <h2>Markdown 实时预览</h2>
+          <div style="display:flex;gap:6px">
+            <button type="button" class="btn sm primary" id="copyMdBtn" ${items.length ? "" : "disabled"}>复制 Markdown</button>
+            <button type="button" class="btn sm" id="downloadMdBtn" ${items.length ? "" : "disabled"}>下载 .md</button>
+          </div>
+        </div>
+        <div class="pane-scroll">
+          ${items.length ? `<pre class="md-preview">${esc(md)}</pre>` : '<div class="empty-box">右侧将实时生成结构化 Markdown，可直接粘贴至 Issue / 需求文档。</div>'}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function updateTopBar() {
+  document.querySelectorAll("#viewTabs .top-tab").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.view === state.view);
+  });
+  document.getElementById("cntAll").textContent = GAPS.length;
+  document.getElementById("cntP0").textContent = "P0·" + GAPS.filter(g => g.priority === "P0").length;
+  const sc = state.shortlist.size;
+  document.getElementById("cntShortlist").textContent = sc;
+  document.getElementById("topExportCnt").textContent = sc;
+  document.getElementById("searchClear").classList.toggle("show", state.query.length > 0);
+}
+
+function render(preserveListScroll = false) {
+  const prevList = document.getElementById("masterList");
+  const prevScrollTop = preserveListScroll && prevList ? prevList.scrollTop : 0;
+
+  updateTopBar();
+  const ws = document.getElementById("workspace");
+  if (state.view === "explorer") ws.innerHTML = renderExplorer();
+  else if (state.view === "matrix") ws.innerHTML = renderMatrix();
+  else if (state.view === "roadmap") ws.innerHTML = renderRoadmap();
+  else if (state.view === "strengths") ws.innerHTML = renderStrengths();
+  else if (state.view === "shortlist") ws.innerHTML = renderShortlist();
+
+  if (preserveListScroll) {
+    const newList = document.getElementById("masterList");
+    if (newList) newList.scrollTop = prevScrollTop;
+  }
+  const detailBody = document.getElementById("detailBody");
+  if (detailBody) detailBody.scrollTop = 0;
+
+  bindResizer();
+}
+
+function scrollSelectedIntoView() {
+  const el = document.querySelector("#masterList .list-item.selected");
+  if (el) el.scrollIntoView({ block: "nearest" });
+}
+
+function jumpToItem(id) {
+  const item = GAPS.find(g => g.id === id);
+  if (!item) return;
+  state.view = "explorer";
+  state.domain = "all";
+  state.type = "all";
+  state.prio = "all";
+  state.secOnly = false;
+  state.query = "";
+  document.getElementById("searchInput").value = "";
+  state.selectedId = id;
+  render(false);
+  requestAnimationFrame(scrollSelectedIntoView);
+}
+
+function bindResizer() {
+  const resizer = document.getElementById("resizer");
+  const pane = document.getElementById("masterPane");
+  if (!resizer || !pane) return;
+  resizer.onmousedown = e => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = pane.getBoundingClientRect().width;
+    resizer.classList.add("dragging");
+    document.body.style.userSelect = "none";
+    const onMove = ev => {
+      const next = Math.max(240, Math.min(560, Math.round(startW + (ev.clientX - startX))));
+      document.documentElement.style.setProperty("--list-w", next + "px");
+    };
+    const onUp = () => {
+      resizer.classList.remove("dragging");
+      document.body.style.userSelect = "";
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      try { localStorage.setItem(STORAGE_LIST_W, String(Math.round(pane.getBoundingClientRect().width))); } catch {}
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+}
+
+// Top Bar Events
+document.getElementById("viewTabs").addEventListener("click", e => {
+  const btn = e.target.closest("[data-view]");
+  if (!btn) return;
+  state.view = btn.dataset.view;
+  render(false);
+});
+
+const searchInput = document.getElementById("searchInput");
+searchInput.addEventListener("input", e => {
+  state.query = e.target.value;
+  if (state.view === "strengths" || state.view === "shortlist") state.view = "explorer";
+  render(false);
+});
+document.getElementById("searchClear").addEventListener("click", () => {
+  state.query = ""; searchInput.value = ""; searchInput.focus(); render(false);
+});
+
+document.getElementById("themeBtn").addEventListener("click", () => {
+  const cur = document.documentElement.getAttribute("data-theme");
+  applyTheme(cur === "dark" ? "light" : "dark");
+});
+
+document.getElementById("exportBtn").addEventListener("click", () => {
+  if (state.shortlist.size === 0) {
+    state.view = "shortlist"; render(false);
+    showToast("可勾选 ☆ 收藏，或一键加入全部 P0");
+    return;
+  }
+  copyText(buildShortlistMarkdown(), `已复制 ${state.shortlist.size} 项 Markdown 待办`);
+});
+
+// Delegated Workspace Events
+document.getElementById("workspace").addEventListener("click", e => {
+  const pathBtn = e.target.closest("[data-copy-path]");
+  if (pathBtn) {
+    e.stopPropagation();
+    copyText(pathBtn.dataset.copyPath, "已复制：" + pathBtn.dataset.copyPath);
+    return;
+  }
+  const starBtn = e.target.closest("[data-star-id]");
+  if (starBtn) {
+    e.stopPropagation();
+    const id = starBtn.dataset.starId;
+    if (state.shortlist.has(id)) { state.shortlist.delete(id); showToast("已移出待办"); }
+    else { state.shortlist.add(id); showToast("已加入待办"); }
+    saveShortlist();
+    render(true);
+    return;
+  }
+  const domainBtn = e.target.closest("[data-domain]");
+  if (domainBtn) {
+    state.domain = domainBtn.dataset.domain;
+    state.secOnly = false;
+    render(false);
+    return;
+  }
+  if (e.target.closest("[data-jump-sec]")) {
+    jumpToItem("pl-01");
+    return;
+  }
+  const typeBtn = e.target.closest("[data-type]");
+  if (typeBtn) {
+    state.type = typeBtn.dataset.type;
+    render(false);
+    return;
+  }
+  if (e.target.closest("[data-sec-toggle]")) {
+    state.secOnly = !state.secOnly;
+    if (state.secOnly) { state.domain = "all"; state.prio = "all"; state.type = "all"; }
+    render(false);
+    return;
+  }
+  const prioBtn = e.target.closest("[data-prio]");
+  if (prioBtn) {
+    state.secOnly = false;
+    state.prio = prioBtn.dataset.prio;
+    render(false);
+    return;
+  }
+  const selRow = e.target.closest("[data-select-id]");
+  if (selRow) {
+    state.selectedId = selRow.dataset.selectId;
+    render(true);
+    scrollSelectedIntoView();
+    return;
+  }
+  const matrixDom = e.target.closest("[data-matrix-domain]");
+  if (matrixDom) {
+    state.matrixDomain = matrixDom.dataset.matrixDomain;
+    render(false);
+    return;
+  }
+  const openExp = e.target.closest("[data-open-in-explorer]");
+  if (openExp) {
+    state.view = "explorer";
+    state.domain = openExp.dataset.openInExplorer;
+    state.type = "all"; state.prio = "all"; state.secOnly = false;
+    render(false);
+    return;
+  }
+  const rmTier = e.target.closest("[data-rm-tier]");
+  if (rmTier) {
+    state.roadmapTier = rmTier.dataset.rmTier;
+    state.roadmapSelectedId = null;
+    render(false);
+    return;
+  }
+  const rmSel = e.target.closest("[data-rm-select]");
+  if (rmSel) {
+    state.roadmapSelectedId = rmSel.dataset.rmSelect;
+    render(true);
+    scrollSelectedIntoView();
+    return;
+  }
+  const jumpEl = e.target.closest("[data-jump-id]");
+  if (jumpEl) {
+    jumpToItem(jumpEl.dataset.jumpId);
+    return;
+  }
+  if (e.target.closest("#resetFiltersBtn")) {
+    state.domain = "all"; state.type = "all"; state.prio = "all"; state.secOnly = false; state.query = "";
+    searchInput.value = "";
+    render(false);
+    return;
+  }
+  if (e.target.closest("#addAllP0Btn")) {
+    GAPS.filter(g => g.priority === "P0").forEach(g => state.shortlist.add(g.id));
+    saveShortlist(); render(false); showToast("已加入全部 P0 核心项");
+    return;
+  }
+  if (e.target.closest("#copyMdBtn")) {
+    copyText(buildShortlistMarkdown(), "已复制 Markdown 待办清单");
+    return;
+  }
+  if (e.target.closest("#downloadMdBtn")) {
+    const blob = new Blob([buildShortlistMarkdown()], { type: "text/markdown;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = "aiwb-orca-gap-shortlist.md"; a.click();
+    URL.revokeObjectURL(a.href); showToast("已下载 aiwb-orca-gap-shortlist.md");
+    return;
+  }
+  if (e.target.closest("#clearShortlistBtn")) {
+    state.shortlist.clear(); saveShortlist(); render(false); showToast("已清空待办清单");
+  }
+});
+
+document.getElementById("workspace").addEventListener("change", e => {
+  if (e.target && e.target.id === "domainSelect") {
+    state.domain = e.target.value;
+    state.secOnly = false;
+    render(false);
+  }
+});
+
+// Keyboard Navigation
+function stepSelection(delta) {
+  if (state.view === "explorer") {
+    const list = filteredGaps();
+    if (!list.length) return;
+    const idx = Math.max(0, list.findIndex(x => x.id === state.selectedId));
+    const next = list[Math.max(0, Math.min(list.length - 1, idx + delta))];
+    if (next && next.id !== state.selectedId) {
+      state.selectedId = next.id; render(true); scrollSelectedIntoView();
+    }
+  } else if (state.view === "roadmap") {
+    const list = roadmapItems();
+    if (!list.length) return;
+    const idx = Math.max(0, list.findIndex(x => x.id === state.roadmapSelectedId));
+    const next = list[Math.max(0, Math.min(list.length - 1, idx + delta))];
+    if (next && next.id !== state.roadmapSelectedId) {
+      state.roadmapSelectedId = next.id; render(true); scrollSelectedIntoView();
+    }
+  }
+}
+
+document.addEventListener("keydown", e => {
+  const inInput = document.activeElement === searchInput || ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName);
+  if (e.key === "/" && !inInput) {
+    e.preventDefault(); searchInput.focus(); return;
+  }
+  if (e.key === "Escape" && inInput) {
+    if (state.query) { state.query = ""; searchInput.value = ""; render(false); }
+    searchInput.blur(); return;
+  }
+  if (inInput || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === "1") { state.view = "explorer"; render(false); }
+  else if (e.key === "2") { state.view = "matrix"; render(false); }
+  else if (e.key === "3") { state.view = "roadmap"; render(false); }
+  else if (e.key === "4") { state.view = "strengths"; render(false); }
+  else if (e.key === "5") { state.view = "shortlist"; render(false); }
+  else if (e.key === "ArrowDown" || e.key.toLowerCase() === "j") { e.preventDefault(); stepSelection(1); }
+  else if (e.key === "ArrowUp" || e.key.toLowerCase() === "k") { e.preventDefault(); stepSelection(-1); }
+  else if (e.key.toLowerCase() === "s") {
+    const curId = state.view === "explorer" ? state.selectedId : state.view === "roadmap" ? state.roadmapSelectedId : null;
+    if (curId) {
+      if (state.shortlist.has(curId)) { state.shortlist.delete(curId); showToast("已移出待办"); }
+      else { state.shortlist.add(curId); showToast("已加入待办"); }
+      saveShortlist(); render(true);
+    }
+  }
+  else if (e.key.toLowerCase() === "t") {
+    document.getElementById("themeBtn").click();
+  }
+});
+
+initThemeAndWidth();
+render(false);
+</script>
+</body>
+</html>

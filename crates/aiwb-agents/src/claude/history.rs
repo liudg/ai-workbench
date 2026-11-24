@@ -28,18 +28,18 @@ pub struct ListedSession {
     pub updated_at: i64,
 }
 
+#[cfg(test)]
 pub fn projects_dir() -> PathBuf {
-    if let Some(dir) = std::env::var_os("CLAUDE_CONFIG_DIR") {
-        let dir = PathBuf::from(dir);
-        if !dir.as_os_str().is_empty() {
-            return dir.join("projects");
-        }
-    }
-    let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"));
-    match home {
-        Some(home) => PathBuf::from(home).join(".claude").join("projects"),
-        None => PathBuf::from(".claude").join("projects"),
-    }
+    projects_dir_for(&crate::instance::InstanceOverlay::default_for(
+        aiwb_core::models::AgentKind::ClaudeCode,
+    ))
+}
+
+pub fn projects_dir_for(overlay: &crate::instance::InstanceOverlay) -> PathBuf {
+    overlay
+        .resolve_config_dir("CLAUDE_CONFIG_DIR", ".claude")
+        .unwrap_or_else(|| PathBuf::from(".claude"))
+        .join("projects")
 }
 
 /// 一页会话和下一页的游标。游标是这页最后一个文件的 `修改时间:会话 id`。
@@ -47,10 +47,6 @@ pub fn projects_dir() -> PathBuf {
 pub struct ListedPage {
     pub sessions: Vec<ListedSession>,
     pub next_cursor: Option<String>,
-}
-
-pub fn list_project_page(cwd: &str, cursor: Option<&str>, limit: usize) -> Result<ListedPage, String> {
-    list_project_page_under(&projects_dir(), cwd, cursor, limit)
 }
 
 /// 只读 `cwd` 对应的项目目录，按文件修改时间从新到旧取 `limit` 个文件，只解析这些文件的头尾。
@@ -136,6 +132,7 @@ fn parse_cursor(cursor: &str) -> Result<(i64, String), String> {
         .ok_or_else(|| format!("无效的游标：{cursor}"))
 }
 
+#[cfg(test)]
 pub fn find_session_file(session_id: &str) -> Option<PathBuf> {
     if !is_uuid(session_id) {
         return None;
@@ -159,8 +156,8 @@ pub fn find_session_file_under(projects: &Path, session_id: &str) -> Option<Path
     None
 }
 
-pub fn remove_session_file(session_id: &str) -> Result<(), String> {
-    let Some(path) = find_session_file(session_id) else {
+pub fn remove_session_file_under(projects: &Path, session_id: &str) -> Result<(), String> {
+    let Some(path) = find_session_file_under(projects, session_id) else {
         return Ok(());
     };
     std::fs::remove_file(path).map_err(|err| err.to_string())
@@ -173,19 +170,158 @@ pub fn remove_session_file(session_id: &str) -> Result<(), String> {
 /// 带提示词会新开一轮用户没写的对话。`--fork-session` 的产物就是一份新 session id 的转录。
 ///
 /// 转录按工作目录分文件夹，CLI 只在当前目录对应的文件夹里找。分到别的目录时写进那个目录的文件夹。
-pub fn fork_session_file(session_id: &str, cwd: Option<&str>) -> Result<ListedSession, String> {
+pub fn fork_session_file_under(
+    projects: &Path,
+    session_id: &str,
+    cwd: Option<&str>,
+) -> Result<ListedSession, String> {
     if !is_uuid(session_id) {
         return Err(format!("无效的会话 id：{session_id}"));
     }
-    let path = find_session_file(session_id).ok_or_else(|| format!("找不到会话 {session_id}"))?;
+    let path = find_session_file_under(projects, session_id)
+        .ok_or_else(|| format!("找不到会话 {session_id}"))?;
     match cwd {
         Some(cwd) => {
-            let folder = projects_dir().join(sanitize_path(cwd));
+            let folder = projects.join(sanitize_path(cwd));
             std::fs::create_dir_all(&folder).map_err(|err| err.to_string())?;
             fork_into(&path, session_id, &folder)
         }
         None => fork_under(&path, session_id),
     }
+}
+
+/// 将 Claude 会话转录截断到保留前 `kept_turns` 轮可见用户消息，生成新的会话 UUID。
+/// `delete_old` 为 `true` 时清理旧文件（若存在分叉会话共享旧文件则传 `false` 保留）。
+/// `kept_turns == 0` 或找不到旧转录文件时返回 `Ok(None)`。
+pub fn rewind_session_file_under(
+    projects: &Path,
+    session_id: &str,
+    cwd: Option<&str>,
+    kept_turns: usize,
+    delete_old: bool,
+) -> Result<Option<String>, String> {
+    if !is_uuid(session_id) {
+        return Err(format!("无效的会话 id：{session_id}"));
+    }
+    if kept_turns == 0 {
+        if delete_old {
+            let _ = remove_session_file_under(projects, session_id);
+        }
+        return Ok(None);
+    }
+    let Some(source) = find_session_file_under(projects, session_id) else {
+        return Ok(None);
+    };
+    let text = std::fs::read_to_string(&source).map_err(|err| err.to_string())?;
+    let mut kept_buf = String::with_capacity(text.len());
+    let mut seen_turns = 0usize;
+    for line in text.split_inclusive('\n') {
+        let trimmed = line.trim();
+        if !trimmed.is_empty() {
+            if let Ok(entry) = serde_json::from_str::<Value>(trimmed) {
+                if is_user_prompt_entry(&entry) {
+                    if seen_turns >= kept_turns {
+                        break;
+                    }
+                    seen_turns += 1;
+                }
+            }
+        }
+        kept_buf.push_str(line);
+    }
+    if kept_buf.trim().is_empty() {
+        if delete_old {
+            let _ = std::fs::remove_file(&source);
+        }
+        return Ok(None);
+    }
+
+    let new_id = uuid::Uuid::new_v4().to_string();
+    let rewritten = rewrite_session_ids(&kept_buf, session_id, &new_id);
+    let dest_dir = match cwd.filter(|c| !c.trim().is_empty()) {
+        Some(cwd) => {
+            let folder = projects.join(sanitize_path(cwd));
+            std::fs::create_dir_all(&folder).map_err(|err| err.to_string())?;
+            folder
+        }
+        None => source
+            .parent()
+            .ok_or_else(|| "会话文件没有目录".to_string())?
+            .to_path_buf(),
+    };
+    let dest = dest_dir.join(format!("{new_id}.jsonl"));
+    std::fs::write(&dest, rewritten).map_err(|err| err.to_string())?;
+    if delete_old {
+        let _ = std::fs::remove_file(&source);
+    }
+    Ok(Some(new_id))
+}
+
+fn is_slash_command_markup(text: &str) -> bool {
+    let Some(start) = text.find("<command-name>") else {
+        return false;
+    };
+    let rest = &text[start + "<command-name>".len()..];
+    let Some(end) = rest.find("</command-name>") else {
+        return false;
+    };
+    rest[..end].trim().starts_with('/')
+}
+
+fn is_user_prompt_entry(entry: &Value) -> bool {
+    if entry.get("type").and_then(Value::as_str) == Some("attachment") && !flag(entry, "isSidechain")
+    {
+        if let Some(att) = entry.get("attachment") {
+            if att.get("type").and_then(Value::as_str) == Some("queued_command") {
+                let prompt = att.get("prompt").and_then(Value::as_str).unwrap_or("").trim();
+                let has_images = att
+                    .get("images")
+                    .and_then(Value::as_array)
+                    .is_some_and(|arr| !arr.is_empty());
+                let non_slash_text = !prompt.is_empty()
+                    && !prompt.starts_with('/')
+                    && !prompt.starts_with("<goal>")
+                    && !is_slash_command_markup(prompt);
+                return non_slash_text || has_images;
+            }
+        }
+        return false;
+    }
+    if !is_visible_message(entry) || flag(entry, "isCompactSummary") {
+        return false;
+    }
+    if entry.get("type").and_then(Value::as_str) != Some("user") {
+        return false;
+    }
+    if entry.pointer("/origin/kind").and_then(Value::as_str) == Some("task-notification") {
+        return false;
+    }
+    let message = entry.get("message").unwrap_or(&Value::Null);
+    let content = message.get("content").unwrap_or(&Value::Null);
+    if content.as_array().is_some_and(|blocks| {
+        blocks
+            .iter()
+            .any(|b| b.get("type").and_then(Value::as_str) == Some("tool_result"))
+    }) {
+        return false;
+    }
+    if resume_noise_entry(entry) {
+        return false;
+    }
+    let has_images = content.as_array().is_some_and(|blocks| {
+        blocks
+            .iter()
+            .any(|b| b.get("type").and_then(Value::as_str) == Some("image"))
+    });
+    let text = content_text(content);
+    let trimmed = text.trim();
+    if trimmed.starts_with("[Request interrupted by user") || trimmed.starts_with("<goal>") {
+        return false;
+    }
+    let non_slash_text = !trimmed.is_empty()
+        && !trimmed.starts_with('/')
+        && !is_slash_command_markup(trimmed);
+    non_slash_text || has_images
 }
 
 pub fn fork_under(source: &Path, session_id: &str) -> Result<ListedSession, String> {
@@ -1201,5 +1337,155 @@ mod tests {
             .sessions
             .is_empty());
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rewind_session_file_truncates_before_target_turn_and_ignores_tool_results() {
+        let root = scratch("rewind");
+        let mut body = String::new();
+        body.push_str(&format!(
+            "{}\n",
+            serde_json::json!({
+                "type": "user",
+                "sessionId": OLDER,
+                "uuid": "11111111-1111-4111-8111-111111111111",
+                "parentUuid": null,
+                "cwd": "/workspace/demo",
+                "timestamp": "2026-01-01T00:00:00Z",
+                "message": {"role": "user", "content": "第一轮问题"}
+            })
+        ));
+        body.push_str(&format!(
+            "{}\n",
+            serde_json::json!({
+                "type": "assistant",
+                "sessionId": OLDER,
+                "uuid": "22222222-2222-4222-8222-222222222222",
+                "parentUuid": "11111111-1111-4111-8111-111111111111",
+                "timestamp": "2026-01-01T00:00:01Z",
+                "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "t1", "name": "Read", "input": {}}]}
+            })
+        ));
+        // tool_result 虽是 type=user，但不算新一轮用户提问
+        body.push_str(&format!(
+            "{}\n",
+            serde_json::json!({
+                "type": "user",
+                "sessionId": OLDER,
+                "uuid": "33333333-3333-4333-8333-333333333333",
+                "parentUuid": "22222222-2222-4222-8222-222222222222",
+                "timestamp": "2026-01-01T00:00:02Z",
+                "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "ok"}]}
+            })
+        ));
+        body.push_str(&format!(
+            "{}\n",
+            serde_json::json!({
+                "type": "assistant",
+                "sessionId": OLDER,
+                "uuid": "44444444-4444-4444-8444-444444444444",
+                "parentUuid": "33333333-3333-4333-8333-333333333333",
+                "timestamp": "2026-01-01T00:00:03Z",
+                "message": {"role": "assistant", "content": [{"type": "text", "text": "第一轮回答"}]}
+            })
+        ));
+        body.push_str(&format!(
+            "{}\n",
+            serde_json::json!({
+                "type": "user",
+                "sessionId": OLDER,
+                "uuid": "55555555-5555-4555-8555-555555555555",
+                "parentUuid": "44444444-4444-4444-8444-444444444444",
+                "cwd": "/workspace/demo",
+                "timestamp": "2026-01-01T00:01:00Z",
+                "message": {"role": "user", "content": "第二轮要撤回的问题"}
+            })
+        ));
+        write_session(&root, OLDER, &body);
+
+        let new_id = rewind_session_file_under(&root, OLDER, Some("/workspace/demo"), 1, true)
+            .unwrap()
+            .expect("rewound id");
+        assert_ne!(new_id, OLDER);
+        assert!(find_session_file_under(&root, OLDER).is_none());
+        let new_path = find_session_file_under(&root, &new_id).expect("new jsonl");
+        let rewound = std::fs::read_to_string(&new_path).unwrap();
+        assert!(rewound.contains("第一轮回答"));
+        assert!(!rewound.contains("第二轮要撤回的问题"));
+        assert!(rewound.contains(&format!("\"sessionId\":\"{new_id}\"")));
+
+        // `delete_old = false` 时保留原转录供分叉会话继续使用
+        let shared_id = rewind_session_file_under(&root, &new_id, Some("/workspace/demo"), 1, false)
+            .unwrap()
+            .expect("shared rewound id");
+        assert!(find_session_file_under(&root, &new_id).is_some());
+        assert!(find_session_file_under(&root, &shared_id).is_some());
+        let _ = remove_session_file_under(&root, &shared_id);
+
+        // 回退到第 0 轮（首轮之前）直接清理文件并返回 None
+        assert!(rewind_session_file_under(&root, &new_id, Some("/workspace/demo"), 0, true)
+            .unwrap()
+            .is_none());
+        assert!(find_session_file_under(&root, &new_id).is_none());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn is_user_prompt_entry_counts_image_only_turns_and_ignores_slash_commands() {
+        let image_only = serde_json::json!({
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [{"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "AA=="}}]
+            }
+        });
+        assert!(is_user_prompt_entry(&image_only));
+
+        let slash_plain = serde_json::json!({
+            "type": "user",
+            "message": {"role": "user", "content": "/compact"}
+        });
+        assert!(!is_user_prompt_entry(&slash_plain));
+
+        let slash_xml = serde_json::json!({
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": "<command-message>compact</command-message><command-name>/compact</command-name><command-args></command-args>"
+            }
+        });
+        assert!(!is_user_prompt_entry(&slash_xml));
+
+        let queued_slash = serde_json::json!({
+            "type": "attachment",
+            "attachment": {"type": "queued_command", "prompt": "/clear"}
+        });
+        assert!(!is_user_prompt_entry(&queued_slash));
+
+        let compact_summary = serde_json::json!({
+            "type": "user",
+            "isCompactSummary": true,
+            "message": {"role": "user", "content": "This session is being continued from a previous conversation"}
+        });
+        assert!(!is_user_prompt_entry(&compact_summary));
+
+        let task_notification = serde_json::json!({
+            "type": "user",
+            "origin": {"kind": "task-notification"},
+            "message": {"role": "user", "content": "<task-notification><status>completed</status></task-notification>"}
+        });
+        assert!(!is_user_prompt_entry(&task_notification));
+
+        let goal_string = serde_json::json!({
+            "type": "user",
+            "message": {"role": "user", "content": "<goal>pass all unit tests</goal>"}
+        });
+        assert!(!is_user_prompt_entry(&goal_string));
+
+        let goal_blocks = serde_json::json!({
+            "type": "user",
+            "message": {"role": "user", "content": [{"type": "text", "text": "<goal>finish refactor</goal>"}]}
+        });
+        assert!(!is_user_prompt_entry(&goal_blocks));
     }
 }

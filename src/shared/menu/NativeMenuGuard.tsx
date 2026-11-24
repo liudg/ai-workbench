@@ -1,11 +1,8 @@
 import { useEffect, useState } from "react";
 
+import { findEditableElement, type EditableElement } from "@/shared/dom/editable";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
-
-type Editable = HTMLInputElement | HTMLTextAreaElement | HTMLElement;
-
-const TEXT_INPUTS = new Set(["", "text", "search", "url", "email", "password", "number", "tel"]);
 
 /**
  * 整个应用不出浏览器自己的右键菜单。各处自己的菜单照常打开；
@@ -16,7 +13,7 @@ export function NativeMenuGuard() {
   useEffect(() => {
     const onContextMenu = (event: MouseEvent) => {
       event.preventDefault();
-      const field = editableOf(event.target);
+      const field = findEditableElement(event.target);
       if (!field) return;
       // 输入框只出编辑菜单，不再冒到外面那层的菜单。
       event.stopPropagation();
@@ -29,23 +26,20 @@ export function NativeMenuGuard() {
   return <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />;
 }
 
-function editableOf(target: EventTarget | null): Editable | null {
-  if (!(target instanceof Element)) return null;
-  const field = target.closest("input, textarea, [contenteditable]:not([contenteditable='false'])");
-  if (field instanceof HTMLInputElement) return TEXT_INPUTS.has(field.type) ? field : null;
-  if (field instanceof HTMLTextAreaElement || field instanceof HTMLElement) return field;
-  return null;
+function isInputOrTextArea(field: EditableElement): field is HTMLInputElement | HTMLTextAreaElement {
+  const tag = field.tagName?.toLowerCase();
+  return tag === "input" || tag === "textarea";
 }
 
-function isReadOnly(field: Editable): boolean {
-  if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
+function isReadOnly(field: EditableElement): boolean {
+  if (isInputOrTextArea(field)) {
     return field.readOnly || field.disabled;
   }
   return !field.isContentEditable;
 }
 
-function selectedText(field: Editable): string {
-  if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
+function selectedText(field: EditableElement): string {
+  if (isInputOrTextArea(field)) {
     const start = field.selectionStart ?? 0;
     const end = field.selectionEnd ?? 0;
     return field.value.slice(start, end);
@@ -55,7 +49,7 @@ function selectedText(field: Editable): string {
   return field.contains(selection.getRangeAt(0).commonAncestorContainer) ? selection.toString() : "";
 }
 
-function editItems(field: Editable): ContextMenuItem[] {
+function editItems(field: EditableElement): ContextMenuItem[] {
   const readOnly = isReadOnly(field);
   const picked = selectedText(field) !== "";
   // 菜单里点一下会让焦点离开输入框，执行前先放回去，选区还在原处。

@@ -5,6 +5,7 @@ import type { ChatHost } from "@/features/chat";
 import type { Project } from "@/features/projects";
 import type { TaskEntry, TaskSession } from "@/features/tasks";
 import { isReadOnlyOpen } from "@/lib/utils";
+import { profileForSessionAgent } from "@/shared/agent/identity";
 import type { PromptAnswer } from "@/types";
 import { showError } from "@/shared/shell/error-banner";
 import { answerPrompt, readFile, stopBackgroundTask } from "./api";
@@ -47,7 +48,7 @@ export function useTaskChat(
   const session = useMemo(() => chatSession(task, taskSession), [task, taskSession]);
   const workdir = session.workdir?.trim() || project?.path || "";
   const timeline = useTaskTimeline(task, taskSession);
-  const { agentOf } = timeline;
+  const { agentOf, instanceOf } = timeline;
   const occupied = useMemo(() => isReadOnlyOpen(timeline.current.events), [timeline.current.events]);
   const owner = panelOwner ?? session.id;
   const subtasks = useSubtaskHost();
@@ -59,16 +60,18 @@ export function useTaskChat(
       projectPath: workdir,
       addTextSnippet: addDraftSnippet,
       agentOf,
+      instanceOf,
       subtasks,
       openSubagent: (sessionId, subagentId) =>
         openSubagentPanel(owner, { kind: "native", taskId, sessionId, subagentId }),
     }),
-    [agentOf, occupied, owner, profiles, subtasks, taskId, workdir],
+    [agentOf, instanceOf, occupied, owner, profiles, subtasks, taskId, workdir],
   );
   const { draft, loaded } = useComposerDraft(session.id);
+  const profile = profileForSessionAgent(taskSession.agent, profiles, taskSession.instanceId);
   return {
     profiles,
-    profile: profiles[taskSession.agent],
+    profile,
     session,
     workdir,
     timeline,

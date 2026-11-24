@@ -6,16 +6,20 @@
 mod agent;
 mod catalog;
 mod event;
+mod instance;
 mod mcp;
 mod session;
 mod subscription;
+mod text_gen;
 
 pub use agent::*;
 pub use catalog::*;
 pub use event::*;
+pub use instance::*;
 pub use mcp::*;
 pub use session::*;
 pub use subscription::*;
+pub use text_gen::*;
 
 pub fn now_millis() -> i64 {
     std::time::SystemTime::now()

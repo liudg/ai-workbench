@@ -3,12 +3,23 @@ import { ArrowLeft, Monitor, Moon, RefreshCw, Sun } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { findCatalogProbe } from "@/lib/agents";
 import { cn } from "@/lib/utils";
-import type { AgentInstallation, AgentUpgrade, CatalogProbe } from "@/types";
+import type {
+  AgentCapabilities,
+  AgentInstallation,
+  AgentInstance,
+  AgentUpgrade,
+  CatalogProbe,
+} from "@/types";
 
 import { agentCardFace, statusLabel, type AgentCardFace } from "./agent-card";
+import { AgentInstancesSection } from "./AgentInstancesSection";
+import { CliCommandSection } from "./CliCommandSection";
+import { KEYBINDINGS_PAGE, KeybindingsSettings } from "./keybindings/KeybindingsSettings";
 import { McpSettings } from "./mcp/McpSettings";
 import { MCP_PAGE } from "./mcp/view";
+import { TextGenSettingsSection } from "./TextGenSettingsSection";
 import { useAgentSettings } from "./useAgentSettings";
 import { useAppearanceSettings, type ThemePreference } from "./useAppearanceSettings";
 import { useTaskFolder } from "./useTaskFolder";
@@ -30,6 +41,9 @@ function StatusLine({ face }: { face: AgentCardFace }) {
 function AgentCard({
   item,
   probe,
+  probes,
+  capabilities,
+  instances,
   updating,
   updateLocked,
   upgrade,
@@ -38,6 +52,9 @@ function AgentCard({
 }: {
   item: AgentInstallation;
   probe: CatalogProbe | undefined;
+  probes: readonly CatalogProbe[] | undefined;
+  capabilities: AgentCapabilities | undefined;
+  instances: readonly AgentInstance[];
   updating: boolean;
   updateLocked: boolean;
   upgrade: AgentUpgrade | undefined;
@@ -46,69 +63,97 @@ function AgentCard({
 }) {
   const face = agentCardFace(item, probe);
   const updateSucceeded = upgrade?.status === "succeeded";
+  const showInstances =
+    item.session_linked &&
+    capabilities?.supports_multi_instance === true;
+
   return (
     <li
       data-agent={item.kind}
       data-installed={item.installed ? "true" : "false"}
       data-card={face.kind}
-      className="flex items-start gap-4 rounded-xl border border-wb-border bg-wb-elev px-4 py-3"
+      className="rounded-xl border border-wb-border bg-wb-elev px-4 py-3"
     >
-      <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium text-wb-fg">{item.display_name}</div>
-        {updateSucceeded ? (
-          <p className="mt-1 text-xs text-wb-fg-3">
-            上次检测：{item.version ?? "已安装"}
-            <span className="ml-2 text-wb-ok" role="status">更新成功</span>
-          </p>
-        ) : (
-          <StatusLine face={face} />
-        )}
-        {face.kind === "ready" && face.detail && (
-          <div className="mt-1 text-xs leading-5 text-wb-warn">{face.detail}</div>
-        )}
-        {face.kind === "ready" && face.probeError && (
-          <p data-probe-error className="mt-1 break-words text-xs leading-5 text-wb-danger">
-            未就绪：{face.probeError}
-          </p>
-        )}
-        {error && (
-          <p className="mt-1 text-xs leading-5 text-wb-danger" role="alert">
-            {error}
-          </p>
-        )}
-        {upgrade?.status === "failed" && (
-          <p className="mt-1 text-xs text-wb-danger" role="alert">
-            {upgrade.error ?? "更新失败"}
-          </p>
-        )}
-        {!updateSucceeded && upgrade?.output && (
-          <pre
-            aria-label={`${item.display_name} 更新输出`}
-            className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-wb-code p-2.5 text-xs text-wb-fg-2"
+      <div className="flex items-start gap-4">
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-medium text-wb-fg">{item.display_name}</div>
+          {updateSucceeded ? (
+            <p className="mt-1 text-xs text-wb-fg-3">
+              上次检测：{item.version ?? "已安装"}
+              <span className="ml-2 text-wb-ok" role="status">更新成功</span>
+            </p>
+          ) : (
+            <StatusLine face={face} />
+          )}
+          {face.kind === "ready" && face.detail && (
+            <div className="mt-1 text-xs leading-5 text-wb-warn">{face.detail}</div>
+          )}
+          {face.kind === "ready" && face.probeError && (
+            <p data-probe-error className="mt-1 break-words text-xs leading-5 text-wb-danger">
+              未就绪：{face.probeError}
+            </p>
+          )}
+          {error && (
+            <p className="mt-1 text-xs leading-5 text-wb-danger" role="alert">
+              {error}
+            </p>
+          )}
+          {upgrade?.status === "failed" && (
+            <p className="mt-1 text-xs text-wb-danger" role="alert">
+              {upgrade.error ?? "更新失败"}
+            </p>
+          )}
+          {!updateSucceeded && upgrade?.output && (
+            <pre
+              aria-label={`${item.display_name} 更新输出`}
+              className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-wb-code p-2.5 text-xs text-wb-fg-2"
+            >
+              {upgrade.output}
+            </pre>
+          )}
+        </div>
+        {!updateSucceeded && (updating || ((face.kind === "ready" || face.kind === "unwired") && face.canUpdate)) && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={updateLocked}
+            aria-label={`更新 ${item.display_name}`}
+            onClick={() => onUpdate(item.kind)}
           >
-            {upgrade.output}
-          </pre>
+            {updating ? "更新中" : "更新"}
+          </Button>
         )}
       </div>
-      {!updateSucceeded && (updating || ((face.kind === "ready" || face.kind === "unwired") && face.canUpdate)) && (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={updateLocked}
-          aria-label={`更新 ${item.display_name}`}
-          onClick={() => onUpdate(item.kind)}
-        >
-          {updating ? "更新中" : "更新"}
-        </Button>
-      )}
+
+      {showInstances && capabilities ? (
+        <AgentInstancesSection
+          kind={item.kind}
+          defaultDisplayName={item.display_name}
+          capabilities={capabilities}
+          instances={instances}
+          probes={probes}
+        />
+      ) : null}
     </li>
   );
 }
 
 function AgentsPanel() {
-  const { installations, probes, loading, error, updateErrors, upgrades, starting, upgradesReady, refresh, updateInstallation } =
-    useAgentSettings();
+  const {
+    installations,
+    probes,
+    profiles,
+    instances,
+    loading,
+    error,
+    updateErrors,
+    upgrades,
+    starting,
+    upgradesReady,
+    refresh,
+    updateInstallation,
+  } = useAgentSettings();
 
   return (
     <section>
@@ -116,7 +161,7 @@ function AgentsPanel() {
         <div>
           <h2 className="text-base font-semibold text-wb-fg">本地 Agent</h2>
           <p className="mt-1 max-w-lg text-sm leading-6 text-wb-fg-2">
-            检测或更新本机已安装的 Agent。
+            检测、更新本机已安装的 Agent，并管理隔离账号与自定义网关实例。
           </p>
         </div>
         <Button
@@ -143,18 +188,33 @@ function AgentsPanel() {
         <p className="mt-8 text-sm text-wb-fg-3">没有可管理的本地 Agent。</p>
       ) : (
         <ul className="mt-6 space-y-2">
-          {installations.map((item) => (
-            <AgentCard
-              key={item.kind}
-              item={item}
-              probe={probes?.find((entry) => entry.kind === item.kind)}
-              updating={Boolean(starting[item.kind]) || upgrades?.some((entry) => entry.kind === item.kind && entry.status === "running") === true}
-              updateLocked={!upgradesReady || Boolean(starting[item.kind]) || upgrades?.some((entry) => entry.kind === item.kind && entry.status === "running") === true}
-              upgrade={upgrades?.find((entry) => entry.kind === item.kind)}
-              error={updateErrors[item.kind] ?? null}
-              onUpdate={updateInstallation}
-            />
-          ))}
+          {installations.map((item) => {
+            const baseProbe = findCatalogProbe(probes, item.kind);
+            const kindInstances = (instances ?? []).filter((inst) => inst.kind === item.kind);
+            const capabilities = profiles[item.kind]?.capabilities;
+            return (
+              <AgentCard
+                key={item.kind}
+                item={item}
+                probe={baseProbe}
+                probes={probes}
+                capabilities={capabilities}
+                instances={kindInstances}
+                updating={
+                  Boolean(starting[item.kind]) ||
+                  upgrades?.some((entry) => entry.kind === item.kind && entry.status === "running") === true
+                }
+                updateLocked={
+                  !upgradesReady ||
+                  Boolean(starting[item.kind]) ||
+                  upgrades?.some((entry) => entry.kind === item.kind && entry.status === "running") === true
+                }
+                upgrade={upgrades?.find((entry) => entry.kind === item.kind)}
+                error={updateErrors[item.kind] ?? null}
+                onUpdate={updateInstallation}
+              />
+            );
+          })}
         </ul>
       )}
     </section>
@@ -284,6 +344,8 @@ function GeneralPanel() {
           {error}
         </p>
       )}
+      <TextGenSettingsSection />
+      <CliCommandSection />
       <WorktreePanel />
     </section>
   );
@@ -395,9 +457,11 @@ function WorktreePanel() {
   );
 }
 
+type SettingsSectionId = "agents" | "mcp" | "keybindings" | "general";
+
 export function SettingsView() {
   const { closeSettings } = useAgentSettings();
-  const [section, setSection] = useState<"agents" | "general" | "mcp">("agents");
+  const [section, setSection] = useState<SettingsSectionId>("agents");
 
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col bg-wb-surface">
@@ -447,6 +511,20 @@ export function SettingsView() {
             <li>
               <button
                 type="button"
+                data-settings-nav="keybindings"
+                className={cn(
+                  "w-full rounded-lg px-3 py-1.5 text-left text-[13px] transition-colors",
+                  section === "keybindings" ? "wb-menu-active font-medium" : "text-wb-fg-2 hover:bg-wb-hover hover:text-wb-fg",
+                )}
+                aria-current={section === "keybindings" ? "page" : undefined}
+                onClick={() => setSection("keybindings")}
+              >
+                {KEYBINDINGS_PAGE.nav}
+              </button>
+            </li>
+            <li>
+              <button
+                type="button"
                 data-settings-nav="general"
                 className={cn(
                   "w-full rounded-lg px-3 py-1.5 text-left text-[13px] transition-colors",
@@ -461,8 +539,16 @@ export function SettingsView() {
           </ul>
         </nav>
         <div className="min-w-0 flex-1 overflow-y-auto px-6 py-6">
-          <div className="mx-auto max-w-2xl">
-            {section === "agents" ? <AgentsPanel /> : section === "mcp" ? <McpSettings /> : <GeneralPanel />}
+          <div className={cn("mx-auto", section === "keybindings" ? "max-w-3xl" : "max-w-2xl")}>
+            {section === "agents" ? (
+              <AgentsPanel />
+            ) : section === "mcp" ? (
+              <McpSettings />
+            ) : section === "keybindings" ? (
+              <KeybindingsSettings />
+            ) : (
+              <GeneralPanel />
+            )}
           </div>
         </div>
       </div>

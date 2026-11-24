@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 
+import { getResolvedKeybindings } from "@/shared/keybindings";
 import { sameChatScope } from "../chat-scope";
 import { isImeKey } from "../keyboard";
 import { clearThreadHighlights, clearThreadMarks, paintThreadHits, scrollCurrentHitIntoView } from "./highlight";
-import { collectTextHits, stepHit } from "./hits";
-import { isThreadFindChord } from "./keyboard";
+import { collectTextHits, resolveQueryInTargetNode, stepHit } from "./hits";
+import { matchesThreadFindBinding } from "./keyboard";
+
+export { resolveQueryInTargetNode };
 
 export const OPEN_THREAD_FIND = "ai-workbench:find-in-thread";
 
@@ -13,10 +16,19 @@ function ownsFocus(root: HTMLElement | null): boolean {
   return sameChatScope(root, document.activeElement);
 }
 
+function findEventElement(root: ParentNode, eventId: string): HTMLElement | null {
+  const nodes = root.querySelectorAll<HTMLElement>("[data-find-event]");
+  for (const node of nodes) {
+    if (node.getAttribute("data-find-event") === eventId) return node;
+  }
+  return null;
+}
+
 export function useThreadFind(
   rootRef: RefObject<HTMLElement | null>,
   layoutKey: string,
   onNavigate: () => void,
+  projectActive = false,
 ) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -26,6 +38,9 @@ export function useThreadFind(
   const inputRef = useRef<HTMLInputElement>(null);
   const indexRef = useRef(0);
   const scrolledKey = useRef("");
+  const preferredEventIdRef = useRef<string | null>(null);
+  const projectActiveRef = useRef(projectActive);
+  projectActiveRef.current = projectActive;
 
   const focusInput = () => {
     requestAnimationFrame(() => {
@@ -33,6 +48,39 @@ export function useThreadFind(
       inputRef.current?.select();
     });
   };
+
+  const activate = useCallback(
+    (nextQuery: string, options?: { focus?: boolean; preferredEventId?: string }) => {
+      const preferredId = options?.preferredEventId ?? null;
+      let effectiveQuery = nextQuery;
+      if (preferredId) {
+        const root = rootRef.current;
+        if (root) {
+          clearThreadMarks(root);
+          const targetNode = findEventElement(root, preferredId);
+          if (targetNode) {
+            const resolved = resolveQueryInTargetNode(targetNode, nextQuery);
+            if (resolved === null) {
+              preferredEventIdRef.current = null;
+              setOpen(false);
+              setCount(0);
+              return;
+            }
+            effectiveQuery = resolved;
+          }
+        }
+      }
+      preferredEventIdRef.current = preferredId;
+      indexRef.current = 0;
+      setIndex(0);
+      scrolledKey.current = "";
+      setOpen(true);
+      setQuery(effectiveQuery);
+      setNavigation((value) => value + 1);
+      if (options?.focus !== false) focusInput();
+    },
+    [rootRef],
+  );
 
   useEffect(() => {
     const onOpen = (event: Event) => {
@@ -42,6 +90,7 @@ export function useThreadFind(
       scrolledKey.current = "";
       setNavigation((value) => value + 1);
       if (detail && typeof detail.query === "string") {
+        preferredEventIdRef.current = null;
         indexRef.current = 0;
         setIndex(0);
         setQuery(detail.query);
@@ -50,9 +99,11 @@ export function useThreadFind(
     };
     const onKey = (event: KeyboardEvent) => {
       if (isImeKey({ composing: event.isComposing, keyCode: event.keyCode })) return;
-      if (!isThreadFindChord(event)) return;
+      if (document.querySelector("[data-keybinding-recording='true'], [data-command-menu], [data-file-search]")) {
+        return;
+      }
+      if (!matchesThreadFindBinding(event, getResolvedKeybindings(), undefined, projectActiveRef.current)) return;
       if (!ownsFocus(rootRef.current)) return;
-      if (document.querySelector("[data-command-menu], [data-file-search]")) return;
       event.preventDefault();
       event.stopPropagation();
       setOpen(true);
@@ -81,6 +132,31 @@ export function useThreadFind(
       observer.disconnect();
       clearThreadMarks(root);
       const hits = collectTextHits(root, query);
+      let allowScroll = scroll;
+      if (preferredEventIdRef.current) {
+        const preferredId = preferredEventIdRef.current;
+        const targetNode = findEventElement(root, preferredId);
+        if (!targetNode) {
+          allowScroll = false;
+        } else {
+          const matched = hits.findIndex((hit) => targetNode.contains(hit.node));
+          if (matched >= 0) {
+            preferredEventIdRef.current = null;
+            indexRef.current = matched;
+            setIndex(matched);
+          } else {
+            const fallback = resolveQueryInTargetNode(targetNode, query);
+            if (fallback !== null && fallback !== query) {
+              setQuery(fallback);
+              return;
+            }
+            preferredEventIdRef.current = null;
+            setOpen(false);
+            setCount(0);
+            return;
+          }
+        }
+      }
       const bounded = hits.length === 0 ? 0 : Math.min(indexRef.current, hits.length - 1);
       if (bounded !== indexRef.current) {
         indexRef.current = bounded;
@@ -89,7 +165,7 @@ export function useThreadFind(
       setCount((previous) => (previous === hits.length ? previous : hits.length));
       paintThreadHits(hits, hits.length === 0 ? -1 : bounded);
       const key = `${query}\n${bounded}`;
-      if (scroll && hits[bounded] && scrolledKey.current !== key) {
+      if (allowScroll && hits[bounded] && scrolledKey.current !== key) {
         // 等虚拟列表完成本轮布局；回调里取当前 mark，避免重扫后拿到旧节点。
         scrollFrame = requestAnimationFrame(() => {
           if (scrollCurrentHitIntoView(root)) {
@@ -109,12 +185,14 @@ export function useThreadFind(
   }, [layoutKey, open, query, index, navigation, rootRef, onNavigate]);
 
   const close = () => {
+    preferredEventIdRef.current = null;
     setOpen(false);
     const root = rootRef.current;
     if (root) clearThreadHighlights(root);
   };
 
   const onQuery = (value: string) => {
+    preferredEventIdRef.current = null;
     indexRef.current = 0;
     setIndex(0);
     scrolledKey.current = "";
@@ -123,6 +201,7 @@ export function useThreadFind(
 
   const move = (direction: 1 | -1) => {
     if (count <= 0) return;
+    preferredEventIdRef.current = null;
     const next = stepHit(indexRef.current, count, direction);
     indexRef.current = next;
     scrolledKey.current = "";
@@ -137,6 +216,7 @@ export function useThreadFind(
     index,
     count,
     inputRef,
+    activate,
     onQuery,
     onNext: () => move(1),
     onPrevious: () => move(-1),

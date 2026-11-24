@@ -94,13 +94,19 @@ impl Services {
                 if !dir.is_absolute() {
                     return Err("工作树目录必须是绝对路径".into());
                 }
-                // 放在项目里，新工作树会成为项目检出里没跟踪的文件。
+                // 放在项目里，新工作树会成为项目检出里没跟踪的文件；项目的上级目录允许作为工作树根目录（在其旁侧建子目录）。
                 let inside = self
                     .store
                     .list_projects()
                     .map_err(|e| e.to_string())?
                     .into_iter()
-                    .find(|project| path_within(&dir, std::path::Path::new(&project.path)));
+                    .find(|project| {
+                        std::iter::once(project.path.as_str())
+                            .chain(project.folders.iter().map(String::as_str))
+                            .any(|folder| {
+                                aiwb_core::models::path_is_within(&dir, Path::new(folder))
+                            })
+                    });
                 if let Some(project) = inside {
                     return Err(format!("工作树目录不能放在项目「{}」里面", project.name));
                 }
@@ -232,17 +238,40 @@ impl Services {
     /// 存快照，先把共用这个目录的任务都标成已清理，再删目录。删不掉（还在用）就撤回标记和快照。
     /// 中途停掉也不怕：目录还在、任务标着已清理时，恢复会直接接着用这份目录。
     async fn shelve_group(&self, group: Group) -> ServiceResult<()> {
+        let project = group.project.clone();
+        let cwd = PathBuf::from(&group.cwd);
+        if !blocking(move || aiwb_git::can_shelve_worktree(&project, &cwd)).await?? {
+            return Ok(());
+        }
         for task_id in &group.users {
-            self.stop_task_sessions(task_id).await?;
+            self.stop_main_task_sessions(task_id).await?;
+            let sides = self
+                .store
+                .task_side_sessions(task_id)
+                .map_err(|e| e.to_string())?;
+            for side in &sides {
+                self.runtimes.stop_and_mute(&side.id).await;
+            }
         }
         self.terminals.close_owned(&group.sessions);
         let name = group.tasks[0].clone();
         let project = group.project.clone();
         let cwd = PathBuf::from(&group.cwd);
-        let Some(snapshot) =
-            blocking(move || aiwb_git::snapshot_worktree(&project, &cwd, &name)).await??
-        else {
-            return Ok(());
+        let snap_res = blocking(move || aiwb_git::snapshot_worktree(&project, &cwd, &name)).await?;
+        let snapshot = match snap_res {
+            Ok(Some(snapshot)) => snapshot,
+            Ok(None) => {
+                for task_id in &group.users {
+                    let _ = self.runtimes.settle_stopped_task(task_id);
+                }
+                return Ok(());
+            }
+            Err(err) => {
+                for task_id in &group.users {
+                    let _ = self.runtimes.settle_stopped_task(task_id);
+                }
+                return Err(err);
+            }
         };
         self.mark_shelved(&group.tasks, Some(&snapshot))?;
         let project = group.project.clone();
@@ -253,8 +282,14 @@ impl Services {
             let project = group.project.clone();
             let reference = snapshot.reference.clone();
             blocking(move || aiwb_git::drop_snapshot(&project, &reference)).await?;
+            for task_id in &group.users {
+                let _ = self.runtimes.settle_stopped_task(task_id);
+            }
             self.runtimes.publish_tasks()?;
             return Err(err);
+        }
+        for task_id in &group.users {
+            self.discard_side(task_id).await?;
         }
         self.runtimes.publish_tasks()
     }
@@ -351,17 +386,4 @@ impl Services {
             })
             .collect())
     }
-}
-
-/// `dir` 是不是 `parent` 本身或在它下面。不分大小写和斜杠方向（Windows）。
-fn path_within(dir: &Path, parent: &Path) -> bool {
-    let norm = |path: &Path| {
-        let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
-        aiwb_core::models::strip_verbatim_prefix(&canonical.to_string_lossy())
-            .replace(std::path::MAIN_SEPARATOR, "/")
-            .trim_end_matches('/')
-            .to_lowercase()
-    };
-    let (dir, parent) = (norm(dir), norm(parent));
-    dir == parent || dir.starts_with(&format!("{parent}/"))
 }

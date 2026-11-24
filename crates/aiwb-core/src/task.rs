@@ -121,6 +121,9 @@ pub struct TaskSession {
     pub id: String,
     pub task_id: String,
     pub agent: AgentKind,
+    /// 所属实例 id；为空或等同 `agent.as_str()` 时使用该种类的内置默认实例。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instance_id: Option<String>,
     /// Agent 自己的会话 id，resume 用。Agent 还没给出时为空。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub native_id: Option<String>,
@@ -128,6 +131,12 @@ pub struct TaskSession {
     pub options: SessionOptions,
     pub created_at: i64,
     pub updated_at: i64,
+}
+
+impl TaskSession {
+    pub fn effective_instance_id(&self) -> &str {
+        crate::models::effective_instance_id(self.agent, self.instance_id.as_deref())
+    }
 }
 
 /// 从父任务往上一路走到顶层。`parents` 是子任务 id 到父任务 id 的映射。
@@ -202,6 +211,8 @@ pub enum SessionLink {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionSpec {
     pub agent: AgentKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instance_id: Option<String>,
     pub title: String,
     /// 第一条消息。新会话不带发起任务的对话。独立会话可以为空，等用户自己发。
     pub prompt: String,

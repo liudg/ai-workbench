@@ -1,9 +1,10 @@
 import { useMemo } from "react";
 
-import { useAgentProfiles, useSessionAgents } from "@/features/agents";
+import { useAgentProfiles, useSelectableInstances } from "@/features/agents";
 import { usePanelOptional } from "@/features/panel";
 import { useProjects } from "@/features/projects";
 import { currentSession, forkTargets as forkTargetsOf, useTasks, type ForkTarget } from "@/features/tasks";
+import { profileForSessionAgent } from "@/shared/agent/identity";
 import { attentionQueue, nextInQueue } from "@/shared/attention";
 import { useNavigation } from "@/shared/shell/navigation";
 
@@ -16,6 +17,8 @@ export function useCommandMenuState() {
   const { tasks } = useTasks();
   const { projects } = useProjects();
   const view = useNavigation((state) => state.view);
+  const settingsOpen = useNavigation((state) => state.settings);
+  const boardOpen = useNavigation((state) => state.board);
   const profiles = useAgentProfiles();
   const panel = usePanelOptional();
 
@@ -40,20 +43,25 @@ export function useCommandMenuState() {
   const project = projectId ? (projects.find((item) => item.id === projectId) ?? null) : null;
   const current = task ? currentSession(task) : undefined;
   const agent = current?.agent;
-  const agents = useSessionAgents();
+  const instances = useSelectableInstances();
   const forkTargets = useMemo<ForkTarget[]>(
-    () => forkTargetsOf(current, profiles, agents),
-    [agents, current, profiles],
+    () => forkTargetsOf(current, profiles, instances),
+    [current, instances, profiles],
   );
   return {
     view,
+    settingsOpen,
+    boardOpen,
     tasks,
+    projects,
     sessions,
     task,
     project,
     panel,
     forkTargets,
     nextAttention,
-    changes: agent ? profiles[agent]?.capabilities.changes : undefined,
+    changes: agent
+      ? profileForSessionAgent(agent, profiles, current?.instanceId)?.capabilities.changes
+      : undefined,
   };
 }

@@ -2,11 +2,14 @@
 
 mod agent_sessions;
 mod agents;
+pub(crate) mod checkpoints;
 mod drafts;
 mod files;
 mod folders;
 mod handoff;
 mod imports;
+mod instances;
+mod keybindings;
 mod mcp;
 mod projects;
 mod sessions;
@@ -15,6 +18,7 @@ mod subtasks;
 mod tasks;
 mod task_copy;
 mod terminals;
+mod text_gen;
 mod worktree_handoff;
 mod worktrees;
 
@@ -32,7 +36,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use aiwb_core::rpc::{
-    TOPIC_AGENT_CATALOGS, TOPIC_AGENT_UPGRADES, TOPIC_PROJECTS, TOPIC_SESSION_PREFIX, TOPIC_TASKS, TOPIC_TERMINAL_PREFIX,
+    TOPIC_AGENT_CATALOGS, TOPIC_AGENT_INSTANCES, TOPIC_AGENT_UPGRADES, TOPIC_KEYBINDINGS,
+    TOPIC_PROJECTS, TOPIC_SESSION_PREFIX, TOPIC_TASKS, TOPIC_TERMINAL_PREFIX,
 };
 use aiwb_core::models::SessionStatus;
 use aiwb_core::task::{Task, TaskSession};
@@ -57,6 +62,7 @@ pub struct Services {
     /// 文件路径索引和文件名筛选的序号。按工作目录共用。
     pub(crate) indexes: aiwb_files::IndexHub,
     pub(crate) filters: aiwb_files::FilterHub,
+    pub(crate) data_dir: PathBuf,
     /// 默认的工作树目录，每个任务一个子目录。设置里可以换。
     pub(crate) worktree_root: PathBuf,
     /// 每组嵌套会话的共享笔记目录放在这下面。
@@ -66,13 +72,14 @@ pub struct Services {
     /// 嵌套任务在内存里的状态：待回报和正在送的回报。
     pub(crate) subtasks: subtasks::SubtaskState,
     pub(crate) resolving_offers: agent_sessions::ResolvingOffers,
+    pub(crate) keybindings: keybindings::KeybindingsState,
     info: DaemonInfo,
     shutdown: watch::Sender<bool>,
 }
 
 impl Services {
     pub fn new(store: Arc<Store>, info: DaemonInfo, data_dir: PathBuf) -> Self {
-        Self::with_adapters(store, info, data_dir, Arc::new(aiwb_agents::adapter_for))
+        Self::build(store, info, data_dir, Arc::new(aiwb_agents::adapter_for), false)
     }
 
     /// 测试用：换掉真实的 Agent CLI。
@@ -82,8 +89,24 @@ impl Services {
         data_dir: PathBuf,
         adapters: AdapterFactory,
     ) -> Self {
+        Self::build(store, info, data_dir, adapters, true)
+    }
+
+    fn build(
+        store: Arc<Store>,
+        info: DaemonInfo,
+        data_dir: PathBuf,
+        adapters: AdapterFactory,
+        custom_adapters: bool,
+    ) -> Self {
         let hub = Arc::new(Hub::new());
-        let runtimes = Runtimes::new(store.clone(), hub.clone(), adapters.clone());
+        let runtimes = Runtimes::with_options(
+            store.clone(),
+            hub.clone(),
+            adapters.clone(),
+            data_dir.join("instances"),
+            custom_adapters,
+        );
         if info.port != 0 {
             runtimes.mcp.set_url(format!("http://127.0.0.1:{}/mcp", info.port));
         }
@@ -92,6 +115,7 @@ impl Services {
             runtimes: Arc::new(runtimes),
             subtasks: Default::default(),
             resolving_offers: Default::default(),
+            keybindings: Default::default(),
             terminals: Arc::new(Terminals::new(hub.clone())),
             store,
             hub,
@@ -99,6 +123,7 @@ impl Services {
             filters: aiwb_files::FilterHub::default(),
             worktree_root: data_dir.join("worktrees"),
             session_notes_root: data_dir.join("session-notes"),
+            data_dir,
             worktree_sweep: tokio::sync::Notify::new(),
             info,
             shutdown: watch::channel(false).0,
@@ -190,14 +215,27 @@ impl Services {
             "settings.setTaskFolder" => to_value(self.set_task_folder(parse(params)?)?),
             "settings.worktrees" => to_value(self.worktree_settings()?),
             "settings.setWorktrees" => to_value(self.set_worktree_settings(parse(params)?).await?),
+            "settings.keybindings" => to_value(self.read_keybindings()),
+            "settings.setKeybindings" => to_value(self.set_keybindings(parse(params)?)?),
+            "settings.textGen" => to_value(self.text_gen_settings()?),
+            "settings.setTextGen" => to_value(self.set_text_gen_settings(parse(params)?)?),
+            "tasks.regenerateTitle" => {
+                to_value(self.regenerate_task_title(parse(params)?).await?)
+            }
+            "textGen.branchName" => to_value(self.generate_branch_name(parse(params)?).await?),
+            "textGen.commitMessage" => to_value(self.generate_commit_message(parse(params)?).await?),
             "drafts.get" => to_value(self.draft(parse(params)?)?),
             "drafts.set" => to_value(self.set_draft(parse(params)?)?),
-            "agents.profiles" => to_value(aiwb_agents::agent_profiles()),
+            "instances.list" => to_value(self.list_instances()?),
+            "instances.upsert" => to_value(self.upsert_instance(parse(params)?).await?),
+            "instances.remove" => to_value(self.remove_instance(parse(params)?).await?),
+            "instances.resetDefault" => to_value(self.reset_default_instance(parse(params)?).await?),
+            "agents.profiles" => to_value(self.agent_profiles()),
             "agents.installations" => to_value(self.installations(parse(params)?).await),
             "agents.upgrade" => to_value(self.upgrade_agent(parse(params)?)?),
             "agents.catalog" => to_value(self.cached_catalog(parse(params)?)?),
             "agents.probeCatalog" => to_value(self.probe_catalog(parse(params)?).await?),
-            "agents.permissionMenu" => to_value(self.draft_permission_menu(parse(params)?)),
+            "agents.permissionMenu" => to_value(self.draft_permission_menu(parse(params)?)?),
             "agents.subscriptionUsage" => to_value(self.subscription_usage(parse(params)?).await?),
             "mcp.surfaces" => to_value(self.mcp_surfaces()),
             "mcp.list" => to_value(self.mcp_list(parse(params)?).await?),
@@ -211,6 +249,7 @@ impl Services {
             "imports.list" => to_value(self.import_list(parse(params)?).await?),
             "imports.run" => to_value(self.run_import(parse(params)?).await?),
             "tasks.list" => to_value(self.runtimes.task_entries()?),
+            "tasks.search" => to_value(self.search_tasks(parse(params)?)?),
             "tasks.create" => to_value(self.create_task(parse(params)?).await?),
             "tasks.rename" => to_value(self.rename_task(parse(params)?)?),
             "tasks.workdir" => to_value(self.task_workdir(parse(params)?)?),
@@ -243,8 +282,11 @@ impl Services {
             "sessions.setGoalStatus" => to_value(self.set_goal_status(parse(params)?).await?),
             "sessions.publishGoal" => to_value(self.publish_goal(parse(params)?).await?),
             "sessions.stop" => to_value(self.stop_session(parse(params)?).await?),
+            "sessions.rewindPreview" => to_value(self.rewind_preview(parse(params)?).await?),
+            "sessions.rewind" => to_value(self.rewind_session(parse(params)?).await?),
             "files.diffScopes" => to_value(self.diff_scopes(parse(params)?).await?),
             "files.diff" => to_value(self.diff(parse(params)?).await?),
+            "files.resolve" => to_value(self.resolve_file(parse(params)?).await?),
             "files.readFile" => to_value(self.read_file(parse(params)?).await?),
             "files.readImage" => to_value(self.read_image(parse(params)?).await?),
             "files.listDir" => to_value(self.list_dir(parse(params)?).await?),
@@ -269,6 +311,8 @@ impl Services {
             TOPIC_TASKS => to_value(self.runtimes.task_entries()?),
             TOPIC_AGENT_UPGRADES => to_value(self.upgrades.snapshot()),
             TOPIC_AGENT_CATALOGS => to_value(self.runtimes.catalog_probes()),
+            TOPIC_AGENT_INSTANCES => to_value(self.list_instances()?),
+            TOPIC_KEYBINDINGS => to_value(self.read_keybindings()),
             _ if topic.starts_with(TOPIC_TERMINAL_PREFIX) => {
                 Ok(self.terminals.snapshot(&topic[TOPIC_TERMINAL_PREFIX.len()..]))
             }

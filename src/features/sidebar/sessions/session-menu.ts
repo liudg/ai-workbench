@@ -3,14 +3,24 @@
 import type { ForkTarget } from "../../tasks/index.ts";
 import type { AgentKind } from "../../../types/index.ts";
 
-export type SessionMenuAction = "rename" | "pin" | "fork" | "copy" | "copy-markdown" | "copy-workdir" | "archive" | "delete";
+export type SessionMenuAction =
+  | "rename"
+  | "regenerate-title"
+  | "pin"
+  | "fork"
+  | "copy"
+  | "copy-markdown"
+  | "copy-workdir"
+  | "archive"
+  | "delete";
 
 export interface SessionMenuItem {
   key: string;
   id: SessionMenuAction;
   label: string;
-  /** 分叉到哪个 Agent。 */
+  /** 分叉到哪个 Agent / 实例。 */
   agent?: AgentKind;
+  instanceId?: string;
   danger?: boolean;
   /** 有就是二级菜单：选里面的一项才执行。 */
   children?: SessionMenuItem[];
@@ -23,6 +33,7 @@ export function sessionMenuItems(input: {
 }): SessionMenuItem[] {
   return [
     { key: "rename", id: "rename", label: "重命名" },
+    { key: "regenerate-title", id: "regenerate-title", label: "AI 重新生成标题" },
     { key: "pin", id: "pin", label: input.pinned ? "取消置顶" : "置顶" },
     ...forkItems(input.forks),
     {
@@ -39,13 +50,22 @@ export function sessionMenuItems(input: {
   ];
 }
 
-/** 只能分给一个 Agent 时直接点；能分给几个时收进「分叉」的二级菜单，按 Agent 名字列出。 */
+/** 只能分给一个目标时直接点；能分给几个时收进「分叉」的二级菜单，按实例/Agent 名字列出。 */
 function forkItems(forks: readonly ForkTarget[]): SessionMenuItem[] {
   const [only] = forks;
   if (!only) return [];
+  const forkKey = (target: ForkTarget) => `fork:${target.instanceId ?? target.agent}`;
   if (forks.length === 1) {
     const label = only.same ? "分叉" : `分叉到 ${only.name}`;
-    return [{ key: `fork:${only.agent}`, id: "fork", label, agent: only.agent }];
+    return [
+      {
+        key: forkKey(only),
+        id: "fork",
+        label,
+        agent: only.agent,
+        ...(only.instanceId ? { instanceId: only.instanceId } : {}),
+      },
+    ];
   }
   return [
     {
@@ -53,10 +73,11 @@ function forkItems(forks: readonly ForkTarget[]): SessionMenuItem[] {
       id: "fork",
       label: "分叉",
       children: forks.map((target) => ({
-        key: `fork:${target.agent}`,
+        key: forkKey(target),
         id: "fork" as const,
         label: target.same ? `${target.name}（当前）` : target.name,
         agent: target.agent,
+        ...(target.instanceId ? { instanceId: target.instanceId } : {}),
       })),
     },
   ];

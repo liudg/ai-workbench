@@ -782,14 +782,14 @@ pub fn strip_verbatim_prefix(path: &str) -> String {
     path.to_string()
 }
 
-/// 比较目录用的键：去掉 `\?\` 前缀和末尾分隔符，Windows 路径不分大小写。
+/// 比较目录用的键：去掉 `\?\` 前缀、统一斜杠方向并去掉末尾分隔符，Windows 路径不分大小写。
 pub fn cwd_key(path: &str) -> String {
     let stripped = strip_verbatim_prefix(path.trim());
     let trimmed = stripped.trim_end_matches(['\\', '/']);
     // Windows 路径不区分大小写。带盘符或 UNC 的字符串在任何宿主上都按这个规则折叠，
-    // 避免同一目录因为 `F:\App` / `f:\app` 对不上。POSIX 路径保持原样。
+    // 避免同一目录因为 `F:\App` / `f:/app` 对不上。POSIX 路径保持原样。
     if cfg!(windows) || looks_like_windows_path(trimmed) {
-        trimmed.to_lowercase()
+        trimmed.replace('\\', "/").to_lowercase()
     } else {
         trimmed.to_string()
     }
@@ -801,6 +801,102 @@ fn looks_like_windows_path(path: &str) -> bool {
         || path.starts_with(r"\\")
 }
 
+/// 非空且不以 `/` 开头的可见用户文本（排除 `/slash` 命令）。
+pub fn is_visible_user_text(text: &str) -> bool {
+    let trimmed = text.trim();
+    !trimmed.is_empty() && !trimmed.starts_with('/')
+}
+
+/// 时间线上可展示的用户消息气泡（`sender: None`，且含非斜杠文本或图片）。
+pub fn is_visible_user_body(body: &SessionEventBody) -> bool {
+    matches!(
+        body,
+        SessionEventBody::UserMessage {
+            text,
+            images,
+            sender: None,
+            ..
+        } if is_visible_user_text(text) || !images.is_empty()
+    )
+}
+
+fn lexical_clean_path(path: &std::path::Path) -> std::path::PathBuf {
+    let abs = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map(|cwd| cwd.join(path))
+            .unwrap_or_else(|_| path.to_path_buf())
+    };
+    let mut out = std::path::PathBuf::new();
+    for comp in abs.components() {
+        match comp {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
+}
+
+fn normalized_overlap_key(path: &std::path::Path) -> String {
+    if path.as_os_str().is_empty() {
+        return String::new();
+    }
+    let cleaned = lexical_clean_path(path);
+    let mut tail_parts = Vec::new();
+    let mut cursor = cleaned.as_path();
+    let resolved = loop {
+        if let Ok(canon) = std::fs::canonicalize(cursor) {
+            let mut joined = canon;
+            for part in tail_parts.into_iter().rev() {
+                joined.push(part);
+            }
+            break joined;
+        }
+        let Some(name) = cursor.file_name() else {
+            break cleaned.clone();
+        };
+        tail_parts.push(name.to_os_string());
+        let Some(parent) = cursor.parent() else {
+            break cleaned.clone();
+        };
+        cursor = parent;
+    };
+    let raw = resolved.to_string_lossy();
+    let key = cwd_key(&raw).replace('\\', "/");
+    if key.is_empty() && cleaned.has_root() {
+        "/".to_string()
+    } else {
+        key.trim_end_matches('/').to_string()
+    }
+}
+
+/// 判断 `candidate` 是否等于 `parent` 或位于 `parent` 目录内部（统一斜杠、软链与大小写后基于 [`cwd_key`] 比较）。
+pub fn path_is_within(candidate: &std::path::Path, parent: &std::path::Path) -> bool {
+    let kc = normalized_overlap_key(candidate);
+    let kp = normalized_overlap_key(parent);
+    if kc.is_empty() || kp.is_empty() {
+        return false;
+    }
+    if kc == kp {
+        return true;
+    }
+    let parent_prefix = if kp.ends_with('/') {
+        kp
+    } else {
+        format!("{kp}/")
+    };
+    kc.starts_with(&parent_prefix)
+}
+
+/// 判断两个目录路径是否完全相同或互为父子嵌套关系（统一斜杠、软链与大小写后基于 [`cwd_key`] 比较）。
+pub fn paths_overlap(a: &std::path::Path, b: &std::path::Path) -> bool {
+    path_is_within(a, b) || path_is_within(b, a)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -808,6 +904,41 @@ mod tests {
     #[test]
     fn cwd_key_ignores_verbatim_prefix_and_case() {
         assert_eq!(cwd_key(r"\\?\F:\App\"), cwd_key(r"f:\app"));
+    }
+
+    #[test]
+    fn paths_overlap_detects_same_and_parent_child_but_not_siblings() {
+        let a = std::path::Path::new(r"G:\Work\Repo");
+        let b = std::path::Path::new(r"g:/work/repo/sub/dir");
+        let c = std::path::Path::new(r"G:\Work\Repo-other");
+        let parent = std::path::Path::new(r"G:\Work");
+        assert!(paths_overlap(a, a));
+        assert!(paths_overlap(a, b));
+        assert!(paths_overlap(b, a));
+        assert!(!paths_overlap(a, c));
+        assert!(path_is_within(a, a));
+        assert!(path_is_within(b, a));
+        assert!(!path_is_within(parent, a));
+        assert!(!path_is_within(c, a));
+    }
+
+    #[test]
+    fn visible_user_helpers_exclude_slash_and_sender_messages() {
+        assert!(is_visible_user_text("hello"));
+        assert!(!is_visible_user_text("   "));
+        assert!(!is_visible_user_text("  /compact"));
+        assert!(is_visible_user_body(&SessionEventBody::UserMessage {
+            text: String::new(),
+            images: vec!["a.png".into()],
+            annotations: 0,
+            sender: None,
+        }));
+        assert!(!is_visible_user_body(&SessionEventBody::UserMessage {
+            text: "subtask prompt".into(),
+            images: Vec::new(),
+            annotations: 0,
+            sender: Some(MessageSender::default()),
+        }));
     }
 
     #[test]

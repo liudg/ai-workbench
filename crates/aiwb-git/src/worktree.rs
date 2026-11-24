@@ -263,6 +263,54 @@ pub fn bind_codex_thread(cwd: &Path, thread_id: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// 当关联工作树内的 Codex 会话回退分叉到新线程（或清空原生线程）时，同步更新检出的 `codex-thread.json`。
+pub fn rebind_codex_thread(
+    cwd: &Path,
+    old_thread_id: &str,
+    new_thread_id: Option<&str>,
+) -> Result<bool, String> {
+    let old_id = old_thread_id.trim();
+    if old_id.is_empty() || !cwd.is_dir() {
+        return Ok(false);
+    }
+    let Ok(path) = owned_git_file(cwd, "codex-thread.json") else {
+        return Ok(false);
+    };
+    if !path.is_file() {
+        return Ok(false);
+    }
+    let existing = fs::read_to_string(&path).unwrap_or_default();
+    let owned_by_old = serde_json::from_str::<serde_json::Value>(&existing)
+        .ok()
+        .and_then(|v| {
+            v.get("ownerThreadId")
+                .and_then(|s| s.as_str())
+                .map(|s| s == old_id)
+        })
+        .unwrap_or_else(|| existing.contains(old_id));
+    if !owned_by_old {
+        return Ok(false);
+    }
+    match new_thread_id.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(new_id) => {
+            if new_id == old_id {
+                return Ok(false);
+            }
+            let body = serde_json::json!({
+                "version": 1,
+                "ownerThreadId": new_id,
+            });
+            fs::write(&path, body.to_string())
+                .map_err(|err| format!("无法更新工作树记录: {err}"))?;
+            Ok(true)
+        }
+        None => {
+            let _ = fs::remove_file(&path);
+            Ok(true)
+        }
+    }
+}
+
 /// 工作台自己创建工作树时写下的记录。没有这份文件的检出不当作工作台的工作树。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OwnedMarker {
@@ -953,7 +1001,7 @@ fn plain_git(cwd: &Path) -> Command {
         command.process_group(0);
     }
     aiwb_proc::apply_utf8_env_std(&mut command);
-    super::hide_console(&mut command);
+    aiwb_proc::hide_console_std(&mut command);
     command
 }
 
@@ -1917,6 +1965,34 @@ mod tests {
         for made in [plain, carried, feature] {
             remove_checkout(&repo, &made.root);
         }
+        let _ = fs::remove_dir_all(managed);
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn rebind_codex_thread_updates_or_clears_matching_owner_thread() {
+        if !git_ok() {
+            return;
+        }
+        let repo = repo_with_commit("rebind");
+        let managed = scratch("rebind-managed");
+        let wt = create_task_worktree(&repo, &managed, &NewWorktree::default()).unwrap();
+
+        bind_codex_thread(&wt.cwd, "thread-old").unwrap();
+        assert!(bind_codex_thread(&wt.cwd, "thread-forked").is_err());
+
+        // 不匹配其它线程时不误改。
+        assert!(!rebind_codex_thread(&wt.cwd, "unrelated", Some("thread-forked")).unwrap());
+
+        // 分叉出新线程 ID 后更新绑定，新线程即可通过 bind_codex_thread。
+        assert!(rebind_codex_thread(&wt.cwd, "thread-old", Some("thread-forked")).unwrap());
+        bind_codex_thread(&wt.cwd, "thread-forked").unwrap();
+
+        // 回退到第 0 轮清空原生线程后移除绑定，后续新开线程可重新绑定。
+        assert!(rebind_codex_thread(&wt.cwd, "thread-forked", None).unwrap());
+        bind_codex_thread(&wt.cwd, "thread-fresh").unwrap();
+
+        remove_checkout(&repo, &wt.root);
         let _ = fs::remove_dir_all(managed);
         let _ = fs::remove_dir_all(repo);
     }

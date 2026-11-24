@@ -1,5 +1,5 @@
-// 模型和推理强度。左边的 Agent 竖栏照 t3code `apps/web/src/components/chat/ModelPickerSidebar.tsx`，
-// 换不了 Agent 的会话只剩当前 Agent 照 `apps/web/src/components/chat/ModelPickerContent.tsx` 的 `lockedProvider`。
+// 模型和推理强度。左边的 Agent / 实例竖栏照 t3code `apps/web/src/components/chat/ModelPickerSidebar.tsx`，
+// 换不了 Agent 的会话只剩当前实例照 `apps/web/src/components/chat/ModelPickerContent.tsx` 的 `lockedProvider`。
 
 import {
   useEffect,
@@ -16,9 +16,19 @@ import { cn } from "@/lib/utils";
 import { SessionAgentIcon } from "@/shared/agent/SessionAgentIcon";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import type { AgentKind, AgentModelOption, ReasoningEffortOption } from "@/types";
-import type { AgentChoice } from "./host";
+import type { AgentChoice, AgentOption } from "./host";
 import { effortChoiceLabel, effortDisplay } from "./effort-label";
-import { modelSections, sliderEfforts, snapEffortIndex } from "./model-picker";
+import {
+  explicitOptionInstanceId,
+  invokeSelectAgent,
+  modelSections,
+  optionAccentColor,
+  optionInstanceKey,
+  selectedInstanceKey,
+  shouldShowInstanceStrip,
+  sliderEfforts,
+  snapEffortIndex,
+} from "./model-picker";
 
 export function ModelMenu({
   menuRef,
@@ -305,8 +315,29 @@ function EffortSlider({
   );
 }
 
-/** 别的 Agent 的模型：竖栏切过去时读一次。 */
-type OtherModels = { agent: AgentKind; models: AgentModelOption[] | null; error: string | null };
+type RailTarget = {
+  kind: AgentKind;
+  key: string;
+  explicitInstanceId?: string;
+};
+
+/** 别的 Agent / 实例的模型：竖栏切过去时按实例 key 读一次。 */
+type OtherModels = { key: string; models: AgentModelOption[] | null; error: string | null };
+
+function initialRailTarget(agents: AgentChoice | null): RailTarget | undefined {
+  if (!agents) return undefined;
+  const key = selectedInstanceKey(agents);
+  const matched = agents.options?.find((opt) => optionInstanceKey(opt) === key);
+  if (matched) {
+    return {
+      kind: matched.kind,
+      key,
+      explicitInstanceId: explicitOptionInstanceId(matched),
+    };
+  }
+  const explicit = agents.selectedInstanceId?.trim() || undefined;
+  return { kind: agents.selected, key, explicitInstanceId: explicit };
+}
 
 function ModelPanel({
   agents,
@@ -323,33 +354,98 @@ function ModelPanel({
   onBack: (() => void) | null;
   onPick: (model: AgentModelOption) => void;
 }) {
-  const selected = agents?.selected;
+  const selectedKey = agents ? selectedInstanceKey(agents) : undefined;
   const switcher = agents?.switcher ?? null;
-  const [railAgent, setRailAgent] = useState(selected);
-  const [other, setOther] = useState<OtherModels | null>(null);
-  const viewingOther = switcher !== null && railAgent !== undefined && railAgent !== selected;
+  const [railTarget, setRailTarget] = useState<RailTarget | undefined>(() => initialRailTarget(agents));
+  const [syncedKey, setSyncedKey] = useState<string | undefined>(selectedKey);
+  if (syncedKey !== selectedKey) {
+    setSyncedKey(selectedKey);
+    setRailTarget(initialRailTarget(agents));
+  }
 
-  // 回合进行中外面会不断给新的 switcher；只在换了竖栏上的 Agent 时重读。
+  const [other, setOther] = useState<OtherModels | null>(null);
+  const railKey = railTarget?.key;
+  const railKind = railTarget?.kind;
+  const railExplicitId = railTarget?.explicitInstanceId;
+  const viewingOther = switcher !== null && railKey !== undefined && railKey !== selectedKey;
+
+  // 回合进行中外面会不断给新的 switcher；只在换了竖栏上的实例时重读。
   const loadModels = useRef(switcher?.loadModels);
   loadModels.current = switcher?.loadModels;
   const canSwitch = switcher !== null;
   useEffect(() => {
-    if (!canSwitch || !loadModels.current || railAgent === undefined || railAgent === selected) return;
+    if (!canSwitch || !loadModels.current || !railKind || !railKey || railKey === selectedKey) return;
     let cancelled = false;
-    setOther({ agent: railAgent, models: null, error: null });
+    setOther({ key: railKey, models: null, error: null });
     const show = (found: AgentModelOption[]) => {
-      if (!cancelled) setOther({ agent: railAgent, models: found, error: null });
+      if (!cancelled) setOther({ key: railKey, models: found, error: null });
     };
-    loadModels.current(railAgent, show).catch((error: unknown) => {
-      if (!cancelled) setOther({ agent: railAgent, models: null, error: userFacingMessage(error) });
+    const work =
+      railExplicitId !== undefined
+        ? loadModels.current(railKind, show, railExplicitId)
+        : loadModels.current(railKind, show);
+    work.catch((error: unknown) => {
+      if (!cancelled) setOther({ key: railKey, models: null, error: userFacingMessage(error) });
     });
     return () => {
       cancelled = true;
     };
-  }, [railAgent, selected, canSwitch]);
+  }, [railKind, railKey, railExplicitId, selectedKey, canSwitch]);
 
-  const loaded = other?.agent === railAgent ? other : null;
+  const handleSelectOption = (option: AgentOption) => {
+    const explicitId = explicitOptionInstanceId(option);
+    const key = optionInstanceKey(option);
+    setRailTarget({ kind: option.kind, key, explicitInstanceId: explicitId });
+    invokeSelectAgent(agents?.selectAgent, option.kind, explicitId);
+  };
+
+  const loaded = other?.key === railKey ? other : null;
   const withRail = Boolean(agents);
+  const showStrip = shouldShowInstanceStrip(agents?.options, railKind);
+  const sameKindOptions = showStrip
+    ? (agents?.options ?? []).filter((opt) => opt.kind === railKind)
+    : [];
+  const activeOption = (agents?.options ?? []).find((opt) => optionInstanceKey(opt) === railKey);
+
+  const instanceStrip =
+    sameKindOptions.length > 0 ? (
+      <div
+        data-instance-strip=""
+        className="flex flex-wrap items-center gap-1 border-b border-wb-border bg-wb-elev/40 px-2.5 py-1.5"
+      >
+        {sameKindOptions.map((option) => {
+          const key = optionInstanceKey(option);
+          const active = key === railKey;
+          const dotColor = optionAccentColor(option);
+          return (
+            <button
+              key={key}
+              type="button"
+              data-instance-pill={key}
+              aria-pressed={active}
+              className={cn(
+                "inline-flex max-w-full items-center gap-1.5 rounded-md px-2 py-0.5 text-xs transition-colors",
+                active
+                  ? "wb-menu-active font-medium text-wb-fg"
+                  : "text-wb-fg-2 hover:bg-wb-hover hover:text-wb-fg",
+              )}
+              onClick={() => handleSelectOption(option)}
+            >
+              {dotColor ? (
+                <span
+                  data-instance-pill-dot=""
+                  aria-hidden
+                  className="h-2 w-2 shrink-0 rounded-full"
+                  style={{ backgroundColor: dotColor }}
+                />
+              ) : null}
+              <span className="truncate">{option.name}</span>
+            </button>
+          );
+        })}
+      </div>
+    ) : null;
+
   const list = viewingOther ? (
     <ModelList
       models={loaded?.models ?? null}
@@ -357,9 +453,24 @@ function ModelPanel({
       blocked={switcher?.blocked ?? null}
       withRail={withRail}
       backLabel={backLabel}
+      instanceStrip={instanceStrip}
+      directSwitchLabel={
+        switcher?.onPickAgentOnly && activeOption ? `切换到 ${activeOption.name}` : null
+      }
+      onDirectSwitch={
+        switcher?.onPickAgentOnly && railKind
+          ? () => {
+              if (railExplicitId !== undefined) switcher.onPickAgentOnly?.(railKind, railExplicitId);
+              else switcher.onPickAgentOnly?.(railKind);
+            }
+          : null
+      }
       onBack={onBack}
       onPick={(model) => {
-        if (railAgent !== undefined) switcher?.onPick(railAgent, model);
+        if (railKind !== undefined) {
+          if (railExplicitId !== undefined) switcher?.onPick(railKind, model, railExplicitId);
+          else switcher?.onPick(railKind, model);
+        }
       }}
     />
   ) : (
@@ -369,6 +480,7 @@ function ModelPanel({
       modelId={modelId}
       withRail={withRail}
       backLabel={backLabel}
+      instanceStrip={instanceStrip}
       onBack={onBack}
       onPick={onPick}
     />
@@ -384,22 +496,33 @@ function ModelPanel({
         className="flex flex-col items-center gap-1 border-r border-wb-border p-2"
       >
         {(agents.options ?? []).map((option) => {
-          const active = option.kind === railAgent;
+          const key = optionInstanceKey(option);
+          const active = key === railKey;
+          const dotColor = optionAccentColor(option);
           return (
             <button
-              key={option.kind}
+              key={key}
               type="button"
               title={option.name}
               aria-label={option.name}
               aria-pressed={active}
               data-agent={option.kind}
+              data-instance={key}
               className={cn(
-                "flex h-7 w-7 items-center justify-center rounded-lg transition-colors",
+                "relative flex h-7 w-7 items-center justify-center rounded-lg transition-colors",
                 active ? "wb-menu-active text-wb-fg" : "text-wb-fg-3 hover:bg-wb-hover hover:text-wb-fg",
               )}
-              onClick={() => setRailAgent(option.kind)}
+              onClick={() => handleSelectOption(option)}
             >
               <SessionAgentIcon identity={option.identity} className="h-4 w-4" />
+              {dotColor ? (
+                <span
+                  data-instance-dot=""
+                  aria-hidden
+                  className="absolute bottom-0.5 right-0.5 h-2 w-2 rounded-full ring-1 ring-wb-surface"
+                  style={{ backgroundColor: dotColor }}
+                />
+              ) : null}
             </button>
           );
         })}
@@ -415,6 +538,9 @@ function ModelList({
   blocked = null,
   modelId,
   backLabel,
+  instanceStrip = null,
+  directSwitchLabel = null,
+  onDirectSwitch = null,
   onBack,
   onPick,
 }: {
@@ -426,6 +552,9 @@ function ModelList({
   modelId?: string;
   withRail?: boolean;
   backLabel: string;
+  instanceStrip?: ReactNode;
+  directSwitchLabel?: string | null;
+  onDirectSwitch?: (() => void) | null;
   onBack: (() => void) | null;
   onPick: (model: AgentModelOption) => void;
 }) {
@@ -451,6 +580,7 @@ function ModelList({
           </button>
         ) : null}
       </div>
+      {instanceStrip}
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
         {blocked ? (
           <p data-switch-blocked className="px-2 pb-1 pt-0.5 text-xs text-wb-warn">{blocked}</p>
@@ -460,7 +590,19 @@ function ModelList({
         ) : models === null ? (
           <p className="px-2 py-2 text-xs text-wb-fg-3">读取模型…</p>
         ) : sections.length === 0 ? (
-          <p className="px-2 py-2 text-xs text-wb-fg-3">当前 Agent 没有可选模型</p>
+          <div className="space-y-2 px-2 py-2">
+            <p className="text-xs text-wb-fg-3">当前 Agent 没有可选模型</p>
+            {!blocked && directSwitchLabel && onDirectSwitch ? (
+              <button
+                type="button"
+                data-switch-instance-direct=""
+                className="rounded-lg border border-wb-border bg-wb-elev px-2.5 py-1 text-xs font-medium text-wb-fg transition-colors hover:bg-wb-hover"
+                onClick={onDirectSwitch}
+              >
+                {directSwitchLabel}
+              </button>
+            ) : null}
+          </div>
         ) : (
           sections.map((section) => (
             <div key={section.id} className="space-y-0.5">

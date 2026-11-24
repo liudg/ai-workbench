@@ -53,6 +53,7 @@ export interface TaskSession {
   id: string;
   taskId: string;
   agent: AgentKind;
+  instanceId?: string;
   nativeId?: string;
   status: SessionStatus;
   options: SessionOptions;
@@ -85,6 +86,7 @@ export interface CreateTaskInput {
   /** 空表示独立聊天。 */
   projectId: string | null;
   agent: AgentKind;
+  instanceId?: string;
   prompt: string;
   images: string[];
   worktree: boolean;
@@ -95,6 +97,41 @@ export interface CreateTaskInput {
   /** 首发前先设好的目标。 */
   goal?: string;
   goalStatus?: "paused" | "active";
+}
+
+export interface RewindPreview {
+  turnsToRemove: number;
+  canRestoreFiles: boolean;
+  fileRestoreDisabledReason?: string;
+  hasManualEditsWarning: boolean;
+}
+
+export interface RewindResult {
+  taskId: string;
+  activeSessionId: string;
+  restoredText: string;
+  restoredImages: string[];
+  filesRestored: boolean;
+}
+
+export interface SearchTasksQuery {
+  query: string;
+  projectId?: string;
+  includeArchived?: boolean;
+  limit?: number;
+}
+
+export interface TaskSearchHit {
+  taskId: string;
+  projectId?: string;
+  taskTitle: string;
+  archivedAt?: number;
+  sessionId?: string;
+  eventId?: string;
+  seq?: number;
+  role: "title" | "user" | "assistant" | string;
+  snippet: string;
+  ts: number;
 }
 
 

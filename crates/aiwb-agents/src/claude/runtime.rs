@@ -46,6 +46,7 @@ pub struct Shared {
     pub events: EventSink,
     pub session_id: String,
     pub project_path: PathBuf,
+    pub projects_dir: PathBuf,
     outbound: Mutex<Option<mpsc::UnboundedSender<String>>>,
     child: Mutex<Option<Child>>,
     pub(super) closed: AtomicBool,
@@ -84,6 +85,7 @@ pub struct Shared {
 }
 
 pub async fn open(
+    overlay: &crate::instance::InstanceOverlay,
     project_path: String,
     access_mode: Option<String>,
     resume_native_id: Option<String>,
@@ -101,15 +103,16 @@ pub async fn open(
     if let Some(parent) = side_of.as_deref().filter(|id| !history::is_uuid(id)) {
         return Err(AgentError::Runtime(format!("无效的会话 id：{parent}")));
     }
+    let projects_dir = history::projects_dir_for(overlay);
     // 侧边聊天分出来的是新会话，id 由这里定。
     let resume_native_id = if side_of.is_some() { None } else { resume_native_id };
-    let (session_id, resume) = launch_target(resume_native_id.as_deref(), &history::projects_dir(), has_history)?;
+    let (session_id, resume) = launch_target(resume_native_id.as_deref(), &projects_dir, has_history)?;
     let permission_mode = command::permission_mode_for_access(access_mode.as_deref());
     let access = match access_mode.as_deref().unwrap_or("full") {
         "full" => "full",
         _ => "ask",
     };
-    let bin = process::resolve_claude_bin()?;
+    let bin = process::resolve_bin_for(overlay)?;
     let add_dirs = command::normalize_add_dirs(&project.to_string_lossy(), &writable_roots);
     let args = command::cli_args(&Launch {
         session_id: session_id.clone(),
@@ -121,7 +124,7 @@ pub async fn open(
         writable_roots: add_dirs.clone(),
         workbench_mcp,
     });
-    let mut child = process::spawn(&bin, &args, &project)?;
+    let mut child = process::spawn(&bin, &args, &project, overlay)?;
     let stdin = child
         .stdin
         .take()
@@ -135,10 +138,14 @@ pub async fn open(
         .take()
         .ok_or_else(|| AgentError::Runtime("Claude Code 没有标准错误".into()))?;
 
+    let mut initial_catalog = catalog::empty_catalog();
+    initial_catalog.instance_id = Some(overlay.instance_id.clone());
+
     let shared = Arc::new(Shared {
         events,
         session_id,
         project_path: project,
+        projects_dir,
         outbound: Mutex::new(None),
         child: Mutex::new(Some(child)),
         closed: AtomicBool::new(false),
@@ -146,7 +153,7 @@ pub async fn open(
         waiters: Mutex::new(HashMap::new()),
         intents: Mutex::new(HashMap::new()),
         prompts: Mutex::new(HashMap::new()),
-        catalog: Mutex::new(catalog::empty_catalog()),
+        catalog: Mutex::new(initial_catalog),
         goal: Mutex::new(None),
         map: Mutex::new(MapState::default()),
         older: Mutex::new(Vec::new()),
@@ -275,7 +282,7 @@ impl Shared {
 
     fn install_history(&self) {
         let model_before = self.map.lock().unwrap().model.clone();
-        if let Some(path) = history::find_session_file(&self.session_id) {
+        if let Some(path) = history::find_session_file_under(&self.projects_dir, &self.session_id) {
             if let Some(text) = history::read_session_text(&path) {
                 self.absorbed_base
                     .store(count_absorbed(&text), Ordering::SeqCst);
@@ -790,7 +797,7 @@ impl Shared {
         if written <= seen {
             return written;
         }
-        let absorbed = history::find_session_file(&self.session_id)
+        let absorbed = history::find_session_file_under(&self.projects_dir, &self.session_id)
             .and_then(|path| history::read_session_text(&path))
             .map(|text| count_absorbed(&text))
             .unwrap_or(0)
@@ -799,7 +806,8 @@ impl Shared {
     }
 
     fn refresh_usage_snapshot(&self) {
-        let Some(path) = history::find_session_file(&self.session_id) else {
+        let Some(path) = history::find_session_file_under(&self.projects_dir, &self.session_id)
+        else {
             return;
         };
         let Some(text) = history::read_session_text(&path) else {

@@ -9,10 +9,12 @@ import { SESSION_ROW_HEIGHT } from "./virtual-window";
 export function SessionRows({
   lines,
   activeTaskId,
+  jumpIndexByTaskId,
   onToggle,
 }: {
   lines: readonly SessionLine<SidebarTask>[];
   activeTaskId: string | null;
+  jumpIndexByTaskId?: ReadonlyMap<string, number>;
   /** 折叠或展开父任务下的子任务。 */
   onToggle: (taskId: string) => void;
 }) {
@@ -44,6 +46,7 @@ export function SessionRows({
             last={line.last}
             subtasks={line.subtasks}
             collapsed={line.collapsed}
+            jumpIndex={jumpIndexByTaskId?.get(line.task.id)}
             onToggle={() => onToggle(line.task.id)}
           />
         </div>

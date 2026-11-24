@@ -6,6 +6,7 @@ import { isTauri } from "@/lib/daemon/endpoint";
 import { browserAnnotate, browserHide, browserReload, browserShow, onBrowserNotice } from "@/lib/native/browser";
 import type { PageAnnotation } from "@/types";
 import { pageTitleFromHtml } from "@/shared/html-title";
+import { buildWhenContext, getResolvedKeybindings, matchesCommandBinding } from "@/shared/keybindings";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { usePanel, type PanelData } from "../core/PanelProvider";
 import { tabTitleFromDocument } from "./annotate";
@@ -242,17 +243,25 @@ export function useBrowserSession({
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (!(event.ctrlKey || event.metaKey) || !event.shiftKey || event.altKey) return;
-      if (event.code !== "Period") return;
+      if (typeof document !== "undefined" && document.querySelector("[data-keybinding-recording='true']")) {
+        return;
+      }
       if (!frameTargetRef.current || !currentEntry(historyRef.current)?.loaded) return;
       const target = event.target as HTMLElement | null;
-      if (target?.closest("textarea, input") && !target.closest("[data-browser]")) return;
+      const insideBrowserInput = Boolean(target?.closest("[data-browser]") && target?.closest("textarea, input"));
+      const context = buildWhenContext({
+        panelOpen: true,
+        projectActive: Boolean(projectId),
+        sessionActive: Boolean(sessionRef.current),
+        target: insideBrowserInput ? null : target,
+      });
+      if (!matchesCommandBinding("browser.annotate", event, context, getResolvedKeybindings())) return;
       event.preventDefault();
       toggleAnnotate();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggleAnnotate]);
+  }, [projectId, toggleAnnotate]);
 
   const submit = (value: string) => {
     const plan = parseAddressInput(value);

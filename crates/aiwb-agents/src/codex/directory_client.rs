@@ -12,11 +12,14 @@ use tokio::process::{Child, Command};
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::timeout;
 
-use aiwb_proc::{apply_utf8_env, decode_child_bytes};
+use aiwb_proc::{apply_utf8_env, decode_child_bytes, hide_console};
 
 use crate::directory::DirectoryEntry;
+use crate::instance::InstanceOverlay;
+#[cfg(test)]
+use aiwb_core::models::AgentKind;
 
-use super::process::{apply_codex_network_env, cli_version, hide_console, resolve_codex_bin};
+use super::process::cli_version;
 use super::resume::parse_thread;
 
 const PAGE_LIMIT: u32 = 100;
@@ -30,10 +33,17 @@ pub(super) struct RpcClient {
 }
 
 impl RpcClient {
+    #[cfg(test)]
     pub(super) async fn spawn() -> Result<Self, String> {
-        let bin = resolve_codex_bin().map_err(|err| err.to_string())?;
+        Self::spawn_for(&InstanceOverlay::default_for(AgentKind::CodexCli)).await
+    }
+
+    pub(super) async fn spawn_for(overlay: &InstanceOverlay) -> Result<Self, String> {
+        let bin = super::resolve_bin_for(overlay).map_err(|err| err.to_string())?;
+        let codex_home = super::shadow_home::prepare_codex_home(overlay)?;
         let cli_version = cli_version(&bin).await;
         let mut command = Command::new(&bin);
+        command.args(&overlay.launch_args);
         command
             .arg("app-server")
             .env_remove("TERM")
@@ -41,7 +51,7 @@ impl RpcClient {
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .kill_on_drop(true);
-        apply_codex_network_env(&mut command);
+        super::apply_instance_env(&mut command, overlay, codex_home.as_deref());
         apply_utf8_env(&mut command);
         hide_console(&mut command);
         let mut child = command

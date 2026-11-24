@@ -4,10 +4,8 @@ use std::process::Stdio;
 
 use tokio::process::Command;
 
-use aiwb_proc::decode_child_bytes;
+use aiwb_proc::{decode_child_bytes, hide_console};
 use aiwb_core::models::{ReviewLabels, ReviewTargets};
-
-use super::super::process::hide_console;
 
 /// `review_popups.rs` 的标题和选项。
 pub(in crate::codex) fn review_labels(

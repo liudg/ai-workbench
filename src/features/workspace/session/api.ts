@@ -1,22 +1,23 @@
 // 会话视图和 daemon 之间的调用。展示组件不直接碰连接。
 
 import { CLI_TIMEOUT_MS, daemon } from "@/lib/daemon";
-import type { SessionOptions } from "@/features/tasks";
-import type {
-  AgentCatalog,
-  AgentKind,
-  DiffScope,
-  FileSearchResult,
-  PageAnnotation,
-  PathFilter,
-  PermissionMenu,
-  PreviewDocument,
-  PreviewImage,
-  PromptAnswer,
-  ReviewStart,
-  ReviewTargets,
-  SubscriptionUsage,
-  TreeEntry,
+import { tasksApi, type SessionOptions } from "@/features/tasks";
+import {
+  nonDefaultInstanceId,
+  type AgentCatalog,
+  type AgentKind,
+  type DiffScope,
+  type FileSearchResult,
+  type PageAnnotation,
+  type PathFilter,
+  type PermissionMenu,
+  type PreviewDocument,
+  type PreviewImage,
+  type PromptAnswer,
+  type ReviewStart,
+  type ReviewTargets,
+  type SubscriptionUsage,
+  type TreeEntry,
 } from "@/types";
 
 /** 文件和差异读哪里：会话的工作目录，或者还没建会话时的项目主目录。 */
@@ -96,8 +97,21 @@ export function submitAnnotation(sessionId: string, note: PageAnnotation) {
   return daemon.call<{ queued: boolean }>("sessions.submitAnnotation", { sessionId, note }, CLI_TIMEOUT_MS);
 }
 
-export function subscriptionUsage(agent: AgentKind) {
-  return daemon.call<SubscriptionUsage>("agents.subscriptionUsage", { agent });
+export function subscriptionUsage(agent: AgentKind, instanceId?: string) {
+  const extra = nonDefaultInstanceId(agent, instanceId);
+  return daemon.call<SubscriptionUsage>(
+    "agents.subscriptionUsage",
+    extra ? { agent, instanceId: extra } : { agent },
+  );
+}
+
+export function generateCommitMessage(scope: FileScope, diffScope: string) {
+  return tasksApi
+    .generateCommitMessage({
+      ...("sessionId" in scope ? { sessionId: scope.sessionId } : { projectId: scope.projectId }),
+      diffScope,
+    })
+    .then((res) => res.message);
 }
 
 export function diffScopes(scope: FileScope) {
@@ -110,6 +124,12 @@ export function diffForScope(scope: FileScope, diffScope: string, ignoreWhitespa
 
 export function openTerminal(scope: FileScope, cols: number, rows: number) {
   return daemon.call<{ id: string }>("terminals.open", { ...scope, cols, rows }).then((opened) => opened.id);
+}
+
+export function resolveFile(scope: FileScope, path: string) {
+  return daemon
+    .call<{ exists: boolean; path: string | null }>("files.resolve", { ...scope, path })
+    .then((resolved) => (resolved.exists ? resolved.path : null));
 }
 
 export function readFile(scope: FileScope, path: string) {

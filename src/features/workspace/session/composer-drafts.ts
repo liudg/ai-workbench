@@ -3,8 +3,10 @@
 
 import { useEffect, useSyncExternalStore } from "react";
 
-import type { FileRef } from "@/features/chat/headless";
+import type { SelectableInstance } from "@/features/agents";
+import type { AgentOption, ComposerHost, FileRef } from "@/features/chat/headless";
 import { daemon } from "@/lib/daemon";
+import { agentIdentity, profileForSessionAgent } from "@/shared/agent/identity";
 import {
   createTextSnippet,
   withoutTextSnippet,
@@ -12,7 +14,14 @@ import {
   type TextSnippet,
   type TextSnippetDraft,
 } from "@/shared/text-snippet";
-import type { AgentKind, Attachment, QueuedTurn, SessionSandbox, SessionTuning } from "@/types";
+import type {
+  AgentKind,
+  AgentProfile,
+  Attachment,
+  QueuedTurn,
+  SessionSandbox,
+  SessionTuning,
+} from "@/types";
 import { withQueuedDraft } from "./queued-draft";
 
 export interface ComposerDraft {
@@ -103,6 +112,32 @@ export function readDraft(key: string): ComposerDraft {
   return drafts.get(key) ?? EMPTY;
 }
 
+/** 先从 daemon 加载草稿，再读取当前未发送的文字。 */
+export async function loadDraftText(key: string): Promise<string> {
+  await ensureLoaded(key);
+  return readDraft(key).text;
+}
+
+/** 先确保草稿已加载，再安全写入草稿文字（仅填入作曲栏草稿，绝不自动发送；覆盖草稿时清空旧的 `@` 引用与片段）。 */
+export async function setDraftText(key: string, text: string): Promise<void> {
+  await ensureLoaded(key);
+  patchDraft(key, { text, fileRefs: [], snippets: [] });
+}
+
+/** 回退后把撤回的用户文字与附件/图片还原进对应会话的作曲栏草稿。 */
+export async function restoreRewoundDraft(
+  key: string,
+  restored: { text: string; files: readonly Attachment[] },
+): Promise<void> {
+  await ensureLoaded(key);
+  patchDraft(key, {
+    text: restored.text,
+    files: [...restored.files],
+    fileRefs: [],
+    snippets: [],
+  });
+}
+
 export async function appendQueuedDraft(key: string, item: QueuedTurn, remove: () => Promise<unknown>) {
   await ensureLoaded(key);
   await remove();
@@ -132,11 +167,18 @@ export function dropDraft(key: string) {
   scheduleSave(key);
 }
 
+function mergeUniqueAttachments(
+  current: readonly Attachment[],
+  added: readonly Attachment[],
+): Attachment[] | null {
+  const fresh = added.filter((file) => !current.some((item) => item.path === file.path));
+  return fresh.length > 0 ? [...current, ...fresh] : null;
+}
+
 export function addDraftAttachments(key: string, added: readonly Attachment[]) {
   void ensureLoaded(key).then(() => {
-    const current = readDraft(key).files;
-    const fresh = added.filter((file) => !current.some((item) => item.path === file.path));
-    if (fresh.length > 0) patchDraft(key, { files: [...current, ...fresh] });
+    const merged = mergeUniqueAttachments(readDraft(key).files, added);
+    if (merged) patchDraft(key, { files: merged });
   });
 }
 
@@ -178,4 +220,55 @@ export function useComposerDraft(key: string): { draft: ComposerDraft; loaded: b
   const draft = useSyncExternalStore(subscribe, () => readDraft(key));
   const loaded = useSyncExternalStore(subscribe, () => drafts.has(key));
   return { draft, loaded };
+}
+
+export function selectableToAgentOption(
+  item: SelectableInstance,
+  profiles: Partial<Record<string, AgentProfile>>,
+): AgentOption {
+  const itemProfile = profileForSessionAgent(item.kind, profiles, item.instanceId);
+  return {
+    kind: item.kind,
+    instanceId: item.instanceId,
+    accentColor: item.accentColor,
+    isDefault: item.isDefault,
+    name: item.displayName,
+    identity: agentIdentity(item.kind, itemProfile),
+  };
+}
+
+/** 新建草稿作曲栏与建好的会话作曲栏共用的草稿读写回调。 */
+export function composerDraftHostActions(
+  key: string,
+): Pick<
+  ComposerHost,
+  | "rememberText"
+  | "rememberFileRefs"
+  | "addAttachments"
+  | "removeAttachment"
+  | "clearAttachments"
+  | "replaceAttachments"
+  | "clearTextSnippets"
+  | "restoreTextSnippets"
+  | "removeTextSnippet"
+> {
+  return {
+    rememberText: (text, expected) => {
+      const current = readDraft(key).text;
+      if (expected !== undefined && current !== expected) return;
+      if (current !== text) patchDraft(key, { text });
+    },
+    rememberFileRefs: (fileRefs) => patchDraft(key, { fileRefs }),
+    addAttachments: (files) => {
+      const merged = mergeUniqueAttachments(readDraft(key).files, files);
+      if (merged) patchDraft(key, { files: merged });
+    },
+    removeAttachment: (path) =>
+      patchDraft(key, { files: readDraft(key).files.filter((file) => file.path !== path) }),
+    clearAttachments: () => patchDraft(key, { files: [] }),
+    replaceAttachments: (files) => patchDraft(key, { files }),
+    clearTextSnippets: () => patchDraft(key, { snippets: [] }),
+    restoreTextSnippets: (snippets) => restoreDraftSnippets(key, snippets),
+    removeTextSnippet: (id) => removeDraftSnippet(key, id),
+  };
 }

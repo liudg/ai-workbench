@@ -86,7 +86,7 @@ fn run_diff(root: &Path, args: &[&str]) -> Result<std::process::Output, String> 
         .stderr(Stdio::piped())
         .env("GIT_TERMINAL_PROMPT", "0");
     aiwb_proc::apply_utf8_env_std(&mut command);
-    super::hide_console(&mut command);
+    aiwb_proc::hide_console_std(&mut command);
     command
         .output()
         .map_err(|err| format!("无法运行 git: {err}"))
@@ -134,7 +134,7 @@ fn plain_diff_error(stderr: &str) -> String {
 
 #[cfg(test)]
 fn hide_for_test(command: &mut Command) {
-    super::hide_console(command);
+    aiwb_proc::hide_console_std(command);
 }
 
 #[cfg(test)]

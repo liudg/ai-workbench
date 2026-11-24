@@ -5,18 +5,56 @@
 //! Codex 没写快照的做法，这里用临时 index 把整个工作树写成一个提交，挂在
 //! `refs/aiwb/snapshots/<名字>` 下，不碰用户的 index 和分支。被忽略的文件不进快照。
 
-use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use aiwb_core::task::WorktreeSnapshot;
 
+use crate::checkpoints::{
+    commit_worktree_tree, git_bot_env, in_progress_git_operation_at_root,
+    unsnapshottable_nested_git_dirs, write_worktree_and_index_trees,
+};
 use crate::worktree::{
-    git_output, git_status, git_status_env, git_stdout, git_stdout_env, head_sha, linked_checkout,
-    read_marker, record_owned_worktree, remove_worktree_tree, repository_root, same_path, OwnedMarker,
+    git_output, git_status, git_stdout, git_stdout_env, head_sha, linked_checkout, read_marker,
+    record_owned_worktree, remove_worktree_tree, repository_root, same_path, OwnedMarker,
 };
 
 const SNAPSHOT_REF_PREFIX: &str = "refs/aiwb/snapshots/";
+const SNAPSHOT_INDEX_PREFIX: &str = "AIWB-Snapshot-Index: ";
+
+fn check_shelvable_root(root: &Path) -> Result<(), String> {
+    let nested = unsnapshottable_nested_git_dirs(root);
+    if !nested.is_empty() {
+        return Err(format!(
+            "工作树包含无法纳入快照的嵌套 Git 仓库（{}），暂不清理以避免丢失文件",
+            nested.join("、")
+        ));
+    }
+    if let Some(op) = in_progress_git_operation_at_root(root)? {
+        return Err(format!("工作树存在{op}，暂不清理以避免丢失 Git 状态"));
+    }
+    Ok(())
+}
+
+/// 在停止任务会话、关闭终端或清理侧边聊天之前预检工作树是否允许挂起清理。
+/// 非工作台托管的链接工作树返回 `Ok(false)`；存在嵌套仓库、进行中的 Git 操作或工作树锁定时返回 `Err`。
+pub fn can_shelve_worktree(project: &Path, cwd: &Path) -> Result<bool, String> {
+    let Some(checkout) = linked_checkout(project, cwd)? else {
+        return Ok(false);
+    };
+    if read_marker(&checkout.cwd)
+        .filter(|item| same_path(&item.root, &checkout.root))
+        .is_none()
+    {
+        return Ok(false);
+    }
+    check_shelvable_root(&checkout.root)?;
+    if worktree_is_locked(project, &checkout.root) {
+        return Err("工作树已被锁定（git worktree lock），暂不清理".into());
+    }
+    let _ = head_sha(&checkout.root)?;
+    Ok(true)
+}
 
 /// 清理的第一步：把工作树存成快照，挂上引用，不动目录。
 /// 不是工作台的工作树时什么都不动，返回 `None`。调用方把快照记进任务以后，再 `remove_shelved_worktree`。
@@ -28,6 +66,7 @@ pub fn snapshot_worktree(project: &Path, cwd: &Path, name: &str) -> Result<Optio
     if read_marker(&checkout.cwd).filter(|item| same_path(&item.root, &checkout.root)).is_none() {
         return Ok(None);
     }
+    check_shelvable_root(&checkout.root)?;
     let head = head_sha(&checkout.root)?;
     let commit = snapshot_commit(&checkout.root, &head)?;
     let reference = format!("{SNAPSHOT_REF_PREFIX}{name}");
@@ -44,6 +83,9 @@ pub fn snapshot_worktree(project: &Path, cwd: &Path, name: &str) -> Result<Optio
 /// git 删不掉（工作树还在用，比如被编辑器打开、文件被占用）就报错，登记和剩下的文件都留着；
 /// 登记摘掉了就把残留的目录也清掉，删不干净的在恢复时再清。
 pub fn remove_shelved_worktree(project: &Path, root: &Path) -> Result<(), String> {
+    if root.is_dir() {
+        check_shelvable_root(root)?;
+    }
     let root_arg = root.to_string_lossy().into_owned();
     let removed = git_status(project, &["worktree", "remove", "--force", &root_arg]);
     if registered(project, root) {
@@ -99,9 +141,14 @@ pub fn restore_worktree(
         fs::create_dir_all(parent).map_err(|err| format!("无法创建工作树目录: {err}"))?;
     }
     add_checkout(project, &root_arg, snapshot)?;
+    let index_target = read_snapshot_index_commit(project, &snapshot.reference)
+        .unwrap_or_else(|| snapshot.head.clone());
     let applied = git_status(&root, &["read-tree", "-u", "--reset", &snapshot.reference])
-        .and_then(|()| git_status(&root, &["reset", "-q"]))
-        .and_then(|()| record_owned_worktree(&root, &marker));
+        .and_then(|()| git_status(&root, &["read-tree", "--reset", &index_target]))
+        .and_then(|()| {
+            let _ = git_status(&root, &["update-index", "-q", "--refresh"]);
+            record_owned_worktree(&root, &marker)
+        });
     if let Err(err) = applied {
         let _ = git_status(project, &["worktree", "remove", "--force", &root_arg]);
         return Err(err);
@@ -121,6 +168,29 @@ fn registered(project: &Path, root: &Path) -> bool {
         .split('\0')
         .filter_map(|field| field.strip_prefix("worktree "))
         .any(|path| same_path(Path::new(path), root) || paths_equal(path, root))
+}
+
+fn worktree_is_locked(project: &Path, root: &Path) -> bool {
+    let Ok(output) = git_output(project, &["worktree", "list", "--porcelain", "-z"]) else {
+        return false;
+    };
+    if !output.status.success() {
+        return false;
+    }
+    let decoded = aiwb_proc::decode_child_bytes(&output.stdout);
+    let mut matched = false;
+    for field in decoded.split('\0') {
+        if field.is_empty() {
+            matched = false;
+            continue;
+        }
+        if let Some(path) = field.strip_prefix("worktree ") {
+            matched = same_path(Path::new(path), root) || paths_equal(path, root);
+        } else if matched && (field == "locked" || field.starts_with("locked ")) {
+            return true;
+        }
+    }
+    false
 }
 
 /// 路径不在了时 `same_path` 规范化不了，按文本比（不分大小写和斜杠方向）。
@@ -176,41 +246,70 @@ fn add_checkout(project: &Path, root: &str, snapshot: &WorktreeSnapshot) -> Resu
     git_status(project, &["worktree", "add", "--detach", root, &snapshot.head])
 }
 
-/// 用临时 index 写出整个工作树（遵守 `.gitignore`），父提交是现在的 HEAD。
+fn read_snapshot_index_commit(repo: &Path, reference: &str) -> Option<String> {
+    let body = git_stdout(repo, &["show", "-s", "--format=%B", reference]).ok()?;
+    for line in body.lines().rev() {
+        if let Some(oid) = line.trim().strip_prefix(SNAPSHOT_INDEX_PREFIX) {
+            let oid = oid.trim();
+            if !oid.is_empty()
+                && git_stdout(
+                    repo,
+                    &["rev-parse", "--verify", "--quiet", &format!("{oid}^{{commit}}")],
+                )
+                .is_ok()
+            {
+                return Some(oid.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// 用临时 index 分别写出工作树与暂存区（遵守 `.gitignore`），父提交指向当前 HEAD 与暂存区提交。
 /// 每次用自己的临时 index，同一仓库上同时存几份也不会互相覆盖。
 pub(crate) fn snapshot_commit(root: &Path, head: &str) -> Result<String, String> {
-    let id = uuid::Uuid::new_v4().simple().to_string();
-    let index = crate::worktree::owned_git_file(root, &format!("aiwb-snapshot-{id}.index"))?;
-    let _ = fs::remove_file(&index);
-    let index_env = [("GIT_INDEX_FILE", index.as_os_str())];
-    // 从检出自己的 index 拷一份开始：带着文件的时间戳缓存，`add -A` 不用把每个文件重新算一遍。
-    let real = crate::worktree::owned_git_file(root, "index").ok().filter(|path| path.is_file());
-    let seeded = real.is_some_and(|real| fs::copy(&real, &index).is_ok());
-    let result = (|| {
-        if !seeded {
-            git_status_env(root, &["read-tree", head], &index_env)?;
-        }
-        git_status_env(root, &["add", "-A", "--", "."], &index_env)?;
-        let tree = git_stdout_env(root, &["write-tree"], &index_env)?;
-        let who = [
-            ("GIT_AUTHOR_NAME", OsStr::new("AI Workbench")),
-            ("GIT_AUTHOR_EMAIL", OsStr::new("aiwb@localhost")),
-            ("GIT_COMMITTER_NAME", OsStr::new("AI Workbench")),
-            ("GIT_COMMITTER_EMAIL", OsStr::new("aiwb@localhost")),
-        ];
-        git_stdout_env(
-            root,
-            &["commit-tree", &tree, "-p", head, "-m", "AI Workbench 工作树快照"],
-            &who,
-        )
-    })();
-    let _ = fs::remove_file(&index);
-    result.map_err(|err| format!("无法保存工作树快照：{err}"))
+    let trees = write_worktree_and_index_trees(root, Some(head), true)
+        .map_err(|err| format!("无法保存工作树快照：{err}"))?;
+    let index_tree = trees
+        .index_tree
+        .as_deref()
+        .ok_or_else(|| "无法保存工作树暂存区快照".to_string())?;
+    let who = git_bot_env();
+    let index_commit = git_stdout_env(
+        root,
+        &[
+            "commit-tree",
+            index_tree,
+            "-p",
+            head,
+            "-m",
+            "AI Workbench worktree snapshot index",
+        ],
+        &who,
+    )
+    .map_err(|err| format!("无法保存工作树快照：{err}"))?;
+    let message = format!("AI Workbench 工作树快照\n\n{SNAPSHOT_INDEX_PREFIX}{index_commit}");
+    git_stdout_env(
+        root,
+        &[
+            "commit-tree",
+            &trees.worktree_tree,
+            "-p",
+            head,
+            "-p",
+            &index_commit,
+            "-m",
+            &message,
+        ],
+        &who,
+    )
+    .map_err(|err| format!("无法保存工作树快照：{err}"))
 }
 
 /// `root` 上没提交的改动写成的提交。没有改动时为空。
 pub(crate) fn changes_commit(root: &Path, head: &str) -> Result<Option<String>, String> {
-    let commit = snapshot_commit(root, head)?;
+    let commit = commit_worktree_tree(root, Some(head), "AI Workbench 工作树快照")
+        .map_err(|err| format!("无法保存工作树快照：{err}"))?;
     let tree = git_stdout(root, &["rev-parse", &format!("{commit}^{{tree}}")])?;
     let head_tree = git_stdout(root, &["rev-parse", &format!("{head}^{{tree}}")])?;
     Ok((tree != head_tree).then_some(commit))
@@ -504,6 +603,116 @@ mod tests {
         restore_worktree(&repo, &snapshot, None, &made.sha).unwrap();
         assert!(!made.root.join("leftover.bin").exists());
         assert!(made.cwd.join("note.txt").is_file());
+        crate::worktree::remove_checkout(&repo, &made.root);
+        let _ = fs::remove_dir_all(managed);
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn shelving_stops_when_worktree_contains_unsnapshottable_nested_git_repo() {
+        if !git_ok() {
+            return;
+        }
+        let repo = repo_with_commit("nested-guard");
+        let managed = scratch("nested-guard-managed");
+        let made = create_task_worktree(&repo, &managed, &NewWorktree::default()).unwrap();
+
+        // 在托管工作树里创建尚无首次提交的嵌套仓库及唯一文件。
+        let nested = made.cwd.join("nested");
+        fs::create_dir_all(&nested).unwrap();
+        run_git(&nested, &["init", "-b", "main"]);
+        fs::write(nested.join("unique.txt"), "do-not-lose\n").unwrap();
+
+        let snap_err = snapshot_worktree(&repo, &made.cwd, "task-nested").unwrap_err();
+        assert!(snap_err.contains("nested"), "unexpected error: {snap_err}");
+        let remove_err = remove_shelved_worktree(&repo, &made.root).unwrap_err();
+        assert!(remove_err.contains("nested"), "unexpected error: {remove_err}");
+        assert_eq!(
+            fs::read_to_string(nested.join("unique.txt")).unwrap(),
+            "do-not-lose\n"
+        );
+        assert!(registered(&repo, &made.root));
+
+        // 即使嵌套仓库已经有首次提交，外层树快照也无法保存其对象与未提交文件，同样应拒绝清理。
+        run_git(&nested, &["config", "user.name", "Test"]);
+        run_git(&nested, &["config", "user.email", "t@test"]);
+        run_git(&nested, &["add", "."]);
+        run_git(&nested, &["-c", "commit.gpgsign=false", "commit", "-m", "sub init"]);
+        fs::write(nested.join("dirty.txt"), "local-only\n").unwrap();
+        assert!(snapshot_worktree(&repo, &made.cwd, "task-nested-2").is_err());
+        assert!(remove_shelved_worktree(&repo, &made.root).is_err());
+        assert_eq!(
+            fs::read_to_string(nested.join("dirty.txt")).unwrap(),
+            "local-only\n"
+        );
+
+        // 在外层工作树执行 `git add nested` 使其变为暂存区 `160000` 条目后，同样必须拒绝挂起与清理。
+        run_git(&made.cwd, &["add", "nested"]);
+        assert!(can_shelve_worktree(&repo, &made.cwd).is_err());
+        assert!(snapshot_worktree(&repo, &made.cwd, "task-nested-staged").is_err());
+        assert!(remove_shelved_worktree(&repo, &made.root).is_err());
+        assert!(nested.join(".git").exists());
+        assert_eq!(
+            fs::read_to_string(nested.join("unique.txt")).unwrap(),
+            "do-not-lose\n"
+        );
+        assert_eq!(
+            fs::read_to_string(nested.join("dirty.txt")).unwrap(),
+            "local-only\n"
+        );
+
+        crate::worktree::remove_checkout(&repo, &made.root);
+        let _ = fs::remove_dir_all(managed);
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn shelved_worktree_preserves_index_only_staged_versions() {
+        if !git_ok() {
+            return;
+        }
+        let repo = repo_with_commit("staged-only");
+        let managed = scratch("staged-only-managed");
+        let made = create_task_worktree(&repo, &managed, &NewWorktree::default()).unwrap();
+
+        // 同一文件三版本不同：HEAD="one\n", index="index-only\n", worktree="worktree\n"
+        fs::write(made.cwd.join("note.txt"), "index-only\n").unwrap();
+        fs::write(made.cwd.join("staged_new.txt"), "staged-new\n").unwrap();
+        run_git(&made.cwd, &["add", "note.txt", "staged_new.txt"]);
+        run_git(&made.cwd, &["rm", "-q", "gone.txt"]);
+        fs::write(made.cwd.join("note.txt"), "worktree\n").unwrap();
+        fs::write(made.cwd.join("staged_new.txt"), "worktree-new\n").unwrap();
+        fs::write(made.cwd.join("gone.txt"), "recreated-untracked\n").unwrap();
+        let before = status(&made.cwd);
+
+        let snapshot = shelve_worktree(&repo, &made.cwd, "task-staged")
+            .unwrap()
+            .unwrap();
+        assert!(!made.root.exists());
+
+        restore_worktree(&repo, &snapshot, made.base.as_deref(), &made.sha).unwrap();
+        assert_eq!(git_stdout(&made.cwd, &["show", "HEAD:note.txt"]).unwrap(), "one");
+        assert_eq!(git_stdout(&made.cwd, &["show", ":note.txt"]).unwrap(), "index-only");
+        assert_eq!(
+            fs::read_to_string(made.cwd.join("note.txt")).unwrap(),
+            "worktree\n"
+        );
+        assert_eq!(
+            git_stdout(&made.cwd, &["show", ":staged_new.txt"]).unwrap(),
+            "staged-new"
+        );
+        assert_eq!(
+            fs::read_to_string(made.cwd.join("staged_new.txt")).unwrap(),
+            "worktree-new\n"
+        );
+        assert!(git_stdout(&made.cwd, &["show", ":gone.txt"]).is_err());
+        assert_eq!(
+            fs::read_to_string(made.cwd.join("gone.txt")).unwrap(),
+            "recreated-untracked\n"
+        );
+        assert_eq!(status(&made.cwd), before);
+
+        drop_snapshot(&repo, &snapshot.reference);
         crate::worktree::remove_checkout(&repo, &made.root);
         let _ = fs::remove_dir_all(managed);
         let _ = fs::remove_dir_all(repo);

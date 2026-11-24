@@ -5,9 +5,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use aiwb_core::chat_slug::{candidate_name, chat_slug};
+use aiwb_core::models::strip_verbatim_prefix;
 use serde::{Deserialize, Serialize};
 
-use super::projects::{normalize_dir, strip_verbatim};
+use super::projects::normalize_dir;
 use super::{ServiceResult, Services};
 
 const FOLDER_NAME: &str = "AI Workbench";
@@ -92,7 +93,9 @@ fn allocate_chat_dir(root: &Path, prompt: &str, today: &str) -> ServiceResult<Pa
                 let canonical = dir
                     .canonicalize()
                     .map_err(|err| format!("解析任务目录失败: {err}"))?;
-                return Ok(strip_verbatim(canonical));
+                return Ok(PathBuf::from(strip_verbatim_prefix(
+                    &canonical.to_string_lossy(),
+                )));
             }
             Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(err) => return Err(format!("创建任务目录失败 {}: {err}", dir.display())),

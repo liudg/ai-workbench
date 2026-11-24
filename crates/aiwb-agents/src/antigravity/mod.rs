@@ -2,15 +2,10 @@
 //!
 //! 协议和扩展字段对照本机 agy 1.5.3 的实际收发（2026-11-09）和二进制里 `jetski/cli/acp` 的符号与 JSON 标记。
 //! 认证留在 CLI（第一次运行 `agy` 登录），这里不碰密钥。
-//!
-//! `agy acp` 没有的：分叉（`handleRequest` 只有 new / load / resume / close / list / prompt /
-//! cancel / set_mode / set_model / set_config_option）、临时分支对话（`/btw` 只在 TUI 里，
-//! ACP 发过去是一条普通消息，会进历史）、单独停子 Agent、`Auto` 模式（`session/set_mode` 回
-//! `Unknown mode: auto`）、网络开关。
 
 mod catalog;
 mod dialect;
-mod directory;
+pub(crate) mod directory;
 mod elicitation;
 mod open;
 mod permission;
@@ -18,7 +13,7 @@ mod process;
 mod subagents;
 mod subscription;
 
-pub(crate) use process::NO_SELF_UPDATE;
+pub(crate) use process::{apply_instance_env, resolve_bin_for, NO_SELF_UPDATE};
 
 #[cfg(test)]
 mod live_tests;
@@ -27,26 +22,36 @@ mod regression_tests;
 #[cfg(test)]
 mod tests;
 
+use std::path::Path;
 use std::sync::Arc;
 
 use async_trait::async_trait;
 
 use crate::acp::session::AcpSession;
 use crate::install::{locate_agy, AliasCheck, AliasRule, CliRelease};
+use crate::instance::InstanceOverlay;
 use crate::{AgentAdapter, AgentError, AgentSession, DirectoryPage, EventSink, SessionContext};
 use aiwb_core::models::{
-    cwd_key, AgentCapabilities, AgentInstallation, AgentKind, AgentProfile, PermissionMenu, SessionEventBody,
+    cwd_key, AgentCapabilities, AgentInstallation, AgentKind, PermissionMenu, SessionEventBody,
     SubscriptionUsage,
 };
 
 /// 只找到 `gemini`（2026-06-18 停更）或 IDE 的 `antigravity` 启动器时的提示，这两个都开不了会话。
 const NO_AGY: &str = "找到的不是 Antigravity CLI（agy），安装 agy 后才能新建会话。";
 
-pub struct AntigravityAdapter;
+pub struct AntigravityAdapter {
+    overlay: Arc<InstanceOverlay>,
+}
 
 impl AntigravityAdapter {
     pub fn new() -> Self {
-        Self
+        Self::with_overlay(InstanceOverlay::default_for(AgentKind::Antigravity))
+    }
+
+    pub fn with_overlay(overlay: InstanceOverlay) -> Self {
+        Self {
+            overlay: Arc::new(overlay),
+        }
     }
 }
 
@@ -74,15 +79,26 @@ pub fn release() -> CliRelease {
     }
 }
 
-/// MCP 管理命令用的 `agy`。
-pub fn binary() -> Option<std::path::PathBuf> {
-    process::resolve().ok()
-}
-
 #[async_trait]
 impl AgentAdapter for AntigravityAdapter {
     fn kind(&self) -> AgentKind {
         AgentKind::Antigravity
+    }
+
+    fn instance_id(&self) -> Option<&str> {
+        Some(&self.overlay.instance_id)
+    }
+
+    fn custom_display_name(&self) -> Option<&str> {
+        self.overlay.display_name.as_deref()
+    }
+
+    fn accent_color(&self) -> Option<&str> {
+        self.overlay.accent_color.as_deref()
+    }
+
+    fn custom_binary_path(&self) -> Option<&Path> {
+        self.overlay.binary_path.as_deref()
     }
 
     fn capabilities(&self) -> AgentCapabilities {
@@ -93,16 +109,8 @@ impl AgentAdapter for AntigravityAdapter {
         Some("/agent-icons/antigravity.svg")
     }
 
-    fn profile(&self) -> AgentProfile {
-        AgentProfile {
-            kind: self.kind(),
-            capabilities: self.capabilities(),
-            commands: Vec::new(),
-            default_access: Some("full".into()),
-            display_name: None,
-            icon: None,
-            monochrome_icon: false,
-        }
+    fn default_access(&self) -> Option<&'static str> {
+        Some("full")
     }
 
     fn draft_permission_menu(&self) -> PermissionMenu {
@@ -114,11 +122,13 @@ impl AgentAdapter for AntigravityAdapter {
     }
 
     fn mcp(&self) -> Option<Arc<dyn crate::mcp::McpDriver>> {
-        Some(Arc::new(crate::mcp::AntigravityMcp))
+        Some(Arc::new(crate::mcp::AntigravityMcp {
+            overlay: Arc::clone(&self.overlay),
+        }))
     }
 
     async fn detect(&self) -> Result<(), AgentError> {
-        process::resolve().map(|_| ())
+        process::resolve_bin_for(&self.overlay).map(|_| ())
     }
 
     fn session_linked(&self) -> bool {
@@ -126,8 +136,14 @@ impl AgentAdapter for AntigravityAdapter {
     }
 
     async fn installation(&self, check_updates: bool) -> AgentInstallation {
-        let mut item = crate::install::inspect_release(self.kind(), self.display_name(), &release(), check_updates).await;
-        item.session_linked = process::resolve().is_ok();
+        let label = self.custom_display_name().unwrap_or_else(|| self.display_name());
+        let mut item = if let Some(custom_path) = self.custom_binary_path() {
+            crate::install::inspect_custom_binary(self.kind(), label, custom_path).await
+        } else {
+            crate::install::inspect_release(self.kind(), label, &release(), check_updates).await
+        };
+        item.instance_id = self.instance_id().map(str::to_string);
+        item.session_linked = process::resolve_bin_for(&self.overlay).is_ok();
         if item.installed && !item.session_linked {
             item.detail = Some(NO_AGY.into());
         }
@@ -139,7 +155,31 @@ impl AgentAdapter for AntigravityAdapter {
     }
 
     async fn subscription_usage(&self) -> Result<SubscriptionUsage, AgentError> {
-        subscription::fetch().await
+        subscription::fetch_for(&self.overlay).await
+    }
+
+    async fn generate_text(
+        &self,
+        prompt: &str,
+        model: Option<&str>,
+        cwd: Option<&Path>,
+    ) -> Result<String, AgentError> {
+        crate::text_gen::agy_generate_text(&self.overlay, prompt, model, cwd).await
+    }
+
+    async fn rewind_thread(
+        &self,
+        native_id: &str,
+        _cwd: &str,
+        _target_turn_id: Option<&str>,
+        _kept_turns: usize,
+        delete_old: bool,
+    ) -> Result<Option<String>, AgentError> {
+        // Antigravity ACP 不支持原生按回合截断：按需清理旧原生会话并返回 None，下一轮自动经 ContextHandoff 注入保留的前文。
+        if delete_old {
+            let _ = directory::remove_for(&self.overlay, native_id);
+        }
+        Ok(None)
     }
 
     async fn start_session(
@@ -147,13 +187,18 @@ impl AgentAdapter for AntigravityAdapter {
         ctx: SessionContext,
         events: EventSink,
     ) -> Result<Arc<dyn AgentSession>, AgentError> {
-        let shared = open::open(
+        let shared = open::open_for(
+            &self.overlay,
             open::Open {
                 persist: ctx.flag("persist"),
                 replay_history: !ctx.flag("skip_history"),
                 roots: open::roots_of(&ctx.options),
-                saved_goal: ctx.options.get("saved_goal").cloned()
-                    .map(serde_json::from_value).transpose()
+                saved_goal: ctx
+                    .options
+                    .get("saved_goal")
+                    .cloned()
+                    .map(serde_json::from_value)
+                    .transpose()
                     .map_err(|err| AgentError::Runtime(format!("无法恢复目标：{err}")))?,
                 project_path: ctx.project_path,
                 access_mode: ctx.access_mode,
@@ -180,7 +225,7 @@ impl AgentAdapter for AntigravityAdapter {
             None => 0,
         };
         let key = cwd_key(cwd);
-        let listed: Vec<_> = open::list_threads()
+        let listed: Vec<_> = open::list_threads(&self.overlay)
             .await?
             .into_iter()
             .filter(|entry| entry.cwd_key == key)
@@ -217,6 +262,6 @@ impl AgentAdapter for AntigravityAdapter {
 
     /// ACP 没有删除方法。
     async fn delete_thread(&self, native_id: &str) -> Result<(), AgentError> {
-        directory::remove(native_id).map_err(AgentError::Runtime)
+        directory::remove_for(&self.overlay, native_id).map_err(AgentError::Runtime)
     }
 }

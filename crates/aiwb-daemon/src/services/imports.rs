@@ -22,6 +22,8 @@ const PAGE_SIZE: usize = 30;
 pub(crate) struct PageParams {
     project_id: String,
     agent: AgentKind,
+    #[serde(default)]
+    instance_id: Option<String>,
     cursor: Option<String>,
 }
 
@@ -30,6 +32,8 @@ pub(crate) struct PageParams {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ImportCandidate {
     agent: AgentKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    instance_id: Option<String>,
     native_id: String,
     title: String,
     created_at: i64,
@@ -88,11 +92,14 @@ impl Services {
             .project(&params.project_id)
             .map_err(|e| e.to_string())?
             .ok_or_else(|| "项目不存在".to_string())?;
-        let adapter = self.runtimes.adapter(params.agent);
+        let adapter = self
+            .runtimes
+            .adapter_for_instance(params.agent, params.instance_id.as_deref())?;
         if !adapter.session_linked() {
             return Err(format!("{} 还不能在工作台里对话", params.agent.display_name()));
         }
         let agent = adapter.kind();
+        let inst_id = params.instance_id.clone();
         let key = cwd_key(&project.path);
         let imported = self.imported_keys()?;
         let mut items = Vec::new();
@@ -109,6 +116,7 @@ impl Services {
                     .filter(|entry| !imported.contains(&(agent, entry.native_id.clone())))
                     .map(|entry| ImportCandidate {
                         agent,
+                        instance_id: inst_id.clone(),
                         native_id: entry.native_id,
                         title: entry.title,
                         created_at: entry.created_at,
@@ -160,7 +168,9 @@ impl Services {
         if self.imported_keys()?.contains(&(item.agent, item.native_id.clone())) {
             return Err("已经导入过".into());
         }
-        let adapter = self.runtimes.adapter(item.agent);
+        let adapter = self
+            .runtimes
+            .adapter_for_instance(item.agent, item.instance_id.as_deref())?;
         if !adapter.session_linked() {
             return Err(format!("{} 还不能在工作台里对话", item.agent.display_name()));
         }
@@ -201,6 +211,7 @@ impl Services {
             id: new_id(),
             task_id: task.id.clone(),
             agent: item.agent,
+            instance_id: item.instance_id.clone(),
             native_id: Some(item.native_id.clone()),
             status: SessionStatus::Completed,
             options: SessionOptions::default(),

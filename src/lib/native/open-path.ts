@@ -18,7 +18,11 @@ export async function openPath(root: string, path: string, mode: "default" | "ch
 
 /** 用系统浏览器打开网页地址。 */
 export async function openUrl(url: string): Promise<void> {
-  if (!isTauri) throw new Error(DESKTOP_ONLY);
+  if (!isTauri) {
+    if (typeof window === "undefined") throw new Error(DESKTOP_ONLY);
+    window.open(url, "_blank", "noopener,noreferrer");
+    return;
+  }
   await invoke("open_url", { url });
 }
 

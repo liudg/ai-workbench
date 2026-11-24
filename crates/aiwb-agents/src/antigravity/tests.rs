@@ -425,3 +425,25 @@ fn the_menu_lists_native_modes_and_extras() {
     assert!(menu.writable_roots && !menu.network_access);
     assert_eq!(menu.active.as_deref(), Some("ask"));
 }
+
+#[test]
+fn isolated_data_dir_cleans_probe_session_without_touching_host_dir() {
+    use crate::acp::Dialect;
+    let isolated = tempfile::tempdir().unwrap();
+    let data_dir = isolated.path().join("antigravity-cli");
+    let probe_id = "2b5c2f53-9d0e-4b6a-8a43-2b1c3d4e5f60";
+    let conv_dir = data_dir.join("conversations");
+    std::fs::create_dir_all(&conv_dir).unwrap();
+    std::fs::write(conv_dir.join(format!("{probe_id}.db")), b"probe").unwrap();
+
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    let dialect = super::dialect::AntigravityDialect::with_data_dir(
+        Path::new(PROJECT),
+        Some(data_dir.clone()),
+        tx,
+        true,
+        json!([]),
+    );
+    dialect.after_exit(probe_id);
+    assert!(!conv_dir.join(format!("{probe_id}.db")).exists());
+}

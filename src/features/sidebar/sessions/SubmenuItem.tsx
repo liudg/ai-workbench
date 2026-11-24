@@ -15,7 +15,7 @@ export function SubmenuItem({
   onSelect,
 }: {
   item: SessionMenuItem;
-  onSelect: (action: SessionMenuAction, agent?: AgentKind) => void;
+  onSelect: (action: SessionMenuAction, agent?: AgentKind, instanceId?: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [box, setBox] = useState<{ top: number; left: number } | null>(null);
@@ -103,10 +103,11 @@ export function SubmenuItem({
               role="menuitem"
               data-session-action={child.id}
               data-agent={child.agent}
+              data-instance-id={child.instanceId}
               className="block w-full whitespace-nowrap rounded-lg px-2.5 py-1.5 text-left text-[13px] text-wb-fg hover:bg-wb-hover focus:bg-wb-hover focus:outline-none"
               onClick={(event) => {
                 event.stopPropagation();
-                onSelect(child.id, child.agent);
+                onSelect(child.id, child.agent, child.instanceId);
               }}
             >
               {child.label}

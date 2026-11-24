@@ -1,34 +1,44 @@
 // 已经建好的会话的作曲栏：选项写进 daemon，发送、排队、目标、审查都走 daemon。
-// 两边都能交接时，模型菜单的 Agent 竖栏可以换到别的 Agent，前文由 daemon 交过去。
+// 两边都能交接时，模型菜单的 Agent / 实例竖栏可以换到别的 Agent 或另一隔离实例，前文由 daemon 交过去。
 
 import { useEffect, useMemo, useState } from "react";
 
-import { agentsApi, useSessionAgents } from "@/features/agents";
+import { agentsApi, useSelectableInstances } from "@/features/agents";
 import {
   suggestedBranchName,
   worktreeCaption,
   type AgentOption,
   type ComposerHost,
 } from "@/features/chat/headless";
+import { usePanelStore } from "@/features/panel/headless";
 import { projectsApi, type Project } from "@/features/projects";
 import { tasksApi, type SessionOptions, type TaskEntry, type TaskSession } from "@/features/tasks";
-import { agentIdentity } from "@/shared/agent/identity";
+import { agentIdentity, profileForSessionAgent } from "@/shared/agent/identity";
 import { rememberProjectBranch } from "@/shared/project-branch";
 import { showError } from "@/shared/shell/error-banner";
-import type { AgentKind, AgentProfile, QueuedTurn, Session, SessionSandbox, SessionTuning } from "@/types";
+import {
+  defaultInstanceId,
+  effectiveInstanceId,
+  nonDefaultInstanceId,
+  type AgentKind,
+  type AgentProfile,
+  type QueuedTurn,
+  type Session,
+  type SessionSandbox,
+  type SessionTuning,
+} from "@/types";
 import * as api from "./api";
 import {
+  composerDraftHostActions,
   moveDraft,
-  patchDraft,
   readDraft,
-  removeDraftSnippet,
-  restoreDraftSnippets,
+  selectableToAgentOption,
   type ComposerDraft,
 } from "./composer-drafts";
 import { askInSideChat } from "../side-chat/open";
 import { useSessionCatalog } from "./use-session-catalog";
 
-/** 回合进行中或在等回答时，别的 Agent 的模型只能看。 */
+/** 回合进行中或在等回答时，别的 Agent / 实例的模型只能看。 */
 const SWITCH_BLOCKED = "当前回合结束后可切换";
 
 function toSandbox(options: SessionOptions): SessionSandbox | null {
@@ -66,17 +76,22 @@ export function useLiveComposer({
   queue: QueuedTurn[];
   draft: ComposerDraft;
   project: Project | undefined;
-  profiles: Partial<Record<AgentKind, AgentProfile>>;
+  profiles: Partial<Record<string, AgentProfile>>;
   /** 侧边聊天的作曲栏：不换 Agent。 */
   side?: boolean;
   /** 主对话现在能开侧边聊天，排队消息可以挪过去问。 */
   canOpenSide?: boolean;
 }): ComposerHost {
   const sessionId = session.id;
-  const { catalog, catalogSettled, notice, permissionMenu } = useSessionCatalog(sessionId, taskSession.agent);
+  const currentInstanceId = effectiveInstanceId(taskSession.agent, taskSession.instanceId);
+  const { catalog, catalogSettled, notice, permissionMenu } = useSessionCatalog(
+    sessionId,
+    taskSession.agent,
+    taskSession.instanceId,
+  );
   const options = taskSession.options;
-  const profile = profiles[taskSession.agent];
-  const agents = useSessionAgents();
+  const profile = profileForSessionAgent(taskSession.agent, profiles, taskSession.instanceId);
+  const selectable = useSelectableInstances();
   const [restoring, setRestoring] = useState(false);
   const [handingOff, setHandingOff] = useState(false);
   // 换到别的任务时不带着上一个任务的“恢复中”“交接中”。
@@ -94,7 +109,7 @@ export function useLiveComposer({
     const worktree = task.workspace.kind === "worktree" ? task.workspace : null;
     const localBranch = worktree?.local?.branch ?? null;
     // 侧边聊天里不交接：交接要停掉任务的会话，侧边聊天会跟着丢掉。
-    const canMove = profiles[taskSession.agent]?.capabilities.supports_workdir_move === true;
+    const canMove = profile?.capabilities.supports_workdir_move === true;
     const moveTask = async (branch?: string) => {
       setHandingOff(true);
       const projectId = task.projectId;
@@ -110,32 +125,66 @@ export function useLiveComposer({
           .then((name) => rememberProjectBranch(projectId, name), () => undefined);
       }
     };
-    const handOff = worktree && !side && canMove
-      ? {
-          localBranch,
-          suggestedBranch: suggestedBranchName(task.title, task.id),
-          busy: handingOff,
-          onHandOff: () => void quiet(moveTask()),
-          onHandOffAs: (branch: string) => moveTask(branch),
-        }
-      : null;
-    const handsOff = (agent: AgentKind) => profiles[agent]?.capabilities.supports_context_handoff === true;
-    const idle = taskSession.status !== "starting" && taskSession.status !== "running" && taskSession.status !== "needs-input";
-    const switchable = !side && handsOff(taskSession.agent);
-    const option = (agent: AgentKind, fallback: string): AgentOption => ({
-      kind: agent,
-      name: profiles[agent]?.display_name || fallback,
-      identity: agentIdentity(agent, profiles[agent]),
-    });
-    // 交给了项目目录的任务以后还要交回工作树，只能换到能换目录接着会话的 Agent。
-    const movable = (agent: AgentKind) =>
-      !worktree?.local || profiles[agent]?.capabilities.supports_workdir_move === true;
+    const handOff =
+      worktree && !side && canMove
+        ? {
+            localBranch,
+            suggestedBranch: suggestedBranchName(task.title, task.id),
+            busy: handingOff,
+            onHandOff: () => void quiet(moveTask()),
+            onHandOffAs: (branch: string) => moveTask(branch),
+          }
+        : null;
+    const handsOff = (agent: AgentKind, instId?: string) =>
+      profileForSessionAgent(agent, profiles, instId)?.capabilities.supports_context_handoff === true;
+    const idle =
+      taskSession.status !== "starting" &&
+      taskSession.status !== "running" &&
+      taskSession.status !== "needs-input";
+    const switchable = !side && handsOff(taskSession.agent, currentInstanceId);
+
+    const currentSelectable = selectable?.find((item) => item.instanceId === currentInstanceId);
+    const currentOption: AgentOption = {
+      kind: taskSession.agent,
+      instanceId: currentInstanceId,
+      accentColor: currentSelectable?.accentColor ?? profile?.accent_color ?? null,
+      isDefault: currentInstanceId === defaultInstanceId(taskSession.agent),
+      name: currentSelectable?.displayName || profile?.display_name || taskSession.agent,
+      identity: agentIdentity(taskSession.agent, profile),
+    };
+
+    // 交给了项目目录的任务以后还要交回工作树，只能换到能换目录接着会话的实例。
+    const movable = (agent: AgentKind, instId?: string) =>
+      !worktree?.local ||
+      profileForSessionAgent(agent, profiles, instId)?.capabilities.supports_workdir_move === true;
     const others = switchable
-      ? (agents ?? []).filter(
-          (item) => item.kind !== taskSession.agent && handsOff(item.kind) && movable(item.kind),
+      ? (selectable ?? []).filter(
+          (item) =>
+            item.instanceId !== currentInstanceId &&
+            handsOff(item.kind, item.instanceId) &&
+            movable(item.kind, item.instanceId),
         )
       : [];
+
+    const performSwitch = (
+      nextAgent: AgentKind,
+      nextOptions: SessionOptions,
+      nextInstanceId?: string,
+    ) => {
+      if (!idle) return;
+      const nonDefaultNext = nonDefaultInstanceId(nextAgent, nextInstanceId);
+      void tasksApi.switchAgent(task.id, nextAgent, nextOptions, nonDefaultNext).then((entry) => {
+        // 没发出去的字和附件跟到新的一段。
+        const target = entry.sessions[entry.sessions.length - 1]?.id;
+        if (!target || target === sessionId) return;
+        const { text, files, snippets } = readDraft(sessionId);
+        moveDraft(sessionId, target, { text, files, snippets });
+        usePanelStore.getState().panelMoveSession(sessionId, target);
+      }, report);
+    };
+
     return {
+      ...composerDraftHostActions(sessionId),
       draft: false,
       inputLocked: false,
       initialText: readDraft(sessionId).text,
@@ -182,41 +231,42 @@ export function useLiveComposer({
         : null,
       agentChoice: {
         options: [
-          option(taskSession.agent, taskSession.agent),
-          ...others.map((item) => option(item.kind, item.display_name)),
+          currentOption,
+          ...others.map((item) => selectableToAgentOption(item, profiles)),
         ],
         selected: taskSession.agent,
+        selectedInstanceId: currentInstanceId,
         switcher:
           others.length > 0
             ? {
                 blocked: idle ? null : SWITCH_BLOCKED,
-                loadModels: (agent, show) =>
-                  agentsApi.loadCatalog(agent, task.projectId ?? null, (found) => show(found.models)),
-                onPick: (agent, model) => {
-                  if (!idle) return;
-                  const next: SessionOptions = {
-                    model: model.id,
-                    effort: model.default_effort || undefined,
-                    followUpQueueMode: options.followUpQueueMode,
-                  };
-                  void tasksApi.switchAgent(task.id, agent, next).then((entry) => {
-                    // 没发出去的字和附件跟到新的一段。
-                    const target = entry.sessions[entry.sessions.length - 1]?.id;
-                    if (!target || target === sessionId) return;
-                    const { text, files, snippets } = readDraft(sessionId);
-                    moveDraft(sessionId, target, { text, files, snippets });
-                  }, report);
-                },
+                loadModels: (nextAgent, show, nextInstanceId) =>
+                  agentsApi.loadCatalog(
+                    nextAgent,
+                    task.projectId ?? null,
+                    (found) => show(found.models),
+                    nextInstanceId,
+                  ),
+                onPick: (nextAgent, model, nextInstanceId) =>
+                  performSwitch(
+                    nextAgent,
+                    {
+                      model: model.id,
+                      effort: model.default_effort || undefined,
+                      followUpQueueMode: options.followUpQueueMode,
+                    },
+                    nextInstanceId,
+                  ),
+                onPickAgentOnly: (nextAgent, nextInstanceId) =>
+                  performSwitch(
+                    nextAgent,
+                    { followUpQueueMode: options.followUpQueueMode },
+                    nextInstanceId,
+                  ),
               }
             : null,
       },
 
-      rememberText: (text, expected) => {
-        const current = readDraft(sessionId).text;
-        if (expected !== undefined && current !== expected) return;
-        if (current !== text) patchDraft(sessionId, { text });
-      },
-      rememberFileRefs: (fileRefs) => patchDraft(sessionId, { fileRefs }),
       send: (text, images, now) =>
         api.sendMessage(sessionId, text, images, now).then(
           () => true,
@@ -244,18 +294,6 @@ export function useLiveComposer({
           effort,
           serviceTier: serviceTier === undefined ? options.serviceTier : (serviceTier ?? ""),
         }),
-      addAttachments: (files) => {
-        const current = readDraft(sessionId).files;
-        const fresh = files.filter((file) => !current.some((item) => item.path === file.path));
-        if (fresh.length > 0) patchDraft(sessionId, { files: [...current, ...fresh] });
-      },
-      removeAttachment: (path) =>
-        patchDraft(sessionId, { files: readDraft(sessionId).files.filter((file) => file.path !== path) }),
-      clearAttachments: () => patchDraft(sessionId, { files: [] }),
-      replaceAttachments: (files) => patchDraft(sessionId, { files }),
-      clearTextSnippets: () => patchDraft(sessionId, { snippets: [] }),
-      restoreTextSnippets: (snippets) => restoreDraftSnippets(sessionId, snippets),
-      removeTextSnippet: (id) => removeDraftSnippet(sessionId, id),
       updateQueued: (id, text, images) => quiet(api.updateQueued(sessionId, id, text, images)),
       removeQueued: (id) => quiet(api.removeQueued(sessionId, id)),
       steerQueued: (id) => quiet(api.steerQueued(sessionId, id)),
@@ -273,10 +311,12 @@ export function useLiveComposer({
       readTaskOutput: (path) => api.readFile({ sessionId }, path).then((doc) => doc.text),
     };
   }, [
-    agents,
+    canOpenSide,
     catalog,
     catalogSettled,
+    currentInstanceId,
     draft,
+    handingOff,
     notice,
     options,
     permissionMenu,
@@ -285,14 +325,13 @@ export function useLiveComposer({
     project,
     queue,
     restoring,
-    handingOff,
+    selectable,
     session.workdir,
     sessionId,
     side,
-    canOpenSide,
     task.id,
-    task.title,
     task.projectId,
+    task.title,
     task.workspace,
     taskSession.agent,
     taskSession.status,

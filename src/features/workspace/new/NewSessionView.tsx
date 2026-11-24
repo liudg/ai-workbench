@@ -1,16 +1,23 @@
-import { useMemo } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 
-import { useAgentDetection, useAgentProfiles, useSessionAgents } from "@/features/agents";
+import {
+  useAgentDetection,
+  useAgentProfiles,
+  useSelectableInstances,
+  type SelectableInstance,
+} from "@/features/agents";
 import { AnswerMarkdownHost, ChatHostProvider, ChatView, Composer, composerModelStatus, type ChatHost } from "@/features/chat";
 import { CommandMenuHost } from "@/features/command-menu";
 import { SessionSplit } from "@/features/panel";
 import type { Project } from "@/features/projects";
+import { profileForSessionAgent } from "@/shared/agent/identity";
 import { openSettings, type ProjectScope } from "@/shared/shell/navigation";
 import type { AgentKind, Session } from "@/types";
 import { addDraftSnippet, useComposerDraft, type ComposerDraft } from "../session/composer-drafts";
 import { SessionPanel } from "../session/SessionPanel";
 import { intentEvents } from "./intent-events";
-import { draftAgent, newSessionKey, useNewComposer } from "./use-new-composer";
+import { stickyRevision, subscribeSticky } from "./sticky";
+import { draftSelection, newSessionKey, useNewComposer } from "./use-new-composer";
 
 /** 新会话：和会话视图一样的时间线和面板，第一条消息发出时才真正建会话。 */
 export function NewSessionView({ projectId, project, projects }: {
@@ -19,13 +26,14 @@ export function NewSessionView({ projectId, project, projects }: {
   projects: Project[];
 }) {
   const key = newSessionKey(projectId);
-  const agents = useSessionAgents();
+  useSyncExternalStore(subscribeSticky, stickyRevision, stickyRevision);
+  const selectableInstances = useSelectableInstances();
   const detection = useAgentDetection();
   const { draft, loaded } = useComposerDraft(key);
-  const agent = draftAgent(draft, agents);
+  const selection = draftSelection(key, draft, selectableInstances);
 
   if (!loaded) return null;
-  if (!agent && agents === null && detection.error) {
+  if (!selection && selectableInstances === null && detection.error) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
         <p className="break-words text-sm text-wb-fg-2">检测本地 Agent 失败：{detection.error}</p>
@@ -37,7 +45,7 @@ export function NewSessionView({ projectId, project, projects }: {
     );
   }
   // 本机 Agent 还在检测：记得上次用的就先用它，否则等检测完。
-  if (!agent && agents === null) {
+  if (!selection && selectableInstances === null) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-wb-fg-3">
         正在检测本地 Agent…
@@ -45,7 +53,7 @@ export function NewSessionView({ projectId, project, projects }: {
       </div>
     );
   }
-  if (!agent) {
+  if (!selection) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
         <p className="text-sm text-wb-fg-2">未检测到可用的本地 Agent</p>
@@ -62,8 +70,9 @@ export function NewSessionView({ projectId, project, projects }: {
       projectId={projectId}
       project={project}
       projects={projects}
-      agent={agent}
-      agents={agents}
+      agent={selection.agent}
+      instanceId={selection.instanceId}
+      selectableInstances={selectableInstances}
       draft={draft}
     />
   );
@@ -74,18 +83,21 @@ function NewSession({
   project,
   projects,
   agent,
-  agents,
+  instanceId,
+  selectableInstances,
   draft,
 }: {
   projectId: ProjectScope;
   project: Project | undefined;
   projects: Project[];
   agent: AgentKind;
-  agents: ReturnType<typeof useSessionAgents>;
+  instanceId: string;
+  selectableInstances: SelectableInstance[] | null;
   draft: ComposerDraft;
 }) {
   const profiles = useAgentProfiles();
   const key = newSessionKey(projectId);
+
   const session = useMemo<Session>(
     () => ({
       id: key,
@@ -115,17 +127,28 @@ function NewSession({
       profiles,
       projectPath: workdir,
       addTextSnippet: addDraftSnippet,
+      instanceOf: () => instanceId,
     }),
-    [profiles, workdir],
+    [instanceId, profiles, workdir],
   );
-  const composer = useNewComposer({ projectId, project, projects, agent, agents, profiles, draft });
+  const composer = useNewComposer({
+    projectId,
+    project,
+    projects,
+    agent,
+    instanceId,
+    selectableInstances,
+    profiles,
+    draft,
+  });
   const { modelLabel, modelLoading } = composerModelStatus(composer);
+  const profile = profileForSessionAgent(agent, profiles, instanceId);
   const chat = (
     <ChatView
       session={session}
       events={events}
       renderComposer={(anchorRef) => (
-        <Composer key={`${key}:${agent}`} host={composer} session={session} events={events} anchorRef={anchorRef} />
+        <Composer key={`${key}:${instanceId}`} host={composer} session={session} events={events} anchorRef={anchorRef} />
       )}
     />
   );
@@ -137,7 +160,8 @@ function NewSession({
           scope={{ projectId }}
           workdir={workdir}
           events={events}
-          profile={profiles[agent]}
+          profile={profile}
+          instanceId={instanceId}
           modelLabel={modelLabel}
           modelLoading={modelLoading}
         >

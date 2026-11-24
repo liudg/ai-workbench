@@ -7,7 +7,7 @@ use std::time::SystemTime;
 
 use tokio::process::Command;
 
-use aiwb_proc::{apply_utf8_env, decode_child_bytes};
+use aiwb_proc::{apply_utf8_env, decode_child_bytes, hide_console};
 use crate::AgentError;
 
 pub(in crate::codex) fn resolve_codex_bin() -> Result<PathBuf, AgentError> {
@@ -143,15 +143,6 @@ fn vendor_at(dir: &Path, suffix: &str) -> Option<PathBuf> {
     ]
     .into_iter()
     .find(|path| path.is_file())
-}
-
-pub(in crate::codex) fn hide_console(command: &mut Command) {
-    #[cfg(windows)]
-    {
-        // CREATE_NO_WINDOW：GUI 宿主拉起控制台程序时不要弹出黑窗口。
-        command.creation_flags(0x08000000);
-    }
-    let _ = command;
 }
 
 type VersionKey = (PathBuf, Option<SystemTime>);

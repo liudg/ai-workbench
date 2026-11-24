@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ChevronRight, LayoutGrid, Loader2, Search } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -33,6 +33,7 @@ export function ActivityGroup({
   open,
   live,
   backgroundByToolCall,
+  revealEventId,
   onToggle,
 }: {
   piece: ToolPiece;
@@ -40,6 +41,7 @@ export function ActivityGroup({
   open: boolean;
   live: boolean;
   backgroundByToolCall?: ReadonlyMap<string, BackgroundTaskEvent>;
+  revealEventId?: string | null;
   onToggle: () => void;
 }) {
   const projectPath = useSessionProjectPath(session);
@@ -108,6 +110,7 @@ export function ActivityGroup({
                   state={states[index]}
                   background={backgrounds[index]}
                   projectPath={projectPath}
+                  reveal={revealEventId === step.event.id}
                 />
               ))}
             </ul>
@@ -125,6 +128,7 @@ function ActivityStep({
   state,
   background,
   projectPath,
+  reveal = false,
 }: {
   title: string;
   event: ToolCallEvent;
@@ -132,9 +136,13 @@ function ActivityStep({
   state: ToolState;
   background?: BackgroundTaskEvent;
   projectPath: string;
+  reveal?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(reveal);
   const [stopping, setStopping] = useState(false);
+  useEffect(() => {
+    if (reveal) setOpen(true);
+  }, [reveal]);
   const host = useChatHost();
   const agent = useEventAgent(event, session);
 
@@ -186,7 +194,7 @@ function ActivityStep({
   if (open && !canExpand) {
     setOpen(false);
   }
-  const shownOpen = open && canExpand;
+  const shownOpen = (open || reveal) && canExpand;
 
   const copyText =
     summaryShown || detail

@@ -11,8 +11,9 @@ use std::sync::{Arc, Mutex};
 use aiwb_agents::{AgentAdapter, AgentError, AgentSession, SessionContext, TurnDelivery, UserTurn};
 use aiwb_core::attention::{self, Attention, AttentionState};
 use aiwb_core::models::{
-    new_id, AgentCatalog, now_millis, AgentKind, BackgroundTaskStatus, MessageSender, PageAnnotation, QueuedTurn,
-    SessionEvent, SessionEventBody, SessionStatus, SubagentStatus,
+    is_visible_user_body, is_visible_user_text, new_id, now_millis, AgentCatalog, AgentKind,
+    BackgroundTaskStatus, MessageSender, PageAnnotation, QueuedTurn, SessionEvent,
+    SessionEventBody, SessionStatus, SubagentStatus,
 };
 use aiwb_core::rpc::{session_topic, TOPIC_TASKS};
 use aiwb_core::task::{SessionFeed, SessionOptions, StoredEvent, TaskWorkspace};
@@ -59,28 +60,70 @@ struct Live {
 /// pump 压着还没写的那段流式输出。
 type Held = Arc<Mutex<Option<SessionEventBody>>>;
 
+/// 尚未写入 `turn_checkpoints` 表的预捕获检查点引用守卫：
+/// 任何提前返回、投递失败、排队分支或异步取消都会在 `Drop` 中自动清理孤儿 Git 引用。
+pub(crate) struct PendingPreCheckpoint {
+    inner: Option<(String, String, aiwb_git::CapturedCheckpoint)>,
+}
+
+impl PendingPreCheckpoint {
+    fn new(cp_id: String, cwd: String, captured: aiwb_git::CapturedCheckpoint) -> Self {
+        Self {
+            inner: Some((cp_id, cwd, captured)),
+        }
+    }
+
+    fn take(&mut self) -> Option<(String, String, aiwb_git::CapturedCheckpoint)> {
+        self.inner.take()
+    }
+
+    async fn discard_async(mut self) {
+        if let Some((_, cwd, cap)) = self.inner.take() {
+            let _ = tokio::task::spawn_blocking(move || {
+                aiwb_git::delete_checkpoint_refs(std::path::Path::new(&cwd), &[cap.reference]);
+            })
+            .await;
+        }
+    }
+}
+
+impl Drop for PendingPreCheckpoint {
+    fn drop(&mut self) {
+        if let Some((_, cwd, cap)) = self.inner.take() {
+            Runtimes::cleanup_checkpoint_ref(cwd, cap.reference);
+        }
+    }
+}
+
 const READ_ONLY: &str = "此会话正被其他进程占用，当前只读，不能发送。";
 
 pub struct Runtimes {
     store: Arc<Store>,
     hub: Arc<Hub>,
     adapters: AdapterFactory,
+    pub(crate) instances_root: std::path::PathBuf,
+    custom_adapters: bool,
+    adapter_cache: Mutex<HashMap<String, Arc<dyn AgentAdapter>>>,
     logs: Mutex<HashMap<String, Log>>,
     live: Mutex<HashMap<String, Live>>,
     /// 首轮启动的取消令牌；可见状态和首条说明始终保存在 SQLite。
     starting: Mutex<HashMap<String, Arc<AtomicBool>>>,
     /// 同一个会话同一时间只接一次，避免对同一线程起两个 CLI。不同会话互不等待。
     opening: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+    /// 同步发送/批注在向适配器投递并落库用户气泡+检查点期间持锁，确保泵不会把本轮锚点/完成事件抢写到用户气泡之前。
+    delivering: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+    /// 手动从空闲队列发起新回合前预先拍下的 pre 检查点，待适配器回报对应 `UserMessage` 时消费绑定。
+    pending_pre_checkpoints: Mutex<HashMap<String, PendingPreCheckpoint>>,
     /// 适配器确认原生会话已经没了的会话和那个原生 id。再用到时直接报，不再起 CLI。
     gone: Mutex<HashMap<String, String>>,
     /// 清理和恢复工作树一次只做一件，免得一边删一边恢复。
     pub(crate) worktrees: tokio::sync::Mutex<()>,
-    /// 同一种 Agent 同一时间只探一次目录。等锁的一方拿到锁后先看缓存。
-    probing: Mutex<HashMap<AgentKind, Arc<tokio::sync::Mutex<()>>>>,
-    /// 这次启动后各 Agent 探目录的结果。没探成功过的，存下的目录可能是旧的。
-    catalog_probes: Mutex<HashMap<AgentKind, aiwb_core::models::CatalogProbe>>,
+    /// 同一个实例同一时间只探一次目录。等锁的一方拿到锁后先看缓存。
+    probing: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+    /// 这次启动后各实例探目录的结果。没探成功过的，存下的目录可能是旧的。
+    catalog_probes: Mutex<HashMap<String, aiwb_core::models::CatalogProbe>>,
     /// 正在探目录的 CLI。退出时一起关掉。
-    probe_handles: Mutex<HashMap<AgentKind, Arc<dyn AgentSession>>>,
+    probe_handles: Mutex<HashMap<String, Arc<dyn AgentSession>>>,
     /// 正在退出：不再起新的探测。
     closing: AtomicBool,
     /// 启动时正在收拾上次退出留下的会话。这时后台任务被记成停止不算回合结束，不回报父任务。
@@ -128,16 +171,38 @@ impl Outgoing {
 }
 
 impl Runtimes {
+    #[cfg(test)]
     pub fn new(store: Arc<Store>, hub: Arc<Hub>, adapters: AdapterFactory) -> Self {
+        Self::with_options(
+            store,
+            hub,
+            adapters,
+            std::env::temp_dir().join("aiwb-instances"),
+            true,
+        )
+    }
+
+    pub(crate) fn with_options(
+        store: Arc<Store>,
+        hub: Arc<Hub>,
+        adapters: AdapterFactory,
+        instances_root: std::path::PathBuf,
+        custom_adapters: bool,
+    ) -> Self {
         let (status_tx, status_rx) = mpsc::unbounded_channel();
         Self {
             store,
             hub,
             adapters,
+            instances_root,
+            custom_adapters,
+            adapter_cache: Mutex::default(),
             logs: Mutex::default(),
             live: Mutex::default(),
             starting: Mutex::default(),
             opening: Mutex::default(),
+            delivering: Mutex::default(),
+            pending_pre_checkpoints: Mutex::default(),
             gone: Mutex::default(),
             worktrees: tokio::sync::Mutex::new(()),
             probing: Mutex::default(),
@@ -157,13 +222,252 @@ impl Runtimes {
         self.opening.lock().unwrap().entry(session_id.to_string()).or_default().clone()
     }
 
+    fn delivering_of(&self, session_id: &str) -> Arc<tokio::sync::Mutex<()>> {
+        self.delivering
+            .lock()
+            .unwrap()
+            .entry(session_id.to_string())
+            .or_default()
+            .clone()
+    }
+
     /// 状态变化的接收端。只能取一次。
     pub(crate) fn take_status_notes(&self) -> Option<mpsc::UnboundedReceiver<StatusNote>> {
         self.status_rx.lock().unwrap().take()
     }
 
     pub(crate) fn adapter(&self, agent: AgentKind) -> Arc<dyn AgentAdapter> {
-        (self.adapters)(agent)
+        self.adapter_for_instance(agent, None)
+            .unwrap_or_else(|_| (self.adapters)(agent))
+    }
+
+    pub(crate) fn adapter_for_instance(
+        &self,
+        agent: AgentKind,
+        instance_id: Option<&str>,
+    ) -> RuntimeResult<Arc<dyn AgentAdapter>> {
+        let key = catalogs::instance_key(agent, instance_id);
+        let is_default = key == aiwb_core::models::default_instance_id(agent);
+        if !is_default {
+            let inst = self
+                .store
+                .agent_instance(&key)
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| {
+                    format!(
+                        "自定义实例「{key}」已被删除或不存在，为避免误用默认账号，请先切换实例后再操作"
+                    )
+                })?;
+            if inst.kind != agent {
+                return Err(format!(
+                    "实例「{key}」与 Agent 类型 {} 不匹配",
+                    agent.display_name()
+                ));
+            }
+            if self.custom_adapters {
+                return Ok((self.adapters)(agent));
+            }
+            if let Some(cached) = self.adapter_cache.lock().unwrap().get(&key).cloned() {
+                return Ok(cached);
+            }
+            let overlay = aiwb_agents::InstanceOverlay::from_instance(&inst, &self.instances_root);
+            let built = aiwb_agents::adapter_for_overlay(inst.kind, overlay);
+            self.adapter_cache
+                .lock()
+                .unwrap()
+                .insert(key, Arc::clone(&built));
+            return Ok(built);
+        }
+
+        if self.custom_adapters {
+            return Ok((self.adapters)(agent));
+        }
+        if let Some(cached) = self.adapter_cache.lock().unwrap().get(&key).cloned() {
+            return Ok(cached);
+        }
+        let built = if let Ok(Some(inst)) = self.store.agent_instance(&key) {
+            let overlay = aiwb_agents::InstanceOverlay::from_instance(&inst, &self.instances_root);
+            aiwb_agents::adapter_for_overlay(inst.kind, overlay)
+        } else {
+            (self.adapters)(agent)
+        };
+        self.adapter_cache
+            .lock()
+            .unwrap()
+            .insert(key, Arc::clone(&built));
+        Ok(built)
+    }
+
+    pub(crate) fn invalidate_instance_adapter(&self, instance_id: &str) {
+        self.adapter_cache.lock().unwrap().remove(instance_id);
+        aiwb_agents::evict_instance_caches(instance_id);
+    }
+
+    pub(crate) fn session_adapter(
+        &self,
+        session: &aiwb_core::task::TaskSession,
+    ) -> RuntimeResult<Arc<dyn AgentAdapter>> {
+        self.adapter_for_instance(session.agent, session.instance_id.as_deref())
+    }
+
+    pub(crate) fn clear_session_cache(&self, session_id: &str) {
+        self.clear_pending_pre_checkpoint(session_id);
+        self.logs.lock().unwrap().remove(session_id);
+        self.gone.lock().unwrap().remove(session_id);
+    }
+
+    fn cleanup_checkpoint_ref(cwd: String, reference: String) {
+        let cwd_path = std::path::PathBuf::from(cwd);
+        let refs = [reference];
+        if let Ok(rt) = tokio::runtime::Handle::try_current() {
+            rt.spawn_blocking(move || {
+                aiwb_git::delete_checkpoint_refs(&cwd_path, &refs);
+            });
+        } else {
+            aiwb_git::delete_checkpoint_refs(&cwd_path, &refs);
+        }
+    }
+
+    pub(crate) fn stash_pending_pre_checkpoint(
+        &self,
+        session_id: &str,
+        pre: PendingPreCheckpoint,
+    ) {
+        let _ = self
+            .pending_pre_checkpoints
+            .lock()
+            .unwrap()
+            .insert(session_id.to_string(), pre);
+    }
+
+    fn take_pending_pre_checkpoint(&self, session_id: &str) -> Option<PendingPreCheckpoint> {
+        self.pending_pre_checkpoints.lock().unwrap().remove(session_id)
+    }
+
+    pub(crate) fn clear_pending_pre_checkpoint(&self, session_id: &str) {
+        let _ = self.pending_pre_checkpoints.lock().unwrap().remove(session_id);
+    }
+
+    pub(crate) async fn capture_pre_checkpoint(
+        &self,
+        session_id: &str,
+    ) -> Option<PendingPreCheckpoint> {
+        if self.store.is_side_session(session_id).unwrap_or(false) {
+            return None;
+        }
+        let cwd_str = self.workdir(session_id).ok()?;
+        let cwd = std::path::PathBuf::from(&cwd_str);
+        let cp_id = new_id();
+        let cp_id_clone = cp_id.clone();
+        let sid_clone = session_id.to_string();
+        let captured = tokio::task::spawn_blocking(move || {
+            aiwb_git::capture_checkpoint(&cwd, &sid_clone, &cp_id_clone, "pre")
+                .ok()
+                .flatten()
+        })
+        .await
+        .ok()??;
+        Some(PendingPreCheckpoint::new(cp_id, cwd_str, captured))
+    }
+
+    pub(crate) fn save_turn_checkpoint(
+        &self,
+        session_id: &str,
+        user_event_id: Option<&str>,
+        mut pre: PendingPreCheckpoint,
+    ) {
+        let (task_id, event_id, cut_seq, turn_id) = {
+            let mut logs = self.logs.lock().unwrap();
+            let Ok(log) = self.log_mut(&mut logs, session_id) else {
+                return;
+            };
+            let ev_idx = match user_event_id {
+                Some(target_id) => log.events.iter().rposition(|e| e.id == target_id),
+                None => log.events.iter().rposition(|e| is_visible_user_body(&e.body)),
+            };
+            let Some(idx) = ev_idx else {
+                return;
+            };
+            let event_id = log.events[idx].id.clone();
+            let (cut_seq, turn_id) =
+                crate::services::checkpoints::compute_turn_cut_seq(&log.events, idx);
+            (log.task_id.clone(), event_id, cut_seq, turn_id)
+        };
+        let Some((cp_id, cwd_str, cap)) = pre.take() else {
+            return;
+        };
+        let now = now_millis();
+        let pre_ref = cap.reference.clone();
+        let cp = aiwb_core::checkpoint::TurnCheckpoint {
+            id: cp_id,
+            task_id,
+            session_id: session_id.to_string(),
+            user_event_id: event_id,
+            cut_seq,
+            turn_id,
+            pre_ref: Some(cap.reference),
+            post_ref: None,
+            head_oid: cap.head_oid,
+            branch: cap.branch,
+            cwd: cwd_str.clone(),
+            created_at: now,
+            updated_at: now,
+        };
+        if self.store.put_checkpoint(&cp).is_err() {
+            Self::cleanup_checkpoint_ref(cwd_str, pre_ref);
+        }
+    }
+
+    /// 会话进程已被静默关停但未执行回退截断时（如 Git 文件恢复失败），将仍在运行/等待输入的会话及后台卡片同步收敛为已停止。
+    pub(crate) fn settle_stopped_session(&self, session_id: &str) -> RuntimeResult<()> {
+        let had_queue = self
+            .logs
+            .lock()
+            .unwrap()
+            .get(session_id)
+            .is_some_and(|log| !log.queue.is_empty());
+        if had_queue {
+            let _ = self.write_event_ext(
+                session_id,
+                SessionEventBody::QueueChanged { items: Vec::new() },
+                None,
+                false,
+            );
+        }
+        self.expire_prompts(session_id, None)?;
+        self.stop_background(session_id)?;
+        if let Some(session) = self.store.session(session_id).map_err(|e| e.to_string())? {
+            if matches!(
+                session.status,
+                SessionStatus::Starting | SessionStatus::Running | SessionStatus::NeedsInput
+            ) {
+                self.record(
+                    session_id,
+                    SessionEventBody::StatusChanged {
+                        status: SessionStatus::Stopped,
+                    },
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn settle_stopped_task(&self, task_id: &str) -> RuntimeResult<()> {
+        for session in self.store.task_sessions(task_id).map_err(|e| e.to_string())? {
+            if !self.is_live(&session.id) {
+                self.settle_stopped_session(&session.id)?;
+            }
+        }
+        for side in self
+            .store
+            .task_side_sessions(task_id)
+            .map_err(|e| e.to_string())?
+        {
+            if !self.is_live(&side.id) {
+                self.settle_stopped_session(&side.id)?;
+            }
+        }
+        Ok(())
     }
 
     /// 上次退出时还在跑或在等输入的会话，那一轮已经断了。记一条停止状态。
@@ -321,6 +625,16 @@ impl Runtimes {
     /// 把一条事件体并进时间线、写库、推送。状态和标题变了再推一次任务列表。
     /// pump 压着的那段流式输出先写出去，这条不排到它前面。
     pub(crate) fn record(&self, session_id: &str, body: SessionEventBody) -> RuntimeResult<()> {
+        let _ = self.record_with_checkpoint(session_id, body, None)?;
+        Ok(())
+    }
+
+    fn record_with_checkpoint(
+        &self,
+        session_id: &str,
+        body: SessionEventBody,
+        pre_checkpoint: Option<PendingPreCheckpoint>,
+    ) -> RuntimeResult<Option<String>> {
         let entry = self
             .live
             .lock()
@@ -330,33 +644,54 @@ impl Runtimes {
         if let Some((held, muted)) = entry {
             let mut slot = held.lock().unwrap();
             if let Some(earlier) = slot.take().filter(|_| !muted.load(Ordering::SeqCst)) {
-                if let Err(err) = self.write_event(session_id, earlier) {
+                if let Err(err) = self.write_event_ext(session_id, earlier, None, true) {
                     eprintln!("记录会话 {session_id} 的事件失败：{err}");
                 }
             }
         }
-        self.write_event(session_id, body)
+        self.write_event_ext(session_id, body, pre_checkpoint, false)
     }
 
-    fn write_event(&self, session_id: &str, body: SessionEventBody) -> RuntimeResult<()> {
+    fn write_adapter_event(&self, session_id: &str, body: SessionEventBody) -> RuntimeResult<()> {
+        let _ = self.write_event_ext(session_id, body, None, true)?;
+        Ok(())
+    }
+
+    fn write_event_ext(
+        &self,
+        session_id: &str,
+        body: SessionEventBody,
+        pre_checkpoint: Option<PendingPreCheckpoint>,
+        from_adapter: bool,
+    ) -> RuntimeResult<Option<String>> {
         let topic = session_topic(session_id);
         match body {
             // 适配器请求宿主另开会话。任务里还没有这个入口，不进时间线。
-            SessionEventBody::NewThread { .. } => Ok(()),
-            SessionEventBody::QueueChanged { items } => self.hub.publish_with(&topic, || {
-                let mut logs = self.logs.lock().unwrap();
-                let log = self.log_mut(&mut logs, session_id)?;
-                log.queue = items.clone();
-                let feed = SessionFeed {
-                    queue: Some(items),
-                    ..Default::default()
-                };
-                Ok(((), serde_json::to_value(feed).map_err(|e| e.to_string())?))
-            }),
+            SessionEventBody::NewThread { .. } => Ok(None),
+            SessionEventBody::QueueChanged { items } => self
+                .hub
+                .publish_with(&topic, || {
+                    let mut logs = self.logs.lock().unwrap();
+                    let log = self.log_mut(&mut logs, session_id)?;
+                    log.queue = items.clone();
+                    let feed = SessionFeed {
+                        queue: Some(items),
+                        ..Default::default()
+                    };
+                    Ok(((), serde_json::to_value(feed).map_err(|e| e.to_string())?))
+                })
+                .map(|()| None),
             body => {
                 if let SessionEventBody::CollaborationMode { mode } = &body {
                     self.keep_collaboration_mode(session_id, mode)?;
                 }
+                let anchor_turn_id = match &body {
+                    SessionEventBody::TurnAnchor { turn_id, .. } if !turn_id.trim().is_empty() => {
+                        Some(turn_id.clone())
+                    }
+                    _ => None,
+                };
+                let is_user_msg = is_visible_user_body(&body);
                 let status = match &body {
                     SessionEventBody::StatusChanged { status } => Some(*status),
                     _ => None,
@@ -372,7 +707,27 @@ impl Runtimes {
                     _ => None,
                 };
                 let activity = is_conversation_activity(&body);
-                let (task_id, side, attention_changed, settled) = self.append_at(session_id, body, activity, now_millis())?;
+                let (task_id, side, attention_changed, settled, event_id) =
+                    self.append_at(session_id, body, activity, now_millis())?;
+                if !side {
+                    if let Some(pre) = pre_checkpoint {
+                        self.save_turn_checkpoint(session_id, Some(&event_id), pre);
+                    }
+                    if let Some(turn_id) = anchor_turn_id {
+                        if let Ok(cps) = self.store.session_checkpoints(session_id) {
+                            if let Some(last) = cps
+                                .last()
+                                .filter(|c| c.turn_id.is_none() && c.post_ref.is_none())
+                            {
+                                let _ = self.store.update_checkpoint_turn_id(
+                                    &last.id,
+                                    &turn_id,
+                                    now_millis(),
+                                );
+                            }
+                        }
+                    }
+                }
                 let titled = match title {
                     Some(title) if !side => self.adopt_title(&task_id, &title)?,
                     _ => false,
@@ -381,16 +736,26 @@ impl Runtimes {
                     self.publish_tasks()?;
                 }
                 // 重启收拾时后台任务被记成停止，是进程没了，不是这一轮做完了。
-                let restoring = status.is_none() && self.restoring.load(Ordering::SeqCst);
+                let is_restoring = self.restoring.load(Ordering::SeqCst);
+                let restoring = status.is_none() && is_restoring;
                 if let Some(status) = settled.filter(|_| !side && !restoring) {
+                    if !is_restoring {
+                        self.capture_post_checkpoint_bg(session_id, &task_id);
+                    }
                     let _ = self.status_tx.send(StatusNote { task_id, status });
+                } else if from_adapter && is_user_msg && !side && !is_restoring {
+                    if let Some(pre) = self.take_pending_pre_checkpoint(session_id) {
+                        self.save_turn_checkpoint(session_id, Some(&event_id), pre);
+                    } else {
+                        self.save_unanchored_turn_checkpoint(session_id, &event_id);
+                    }
                 }
-                Ok(())
+                Ok(Some(event_id))
             }
         }
     }
 
-    /// 并进时间线、写库、推给订阅者，返回任务 id、是不是侧边聊天、注意力有没有变、会话是不是真换了状态（换成了哪个）。
+    /// 并进时间线、写库、推给订阅者，返回任务 id、是不是侧边聊天、注意力有没有变、会话是不是真换了状态（换成了哪个）、事件 id。
     /// `activity` 时把任务的更新时间挪到 `now`，侧边聊天不挪。
     /// 状态事件的注意力和事件写在同一个事务里。分叉复制时间线时沿用原来的时间，回合用时才对得上。
     fn append_at(
@@ -399,7 +764,7 @@ impl Runtimes {
         body: SessionEventBody,
         activity: bool,
         now: i64,
-    ) -> RuntimeResult<(String, bool, bool, Option<SessionStatus>)> {
+    ) -> RuntimeResult<(String, bool, bool, Option<SessionStatus>, String)> {
         let topic = session_topic(session_id);
         let mut ended = None;
         let appended = self.hub.publish_with(&topic, || -> RuntimeResult<_> {
@@ -411,7 +776,7 @@ impl Runtimes {
             appended
         })?;
         if let Some(ended) = ended {
-            self.append_at(session_id, ended, activity, now)?;
+            let _ = self.append_at(session_id, ended, activity, now)?;
         }
         Ok(appended)
     }
@@ -443,7 +808,7 @@ impl Runtimes {
         activity: bool,
         now: i64,
         ended: &mut Option<SessionEventBody>,
-    ) -> RuntimeResult<((String, bool, bool, Option<SessionStatus>), Value)> {
+    ) -> RuntimeResult<((String, bool, bool, Option<SessionStatus>, String), Value)> {
         {
             let log = self.log_mut(logs, session_id)?;
             *ended = subagent_ended(&log.events, &body);
@@ -462,6 +827,7 @@ impl Runtimes {
                     event
                 }
             };
+            let event_id = event.id.clone();
             let attention = self.next_attention(session_id, &log.task_id, &event.body, &log.events, now)?;
             // 状态事件的注意力变了，才是真换了状态（新会话接上时报的「已完成」不算）。
             // 主回合完了还有后台的在跑时注意力不变；最后一个跑完、从「在做」变成完成时，这一轮才算真结束。
@@ -487,7 +853,16 @@ impl Runtimes {
                 ..Default::default()
             };
             let data = serde_json::to_value(feed).map_err(|e| e.to_string())?;
-            Ok(((log.task_id.clone(), log.side, attention.is_some(), settled), data))
+            Ok((
+                (
+                    log.task_id.clone(),
+                    log.side,
+                    attention.is_some(),
+                    settled,
+                    event_id,
+                ),
+                data,
+            ))
         }
     }
 
@@ -522,9 +897,7 @@ impl Runtimes {
 
     /// 会话删掉之前：停掉 CLI，丢掉这里的时间线副本。
     pub(crate) async fn discard(&self, session_id: &str) {
-        // 等正在接的 CLI 接完再停，免得它接上以后没人管。
-        let _opening = self.opening_of(session_id).lock_owned().await;
-        self.stop(session_id).await;
+        self.stop_and_mute(session_id).await;
         self.logs.lock().unwrap().remove(session_id);
     }
 
@@ -537,9 +910,11 @@ impl Runtimes {
 
     /// 调用方拿着 `opening`。
     async fn remove_side(&self, session_id: &str) -> RuntimeResult<()> {
+        self.mcp.revoke(session_id);
         let entry = self.live.lock().unwrap().remove(session_id);
         if let Some(entry) = entry {
             entry.muted.store(true, Ordering::SeqCst);
+            *entry.held.lock().unwrap() = None;
             let _ = entry.handle.stop().await;
         }
         self.logs.lock().unwrap().remove(session_id);
@@ -770,7 +1145,8 @@ impl Runtimes {
             }
         }
         // 工作台 MCP 现在只有子任务工具：哪个会话都发，层数不限；侧边聊天不发。
-        let workbench_mcp = (side_of.is_none() && self.adapter(session.agent).takes_workbench_mcp())
+        let session_adapter = self.session_adapter(&session)?;
+        let workbench_mcp = (side_of.is_none() && session_adapter.takes_workbench_mcp())
             .then(|| self.mcp.issue(session_id))
             .flatten()
             .map(|mut mcp| {
@@ -789,7 +1165,7 @@ impl Runtimes {
         let used_at = Arc::new(AtomicI64::new(now_millis()));
         let held = Held::default();
         self.spawn_pump(session_id.to_string(), rx, muted.clone(), used_at.clone(), held.clone());
-        let handle = match self.adapter(session.agent).start_session(ctx, tx).await {
+        let handle = match session_adapter.start_session(ctx, tx).await {
             Ok(handle) => handle,
             Err(err) => {
                 self.mcp.revoke(session_id);
@@ -879,7 +1255,7 @@ impl Runtimes {
                     return;
                 }
                 used_at.store(now_millis(), Ordering::SeqCst);
-                if let Err(err) = runtimes.write_event(&session_id, body) {
+                if let Err(err) = runtimes.write_adapter_event(&session_id, body) {
                     eprintln!("记录会话 {session_id} 的事件失败：{err}");
                 }
             };
@@ -892,6 +1268,7 @@ impl Runtimes {
                     Some(last) => tokio::select! {
                         received = rx.recv() => received,
                         _ = tokio::time::sleep_until(last + STREAM_INTERVAL) => {
+                            let _delivering = runtimes.delivering_of(&session_id).lock_owned().await;
                             {
                                 let _starting = lock_starting();
                                 if let Some(body) = held.lock().unwrap().take() {
@@ -904,6 +1281,7 @@ impl Runtimes {
                     },
                     None => rx.recv().await,
                 };
+                let _delivering = runtimes.delivering_of(&session_id).lock_owned().await;
                 let Some(mut body) = received else {
                     let _starting = lock_starting();
                     if let Some(body) = held.lock().unwrap().take() {
@@ -1011,6 +1389,9 @@ impl Runtimes {
         if text.trim().is_empty() && images.is_empty() {
             return Err("消息不能为空".into());
         }
+        if let Some(session) = self.store.session(session_id).map_err(|e| e.to_string())? {
+            let _ = self.session_adapter(&session)?;
+        }
         // 和各适配器、子任务回报判断命令的口径一样：不看开头的空白。
         let command = text.trim_start();
         if command.starts_with('/') && images.is_empty() && preface.is_none() {
@@ -1034,7 +1415,27 @@ impl Runtimes {
             client_id: new_id(),
             annotations: Vec::new(),
         };
-        let delivery = self
+        // 先确保已连接 CLI（若工作树曾被挂起也会在此恢复目录），再捕获 pre_ref 快照；
+        // 避免 CLI 启动失败时创建并泄漏未入库的 Git 引用。
+        let _ = self.ensure_live(session_id).await?;
+        // 仅在会话当前空闲时，于交付回合给 CLI 之前拍下本轮 pre_ref 快照；
+        // 回合进行中（排队或中途引导）CLI 可能正在修改文件，绝不伪造“回合开始前”快照。
+        let is_idle = self
+            .store
+            .session(session_id)
+            .ok()
+            .flatten()
+            .is_some_and(|s| !crate::services::session_busy(&s));
+        if is_idle {
+            self.clear_pending_pre_checkpoint(session_id);
+        }
+        let pre_checkpoint = if is_idle && sender.is_none() {
+            self.capture_pre_checkpoint(session_id).await
+        } else {
+            None
+        };
+        let _delivering = self.delivering_of(session_id).lock_owned().await;
+        let delivery = match self
             .with_writer(session_id, move |handle| {
                 let turn = turn.clone();
                 async move {
@@ -1045,7 +1446,16 @@ impl Runtimes {
                     }
                 }
             })
-            .await?;
+            .await
+        {
+            Ok(delivery) => delivery,
+            Err(err) => {
+                if let Some(pre) = pre_checkpoint {
+                    pre.discard_async().await;
+                }
+                return Err(err);
+            }
+        };
         if let Some(handoff) = handoff {
             self.mark_delivered(session_id, handoff)?;
         }
@@ -1061,7 +1471,10 @@ impl Runtimes {
                     },
                 )?;
             }
-            self.record(
+            let is_plain_user = sender.is_none();
+            let pre_for_record = if is_plain_user { pre_checkpoint } else { None };
+            let had_pre = pre_for_record.is_some();
+            let recorded_id = self.record_with_checkpoint(
                 session_id,
                 SessionEventBody::UserMessage {
                     text,
@@ -1069,7 +1482,17 @@ impl Runtimes {
                     annotations: 0,
                     sender,
                 },
+                pre_for_record,
             )?;
+            if is_plain_user && !had_pre && !is_idle {
+                if let Some(ev_id) = recorded_id {
+                    if !self.store.is_side_session(session_id).unwrap_or(false) {
+                        self.save_unanchored_turn_checkpoint(session_id, &ev_id);
+                    }
+                }
+            }
+        } else if let Some(pre) = pre_checkpoint {
+            pre.discard_async().await;
         }
         Ok(delivery)
     }
@@ -1080,6 +1503,9 @@ impl Runtimes {
         session_id: &str,
         note: PageAnnotation,
     ) -> RuntimeResult<TurnDelivery> {
+        if let Some(session) = self.store.session(session_id).map_err(|e| e.to_string())? {
+            let _ = self.session_adapter(&session)?;
+        }
         let comment = note.comment.trim().to_string();
         let images: Vec<String> = note
             .screenshot
@@ -1089,14 +1515,40 @@ impl Runtimes {
             .map(str::to_string)
             .into_iter()
             .collect();
-        let delivery = self
+        let _ = self.ensure_live(session_id).await?;
+        let should_pre_capture = self
+            .store
+            .session(session_id)
+            .ok()
+            .flatten()
+            .is_some_and(|s| !crate::services::session_busy(&s));
+        if should_pre_capture {
+            self.clear_pending_pre_checkpoint(session_id);
+        }
+        let pre_checkpoint = if should_pre_capture {
+            self.capture_pre_checkpoint(session_id).await
+        } else {
+            None
+        };
+        let _delivering = self.delivering_of(session_id).lock_owned().await;
+        let delivery = match self
             .with_writer(session_id, move |handle| {
                 let note = note.clone();
                 async move { handle.submit_annotation(note).await }
             })
-            .await?;
+            .await
+        {
+            Ok(delivery) => delivery,
+            Err(err) => {
+                if let Some(pre) = pre_checkpoint {
+                    pre.discard_async().await;
+                }
+                return Err(err);
+            }
+        };
         if delivery == TurnDelivery::Started {
-            self.record(
+            let had_pre = pre_checkpoint.is_some();
+            let recorded_id = self.record_with_checkpoint(
                 session_id,
                 SessionEventBody::UserMessage {
                     text: comment,
@@ -1104,7 +1556,17 @@ impl Runtimes {
                     annotations: 1,
                     sender: None,
                 },
+                pre_checkpoint,
             )?;
+            if !had_pre && !should_pre_capture {
+                if let Some(ev_id) = recorded_id {
+                    if !self.store.is_side_session(session_id).unwrap_or(false) {
+                        self.save_unanchored_turn_checkpoint(session_id, &ev_id);
+                    }
+                }
+            }
+        } else if let Some(pre) = pre_checkpoint {
+            pre.discard_async().await;
         }
         Ok(delivery)
     }
@@ -1151,8 +1613,15 @@ impl Runtimes {
             self.stop(session_id).await;
             return Ok(());
         }
-        // 没接上的会话没有在跑的回合。
         let Some(handle) = self.live_handle(session_id) else {
+            // 若会话不在首轮启动、也不在重连中且已无存活句柄，但库里仍残留运行态，同步收敛为已停止。
+            if !self.starting.lock().unwrap().contains_key(session_id) {
+                if let Ok(_opening) = self.opening_of(session_id).try_lock() {
+                    if !self.is_live(session_id) {
+                        self.settle_stopped_session(session_id)?;
+                    }
+                }
+            }
             return Ok(());
         };
         handle.interrupt().await.map_err(|e| e.to_string())
@@ -1181,7 +1650,30 @@ impl Runtimes {
         self.mcp.revoke(session_id);
         let entry = self.live.lock().unwrap().remove(session_id);
         if let Some(entry) = entry {
-            if cancelled { entry.muted.store(true, Ordering::SeqCst); }
+            if cancelled || self.initial_cancelled(session_id) {
+                entry.muted.store(true, Ordering::SeqCst);
+            }
+            let _ = entry.handle.stop().await;
+        } else if !cancelled && !self.starting.lock().unwrap().contains_key(session_id) {
+            if let Ok(_opening) = self.opening_of(session_id).try_lock() {
+                if !self.is_live(session_id) {
+                    let _ = self.settle_stopped_session(session_id);
+                }
+            }
+        }
+    }
+
+    /// 静音并停掉会话 CLI：持有 `opening` 锁防止并发 `ensure_live` 插回新句柄，
+    /// 在 `handle.stop()` 前置 `muted = true` 并清空压着的流式 `held`，确保关进程尾事件绝不写回时间线。
+    pub async fn stop_and_mute(&self, session_id: &str) {
+        self.clear_pending_pre_checkpoint(session_id);
+        let _ = self.cancel_initial(session_id);
+        let _opening = self.opening_of(session_id).lock_owned().await;
+        self.mcp.revoke(session_id);
+        let entry = self.live.lock().unwrap().remove(session_id);
+        if let Some(entry) = entry {
+            entry.muted.store(true, Ordering::SeqCst);
+            *entry.held.lock().unwrap() = None;
             let _ = entry.handle.stop().await;
         }
     }
@@ -1267,6 +1759,10 @@ impl Runtimes {
         self.drop_detached_logs();
         // 没人拿着也没人等的锁不留，再用到时新建。
         self.opening.lock().unwrap().retain(|_, lock| Arc::strong_count(lock) > 1);
+        self.delivering
+            .lock()
+            .unwrap()
+            .retain(|_, lock| Arc::strong_count(lock) > 1);
         Ok(released)
     }
 
@@ -1278,7 +1774,13 @@ impl Runtimes {
     }
 
     /// 不建线程起一次 CLI，只要模型目录，拿到就关掉。
-    async fn probe_catalog(&self, agent: AgentKind, cwd: String) -> RuntimeResult<AgentCatalog> {
+    async fn probe_catalog_for(
+        &self,
+        agent: AgentKind,
+        instance_id: Option<&str>,
+        cwd: String,
+    ) -> RuntimeResult<AgentCatalog> {
+        let key = catalogs::instance_key(agent, instance_id);
         let ctx = SessionContext {
             project_path: cwd,
             access_mode: None,
@@ -1288,20 +1790,100 @@ impl Runtimes {
         };
         let (tx, _rx) = mpsc::unbounded_channel();
         let handle = self
-            .adapter(agent)
+            .adapter_for_instance(agent, Some(&key))?
             .start_session(ctx, tx)
             .await
             .map_err(|e| e.to_string())?;
-        self.probe_handles.lock().unwrap().insert(agent, handle.clone());
+        self.probe_handles
+            .lock()
+            .unwrap()
+            .insert(key.clone(), handle.clone());
         // 起 CLI 的工夫里开始退出了：`stop_all` 可能已经扫过，这里自己关。
         let catalog = if self.closing.load(Ordering::SeqCst) {
             Err("后台正在退出".to_string())
         } else {
             handle.catalog().await.map_err(|e| e.to_string())
         };
-        self.probe_handles.lock().unwrap().remove(&agent);
+        self.probe_handles.lock().unwrap().remove(&key);
         let _ = handle.stop().await;
         catalog
+    }
+
+    fn capture_post_checkpoint_bg(&self, session_id: &str, task_id: &str) {
+        let Ok(mut cps) = self.store.session_checkpoints(session_id) else {
+            return;
+        };
+        let Some(cp) = cps.pop().filter(|c| c.post_ref.is_none()) else {
+            return;
+        };
+        let Ok(cwd_str) = self.workdir_of_task(task_id) else {
+            return;
+        };
+        let sid = session_id.to_string();
+        let store = Arc::clone(&self.store);
+        let work = move || {
+            let cwd = std::path::PathBuf::from(cwd_str);
+            if let Ok(Some(cap)) = aiwb_git::capture_checkpoint(&cwd, &sid, &cp.id, "post") {
+                if !store
+                    .update_checkpoint_post(&cp.id, Some(&cap.reference), now_millis())
+                    .unwrap_or(false)
+                {
+                    aiwb_git::delete_checkpoint_refs(&cwd, &[cap.reference]);
+                }
+            }
+        };
+        if let Ok(rt) = tokio::runtime::Handle::try_current() {
+            rt.spawn_blocking(work);
+        } else {
+            work();
+        }
+    }
+
+    /// 记录一条不含 `pre_ref` 的检查点占位行（例如原生队列自动发出的回合或回合中引导）：
+    /// 绝不在适配器确认消息已发出后才后台补拍“回合开始前”快照（避免把本轮已修改的文件混入 pre_ref），
+    /// 同时保留该轮的 `turn_id` 与回合结束后的 `post_ref` 追踪，避免误报前置轮次的手动改动警告。
+    fn save_unanchored_turn_checkpoint(&self, session_id: &str, user_event_id: &str) {
+        if self
+            .store
+            .checkpoint_for_user_event(session_id, user_event_id)
+            .ok()
+            .flatten()
+            .is_some()
+        {
+            return;
+        }
+        let (task_id, cut_seq, turn_id) = {
+            let mut logs = self.logs.lock().unwrap();
+            let Ok(log) = self.log_mut(&mut logs, session_id) else {
+                return;
+            };
+            let Some(idx) = log.events.iter().rposition(|e| e.id == user_event_id) else {
+                return;
+            };
+            let (cut_seq, turn_id) =
+                crate::services::checkpoints::compute_turn_cut_seq(&log.events, idx);
+            (log.task_id.clone(), cut_seq, turn_id)
+        };
+        let Ok(cwd_str) = self.workdir_of_task(&task_id) else {
+            return;
+        };
+        let now = now_millis();
+        let cp = aiwb_core::checkpoint::TurnCheckpoint {
+            id: new_id(),
+            task_id,
+            session_id: session_id.to_string(),
+            user_event_id: user_event_id.to_string(),
+            cut_seq,
+            turn_id,
+            pre_ref: None,
+            post_ref: None,
+            head_oid: None,
+            branch: None,
+            cwd: cwd_str,
+            created_at: now,
+            updated_at: now,
+        };
+        let _ = self.store.put_checkpoint(&cp);
     }
 
     pub(crate) async fn stop_all(&self) {
@@ -1418,6 +2000,7 @@ mod tests {
             id: "s".into(),
             task_id: "t".into(),
             agent: AgentKind::ClaudeCode,
+            instance_id: None,
             native_id: None,
             status,
             options: SessionOptions::default(),
@@ -1793,6 +2376,34 @@ mod tests {
         assert_eq!(texts(&store), ["写了"]);
     }
 
+    #[tokio::test(start_paused = true)]
+    async fn stop_and_mute_waits_for_opening_clears_held_and_suppresses_exit_events() {
+        let (store, runtimes) = resumable_runtimes();
+        let opening = runtimes.opening_of("s").lock_owned().await;
+        let stopping = {
+            let runtimes = runtimes.clone();
+            tokio::spawn(async move { runtimes.stop_and_mute("s").await })
+        };
+        settle().await;
+        assert!(!stopping.is_finished(), "must wait on opening_of lock");
+
+        let session = attach(&runtimes, 0);
+        session.sink.send(delta("m1", "已落库")).unwrap();
+        session.sink.send(delta("m1", "压在held里")).unwrap();
+        settle().await;
+        assert_eq!(texts(&store), ["已落库"]);
+
+        drop(opening);
+        stopping.await.unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+        assert_eq!(session.stopped.load(Ordering::SeqCst), 1);
+        assert!(!runtimes.is_live("s"));
+        // QuietlyStopped::stop 发送的 Stopped 和 held 里的覆盖均被静音丢弃，不污染回退后的时间线。
+        assert_eq!(texts(&store), ["已落库"]);
+        assert_eq!(store.session("s").unwrap().unwrap().status, SessionStatus::Completed);
+    }
+
     #[tokio::test]
     async fn a_session_being_opened_is_not_released_and_unused_locks_are_dropped() {
         let (_store, runtimes) = resumable_runtimes();
@@ -1958,6 +2569,7 @@ mod tests {
             id: "s".into(),
             task_id: "t".into(),
             agent: AgentKind::ClaudeCode,
+            instance_id: None,
             native_id: None,
             status: SessionStatus::Completed,
             options: SessionOptions {

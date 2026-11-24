@@ -70,7 +70,7 @@ pub enum AliasCheck {
     /// 找到文件即可。版本命令失败也算已安装。
     None,
     /// 版本输出（忽略大小写）必须包含其中一段。
-    #[allow(dead_code)]
+    #[cfg(test)]
     Contains(&'static [&'static str]),
 }
 
@@ -190,8 +190,11 @@ fn hit_accepted(rule: Option<&AliasRule>, hit: &BinHit) -> bool {
 }
 
 pub fn confirms(check: AliasCheck, text: Option<&str>) -> bool {
+    #[cfg(not(test))]
+    let _ = text;
     match check {
         AliasCheck::None => true,
+        #[cfg(test)]
         AliasCheck::Contains(needles) => {
             let Some(text) = text else {
                 return false;
@@ -272,6 +275,7 @@ pub async fn inspect_release(
     if !check_updates {
         return AgentInstallation {
             kind,
+            instance_id: None,
             display_name: display_name.to_string(),
             installed: true,
             version: chosen.version.clone(),
@@ -347,6 +351,7 @@ pub async fn inspect_release(
 
     AgentInstallation {
         kind,
+        instance_id: None,
         display_name: display_name.to_string(),
         installed: true,
         version: chosen.version.clone(),
@@ -354,6 +359,35 @@ pub async fn inspect_release(
         update_available,
         update_via,
         detail: detail_lines(release.note, &chosen.version, npm_note),
+        session_linked: false,
+    }
+}
+
+/// 探测实例显式指定的自定义二进制路径。
+pub async fn inspect_custom_binary(
+    kind: AgentKind,
+    display_name: &str,
+    path: &Path,
+) -> AgentInstallation {
+    if !path.is_file() {
+        let mut item = AgentInstallation::absent(kind, display_name);
+        item.detail = Some(format!("指定路径不存在：{}", path.display()));
+        return item;
+    }
+    let version = match run_captured(path, &["--version"], Duration::from_secs(15), false).await {
+        Ok(captured) => version_from_output(&captured.stdout, &captured.stderr),
+        Err(_) => None,
+    };
+    AgentInstallation {
+        kind,
+        instance_id: None,
+        display_name: display_name.to_string(),
+        installed: true,
+        version,
+        latest_version: None,
+        update_available: false,
+        update_via: None,
+        detail: Some(format!("自定义路径：{}", path.display())),
         session_linked: false,
     }
 }

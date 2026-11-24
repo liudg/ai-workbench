@@ -1,10 +1,20 @@
 export * as agentsApi from "./api";
+export type { UpsertInstanceInput } from "./api";
 export {
+  buildSelectableInstances,
   useAgentDetection,
   useAgentInstallations,
+  useAgentInstances,
   useAgentProfiles,
   useCatalogProbes,
   useReadyAgentCount,
-  useSessionAgents,
+  useSelectableInstances,
+  type SelectableInstance,
 } from "./use-agents";
-export { seedAgents } from "./agent-store";
+export {
+  indexProfiles,
+  refreshInstallations,
+  refreshProfiles,
+  seedAgents,
+  syncAgentInstancesSnapshot,
+} from "./agent-store";

@@ -9,8 +9,8 @@ import type { AgentKind, AgentProfile, PromptAnswer } from "@/types";
 export interface ChatHost {
   /** 回答审批、提问、计划选择。失败时返回 false，卡片重新可点。 */
   answerPrompt(sessionId: string, promptId: string, answer: PromptAnswer): Promise<boolean>;
-  /** 各 Agent 的能力、显示名和图标。 */
-  profiles: Partial<Record<AgentKind, AgentProfile>>;
+  /** 各 Agent / 实例的能力、显示名和图标（同时按 instanceId 和默认 AgentKind 索引）。 */
+  profiles: Partial<Record<string, AgentProfile>>;
   /** 项目主目录。工具路径相对会话工作目录显示，没有工作目录时用它。 */
   projectPath: string;
   /** 上滚取更早的回合，返回 true 表示到头。时间线已经完整的宿主不给。 */
@@ -21,6 +21,10 @@ export interface ChatHost {
   startSideChat?: (draft: TextSnippetDraft) => void;
   /** 时间线由几段会话接成时（中途换过 Agent），每段是哪个 Agent。只有一段的宿主不给。 */
   agentOf?: (sessionId: string) => AgentKind | undefined;
+  /** 时间线由几段会话接成时，每段属于哪个实例 id。 */
+  instanceOf?: (sessionId: string) => string | undefined;
+  /** 请求把时间线（及可选工作区文件）回退到某条用户消息之前。只在主会话视图提供。 */
+  requestRewind?: (sessionId: string, userEventId: string) => void;
   /** 子任务的标题和跳转、开子任务卡片的选择。不支持的宿主不给，卡片就不能点。 */
   subtasks?: SubtaskHost;
   /** 在子智能体面板里打开 Agent 自带的子 Agent。不支持的宿主不给，子 Agent 的行就不能点。 */
@@ -35,6 +39,7 @@ export interface ChatHost {
 export interface SubtaskView {
   title: string;
   agent: AgentKind;
+  instanceId?: string;
   attention: Attention;
   /** 现在这一回合开始的时间（毫秒），运行中时用来计时。 */
   since: number;
@@ -45,6 +50,8 @@ export interface SubtaskHost {
   title(taskId: string): string | undefined;
   /** 这个任务现在用的 Agent。任务列表里还没有它时没有。 */
   agent(taskId: string): AgentKind | undefined;
+  /** 这个任务现在用的实例 id。 */
+  instanceId?: (taskId: string) => string | undefined;
   /** 子任务现在的样子，跟着任务列表变。任务列表里还没有它时没有。 */
   useSubtask(taskId: string): SubtaskView | undefined;
   /** 直接跳转到对应会话。 */
@@ -57,6 +64,10 @@ const ChatHostContext = createContext<ChatHost | null>(null);
 
 export function ChatHostProvider({ host, children }: { host: ChatHost; children: ReactNode }) {
   return <ChatHostContext.Provider value={host}>{children}</ChatHostContext.Provider>;
+}
+
+export function useOptionalChatHost(): ChatHost | null {
+  return useContext(ChatHostContext);
 }
 
 export function useChatHost(): ChatHost {

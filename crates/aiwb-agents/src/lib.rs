@@ -16,8 +16,12 @@ mod directory;
 mod external;
 mod image_input;
 mod install;
+pub mod instance;
 mod mcp;
 mod protocol;
+pub mod text_gen;
+
+pub use instance::InstanceOverlay;
 
 pub use protocol::{
     fold_page_annotations, submit_annotation_as_attachment, AgentAdapter, AgentError, AgentSession,
@@ -31,40 +35,44 @@ use std::sync::Arc;
 use aiwb_core::models::{AgentInstallation, AgentKind, AgentProfile, McpSurface};
 
 pub use mcp::McpDriver;
-
-fn antigravity_bin() -> Option<std::path::PathBuf> {
-    antigravity::binary()
-}
 pub use install::UpgradeOutput;
 
 pub use directory::{DirectoryEntry, DirectoryPage, SessionDirectory};
 
 /// 按类型取得适配器实例。
 pub fn adapter_for(kind: AgentKind) -> Arc<dyn AgentAdapter> {
+    adapter_for_overlay(kind, InstanceOverlay::default_for(kind))
+}
+
+/// 按类型与实例覆盖配置取得适配器实例。
+pub fn adapter_for_overlay(kind: AgentKind, overlay: InstanceOverlay) -> Arc<dyn AgentAdapter> {
     match kind {
-        AgentKind::CodexCli => Arc::new(codex::CodexCliAdapter::new()),
-        AgentKind::ClaudeCode => Arc::new(claude::ClaudeCodeAdapter::new()),
-        AgentKind::CursorAgent => Arc::new(cursor::CursorAgentAdapter::new()),
-        AgentKind::Antigravity => Arc::new(antigravity::AntigravityAdapter::new()),
+        AgentKind::CodexCli => Arc::new(codex::CodexCliAdapter::with_overlay(overlay)),
+        AgentKind::ClaudeCode => Arc::new(claude::ClaudeCodeAdapter::with_overlay(overlay)),
+        AgentKind::CursorAgent => Arc::new(cursor::CursorAgentAdapter::with_overlay(overlay)),
+        AgentKind::Antigravity => Arc::new(antigravity::AntigravityAdapter::with_overlay(overlay)),
         AgentKind::KimiCode | AgentKind::QwenCode | AgentKind::OpenCode => {
             Arc::new(external::ExternalCliAdapter::new(kind))
         }
     }
 }
 
-/// 每种 Agent 的能力、斜杠命令、显示名和图标。不启动 CLI。
-pub fn agent_profiles() -> Vec<AgentProfile> {
-    AgentKind::all()
-        .into_iter()
-        .map(|kind| {
-            let adapter = adapter_for(kind);
-            let mut profile = adapter.profile();
-            profile.display_name = Some(adapter.display_name().to_string());
-            profile.icon = adapter.icon_href().map(str::to_string);
-            profile.monochrome_icon = adapter.monochrome_icon();
-            profile
-        })
-        .collect()
+/// 实例配置更新或删除时淘汰该实例在适配层的长生命周期目录缓存。
+pub fn evict_instance_caches(instance_id: &str) {
+    codex::CodexDirectory::evict_instance(instance_id);
+}
+
+/// 生成带完整图标与显示名的单实例 Profile。
+pub fn profile_for_adapter(adapter: &dyn AgentAdapter) -> AgentProfile {
+    let mut profile = adapter.profile();
+    if profile.display_name.as_deref().is_none_or(|s| s.trim().is_empty()) {
+        profile.display_name = Some(adapter.display_name().to_string());
+    }
+    if profile.icon.is_none() {
+        profile.icon = adapter.icon_href().map(str::to_string);
+    }
+    profile.monochrome_icon = adapter.monochrome_icon();
+    profile
 }
 
 /// 全部已注册种类。顺序跟着 `AgentKind::all`。没装上的也返回，设置页要列出它们。
@@ -86,36 +94,29 @@ pub async fn list_installations(check_updates: bool) -> Vec<AgentInstallation> {
 }
 
 fn cli_present(adapter: &dyn AgentAdapter) -> bool {
+    if let Some(custom) = adapter.custom_binary_path() {
+        return custom.is_file();
+    }
     adapter
         .cli_release()
         .and_then(|release| install::locate_release(&release))
         .is_some()
 }
 
+pub fn mcp_surface_for(adapter: &dyn AgentAdapter) -> McpSurface {
+    let installed = cli_present(adapter);
+    match adapter.mcp() {
+        Some(driver) => driver.surface(installed),
+        None => mcp::unverified(adapter.kind(), adapter.display_name(), installed),
+    }
+}
+
 /// 设置页的 MCP 管理面。一种 Agent 一份，没验证过的不假装不支持。
 pub fn mcp_surfaces() -> Vec<McpSurface> {
     AgentKind::all()
         .into_iter()
-        .map(|kind| {
-            let adapter = adapter_for(kind);
-            let installed = cli_present(adapter.as_ref());
-            match adapter.mcp() {
-                Some(driver) => driver.surface(installed),
-                None => mcp::unverified(kind, adapter.display_name(), installed),
-            }
-        })
+        .map(|kind| mcp_surface_for(adapter_for(kind).as_ref()))
         .collect()
-}
-
-pub fn require_mcp(kind: AgentKind) -> Result<Arc<dyn McpDriver>, String> {
-    let adapter = adapter_for(kind);
-    if let Some(driver) = adapter.mcp() {
-        return Ok(driver);
-    }
-    let installed = cli_present(adapter.as_ref());
-    Err(mcp::unverified(kind, adapter.display_name(), installed)
-        .unavailable_reason
-        .unwrap_or_else(|| "暂无法管理 MCP。".into()))
 }
 
 #[cfg(test)]
@@ -285,7 +286,10 @@ mod tests {
     fn sidebar_identity_stays_on_the_owning_adapter() {
         use std::path::PathBuf;
 
-        let profiles = crate::agent_profiles();
+        let profiles: Vec<AgentProfile> = AgentKind::all()
+            .into_iter()
+            .map(|kind| profile_for_adapter(adapter_for(kind).as_ref()))
+            .collect();
         let profile = |kind: AgentKind| {
             profiles
                 .iter()

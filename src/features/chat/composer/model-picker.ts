@@ -1,11 +1,68 @@
 import { DESKTOP_ZH } from "../../../shared/strings/desktop-zh.ts";
 import {
+  defaultInstanceId,
+  effectiveInstanceId,
   type AgentCatalog,
+  type AgentKind,
   type AgentModelOption,
   type ReasoningEffortOption,
   type SessionTuning,
 } from "../../../types/index.ts";
 import { effortForModel } from "./composer-submit.ts";
+
+export interface InstanceOptionLike {
+  kind: AgentKind;
+  instanceId?: string | null;
+  accentColor?: string | null;
+  identity?: { accentColor?: string | null } | null;
+}
+
+export function optionInstanceKey(option: { kind: AgentKind; instanceId?: string | null }): string {
+  return effectiveInstanceId(option.kind, option.instanceId);
+}
+
+export function selectedInstanceKey(choice: {
+  selected: AgentKind;
+  selectedInstanceId?: string | null;
+}): string {
+  return effectiveInstanceId(choice.selected, choice.selectedInstanceId);
+}
+
+export function explicitOptionInstanceId(option: {
+  kind: AgentKind;
+  instanceId?: string | null;
+}): string | undefined {
+  const trimmed = option.instanceId?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+export function optionAccentColor(option: InstanceOptionLike): string | null {
+  return option.accentColor?.trim() || option.identity?.accentColor?.trim() || null;
+}
+
+/** 当同种 Agent 存在多个实例、或当前实例带有自定义 id / 强调色时，在模型列表顶部展示实例切换条。 */
+export function shouldShowInstanceStrip(
+  options: readonly InstanceOptionLike[] | null | undefined,
+  activeKind: AgentKind | undefined,
+): boolean {
+  if (!options || !activeKind) return false;
+  const sameKind = options.filter((item) => item.kind === activeKind);
+  if (sameKind.length > 1) return true;
+  const single = sameKind[0];
+  if (!single) return false;
+  if (optionAccentColor(single)) return true;
+  return optionInstanceKey(single) !== defaultInstanceId(single.kind);
+}
+
+export function invokeSelectAgent(
+  selectAgent: ((agent: AgentKind, instanceId?: string) => void) | undefined,
+  agent: AgentKind,
+  instanceId?: string,
+): void {
+  if (!selectAgent) return;
+  if (instanceId !== undefined) selectAgent(agent, instanceId);
+  else selectAgent(agent);
+}
 
 /** 滑杆刻度就是该模型目录里的档位，顺序和数量都不改。 */
 export function sliderEfforts(model: AgentModelOption | undefined): ReasoningEffortOption[] {

@@ -1,13 +1,7 @@
 import { useState } from "react";
 
 import { previewKindForPath } from "../core/preview-kind";
-import {
-  markdownModeButtonLabel,
-  markdownViewMode,
-  nextMarkdownViewMode,
-  rememberMarkdownViewMode,
-  type MarkdownViewMode,
-} from "../viewers/markdown-mode";
+import { useMarkdownPreviewMode } from "../viewers/use-markdown-preview-mode";
 import { previewSelection } from "./file-preview-nav";
 import type { OpenWithAction } from "./open-with";
 import { FileSearchDialog } from "./FileSearchDialog";
@@ -18,6 +12,7 @@ export function useFilePreviewChrome({
   projectId,
   projectPath,
   previewPath,
+  previewLine = null,
   treeOpen,
   onToggleTree,
   onSelectFile,
@@ -25,20 +20,14 @@ export function useFilePreviewChrome({
   projectId: string;
   projectPath: string;
   previewPath: string;
+  previewLine?: number | null;
   treeOpen: boolean;
   onToggleTree: () => void;
   onSelectFile: (path: string, intent: { isPreview: boolean }, line?: number | null) => void;
 }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const markdown = Boolean(previewPath) && previewKindForPath(previewPath) === "markdown";
-  const [modeState, setModeState] = useState<{ path: string; mode: MarkdownViewMode }>(() => ({
-    path: previewPath,
-    mode: markdownViewMode(previewPath),
-  }));
-  if (markdown && modeState.path !== previewPath) {
-    setModeState({ path: previewPath, mode: markdownViewMode(previewPath) });
-  }
-  const markdownMode = markdown ? (modeState.path === previewPath ? modeState.mode : markdownViewMode(previewPath)) : null;
+  const md = useMarkdownPreviewMode(previewPath, previewLine, markdown);
   const chooseApp = useChooseApp();
   const opener = useOpenProjectFile(projectId);
   return {
@@ -51,21 +40,15 @@ export function useFilePreviewChrome({
       searchEnabled: Boolean(projectId),
       onSearch: () => setSearchOpen(true),
       onSelectFile: (path: string, intent: { isPreview: boolean }) => onSelectFile(path, intent, null),
-      markdownLabel: markdownMode ? markdownModeButtonLabel(markdownMode) : null,
-      onToggleMarkdown: markdownMode
-        ? () => {
-            const next = nextMarkdownViewMode(markdownMode);
-            rememberMarkdownViewMode(previewPath, next);
-            setModeState({ path: previewPath, mode: next });
-          }
-        : undefined,
+      markdownLabel: md.label,
+      onToggleMarkdown: md.mode ? md.toggle : undefined,
       chooseApp,
       openNote: opener.note,
       onOpenWith: (mode: OpenWithAction) => {
         void opener.openWith(previewPath, mode);
       },
     },
-    markdownMode,
+    markdownMode: md.mode,
     searchDialog:
       searchOpen && projectId ? (
         <FileSearchDialog
@@ -74,6 +57,9 @@ export function useFilePreviewChrome({
           onOpen={(next, line) => {
             const selected = previewSelection(next, "file");
             if (!selected) return;
+            if (line != null && previewKindForPath(selected.path) === "markdown") {
+              md.openSourceAt(selected.path, line);
+            }
             onSelectFile(selected.path, { isPreview: true }, line);
             setSearchOpen(false);
           }}

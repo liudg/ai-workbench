@@ -117,11 +117,25 @@ impl Runtimes {
             .position(|session| session.id == target.id)
             .ok_or_else(|| "会话不在任务里".to_string())?;
         let earlier = &sessions[..index];
-        // 接回原线程时，从这个 Agent 上次离开的那段之后算起。找不到原线程就当新线程。
+        // 接回原线程时，从这个实例上次离开的那段之后算起。找不到原线程就当新线程。
+        // 若当前段在回退时换成了截断后的新 native_id，只要策略仍是 Delta 且仍有原生线程，仍回溯到同实例上次离开的那段。
+        let target_inst = target.effective_instance_id();
         let resumed_from = target.native_id.as_ref().and_then(|native| {
             earlier
                 .iter()
-                .rposition(|session| session.agent == target.agent && session.native_id.as_ref() == Some(native))
+                .rposition(|session| {
+                    session.agent == target.agent
+                        && session.effective_instance_id() == target_inst
+                        && session.native_id.as_ref() == Some(native)
+                })
+                .or_else(|| {
+                    (*strategy == HandoffStrategy::Delta).then(|| {
+                        earlier.iter().rposition(|session| {
+                            session.agent == target.agent
+                                && session.effective_instance_id() == target_inst
+                        })
+                    })?
+                })
         });
         let strategy = match resumed_from {
             Some(_) if *strategy == HandoffStrategy::Delta => HandoffStrategy::Delta,

@@ -235,6 +235,7 @@ impl Services {
         }
         Ok(SessionSpec {
             agent,
+            instance_id: (agent == caller.agent).then(|| caller.instance_id.clone()).flatten(),
             title,
             prompt,
             background: background.filter(|_| !request.fork),

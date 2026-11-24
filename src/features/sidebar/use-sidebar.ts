@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 
 import { openCommandMenu } from "@/features/command-menu";
 import { useProjects } from "@/features/projects";
@@ -31,11 +31,16 @@ export function useSidebar() {
     () => splitPinnedProjects(projects, projects.filter((project) => project.pinned).map((project) => project.id)),
     [projects],
   );
+  const tasksOf = useCallback(
+    (projectId: string | null) => byProject.get(projectId) ?? NO_TASKS,
+    [byProject],
+  );
   return {
+    projects,
     pinned: sections.pinned,
     unpinned: sections.unpinned,
     loading,
-    tasksOf: (projectId: string | null) => byProject.get(projectId) ?? NO_TASKS,
+    tasksOf,
     selectedProjectId: selectedProjectOf(view),
     activeTaskId: visibleTaskId,
     notice: useSidebarNotice(),

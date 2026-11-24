@@ -1,4 +1,4 @@
-// 任务的整条时间线：中途换过 Agent 时，前面几段接在现在这段前面。
+// 任务的整条时间线：中途换过 Agent / 实例时，前面几段接在现在这段前面。
 
 import { useMemo } from "react";
 
@@ -15,6 +15,8 @@ export interface TaskTimeline {
   current: SessionFeedState;
   /** 每段是哪个 Agent。 */
   agentOf: (sessionId: string) => AgentKind | undefined;
+  /** 每段属于哪个实例 id。 */
+  instanceOf: (sessionId: string) => string | undefined;
 }
 
 export function useTaskTimeline(task: TaskEntry, taskSession: TaskSession): TaskTimeline {
@@ -27,6 +29,7 @@ export function useTaskTimeline(task: TaskEntry, taskSession: TaskSession): Task
   return useMemo(() => {
     const current = feeds[feeds.length - 1] ?? NOT_READY;
     const agents = new Map(segments.map((session) => [session.id, session.agent]));
+    const instances = new Map(segments.map((session) => [session.id, session.instanceId]));
     const all =
       feeds.length <= 1
         ? current
@@ -35,6 +38,11 @@ export function useTaskTimeline(task: TaskEntry, taskSession: TaskSession): Task
             events: feeds.flatMap((feed) => feed.events),
             queue: current.queue,
           };
-    return { all, current, agentOf: (sessionId: string) => agents.get(sessionId) };
+    return {
+      all,
+      current,
+      agentOf: (sessionId: string) => agents.get(sessionId),
+      instanceOf: (sessionId: string) => instances.get(sessionId),
+    };
   }, [feeds, segments]);
 }

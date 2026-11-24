@@ -153,6 +153,14 @@ export interface AgentCapabilities {
   supports_subagent_stop?: boolean;
   /** 单独停掉一个后台任务。 */
   supports_background_task_stop?: boolean;
+  /** 支持在工作台创建多个隔离账号/网关实例。 */
+  supports_multi_instance?: boolean;
+  /** 支持影子主目录（独立凭据 + 软链/Junction 共享主目录的技能与会话历史）。 */
+  supports_shadow_home?: boolean;
+  /** 支持按轮次回退对话历史（原生截断或无损前文续接）。 */
+  supports_conversation_rewind?: boolean;
+  /** 支持独立于主会话的无痕轻量文本生成（标题、分支名、提交说明）。 */
+  supports_text_generation?: boolean;
 }
 
 /** 一个订阅用量窗口。已用和剩余至少有一个，重置时间可以没有。 */
@@ -196,6 +204,8 @@ export interface SlashCommand {
 /** 不打开会话也能拿到的能力说明和斜杠命令。 */
 export interface AgentProfile {
   kind: AgentKind;
+  instance_id?: string | null;
+  accent_color?: string | null;
   capabilities: AgentCapabilities;
   commands: SlashCommand[];
   /** 新建会话的权限档。空表示不要拿另一个 Agent 的上次选择来填。 */
@@ -228,6 +238,8 @@ export interface AgentCatalog {
   cli_config_read?: boolean | null;
   /** 适配器在目录上标的 Agent。会话管理用来避免把另一边的目录写进缓存。界面不拿它挑模型。 */
   agent?: AgentKind | null;
+  /** 目录所属实例 id（空表示内置默认实例）。 */
+  instance_id?: string | null;
 }
 
 /** `agent_catalog` 的返回。notice 有值时 catalog 仍是上次成功的目录。 */

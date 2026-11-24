@@ -69,7 +69,7 @@ export function ContextMenu({
     if (top + height > window.innerHeight - 8) top = Math.max(8, y - height);
     menu.style.left = `${left}px`;
     menu.style.top = `${top}px`;
-  }, [x, y]);
+  }, [x, y, items.length]);
   if (typeof document === "undefined") return null;
   return createPortal(
     <div

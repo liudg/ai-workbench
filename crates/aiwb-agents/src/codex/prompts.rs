@@ -316,8 +316,6 @@ pub(super) fn async_reply_display(text: &str) -> Option<String> {
     #[derive(serde::Deserialize)]
     #[serde(rename_all = "camelCase")]
     struct Reply {
-        #[allow(dead_code)]
-        question_item_id: String,
         question: String,
         answer: String,
     }

@@ -5,7 +5,7 @@ import { relativeTimeAgo } from "@/shared/format/relative-time";
 import type { AgentKind, SessionEvent } from "@/types";
 import { MessageContent } from "../answer/MessageContent";
 import { useChatHost } from "../host";
-import { agentTurnName, useAgentIdentity } from "./use-agent-identity";
+import { agentTurnName, useAgentIdentity, useEventInstanceId } from "./use-agent-identity";
 
 /** 第一条消息就是开会话的说明：画成信息流头部，分任务和上下文折叠。照 Claude Code 桌面版嵌套会话的头部。 */
 export function SessionOrigin({
@@ -18,17 +18,24 @@ export function SessionOrigin({
   time: string;
 }) {
   const [open, setOpen] = useState(true);
-  const subtasks = useChatHost().subtasks;
+  const host = useChatHost();
+  const subtasks = host.subtasks;
+  const eventInstanceId = useEventInstanceId(event);
   const originId = event.sender?.task_ids[0];
   const originTitle = originId ? subtasks?.title(originId) : undefined;
   const originAgent = originId ? subtasks?.agent(originId) : undefined;
+  const fallbackInstanceId =
+    originAgent && eventInstanceId && host.profiles[eventInstanceId]?.kind === originAgent
+      ? eventInstanceId
+      : undefined;
+  const originInstanceId = (originId ? subtasks?.instanceId?.(originId) : undefined) ?? fallbackInstanceId;
   const background = event.sender?.background;
   const notes = event.sender?.notes;
   return (
     <div className="event-in min-w-0 px-6 py-2" data-session-origin="">
       <div className="flex min-w-0 items-center gap-1 text-xs text-wb-fg-3">
         <span className="flex min-w-0 items-center">
-          {originAgent ? <StartedBy agent={originAgent} /> : null}
+          {originAgent ? <StartedBy agent={originAgent} instanceId={originInstanceId} /> : null}
           <span className="shrink-0">来自</span>
           {originId && originTitle ? (
             <button
@@ -73,8 +80,8 @@ export function SessionOrigin({
   );
 }
 
-function StartedBy({ agent }: { agent: AgentKind }) {
-  const identity = useAgentIdentity(agent);
+function StartedBy({ agent, instanceId }: { agent: AgentKind; instanceId?: string }) {
+  const identity = useAgentIdentity(agent, instanceId);
   return <span className="mr-1 shrink-0">由 {agentTurnName(agent, identity)} 启动，</span>;
 }
 

@@ -29,6 +29,7 @@ mod queue;
 mod resume;
 mod rpc;
 mod sandbox;
+pub(crate) mod shadow_home;
 mod state;
 mod status;
 mod subagent_streams;
@@ -62,7 +63,7 @@ pub(crate) fn client_info_version(cli_version: Option<&str>) -> &str {
 }
 
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -75,22 +76,26 @@ use tokio::sync::mpsc;
 
 use aiwb_proc::{apply_utf8_env, decode_child_bytes};
 use crate::install::CliRelease;
+use crate::instance::InstanceOverlay;
 use crate::{
     AgentAdapter, AgentError, AgentSession, DirectoryEntry, EventSink, SessionContext,
 };
 use aiwb_core::models::{
-    strip_verbatim_prefix, AgentCapabilities, AgentKind, AgentProfile, SessionEventBody,
-    SessionStatus,
+    strip_verbatim_prefix, AgentCapabilities, AgentKind, SessionEventBody, SessionStatus,
+    SlashCommand,
 };
 
 use process::{
-    apply_codex_network_env, classify_codex_stderr, cli_version, hide_console,
-    remember_agent_stderr, resolve_codex_bin, trim_newline, StderrClass,
+    apply_codex_network_env, classify_codex_stderr, cli_version, remember_agent_stderr,
+    resolve_codex_bin, trim_newline, StderrClass,
 };
 use sandbox::SandboxChoice;
 use state::{emit, emit_status, Shared};
 
-pub struct CodexCliAdapter;
+pub struct CodexCliAdapter {
+    overlay: Arc<InstanceOverlay>,
+    directory: Arc<CodexDirectory>,
+}
 
 impl Default for CodexCliAdapter {
     fn default() -> Self {
@@ -100,12 +105,51 @@ impl Default for CodexCliAdapter {
 
 impl CodexCliAdapter {
     pub fn new() -> Self {
-        Self
+        Self::with_overlay(InstanceOverlay::default_for(AgentKind::CodexCli))
+    }
+
+    pub fn with_overlay(overlay: InstanceOverlay) -> Self {
+        let overlay = Arc::new(overlay);
+        let directory = CodexDirectory::for_overlay(Arc::clone(&overlay));
+        Self { overlay, directory }
     }
 }
 
 pub(crate) fn locate_codex_bin() -> Option<PathBuf> {
     process::resolve_codex_bin().ok()
+}
+
+pub(crate) fn resolve_bin_for(overlay: &InstanceOverlay) -> Result<PathBuf, AgentError> {
+    if let Some(custom) = overlay.binary_path.as_ref() {
+        if !custom.is_file() {
+            return Err(AgentError::Runtime(format!(
+                "配置的 Codex CLI 路径不存在：{}",
+                custom.display()
+            )));
+        }
+        if let Some(vendor) = process::vendor_exe_near(custom) {
+            return Ok(vendor);
+        }
+        return Ok(custom.clone());
+    }
+    resolve_codex_bin()
+}
+
+pub(crate) fn apply_instance_env(
+    command: &mut Command,
+    overlay: &InstanceOverlay,
+    codex_home: Option<&Path>,
+) {
+    apply_codex_network_env(command);
+    if overlay.is_isolated() {
+        command.env_remove("CODEX_HOME");
+        command.env_remove("OPENAI_API_KEY");
+        command.env_remove("OPENAI_BASE_URL");
+    }
+    if let Some(home) = codex_home {
+        command.env("CODEX_HOME", home);
+    }
+    overlay.apply_env(command);
 }
 
 #[async_trait]
@@ -114,12 +158,28 @@ impl AgentAdapter for CodexCliAdapter {
         AgentKind::CodexCli
     }
 
+    fn instance_id(&self) -> Option<&str> {
+        Some(&self.overlay.instance_id)
+    }
+
+    fn custom_display_name(&self) -> Option<&str> {
+        self.overlay.display_name.as_deref()
+    }
+
+    fn accent_color(&self) -> Option<&str> {
+        self.overlay.accent_color.as_deref()
+    }
+
+    fn custom_binary_path(&self) -> Option<&Path> {
+        self.overlay.binary_path.as_deref()
+    }
+
     fn capabilities(&self) -> AgentCapabilities {
         AgentCapabilities::codex()
     }
 
     async fn subscription_usage(&self) -> Result<aiwb_core::models::SubscriptionUsage, AgentError> {
-        subscription::fetch().await
+        subscription::fetch_for(&self.overlay).await
     }
 
     fn icon_href(&self) -> Option<&'static str> {
@@ -145,14 +205,14 @@ impl AgentAdapter for CodexCliAdapter {
         cursor: Option<&str>,
         limit: usize,
     ) -> Result<crate::DirectoryPage, AgentError> {
-        CodexDirectory::shared()
+        self.directory
             .list_project_page(cwd, cursor, limit)
             .await
             .map_err(AgentError::Runtime)
     }
 
     fn mcp(&self) -> Option<Arc<dyn crate::mcp::McpDriver>> {
-        Some(mcp::driver())
+        Some(mcp::driver_for(Arc::clone(&self.overlay)))
     }
 
     fn cli_release(&self) -> Option<CliRelease> {
@@ -171,32 +231,51 @@ impl AgentAdapter for CodexCliAdapter {
         sandbox::offline_permission_menu()
     }
 
-    fn profile(&self) -> AgentProfile {
-        AgentProfile {
-            kind: self.kind(),
-            capabilities: self.capabilities(),
-            commands: catalog::slash_commands(),
-            default_access: Some("full".into()),
-            display_name: None,
-            icon: None,
-            monochrome_icon: true,
-        }
+    fn commands(&self) -> Vec<SlashCommand> {
+        catalog::slash_commands()
+    }
+
+    fn default_access(&self) -> Option<&'static str> {
+        Some("full")
     }
 
     async fn detect(&self) -> Result<(), AgentError> {
-        resolve_codex_bin().map(|_| ())
+        resolve_bin_for(&self.overlay).map(|_| ())
     }
 
     async fn fork_thread(&self, native_id: &str, cwd: Option<&str>) -> Result<DirectoryEntry, AgentError> {
-        CodexDirectory::shared()
+        self.directory
             .fork_thread(native_id, cwd)
             .await
             .map_err(AgentError::Runtime)
     }
 
     async fn delete_thread(&self, native_id: &str) -> Result<(), AgentError> {
-        CodexDirectory::shared()
+        self.directory
             .delete_thread(native_id)
+            .await
+            .map_err(AgentError::Runtime)
+    }
+
+    async fn generate_text(
+        &self,
+        prompt: &str,
+        model: Option<&str>,
+        cwd: Option<&Path>,
+    ) -> Result<String, AgentError> {
+        crate::text_gen::codex_generate_text(&self.overlay, prompt, model, cwd).await
+    }
+
+    async fn rewind_thread(
+        &self,
+        native_id: &str,
+        cwd: &str,
+        target_turn_id: Option<&str>,
+        kept_turns: usize,
+        delete_old: bool,
+    ) -> Result<Option<String>, AgentError> {
+        self.directory
+            .rewind_before_turn(native_id, Some(cwd), target_turn_id, kept_turns, delete_old)
             .await
             .map_err(AgentError::Runtime)
     }
@@ -206,10 +285,13 @@ impl AgentAdapter for CodexCliAdapter {
         ctx: SessionContext,
         events: EventSink,
     ) -> Result<Arc<dyn AgentSession>, AgentError> {
-        let bin = resolve_codex_bin()?;
+        let bin = resolve_bin_for(&self.overlay)?;
+        let codex_home =
+            shadow_home::prepare_codex_home(&self.overlay).map_err(AgentError::Runtime)?;
         let cli_version = cli_version(&bin).await;
         let version = cli_version.clone().unwrap_or_else(|| "未知版本".into());
         let mut command = Command::new(&bin);
+        command.args(&self.overlay.launch_args);
         command
             .arg("app-server")
             .stdin(Stdio::piped())
@@ -218,10 +300,9 @@ impl AgentAdapter for CodexCliAdapter {
             .kill_on_drop(true);
         // 模型目录请求有 5 秒上限。直连 chatgpt.com 会超时；把系统代理写进
         // HTTP(S)_PROXY。回环地址仍进 NO_PROXY，避免 Clash 把本地 MCP 回成空 502。
-        apply_codex_network_env(&mut command);
+        apply_instance_env(&mut command, &self.overlay, codex_home.as_deref());
         apply_utf8_env(&mut command);
-        hide_console(&mut command);
-        apply_utf8_env(&mut command);
+        aiwb_proc::hide_console(&mut command);
         let mut child = command.spawn().map_err(|e| {
             AgentError::Runtime(format!("无法启动 Codex CLI（{}）：{e}", bin.display()))
         })?;
@@ -416,7 +497,10 @@ impl AgentAdapter for CodexCliAdapter {
         if !shared.status_known.load(Ordering::SeqCst) {
             emit_status(&events, SessionStatus::Completed);
         }
-        Ok(Arc::new(CodexCliSession { shared }))
+        Ok(Arc::new(CodexCliSession {
+            shared,
+            instance_id: Some(self.overlay.instance_id.clone()),
+        }))
     }
 }
 

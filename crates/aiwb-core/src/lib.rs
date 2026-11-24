@@ -2,11 +2,13 @@
 
 pub mod attention;
 pub mod chat_slug;
+pub mod checkpoint;
 pub mod endpoint;
 pub mod handoff;
 pub mod models;
 pub mod project;
 pub mod rpc;
+pub mod search;
 pub mod task;
 pub mod timeline;
 

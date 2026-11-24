@@ -37,6 +37,27 @@ pub fn apply_utf8_env_std(command: &mut std::process::Command) {
     }
 }
 
+/// Windows 桌面应用无控制台，不加 `CREATE_NO_WINDOW` 会为子进程弹出黑框。
+#[cfg(windows)]
+pub fn hide_console(command: &mut tokio::process::Command) {
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    command.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(windows))]
+pub fn hide_console(_command: &mut tokio::process::Command) {}
+
+/// `std::process::Command` 版本的隐藏控制台窗口设置。
+#[cfg(windows)]
+pub fn hide_console_std(command: &mut std::process::Command) {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    command.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(windows))]
+pub fn hide_console_std(_command: &mut std::process::Command) {}
+
 /// 解码子进程输出：优先 UTF-8；疑似 GBK 时按 GBK；都不行退回避换字符。
 pub fn decode_child_bytes(bytes: &[u8]) -> Cow<'_, str> {
     match std::str::from_utf8(bytes) {

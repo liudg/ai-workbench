@@ -1,6 +1,6 @@
 //! 拉起某个 Agent 自己的 CLI。不读、不写另一家的配置。
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Duration;
 
 use tokio::time::timeout;
@@ -69,21 +69,20 @@ pub fn ensure_ok(captured: Captured) -> Result<String, String> {
     Err(failure(&captured))
 }
 
-pub async fn run_cli(bin: &Path, args: &[String], limit: Duration) -> Result<Captured, String> {
-    run_cli_with_env(bin, args, &[], limit).await
-}
-
-/// 同 [`run_cli`]，另给这个 CLI 自己认的环境变量。
-pub async fn run_cli_with_env(
+/// 拉起指定 CLI 并按调用方回调统一配置实例环境。
+pub async fn run_cli_configured<F>(
     bin: &Path,
     args: &[String],
-    env: &[(&str, &str)],
     limit: Duration,
-) -> Result<Captured, String> {
+    configure: F,
+) -> Result<Captured, String>
+where
+    F: FnOnce(&mut tokio::process::Command),
+{
     let refs: Vec<&str> = args.iter().map(String::as_str).collect();
     let mut command = crate::install::tool_command(bin, &refs, false);
     command.env_remove("CLAUDECODE");
-    command.envs(env.iter().copied());
+    configure(&mut command);
     let child = command
         .spawn()
         .map_err(|err| format!("无法启动 {}：{err}", bin.display()))?;
@@ -96,9 +95,4 @@ pub async fn run_cli_with_env(
         Ok(Err(err)) => Err(format!("运行 {} 失败：{err}", bin.display())),
         Err(_) => Err(format!("运行 {} 超时", bin.display())),
     }
-}
-
-pub fn require_bin(path: Option<PathBuf>, missing: &str) -> Result<PathBuf, String> {
-    path.filter(|path| path.is_file())
-        .ok_or_else(|| missing.to_string())
 }

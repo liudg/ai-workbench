@@ -1,22 +1,25 @@
-import { useState } from "react";
 import { ChevronRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { NewSessionButton } from "../sessions/NewSessionButton";
 import { SessionList } from "../sessions/SessionList";
 import { partitionSidebarSessions } from "../sessions/session-partition";
+import { sidebarScopeKey, useSidebarViewStore } from "../sidebar-view-store";
 import type { SidebarTask } from "../sidebar-task";
 
 /** 不属于任何项目的聊天。没有聊天时不展示空占位，避免侧栏重复噪音。 */
 export function ChatGroup({
   tasks,
   activeTaskId,
+  jumpIndexByTaskId,
 }: {
   tasks: readonly SidebarTask[];
   activeTaskId: string | null;
+  jumpIndexByTaskId?: ReadonlyMap<string, number>;
 }) {
   const grouped = partitionSidebarSessions(tasks);
-  const [collapsed, setCollapsed] = useState(false);
+  const collapsed = useSidebarViewStore((state) => state.chatsCollapsed);
+  const toggleChatsCollapsed = useSidebarViewStore((state) => state.toggleChatsCollapsed);
 
   if (grouped.active.length === 0) return null;
 
@@ -27,12 +30,12 @@ export function ChatGroup({
         tabIndex={0}
         className="group/chat flex cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1 transition-colors hover:bg-wb-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wb-accent/60"
         aria-expanded={!collapsed}
-        onClick={() => setCollapsed((value) => !value)}
+        onClick={() => toggleChatsCollapsed()}
         onKeyDown={(event) => {
           if (event.target !== event.currentTarget) return;
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
-            setCollapsed((value) => !value);
+            toggleChatsCollapsed();
           }
         }}
       >
@@ -47,7 +50,14 @@ export function ChatGroup({
           className="pointer-events-none opacity-0 group-hover/chat:pointer-events-auto group-hover/chat:opacity-100 group-focus-within/chat:pointer-events-auto group-focus-within/chat:opacity-100"
         />
       </div>
-      {collapsed ? null : <SessionList tasks={grouped.active} activeTaskId={activeTaskId} />}
+      {collapsed ? null : (
+        <SessionList
+          scope={sidebarScopeKey(null)}
+          tasks={grouped.active}
+          activeTaskId={activeTaskId}
+          jumpIndexByTaskId={jumpIndexByTaskId}
+        />
+      )}
     </section>
   );
 }

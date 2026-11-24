@@ -2,17 +2,29 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Window } from "happy-dom";
 
+import { DEFAULT_KEYBINDINGS, resolveKeybindings } from "../../../shared/keybindings/defaults.ts";
 import { clearThreadMarks, paintThreadHits } from "./highlight.ts";
-import { collectTextHits, stepHit } from "./hits.ts";
-import { isThreadFindChord } from "./keyboard.ts";
+import { collectTextHits, resolveQueryInTargetNode, stepHit } from "./hits.ts";
+import { matchesThreadFindBinding } from "./keyboard.ts";
 
-test("thread find chord is Ctrl or Cmd+F without shift", () => {
+test("matchesThreadFindBinding matches platform Mod+F without shift/alt and ignores Ctrl+F on macOS", () => {
+  const winRules = resolveKeybindings(DEFAULT_KEYBINDINGS, [], "windows");
+  const macRules = resolveKeybindings(DEFAULT_KEYBINDINGS, [], "mac");
   const base = { key: "f", ctrlKey: false, metaKey: false, altKey: false, shiftKey: false };
-  assert.equal(isThreadFindChord({ ...base, ctrlKey: true }), true);
-  assert.equal(isThreadFindChord({ ...base, metaKey: true, key: "F" }), true);
-  assert.equal(isThreadFindChord({ ...base, ctrlKey: true, shiftKey: true }), false);
-  assert.equal(isThreadFindChord({ ...base, ctrlKey: true, altKey: true }), false);
-  assert.equal(isThreadFindChord(base), false);
+  assert.equal(matchesThreadFindBinding({ ...base, ctrlKey: true }, winRules, "windows"), true);
+  assert.equal(matchesThreadFindBinding({ ...base, metaKey: true, key: "F" }, macRules, "mac"), true);
+  assert.equal(matchesThreadFindBinding({ ...base, ctrlKey: true }, macRules, "mac"), false);
+  assert.equal(matchesThreadFindBinding({ ...base, ctrlKey: true, shiftKey: true }, winRules, "windows"), false);
+  assert.equal(matchesThreadFindBinding({ ...base, ctrlKey: true, altKey: true }, winRules, "windows"), false);
+  assert.equal(matchesThreadFindBinding(base, winRules, "windows"), false);
+
+  const projectOnlyRules = resolveKeybindings(
+    DEFAULT_KEYBINDINGS,
+    [{ command: "chat.find", key: "mod+g", when: "projectActive" }],
+    "windows",
+  );
+  assert.equal(matchesThreadFindBinding({ ...base, key: "g", ctrlKey: true }, projectOnlyRules, "windows", false), false);
+  assert.equal(matchesThreadFindBinding({ ...base, key: "g", ctrlKey: true }, projectOnlyRules, "windows", true), true);
 });
 
 test("hits step wraps and an empty query matches nothing", () => {
@@ -58,4 +70,19 @@ test("marks paint the current hit and clear back to plain text", () => {
   clearThreadMarks(root as unknown as ParentNode);
   assert.equal(root.querySelector("mark"), null);
   assert.equal(root.textContent, "装备对比和装备颜色");
+});
+
+test("resolveQueryInTargetNode strips inline backticks and ** so Markdown-rendered code/bold hits match", () => {
+  const dom = new Window();
+  const root = dom.document.createElement("div");
+  root.innerHTML = "<p>调用 <code>fetch_user_token</code> 时触发了 <strong>AuthError</strong> 异常</p>";
+  const node = root as unknown as Node;
+
+  assert.equal(resolveQueryInTargetNode(node, "`fetch_user_token`"), "fetch_user_token");
+  assert.equal(resolveQueryInTargetNode(node, "**AuthError**"), "AuthError");
+  assert.equal(
+    resolveQueryInTargetNode(node, "`fetch_user_token` **AuthError**"),
+    "fetch_user_token",
+  );
+  assert.equal(resolveQueryInTargetNode(node, "`**`"), null);
 });

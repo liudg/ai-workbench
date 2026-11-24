@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Terminal } from "@xterm/xterm";
 
 import { getResolvedTheme, subscribeTheme } from "@/shared/theme";
@@ -8,6 +8,13 @@ import {
   watchTerminal,
   writeTerminal,
 } from "./api";
+import {
+  createFileLinkVerifier,
+  createOscLinkHandler,
+  createTerminalLinkProvider,
+  type FileLinkVerifier,
+  type TerminalLinkActions,
+} from "./terminal-links";
 import { runKeys, takeTerminalRuns, watchTerminalRuns } from "./terminal-runs";
 import { terminalThemeFor } from "./terminal-theme";
 
@@ -18,6 +25,8 @@ export interface TerminalPayload {
 
 export interface TerminalState {
   hostRef: React.RefObject<HTMLDivElement>;
+  term: Terminal | null;
+  verifier: FileLinkVerifier;
   exited: boolean;
   exitCode: number | null;
   error: string | null;
@@ -37,6 +46,10 @@ export function useTerminal({
   terminalId,
   open,
   patchPayload,
+  resolveFile,
+  openHref,
+  openExternalUrl,
+  suppressKeysRef,
 }: {
   tabId: string;
   sessionId: string;
@@ -44,6 +57,11 @@ export function useTerminal({
   /** 在面板的工作目录里开 shell。 */
   open: (cols: number, rows: number) => Promise<string>;
   patchPayload: (patch: Partial<TerminalPayload>) => void;
+  resolveFile?: (path: string) => Promise<string | null>;
+  openHref: (href: string, line?: number) => void;
+  openExternalUrl: (url: string) => void;
+  /** 右键菜单打开时拦截按键，避免上下键和 Esc 送进 PTY。 */
+  suppressKeysRef?: React.RefObject<boolean>;
 }): TerminalState {
   const hostRef = useRef<HTMLDivElement>(null);
   const [term, setTerm] = useState<Terminal | null>(null);
@@ -54,20 +72,43 @@ export function useTerminal({
   patchRef.current = patchPayload;
   const openRef = useRef(open);
   openRef.current = open;
+  const resolveFileRef = useRef(resolveFile);
+  resolveFileRef.current = resolveFile;
+  const openHrefRef = useRef(openHref);
+  openHrefRef.current = openHref;
+  const openExternalRef = useRef(openExternalUrl);
+  openExternalRef.current = openExternalUrl;
+
+  const verifier = useMemo(
+    () =>
+      createFileLinkVerifier((path) =>
+        resolveFileRef.current ? resolveFileRef.current(path) : Promise.resolve(path),
+      ),
+    [sessionId, tabId],
+  );
+  const verifierRef = useRef(verifier);
+  verifierRef.current = verifier;
 
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
     let dispose: (() => void) | null = null;
     let live = true;
+    const actions: TerminalLinkActions = {
+      openLocalUrl: (url) => openHrefRef.current(url),
+      openExternalUrl: (url) => openExternalRef.current(url),
+      openFile: (resolvedPath, line) => openHrefRef.current(resolvedPath, line ?? undefined),
+    };
     void loadXterm().then((xterm) => {
-      if (live) dispose = mountTerminal(host, xterm, setTerm);
+      if (live) {
+        dispose = mountTerminal(host, xterm, setTerm, verifierRef, actions, suppressKeysRef);
+      }
     });
     return () => {
       live = false;
       dispose?.();
     };
-  }, []);
+  }, [suppressKeysRef]);
 
   useEffect(() => {
     if (terminalId || !term) return;
@@ -145,12 +186,13 @@ export function useTerminal({
     setExited(false);
     setExitCode(null);
     setError(null);
+    verifier.clear();
     term?.reset();
     if (terminalId) void closeTerminal(terminalId).catch(() => {});
     patchRef.current({ terminalId: undefined });
-  }, [term, terminalId]);
+  }, [term, terminalId, verifier]);
 
-  return { hostRef, exited, exitCode, error, restart };
+  return { hostRef, term, verifier, exited, exitCode, error, restart };
 }
 
 type Xterm = Awaited<ReturnType<typeof loadXterm>>;
@@ -166,7 +208,22 @@ async function loadXterm() {
 }
 
 /** 颜色和字体跟着宿主元素的样式走，尺寸跟着宿主元素变。 */
-function mountTerminal(host: HTMLElement, { Terminal, FitAddon }: Xterm, onTerm: (term: Terminal | null) => void) {
+function mountTerminal(
+  host: HTMLElement,
+  { Terminal, FitAddon }: Xterm,
+  onTerm: (term: Terminal | null) => void,
+  verifierRef: React.RefObject<FileLinkVerifier>,
+  actions: TerminalLinkActions,
+  suppressKeysRef?: React.RefObject<boolean>,
+) {
+  const activeVerifier: FileLinkVerifier = {
+    peek: (path) => verifierRef.current?.peek(path) ?? { known: false },
+    verifyNow: (path) => verifierRef.current?.verifyNow(path) ?? Promise.resolve(null),
+    scheduleHover: (path, onVerified) =>
+      verifierRef.current ? verifierRef.current.scheduleHover(path, onVerified) : () => undefined,
+    clear: () => verifierRef.current?.clear(),
+  };
+
   const readHostTheme = () => {
     const current = getComputedStyle(host);
     return terminalThemeFor(getResolvedTheme(), current.backgroundColor, current.color);
@@ -178,12 +235,25 @@ function mountTerminal(host: HTMLElement, { Terminal, FitAddon }: Xterm, onTerm:
     fontSize: 13,
     lineHeight: 1.25,
     scrollback: 5000,
+    rightClickSelectsWord: false,
+    linkHandler: createOscLinkHandler(activeVerifier, actions),
     theme: readHostTheme(),
   });
   const fit = new FitAddon();
   term.loadAddon(fit);
   term.open(host);
   fit.fit();
+
+  term.attachCustomKeyEventHandler(() => !suppressKeysRef?.current);
+
+  const linkProvider = term.registerLinkProvider(
+    createTerminalLinkProvider(
+      () => ({ buffer: term.buffer.active, cols: term.cols }),
+      activeVerifier,
+      actions,
+    ),
+  );
+
   let frameId: number | null = null;
   const stopTheme = subscribeTheme(() => {
     if (frameId !== null) window.cancelAnimationFrame(frameId);
@@ -199,6 +269,7 @@ function mountTerminal(host: HTMLElement, { Terminal, FitAddon }: Xterm, onTerm:
   term.focus();
   onTerm(term);
   return () => {
+    linkProvider.dispose();
     stopTheme();
     if (frameId !== null) window.cancelAnimationFrame(frameId);
     observer.disconnect();

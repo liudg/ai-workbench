@@ -25,6 +25,7 @@ serde_json.workspace = true
 tokio.workspace = true
 uuid.workspace = true
 portable-pty = "0.9"
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
 rmcp = { version = "3.8", default-features = false, features = ["server", "macros", "transport-streamable-http-server"] }
 sha2 = "0.10"
 

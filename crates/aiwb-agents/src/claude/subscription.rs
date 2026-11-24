@@ -23,10 +23,16 @@ use aiwb_proc::decode_child_bytes;
 use crate::AgentError;
 use aiwb_core::models::{SubscriptionUsage, SubscriptionWindow};
 
-pub async fn fetch() -> Result<SubscriptionUsage, AgentError> {
-    let bin = process::resolve_claude_bin()?;
+pub async fn fetch_for(
+    overlay: &crate::instance::InstanceOverlay,
+) -> Result<SubscriptionUsage, AgentError> {
+    let bin = process::resolve_bin_for(overlay)?;
+    let projects_dir = history::projects_dir_for(overlay);
     let session_id = uuid::Uuid::new_v4().to_string();
-    let cwd = std::env::temp_dir().join("ai-workbench-claude-usage");
+    let cwd = std::env::temp_dir().join(format!(
+        "ai-workbench-claude-usage-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
     std::fs::create_dir_all(&cwd).map_err(|err| AgentError::Runtime(err.to_string()))?;
     let args = command::cli_args(&Launch {
         session_id: session_id.clone(),
@@ -38,15 +44,16 @@ pub async fn fetch() -> Result<SubscriptionUsage, AgentError> {
         writable_roots: Vec::new(),
         workbench_mcp: None,
     });
-    let mut child = process::spawn(&bin, &args, &cwd)?;
+    let mut child = process::spawn(&bin, &args, &cwd, overlay)?;
     let result = talk(&mut child).await;
     let _ = child.start_kill();
     let _ = timeout(Duration::from_secs(2), child.wait()).await;
-    let _ = history::remove_session_file(&session_id);
-    let project = history::projects_dir().join(history::sanitize_path(&cwd.to_string_lossy()));
-    if project.starts_with(history::projects_dir()) {
+    let _ = history::remove_session_file_under(&projects_dir, &session_id);
+    let project = projects_dir.join(history::sanitize_path(&cwd.to_string_lossy()));
+    if project.starts_with(&projects_dir) {
         let _ = std::fs::remove_dir_all(project);
     }
+    let _ = std::fs::remove_dir_all(&cwd);
     result
 }
 

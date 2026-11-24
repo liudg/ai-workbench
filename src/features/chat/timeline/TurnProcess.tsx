@@ -12,7 +12,13 @@ import { TurnFoldLine } from "./TurnFoldLine";
 import { SessionAgentIcon } from "@/shared/agent/SessionAgentIcon";
 import { AGENT_LABELS, type Session, type SessionEvent, type SessionSpec } from "@/types";
 import type { BackgroundTaskEvent } from "../events/background-task-display";
-import { agentTurnName, useAgentIdentity, useEventAgent } from "../events/use-agent-identity";
+import {
+  agentTurnName,
+  useAgentIdentity,
+  useEventAgent,
+  useEventInstanceId,
+} from "../events/use-agent-identity";
+import { useOptionalChatHost } from "../host";
 
 /**
  * 结束的一轮。状态行是这块的第一个子节点，名称和用时在同一行。
@@ -27,6 +33,8 @@ export function TurnProcess({
   resolvedAnswers,
   expanded,
   backgroundByToolCall,
+  revealEventId,
+  highlightedEventId,
   onToggle,
   onInteract,
 }: {
@@ -37,6 +45,8 @@ export function TurnProcess({
   resolvedAnswers: ReadonlyMap<string, string>;
   expanded: boolean;
   backgroundByToolCall?: ReadonlyMap<string, BackgroundTaskEvent>;
+  revealEventId?: string | null;
+  highlightedEventId?: string | null;
   onToggle: () => void;
   onInteract?: () => void;
 }) {
@@ -52,10 +62,13 @@ export function TurnProcess({
     }
     return { taskIds: [...created.keys()], specs: [...created.values()] };
   }, [events]);
+  const host = useOptionalChatHost();
   const agent = useEventAgent(events[0], session);
-  const identity = useAgentIdentity(agent);
+  const eventInstanceId = useEventInstanceId(events[0]);
+  const instanceId = events[0] ? eventInstanceId : host?.instanceOf?.(session.id);
+  const identity = useAgentIdentity(agent, instanceId);
   const agentName = agentTurnName(agent, identity) || AGENT_LABELS[agent];
-  const changeFlags = useChangeCapabilities(agent);
+  const changeFlags = useChangeCapabilities(agent, instanceId);
   const changes = useMemo(
     () => (showsFileChanges(changeFlags) ? turnChanges(events) : null),
     [changeFlags, events],
@@ -76,6 +89,8 @@ export function TurnProcess({
         showAgentLabel={() => false}
         settled
         backgroundByToolCall={backgroundByToolCall}
+        revealEventId={revealEventId}
+        highlightedEventId={highlightedEventId}
         onInteract={onInteract}
       />
       {answer?.kind === "agent-message" ? <SubtaskRows {...subtasks} /> : null}

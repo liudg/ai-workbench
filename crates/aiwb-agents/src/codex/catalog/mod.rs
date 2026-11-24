@@ -59,6 +59,7 @@ pub(super) fn assemble_catalog(
         thread_effort: None,
         cli_config_read: None,
         agent: Some(AgentKind::CodexCli),
+        instance_id: None,
     })
 }
 

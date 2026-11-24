@@ -2,14 +2,18 @@
 
 import { CLI_TIMEOUT_MS, daemon } from "@/lib/daemon";
 import type { WorktreeDeleteFlags, WorktreeDeletePreview } from "@/lib/worktree-delete";
-import type { AgentKind } from "@/types";
+import type { AgentKind, GeneratedCommitMessage } from "@/types";
 import type {
   CreateTaskInput,
   ImportCandidate,
   ImportPage,
   ImportResult,
+  RewindPreview,
+  RewindResult,
+  SearchTasksQuery,
   SessionOptions,
   TaskEntry,
+  TaskSearchHit,
   TaskSession,
 } from "./types";
 
@@ -61,14 +65,75 @@ export function resolveOffer(sessionId: string, offerId: string, accept: boolean
   return daemon.call<null>("tasks.resolveOffer", { sessionId, offerId, accept }, CLI_TIMEOUT_MS);
 }
 
-/** 任务换一个 Agent 接着做。前文在新 Agent 的第一条消息里交过去。 */
-export function switchAgent(taskId: string, agent: AgentKind, options: SessionOptions) {
-  return daemon.call<TaskEntry>("tasks.switchAgent", { taskId, agent, options }, CLI_TIMEOUT_MS);
+/** 任务换一个 Agent / 实例接着做。前文在新 Agent 的第一条消息里交过去。 */
+export function switchAgent(
+  taskId: string,
+  agent: AgentKind,
+  options: SessionOptions,
+  instanceId?: string,
+) {
+  return daemon.call<TaskEntry>(
+    "tasks.switchAgent",
+    instanceId ? { taskId, agent, instanceId, options } : { taskId, agent, options },
+    CLI_TIMEOUT_MS,
+  );
 }
 
 /** 从任务现在的样子分出一个新任务。不给 Agent 时用原来的。 */
-export function forkTask(taskId: string, agent?: AgentKind) {
-  return daemon.call<TaskEntry>("tasks.fork", agent ? { taskId, agent } : { taskId }, CLI_TIMEOUT_MS);
+export function forkTask(taskId: string, agent?: AgentKind, instanceId?: string) {
+  const params: Record<string, unknown> = { taskId };
+  if (agent) params.agent = agent;
+  if (instanceId !== undefined) params.instanceId = instanceId;
+  return daemon.call<TaskEntry>("tasks.fork", params, CLI_TIMEOUT_MS);
+}
+
+/** 跨项目会话标题与正文全文检索（SQLite FTS5 trigram）。 */
+export function searchTasks(params: SearchTasksQuery) {
+  return daemon.call<TaskSearchHit[]>("tasks.search", { ...params });
+}
+
+/** 用轻量模型为指定任务重新生成会话标题。 */
+export function regenerateTitle(taskId: string) {
+  return daemon.call<{ title: string }>("tasks.regenerateTitle", { taskId }, CLI_TIMEOUT_MS);
+}
+
+/** 用轻量模型生成符合 Git 规范的语义化短分支名。 */
+export function generateBranchName(params: {
+  prompt?: string;
+  taskId?: string;
+  projectId?: string | null;
+}) {
+  const payload: Record<string, unknown> = { prompt: params.prompt ?? "" };
+  if (params.taskId) payload.taskId = params.taskId;
+  if (params.projectId) payload.projectId = params.projectId;
+  return daemon.call<{ branch: string }>("textGen.branchName", payload, CLI_TIMEOUT_MS);
+}
+
+/** 用轻量模型根据当前 Diff 与最近提交风格生成结构化 Commit 说明。 */
+export function generateCommitMessage(params: {
+  sessionId?: string | null;
+  projectId?: string | null;
+  diffScope?: string;
+}) {
+  const payload: Record<string, unknown> = {};
+  if (params.sessionId) payload.sessionId = params.sessionId;
+  if (params.projectId) payload.projectId = params.projectId;
+  if (params.diffScope) payload.diffScope = params.diffScope;
+  return daemon.call<GeneratedCommitMessage>("textGen.commitMessage", payload, CLI_TIMEOUT_MS);
+}
+
+/** 回退某条用户消息前的安全预检（是否允许还原文件、是否有未归属手工改动提醒）。 */
+export function rewindPreview(sessionId: string, userEventId: string) {
+  return daemon.call<RewindPreview>("sessions.rewindPreview", { sessionId, userEventId });
+}
+
+/** 执行对话回退（可选协同还原工作区文件）。 */
+export function rewindSession(sessionId: string, userEventId: string, restoreFiles: boolean) {
+  return daemon.call<RewindResult>(
+    "sessions.rewind",
+    { sessionId, userEventId, restoreFiles },
+    CLI_TIMEOUT_MS,
+  );
 }
 
 /** 能导入会话的 Agent。 */

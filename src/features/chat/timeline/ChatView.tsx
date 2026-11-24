@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState, type ReactNode, type Ref } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode, type Ref } from "react";
 
 import { useChangeCapabilities } from "../use-change-capabilities";
 import { lastSlice, showsFileChanges, turnChanges } from "@/features/changes-model";
-import { pendingPrompt } from "@/lib/utils";
+import { cn, pendingPrompt } from "@/lib/utils";
 import { SessionAgentIcon } from "@/shared/agent/SessionAgentIcon";
+import { clearPendingJump, useNavigation } from "@/shared/shell/navigation";
 import { type Session, type SessionEvent } from "@/types";
 import { ChangeCard } from "../cards/ChangeCard";
 import { backgroundTasksByToolCall } from "../events/background-task-display";
@@ -24,12 +25,16 @@ import {
   buildTimeline,
   chunkTimeline,
   contentChars,
+  findTimelineContainerForEvent,
+  isEventInTimelineBlocks,
   timelineChunkKey,
   timelineStatus,
 } from "./timeline";
 import { FindBar } from "../find/FindBar";
 import { useThreadFind } from "../find/use-thread-find";
+import { useChatHost } from "../host";
 import { MessageMenuProvider } from "../message-menu";
+import { RewindDialog, type RewindCompletion, type RewindTarget } from "../rewind/RewindDialog";
 import { ChatSelectionMenu } from "./ChatSelectionMenu";
 import { ChatErrorBoundary } from "./ChatErrorBoundary";
 import { useHistoryEnter } from "./useHistoryEnter";
@@ -45,12 +50,21 @@ export function ChatView({
   session,
   events,
   eventsReady = true,
+  taskId,
+  rewindTarget = null,
+  onCloseRewind,
+  onRewindComplete,
   renderComposer,
 }: {
   session: Session;
   events: SessionEvent[];
   /** 选中会话的历史还没回来时为 false。预览直接给了事件，默认已就绪。 */
   eventsReady?: boolean;
+  /** 所属任务 id，用来匹配跨会话全文检索跳转。缺省回退到 `session.id`。 */
+  taskId?: string;
+  rewindTarget?: RewindTarget | null;
+  onCloseRewind?: () => void;
+  onRewindComplete?: (result: RewindCompletion) => void;
   renderComposer: RenderComposer;
 }) {
   return (
@@ -60,6 +74,10 @@ export function ChatView({
           session={session}
           events={events}
           eventsReady={eventsReady}
+          taskId={taskId}
+          rewindTarget={rewindTarget}
+          onCloseRewind={onCloseRewind}
+          onRewindComplete={onRewindComplete}
           renderComposer={renderComposer}
         />
       </MessageMenuProvider>
@@ -71,13 +89,22 @@ function ChatTimeline({
   session,
   events,
   eventsReady,
+  taskId,
+  rewindTarget,
+  onCloseRewind,
+  onRewindComplete,
   renderComposer,
 }: {
   session: Session;
   events: SessionEvent[];
   eventsReady: boolean;
+  taskId?: string;
+  rewindTarget: RewindTarget | null;
+  onCloseRewind?: () => void;
+  onRewindComplete?: (result: RewindCompletion) => void;
   renderComposer: RenderComposer;
 }) {
+  const host = useChatHost();
   const pendingId = useMemo(() => pendingPrompt(events), [events]);
   const questionEvent = useMemo(
     () => pendingQuestionEvent(events, session.status),
@@ -104,6 +131,10 @@ function ChatTimeline({
     () => timelineStatus(events, session.status),
     [events, session.status],
   );
+  const effectiveSession = useMemo(
+    () => (session.status === status ? session : { ...session, status }),
+    [session, status],
+  );
   const backgroundByToolCall = useMemo(() => backgroundTasksByToolCall(events), [events]);
   const blocks = useMemo(() => buildTimeline(events, status), [events, status]);
   const liveBlock = useMemo(() => blocks.find((block) => block.type === "live") ?? null, [blocks]);
@@ -111,8 +142,9 @@ function ChatTimeline({
     () => `${events.length}:${contentChars(events)}:${status}`,
     [events, status],
   );
-  const agentIdentity = useAgentIdentity(session.agent);
-  const changeFlags = useChangeCapabilities(session.agent);
+  const sessionInstanceId = host.instanceOf?.(session.id);
+  const agentIdentity = useAgentIdentity(session.agent, sessionInstanceId);
+  const changeFlags = useChangeCapabilities(session.agent, sessionInstanceId);
   const liveChanges = useMemo(() => {
     if (!showsFileChanges(changeFlags)) return null;
     if (status !== "running" && status !== "needs-input") return null;
@@ -125,10 +157,37 @@ function ChatTimeline({
 
   const [liveOverrides, setLiveOverrides] = useState<ReadonlyMap<string, boolean>>(new Map());
   const [foldOverrides, setFoldOverrides] = useState<ReadonlyMap<string, boolean>>(new Map());
+  const [revealEventId, setRevealEventId] = useState<string | null>(null);
+  const [highlightedEventId, setHighlightedEventId] = useState<string | null>(null);
+  const [pagingTick, setPagingTick] = useState(0);
+  const highlightTimerRef = useRef<number | null>(null);
+  const pagingRef = useRef<{
+    nonce: number;
+    loading: boolean;
+    attempts: number;
+    exhausted: boolean;
+    lastEventsLen: number;
+  }>({
+    nonce: -1,
+    loading: false,
+    attempts: 0,
+    exhausted: false,
+    lastEventsLen: -1,
+  });
+
   useEffect(() => {
     setLiveOverrides(new Map());
     setFoldOverrides(new Map());
+    setRevealEventId(null);
+    setHighlightedEventId(null);
   }, [session.id]);
+
+  useEffect(() => {
+    return () => {
+      if (highlightTimerRef.current !== null) window.clearTimeout(highlightTimerRef.current);
+    };
+  }, []);
+
   const chunks = useMemo(() => chunkTimeline(blocks), [blocks]);
   const chunkKeys = useMemo(() => chunks.map((chunk) => timelineChunkKey(chunk)), [chunks]);
   const trackedKeys = eventsReady ? chunkKeys : EMPTY_CHUNK_KEYS;
@@ -144,23 +203,189 @@ function ChatTimeline({
     holdScrollPosition,
     ...anchor
   } = useTimelineFollow(session.id, layoutKey);
-  const find = useThreadFind(scrollRef, layoutKey, holdScrollPosition);
+  const find = useThreadFind(scrollRef, layoutKey, holdScrollPosition, Boolean(session.project_id));
+
+  const pendingJump = useNavigation((state) => state.pendingJump);
+  const ownerTaskId = taskId ?? session.id;
+  const jumpingToThisView = Boolean(pendingJump && pendingJump.taskId === ownerTaskId);
+
   const virtual = useTurnVirtualizer({
     sessionId: session.id,
     keys: trackedKeys,
     anchor: { scrollRef, ...anchor },
-    revealAll: find.open,
+    revealAll: find.open || Boolean(revealEventId) || jumpingToThisView,
   });
+
+  useEffect(() => {
+    if (!pendingJump || pendingJump.taskId !== ownerTaskId) return;
+    if (!eventsReady) return;
+    const jumpNonce = pendingJump.nonce;
+    if (events.length === 0) {
+      clearPendingJump(jumpNonce);
+      return;
+    }
+
+    const targetId = pendingJump.eventId?.trim() || "";
+    const searchQuery = pendingJump.query?.trim() || "";
+
+    const fallbackAndClear = () => {
+      if (targetId) {
+        setRevealEventId((current) => (current === targetId ? null : current));
+      }
+      if (searchQuery) find.activate(searchQuery, { focus: false });
+      clearPendingJump(jumpNonce);
+    };
+
+    if (!targetId) {
+      fallbackAndClear();
+      return;
+    }
+
+    const existsInRawEvents = events.some((event) => event.id === targetId);
+    const existsInBlocks = isEventInTimelineBlocks(blocks, targetId);
+
+    // 原始日志已有该事件，但被时间线抑制/隐藏而不会挂载到 DOM：直接回退查找并清理 pendingJump。
+    if (existsInRawEvents && !existsInBlocks) {
+      fallbackAndClear();
+      return;
+    }
+
+    if (!existsInBlocks) {
+      const paging = pagingRef.current;
+      if (paging.nonce !== jumpNonce) {
+        paging.nonce = jumpNonce;
+        paging.loading = false;
+        paging.attempts = 0;
+        paging.exhausted = false;
+        paging.lastEventsLen = -1;
+      }
+      if (!paging.loading && paging.lastEventsLen >= 0 && events.length <= paging.lastEventsLen) {
+        paging.exhausted = true;
+      }
+      if (host.loadOlderHistory && !paging.exhausted && paging.attempts < 8) {
+        if (!paging.loading) {
+          paging.loading = true;
+          paging.attempts += 1;
+          paging.lastEventsLen = events.length;
+          void host
+            .loadOlderHistory(session.id)
+            .then((exhausted) => {
+              if (paging.nonce !== jumpNonce) return;
+              paging.loading = false;
+              if (exhausted) paging.exhausted = true;
+              setPagingTick((tick) => tick + 1);
+            })
+            .catch(() => {
+              if (paging.nonce !== jumpNonce) return;
+              paging.loading = false;
+              paging.exhausted = true;
+              setPagingTick((tick) => tick + 1);
+            });
+        }
+        return;
+      }
+      fallbackAndClear();
+      return;
+    }
+
+    let expanding = false;
+    const container = findTimelineContainerForEvent(blocks, targetId);
+    if (container.turnId && foldOverrides.get(container.turnId) !== true) {
+      expanding = true;
+      setFoldOverrides((prev) => new Map(prev).set(container.turnId!, true));
+    }
+    if (container.liveId && liveOverrides.get(container.liveId) === false) {
+      expanding = true;
+      setLiveOverrides((prev) => new Map(prev).set(container.liveId!, true));
+    }
+    if (revealEventId !== targetId) {
+      expanding = true;
+      setRevealEventId(targetId);
+    }
+    if (expanding) return;
+
+    const root = scrollRef.current;
+    if (!root) return;
+    const findTargetNode = (): HTMLElement | null => {
+      for (const node of root.querySelectorAll<HTMLElement>("[data-find-event]")) {
+        if (node.getAttribute("data-find-event") === targetId) return node;
+      }
+      return null;
+    };
+    const applyTargetJump = (targetNode: HTMLElement) => {
+      targetNode.scrollIntoView({ behavior: "instant", block: "center", inline: "nearest" });
+      holdScrollPosition();
+      if (searchQuery) {
+        find.activate(searchQuery, { focus: false, preferredEventId: targetId });
+      }
+      setHighlightedEventId(targetId);
+      if (highlightTimerRef.current !== null) window.clearTimeout(highlightTimerRef.current);
+      highlightTimerRef.current = window.setTimeout(() => {
+        setHighlightedEventId((current) => (current === targetId ? null : current));
+        setRevealEventId((current) => (current === targetId ? null : current));
+        highlightTimerRef.current = null;
+      }, 2200);
+      clearPendingJump(jumpNonce);
+    };
+
+    const immediateNode = findTargetNode();
+    if (immediateNode) {
+      applyTargetJump(immediateNode);
+      return;
+    }
+
+    let cancelled = false;
+    let raf2: number | null = null;
+    const raf1 = requestAnimationFrame(() => {
+      if (cancelled) return;
+      const node1 = findTargetNode();
+      if (node1) {
+        applyTargetJump(node1);
+        return;
+      }
+      raf2 = requestAnimationFrame(() => {
+        if (cancelled) return;
+        const node2 = findTargetNode();
+        if (node2) {
+          applyTargetJump(node2);
+          return;
+        }
+        fallbackAndClear();
+      });
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf1);
+      if (raf2 !== null) cancelAnimationFrame(raf2);
+    };
+  }, [
+    blocks,
+    events,
+    eventsReady,
+    find.activate,
+    foldOverrides,
+    holdScrollPosition,
+    host,
+    liveOverrides,
+    ownerTaskId,
+    pagingTick,
+    pendingJump,
+    revealEventId,
+    scrollRef,
+    session.id,
+  ]);
 
   const renderChunk = (chunk: (typeof chunks)[number]): ReactNode => {
     if (chunk.type === "events") {
       return (
         <ActivityStream
           events={chunk.events}
-          session={session}
+          session={effectiveSession}
           resolvedAnswers={resolvedAnswers}
           showAgentLabel={(event) => chunk.labels.get(event.id) ?? false}
           backgroundByToolCall={backgroundByToolCall}
+          revealEventId={revealEventId}
+          highlightedEventId={highlightedEventId}
           onInteract={pausePinForToggle}
         />
       );
@@ -173,10 +398,12 @@ function ChatTimeline({
           events={block.events}
           answerId={block.answerId}
           durationMs={block.durationMs}
-          session={session}
+          session={effectiveSession}
           resolvedAnswers={resolvedAnswers}
           expanded={expanded}
           backgroundByToolCall={backgroundByToolCall}
+          revealEventId={revealEventId}
+          highlightedEventId={highlightedEventId}
           onInteract={pausePinForToggle}
           onToggle={() => {
             pausePinForToggle();
@@ -191,10 +418,12 @@ function ChatTimeline({
         <LiveTurn
           events={block.events}
           starting={status === "starting"}
-          session={session}
+          session={effectiveSession}
           resolvedAnswers={resolvedAnswers}
           expanded={expanded}
           backgroundByToolCall={backgroundByToolCall}
+          revealEventId={revealEventId}
+          highlightedEventId={highlightedEventId}
           onInteract={pausePinForToggle}
           onToggle={() => {
             pausePinForToggle();
@@ -204,13 +433,21 @@ function ChatTimeline({
       );
     }
     const event = block.event;
+    const highlighted = highlightedEventId === event.id;
     return (
-      <EventItem
-        event={event}
-        session={session}
-        resolvedAnswer={event.kind === "prompt" ? (resolvedAnswers.get(event.prompt_id) ?? null) : null}
-        showAgentLabel={block.showAgentLabel}
-      />
+      <div
+        data-find-event={event.id}
+        data-event-id={event.id}
+        data-jump-highlighted={highlighted ? "true" : undefined}
+        className={cn("min-w-0", highlighted && "rounded-xl ring-2 ring-wb-accent transition-shadow")}
+      >
+        <EventItem
+          event={event}
+          session={effectiveSession}
+          resolvedAnswer={event.kind === "prompt" ? (resolvedAnswers.get(event.prompt_id) ?? null) : null}
+          showAgentLabel={block.showAgentLabel}
+        />
+      </div>
     );
   };
 
@@ -289,6 +526,13 @@ function ChatTimeline({
           event={questionEvent}
           sessionId={session.id}
           anchor={questionAnchor}
+        />
+      ) : null}
+      {onCloseRewind && onRewindComplete ? (
+        <RewindDialog
+          target={rewindTarget}
+          onCancel={onCloseRewind}
+          onComplete={onRewindComplete}
         />
       ) : null}
       {pendingId && (

@@ -52,6 +52,10 @@ import { useMentionMenu } from "./useMentionMenu";
 import { releaseSubmitOnEdit, submitFingerprint, type SubmitFlight } from "./submit-flight";
 import { useReviewDismiss } from "./useReviewDismiss";
 
+function serializeFileRefs(refs: readonly FileRef[]): string {
+  return refs.map((ref) => `${ref.label}\t${ref.path}`).join("\n");
+}
+
 export function useComposerController(host: ComposerHost, session: Session, events: SessionEvent[]) {
   const [text, setLocalText] = useState(() => host.initialText);
   const textRef = useRef(text);
@@ -64,11 +68,28 @@ export function useComposerController(host: ComposerHost, session: Session, even
     remember(next);
     setLocalText(next);
   }, [remember]);
+  const [fileRefs, setFileRefs] = useState<FileRef[]>(() => liveFileRefs(host.initialText, host.initialFileRefs));
+  const initialRefsKey = serializeFileRefs(host.initialFileRefs);
+  const prevSessionIdRef = useRef(session.id);
+  const prevInitialRefsKeyRef = useRef(initialRefsKey);
+  const lastRememberedRefsKeyRef = useRef(serializeFileRefs(fileRefs));
+  const externalSyncPending =
+    session.id !== prevSessionIdRef.current ||
+    host.initialText !== textRef.current ||
+    (initialRefsKey !== prevInitialRefsKeyRef.current &&
+      initialRefsKey !== lastRememberedRefsKeyRef.current);
+
   useEffect(() => {
+    prevInitialRefsKeyRef.current = initialRefsKey;
+    if (!externalSyncPending) return;
+    prevSessionIdRef.current = session.id;
     textRef.current = host.initialText;
     setLocalText(host.initialText);
-  }, [host.initialText]);
-  const [fileRefs, setFileRefs] = useState<FileRef[]>(() => liveFileRefs(host.initialText, host.initialFileRefs));
+    const nextRefs = liveFileRefs(host.initialText, host.initialFileRefs);
+    const nextRefsKey = serializeFileRefs(nextRefs);
+    lastRememberedRefsKeyRef.current = nextRefsKey;
+    setFileRefs((current) => (serializeFileRefs(current) === nextRefsKey ? current : nextRefs));
+  }, [externalSyncPending, host.initialFileRefs, host.initialText, initialRefsKey, session.id]);
   const [caret, setCaret] = useState(0);
   const [menu, setMenu] = useState<null | "access" | "model" | "attach">(null);
   const [reviewOpen, setReviewOpen] = useState(false);
@@ -172,6 +193,12 @@ export function useComposerController(host: ComposerHost, session: Session, even
   }, [goal.publishError]);
 
   useEffect(() => {
+    if (editingId !== null && !host.queue.some((item) => item.id === editingId)) {
+      setEditingId(null);
+    }
+  }, [editingId, host.queue]);
+
+  useEffect(() => {
     submitFlight.current = releaseSubmitOnEdit(
       submitFlight.current,
       session.id,
@@ -186,11 +213,13 @@ export function useComposerController(host: ComposerHost, session: Session, even
 
   // 框里删掉的引用不再带着；还在的和文字一起存。
   const live = liveFileRefs(text, fileRefs);
-  const liveKey = live.map((ref) => `${ref.label}\t${ref.path}`).join("\n");
+  const liveKey = serializeFileRefs(live);
   useEffect(() => {
+    if (externalSyncPending) return;
     if (live.length !== fileRefs.length) setFileRefs(live);
+    lastRememberedRefsKeyRef.current = liveKey;
     host.rememberFileRefs(live);
-  }, [session.id, liveKey]);
+  }, [externalSyncPending, session.id, liveKey]);
 
   const snippetCount = host.snippets.length;
   const seenSnippets = useRef(snippetCount);

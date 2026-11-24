@@ -1,7 +1,7 @@
 import { ChevronRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { agentIdentity } from "@/shared/agent/identity";
+import { agentIdentity, profileForSessionAgent } from "@/shared/agent/identity";
 import type { SessionSpec } from "@/types";
 import { useChatHost, type ChatHost, type SubtaskHost } from "../host";
 import { AgentAvatar } from "./AgentAvatar";
@@ -39,7 +39,9 @@ function SubtaskRow({
 }) {
   const view = host.useSubtask(taskId);
   const agent = view?.agent ?? spec?.agent;
-  const identity = agent ? agentIdentity(agent, profiles[agent]) : null;
+  const identity = agent
+    ? agentIdentity(agent, profileForSessionAgent(agent, profiles, view?.instanceId))
+    : null;
   const status = view ? subtaskStatus(view.attention) : null;
   const title = view?.title.trim() || spec?.title || "子任务";
   const detail = view ? subtaskDetail(view.attention) : "";

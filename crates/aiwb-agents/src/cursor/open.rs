@@ -37,7 +37,21 @@ pub struct Open {
     pub workbench_mcp: Option<WorkbenchMcp>,
 }
 
+#[cfg(test)]
 pub async fn open(options: Open, events: EventSink) -> Result<Arc<Shared>, AgentError> {
+    open_for(
+        &crate::instance::InstanceOverlay::default_for(aiwb_core::models::AgentKind::CursorAgent),
+        options,
+        events,
+    )
+    .await
+}
+
+pub async fn open_for(
+    overlay: &crate::instance::InstanceOverlay,
+    options: Open,
+    events: EventSink,
+) -> Result<Arc<Shared>, AgentError> {
     let project = PathBuf::from(options.project_path.trim());
     if project.as_os_str().is_empty() {
         return Err(AgentError::Runtime("没有项目目录".into()));
@@ -53,14 +67,27 @@ pub async fn open(options: Open, events: EventSink) -> Result<Arc<Shared>, Agent
             return Err(AgentError::Runtime(format!("无效的会话 id：{id}")));
         }
     }
-    let launcher = process::resolve()?;
-    let shared = retry::with_restarts(|| launch(&launcher, &project, &options, &events)).await?;
+    let launcher = process::resolve_for(overlay)?;
+    let shared =
+        retry::with_restarts(|| launch(&launcher, overlay, &project, &options, &events)).await?;
     let mcp_servers = mcp_servers(options.workbench_mcp.as_ref());
-    let opened = startup(&shared, &project, resume.clone(), options.persist, options.replay_history, mcp_servers).await;
+    let opened = startup(
+        &shared,
+        overlay,
+        &project,
+        resume.clone(),
+        options.persist,
+        options.replay_history,
+        mcp_servers,
+    )
+    .await;
     if let Err(err) = opened {
         shared.shutdown();
         // 删掉会话目录后 `session/load` 报 `Session "<id>" not found`。连 `meta.json` 都没有，就是会话没了。
-        if resume.as_deref().is_some_and(directory::is_gone) {
+        if resume
+            .as_deref()
+            .is_some_and(|id| directory::is_gone_for(overlay, id))
+        {
             return Err(AgentError::SessionGone);
         }
         return Err(err);
@@ -71,22 +98,25 @@ pub async fn open(options: Open, events: EventSink) -> Result<Arc<Shared>, Agent
 /// 起一个 `agent acp`，握手并取到模型目录。没取到就关掉这个进程。
 async fn launch(
     launcher: &Launcher,
+    overlay: &crate::instance::InstanceOverlay,
     project: &Path,
     options: &Open,
     events: &EventSink,
 ) -> Result<Arc<Shared>, Miss> {
-    let child = process::spawn(launcher, project)?;
+    let child = process::spawn(launcher, project, overlay)?;
     let access = match options.access_mode.as_deref().unwrap_or("full") {
         "full" => "full",
         _ => "ask",
     };
+    let mut initial_catalog = catalog::empty_catalog();
+    initial_catalog.instance_id = Some(overlay.instance_id.clone());
     let shared = Shared::spawned(
         Parts {
             dialect: Arc::new(CursorDialect::new(project)),
             events: events.clone(),
             project: project.to_path_buf(),
             access: access.to_string(),
-            catalog: catalog::empty_catalog(),
+            catalog: initial_catalog,
             instructions: options.workbench_mcp.as_ref().map(WorkbenchMcp::instructions),
             roots: Vec::new(),
         },
@@ -148,6 +178,7 @@ async fn fetch_models(shared: &Shared) -> Result<Value, Miss> {
 
 async fn startup(
     shared: &Shared,
+    overlay: &crate::instance::InstanceOverlay,
     project: &Path,
     resume: Option<String>,
     persist: bool,
@@ -156,7 +187,10 @@ async fn startup(
 ) -> Result<(), AgentError> {
     let params = json!({ "cwd": project.to_string_lossy(), "mcpServers": mcp_servers });
     // 没发过消息的会话只有 meta.json，`session/load` 认不出来。里面没有历史，换一个新会话。
-    let placeholder = resume.as_deref().filter(|id| directory::is_placeholder(id)).map(str::to_string);
+    let placeholder = resume
+        .as_deref()
+        .filter(|id| directory::is_placeholder_for(overlay, id))
+        .map(str::to_string);
     let resume = if placeholder.is_some() { None } else { resume };
     let persist = persist || placeholder.is_some();
     if let Some(id) = resume {
@@ -164,7 +198,7 @@ async fn startup(
     } else if persist {
         shared.open_thread(Opening::New, params).await?;
         if let Some(old) = placeholder {
-            let _ = directory::remove(&old);
+            let _ = directory::remove_for(overlay, &old);
         }
     }
     shared.opened();

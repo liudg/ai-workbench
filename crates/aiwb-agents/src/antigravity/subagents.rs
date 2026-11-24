@@ -110,13 +110,25 @@ impl Transcript {
 }
 
 /// `brain/<会话>/.system_generated/logs/transcript.jsonl` 里从第 `seen` 行起写完的行。返回解析好的步骤和新的行数。
-fn read_transcript(id: &str, seen: usize) -> Option<(Vec<Value>, usize)> {
-    read_lines(id, seen).map(|(steps, lines)| (steps.into_iter().map(|(_, step)| step).collect(), lines))
+fn read_transcript_under(
+    data_dir: Option<&Path>,
+    id: &str,
+    seen: usize,
+) -> Option<(Vec<Value>, usize)> {
+    read_lines_under(data_dir, id, seen)
+        .map(|(steps, lines)| (steps.into_iter().map(|(_, step)| step).collect(), lines))
 }
 
-/// 同 `read_transcript`，每一步带上它在转录里的行号（从 0 起）。
-fn read_lines(id: &str, seen: usize) -> Option<(Vec<(usize, Value)>, usize)> {
-    let path = directory::brain_dir(id)?.join(".system_generated").join("logs").join("transcript.jsonl");
+/// 同 `read_transcript_under`，每一步带上它在转录里的行号（从 0 起）。
+fn read_lines_under(
+    data_dir: Option<&Path>,
+    id: &str,
+    seen: usize,
+) -> Option<(Vec<(usize, Value)>, usize)> {
+    let path = directory::brain_dir_under(data_dir, id)?
+        .join(".system_generated")
+        .join("logs")
+        .join("transcript.jsonl");
     let raw = std::fs::read_to_string(path).ok()?;
     let lines: Vec<&str> = raw.lines().collect();
     // 最后一行可能写到一半。
@@ -133,8 +145,8 @@ fn read_lines(id: &str, seen: usize) -> Option<(Vec<(usize, Value)>, usize)> {
 }
 
 /// 主会话转录现在写完了几行。回合开始时记下，之前启动的后台任务不是这一轮的。
-pub fn transcript_lines(id: &str) -> usize {
-    read_lines(id, usize::MAX).map_or(0, |(_, lines)| lines)
+pub fn transcript_lines_under(data_dir: Option<&Path>, id: &str) -> usize {
+    read_lines_under(data_dir, id, usize::MAX).map_or(0, |(_, lines)| lines)
 }
 
 /// 转录里一个还没结束的后台任务。
@@ -156,6 +168,7 @@ pub struct FinishedTask {
 
 /// 主会话在回合回包之后的动静：子 Agent 回报、后台任务结束、被它们唤醒后的回答。
 pub struct ParentTail {
+    data_dir: Option<PathBuf>,
     id: String,
     lines: usize,
     transcript: Transcript,
@@ -175,7 +188,12 @@ pub struct ParentTail {
 
 impl ParentTail {
     /// 从头读一遍转录。已经结束的后台任务也放进 `take_finished`：上一次等待之后才结束的，宿主要据此收尾。
+    #[cfg(test)]
     pub fn new(id: &str, turn_start: usize) -> Self {
+        Self::with_data_dir(None, id, turn_start)
+    }
+
+    pub fn with_data_dir(data_dir: Option<PathBuf>, id: &str, turn_start: usize) -> Self {
         let mut heard = HashSet::new();
         let mut idle = false;
         let mut lines = 0;
@@ -183,7 +201,7 @@ impl ParentTail {
         let mut tasks = HashMap::new();
         let mut finished = Vec::new();
         let mut command_counts = HashMap::new();
-        if let Some((steps, total)) = read_lines(id, 0) {
+        if let Some((steps, total)) = read_lines_under(data_dir.as_deref(), id, 0) {
             lines = total;
             for (line, step) in &steps {
                 if *line >= turn_start {
@@ -204,6 +222,7 @@ impl ParentTail {
         }
         tasks.retain(|task, _| !heard.contains(task));
         Self {
+            data_dir,
             id: id.to_string(),
             lines,
             transcript: Transcript::new(&format!("parent-{id}-{lines}")),
@@ -240,7 +259,8 @@ impl ParentTail {
 
     /// 读新增的步骤。
     pub fn read(&mut self) -> Vec<Value> {
-        let Some((steps, lines)) = read_lines(&self.id, self.lines) else {
+        let Some((steps, lines)) = read_lines_under(self.data_dir.as_deref(), &self.id, self.lines)
+        else {
             return Vec::new();
         };
         self.lines = lines.max(self.lines);
@@ -398,6 +418,7 @@ struct Child {
 
 pub struct Subagents {
     project: PathBuf,
+    data_dir: Option<PathBuf>,
     parent: String,
     cards: HashMap<String, SubagentCard>,
     order: Vec<String>,
@@ -410,9 +431,15 @@ pub struct Subagents {
 }
 
 impl Subagents {
+    #[cfg(test)]
     pub fn new(project: &Path) -> Self {
+        Self::with_data_dir(project, None)
+    }
+
+    pub fn with_data_dir(project: &Path, data_dir: Option<PathBuf>) -> Self {
         Self {
             project: project.to_path_buf(),
+            data_dir,
             parent: String::new(),
             cards: HashMap::new(),
             order: Vec::new(),
@@ -426,10 +453,12 @@ impl Subagents {
     pub fn resume(&mut self, parent: &str, replay: bool) {
         self.parent = parent.to_string();
         if !replay {
-            self.first_step = read_transcript(parent, 0)
-                .into_iter().flat_map(|(steps, _)| steps)
+            self.first_step = read_transcript_under(self.data_dir.as_deref(), parent, 0)
+                .into_iter()
+                .flat_map(|(steps, _)| steps)
                 .filter_map(|step| step.get("step_index").and_then(Value::as_u64))
-                .max().map_or(0, |step| step + 1);
+                .max()
+                .map_or(0, |step| step + 1);
         }
     }
 
@@ -516,7 +545,9 @@ impl Subagents {
     }
 
     fn bind_children(&mut self) {
-        let Some(dir) = directory::brain_dir(&self.parent).map(|dir| dir.join(".system_generated").join("subagents")) else {
+        let Some(dir) = directory::brain_dir_under(self.data_dir.as_deref(), &self.parent)
+            .map(|dir| dir.join(".system_generated").join("subagents"))
+        else {
             return;
         };
         let Ok(entries) = std::fs::read_dir(dir) else {
@@ -524,8 +555,9 @@ impl Subagents {
         };
         // agy 1.5.4 实测：spawnStepIndex 是父转录里此调用的 GENERIC 结果步骤。
         // PLANNER_RESPONSE 的调用和随后 GENERIC 的次序相同，用完整调用输入关联 ACP 卡片。
-        let calls = read_transcript(&self.parent, 0)
-            .map(|(steps, _)| self.call_cards(spawn_calls(&steps))).unwrap_or_default();
+        let calls = read_transcript_under(self.data_dir.as_deref(), &self.parent, 0)
+            .map(|(steps, _)| self.call_cards(spawn_calls(&steps)))
+            .unwrap_or_default();
         for entry in entries.filter_map(Result::ok) {
             let Some(id) = entry.path().file_stem().and_then(|stem| stem.to_str()).map(str::to_string) else {
                 continue;
@@ -588,7 +620,7 @@ impl Subagents {
         let Some(seen) = self.children.get(id).map(|child| child.lines) else {
             return Vec::new();
         };
-        let Some((steps, lines)) = read_transcript(id, seen) else {
+        let Some((steps, lines)) = read_transcript_under(self.data_dir.as_deref(), id, seen) else {
             return Vec::new();
         };
         let mut events = Vec::new();

@@ -1,0 +1,1308 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>T3 Code vs AI Workbench 源码级差距调研</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22><rect width=%2232%22 height=%2232%22 rx=%228%22 fill=%22%232563eb%22/><path d=%22M9 11h14v3h-5.5v8h-3v-8H9z%22 fill=%22white%22/></svg>" />
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f4f6f9;
+  --surface: #ffffff;
+  --surface-2: #eef1f6;
+  --surface-hover: #f6f8fc;
+  --border: #e1e6ef;
+  --border-strong: #c8d1e0;
+  --fg: #0f172a;
+  --fg-2: #475569;
+  --fg-3: #64748b;
+  --accent: #2563eb;
+  --accent-soft: #eff6ff;
+  --accent-border: #bfdbfe;
+  --missing-bg: #fef2f2;
+  --missing-fg: #dc2626;
+  --missing-bd: #fecaca;
+  --weaker-bg: #fffbeb;
+  --weaker-fg: #b45309;
+  --weaker-bd: #fde68a;
+  --p0-bg: #eef2ff;
+  --p0-fg: #4338ca;
+  --p0-bd: #c7d2fe;
+  --p1-bg: #ecfeff;
+  --p1-fg: #0e7490;
+  --p1-bd: #a5f3fc;
+  --p2-bg: #f1f5f9;
+  --p2-fg: #475569;
+  --p2-bd: #cbd5e1;
+  --defer-bg: #f8fafc;
+  --defer-fg: #64748b;
+  --defer-bd: #cbd5e1;
+  --ok-bg: #ecfdf5;
+  --ok-fg: #047857;
+  --ok-bd: #a7f3d0;
+  --risk-bg: #dc2626;
+  --risk-fg: #ffffff;
+  --t3-head: #eff6ff;
+  --aiwb-head: #fffbeb;
+  --advice-bg: #f0fdf4;
+  --code-bg: #eef2f7;
+  --code-fg: #1e293b;
+  --mark-bg: #fef08a;
+  --mark-fg: #0f172a;
+  --left-w: clamp(300px, 34vw, 376px);
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", "Fira Code", Consolas, ui-monospace, monospace;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0b0e14;
+  --surface: #111620;
+  --surface-2: #18202e;
+  --surface-hover: #151c29;
+  --border: #232d3f;
+  --border-strong: #32405a;
+  --fg: #ecf1f9;
+  --fg-2: #9fb0c7;
+  --fg-3: #6e7f97;
+  --accent: #60a5fa;
+  --accent-soft: rgba(59, 130, 246, 0.15);
+  --accent-border: rgba(96, 165, 250, 0.36);
+  --missing-bg: rgba(239, 68, 68, 0.15);
+  --missing-fg: #fca5a5;
+  --missing-bd: rgba(239, 68, 68, 0.34);
+  --weaker-bg: rgba(245, 158, 11, 0.15);
+  --weaker-fg: #fcd34d;
+  --weaker-bd: rgba(245, 158, 11, 0.34);
+  --p0-bg: rgba(99, 102, 241, 0.2);
+  --p0-fg: #c7d2fe;
+  --p0-bd: rgba(129, 140, 248, 0.4);
+  --p1-bg: rgba(6, 182, 212, 0.15);
+  --p1-fg: #67e8f9;
+  --p1-bd: rgba(34, 211, 238, 0.32);
+  --p2-bg: rgba(148, 163, 184, 0.12);
+  --p2-fg: #cbd5e1;
+  --p2-bd: rgba(148, 163, 184, 0.26);
+  --defer-bg: rgba(100, 116, 139, 0.1);
+  --defer-fg: #94a3b8;
+  --defer-bd: rgba(100, 116, 139, 0.28);
+  --ok-bg: rgba(16, 185, 129, 0.15);
+  --ok-fg: #6ee7b7;
+  --ok-bd: rgba(16, 185, 129, 0.32);
+  --risk-bg: #dc2626;
+  --risk-fg: #ffffff;
+  --t3-head: rgba(59, 130, 246, 0.1);
+  --aiwb-head: rgba(245, 158, 11, 0.1);
+  --advice-bg: rgba(16, 185, 129, 0.09);
+  --code-bg: #1b2436;
+  --code-fg: #e2e8f0;
+  --mark-bg: rgba(250, 204, 21, 0.3);
+  --mark-fg: #fef08a;
+}
+
+* { box-sizing: border-box; scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+*::-webkit-scrollbar { width: 6px; height: 6px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 99px; }
+*::-webkit-scrollbar-thumb:hover { background: var(--fg-3); }
+html, body {
+  margin: 0; padding: 0; height: 100%; overflow: hidden;
+  background: var(--bg); color: var(--fg);
+  font-family: var(--font-sans); font-size: 13.5px; line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+button, input, select { font-family: inherit; font-size: inherit; color: inherit; }
+button { cursor: pointer; }
+code, .mono { font-family: var(--font-mono); font-size: 11.5px; }
+.inline-code { font-family: var(--font-mono); font-size: 11.5px; padding: 1px 5px; border-radius: 4px; background: var(--code-bg); color: var(--code-fg); border: 1px solid var(--border); }
+mark { background: var(--mark-bg); color: var(--mark-fg); padding: 0 2px; border-radius: 3px; }
+
+/* Full-Viewport Shell */
+.shell { display: flex; flex-direction: column; height: 100vh; width: 100vw; overflow: hidden; }
+
+/* Slim Top Header */
+.topbar {
+  height: 44px; flex-shrink: 0;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  padding: 0 14px; display: flex; align-items: center; gap: 10px;
+  overflow-x: auto; scrollbar-width: none;
+}
+.topbar::-webkit-scrollbar { display: none; }
+.brand { display: inline-flex; align-items: center; gap: 7px; font-weight: 700; font-size: 13.5px; white-space: nowrap; margin-right: 4px; }
+.brand-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.brand-ver { font-family: var(--font-mono); font-size: 10.5px; font-weight: 500; color: var(--fg-3); padding: 1px 6px; border-radius: 4px; background: var(--surface-2); }
+
+.nav-tabs { display: inline-flex; align-items: center; gap: 3px; background: var(--surface-2); padding: 3px; border-radius: 8px; border: 1px solid var(--border); }
+.tab-btn {
+  border: none; background: transparent; height: 26px; padding: 0 10px; border-radius: 6px;
+  font-size: 12px; font-weight: 500; color: var(--fg-2); white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 5px; transition: all 0.12s;
+}
+.tab-btn:hover { color: var(--fg); }
+.tab-btn.active { background: var(--surface); color: var(--accent); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+.tab-cnt { font-family: var(--font-mono); font-size: 10.5px; opacity: 0.8; }
+
+.top-right { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.kpi-mini {
+  border: 1px solid var(--border); background: var(--surface); height: 26px; padding: 0 8px;
+  border-radius: 6px; font-size: 11.5px; color: var(--fg-2); display: inline-flex; align-items: center; gap: 4px;
+}
+.kpi-mini:hover { background: var(--surface-2); border-color: var(--border-strong); }
+.kpi-mini strong { font-family: var(--font-mono); font-size: 11.5px; }
+.kpi-mini.km-m strong { color: var(--missing-fg); }
+.kpi-mini.km-w strong { color: var(--weaker-fg); }
+.kpi-mini.km-p0 strong { color: var(--p0-fg); }
+.kpi-mini.km-risk { background: var(--missing-bg); border-color: var(--missing-bd); color: var(--missing-fg); font-weight: 600; }
+
+.btn {
+  height: 27px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--fg-2); font-size: 12px; font-weight: 500;
+  display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; transition: all 0.12s;
+}
+.btn:hover { background: var(--surface-2); color: var(--fg); border-color: var(--border-strong); }
+.btn.active { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent); font-weight: 600; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover { filter: brightness(1.06); }
+
+/* Split Workspace */
+.workspace { flex: 1; min-height: 0; display: grid; grid-template-columns: var(--left-w) 5px minmax(0, 1fr); overflow: hidden; }
+.workspace.full-single { grid-template-columns: minmax(0, 1fr); }
+
+.left-pane { display: flex; flex-direction: column; min-height: 0; background: var(--surface); overflow: hidden; }
+.splitter { background: var(--border); cursor: col-resize; transition: background 0.12s; position: relative; z-index: 10; }
+.splitter:hover, .splitter.dragging { background: var(--accent); }
+.right-pane { container-type: inline-size; min-height: 0; overflow-y: auto; overscroll-behavior: contain; background: var(--bg); padding: 16px 20px 36px; }
+
+/* Left Filter Header */
+.filter-box { padding: 9px 10px 8px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 7px; flex-shrink: 0; background: var(--surface); }
+.filter-row { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.filter-row.nowrap { flex-wrap: nowrap; }
+.search-wrap { position: relative; flex: 1; min-width: 80px; }
+.search-input {
+  width: 100%; height: 29px; padding: 0 22px 0 25px; border-radius: 6px;
+  border: 1px solid var(--border-strong); background: var(--surface-2); font-size: 12px; outline: none;
+}
+.search-input:focus { background: var(--surface); border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.search-icon { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); color: var(--fg-3); font-size: 12px; pointer-events: none; }
+.search-clear { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); border: none; background: transparent; color: var(--fg-3); font-size: 14px; display: none; padding: 0 3px; }
+.search-clear.show { display: inline; }
+
+.domain-select {
+  height: 29px; max-width: 120px; padding: 0 4px; border-radius: 6px;
+  border: 1px solid var(--border-strong); background: var(--surface); font-size: 11.5px; color: var(--fg); outline: none; flex-shrink: 0;
+}
+.domain-select:focus { border-color: var(--accent); }
+
+.seg { display: inline-flex; background: var(--surface-2); padding: 2px; border-radius: 6px; border: 1px solid var(--border); }
+.seg button { border: none; background: transparent; padding: 2px 7px; border-radius: 4px; font-size: 11.5px; color: var(--fg-2); font-weight: 500; white-space: nowrap; }
+.seg button.active { background: var(--surface); color: var(--fg); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+
+.chip {
+  height: 23px; padding: 0 6.5px; border-radius: 5px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--fg-2); font-size: 11px; font-weight: 500; white-space: nowrap;
+}
+.chip:hover { border-color: var(--border-strong); color: var(--fg); }
+.chip.active { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent); font-weight: 600; }
+.chip.active-risk { background: var(--risk-bg); border-color: var(--risk-bg); color: var(--risk-fg); }
+
+.list-meta { margin-left: auto; font-family: var(--font-mono); font-size: 11px; color: var(--fg-3); display: inline-flex; align-items: center; gap: 5px; }
+.reset-link { border: none; background: transparent; color: var(--accent); font-size: 11px; padding: 0; text-decoration: underline; }
+
+/* Left Scrollable List */
+.master-list { flex: 1; overflow-y: auto; overscroll-behavior: contain; }
+.list-group-hdr {
+  position: sticky; top: 0; z-index: 5;
+  padding: 5px 12px; background: var(--surface-2); border-bottom: 1px solid var(--border);
+  font-size: 11px; font-weight: 700; color: var(--fg-2); display: flex; justify-content: space-between; align-items: center;
+}
+.list-item {
+  padding: 9px 11px 9px 12px; border-bottom: 1px solid var(--border);
+  cursor: pointer; position: relative; transition: background 0.08s;
+}
+.list-item:hover { background: var(--surface-hover); }
+.list-item.active { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+.li-top { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.li-title { font-size: 12.8px; font-weight: 600; color: var(--fg); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list-item.active .li-title { color: var(--accent); font-weight: 700; }
+.li-sub { margin-top: 3.5px; font-size: 11.8px; color: var(--fg-2); display: flex; align-items: center; gap: 6px; min-width: 0; }
+.li-essence { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.li-dom { font-size: 10.5px; color: var(--fg-3); flex-shrink: 0; }
+
+.star-btn {
+  width: 22px; height: 22px; border-radius: 5px; border: 1px solid transparent;
+  background: transparent; color: var(--fg-3); font-size: 13px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center; padding: 0;
+}
+.star-btn:hover { background: var(--surface-2); color: #d97706; }
+.star-btn.starred { color: #f59e0b; }
+
+/* Badges */
+.badge { display: inline-flex; align-items: center; gap: 3px; padding: 1px 5.5px; border-radius: 4px; font-size: 10.5px; font-weight: 600; border: 1px solid transparent; white-space: nowrap; line-height: 1.4; flex-shrink: 0; }
+.b-missing { background: var(--missing-bg); color: var(--missing-fg); border-color: var(--missing-bd); }
+.b-weaker { background: var(--weaker-bg); color: var(--weaker-fg); border-color: var(--weaker-bd); }
+.b-p0 { background: var(--p0-bg); color: var(--p0-fg); border-color: var(--p0-bd); }
+.b-p1 { background: var(--p1-bg); color: var(--p1-fg); border-color: var(--p1-bd); }
+.b-p2 { background: var(--p2-bg); color: var(--p2-fg); border-color: var(--p2-bd); }
+.b-defer { background: var(--defer-bg); color: var(--defer-fg); border: 1px dashed var(--defer-bd); }
+.b-domain { background: var(--surface-2); color: var(--fg-2); border-color: var(--border); font-weight: 500; }
+.b-risk { background: var(--risk-bg); color: var(--risk-fg); }
+.b-ok { background: var(--ok-bg); color: var(--ok-fg); border-color: var(--ok-bd); }
+
+/* Right Detail Pane */
+.detail-wrap { max-width: 1040px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+.detail-topbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: nowrap; }
+.detail-badges { display: flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden; }
+.detail-badges .b-domain { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.detail-nav { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; }
+
+.detail-hero { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 18px; }
+.detail-title { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -0.01em; color: var(--fg); line-height: 1.38; }
+.detail-essence {
+  margin-top: 9px; padding: 7px 11px; border-radius: 6px;
+  background: var(--surface-2); border-left: 3px solid var(--accent);
+  font-size: 13px; color: var(--fg); font-weight: 500;
+}
+
+.cmp-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+@container (min-width: 480px) {
+  .cmp-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}
+.cmp-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; }
+.cmp-head { padding: 8px 14px; border-bottom: 1px solid var(--border); font-size: 11.5px; font-weight: 700; display: flex; justify-content: space-between; align-items: center; }
+.cmp-card.t3 .cmp-head { background: var(--t3-head); color: var(--accent); }
+.cmp-card.aiwb .cmp-head { background: var(--aiwb-head); color: var(--weaker-fg); }
+.cmp-body { padding: 11px 14px 12px 28px; margin: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--fg); }
+.cmp-body li::marker { color: var(--fg-3); }
+
+.advice-card {
+  background: var(--advice-bg); border: 1px solid var(--ok-bd); border-left: 4px solid var(--ok-fg);
+  border-radius: 9px; padding: 11px 15px; display: flex; flex-direction: column; gap: 4px;
+}
+.advice-label { font-size: 11px; font-weight: 700; color: var(--ok-fg); letter-spacing: 0.03em; }
+.advice-text { font-size: 13px; color: var(--fg); }
+
+.refs-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 15px; display: flex; flex-direction: column; gap: 9px; }
+.refs-head { font-size: 11.5px; font-weight: 700; color: var(--fg-2); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; }
+.refs-hint { font-size: 11px; font-weight: 400; color: var(--fg-3); }
+.refs-group { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.path-chip {
+  display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 6px;
+  background: var(--code-bg); border: 1px solid var(--border);
+  font-family: var(--font-mono); font-size: 11.5px; color: var(--code-fg);
+  transition: all 0.12s; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.path-chip:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.repo-tag { font-size: 9.5px; font-weight: 700; padding: 0 4.5px; border-radius: 3px; }
+.repo-tag.r-t3 { background: var(--accent-soft); color: var(--accent); }
+.repo-tag.r-aiwb { background: var(--weaker-bg); color: var(--weaker-fg); }
+
+/* Domain Matrix Left List */
+.dom-item { padding: 11px 13px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.1s; }
+.dom-item:hover { background: var(--surface-hover); }
+.dom-item.active { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+.dom-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
+.dom-name { font-weight: 700; font-size: 13px; }
+.dom-bar { height: 5px; border-radius: 99px; background: var(--surface-2); overflow: hidden; display: flex; margin-bottom: 6px; }
+.dom-bar-m { background: #ef4444; height: 100%; }
+.dom-bar-w { background: #f59e0b; height: 100%; }
+.dom-verdict { font-size: 11.8px; color: var(--fg-2); line-height: 1.45; }
+
+.dom-gap-card { background: var(--surface); border: 1px solid var(--border); border-radius: 9px; padding: 11px 14px; display: flex; flex-direction: column; gap: 6px; cursor: pointer; transition: border-color 0.12s; }
+.dom-gap-card:hover { border-color: var(--accent); }
+
+/* Architecture Table */
+.arch-wrap { max-width: 1280px; margin: 0 auto; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.arch-table { width: 100%; border-collapse: collapse; font-size: 12.8px; }
+.arch-table th, .arch-table td { padding: 10px 14px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+.arch-table th { position: sticky; top: 0; background: var(--surface-2); font-size: 11px; font-weight: 700; color: var(--fg-3); letter-spacing: 0.04em; }
+.arch-table tr:last-child td { border-bottom: none; }
+.arch-table tr:hover td { background: var(--surface-hover); }
+
+/* Shortlist Markdown Preview */
+.md-box { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; }
+.md-head { padding: 10px 14px; background: var(--surface-2); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.md-pre { margin: 0; padding: 14px 16px; font-family: var(--font-mono); font-size: 12px; line-height: 1.55; white-space: pre-wrap; overflow-x: auto; color: var(--fg); }
+
+.empty-box { padding: 48px 20px; text-align: center; color: var(--fg-3); font-size: 13px; }
+.kbd-hint { font-family: var(--font-mono); font-size: 10.5px; padding: 1px 5px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); color: var(--fg-3); }
+
+.toast {
+  position: fixed; right: 18px; bottom: 18px; z-index: 99;
+  background: var(--fg); color: var(--surface); padding: 7px 13px; border-radius: 8px;
+  font-size: 12px; font-weight: 500; opacity: 0; transform: translateY(6px);
+  pointer-events: none; transition: opacity 0.15s, transform 0.15s;
+}
+.toast.show { opacity: 1; transform: translateY(0); }
+
+@media (max-width: 1040px) {
+  .brand-ver { display: none; }
+}
+@media (max-width: 880px) {
+  .kpi-mini { display: none; }
+}
+@media (max-width: 640px) {
+  .workspace { grid-template-columns: 1fr; grid-template-rows: 44vh 1fr; }
+  .splitter { display: none; }
+  .left-pane { border-bottom: 1px solid var(--border); }
+}
+</style>
+</head>
+<body>
+<div class="shell">
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-dot"></span>
+      <span>T3 Code vs AIWB</span>
+      <span class="brand-ver">v0.1.10 · v0.2.96</span>
+    </div>
+
+    <nav class="nav-tabs" id="viewTabs">
+      <button type="button" class="tab-btn active" data-view="explorer">1 差距对照 <span class="tab-cnt" id="cntAll">85</span></button>
+      <button type="button" class="tab-btn" data-view="matrix">2 十域矩阵 <span class="tab-cnt">10</span></button>
+      <button type="button" class="tab-btn" data-view="strengths">3 反超 &amp; 纠偏 <span class="tab-cnt" id="cntStr">24</span></button>
+      <button type="button" class="tab-btn" data-view="arch">4 架构总表 <span class="tab-cnt">12</span></button>
+      <button type="button" class="tab-btn" data-view="shortlist">5 待办导出 <span class="tab-cnt" id="cntStar">★ 0</span></button>
+    </nav>
+
+    <div class="top-right">
+      <button type="button" class="kpi-mini km-m" data-quick="missing" title="仅看我们没有的功能">缺失 <strong id="kpiMissing">0</strong></button>
+      <button type="button" class="kpi-mini km-w" data-quick="weaker" title="仅看体验不如它的功能">差距 <strong id="kpiWeaker">0</strong></button>
+      <button type="button" class="kpi-mini km-p0" data-quick="P0" title="仅看 P0 必补项">P0 <strong id="kpiP0">0</strong></button>
+      <button type="button" class="kpi-mini km-risk" data-quick="risk" title="仅看安全与可靠性隐患">隐患 <strong id="kpiRisk">0</strong></button>
+      <button type="button" class="btn" id="themeBtn" title="切换浅色/深色 (T)">深色</button>
+    </div>
+  </header>
+
+  <main class="workspace" id="workspace">
+    <aside class="left-pane" id="leftPane"></aside>
+    <div class="splitter" id="splitter" title="拖拽调整左右分栏宽度（双击重置）"></div>
+    <section class="right-pane" id="rightPane"></section>
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const DOMAINS = [{"id": "providers", "name": "Agent 驱动、多账号与模型", "verdict": "缺多账号/多网关实例隔离、应用内登录流与专用轻量文本生成通道；模型目录表达力与 ACP 生态接入偏窄。"}, {"id": "orchestration", "name": "编排内核、回退与自动化", "verdict": "缺逐轮 Git Checkpoints 回退、崩溃续跑、限额重置自动续跑、定时/Webhook 自动化，且子任务回报仅驻内存。"}, {"id": "chat", "name": "对话流、Composer 与多模态", "verdict": "聊天代码块无高亮、排队编辑覆盖主草稿、缺 Mod+S 暂存栈/多模型扇出/内联 HTML 渲染与语音输入。"}, {"id": "workspaces", "name": "项目、Worktree 与侧栏检索", "verdict": "缺 FTS5 消息全文检索、归档恢复面板、t3.json 生命周期脚本与 Settled/Snooze 收件箱流转；Worktree 创建同步阻塞。"}, {"id": "git", "name": "Git 闭环、Diff 与 PR/Issue", "verdict": "零 Git 写操作与托管商集成；Diff 主线程全量无语法高亮且行内评论漏挂渲染；缺 PR 工作台与后台 CI 值守。"}, {"id": "terminal", "name": "终端、文件浏览与外部 IDE", "verdict": "终端仅右侧单例且切走 30s 杀进程、缺选区转 Chip 与报错路径点击；源码预览只读无虚拟化，缺 IDE 行号跳转。"}, {"id": "browser", "name": "预览浏览器、快拍与移动设备", "verdict": "单 WebView 切 Tab 丢状态、阻断弹窗、无 Agent 浏览器自动化 MCP、缺端口自动发现与全局窗口快拍。"}, {"id": "remote", "name": "多环境、远程隧道与鉴权", "verdict": "仅本机 127.0.0.1 单一静态 Token；缺 WSL2 原生双栈、SSH 零预置远端部署、Tailscale 配对与细粒度 RPC 权限。"}, {"id": "telemetry", "name": "密钥库、用量看板与资源诊断", "verdict": "缺 request_secret 脱敏索取与密钥库、缺全局费用看板、缺进程树 CPU/内存监控、防休眠与 daemon.log 轮转。"}, {"id": "desktop", "name": "桌面壳安全、快捷键与外观", "verdict": "生产包裸露 9222 调试端口与空 CSP；关窗驻托盘缺单实例锁；缺 when 快捷键引擎、四域字号控制与首屏向导。"}];
+const GAPS = [{"id": "pv-01", "domain": "providers", "type": "missing", "priority": "P0", "risk": false, "title": "多账号与多实例隔离（Provider Instances & Auth Overlay）", "essence": "无法并存个人/工作双订阅或官方与第三方 API 网关，所有会话强绑本机全局目录", "t3": ["ProviderInstanceConfig 支持独立显示名、主题色、binaryPath、launchArgs、实例级环境变量（可绑密钥库）与自定义模型", "CodexHomeLayout 实现 shadowHomePath：独立隔离 auth.json，同时用软链共享主目录 skills、sessions 与 plugins", "Claude 隔离 CLAUDE_CONFIG_DIR 并剥离宿主串号变量；Antigravity 隔离 profile 目录并支持 OAuth/API Key/Vertex 三模切换", "支持按权重跨多账号自动负载均衡（loadBalancingWeights）及项目级默认实例覆盖"], "aiwb": ["AgentKind 为 7 变体静态枚举单例，统一读取宿主默认 ~/.codex、~/.claude 等全局目录", "设置页仅能选默认模型/强度/权限，无二进制路径、启动参数、自定义环境变量或多实例管理"], "advice": "在 SQLite 新增 agent_instances 表，将会话与目录缓存主键解耦为 (instance_id, kind)，优先落地 Codex shadowHome 与 Claude 多配置目录隔离。", "refs": [{"repo": "t3code", "path": "packages/contracts/src/providerInstance.ts"}, {"repo": "t3code", "path": "apps/server/src/provider/ProviderInstanceRegistry.ts"}, {"repo": "t3code", "path": "apps/server/src/provider/Drivers/CodexHomeLayout.ts"}, {"repo": "t3code", "path": "apps/server/src/provider/Drivers/ClaudeHome.ts"}, {"repo": "aiwb", "path": "crates/aiwb-core/src/models/agent.rs"}, {"repo": "aiwb", "path": "crates/aiwb-agents/src/lib.rs"}]}, {"id": "pv-02", "domain": "providers", "type": "missing", "priority": "P0", "risk": false, "title": "专用轻量文本生成通道（标题 / Commit / PR / 分支名 / 导读）", "essence": "缺失独立于主会话的无痕小模型结构化生成层，会话标题仅靠前 50 字硬截断", "t3": ["统一 6 类 JSON Schema 生成任务：会话标题（自动抓取最多 2 个 PR/Issue 摘要）、Commit 说明、PR 描述、语义分支名、审阅导读与语音润色", "双轨后端：① CLI 无痕模式（codex exec 临时禁全部 MCP/插件防慢启动；claude -p --no-session-persistence 禁 Hooks）；② 直连 OpenAI/Anthropic/OpenRouter/Ollama API", "按槽位绑定轻量模型（如 Haiku / Luna），所选实例未登录或配额耗尽时自动跨实例降级"], "aiwb": ["无任何独立文本生成模块或直连 HTTP 模型配置", "timeline.rs::title_from_user_message 仅机械截取首条消息首行前 50 字符，无异步标题总结、Commit 或分支命名生成"], "advice": "在 aiwb-daemon 增加轻量 TextGeneration 服务（支持 CLI 禁 MCP 无痕调用 + 可选 OpenAI/Anthropic 兼容 API），优先打通异步会话命名与 Git 提交信息生成。", "refs": [{"repo": "t3code", "path": "apps/server/src/textGeneration/TextGeneration.ts"}, {"repo": "t3code", "path": "apps/server/src/textGeneration/TextGenerators.ts"}, {"repo": "t3code", "path": "apps/server/src/textGeneration/CodexTextGeneration.ts"}, {"repo": "t3code", "path": "apps/server/src/textGeneration/ClaudeTextGeneration.ts"}, {"repo": "aiwb", "path": "crates/aiwb-core/src/timeline.rs"}]}, {"id": "pv-03", "domain": "providers", "type": "missing", "priority": "P1", "risk": true, "title": "应用内交互式登录闭环、凭据热监听与免落盘 Token 代理", "essence": "未登录时只能报错让用户切去外部终端手敲登录命令，登录后也不会自动热刷新目录", "t3": ["ProviderAuthService 支持浏览器 OAuth、Device Code、内嵌认证终端（ProviderAuthTerminal）与 API Key 表单 4 种应用内登录/登出", "CodexManagedTokenBroker 通过 0700 Unix Socket / Windows Named Pipe 按需向 Codex 进程供票，避免敏感 Token 明文落盘", "250ms 防抖监听 auth.json 等凭据文件变更，外部登录或切号后自动刷新目录缓存与连接态"], "aiwb": ["无登录/登出 RPC 与界面，仅在发消息失败时被动报 AUTH_REQUIRED", "未监听本机凭据文件变化，外部完成 CLI 登录后需手动重进或重启才能刷新模型与额度"], "advice": "复用内置 PTY 终端与系统浏览器在设置页/报错条提供一键登录向导，并用 notify crate 监听 ~/.codex 与 ~/.claude 凭据变更自动重刷目录。", "refs": [{"repo": "t3code", "path": "apps/server/src/provider/ProviderAuthService.ts"}, {"repo": "t3code", "path": "apps/server/src/provider/CodexManagedTokenBroker.ts"}, {"repo": "t3code", "path": "apps/web/src/components/settings/ProviderAuthenticationSection.tsx"}, {"repo": "aiwb", "path": "crates/aiwb-daemon/src/services/agents.rs"}, {"repo": "aiwb", "path": "src/features/sidebar/account/AccountMenu.tsx"}]}, {"id": "pv-04", "domain": "providers", "type": "weaker", "priority": "P1", "risk": false, "title": "模型目录治理、通用参数描述符与个人模型偏好（收藏/隐藏/排序）", "essence": "ModelMenu 无搜索/收藏/隐藏/自定义模型录入，且缺 Claude [1m] 长窗口与 CLI 版本门禁提示", "t3": ["内置+远程热更 ModelManifest，自动分 current/legacy 折叠、标 7 天内 new 徽标，并在本机 CLI 版本过低时精确提示某模型需升级", "通用 OptionDescriptor 表达 Claude [1m] 上下文窗口、thinking、fastMode、Bedrock/Vertex 路由及订阅档位 maxEffortLevel 上限", "支持添加自定义模型 slug、星标收藏（搜索加权置顶）、隐藏不常用模型与拖拽排序"], "aiwb": ["AgentModelOption 仅含 efforts 数组与单一 fast 布尔位，Claude 缺失 [1m] 窗口与 fastMode 控制", "ModelMenu 仅两段平铺展示，无搜索框、无收藏/隐藏/排序、无自定义模型录入"], "advice": "将模型参数扩展为通用描述符列表（补齐 Claude 1M 窗口），在 ModelMenu 增加模糊搜索、星标置顶、隐藏旧模型及自定义模型配置。", "refs": [{"repo": "t3code", "path": "apps/server/src/provider/ModelManifest.ts"}, {"repo": "t3code", "path": "apps/server/src/claudeModelOptions.ts"}, {"repo": "t3code", "path": "apps/web/src/components/chat/ModelPickerContent.tsx"}, {"repo": "t3code", "path": "apps/web/src/components/settings/CustomModelEditor.tsx"}, {"repo": "aiwb", "path": "crates/aiwb-core/src/models/catalog.rs"}, {"repo": "aiwb", "path": "src/features/chat/composer/ModelMenu.tsx"}]}, {"id": "pv-05", "domain": "providers", "type": "weaker", "priority": "P1", "risk": false, "title": "Cursor 适配器深度与 HTTP 零子进程目录/额度探测", "essence": "AIWB 每次探目录需冷启停 agent acp 子进程，且缺失 Cursor 上下文占用、压缩与月度额度查询", "t3": ["CursorSdkCatalog 直调 GET /v1/models（30min 缓存）零子进程秒取模型、参数与 Max 模式元数据", "基于 @cursor/sdk 支持运行中原生实时插话（SteerAckOutcome）、原生上下文压缩 summarize() 与按检查点回滚", "直调 DashboardService/GetCurrentPeriodUsage 展示月度总配额、Auto/API 分项占比与重置时间"], "aiwb": ["仅走基础 agent acp 子进程：探目录需完整拉起 initialize + session/new 再销毁，冷启动慢", "Cursor 的订阅额度、单子代理停止、分页历史与原生分叉能力均处于关闭状态"], "advice": "保留 Rust ACP 会话运行时的同时，参考 CursorSdkCatalog 与 usageLimits 用 reqwest 读取本机凭据直调 Cursor HTTP API 秒取模型目录与月度配额。", "refs": [{"repo": "t3code", "path": "packages/provider-cursor/src/server/CursorAgentSdk.ts"}, {"repo": "t3code", "path": "packages/provider-cursor/src/server/CursorSdkCatalog.ts"}, {"repo": "t3code", "path": "packages/provider-cursor/src/server/usageLimits.ts"}, {"repo": "aiwb", "path": "crates/aiwb-agents/src/cursor/catalog.rs"}]}, {"id": "pv-06", "domain": "providers", "type": "weaker", "priority": "P1", "risk": false, "title": "Agent 生态广度、官方 ACP Registry 接入与客户端 FS/Terminal 委托", "essence": "仅硬编码 4 款可对话 Agent（OpenCode/Kimi/Qwen 仅为检测壳），未接 ACP Registry 且关闭了客户端工具回调", "t3": ["内置 11 大可对话驱动（含完整托管 1.x/2.x HTTP Server 的 OpenCode，以及 Grok/Kiro/Pi/Muse/fx）", "直连官方 cdn.agentclientprotocol.com 注册表（检索 512+ 款 Agent，支持 binary/npx/uvx 自动下载与 SHA-256 校验）及自定义本地 ACP 命令", "ACP 运行时完整实现客户端 readTextFile/writeTextFile、16 路受控终端池与 mcp/connect 双向桥接"], "aiwb": ["仅 Codex/Claude/Cursor/Antigravity 可对话；OpenCode、Kimi、Qwen 仅为 ExternalCliAdapter 检测升级空壳", "acp/session.rs 固定声明 fs: false, terminal: false，不支持依赖客户端读写/终端委托的标准 ACP Agent"], "advice": "开放通用自定义 ACP 配置入口并将 Kimi/Qwen/OpenCode 升级为可对话驱动；在 acp/session.rs 补齐受控的客户端 FS 与 PTY 回调。", "refs": [{"repo": "t3code", "path": "packages/provider-acp-registry/src/server/driver.ts"}, {"repo": "t3code", "path": "packages/provider-acp/src/server/AcpSessionRuntime.ts"}, {"repo": "t3code", "path": "packages/provider-opencode/src/server/v2/OpenCode2Server.ts"}, {"repo": "aiwb", "path": "crates/aiwb-agents/src/external.rs"}, {"repo": "aiwb", "path": "crates/aiwb-agents/src/acp/session.rs"}]}, {"id": "pv-07", "domain": "providers", "type": "weaker", "priority": "P1", "risk": true, "title": "CLI 托管安装、包管理器感知升级、会话排空门禁与 npm 源硬编码隐患", "essence": "硬编码强制走 npmmirror 第三方源存在合规隐患；升级不排空在途会话（Windows 易锁文件失败）且不复核版本", "t3": ["支持缺失 CLI 零前置托管下载安装（SHA-256 校验 + 磁盘余量预检 + 字节级进度流与取消）", "解析软链真实路径精准区分 npm/pnpm/bun/yarn/Homebrew/mise/Nix 归属，版本不兼容时支持降级锁定", "ProviderInstallationGate 升级前阻塞新会话并等待在途回合排空，升级后重刷 PATH 并实测版本号确认前进"], "aiwb": ["install/mod.rs:31 硬编码 --registry=https://registry.npmmirror.com，无视用户 .npmrc 与企业私有源", "upgrades.rs 升级时不检查活跃进程（Windows 下易因 .exe 占用锁报错），退出码 0 即算成功而不复核新版本号"], "advice": "立即移除硬编码 npmmirror（默认遵循系统 .npmrc，设置页提供可选镜像开关）；升级前检查并排空同二进制活跃会话，完成后重跑版本探测确认生效。", "refs": [{"repo": "t3code", "path": "apps/server/src/provider/ProviderInstallationGate.ts"}, {"repo": "t3code", "path": "apps/server/src/provider/providerMaintenanceRunner.ts"}, {"repo": "aiwb", "path": "crates/aiwb-agents/src/install/mod.rs"}, {"repo": "aiwb", "path": "crates/aiwb-daemon/src/upgrades.rs"}]}, {"id": "or-01", "domain": "orchestration", "type": "missing", "priority": "P0", "risk": true, "title": "逐轮 Git 隐藏引用 Checkpoints 与对话/文件双模协同回退（Rewind）", "essence": "Agent 改坏代码或跑偏后无法按历史轮次一键撤回对话与工作区文件，只能手动 git 处理或重开会话", "t3": ["每轮前后用独立临时 GIT_INDEX_FILE + 隔离对象目录向 refs/t3/orchestration-v2/checkpoints/ 原子写入全量工作区树（含未跟踪文件与子模块）", "CheckpointRestoreSafety 检测同目录其它并发活跃或更晚修改的线程：冲突时禁止覆盖磁盘但仍允许仅回退对话", "支持「仅回退对话」或「对话+文件协同回退」（git restore + clean + 原生 CLI 线程截断），并将撤回的提示词与附件无损填回输入框"], "aiwb": ["完全缺失按轮次捕获的 Checkpoint、单轮回退 RPC 与时间线回退按钮", "aiwb-git/src/snapshot.rs 仅用于归档/超量回收整个 Worktree 时的单次暂存，不绑定任何对话轮次"], "advice": "在 aiwb-git 基于临时索引与 refs/aiwb/checkpoints/<session>/<turn> 实现逐轮快照，在 TurnAnchor 挂接双模回退并自动回填草稿与附件。", "refs": [{"repo": "t3code", "path": "apps/server/src/checkpointing/CheckpointStore.ts"}, {"repo": "t3code", "path": "apps/server/src/orchestration-v2/CheckpointCaptureService.ts"}, {"repo": "t3code", "path": "apps/server/src/orchestration-v2/CheckpointRollbackService.ts"}, {"repo": "t3code", "path": "apps/server/src/orchestration-v2/CheckpointRestoreSafety.ts"}, {"repo": "t3code", "path": "apps/web/src/components/chat/useTimelineRewind.ts"}, {"repo": "aiwb", "path": "crates/aiwb-git/src/snapshot.rs"}]}, {"id": "or-02", "domain": "orchestration", "type": "weaker", "priority": "P0", "risk": true, "title": "持久化副作用 Outbox、写命令幂等回执与子任务汇报落库", "essence": "子任务待唤醒汇报纯驻内存，Daemon 崩溃或升级重启会永久丢失子任务完成通知；写 RPC 无幂等去重", "t3": ["EventSink 单事务原子提交：CommandReceipt（commandId 幂等防重）+ 事件流 + 投影表 + EffectOutbox（租约抢占与退避重试）", "适配器异步写路径全部带世代号 CAS 守卫（writeIfRunCurrent 等），杜绝旧进程残余事件篡改新轮次", "子任务委托完成状态机（pending -> claimed -> acknowledged -> delivered）完整落库，重启后自动续投"], "aiwb": ["services/subtasks/reports.rs 中待回报队列纯驻内存（docs/agent-orchestration.md 亦确认为已知限制），重启即永久丢失", "写操作 RPC 无 commandId 持久化回执，网络闪断重试存在重复入队风险"], "advice": "在 aiwb-store 新增 subtask_reports 持久化表与轻量 command_receipts 去重表，消除后台升级/重启导致的子任务失联。", "refs": [{"repo": "t3code", "path": "apps/server/src/orchestration-v2/EventSink.ts"}, {"repo": "t3code", "path": "apps/server/src/orchestration-v2/EffectOutbox.ts"}, {"repo": "t3code", "path": "apps/server/src/orchestration-v2/CommandReceiptStore.ts"}, {"repo": "aiwb", "path": "crates/aiwb-daemon/src/services/subtasks/reports.rs"}, {"repo": "aiwb", "path": "crates/aiwb-daemon/src/runtime.rs"}]}, {"id": "or-03", "domain": "orchestration", "type": "weaker", "priority": "P1", "risk": false, "title": "崩溃/更新重启恢复、失效提问卡降级续答与两级强制停止（Force Stop）", "essence": "重启后未答提问卡直接锁死报废、中断任务无一键续跑；Agent 忽略普通中断时缺安全进程强杀", "t3": ["进程退出后未答复的提问卡自动降级为 message 续答模式，用户仍可在原卡点选答案并自动作为新消息唤醒会话", "未获 CLI 受理的轮次自动回退为 queued 保活；版本升级重启后 RestartContinuation 自动注入继续指令（上限 3 次防环）", "提供 Stop -> Force Stop 二级停止：普通中断超时未响应时强杀进程组，同时识别共享 app-server 的兄弟线程避免误伤"], "aiwb": ["settle_interrupted 启动时将所有未完会话一律标 Stopped，expire_prompts 将未决提问卡硬写为「已失效」拒收作答", "仅有单级 interrupt，遇到底层 CLI 卡死忽略中断信号时无法从界面安全强杀单个会话进程"], "advice": "将重启后失效提问卡改为「点选后作为新轮次消息发出」，记录更新前活跃任务供重启一键续跑，并补充带超时升级的 Force Stop。", "refs": [{"repo": "t3code", "path": "apps/server/src/orchestration-v2/ProviderRuntimeRecoveryService.ts"}, {"repo": "t3code", "path": "apps/server/src/orchestration-v2/RestartContinuation.ts"}, {"repo": "t3code", "path": "packages/contracts/src/orchestrationV2.ts"}, {"repo": "aiwb", "path": "crates/aiwb-daemon/src/runtime/prompts.rs"}, {"repo": "aiwb", "path": "crates/aiwb-daemon/src/runtime.rs"}]}, {"id": "or-04", "domain": "orchestration", "type": "weaker", "priority": "P1", "risk": false, "title": "任意历史轮次分叉（Point-in-Time Fork）、侧聊结论合入主线（Merge Back）与交接反查", "essence": "只能在主任务空闲且仅从末尾全量分叉；侧边对话无法切换其他 Agent/模型，也无法一键把结论带回主线", "t3": ["支持从时间线任意历史轮次或 Checkpoint 分叉（即使主线程后续轮次仍在运行），可同步带出对应时刻的文件快照", "Side Chat 支持切换任意 Provider/Model 持久探索，顶栏提供 Bring back（thread.merge_back）一键将结论结构化注入主会话", "跨 Agent 交接按 32K token 裁切时附带 omittedItemIds，目标 Agent 可调 t3_thread_read 按需反查被省略的早期细节"], "aiwb": ["fork_task 要求源任务必须空闲且只能从最新末尾复制；handoff 超过 16K token 的早期历史直接丢弃无反查索引", "Side Chat 仅限支持原生分叉的 Codex/Claude（重启清空、不可换模型），得出结论后无一键带回主对话入口"], "advice": "在 TurnAnchor 增加「从此处分叉」，为 SideChatView 顶栏增加「将结论带回主输入框/主会话」动作，并在交接文本末尾附源会话 MCP 读取指引。", "refs": [{"repo": "t3code", "path": "apps/server/src/orchestration-v2/ThreadForkService.ts"}, {"repo": "t3code", "path": "apps/server/src/orchestration-v2/ContextHandoffDelivery.ts"}, {"repo": "t3code", "path": "apps/web/src/components/chat/SideChatPane.tsx"}, {"repo": "aiwb", "path": "crates/aiwb-daemon/src/services/handoff.rs"}, {"repo": "aiwb", "path": "crates/aiwb-daemon/src/services/side.rs"}]}, {"id": "or-05", "domain": "orchestration", "type": "weaker", "priority": "P1", "risk": true, "title": "内部编排 MCP 纵深、Claude 命令行 Token 明文泄露修复与 ACP stdio 桥接", "essence": "Claude 启动参数明文暴露 MCP Bearer Token；缺同步 wait、父子级联停止、NewThread 接线与延迟工具暴露", "t3": ["ClaudeAdapterV2 绝不在命令行传 --mcp-config，待初始化后经私有 stdin 发送 setMcpServers 动态下发鉴权头（单测强断言防泄露）", "内置 14 个 MCP Toolkit（含同步 t3_thread_wait、会话自助切 Worktree、全文搜会话、浏览器操控、PR 值守与密钥请求），并用 tool_search 延迟加载省上下文", "停止父线程自动递归终止全部子委托任务；内置 AcpMcpStdioBridge 兼容仅支持 stdio MCP 的 ACP Agent"], "aiwb": ["安全隐患：claude/command.rs:94-105 将含 Bearer Token 的 JSON 明文拼进 --mcp-config 进程参数，本机同用户进程可读进程表窃取", "仅 7 个基础子任务工具（缺同步 wait、停止父任务不级联停子任务）；acp/runtime.rs 仅传 http MCP；runtime.rs:345 静默丢弃 NewThread 事件"], "advice": "立即将 Claude 工作台 MCP 改为 stdin 控制协议注入（或 0600 临时文件），补齐父停子级联取消、aiwb_subtask_wait、ACP stdio 桥接并打通 NewThread。", "refs": [{"repo": "t3code", "path": "apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts"}, {"repo": "t3code", "path": "apps/server/src/mcp/McpToolExposure.ts"}, {"repo": "t3code", "path": "apps/server/src/mcp/AcpMcpStdioBridge.ts"}, {"repo": "aiwb", "path": "crates/aiwb-agents/src/claude/command.rs"}, {"repo": "aiwb", "path": "crates/aiwb-daemon/src/mcp/sessions.rs"}, {"repo": "aiwb", "path": "crates/aiwb-daemon/src/runtime.rs"}]}, {"id": "or-06", "domain": "orchestration", "type": "missing", "priority": "P1", "risk": false, "title": "限额耗尽自动挂起续跑（Usage Limit Recovery）与 Claude 缓存保温自动压缩", "essence": "触发 5h/周配额上限后直接报错停摆，无法自动等到重置点续跑；Claude 长会话缓存过期后重算成本高", "t3": ["UsageLimitRecoveryWorker 解析限流错误中的精确重置时间（≤24h，含 DST 修正与 +1min 缓冲），自动挂起并在重置后发 Continue 续跑", "UsageLimitRecoveryBanner 在对话内展示重置倒计时，支持全局默认或单会话一键开关自动续跑", "IdleCompactionService 追踪 Claude Prompt Cache TTL，支持在缓存即将过期前（beforeCacheExpires）用热缓存低成本自动执行 /compact"], "aiwb": ["仅在 GoalStatusBar 标记 usageLimited 状态，无重置时间自动唤醒续跑调度器", "仅 30 分钟空闲释放 CLI 进程，无 Claude Prompt Cache 过期前保温自动压缩策略"], "advice": "结合已有的订阅额度 resetsAt 解析，在 daemon 补齐限额触发后的定时自动续跑任务（特别利好 /goal 长任务），并为 Claude 提供可选热缓存压缩。", "refs": [{"repo": "t3code", "path": "apps/server/src/orchestration-v2/UsageLimitRecoveryWorker.ts"}, {"repo": "t3code", "path": "apps/web/src/components/chat/UsageLimitRecoveryBanner.tsx"}, {"repo": "t3code", "path": "apps/server/src/orchestration-v2/IdleCompactionService.ts"}, {"repo": "aiwb", "path": "crates/aiwb-daemon/src/runtime.rs"}]}, {"id": "or-07", "domain": "orchestration", "type": "missing", "priority": "P1", "risk": true, "title": "持久化定时任务调度与安全本地 Webhook 触发管线", "essence": "无法在工作台内设置每日代码巡检、定时构建修复，或由本地 Git Hook / CI 脚本经 Webhook 触发会话", "t3": ["SQLite 持久化调度器支持 interval（≥60s）、fixed_time（含 10min 离线错过宽限期防开机补跑风暴）、once 与 webhook 四类触发", "支持开新线程（可选自动建 Worktree）、续写绑定线程（在途未完自动防堆积跳过）或同线程新上下文（fresh_session），并暴露给 Agent MCP 自建", "Webhook 路由内置常数时间 HMAC-SHA256 验签、7 天重放键、合并窗口、JSON 路径过滤，并用随机标签与零宽符隔离外部载荷防提示词注入"], "aiwb": ["前后端均无定时任务表、Cron/间隔调度器、Webhook 端点或自动化管理界面"], "advice": "在 aiwb-store 与 aiwb-daemon 先落地持久化定时任务（含开机防风暴宽限期与 Worktree 隔离执行），二期按需开放带 HMAC 验签的本地回环/局域网 Webhook。", "refs": [{"repo": "t3code", "path": "apps/server/src/scheduling/Scheduler.ts"}, {"repo": "t3code", "path": "apps/server/src/scheduledTasks/ScheduledTaskService.ts"}, {"repo": "t3code", "path": "apps/server/src/scheduledTasks/webhookRoute.ts"}, {"repo": "t3code", "path": "apps/web/src/components/settings/ScheduledTasksSettings.tsx"}]}, {"id": "ch-01", "domain": "chat", "type": "weaker", "priority": "P0", "risk": true, "title": "聊天代码块增量语法高亮、流式分块缓存与 Shell 运行注入防护", "essence": "AIWB 聊天代码块纯黑白无高亮且流式每帧全量重解析；未闭合代码块即可点运行且未过滤 BiDi/控制字符注入", "t3": ["Shiki LRU 缓存（500 条/50MB）+ 流式按行增量分词器，并用 unbash 对 bash 内的 python -c / node -e / Heredoc 做嵌套跨语言高亮", "splitMarkdownBlocks 闭合块切分 memo + 围栏增量克隆，流式输出仅重解析尾部活跃块，长回答零卡顿", "Shell 运行按钮四重门控：围栏必须已闭合、限定 Shell 语言、非续行符结尾、拦截 /[\\p{Cc}\\p{Cf}]/u 控制与 BiDi 隐形注入字符"], "aiwb": ["MarkdownBody.tsx 的 CodePre 为纯黑白 <pre><code> 无任何语法高亮；流式每帧全量重跑 marked Lexer", "安全隐患：流式半截未闭合 ```bash 块已暴露「运行」按钮，且 terminal-runs.ts 未过滤控制/BiDi 字符直接拼 \\r 回车执行"], "advice": "立即为代码块运行按钮补齐围栏闭合校验与隐形字符拦截（改用 bracketed paste）；接入闭合块 memo 切分与异步/流式语法高亮。", "refs": [{"repo": "t3code", "path": "apps/web/src/components/chat/MarkdownCodeBlock.tsx"}, {"repo": "t3code", "path": "apps/web/src/components/chat/ShellCommandBlock.tsx"}, {"repo": "t3code", "path": "apps/web/src/components/chat/markdownStreamBlocks.ts"}, {"repo": "aiwb", "path": "src/shared/markdown/MarkdownBody.tsx"}, {"repo": "aiwb", "path": "src/shared/markdown/blocks.ts"}, {"repo": "aiwb", "path": "src/features/panel/terminal/terminal-runs.ts"}]}, {"id": "ch-02", "domain": "chat", "type": "weaker", "priority": "P0", "risk": true, "title": "排队消息独立草稿槽隔离与并发自动出队逃生恢复", "essence": "编辑排队消息会直接覆盖冲掉当前输入框未发草稿，按 Esc 直接清空，且后台自动出队时编辑态失步报错", "t3": ["开辟独立草稿槽 queued-edit:<thread>:<runId> 并支持排队重排（reorder），编辑排队项绝不触碰主输入框未发草稿", "ExitWatch 实时监听队列：若编辑途中前序回合结束导致该项自动开跑，已改稿自动抢救转存回主草稿并提示用户"], "aiwb": ["composer-run.ts::beginComposerEdit 直接 setText 覆盖主输入框导致原未发草稿与附件丢失，cancelComposerEdit 直接清空为 \"\"", "编辑期间若该排队项被消费出队，提交时直接报错「这条排队消息已经不在队列里」"], "advice": "在 composer-drafts 中隔离主草稿与排队编辑槽位（Esc 还原主草稿），监听 queue 变更在目标项出队时自动保护已修改文本。", "refs": [{"repo": "t3code", "path": "packages/client-runtime/src/queuedRunEdit.ts"}, {"repo": "t3code", "path": "apps/web/src/components/chat/useQueuedRunEdit.ts"}, {"repo": "aiwb", "path": "src/features/chat/composer/composer-run.ts"}, {"repo": "aiwb", "path": "src/features/chat/composer/QueueStrip.tsx"}]}, {"id": "ch-03", "domain": "chat", "type": "weaker", "priority": "P0", "risk": false, "title": "统一内联上下文 Chips、跨会话剪贴板迁移与误删 Ctrl+Z 恢复", "essence": "代码/评论摘录只能排在框外并强拼到消息末尾，已发气泡展开成大段原始围栏，且误删片段无法撤销", "t3": ["11 类强类型 Context Record 以内联锚点嵌入正文任意位置，输入框与已发用户气泡共用紧凑可点开预览的交互式 Chip", "支持侧栏拖入 @thread 会话引用、自定义剪贴板 MIME 跨会话复制粘贴整套 Chip，以及删除 Chip 后内存挽留载荷配合 Ctrl+Z 无损恢复"], "aiwb": ["正文内仅支持 @file 与 $skill；代码选区与评论只能挂在框顶 TextSnippets，发送时粗暴拼接到末尾并在气泡中全量展开", "不支持 @会话 上下文引用、跨会话带载荷粘贴或 Ctrl+Z 恢复已移除的摘录卡片"], "advice": "复用 file-refs.ts 原子光标机制支持正文中内联锚定上下文片段，在 UserBubble 中将附加上下文折叠为可展开芯片，并保留最近移除项供撤销恢复。", "refs": [{"repo": "t3code", "path": "packages/contracts/src/composerContext.ts"}, {"repo": "t3code", "path": "apps/web/src/components/chat/UserMessageContextChips.tsx"}, {"repo": "t3code", "path": "apps/web/src/components/chat/composerContextUndo.ts"}, {"repo": "aiwb", "path": "src/features/chat/composer/TextSnippets.tsx"}, {"repo": "aiwb", "path": "src/features/chat/events/UserBubble.tsx"}]}, {"id": "ch-04", "domain": "chat", "type": "missing", "priority": "P1", "risk": false, "title": "多 Agent / 多模型并行 Worktree 扇出（Shift 多选）与 @model 内联提及", "essence": "虽主打本地多 Agent 工作台，但新建任务无法一键将同一 Prompt 并行派发给多个 Agent/模型各自开 Worktree 对比", "t3": ["新建草稿在模型选择器按住 Shift 多选跨实例模型，发送时并发为每个模型分配独立 Git Worktree 并执行初始化脚本", "内置幂等提交锁防止超时重发建重复 Worktree，部分失败时仅保留失败项并提供一键恢复草稿 Toast", "输入框支持 @model 插入特定模型芯片，供主 Agent 委派子任务时直接读取目标模型"], "aiwb": ["ModelMenu 与 use-new-composer.ts 仅支持单选单个 Agent 与模型创建单条任务，无并行扇出与 @model 语法"], "advice": "在 NewSessionView 的 ModelMenu 支持 Shift+Click 跨 Agent 多选（如 Codex + Claude），提交时并发调用 tasks.create(worktree: true) 生成同源对比任务组。", "refs": [{"repo": "t3code", "path": "apps/web/src/components/chat/useMultipleModelSend.ts"}, {"repo": "t3code", "path": "packages/client-runtime/src/composerModelMentions.ts"}, {"repo": "aiwb", "path": "src/features/workspace/new/use-new-composer.ts"}, {"repo": "aiwb", "path": "src/features/chat/composer/ModelMenu.tsx"}]}, {"id": "ch-05", "domain": "chat", "type": "missing", "priority": "P1", "risk": false, "title": "Prompt Stash 暂存栈（Mod+S）、空框 ↑↓ 历史回溯与 Ghost Tab 预测补全", "essence": "写长提示词中途想先插一句短指令时无法暂存压栈；空输入框按 ↑ 无法找回已发提问", "t3": ["按 Mod+S 将当前草稿、图片与上下文压入最多 20 条的持久化暂存栈后清空输入框；空框再按 Mod+S 一键弹出或选单恢复", "空框首行按 ArrowUp/ArrowDown 翻阅本会话已发用户提问（自动剥离系统包装并还原芯片）", "订阅回合完成后的预测建议（subscribePromptSuggestion），灰字展示并支持 Tab 一键采纳"], "aiwb": ["每会话仅单槽位自动保存草稿（且窗口强关前缺同步 flush），无 Mod+S 多条暂存栈", "composer-keys.ts 未绑定空框上下键历史回溯，也无灰字预测补全"], "advice": "扩展 SQLite draft 表支持最多 20 条会话级/全局 Stash 栈并绑定 Ctrl/Cmd+S；在 composer-keys.ts 补齐空框首行 ↑↓ 历史提问回溯。", "refs": [{"repo": "t3code", "path": "apps/web/src/promptStashStore.ts"}, {"repo": "t3code", "path": "apps/web/src/components/chat/useComposerStash.ts"}, {"repo": "t3code", "path": "apps/web/src/components/chat/composerPromptHistory.ts"}, {"repo": "t3code", "path": "apps/web/src/components/chat/usePromptSuggestion.ts"}, {"repo": "aiwb", "path": "src/features/chat/composer/composer-keys.ts"}]}, {"id": "ch-06", "domain": "chat", "type": "weaker", "priority": "P1", "risk": true, "title": "审批/提问 1.5s 打字防误触护栏、输入框 Esc 误拒修复、答题防丢稿与子任务审批冒泡", "essence": "在输入框按 Esc 会直接误拒刚弹出的待批请求！切会话丢答题进度，且子任务卡在审批时无法在父会话原地代批", "t3": ["composerTypingGuard 在输入框最近 1500ms 有打字动作时冻结新到达审批的快捷键，彻底杜绝盲打瞬间误批/误拒", "全局持久化每题答题草稿与单题附图，回合取消/超时自动将未发答案抢救回主草稿；ChildThreadApprovals 将子任务审批冒泡至父输入框上方", "ProposedPlanCard 超 20 行自动折叠预览，支持复制、下载 .md 与一键保存到工作区指定路径"], "aiwb": ["交互 Bug：approval-keys.ts:24 在检查 inField 前直接判 Escape -> deny，用户在输入框按 Esc 会把刚弹出的审批或计划卡直接拒掉，且无打字冷却护栏", "QuestionPopup 答题进度存局部 useState（切会话即丢）；长计划全文铺开无折叠/保存文件；子任务待审批不会冒泡到父会话"], "advice": "立即修复 approval-keys.ts（inField 时忽略 Esc）并加 1.5s 打字护栏；将答题草稿迁入会话 store，支持子任务审批穿透到父会话输入区上方。", "refs": [{"repo": "t3code", "path": "apps/web/src/components/chat/composerTypingGuard.ts"}, {"repo": "t3code", "path": "apps/web/src/pendingUserInput.ts"}, {"repo": "t3code", "path": "apps/web/src/components/chat/ChildThreadApprovals.tsx"}, {"repo": "t3code", "path": "apps/web/src/components/chat/ProposedPlanCard.tsx"}, {"repo": "aiwb", "path": "src/features/chat/events/approval-keys.ts"}, {"repo": "aiwb", "path": "src/features/chat/events/QuestionPopup.tsx"}]}, {"id": "ch-07", "domain": "chat", "type": "weaker", "priority": "P1", "risk": false, "title": "大文本粘贴自动转附件（>=32KiB）、Web 同构贴图、2000px 自动缩图与暂存清理", "essence": "粘贴几十 KB 日志直接塞爆输入框；网页预览模式无法贴图；超 2000px 大图未压缩易触发上游 API 多图拒收", "t3": ["粘贴文本 >=32KiB 或超长时自动转为 pasted-text.txt 附件 Chip（支持 Ctrl/Cmd+Shift+V 强制原样粘贴）", "图片最长边自动压缩至 <=2000px（规避 Anthropic 多图尺寸硬报错）并支持 HEIC 解码；服务端 attachmentStore 使桌面与 Web 附图 100% 同构且定时清理过期文件"], "aiwb": ["大段粘贴文本原样塞入 textarea；stage-image.ts 硬编码非 Tauri 抛错「粘贴图片只能在桌面版里用」", "图片不做尺寸压缩直传 CLI，且 staged-images 目录永久累积无过期回收"], "advice": "在 onPaste 检测 >=32KiB 文本自动折叠为附件/片段；将图片暂存与读取下沉至 aiwb-daemon 实现桌面/Web 同构，并补齐 >2000px 缩放与定时清扫。", "refs": [{"repo": "t3code", "path": "packages/client-runtime/src/textPaste.ts"}, {"repo": "t3code", "path": "apps/server/src/attachmentStore.ts"}, {"repo": "t3code", "path": "apps/web/src/components/chat/useComposerAttachmentIntake.ts"}, {"repo": "aiwb", "path": "src/lib/native/stage-image.ts"}, {"repo": "aiwb", "path": "src-tauri/src/features/images/mod.rs"}]}, {"id": "ch-08", "domain": "chat", "type": "weaker", "priority": "P1", "risk": false, "title": "时间线鱼眼刻度导轨（Minimap）、滚动位置记忆、跨块选区保护与全历史穿透查找", "essence": "长对话缺右侧快速跳轮导轨与悬浮回底按钮、切会话丢阅读位置；页内查找强制全量去虚拟化且搜不到折叠块与早期分页", "t3": ["TimelineMinimap 右侧鱼眼刻度条（零重渲染写 dataset.inView，悬停预览问答摘要，一键上下跳轮）+ LRU 记忆 100 个会话精确阅读位置", "监听 selectionchange 锁定选区跨越的首尾虚拟行不卸载，并支持 4 档工具调用可见性（含一键隐藏成功工具与 zen 极简阅读）", "会话查找前后端联动检索全量历史：自动分页补拉、beforematch 自动展开折叠块、CSS.highlights 视口二分染色零 DOM 拆分"], "aiwb": ["无右侧回合刻度条、无脱离底部悬浮按钮、切回会话总是重置贴底；跨超过 2 回合拖选会被虚拟器卸载打断选区", "use-thread-find.ts 置 revealAll: true 全量挂载 DOM 并拆分文本插 <mark>，且搜不到收起的 TurnProcess 与未加载的早期历史"], "advice": "补齐悬浮「回到底部」按钮、每会话滚动锚点 LRU、右侧回合刻度条与选区行驻留保护；将查找升级为 daemon 全文匹配 + CSS.highlights 渲染。", "refs": [{"repo": "t3code", "path": "apps/web/src/components/chat/TimelineMinimap.tsx"}, {"repo": "t3code", "path": "apps/web/src/components/chat/useTimelinePositionRestore.ts"}, {"repo": "t3code", "path": "apps/web/src/components/chat/useThreadFind.ts"}, {"repo": "aiwb", "path": "src/features/chat/timeline/ChatView.tsx"}, {"repo": "aiwb", "path": "src/features/chat/find/use-thread-find.ts"}]}, {"id": "ch-09", "domain": "chat", "type": "weaker", "priority": "P1", "risk": false, "title": "科学排版渲染（LaTeX 数学公式、Mermaid 架构图）与可缩放平移图片灯箱", "essence": "聊天区不支持渲染数学公式与 Mermaid 流程图，且图片灯箱无法滚轮放大查看高清架构图细节", "t3": ["按需懒加载 KaTeX（trust: false，自动转义裸 % 重试）与 Mermaid（图表/源码一键切换、双重 DOMPurify 清洗、查找时自动翻回源码）", "ZoomableImage 灯箱支持 1x–8x 滚轮定点缩放与拖拽平移，本地生成图修改后按 workspaceMutationId 自动破缓存刷新"], "aiwb": ["MarkdownBody 将公式与 ```mermaid 代码块一律当纯文本渲染", "ImageLightbox.tsx 仅支持静态原尺寸适应窗口与左右翻页，不支持滚轮缩放/平移，也不支持音视频内联播放"], "advice": "在 MarkdownBody 对已闭合 mermaid 块懒加载渲染 SVG（保留看源码切换）并按需接入 KaTeX；为 ImageLightbox 增加滚轮缩放与指针平移。", "refs": [{"repo": "t3code", "path": "apps/web/src/components/chat/MarkdownMath.tsx"}, {"repo": "t3code", "path": "apps/web/src/components/chat/MarkdownMermaidCodeBlock.tsx"}, {"repo": "t3code", "path": "apps/web/src/components/chat/ZoomableImage.tsx"}, {"repo": "aiwb", "path": "src/shared/markdown/MarkdownBody.tsx"}, {"repo": "aiwb", "path": "src/features/chat/answer/ImageLightbox.tsx"}]}, {"id": "ch-10", "domain": "chat", "type": "weaker", "priority": "P1", "risk": false, "title": "选区双向引用溯源（Assistant Citations 跨页回跳脉冲高亮）", "essence": "拖选回答写回复仅存纯文本，发出后无法点击引用卡跳回原消息上下文定位核对", "t3": ["选区回复自动记录 messageId、UTF-16 偏移与前后 32 字锚点（公式自动扩展完整 TeX），渲染为结构化 Citation Chip", "点击引用卡自动循环向上加载历史分页、展开折叠回合，并用 CSS.highlights 播放 2.6s 双脉冲精准高亮原文"], "aiwb": ["chat-selection.ts 仅生成标题固定为「对话」的纯文本摘录，丢弃了 event.id 与字符偏移，发出后退化为普通 > 引用块无法回跳"], "advice": "在 TextSnippet 记录源 eventId 与文本锚点，点击已发消息引用块时自动滚动（必要时拉取更早分页并展开回合）脉冲高亮对应段落。", "refs": [{"repo": "t3code", "path": "packages/contracts/src/assistantCitations.ts"}, {"repo": "t3code", "path": "apps/web/src/components/chat/citationProcedure.ts"}, {"repo": "aiwb", "path": "src/features/chat/timeline/chat-selection.ts"}]}, {"id": "ch-11", "domain": "chat", "type": "missing", "priority": "P1", "risk": true, "title": "对话内联交互式 HTML 渲染（Visual Replies: html_preview + html_render）", "essence": "Agent 无法在回答流中直接嵌入自适应明暗主题的可交互图表/原型微界面，只能写文件让用户去右侧打开", "t3": ["工作台 MCP 提供 html_preview（无头浏览器截图自检高度与报错）与 html_render（拦截 vh 死循环、内联本地图片），在对话流原位渲染 HtmlRenderFrame", "强制无 allow-same-origin 不透明源沙箱 + Content-Security-Policy: sandbox 头，实时注入宿主主题 CSS 变量并支持 0.5x–2x 弹窗检视"], "aiwb": ["无内联 HTML 渲染工具与沙箱卡片；且右侧面板 html 预览在 Tauri 下递归开放整个项目根给 asset.localhost，同项目机密文件有被脚本读取风险"], "advice": "在内部编排 MCP 增加轻量 aiwb_html_render 工具，用无 allow-same-origin 的强隔离 sandbox iframe 内联渲染可视化卡片并同步 --wb-* 主题变量。", "refs": [{"repo": "t3code", "path": "apps/server/src/htmlRender/HtmlRender.ts"}, {"repo": "t3code", "path": "apps/web/src/components/chat/HtmlRenderFrame.tsx"}, {"repo": "aiwb", "path": "src/features/panel/viewers/html.tsx"}, {"repo": "aiwb", "path": "src-tauri/src/features/preview/browser.rs"}]}, {"id": "ch-12", "domain": "chat", "type": "weaker", "priority": "P2", "risk": false, "title": "富文本与代码块 Composer 编辑内核（代码围栏高亮/Tab 缩进/列表续行）", "essence": "原生 textarea 在编写含多段代码块与嵌套列表的复杂工程提示词时缺块内缩进、高亮与符号成对包裹", "t3": ["基于 Tiptap 构建三坐标系双向同步，光标移入样式区自动展开 Markdown 定界符，路径下划线免斜体误伤", "框内 ```lang 代码块支持 40 种语言实时 Shiki 高亮、Tab/Shift+Tab 多行缩进、内嵌反引号自动扩长围栏、列表自动续行与选区括号包裹"], "aiwb": ["ComposerInput.tsx 采用原生 <textarea> + 透明镜像层染色 @file/$skill，轻量快启但无代码块缩进/高亮、列表续行与符号包裹"], "advice": "保持轻量启动前提下，可在 textarea 键盘层先补齐选区括号/反引号包裹、列表回车续行及代码围栏内 Tab 缩进。", "refs": [{"repo": "t3code", "path": "apps/web/src/components/ComposerPromptEditorTiptap.tsx"}, {"repo": "t3code", "path": "apps/web/src/composer-code-block.ts"}, {"repo": "t3code", "path": "apps/web/src/composer-list-continuation.ts"}, {"repo": "aiwb", "path": "src/features/chat/composer/ComposerInput.tsx"}]}, {"id": "ch-13", "domain": "chat", "type": "missing", "priority": "P2", "risk": false, "title": "语音输入与口述代码净化全链路（本地 GGUF / 云端 STT + 技术词典 + LLM 清理）", "essence": "完全无语音听写输入及针对代码标识符、口语犹豫词和口头改口的智能转写净化", "t3": ["AudioWorklet 16kHz 重采样流式上传，跨切会话不断录音，转写失败保留音频一键重试", "双推理后端：本地离线 transcribe-cpp（37 款 Q8_0 GGUF 模型 + Silero VAD，GPU 异常自动切 CPU 重放）或 OpenAI/xAI/OpenRouter ZDR 云端识别", "三阶后处理：项目文件名/自定义词典 Soundex 模糊纠错 -> 剥离口头犹豫词 -> 结合光标上下文消解口头改口"], "aiwb": ["全局无麦克风采集、本地/云端语音识别或热词纠错实现"], "advice": "一期可低成本接入 OpenAI 兼容 Whisper API + 16kHz WebAudio 录音快捷键 + 当前仓库文件名热词提示，二期再按需评估本地离线模型。", "refs": [{"repo": "t3code", "path": "apps/server/src/speech/SpeechService.ts"}, {"repo": "t3code", "path": "apps/server/src/speech/customWords.ts"}, {"repo": "t3code", "path": "apps/server/src/speech/postProcessing.ts"}, {"repo": "t3code", "path": "packages/client-runtime/src/voice-input/controller.ts"}]}, {"id": "ws-01", "domain": "workspaces", "type": "missing", "priority": "P0", "risk": false, "title": "全局跨项目会话正文全文检索（SQLite FTS5 Trigram 索引与片段直达）", "essence": "侧栏无搜索框，命令面板仅能搜会话标题，历史讨论过的报错栈、方案或命令完全无法跨会话检索", "t3": ["SQLite 建立 fts5(tokenize='trigram') 消息索引表，落定消息实时入库（自动跳过流式半截与已回退轮次，兼容中日韩字符）", "结合词首/紧邻加权、14 天指数时间衰减与历史点选记忆排序", "侧栏搜索框与 CommandPalette 同步展示带角色标签的高亮上下文摘要，点击直跳目标会话并自动定位高亮命中词"], "aiwb": ["SQLite 无 FTS5 索引，侧栏无搜索入口；CommandMenu 仅在前端内存对 task.title 做简单子串/前缀过滤"], "advice": "在 aiwb-store 新增基于 FTS5 trigram 的消息检索表，在侧栏顶部与 Ctrl+K 面板打通跨项目正文检索与页内高亮直达。", "refs": [{"repo": "t3code", "path": "apps/server/src/orchestration-v2/messageSearchIndex.ts"}, {"repo": "t3code", "path": "apps/server/src/orchestration-v2/ThreadSearch.ts"}, {"repo": "t3code", "path": "apps/web/src/components/CommandPaletteThreadItems.tsx"}, {"repo": "aiwb", "path": "crates/aiwb-store/src/migrations.rs"}, {"repo": "aiwb", "path": "src/features/command-menu/commands.ts"}]}, {"id": "ws-02", "domain": "workspaces", "type": "weaker", "priority": "P0", "risk": true, "title": "已归档会话管理面板缺失与侧栏高频操作 5s 撤销（Undo）闭环", "essence": "右键点归档后会话在全应用无列表可看、点开也无「取消归档」按钮，误点归档近乎不可逆失联", "t3": ["提供独立 ArchivedThreadsPanel 按项目分组浏览归档会话，支持单条取消归档、单条删除与一键清空", "归档/Settle/Snooze/取消置顶后底部弹出 SidebarThreadUndoNotice 支持一键 Undo，带并发状态冲突校验防误覆盖"], "aiwb": ["断头路缺陷：session-partition.ts 与看板过滤全部归档任务，设置页与侧栏均无「已归档列表」；即便凭记忆在 Ctrl+K 搜标题打开，聊天页也无取消归档入口", "sidebar-notice.ts 仅弹 4s 纯文本提示，无撤销回调"], "advice": "立即补齐「已归档对话」浏览恢复面板、归档会话顶栏「取消归档」横幅，并为侧栏归档/置顶等操作加上 5 秒 Undo 按钮。", "refs": [{"repo": "t3code", "path": "apps/web/src/components/settings/ArchivedThreadsPanel.tsx"}, {"repo": "t3code", "path": "apps/web/src/components/sidebar/SidebarThreadUndoNotice.tsx"}, {"repo": "aiwb", "path": "src/features/sidebar/sessions/session-partition.ts"}, {"repo": "aiwb", "path": "src/features/sidebar/sidebar-notice.ts"}]}, {"id": "ws-03", "domain": "workspaces", "type": "missing", "priority": "P1", "risk": false, "title": "版本化项目配置（类 t3.json）、Worktree 初始化钩子与顶栏快捷脚本栏", "essence": "新建 Worktree 后无法自动跑 pnpm install 等环境准备脚本，顶栏也无一键启动项目常用命令的按钮", "t3": ["仓库根 t3.json 支持声明共享脚本、默认 Worktree 模式、子模块与 sparse-checkout 路径及项目图标配色", "ProjectSetupScriptRunner 在真实 PTY 执行生命周期钩子（runOnWorktreeCreate 支持阻塞等装完依赖再起 Agent、runOnSettle 清理、autoOpenPreview）", "顶栏 ProjectScriptsControl 一键运行常用脚本（智能复用空闲终端）并自动生成可绑快捷键的 script.<id>.run 命令"], "aiwb": ["虽已支持 .worktreeinclude 拷贝忽略文件，但完全无项目配置文件、无 Worktree 创建后自动脚本钩子、无顶栏项目快捷动作栏"], "advice": "引入可选 .aiwb.json（合并本地项目级设置），支持新建 Worktree 后首次经用户批准自动在内置 PTY 跑 setup 脚本，并在顶栏提供快捷运行按钮。", "refs": [{"repo": "t3code", "path": "packages/contracts/src/t3ProjectFile.ts"}, {"repo": "t3code", "path": "apps/server/src/project/ProjectSetupScriptRunner.ts"}, {"repo": "t3code", "path": "apps/web/src/components/ProjectScriptsControl.tsx"}, {"repo": "aiwb", "path": "crates/aiwb-git/src/include.rs"}]}, {"id": "ws-04", "domain": "workspaces", "type": "weaker", "priority": "P1", "risk": true, "title": "Worktree 异步五阶段进度卡、远端 origin 基分支拉取与 CoW 检出加速", "essence": "建 Worktree 同步阻塞 tasks.create 最长 90s 无进度不可取消，且起点选择器无法拉取远端 origin 最新分支", "t3": ["新建任务立即入库跳转，后台流式推送 fetch -> checkout -> submodules -> setup-script -> agent 五阶段进度卡，支持中途取消、重试或一键退回主目录", "基分支选择器支持 Default (origin) 与先 fetch 远端最新提交再建树，首轮消息发出后自动将临时分支重命名为语义分支名", "维护每仓预热检出缓存，在 APFS/CoW 文件系统上通过 clonefile + 索引 stat 重写秒级克隆含重型依赖的工作树"], "aiwb": ["services/tasks.rs:154 同步等待 create_task_worktree 完成后才返回，大仓库界面卡顿等待且不可中途取消", "WorktreeStartPicker 仅列本地分支（不支持 fetch origin），且新建固定为 --detach 分离头指针无语义分支名"], "advice": "将 Worktree 检出改为创建任务后后台异步阶段流并在时间线顶部渲染可取消/可降级的进度卡；补齐 origin 远端起点与首轮语义分支命名。", "refs": [{"repo": "t3code", "path": "apps/server/src/project/WorktreeSetupTracker.ts"}, {"repo": "t3code", "path": "apps/web/src/components/chat/WorktreeSetupCard.tsx"}, {"repo": "t3code", "path": "apps/server/src/vcs/worktreeCheckoutCache.ts"}, {"repo": "aiwb", "path": "crates/aiwb-daemon/src/services/tasks.rs"}, {"repo": "aiwb", "path": "src/features/chat/composer/WorktreeStartPicker.tsx"}]}, {"id": "ws-05", "domain": "workspaces", "type": "missing", "priority": "P1", "risk": false, "title": "侧栏收件箱流转（Inbox/目录双模、Settled 自动了结、Settle & Advance 与 Snooze）", "essence": "任务仅有活跃与彻底归档隐藏二元态，多项目并发积累后侧栏拥挤，缺半收起货架与定时延后唤醒", "t3": ["支持跨项目统一 Inbox 流（支持多选项目过滤）与传统项目目录树一键切换，分层展示 Pinned / Active / Snoozed / Settled", "PR 合并或闲置超 N 天（1–90 天可配）自动转入底部折叠的 Settled 货架并回收关联终端；快捷键一键 Settle & Advance 批阅完跳下一条", "支持预设或自定义日期时间 Snooze 延后处理，若期间后台 Agent 提问或报错则自动提前举手唤醒"], "aiwb": ["侧栏固定为单模式项目树（每项目展开后平铺全部未归档任务），无 Settled 半收起区、无 Settle & Advance 连续批阅键、无 Snooze 延后唤醒"], "advice": "为任务增加 settled_at 与 snoozed_until 字段，支持闲置自动收起到底部折叠区、快捷键一键了结跳下一待处理项及定时延后提醒。", "refs": [{"repo": "t3code", "path": "apps/web/src/components/Sidebar.logic.ts"}, {"repo": "t3code", "path": "apps/server/src/orchestration-v2/ThreadSettlementService.ts"}, {"repo": "t3code", "path": "apps/web/src/settleAndAdvance.ts"}, {"repo": "t3code", "path": "apps/web/src/components/Sidebar.snooze.ts"}, {"repo": "aiwb", "path": "src/features/sidebar/Sidebar.tsx"}]}, {"id": "ws-06", "domain": "workspaces", "type": "weaker", "priority": "P1", "risk": true, "title": "修复项目「关联多目录」假生效缺陷、独立聊天原地转正与仓库 Favicon 嗅探", "essence": "编辑项目弹窗允许添加多个 folders，但后端除首个目录外全部静默忽略；独立聊天无法原地升级为正式项目", "t3": ["ScratchThreadPromotion 支持将无项目临时对话一键 Turn into project 原地转为正式项目而不改变 cwd 或中断上下文", "ProjectFaviconResolver 自动提取仓库真实 Favicon，并支持 60+ 图标、Emoji、双字母缩写与 18 色调色板区分多项目", "支持项目级独立记忆默认 Agent 实例、模型、权限档位与默认 Worktree 策略"], "aiwb": ["功能断路：EditProjectDialog 允许增删排序多个 project.folders，但后端在 Agent 启动（未传 --add-dir）、文件树、快开与全文搜索中完全忽略 folders[1..]", "独立聊天无法转正为侧栏项目；所有项目均为千篇一律的灰色文件夹图标，无项目级默认参数覆盖"], "advice": "将 project.folders[1..] 自动打通至各适配器 writable_roots（--add-dir）与多根文件树/搜索；补齐独立聊天一键转正与项目图标自定义。", "refs": [{"repo": "t3code", "path": "apps/server/src/project/ScratchThreadPromotion.ts"}, {"repo": "t3code", "path": "apps/server/src/project/ProjectFaviconResolver.ts"}, {"repo": "t3code", "path": "apps/web/src/components/settings/ProjectDefaultsSettings.tsx"}, {"repo": "aiwb", "path": "src/features/sidebar/projects/EditProjectDialog.tsx"}, {"repo": "aiwb", "path": "crates/aiwb-daemon/src/services/projects.rs"}]}, {"id": "ws-07", "domain": "workspaces", "type": "missing", "priority": "P2", "risk": false, "title": "侧栏多选批处理、指针滑扫（Sweep）、自由拖拽排序与文件/目录直投", "essence": "清理十几个旧会话只能逐条右键操作；无法拖文件夹进侧栏建项，也无法把文件直接拖到侧栏某会话行附图", "t3": ["支持 Mod/Shift+Click 多选会话批量归档/删除/重命名标题，以及按住行尾动作钮上下滑扫（Sweep）连续批处理", "置顶区与项目列表支持分数键自由拖拽重排；拖入系统文件夹直接建项目；拖文件到侧栏任意会话行自动跳转并挂入草稿"], "aiwb": ["侧栏仅支持单条操作，置顶与项目顺序固定不可拖拽；文件拖拽仅限当前打开会话的输入框区域"], "advice": "为侧栏会话补齐 Shift/Ctrl 多选批量归档/删除、置顶项拖拽排序，以及拖文件夹建项、拖文件入会话行自动挂载。", "refs": [{"repo": "t3code", "path": "apps/web/src/threadSelectionStore.ts"}, {"repo": "t3code", "path": "apps/web/src/components/Sidebar.drag.ts"}, {"repo": "t3code", "path": "apps/web/src/sidebarPendingFileDropStore.ts"}, {"repo": "aiwb", "path": "src/features/sidebar/sessions/SessionRows.tsx"}]}, {"id": "ws-08", "domain": "workspaces", "type": "weaker", "priority": "P2", "risk": false, "title": "侧栏会话行富状态徽章（草稿/终端/Diff/PR）、150ms 悬停预览卡与行内重命名", "essence": "侧栏行仅显示标题与单一状态点，看不出哪条有未发草稿、跑着终端或改了多少行代码；改名需弹模态框", "t3": ["紧凑展示未发草稿笔标、活跃终端脉冲点（点击直开终端）、代码增删统计（+X -Y）与关联 PR/Issue 徽标", "悬停 150ms 弹出 ThreadHoverCard 预览完整标题、模型、分支与摘要；支持双击/F2 行内改名、手动标回未读与 AI 重生成标题"], "aiwb": ["SessionRow 仅含 Agent 图标、截断标题与状态药丸/时间；重命名必须弹 Dialog，无悬停详情卡与标为未读动作"], "advice": "在 SessionRow 增加未发草稿与活跃终端小指示点、双击/F2 原地编辑标题、右键「标为未读」及轻量悬停信息卡。", "refs": [{"repo": "t3code", "path": "apps/web/src/components/sidebar/SidebarThreadRow.tsx"}, {"repo": "t3code", "path": "apps/web/src/components/ThreadHoverCard.tsx"}, {"repo": "aiwb", "path": "src/features/sidebar/sessions/SessionRow.tsx"}]}, {"id": "ws-09", "domain": "workspaces", "type": "weaker", "priority": "P2", "risk": false, "title": "可视化 Worktree 治理清单面板、自定义存储根目录与 Mod+Shift+T 关闭视图恢复", "essence": "虽有后台快照回收，但前端看不到受管 Worktree 全景清单与状态；误关面板标签/浏览器后无法一键重开", "t3": ["WorktreesSettings 盘点全部受管工作树（分支、脏状态、未推送提交、关联会话/PR），支持批量清理与自定义工作树存储根目录", "closedViewStore 记录最近 20 个已关闭的文件预览与浏览器标签（含行号/URL/视口），按 Mod+Shift+T 原样栈式重开，并支持全局会话前进/后退"], "aiwb": ["设置页仅有两个数字/开关（自动清理 + 保留上限 15），无可视化工作树清单或根目录配置；无前进/后退历史栈与关闭标签恢复"], "advice": "在设置页增加受管工作树与已封存快照可视化列表（支持一键打开目录/清理/改根路径），并在面板状态层维护最近关闭标签栈绑 Ctrl+Shift+T。", "refs": [{"repo": "t3code", "path": "apps/web/src/components/settings/WorktreesSettings.tsx"}, {"repo": "t3code", "path": "apps/web/src/reopenClosedView.ts"}, {"repo": "t3code", "path": "apps/web/src/navigationHistory.ts"}, {"repo": "aiwb", "path": "src/features/settings/useWorktreeSettings.ts"}, {"repo": "aiwb", "path": "src/shared/shell/navigation.ts"}]}, {"id": "gt-01", "domain": "git", "type": "missing", "priority": "P0", "risk": true, "title": "Git 智能分裂动作按钮闭环（Commit / Push / Pull / 发布 / 默认分支保护 / Hook 流）", "essence": "完全没有任何 Git 提交、推送、拉取或冲突检测能力，审阅完 Agent 代码后必须切回终端手动交付", "t3": ["GitActionsControl 根据脏改动与 ahead/behind 自动切换主按钮（Init / Publish / Commit / Commit & Push / Commit, push & PR / Pull --ff-only）", "默认分支写保护：拦截直推 main/master，一键自动生成语义分支名 -> 切新分支 -> 提交 -> 推送 -> 开 PR 并绑定当前会话", "Commit 弹窗支持文件级勾选（--only --pathspec-from-file=- 不破坏原暂存区）、git diff --check 冲突标记拦截、AI 生成提交说明及 GIT_TRACE2 Hook 实时输出流"], "aiwb": ["仅暴露 isRepo/branch/branches/checkout/createBranch 只读与切分支接口，零 Commit/Push/Pull/Init 能力與默认分支防呆保护"], "advice": "在 aiwb-git 与会话顶栏补齐 Git 状态感知分裂按钮（按文件勾选提交、冲突标记拦截、默认分支一键切新分支推送及 gh/glab 快捷建 PR）。", "refs": [{"repo": "t3code", "path": "apps/web/src/components/GitActionsControl.tsx"}, {"repo": "t3code", "path": "apps/web/src/components/GitActionsControl.logic.ts"}, {"repo": "t3code", "path": "apps/server/src/git/GitWorkflowService.ts"}, {"repo": "aiwb", "path": "crates/aiwb-daemon/src/services/projects.rs"}, {"repo": "aiwb", "path": "src/features/chat/composer/GitBranchControl.tsx"}]}, {"id": "gt-02", "domain": "git", "type": "weaker", "priority": "P0", "risk": false, "title": "Diff Worker 语法高亮、两阶段懒加载、Hunk 外全文展开与多维基准/降噪审阅", "essence": "Diff 视图主线程全量渲染且完全无代码语法高亮，超 2MiB 直接报错；缺任意基准分支/单 Commit 对比与隐藏测试文件", "t3": ["基于 @pierre/diffs 2–6 核 Web Worker 池实现精准语法高亮、虚拟滚动与红绿/蓝橙（色盲友好）双色板", "两阶段加载：先秒回全量文件统计树，首屏仅拉前 4 个文件补丁、触底按批增量加载；点击折叠条按需拉取 hunk 外完整原文件上下文", "支持任选 Base 分支、历史 Turn N、单次 Commit 对比，支持 --ignore-all-space、一键隐藏测试文件及大改动自动滑出面板"], "aiwb": ["DiffFileSection.tsx 主线程一次性挂载全部代码行且未接任何语法高亮（纯文本），总 diff 超 2MiB 硬上限直接失败", "fold.ts 仅折叠 patch 内部自带上下文，无法展开拉取 hunk 边界外原文件；范围固定 4 种，不支持任选基准分支、单 Commit 或过滤测试文件"], "advice": "为 Diff 代码行接入 Web Worker 语法高亮与按文件分批懒加载（突破 2MiB 整包上限），补齐 hunk 外原文件上下文拉取、任意基准分支对比与测试文件过滤。", "refs": [{"repo": "t3code", "path": "apps/web/src/components/diffs/StyledDiffCodeView.tsx"}, {"repo": "t3code", "path": "apps/web/src/components/diffs/useReviewFilePatches.ts"}, {"repo": "t3code", "path": "apps/web/src/lib/diffFileContents.ts"}, {"repo": "aiwb", "path": "src/features/panel/diff/DiffFileSection.tsx"}, {"repo": "aiwb", "path": "src/features/panel/diff/scope.ts"}]}, {"id": "gt-03", "domain": "git", "type": "weaker", "priority": "P1", "risk": false, "title": "Turn Diff 剔除外部 pull/merge 污染（listAuthoredPaths）与无锁批量未跟踪文件索引", "essence": "会话中途执行 git pull/merge 会把他人上游改动混入未提交 Diff；未跟踪文件逐个串行起 git 子进程极慢", "t3": ["listAuthoredPaths 遍历 reflog 结合 --diff-merges=remerge 精准扣除会话期间 pull/merge/rebase 带入的上游提交，只展示本轮真实修改", "prepareReviewIndex 克隆临时索引并用 git add -N --pathspec-from-file=- 单次批量接纳最多 5000 个未跟踪文件，零 index.lock 争抢"], "aiwb": ["无外部合入提交路径剥离逻辑", "aiwb-git/src/diff.rs 对每个未跟踪文件在循环中串行拉起独立 git diff --no-index 子进程，生成大量新文件时耗时显著"], "advice": "将 diff.rs 未跟踪文件统计改为临时索引单次 git add -N 批量计算，并在回合范围 Diff 中过滤非本会话产生的合并提交路径。", "refs": [{"repo": "t3code", "path": "apps/server/src/vcs/GitVcsDriver.ts"}, {"repo": "t3code", "path": "apps/server/src/vcs/GitVcsDriverCore.ts"}, {"repo": "aiwb", "path": "crates/aiwb-git/src/diff.rs"}]}, {"id": "gt-04", "domain": "git", "type": "weaker", "priority": "P1", "risk": true, "title": "修复 Diff 行内评论提交后消失与切换统一/分栏布局清空未发草稿缺陷", "essence": "在 Diff 行间点添加评论后代码区看不到已存批注，且撰写中途切换 Unified/Split 布局会直接销毁草稿", "t3": ["AnnotatableCodeView 将草稿与已存评论统一持久锚定在对应 diff 行下方，展开上下文或切换布局后自动重映射还原多行选区", "自动提取带标准 @@ -old +new @@ hunk 头的精确 diff 块，且同一套 UI 同时支持发给本地 Agent 或提交远端 PR Review"], "aiwb": ["漏挂缺陷：SourceView.tsx 挂载了 SavedComment，但 DiffFileSection.tsx 完全漏接 SavedComment，保存后批注在代码行间瞬间消失", "DiffView.tsx:86 监听 presentation 变化强制调 closeComment()，切统一/并排视图无提示丢弃正在写的评论草稿"], "advice": "立即在 DiffFileSection 补挂 useSavedComments / SavedComment 支持原位查看编辑，将编辑态锚点改为按源/目标行号映射以保留切布局草稿。", "refs": [{"repo": "t3code", "path": "apps/web/src/components/diffs/AnnotatableCodeView.tsx"}, {"repo": "t3code", "path": "apps/web/src/reviewCommentContext.ts"}, {"repo": "aiwb", "path": "src/features/panel/diff/DiffFileSection.tsx"}, {"repo": "aiwb", "path": "src/features/panel/diff/DiffView.tsx"}]}, {"id": "gt-05", "domain": "git", "type": "weaker", "priority": "P1", "risk": false, "title": "AI 交互式代码审阅导览（Review Guide Tour 分步切片与零幻觉行号钳制）", "essence": "AIWB 的 /review 仅在聊天流输出静态文字列表，缺少按逻辑顺序带代码切片逐站精读批注的导览面板", "t3": ["在隔离无 Hook 临时检出上生成有序审阅站点（架构脉络 -> 核心逻辑 -> 边界风险），并用真实 git diff -U0 严格钳制行号范围、将漏掉的文件归入兜底站确保 100% 零幻觉零遗漏", "GuideTour 提供左栏进度轨（J/K 跳站）、5 类风险警示横幅、A/B/C 字母角标对应代码行、摘录内直接写批注与一键追问当前站"], "aiwb": ["仅 Codex 支持调原生 review/start 输出静态文本卡片 ReviewBlocks.tsx（Claude/Cursor/Antigravity 均不支持），无代码摘录与分步导览交互"], "advice": "构建跨全 Agent 通用的结构化 Review Guide 模式：由当前模型产出 JSON 审阅站点、aiwb-git 校验钳制 hunk 行号，在右侧面板渲染 J/K 分步导览视图。", "refs": [{"repo": "t3code", "path": "apps/server/src/pullRequest/PullRequestReviewGuideService.ts"}, {"repo": "t3code", "path": "apps/server/src/pullRequest/pullRequestReviewGuideNormalize.ts"}, {"repo": "t3code", "path": "apps/web/src/components/pullRequest/guide/GuideTour.tsx"}, {"repo": "aiwb", "path": "src/features/chat/events/ReviewBlocks.tsx"}]}, {"id": "gt-06", "domain": "git", "type": "weaker", "priority": "P1", "risk": true, "title": "VCS 实时监听广播、自动 Fetch、虚拟化远端分支/#PR 检出与 stderr 凭据脱敏", "essence": "分支菜单仅单次拉本地分支，不支持搜远端分支或输 #PR 号一键检出，且 Git 报错未擦除 URL 内嵌 Token", "t3": ["监听 .git 引用实时推送分支与 ahead/behind，后台静默 fetch；前后台双信号量（8 / 2）隔离防轮询卡死用户操作", "虚拟滚动分支选择器合并本地+远端分支，支持直接输入 #123 或 PR 链接一键检出（含跨仓 Fork PR 自动拉取并跑 setup 脚本）", "redactUrlCredentials 自动擦除 Git stderr 回显的 Basic/Query Token 防止凭据透出到前端报错"], "aiwb": ["branch.rs 仅列本地 refs/heads，无实时监听与自动 fetch；BranchMenu 无虚拟化且不支持按 PR 号检出", "aiwb-git/src/lib.rs 报错直接拼接原始 stderr，未脱敏含凭据的远端 URL"], "advice": "为 aiwb-git 立即补上 stderr URL 凭据正则脱敏与 .git/HEAD 监听广播；扩展分支选择器支持远端分支检出与 #PR 快速拉取。", "refs": [{"repo": "t3code", "path": "apps/server/src/vcs/VcsStatusBroadcaster.ts"}, {"repo": "t3code", "path": "apps/server/src/vcs/GitVcsDriverCore.ts"}, {"repo": "t3code", "path": "apps/web/src/components/BranchPicker.tsx"}, {"repo": "aiwb", "path": "crates/aiwb-git/src/branch.rs"}, {"repo": "aiwb", "path": "crates/aiwb-git/src/lib.rs"}]}, {"id": "gt-07", "domain": "git", "type": "missing", "priority": "P1", "risk": false, "title": "代码托管平台驱动（7 Forges）、原生 PR 工作台与 Stacked PR 级联操作", "essence": "完全无 GitHub/GitLab 等托管层集成与内置 PR 审阅/CI 诊断页，查看失败 Check 或修评审意见需反复切浏览器复制", "t3": ["统一驱动覆盖 GitHub（含 GHES）、GitLab、Bitbucket、Azure DevOps、Forgejo/Gitea、GitCafe、Cursor Origin 7 大平台；克隆遇 SSH 失败自动降级 HTTPS 重试", "原生 PR 收件箱与四栏工作台：ETag 304 免配额轮询 CI、行级评论/Emoji 同步、按文件 Blob 追踪 Viewed/Changed 进度、任一失败 Check 或评论一键送入 Agent 修复", "支持单会话绑定多条 PR 与 Stacked PR 层级推导，提供一键 Merge stack 与自底向上 cascadeRebaseStack 级联变基"], "aiwb": ["零代码托管平台识别、零远端仓库搜索克隆向导、零 PR 状态展示或审阅合并界面"], "advice": "新增轻量 aiwb-forges crate 优先复用本机已登录的 gh / glab CLI，落地会话关联 PR 状态徽章、失败 CI / Review 评论一键送入对话修复及 URL 克隆。", "refs": [{"repo": "t3code", "path": "packages/source-control-definitions/src/registry.ts"}, {"repo": "t3code", "path": "apps/server/src/pullRequest/PullRequestService.ts"}, {"repo": "t3code", "path": "packages/source-control-github/src/server/githubStackRebase.ts"}, {"repo": "t3code", "path": "apps/web/src/components/pullRequest/PullRequestDetailPanel.tsx"}]}, {"id": "gt-08", "domain": "git", "type": "missing", "priority": "P1", "risk": false, "title": "Agent watch_pull_request 零 Token 后台值守唤醒引擎与防死循环熔断", "essence": "Agent 推完 PR 后无法零成本挂起等 CI/Review 结果自动自愈，只能人工盯守或在终端跑 sleep 浪费上下文", "t3": ["Agent 调 watch_pull_request 后立即结束当前轮次零 Token 休眠；后台每 2 分钟先比对轻量指纹，捕获 CI 失败、新评审意见、冲突或移出合并队列共 8 类事件后自动唤醒修复", "内置连续仅评论唤醒上限（10 次）防与外部 Review Bot 死循环互评，连续读失败 8 次或 PR 合并关闭自动解绑"], "aiwb": ["内部 MCP 无任何 PR 绑定或外部异步事件监听唤醒机制"], "advice": "接通 gh/glab 基础层后，在 daemon 内置 MCP 注入 watch_pull_request 工具与后台轮询反应器，打通「提 PR -> 挂起等 CI -> 报错自动唤醒修绿」无人值守闭环。", "refs": [{"repo": "t3code", "path": "apps/server/src/mcp/toolkits/pullRequests/tools.ts"}, {"repo": "t3code", "path": "apps/server/src/orchestration-v2/PullRequestWatchReactor.ts"}, {"repo": "t3code", "path": "apps/server/src/orchestration-v2/pullRequestWatch.ts"}, {"repo": "aiwb", "path": "crates/aiwb-daemon/src/mcp/server.rs"}]}, {"id": "gt-09", "domain": "git", "type": "missing", "priority": "P2", "risk": false, "title": "多源 Issue 追踪收件箱（Linear + 4 家 Forge Issues）与 Issue MCP 工具集", "essence": "无法在工作台内直接筛选 GitHub/GitLab/Linear 工单、一键拉起关联 Worktree 任务或由 Agent 自动回写工单状态", "t3": ["统一接入 Linear 与 GitHub/GitLab/Azure DevOps/Forgejo 原生 Issues，支持筛选视图、在线改状态/经办人/标签与会话双向关联", "内置 8 个 Issue MCP 工具供 Agent 自主检索、建单、评论与流转状态（写操作严格校验所属项目权限）"], "aiwb": ["无内置工单视图、Issue 连接器或任务关联 Issue 元数据"], "advice": "在 aiwb-forges 顺带支持从 GitHub/GitLab Issue 一键带标题和背景新建 Worktree 任务；Linear 等重度项目管理优先引导用户配置官方外部 MCP。", "refs": [{"repo": "t3code", "path": "apps/server/src/issue/IssueService.ts"}, {"repo": "t3code", "path": "packages/issue-tracker-linear/src/server/LinearIssueTracker.ts"}, {"repo": "t3code", "path": "apps/web/src/components/issue/IssuesPage.tsx"}]}, {"id": "gt-10", "domain": "git", "type": "missing", "priority": "defer", "risk": false, "title": "应用内置自诊断排障会话（TriageService 自动浅克隆对应版本官方源码）", "essence": "T3 Code 支持一键拉起带本机脱敏日志路径与匹配 tag 源码浅克隆的自举排障会话并预填 GitHub Issue", "t3": ["汇总进程、SQLite 与 Trace 路径（显式禁读 secrets 目录），后台按当前版本号 --depth 1 --filter=blob:none 浅克隆官方仓库引导 Agent 定位根因"], "aiwb": ["无内置自举排障工作流"], "advice": "属于大规模开源社区运营工具，现阶段暂缓（defer），用简单的「导出脱敏诊断日志包」按钮即可替代。", "refs": [{"repo": "t3code", "path": "apps/server/src/triage/TriageService.ts"}, {"repo": "t3code", "path": "apps/web/src/components/chat/TriageDraftHero.tsx"}]}, {"id": "tm-01", "domain": "terminal", "type": "missing", "priority": "P0", "risk": false, "title": "终端选区一键转对话上下文 Chip 与自定义右键菜单", "essence": "文件与 Diff 均支持拖选「添加到对话」，唯独内置终端报错栈无法一键带行号送入作曲栏", "t3": ["终端右键菜单与快捷键一键捕获当前选区（自动提取终端名称与 1-based 起止行号），作为 TerminalContextInlineChip 插入输入框光标处", "Chip 支持悬停预览终端原文，终端关闭后历史气泡中的旧 Chip 自动灰显降级"], "aiwb": ["TerminalView.tsx 挂载裸 xterm.js，无自定义右键菜单与选区监听，用户只能手动复制粘贴终端报错"], "advice": "在 useTerminal.ts 监听 xterm 选区并接入右键菜单/浮动钮，复用 selection-quote.ts 的 addTextSnippet 通道一键带终端名入框。", "refs": [{"repo": "t3code", "path": "apps/web/src/components/ThreadTerminalDrawer.tsx"}, {"repo": "t3code", "path": "apps/web/src/lib/terminalContext.ts"}, {"repo": "t3code", "path": "apps/web/src/components/chat/TerminalContextInlineChip.tsx"}, {"repo": "aiwb", "path": "src/features/panel/terminal/TerminalView.tsx"}, {"repo": "aiwb", "path": "src/features/panel/viewers/selection-quote.ts"}]}, {"id": "tm-02", "domain": "terminal", "type": "missing", "priority": "P0", "risk": false, "title": "终端内报错文件路径（file:line:col 软折行拼接）与本地 URL 点击直达", "essence": "终端输出的 Rust/TS 编译报错路径与 localhost 服务地址均为死文本，无法点击跳源码或开预览", "t3": ["自动拼接软折行（wrapped lines），精准识别 file:line:col、TS file(line,col) 与 PowerShell 路径，悬停 250ms 调后端校验文件真实存在才画下划线", "点击文件路径直跳对应行号预览或外部首选 IDE；点击 URL 默认在内置预览浏览器打开（Mod+Click 走系统浏览器）"], "aiwb": ["useTerminal.ts 未加载 web-links 插件也未注册 ILinkProvider，所有终端路径与 URL 均不可点击"], "advice": "在 useTerminal.ts 注册自定义 registerLinkProvider（支持跨软折行拼接），点击 URL 调 panelOpenUrl，点击存在路径调 panelOpenFile 定位行号。", "refs": [{"repo": "t3code", "path": "apps/web/src/terminal-links.ts"}, {"repo": "t3code", "path": "apps/web/src/components/preview/openTerminalLinkInPreview.ts"}, {"repo": "aiwb", "path": "src/features/panel/terminal/useTerminal.ts"}]}, {"id": "tm-03", "domain": "terminal", "type": "weaker", "priority": "P0", "risk": true, "title": "终端布局形态（缺底部抽屉/多实例/分屏）与 PTY 保活脆弱（切标签 30s 自动杀进程）", "essence": "每会话仅限右侧单终端标签，且切走看文件超过 30 秒后台直接杀死 PTY 进程！Scrollback 也不落盘", "t3": ["同时支持对话列底部常驻可调高抽屉与右侧多终端标签，支持组内水平/垂直任意分屏（比例持久化）", "Scrollback（5000 行 / 8MiB）防抖落盘 .log 跨重启恢复；裁剪与重放经 VT 序列边界状态机剥离 DA/DSR 查询序列并重置残留 alt-screen，重放期解绑 ptyWriter 防回声", "512KiB 信用窗口背压流控；后台轮询活跃子进程动态更新 Tab 命令名并在关闭运行中终端前弹窗二次确认"], "aiwb": ["严重体验陷阱：terminals.rs 按会话限制单例 PTY，且前端卸载标签触发 UNWATCHED_GRACE = 30s 倒计时直接杀 PTY——切走看代码半分钟再切回终端进程已被强杀", "1MiB Scrollback 仅存内存（按 \\n 粗切易截断 CSI 序列），重放时未屏蔽 term.onData 易产生控制序列回灌，关闭活跃终端无确认"], "advice": "立即解除「卸载 30s 杀 PTY」逻辑（改为随任务归档或显式点 × 关闭），支持单会话多终端实例与底部抽屉模式，并在重放期屏蔽 onData。", "refs": [{"repo": "t3code", "path": "apps/server/src/terminal/Manager.ts"}, {"repo": "t3code", "path": "apps/server/src/terminal/OutputProtocol.ts"}, {"repo": "t3code", "path": "apps/web/src/components/chat/ChatTerminalDrawers.tsx"}, {"repo": "aiwb", "path": "crates/aiwb-daemon/src/terminals.rs"}, {"repo": "aiwb", "path": "src/features/panel/terminal/useTerminal.ts"}]}, {"id": "tm-04", "domain": "terminal", "type": "weaker", "priority": "P0", "risk": false, "title": "20 款外部 IDE 自动探测、首选编辑器记忆、file:line:col 精准跳转与文件级定位", "essence": "仅能调系统默认关联程序且无行号参数；定位目录拒绝文件路径（无法在资源管理器高亮选中文件）且 Web 模式不可用", "t3": ["服务端自动探测 20 款主流 IDE（VS Code/Cursor/Windsurf/Antigravity/Zed/JetBrains 全系），记忆首选编辑器并支持快捷键按 file:line:col 精确跳行（远端自动切 vscode-remote://）", "文件级系统定位：Windows 调 explorer /select, 高亮目标文件，macOS 调 open -R，Linux 走 ShowItems，桌面与 Web 模式完全同构"], "aiwb": ["open_with.rs 仅调 start / open 默认程序无行号跳转；reveal.rs 强制校验 is_dir() 只能打开项目根而不能选中具体文件，且非 Tauri 环境直接报错"], "advice": "将外部 IDE 探测启动（含 --goto path:line:col）与 explorer /select 文件级定位下沉至 aiwb-daemon，在设置与右键菜单支持保存首选 IDE。", "refs": [{"repo": "t3code", "path": "apps/server/src/process/externalLauncher.ts"}, {"repo": "t3code", "path": "apps/web/src/components/chat/OpenInPicker.tsx"}, {"repo": "aiwb", "path": "src-tauri/src/features/preview/open_with.rs"}, {"repo": "aiwb", "path": "src-tauri/src/features/preview/reveal.rs"}]}, {"id": "tm-05", "domain": "terminal", "type": "weaker", "priority": "P0", "risk": false, "title": "源码预览语法高亮精度、虚拟滚动、>512KiB 大文件分块查看器与面板内编辑保存", "essence": "133 行手写高亮全语言混用（Rust #[derive]/CSS #hex 被误标注释）、全量 DOM 无虚拟化、512KiB 硬截断且纯只读", "t3": ["Shiki Worker 池精准多语言高亮 + 虚拟滚动（保持跨虚拟行选区），超 1MB 文件自动切 LargeTextViewer（首屏 16KiB Range 秒开 + Worker 建行索引）", "支持直接在右侧面板内编辑保存源码（500ms 防抖写回、编辑后自动重算行内评论行号、保留 BOM）与勾选写回 Markdown 任务列表"], "aiwb": ["highlight.ts 用 56 个混合关键字单行扫描（# 除 #include 外全当注释）；SourceView 全量渲染无虚拟化、超 512KiB 直接截断且纯只读不可改"], "advice": "替换手写扫描器为 Shiki Worker / Lezer 多语言高亮并加上按行虚拟滚动；增加 files.write 轻量就地编辑保存与大文件分块读取。", "refs": [{"repo": "t3code", "path": "apps/web/src/components/files/FilePreviewPanel.tsx"}, {"repo": "t3code", "path": "apps/web/src/components/files/LargeTextViewer.tsx"}, {"repo": "t3code", "path": "apps/web/src/components/files/fileSaveSessions.ts"}, {"repo": "aiwb", "path": "src/features/panel/viewers/highlight.ts"}, {"repo": "aiwb", "path": "src/features/panel/viewers/SourceView.tsx"}]}, {"id": "tm-06", "domain": "terminal", "type": "weaker", "priority": "P1", "risk": true, "title": "拦截 Windows UNC 网络路径（防 SMB NTLM 哈希外泄）与相对路径 .. 越界校验", "essence": "aiwb-files 允许相对路径 ../ 跳出工作区，且未拦截 \\\\server\\share 路径，恶意 Markdown 链接可诱导泄露本机 NTLM 凭据", "t3": ["WorkspaceFileSystem 对相对路径强制 realpath 祖先链包含校验，写入额外封禁 .git 与 NTFS GIT~1 短名", "入口显式拦截 Windows UNC 网络路径（\\\\server\\share、\\\\?\\UNC\\），彻底阻断不可信文本触发 SMB 自动认证"], "aiwb": ["aiwb-files/src/path.rs:166 放行 \\\\ 开头路径并调 canonicalize()，且允许 ../secret.txt 跳出项目根目录读取宿主机任意可读文件"], "advice": "立即在 aiwb-files/src/path.rs 与前端 preview-kind.ts 默认拒绝非 WSL 的远程 UNC 路径，并对相对路径强制校验不能逃逸出 project_root。", "refs": [{"repo": "t3code", "path": "apps/server/src/workspace/WorkspaceFileSystem.ts"}, {"repo": "aiwb", "path": "crates/aiwb-files/src/path.rs"}, {"repo": "aiwb", "path": "src/features/panel/core/preview-kind.ts"}]}, {"id": "tm-07", "domain": "terminal", "type": "weaker", "priority": "P1", "risk": false, "title": "工作区全文搜索高级开关（正则/大小写/全词）、文件树增强与命令面板全局穿透", "essence": "内容搜索仅支持忽略大小写子串匹配；文件树不支持拖入输入框生成 @mention 与 .gitignore 置灰；面板状态重启即丢", "t3": ["内容搜索支持区分大小写（Aa）、全词（ab）、正则（.*）与结果行语法着色；CommandPalette 支持搜全部设置项、子菜单扁平穿透与 > 动作模式", "文件树支持拖拽文件入框转 @mention、.gitignore 置灰显示、展开目录持久化与完整右键菜单；右侧面板标签与宽度跨重启持久化且窄屏自动变覆盖 Sheet"], "aiwb": ["search/content.rs 仅做 contains_ignore_case 子串匹配；WorkspaceTree 无拖拽 @mention、硬编码跳过 6 个目录名且卸载丢展开态；usePanelStore 纯内存不持久化"], "advice": "在 search/content.rs 接入 regex crate 补齐 Aa/ab/.* 三开关；为文件树加拖拽 @path 与展开态记忆；持久化 usePanelStore 会话面板布局。", "refs": [{"repo": "t3code", "path": "apps/server/src/workspace/WorkspaceSearchIndex.ts"}, {"repo": "t3code", "path": "apps/web/src/components/files/FileBrowserPanel.tsx"}, {"repo": "t3code", "path": "apps/web/src/rightPanelStore.ts"}, {"repo": "aiwb", "path": "crates/aiwb-files/src/search/content.rs"}, {"repo": "aiwb", "path": "src/features/panel/files/WorkspaceTree.tsx"}, {"repo": "aiwb", "path": "src/features/panel/state/slice.ts"}]}, {"id": "tm-08", "domain": "terminal", "type": "weaker", "priority": "P2", "risk": false, "title": "跨平台子进程整树回收（Job Object / Process Group）与富格式文件流式预览", "essence": "aiwb-proc 缺少杀死整棵孙进程树的封装；文件预览拦截了 PDF、音视频、CSV 表格与 SQLite，且图片走 Base64 搬运", "t3": ["processRunner 统一封装 Windows taskkill /T /F 与 POSIX 进程组强杀，Linux 下用 systemd-run --scope 限制 Agent 内存并捕获 OOMKills", "基于签名 HTTP Range 流原生预览视频、音频、PDF（含搜索缩放）、CSV/TSV 表格、Jupyter Notebook、Office 文档、ZIP 目录树与 SQLite 表"], "aiwb": ["aiwb-proc 未绑 Windows Job Object / Unix process_group，超时取消易残留孙进程锁文件；除图片/MD/HTML 外全部报「不支持预览」，图片整包转 Base64 走 WS"], "advice": "在 aiwb-proc 增加 Windows Job Object（KILL_ON_JOB_CLOSE）与 Unix killpg；新增本地受控静态流路由并优先补齐 PDF、音视频与 CSV 表格预览。", "refs": [{"repo": "t3code", "path": "apps/server/src/processRunner.ts"}, {"repo": "t3code", "path": "apps/web/src/components/files/PdfViewer.tsx"}, {"repo": "t3code", "path": "apps/web/src/components/files/BinaryViewer.tsx"}, {"repo": "aiwb", "path": "crates/aiwb-proc/src/lib.rs"}, {"repo": "aiwb", "path": "src/features/panel/files/file-preview-nav.ts"}]}, {"id": "tm-09", "domain": "terminal", "type": "weaker", "priority": "defer", "risk": false, "title": "自研 libghostty-vt WASM + Canvas 2D 终端渲染引擎与 Kitty 键盘协议", "essence": "T3 Code 将 Ghostty 核心编译为前端 WASM 替代 xterm.js，内置 Nerd Font 矢量重绘与 Mode 2026 同步输出", "t3": ["手写 Ghostty WASM 绑定与脏行 Canvas 2D 渲染器，矢量自绘 Powerline 符号消除白边，支持 10MB Scrollback 与 Kitty 渐进键盘协议"], "aiwb": ["使用成熟轻量的 @xterm/xterm，仅未内置打包 Nerd Font 回退字体与实例池缓存"], "advice": "自维护 WASM 终端渲染器投入产出比低，明确暂缓（defer）；保留 xterm.js，仅需缓存已挂载实例并内置 Symbols Nerd Font 回退字体即可。", "refs": [{"repo": "t3code", "path": "apps/web/src/terminal/ghostty/runtime.ts"}, {"repo": "t3code", "path": "apps/web/src/terminal/ghostty/renderer.ts"}, {"repo": "aiwb", "path": "src/features/panel/terminal/useTerminal.ts"}]}, {"id": "br-01", "domain": "browser", "type": "missing", "priority": "P0", "risk": false, "title": "Agent 预览浏览器自动化（14 个 MCP 工具）、Console/Network 诊断捕获与无头兜底", "essence": "内置浏览器对 Agent 完全黑盒：Agent 读不到页面报错也无法自主点击验证 UI，前端开发闭环断裂", "t3": ["内置 14 个 preview_* MCP 工具（打开/导航/ARIA 快照/点击输入拖拽上传/执行 JS/等元素/弹窗处理/30–60fps 录屏），注入实时操作光标动画", "环形捕获最近 200 条 Console 与失败 Network 请求；快照前后自动将密码框替换为圆点脱敏，并通过 SessionControl 管理人机接管代数防冲突", "纯 Web 或无头环境自动按需下载 SHA-256 校验的 chrome-headless-shell 推流渲染，突破目标站 X-Frame-Options 限制"], "aiwb": ["内部 /mcp 无任何浏览器预览工具；page.js 也不采集 console.error 或网络失败，Agent 改完前端无法自检白屏或报错"], "advice": "在 aiwb-daemon 内置 MCP 新增 preview_open / snapshot / act / console_errors 工具集（经单实例随机鉴权通道桥接预览 WebView），打通前端自测自愈。", "refs": [{"repo": "t3code", "path": "apps/server/src/mcp/toolkits/preview/tools.ts"}, {"repo": "t3code", "path": "apps/server/src/preview/ServerBrowserPage.ts"}, {"repo": "t3code", "path": "apps/server/src/preview/SessionControl.ts"}, {"repo": "aiwb", "path": "crates/aiwb-daemon/src/mcp/sessions.rs"}, {"repo": "aiwb", "path": "src-tauri/src/features/preview/page.js"}]}, {"id": "br-02", "domain": "browser", "type": "weaker", "priority": "P0", "risk": false, "title": "多 WebView 实例池保活（修复切 Tab 覆盖丢状态）、新窗口路由与跨平台截图同构", "essence": "全局共用唯一 preview-browser 实例，切换 Tab 直接 navigate 冲掉原页状态；一刀切封死弹窗阻断 OAuth 登录", "t3": ["维护最多 8 个并发挂载 <webview> 实例池（后台闲置 5min 自动卸载），切 Tab 秒切且完整保留表单与 SPA 内存态", "拦截 window.open 自动转为预览面板新 Tab（或独立 OAuth 辅助窗），三端桌面与 Web 模式能力一致"], "aiwb": ["browser.rs 硬编码单一 LABEL = \"preview-browser\"，切 Tab 强刷 URL 丢失原页状态；on_new_window 无条件返回 Deny 导致第三方登录与 _blank 链接失效", "截图与页面回传通道被 #[cfg(windows)] 限定，macOS/Linux 返回不可用；Web 模式退化为受限 <iframe sandbox>"], "advice": "按 Tab 分配独立子 WebView（配 LRU 上限 6 个），将 on_new_window 合法 http(s) 导航路由为新预览标签，并补齐 macOS/Linux 跨平台截图 IPC。", "refs": [{"repo": "t3code", "path": "apps/web/src/browser/desktopTabLifetime.ts"}, {"repo": "t3code", "path": "apps/web/src/browser/ElectronBrowserHost.tsx"}, {"repo": "aiwb", "path": "src-tauri/src/features/preview/browser.rs"}]}, {"id": "br-03", "domain": "browser", "type": "missing", "priority": "P1", "risk": false, "title": "会话级开发服务器端口自动发现（Port Discovery）、进程归属识别与一键预览/停服", "essence": "终端或 Agent 拉起 localhost 服务后需手动去日志翻找端口号敲进地址栏，新标签页仅为静态入口", "t3": ["PortScanner 每 3s 扫描三端 TCP 监听端口，按终端进程树或 Agent 注入的 T3CODE_THREAD_ID 环境变量精准归属到对应会话", "会话顶栏与浏览器空态实时列出活跃本地服务（区分来源与进程名），支持一键打开预览及按进程组安全停止"], "aiwb": ["无端口扫描或会话归属逻辑；NewTabPage.tsx 仅展示 4 个静态工具图标，无最近访问历史"], "advice": "启动 Agent 与终端时注入 AIWB_SESSION_ID 环境变量，在 daemon 周期扫描本机监听端口归属，于顶栏和浏览器新标签页提供一键打开卡片。", "refs": [{"repo": "t3code", "path": "apps/server/src/preview/PortScanner.ts"}, {"repo": "t3code", "path": "apps/web/src/components/chat/ThreadServersPanel.tsx"}, {"repo": "t3code", "path": "apps/web/src/components/preview/PreviewEmptyState.tsx"}, {"repo": "aiwb", "path": "src/features/panel/browser/NewTabPage.tsx"}]}, {"id": "br-04", "domain": "browser", "type": "weaker", "priority": "P1", "risk": false, "title": "DOM 拾取框架源码行列号反查（React Fiber）、实时样式微调与草稿箱合流", "essence": "标注仅拿浅层 CSS 选择器（无组件名与源码行号），且点完直接单发一轮消息，无法攒多处标注配文字一起发", "t3": ["集成 react-grab 直接从 DOM 反查 React 组件名、组件栈与源码 fileName:line:col，省去 Agent 全仓搜组件步骤", "支持 Shift 多选、框选、SVG 画笔涂鸦，以及在线微调字号/颜色/圆角/间距并将 styleChanges 前后值结构化传给 Agent", "按 Enter 先作为上下文 Chip 存入当前输入框草稿箱（可组合多处标注与补充说明），Ctrl/Cmd+Enter 才立即发送"], "aiwb": ["page.js 仅提取 8 层 cssPath 与 innerText，无组件源码定位、多选或画笔", "useBrowserSession.ts 收到标注后绕过草稿箱直接调 submitAnnotation 发出独立消息（连旧路线图规划的合流也尚未完成）"], "advice": "先将浏览器标注默认改为推入当前会话输入框草稿（保留 Ctrl+Enter 直发），并在 page.js 补充读取 _debugSource / React Fiber 源码位置。", "refs": [{"repo": "t3code", "path": "apps/desktop/src/preview/PickPreload.ts"}, {"repo": "t3code", "path": "apps/desktop/src/preview/PickedElementPayload.ts"}, {"repo": "aiwb", "path": "src-tauri/src/features/preview/page.js"}, {"repo": "aiwb", "path": "src/features/panel/browser/useBrowserSession.ts"}]}, {"id": "br-05", "domain": "browser", "type": "weaker", "priority": "P1", "risk": false, "title": "响应式设备视口仿真、缩放/页内查找/DevTools 与画中画悬浮小窗（Mini-Player）", "essence": "浏览器工具栏仅有前进后退刷新地址栏，缺手机/平板视口切换、DevTools 入口与悬浮小窗边改边看模式", "t3": ["内置 17 款手机/折叠屏/平板预设、自由尺寸推拉手柄、17 级缩放、明暗色覆盖、页内查找与一键打开独立 DevTools", "支持应用内可拖拽吸附的悬浮 Mini-Player 小窗及桌面原生置顶 PiP 小窗，窄屏写代码也能实时盯热更新"], "aiwb": ["BrowserChrome.tsx 仅含最简导航按钮，无视口尺寸仿真、缩放、页内搜索、打开 DevTools 或悬浮小窗能力"], "advice": "在 BrowserChrome 补充响应式视口预设、缩放、打开 DevTools 按钮，并支持将预览缩小为对话区角落悬浮小窗。", "refs": [{"repo": "t3code", "path": "apps/web/src/browser/BrowserDeviceToolbar.tsx"}, {"repo": "t3code", "path": "apps/web/src/components/preview/ThreadPreviewMiniPlayer.tsx"}, {"repo": "aiwb", "path": "src/features/panel/browser/BrowserChrome.tsx"}]}, {"id": "br-06", "domain": "browser", "type": "missing", "priority": "P1", "risk": false, "title": "OS 级跨应用桌面快拍（SnapShot：全局热键抓拍活动窗口 + 无障碍控件树注入）", "essence": "调试外部桌面应用、终端弹窗或参考设计稿时只能靠第三方截图工具手动复制粘贴，且无控件层级信息", "t3": ["支持双按修饰键（如左+右 Shift）全局热键，无需切回工作台即可原地抓拍当前活动窗口或选区", "独立子进程 3s 超时提取目标窗口 OS 无障碍控件树（UIAutomation / Accessibility），裁剪归一化像素坐标后随截图一并注入聊天草稿"], "aiwb": ["仅支持手动粘贴剪贴板静态图片或拖入本地文件，无全局快拍快捷键与窗口无障碍树采集"], "advice": "在 src-tauri 增加可选全局快捷键抓拍活动窗口/选区（Windows 可选附带精简 UIAutomation 控件文本）直接推入当前激活会话草稿箱。", "refs": [{"repo": "t3code", "path": "apps/desktop/src/snapShot/DesktopSnapShot.ts"}, {"repo": "t3code", "path": "apps/desktop/src/snapShot/SnapShotAccessibilityWorker.ts"}, {"repo": "aiwb", "path": "src-tauri/src/features/images/mod.rs"}]}, {"id": "br-07", "domain": "browser", "type": "missing", "priority": "P2", "risk": false, "title": "多浏览器 Profile 存储隔离、无痕模式、自签名证书放行与系统浏览器 Cookie 导入", "essence": "所有项目共用单一 WebView 存储池，测试多角色登录态无法隔离，预览需鉴权内网站点须从头重登", "t3": ["支持最多 24 个持久隔离 Profile 与内存无痕模式（可按项目绑定默认 Profile）、自签名开发证书指纹信任弹窗与 macOS Passkeys", "BrowserImportWizard 支持从 Chrome/Edge/Arc/Firefox/Safari 等 10 款系统浏览器解密并按域名白名单勾选导入登录态 Cookie"], "aiwb": ["全局共享单一默认 WebView 数据目录，无多 Profile/无痕切换、无本地 HTTPS 自签名证书放行与外部 Cookie 导入"], "advice": "利用 Tauri WebviewBuilder::data_directory 支持项目级独立 Profile 与无痕窗口，并为 localhost/内网自签名开发证书提供信任开关。", "refs": [{"repo": "t3code", "path": "apps/desktop/src/preview/BrowserSession.ts"}, {"repo": "t3code", "path": "apps/desktop/src/preview/BrowserImport/BrowserImport.ts"}, {"repo": "aiwb", "path": "src-tauri/src/features/preview/browser.rs"}]}, {"id": "br-08", "domain": "browser", "type": "missing", "priority": "defer", "risk": false, "title": "移动真机/模拟器实时视频流投屏、Three.js 3D 机型视口与 Agent 设备操控工具链", "essence": "T3 Code 构建了横跨本地模拟器/SSH/Expo 云的 WebRTC/H.264 投屏、3D 折叠屏视口与 device_* MCP 工具", "t3": ["统一编排 iOS Simulator / Android Emulator / 云真机，WebCodecs H.264 低延迟投屏 + Three.js 3D 边框 + Agent 语义快照点击工具"], "aiwb": ["无任何移动模拟器投屏或移动设备自动化模块"], "advice": "工程体量巨大且偏离桌面代码工作台核心定位，明确暂缓（defer）；移动端自动化需求可通过接入外部 mobile-mcp 满足。", "refs": [{"repo": "t3code", "path": "apps/server/src/device/DeviceService.ts"}, {"repo": "t3code", "path": "apps/web/src/components/device/DeviceStreamView.tsx"}]}, {"id": "rm-01", "domain": "remote", "type": "weaker", "priority": "P0", "risk": true, "title": "Daemon 短期 Ticket 握手、Origin 防护、恒定时间鉴权与细粒度 RPC 权限作用域", "essence": "静态主 Token 直接拼在 WS URL 查询串且用 != 比较、无 Origin 校验，全部 65+ 个高危 RPC 零权限分级", "t3": ["绝不在 WS URL 传长效 Token，改为换取 5 分钟一次性 websocket-ticket 握手；严格校验 Origin / Sec-Fetch-Site 防跨站劫持", "编译期强约束全量约 200 个 RPC 映射至 16 个权限作用域（只读/会话/文件写/终端/维护等），支持单客户端吊销并实时掐断在线连接"], "aiwb": ["server.rs:30 直接读 /ws?token= 用普通 != 比较且不验 Origin；vite.config.ts 开发路由明文回传 token；daemon.json 在 Unix 下未显式限 0600", "单一 token 通吃全部接口（含 terminals.write、files.*、daemon.shutdown），无细粒度作用域或客户端会话吊销"], "advice": "为 /ws 与预览端点补齐严格 Origin 校验、恒定时间比较与 0600 文件权限，引入一次性握手 Ticket 并预留只读/操作/管理三级 RPC 作用域。", "refs": [{"repo": "t3code", "path": "apps/server/src/auth/EnvironmentAuth.ts"}, {"repo": "t3code", "path": "apps/server/src/auth/RpcAuthorization.ts"}, {"repo": "aiwb", "path": "crates/aiwb-daemon/src/server.rs"}, {"repo": "aiwb", "path": "crates/aiwb-daemon/src/instance.rs"}, {"repo": "aiwb", "path": "vite.config.ts"}]}, {"id": "rm-02", "domain": "remote", "type": "missing", "priority": "P1", "risk": false, "title": "Windows WSL2 原生 Linux 后端双栈架构与 \\\\wsl.localhost 路径无缝映射", "essence": "Windows 用户打开 WSL 项目只能用宿主 .exe 跨 9P 网络文件系统读写，I/O 极慢且无法调用 WSL 内 Linux 工具链与 CLI", "t3": ["Windows 桌面端自动在 WSL 发行版内并行拉起原生 Linux 后端实例（wsl:<distro>），自动唤醒休眠发行版并加载登录 Shell PATH", "自动识别文件选择器选中的 \\\\wsl.localhost\\<distro>\\... 路径，透明转换为 Linux 原生路径并路由至对应 WSL 后端执行"], "aiwb": ["完全无 WSL 感知，所有 Agent 与终端均作为 Windows 原生进程运行，跨 WSL 9P 挂载跑 git/编译性能劣化严重"], "advice": "利用 aiwb-daemon 纯 Rust 单二进制零依赖优势，向选定 WSL 发行版投放 Linux 版 daemon 并通过本地回环连接，彻底打通 Windows+WSL2 双栈体验。", "refs": [{"repo": "t3code", "path": "apps/desktop/src/wsl/DesktopWslBackend.ts"}, {"repo": "t3code", "path": "apps/desktop/src/wsl/DesktopWslEnvironment.ts"}, {"repo": "t3code", "path": "apps/web/src/wslPaths.ts"}, {"repo": "aiwb", "path": "src/shared/path.ts"}]}, {"id": "rm-03", "domain": "remote", "type": "weaker", "priority": "P1", "risk": false, "title": "客户端连接韧性：有界游标续传（消除 Lagged 清空重置）、大帧分片与睡眠唤醒 500ms 秒切", "essence": "广播缓冲满（256 条）时直接下发 null 重置前端流状态；电脑合盖唤醒后缺少僵尸半开连接秒级探测替换", "t3": ["首屏拉压缩快照后按游标无缝续传，双向启用大帧分片避免超大工具输出阻塞单帧", "系统睡眠唤醒 500ms 后并发竞速旧 WS 入站帧与全新 HTTP 探针，一旦旧连接静默立即秒级重连，不等 15s 超时"], "aiwb": ["hub.rs 仅用 broadcast::channel(256) 无环形历史缓存，触发 RecvError::Lagged 即重置重拉全量快照", "client.ts 无 visibility/resume 快速探针与大帧分片"], "advice": "扩大 Hub 缓冲并基于已有 SQLite event rev 游标在 Lagged 时增量补差而非全量 reset；在前端监听系统唤醒主动触发快速探活重连。", "refs": [{"repo": "t3code", "path": "packages/client-runtime/src/connection/supervisor.ts"}, {"repo": "t3code", "path": "packages/client-runtime/src/rpc/session.ts"}, {"repo": "aiwb", "path": "crates/aiwb-daemon/src/hub.rs"}, {"repo": "aiwb", "path": "crates/aiwb-daemon/src/connection.rs"}, {"repo": "aiwb", "path": "src/lib/daemon/client.ts"}]}, {"id": "rm-04", "domain": "remote", "type": "missing", "priority": "P1", "risk": false, "title": "SSH 远端开发机零预置自动部署、端口转发隧道与远程 IDE 联动", "essence": "无法连接远程 Linux 开发机或 GPU 服务器并在远端自动部署守护进程驱动远端 Agent CLI", "t3": ["解析 ~/.ssh/config 自动补全主机，通过 SSH 自动下载校验平台单包并在远端锁保护下拉起或领养存活 Server（远端无需预装 Node）", "守护 ssh -L 本地转发隧道，拦截密码与 2FA 弹出桌面输入框，并将「在 IDE 打开」自动转为 vscode-remote://ssh-remote+... 链接"], "aiwb": ["仅支持本机目录项目，无任何 SSH 远端主机管理、守护进程投递或隧道转发能力"], "advice": "依托 aiwb-daemon 单文件静态二进制极易分发的特点，支持解析 ~/.ssh/config 自动上传对应架构 daemon 二进制并建立 ssh -L 隧道直连。", "refs": [{"repo": "t3code", "path": "packages/ssh/src/config.ts"}, {"repo": "t3code", "path": "packages/ssh/src/tunnel.ts"}, {"repo": "t3code", "path": "apps/desktop/src/ssh/DesktopSshEnvironment.ts"}, {"repo": "t3code", "path": "apps/web/src/remoteOpen.ts"}]}, {"id": "rm-05", "domain": "remote", "type": "missing", "priority": "P2", "risk": true, "title": "局域网私网门禁、Tailscale 自动 HTTPS 暴露与扫码配对/在线设备吊销", "essence": "绑定死 127.0.0.1，无法安全通过个人 Tailnet 或局域网在平板/笔记本浏览器上查看审批本机任务", "t3": ["底层 Socket 强校验仅放行私网/Tailnet IP（防公网端口误暴露），一键调 tailscale serve --bg --https 挂载 MagicDNS 证书", "生成 Token 置于 URL #hash（不进服务端日志）的二维码配对链接，设置页实时列出已授权设备并支持单台或一键全部吊销"], "aiwb": ["aiwb-daemon 硬编码 127.0.0.1，无局域网/Tailscale 暴露开关、配对码与设备会话列表"], "advice": "完成短期 Ticket 与 Origin 加固后，可在设置页提供可选「Tailscale / 局域网访问」开关与 #token 扫码配对及客户端踢出列表。", "refs": [{"repo": "t3code", "path": "apps/server/src/startupAccess.ts"}, {"repo": "t3code", "path": "packages/tailscale/src/tailscale.ts"}, {"repo": "t3code", "path": "apps/web/src/components/settings/AuthorizedClientsSettings.tsx"}, {"repo": "aiwb", "path": "crates/aiwb-daemon/src/lib.rs"}]}, {"id": "rm-06", "domain": "remote", "type": "missing", "priority": "defer", "risk": false, "title": "外部客户端 MCP OAuth 网关、MCP Apps 微应用、访客分享、云中继穿透、企业 MDM 与原生移动端", "essence": "涵盖 T3 Connect 云中继、单会话 Guest 直播分享、外部 AI 应用 OAuth 接入、ui:// 微应用、企业注册表策略及 iOS/Android 原生 App", "t3": ["T3 Connect（Cloudflare Tunnel + Ed25519 挑战 + 离线 Webhook 暂存）+ 单线程 Guest SSE 只读直播与待审消息提案", "标准 MCP OAuth 2.1 供外部 Claude/ChatGPT 按 5 档权限接入 + io.modelcontextprotocol/ui 沙箱微应用宿主 + 企业 MDM 注册表强约束", "apps/mobile 完整 React Native 双端客户端（含灵动岛/小组件、离线发件箱及 Swift/Kotlin 原生 Ghostty 终端与 Canvas Diff）"], "aiwb": ["专注个人本地桌面工作台，无 SaaS 云中继、访客分享、外部 OAuth Server、MDM 策略与原生手机 App"], "advice": "上述六项属于跨平台云化与重资产矩阵，投入庞大且偏离当前桌面生产力核心，明确统一归入暂缓（defer）。", "refs": [{"repo": "t3code", "path": "apps/server/src/cloud/CloudLink.ts"}, {"repo": "t3code", "path": "apps/server/src/guest/GuestShareService.ts"}, {"repo": "t3code", "path": "apps/server/src/auth/McpOAuth.ts"}, {"repo": "t3code", "path": "apps/server/src/mcpApps/McpAppSnapshot.ts"}, {"repo": "t3code", "path": "apps/server/src/policy/ManagedPolicy.ts"}, {"repo": "t3code", "path": "apps/mobile/src/Stack.tsx"}]}, {"id": "tl-01", "domain": "telemetry", "type": "weaker", "priority": "P0", "risk": true, "title": "修复提问浮层漏掩码与敏感答案明文落库 + 补齐 Agent 按需安全索取密钥（request_secret）", "essence": "QuestionPopup 忽略 is_secret 渲染明文框且把敏感答案永久明文写进 SQLite！Agent 缺密钥只能在聊天明文索要", "t3": ["内置 request_secret MCP 工具弹出原生 password 脱敏输入卡（或一键选 1Password 引用），密文仅存 0600 24h TTL 私有库/一次性句柄，永不进模型历史与 SQLite 事件流"], "aiwb": ["安全缺陷：虽然 ElicitationCard 支持掩码，但 Codex 提问走的 QuestionPopup.tsx 忽略 is_secret 渲染明文 input，且 codex/prompts.rs 将敏感答案明文写入 SQLite event 表并在时间线明文展示", "内部 MCP 无 request_secret 安全索取通道"], "advice": "立即修复 QuestionPopup 按 is_secret 渲染 password 并在写库前将答案脱敏为占位文案；在内置 MCP 增加 request_secret 单次受限文件/句柄投递。", "refs": [{"repo": "t3code", "path": "apps/server/src/secrets/SecretRequests.ts"}, {"repo": "t3code", "path": "apps/web/src/components/chat/SecretRequestCard.tsx"}, {"repo": "aiwb", "path": "src/features/chat/events/QuestionPopup.tsx"}, {"repo": "aiwb", "path": "crates/aiwb-agents/src/codex/prompts.rs"}]}, {"id": "tl-02", "domain": "telemetry", "type": "weaker", "priority": "P1", "risk": false, "title": "全局跨项目 Token 用量与费用看板（Usage Dashboard）、ACP 用量补齐与动态费率表", "essence": "仅有当前单任务顶栏 Token 数字（且缺 Cursor/Antigravity），无跨项目历史趋势、缓存节省测算与费用看板", "t3": ["独立 Usage 看板提供 24h/7d/30d/90d 成本与 Token 分桶图、缓存命中省钱额、Fast 溢价拆分及按 Provider/模型过滤", "断点增量扫描缓存（防 fork/resume 双计）+ 自动同步 LiteLLM 阶梯费率表并支持自定义单价覆盖"], "aiwb": ["SessionUsageMeter 仅展示当前单任务 Codex/Claude token 数（Cursor/Antigravity 为空），不计算预估费用，无全局汇总视图"], "advice": "补齐 ACP 会话回合 token 提取，在 aiwb-store 增加按日/项目/模型聚合统计与本地缓存的费率表，提供轻量全局用量费用页。", "refs": [{"repo": "t3code", "path": "apps/server/src/usage/UsageService.ts"}, {"repo": "t3code", "path": "apps/server/src/usage/usagePricing.ts"}, {"repo": "t3code", "path": "apps/web/src/components/usage/UsagePage.tsx"}, {"repo": "aiwb", "path": "src/features/panel/core/SessionUsageMeter.tsx"}, {"repo": "aiwb", "path": "crates/aiwb-agents/src/acp/updates.rs"}]}, {"id": "tl-03", "domain": "telemetry", "type": "weaker", "priority": "P1", "risk": false, "title": "订阅额度监控低开销化（免冷启 CLI）、窗口消耗配速（Pace）与官方重置券一键兑换", "essence": "每次刷额度都需冷启动完整 CLI 子进程（最慢 60s 超时），缺会话流实时更新、消耗配速提示与重置券兑换", "t3": ["Antigravity 与 Cursor 持本机 OAuth Token 直调官方 HTTP 接口免起子进程；活跃对话中直接从事件流实时刷新配额百分比", "悬浮展示消耗配速（Ahead / On / Under pace）与透支预算，并支持一键消耗 Codex / Claude 官方限流重置券（consumeResetCredit）"], "aiwb": ["每次刷新均需 spawn 一次性 claude --print / codex app-server / agy -p /usage 子进程，开销大且不吸收活跃回合内的实时限额事件"], "advice": "优先从驻留中的 Codex/Claude 会话流实时吸收限额更新，将 Antigravity/Cursor 改为 HTTP 直查，并在悬浮卡片增加窗口时间配速对比与重置券按钮。", "refs": [{"repo": "t3code", "path": "apps/server/src/provider/ProviderUsageLimitsIngestion.ts"}, {"repo": "t3code", "path": "apps/server/src/provider/antigravityUsageLimits.ts"}, {"repo": "t3code", "path": "apps/server/src/provider/claudeResetCredits.ts"}, {"repo": "aiwb", "path": "crates/aiwb-agents/src/antigravity/subscription.rs"}, {"repo": "aiwb", "path": "src/features/panel/core/SubscriptionUsageMeter.tsx"}]}, {"id": "tl-04", "domain": "telemetry", "type": "missing", "priority": "P1", "risk": true, "title": "原生进程树资源监控（CPU/RSS/IO）与失控子进程安全强杀面板", "essence": "多 Agent 并行跑编译/测试/MCP 撑爆内存或死循环占满 CPU 时，工作台内完全看不到哪个会话占资源也无法定点强杀", "t3": ["Rust 原生采集器（sysinfo）按 (pid, start_time_ms) 追踪完整后代进程树（防 PID 回绕），仅在打开诊断页时按需流式采样（电池/锁屏自动降频）", "展示 5m–1h 曲线与会话归属进程树，终止子进程前二次核对 (pid, start_time) 防误杀"], "aiwb": ["无任何进程级 CPU/内存/磁盘 IO 监控或失控子进程清理入口"], "advice": "利用 aiwb-daemon 纯 Rust 优势直接内嵌 sysinfo（平时零开销，打开设置「进程监控」时按需采样各会话与终端进程树并提供安全终止按钮）。", "refs": [{"repo": "t3code", "path": "native/resource-monitor/src/main.rs"}, {"repo": "t3code", "path": "apps/server/src/diagnostics/ProcessDiagnostics.ts"}, {"repo": "t3code", "path": "apps/web/src/components/settings/ResourceTelemetryDiagnostics.tsx"}, {"repo": "aiwb", "path": "crates/aiwb-daemon/src/server.rs"}]}, {"id": "tl-05", "domain": "telemetry", "type": "weaker", "priority": "P1", "risk": false, "title": "Agent 运行期防系统休眠保活（KeepAwake）、电源感知后台降频与迁移前 SQLite 热备", "essence": "无人值守跑长任务（如 /goal）时电脑自动进入睡眠会直接掐断网络与 Agent；升级跑库迁移前无自动备份", "t3": ["KeepAwake 在有活跃 Agent 运行时自动调系统防睡眠 API（Windows SetThreadExecutionState / macOS caffeinate / Linux systemd-inhibit），结束后留 60s 缓冲", "电池供电或锁屏时自动降频后台轮询；新版本执行数据库迁移前自动热备 SQLite，启动失败自动回滚"], "aiwb": ["仅有托盘常驻，无运行期防系统睡眠抑制（笔记本锁屏休眠即断连），store 跑 migrations 前也无自动备份文件"], "advice": "在 aiwb-daemon 监听 running_sessions > 0 时调用原生防休眠 API（配设置开关），并在 migrations.rs 升级 schema 前自动拷贝备份一份 sqlite。", "refs": [{"repo": "t3code", "path": "apps/server/src/background/KeepAwake.ts"}, {"repo": "t3code", "path": "apps/server/src/background/BackgroundPolicy.ts"}, {"repo": "t3code", "path": "apps/server/src/serviceLauncher.ts"}, {"repo": "aiwb", "path": "src-tauri/src/daemon.rs"}, {"repo": "aiwb", "path": "crates/aiwb-store/src/migrations.rs"}]}, {"id": "tl-06", "domain": "telemetry", "type": "weaker", "priority": "P1", "risk": true, "title": "daemon.log 10MiB 轮转封顶、SQLite 空间回收与孤儿工作树/嵌套子仓安全清理页", "essence": "daemon.log 采用 append 无限追加无封顶，SQLite 无 Vacuum 回收入口，清理工作树未检查嵌套未跟踪 Git 子仓库", "t3": ["服务日志达 10MiB 原地保尾 5MiB 截断轮转（不断文件句柄）；SQLite 启用 incremental_vacuum 并在可回收 >=1GiB 时提示一键压缩", "存储设置页展示明细占用、扫描孤儿工作树，并在删除工作树前检测 .gitmodules、嵌套子 Git 仓与 skip-worktree 隐藏改动防误删"], "aiwb": ["src-tauri/src/daemon.rs 对 daemon.log 无限追加不封顶；workbench.sqlite 未开 incremental_vacuum 且无存储管理面板与嵌套子仓检查"], "advice": "立即给 daemon.log 加上 10MiB 轮转截断，为 aiwb-store 开启 incremental_vacuum 并在设置页提供数据库/工作树/暂存图占用明细与一键清理。", "refs": [{"repo": "t3code", "path": "apps/server/src/storageCleanup.ts"}, {"repo": "t3code", "path": "apps/server/src/persistence/DatabaseMaintenance.ts"}, {"repo": "t3code", "path": "apps/web/src/components/settings/StorageSettings.tsx"}, {"repo": "aiwb", "path": "src-tauri/src/daemon.rs"}, {"repo": "aiwb", "path": "crates/aiwb-store/src/lib.rs"}]}, {"id": "tl-07", "domain": "telemetry", "type": "missing", "priority": "P2", "risk": false, "title": "系统 Keyring 凭据保险箱（含 1Password op:// 注入）与在途慢 RPC 聚合诊断面板", "essence": "外部 MCP 密钥明文落盘无系统钥匙串加密；慢 Git/CLI 请求超 15s 直接黑盒报错，缺在途慢请求提示与诊断页", "t3": ["敏感配置统一剥离存入 0600 ServerSecretStore / 系统 Keyring（前端仅见 ••••••），支持 1Password op:// 单次指纹批量注入", "SlowRpcRequestToastCoordinator 动态汇总在途慢请求避免假死焦虑；诊断页展示慢调用 Top 10、最近错误与一键打开日志目录"], "aiwb": ["无系统 Keyring 集成；DaemonClient 硬设统一 15s 超时直接抛错，无慢请求在途提示或本地诊断日志面板"], "advice": "在 client.ts 对长耗时 RPC 放宽超时并增加 >5s 在途进度软提示，在设置页增加「打开日志目录 / 最近错误摘要」；后续接入 keyring crate 加密敏感凭据。", "refs": [{"repo": "t3code", "path": "packages/secret-provider-onepassword/src/server/driver.ts"}, {"repo": "t3code", "path": "apps/web/src/components/SlowRpcRequestToastCoordinator.tsx"}, {"repo": "t3code", "path": "apps/web/src/components/settings/DiagnosticsSettings.tsx"}, {"repo": "aiwb", "path": "src/lib/daemon/client.ts"}]}, {"id": "dk-01", "domain": "desktop", "type": "weaker", "priority": "P0", "risk": true, "title": "生产包裸露无认证 WebView2 9222 调试端口与空 CSP 导致本机任意进程提权 RCE 风险", "essence": "Release 正式版硬编码开启 --remote-debugging-port=9222 且 csp: null，本机任意进程可无认证接管主窗口与 Daemon", "t3": ["生产包绝不开启全局远程调试端口；静态资源走特权协议并强制严格 CSP（default-src 'self'; script-src 'self'; object-src 'none'）", "主进程 IPC 严格校验 sender 必须等于 mainWindow，阻断内嵌预览子视图越权调用宿主桥接；预览 CDP 仅按需开随机端口单次密钥通道"], "aiwb": ["高危隐患：src-tauri/src/lib.rs:21 与 tauri.conf.json:24 在所有构建（含 Release）硬编码 --remote-debugging-port=9222，且 tauri.conf.json:28 设 csp: null", "本机任意非特权进程连上 127.0.0.1:9222 即可在主窗口执行 JS 调 daemon_endpoint 拿走 Token 并操控 PTY 终端，且固定 9222 端口常与本地调试冲突"], "advice": "立即从 tauri.conf.json 与 Release 构建移除 --remote-debugging-port=9222（仅限显式开发环境变量开启），配置严格 CSP，并校验 daemon_endpoint 仅允许 main 窗口调用。", "refs": [{"repo": "t3code", "path": "apps/desktop/src/electron/ElectronProtocol.ts"}, {"repo": "t3code", "path": "apps/desktop/src/electron/ElectronWindow.ts"}, {"repo": "t3code", "path": "apps/desktop/src/preview/CdpRelay.ts"}, {"repo": "aiwb", "path": "src-tauri/src/lib.rs"}, {"repo": "aiwb", "path": "src-tauri/tauri.conf.json"}]}, {"id": "dk-02", "domain": "desktop", "type": "missing", "priority": "P0", "risk": true, "title": "单实例互斥锁（修复关窗驻托盘后双击重复拉起多进程）、Deep Link 协议与 CLI 打开目录", "essence": "关窗隐藏到托盘后再次双击桌面图标会启动第二个独立 GUI 进程与重复托盘图标；不支持 aiwb . 命令行或深链唤起", "t3": ["启动前获取 SingleInstanceLock，二次启动、t3code:// 深链或命令行传路径均唤醒唯一主窗口并自动定位/创建对应项目", "一键安装 t3 命令行垫片；Prompt Links 外部唤醒严格只进草稿不自动执行，并剥离/告警零宽与 BiDi 隐形注入字符"], "aiwb": ["未接入 tauri-plugin-single-instance 与 deep-link：因关窗仅 hide() 驻托盘，再次点快捷方式会多开重复主窗口进程与托盘图标", "不支持终端执行 aiwb <dir> 打开项目，也无自定义 URL Scheme 联动"], "advice": "立即接入 tauri-plugin-single-instance（二次启动唤醒聚焦已有主窗口并解析目录参数打开项目），按需注册 aiwb:// 深链协议（严格只填草稿防注入）。", "refs": [{"repo": "t3code", "path": "apps/desktop/src/app/DesktopClerk.ts"}, {"repo": "t3code", "path": "apps/desktop/src/app/DesktopCliCommand.ts"}, {"repo": "t3code", "path": "apps/web/src/components/promptLinks/linkedPrompt.ts"}, {"repo": "aiwb", "path": "src-tauri/Cargo.toml"}, {"repo": "aiwb", "path": "src-tauri/src/lib.rs"}]}, {"id": "dk-03", "domain": "desktop", "type": "missing", "priority": "P0", "risk": false, "title": "带 when 条件表达式的可定制快捷键引擎、冲突检测、JSON 热重载与 Mod+1..9 切会话", "essence": "仅硬编码 8 个全局快捷键且不可改键，无 when 焦点上下文门控、无冲突提示，也缺 Mod+1..9 快速切会话", "t3": ["注册 80+ 命令（含 thread.jump.1..9 与动态项目脚本），递归下降解析 when 表达式（terminalFocus / composerFocus / previewOpen 等）", "~/.t3/keybindings.json 100ms 防抖热重载；设置页提供按键录制、可视化 when 构建器与平台等价键冲突检测（如 Windows 下 mod+k 与 ctrl+k）"], "aiwb": ["command-menu/keyboard.ts 硬编码 8 个组合键，其余散落在局部组件 onKeyDown，无快捷键设置页、无 keybindings.json、无 Ctrl+1..9 跳选"], "advice": "收敛全局命令表并实现轻量 when 上下文求值器与 keybindings.json 持久化，在设置页增加改键录制/冲突检测，优先补齐 Ctrl+1..9 与上下会话切换。", "refs": [{"repo": "t3code", "path": "packages/shared/src/keybindings.ts"}, {"repo": "t3code", "path": "apps/web/src/shortcuts/dispatcher.ts"}, {"repo": "t3code", "path": "apps/web/src/components/settings/KeybindingsSettings.tsx"}, {"repo": "aiwb", "path": "src/features/command-menu/keyboard.ts"}]}, {"id": "dk-04", "domain": "desktop", "type": "missing", "priority": "P1", "risk": false, "title": "四域独立字体族与像素字号调节（界面 / 输入框 / 代码 Diff / 终端）及自动换行设置", "essence": "全局字体与 12/13px 小字号写死不可调，高分屏与长时间代码审阅无法放大字号或更换本机等宽编程字体", "t3": ["支持 UI（12–20px）、Prompt（12–20px）、Code/Diff（10–18px）、Terminal（8–20px）四域独立字号与字体族调节（提供联动简版与高级分调）", "调 queryLocalFonts() 枚举本机字体并用 Canvas 度量字宽自动筛选真实等宽字体，支持全局代码自动换行开关"], "aiwb": ["globals.css 写死字体栈，组件遍布硬编码 text-xs / text-[13px]；外观设置仅有浅色/深色/系统三选一，无任何字号或字体设置"], "advice": "在设置页外观分区补齐 UI 字号缩放、代码/Diff/终端等宽字体选择（queryLocalFonts）与独立字号滑杆，统一绑定 CSS 变量与 xterm options。", "refs": [{"repo": "t3code", "path": "apps/web/src/appearanceFonts.ts"}, {"repo": "t3code", "path": "apps/web/src/components/settings/TypographySettings.tsx"}, {"repo": "aiwb", "path": "src/styles/globals.css"}, {"repo": "aiwb", "path": "src/features/settings/useAppearanceSettings.ts"}]}, {"id": "dk-05", "domain": "desktop", "type": "weaker", "priority": "P1", "risk": false, "title": "通知开关/音效编排、点击系统通知直跳目标会话、前台页内 Toast 与 Web 角标", "essence": "Rust 后台通知无法关闭静音、无后台长任务完成提醒、无提示音，且点击系统通知不能自动定位打开对应会话", "t3": ["提供 4 档通知模式（关闭/仅通知/仅声音/通知+声音）与前台非当前会话 Toast 开关，预解码待输入与任务完成双音效并防并发破音", "点击系统通知自动唤醒窗口并精准路由至目标会话；网页预览模式用 Canvas 动态绘制未读 Favicon 角标"], "aiwb": ["attention.rs 虽实现了极佳的关窗后台通知与任务栏角标，但无设置开关（无法静音）、无完成态通知与提示音、点击系统通知不跳转目标任务、Web 模式无角标"], "advice": "保留 Rust 后台通知架构，补齐设置页通知/声音开关、长任务完成通知、点击通知唤醒跳转对应 taskId，以及前台非活跃会话轻量 Toast。", "refs": [{"repo": "t3code", "path": "apps/web/src/threadNotifications.ts"}, {"repo": "t3code", "path": "apps/web/src/components/ThreadNotificationCoordinator.tsx"}, {"repo": "t3code", "path": "apps/web/src/components/settings/NotificationSettings.tsx"}, {"repo": "aiwb", "path": "src-tauri/src/attention.rs"}]}, {"id": "dk-06", "domain": "desktop", "type": "missing", "priority": "P1", "risk": false, "title": "主窗口多屏位置/尺寸/最大化记忆、渲染器崩溃自动重载、启动恢复窗与防误退保护", "essence": "每次重启总是重置为默认 1280×800 居中，不记忆副屏位置与最大化；Daemon 启动失败缺原生自救恢复界面", "t3": ["500ms 防抖持久化窗口边界与最大化状态，恢复时校验多显示器工作区防越界（过滤 Windows -32000 最小化假坐标）", "渲染进程崩溃自动退避重载（60s 内最多 3 次）；后端连续 3 次启动失败弹出零外部依赖的原生诊断恢复窗；支持长按 1.2s QuitHold 防误按退出"], "aiwb": ["tauri.conf.json 固定 1280×800 无窗口状态持久化；无 WebView 崩溃监听与 Daemon 启动失败原生自救页"], "advice": "接入 tauri-plugin-window-state 持久化多屏尺寸与最大化状态，并在前端连接 Daemon 连续失败时提供一键打开数据目录与查看 daemon.log 的恢复卡。", "refs": [{"repo": "t3code", "path": "apps/desktop/src/window/DesktopWindow.ts"}, {"repo": "t3code", "path": "apps/desktop/src/app/DesktopStartupRecovery.ts"}, {"repo": "t3code", "path": "apps/desktop/src/window/QuitHold.ts"}, {"repo": "aiwb", "path": "src-tauri/tauri.conf.json"}]}, {"id": "dk-07", "domain": "desktop", "type": "weaker", "priority": "P1", "risk": false, "title": "首次启动一屏式 Onboarding 向导（Agent 状态自检 + 内联终端登录 + 自动扫描本机历史建项）", "essence": "首次打开仅有「打开项目/开始新对话」两个空按钮，无法自动扫描 ~/.codex / ~/.claude 已有项目一键批量导入", "t3": ["WelcomePage 实时检测各 Agent 安装/登录/版本兼容态，支持原地展开内联 PTY 终端一键安装或登录", "AgentSessionScanner 自动扫描近 30 天本机 CLI 历史反推活跃 Git 仓库（预勾选近 30 天 >=3 条会话的项目），一键批量建项并流式导入历史（防 4GiB 大文件 OOM）"], "aiwb": ["EmptyState.tsx 仅两个裸按钮；虽有单项目内手动导入弹窗，但新用户首次进入必须逐个手选文件夹建项"], "advice": "串联已有的 Agent 探测、内置终端与历史扫描逻辑，在零项目首次进入时展示一屏式环境就绪检测与「自动发现本机近期项目一键导入」向导。", "refs": [{"repo": "t3code", "path": "apps/web/src/components/onboarding/WelcomePage.tsx"}, {"repo": "t3code", "path": "apps/server/src/project/AgentSessionScanner.ts"}, {"repo": "aiwb", "path": "src/features/workspace/empty/EmptyState.tsx"}, {"repo": "aiwb", "path": "src/features/sidebar/projects/ImportSessionsDialog.tsx"}]}, {"id": "dk-08", "domain": "desktop", "type": "weaker", "priority": "P1", "risk": false, "title": "桌面图标启动时的登录 Shell 环境变量完整探测缓存与跨平台标题栏/菜单适配", "essence": "从桌面图标启动易漏掉 Shell Profile 中的 mise/nvm/pyenv 路径；无边框标题栏硬编码 Windows 右上角三键未适配 macOS", "t3": ["DesktopShellEnvironment 启动先秒读 0600 缓存文件，后台异步调登录 Shell 探测完整 PATH/环境变量（含慢 Profile 重试）热同步给后端与 PTY", "标题栏自动适配 macOS 左上角红绿灯内嵌（hiddenInset）与 Windows/Linux Overlay 安全区，并配齐完整本地化原生菜单栏"], "aiwb": ["daemon.rs 直接继承 GUI 父进程精简环境，仅靠硬编码常见目录兜底找 CLI；WindowTitlebar.tsx 一律在右上角画 Windows 三键且无原生应用菜单"], "advice": "在 aiwb-daemon 启动时异步探测并缓存用户登录 Shell PATH 注入子进程与终端；在 WindowTitlebar 按平台分支适配 macOS 红绿灯安全边距。", "refs": [{"repo": "t3code", "path": "apps/desktop/src/shell/DesktopShellEnvironment.ts"}, {"repo": "t3code", "path": "apps/desktop/src/window/DesktopApplicationMenu.ts"}, {"repo": "aiwb", "path": "src-tauri/src/daemon.rs"}, {"repo": "aiwb", "path": "src/app/WindowTitlebar.tsx"}]}, {"id": "dk-09", "domain": "desktop", "type": "weaker", "priority": "P2", "risk": false, "title": "多套内置主题、VS Code 主题 JSONC 导入（对比度自修）、对比度滑杆与多语言 i18n", "essence": "仅有单一默认浅/深色配色，不支持导入 VS Code 主题或调对比度；全仓硬编码简体中文无英文切换", "t3": ["内置 6 套 OKLCH 双模主题（浅深模式可混搭），支持拖入 VS Code 主题 JSONC（自动修正 WCAG 4.5 对比度）、OpenVSX 在线商店与 50–200% 对比度滑杆", "内置 10 语种异步懒加载 i18n 与 12/24 小时制切换；前端持续比对服务端 versionSkew 并在托盘长驻期间每 4h 轮询更新 + 一键全量更新"], "aiwb": ["仅单一暖灰浅/深配色；仅启动检查一次更新（常驻托盘不自动复检），Web 预览无前后端 versionSkew 提示；全仓硬编码中文文案"], "advice": "基于紧凑的 --wb-* 变量扩展几套精选预设主题并支持导入本地 VS Code 主题 JSON；在 use-updates.ts 增加 4h 周期轮询并在前端握手校验 daemon 版本一致性。", "refs": [{"repo": "t3code", "path": "apps/web/src/vscodeThemeImport.ts"}, {"repo": "t3code", "path": "apps/web/src/versionSkew.ts"}, {"repo": "t3code", "path": "apps/desktop/src/updates/DesktopUpdates.ts"}, {"repo": "t3code", "path": "apps/web/src/i18n/runtime.ts"}, {"repo": "aiwb", "path": "src/shared/theme/theme.ts"}, {"repo": "aiwb", "path": "src/features/updates/use-updates.ts"}]}];
+const STRENGTHS = [{"title": "纯 Rust AOT 守护进程（aiwb-daemon）+ Tauri 架构：零 Node/V8 负担与 Sidecar 构建戳无锁热替换", "desc": "前后端分离但后台编译为无外部依赖的单文件 Rust 机器码，冷启动毫秒级、常驻内存极低，无需像 T3 Code 那样维护复杂的 Electron + Node 24 V8 字节码预编译缓存体系；Windows 下按构建戳拷贝隔离运行并在检测到在途 CLI 升级时自动推迟替换旧 daemon，根治 .exe 文件锁冲突。", "refs": [{"repo": "aiwb", "path": "src-tauri/src/daemon.rs"}, {"repo": "aiwb", "path": "crates/aiwb-daemon/src/server.rs"}, {"repo": "t3code", "path": "apps/desktop/src/serverCompileCache.ts"}]}, {"title": "关窗驻留托盘（Close-to-Tray）与脱离 WebView 的 Rust 原生通知防抖 + 16×16 软光栅任务栏角标", "desc": "T3 Code 在 Windows/Linux 关主窗即退出，且通知/角标依赖前端渲染进程存活；AIWB 关窗隐藏至托盘持续跑后台 Agent，由 Tauri Rust 协程直连 daemon WS 独立发送 2s 防抖通知（过滤 Claude 切轮次瞬态假完成）并纯软件光栅化绘制 Windows 任务栏数字红点。", "refs": [{"repo": "aiwb", "path": "src-tauri/src/attention.rs"}, {"repo": "aiwb", "path": "src-tauri/src/tray.rs"}, {"repo": "t3code", "path": "apps/web/src/components/ThreadNotificationCoordinator.tsx"}]}, {"title": "Worktree 与项目主检出目录双向无损原子热交接（tasks.handOff）", "desc": "通过临时索引将已跟踪、暂存及未跟踪脏改动打包至 refs/aiwb/handoff/<uuid>（零污染用户 index 与 stash），预检冲突后自动暂停 CLI、双向迁移脏工作区并在新目录无缝 resume 原会话（异常全量回滚）；T3 Code 无携带脏改动的运行中双向目录迁移闭环。", "refs": [{"repo": "aiwb", "path": "crates/aiwb-git/src/handoff.rs"}, {"repo": "aiwb", "path": "crates/aiwb-daemon/src/services/worktree_handoff.rs"}, {"repo": "aiwb", "path": "src/features/chat/composer/WorktreeHandOff.tsx"}]}, {"title": "Worktree 自动淘汰前的 Git 快照封存（Snapshot Shelving）与发消息透明原位复活", "desc": "超量（默认保留 15 个）或归档回收工作树前，自动把未提交与未跟踪文件封存进 refs/aiwb/snapshots/<name>，后续用户再次发消息时自动原路径重建工作树并无损还原脏改动；而 T3 Code 自动清理只能跳过脏工作树，手动删后恢复会丢失未提交改动。", "refs": [{"repo": "aiwb", "path": "crates/aiwb-git/src/snapshot.rs"}, {"repo": "aiwb", "path": "crates/aiwb-daemon/src/services/worktrees.rs"}, {"repo": "t3code", "path": "apps/server/src/workspace/restoreMissingWorktree.ts"}]}, {"title": "新建 Worktree 一键带走主目录脏改动 + .worktreeinclude 环境文件拷贝", "desc": "WorktreeStartPicker 原生提供「不带 / 带上未提交改动（N 个文件）」显式双选，并用 git check-ignore 批量过滤拷贝 .worktreeinclude 与 AGENTS.override.md，无需编写脚本即可同步本地 .env。", "refs": [{"repo": "aiwb", "path": "crates/aiwb-git/src/worktree.rs"}, {"repo": "aiwb", "path": "crates/aiwb-git/src/include.rs"}, {"repo": "aiwb", "path": "src/features/chat/composer/WorktreeStartPicker.tsx"}]}, {"title": "纯 Rust 零子进程 Claude JSONL 首尾快扫、真实对话时间反扫与内存级 UUID 重写分叉", "desc": "无需像 T3 Code 额外拉起 Node Worker 调 SDK：列表仅读文件首尾各 64KB 极速提取元数据，从尾部向前反扫跳过 <tick>/<session-start-hook> 精准修正被 --resume 污染的 mtime 排序，单遍内存重写 UUID 毫秒级完成会话分叉。", "refs": [{"repo": "aiwb", "path": "crates/aiwb-agents/src/claude/history.rs"}, {"repo": "t3code", "path": "apps/server/src/claudeHistoryWorker.ts"}]}, {"title": "中文 Windows 特化工程：GBK/UTF-8 伪合法乱码启发式纠偏与注册表系统代理 + NO_PROXY 防 502", "desc": "aiwb-proc 自动识别中文 Windows 下 CP936 双字节偶然拼成生僻合法 UTF-8 码位的静默乱码并回退 GBK 解码；Codex 启动自动读取 Windows 注册表代理注入环境变量，同时强制把 127.0.0.1/localhost 写入 NO_PROXY 防止本机 /mcp 回调被代理拦截报 502。", "refs": [{"repo": "aiwb", "path": "crates/aiwb-proc/src/lib.rs"}, {"repo": "aiwb", "path": "crates/aiwb-agents/src/codex/process/proxy.rs"}, {"repo": "aiwb", "path": "crates/aiwb-agents/src/antigravity/open.rs"}]}, {"title": "一等公民自主长跑目标模式（/goal + GoalStatusBar）与细粒度会话沙箱实时开关", "desc": "常驻展示 active/paused/blocked/usageLimited/budgetLimited/complete 六态、Token 预算进度与秒表，支持暂停/编辑/续跑；AccessMenu 超越粗粒度 4 档模式，由适配器能力驱动会话级独立「允许网络访问」开关与动态增删 --add-dir 额外可写目录。", "refs": [{"repo": "aiwb", "path": "src/features/chat/composer/GoalStatusBar.tsx"}, {"repo": "aiwb", "path": "src/features/chat/composer/AccessMenu.tsx"}]}, {"title": "能力驱动的跨四大 CLI 外部第三方 MCP 统一可视化管理面板（McpSurface）", "desc": "按适配器声明的传输类型、作用域、Headers 与 OAuth 能力渲染统一的外部 MCP 增删改、启停与登录面板，覆盖 Codex、Claude、Cursor、Antigravity；T3 Code 未提供跨 CLI 统一的外部 MCP 图形化增删改界面。", "refs": [{"repo": "aiwb", "path": "crates/aiwb-agents/src/mcp/surface.rs"}, {"repo": "aiwb", "path": "src/features/settings/mcp/McpSettings.tsx"}]}, {"title": "子任务「先提议确认再拉起（SubtaskOfferCard）」、防打断打字检测（30s）与共享笔记目录", "desc": "默认推荐 offer 模式在对话中生成带 >=80 字背景的审批卡经用户点击才拉起子进程防失控烧钱；子任务完成时检测父输入框最近 30s 是否正在打字，若在打字则暂缓插话留到下次发送一并带上；自动为整棵任务树挂载共享 session-notes 目录。", "refs": [{"repo": "aiwb", "path": "crates/aiwb-daemon/src/services/agent_sessions.rs"}, {"repo": "aiwb", "path": "crates/aiwb-daemon/src/services/subtasks.rs"}, {"repo": "aiwb", "path": "src/features/chat/events/SubtaskOfferCard.tsx"}]}, {"title": "跨 Agent 往返回切时的原生会话自动续接与 Strategy::Delta 增量补发", "desc": "单任务从 Claude 切到 Codex 再切回 Claude 时，自动寻回前序 Claude 原生会话 ID 恢复记忆，仅增量注入其离开期间由 Codex 产生的对话片段，兼顾原生上下文连续性与 Token 节省。", "refs": [{"repo": "aiwb", "path": "crates/aiwb-daemon/src/runtime/handoff.rs"}, {"repo": "aiwb", "path": "crates/aiwb-core/src/handoff.rs"}]}, {"title": "Daemon SQLite 草稿唯一真相源、排队消息一键分流侧聊与全队列顺序 Steer 冲刷", "desc": "草稿与附件路径存 SQLite 天然跨桌面/Web 共享且不受 localStorage 5MB 限制，换 Agent 草稿自动跟随；QueueStrip 支持一键把排队项抽去右侧无痕 Side Chat 提问，空框按 Ctrl+Enter 按序逐条 steer 冲刷进当前回合。", "refs": [{"repo": "aiwb", "path": "crates/aiwb-store/src/drafts.rs"}, {"repo": "aiwb", "path": "src/features/chat/composer/QueueStrip.tsx"}, {"repo": "aiwb", "path": "src/features/chat/composer/composer-now.ts"}]}, {"title": "内置全局四列 Agent 看板（BoardView）与二级「打开文件」斜体预览/固定标签收纳", "desc": "主区原生提供「待处理 / 运行中 / 已完成 / 空闲」全局四列看板统筹并发任务；右侧文件预览收敛在单一顶层标签下的二级 FileTabs（单击斜体替换预览、双击固定保留 + 交互式目录树面包屑），连续翻看十几个文件也不会挤爆顶层 Diff/终端标签。", "refs": [{"repo": "aiwb", "path": "src/features/board/BoardView.tsx"}, {"repo": "aiwb", "path": "src/features/panel/files/OpenFilesView.tsx"}, {"repo": "aiwb", "path": "src/features/panel/files/BreadcrumbMenu.tsx"}]}, {"title": "内置浏览器单模式「轻点拾取 + 拖拽框选」合一与长按空格（Space）穿透操作", "desc": "无需在点选和框选工具按钮间来回切换（位移 <=6px 点选元素、>6px 矩形框选），标注态按住 Space 临时挂起遮罩即可直接滚动页面或点开下拉菜单，松开空格立即恢复拾取。", "refs": [{"repo": "aiwb", "path": "src-tauri/src/features/preview/page.js"}, {"repo": "aiwb", "path": "src/features/panel/browser/annotate.ts"}]}];
+const FACT_CHECKS = [{"claim": "旧文档 docs/reference-projects-roadmap.md 称 AIWB「没有后台 daemon SQLite、没有内置终端、没有系统通知角标、没有四列看板、没有跨 Agent 交接、没有内部编排 MCP，且只接 Codex 与 Claude 不做 ACP」。", "truth": "全部已严重过期！v0.2.96 源码已完整落地 aiwb-daemon + SQLite、portable-pty + xterm 终端、Rust 后台通知与角标、BoardView 看板、16K 预算跨 Agent 交接、/mcp 7 工具编排，以及共享 Rust ACP 引擎驱动的 Cursor 与 Antigravity。", "refs": [{"repo": "aiwb", "path": "docs/reference-projects-roadmap.md"}, {"repo": "aiwb", "path": "crates/aiwb-agents/src/acp/mod.rs"}, {"repo": "aiwb", "path": "crates/aiwb-daemon/src/terminals.rs"}, {"repo": "aiwb", "path": "src-tauri/src/attention.rs"}, {"repo": "aiwb", "path": "src/features/board/BoardView.tsx"}]}, {"claim": "旧文档称 AIWB「没有 .worktreeinclude 环境文件复制、没有 CLI 历史会话导入、Claude 斜杠命令表为空」。", "truth": "均已落地：aiwb-git/src/include.rs 已实现 .worktreeinclude 与 AGENTS.override.md 自动拷贝；ImportSessionsDialog 已覆盖四大主力 Agent 历史导入；Claude 已从初始化回包动态加载斜杠命令与技能。", "refs": [{"repo": "aiwb", "path": "crates/aiwb-git/src/include.rs"}, {"repo": "aiwb", "path": "src/features/sidebar/projects/ImportSessionsDialog.tsx"}, {"repo": "aiwb", "path": "crates/aiwb-agents/src/claude/catalog/mod.rs"}]}, {"claim": "AIWB「编辑项目」弹窗允许添加和排序多个「关联目录（project.folders）」，看似已支持多目录工作区。", "truth": "源码核实为未接线假 UI：projects.update 仅取 folders[0] 更新主路径，folders[1..] 虽写入 SQLite JSON 列，但在 Agent 启动（--add-dir）、文件树、快开与全文搜索中 100% 未读取。", "refs": [{"repo": "aiwb", "path": "src/features/sidebar/projects/EditProjectDialog.tsx"}, {"repo": "aiwb", "path": "crates/aiwb-daemon/src/services/projects.rs"}, {"repo": "aiwb", "path": "crates/aiwb-daemon/src/services/files.rs"}]}, {"claim": "AIWB 已在源文件与 Diff 视图实现了完整的行内驻留评论。", "truth": "仅源文件查看器完整：SourceView.tsx 挂载了 SavedComment，但 DiffFileSection.tsx 漏接了 SavedComment，导致 Diff 行间提交评论后在代码区直接消失（仅剩输入框顶部卡片），且切换统一/分栏布局会直接清空正在输入的评论草稿。", "refs": [{"repo": "aiwb", "path": "src/features/panel/viewers/SourceView.tsx"}, {"repo": "aiwb", "path": "src/features/panel/diff/DiffFileSection.tsx"}, {"repo": "aiwb", "path": "src/features/panel/diff/DiffView.tsx"}]}, {"claim": "aiwb-git/src/snapshot.rs 已有 refs/aiwb/snapshots/ 隐藏引用，说明 AIWB 已有类似 T3 Code 的 Checkpoint。", "truth": "职责完全不同：snapshot.rs 仅用于删除/超额淘汰整个任务 Worktree 时的单次暂存恢复，不关联任何对话轮次或 TurnAnchor，不支持按轮查看净 Diff 或对话/文件协同回退。", "refs": [{"repo": "aiwb", "path": "crates/aiwb-git/src/snapshot.rs"}, {"repo": "t3code", "path": "apps/server/src/checkpointing/CheckpointStore.ts"}]}, {"claim": "crates/aiwb-core/src/models/event.rs:712 注释写明 SessionEventBody::NewThread 会由会话管理器通知前端新建会话并发出首条消息。", "truth": "链路在 daemon 层被丢弃：runtime.rs:345 写了 SessionEventBody::NewThread { .. } => Ok(()) 直接静默吞掉，未落库也未通知前端。", "refs": [{"repo": "aiwb", "path": "crates/aiwb-core/src/models/event.rs"}, {"repo": "aiwb", "path": "crates/aiwb-daemon/src/runtime.rs"}]}, {"claim": "AIWB 的 PromptQuestion 已有 is_secret: bool 字段，因此向用户提问输入密钥时已受保护。", "truth": "仅 MCP ElicitationCard 生效；Codex 提问走的 QuestionPopup.tsx 忽略 is_secret 渲染明文输入框，且 codex/prompts.rs 将敏感答案明文拼入事件永久写入 SQLite。", "refs": [{"repo": "aiwb", "path": "src/features/chat/events/QuestionPopup.tsx"}, {"repo": "aiwb", "path": "crates/aiwb-agents/src/codex/prompts.rs"}]}, {"claim": "crates/aiwb-agents/src/claude/command.rs:92 注释称「照 t3code ClaudeAdapterV2.ts」挂载工作台 MCP。", "truth": "传递方式关键安全差异：AIWB 将含 Bearer Token 的 JSON 拼进 --mcp-config 命令行参数；而 T3 Code 单测强断言禁止传 --mcp-config，改在初始化后经私有 stdin 控制流 setMcpServers 动态下发防进程表泄密。", "refs": [{"repo": "aiwb", "path": "crates/aiwb-agents/src/claude/command.rs"}, {"repo": "t3code", "path": "apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts"}]}, {"claim": "常见印象认为 T3 Code 实现了 Git Diff 单 hunk / 单行的 stage / unstage / revert 按钮。", "truth": "实查 T3 Code 源码同样没有单 hunk stage/revert UI！T3 Code 采用的是「Commit 弹窗文件级勾选（git commit --only --pathspec-from-file=- 不动原暂存区）+ 按对话轮次整轮 Checkpoint 回滚」组合设计。", "refs": [{"repo": "t3code", "path": "apps/server/src/vcs/GitVcsDriverCore.ts"}, {"repo": "t3code", "path": "apps/web/src/components/DiffPanel.tsx"}]}, {"claim": "以为 T3 Code 是在 Node 服务端运行 C 库 libghostty-vt 序列化终端网格，且 SSH 远端必须预装 Node.js。", "truth": "两处直觉均不准确：① libghostty-vt 是编译为前端 ghostty-vt.wasm 搭配 Canvas 2D 替代 xterm.js，服务端存的是带序列边界清洗的原始 VT .log；② SSH 远端自动下载自包含 tar.gz 发行包，目标机无需预装 Node 或编译器。", "refs": [{"repo": "t3code", "path": "apps/web/src/terminal/ghostty/runtime.ts"}, {"repo": "t3code", "path": "packages/ssh/src/tunnel.ts"}]}];
+const ARCH_ROWS = [{"dim": "桌面壳与常驻后端", "t3": "Electron 包装 Web + Node 24 Effect Server（配 V8 编译缓存硬链接加速）", "aiwb": "Tauri 2 轻量原生壳 + 纯 Rust 单二进制 aiwb-daemon（毫秒冷启、关窗驻托盘）", "winner": "aiwb"}, {"dim": "状态持久化与编排", "t3": "SQLite 事件溯源 + 单事务 CommandReceipt 幂等 + EffectOutbox 队列 + 分页裁剪", "aiwb": "SQLite 6 张表原地更新流式事件 + rev 差量推送（子任务待回报队列仅驻内存）", "winner": "t3"}, {"dim": "Agent 驱动与多账号", "t3": "11 大可对话驱动 + 官方 ACP Registry（512+）+ 多实例 Auth Overlay + 专用小模型生成层", "aiwb": "4 款可对话原生/ACP 驱动 + 3 款检测壳；全局单例目录，无多账号隔离与小模型通道", "winner": "t3"}, {"dim": "代码回退与工作树迁移", "t3": "逐轮隐藏 ref Checkpoint + 双模协同 Rewind + listAuthoredPaths 去污（无脏目录双向迁移）", "aiwb": "无逐轮 Checkpoint 回退；独创 Worktree↔主目录带脏改动热交接与淘汰前快照封存复活", "winner": "split"}, {"dim": "Git 交付与托管集成", "t3": "智能 Commit/Push/PR 按钮 + 7 大 Forges + 原生 PR/Stacked PR 工作台 + 后台 CI 值守 + Issues", "aiwb": "仅本地分支查看/创建/切换 + git apply 命令复制，零 Git 写操作与托管商集成", "winner": "t3"}, {"dim": "Diff 与源码查看器", "t3": "@pierre/diffs Worker 池语法高亮 + 两阶段懒加载 + 面板内编辑保存 + 1MB+ 大文件查看器", "aiwb": "Diff 主线程全量无语法高亮（2MiB 上限）；源码查看器 133 行简版分词、只读且无虚拟化", "winner": "t3"}, {"dim": "内置终端引擎", "t3": "前端 libghostty-vt WASM + 底部抽屉/多实例分屏 + 8MiB 落盘恢复 + 选区转 Chip + 路径点击", "aiwb": "xterm.js + portable-pty 右侧面板单例（切走 30s 杀进程）、1MiB 内存缓冲、无链接与选区转 Chip", "winner": "t3"}, {"dim": "预览浏览器与快拍", "t3": "8 实例池 + 无头 Chrome 兜底 + 14 个 Agent 自动化 MCP + React 源码定位 + 端口自动发现 + OS 快拍", "aiwb": "全局单 WebView + 封禁新窗口 + 仅 Windows 截图通道；优点是点选/框选合一与长按空格穿透", "winner": "t3"}, {"dim": "MCP 体系", "t3": "内部 14 个 Toolkit（延迟暴露）+ Claude stdin 安全下发 + 外部 OAuth 2.1 接入 + ui:// 微应用宿主", "aiwb": "内部 7 个子任务工具（配 Offer 先问再开卡）+ 独有跨 4 大 CLI 统一外部 MCP 图形配置面板", "winner": "split"}, {"dim": "全局看板与检索导航", "t3": "SQLite FTS5 Trigram 全文搜消息 + 正则搜代码 + Inbox/Settled/Snooze 流转 + when 快捷键引擎", "aiwb": "独有全局四列 BoardView 看板 + AttentionPill；无消息全文搜索、无归档恢复页、硬编码 8 快捷键", "winner": "split"}, {"dim": "安全边界与凭据管理", "t3": "严格 CSP + 一次性 WS Ticket + 16 域 RPC 权限 + 0600 密钥库/1Password + request_secret 脱敏卡", "aiwb": "Release 裸露 9222 调试端口与空 CSP、Claude argv 暴露 Token、提问卡漏掩码明文落库、放行 UNC 路径", "winner": "t3"}, {"dim": "多环境与跨端覆盖", "t3": "本机 + WSL2 原生双栈 + SSH 零预置远端 + Tailscale + 云中继 + React Native iOS/Android 客户端", "aiwb": "纯本机 127.0.0.1 桌面端 + 本地浏览器预览（图片/外部打开等能力强绑 Tauri 未下沉 daemon）", "winner": "t3"}];
+
+const DOMAIN_MAP = Object.fromEntries(DOMAINS.map(d => [d.id, d]));
+const PRIO_ORDER = { P0: 0, P1: 1, P2: 2, defer: 3 };
+const PRIO_LABELS = {
+  P0: "P0 · 核心闭环与安全止血",
+  P1: "P1 · 高频体验与生产力进阶",
+  P2: "P2 · 工程细节打磨与扩展",
+  defer: "暂缓 · 重资产或偏离现阶段定位"
+};
+
+const STORAGE_KEY = "aiwb_t3code_gap_shortlist_v1";
+const THEME_KEY = "aiwb_t3code_gap_theme_v1";
+const WIDTH_KEY = "aiwb_t3code_left_width_v1";
+
+const state = {
+  view: "explorer",
+  domain: "all",
+  type: "all",
+  prio: "all",
+  riskOnly: false,
+  query: "",
+  groupBy: "prio", // "prio" | "domain"
+  selectedGapId: GAPS[0]?.id || null,
+  selectedDomainId: DOMAINS[0]?.id || null,
+  strengthTab: "strengths", // "strengths" | "facts"
+  selectedStrengthIdx: 0,
+  selectedFactIdx: 0,
+  shortlist: new Set(loadShortlist())
+};
+
+function loadShortlist() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); } catch { return []; }
+}
+function saveShortlist() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify([...state.shortlist])); } catch {}
+}
+
+function initLayoutAndTheme() {
+  let t = "light";
+  try {
+    const saved = localStorage.getItem(THEME_KEY);
+    if (saved === "dark" || saved === "light") t = saved;
+    else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) t = "dark";
+    const w = Number(localStorage.getItem(WIDTH_KEY));
+    if (w >= 260 && w <= 780) document.documentElement.style.setProperty("--left-w", w + "px");
+  } catch {}
+  applyTheme(t);
+}
+function applyTheme(t) {
+  document.documentElement.setAttribute("data-theme", t);
+  try { localStorage.setItem(THEME_KEY, t); } catch {}
+  document.getElementById("themeBtn").textContent = t === "dark" ? "浅色" : "深色";
+}
+
+function esc(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function formatRich(text, highlightQuery = true) {
+  let safe = esc(text);
+  // Highlight technical code-like tokens (flags, paths, camelCase/PascalCase/snake_case APIs)
+  safe = safe.replace(/(`[^`]+`|--[a-zA-Z0-9_-]+(?:=[a-zA-Z0-9_./:@=-]+)?|(?:[a-zA-Z0-9_.-]+\/)*[a-zA-Z0-9_.-]+\.(?:jsonc|json|sqlite|wasm|html|toml|yaml|tsx|jsx|mjs|cjs|yml|css|log|rs|ts|js|md)(?::\d+(?:-\d+)?)?(?![a-zA-Z0-9_])|[A-Z][a-zA-Z0-9]+(?:Service|Worker|Store|Manager|Adapter|Driver|Panel|View|Card|Menu|Controller|Registry|Popup|Surface)\b|\b[a-z][a-z0-9]*_[a-z0-9_]+\b)/g, m => {
+    const clean = m.startsWith("`") && m.endsWith("`") ? m.slice(1, -1) : m;
+    return `<span class="inline-code">${clean}</span>`;
+  });
+  if (highlightQuery && state.query.trim()) {
+    const q = state.query.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    try {
+      safe = safe.replace(new RegExp(`(?![^<]*>)(${q})`, "ig"), "<mark>$1</mark>");
+    } catch {}
+  }
+  return safe;
+}
+
+function hiPlain(text) {
+  const safe = esc(text);
+  const q = state.query.trim();
+  if (!q) return safe;
+  const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  try { return safe.replace(new RegExp(`(${escaped})`, "ig"), "<mark>$1</mark>"); } catch { return safe; }
+}
+
+let toastTimer = null;
+function showToast(msg) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"), 1700);
+}
+
+function copyText(text, msg) {
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(text).then(() => showToast(msg)).catch(() => fallbackCopy(text, msg));
+  } else fallbackCopy(text, msg);
+}
+function fallbackCopy(text, msg) {
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand("copy"); showToast(msg); } catch {}
+  ta.remove();
+}
+
+function badgeType(t, short = false) {
+  if (t === "missing") return `<span class="badge b-missing">${short ? "缺失" : "我们没有"}</span>`;
+  return `<span class="badge b-weaker">${short ? "差距" : "体验不如它"}</span>`;
+}
+function badgePrio(p) {
+  const cls = p === "P0" ? "b-p0" : p === "P1" ? "b-p1" : p === "P2" ? "b-p2" : "b-defer";
+  return `<span class="badge ${cls}">${p === "defer" ? "暂缓" : p}</span>`;
+}
+
+function renderRefsBlock(refs) {
+  const t3Refs = refs.filter(r => r.repo === "t3code");
+  const aiwbRefs = refs.filter(r => r.repo === "aiwb");
+  const chip = r => {
+    const tagCls = r.repo === "t3code" ? "r-t3" : "r-aiwb";
+    const tagTxt = r.repo === "t3code" ? "T3" : "AIWB";
+    const full = (r.repo === "t3code" ? "G:\\document\\t3code\\" : "g:\\document\\ai-workbench\\") + r.path.replace(/\//g, "\\");
+    return `<button type="button" class="path-chip" data-copy-rel="${esc(r.path)}" data-copy-full="${esc(full)}" title="点击复制相对路径 · Shift+点击复制完整本机路径"><span class="repo-tag ${tagCls}">${tagTxt}</span><span>${hiPlain(r.path)}</span></button>`;
+  };
+  return `
+    <div class="refs-card">
+      <div class="refs-head">
+        <span>源码定位证据（100% 磁盘路径核验通过）</span>
+        <span class="refs-hint">点击复制相对路径 · Shift+点击复制绝对路径</span>
+      </div>
+      ${t3Refs.length ? `<div class="refs-group">${t3Refs.map(chip).join("")}</div>` : ""}
+      ${aiwbRefs.length ? `<div class="refs-group">${aiwbRefs.map(chip).join("")}</div>` : ""}
+    </div>
+  `;
+}
+
+function matchesGap(g) {
+  if (state.domain !== "all" && g.domain !== state.domain) return false;
+  if (state.type !== "all" && g.type !== state.type) return false;
+  if (state.prio !== "all" && g.priority !== state.prio) return false;
+  if (state.riskOnly && !g.risk) return false;
+  const q = state.query.trim().toLowerCase();
+  if (!q) return true;
+  const hay = [g.title, g.essence, g.advice, ...g.t3, ...g.aiwb, ...g.refs.map(r => r.path)].join(" ").toLowerCase();
+  return q.split(/\s+/).every(tok => hay.includes(tok));
+}
+
+function filteredGaps() {
+  const list = GAPS.filter(matchesGap);
+  if (state.groupBy === "domain") {
+    const domOrder = Object.fromEntries(DOMAINS.map((d, i) => [d.id, i]));
+    return list.sort((a, b) => {
+      const dd = domOrder[a.domain] - domOrder[b.domain];
+      if (dd !== 0) return dd;
+      return PRIO_ORDER[a.priority] - PRIO_ORDER[b.priority];
+    });
+  }
+  return list.sort((a, b) => {
+    const pd = PRIO_ORDER[a.priority] - PRIO_ORDER[b.priority];
+    if (pd !== 0) return pd;
+    if (a.type !== b.type) return a.type === "missing" ? -1 : 1;
+    return 0;
+  });
+}
+
+function ensureValidSelection(list) {
+  if (!list.length) return null;
+  if (!list.some(g => g.id === state.selectedGapId)) {
+    state.selectedGapId = list[0].id;
+  }
+  return list.find(g => g.id === state.selectedGapId) || list[0];
+}
+
+function updateTopBar() {
+  document.getElementById("cntAll").textContent = GAPS.length;
+  document.getElementById("cntStr").textContent = STRENGTHS.length + FACT_CHECKS.length;
+  document.getElementById("cntStar").textContent = `★ ${state.shortlist.size}`;
+  document.getElementById("kpiMissing").textContent = GAPS.filter(g => g.type === "missing").length;
+  document.getElementById("kpiWeaker").textContent = GAPS.filter(g => g.type === "weaker").length;
+  document.getElementById("kpiP0").textContent = GAPS.filter(g => g.priority === "P0").length;
+  document.getElementById("kpiRisk").textContent = GAPS.filter(g => g.risk).length;
+
+  document.querySelectorAll("#viewTabs [data-view]").forEach(b => {
+    b.classList.toggle("active", b.dataset.view === state.view);
+  });
+
+  const ws = document.getElementById("workspace");
+  const left = document.getElementById("leftPane");
+  const sp = document.getElementById("splitter");
+  const isSingle = state.view === "arch";
+  ws.classList.toggle("full-single", isSingle);
+  left.style.display = isSingle ? "none" : "flex";
+  sp.style.display = isSingle ? "none" : "block";
+}
+
+// ================= VIEW 1: EXPLORER (LEFT LIST + RIGHT DETAIL) =================
+function renderExplorerFilterShell() {
+  const left = document.getElementById("leftPane");
+  if (left.dataset.shell === "explorer") return;
+  left.dataset.shell = "explorer";
+  left.innerHTML = `
+    <div class="filter-box">
+      <div class="filter-row nowrap">
+        <div class="search-wrap">
+          <span class="search-icon">⌕</span>
+          <input id="searchInput" class="search-input" type="text" placeholder="搜功能、机制、源码路径 (/)…" />
+          <button type="button" id="searchClear" class="search-clear" title="清空">×</button>
+        </div>
+        <select id="domainSelect" class="domain-select" title="按功能模块筛选">
+          <option value="all">全部模块 (${GAPS.length})</option>
+          ${DOMAINS.map(d => `<option value="${d.id}">${esc(d.name)} (${GAPS.filter(g => g.domain === d.id).length})</option>`).join("")}
+        </select>
+        <button type="button" class="btn" id="groupToggleBtn" title="切换分组方式 (G)" style="height:29px;padding:0 7px;flex-shrink:0"></button>
+      </div>
+      <div class="filter-row">
+        <div class="seg" id="typeSeg">
+          <button type="button" data-type="all">全部</button>
+          <button type="button" data-type="missing">缺失</button>
+          <button type="button" data-type="weaker">差距</button>
+        </div>
+        <button type="button" class="chip" data-prio="P0">P0</button>
+        <button type="button" class="chip" data-prio="P1">P1</button>
+        <button type="button" class="chip" data-prio="P2">P2</button>
+        <button type="button" class="chip" data-prio="defer">暂缓</button>
+        <button type="button" class="chip" id="riskChip">隐患</button>
+        <span class="list-meta" id="listMeta"></span>
+      </div>
+    </div>
+    <div class="master-list" id="masterList"></div>
+  `;
+
+  const inp = document.getElementById("searchInput");
+  inp.value = state.query;
+  inp.addEventListener("input", e => {
+    state.query = e.target.value;
+    syncExplorerLeftList();
+    renderExplorerRightDetail();
+  });
+  document.getElementById("searchClear").addEventListener("click", () => {
+    state.query = "";
+    inp.value = "";
+    inp.focus();
+    syncExplorerLeftList();
+    renderExplorerRightDetail();
+  });
+  document.getElementById("domainSelect").addEventListener("change", e => {
+    state.domain = e.target.value;
+    syncExplorerLeftList();
+    renderExplorerRightDetail();
+  });
+  document.getElementById("groupToggleBtn").addEventListener("click", () => {
+    state.groupBy = state.groupBy === "prio" ? "domain" : "prio";
+    syncExplorerLeftList();
+  });
+  document.getElementById("typeSeg").addEventListener("click", e => {
+    const b = e.target.closest("[data-type]");
+    if (!b) return;
+    state.type = b.dataset.type;
+    syncExplorerLeftList();
+    renderExplorerRightDetail();
+  });
+  left.querySelector(".filter-box").addEventListener("click", e => {
+    const pBtn = e.target.closest("[data-prio]");
+    if (pBtn) {
+      state.prio = state.prio === pBtn.dataset.prio ? "all" : pBtn.dataset.prio;
+      syncExplorerLeftList();
+      renderExplorerRightDetail();
+      return;
+    }
+    if (e.target.closest("#riskChip")) {
+      state.riskOnly = !state.riskOnly;
+      syncExplorerLeftList();
+      renderExplorerRightDetail();
+      return;
+    }
+    if (e.target.closest("#resetFilterLink")) {
+      state.domain = "all"; state.type = "all"; state.prio = "all"; state.riskOnly = false; state.query = "";
+      document.getElementById("searchInput").value = "";
+      syncExplorerLeftList();
+      renderExplorerRightDetail();
+    }
+  });
+}
+
+function syncExplorerLeftList() {
+  renderExplorerFilterShell();
+  const list = filteredGaps();
+  ensureValidSelection(list);
+
+  document.getElementById("domainSelect").value = state.domain;
+  document.getElementById("searchClear").classList.toggle("show", state.query.length > 0);
+  const gBtn = document.getElementById("groupToggleBtn");
+  gBtn.textContent = state.groupBy === "prio" ? "按优先级" : "按模块";
+  gBtn.classList.toggle("active", state.groupBy === "domain");
+
+  document.querySelectorAll("#typeSeg [data-type]").forEach(b => b.classList.toggle("active", b.dataset.type === state.type));
+  document.querySelectorAll(".filter-box [data-prio]").forEach(b => b.classList.toggle("active", b.dataset.prio === state.prio));
+  document.getElementById("riskChip").classList.toggle("active-risk", state.riskOnly);
+
+  const hasFilter = state.domain !== "all" || state.type !== "all" || state.prio !== "all" || state.riskOnly || state.query.trim() !== "";
+  document.getElementById("listMeta").innerHTML = `${list.length}项` + (hasFilter ? `<button type="button" class="reset-link" id="resetFilterLink">重置</button>` : "");
+
+  const container = document.getElementById("masterList");
+  if (list.length === 0) {
+    container.innerHTML = `<div class="empty-box">无匹配条目</div>`;
+    return;
+  }
+
+  let html = "";
+  let lastGroup = null;
+  for (const item of list) {
+    const grpKey = state.groupBy === "domain" ? item.domain : item.priority;
+    if (grpKey !== lastGroup) {
+      lastGroup = grpKey;
+      const grpTitle = state.groupBy === "domain" ? DOMAIN_MAP[grpKey].name : PRIO_LABELS[grpKey];
+      const grpCount = list.filter(x => (state.groupBy === "domain" ? x.domain : x.priority) === grpKey).length;
+      html += `<div class="list-group-hdr"><span>${esc(grpTitle)}</span><span class="mono">${grpCount}</span></div>`;
+    }
+    const active = item.id === state.selectedGapId;
+    const starred = state.shortlist.has(item.id);
+    html += `
+      <div class="list-item ${active ? "active" : ""}" data-select-gap="${esc(item.id)}">
+        <div class="li-top">
+          ${state.groupBy === "domain" ? badgePrio(item.priority) : ""}
+          ${badgeType(item.type, true)}
+          ${item.risk ? '<span class="badge b-risk">险</span>' : ""}
+          <span class="li-title">${hiPlain(item.title)}</span>
+          <button type="button" class="star-btn ${starred ? "starred" : ""}" data-star-id="${esc(item.id)}" title="加入/移出待办 (S)">${starred ? "★" : "☆"}</button>
+        </div>
+        <div class="li-sub">
+          <span class="li-essence">${hiPlain(item.essence)}</span>
+          ${state.groupBy === "prio" ? `<span class="li-dom">${esc(DOMAIN_MAP[item.domain].name.split("、")[0])}</span>` : ""}
+        </div>
+      </div>
+    `;
+  }
+  container.innerHTML = html;
+}
+
+function updateActiveClassInMasterList() {
+  document.querySelectorAll("#masterList [data-select-gap]").forEach(el => {
+    el.classList.toggle("active", el.dataset.selectGap === state.selectedGapId);
+  });
+}
+
+function renderGapDetailHtml(item, list) {
+  const idx = list ? list.findIndex(x => x.id === item.id) : -1;
+  const starred = state.shortlist.has(item.id);
+  const prevId = idx > 0 ? list[idx - 1].id : "";
+  const nextId = idx >= 0 && idx < list.length - 1 ? list[idx + 1].id : "";
+  return `
+    <div class="detail-wrap">
+      <div class="detail-topbar">
+        <div class="detail-badges">
+          ${badgeType(item.type)}
+          ${badgePrio(item.priority)}
+          <span class="badge b-domain">${esc(DOMAIN_MAP[item.domain].name)}</span>
+          ${item.risk ? '<span class="badge b-risk">安全 / 可靠性隐患</span>' : ""}
+          ${idx >= 0 ? `<span class="mono" style="color:var(--fg-3)">#${idx + 1} / ${list.length}</span>` : ""}
+        </div>
+        <div class="detail-nav">
+          <button type="button" class="btn ${starred ? "active" : ""}" data-star-id="${esc(item.id)}">${starred ? "★ 已入待办" : "☆ 加入待办"} <span class="kbd-hint">S</span></button>
+          ${list ? `
+            <button type="button" class="btn" data-select-gap="${esc(prevId)}" ${!prevId ? "disabled style='opacity:0.4;pointer-events:none'" : ""} title="上一条 (K)">↑</button>
+            <button type="button" class="btn" data-select-gap="${esc(nextId)}" ${!nextId ? "disabled style='opacity:0.4;pointer-events:none'" : ""} title="下一条 (J)">↓</button>
+          ` : ""}
+        </div>
+      </div>
+
+      <div class="detail-hero">
+        <h1 class="detail-title">${hiPlain(item.title)}</h1>
+        <div class="detail-essence">${formatRich(item.essence)}</div>
+      </div>
+
+      <div class="cmp-grid">
+        <div class="cmp-card t3">
+          <div class="cmp-head"><span>T3 Code 实现机制</span><span class="mono">v0.1.10</span></div>
+          <ul class="cmp-body">
+            ${item.t3.map(li => `<li>${formatRich(li)}</li>`).join("")}
+          </ul>
+        </div>
+        <div class="cmp-card aiwb">
+          <div class="cmp-head"><span>AI Workbench 当前现状</span><span class="mono">v0.2.96</span></div>
+          <ul class="cmp-body">
+            ${item.aiwb.map(li => `<li>${formatRich(li)}</li>`).join("")}
+          </ul>
+        </div>
+      </div>
+
+      <div class="advice-card">
+        <span class="advice-label">架构落地建议</span>
+        <div class="advice-text">${formatRich(item.advice)}</div>
+      </div>
+
+      ${renderRefsBlock(item.refs)}
+    </div>
+  `;
+}
+
+function renderExplorerRightDetail() {
+  const right = document.getElementById("rightPane");
+  const list = filteredGaps();
+  const item = ensureValidSelection(list);
+  if (!item) {
+    right.innerHTML = `<div class="empty-box">左侧无匹配条目，请调整搜索词或重置筛选条件。</div>`;
+    return;
+  }
+  right.innerHTML = renderGapDetailHtml(item, list);
+  right.scrollTop = 0;
+}
+
+// ================= VIEW 2: 10-DOMAIN MATRIX (LEFT DOMAINS + RIGHT ITEMS) =================
+function renderMatrixView() {
+  const left = document.getElementById("leftPane");
+  left.dataset.shell = "matrix";
+  left.innerHTML = `
+    <div class="list-group-hdr"><span>10 大功能域差距分布</span><span class="mono">${GAPS.length} 项</span></div>
+    <div class="master-list">
+      ${DOMAINS.map(d => {
+        const sub = GAPS.filter(g => g.domain === d.id);
+        const m = sub.filter(g => g.type === "missing").length;
+        const w = sub.filter(g => g.type === "weaker").length;
+        const p0 = sub.filter(g => g.priority === "P0").length;
+        const mPct = Math.round((m / sub.length) * 100);
+        const act = d.id === state.selectedDomainId;
+        return `
+          <div class="dom-item ${act ? "active" : ""}" data-pick-domain="${d.id}">
+            <div class="dom-top">
+              <span class="dom-name">${esc(d.name)}</span>
+              <span style="display:inline-flex;gap:4px">
+                <span class="badge b-missing">缺 ${m}</span>
+                <span class="badge b-weaker">弱 ${w}</span>
+                ${p0 ? `<span class="badge b-p0">P0×${p0}</span>` : ""}
+              </span>
+            </div>
+            <div class="dom-bar"><div class="dom-bar-m" style="width:${mPct}%"></div><div class="dom-bar-w" style="width:${100 - mPct}%"></div></div>
+            <div class="dom-verdict">${esc(d.verdict)}</div>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
+  renderMatrixRight();
+}
+
+function renderMatrixRight() {
+  const d = DOMAIN_MAP[state.selectedDomainId] || DOMAINS[0];
+  const sub = GAPS.filter(g => g.domain === d.id).sort((a, b) => PRIO_ORDER[a.priority] - PRIO_ORDER[b.priority]);
+  const right = document.getElementById("rightPane");
+  right.innerHTML = `
+    <div class="detail-wrap">
+      <div class="detail-hero">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+          <h1 class="detail-title">${esc(d.name)}（共 ${sub.length} 项）</h1>
+          <button type="button" class="btn primary" data-filter-in-explorer="${d.id}">在差距工作台中筛选该模块 →</button>
+        </div>
+        <div class="detail-essence">${esc(d.verdict)}</div>
+      </div>
+      ${sub.map(g => `
+        <div class="dom-gap-card" data-jump-gap="${esc(g.id)}" title="点击查看完整双栏源码对比">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            ${badgePrio(g.priority)}
+            ${badgeType(g.type)}
+            ${g.risk ? '<span class="badge b-risk">安全/风险</span>' : ""}
+            <strong style="font-size:13.5px">${esc(g.title)}</strong>
+            <span style="margin-left:auto;color:var(--accent);font-size:12px">查看详情 →</span>
+          </div>
+          <div style="font-size:12.5px;color:var(--fg-2)">${formatRich(g.essence, false)}</div>
+          <div style="font-size:12px;color:var(--ok-fg)">建议：${formatRich(g.advice, false)}</div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+  right.scrollTop = 0;
+}
+
+// ================= VIEW 3: STRENGTHS & FACT-CHECKS (LEFT LIST + RIGHT DETAIL) =================
+function renderStrengthsView() {
+  const left = document.getElementById("leftPane");
+  left.dataset.shell = "strengths";
+  const isStr = state.strengthTab === "strengths";
+  const items = isStr ? STRENGTHS : FACT_CHECKS;
+  left.innerHTML = `
+    <div class="filter-box">
+      <div class="seg" style="width:100%;display:grid;grid-template-columns:1fr 1fr">
+        <button type="button" data-stab="strengths" class="${isStr ? "active" : ""}">AIWB 反超优势 (${STRENGTHS.length})</button>
+        <button type="button" data-stab="facts" class="${!isStr ? "active" : ""}">旧文档/表象纠偏 (${FACT_CHECKS.length})</button>
+      </div>
+    </div>
+    <div class="master-list">
+      ${items.map((it, idx) => {
+        const act = isStr ? idx === state.selectedStrengthIdx : idx === state.selectedFactIdx;
+        const title = isStr ? it.title : it.claim;
+        const sub = isStr ? it.desc : it.truth;
+        return `
+          <div class="list-item ${act ? "active" : ""}" data-pick-sf="${idx}">
+            <div class="li-top">
+              <span class="badge ${isStr ? "b-ok" : "b-weaker"}">${isStr ? "反超" : "纠偏"}</span>
+              <span class="li-title">${esc(title)}</span>
+            </div>
+            <div class="li-sub"><span class="li-essence">${esc(sub)}</span></div>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
+  renderStrengthsRight();
+}
+
+function renderStrengthsRight() {
+  const right = document.getElementById("rightPane");
+  const isStr = state.strengthTab === "strengths";
+  if (isStr) {
+    const s = STRENGTHS[state.selectedStrengthIdx] || STRENGTHS[0];
+    right.innerHTML = `
+      <div class="detail-wrap">
+        <div class="detail-topbar">
+          <div class="detail-badges">
+            <span class="badge b-ok">AI Workbench 独有领先设计</span>
+            <span class="mono" style="color:var(--fg-3)">#${state.selectedStrengthIdx + 1} / ${STRENGTHS.length}</span>
+          </div>
+        </div>
+        <div class="detail-hero">
+          <h1 class="detail-title">${esc(s.title)}</h1>
+          <div class="detail-essence" style="border-left-color:var(--ok-fg)">演进守则：在借鉴 T3 Code 补齐短板时，务必保留并延续该项原生架构优势。</div>
+        </div>
+        <div class="cmp-card" style="padding:14px 18px;font-size:13.5px;line-height:1.68">
+          ${formatRich(s.desc, false)}
+        </div>
+        ${renderRefsBlock(s.refs)}
+      </div>
+    `;
+  } else {
+    const f = FACT_CHECKS[state.selectedFactIdx] || FACT_CHECKS[0];
+    right.innerHTML = `
+      <div class="detail-wrap">
+        <div class="detail-topbar">
+          <div class="detail-badges">
+            <span class="badge b-weaker">源码直读核实纠偏</span>
+            <span class="mono" style="color:var(--fg-3)">#${state.selectedFactIdx + 1} / ${FACT_CHECKS.length}</span>
+          </div>
+        </div>
+        <div class="cmp-card aiwb">
+          <div class="cmp-head"><span>常见误判 / 过期文档表述</span></div>
+          <div style="padding:12px 16px;font-size:13px;color:var(--missing-fg);text-decoration:line-through">${esc(f.claim)}</div>
+        </div>
+        <div class="advice-card">
+          <span class="advice-label">最新源码核实真相</span>
+          <div class="advice-text" style="font-size:13.5px;line-height:1.65">${formatRich(f.truth, false)}</div>
+        </div>
+        ${renderRefsBlock(f.refs)}
+      </div>
+    `;
+  }
+  right.scrollTop = 0;
+}
+
+// ================= VIEW 4: ARCHITECTURE TABLE =================
+function renderArchView() {
+  const right = document.getElementById("rightPane");
+  right.innerHTML = `
+    <div class="arch-wrap">
+      <table class="arch-table">
+        <thead>
+          <tr>
+            <th style="width:160px">核心架构维度</th>
+            <th>T3 Code (v0.1.10 @ ba640037e8)</th>
+            <th>AI Workbench (v0.2.96 @ 8bab097)</th>
+            <th style="width:96px">对比判定</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${ARCH_ROWS.map(r => {
+            const b = r.winner === "aiwb"
+              ? '<span class="badge b-ok">AIWB 领先</span>'
+              : r.winner === "t3"
+              ? '<span class="badge b-p0">T3 领先</span>'
+              : '<span class="badge b-weaker">各有千秋</span>';
+            return `
+              <tr>
+                <td style="font-weight:700">${esc(r.dim)}</td>
+                <td>${formatRich(r.t3, false)}</td>
+                <td>${formatRich(r.aiwb, false)}</td>
+                <td>${b}</td>
+              </tr>
+            `;
+          }).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+  right.scrollTop = 0;
+}
+
+// ================= VIEW 5: SHORTLIST & EXPORT (LEFT ITEMS + RIGHT MARKDOWN) =================
+function buildShortlistMarkdown() {
+  const items = GAPS.filter(g => state.shortlist.has(g.id)).sort((a, b) => PRIO_ORDER[a.priority] - PRIO_ORDER[b.priority]);
+  if (!items.length) return "";
+  const lines = [
+    "# AI Workbench 借鉴 T3 Code 待办清单",
+    "",
+    `> 基准：T3 Code v0.1.10 (ba640037e8) vs AI Workbench v0.2.96 (8bab097) · 共 ${items.length} 项`,
+    ""
+  ];
+  for (const item of items) {
+    lines.push(`## [${item.priority}] ${item.risk ? "[安全/风险] " : ""}${item.title} (${item.type === "missing" ? "我们没有" : "体验不如它"} · ${DOMAIN_MAP[item.domain].name})`);
+    lines.push(`- **核心差距**：${item.essence}`);
+    lines.push(`- **落地建议**：${item.advice}`);
+    lines.push(`- **参考源码**：${item.refs.map(r => `\`${r.repo}/${r.path}\``).join(" · ")}`);
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
+function renderShortlistView() {
+  const left = document.getElementById("leftPane");
+  left.dataset.shell = "shortlist";
+  const items = GAPS.filter(g => state.shortlist.has(g.id)).sort((a, b) => PRIO_ORDER[a.priority] - PRIO_ORDER[b.priority]);
+  left.innerHTML = `
+    <div class="filter-box">
+      <div class="filter-row">
+        <button type="button" class="btn primary" id="addAllP0Btn">+ 全部 P0 (${GAPS.filter(g => g.priority === "P0").length})</button>
+        <button type="button" class="btn" id="addAllRiskBtn">+ 全部隐患 (${GAPS.filter(g => g.risk).length})</button>
+        ${items.length ? `<button type="button" class="btn" id="clearShortlistBtn" style="margin-left:auto;color:var(--missing-fg)">清空</button>` : ""}
+      </div>
+    </div>
+    <div class="master-list">
+      ${items.length ? items.map(item => `
+        <div class="list-item" data-jump-gap="${esc(item.id)}">
+          <div class="li-top">
+            ${badgePrio(item.priority)}
+            ${badgeType(item.type, true)}
+            <span class="li-title">${esc(item.title)}</span>
+            <button type="button" class="star-btn starred" data-star-id="${esc(item.id)}" title="移出清单">★</button>
+          </div>
+          <div class="li-sub"><span class="li-essence">${esc(item.advice)}</span></div>
+        </div>
+      `).join("") : `<div class="empty-box">尚未加入任何待办项。<br/>可在「差距对照」点 ☆，或点上方按钮一键导入。</div>`}
+    </div>
+  `;
+
+  const right = document.getElementById("rightPane");
+  const md = buildShortlistMarkdown();
+  right.innerHTML = items.length ? `
+    <div class="detail-wrap">
+      <div class="md-box">
+        <div class="md-head">
+          <strong style="font-size:13px">Markdown 导出预览（${items.length} 项）</strong>
+          <div style="margin-left:auto;display:inline-flex;gap:6px">
+            <button type="button" class="btn primary" id="copyMdBtn">复制 Markdown</button>
+            <button type="button" class="btn" id="downloadMdBtn">下载 .md 文件</button>
+          </div>
+        </div>
+        <pre class="md-pre">${esc(md)}</pre>
+      </div>
+    </div>
+  ` : `<div class="empty-box">选择待办条目后，此处将实时生成可直接粘贴到 Issue / 路线图的精简 Markdown。</div>`;
+}
+
+function renderAll() {
+  updateTopBar();
+  if (state.view === "explorer") {
+    syncExplorerLeftList();
+    renderExplorerRightDetail();
+  } else if (state.view === "matrix") {
+    renderMatrixView();
+  } else if (state.view === "strengths") {
+    renderStrengthsView();
+  } else if (state.view === "arch") {
+    renderArchView();
+  } else if (state.view === "shortlist") {
+    renderShortlistView();
+  }
+}
+
+// ================= GLOBAL DELEGATED EVENTS =================
+document.getElementById("viewTabs").addEventListener("click", e => {
+  const b = e.target.closest("[data-view]");
+  if (!b) return;
+  state.view = b.dataset.view;
+  renderAll();
+});
+
+document.querySelector(".top-right").addEventListener("click", e => {
+  const q = e.target.closest("[data-quick]");
+  if (q) {
+    const k = q.dataset.quick;
+    state.view = "explorer";
+    state.domain = "all";
+    state.query = "";
+    state.type = (k === "missing" || k === "weaker") ? k : "all";
+    state.prio = k === "P0" ? "P0" : "all";
+    state.riskOnly = k === "risk";
+    document.getElementById("leftPane").dataset.shell = "";
+    renderAll();
+    return;
+  }
+  if (e.target.closest("#themeBtn")) {
+    const cur = document.documentElement.getAttribute("data-theme");
+    applyTheme(cur === "dark" ? "light" : "dark");
+  }
+});
+
+document.getElementById("workspace").addEventListener("click", e => {
+  const pathBtn = e.target.closest("[data-copy-rel]");
+  if (pathBtn) {
+    e.stopPropagation();
+    const val = e.shiftKey ? pathBtn.dataset.copyFull : pathBtn.dataset.copyRel;
+    copyText(val, "已复制路径：" + val);
+    return;
+  }
+
+  const starBtn = e.target.closest("[data-star-id]");
+  if (starBtn) {
+    e.stopPropagation();
+    toggleGapStar(starBtn.dataset.starId);
+    return;
+  }
+
+  const selGap = e.target.closest("[data-select-gap]");
+  if (selGap && selGap.dataset.selectGap) {
+    state.selectedGapId = selGap.dataset.selectGap;
+    updateActiveClassInMasterList();
+    renderExplorerRightDetail();
+    return;
+  }
+
+  const jumpGap = e.target.closest("[data-jump-gap]");
+  if (jumpGap) {
+    state.selectedGapId = jumpGap.dataset.jumpGap;
+    state.view = "explorer";
+    state.domain = "all"; state.type = "all"; state.prio = "all"; state.riskOnly = false; state.query = "";
+    document.getElementById("leftPane").dataset.shell = "";
+    renderAll();
+    requestAnimationFrame(() => {
+      document.querySelector(`#masterList [data-select-gap="${state.selectedGapId}"]`)?.scrollIntoView({ block: "center" });
+    });
+    return;
+  }
+
+  const pickDom = e.target.closest("[data-pick-domain]");
+  if (pickDom) {
+    state.selectedDomainId = pickDom.dataset.pickDomain;
+    document.querySelectorAll("[data-pick-domain]").forEach(el => el.classList.toggle("active", el.dataset.pickDomain === state.selectedDomainId));
+    renderMatrixRight();
+    return;
+  }
+
+  const filterInExp = e.target.closest("[data-filter-in-explorer]");
+  if (filterInExp) {
+    state.view = "explorer";
+    state.domain = filterInExp.dataset.filterInExplorer;
+    state.type = "all"; state.prio = "all"; state.riskOnly = false;
+    document.getElementById("leftPane").dataset.shell = "";
+    renderAll();
+    return;
+  }
+
+  const stab = e.target.closest("[data-stab]");
+  if (stab) {
+    state.strengthTab = stab.dataset.stab;
+    renderStrengthsView();
+    return;
+  }
+
+  const pickSf = e.target.closest("[data-pick-sf]");
+  if (pickSf) {
+    const idx = Number(pickSf.dataset.pickSf);
+    if (state.strengthTab === "strengths") state.selectedStrengthIdx = idx;
+    else state.selectedFactIdx = idx;
+    document.querySelectorAll("[data-pick-sf]").forEach(el => el.classList.toggle("active", Number(el.dataset.pickSf) === idx));
+    renderStrengthsRight();
+    return;
+  }
+
+  if (e.target.closest("#addAllP0Btn")) {
+    GAPS.filter(g => g.priority === "P0").forEach(g => state.shortlist.add(g.id));
+    saveShortlist();
+    renderAll();
+    showToast("已加入全部 P0 项");
+    return;
+  }
+  if (e.target.closest("#addAllRiskBtn")) {
+    GAPS.filter(g => g.risk).forEach(g => state.shortlist.add(g.id));
+    saveShortlist();
+    renderAll();
+    showToast("已加入全部安全与可靠性项");
+    return;
+  }
+  if (e.target.closest("#clearShortlistBtn")) {
+    state.shortlist.clear();
+    saveShortlist();
+    renderAll();
+    showToast("已清空待办");
+    return;
+  }
+  if (e.target.closest("#copyMdBtn")) {
+    copyText(buildShortlistMarkdown(), "已复制 Markdown 待办清单");
+    return;
+  }
+  if (e.target.closest("#downloadMdBtn")) {
+    const blob = new Blob([buildShortlistMarkdown()], { type: "text/markdown;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "aiwb-t3code-gap-shortlist.md";
+    a.click();
+    URL.revokeObjectURL(a.href);
+    showToast("已下载 aiwb-t3code-gap-shortlist.md");
+  }
+});
+
+function toggleGapStar(id) {
+  const starred = !state.shortlist.has(id);
+  if (starred) { state.shortlist.add(id); showToast("已加入待办"); }
+  else { state.shortlist.delete(id); showToast("已移出待办"); }
+  saveShortlist();
+  updateTopBar();
+  if (state.view === "explorer") {
+    document.querySelectorAll(`#masterList [data-star-id="${id}"]`).forEach(btn => {
+      btn.classList.toggle("starred", starred);
+      btn.textContent = starred ? "★" : "☆";
+    });
+    if (state.selectedGapId === id) {
+      const rightStar = document.querySelector(`#rightPane [data-star-id="${id}"]`);
+      if (rightStar) {
+        rightStar.classList.toggle("active", starred);
+        rightStar.innerHTML = `${starred ? "★ 已入待办" : "☆ 加入待办"} <span class="kbd-hint">S</span>`;
+      }
+    }
+  } else if (state.view === "shortlist") {
+    renderShortlistView();
+  }
+}
+
+// ================= DRAGGABLE SPLITTER =================
+const splitter = document.getElementById("splitter");
+splitter.addEventListener("mousedown", e => {
+  e.preventDefault();
+  splitter.classList.add("dragging");
+  document.body.style.cursor = "col-resize";
+  document.body.style.userSelect = "none";
+  const onMove = ev => {
+    const maxW = Math.min(760, Math.floor(window.innerWidth * 0.58));
+    const w = Math.max(260, Math.min(maxW, ev.clientX));
+    document.documentElement.style.setProperty("--left-w", w + "px");
+    try { localStorage.setItem(WIDTH_KEY, String(w)); } catch {}
+  };
+  const onUp = () => {
+    splitter.classList.remove("dragging");
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+    window.removeEventListener("mousemove", onMove);
+    window.removeEventListener("mouseup", onUp);
+  };
+  window.addEventListener("mousemove", onMove);
+  window.addEventListener("mouseup", onUp);
+});
+splitter.addEventListener("dblclick", () => {
+  document.documentElement.style.removeProperty("--left-w");
+  try { localStorage.removeItem(WIDTH_KEY); } catch {}
+});
+
+// ================= KEYBOARD NAVIGATION =================
+document.addEventListener("keydown", e => {
+  const tag = document.activeElement?.tagName;
+  const inInput = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+  if (e.key === "/" && !inInput) {
+    e.preventDefault();
+    if (state.view !== "explorer") { state.view = "explorer"; renderAll(); }
+    document.getElementById("searchInput")?.focus();
+    return;
+  }
+  if (e.key === "Escape" && inInput) {
+    const inp = document.getElementById("searchInput");
+    if (document.activeElement === inp && state.query) {
+      state.query = ""; inp.value = "";
+      syncExplorerLeftList(); renderExplorerRightDetail();
+    }
+    document.activeElement.blur();
+    return;
+  }
+  if (inInput || e.metaKey || e.ctrlKey || e.altKey) return;
+  const k = e.key.toLowerCase();
+  if (e.key === "1") { state.view = "explorer"; renderAll(); }
+  else if (e.key === "2") { state.view = "matrix"; renderAll(); }
+  else if (e.key === "3") { state.view = "strengths"; renderAll(); }
+  else if (e.key === "4") { state.view = "arch"; renderAll(); }
+  else if (e.key === "5") { state.view = "shortlist"; renderAll(); }
+  else if (k === "t") { applyTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark"); }
+  else if (k === "g" && state.view === "explorer") {
+    state.groupBy = state.groupBy === "prio" ? "domain" : "prio";
+    syncExplorerLeftList();
+  }
+  else if ((k === "j" || k === "k" || e.key === "ArrowDown" || e.key === "ArrowUp") && state.view === "explorer") {
+    const list = filteredGaps();
+    if (!list.length) return;
+    e.preventDefault();
+    const down = k === "j" || e.key === "ArrowDown";
+    const idx = list.findIndex(x => x.id === state.selectedGapId);
+    const next = down ? Math.min(list.length - 1, idx + 1) : Math.max(0, idx - 1);
+    if (list[next].id !== state.selectedGapId) {
+      state.selectedGapId = list[next].id;
+      updateActiveClassInMasterList();
+      renderExplorerRightDetail();
+      document.querySelector(`#masterList [data-select-gap="${state.selectedGapId}"]`)?.scrollIntoView({ block: "nearest" });
+    }
+  }
+  else if (k === "s" && state.view === "explorer" && state.selectedGapId) {
+    e.preventDefault();
+    toggleGapStar(state.selectedGapId);
+  }
+});
+
+initLayoutAndTheme();
+renderAll();
+</script>
+</body>
+</html>

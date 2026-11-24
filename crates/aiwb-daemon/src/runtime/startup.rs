@@ -20,6 +20,14 @@ impl Runtimes {
                 if cancelled.load(Ordering::SeqCst) {
                     return Ok(());
                 }
+                if message
+                    .as_ref()
+                    .is_some_and(|m| is_visible_user_text(&m.text) || !m.images.is_empty())
+                {
+                    if let Some(pre) = runtimes.capture_pre_checkpoint(&session_id).await {
+                        runtimes.save_turn_checkpoint(&session_id, None, pre);
+                    }
+                }
                 let handle = runtimes.ensure_live(&session_id).await?;
                 if cancelled.load(Ordering::SeqCst) {
                     return Ok(());
@@ -44,7 +52,7 @@ impl Runtimes {
                 }
                 if let Some(message) = message {
                     let command =
-                        message.text.trim_start().starts_with('/') && message.images.is_empty();
+                        !is_visible_user_text(&message.text) && message.images.is_empty();
                     // 目标可能已自动开了回合，初始说明直接交给这一轮，不作为后续消息再次排队。
                     handle
                         .deliver_now(message)
@@ -150,8 +158,7 @@ impl Runtimes {
     pub(super) fn cancel_initial(&self, session_id: &str) -> bool {
         let starting = self.starting.lock().unwrap();
         if let Some(cancelled) = starting.get(session_id) {
-            cancelled.store(true, Ordering::SeqCst);
-            return true;
+            return !cancelled.swap(true, Ordering::SeqCst);
         }
         false
     }

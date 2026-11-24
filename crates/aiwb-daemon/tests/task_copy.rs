@@ -61,6 +61,7 @@ fn session(id: &str, agent: AgentKind, created_at: i64) -> TaskSession {
         id: id.into(),
         task_id: "t".into(),
         agent,
+        instance_id: None,
         native_id: None,
         status: SessionStatus::Completed,
         options: Default::default(),

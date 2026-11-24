@@ -95,6 +95,70 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE session ADD COLUMN side INTEGER NOT NULL DEFAULT 0;",
     // 6：子任务挂在开出它的任务下。父任务删掉后子任务留着，成为普通任务。
     "ALTER TABLE task ADD COLUMN parent_task_id TEXT REFERENCES task(id) ON DELETE SET NULL;",
+    // 7：多实例隔离、任务手动标题标记、逐轮 Git 检查点、消息全文检索 FTS5 trigram 索引。
+    "ALTER TABLE task ADD COLUMN title_customized INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE session ADD COLUMN instance_id TEXT;
+    CREATE TABLE agent_instance (
+        id               TEXT PRIMARY KEY,
+        kind             TEXT NOT NULL,
+        display_name     TEXT NOT NULL,
+        accent_color     TEXT,
+        binary_path      TEXT,
+        launch_args      TEXT NOT NULL DEFAULT '[]',
+        environment      TEXT NOT NULL DEFAULT '[]',
+        isolation_mode   TEXT NOT NULL DEFAULT 'hostDefault',
+        home_path        TEXT,
+        shared_home_path TEXT,
+        enabled          INTEGER NOT NULL DEFAULT 1,
+        is_default       INTEGER NOT NULL DEFAULT 0,
+        sort_order       INTEGER NOT NULL DEFAULT 0,
+        created_at       INTEGER NOT NULL,
+        updated_at       INTEGER NOT NULL
+    );
+    CREATE TABLE checkpoint (
+        id            TEXT PRIMARY KEY,
+        task_id       TEXT NOT NULL REFERENCES task(id) ON DELETE CASCADE,
+        session_id    TEXT NOT NULL REFERENCES session(id) ON DELETE CASCADE,
+        user_event_id TEXT NOT NULL,
+        cut_seq       INTEGER NOT NULL,
+        turn_id       TEXT,
+        pre_ref       TEXT,
+        post_ref      TEXT,
+        head_oid      TEXT,
+        branch        TEXT,
+        cwd           TEXT NOT NULL,
+        created_at    INTEGER NOT NULL,
+        updated_at    INTEGER NOT NULL
+    );
+    CREATE INDEX checkpoint_task ON checkpoint(task_id, created_at);
+    CREATE INDEX checkpoint_session ON checkpoint(session_id, cut_seq);
+    CREATE VIRTUAL TABLE search_fts USING fts5(
+        text,
+        task_id UNINDEXED,
+        session_id UNINDEXED,
+        event_id UNINDEXED,
+        seq UNINDEXED,
+        role UNINDEXED,
+        tokenize = 'trigram'
+    );
+    CREATE TABLE search_doc (
+        doc_key    TEXT PRIMARY KEY,
+        fts_rowid  INTEGER NOT NULL,
+        task_id    TEXT NOT NULL REFERENCES task(id) ON DELETE CASCADE,
+        session_id TEXT REFERENCES session(id) ON DELETE CASCADE,
+        seq        INTEGER
+    );
+    CREATE INDEX search_doc_task ON search_doc(task_id);
+    CREATE INDEX search_doc_session ON search_doc(session_id, seq);
+    CREATE TRIGGER search_doc_cleanup AFTER DELETE ON search_doc BEGIN
+        DELETE FROM search_fts WHERE rowid = old.fts_rowid;
+    END;",
+    // 8：追踪流式跳过索引的脏事件，回合结束时仅增量刷入本轮变化的事件而不全表重扫。
+    "CREATE TABLE search_dirty (
+        session_id TEXT NOT NULL REFERENCES session(id) ON DELETE CASCADE,
+        seq        INTEGER NOT NULL,
+        PRIMARY KEY (session_id, seq)
+    );",
 ];
 
 /// 调用时外键必须是关着的：重建表的迁移要先删旧表。
@@ -103,6 +167,9 @@ pub(crate) fn run(conn: &mut Connection) -> rusqlite::Result<()> {
     for (index, sql) in MIGRATIONS.iter().enumerate().skip(current) {
         let tx = conn.transaction()?;
         tx.execute_batch(sql)?;
+        if index + 1 == 7 {
+            crate::search::backfill_tx(&tx)?;
+        }
         tx.pragma_update(None, "user_version", index + 1)?;
         tx.commit()?;
     }

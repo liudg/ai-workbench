@@ -1,7 +1,7 @@
-import { useAgentProfiles, useSessionAgents } from "@/features/agents";
+import { useAgentProfiles, useSelectableInstances } from "@/features/agents";
 import { forkTargets, tasksApi } from "@/features/tasks";
 import type { WorktreeDeleteFlags } from "@/lib/worktree-delete";
-import { agentIdentity } from "@/shared/agent/identity";
+import { agentIdentity, profileForSessionAgent } from "@/shared/agent/identity";
 import { writeClipboardText } from "@/shared/clipboard";
 import { showError } from "@/shared/shell/error-banner";
 import { leaveTask, openTask } from "@/shared/shell/navigation";
@@ -11,16 +11,36 @@ import { showSidebarNotice } from "../sidebar-notice";
 
 export function useSessionRow(task: SidebarTask) {
   const profiles = useAgentProfiles();
-  const agents = useSessionAgents();
-  const current = task.agent && task.status ? { agent: task.agent, status: task.status, nativeId: task.nativeId } : undefined;
+  const instances = useSelectableInstances();
+  const current =
+    task.agent && task.status
+      ? {
+          agent: task.agent,
+          instanceId: task.instanceId,
+          status: task.status,
+          nativeId: task.nativeId,
+        }
+      : undefined;
   return {
-    identity: task.agent ? agentIdentity(task.agent, profiles[task.agent]) : null,
-    forks: forkTargets(current, profiles, agents),
+    identity: task.agent
+      ? agentIdentity(task.agent, profileForSessionAgent(task.agent, profiles, task.instanceId))
+      : null,
+    forks: forkTargets(current, profiles, instances),
     /** 分出一个新任务并打开它。 */
-    fork: (agent: AgentKind | undefined) =>
-      void tasksApi.forkTask(task.id, agent).then((entry) => openTask(entry.id, entry.projectId ?? null), showError),
+    fork: (agent: AgentKind | undefined, instanceId?: string) =>
+      void tasksApi
+        .forkTask(task.id, agent, instanceId)
+        .then((entry) => openTask(entry.id, entry.projectId ?? null), showError),
     select: () => openTask(task.id, task.projectId),
     rename: (title: string) => tasksApi.renameTask(task.id, title).then(() => true, () => false),
+    regenerateTitle: () =>
+      tasksApi.regenerateTitle(task.id).then(
+        () => true,
+        (error) => {
+          showError(error);
+          return false;
+        },
+      ),
     copy: (format: "markdown" | "workdir") => {
       const read = format === "markdown" ? tasksApi.exportMarkdown : tasksApi.taskWorkdir;
       void read(task.id)

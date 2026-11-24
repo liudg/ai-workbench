@@ -159,6 +159,18 @@ pub struct AgentCapabilities {
     /// 单独停掉一个后台任务（`BackgroundTask`）。
     #[serde(default)]
     pub supports_background_task_stop: bool,
+    /// 支持在工作台创建多个隔离账号/网关实例（自定义目录、参数、环境变量）。
+    #[serde(default)]
+    pub supports_multi_instance: bool,
+    /// 支持影子主目录（独立凭据 + 软链/Junction 共享主目录的技能与会话历史）。
+    #[serde(default)]
+    pub supports_shadow_home: bool,
+    /// 支持按轮次回退对话历史（原生截断或无损前文续接）。
+    #[serde(default)]
+    pub supports_conversation_rewind: bool,
+    /// 支持独立于主会话的无痕轻量文本生成（标题、分支名、提交说明）。
+    #[serde(default)]
+    pub supports_text_generation: bool,
 }
 
 impl AgentCapabilities {
@@ -188,6 +200,10 @@ impl AgentCapabilities {
             supports_side_chat: false,
             supports_subagent_stop: false,
             supports_background_task_stop: false,
+            supports_multi_instance: false,
+            supports_shadow_home: false,
+            supports_conversation_rewind: false,
+            supports_text_generation: false,
         }
     }
 
@@ -226,6 +242,10 @@ impl AgentCapabilities {
             // 2026-11-17 codex-cli 0.169.0：`thread/backgroundTerminals/terminate { threadId, processId }`，
             // 随后补一条该命令的 `item/completed`（`failed`，`exitCode: -1`）。
             supports_background_task_stop: true,
+            supports_multi_instance: true,
+            supports_shadow_home: true,
+            supports_conversation_rewind: true,
+            supports_text_generation: true,
         }
     }
 
@@ -277,6 +297,10 @@ impl AgentCapabilities {
             supports_subagent_stop: true,
             // 2026-11-17 Claude Code 2.1.326：同一个 `stop_task` 也停 `local_bash`，随后 `task_updated` 报 `killed`。
             supports_background_task_stop: true,
+            supports_multi_instance: true,
+            supports_shadow_home: false,
+            supports_conversation_rewind: true,
+            supports_text_generation: true,
         }
     }
 
@@ -333,6 +357,10 @@ impl AgentCapabilities {
             supports_subagent_stop: false,
             // 工作台没有接 Cursor 的后台任务。
             supports_background_task_stop: false,
+            supports_multi_instance: true,
+            supports_shadow_home: false,
+            supports_conversation_rewind: true,
+            supports_text_generation: true,
         }
     }
 
@@ -389,6 +417,10 @@ impl AgentCapabilities {
             supports_subagent_stop: false,
             // 2026-11-17 agy 1.5.9：ACP 只有 `session/cancel`，`initialize` 也没报别的方法，停不了单个后台任务。
             supports_background_task_stop: false,
+            supports_multi_instance: true,
+            supports_shadow_home: false,
+            supports_conversation_rewind: true,
+            supports_text_generation: true,
         }
     }
 }
@@ -477,6 +509,10 @@ pub struct SlashCommand {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentProfile {
     pub kind: AgentKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instance_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accent_color: Option<String>,
     pub capabilities: AgentCapabilities,
     pub commands: Vec<SlashCommand>,
     /// 新建会话的权限档。空表示适配器自己决定，界面不要拿另一个 Agent 的上次选择。
@@ -522,6 +558,9 @@ pub struct AgentCatalog {
     /// 这份目录属于哪个 Agent。对不上当前会话时不能拿来显示，也不能写入另一个 Agent 的缓存。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent: Option<AgentKind>,
+    /// 这份目录属于哪个实例。空表示内置默认实例。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instance_id: Option<String>,
 }
 
 impl AgentCatalog {
@@ -539,6 +578,7 @@ impl AgentCatalog {
             thread_effort: None,
             cli_config_read: None,
             agent: None,
+            instance_id: None,
         }
     }
 }
@@ -557,6 +597,8 @@ pub enum UpdateVia {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AgentInstallation {
     pub kind: AgentKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instance_id: Option<String>,
     pub display_name: String,
     pub installed: bool,
     pub version: Option<String>,
@@ -572,6 +614,7 @@ impl AgentInstallation {
     pub fn absent(kind: AgentKind, display_name: &str) -> Self {
         Self {
             kind,
+            instance_id: None,
             display_name: display_name.to_string(),
             installed: false,
             version: None,

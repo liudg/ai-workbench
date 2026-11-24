@@ -56,7 +56,21 @@ pub fn roots_of(options: &Value) -> Vec<String> {
         .unwrap_or_default()
 }
 
+#[cfg(test)]
 pub async fn open(options: Open, events: EventSink) -> Result<Arc<Shared>, AgentError> {
+    open_for(
+        &crate::instance::InstanceOverlay::default_for(aiwb_core::models::AgentKind::Antigravity),
+        options,
+        events,
+    )
+    .await
+}
+
+pub async fn open_for(
+    overlay: &crate::instance::InstanceOverlay,
+    options: Open,
+    events: EventSink,
+) -> Result<Arc<Shared>, AgentError> {
     let project = PathBuf::from(options.project_path.trim());
     if project.as_os_str().is_empty() {
         return Err(AgentError::Runtime("没有项目目录".into()));
@@ -72,12 +86,18 @@ pub async fn open(options: Open, events: EventSink) -> Result<Arc<Shared>, Agent
             return Err(AgentError::Runtime(format!("无效的会话 id：{id}")));
         }
     }
-    let program = process::resolve()?;
-    let child = process::spawn(&program, &project)?;
+    let program = process::resolve_bin_for(overlay)?;
+    let child = process::spawn(&program, &project, overlay)?;
     let probing = resume.is_none() && !options.persist;
     let access = options.access_mode.as_deref().unwrap_or("full");
     let servers = mcp_servers(options.workbench_mcp.as_ref());
-    let dialect = AntigravityDialect::new(&project, events.clone(), probing, servers.clone());
+    let dialect = AntigravityDialect::with_data_dir(
+        &project,
+        directory::data_dir_for(overlay),
+        events.clone(),
+        probing,
+        servers.clone(),
+    );
     if let Some(id) = resume.as_deref() {
         dialect.resume_subagents(id, options.replay_history);
         dialect.restore_goal(options.saved_goal);
@@ -86,13 +106,15 @@ pub async fn open(options: Open, events: EventSink) -> Result<Arc<Shared>, Agent
         use crate::acp::Dialect;
         dialect.access_level(access).to_string()
     };
+    let mut initial_catalog = catalog::empty_catalog();
+    initial_catalog.instance_id = Some(overlay.instance_id.clone());
     let shared = Shared::spawned(
         Parts {
             dialect: Arc::new(dialect),
             events,
             project: project.clone(),
             access,
-            catalog: catalog::empty_catalog(),
+            catalog: initial_catalog,
             instructions: None,
             roots: options.roots.clone(),
         },
@@ -100,13 +122,25 @@ pub async fn open(options: Open, events: EventSink) -> Result<Arc<Shared>, Agent
     )?;
     let opened = {
         let _gate = startup_gate().lock().await;
-        startup(&shared, &project, resume.clone(), options.replay_history, options.workbench_mcp.as_ref(), &options.roots, servers).await
+        startup(
+            &shared,
+            &project,
+            resume.clone(),
+            options.replay_history,
+            options.workbench_mcp.as_ref(),
+            &options.roots,
+            servers,
+        )
+        .await
     };
     if let Err(err) = opened {
         shared.shutdown();
         // 2026-11-10 agy 1.5.3：删掉 `conversations/<id>.db` 和 `brain/<id>` 后 `session/resume` 回
         // `Failed to read session <id>`。接不上又找不到文件，就是会话没了，不是这次没读成。
-        if resume.as_deref().is_some_and(directory::is_gone) {
+        if resume
+            .as_deref()
+            .is_some_and(|id| directory::is_gone_for(overlay, id))
+        {
             return Err(AgentError::SessionGone);
         }
         return Err(err);
@@ -219,14 +253,22 @@ fn with_drive_case(path: &str, upper: bool) -> String {
 }
 
 /// 起一个不开会话的进程，读 `session/list`。
-pub async fn list_threads() -> Result<Vec<DirectoryEntry>, AgentError> {
-    let program = process::resolve()?;
+pub async fn list_threads(
+    overlay: &crate::instance::InstanceOverlay,
+) -> Result<Vec<DirectoryEntry>, AgentError> {
+    let program = process::resolve_bin_for(overlay)?;
     let cwd = std::env::temp_dir();
-    let child = process::spawn(&program, &cwd)?;
+    let child = process::spawn(&program, &cwd, overlay)?;
     let (events, _rx) = mpsc::unbounded_channel();
     let shared = Shared::spawned(
         Parts {
-            dialect: Arc::new(AntigravityDialect::new(&cwd, events.clone(), false, json!([]))),
+            dialect: Arc::new(AntigravityDialect::with_data_dir(
+                &cwd,
+                directory::data_dir_for(overlay),
+                events.clone(),
+                false,
+                json!([]),
+            )),
             events,
             project: cwd,
             access: "ask".into(),

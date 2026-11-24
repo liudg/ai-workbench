@@ -139,7 +139,7 @@ pub(crate) fn tool_command(bin: &Path, args: &[&str], npm_quiet: bool) -> Comman
         .stderr(Stdio::piped())
         .kill_on_drop(true)
         .current_dir(std::env::temp_dir());
-    hide_console(&mut command);
+    aiwb_proc::hide_console(&mut command);
     apply_utf8_env(&mut command);
     if npm_quiet {
         command.env("npm_config_update_notifier", "false");
@@ -180,14 +180,6 @@ fn is_script(path: &Path) -> bool {
             .as_deref(),
         Some("cmd") | Some("bat")
     )
-}
-
-fn hide_console(command: &mut Command) {
-    #[cfg(windows)]
-    {
-        command.creation_flags(0x08000000);
-    }
-    let _ = command;
 }
 
 #[cfg(any(windows, test))]

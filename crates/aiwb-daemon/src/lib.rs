@@ -90,6 +90,7 @@ pub async fn run(config: Config) -> Result<(), String> {
     services.start_subtask_reports();
     services.start_worktree_sweeper();
     services.start_catalog_prewarm();
+    services.start_keybindings_watcher();
     instance::write_info(&config.data_dir, &info)?;
     eprintln!("daemon {} 已启动，端口 {port}", info.version);
 

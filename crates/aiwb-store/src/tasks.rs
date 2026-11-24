@@ -12,7 +12,7 @@ use serde::Serialize;
 use crate::attention::put_attention;
 use crate::{Store, StoreError, StoreResult};
 
-fn to_text<T: Serialize>(value: &T) -> String {
+pub(crate) fn to_text<T: Serialize>(value: &T) -> String {
     serde_json::to_string(value).expect("serialize column")
 }
 
@@ -24,7 +24,7 @@ pub(crate) fn enum_text<T: Serialize>(value: &T) -> String {
     }
 }
 
-fn from_text<T: DeserializeOwned>(column: &str, raw: &str) -> rusqlite::Result<T> {
+pub(crate) fn from_text<T: DeserializeOwned>(column: &str, raw: &str) -> rusqlite::Result<T> {
     serde_json::from_str(raw).map_err(|err| {
         rusqlite::Error::FromSqlConversionFailure(
             0,
@@ -61,6 +61,7 @@ fn session_from_row(row: &Row<'_>) -> rusqlite::Result<TaskSession> {
         id: row.get("id")?,
         task_id: row.get("task_id")?,
         agent: from_enum::<AgentKind>("agent", &agent)?,
+        instance_id: row.get("instance_id")?,
         native_id: row.get("native_id")?,
         status: from_enum::<SessionStatus>("status", &status)?,
         options: from_text::<SessionOptions>("options", &options)?,
@@ -114,12 +115,15 @@ impl Store {
             ],
         )?;
         insert_session(&tx, session)?;
+        crate::search::upsert_title_doc(&tx, &task.id, &task.title)?;
         for (index, body) in messages.iter().enumerate() {
             let seq = (index + 1) as i64;
+            let event_id = aiwb_core::models::new_id();
             tx.execute(
                 "INSERT INTO event (session_id, seq, rev, id, ts, body) VALUES (?1, ?2, ?2, ?3, ?4, ?5)",
-                params![session.id, seq, aiwb_core::models::new_id(), session.created_at, to_text(body)],
+                params![session.id, seq, &event_id, session.created_at, to_text(body)],
             )?;
+            crate::search::upsert_event_doc(&tx, &task.id, &session.id, &event_id, seq as u64, body)?;
         }
         tx.commit()?;
         Ok(())
@@ -176,10 +180,79 @@ impl Store {
     }
 
     pub fn set_task_title(&self, id: &str, title: &str, now: i64) -> StoreResult<bool> {
-        Ok(self.conn().execute(
-            "UPDATE task SET title = ?2, updated_at = ?3 WHERE id = ?1",
-            params![id, title, now],
-        )? > 0)
+        self.set_task_title_with_flag(id, title, false, now)
+    }
+
+    /// 更新任务标题；`customized = true` 表示用户手动改名，后续后台异步 AI 标题生成不再覆盖它。
+    pub fn set_task_title_with_flag(
+        &self,
+        id: &str,
+        title: &str,
+        customized: bool,
+        now: i64,
+    ) -> StoreResult<bool> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let changed = if customized {
+            tx.execute(
+                "UPDATE task SET title = ?2, title_customized = 1, updated_at = ?3 WHERE id = ?1",
+                params![id, title, now],
+            )? > 0
+        } else {
+            tx.execute(
+                "UPDATE task SET title = ?2, updated_at = ?3 WHERE id = ?1",
+                params![id, title, now],
+            )? > 0
+        };
+        if changed {
+            crate::search::upsert_title_doc(&tx, id, title)?;
+        }
+        tx.commit()?;
+        Ok(changed)
+    }
+
+    pub fn is_task_title_customized(&self, id: &str) -> StoreResult<bool> {
+        Ok(self
+            .conn()
+            .query_row(
+                "SELECT title_customized FROM task WHERE id = ?1",
+                [id],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()?
+            .unwrap_or(0)
+            != 0)
+    }
+
+    /// 后台异步自动总结写入标题：不推进 `updated_at`（避免后台标题生成打乱侧栏最近活跃排序），
+    /// 且仅在用户未手动改名、任务仍存在至少一条主会话用户消息（未被撤回到空会话）时生效。
+    pub fn set_task_auto_title(&self, id: &str, title: &str) -> StoreResult<bool> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let has_user_msg: bool = tx.query_row(
+            "SELECT EXISTS(
+                SELECT 1 FROM event e
+                JOIN session s ON s.id = e.session_id
+                WHERE s.task_id = ?1
+                  AND s.side = 0
+                  AND json_extract(e.body, '$.kind') = 'user-message'
+                  AND json_extract(e.body, '$.sender') IS NULL
+            )",
+            [id],
+            |row| row.get(0),
+        )?;
+        if !has_user_msg {
+            return Ok(false);
+        }
+        let changed = tx.execute(
+            "UPDATE task SET title = ?2 WHERE id = ?1 AND title_customized = 0",
+            params![id, title],
+        )? > 0;
+        if changed {
+            crate::search::upsert_title_doc(&tx, id, title)?;
+        }
+        tx.commit()?;
+        Ok(changed)
     }
 
     pub fn set_task_pinned(&self, id: &str, pinned: bool) -> StoreResult<bool> {
@@ -261,6 +334,14 @@ impl Store {
         Ok(rows.collect::<Result<_, _>>()?)
     }
 
+    /// 全部会话（包含主会话与侧边聊天），用于忙状态拦截与实例级进程清理。
+    pub fn all_sessions(&self) -> StoreResult<Vec<TaskSession>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare("SELECT * FROM session ORDER BY created_at, id")?;
+        let rows = stmt.query_map([], session_from_row)?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
     /// 一个任务的会话，按建立的先后。最后一个是现在用的，前面的是换 Agent 之前的。
     pub fn task_sessions(&self, task_id: &str) -> StoreResult<Vec<TaskSession>> {
         let conn = self.conn();
@@ -328,11 +409,32 @@ impl Store {
         Ok(())
     }
 
-    /// 还没说过话的会话直接换 Agent。
-    pub fn set_session_agent(&self, id: &str, agent: AgentKind, options: &SessionOptions) -> StoreResult<()> {
+    pub fn clear_session_native_id(&self, id: &str) -> StoreResult<()> {
+        self.conn()
+            .execute("UPDATE session SET native_id = NULL WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
+    /// 还没说过话的会话直接换 Agent（与实例）。
+    pub fn set_session_agent(
+        &self,
+        id: &str,
+        agent: AgentKind,
+        options: &SessionOptions,
+    ) -> StoreResult<()> {
+        self.set_session_agent_instance(id, agent, None, options)
+    }
+
+    pub fn set_session_agent_instance(
+        &self,
+        id: &str,
+        agent: AgentKind,
+        instance_id: Option<&str>,
+        options: &SessionOptions,
+    ) -> StoreResult<()> {
         self.conn().execute(
-            "UPDATE session SET agent = ?2, options = ?3, native_id = NULL WHERE id = ?1",
-            params![id, enum_text(&agent), to_text(options)],
+            "UPDATE session SET agent = ?2, instance_id = ?3, options = ?4, native_id = NULL WHERE id = ?1",
+            params![id, enum_text(&agent), instance_id, to_text(options)],
         )?;
         Ok(())
     }
@@ -357,6 +459,11 @@ impl Store {
         let event = &stored.event;
         let mut conn = self.conn();
         let tx = conn.transaction()?;
+        let existed: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM event WHERE session_id = ?1 AND seq = ?2)",
+            params![event.session_id, event.seq as i64],
+            |row| row.get(0),
+        )?;
         tx.execute(
             "INSERT INTO event (session_id, seq, rev, id, ts, body) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
              ON CONFLICT(session_id, seq) DO UPDATE SET rev = excluded.rev, ts = excluded.ts, body = excluded.body",
@@ -384,8 +491,98 @@ impl Store {
         if let Some(attention) = attention {
             put_attention(&tx, &event.session_id, attention)?;
         }
+        let is_side: bool = tx
+            .query_row(
+                "SELECT side FROM session WHERE id = ?1",
+                [&event.session_id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .unwrap_or(false);
+        if !is_side {
+            let skip_streaming_delta = activity
+                && existed
+                && matches!(
+                    event.body,
+                    SessionEventBody::AgentMessage {
+                        stream_id: Some(_),
+                        ..
+                    }
+                );
+            if skip_streaming_delta {
+                crate::search::mark_event_dirty(&tx, &event.session_id, event.seq)?;
+            } else {
+                crate::search::upsert_event_doc(
+                    &tx,
+                    task_id,
+                    &event.session_id,
+                    &event.id,
+                    event.seq,
+                    &event.body,
+                )?;
+                if existed {
+                    crate::search::clear_event_dirty(&tx, &event.session_id, event.seq)?;
+                }
+            }
+            if matches!(
+                event.body,
+                SessionEventBody::StatusChanged {
+                    status: SessionStatus::Completed
+                        | SessionStatus::Stopped
+                        | SessionStatus::Failed
+                        | SessionStatus::NeedsInput
+                }
+            ) {
+                crate::search::sync_dirty_session_events(&tx, task_id, &event.session_id)?;
+            }
+        }
         tx.commit()?;
         Ok(())
+    }
+
+    /// 回退某个会话从 `cut_seq` 起的所有事件与检查点，更新状态和注意力，并返回被移除的检查点。
+    pub fn truncate_session_events(
+        &self,
+        session_id: &str,
+        cut_seq: u64,
+        status: SessionStatus,
+        now: i64,
+    ) -> StoreResult<Vec<aiwb_core::checkpoint::TurnCheckpoint>> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let removed_checkpoints: Vec<aiwb_core::checkpoint::TurnCheckpoint> = {
+            let mut stmt = tx.prepare(
+                "SELECT * FROM checkpoint WHERE session_id = ?1 AND cut_seq >= ?2 ORDER BY cut_seq ASC",
+            )?;
+            let rows = stmt.query_map(
+                params![session_id, cut_seq as i64],
+                crate::checkpoints::checkpoint_from_row,
+            )?;
+            rows.collect::<Result<_, _>>()?
+        };
+        tx.execute(
+            "DELETE FROM checkpoint WHERE session_id = ?1 AND cut_seq >= ?2",
+            params![session_id, cut_seq as i64],
+        )?;
+        tx.execute(
+            "DELETE FROM search_doc WHERE session_id = ?1 AND seq >= ?2",
+            params![session_id, cut_seq as i64],
+        )?;
+        tx.execute(
+            "DELETE FROM search_dirty WHERE session_id = ?1 AND seq >= ?2",
+            params![session_id, cut_seq as i64],
+        )?;
+        tx.execute(
+            "DELETE FROM event WHERE session_id = ?1 AND seq >= ?2",
+            params![session_id, cut_seq as i64],
+        )?;
+        tx.execute(
+            "UPDATE session SET status = ?2, updated_at = ?3 WHERE id = ?1",
+            params![session_id, enum_text(&status), now],
+        )?;
+        put_attention(&tx, session_id, &Attention::from_status(status, now))?;
+        tx.commit()?;
+        Ok(removed_checkpoints)
     }
 
     /// `rev` 大于 `after` 的事件，按 seq 排列。`after` 为 0 时就是整条时间线。
@@ -402,12 +599,13 @@ impl Store {
 /// 会话和它的注意力行一起建。
 fn insert_session(conn: &rusqlite::Connection, session: &TaskSession) -> StoreResult<()> {
     conn.execute(
-        "INSERT INTO session (id, task_id, agent, native_id, status, options, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        "INSERT INTO session (id, task_id, agent, instance_id, native_id, status, options, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         params![
             session.id,
             session.task_id,
             enum_text(&session.agent),
+            session.instance_id,
             session.native_id,
             enum_text(&session.status),
             to_text(&session.options),
@@ -467,6 +665,7 @@ mod tests {
             id: format!("{id}-s"),
             task_id: id.into(),
             agent: AgentKind::CodexCli,
+            instance_id: None,
             native_id: None,
             status: SessionStatus::Running,
             options: SessionOptions {
@@ -616,5 +815,264 @@ mod tests {
 
         store.remove_session("t1-side").unwrap();
         assert_eq!(store.task_entries().unwrap()[0].sides, vec![second]);
+    }
+
+    #[test]
+    fn fts5_trigram_and_short_cjk_search_work_and_clean_up_on_truncate() {
+        use aiwb_core::checkpoint::TurnCheckpoint;
+        use aiwb_core::search::SearchTasksQuery;
+
+        let store = store_with_project();
+        let (a, sa) = task("t1", 5);
+        store.insert_task(&a, &sa).unwrap();
+
+        // 双字中文标题「修登录」和 >=3 字符英文报错栈都能检索到。
+        let hits_short = store
+            .search_tasks(&SearchTasksQuery {
+                query: "登录".into(),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(hits_short.len(), 1);
+        assert_eq!(hits_short[0].task_id, "t1");
+        assert_eq!(hits_short[0].role, "title");
+
+        store
+            .put_event(
+                "t1",
+                &stored(
+                    1,
+                    1,
+                    SessionEventBody::UserMessage {
+                        text: "为什么 WebSocket 握手报 ECONNREFUSED？".into(),
+                        images: vec![],
+                        annotations: 0,
+                        sender: None,
+                    },
+                ),
+                true,
+                None,
+            )
+            .unwrap();
+        store
+            .put_event(
+                "t1",
+                &stored(
+                    2,
+                    2,
+                    SessionEventBody::AgentMessage {
+                        text: "检查 127.0.0.1 端口监听和鉴权令牌。".into(),
+                        phase: None,
+                        mode: None,
+                        stream_id: Some("s1".into()),
+                        dedupe_of: None,
+                    },
+                ),
+                true,
+                None,
+            )
+            .unwrap();
+
+        store
+            .put_checkpoint(&TurnCheckpoint {
+                id: "cp2".into(),
+                task_id: "t1".into(),
+                session_id: "t1-s".into(),
+                user_event_id: "e3".into(),
+                cut_seq: 3,
+                turn_id: Some("turn-2".into()),
+                pre_ref: Some("refs/aiwb/checkpoints/t1-s/cp2-pre".into()),
+                post_ref: None,
+                head_oid: Some("deadbeef".into()),
+                branch: Some("main".into()),
+                cwd: "/wt".into(),
+                created_at: 20,
+                updated_at: 20,
+            })
+            .unwrap();
+        store
+            .put_event(
+                "t1",
+                &stored(
+                    3,
+                    3,
+                    SessionEventBody::UserMessage {
+                        text: "第二轮加了 SQLite FTS5 trigram 索引".into(),
+                        images: vec![],
+                        annotations: 0,
+                        sender: None,
+                    },
+                ),
+                true,
+                None,
+            )
+            .unwrap();
+
+        let hits_ws = store
+            .search_tasks(&SearchTasksQuery {
+                query: "econnrefused".into(),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(hits_ws.len(), 1);
+        assert_eq!(hits_ws[0].event_id.as_deref(), Some("e1"));
+
+        let hits_fts = store
+            .search_tasks(&SearchTasksQuery {
+                query: "trigram".into(),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(hits_fts.len(), 1);
+        assert_eq!(hits_fts[0].event_id.as_deref(), Some("e3"));
+
+        // 截断第二轮（cut_seq = 3）后，trigram 命中和 cp2 检查点一并消失，第一轮仍在。
+        let removed = store
+            .truncate_session_events("t1-s", 3, SessionStatus::Completed, 30)
+            .unwrap();
+        assert_eq!(removed.len(), 1);
+        assert_eq!(removed[0].id, "cp2");
+        assert!(store
+            .search_tasks(&SearchTasksQuery {
+                query: "trigram".into(),
+                ..Default::default()
+            })
+            .unwrap()
+            .is_empty());
+        assert_eq!(
+            store
+                .search_tasks(&SearchTasksQuery {
+                    query: "鉴权令牌".into(),
+                    ..Default::default()
+                })
+                .unwrap()
+                .len(),
+            1
+        );
+
+        // 归档过滤与开关。
+        store.set_task_archived("t1", Some(40), 40).unwrap();
+        assert!(store
+            .search_tasks(&SearchTasksQuery {
+                query: "鉴权令牌".into(),
+                include_archived: false,
+                ..Default::default()
+            })
+            .unwrap()
+            .is_empty());
+        assert_eq!(
+            store
+                .search_tasks(&SearchTasksQuery {
+                    query: "鉴权令牌".into(),
+                    include_archived: true,
+                    ..Default::default()
+                })
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn agent_instances_preserve_defaults_and_custom_secrets() {
+        use aiwb_core::models::{AgentEnvVar, AgentInstance, IsolationMode, SECRET_REDACTED};
+
+        let store = Store::open_in_memory().unwrap();
+        let initial = store.list_agent_instances().unwrap();
+        assert_eq!(initial.len(), AgentKind::all().len());
+        assert!(store.remove_agent_instance("codex-cli").is_err());
+
+        let custom = AgentInstance {
+            id: "codex-work".into(),
+            kind: AgentKind::CodexCli,
+            display_name: "Codex 工作号".into(),
+            accent_color: Some("#2563eb".into()),
+            binary_path: None,
+            launch_args: vec!["--profile".into(), "work".into()],
+            environment: vec![AgentEnvVar {
+                name: "OPENAI_API_KEY".into(),
+                value: "sk-work-999".into(),
+                sensitive: true,
+                value_redacted: false,
+            }],
+            isolation_mode: IsolationMode::ShadowHome,
+            home_path: None,
+            shared_home_path: None,
+            enabled: true,
+            is_default: false,
+            sort_order: 10,
+            created_at: 100,
+            updated_at: 100,
+        };
+        store.upsert_agent_instance(&custom).unwrap();
+
+        let mut from_ui = custom.redacted();
+        from_ui.display_name = "Codex 企业号".into();
+        from_ui.environment[0].value = SECRET_REDACTED.into();
+        store.upsert_agent_instance(&from_ui).unwrap();
+
+        let loaded = store.agent_instance("codex-work").unwrap().unwrap();
+        assert_eq!(loaded.display_name, "Codex 企业号");
+        assert_eq!(loaded.environment[0].value, "sk-work-999");
+        assert!(store.remove_agent_instance("codex-work").unwrap());
+    }
+
+    #[test]
+    fn auto_title_preserves_updated_at_and_skips_rewound_empty_tasks() {
+        let store = Store::open_in_memory().unwrap();
+        let task = Task {
+            id: "t-auto".into(),
+            project_id: None,
+            title: "新对话".into(),
+            workspace: TaskWorkspace::Root,
+            parent_task_id: None,
+            pinned: false,
+            archived_at: None,
+            created_at: 100,
+            updated_at: 150,
+        };
+        let sess = TaskSession {
+            id: "s-auto".into(),
+            task_id: "t-auto".into(),
+            agent: AgentKind::CodexCli,
+            instance_id: None,
+            native_id: None,
+            status: SessionStatus::Completed,
+            options: SessionOptions::default(),
+            created_at: 100,
+            updated_at: 150,
+        };
+        store.insert_task(&task, &sess).unwrap();
+
+        // 0 条用户消息（如刚撤回第 1 轮）时，延迟到达的自动标题不能覆盖回退后的默认标题。
+        assert!(!store.set_task_auto_title("t-auto", "过期总结标题").unwrap());
+        assert_eq!(store.task("t-auto").unwrap().unwrap().title, "新对话");
+
+        store
+            .put_event(
+                "t-auto",
+                &StoredEvent {
+                    event: SessionEvent {
+                        id: "e1".into(),
+                        session_id: "s-auto".into(),
+                        seq: 1,
+                        ts: 200,
+                        body: SessionEventBody::UserMessage {
+                            text: "请帮我排查内存泄漏".into(),
+                            images: vec![],
+                            annotations: 0,
+                            sender: None,
+                        },
+                    },
+                    rev: 1,
+                },
+                true,
+                None,
+            )
+            .unwrap();
+        assert!(store.set_task_auto_title("t-auto", "排查内存泄漏").unwrap());
+        let after = store.task("t-auto").unwrap().unwrap();
+        assert_eq!(after.title, "排查内存泄漏");
+        assert_eq!(after.updated_at, 200);
     }
 }

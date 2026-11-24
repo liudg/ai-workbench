@@ -4,6 +4,8 @@ export const TOPIC_PROJECTS = "projects";
 export const TOPIC_TASKS = "tasks";
 export const TOPIC_AGENT_UPGRADES = "agents.upgrades";
 export const TOPIC_AGENT_CATALOGS = "agents.catalogs";
+export const TOPIC_AGENT_INSTANCES = "agents.instances";
+export const TOPIC_KEYBINDINGS = "keybindings";
 
 export function sessionTopic(sessionId: string): string {
   return `session:${sessionId}`;

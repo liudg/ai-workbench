@@ -11,35 +11,44 @@ use serde_json::Value;
 use crate::DirectoryEntry;
 use aiwb_core::models::{cwd_key, SessionStatus};
 
-pub fn config_dir() -> Option<PathBuf> {
-    let env = |key: &str| {
-        std::env::var_os(key)
-            .map(PathBuf::from)
-            .filter(|path| !path.as_os_str().is_empty())
-    };
-    if let Some(dir) = env("CURSOR_CONFIG_DIR") {
-        return Some(dir);
+pub fn config_dir_for(overlay: &crate::instance::InstanceOverlay) -> Option<PathBuf> {
+    if !overlay.is_isolated()
+        && overlay.home_path.is_none()
+        && overlay
+            .env_var("CURSOR_CONFIG_DIR")
+            .is_none_or(|v| v.trim().is_empty())
+        && crate::instance::host_env_dir("CURSOR_CONFIG_DIR").is_none()
+    {
+        if let Some(xdg) = overlay
+            .env_var("XDG_CONFIG_HOME")
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(crate::instance::expand_tilde)
+            .or_else(|| crate::instance::host_env_dir("XDG_CONFIG_HOME"))
+        {
+            return Some(xdg.join("cursor"));
+        }
     }
-    if let Some(dir) = env("XDG_CONFIG_HOME") {
-        return Some(dir.join("cursor"));
-    }
-    let home = env("USERPROFILE").or_else(|| env("HOME"))?;
-    Some(home.join(".cursor"))
+    overlay.resolve_config_dir("CURSOR_CONFIG_DIR", ".cursor")
 }
 
-pub fn sessions_dir() -> Option<PathBuf> {
-    config_dir().map(|dir| dir.join("acp-sessions"))
+pub fn sessions_dir_for(overlay: &crate::instance::InstanceOverlay) -> Option<PathBuf> {
+    config_dir_for(overlay).map(|dir| dir.join("acp-sessions"))
 }
 
 pub fn is_session_id(id: &str) -> bool {
     uuid::Uuid::parse_str(id).is_ok() && !id.contains(['/', '\\', '.'])
 }
 
-pub fn list() -> Vec<DirectoryEntry> {
-    let Some(root) = sessions_dir() else {
+pub fn list_for(overlay: &crate::instance::InstanceOverlay) -> Vec<DirectoryEntry> {
+    list_under(sessions_dir_for(overlay).as_deref())
+}
+
+fn list_under(root: Option<&std::path::Path>) -> Vec<DirectoryEntry> {
+    let Some(root) = root else {
         return Vec::new();
     };
-    let Ok(entries) = std::fs::read_dir(&root) else {
+    let Ok(entries) = std::fs::read_dir(root) else {
         return Vec::new();
     };
     let mut listed: Vec<DirectoryEntry> = entries
@@ -90,19 +99,27 @@ fn millis(time: Option<std::time::SystemTime>) -> i64 {
 }
 
 /// `session/new` 只写 `meta.json`，`store.db` 在第一条消息时才建；`session/load` 先查 `store.db`。
+#[cfg(test)]
 pub fn is_placeholder(id: &str) -> bool {
+    is_placeholder_for(
+        &crate::instance::InstanceOverlay::default_for(aiwb_core::models::AgentKind::CursorAgent),
+        id,
+    )
+}
+
+pub fn is_placeholder_for(overlay: &crate::instance::InstanceOverlay, id: &str) -> bool {
     if !is_session_id(id) {
         return false;
     }
-    let Some(dir) = sessions_dir().map(|root| root.join(id)) else {
+    let Some(dir) = sessions_dir_for(overlay).map(|root| root.join(id)) else {
         return false;
     };
     dir.join("meta.json").is_file() && !dir.join("store.db").exists()
 }
 
 /// 会话目录整个不在了。`session/new` 就写了 `meta.json`，所以没发过消息的会话不算。会话根目录找不到时不下结论。
-pub fn is_gone(id: &str) -> bool {
-    sessions_dir().is_some_and(|root| gone_under(&root, id))
+pub fn is_gone_for(overlay: &crate::instance::InstanceOverlay, id: &str) -> bool {
+    sessions_dir_for(overlay).is_some_and(|root| gone_under(&root, id))
 }
 
 fn gone_under(root: &std::path::Path, id: &str) -> bool {
@@ -110,11 +127,19 @@ fn gone_under(root: &std::path::Path, id: &str) -> bool {
 }
 
 /// 没有删除会话的 ACP 方法。删掉目录之后 `session/load` 报 `Session "<id>" not found`。
+#[cfg(test)]
 pub fn remove(id: &str) -> Result<(), String> {
+    remove_for(
+        &crate::instance::InstanceOverlay::default_for(aiwb_core::models::AgentKind::CursorAgent),
+        id,
+    )
+}
+
+pub fn remove_for(overlay: &crate::instance::InstanceOverlay, id: &str) -> Result<(), String> {
     if !is_session_id(id) {
         return Err(format!("无效的会话 id：{id}"));
     }
-    let dir = sessions_dir()
+    let dir = sessions_dir_for(overlay)
         .map(|root| root.join(id))
         .ok_or_else(|| "找不到 Cursor 配置目录".to_string())?;
     if !dir.is_dir() {

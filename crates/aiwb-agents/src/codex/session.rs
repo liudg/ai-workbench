@@ -25,6 +25,7 @@ use aiwb_core::models::{
 
 pub(super) struct CodexCliSession {
     pub(super) shared: Arc<Shared>,
+    pub(super) instance_id: Option<String>,
 }
 
 impl CodexCliSession {
@@ -296,7 +297,9 @@ impl AgentSession for CodexCliSession {
     }
 
     async fn catalog(&self) -> Result<AgentCatalog, AgentError> {
-        self.shared.catalog().await
+        let mut cat = self.shared.catalog().await?;
+        cat.instance_id = self.instance_id.clone();
+        Ok(cat)
     }
 
     fn set_tuning(&self, model: Option<String>, effort: Option<String>) -> Result<(), AgentError> {

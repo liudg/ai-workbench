@@ -4,6 +4,7 @@
 use std::path::{Path, PathBuf};
 
 use aiwb_core::models::{new_id, AgentKind, MessageSender, SessionEventBody, SessionStatus};
+use aiwb_core::search::{SearchTasksQuery, TaskSearchHit};
 use aiwb_core::task::{SessionLink, SessionOptions, SessionSpec, Task, TaskEntry, TaskSession, TaskWorkspace};
 use serde::{Deserialize, Serialize};
 
@@ -23,6 +24,8 @@ pub(crate) struct CreateTask {
     #[serde(default)]
     images: Vec<String>,
     agent: AgentKind,
+    #[serde(default)]
+    instance_id: Option<String>,
     #[serde(default)]
     worktree: bool,
     /// 工作树的起点分支。为空时用项目目录现在的提交。
@@ -71,6 +74,7 @@ impl CreateTask {
             prompt: spec.prompt.clone(),
             images: Vec::new(),
             agent: spec.agent,
+            instance_id: spec.instance_id.clone(),
             worktree: spec.worktree,
             worktree_base: None,
             carry_changes: false,
@@ -134,7 +138,17 @@ impl Services {
     /// 任务建好就返回。目标和第一条消息在后台发出，CLI 起不来或发送失败时记进时间线。
     pub(crate) async fn create_task(&self, params: CreateTask) -> ServiceResult<TaskEntry> {
         let agent = params.agent;
-        if !self.runtimes.adapter(agent).session_linked() {
+        let instance_id = params
+            .instance_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+        if !self
+            .runtimes
+            .adapter_for_instance(agent, instance_id.as_deref())?
+            .session_linked()
+        {
             return Err(format!("{} 还不能在工作台里对话", agent.display_name()));
         }
         let (project_id, workspace) = match params.project_id.as_deref() {
@@ -224,10 +238,17 @@ impl Services {
                 sender,
             });
         }
+        let explicit_title = !params.title.trim().is_empty();
+        let auto_title_seed = goal
+            .as_deref()
+            .unwrap_or(&params.prompt)
+            .trim()
+            .to_string();
         let session = TaskSession {
             id: new_id(),
             task_id: task.id.clone(),
             agent,
+            instance_id: instance_id.clone(),
             native_id: None,
             status: if starting { SessionStatus::Starting } else { SessionStatus::Idle },
             options: params.options,
@@ -240,6 +261,13 @@ impl Services {
                 let _ = std::fs::remove_dir(path);
             }
             return Err(err.to_string());
+        }
+        if explicit_title {
+            let _ = self
+                .store
+                .set_task_title_with_flag(&task.id, &task.title, true, now);
+        } else if !auto_title_seed.is_empty() && params.sender_task_id.is_none() {
+            self.spawn_auto_title(task.id.clone(), auto_title_seed, agent, instance_id);
         }
         if starting {
             self.runtimes.start_initial(
@@ -261,6 +289,13 @@ impl Services {
         self.task_entry(&task.id)
     }
 
+    pub(crate) fn search_tasks(
+        &self,
+        query: SearchTasksQuery,
+    ) -> ServiceResult<Vec<TaskSearchHit>> {
+        self.store.search_tasks(&query).map_err(|e| e.to_string())
+    }
+
     pub(crate) fn rename_task(&self, params: RenameTask) -> ServiceResult<bool> {
         let title = params.title.trim();
         if title.is_empty() {
@@ -268,7 +303,7 @@ impl Services {
         }
         let changed = self
             .store
-            .set_task_title(&params.id, title, now_millis())
+            .set_task_title_with_flag(&params.id, title, true, now_millis())
             .map_err(|e| e.to_string())?;
         self.runtimes.publish_tasks()?;
         Ok(changed)
@@ -331,6 +366,14 @@ impl Services {
         let _worktrees = self.runtimes.worktrees.lock().await;
         self.stop_task_sessions(&params.id).await?;
         let notes = self.task_session_notes(&params.id)?;
+        let fallback_project_dir = self
+            .load_task(&params.id)
+            .ok()
+            .and_then(|task| self.project_path(task.project_id.as_deref()).ok().flatten());
+        let checkpoint_refs = self
+            .store
+            .task_checkpoint_refs(&params.id)
+            .unwrap_or_default();
         if params.discard_worktree {
             if let Some((project, cwd)) = self.task_worktree(&params.id)? {
                 let force = params.force_worktree;
@@ -353,6 +396,11 @@ impl Services {
             .store
             .remove_task(&params.id)
             .map_err(|e| e.to_string())?;
+        super::checkpoints::delete_grouped_checkpoint_refs_with_fallback_async(
+            checkpoint_refs,
+            fallback_project_dir,
+        )
+        .await;
         self.terminals.close_owned(&sessions);
         self.runtimes.publish_tasks()?;
         // 任务已经删除；笔记清理失败不能把这次删除报告成失败。
@@ -389,9 +437,14 @@ impl Services {
     /// 停掉任务的 Agent 进程。侧边聊天接不回去，一起关掉。
     pub(crate) async fn stop_task_sessions(&self, task_id: &str) -> ServiceResult<()> {
         self.discard_side(task_id).await?;
+        self.stop_main_task_sessions(task_id).await
+    }
+
+    /// 仅停掉任务主对话的 Agent 进程，保留侧边聊天记录与草稿。
+    pub(crate) async fn stop_main_task_sessions(&self, task_id: &str) -> ServiceResult<()> {
         let sessions = self.store.list_sessions().map_err(|e| e.to_string())?;
         for session in sessions.iter().filter(|session| session.task_id == task_id) {
-            self.runtimes.stop(&session.id).await;
+            self.runtimes.stop_and_mute(&session.id).await;
         }
         Ok(())
     }

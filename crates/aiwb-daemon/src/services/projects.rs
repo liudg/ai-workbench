@@ -3,6 +3,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
+use aiwb_core::models::{cwd_key, strip_verbatim_prefix};
 use aiwb_core::rpc::TOPIC_PROJECTS;
 use aiwb_core::Project;
 use serde::{Deserialize, Serialize};
@@ -176,18 +177,35 @@ impl Services {
 
     /// 连项目下的会话（含已归档）一起删，先停掉它们的 Agent。磁盘目录和工作树不动。
     pub(crate) async fn remove_project(&self, params: ProjectId) -> ServiceResult<bool> {
+        let fallback_project_dir = self
+            .store
+            .project(&params.id)
+            .ok()
+            .flatten()
+            .map(|p| PathBuf::from(p.path));
         let tasks = self.store.list_tasks().map_err(|e| e.to_string())?;
+        let mut checkpoint_refs = Vec::new();
         for task in tasks
             .iter()
             .filter(|task| task.project_id.as_deref() == Some(params.id.as_str()))
         {
             self.stop_task_sessions(&task.id).await?;
+            if let Ok(refs) = self.store.task_checkpoint_refs(&task.id) {
+                checkpoint_refs.extend(refs);
+            }
         }
         let removed: ServiceResult<bool> = self.hub.publish_with(TOPIC_PROJECTS, || {
             let removed = self.store.remove_project(&params.id).map_err(|e| e.to_string())?;
             Ok((removed, to_value(self.list_projects()?)?))
         });
         let removed = removed?;
+        if removed {
+            super::checkpoints::delete_grouped_checkpoint_refs_with_fallback_async(
+                checkpoint_refs,
+                fallback_project_dir,
+            )
+            .await;
+        }
         self.runtimes.publish_tasks()?;
         Ok(removed)
     }
@@ -264,7 +282,7 @@ fn normalize_folders(folders: &[String]) -> ServiceResult<Vec<String>> {
     let mut normalized = Vec::new();
     for folder in folders {
         let dir = normalize_dir(folder)?.to_string_lossy().into_owned();
-        if seen.insert(dir_key(&dir)) {
+        if seen.insert(cwd_key(&dir)) {
             normalized.push(dir);
         }
     }
@@ -286,29 +304,13 @@ pub(crate) fn normalize_dir(raw: &str) -> ServiceResult<PathBuf> {
     if !canonical.is_dir() {
         return Err(format!("不是目录：{trimmed}"));
     }
-    Ok(strip_verbatim(canonical))
-}
-
-pub(crate) fn strip_verbatim(path: PathBuf) -> PathBuf {
-    let text = path.to_string_lossy();
-    match text.strip_prefix(r"\\?\") {
-        Some(rest) if !rest.starts_with("UNC\\") => PathBuf::from(rest),
-        Some(rest) => PathBuf::from(format!(r"\\{}", &rest[4..])),
-        None => path,
-    }
-}
-
-fn dir_key(path: &str) -> String {
-    let p = path.trim_end_matches(['/', '\\']).replace('\\', "/");
-    if cfg!(windows) {
-        p.to_lowercase()
-    } else {
-        p
-    }
+    Ok(PathBuf::from(strip_verbatim_prefix(
+        &canonical.to_string_lossy(),
+    )))
 }
 
 fn same_dir(a: &str, b: &str) -> bool {
-    dir_key(a) == dir_key(b)
+    cwd_key(a) == cwd_key(b)
 }
 
 #[cfg(test)]
@@ -394,6 +396,7 @@ mod tests {
             id: "t1-s".into(),
             task_id: "t1".into(),
             agent: AgentKind::CodexCli,
+            instance_id: None,
             native_id: None,
             status: SessionStatus::Completed,
             options: SessionOptions::default(),

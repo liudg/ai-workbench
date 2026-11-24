@@ -5,7 +5,7 @@ export {
   type PanelViewer,
   type ViewerViewProps,
 } from "./core/registry.ts";
-export { seedSubscriptionUsage } from "./core/subscription-cache.ts";
+export { evictSubscriptionUsage, seedSubscriptionUsage } from "./core/subscription-cache.ts";
 export { diffScopeMenu, filesForScope } from "./diff/scope.ts";
 export { buildFileTree, type FileTreeFile } from "./files/file-tree.ts";
 export {

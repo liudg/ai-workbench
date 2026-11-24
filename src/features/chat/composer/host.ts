@@ -25,26 +25,38 @@ import type { WorkContextPicker } from "./WorkContextPicker";
 
 export interface AgentOption {
   kind: AgentKind;
+  instanceId?: string;
+  accentColor?: string | null;
+  isDefault?: boolean;
   identity: AgentIdentity | null;
   name: string;
 }
 
-/** 模型选择器左边的 Agent 竖栏。 */
+/** 模型选择器左边的 Agent / 实例竖栏。 */
 export interface AgentChoice {
   /** 还没检测完本机 Agent 时为 null。换不了 Agent 的会话只有当前这一个。 */
   options: AgentOption[] | null;
   selected: AgentKind;
-  /** 有别的 Agent 可换时才有。 */
+  selectedInstanceId?: string;
+  /** 竖栏点击某个 Agent / 实例时的可选回调（兼容单参 `selectAgent(agent)`）。 */
+  selectAgent?: (agent: AgentKind, instanceId?: string) => void;
+  /** 有别的 Agent / 实例可换时才有。 */
   switcher: AgentSwitcher | null;
 }
 
 export interface AgentSwitcher {
   /** 现在换不了的原因。有值时别的 Agent 的模型只能看，不能选。 */
   blocked: string | null;
-  /** 竖栏切到别的 Agent 时读它的模型。上次的先给 `show`，新的到了再给一次；都没有时 reject。 */
-  loadModels: (agent: AgentKind, show: (models: AgentModelOption[]) => void) => Promise<void>;
-  /** 选了别的 Agent 的模型：换成这个 Agent，用这个模型。 */
-  onPick: (agent: AgentKind, model: AgentModelOption) => void;
+  /** 竖栏切到别的 Agent / 实例时读它的模型。上次的先给 `show`，新的到了再给一次；都没有时 reject。 */
+  loadModels: (
+    agent: AgentKind,
+    show: (models: AgentModelOption[]) => void,
+    instanceId?: string,
+  ) => Promise<void>;
+  /** 选了别的 Agent / 实例的模型：换成这个 Agent / 实例，用这个模型。 */
+  onPick: (agent: AgentKind, model: AgentModelOption, instanceId?: string) => void;
+  /** 目标实例没有可选模型列表时，直接切换到该实例。 */
+  onPickAgentOnly?: (agent: AgentKind, instanceId?: string) => void;
 }
 
 /** 新工作树的起点。`base` 为空表示项目目录现在所在的分支。 */

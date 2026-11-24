@@ -26,6 +26,7 @@ function panelData(scope: api.FileScope, workdir: string): PanelData {
   return {
     diffScopes: () => api.diffScopes(scope),
     diffForScope: (_sessionId, diffScope, ignoreWhitespace) => api.diffForScope(scope, diffScope, ignoreWhitespace),
+    resolveFile: (path) => api.resolveFile(scope, path),
     readPreviewFile: (_projectId, path) => api.readFile(scope, path),
     readPreviewImage: (_projectId, path) => api.readImage(scope, path),
     listDir: (_projectId, dir) => api.listDir(scope, dir),
@@ -41,6 +42,7 @@ function panelData(scope: api.FileScope, workdir: string): PanelData {
     isGit: () => api.isGitScope(scope),
     openTerminal: (cols, rows) => api.openTerminal(scope, cols, rows),
     subscriptionUsage: api.subscriptionUsage,
+    generateCommitMessage: (diffScope) => api.generateCommitMessage(scope, diffScope),
   };
 }
 
@@ -50,6 +52,7 @@ export function SessionPanel({
   workdir,
   events,
   profile,
+  instanceId = null,
   modelLabel = null,
   modelLoading = false,
   sideChat = null,
@@ -61,6 +64,7 @@ export function SessionPanel({
   workdir: string;
   events: SessionEvent[];
   profile: AgentProfile | undefined;
+  instanceId?: string | null;
   /** 作曲栏当前选中模型的显示名。 */
   modelLabel?: string | null;
   /** 当前模型还在加载时为 true。 */
@@ -86,6 +90,7 @@ export function SessionPanel({
       projectPath={workdir}
       sessionTitle={session.title}
       agent={session.agent}
+      instanceId={instanceId}
       modelLabel={modelLabel}
       modelLoading={modelLoading}
       events={events}

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, Ellipsis, FileSearch } from "lucide-react";
+import { Check, ChevronDown, Ellipsis, FileSearch, Loader2, Sparkles } from "lucide-react";
 
+import { userFacingMessage } from "@/lib/user-facing";
 import { IconButton, iconLabel, iconPressed, ToolbarGlyph } from "./DiffToolbarIcons";
 import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { diffMenuEntries } from "./diff-menu";
@@ -8,9 +9,10 @@ import { JumpPopover } from "./DiffJumpPopover";
 import { OptionsMenu } from "./DiffOptionsMenu";
 import { writeClipboardText } from "@/shared/clipboard";
 import { useDismissLayer } from "@/shared/menu/useDismissLayer";
+import { showError } from "@/shared/shell/error-banner";
 import type { JumpFile } from "./jump-files";
 import type { DiffScopeItem } from "./scope";
-import { DIFF_TOOLBAR_ICON_IDS } from "./toolbar-actions";
+import { DIFF_TOOLBAR_ICON_IDS, isGitWorkingTreeScope } from "./toolbar-actions";
 
 export function DiffToolbar({
   scope,
@@ -42,6 +44,8 @@ export function DiffToolbar({
   onJump,
   copyCommand,
   copyReason,
+  commitMessageDisabled = false,
+  onGenerateCommitMessage,
 }: {
   scope: string;
   scopes: DiffScopeItem[];
@@ -72,13 +76,21 @@ export function DiffToolbar({
   onJump: (path: string) => void;
   copyCommand: string | null;
   copyReason: string;
+  commitMessageDisabled?: boolean;
+  onGenerateCommitMessage?: (() => Promise<string>) | null;
 }) {
   const [menu, setMenu] = useState<"scope" | "options" | "jump" | null>(null);
   const [copyStatus, setCopyStatus] = useState("");
+  const [commitBusy, setCommitBusy] = useState(false);
+  const [commitCopied, setCommitCopied] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const optionsAnchorRef = useRef<HTMLSpanElement>(null);
   const jumpAnchorRef = useRef<HTMLSpanElement>(null);
+  const mountedRef = useRef(true);
+  const commitReqIdRef = useRef(0);
   const current = scopes.find((item) => item.id === scope) ?? scopes[0];
+  const canGenerateCommitMessage =
+    Boolean(onGenerateCommitMessage) && isGitWorkingTreeScope(scope, scopes);
   const checked: Record<string, boolean> = {
     "load-full": loadFull,
     render: renderPreview,
@@ -106,11 +118,57 @@ export function DiffToolbar({
     }
   };
 
+  const generateCommit = async () => {
+    if (!onGenerateCommitMessage || commitBusy || commitMessageDisabled) return;
+    const reqId = ++commitReqIdRef.current;
+    setCommitBusy(true);
+    setCommitCopied(false);
+    try {
+      const raw = await onGenerateCommitMessage();
+      if (!mountedRef.current || commitReqIdRef.current !== reqId) return;
+      const message = raw.trim();
+      if (!message) {
+        showError("当前范围没有可生成提交说明的改动");
+        return;
+      }
+      await writeClipboardText(message);
+      if (!mountedRef.current || commitReqIdRef.current !== reqId) return;
+      setCommitCopied(true);
+    } catch (error: unknown) {
+      if (!mountedRef.current || commitReqIdRef.current !== reqId) return;
+      showError(userFacingMessage(error) ?? "无法生成提交说明");
+    } finally {
+      if (mountedRef.current && commitReqIdRef.current === reqId) {
+        setCommitBusy(false);
+      }
+    }
+  };
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      commitReqIdRef.current += 1;
+    };
+  }, []);
+
   useEffect(() => {
     if (!copyStatus) return;
     const timer = window.setTimeout(() => setCopyStatus(""), 2500);
     return () => window.clearTimeout(timer);
   }, [copyStatus]);
+
+  useEffect(() => {
+    commitReqIdRef.current += 1;
+    setCommitBusy(false);
+    setCommitCopied(false);
+  }, [scope]);
+
+  useEffect(() => {
+    if (!commitCopied) return;
+    const timer = window.setTimeout(() => setCommitCopied(false), 2000);
+    return () => window.clearTimeout(timer);
+  }, [commitCopied]);
 
   useDismissLayer(menu !== null, () => setMenu(null));
   useEffect(() => {
@@ -181,6 +239,26 @@ export function DiffToolbar({
         {copyStatus}
       </p>
       <div className="ml-auto flex shrink-0 items-center gap-0.5">
+        {canGenerateCommitMessage ? (
+          <button
+            type="button"
+            data-diff-commit-gen=""
+            disabled={commitBusy || commitMessageDisabled}
+            title={commitCopied ? "已复制提交说明" : "AI 生成提交说明"}
+            aria-label={commitCopied ? "已复制提交说明" : "AI 生成提交说明"}
+            className="mr-1 inline-flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-wb-border bg-wb-elev px-2 text-[12px] font-medium text-wb-fg transition-colors hover:border-wb-border-strong hover:bg-wb-hover disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={() => void generateCommit()}
+          >
+            {commitBusy ? (
+              <Loader2 className="h-3 w-3 shrink-0 animate-spin text-wb-accent" />
+            ) : commitCopied ? (
+              <Check className="h-3 w-3 shrink-0 text-wb-accent-ink" />
+            ) : (
+              <Sparkles className="h-3 w-3 shrink-0 text-wb-accent-ink" />
+            )}
+            <span>{commitBusy ? "正在生成…" : commitCopied ? "已复制提交说明" : "AI 生成提交说明"}</span>
+          </button>
+        ) : null}
         {DIFF_TOOLBAR_ICON_IDS.map((id) => {
           if (id === "options") {
             return (

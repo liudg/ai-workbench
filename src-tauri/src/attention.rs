@@ -300,6 +300,7 @@ mod tests {
                 id: format!("{id}-s"),
                 task_id: id.into(),
                 agent: AgentKind::CodexCli,
+                instance_id: None,
                 native_id: None,
                 status: SessionStatus::Completed,
                 options: SessionOptions::default(),

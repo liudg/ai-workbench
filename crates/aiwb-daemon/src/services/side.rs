@@ -33,7 +33,7 @@ impl Services {
             .map_err(store_err)?
             .pop()
             .ok_or_else(|| "任务不存在".to_string())?;
-        let adapter = self.runtimes.adapter(current.agent);
+        let adapter = self.runtimes.session_adapter(&current)?;
         if !adapter.capabilities().supports_side_chat {
             return Err(format!("{} 不支持侧边聊天", current.agent.display_name()));
         }
@@ -51,6 +51,7 @@ impl Services {
             id: new_id(),
             task_id: params.task_id,
             agent: current.agent,
+            instance_id: current.instance_id.clone(),
             native_id: None,
             status: SessionStatus::Completed,
             // 模型、强度、速度档和权限跟着主对话（`side_fork_config`），计划模式不带过去。

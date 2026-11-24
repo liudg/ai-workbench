@@ -15,33 +15,57 @@ interface MenuBox {
   draft: TextSnippetDraft;
 }
 
-export interface SelectionAction {
+export interface SelectionBarItem {
   id: string;
   label: string;
-  /** range 是点下去那一刻的选区，菜单收起后选区就清掉了。 */
-  onSelect: (draft: TextSnippetDraft, range: Range | null) => void;
+  onClick: (draft: TextSnippetDraft, dismiss: () => void) => void;
 }
 
-/** 选中文字后浮出的一排操作，由各个视图给出。复制走浏览器自己的选区。 */
-export function SelectionMenu({
+export interface SelectionBarSourceHandlers {
+  onChange: () => void;
+  onClear: () => void;
+  onScroll: () => void;
+  resetKeyboardPoint: () => void;
+}
+
+/** 选区浮动操作条的定位、拖拽/释放手势状态机与 Portal 渲染基础设施。 */
+export function FloatingSelectionBar({
   rootRef,
-  readDraft,
-  actions,
+  sourceKey,
+  enabled = true,
+  suppressed = false,
+  watchWheel = false,
+  isTargetInside,
+  readSelection,
+  subscribeSource,
+  items: resolveItems,
 }: {
   rootRef: RefObject<HTMLElement | null>;
-  readDraft: (root: HTMLElement) => TextSnippetDraft | null;
-  /** 一项都没有时不出菜单。 */
-  actions: (draft: TextSnippetDraft) => readonly SelectionAction[];
+  sourceKey?: unknown;
+  enabled?: boolean;
+  suppressed?: boolean;
+  watchWheel?: boolean;
+  isTargetInside?: (root: HTMLElement, target: EventTarget | null) => boolean;
+  readSelection: (root: HTMLElement) => {
+    draft: TextSnippetDraft;
+    fallbackPoint: () => SelectionMenuPoint | null;
+  } | null;
+  subscribeSource: (handlers: SelectionBarSourceHandlers) => () => void;
+  items: (draft: TextSnippetDraft) => readonly SelectionBarItem[];
 }) {
-  const readDraftRef = useRef(readDraft);
-  readDraftRef.current = readDraft;
+  const callbacksRef = useRef({ isTargetInside, readSelection, subscribeSource });
+  callbacksRef.current = { isTargetInside, readSelection, subscribeSource };
   const menuRef = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState<MenuBox | null>(null);
   const [place, setPlace] = useState<{ top: number; left: number } | null>(null);
 
+  useEffect(() => {
+    if (suppressed) setBox(null);
+  }, [suppressed]);
+
   useLayoutEffect(() => {
     const menu = menuRef.current;
-    if (!box || !menu) return;
+    if (!box || suppressed || !menu) return;
     const apply = () => {
       const node = menuRef.current;
       if (!node) return;
@@ -55,9 +79,13 @@ export function SelectionMenu({
     apply();
     window.addEventListener("resize", apply);
     return () => window.removeEventListener("resize", apply);
-  }, [box]);
+  }, [box, suppressed]);
 
   useEffect(() => {
+    if (!enabled) {
+      setBox(null);
+      return;
+    }
     let dragging = false;
     let frame = 0;
     let releasedAt: SelectionMenuPoint | null = null;
@@ -85,17 +113,17 @@ export function SelectionMenu({
         show(null);
         return;
       }
-      const draft = readDraftRef.current(root);
-      if (!draft) {
+      const selection = callbacksRef.current.readSelection(root);
+      if (!selection) {
         show(null);
         return;
       }
-      const point = selectionMenuPoint(releasedAt, selectionEndPoint());
+      const point = selectionMenuPoint(releasedAt, selection.fallbackPoint());
       if (!point) {
         show(null);
         return;
       }
-      show({ point, draft });
+      show({ point, draft: selection.draft });
     };
 
     const apply = (event: SelectionGesture, inside = true, point: SelectionMenuPoint | null = null) => {
@@ -125,25 +153,20 @@ export function SelectionMenu({
       if (target instanceof Element && target.closest("[data-selection-menu]")) return;
       const root = rootRef.current;
       ignoreChange = false;
-      const inside = Boolean(root && target instanceof Node && root.contains(target));
+      const checkInside = callbacksRef.current.isTargetInside;
+      const inside = Boolean(
+        root &&
+          (checkInside ? checkInside(root, target) : target instanceof Node && root.contains(target)),
+      );
       apply("down", inside);
     };
     const onMouseUp = (event: MouseEvent) => {
       if (event.button !== 0) return;
       apply("up", true, { x: event.clientX, y: event.clientY });
     };
-    const onChange = () => {
-      if (ignoreChange && !dragging) return;
-      apply("change");
-    };
-    const onKey = (event: KeyboardEvent) => {
+    const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         apply("cancel");
-        return;
-      }
-      if (movesSelection(event)) {
-        releasedAt = null;
-        ignoreChange = false;
       }
     };
     const onScroll = () => {
@@ -157,26 +180,49 @@ export function SelectionMenu({
       if (dragging) apply("up");
     };
 
-    document.addEventListener("selectionchange", onChange);
+    const disposeSource = callbacksRef.current.subscribeSource({
+      onChange: () => {
+        if (ignoreChange && !dragging) return;
+        apply("change");
+      },
+      onClear: () => {
+        cancelAnimationFrame(frame);
+        releasedAt = null;
+        show(null);
+      },
+      onScroll,
+      resetKeyboardPoint: () => {
+        releasedAt = null;
+        ignoreChange = false;
+      },
+    });
+
     window.addEventListener("mousedown", onMouseDown, true);
     window.addEventListener("mouseup", onMouseUp);
-    window.addEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKeyDown, true);
     window.addEventListener("blur", onBlur);
     const root = rootRef.current;
     root?.addEventListener("scroll", onScroll, true);
+    if (watchWheel) {
+      root?.addEventListener("wheel", onScroll, { passive: true, capture: true });
+    }
     return () => {
       cancelAnimationFrame(frame);
-      document.removeEventListener("selectionchange", onChange);
+      disposeSource();
       window.removeEventListener("mousedown", onMouseDown, true);
       window.removeEventListener("mouseup", onMouseUp);
-      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keydown", onKeyDown, true);
       window.removeEventListener("blur", onBlur);
       root?.removeEventListener("scroll", onScroll, true);
+      if (watchWheel) {
+        root?.removeEventListener("wheel", onScroll, true);
+      }
     };
-  }, [rootRef]);
+  }, [enabled, rootRef, sourceKey, watchWheel]);
 
-  const items = box ? actions(box.draft) : [];
-  if (!box || items.length === 0 || typeof document === "undefined") return null;
+  const items = box && !suppressed ? resolveItems(box.draft) : [];
+  if (!box || suppressed || items.length === 0 || typeof document === "undefined") return null;
+  const dismiss = () => setBox(null);
   return createPortal(
     <div
       ref={menuRef}
@@ -198,13 +244,7 @@ export function SelectionMenu({
             role="menuitem"
             data-selection-action={item.id}
             className="rounded-md px-2.5 py-1 text-xs font-medium text-wb-fg hover:bg-wb-hover"
-            onClick={() => {
-              const selection = window.getSelection();
-              const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0).cloneRange() : null;
-              setBox(null);
-              selection?.removeAllRanges();
-              item.onSelect(box.draft, range);
-            }}
+            onClick={() => item.onClick(box.draft, dismiss)}
           >
             {item.label}
           </button>
@@ -212,6 +252,59 @@ export function SelectionMenu({
       ))}
     </div>,
     document.body,
+  );
+}
+
+export interface SelectionAction {
+  id: string;
+  label: string;
+  /** range 是点下去那一刻的选区，菜单收起后选区就清掉了。 */
+  onSelect: (draft: TextSnippetDraft, range: Range | null) => void;
+}
+
+/** 选中文字后浮出的一排操作，由各个视图给出。复制走浏览器自己的选区。 */
+export function SelectionMenu({
+  rootRef,
+  readDraft,
+  actions,
+}: {
+  rootRef: RefObject<HTMLElement | null>;
+  readDraft: (root: HTMLElement) => TextSnippetDraft | null;
+  /** 一项都没有时不出菜单。 */
+  actions: (draft: TextSnippetDraft) => readonly SelectionAction[];
+}) {
+  return (
+    <FloatingSelectionBar
+      rootRef={rootRef}
+      readSelection={(root) => {
+        const draft = readDraft(root);
+        return draft ? { draft, fallbackPoint: selectionEndPoint } : null;
+      }}
+      subscribeSource={({ onChange, resetKeyboardPoint }) => {
+        const onKey = (event: KeyboardEvent) => {
+          if (movesSelection(event)) resetKeyboardPoint();
+        };
+        document.addEventListener("selectionchange", onChange);
+        window.addEventListener("keydown", onKey);
+        return () => {
+          document.removeEventListener("selectionchange", onChange);
+          window.removeEventListener("keydown", onKey);
+        };
+      }}
+      items={(draft) =>
+        actions(draft).map((item) => ({
+          id: item.id,
+          label: item.label,
+          onClick: (currentDraft, dismiss) => {
+            const selection = window.getSelection();
+            const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0).cloneRange() : null;
+            dismiss();
+            selection?.removeAllRanges();
+            item.onSelect(currentDraft, range);
+          },
+        }))
+      }
+    />
   );
 }
 

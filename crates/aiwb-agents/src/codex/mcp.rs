@@ -5,14 +5,17 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use crate::mcp::exec::{self, require_bin};
+use crate::instance::InstanceOverlay;
+use crate::mcp::exec;
 use crate::mcp::{args, parse, surface, McpDriver};
 use aiwb_core::models::{McpAddSpec, McpServerRow, McpSurface};
 
-pub struct CodexMcp;
+pub struct CodexMcp {
+    overlay: Arc<InstanceOverlay>,
+}
 
-pub fn driver() -> Arc<dyn McpDriver> {
-    Arc::new(CodexMcp)
+pub fn driver_for(overlay: Arc<InstanceOverlay>) -> Arc<dyn McpDriver> {
+    Arc::new(CodexMcp { overlay })
 }
 
 #[async_trait]
@@ -22,38 +25,38 @@ impl McpDriver for CodexMcp {
     }
 
     async fn list(&self) -> Result<Vec<McpServerRow>, String> {
-        let stdout = stdout(args::codex_list(), exec::LIST_LIMIT).await?;
+        let stdout = self.stdout(args::codex_list(), exec::LIST_LIMIT).await?;
         parse::parse_codex_list(&stdout)
     }
 
     async fn add(&self, spec: &McpAddSpec) -> Result<String, String> {
-        run(args::codex_add(spec)?, exec::MUTATE_LIMIT).await
+        self.run(args::codex_add(spec)?, exec::MUTATE_LIMIT).await
     }
 
     async fn remove(&self, name: &str, scope: &str) -> Result<String, String> {
         if !scope.trim().is_empty() {
             return Err("codex mcp remove 没有 --scope。".into());
         }
-        run(args::codex_remove(name)?, exec::MUTATE_LIMIT).await
+        self.run(args::codex_remove(name)?, exec::MUTATE_LIMIT).await
     }
 
     async fn login(&self, name: &str, registration: &str, scopes: &str) -> Result<String, String> {
-        let captured = exec::run_cli(
-            &bin()?,
-            &args::codex_login(name, registration, scopes)?,
-            exec::LOGIN_LIMIT,
-        )
-        .await?;
+        let captured = self
+            .run_captured(
+                args::codex_login(name, registration, scopes)?,
+                exec::LOGIN_LIMIT,
+            )
+            .await?;
         exec::success_text(captured)
     }
 
     async fn logout(&self, name: &str) -> Result<String, String> {
-        run(args::codex_logout(name)?, exec::MUTATE_LIMIT).await
+        self.run(args::codex_logout(name)?, exec::MUTATE_LIMIT).await
     }
 
     async fn set_enabled(&self, name: &str, enabled: bool) -> Result<String, String> {
         let name = parse::require_name(name)?;
-        apply_enabled(&codex_config_file(), &name, enabled)?;
+        apply_enabled(&self.codex_config_file()?, &name, enabled)?;
         Ok(if enabled {
             "已启用".into()
         } else {
@@ -62,18 +65,36 @@ impl McpDriver for CodexMcp {
     }
 }
 
-fn codex_config_file() -> PathBuf {
-    let root = std::env::var_os("CODEX_HOME")
-        .map(PathBuf::from)
-        .filter(|dir| !dir.as_os_str().is_empty())
-        .unwrap_or_else(|| {
-            let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"));
-            match home {
-                Some(home) => PathBuf::from(home).join(".codex"),
-                None => PathBuf::from(".codex"),
-            }
-        });
-    root.join("config.toml")
+impl CodexMcp {
+    fn codex_config_file(&self) -> Result<PathBuf, String> {
+        let root = super::shadow_home::effective_codex_home(&self.overlay)?
+            .unwrap_or_else(|| PathBuf::from(".codex"));
+        Ok(root.join("config.toml"))
+    }
+
+    async fn run_captured(
+        &self,
+        args: Vec<String>,
+        limit: std::time::Duration,
+    ) -> Result<exec::Captured, String> {
+        let bin = super::resolve_bin_for(&self.overlay).map_err(|e| e.to_string())?;
+        let codex_home = super::shadow_home::prepare_codex_home(&self.overlay)?;
+        let overlay = Arc::clone(&self.overlay);
+        exec::run_cli_configured(&bin, &args, limit, move |cmd| {
+            super::apply_instance_env(cmd, &overlay, codex_home.as_deref());
+        })
+        .await
+    }
+
+    async fn run(&self, args: Vec<String>, limit: std::time::Duration) -> Result<String, String> {
+        let captured = self.run_captured(args, limit).await?;
+        exec::success_stdout(captured)
+    }
+
+    async fn stdout(&self, args: Vec<String>, limit: std::time::Duration) -> Result<String, String> {
+        let captured = self.run_captured(args, limit).await?;
+        exec::ensure_ok(captured)
+    }
 }
 
 fn apply_enabled(path: &Path, name: &str, enabled: bool) -> Result<(), String> {
@@ -176,20 +197,6 @@ fn server_table<'a>(
         .and_then(toml_edit::Item::as_table_like)
         .and_then(|servers| servers.get(name))
         .and_then(toml_edit::Item::as_table_like)
-}
-
-async fn run(args: Vec<String>, limit: std::time::Duration) -> Result<String, String> {
-    let captured = exec::run_cli(&bin()?, &args, limit).await?;
-    exec::success_stdout(captured)
-}
-
-async fn stdout(args: Vec<String>, limit: std::time::Duration) -> Result<String, String> {
-    let captured = exec::run_cli(&bin()?, &args, limit).await?;
-    exec::ensure_ok(captured)
-}
-
-fn bin() -> Result<std::path::PathBuf, String> {
-    require_bin(super::locate_codex_bin(), "未找到 Codex CLI。")
 }
 
 #[cfg(test)]

@@ -14,7 +14,7 @@ import {
   type SubagentEvent,
 } from "./subagent-display";
 import type { EventViewProps } from "./types";
-import { useAgentIdentity, useEventAgent } from "./use-agent-identity";
+import { useAgentIdentity, useEventAgent, useEventInstanceId } from "./use-agent-identity";
 
 /** 子 Agent 在原位置更新状态，点开看它自己的过程。 */
 export function SubagentLine({ event, session }: EventViewProps) {
@@ -48,7 +48,7 @@ function Line({
   children: ReactNode;
 }) {
   const open = useChatHost().openSubagent;
-  const identity = useAgentIdentity(useEventAgent(event, session));
+  const identity = useAgentIdentity(useEventAgent(event, session), useEventInstanceId(event));
   const content = (
     <>
       <SessionAgentIcon identity={identity} className="h-4 w-4" />

@@ -3,7 +3,7 @@
 //! - 子 Agent 的转录在 `brain/<子会话 id>/.system_generated/logs/transcript.jsonl`，
 //!   登记在 `brain/<主会话 id>/.system_generated/subagents/<子会话 id>.json`。
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// `brain/<uuid>/` 下的路径算 Agent 自己的产物，不是项目文件。
 pub fn is_artifact(path: &str) -> bool {
@@ -15,25 +15,39 @@ pub fn is_artifact(path: &str) -> bool {
 }
 
 pub fn data_dir() -> Option<PathBuf> {
-    let env = |key: &str| {
-        std::env::var_os(key)
-            .map(PathBuf::from)
-            .filter(|path| !path.as_os_str().is_empty())
-    };
-    let gemini = env("ANTIGRAVITY_GEMINI_DIR").or_else(|| Some(env("USERPROFILE").or_else(|| env("HOME"))?.join(".gemini")))?;
-    Some(gemini.join("antigravity-cli"))
+    data_dir_for(&crate::instance::InstanceOverlay::default_for(
+        aiwb_core::models::AgentKind::Antigravity,
+    ))
+}
+
+pub fn data_dir_for(overlay: &crate::instance::InstanceOverlay) -> Option<PathBuf> {
+    overlay
+        .resolve_config_dir("ANTIGRAVITY_GEMINI_DIR", ".gemini")
+        .map(|gemini| gemini.join("antigravity-cli"))
 }
 
 pub fn brain_dir(id: &str) -> Option<PathBuf> {
     data_dir().map(|dir| dir.join("brain").join(id))
 }
 
+pub fn brain_dir_under(data_dir: Option<&Path>, id: &str) -> Option<PathBuf> {
+    match data_dir {
+        Some(dir) => Some(dir.join("brain").join(id)),
+        None => brain_dir(id),
+    }
+}
+
 /// 会话本身和它的产物都不在了。数据目录本身找不到时不下结论。
+#[cfg(test)]
 pub fn is_gone(id: &str) -> bool {
     data_dir().is_some_and(|root| gone_under(&root, id))
 }
 
-fn gone_under(root: &std::path::Path, id: &str) -> bool {
+pub fn is_gone_for(overlay: &crate::instance::InstanceOverlay, id: &str) -> bool {
+    data_dir_for(overlay).is_some_and(|root| gone_under(&root, id))
+}
+
+fn gone_under(root: &Path, id: &str) -> bool {
     uuid::Uuid::parse_str(id).is_ok()
         && root.join("conversations").is_dir()
         && !root.join("conversations").join(format!("{id}.db")).exists()
@@ -42,10 +56,19 @@ fn gone_under(root: &std::path::Path, id: &str) -> bool {
 
 /// ACP 没有删除方法。2026-11-09 实测：删掉这几处之后 `session/resume` 报读不到，`session/list` 里也没有了。
 pub fn remove(id: &str) -> Result<(), String> {
+    let root = data_dir().ok_or_else(|| "找不到 Antigravity 数据目录".to_string())?;
+    remove_under(&root, id)
+}
+
+pub fn remove_for(overlay: &crate::instance::InstanceOverlay, id: &str) -> Result<(), String> {
+    let root = data_dir_for(overlay).ok_or_else(|| "找不到 Antigravity 数据目录".to_string())?;
+    remove_under(&root, id)
+}
+
+pub(super) fn remove_under(root: &Path, id: &str) -> Result<(), String> {
     if uuid::Uuid::parse_str(id).is_err() || id.contains(['/', '\\', '.']) {
         return Err(format!("无效的会话 id：{id}"));
     }
-    let root = data_dir().ok_or_else(|| "找不到 Antigravity 数据目录".to_string())?;
     let database = root.join("conversations").join(format!("{id}.db"));
     let brain = root.join("brain").join(id);
     if !database.is_file() && !brain.is_dir() {
@@ -61,11 +84,12 @@ pub fn remove(id: &str) -> Result<(), String> {
     // 子 Agent 各是一条会话，记在父会话的 `.system_generated/subagents/<子会话 id>.json`。父会话删了它们也跟着删。
     for child in subagent_ids(&brain) {
         if child != id {
-            let _ = remove(&child);
+            let _ = remove_under(root, &child);
         }
     }
     if brain.is_dir() {
-        std::fs::remove_dir_all(&brain).map_err(|err| format!("删不掉会话 {id} 的产物：{err}"))?;
+        std::fs::remove_dir_all(&brain)
+            .map_err(|err| format!("删不掉会话 {id} 的产物：{err}"))?;
     }
     Ok(())
 }

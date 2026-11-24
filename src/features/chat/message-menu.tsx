@@ -15,7 +15,16 @@ import { DESKTOP_ZH } from "@/shared/strings/desktop-zh";
 import { useChatHost } from "./host";
 import { chatSelectionDraft } from "./timeline/chat-selection";
 
-type OpenMessageMenu = (event: ReactMouseEvent<HTMLElement>, markdown: string) => void;
+export interface MessageMenuRewind {
+  disabled?: boolean;
+  onSelect: () => void;
+}
+
+type OpenMessageMenu = (
+  event: ReactMouseEvent<HTMLElement>,
+  markdown: string,
+  rewind?: MessageMenuRewind | null,
+) => void;
 
 const MessageMenuContext = createContext<OpenMessageMenu | null>(null);
 
@@ -23,36 +32,49 @@ export function MessageMenuProvider({ sessionId, children }: { sessionId: string
   const addTextSnippet = useChatHost().addTextSnippet;
   const [menu, setMenu] = useState<{ x: number; y: number; items: ContextMenuItem[] } | null>(null);
   const open = useMemo<OpenMessageMenu>(
-    () => (event, markdown) => {
-      if (!markdown.trim()) return;
+    () => (event, markdown, rewind) => {
+      const hasText = Boolean(markdown.trim());
+      if (!hasText && !rewind) return;
       event.preventDefault();
       const body = event.currentTarget;
-      const picked = selectedTextIn(body);
-      const items: ContextMenuItem[] = [
-        {
-          id: "copy-message",
-          label: DESKTOP_ZH.copyMessage,
-          onSelect: () => void writeClipboardRich(markdown, renderedHtml(body)).catch(() => {}),
-        },
-        {
-          id: "copy-markdown",
-          label: DESKTOP_ZH.copyMessageMarkdown,
-          onSelect: () => void writeClipboardText(markdown).catch(() => {}),
-        },
-      ];
-      const draft = addTextSnippet ? chatSelectionDraft(picked || markdown) : null;
-      if (addTextSnippet && draft) {
+      const picked = hasText ? selectedTextIn(body) : "";
+      const items: ContextMenuItem[] = [];
+      if (hasText) {
         items.push(
-          { id: "sep-attach", separator: true },
           {
-            id: "attach",
-            label: picked ? DESKTOP_ZH.attachSelection : DESKTOP_ZH.attachMessage,
-            onSelect: () => {
-              addTextSnippet(sessionId, draft);
-              if (picked) window.getSelection()?.removeAllRanges();
-            },
+            id: "copy-message",
+            label: DESKTOP_ZH.copyMessage,
+            onSelect: () => void writeClipboardRich(markdown, renderedHtml(body)).catch(() => {}),
+          },
+          {
+            id: "copy-markdown",
+            label: DESKTOP_ZH.copyMessageMarkdown,
+            onSelect: () => void writeClipboardText(markdown).catch(() => {}),
           },
         );
+        const draft = addTextSnippet ? chatSelectionDraft(picked || markdown) : null;
+        if (addTextSnippet && draft) {
+          items.push(
+            { id: "sep-attach", separator: true },
+            {
+              id: "attach",
+              label: picked ? DESKTOP_ZH.attachSelection : DESKTOP_ZH.attachMessage,
+              onSelect: () => {
+                addTextSnippet(sessionId, draft);
+                if (picked) window.getSelection()?.removeAllRanges();
+              },
+            },
+          );
+        }
+      }
+      if (rewind) {
+        if (items.length > 0) items.push({ id: "sep-rewind", separator: true });
+        items.push({
+          id: "rewind",
+          label: "回退到此处…",
+          disabled: rewind.disabled,
+          onSelect: rewind.onSelect,
+        });
       }
       setMenu({ x: event.clientX, y: event.clientY, items });
     },
@@ -67,9 +89,12 @@ export function MessageMenuProvider({ sessionId, children }: { sessionId: string
 }
 
 /** 接到消息正文的 onContextMenu 上。外面没有菜单时（预览）为空。 */
-export function useMessageMenu(markdown: string): ((event: ReactMouseEvent<HTMLElement>) => void) | undefined {
+export function useMessageMenu(
+  markdown: string,
+  rewind?: MessageMenuRewind | null,
+): ((event: ReactMouseEvent<HTMLElement>) => void) | undefined {
   const open = useContext(MessageMenuContext);
-  return open ? (event) => open(event, markdown) : undefined;
+  return open ? (event) => open(event, markdown, rewind) : undefined;
 }
 
 function selectedTextIn(root: HTMLElement): string {

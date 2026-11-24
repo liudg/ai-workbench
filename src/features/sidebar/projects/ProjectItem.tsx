@@ -8,6 +8,7 @@ import { FixedMenu } from "../FixedMenu";
 import { NewSessionButton } from "../sessions/NewSessionButton";
 import { partitionSidebarSessions } from "../sessions/session-partition";
 import { SessionList } from "../sessions/SessionList";
+import { sidebarScopeKey, useSidebarViewStore } from "../sidebar-view-store";
 import type { SidebarTask } from "../sidebar-task";
 import { EditProjectDialog } from "./EditProjectDialog";
 import { ImportSessionsDialog } from "./ImportSessionsDialog";
@@ -20,18 +21,22 @@ export function ProjectItem({
   tasks,
   selected,
   activeTaskId,
+  jumpIndexByTaskId,
 }: {
   project: Project;
   tasks: readonly SidebarTask[];
   selected: boolean;
   activeTaskId: string | null;
+  jumpIndexByTaskId?: ReadonlyMap<string, number>;
 }) {
   const { selectProject, togglePinned, openFolder, removeProject } = useProjectItem(project, tasks);
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [editing, setEditing] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
+  const collapsed = useSidebarViewStore((state) => state.collapsedProjects.has(project.id));
+  const toggleProjectCollapsed = useSidebarViewStore((state) => state.toggleProjectCollapsed);
+  const setProjectCollapsed = useSidebarViewStore((state) => state.setProjectCollapsed);
   const anchorRef = useRef<HTMLButtonElement>(null);
   const closeMenu = useCallback(() => {
     setMenuOpen(false);
@@ -44,10 +49,10 @@ export function ProjectItem({
 
   const onHeaderClick = () => {
     if (selected) {
-      setCollapsed((value) => !value);
+      toggleProjectCollapsed(project.id);
       return;
     }
-    setCollapsed(false);
+    setProjectCollapsed(project.id, false);
     selectProject();
   };
 
@@ -203,7 +208,12 @@ export function ProjectItem({
         </div>
       </div>
       {!collapsed && grouped.active.length > 0 && (
-        <SessionList tasks={grouped.active} activeTaskId={activeTaskId} />
+        <SessionList
+          scope={sidebarScopeKey(project.id)}
+          tasks={grouped.active}
+          activeTaskId={activeTaskId}
+          jumpIndexByTaskId={jumpIndexByTaskId}
+        />
       )}
     </div>
     {editing && (

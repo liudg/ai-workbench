@@ -1,4 +1,9 @@
-import type { AgentKind, SubscriptionUsage } from "@/types";
+import {
+  effectiveInstanceId,
+  nonDefaultInstanceId,
+  type AgentKind,
+  type SubscriptionUsage,
+} from "../../../types/index.ts";
 
 const cache = new Map<string, SubscriptionUsage>();
 const inflight = new Map<string, Promise<void>>();
@@ -8,6 +13,21 @@ let revision = 0;
 function emit() {
   revision += 1;
   for (const listener of listeners) listener();
+}
+
+export function clearSubscriptionUsageCache(): void {
+  cache.clear();
+  inflight.clear();
+  emit();
+}
+
+export function evictSubscriptionUsage(kind: AgentKind, instanceId?: string | null): void {
+  const key = effectiveInstanceId(kind, instanceId);
+  const hadCache = cache.delete(key);
+  const hadInflight = inflight.delete(key);
+  if (hadCache || hadInflight) {
+    emit();
+  }
 }
 
 export function subscribeSubscriptionUsage(listener: () => void): () => void {
@@ -21,34 +41,48 @@ export function subscriptionUsageRevision(): number {
   return revision;
 }
 
-export function peekSubscriptionUsage(kind: string): SubscriptionUsage | undefined {
-  return cache.get(kind);
+export function peekSubscriptionUsage(
+  kind: AgentKind,
+  instanceId?: string | null,
+): SubscriptionUsage | undefined {
+  return cache.get(effectiveInstanceId(kind, instanceId));
 }
 
 /** 预览把窗口放进和真实拉取同一份缓存，切换布局不会再请求。 */
-export function seedSubscriptionUsage(kind: string, usage: SubscriptionUsage) {
-  cache.set(kind, usage);
+export function seedSubscriptionUsage(
+  kind: AgentKind,
+  usage: SubscriptionUsage,
+  instanceId?: string | null,
+) {
+  cache.set(effectiveInstanceId(kind, instanceId), usage);
   emit();
 }
 
-/** 同一 agent 的在途请求合并。失败时保留上一份成功结果。 */
+/** 同一实例的在途请求合并，不跨实例混用。失败时保留上一份成功结果。 */
 export function refreshSubscriptionUsage(
   kind: AgentKind,
-  fetch: (kind: AgentKind) => Promise<SubscriptionUsage>,
+  fetch: (kind: AgentKind, instanceId?: string) => Promise<SubscriptionUsage>,
+  instanceId?: string | null,
 ): Promise<void> {
-  const pending = inflight.get(kind);
+  const key = effectiveInstanceId(kind, instanceId);
+  const nonDefault = nonDefaultInstanceId(kind, instanceId);
+  const pending = inflight.get(key);
   if (pending) return pending;
-  const task = fetch(kind)
+  const call = nonDefault ? fetch(kind, nonDefault) : fetch(kind);
+  const task = call
     .then((usage) => {
-      cache.set(kind, usage);
+      if (inflight.get(key) !== task) return;
+      cache.set(key, usage);
       emit();
     })
     .catch(() => {
       // 拉取失败时界面继续显示上一份。
     })
     .finally(() => {
-      inflight.delete(kind);
+      if (inflight.get(key) === task) {
+        inflight.delete(key);
+      }
     });
-  inflight.set(kind, task);
+  inflight.set(key, task);
   return task;
 }

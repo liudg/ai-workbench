@@ -135,10 +135,13 @@ function PreviewContent({
   onToggleMarkdown?: () => void;
 }) {
   const markdown = kind === "markdown";
-  const view = markdown && markdownMode !== "source" ? "markdown" : "source";
+  const effectiveMode: MarkdownViewMode | null = markdown
+    ? (markdownMode ?? (line != null ? "source" : "preview"))
+    : null;
+  const view = markdown && effectiveMode !== "source" ? "markdown" : "source";
   return (
     <div
-      data-content-viewer={view === "markdown" || (markdown && line == null) ? "markdown" : "text"}
+      data-content-viewer={view === "markdown" ? "markdown" : "text"}
       data-markdown-view={markdown ? (view === "markdown" ? "preview" : "source") : undefined}
       className="h-full min-h-0"
     >
@@ -151,8 +154,8 @@ function PreviewContent({
         copyPath={path}
         commentable={!markdown}
         markdown={
-          markdown && markdownMode && onToggleMarkdown
-            ? { label: markdownModeButtonLabel(markdownMode), onToggle: onToggleMarkdown }
+          markdown && effectiveMode && onToggleMarkdown
+            ? { label: markdownModeButtonLabel(effectiveMode), onToggle: onToggleMarkdown }
             : null
         }
         onAdd={onQuote}

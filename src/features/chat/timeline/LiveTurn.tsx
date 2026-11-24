@@ -3,7 +3,8 @@ import { useMemo } from "react";
 import { SessionAgentIcon } from "@/shared/agent/SessionAgentIcon";
 import { AGENT_LABELS, type Session, type SessionEvent } from "@/types";
 import type { BackgroundTaskEvent } from "../events/background-task-display";
-import { agentTurnName, useAgentIdentity } from "../events/use-agent-identity";
+import { agentTurnName, useAgentIdentity, useEventInstanceId } from "../events/use-agent-identity";
+import { useOptionalChatHost } from "../host";
 import { ActivityStream } from "./ActivityStream";
 import { foldedEvents, runningTurnSummary } from "./timeline";
 import { TurnFoldLine } from "./TurnFoldLine";
@@ -23,6 +24,8 @@ export function LiveTurn({
   onToggle,
   onInteract,
   backgroundByToolCall,
+  revealEventId,
+  highlightedEventId,
   starting = false,
 }: {
   events: SessionEvent[];
@@ -32,9 +35,13 @@ export function LiveTurn({
   onToggle: () => void;
   onInteract?: () => void;
   backgroundByToolCall?: ReadonlyMap<string, BackgroundTaskEvent>;
+  revealEventId?: string | null;
+  highlightedEventId?: string | null;
   starting?: boolean;
 }) {
-  const identity = useAgentIdentity(session.agent);
+  const host = useOptionalChatHost();
+  const instanceId = useEventInstanceId(events[0]) ?? host?.instanceOf?.(session.id);
+  const identity = useAgentIdentity(session.agent, instanceId);
   const agentName = agentTurnName(session.agent, identity) || AGENT_LABELS[session.agent];
   const visible = useMemo(() => (expanded ? events : foldedEvents(events, false)), [events, expanded]);
 
@@ -55,6 +62,8 @@ export function LiveTurn({
         live
         settled={false}
         backgroundByToolCall={backgroundByToolCall}
+        revealEventId={revealEventId}
+        highlightedEventId={highlightedEventId}
         onInteract={onInteract}
       />
     </div>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import {
   formatSubscriptionHeadline,
@@ -8,7 +8,7 @@ import {
   subscriptionTone,
   windowsForModel,
 } from "@/store/subscription-usage";
-import type { AgentKind, SessionStatus } from "@/types";
+import { effectiveInstanceId, type AgentKind, type SessionStatus } from "@/types";
 import {
   peekSubscriptionUsage,
   refreshSubscriptionUsage,
@@ -21,12 +21,35 @@ const TICK_MS = 30_000;
 /** setTimeout 超过这个值会在浏览器里立刻触发。更长的等待靠本地计时重新安排。 */
 const MAX_TIMEOUT_MS = 2_147_483_647;
 
-/** 顶栏显示当前模型所在窗口里最紧的一个；悬停仍列出全部窗口。 */
-export function useSubscriptionUsage(agent: AgentKind | null, modelLabel: string | null) {
-  const { subscriptionSupported: supported, modelLoading, status, data } = usePanel();
-  const fetch = data.subscriptionUsage;
-  useSyncExternalStore(subscribeSubscriptionUsage, subscriptionUsageRevision, subscriptionUsageRevision);
-  const usage = agent && supported ? peekSubscriptionUsage(agent) : undefined;
+/** 顶栏显示当前模型所在窗口里最紧的一个；按实例隔离缓存与查询，悬停仍列出全部窗口。 */
+export function useSubscriptionUsage(
+  agent: AgentKind | null,
+  modelLabel: string | null,
+  instanceId?: string | null,
+) {
+  const {
+    subscriptionSupported: supported,
+    modelLoading,
+    status,
+    data,
+    instanceId: panelInstanceId,
+  } = usePanel();
+
+  const resolvedInstanceId = instanceId?.trim() || panelInstanceId?.trim() || undefined;
+
+  const fetch = useCallback(
+    (kind: AgentKind, nonDefaultId?: string) => data.subscriptionUsage(kind, nonDefaultId),
+    [data],
+  );
+
+  useSyncExternalStore(
+    subscribeSubscriptionUsage,
+    subscriptionUsageRevision,
+    subscriptionUsageRevision,
+  );
+  const instanceKey = agent ? effectiveInstanceId(agent, resolvedInstanceId) : null;
+  const usage =
+    agent && supported ? peekSubscriptionUsage(agent, resolvedInstanceId) : undefined;
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -35,38 +58,43 @@ export function useSubscriptionUsage(agent: AgentKind | null, modelLabel: string
   }, []);
 
   useEffect(() => {
-    if (!agent || !supported || peekSubscriptionUsage(agent)) return;
-    void refreshSubscriptionUsage(agent, fetch);
-  }, [agent, fetch, supported]);
+    if (!agent || !supported || peekSubscriptionUsage(agent, resolvedInstanceId)) return;
+    void refreshSubscriptionUsage(agent, fetch, resolvedInstanceId);
+  }, [agent, fetch, instanceKey, resolvedInstanceId, supported]);
 
   const previous = useRef<SessionStatus | undefined>(status);
   useEffect(() => {
     const before = previous.current;
     previous.current = status;
     if (!agent || !supported) return;
-    if (shouldRefreshAfterStatus(before, status)) void refreshSubscriptionUsage(agent, fetch);
-  }, [agent, fetch, supported, status]);
+    if (shouldRefreshAfterStatus(before, status)) {
+      void refreshSubscriptionUsage(agent, fetch, resolvedInstanceId);
+    }
+  }, [agent, fetch, instanceKey, resolvedInstanceId, supported, status]);
 
-  const tight = usage ? pickTightestWindow(windowsForModel(usage.windows, modelLoading ? undefined : modelLabel)) : null;
+  const tight = usage
+    ? pickTightestWindow(windowsForModel(usage.windows, modelLoading ? undefined : modelLabel))
+    : null;
   const resetAt = typeof tight?.resets_at_ms === "number" ? tight.resets_at_ms : null;
-  const refreshedReset = useRef<number | null>(null);
+  const refreshedReset = useRef<string | null>(null);
   useEffect(() => {
     if (!agent || !supported || resetAt === null) return;
+    const token = `${instanceKey}:${resetAt}`;
     const delay = resetAt - Date.now();
     if (delay <= 0) {
-      if (refreshedReset.current !== resetAt) {
-        refreshedReset.current = resetAt;
-        void refreshSubscriptionUsage(agent, fetch);
+      if (refreshedReset.current !== token) {
+        refreshedReset.current = token;
+        void refreshSubscriptionUsage(agent, fetch, resolvedInstanceId);
       }
       return;
     }
     if (delay > MAX_TIMEOUT_MS) return;
     const id = window.setTimeout(() => {
-      refreshedReset.current = resetAt;
-      void refreshSubscriptionUsage(agent, fetch);
+      refreshedReset.current = token;
+      void refreshSubscriptionUsage(agent, fetch, resolvedInstanceId);
     }, delay);
     return () => window.clearTimeout(id);
-  }, [agent, fetch, supported, resetAt, now]);
+  }, [agent, fetch, instanceKey, resolvedInstanceId, supported, resetAt, now]);
 
   const remaining = tight ? remainingPercent(tight) : null;
   return {
@@ -76,7 +104,7 @@ export function useSubscriptionUsage(agent: AgentKind | null, modelLabel: string
     tone: remaining === null ? "normal" : subscriptionTone(remaining),
     remaining,
     refresh() {
-      if (agent && supported) void refreshSubscriptionUsage(agent, fetch);
+      if (agent && supported) void refreshSubscriptionUsage(agent, fetch, resolvedInstanceId);
     },
   };
 }

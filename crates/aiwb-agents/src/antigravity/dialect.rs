@@ -360,6 +360,7 @@ fn start_background(
 }
 
 pub struct AntigravityDialect {
+    data_dir: Option<std::path::PathBuf>,
     subagents: Arc<Mutex<Subagents>>,
     /// 转成后台任务的命令，按 agy 的任务 id。
     background: Mutex<HashMap<String, BackgroundTask>>,
@@ -374,9 +375,29 @@ pub struct AntigravityDialect {
 }
 
 impl AntigravityDialect {
-    pub fn new(project: &std::path::Path, events: EventSink, probing: bool, servers: Value) -> Self {
+    #[cfg(test)]
+    pub fn new(
+        project: &std::path::Path,
+        events: EventSink,
+        probing: bool,
+        servers: Value,
+    ) -> Self {
+        Self::with_data_dir(project, None, events, probing, servers)
+    }
+
+    pub fn with_data_dir(
+        project: &std::path::Path,
+        data_dir: Option<std::path::PathBuf>,
+        events: EventSink,
+        probing: bool,
+        servers: Value,
+    ) -> Self {
         Self {
-            subagents: Arc::new(Mutex::new(Subagents::new(project))),
+            subagents: Arc::new(Mutex::new(Subagents::with_data_dir(
+                project,
+                data_dir.clone(),
+            ))),
+            data_dir,
             background: Mutex::new(HashMap::new()),
             turn_start: Mutex::new(None),
             events,
@@ -622,7 +643,8 @@ impl Dialect for AntigravityDialect {
     /// 记下这一轮开始时转录写到了哪一行。
     fn turn_started(&self, shared: &Shared) {
         if let Some(id) = shared.session_id() {
-            *self.turn_start.lock().unwrap() = Some(subagents::transcript_lines(&id));
+            *self.turn_start.lock().unwrap() =
+                Some(subagents::transcript_lines_under(self.data_dir.as_deref(), &id));
         }
     }
 
@@ -670,7 +692,7 @@ impl Dialect for AntigravityDialect {
         };
         let awaited = self.subagents.lock().unwrap().awaited_parent().is_some();
         let since = self.turn_start.lock().unwrap().unwrap_or(0);
-        let mut tail = ParentTail::new(&parent, since);
+        let mut tail = ParentTail::with_data_dir(self.data_dir.clone(), &parent, since);
         // 从头读到的：上一次等待被打断后才结束的、回包前就跑完的这一轮任务，都在这里收尾。
         self.sync_background(shared, &mut tail);
         if !awaited && !tail.waiting_on_tasks() {
@@ -753,7 +775,14 @@ impl Dialect for AntigravityDialect {
 
     fn after_exit(&self, session_id: &str) {
         if self.probing {
-            let _ = directory::remove(session_id);
+            match &self.data_dir {
+                Some(dir) => {
+                    let _ = directory::remove_under(dir, session_id);
+                }
+                None => {
+                    let _ = directory::remove(session_id);
+                }
+            }
         }
     }
 

@@ -91,6 +91,7 @@ mod tests {
             parent_task_id: None,
         }, &TaskSession {
             id: "s".into(), task_id: "t".into(), agent: AgentKind::CodexCli,
+            instance_id: None,
             native_id: None, status: SessionStatus::Idle,
             options: SessionOptions::default(), created_at: 1, updated_at: 1,
         }).unwrap();

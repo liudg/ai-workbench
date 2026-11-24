@@ -10,9 +10,7 @@ use std::time::Duration;
 use tokio::process::Command;
 use tokio::time::timeout;
 
-use aiwb_proc::{apply_utf8_env, decode_child_bytes};
-
-use super::process::hide_console;
+use aiwb_proc::{apply_utf8_env, decode_child_bytes, hide_console};
 
 const DIFF_COMMAND_TIMEOUT: Duration = Duration::from_secs(30);
 const SAFE_BARE_REPOSITORY_CONFIG: &str = "safe.bareRepository=explicit";

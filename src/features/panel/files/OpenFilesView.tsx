@@ -129,6 +129,7 @@ export function OpenFilesScreen({
     projectId,
     projectPath,
     previewPath: place.path,
+    previewLine: place.line,
     treeOpen: filesTreeOpen,
     onToggleTree: toggleFilesTree,
     onSelectFile: openFile,

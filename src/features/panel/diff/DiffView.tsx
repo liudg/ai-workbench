@@ -187,6 +187,15 @@ export function DiffView({ files, focus, onFocusHandled }: {
         onJump={jumpTo}
         copyCommand={copy.command}
         copyReason={copy.reason}
+        commitMessageDisabled={doc.loading}
+        onGenerateCommitMessage={
+          data.generateCommitMessage && (doc.loading || doc.listed.length > 0)
+            ? async () => {
+                if (doc.listed.length === 0) return "";
+                return data.generateCommitMessage!(doc.scope);
+              }
+            : null
+        }
       />
       <div data-diff-split className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
         <div ref={contentRef} className="flex min-h-0 w-0 min-w-0 flex-1 basis-0 flex-col overflow-hidden">

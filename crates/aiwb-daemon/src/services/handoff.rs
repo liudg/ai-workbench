@@ -2,7 +2,10 @@
 
 use std::path::Path;
 
-use aiwb_core::models::{new_id, AgentKind, HandoffStrategy, MessageSender, SessionEventBody, SessionStatus};
+use aiwb_core::models::{
+    default_instance_id, effective_instance_id, new_id, AgentKind, HandoffStrategy, MessageSender,
+    SessionEventBody, SessionStatus,
+};
 use aiwb_core::task::{SessionLink, SessionOptions, SessionSpec, Task, TaskEntry, TaskSession, TaskWorkspace};
 use serde::Deserialize;
 
@@ -14,6 +17,8 @@ pub(crate) struct SwitchAgent {
     task_id: String,
     agent: AgentKind,
     #[serde(default)]
+    instance_id: Option<String>,
+    #[serde(default)]
     options: SessionOptions,
 }
 
@@ -24,14 +29,24 @@ pub(crate) struct ForkTask {
     /// 空表示和原来同一个 Agent。
     #[serde(default)]
     agent: Option<AgentKind>,
+    #[serde(default)]
+    instance_id: Option<String>,
     /// 空时同一个 Agent 沿用原来的选项，换 Agent 用它自己的默认值。
     #[serde(default)]
     options: Option<SessionOptions>,
 }
 
+fn normalized_instance_id(agent: AgentKind, instance_id: Option<&str>) -> Option<String> {
+    let default_id = default_instance_id(agent);
+    instance_id
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && *s != default_id)
+        .map(str::to_string)
+}
+
 impl Services {
-    /// 任务换一个 Agent 接着做。现在的会话留作前面的一段，新会话第一条消息带上前文。
-    /// 这个 Agent 在任务里用过时接回它原来的线程，只补它没看到的那段。
+    /// 任务换一个 Agent / 实例接着做。现在的会话留作前面的一段，新会话第一条消息带上前文。
+    /// 同一个实例在任务里用过时接回它原来的线程，只补它没看到的那段。
     pub(crate) async fn switch_agent(&self, params: SwitchAgent) -> ServiceResult<TaskEntry> {
         let mut sessions = self
             .store
@@ -41,14 +56,26 @@ impl Services {
         if session_busy(&current) {
             return Err("这一轮还没结束，停下后再换 Agent".into());
         }
-        self.ensure_handoff(current.agent, params.agent)?;
+        let target_inst_opt = normalized_instance_id(params.agent, params.instance_id.as_deref());
+        let target_inst_key =
+            effective_instance_id(params.agent, target_inst_opt.as_deref()).to_string();
+        self.ensure_handoff(
+            (current.agent, current.instance_id.as_deref()),
+            (params.agent, target_inst_opt.as_deref()),
+        )?;
         // 交给了项目目录的任务以后还要交回工作树，换上去的 Agent 得能换目录接着会话。
         let handed_off = self
             .store
             .task(&params.task_id)
             .map_err(|e| e.to_string())?
             .is_some_and(|task| matches!(task.workspace, TaskWorkspace::Worktree { local: Some(_), .. }));
-        if handed_off && !self.runtimes.adapter(params.agent).capabilities().supports_workdir_move {
+        if handed_off
+            && !self
+                .runtimes
+                .adapter_for_instance(params.agent, target_inst_opt.as_deref())?
+                .capabilities()
+                .supports_workdir_move
+        {
             return Err(format!("{} 还不能换目录接着会话，先把任务交回工作树再换", params.agent.display_name()));
         }
         // 侧边聊天是从换下去的这段分出来的，跟着关掉。
@@ -60,7 +87,12 @@ impl Services {
             self.discard_unsent_thread(&current, &sessions).await;
             if sessions.len() == 1 {
                 self.store
-                    .set_session_agent(&current.id, params.agent, &params.options)
+                    .set_session_agent_instance(
+                        &current.id,
+                        params.agent,
+                        target_inst_opt.as_deref(),
+                        &params.options,
+                    )
                     .map_err(|e| e.to_string())?;
                 self.runtimes.publish_tasks()?;
                 return self.task_entry(&params.task_id);
@@ -69,7 +101,7 @@ impl Services {
             sessions.pop();
         }
         let current = sessions.last().cloned().expect("至少留下一段");
-        if current.agent == params.agent {
+        if current.agent == params.agent && current.effective_instance_id() == target_inst_key {
             self.store
                 .set_session_options(&current.id, &params.options)
                 .map_err(|e| e.to_string())?;
@@ -81,13 +113,16 @@ impl Services {
         let resume = sessions
             .iter()
             .rev()
-            .find(|session| session.agent == params.agent)
+            .find(|session| {
+                session.agent == params.agent && session.effective_instance_id() == target_inst_key
+            })
             .and_then(|session| session.native_id.clone());
         let now = now_millis().max(current.created_at + 1);
         let next = TaskSession {
             id: new_id(),
             task_id: params.task_id.clone(),
             agent: params.agent,
+            instance_id: target_inst_opt,
             native_id: resume.clone(),
             status: SessionStatus::Completed,
             options: params.options,
@@ -106,7 +141,7 @@ impl Services {
     }
 
     /// 从任务现在的样子分出一个新任务，在同一个目录里。
-    /// 同一个 Agent 用它原生的分叉；换 Agent 或原生分叉不了时，新会话第一条消息带上全部前文。
+    /// 同一个实例用它原生的分叉；换 Agent/实例或原生分叉不了时，新会话第一条消息带上全部前文。
     pub(crate) async fn fork_task(&self, params: ForkTask) -> ServiceResult<TaskEntry> {
         // 正在清理或交接源任务的工作树时，等它做完再照着它现在的样子分。
         let _worktrees = self.runtimes.worktrees.lock().await;
@@ -120,23 +155,38 @@ impl Services {
             return Err("这一轮还没结束，停下后再分叉".into());
         }
         let agent = params.agent.unwrap_or(current.agent);
-        let adapter = self.runtimes.adapter(agent);
+        let target_inst_opt = if params.instance_id.is_some() {
+            normalized_instance_id(agent, params.instance_id.as_deref())
+        } else if params.agent.is_none() {
+            current.instance_id.clone()
+        } else {
+            None
+        };
+        let same_instance = agent == current.agent
+            && effective_instance_id(agent, target_inst_opt.as_deref())
+                == current.effective_instance_id();
+        let adapter = self
+            .runtimes
+            .adapter_for_instance(agent, target_inst_opt.as_deref())?;
         if !adapter.session_linked() {
             return Err(format!("{} 还不能在工作台里对话", agent.display_name()));
         }
         // 还没交出去的前文在原线程里没有，这时原生分叉会丢掉它，改走交接。
         let pending = self.has_pending_handoff(&current.id)?;
         let native = match current.native_id.as_deref() {
-            Some(native) if agent == current.agent && !pending && adapter.capabilities().supports_fork => {
+            Some(native) if same_instance && !pending && adapter.capabilities().supports_fork => {
                 Some(adapter.fork_thread(native, None).await.map_err(|e| e.to_string())?.native_id)
             }
             _ => {
-                self.ensure_handoff(current.agent, agent)?;
+                self.ensure_handoff(
+                    (current.agent, current.instance_id.as_deref()),
+                    (agent, target_inst_opt.as_deref()),
+                )?;
                 None
             }
         };
         let options = params.options.unwrap_or_else(|| {
-            if agent == current.agent {
+            if same_instance {
                 current.options.clone()
             } else {
                 SessionOptions::default()
@@ -158,7 +208,15 @@ impl Services {
             updated_at: now,
             parent_task_id: None,
         };
-        self.copy_segments(&task, &sessions, native, agent, options, SessionStatus::Completed)?;
+        self.copy_segments(
+            &task,
+            &sessions,
+            native,
+            agent,
+            target_inst_opt,
+            options,
+            SessionStatus::Completed,
+        )?;
         self.runtimes.publish_tasks()?;
         self.task_entry(&task.id)
     }
@@ -179,7 +237,7 @@ impl Services {
         if current.id != origin_session_id || current.agent != spec.agent {
             return Err("发起分叉的会话已切换，请重新发起分叉".into());
         }
-        let adapter = self.runtimes.adapter(current.agent);
+        let adapter = self.runtimes.session_adapter(&current)?;
         let native = current
             .native_id
             .clone()
@@ -210,7 +268,15 @@ impl Services {
             created_at: now,
             updated_at: now,
         };
-        let session = self.copy_segments(&task, &sessions, Some(forked), current.agent, options, SessionStatus::Starting)?;
+        let session = self.copy_segments(
+            &task,
+            &sessions,
+            Some(forked),
+            current.agent,
+            current.instance_id.clone(),
+            options,
+            SessionStatus::Starting,
+        )?;
         let sender = MessageSender {
             task_ids: vec![origin.id.clone()],
             background: None,
@@ -285,16 +351,22 @@ impl Services {
         sessions: &[TaskSession],
         native: Option<String>,
         agent: AgentKind,
+        instance_id: Option<String>,
         options: SessionOptions,
         status: SessionStatus,
     ) -> ServiceResult<TaskSession> {
         let current = sessions.last().cloned().ok_or_else(|| "任务没有会话".to_string())?;
         let now = task.created_at;
         let target_index = if native.is_some() { sessions.len() - 1 } else { sessions.len() };
-        let segment = |index: usize, agent: AgentKind, native_id: Option<String>, options: SessionOptions| TaskSession {
+        let segment = |index: usize,
+                       agent: AgentKind,
+                       inst_id: Option<String>,
+                       native_id: Option<String>,
+                       options: SessionOptions| TaskSession {
             id: new_id(),
             task_id: task.id.clone(),
             agent,
+            instance_id: inst_id,
             native_id,
             // 复制的历史段不会启动进程，只有当前目标段使用启动状态。
             status: if index == target_index {
@@ -311,13 +383,25 @@ impl Services {
             .iter()
             .enumerate()
             .map(|(index, earlier)| match &native {
-                Some(native) if index == last => segment(index, earlier.agent, Some(native.clone()), options.clone()),
-                _ => segment(index, earlier.agent, None, earlier.options.clone()),
+                Some(native) if index == last => segment(
+                    index,
+                    earlier.agent,
+                    instance_id.clone().or_else(|| earlier.instance_id.clone()),
+                    Some(native.clone()),
+                    options.clone(),
+                ),
+                _ => segment(
+                    index,
+                    earlier.agent,
+                    earlier.instance_id.clone(),
+                    None,
+                    earlier.options.clone(),
+                ),
             })
             .collect();
         let target = native
             .is_none()
-            .then(|| segment(sessions.len(), agent, None, options));
+            .then(|| segment(sessions.len(), agent, instance_id, None, options));
         self.store.insert_task(&task, &copies[0]).map_err(|e| e.to_string())?;
         for added in copies[1..].iter().chain(target.iter()) {
             self.store.add_session(added).map_err(|e| e.to_string())?;
@@ -337,16 +421,25 @@ impl Services {
         Ok(target.or_else(|| copies.last().cloned()).expect("至少有一段"))
     }
 
-    /// 两边的适配器都能交接才行。
-    fn ensure_handoff(&self, from: AgentKind, to: AgentKind) -> ServiceResult<()> {
-        let target = self.runtimes.adapter(to);
+    /// 两边的适配器都能交接才行（源实例已被删除时按同种 Agent 静态能力检查，允许用户把旧任务切到可用实例）。
+    fn ensure_handoff(
+        &self,
+        from: (AgentKind, Option<&str>),
+        to: (AgentKind, Option<&str>),
+    ) -> ServiceResult<()> {
+        let target = self.runtimes.adapter_for_instance(to.0, to.1)?;
         if !target.session_linked() {
-            return Err(format!("{} 还不能在工作台里对话", to.display_name()));
+            return Err(format!("{} 还不能在工作台里对话", to.0.display_name()));
         }
-        for agent in [from, to] {
-            if !self.runtimes.adapter(agent).capabilities().supports_context_handoff {
-                return Err(format!("{} 不能和别的 Agent 交接", agent.display_name()));
-            }
+        let from_adapter = self
+            .runtimes
+            .adapter_for_instance(from.0, from.1)
+            .unwrap_or_else(|_| self.runtimes.adapter(from.0));
+        if !from_adapter.capabilities().supports_context_handoff {
+            return Err(format!("{} 不能和别的 Agent 交接", from.0.display_name()));
+        }
+        if !target.capabilities().supports_context_handoff {
+            return Err(format!("{} 不能和别的 Agent 交接", to.0.display_name()));
         }
         Ok(())
     }
@@ -362,7 +455,10 @@ impl Services {
         if shared {
             return;
         }
-        if let Err(err) = self.runtimes.adapter(session.agent).discard_unsent_thread(native).await {
+        let Ok(adapter) = self.runtimes.session_adapter(session) else {
+            return;
+        };
+        if let Err(err) = adapter.discard_unsent_thread(native).await {
             eprintln!("撤掉没用上的线程 {native} 失败：{err}");
         }
     }

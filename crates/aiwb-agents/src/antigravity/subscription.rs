@@ -17,15 +17,21 @@ use aiwb_core::models::{SubscriptionUsage, SubscriptionWindow};
 
 const LIMIT: Duration = Duration::from_secs(60);
 
-pub async fn fetch() -> Result<SubscriptionUsage, AgentError> {
-    let program = process::resolve()?;
+pub async fn fetch_for(
+    overlay: &crate::instance::InstanceOverlay,
+) -> Result<SubscriptionUsage, AgentError> {
+    let program = process::resolve_bin_for(overlay)?;
     let args: Vec<String> = ["-p", "/usage", "--output-format", "json"]
         .iter()
         .map(|arg| arg.to_string())
         .collect();
-    let captured = exec::run_cli_with_env(&program, &args, &process::NO_SELF_UPDATE, LIMIT)
-        .await
-        .map_err(AgentError::Runtime)?;
+    let overlay_clone = overlay.clone();
+    let captured = exec::run_cli_configured(&program, &args, LIMIT, move |cmd| {
+        cmd.envs(process::NO_SELF_UPDATE);
+        process::apply_instance_env(cmd, &overlay_clone);
+    })
+    .await
+    .map_err(AgentError::Runtime)?;
     let stdout = exec::ensure_ok(captured).map_err(AgentError::Runtime)?;
     let line = stdout
         .lines()

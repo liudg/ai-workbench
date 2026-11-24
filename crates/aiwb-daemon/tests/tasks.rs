@@ -1636,3 +1636,190 @@ async fn side_chat_forks_the_current_thread_and_leaves_the_task_alone() {
     let entry = services_b.dispatch("tasks.list", Value::Null).await.unwrap()[0].clone();
     assert!(entry["sides"].as_array().unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn failed_cli_launch_does_not_leak_checkpoint_refs_and_rejected_worktree_sweep_preserves_side_drafts() {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = tempfile::tempdir().unwrap();
+    git(repo.path(), &["init", "-q", "-b", "main"]);
+    git(repo.path(), &["config", "core.autocrlf", "false"]);
+    std::fs::write(repo.path().join("app.txt"), "v1\n").unwrap();
+    git(repo.path(), &["add", "."]);
+    git(
+        repo.path(),
+        &[
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "user.name=t",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "-qm",
+            "init",
+        ],
+    );
+
+    let store = Arc::new(Store::open_in_memory().unwrap());
+    let script = Arc::new(Script::default());
+    let services = services(store.clone(), script.clone(), dir.path());
+    let project = services
+        .dispatch("projects.add", json!({ "path": repo.path().to_string_lossy() }))
+        .await
+        .unwrap();
+
+    // 1. Issue 4: CLI 启动失败时连续重试发送不应遗留 `refs/aiwb/checkpoints/*` 引用。
+    script.broken.lock().unwrap().push(AgentKind::CodexCli);
+    let broken_task = services
+        .dispatch(
+            "tasks.create",
+            json!({ "projectId": project["id"], "agent": "codex-cli" }),
+        )
+        .await
+        .unwrap();
+    let broken_sid = broken_task["sessions"][0]["id"].as_str().unwrap().to_string();
+
+    for _ in 0..2 {
+        let res = services
+            .dispatch(
+                "sessions.send",
+                json!({ "sessionId": broken_sid, "text": "尝试发送" }),
+            )
+            .await;
+        assert!(res.is_err(), "broken CLI must reject send");
+    }
+    assert_eq!(
+        git_out(repo.path(), &["for-each-ref", "refs/aiwb/checkpoints"]),
+        "",
+        "failed CLI launch must not leave orphan checkpoint refs"
+    );
+
+    services
+        .dispatch(
+            "tasks.remove",
+            json!({ "id": broken_task["id"], "discardWorktree": false, "forceWorktree": false }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        git_out(repo.path(), &["for-each-ref", "refs/aiwb/checkpoints"]),
+        ""
+    );
+    script.broken.lock().unwrap().clear();
+
+    // 2. Issue 5: 自动清理工作树因嵌套仓库（含 `git add inner` 暂存的 160000 条目）被拒绝时，
+    //    空闲侧边对话和草稿绝不能被提前删除。
+    services
+        .dispatch("settings.setWorktrees", json!({ "keepCount": 1, "autoCleanup": true }))
+        .await
+        .unwrap();
+    let old_task = services
+        .dispatch(
+            "tasks.create",
+            json!({ "projectId": project["id"], "agent": "codex-cli", "worktree": true }),
+        )
+        .await
+        .unwrap();
+    let old_task_id = old_task["id"].as_str().unwrap().to_string();
+    let old_sid = old_task["sessions"][0]["id"].as_str().unwrap().to_string();
+    let old_wt = std::path::PathBuf::from(old_task["workspace"]["path"].as_str().unwrap());
+
+    services
+        .dispatch("sessions.send", json!({ "sessionId": old_sid, "text": "完成首轮以便开侧边聊天" }))
+        .await
+        .unwrap();
+    wait_for_answer(&services, &old_sid, "收到：完成首轮以便开侧边聊天").await;
+
+    let side = services
+        .dispatch("tasks.openSide", json!({ "taskId": old_task_id }))
+        .await
+        .unwrap();
+    let side_id = side["id"].as_str().unwrap().to_string();
+    let side_draft = json!({ "text": "未发出的重要侧边草稿" });
+    services
+        .dispatch(
+            "drafts.set",
+            json!({ "key": side_id, "body": side_draft }),
+        )
+        .await
+        .unwrap();
+
+    // 在旧工作树里创建嵌套仓库并执行 `git add inner`（变为 160000 暂存条目）。
+    let inner = old_wt.join("inner");
+    std::fs::create_dir_all(&inner).unwrap();
+    git(&inner, &["init", "-q", "-b", "main"]);
+    std::fs::write(inner.join("sub.txt"), "committed-in-inner\n").unwrap();
+    git(&inner, &["add", "."]);
+    git(
+        &inner,
+        &[
+            "-c",
+            "user.email=s@t",
+            "-c",
+            "user.name=s",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "-qm",
+            "sub",
+        ],
+    );
+    std::fs::write(inner.join("draft.txt"), "uncommitted-in-inner\n").unwrap();
+    git(&old_wt, &["add", "inner"]);
+
+    // 创建更新的工作树任务并发送一轮，使 old_task 超出 keepCount=1 达到自动清理条件。
+    tokio::time::sleep(Duration::from_millis(10)).await;
+    let new_task = services
+        .dispatch(
+            "tasks.create",
+            json!({ "projectId": project["id"], "agent": "codex-cli", "worktree": true }),
+        )
+        .await
+        .unwrap();
+    let new_sid = new_task["sessions"][0]["id"].as_str().unwrap().to_string();
+    services
+        .dispatch("sessions.send", json!({ "sessionId": new_sid, "text": "新工作树活动" }))
+        .await
+        .unwrap();
+    wait_for_answer(&services, &new_sid, "收到：新工作树活动").await;
+
+    services.sweep_worktrees().await;
+
+    // 工作树目录、内层仓库文件、空闲侧边对话及侧边草稿必须全部完好无损。
+    assert!(old_wt.exists(), "worktree with staged nested repo must not be removed");
+    assert!(inner.join(".git").exists());
+    assert_eq!(
+        std::fs::read_to_string(inner.join("draft.txt")).unwrap(),
+        "uncommitted-in-inner\n"
+    );
+    let list = services.dispatch("tasks.list", Value::Null).await.unwrap();
+    let old_entry = list
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["id"] == old_task_id)
+        .unwrap();
+    assert!(old_entry["workspace"].get("shelved").is_none());
+    assert_eq!(old_entry["sides"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        services
+            .dispatch("drafts.get", json!({ "key": side_id }))
+            .await
+            .unwrap(),
+        side_draft
+    );
+
+    // 移除嵌套仓库后再次自动清理，此时工作树正常挂起且侧边对话随挂起一并清理。
+    git(&old_wt, &["rm", "--cached", "-rf", "-q", "inner"]);
+    let _ = std::fs::remove_dir_all(&inner);
+    services.sweep_worktrees().await;
+    assert!(!old_wt.exists(), "worktree should shelve cleanly once nested repo is removed");
+    assert!(store.session(&side_id).unwrap().is_none());
+    assert_eq!(
+        services
+            .dispatch("drafts.get", json!({ "key": side_id }))
+            .await
+            .unwrap(),
+        Value::Null
+    );
+}

@@ -9,11 +9,14 @@ use std::time::Duration;
 use serde_json::Value;
 
 use super::directory_client::RpcClient;
+use crate::instance::InstanceOverlay;
 use crate::AgentError;
 use aiwb_core::models::{SubscriptionUsage, SubscriptionWindow};
 
-pub async fn fetch() -> Result<SubscriptionUsage, AgentError> {
-    let client = RpcClient::spawn().await.map_err(AgentError::Runtime)?;
+pub async fn fetch_for(overlay: &InstanceOverlay) -> Result<SubscriptionUsage, AgentError> {
+    let client = RpcClient::spawn_for(overlay)
+        .await
+        .map_err(AgentError::Runtime)?;
     let result = client
         .request(
             "account/rateLimits/read",

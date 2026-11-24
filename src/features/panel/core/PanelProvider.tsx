@@ -49,6 +49,8 @@ const EMPTY_HISTORIES: Record<string, BrowserHistory> = {};
 export interface PanelData {
   diffScopes(sessionId: string): Promise<DiffScope[]>;
   diffForScope(sessionId: string, scope: string, ignoreWhitespace: boolean): Promise<string>;
+  /** 确认路径在磁盘上是不是实际文件，返回规范化后的路径；不是或不存在时返回 null。 */
+  resolveFile?: (path: string) => Promise<string | null>;
   readPreviewFile(projectId: string, path: string, sessionId: string): Promise<PreviewDocument>;
   readPreviewImage(projectId: string, path: string, sessionId: string): Promise<PreviewImage>;
   listDir(projectId: string, dir: string, sessionId: string): Promise<TreeEntry[]>;
@@ -75,7 +77,9 @@ export interface PanelData {
   isGit(projectId: string, sessionId: string): Promise<boolean>;
   /** 在面板的工作目录里开一个终端，返回终端 id。 */
   openTerminal(cols: number, rows: number): Promise<string>;
-  subscriptionUsage(agent: AgentKind): Promise<SubscriptionUsage>;
+  subscriptionUsage(agent: AgentKind, instanceId?: string): Promise<SubscriptionUsage>;
+  /** 基于面板当前范围与 Git diff 范围生成提交说明正文。 */
+  generateCommitMessage?(diffScope: string): Promise<string>;
 }
 
 /** 面板的界面状态（标签、布局、宽度）放在哪个 store 里。 */
@@ -112,6 +116,7 @@ interface PanelApi {
   projectPath: string;
   sessionTitle: string;
   agent: AgentKind | null;
+  instanceId: string | null;
   /** 会话当前模型的显示名。订阅额度按它挑窗口。 */
   modelLabel: string | null;
   /** 当前模型还在加载时为 true，按模型分组的额度先等它落定。 */
@@ -153,6 +158,7 @@ interface PanelProps {
   projectPath: string;
   sessionTitle: string;
   agent: AgentKind | null;
+  instanceId?: string | null;
   modelLabel?: string | null;
   modelLoading?: boolean;
   events: readonly SessionEvent[];
@@ -175,6 +181,7 @@ export function PanelHost({
   projectPath,
   sessionTitle,
   agent,
+  instanceId = null,
   modelLabel = null,
   modelLoading = false,
   events,
@@ -330,6 +337,7 @@ export function PanelHost({
       projectPath,
       sessionTitle,
       agent,
+      instanceId,
       modelLabel,
       modelLoading,
       usage,
@@ -376,6 +384,7 @@ export function PanelHost({
       projectPath,
       sessionTitle,
       agent,
+      instanceId,
       modelLabel,
       modelLoading,
       usage,

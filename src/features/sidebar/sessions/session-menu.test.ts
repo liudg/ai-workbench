@@ -3,12 +3,14 @@ import { test } from "node:test";
 
 import { sessionMenuItems } from "./session-menu.ts";
 
-test("every session has a copy submenu, with delete last and marked danger", () => {
+test("every session has regenerate-title next to rename and a copy submenu, with delete last and marked danger", () => {
   const items = sessionMenuItems({ pinned: false, archived: false, forks: [] });
   assert.deepEqual(
     items.map((item) => item.label),
-    ["重命名", "置顶", "复制", "归档", "删除"],
+    ["重命名", "AI 重新生成标题", "置顶", "复制", "归档", "删除"],
   );
+  assert.equal(items[1]?.id, "regenerate-title");
+  assert.equal(items[1]?.key, "regenerate-title");
   assert.deepEqual(items.find((item) => item.id === "copy")?.children?.map((item) => [item.id, item.label]), [
     ["copy-markdown", "复制为 Markdown"],
     ["copy-workdir", "复制工作目录"],
@@ -30,7 +32,7 @@ test("a single fork target is a plain item between pin and archive", () => {
   });
   assert.deepEqual(
     items.map((item) => item.label),
-    ["重命名", "置顶", "分叉", "复制", "归档", "删除"],
+    ["重命名", "AI 重新生成标题", "置顶", "分叉", "复制", "归档", "删除"],
   );
   const fork = items.find((item) => item.id === "fork");
   assert.equal(fork?.agent, "codex-cli");
@@ -48,7 +50,7 @@ test("several fork targets fold into one 分叉 submenu, one entry per agent", (
   });
   assert.deepEqual(
     items.map((item) => item.label),
-    ["重命名", "置顶", "分叉", "复制", "归档", "删除"],
+    ["重命名", "AI 重新生成标题", "置顶", "分叉", "复制", "归档", "删除"],
   );
   const fork = items.find((item) => item.id === "fork");
   assert.equal(fork?.agent, undefined);
@@ -57,6 +59,25 @@ test("several fork targets fold into one 分叉 submenu, one entry per agent", (
     [
       ["fork:codex-cli", "Codex（当前）", "codex-cli"],
       ["fork:claude-code", "Claude Code", "claude-code"],
+    ],
+  );
+});
+
+test("multiple instances of the same AgentKind keep distinct fork keys and preserve instanceId", () => {
+  const items = sessionMenuItems({
+    pinned: false,
+    archived: false,
+    forks: [
+      { agent: "codex-cli", name: "Codex 默认", same: true },
+      { agent: "codex-cli", instanceId: "codex-work", name: "Codex 工作网关", same: false },
+    ],
+  });
+  const fork = items.find((item) => item.id === "fork");
+  assert.deepEqual(
+    fork?.children?.map((item) => [item.key, item.label, item.agent, item.instanceId]),
+    [
+      ["fork:codex-cli", "Codex 默认（当前）", "codex-cli", undefined],
+      ["fork:codex-work", "Codex 工作网关", "codex-cli", "codex-work"],
     ],
   );
 });

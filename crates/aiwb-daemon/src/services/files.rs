@@ -4,8 +4,9 @@
 use std::path::Path;
 
 use aiwb_agents::{default_git_scopes, is_turn_scope, turn_scope, DiffScope};
+use aiwb_core::models::strip_verbatim_prefix;
 use aiwb_files::{IndexedPaths, PathFilter, PreviewDocument, PreviewImage, SearchOutput, TreeEntry, QUICK_OPEN_LIMIT};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::{blocking, scope_key, Scope, ServiceResult, Services};
 
@@ -40,6 +41,12 @@ pub(crate) struct ReadPath {
     #[serde(flatten)]
     scope: Scope,
     path: String,
+}
+
+#[derive(Serialize)]
+pub(crate) struct ResolvedPath {
+    exists: bool,
+    path: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -81,6 +88,47 @@ impl Services {
         let indexes = self.indexes.fork();
         blocking(move || {
             aiwb_files::search_blocking(&indexes, root, &params.query, &params.mask, params.search_id)
+        })
+        .await
+    }
+
+    /// 只确认路径是不是磁盘上的文件，不读正文。支持引号剥离、兼容 `git diff` 的 `a/` `b/`（含反斜杠）前缀与前导 `/` 仓库相对路径回退。
+    pub(crate) async fn resolve_file(&self, params: ReadPath) -> ServiceResult<ResolvedPath> {
+        let root = self.scope_dir(&params.scope)?;
+        blocking(move || {
+            let cleaned = params.path.trim().trim_matches(['"', '\'', '`']).trim();
+            let resolved = aiwb_files::resolve_preview_file(&root, cleaned)
+                .or_else(|err| {
+                    let stripped = cleaned
+                        .strip_prefix("a/")
+                        .or_else(|| cleaned.strip_prefix("b/"))
+                        .or_else(|| cleaned.strip_prefix("a\\"))
+                        .or_else(|| cleaned.strip_prefix("b\\"));
+                    match stripped {
+                        Some(rest) if !rest.is_empty() => {
+                            aiwb_files::resolve_preview_file(&root, rest)
+                        }
+                        _ => Err(err),
+                    }
+                })
+                .or_else(|err| {
+                    let without_slash = cleaned.trim_start_matches('/');
+                    if without_slash != cleaned && !without_slash.is_empty() {
+                        aiwb_files::resolve_preview_file(&root, without_slash)
+                    } else {
+                        Err(err)
+                    }
+                });
+            match resolved {
+                Ok(full) => ResolvedPath {
+                    exists: true,
+                    path: Some(strip_verbatim_prefix(&full.to_string_lossy())),
+                },
+                Err(_) => ResolvedPath {
+                    exists: false,
+                    path: None,
+                },
+            }
         })
         .await
     }

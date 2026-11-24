@@ -10,8 +10,9 @@ use std::process::Stdio;
 
 use tokio::process::{Child, Command};
 
-use aiwb_proc::apply_utf8_env;
+use aiwb_proc::{apply_utf8_env, hide_console};
 use crate::install::locate_release;
+use crate::instance::InstanceOverlay;
 use crate::AgentError;
 
 /// 可执行文件和要放在 `acp` 前面的参数。
@@ -24,6 +25,23 @@ pub fn resolve() -> Result<Launcher, AgentError> {
     let found = locate_release(&super::release()).ok_or_else(|| {
         AgentError::Runtime("未找到 Cursor Agent。请先安装并运行 `agent login`。".into())
     })?;
+    launcher_from_found(found)
+}
+
+pub fn resolve_for(overlay: &InstanceOverlay) -> Result<Launcher, AgentError> {
+    if let Some(custom) = overlay.binary_path.as_ref() {
+        if !custom.is_file() {
+            return Err(AgentError::Runtime(format!(
+                "配置的 Cursor Agent 路径不存在：{}",
+                custom.display()
+            )));
+        }
+        return launcher_from_found(custom.clone());
+    }
+    resolve()
+}
+
+fn launcher_from_found(found: PathBuf) -> Result<Launcher, AgentError> {
     let ext = found
         .extension()
         .and_then(|ext| ext.to_str())
@@ -95,19 +113,27 @@ pub fn version_key(name: &str) -> Option<u32> {
     Some(year * 10000 + month * 100 + day)
 }
 
-fn hide_console(command: &mut Command) {
-    #[cfg(windows)]
-    {
-        // CREATE_NO_WINDOW：GUI 宿主拉起控制台程序时不要弹出黑窗口。
-        command.creation_flags(0x08000000);
+pub fn apply_instance_env(command: &mut Command, overlay: &InstanceOverlay) {
+    if overlay.is_isolated() {
+        command.env_remove("CURSOR_CONFIG_DIR");
+        command.env_remove("CURSOR_API_KEY");
     }
-    let _ = command;
+    if let Some(home) = overlay.home_path.as_ref() {
+        let _ = std::fs::create_dir_all(home);
+        command.env("CURSOR_CONFIG_DIR", home);
+    }
+    overlay.apply_env(command);
 }
 
-pub fn spawn(launcher: &Launcher, project: &Path) -> Result<Child, AgentError> {
+pub fn spawn(
+    launcher: &Launcher,
+    project: &Path,
+    overlay: &InstanceOverlay,
+) -> Result<Child, AgentError> {
     let mut command = Command::new(&launcher.program);
     command
         .args(&launcher.prefix)
+        .args(&overlay.launch_args)
         .arg("acp")
         .current_dir(project)
         .stdin(Stdio::piped())
@@ -123,6 +149,7 @@ pub fn spawn(launcher: &Launcher, project: &Path) -> Result<Child, AgentError> {
             );
         }
     }
+    apply_instance_env(&mut command, overlay);
     apply_utf8_env(&mut command);
     hide_console(&mut command);
     command.spawn().map_err(|err| {

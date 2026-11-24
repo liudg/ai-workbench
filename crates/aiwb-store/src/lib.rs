@@ -1,10 +1,13 @@
 //! SQLite 存储，工作台的唯一数据源。连接用一把锁串行化；调用方不要在持锁期间等待别的东西。
 
 mod attention;
+mod checkpoints;
 mod drafts;
+mod instances;
 mod legacy;
 mod migrations;
 mod projects;
+mod search;
 mod tasks;
 
 use std::path::Path;
@@ -70,6 +73,13 @@ impl Store {
             [key, value],
         )?;
         Ok(())
+    }
+
+    pub fn delete_meta(&self, key: &str) -> StoreResult<bool> {
+        Ok(self
+            .conn()
+            .execute("DELETE FROM meta WHERE key = ?1", [key])?
+            > 0)
     }
 }
 

@@ -3,7 +3,12 @@ import { AssistantAnswer } from "../answer/AssistantAnswer";
 import { useMessageMenu } from "../message-menu";
 import { MessageFooter, Row } from "./chrome";
 import type { EventViewProps } from "./types";
-import { agentTurnName, useAgentIdentity, useEventAgent } from "./use-agent-identity";
+import {
+  agentTurnName,
+  useAgentIdentity,
+  useEventAgent,
+  useEventInstanceId,
+} from "./use-agent-identity";
 
 export function AgentMessage({
   event,
@@ -13,7 +18,8 @@ export function AgentMessage({
   showMessageFooter,
 }: EventViewProps) {
   const agent = useEventAgent(event, session);
-  const identity = useAgentIdentity(agent);
+  const instanceId = useEventInstanceId(event);
+  const identity = useAgentIdentity(agent, instanceId);
   const onContextMenu = useMessageMenu(event.kind === "agent-message" ? event.text : "");
   if (event.kind !== "agent-message") return null;
   if (!event.text.trim()) return null;

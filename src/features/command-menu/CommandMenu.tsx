@@ -8,6 +8,8 @@ import {
 import { createPortal } from "react-dom";
 import {
   Archive,
+  ArrowDown,
+  ArrowUp,
   ChevronLeft,
   FileCode2,
   FileSearch,
@@ -36,6 +38,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { HighlightedSnippet } from "@/shared/search";
 
 import { COMMAND_MENU_COPY as COPY } from "./copy";
 import type { PaletteCommandId, PaletteRow } from "./commands";
@@ -107,10 +110,11 @@ export function CommandMenu({
   useEffect(() => {
     listRef.current
       ?.querySelector("[data-command-active='true']")
-      ?.scrollIntoView({ block: "nearest" });
+      ?.scrollIntoView?.({ block: "nearest" });
   }, [active, rows]);
 
   const onKeyDown = (event: ReactKeyboardEvent) => {
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
@@ -155,7 +159,9 @@ export function CommandMenu({
   const emptyLabel =
     emptyText ?? (searchingChats && query.trim().length === 0 ? COPY.noChats : COPY.empty);
 
-  const hideGroupHeader = drill === "files" || (searchingChats && query.trim().length > 0);
+  const hideGroupHeader =
+    drill === "files" ||
+    (searchingChats && query.trim().length > 0 && !rows.some((row) => row.group === "messages"));
   const showList = drill === "commands" || drill === "chats" || drill === "files";
 
   return createPortal(
@@ -316,6 +322,70 @@ function RowList({
             {section.rows.map(({ row, index }) => {
               const selected = index === active;
               const danger = row.commandId === "delete";
+              if (row.kind === "message") {
+                return (
+                  <button
+                    key={row.key}
+                    type="button"
+                    role="option"
+                    aria-selected={selected}
+                    data-command-row={row.sessionId}
+                    data-command-row-kind="message"
+                    data-command-event-id={row.eventId ?? ""}
+                    data-command-active={selected ? "true" : "false"}
+                    className={cn(
+                      "flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] leading-5 transition-colors",
+                      selected
+                        ? "wb-menu-active font-medium"
+                        : "text-wb-fg hover:bg-wb-hover",
+                    )}
+                    onMouseEnter={() => onActive(index)}
+                    onClick={() => onRun(index)}
+                  >
+                    <RowIcon row={row} selected={selected} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <HighlightedSnippet
+                          snippet={row.label}
+                          query={query}
+                          className="min-w-0 flex-1 truncate font-medium text-wb-fg"
+                        />
+                        {row.projectName ? (
+                          <span
+                            data-command-hit-project=""
+                            className="max-w-[32%] shrink truncate rounded bg-wb-elev/70 px-1.5 py-0.5 text-[11px] leading-3.5 text-wb-fg-3"
+                          >
+                            {row.projectName}
+                          </span>
+                        ) : null}
+                        {row.archived ? (
+                          <span
+                            data-command-hit-archived=""
+                            className="shrink-0 rounded border border-wb-border bg-wb-elev/70 px-1 py-0.5 text-[10px] leading-3.5 text-wb-fg-3"
+                          >
+                            {COPY.archivedBadge}
+                          </span>
+                        ) : null}
+                        {row.roleLabel ? (
+                          <span
+                            data-command-hit-role=""
+                            className="shrink-0 rounded border border-wb-border bg-wb-elev/80 px-1.5 py-0.5 text-[10px] leading-3.5 text-wb-fg-2"
+                          >
+                            {row.roleLabel}
+                          </span>
+                        ) : null}
+                      </div>
+                      {row.snippet && row.snippet.trim() !== row.label.trim() ? (
+                        <HighlightedSnippet
+                          snippet={row.snippet}
+                          query={query}
+                          className="mt-0.5 block truncate text-xs font-normal leading-4 text-wb-fg-2"
+                        />
+                      ) : null}
+                    </div>
+                  </button>
+                );
+              }
               return (
                 <button
                   key={row.key}
@@ -323,6 +393,7 @@ function RowList({
                   role="option"
                   aria-selected={selected}
                   data-command-row={row.commandId ?? row.sessionId ?? row.filePath}
+                  data-command-row-kind={row.kind}
                   data-command-active={selected ? "true" : "false"}
                   className={cn(
                     "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] leading-5 transition-colors",
@@ -372,6 +443,9 @@ function RowIcon({ row, selected }: { row: PaletteRow; selected: boolean }) {
     "h-[15px] w-[15px] shrink-0",
     danger ? "text-wb-danger" : selected ? "text-wb-accent-ink" : "text-wb-fg-3",
   );
+  if (row.kind === "message") {
+    return <TextSearch className={cn(className, "mt-0.5 self-start")} strokeWidth={1.8} aria-hidden="true" />;
+  }
   if (row.kind === "chat") return <MessageSquare className={className} strokeWidth={1.8} aria-hidden="true" />;
   if (row.kind === "file") return <FileCode2 className={className} strokeWidth={1.8} aria-hidden="true" />;
   const Icon = commandIcon(row.commandId);
@@ -408,6 +482,10 @@ function commandIcon(id: PaletteCommandId | undefined) {
       return Trash2;
     case "next-attention":
       return Sparkles;
+    case "prev-session":
+      return ArrowUp;
+    case "next-session":
+      return ArrowDown;
     case "board":
       return SquareKanban;
     case "quick-open":

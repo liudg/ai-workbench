@@ -33,24 +33,40 @@ mod subagent_tests;
 #[cfg(test)]
 mod tests;
 
+use std::path::Path;
 use std::sync::Arc;
 
 use async_trait::async_trait;
 
 use session::ClaudeSession;
 
+pub(crate) use process::{apply_instance_env, resolve_bin_for};
+
 use crate::install::CliRelease;
+use crate::instance::InstanceOverlay;
 use crate::{
     AgentAdapter, AgentError, AgentSession, DirectoryEntry, DirectoryPage, EventSink,
     SessionContext,
 };
-use aiwb_core::models::{cwd_key, AgentCapabilities, AgentKind, AgentProfile, SessionStatus};
+use aiwb_core::models::{cwd_key, AgentCapabilities, AgentKind, SessionStatus};
 
-pub struct ClaudeCodeAdapter;
+pub struct ClaudeCodeAdapter {
+    overlay: Arc<InstanceOverlay>,
+}
 
 impl ClaudeCodeAdapter {
     pub fn new() -> Self {
-        Self
+        Self::with_overlay(InstanceOverlay::default_for(AgentKind::ClaudeCode))
+    }
+
+    pub fn with_overlay(overlay: InstanceOverlay) -> Self {
+        Self {
+            overlay: Arc::new(overlay),
+        }
+    }
+
+    fn projects_dir(&self) -> std::path::PathBuf {
+        history::projects_dir_for(&self.overlay)
     }
 }
 
@@ -66,12 +82,28 @@ impl AgentAdapter for ClaudeCodeAdapter {
         AgentKind::ClaudeCode
     }
 
+    fn instance_id(&self) -> Option<&str> {
+        Some(&self.overlay.instance_id)
+    }
+
+    fn custom_display_name(&self) -> Option<&str> {
+        self.overlay.display_name.as_deref()
+    }
+
+    fn accent_color(&self) -> Option<&str> {
+        self.overlay.accent_color.as_deref()
+    }
+
+    fn custom_binary_path(&self) -> Option<&Path> {
+        self.overlay.binary_path.as_deref()
+    }
+
     fn capabilities(&self) -> AgentCapabilities {
         AgentCapabilities::claude()
     }
 
     async fn subscription_usage(&self) -> Result<aiwb_core::models::SubscriptionUsage, AgentError> {
-        subscription::fetch().await
+        subscription::fetch_for(&self.overlay).await
     }
 
     fn icon_href(&self) -> Option<&'static str> {
@@ -79,12 +111,8 @@ impl AgentAdapter for ClaudeCodeAdapter {
     }
 
     fn draft_permission_menu(&self) -> aiwb_core::models::PermissionMenu {
-        let active = self
-            .profile()
-            .default_access
-            .filter(|mode| !mode.is_empty())
-            .unwrap_or_else(|| "full".into());
-        permission::permission_menu(&active)
+        let active = self.default_access().unwrap_or("full");
+        permission::permission_menu(active)
     }
 
     /// 只读 `~/.claude/projects` 下这个项目的目录，不起 CLI。
@@ -94,8 +122,8 @@ impl AgentAdapter for ClaudeCodeAdapter {
         cursor: Option<&str>,
         limit: usize,
     ) -> Result<DirectoryPage, AgentError> {
-        let page =
-            history::list_project_page(cwd, cursor, limit).map_err(AgentError::Runtime)?;
+        let page = history::list_project_page_under(&self.projects_dir(), cwd, cursor, limit)
+            .map_err(AgentError::Runtime)?;
         Ok(DirectoryPage {
             entries: page.sessions.into_iter().map(listed_entry).collect(),
             next_cursor: page.next_cursor,
@@ -111,7 +139,7 @@ impl AgentAdapter for ClaudeCodeAdapter {
         if !history::is_uuid(native_id) {
             return Err(AgentError::Runtime(format!("无效的会话 id：{native_id}")));
         }
-        let path = history::find_session_file(native_id)
+        let path = history::find_session_file_under(&self.projects_dir(), native_id)
             .ok_or_else(|| AgentError::Runtime(format!("找不到会话 {native_id}")))?;
         let text = history::read_session_text(&path)
             .ok_or_else(|| AgentError::Runtime(format!("读不了会话 {native_id}")))?;
@@ -124,13 +152,14 @@ impl AgentAdapter for ClaudeCodeAdapter {
     }
 
     async fn discard_unsent_thread(&self, native_id: &str) -> Result<(), AgentError> {
-        history::remove_session_file(native_id).map_err(AgentError::Runtime)
+        history::remove_session_file_under(&self.projects_dir(), native_id)
+            .map_err(AgentError::Runtime)
     }
 
     /// `--fork-session` 不带提示词会失败（CLI：`No deferred tool marker found... Provide a prompt`）。
-    /// 带一条占位提示会多出用户没写的回合。分叉就是把转录复制成新的 session id。
+    /// 带一条占位提示会多出用户没写的对话。分叉就是把转录复制成新的 session id。
     async fn fork_thread(&self, native_id: &str, cwd: Option<&str>) -> Result<DirectoryEntry, AgentError> {
-        history::fork_session_file(native_id, cwd)
+        history::fork_session_file_under(&self.projects_dir(), native_id, cwd)
             .map(listed_entry)
             .map_err(AgentError::Runtime)
     }
@@ -141,22 +170,15 @@ impl AgentAdapter for ClaudeCodeAdapter {
         if !history::is_uuid(native_id) {
             return Err(AgentError::Runtime(format!("无效的会话 id：{native_id}")));
         }
-        if history::find_session_file(native_id).is_none() {
+        let projects_dir = self.projects_dir();
+        if history::find_session_file_under(&projects_dir, native_id).is_none() {
             return Err(AgentError::Runtime(format!("找不到会话 {native_id}")));
         }
-        history::remove_session_file(native_id).map_err(AgentError::Runtime)
+        history::remove_session_file_under(&projects_dir, native_id).map_err(AgentError::Runtime)
     }
 
-    fn profile(&self) -> AgentProfile {
-        AgentProfile {
-            kind: self.kind(),
-            capabilities: self.capabilities(),
-            commands: Vec::new(),
-            default_access: Some("full".into()),
-            display_name: None,
-            icon: None,
-            monochrome_icon: false,
-        }
+    fn default_access(&self) -> Option<&'static str> {
+        Some("full")
     }
 
     fn session_linked(&self) -> bool {
@@ -168,7 +190,7 @@ impl AgentAdapter for ClaudeCodeAdapter {
     }
 
     fn mcp(&self) -> Option<Arc<dyn crate::mcp::McpDriver>> {
-        Some(mcp::driver())
+        Some(mcp::driver_for(Arc::clone(&self.overlay)))
     }
 
     fn cli_release(&self) -> Option<CliRelease> {
@@ -184,7 +206,34 @@ impl AgentAdapter for ClaudeCodeAdapter {
     }
 
     async fn detect(&self) -> Result<(), AgentError> {
-        process::resolve_claude_bin().map(|_| ())
+        process::resolve_bin_for(&self.overlay).map(|_| ())
+    }
+
+    async fn generate_text(
+        &self,
+        prompt: &str,
+        model: Option<&str>,
+        cwd: Option<&Path>,
+    ) -> Result<String, AgentError> {
+        crate::text_gen::claude_generate_text(&self.overlay, prompt, model, cwd).await
+    }
+
+    async fn rewind_thread(
+        &self,
+        native_id: &str,
+        cwd: &str,
+        _target_turn_id: Option<&str>,
+        kept_turns: usize,
+        delete_old: bool,
+    ) -> Result<Option<String>, AgentError> {
+        history::rewind_session_file_under(
+            &self.projects_dir(),
+            native_id,
+            Some(cwd),
+            kept_turns,
+            delete_old,
+        )
+        .map_err(AgentError::Runtime)
     }
 
     async fn start_session(
@@ -196,6 +245,7 @@ impl AgentAdapter for ClaudeCodeAdapter {
         let has_history = ctx.flag("has_history");
         let side_of = ctx.side_of();
         let shared = runtime::open(
+            &self.overlay,
             ctx.project_path,
             ctx.access_mode,
             ctx.resume_native_id,
@@ -209,7 +259,6 @@ impl AgentAdapter for ClaudeCodeAdapter {
         .await?;
         Ok(Arc::new(ClaudeSession::new(shared)))
     }
-
 }
 
 fn listed_entry(listed: history::ListedSession) -> DirectoryEntry {

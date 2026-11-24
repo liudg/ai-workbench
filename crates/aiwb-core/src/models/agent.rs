@@ -21,10 +21,12 @@ pub enum UpgradeStatus {
     Failed,
 }
 
-/// 一种 Agent 这次启动后探模型目录的结果。探成功才算能用。
+/// 一种 Agent（或实例）这次启动后探模型目录的结果。探成功才算能用。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CatalogProbe {
     pub kind: AgentKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instance_id: Option<String>,
     pub status: ProbeStatus,
     /// 探失败的原因。
     pub error: Option<String>,

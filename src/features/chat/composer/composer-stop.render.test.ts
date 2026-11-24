@@ -35,6 +35,7 @@ installGlobal("cancelAnimationFrame", dom.cancelAnimationFrame.bind(dom));
 
 let server: ViteDevServer;
 let ComposerBar: typeof import("./ComposerBar.tsx").ComposerBar;
+let useComposerController: typeof import("./useComposerController.ts").useComposerController;
 
 const caps = {
   supports_slash: true,
@@ -59,6 +60,9 @@ before(async () => {
     logLevel: "error",
   });
   ComposerBar = (await server.ssrLoadModule("/src/features/chat/composer/ComposerBar.tsx")).ComposerBar;
+  useComposerController = (
+    await server.ssrLoadModule("/src/features/chat/composer/useComposerController.ts")
+  ).useComposerController;
 });
 
 after(async () => {
@@ -220,4 +224,129 @@ test("pending approval shows 停止 and clicking it interrupts; a finished turn 
   await act(async () => {
     root.unmount();
   });
+  host.remove();
+});
+
+test("useComposerController syncs externally cleared initialFileRefs without clobbering typing and auto-clears stale editingId", async () => {
+  const hostEl = dom.document.createElement("div");
+  dom.document.body.appendChild(hostEl);
+  const root: Root = createRoot(hostEl as unknown as HTMLElement);
+
+  let latestCtrl: ReturnType<typeof useComposerController> | null = null;
+  let draftText = "请检查 @foo.ts ";
+  let draftRefs = [{ label: "@foo.ts", path: "src/foo.ts" }];
+  let queue = [{ id: "q-1", text: "排队中的追问", images: [] as string[] }];
+
+  const session = {
+    id: "sess-ctrl-1",
+    native_id: "n-1",
+    project_id: "p-1",
+    agent: "codex-cli" as const,
+    title: "测试",
+    status: "running" as const,
+    created_at: 1,
+    updated_at: 1,
+  };
+
+  function Harness({ tick: _tick }: { tick: number }) {
+    const composerHost = {
+      draft: false,
+      inputLocked: false,
+      initialText: draftText,
+      initialFileRefs: draftRefs,
+      catalog: undefined,
+      catalogNotice: null,
+      profile: { kind: "codex-cli" as const, capabilities: caps, commands: [] },
+      tuning: undefined,
+      sandbox: emptySandbox(),
+      permissionMenu: null,
+      projectPath: "",
+      files: [],
+      snippets: [],
+      queue,
+      followUpQueueMode: "queue" as const,
+      git: null,
+      workContext: null,
+      worktree: null,
+      agentChoice: null,
+      rememberText: (t: string) => {
+        draftText = t;
+      },
+      rememberFileRefs: (refs: typeof draftRefs) => {
+        draftRefs = refs;
+      },
+      send: async () => true,
+      setCollaborationMode: async () => {},
+      startReview: async () => {},
+      reviewTargets: async () => ({ branches: [], commits: [], labels: {} as never }),
+      answerPrompt: async () => true,
+      setSandbox: () => {},
+      setTuning: () => {},
+      addAttachments: () => {},
+      removeAttachment: () => {},
+      clearAttachments: () => {},
+      replaceAttachments: () => {},
+      clearTextSnippets: () => {},
+      restoreTextSnippets: () => {},
+      removeTextSnippet: () => {},
+      updateQueued: async () => {},
+      removeQueued: async () => {},
+      steerQueued: async () => {},
+      flushQueued: async () => {},
+      setFollowUpQueueMode: () => {},
+      interrupt: () => {},
+      setGoal: async () => {},
+      clearGoal: async () => {},
+      setGoalStatus: async () => {},
+      publishGoal: async () => {},
+      filterPaths: async () => ({ paths: [], truncated: false, cancelled: false, ready: true }),
+      reportError: () => {},
+    };
+    latestCtrl = useComposerController(composerHost, session, []);
+    return createElement("textarea", { ref: latestCtrl.textareaRef });
+  }
+
+  try {
+    await act(async () => {
+      root.render(createElement(Harness, { tick: 0 }));
+    });
+    assert.equal(latestCtrl!.tokens.some((tok) => tok.kind === "file" && tok.path === "src/foo.ts"), true);
+
+    // Normal typing preserves @foo.ts fileRef
+    await act(async () => {
+      latestCtrl!.setText("请检查 @foo.ts 的边界条件");
+      root.render(createElement(Harness, { tick: 1 }));
+    });
+    assert.equal(latestCtrl!.tokens.some((tok) => tok.kind === "file" && tok.path === "src/foo.ts"), true);
+
+    // External draft replacement (e.g. restoreRewoundDraft / setDraftText) clears initialFileRefs to [] even when @foo.ts text remains
+    draftText = "回退草稿里的字面量 @foo.ts";
+    draftRefs = [];
+    await act(async () => {
+      root.render(createElement(Harness, { tick: 2 }));
+    });
+    assert.equal(latestCtrl!.text, "回退草稿里的字面量 @foo.ts");
+    assert.equal(
+      latestCtrl!.tokens.some((tok) => tok.kind === "file"),
+      false,
+      "externally cleared initialFileRefs must clear stale internal fileRefs",
+    );
+
+    // Begin editing queued turn q-1, then dequeue q-1 externally -> editingId auto-clears to null!
+    await act(async () => {
+      latestCtrl!.beginEdit(queue[0]!);
+    });
+    assert.equal(latestCtrl!.editingId, "q-1");
+
+    queue = [];
+    await act(async () => {
+      root.render(createElement(Harness, { tick: 3 }));
+    });
+    assert.equal(latestCtrl!.editingId, null, "editingId must clear when queued item disappears");
+  } finally {
+    await act(async () => {
+      root.unmount();
+    });
+    hostEl.remove();
+  }
 });

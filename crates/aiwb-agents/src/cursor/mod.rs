@@ -23,22 +23,34 @@ mod live_steering_tests;
 #[cfg(test)]
 mod queue_tests;
 
+pub(crate) use process::{apply_instance_env, resolve_for};
+
+use std::path::Path;
 use std::sync::Arc;
 
 use async_trait::async_trait;
 
 use crate::acp::session::AcpSession;
 use crate::install::{locate_cursor_agent, CliRelease};
+use crate::instance::InstanceOverlay;
 use crate::{
     AgentAdapter, AgentError, AgentSession, DirectoryPage, EventSink, SessionContext,
 };
-use aiwb_core::models::{cwd_key, AgentCapabilities, AgentKind, AgentProfile, SessionEventBody};
+use aiwb_core::models::{cwd_key, AgentCapabilities, AgentKind, SessionEventBody};
 
-pub struct CursorAgentAdapter;
+pub struct CursorAgentAdapter {
+    overlay: Arc<InstanceOverlay>,
+}
 
 impl CursorAgentAdapter {
     pub fn new() -> Self {
-        Self
+        Self::with_overlay(InstanceOverlay::default_for(AgentKind::CursorAgent))
+    }
+
+    pub fn with_overlay(overlay: InstanceOverlay) -> Self {
+        Self {
+            overlay: Arc::new(overlay),
+        }
     }
 }
 
@@ -67,6 +79,22 @@ impl AgentAdapter for CursorAgentAdapter {
         AgentKind::CursorAgent
     }
 
+    fn instance_id(&self) -> Option<&str> {
+        Some(&self.overlay.instance_id)
+    }
+
+    fn custom_display_name(&self) -> Option<&str> {
+        self.overlay.display_name.as_deref()
+    }
+
+    fn accent_color(&self) -> Option<&str> {
+        self.overlay.accent_color.as_deref()
+    }
+
+    fn custom_binary_path(&self) -> Option<&Path> {
+        self.overlay.binary_path.as_deref()
+    }
+
     fn capabilities(&self) -> AgentCapabilities {
         AgentCapabilities::cursor()
     }
@@ -79,16 +107,8 @@ impl AgentAdapter for CursorAgentAdapter {
         true
     }
 
-    fn profile(&self) -> AgentProfile {
-        AgentProfile {
-            kind: self.kind(),
-            capabilities: self.capabilities(),
-            commands: Vec::new(),
-            default_access: Some("full".into()),
-            display_name: None,
-            icon: None,
-            monochrome_icon: true,
-        }
+    fn default_access(&self) -> Option<&'static str> {
+        Some("full")
     }
 
     fn draft_permission_menu(&self) -> aiwb_core::models::PermissionMenu {
@@ -100,11 +120,13 @@ impl AgentAdapter for CursorAgentAdapter {
     }
 
     fn mcp(&self) -> Option<Arc<dyn crate::mcp::McpDriver>> {
-        Some(Arc::new(crate::mcp::CursorMcp))
+        Some(Arc::new(crate::mcp::CursorMcp {
+            overlay: Arc::clone(&self.overlay),
+        }))
     }
 
     async fn detect(&self) -> Result<(), AgentError> {
-        process::resolve().map(|_| ())
+        process::resolve_for(&self.overlay).map(|_| ())
     }
 
     fn session_linked(&self) -> bool {
@@ -115,12 +137,37 @@ impl AgentAdapter for CursorAgentAdapter {
         true
     }
 
+    async fn generate_text(
+        &self,
+        prompt: &str,
+        model: Option<&str>,
+        cwd: Option<&Path>,
+    ) -> Result<String, AgentError> {
+        crate::text_gen::cursor_generate_text(&self.overlay, prompt, model, cwd).await
+    }
+
+    async fn rewind_thread(
+        &self,
+        native_id: &str,
+        _cwd: &str,
+        _target_turn_id: Option<&str>,
+        _kept_turns: usize,
+        delete_old: bool,
+    ) -> Result<Option<String>, AgentError> {
+        // Cursor ACP 不支持原生按回合截断：按需清理旧原生会话并返回 None，下一轮自动经 ContextHandoff 注入保留的前文。
+        if delete_old {
+            let _ = directory::remove_for(&self.overlay, native_id);
+        }
+        Ok(None)
+    }
+
     async fn start_session(
         &self,
         ctx: SessionContext,
         events: EventSink,
     ) -> Result<Arc<dyn AgentSession>, AgentError> {
-        let shared = open::open(
+        let shared = open::open_for(
+            &self.overlay,
             open::Open {
                 persist: ctx.flag("persist"),
                 replay_history: !ctx.flag("skip_history"),
@@ -149,7 +196,7 @@ impl AgentAdapter for CursorAgentAdapter {
             None => 0,
         };
         let key = cwd_key(cwd);
-        let listed: Vec<_> = directory::list()
+        let listed: Vec<_> = directory::list_for(&self.overlay)
             .into_iter()
             .filter(|entry| entry.cwd_key == key)
             .collect();
@@ -184,6 +231,6 @@ impl AgentAdapter for CursorAgentAdapter {
     }
 
     async fn delete_thread(&self, native_id: &str) -> Result<(), AgentError> {
-        directory::remove(native_id).map_err(AgentError::Runtime)
+        directory::remove_for(&self.overlay, native_id).map_err(AgentError::Runtime)
     }
 }

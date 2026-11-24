@@ -1,7 +1,6 @@
-import { SIDEBAR_SHORTCUT_LABEL } from "../../shared/shell/sidebar-open.ts";
 import { DESKTOP_ZH } from "../../shared/strings/desktop-zh.ts";
 
-/** 本机 Codex 桌面 zh-CN 命令菜单里读到的文案。快捷键显示沿用工作台已有的 Ctrl 写法。 */
+/** 本机 Codex 桌面 zh-CN 命令菜单里读到的文案。快捷键默认由共享快捷键目录按当前平台生成。 */
 
 export const COMMAND_MENU_COPY = {
   title: "命令菜单",
@@ -23,8 +22,11 @@ export const COMMAND_MENU_COPY = {
     recent: "最近对话",
     pinned: "已置顶对话",
     chats: "对话",
+    messages: "会话正文命中",
     files: "文件",
   },
+  searchPending: "正在搜索会话…",
+  archivedBadge: "已归档",
   newThread: "新建对话",
   newStandalone: "新建独立对话",
   openFolder: "添加项目目录…",
@@ -44,23 +46,18 @@ export const COMMAND_MENU_COPY = {
   toggleFiles: "显示/隐藏“文件”面板",
   toggleChanges: "显示/隐藏“变更”面板",
   toggleTerminal: "显示/隐藏终端",
-  shortcutTerminal: DESKTOP_ZH.terminalShortcut,
   toggleSideChat: "显示/隐藏侧边聊天",
-  shortcutSideChat: DESKTOP_ZH.sideChatShortcut,
   toggleSidebar: "显示/隐藏侧边栏",
   quickOpen: "跳转文件",
   nextAttention: "下一个需要处理的对话",
+  prevSession: "切换到上一个对话",
+  nextSession: "切换到下一个对话",
   board: "打开看板",
-  shortcutOpen: "Ctrl+K",
-  shortcutSidebar: SIDEBAR_SHORTCUT_LABEL,
-  shortcutQuickOpen: "Ctrl+P",
   filePlaceholder: "输入文件名",
   noProject: "先打开一个项目",
   filePending: "正在查找…",
   fileError: "无法列出文件",
   needSession: "先选择一个对话",
-  shortcutNew: "Ctrl+Shift+O",
-  shortcutDelete: "Ctrl+Shift+Delete",
   renameTitle: "重命名对话",
   renameDescription: "保持简短且易于识别",
   renamePlaceholder: "输入对话标题…",

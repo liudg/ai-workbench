@@ -12,6 +12,13 @@ export type MainView =
 
 export type ProjectDialog = "create" | "import";
 
+export interface PendingMessageJump {
+  taskId: string;
+  eventId?: string;
+  query?: string;
+  nonce: number;
+}
+
 interface NavigationState {
   view: MainView;
   settings: boolean;
@@ -20,11 +27,15 @@ interface NavigationState {
   projectDialog: ProjectDialog | null;
   /** 每个项目上次看的会话。回到这个项目时先落在它上面。 */
   lastTask: Record<string, string>;
+  /** 侧栏 / 命令面板全文检索点中后待定位的消息片段。 */
+  pendingJump: PendingMessageJump | null;
 }
 
 const STANDALONE_KEY = "";
 
 const scopeKey = (projectId: ProjectScope) => projectId ?? STANDALONE_KEY;
+
+let jumpNonce = 0;
 
 const useNavigationStore = create<NavigationState>()(() => ({
   view: { kind: "none" },
@@ -32,19 +43,38 @@ const useNavigationStore = create<NavigationState>()(() => ({
   board: false,
   projectDialog: null,
   lastTask: {},
+  pendingJump: null,
 }));
 
 export function useNavigation<T>(select: (state: NavigationState) => T): T {
   return useNavigationStore(select);
 }
 
-export function openTask(taskId: string, projectId: ProjectScope) {
+export function openTask(
+  taskId: string,
+  projectId: ProjectScope,
+  jump?: { eventId?: string; query?: string },
+) {
+  jumpNonce += 1;
+  const pendingJump: PendingMessageJump | null =
+    jump && (jump.eventId || jump.query)
+      ? { taskId, eventId: jump.eventId, query: jump.query, nonce: jumpNonce }
+      : null;
   useNavigationStore.setState((state) => ({
     view: { kind: "task", taskId, projectId },
     settings: false,
     board: false,
     lastTask: { ...state.lastTask, [scopeKey(projectId)]: taskId },
+    pendingJump,
   }));
+}
+
+export function clearPendingJump(nonce?: number) {
+  useNavigationStore.setState((state) => {
+    if (!state.pendingJump) return state;
+    if (nonce !== undefined && state.pendingJump.nonce !== nonce) return state;
+    return { pendingJump: null };
+  });
 }
 
 export function openNewSession(projectId: ProjectScope) {
